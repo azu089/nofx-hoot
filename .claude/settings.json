@@ -1,0 +1,122 @@
+{
+  "$schema": "https://claude.ai/schemas/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          ".claude/hooks/protect-sensitive.sh",
+          ".claude/hooks/check-decimal.sh",
+          ".claude/hooks/check-sensitive-log.sh"
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          ".claude/hooks/log-changes.sh"
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [".claude/hooks/session-start.sh"]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [".claude/hooks/session-end-summary.sh"]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          ".claude/hooks/notify-complete.sh",
+          ".claude/hooks/auto-review-on-stop.sh"
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Edit(apps/**)",
+      "Edit(packages/**)",
+      "Edit(src/**)",
+      "Edit(.claude/**)",
+      "Edit(数据库/**)",
+      "Edit(scripts/**)",
+      "Edit(文档/**)",
+      "Write(apps/**)",
+      "Write(packages/**)",
+      "Write(src/**)",
+      "Write(.claude/**)",
+      "Write(数据库/**)",
+      "Write(scripts/**)",
+      "Write(文档/**)",
+      "Write(CLAUDE.local.md)",
+      "Glob(**/*)",
+      "Grep(**/*)",
+      "Bash(docker compose:*)",
+      "Bash(docker:*)",
+      "Bash(pnpm:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(psql:*)",
+      "Bash(redis-cli:*)",
+      "Bash(chmod:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(sleep:*)",
+      "Bash(cd:*)",
+      "Bash(pwd:*)",
+      "Bash(which:*)",
+      "Bash(osascript:*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/secrets/**)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Write(.env)",
+      "Write(.env.*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git push:*)",
+      "Bash(DROP DATABASE:*)",
+      "Bash(TRUNCATE:*)",
+      "Bash(DELETE FROM:*)"
+    ]
+  },
+  "env": {
+    "NODE_ENV": "development",
+    "QUANTFI_PROJECT": "true"
+  }
+}

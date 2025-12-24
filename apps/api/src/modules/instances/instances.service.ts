@@ -1,0 +1,468 @@
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateInstanceDto, HeartbeatDto } from './dto/instance-response.dto';
+import { DigitalOceanService } from '../digitalocean/digitalocean.service';
+
+/**
+ * VPS 实例服务
+ * 处理 VPS 编排、监控、心跳检测等业务逻辑
+ *
+ * 注意事项：
+ * - 创建 VPS 前必须检查用户余额
+ * - 销毁 VPS 前必须备份到 S3
+ * - 心跳超时时间：15 分钟
+ * - 所有操作必须记录审计日志
+ */
+@Injectable()
+export class InstancesService {
+  private readonly logger = new Logger(InstancesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly digitalOceanService: DigitalOceanService,
+  ) {}
+
+  /**
+   * 创建 VPS 实例（调用 DO API）
+   */
+  async create(userId: string, dto: CreateInstanceDto) {
+    // 1. 检查用户是否已有活跃实例
+    const existingInstance = await this.prisma.client.instances.findFirst({
+      where: {
+        user_id: userId,
+        status: { notIn: ['destroyed', 'error'] },
+      },
+    });
+
+    if (existingInstance) {
+      throw new ConflictException('用户已有活跃实例，请先销毁现有实例');
+    }
+
+    // TODO: 检查用户余额是否充足（后续任务实现）
+
+    // 2. 创建实例记录（状态为 pending）
+    const instance = await this.prisma.client.instances.create({
+      data: {
+        user_id: userId,
+        region: dto.region || 'sgp1',
+        size: dto.size || 's-1vcpu-1gb',
+        status: 'pending',
+      },
+    });
+
+    this.logger.log(`创建实例记录: ${instance.id}, 用户: ${userId}`);
+
+    try {
+      // 3. 调用 DO API 创建 Droplet
+      const droplet = await this.digitalOceanService.createDroplet(
+        {
+          name: `quantfi-${userId.substring(0, 8)}-${instance.id.substring(0, 8)}`,
+          region: instance.region,
+          size: instance.size,
+          tags: ['quantfi', `user-${userId}`, `instance-${instance.id}`],
+        },
+        instance.id, // 传递 instanceId 用于生成 User Data
+      );
+
+      this.logger.log(
+        `Droplet 创建成功: ${droplet.id}, IP: ${droplet.ip}, 实例: ${instance.id}`,
+      );
+
+      // 4. 更新实例记录
+      const updatedInstance = await this.prisma.client.instances.update({
+        where: { id: instance.id },
+        data: {
+          droplet_id: droplet.id,
+          ip_address: droplet.ip,
+          status: droplet.status === 'active' ? 'provisioning' : 'pending',
+          provisioned_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `实例创建完成: ${instance.id}, 状态: ${updatedInstance.status}`,
+      );
+
+      return updatedInstance;
+    } catch (error) {
+      // 5. 创建失败，标记为 error
+      this.logger.error(
+        `创建 Droplet 失败: ${error.message}`,
+        error.stack,
+      );
+
+      await this.prisma.client.instances.update({
+        where: { id: instance.id },
+        data: {
+          status: 'error',
+          destroy_reason: `创建失败: ${error.message}`,
+        },
+      });
+
+      throw new InternalServerErrorException(
+        `创建 VPS 失败: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * 获取用户的所有实例
+   */
+  async findAllByUserId(userId: string) {
+    return this.prisma.client.instances.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  /**
+   * 获取实例详情
+   */
+  async findById(id: string, userId: string) {
+    const instance = await this.prisma.client.instances.findFirst({
+      where: { id, user_id: userId },
+    });
+
+    if (!instance) {
+      throw new NotFoundException('实例不存在');
+    }
+
+    return instance;
+  }
+
+  /**
+   * 销毁实例（调用 DO API）
+   */
+  async destroy(id: string, userId: string, reason: string) {
+    const instance = await this.findById(id, userId);
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    // TODO: 备份到 S3（后续任务实现）
+
+    try {
+      // 1. 调用 DO API 销毁 Droplet
+      if (instance.droplet_id) {
+        this.logger.log(`销毁 Droplet: ${instance.droplet_id}`);
+        await this.digitalOceanService.destroyDroplet(instance.droplet_id);
+      } else {
+        this.logger.warn(`实例 ${id} 没有 droplet_id，跳过 DO API 调用`);
+      }
+
+      // 2. 更新数据库记录
+      const updatedInstance = await this.prisma.client.instances.update({
+        where: { id },
+        data: {
+          status: 'destroyed',
+          destroyed_at: new Date(),
+          destroy_reason: reason,
+        },
+      });
+
+      this.logger.log(`销毁实例成功: ${id}, 原因: ${reason}`);
+
+      return updatedInstance;
+    } catch (error) {
+      // 销毁失败，记录错误但仍更新状态
+      this.logger.error(
+        `销毁 Droplet 失败: ${error.message}，继续标记为销毁`,
+        error.stack,
+      );
+
+      const updatedInstance = await this.prisma.client.instances.update({
+        where: { id },
+        data: {
+          status: 'destroyed',
+          destroyed_at: new Date(),
+          destroy_reason: `${reason} (DO API 失败: ${error.message})`,
+        },
+      });
+
+      return updatedInstance;
+    }
+  }
+
+  /**
+   * 接收心跳上报
+   */
+  async heartbeat(id: string, dto: HeartbeatDto) {
+    const instance = await this.prisma.client.instances.findUnique({
+      where: { id },
+    });
+
+    if (!instance) {
+      throw new NotFoundException('实例不存在');
+    }
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    await this.prisma.client.instances.update({
+      where: { id },
+      data: {
+        last_heartbeat: new Date(),
+        cpu_usage: dto.cpuUsage,
+        memory_usage: dto.memoryUsage,
+        status: 'running',
+      },
+    });
+
+    this.logger.debug(`心跳: ${id}`);
+
+    return { received: true, timestamp: new Date() };
+  }
+
+  /**
+   * 检测僵尸节点（15 分钟无心跳）
+   */
+  async findZombieInstances() {
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+
+    return this.prisma.client.instances.findMany({
+      where: {
+        status: 'running',
+        last_heartbeat: {
+          lt: fifteenMinutesAgo,
+        },
+      },
+    });
+  }
+
+  /**
+   * 标记实例为僵尸节点
+   * @param instanceId 实例 ID
+   */
+  async markAsZombie(instanceId: string) {
+    const instance = await this.prisma.client.instances.findUnique({
+      where: { id: instanceId },
+    });
+
+    if (!instance) {
+      this.logger.warn(`标记僵尸节点失败: 实例不存在 ${instanceId}`);
+      return null;
+    }
+
+    if (instance.status !== 'running') {
+      this.logger.debug(
+        `跳过标记僵尸节点: 实例状态非 running ${instanceId}, 当前状态: ${instance.status}`,
+      );
+      return null;
+    }
+
+    const updatedInstance = await this.prisma.client.instances.update({
+      where: { id: instanceId },
+      data: {
+        status: 'zombie',
+        destroy_reason: '心跳超时（15分钟无响应）',
+      },
+    });
+
+    this.logger.error(
+      `[僵尸节点告警] 实例 ${instanceId} 标记为僵尸节点，用户 ${instance.user_id}，最后心跳: ${instance.last_heartbeat}`,
+    );
+
+    return updatedInstance;
+  }
+
+  /**
+   * 启动策略（启动 VPS 上的交易策略）
+   */
+  async startStrategy(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁，无法启动策略');
+    }
+
+    if (instance.status === 'error') {
+      throw new ConflictException('实例状态异常，无法启动策略');
+    }
+
+    if (instance.status !== 'running' && instance.status !== 'stopped') {
+      throw new ConflictException(
+        `实例状态为 ${instance.status}，只有 running 或 stopped 状态可以启动策略`,
+      );
+    }
+
+    // TODO: 后续实现实际的策略启动逻辑（调用 VPS API 或 SSH 执行命令）
+    this.logger.log(`启动实例 ${id} 的交易策略`);
+
+    // 更新状态为 running
+    const updatedInstance = await this.prisma.client.instances.update({
+      where: { id },
+      data: {
+        status: 'running',
+      },
+    });
+
+    this.logger.log(`实例 ${id} 策略已启动`);
+
+    return updatedInstance;
+  }
+
+  /**
+   * 停止策略（停止 VPS 上的交易策略，但不销毁 VPS）
+   */
+  async stopStrategy(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    if (instance.status !== 'running') {
+      throw new ConflictException(
+        `实例状态为 ${instance.status}，只有 running 状态可以停止策略`,
+      );
+    }
+
+    // TODO: 后续实现实际的策略停止逻辑（调用 VPS API 或 SSH 执行命令）
+    this.logger.log(`停止实例 ${id} 的交易策略`);
+
+    // 更新状态为 stopped
+    const updatedInstance = await this.prisma.client.instances.update({
+      where: { id },
+      data: {
+        status: 'stopped',
+      },
+    });
+
+    this.logger.log(`实例 ${id} 策略已停止`);
+
+    return updatedInstance;
+  }
+
+  /**
+   * 重启实例（重启 VPS）
+   */
+  async restart(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁，无法重启');
+    }
+
+    if (instance.status === 'error') {
+      throw new ConflictException('实例状态异常，无法重启');
+    }
+
+    if (!instance.droplet_id) {
+      throw new ConflictException('实例缺少 droplet_id，无法重启');
+    }
+
+    // TODO: 调用 DO API 重启 Droplet（需要在 DigitalOceanService 添加 rebootDroplet 方法）
+    this.logger.log(`重启实例 ${id} (Droplet: ${instance.droplet_id})`);
+
+    // 暂时只更新状态为 provisioning，等待状态同步
+    const updatedInstance = await this.prisma.client.instances.update({
+      where: { id },
+      data: {
+        status: 'provisioning',
+      },
+    });
+
+    this.logger.log(`实例 ${id} 已发送重启指令`);
+
+    return updatedInstance;
+  }
+
+  /**
+   * 手动同步实例状态（从 DO API）
+   */
+  async syncStatus(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (!instance.droplet_id) {
+      throw new ConflictException('实例缺少 droplet_id，无法同步状态');
+    }
+
+    if (instance.status === 'destroyed') {
+      this.logger.warn(`实例 ${id} 已销毁，跳过状态同步`);
+      return instance;
+    }
+
+    try {
+      // 调用 DO API 获取真实状态
+      const dropletStatus = await this.digitalOceanService.getDropletStatus(
+        instance.droplet_id,
+      );
+
+      this.logger.log(
+        `同步实例 ${id} 状态: ${dropletStatus.status}, IP: ${dropletStatus.ip}`,
+      );
+
+      // 更新数据库
+      const updateData: any = {};
+
+      if (dropletStatus.ip && dropletStatus.ip !== instance.ip_address) {
+        updateData.ip_address = dropletStatus.ip;
+      }
+
+      if (dropletStatus.status === 'active') {
+        updateData.status = 'running';
+      } else if (dropletStatus.status === 'off') {
+        updateData.status = 'stopped';
+      } else if (dropletStatus.status === 'error') {
+        updateData.status = 'error';
+        updateData.destroy_reason = 'DO Droplet 状态异常';
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        return await this.prisma.client.instances.update({
+          where: { id },
+          data: updateData,
+        });
+      }
+
+      return instance;
+    } catch (error) {
+      this.logger.error(`同步实例 ${id} 状态失败: ${error.message}`);
+      throw new InternalServerErrorException(
+        `同步状态失败: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * 处理创建超时的实例（由定时任务调用）
+   */
+  async handleProvisioningTimeout() {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    const timeoutInstances = await this.prisma.client.instances.findMany({
+      where: {
+        status: 'provisioning',
+        provisioned_at: {
+          lt: tenMinutesAgo,
+        },
+      },
+    });
+
+    this.logger.log(
+      `检测到 ${timeoutInstances.length} 个创建超时的实例`,
+    );
+
+    for (const instance of timeoutInstances) {
+      await this.prisma.client.instances.update({
+        where: { id: instance.id },
+        data: {
+          status: 'error',
+          destroy_reason: '创建超时（超过 10 分钟）',
+        },
+      });
+
+      this.logger.error(`实例 ${instance.id} 创建超时，已标记为 error`);
+    }
+
+    return timeoutInstances;
+  }
+}

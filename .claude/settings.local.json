@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(pnpm -v)",
+      "Bash(pnpm list:*)",
+      "Bash(lsof:*)",
+      "Bash(docker compose:*)",
+      "Bash(cat:*)",
+      "Bash(npx prisma init)",
+      "Bash(npx prisma db pull:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm add:*)",
+      "Bash(PORT=4000 pnpm start:*)",
+      "Bash(xargs kill:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(docker exec:*)",
+      "Bash(test:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(ls:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMzdmY2RmNC1lMmYwLTRkYmMtYmVkZS0yZTU0YmUxNTEzNDciLCJlbWFpbCI6InRlc3QyQGV4YW1wbGUuY29tIiwidmlwTGV2ZWwiOjAsImlhdCI6MTc2NjU1NDA1NCwiZXhwIjoxNzY3MTU4ODU0fQ.c6txRUMI0eV-Hb3rNtAxYtTsqfVyFWNrcsy3D_iehUQ\")",
+      "Bash(__NEW_LINE__ curl -s -X POST \"http://localhost:4001/api/instances\" )",
+      "Bash(pkill:*)",
+      "Bash(npx ts-node:*)"
+    ]
+  }
+}

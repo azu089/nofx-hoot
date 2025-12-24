@@ -1,0 +1,14 @@
+{
+  "name": "@quantfi/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QuantFi 共享类型和工具",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo 'Shared build - 待配置'",
+    "lint": "echo 'Shared lint - 待配置'"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

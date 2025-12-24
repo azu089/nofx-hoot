@@ -1,0 +1,51 @@
+/**
+ * QuantFi 错误码定义
+ *
+ * 错误码规范：
+ * - 0: 成功
+ * - 40000-40999: 参数错误
+ * - 41000-41999: 认证错误
+ * - 42000-42999: 权限错误
+ * - 43000-43999: 业务错误
+ * - 50000-50999: 系统错误
+ */
+
+export enum ErrorCode {
+  // 成功
+  SUCCESS = 0,
+
+  // 参数错误 40000-40999
+  BAD_REQUEST = 40000,
+  INVALID_PARAMS = 40001,
+
+  // 认证错误 41000-41999
+  UNAUTHORIZED = 41000,
+  INVALID_TOKEN = 41001,
+  TOKEN_EXPIRED = 41002,
+
+  // 权限错误 42000-42999
+  FORBIDDEN = 42000,
+  INSUFFICIENT_PERMISSION = 42001,
+
+  // 业务错误 43000-43999
+  BUSINESS_ERROR = 43000,
+  INSUFFICIENT_BALANCE = 43001,
+  DUPLICATE_RECORD = 43002,
+  RESOURCE_NOT_FOUND = 43003,
+
+  // 系统错误 50000-50999
+  INTERNAL_ERROR = 50000,
+  DATABASE_ERROR = 50001,
+  EXTERNAL_API_ERROR = 50002,
+}
+
+/**
+ * HTTP 状态码映射到业务错误码
+ */
+export const HTTP_TO_ERROR_CODE: Record<number, ErrorCode> = {
+  400: ErrorCode.BAD_REQUEST,
+  401: ErrorCode.UNAUTHORIZED,
+  403: ErrorCode.FORBIDDEN,
+  404: ErrorCode.RESOURCE_NOT_FOUND,
+  500: ErrorCode.INTERNAL_ERROR,
+};
