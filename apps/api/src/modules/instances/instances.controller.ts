@@ -25,6 +25,23 @@ export class InstancesController {
   constructor(private readonly instancesService: InstancesService) {}
 
   /**
+   * 一键清仓（Panic Sell）
+   * 清空用户所有运行中实例的所有持仓
+   * POST /api/instances/panic-sell
+   *
+   * 注意：此路由必须放在 :id 路由之前，避免被 :id 匹配
+   */
+  @Post('panic-sell')
+  async panicSell(@CurrentUser() user: JwtPayload) {
+    const result = await this.instancesService.panicSell(user.sub);
+    return {
+      code: 0,
+      message: '一键清仓已执行',
+      data: result,
+    };
+  }
+
+  /**
    * 创建 VPS 实例
    * POST /api/instances
    */
@@ -129,5 +146,54 @@ export class InstancesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.instancesService.syncStatus(id, user.sub);
+  }
+
+  /**
+   * 获取实例运行状态（Freqtrade）
+   * GET /api/instances/:id/status
+   */
+  @Get(':id/status')
+  async getFreqtradeStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.instancesService.getFreqtradeStatus(id, user.sub);
+  }
+
+  /**
+   * 获取实例余额（Freqtrade）
+   * GET /api/instances/:id/balance
+   */
+  @Get(':id/balance')
+  async getFreqtradeBalance(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.instancesService.getFreqtradeBalance(id, user.sub);
+  }
+
+  /**
+   * 获取实例交易（Freqtrade）
+   * GET /api/instances/:id/trades
+   */
+  @Get(':id/trades')
+  async getFreqtradeTrades(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.instancesService.getFreqtradeTrades(id, user.sub);
+  }
+
+  /**
+   * 紧急平仓（单个交易）
+   * POST /api/instances/:id/force-exit
+   */
+  @Post(':id/force-exit')
+  async forceExit(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { trade_id?: string },
+  ) {
+    return this.instancesService.forceExit(id, user.sub, body.trade_id);
   }
 }

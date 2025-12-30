@@ -15,5 +15,10 @@
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
   },
-  "packageManager": "pnpm@10.16.1"
+  "packageManager": "pnpm@10.16.1",
+  "dependencies": {
+    "@nestjs/axios": "^4.0.1",
+    "axios": "^1.13.2",
+    "recharts": "^3.6.0"
+  }
 }

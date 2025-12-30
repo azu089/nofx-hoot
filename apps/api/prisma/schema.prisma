@@ -57,13 +57,37 @@ model agents {
   status            String              @default("active") @db.VarChar(20)
   created_at        DateTime            @default(now()) @db.Timestamptz(6)
   updated_at        DateTime            @default(now()) @db.Timestamptz(6)
-  agent_commissions agent_commissions[]
-  agents            agents?             @relation("agentsToagents", fields: [parent_agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  other_agents      agents[]            @relation("agentsToagents")
-  users             users[]
+  agent_commissions  agent_commissions[]
+  agent_withdrawals  agent_withdrawals[]
+  agents             agents?             @relation("agentsToagents", fields: [parent_agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_agents       agents[]            @relation("agentsToagents")
+  users              users[]
 
   @@index([code], map: "idx_agents_code")
   @@index([parent_agent_id], map: "idx_agents_parent")
+}
+
+/// 代理商提现记录
+model agent_withdrawals {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agent_id        String    @db.Uuid
+  amount          Decimal   @db.Decimal(18, 8)
+  fee             Decimal   @default(0) @db.Decimal(18, 8)
+  status          String    @default("pending") @db.VarChar(20)  // pending/approved/rejected/completed
+  wallet_address  String?   @db.VarChar(255)
+  chain           String?   @db.VarChar(20)
+  tx_hash         String?   @db.VarChar(255)
+  reviewed_by     String?   @db.Uuid
+  reviewed_at     DateTime? @db.Timestamptz(6)
+  reject_reason   String?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  agents          agents    @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users           users?    @relation("agent_withdrawals_reviewed_by", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([agent_id], map: "idx_agent_withdrawals_agent")
+  @@index([status], map: "idx_agent_withdrawals_status")
 }
 
 model announcements {
@@ -145,6 +169,8 @@ model billing_logs {
   @@index([created_at], map: "idx_billing_logs_created")
   @@index([billing_type], map: "idx_billing_logs_type")
   @@index([user_id], map: "idx_billing_logs_user")
+  @@index([user_id, status], map: "idx_billing_logs_user_status")
+  @@index([user_id, billing_type, status], map: "idx_billing_logs_user_type_status")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -209,6 +235,7 @@ model instances {
   last_heartbeat                                                       DateTime?               @db.Timestamptz(6)
   cpu_usage                                                            Decimal?                @db.Decimal(5, 2)
   memory_usage                                                         Decimal?                @db.Decimal(5, 2)
+  disk_usage                                                           Decimal?                @db.Decimal(5, 2)
   provisioned_at                                                       DateTime?               @db.Timestamptz(6)
   destroyed_at                                                         DateTime?               @db.Timestamptz(6)
   destroy_reason                                                       String?                 @db.VarChar(100)
@@ -251,6 +278,25 @@ model schema_migrations {
   description String?
 }
 
+model login_logs {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id       String   @db.Uuid
+  ip_address    String?  @db.Inet
+  user_agent    String?  @db.VarChar(500)
+  device_type   String?  @db.VarChar(50)
+  browser       String?  @db.VarChar(100)
+  os            String?  @db.VarChar(100)
+  location      String?  @db.VarChar(200)
+  login_status  String   @db.VarChar(20)
+  failure_reason String?  @db.VarChar(200)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  users         users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_login_logs_user")
+  @@index([created_at], map: "idx_login_logs_created")
+  @@index([ip_address], map: "idx_login_logs_ip")
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model stakes {
   id                 String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
@@ -262,6 +308,7 @@ model stakes {
   end_time           DateTime  @db.Timestamptz(6)
   weight_multiplier  Decimal   @default(1.00) @db.Decimal(5, 2)
   accumulated_reward Decimal   @default(0) @db.Decimal(18, 8)
+  claimable_reward   Decimal   @default(0) @db.Decimal(18, 8)
   last_reward_at     DateTime? @db.Timestamptz(6)
   status             String    @default("active") @db.VarChar(20)
   early_unstake_at   DateTime? @db.Timestamptz(6)
@@ -406,6 +453,7 @@ model users {
   agent_id                                   String?                 @db.Uuid
   invite_code                                String?                 @unique @db.VarChar(20)
   device_fingerprints                        Json?                   @default("[]")
+  role                                       String                  @default("user") @db.VarChar(20)
   status                                     String                  @default("active") @db.VarChar(20)
   last_login_at                              DateTime?               @db.Timestamptz(6)
   last_login_ip                              String?                 @db.Inet
@@ -428,6 +476,14 @@ model users {
   wallets                                    wallets?
   withdrawals_withdrawals_reviewed_byTousers withdrawals[]           @relation("withdrawals_reviewed_byTousers")
   withdrawals_withdrawals_user_idTousers     withdrawals[]           @relation("withdrawals_user_idTousers")
+  login_logs                                 login_logs[]
+  ai_generations                             ai_generations[]
+  token_onchain_withdrawals                  token_onchain_withdrawals[]
+  agent_withdrawals_reviewed                 agent_withdrawals[]     @relation("agent_withdrawals_reviewed_by")
+  system_configs                             system_configs[]            @relation("system_configs_updated_by")
+  cms_contents                               cms_contents[]              @relation("cms_contents_updated_by")
+  cms_banners                                cms_banners[]               @relation("cms_banners_updated_by")
+  cms_help_docs                              cms_help_docs[]             @relation("cms_help_docs_updated_by")
 
   @@index([agent_id], map: "idx_users_agent")
   @@index([email], map: "idx_users_email")
@@ -441,8 +497,10 @@ model wallets {
   user_id        String   @unique @db.Uuid
   usdt_balance   Decimal  @default(0) @db.Decimal(18, 8)
   usdt_frozen    Decimal  @default(0) @db.Decimal(18, 8)
-  points_balance Decimal  @default(0) @db.Decimal(18, 8)
+  card_balance   Decimal  @default(0) @db.Decimal(18, 8) // 点卡余额（用 USDT 购买，用于支付燃油费）
+  points_balance Decimal  @default(0) @db.Decimal(18, 8) // 积分余额（交易挖矿/返佣获得，用于兑换代币）
   points_frozen  Decimal  @default(0) @db.Decimal(18, 8)
+  points_locked  Decimal  @default(0) @db.Decimal(18, 8) // 积分锁定（A 类质押使用）
   token_balance  Decimal  @default(0) @db.Decimal(18, 8)
   token_locked   Decimal  @default(0) @db.Decimal(18, 8)
   token_vesting  Decimal  @default(0) @db.Decimal(18, 8)
@@ -474,4 +532,141 @@ model withdrawals {
   @@index([created_at], map: "idx_withdrawals_created")
   @@index([status], map: "idx_withdrawals_status")
   @@index([user_id], map: "idx_withdrawals_user")
+}
+
+// ==================== Phase 9: AI 与链上功能 ====================
+
+/// AI 生成记录表
+model ai_generations {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String   @db.Uuid
+  type        String   @db.VarChar(20) // 'strategy' | 'analysis'
+  input       String   @db.Text
+  output      String   @db.Text
+  tokens_used Int?
+  model       String?  @db.VarChar(50)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_ai_generations_user")
+  @@index([type], map: "idx_ai_generations_type")
+  @@index([created_at], map: "idx_ai_generations_created")
+}
+
+/// 代币回购记录表
+model token_buybacks {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usdt_spent Decimal  @db.Decimal(18, 8)
+  qfi_bought Decimal  @db.Decimal(18, 8)
+  price      Decimal  @db.Decimal(18, 8)
+  tx_hash    String   @db.VarChar(100)
+  bought_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([bought_at], map: "idx_token_buybacks_date")
+}
+
+/// 链上提币记录表
+model token_onchain_withdrawals {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  amount     Decimal  @db.Decimal(18, 8)
+  fee        Decimal  @db.Decimal(18, 8)
+  to_address String   @db.VarChar(100)
+  tx_hash    String?  @db.VarChar(100)
+  status     String   @default("pending") @db.VarChar(20) // pending | processing | completed | failed
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_token_onchain_withdrawals_user")
+  @@index([status], map: "idx_token_onchain_withdrawals_status")
+}
+
+// ==================== Phase 11: CMS + 配置中心 ====================
+
+/// 系统配置表
+model system_configs {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  config_key   String   @unique @db.VarChar(100)
+  config_value Json
+  config_type  String   @db.VarChar(50) // string | number | boolean | json
+  category     String   @db.VarChar(50) // billing | vip | feature | vps | agent
+  label        String   @db.VarChar(100)
+  description  String?  @db.Text
+  is_public    Boolean  @default(false)
+  updated_by   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  users        users?   @relation("system_configs_updated_by", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([category], map: "idx_system_configs_category")
+  @@index([is_public], map: "idx_system_configs_is_public")
+}
+
+/// CMS 内容表
+model cms_contents {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content_key  String    @unique @db.VarChar(100)
+  content_type String    @db.VarChar(50) // text | richtext | image | json
+  title        String?   @db.VarChar(200)
+  content      String    @db.Text
+  locale       String    @default("zh-CN") @db.VarChar(10)
+  is_published Boolean   @default(true)
+  publish_at   DateTime? @db.Timestamptz(6)
+  expire_at    DateTime? @db.Timestamptz(6)
+  sort_order   Int       @default(0)
+  metadata     Json?
+  updated_by   String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  users        users?    @relation("cms_contents_updated_by", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([content_key], map: "idx_cms_contents_key")
+  @@index([content_type], map: "idx_cms_contents_type")
+  @@index([is_published], map: "idx_cms_contents_published")
+}
+
+/// Banner 表
+model cms_banners {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  position    String    @db.VarChar(50) // home_hero | home_promo | login_side
+  title       String    @db.VarChar(200)
+  subtitle    String?   @db.VarChar(500)
+  image_url   String    @db.VarChar(500)
+  link_url    String?   @db.VarChar(500)
+  link_target String    @default("_self") @db.VarChar(20)
+  button_text String?   @db.VarChar(50)
+  is_active   Boolean   @default(true)
+  start_at    DateTime? @db.Timestamptz(6)
+  end_at      DateTime? @db.Timestamptz(6)
+  sort_order  Int       @default(0)
+  click_count Int       @default(0)
+  updated_by  String?   @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+  users       users?    @relation("cms_banners_updated_by", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([position], map: "idx_cms_banners_position")
+  @@index([is_active], map: "idx_cms_banners_active")
+}
+
+/// 帮助文档表
+model cms_help_docs {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category     String   @db.VarChar(50) // faq | tutorial | guide
+  title        String   @db.VarChar(200)
+  slug         String   @unique @db.VarChar(100)
+  summary      String?  @db.Text
+  content      String   @db.Text
+  tags         String[] @db.VarChar(50)
+  view_count   Int      @default(0)
+  is_published Boolean  @default(true)
+  sort_order   Int      @default(0)
+  updated_by   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  users        users?   @relation("cms_help_docs_updated_by", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([category], map: "idx_cms_help_docs_category")
+  @@index([slug], map: "idx_cms_help_docs_slug")
 }

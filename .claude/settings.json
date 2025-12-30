@@ -93,7 +93,35 @@
       "Bash(cd:*)",
       "Bash(pwd:*)",
       "Bash(which:*)",
-      "Bash(osascript:*)"
+      "Bash(osascript:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs:*)",
+      "Bash(PORT=*)",
+      "Bash(TOKEN=*)",
+      "Bash(INSTANCE_ID=*)",
+      "Bash(test:*)",
+      "Bash(python3:*)",
+      "Bash(if *)",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(grep:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(tee:*)",
+      "Bash(date:*)",
+      "Bash(env:*)",
+      "Bash(export:*)",
+      "Bash(source:*)",
+      "Bash(. :*)",
+      "Bash(bash:*)",
+      "Bash(sh:*)",
+      "Bash(true)",
+      "Bash(false)",
+      "Bash(read:*)",
+      "Bash(printf:*)"
     ],
     "deny": [
       "Read(.env)",
@@ -118,5 +146,8 @@
   "env": {
     "NODE_ENV": "development",
     "QUANTFI_PROJECT": "true"
+  },
+  "projectNotes": {
+    "reservedPorts": "端口 3000 和 4000 已被其他项目占用，QuantFi 项目使用: API=4001, Web=3001"
   }
 }

@@ -25,7 +25,32 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmMzdmY2RmNC1lMmYwLTRkYmMtYmVkZS0yZTU0YmUxNTEzNDciLCJlbWFpbCI6InRlc3QyQGV4YW1wbGUuY29tIiwidmlwTGV2ZWwiOjAsImlhdCI6MTc2NjU1NDA1NCwiZXhwIjoxNzY3MTU4ODU0fQ.c6txRUMI0eV-Hb3rNtAxYtTsqfVyFWNrcsy3D_iehUQ\")",
       "Bash(__NEW_LINE__ curl -s -X POST \"http://localhost:4001/api/instances\" )",
       "Bash(pkill:*)",
-      "Bash(npx ts-node:*)"
+      "Bash(npx ts-node:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyNzA0N2U0YS0xMzg0LTQ4MDItYjk1Ni05ZWRjODEzZmQ4ZjYiLCJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJ2aXBMZXZlbCI6MCwiaWF0IjoxNzY2NTU1NDI2LCJleHAiOjE3NjcxNjAyMjZ9.8BtG56fvUdtR9kbIemM60eYWc-8w80hmnAvTsH9l1SA\")",
+      "Bash(INSTANCE_ID=\"6ec3877d-381d-4c34-8cbd-f661c5eb3850\":*)",
+      "Bash(__NEW_LINE__ echo \"=== 测试重启实例 ===\")",
+      "Bash(__NEW_LINE__ curl -s -X POST \"http://localhost:4001/api/api-keys\" )",
+      "Bash(__NEW_LINE__ echo \"=== 验证 API Key ===\")",
+      "Bash(__NEW_LINE__ echo \"=== 1. 删除旧数据 ===\")",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(__NEW_LINE__ echo \"=== 5. VPS 实例 - 创建 \\(无参数\\) ===\")",
+      "Bash(INSTANCE_ID=\"cd9ec980-4a56-4ecc-9571-dc809a7e7eff\")",
+      "Bash(__NEW_LINE__ echo \"=== 6. VPS 实例 - 列表 ===\")",
+      "Bash(__NEW_LINE__ echo \"=== 7. VPS 实例 - 心跳 \\(正确参数\\) ===\")",
+      "Bash(__NEW_LINE__ echo \"=== 7b. VPS 实例 - 心跳 \\(空参数\\) ===\")",
+      "Bash(kill:*)",
+      "Bash(__NEW_LINE__ echo \"=== 1. 测试今日盈亏统计 ===\")",
+      "Bash(if [ -n \"$INSTANCE_ID\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi)",
+      "Bash(__NEW_LINE__ echo \"=== 1. 获取备份列表 \\(GET /api/backups\\) ===\")",
+      "Bash(INSTANCE_ID=\"795234ab-fa36-4e83-bffa-cef3cc4100fc\":*)",
+      "Bash(__NEW_LINE__ echo \"=== 4. 获取备份列表（验证备份已创建）===\")",
+      "Bash(npx next-forge@latest init --name my-quant-saas --package-manager pnpm)",
+      "Bash(pnpm exec prisma generate:*)",
+      "Bash(find:*)",
+      "Bash(git -C /Users/azu/主QuantFi log --oneline)"
     ]
   }
 }

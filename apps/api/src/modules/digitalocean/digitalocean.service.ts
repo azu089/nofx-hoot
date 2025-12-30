@@ -8,6 +8,7 @@ import {
   DropletResponse,
   DropletListResponse,
 } from './dto/droplet.dto';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
 
 /**
  * DigitalOcean API 服务
@@ -27,7 +28,10 @@ export class DigitalOceanService {
   // 沙盒模式下的模拟 Droplet 存储
   private sandboxDroplets: Map<string, DropletResponse> = new Map();
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
+  ) {
     // 读取环境变量
     this.apiToken = this.configService.get<string>('DO_API_TOKEN') || '';
     this.isSandboxMode =
@@ -382,8 +386,26 @@ echo "QuantFi VPS 初始化完成"
         this.configService.get<string>('API_ENDPOINT') ||
         'http://localhost:4000';
 
+      // 生成实例令牌（用于 API 认证）
+      const instanceToken =
+        this.networkWhitelistService.generateInstanceToken(instanceId);
+
+      // 生成 SSH 白名单 iptables 规则
+      const whitelistConfig = this.networkWhitelistService.getConfig();
+      const sshWhitelistRules = whitelistConfig.sshAllowedIps
+        .map((ip) => `iptables -A INPUT -p tcp --dport 22 -s ${ip} -j ACCEPT`)
+        .join('\n');
+
+      // 生成 Freqtrade API Token（用于 Freqtrade API 认证）
+      const freqtradeApiToken = this.networkWhitelistService.generateFreqtradeToken(instanceId);
+
+      // 替换所有占位符
       template = template.replace(/\{\{INSTANCE_ID\}\}/g, instanceId);
       template = template.replace(/\{\{API_ENDPOINT\}\}/g, apiEndpoint);
+      template = template.replace(/\{\{INSTANCE_TOKEN\}\}/g, instanceToken);
+      template = template.replace(/\{\{FREQTRADE_API_TOKEN\}\}/g, freqtradeApiToken);
+      template = template.replace(/\{\{SSH_WHITELIST_RULES\}\}/g, sshWhitelistRules);
+      template = template.replace(/\{\{GENERATED_AT\}\}/g, new Date().toISOString());
 
       // API_KEY_ENCRYPTED 暂时保留占位符（后续任务实现）
       template = template.replace(
@@ -391,7 +413,9 @@ echo "QuantFi VPS 初始化完成"
         'placeholder-for-future',
       );
 
-      this.logger.log(`生成 User Data 脚本: instanceId=${instanceId}`);
+      this.logger.log(
+        `生成 User Data 脚本: instanceId=${instanceId}, SSH白名单IP数量=${whitelistConfig.sshAllowedIps.length}`,
+      );
       return template;
     } catch (error) {
       this.logger.error(`生成 User Data 失败: ${error.message}`, error.stack);

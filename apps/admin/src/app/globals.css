@@ -1,0 +1,278 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* QuantFi 管理后台全局样式 - 华尔街风格配色 + 红色警示 */
+:root {
+  /* 背景层次 */
+  --bg-primary: #0B0E11;        /* 主背景 - 深黑蓝 */
+  --bg-secondary: #131722;       /* 次级背景 - 卡片 */
+  --bg-tertiary: #1E222D;        /* 第三层 - 输入框/悬浮 */
+  --bg-elevated: rgba(255, 255, 255, 0.05); /* 浮层 */
+
+  /* 品牌色 - 管理后台使用红色系 */
+  --brand-primary: #F23645;      /* 警示红 - 主按钮/链接 */
+  --brand-secondary: #D32F2F;    /* 深红 - 悬浮态 */
+  --brand-gradient: linear-gradient(135deg, #F23645 0%, #FF6B6B 100%);
+
+  /* 语义色 */
+  --success: #00C087;            /* 翡翠绿 - 盈利/涨 */
+  --success-bg: rgba(0, 192, 135, 0.1);
+  --danger: #F23645;             /* 玫瑰红 - 亏损/跌/警告 */
+  --danger-bg: rgba(242, 54, 69, 0.1);
+  --warning: #F7931A;            /* 橙色 - 警告 */
+  --warning-bg: rgba(247, 147, 26, 0.1);
+
+  /* 文字 */
+  --text-primary: #FFFFFF;       /* 主文字 */
+  --text-secondary: #848E9C;     /* 次要文字 */
+  --text-tertiary: #5E6673;      /* 辅助文字 */
+  --text-disabled: #3C4251;      /* 禁用文字 */
+
+  /* 边框 */
+  --border-primary: #2B3139;     /* 主边框 */
+  --border-secondary: #1F2937;   /* 次级边框 */
+  --border-focus: #F23645;       /* 聚焦边框 - 红色 */
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-danger: 0 4px 16px rgba(242, 54, 69, 0.3); /* 红色光晕 */
+
+  /* 圆角 */
+  --radius-sm: 6px;   /* 按钮/输入框 */
+  --radius-md: 8px;   /* 小卡片 */
+  --radius-lg: 12px;  /* 大卡片 */
+  --radius-xl: 16px;  /* 弹窗 */
+  --radius-full: 9999px; /* 药丸标签 */
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* 字号 */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 48px;
+
+  /* 兼容旧变量（逐步废弃） */
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --muted: var(--text-secondary);
+  --border: var(--border-primary);
+  --card: var(--bg-secondary);
+  --primary: var(--brand-primary);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 数字专用字体（等宽，用于金额显示） */
+.font-numeric {
+  font-family: 'Inter', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* 选中文本样式 - 红色 */
+::selection {
+  background: var(--brand-primary);
+  color: white;
+}
+
+/* 聚焦样式 - 红色 */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* 链接样式 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 表单元素重置 */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* 禁用元素样式 */
+:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 动画 */
+@layer utilities {
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+
+  .animate-out {
+    animation: animate-out 0.2s ease-in;
+  }
+
+  @keyframes animate-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes animate-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+}
+
+/* 渐变背景 */
+.bg-gradient-dark {
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+}
+
+.bg-gradient-brand {
+  background: var(--brand-gradient);
+}
+
+/* 玻璃效果 */
+.glass {
+  background: rgba(19, 23, 34, 0.5); /* --bg-secondary with alpha */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 盈利/亏损颜色 */
+.profit {
+  color: var(--success);
+}
+
+.loss {
+  color: var(--danger);
+}
+
+/* 管理后台特有 - 危险操作警示 */
+.admin-danger {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.admin-danger:hover {
+  background: rgba(242, 54, 69, 0.2);
+  box-shadow: var(--shadow-danger);
+}
+
+/* 自定义滚动条 - 细窄版 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* 隐藏滚动条但保持滚动功能 */
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* 卡片悬浮发光效果 */
+.card-glow {
+  transition: all 0.3s ease;
+}
+
+.card-glow:hover {
+  box-shadow: 0 0 20px rgba(55, 114, 255, 0.15);
+}
+
+/* 数据更新脉冲动画 */
+@keyframes data-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.data-updating {
+  animation: data-pulse 1.5s ease-in-out infinite;
+}

@@ -8,6 +8,8 @@ export class UserResponseDto {
   agentId: string | null;
   inviteCode: string | null;
   status: string;
+  role: string; // 'user' | 'admin' | 'super_admin'
+  isAgent: boolean; // 是否是代理商
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,5 +19,7 @@ export class UserResponseDto {
  */
 export class AuthResponseDto {
   accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
   user: UserResponseDto;
 }

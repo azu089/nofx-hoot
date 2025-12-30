@@ -23,6 +23,7 @@ export class InstanceResponseDto {
   // 资源监控
   cpuUsage: number | null;
   memoryUsage: number | null;
+  diskUsage: number | null;
 
   // 时间
   provisionedAt: Date | null;
@@ -46,6 +47,10 @@ export class CreateInstanceDto {
   @IsOptional()
   @IsString()
   size?: string;   // 默认 s-1vcpu-1gb
+
+  @ApiPropertyOptional({ description: '使用积分抵扣', default: false })
+  @IsOptional()
+  usePoints?: boolean; // 是否使用积分抵扣
 }
 
 /**
@@ -65,4 +70,11 @@ export class HeartbeatDto {
   @Min(0)
   @Max(100)
   memoryUsage?: number;
+
+  @ApiPropertyOptional({ description: '磁盘使用率 (0-100)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  diskUsage?: number;
 }

@@ -53,6 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     return {
       sub: payload.sub,
+      userId: payload.sub,  // 兼容新旧代码
       email: payload.email,
       vipLevel: payload.vipLevel,
     };

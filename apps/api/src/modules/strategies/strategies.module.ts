@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StrategiesController } from './strategies.controller';
 import { StrategiesService } from './strategies.service';
+import { BacktestService } from './backtest.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 /**
@@ -10,7 +11,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [StrategiesController],
-  providers: [StrategiesService],
-  exports: [StrategiesService],
+  providers: [StrategiesService, BacktestService],
+  exports: [StrategiesService, BacktestService],
 })
 export class StrategiesModule {}

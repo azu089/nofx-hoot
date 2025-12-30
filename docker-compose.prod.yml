@@ -1,0 +1,215 @@
+# QuantFi 生产环境 Docker Compose 配置
+# 使用方式: docker compose -f docker-compose.prod.yml up -d
+#
+# 环境变量要求：
+# - 创建 .env.production 文件配置所有必要的环境变量
+# - 或通过 CI/CD 注入环境变量
+
+services:
+  # ==================== 数据库服务 ====================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: quantfi-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-quantfi}
+      POSTGRES_USER: ${DATABASE_USER:-quantfi}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      TZ: Asia/Shanghai
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - quantfi-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-quantfi} -d ${DATABASE_NAME:-quantfi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ==================== 缓存服务 ====================
+
+  redis:
+    image: redis:7-alpine
+    container_name: quantfi-redis-prod
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - redis_data:/data
+    networks:
+      - quantfi-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ==================== 后端 API ====================
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: quantfi-api-prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      # 数据库
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-quantfi}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME:-quantfi}
+      DATABASE_URL: postgresql://${DATABASE_USER:-quantfi}:${DATABASE_PASSWORD}@postgres:5432/${DATABASE_NAME:-quantfi}?schema=public
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # DigitalOcean
+      DO_API_KEY: ${DO_API_KEY}
+      # S3
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      AWS_S3_REGION: ${AWS_S3_REGION:-sgp1}
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://quantfi.io}
+    ports:
+      - "4001:4001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - quantfi-internal
+      - quantfi-external
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==================== 前端 Web ====================
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.quantfi.io}
+    container_name: quantfi-web-prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.quantfi.io}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
+    networks:
+      - quantfi-external
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==================== Nginx 反向代理 ====================
+
+  nginx:
+    image: nginx:alpine
+    container_name: quantfi-nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - api
+      - web
+    networks:
+      - quantfi-external
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# ==================== 数据卷 ====================
+
+volumes:
+  postgres_data:
+    name: quantfi-postgres-data-prod
+  redis_data:
+    name: quantfi-redis-data-prod
+  nginx_logs:
+    name: quantfi-nginx-logs-prod
+
+# ==================== 网络 ====================
+
+networks:
+  # 内部网络（数据库、缓存）
+  quantfi-internal:
+    name: quantfi-internal-prod
+    driver: bridge
+    internal: true
+  # 外部网络（API、Web、Nginx）
+  quantfi-external:
+    name: quantfi-external-prod
+    driver: bridge

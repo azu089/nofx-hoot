@@ -1,4 +1,6 @@
 import { Expose } from 'class-transformer';
+import { IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * 钱包响应 DTO
@@ -16,6 +18,9 @@ export class WalletResponseDto {
 
   @Expose()
   usdt_frozen: string;
+
+  @Expose()
+  card_balance: string; // 点卡余额
 
   @Expose()
   points_balance: string;
@@ -50,6 +55,10 @@ export class BalanceOverviewDto {
     total: string; // 总计
   };
 
+  card: {
+    available: string; // 点卡余额（用于支付燃油费）
+  };
+
   points: {
     available: string; // 可用积分
     frozen: string; // 冻结积分
@@ -62,4 +71,14 @@ export class BalanceOverviewDto {
     vesting: string; // 释放中 Token
     total: string; // 总计
   };
+}
+
+/**
+ * 购买点卡请求 DTO
+ */
+export class PurchaseCardDto {
+  @ApiProperty({ description: '购买金额（USDT）', example: '100.00000000' })
+  @IsNotEmpty({ message: '购买金额不能为空' })
+  @IsString()
+  amount: string;
 }

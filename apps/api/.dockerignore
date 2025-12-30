@@ -1,0 +1,31 @@
+# 依赖目录
+node_modules
+
+# 构建产物
+dist
+
+# 开发文件
+*.log
+.env*
+!.env.example
+
+# 测试
+coverage
+test
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml

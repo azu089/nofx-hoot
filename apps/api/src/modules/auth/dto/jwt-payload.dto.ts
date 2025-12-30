@@ -4,9 +4,14 @@
  */
 export interface JwtPayload {
   /**
-   * 用户 ID
+   * 用户 ID (JWT 标准字段)
    */
   sub: string;
+
+  /**
+   * 用户 ID (兼容 userId 写法)
+   */
+  userId?: string;
 
   /**
    * 用户邮箱

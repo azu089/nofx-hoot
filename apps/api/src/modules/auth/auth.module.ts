@@ -5,6 +5,9 @@ import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { TotpService } from '../../common/services/totp.service';
+import { LoginLogService } from '../../common/services/login-log.service';
+import { FingerprintService } from '../../common/services/fingerprint.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 /**
@@ -31,7 +34,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, TotpService, LoginLogService, FingerprintService],
+  exports: [AuthService, TotpService, LoginLogService, FingerprintService],
 })
 export class AuthModule {}

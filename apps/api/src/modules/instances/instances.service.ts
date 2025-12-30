@@ -4,17 +4,23 @@ import {
   ConflictException,
   Logger,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInstanceDto, HeartbeatDto } from './dto/instance-response.dto';
 import { DigitalOceanService } from '../digitalocean/digitalocean.service';
+import { FreqtradeService } from '../freqtrade/freqtrade.service';
+import { BillingService } from '../billing/billing.service';
+import { EventsGateway } from '../../events/events.gateway';
+import Decimal from 'decimal.js';
 
 /**
  * VPS 实例服务
  * 处理 VPS 编排、监控、心跳检测等业务逻辑
  *
  * 注意事项：
- * - 创建 VPS 前必须检查用户余额
+ * - 创建 VPS 前必须检查用户余额（$25 订阅费）
+ * - 余额不足时拒绝创建并抛出异常
  * - 销毁 VPS 前必须备份到 S3
  * - 心跳超时时间：15 分钟
  * - 所有操作必须记录审计日志
@@ -23,13 +29,24 @@ import { DigitalOceanService } from '../digitalocean/digitalocean.service';
 export class InstancesService {
   private readonly logger = new Logger(InstancesService.name);
 
+  // VPS 订阅费（美元/月）
+  private readonly SUBSCRIPTION_FEE = new Decimal('25');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly digitalOceanService: DigitalOceanService,
+    private readonly freqtradeService: FreqtradeService,
+    private readonly billingService: BillingService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
    * 创建 VPS 实例（调用 DO API）
+   *
+   * 订阅逻辑：
+   * - 首次创建 VPS：扣除 25 USDT 订阅费，订阅期 1 个月
+   * - 订阅有效期内：可随意创建/销毁 VPS，不再收费
+   * - 订阅过期：需要续费才能创建新 VPS
    */
   async create(userId: string, dto: CreateInstanceDto) {
     // 1. 检查用户是否已有活跃实例
@@ -44,9 +61,63 @@ export class InstancesService {
       throw new ConflictException('用户已有活跃实例，请先销毁现有实例');
     }
 
-    // TODO: 检查用户余额是否充足（后续任务实现）
+    // 2. 检查用户订阅状态
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { vip_expires_at: true },
+    });
 
-    // 2. 创建实例记录（状态为 pending）
+    const now = new Date();
+    const isSubscriptionValid = user?.vip_expires_at && new Date(user.vip_expires_at) > now;
+
+    // 3. 如果订阅无效，需要扣费
+    if (!isSubscriptionValid) {
+      // 检查余额
+      const wallet = await this.prisma.client.wallets.findUnique({
+        where: { user_id: userId },
+      });
+
+      if (!wallet) {
+        throw new BadRequestException('钱包不存在，请先创建钱包');
+      }
+
+      const balance = new Decimal(wallet.usdt_balance);
+      this.logger.log(`用户 ${userId} 当前余额: ${balance}, 订阅费: ${this.SUBSCRIPTION_FEE}`);
+
+      if (balance.lt(this.SUBSCRIPTION_FEE)) {
+        throw new BadRequestException(
+          `余额不足，创建 VPS 需要 ${this.SUBSCRIPTION_FEE} USDT，当前余额: ${balance} USDT`,
+        );
+      }
+
+      // 扣除订阅费（通过 BillingService 幂等扣费，支持积分抵扣）
+      const usePoints = dto.usePoints !== false; // 默认使用积分抵扣
+      try {
+        await this.billingService.chargeSubscription(
+          userId,
+          this.SUBSCRIPTION_FEE.toString(),
+          'VPS 实例订阅 - 月费',
+          usePoints,
+        );
+
+        // 更新订阅到期时间（1个月后）
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+        await this.prisma.client.users.update({
+          where: { id: userId },
+          data: { vip_expires_at: expiresAt },
+        });
+
+        this.logger.log(`用户 ${userId} 订阅扣费成功: ${this.SUBSCRIPTION_FEE} USDT, 到期时间: ${expiresAt.toISOString()}`);
+      } catch (error) {
+        this.logger.error(`订阅扣费失败: ${error.message}`, error.stack);
+        throw new BadRequestException(`订阅扣费失败: ${error.message}`);
+      }
+    } else {
+      this.logger.log(`用户 ${userId} 订阅有效，到期时间: ${user.vip_expires_at}, 无需扣费`);
+    }
+
+    // 4. 创建实例记录（状态为 pending）
     const instance = await this.prisma.client.instances.create({
       data: {
         user_id: userId,
@@ -59,7 +130,7 @@ export class InstancesService {
     this.logger.log(`创建实例记录: ${instance.id}, 用户: ${userId}`);
 
     try {
-      // 3. 调用 DO API 创建 Droplet
+      // 5. 调用 DO API 创建 Droplet
       const droplet = await this.digitalOceanService.createDroplet(
         {
           name: `quantfi-${userId.substring(0, 8)}-${instance.id.substring(0, 8)}`,
@@ -74,12 +145,13 @@ export class InstancesService {
         `Droplet 创建成功: ${droplet.id}, IP: ${droplet.ip}, 实例: ${instance.id}`,
       );
 
-      // 4. 更新实例记录
+      // 6. 更新实例记录
+      // 注意：新创建的 Droplet 可能还没有 IP，需要等待状态同步
       const updatedInstance = await this.prisma.client.instances.update({
         where: { id: instance.id },
         data: {
           droplet_id: droplet.id,
-          ip_address: droplet.ip,
+          ip_address: droplet.ip || null, // IP 为空时使用 null
           status: droplet.status === 'active' ? 'provisioning' : 'pending',
           provisioned_at: new Date(),
         },
@@ -89,19 +161,37 @@ export class InstancesService {
         `实例创建完成: ${instance.id}, 状态: ${updatedInstance.status}`,
       );
 
+      // 推送实例创建成功日志
+      this.pushLog(
+        instance.id,
+        `VPS 实例创建成功，IP: ${droplet.ip}`,
+        'info',
+        { dropletId: droplet.id },
+      );
+
+      // 推送状态变更通知
+      this.pushStatusChange(
+        userId,
+        instance.id,
+        updatedInstance.status,
+        '实例创建成功',
+      );
+
       return updatedInstance;
     } catch (error) {
-      // 5. 创建失败，标记为 error
+      // 7. 创建失败，标记为 error
       this.logger.error(
         `创建 Droplet 失败: ${error.message}`,
         error.stack,
       );
 
+      // 截断错误消息，避免超过数据库字段长度限制 (100字符)
+      const errorMsg = `创建失败: ${error.message}`.substring(0, 95);
       await this.prisma.client.instances.update({
         where: { id: instance.id },
         data: {
           status: 'error',
-          destroy_reason: `创建失败: ${error.message}`,
+          destroy_reason: errorMsg,
         },
       });
 
@@ -169,6 +259,12 @@ export class InstancesService {
 
       this.logger.log(`销毁实例成功: ${id}, 原因: ${reason}`);
 
+      // 推送实例销毁日志
+      this.pushLog(id, `VPS 实例已销毁，原因: ${reason}`, 'warn');
+
+      // 推送状态变更通知
+      this.pushStatusChange(userId, id, 'destroyed', reason);
+
       return updatedInstance;
     } catch (error) {
       // 销毁失败，记录错误但仍更新状态
@@ -212,6 +308,7 @@ export class InstancesService {
         last_heartbeat: new Date(),
         cpu_usage: dto.cpuUsage,
         memory_usage: dto.memoryUsage,
+        disk_usage: dto.diskUsage,
         status: 'running',
       },
     });
@@ -268,6 +365,22 @@ export class InstancesService {
 
     this.logger.error(
       `[僵尸节点告警] 实例 ${instanceId} 标记为僵尸节点，用户 ${instance.user_id}，最后心跳: ${instance.last_heartbeat}`,
+    );
+
+    // 推送僵尸节点告警
+    this.pushLog(
+      instanceId,
+      `实例心跳超时（15分钟无响应），已标记为僵尸节点`,
+      'error',
+      { lastHeartbeat: instance.last_heartbeat },
+    );
+
+    // 推送状态变更通知
+    this.pushStatusChange(
+      instance.user_id,
+      instanceId,
+      'zombie',
+      '心跳超时（15分钟无响应）',
     );
 
     return updatedInstance;
@@ -464,5 +577,236 @@ export class InstancesService {
     }
 
     return timeoutInstances;
+  }
+
+  /**
+   * 获取 Freqtrade 状态
+   */
+  async getFreqtradeStatus(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (!instance.ip_address) {
+      throw new ConflictException('实例没有 IP 地址');
+    }
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    return this.freqtradeService.getStatus(instance.ip_address);
+  }
+
+  /**
+   * 获取 Freqtrade 余额
+   */
+  async getFreqtradeBalance(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (!instance.ip_address) {
+      throw new ConflictException('实例没有 IP 地址');
+    }
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    return this.freqtradeService.getBalance(instance.ip_address);
+  }
+
+  /**
+   * 获取 Freqtrade 交易
+   */
+  async getFreqtradeTrades(id: string, userId: string) {
+    const instance = await this.findById(id, userId);
+
+    if (!instance.ip_address) {
+      throw new ConflictException('实例没有 IP 地址');
+    }
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    return this.freqtradeService.getTrades(instance.ip_address);
+  }
+
+  /**
+   * 强制平仓
+   * @param tradeId 交易 ID（可选，不传则全部平仓）
+   */
+  async forceExit(id: string, userId: string, tradeId?: string) {
+    const instance = await this.findById(id, userId);
+
+    if (!instance.ip_address) {
+      throw new ConflictException('实例没有 IP 地址');
+    }
+
+    if (instance.status === 'destroyed') {
+      throw new ConflictException('实例已销毁');
+    }
+
+    if (instance.status !== 'running') {
+      throw new ConflictException(
+        `实例状态为 ${instance.status}，只有 running 状态可以平仓`,
+      );
+    }
+
+    this.logger.warn(
+      `[紧急平仓] 实例 ${id}, 用户 ${userId}, 交易 ID: ${tradeId || '全部'}`,
+    );
+
+    // 执行平仓
+    if (tradeId) {
+      // 单个交易平仓
+      return this.freqtradeService.forceExit(instance.ip_address, tradeId);
+    } else {
+      // 全部平仓
+      return this.freqtradeService.forceExitAll(instance.ip_address);
+    }
+  }
+
+  /**
+   * 一键清仓（Panic Sell）
+   * 清空用户所有运行中实例的所有持仓
+   *
+   * 应用场景：黑天鹅事件、极端行情，用户需要立即清空所有持仓
+   *
+   * @param userId 用户 ID
+   * @returns 清仓结果摘要
+   */
+  async panicSell(userId: string) {
+    this.logger.warn(`[PANIC SELL] 用户 ${userId} 触发一键清仓`);
+
+    // 1. 获取用户所有运行中的实例
+    const runningInstances = await this.prisma.client.instances.findMany({
+      where: {
+        user_id: userId,
+        status: 'running',
+      },
+    });
+
+    if (runningInstances.length === 0) {
+      return {
+        success: true,
+        message: '没有运行中的实例',
+        instancesProcessed: 0,
+        results: [],
+      };
+    }
+
+    this.logger.warn(
+      `[PANIC SELL] 用户 ${userId} 有 ${runningInstances.length} 个运行中的实例`,
+    );
+
+    // 2. 对每个实例执行全部平仓
+    const results = [];
+
+    for (const instance of runningInstances) {
+      try {
+        if (!instance.ip_address) {
+          results.push({
+            instanceId: instance.id,
+            success: false,
+            error: '实例没有 IP 地址',
+          });
+          continue;
+        }
+
+        // 执行全部平仓
+        const exitResult = await this.freqtradeService.forceExitAll(
+          instance.ip_address,
+        );
+
+        // 推送日志
+        this.pushLog(
+          instance.id,
+          `[PANIC SELL] 一键清仓已执行`,
+          'warn',
+          { triggeredBy: userId },
+        );
+
+        results.push({
+          instanceId: instance.id,
+          success: true,
+          trades: exitResult,
+        });
+
+        this.logger.warn(
+          `[PANIC SELL] 实例 ${instance.id} 清仓完成`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `[PANIC SELL] 实例 ${instance.id} 清仓失败: ${error.message}`,
+        );
+
+        results.push({
+          instanceId: instance.id,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    // 3. 统计结果
+    const successCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
+
+    this.logger.warn(
+      `[PANIC SELL] 用户 ${userId} 一键清仓完成，成功: ${successCount}，失败: ${failedCount}`,
+    );
+
+    return {
+      success: true,
+      message: `一键清仓完成，处理了 ${runningInstances.length} 个实例`,
+      instancesProcessed: runningInstances.length,
+      successCount,
+      failedCount,
+      results,
+    };
+  }
+
+  // ==================== WebSocket 推送方法 ====================
+
+  /**
+   * 推送日志到前端（实时日志流）
+   * @param instanceId 实例 ID
+   * @param message 日志消息
+   * @param level 日志级别
+   * @param meta 额外元数据
+   */
+  pushLog(
+    instanceId: string,
+    message: string,
+    level: 'info' | 'warn' | 'error' | 'debug' = 'info',
+    meta?: Record<string, any>,
+  ) {
+    this.eventsGateway.pushLog(instanceId, {
+      message,
+      level,
+      meta,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * 推送状态变更到前端
+   * @param userId 用户 ID
+   * @param instanceId 实例 ID
+   * @param status 新状态
+   * @param reason 变更原因
+   */
+  pushStatusChange(
+    userId: string,
+    instanceId: string,
+    status: string,
+    reason?: string,
+  ) {
+    this.eventsGateway.pushStatus(userId, {
+      type: 'instance_status_change',
+      instanceId,
+      status,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
