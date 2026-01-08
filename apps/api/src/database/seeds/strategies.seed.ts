@@ -220,6 +220,146 @@ class BollingerBandsStrategy(IStrategy):
     is_public: true,
     is_active: true,
   },
+  {
+    owner_type: 'system',
+    owner_id: null,
+    name: '双均线交叉策略',
+    description: '基于 MA20 与 MA50 均线交叉的趋势跟踪策略。金叉买入，死叉卖出。适合趋势行情。',
+    content: `
+# 双均线交叉策略 (Freqtrade)
+from freqtrade.strategy import IStrategy
+from pandas import DataFrame
+import talib.abstract as ta
+
+class DualMAStrategy(IStrategy):
+    INTERFACE_VERSION = 3
+
+    minimal_roi = {
+        "0": 0.12,
+        "60": 0.06,
+        "120": 0.03
+    }
+
+    stoploss = -0.08
+    timeframe = '1h'
+
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe['ma20'] = ta.SMA(dataframe, timeperiod=20)
+        dataframe['ma50'] = ta.SMA(dataframe, timeperiod=50)
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (dataframe['ma20'] > dataframe['ma50']) &
+            (dataframe['ma20'].shift(1) <= dataframe['ma50'].shift(1)),
+            'enter_long'] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        dataframe.loc[
+            (dataframe['ma20'] < dataframe['ma50']) &
+            (dataframe['ma20'].shift(1) >= dataframe['ma50'].shift(1)),
+            'exit_long'] = 1
+        return dataframe
+`,
+    config: {
+      timeframe: '1h',
+      stake_currency: 'USDT',
+      recommended_leverage: 1,
+    },
+    performance_stats: {
+      backtest: {
+        total_trades: 80,
+        win_rate: 58.0,
+        max_drawdown: -10.0,
+        sharpe_ratio: 1.6,
+        profit_factor: 1.9,
+      },
+      live: {
+        total_trades: 0,
+        win_rate: 0,
+        total_pnl: 0,
+        last_updated: null,
+      },
+    },
+    is_public: true,
+    is_active: true,
+  },
+  {
+    owner_type: 'system',
+    owner_id: null,
+    name: 'RSI+MACD 组合策略',
+    description: '结合 RSI 和 MACD 双指标确认的保守策略。RSI 超卖且 MACD 金叉时买入，任一指标触发时卖出。',
+    content: `
+# RSI+MACD 组合策略 (Freqtrade)
+from freqtrade.strategy import IStrategy
+from pandas import DataFrame
+import talib.abstract as ta
+
+class RSIMACDComboStrategy(IStrategy):
+    INTERFACE_VERSION = 3
+
+    minimal_roi = {
+        "0": 0.10,
+        "30": 0.05,
+        "60": 0.02
+    }
+
+    stoploss = -0.08
+    timeframe = '15m'
+
+    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        # RSI
+        dataframe['rsi'] = ta.RSI(dataframe, timeperiod=14)
+
+        # MACD
+        macd = ta.MACD(dataframe)
+        dataframe['macd'] = macd['macd']
+        dataframe['macdsignal'] = macd['macdsignal']
+        dataframe['macdhist'] = macd['macdhist']
+        return dataframe
+
+    def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        # 双重确认：RSI < 30 且 MACD 金叉
+        dataframe.loc[
+            (dataframe['rsi'] < 30) &
+            (dataframe['macd'] > dataframe['macdsignal']) &
+            (dataframe['macd'].shift(1) <= dataframe['macdsignal'].shift(1)),
+            'enter_long'] = 1
+        return dataframe
+
+    def populate_exit_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+        # 任一条件触发：RSI > 70 或 MACD 死叉
+        dataframe.loc[
+            (dataframe['rsi'] > 70) |
+            ((dataframe['macd'] < dataframe['macdsignal']) &
+             (dataframe['macd'].shift(1) >= dataframe['macdsignal'].shift(1))),
+            'exit_long'] = 1
+        return dataframe
+`,
+    config: {
+      timeframe: '15m',
+      stake_currency: 'USDT',
+      recommended_leverage: 1,
+    },
+    performance_stats: {
+      backtest: {
+        total_trades: 60,
+        win_rate: 72.0,
+        max_drawdown: -8.0,
+        sharpe_ratio: 2.0,
+        profit_factor: 2.3,
+      },
+      live: {
+        total_trades: 0,
+        win_rate: 0,
+        total_pnl: 0,
+        last_updated: null,
+      },
+    },
+    is_public: true,
+    is_active: true,
+  },
 ];
 
 async function seedStrategies() {

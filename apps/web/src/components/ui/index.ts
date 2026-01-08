@@ -77,3 +77,6 @@ export { ErrorState, NetworkError, LoadError } from './error-state';
 export { PullToRefreshIndicator } from './pull-to-refresh';
 
 export { PWAInstallPrompt } from './PWAInstallPrompt';
+
+export { Slider } from './slider';
+export type { SliderProps } from './slider';

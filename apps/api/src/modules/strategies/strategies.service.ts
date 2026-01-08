@@ -220,6 +220,8 @@ export class StrategiesService {
             name: true,
             description: true,
             is_public: true,
+            owner_type: true,
+            content: true, // 上架时需要策略代码
           },
         },
       },
@@ -579,8 +581,21 @@ export class StrategiesService {
   /**
    * 提交策略上架申请
    * 用户将自己的私有策略提交到市场审核
+   * @param strategyId 策略 ID
+   * @param userId 用户 ID
+   * @param description 可选的策略描述更新
+   * @param autoCheckResult 前端自动检测结果（用于记录）
    */
-  async submitStrategyForReview(strategyId: string, userId: string) {
+  async submitStrategyForReview(
+    strategyId: string,
+    userId: string,
+    description?: string,
+    autoCheckResult?: {
+      backtestReturn: number | null;
+      backtestWinRate: number | null;
+      backtestDrawdown: number | null;
+    },
+  ) {
     this.logger.log(`用户 ${userId} 提交策略上架申请: ${strategyId}`);
 
     // 1. 查找策略
@@ -605,13 +620,32 @@ export class StrategiesService {
       );
     }
 
-    // 4. 更新策略状态为待审核
+    // 4. 更新策略状态为待审核，同时更新描述和记录检测结果
+    const updateData: Record<string, unknown> = {
+      review_status: 'pending_review',
+      auto_check_passed: true, // 前端检测通过才能提交
+    };
+
+    // 如果有新描述，更新描述
+    if (description && description.trim()) {
+      updateData.description = description.trim();
+    }
+
+    // 记录前端自动检测结果（存入 auto_check_warnings 字段，复用现有字段）
+    if (autoCheckResult) {
+      updateData.auto_check_warnings = {
+        type: 'listing_check',
+        submittedAt: new Date().toISOString(),
+        result: autoCheckResult,
+      };
+    }
+
     await this.prisma.client.strategies.update({
       where: { id: strategyId },
-      data: {
-        review_status: 'pending_review', // 直接进入待审核（简化流程）
-      },
+      data: updateData,
     });
+
+    this.logger.log(`策略 ${strategyId} 已提交审核，检测结果: ${JSON.stringify(autoCheckResult)}`);
 
     return {
       strategyId,

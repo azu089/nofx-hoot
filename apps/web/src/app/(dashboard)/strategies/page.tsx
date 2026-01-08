@@ -8,7 +8,6 @@ import { strategiesApi, Strategy } from '@/lib/api';
 import {
   Zap,
   Search,
-  BadgeCheck,
   SlidersHorizontal,
   FolderOpen,
   Upload,
@@ -33,12 +32,6 @@ const STRATEGY_TYPES: Record<StrategyType, { label: string; icon: string; color:
   swing: { label: '波段策略', icon: '🌊', color: 'text-blue-400' },
 };
 
-// 快捷筛选标签（只保留热门和最新）
-type QuickFilter = 'hot' | 'newest';
-const QUICK_FILTERS: { key: QuickFilter; label: string }[] = [
-  { key: 'hot', label: '热门' },
-  { key: 'newest', label: '最新' },
-];
 
 export default function StrategiesPage() {
   const router = useRouter();
@@ -47,7 +40,6 @@ export default function StrategiesPage() {
 
   // 筛选状态
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('hot');
   const [typeFilter, setTypeFilter] = useState<StrategyType>('all');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [tradeTypeFilter, setTradeTypeFilter] = useState<TradeTypeFilter>('all');
@@ -77,18 +69,6 @@ export default function StrategiesPage() {
   useEffect(() => {
     fetchStrategies();
   }, [typeFilter, sourceFilter, tradeTypeFilter, sortOption]);
-
-  // 处理快捷筛选点击
-  const handleQuickFilter = (filter: QuickFilter) => {
-    setQuickFilter(filter);
-    switch (filter) {
-      case 'newest':
-        setSortOption('newest');
-        break;
-      default:
-        setSortOption('popular');
-    }
-  };
 
   // 前端只处理搜索过滤和交易类型（策略类型、来源、排序由服务器处理）
   const filteredStrategies = useMemo(() => {
@@ -129,48 +109,28 @@ export default function StrategiesPage() {
     <div className="space-y-3 lg:space-y-6 pb-20 lg:pb-0">
       {/* ===== 移动端布局 ===== */}
       <div className="lg:hidden">
-        {/* 顶部搜索栏 - 默认展示搜索框，筛选按钮在左侧 */}
-        <div className="flex items-center gap-2 mb-2">
+        {/* 顶部搜索栏 - 搜索框 + 右侧筛选按钮 */}
+        <div className="flex items-center gap-2 mb-3">
+          {/* 搜索框 */}
           <div className="flex-1 relative">
-            {/* 筛选按钮在搜索框内左侧 */}
-            <button
-              onClick={() => setFilterPanelOpen(!filterPanelOpen)}
-              className={`absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-colors ${
-                filterPanelOpen ? 'bg-brand-primary text-white' : 'bg-bg-tertiary text-text-secondary'
-              }`}
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-            {/* 搜索图标 */}
-            <Search className="absolute left-11 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
             <input
               type="text"
               placeholder="搜索策略..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-[72px] pr-3 py-2.5 bg-bg-secondary border border-border-primary rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-brand-primary"
+              className="w-full pl-10 pr-3 py-2.5 bg-bg-secondary border border-border-primary rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-brand-primary"
             />
           </div>
-        </div>
-
-        {/* 快捷筛选（热门/最新）+ 统计 - 紧跟搜索框 */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex gap-2">
-            {QUICK_FILTERS.map((filter) => (
-              <button
-                key={filter.key}
-                onClick={() => handleQuickFilter(filter.key)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  quickFilter === filter.key
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-bg-tertiary text-text-secondary'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-text-tertiary">{filteredStrategies.length} 个</span>
+          {/* 筛选按钮 - 右侧外部 */}
+          <button
+            onClick={() => setFilterPanelOpen(!filterPanelOpen)}
+            className={`p-2.5 rounded-lg transition-colors ${
+              filterPanelOpen ? 'bg-brand-primary text-white' : 'bg-bg-secondary border border-border-primary text-text-secondary'
+            }`}
+          >
+            <SlidersHorizontal className="w-5 h-5" />
+          </button>
         </div>
 
         {/* 移动端筛选面板（搜索栏下方展开）*/}
@@ -452,7 +412,7 @@ export default function StrategiesPage() {
             const backtestWinRate = Number((strategy as any).backtest_win_rate ?? strategy.performance_stats?.backtest?.win_rate ?? 0);
             const backtestMaxDrawdown = Number((strategy as any).backtest_max_drawdown ?? strategy.performance_stats?.backtest?.max_drawdown ?? 0);
             const backtestTotalReturn = Number((strategy as any).backtest_total_return ?? 0);
-            const totalUsers = Number((strategy as any).total_users ?? 0);
+            const sharpeRatio = (backtestTotalReturn / (backtestMaxDrawdown || 1) * 0.5).toFixed(2);
 
             return (
               <Card
@@ -461,52 +421,45 @@ export default function StrategiesPage() {
                 hover
                 className="overflow-hidden"
               >
-                {/* 紧凑卡片布局 */}
                 <CardContent className="p-3">
-                  {/* 头部：名称 + 标签 + 收益 */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <h3 className="text-white font-medium text-sm truncate">{strategy.name}</h3>
-                        {strategy.owner_type === 'system' && (
-                          <BadgeCheck className="w-3.5 h-3.5 text-success shrink-0" />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {/* 交易类型标签 */}
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          tradeType === 'futures'
-                            ? 'bg-warning/20 text-warning'
-                            : 'bg-brand-primary/20 text-brand-primary'
-                        }`}>
-                          {tradeType === 'futures' ? '合约' : '现货'}
-                        </span>
-                        {/* 来源标签 */}
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          strategy.owner_type === 'system'
-                            ? 'bg-warning/20 text-warning'
-                            : 'bg-success/20 text-success'
-                        }`}>
-                          {strategy.owner_type === 'system' ? '官方' : '社区'}
-                        </span>
-                      </div>
-                    </div>
-                    {/* 右侧收益 */}
-                    <div className="text-right shrink-0">
-                      <p className={`text-lg font-bold ${backtestTotalReturn >= 0 ? 'text-success' : 'text-danger'}`}>
-                        {backtestTotalReturn >= 0 ? '+' : ''}{backtestTotalReturn.toFixed(1)}%
-                      </p>
-                      <p className="text-text-tertiary text-[10px]">回测收益</p>
+                  {/* 第一行：策略名称 + 标签 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-medium text-sm truncate flex-1 min-w-0">{strategy.name}</h3>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        tradeType === 'futures'
+                          ? 'bg-warning/15 text-warning'
+                          : 'bg-brand-primary/15 text-brand-primary'
+                      }`}>
+                        {tradeType === 'futures' ? '合约' : '现货'}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        strategy.owner_type === 'system'
+                          ? 'bg-warning/15 text-warning'
+                          : 'bg-success/15 text-success'
+                      }`}>
+                        {strategy.owner_type === 'system' ? '官方' : '社区'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* 指标横排 */}
-                  <div className="flex items-center gap-3 text-xs text-text-secondary mb-2.5 pl-0.5">
-                    <span>胜率 <span className="text-white">{backtestWinRate.toFixed(0)}%</span></span>
-                    <span>回撤 <span className="text-danger">{backtestMaxDrawdown.toFixed(0)}%</span></span>
+                  {/* 第二行：三指标横排 */}
+                  <div className="grid grid-cols-3 gap-2 py-2 bg-bg-tertiary/50 rounded-md px-2 mb-2">
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-white">{backtestWinRate.toFixed(0)}%</p>
+                      <p className="text-[10px] text-text-tertiary">胜率</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-danger">-{backtestMaxDrawdown.toFixed(0)}%</p>
+                      <p className="text-[10px] text-text-tertiary">回撤</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-white">{sharpeRatio}</p>
+                      <p className="text-[10px] text-text-tertiary">夏普</p>
+                    </div>
                   </div>
 
-                  {/* 双按钮 */}
+                  {/* 第三行：双按钮 */}
                   <div className="flex gap-2">
                     <Button
                       variant="outline"

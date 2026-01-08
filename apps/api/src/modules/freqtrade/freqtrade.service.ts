@@ -808,4 +808,208 @@ export class FreqtradeService {
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  // ==================== K 线数据下载 ====================
+
+  /**
+   * 下载历史 K 线数据
+   *
+   * Freqtrade 没有内置的 K 线下载 REST API，需要通过以下方式实现：
+   * 1. 在 VPS 上预装下载脚本
+   * 2. 通过 SSH 执行 freqtrade download-data 命令
+   *
+   * 命令示例:
+   * freqtrade download-data --exchange binance --pairs BTC/USDT ETH/USDT --timeframes 1h 4h 1d --timerange 20240101-
+   *
+   * @param instanceIp VPS IP 地址
+   * @param config 下载配置
+   * @param apiToken Freqtrade API Token（可选）
+   */
+  async downloadKlineData(
+    instanceIp: string,
+    config: {
+      exchange: string;
+      pairs: string[];
+      timeframes: string[];
+      startDate?: string;
+    },
+    apiToken?: string,
+  ): Promise<{ status: string; message: string; taskId?: string }> {
+    this.logger.log(
+      `开始下载 K 线数据: 交易所=${config.exchange}, 交易对=${config.pairs.join(',')}, 周期=${config.timeframes.join(',')}`,
+    );
+
+    if (this.isSandbox) {
+      this.logger.log('[沙盒模式] 模拟 K 线数据下载');
+      return {
+        status: 'success',
+        message: '模拟下载完成，数据已就绪',
+        taskId: `sandbox-${Date.now()}`,
+      };
+    }
+
+    // 真实环境：通过 Freqtrade 自定义端点或 SSH 执行
+    // 这里假设 VPS 上已配置了自定义的下载端点
+    try {
+      // 构建下载请求参数
+      const downloadConfig = {
+        exchange: config.exchange,
+        pairs: config.pairs,
+        timeframes: config.timeframes,
+        timerange: config.startDate
+          ? `${config.startDate.replace(/-/g, '')}-`
+          : undefined,
+      };
+
+      // 尝试调用自定义下载端点（需要 VPS 预配置）
+      const result = await this.post<{ status: string; message: string; task_id?: string }>(
+        instanceIp,
+        '/download-data',
+        downloadConfig,
+        apiToken,
+      );
+
+      return {
+        status: result.status || 'pending',
+        message: result.message || 'K 线数据下载任务已提交',
+        taskId: result.task_id,
+      };
+    } catch (error: any) {
+      this.logger.error(`K 线数据下载失败: ${error.message}`);
+
+      // 如果自定义端点不存在，返回提示信息
+      if (error.message.includes('404') || error.message.includes('Not Found')) {
+        return {
+          status: 'error',
+          message: 'VPS 未配置 K 线下载端点，请联系管理员或手动 SSH 到 VPS 执行下载命令',
+        };
+      }
+
+      return {
+        status: 'error',
+        message: `下载失败: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 检查 K 线数据下载状态
+   *
+   * @param instanceIp VPS IP 地址
+   * @param taskId 下载任务 ID（可选）
+   * @param apiToken Freqtrade API Token（可选）
+   */
+  async getKlineDownloadStatus(
+    instanceIp: string,
+    taskId?: string,
+    apiToken?: string,
+  ): Promise<{
+    status: 'idle' | 'downloading' | 'completed' | 'error';
+    progress?: number;
+    message?: string;
+    lastUpdated?: string;
+    availablePairs?: string[];
+  }> {
+    if (this.isSandbox) {
+      this.logger.debug('[沙盒模式] 返回模拟下载状态');
+      return {
+        status: 'completed',
+        progress: 100,
+        message: '数据已就绪，可以进行回测',
+        lastUpdated: new Date().toISOString(),
+        availablePairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
+      };
+    }
+
+    try {
+      // 调用自定义状态检查端点
+      const path = taskId ? `/download-status?task_id=${taskId}` : '/download-status';
+      const result = await this.get<{
+        status: string;
+        progress?: number;
+        message?: string;
+        last_updated?: string;
+        available_pairs?: string[];
+      }>(instanceIp, path, apiToken);
+
+      return {
+        status: (result.status as 'idle' | 'downloading' | 'completed' | 'error') || 'idle',
+        progress: result.progress,
+        message: result.message,
+        lastUpdated: result.last_updated,
+        availablePairs: result.available_pairs,
+      };
+    } catch (error: any) {
+      this.logger.error(`获取 K 线下载状态失败: ${error.message}`);
+
+      // 如果端点不存在，返回默认状态
+      if (error.message.includes('404') || error.message.includes('Not Found')) {
+        return {
+          status: 'idle',
+          message: 'VPS 未配置状态检查端点，请手动检查数据目录',
+        };
+      }
+
+      return {
+        status: 'error',
+        message: `无法获取状态: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * 获取已下载的 K 线数据信息
+   *
+   * @param instanceIp VPS IP 地址
+   * @param apiToken Freqtrade API Token（可选）
+   */
+  async getAvailableKlineData(
+    instanceIp: string,
+    apiToken?: string,
+  ): Promise<{
+    exchange: string;
+    pairs: Array<{
+      pair: string;
+      timeframes: string[];
+      dataRange?: { start: string; end: string };
+    }>;
+  }> {
+    if (this.isSandbox) {
+      this.logger.debug('[沙盒模式] 返回模拟已下载数据');
+      return {
+        exchange: 'binance',
+        pairs: [
+          { pair: 'BTC/USDT', timeframes: ['1h', '4h', '1d'], dataRange: { start: '2024-01-01', end: '2026-01-08' } },
+          { pair: 'ETH/USDT', timeframes: ['1h', '4h', '1d'], dataRange: { start: '2024-01-01', end: '2026-01-08' } },
+          { pair: 'SOL/USDT', timeframes: ['1h', '4h'], dataRange: { start: '2024-06-01', end: '2026-01-08' } },
+        ],
+      };
+    }
+
+    try {
+      const result = await this.get<{
+        exchange: string;
+        pairs: Array<{
+          pair: string;
+          timeframes: string[];
+          data_range?: { start: string; end: string };
+        }>;
+      }>(instanceIp, '/available-data', apiToken);
+
+      return {
+        exchange: result.exchange,
+        pairs: result.pairs.map(p => ({
+          pair: p.pair,
+          timeframes: p.timeframes,
+          dataRange: p.data_range,
+        })),
+      };
+    } catch (error: any) {
+      this.logger.error(`获取已下载数据信息失败: ${error.message}`);
+      return {
+        exchange: 'unknown',
+        pairs: [],
+      };
+    }
+  }
 }

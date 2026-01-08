@@ -185,7 +185,13 @@ export function StrategySelector({
         ) : (
           // 未选择状态
           <div className="p-3 flex items-center justify-between">
-            <span className="text-text-tertiary">{placeholder}</span>
+            {isOpen ? (
+              // 展开时显示简洁标题
+              <span className="text-white text-sm">选择策略</span>
+            ) : (
+              // 收起时显示占位符
+              <span className="text-text-tertiary">{placeholder}</span>
+            )}
             <ChevronDown
               className={`w-5 h-5 text-text-tertiary transition-transform ${
                 isOpen ? 'rotate-180' : ''
@@ -197,7 +203,7 @@ export function StrategySelector({
 
       {/* 下拉面板 */}
       {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-2 bg-bg-secondary border border-border-primary rounded-lg shadow-lg overflow-hidden">
+        <div className="absolute z-[100] w-full mt-2 bg-bg-secondary border border-border-primary rounded-lg shadow-lg overflow-hidden">
           {/* 搜索框 */}
           <div className="p-3 border-b border-border-primary">
             <div className="relative">
@@ -245,9 +251,6 @@ export function StrategySelector({
                         <div className="flex items-center gap-2">
                           <span className="text-white font-medium text-sm truncate">
                             {strategy.name}
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${strategyRisk.bg} ${strategyRisk.color}`}>
-                            {strategyRisk.text}
                           </span>
                           {isSelected && (
                             <Check className="w-4 h-4 text-brand-primary ml-auto flex-shrink-0" />

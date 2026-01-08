@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, Button, Dialog, DialogFooter } from '@/components/ui';
-import { instancesApi, tradingApi, billingApi } from '@/lib/api';
+import { instancesApi, billingApi, tradingApi } from '@/lib/api';
 import { formatDateTime, formatCurrency, formatPercent } from '@/lib/utils';
-import { TradingLog, TradingKLineView } from '@/components/features/trading';
+import { TradingLog, TradingKLineView, PeriodPnLStats } from '@/components/features/trading';
 import {
   Activity,
   TrendingUp,
@@ -64,6 +64,17 @@ interface TodayPnL {
   todayWinRate: string;
 }
 
+// 历史交易记录
+interface HistoryTrade {
+  id: string;
+  pair: string;
+  side: string;
+  amount: string;
+  price: string;
+  pnl: string;
+  executed_at: string;
+}
+
 export default function TradingPage() {
   const router = useRouter();
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -74,21 +85,26 @@ export default function TradingPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // 历史交易数据（空态时显示）
+  const [historyTrades, setHistoryTrades] = useState<HistoryTrade[]>([]);
+
   // 紧急平仓对话框状态
   const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
   const [emergencyLoading, setEmergencyLoading] = useState(false);
 
   const fetchData = async () => {
     try {
-      const [instancesRes, pnlRes] = await Promise.all([
+      const [instancesRes, pnlRes, historyRes] = await Promise.all([
         instancesApi.list(),
         billingApi.getTodayPnL().catch(() => ({ data: null })),
+        tradingApi.getTrades({ limit: 10 }).catch(() => ({ data: { trades: [] } })),
       ]);
       const runningInstances = (instancesRes.data || []).filter(
         (i: Instance) => i.status === 'running'
       );
       setInstances(runningInstances);
       setTodayPnL(pnlRes.data);
+      setHistoryTrades(historyRes.data?.trades || []);
 
       // 自动选择第一个实例
       if (runningInstances.length > 0 && !selectedInstance) {
@@ -205,25 +221,117 @@ export default function TradingPage() {
     );
   }
 
+  // 空态：无运行实例时显示收益统计 + 持仓 + 历史 + 日志
   if (instances.length === 0) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">交易控制台</h1>
+      <div className="space-y-4 pb-20">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">交易控制台</h1>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/trading/history')}
+          >
+            <History className="w-4 h-4 mr-1.5" />
+            <span className="hidden sm:inline">历史</span>
+          </Button>
+        </div>
+
+        {/* 收益统计组件 */}
+        <PeriodPnLStats showFullCard={true} showHeader={true} />
+
+        {/* 持仓中（空态） */}
         <Card variant="glass">
-          <CardContent className="py-16 text-center">
-            <div className="w-20 h-20 mx-auto mb-6 bg-bg-tertiary rounded-full flex items-center justify-center">
-              <Activity className="w-10 h-10 text-text-tertiary" />
+          <CardHeader className="border-b border-border-primary/50">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-brand-primary" />
+              <span>持仓中</span>
+              <span className="px-2 py-0.5 text-xs bg-brand-primary/20 text-brand-primary rounded-full">
+                0
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="text-center py-8 text-text-secondary">
+              <div className="w-14 h-14 mx-auto mb-3 bg-bg-tertiary rounded-full flex items-center justify-center">
+                <AlertCircle className="w-7 h-7 text-text-tertiary" />
+              </div>
+              <p className="font-medium">暂无持仓</p>
+              <p className="text-sm text-text-tertiary mt-1">启动策略后将显示持仓信息</p>
             </div>
-            <h3 className="text-xl font-medium text-text-primary mb-2">暂无运行中的实例</h3>
-            <p className="text-text-secondary mb-8 max-w-md mx-auto">
-              请先前往策略市场选择并启用一个策略，系统将自动为您创建交易实例
-            </p>
-            <Button variant="gradient" onClick={() => router.push('/strategies')}>
-              <Zap className="w-4 h-4 mr-2" />
-              前往策略市场
-            </Button>
           </CardContent>
         </Card>
+
+        {/* 历史交易记录 */}
+        <Card variant="glass">
+          <CardHeader className="border-b border-border-primary/50">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-text-secondary" />
+                <span>历史交易</span>
+                <span className="px-2 py-0.5 text-xs bg-bg-tertiary text-text-secondary rounded-full">
+                  {historyTrades.length}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/trading/history')}
+                className="text-text-secondary"
+              >
+                查看全部
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {historyTrades.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <p className="text-sm">暂无交易记录</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {historyTrades.slice(0, 8).map((trade) => {
+                  const pnl = parseFloat(trade.pnl);
+                  const isProfit = pnl >= 0;
+
+                  return (
+                    <div
+                      key={trade.id}
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                        isProfit ? 'bg-success/5 hover:bg-success/10' : 'bg-danger/5 hover:bg-danger/10'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-text-primary text-sm font-medium truncate">{trade.pair}</h3>
+                        <p className="text-text-tertiary text-xs">
+                          {formatDateTime(trade.executed_at).slice(5)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {isProfit ? (
+                          <ArrowUp className="w-3.5 h-3.5 text-success" />
+                        ) : (
+                          <ArrowDown className="w-3.5 h-3.5 text-danger" />
+                        )}
+                        <span
+                          className={`text-sm font-medium ${
+                            isProfit ? 'text-success' : 'text-danger'
+                          }`}
+                        >
+                          {isProfit ? '+' : ''}{formatCurrency(trade.pnl)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 实时日志 */}
+        <TradingLog instanceId={null} isConnected={false} />
       </div>
     );
   }
@@ -393,6 +501,9 @@ export default function TradingPage() {
           ))}
         </div>
       )}
+
+      {/* 收益统计 */}
+      <PeriodPnLStats showFullCard={true} showHeader={true} />
 
       {/* K 线图 - 买卖点可视化（有持仓时显示） */}
       {openTrades.length > 0 && (

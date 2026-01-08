@@ -13,6 +13,7 @@ import {
   IsEnum,
   IsObject,
   ValidateNested,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -36,6 +37,59 @@ export enum SupportedExchange {
   BINANCE = 'binance',
   OKX = 'okx',
   BYBIT = 'bybit',
+}
+
+/**
+ * 黑天鹅防护触发动作
+ */
+export enum BlackSwanAction {
+  PAUSE = 'pause', // 暂停交易
+  CLOSE_ALL = 'close_all', // 全部平仓
+  NOTIFY_ONLY = 'notify_only', // 仅通知
+}
+
+/**
+ * 黑天鹅防护配置
+ * 用于自动检测市场异常并触发保护措施
+ */
+export class BlackSwanConfig {
+  @ApiPropertyOptional({ description: '是否启用黑天鹅防护', example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: '触发阈值（价格跌幅百分比，负数）',
+    example: -10,
+    minimum: -50,
+    maximum: 0,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-50)
+  @Max(0)
+  threshold?: number; // 默认 -10 (下跌 10%)
+
+  @ApiPropertyOptional({
+    description: '检测时间窗口（分钟）',
+    example: 5,
+    minimum: 1,
+    maximum: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  timeframe_minutes?: number; // 默认 5 分钟
+
+  @ApiPropertyOptional({
+    description: '触发动作',
+    example: 'pause',
+    enum: BlackSwanAction,
+  })
+  @IsOptional()
+  @IsEnum(BlackSwanAction)
+  action?: BlackSwanAction;
 }
 
 /**
@@ -148,6 +202,26 @@ export class CreateStrategyConfigDto {
   stoploss_on_exchange?: boolean;
 
   @ApiPropertyOptional({
+    description: '未成交订单超时时间（分钟）',
+    example: 10,
+    minimum: 1,
+    maximum: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  unfilledtimeout?: number;
+
+  @ApiPropertyOptional({
+    description: '退出时是否取消未成交的挂单',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  cancel_open_orders_on_exit?: boolean;
+
+  @ApiPropertyOptional({
     description: '交易所',
     example: 'binance',
     enum: SupportedExchange,
@@ -190,4 +264,21 @@ export class CreateStrategyConfigDto {
   @IsOptional()
   @IsBoolean()
   force?: boolean;
+
+  @ApiPropertyOptional({
+    description: '黑天鹅防护配置',
+    type: () => BlackSwanConfig,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BlackSwanConfig)
+  black_swan?: BlackSwanConfig;
+
+  @ApiPropertyOptional({
+    description: '是否为模拟交易模式（不使用真实资金）',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  dry_run?: boolean;
 }

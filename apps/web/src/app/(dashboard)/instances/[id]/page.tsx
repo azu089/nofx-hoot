@@ -21,19 +21,26 @@ import {
   MapPin,
   Terminal,
   Download,
+  Database,
+  CheckCircle,
+  Loader2,
+  XCircle,
 } from 'lucide-react';
 
 interface Instance {
   id: string;
   status: string;
-  ip_address: string;
+  ip_address: string | null;
   region: string;
-  cpu_usage: string | null;
-  memory_usage: string | null;
-  disk_usage: string | null;
-  current_strategy: string | null;
+  cpu_usage?: string | null;
+  memory_usage?: string | null;
+  disk_usage?: string | null;
+  current_strategy?: string | null;
   created_at: string;
-  last_heartbeat: string | null;
+  last_heartbeat?: string | null;
+  droplet_id?: string | null;
+  provisioned_at?: string | null;
+  destroy_reason?: string | null;
 }
 
 interface Backup {
@@ -51,6 +58,14 @@ interface LogEntry {
   message: string;
 }
 
+interface KlineStatus {
+  status: 'idle' | 'downloading' | 'completed' | 'error';
+  progress?: number;
+  message?: string;
+  lastUpdated?: string;
+  availablePairs?: string[];
+}
+
 export default function InstanceDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -61,6 +76,11 @@ export default function InstanceDetailPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // K 线下载相关状态
+  const [klineStatus, setKlineStatus] = useState<KlineStatus>({ status: 'idle' });
+  const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>(['1h', '4h', '1d']);
+  const [klineDownloading, setKlineDownloading] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -166,23 +186,74 @@ export default function InstanceDetailPage() {
     }
   };
 
+  // K 线下载相关函数
+  const toggleTimeframe = (tf: string) => {
+    setSelectedTimeframes((prev) =>
+      prev.includes(tf) ? prev.filter((t) => t !== tf) : [...prev, tf]
+    );
+  };
+
+  const fetchKlineStatus = async () => {
+    try {
+      const res = await instancesApi.getKlineStatus(instanceId);
+      if (res.code === 0 && res.data) {
+        setKlineStatus(res.data);
+      }
+    } catch (error) {
+      console.error('获取 K 线状态失败:', error);
+    }
+  };
+
+  const handleDownloadKline = async () => {
+    if (selectedTimeframes.length === 0) {
+      alert('请至少选择一个时间周期');
+      return;
+    }
+
+    setKlineDownloading(true);
+    try {
+      const res = await instancesApi.downloadKline(instanceId, {
+        pairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'],
+        timeframes: selectedTimeframes,
+      });
+
+      if (res.code === 0) {
+        setKlineStatus({ status: 'downloading', message: res.message });
+        // 启动轮询检查状态
+        const pollInterval = setInterval(async () => {
+          await fetchKlineStatus();
+        }, 3000);
+        // 30 秒后停止轮询
+        setTimeout(() => clearInterval(pollInterval), 30000);
+      } else {
+        alert(res.message || '下载启动失败');
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '下载失败');
+    } finally {
+      setKlineDownloading(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       running: 'bg-success/20 text-success',
+      pending: 'bg-brand-primary/20 text-brand-primary',
       provisioning: 'bg-warning/20 text-warning',
       stopped: 'bg-bg-tertiary text-text-secondary',
       destroyed: 'bg-danger/20 text-danger',
-      zombie: 'bg-warning/20 text-warning',
+      zombie: 'bg-danger/20 text-danger',
       error: 'bg-danger/20 text-danger',
     };
 
     const labels: Record<string, string> = {
       running: '运行中',
+      pending: '等待创建',
       provisioning: '创建中',
       stopped: '已停止',
       destroyed: '已销毁',
       zombie: '僵尸节点',
-      error: '错误',
+      error: '创建失败',
     };
 
     return (
@@ -190,6 +261,51 @@ export default function InstanceDetailPage() {
         {labels[status] || status}
       </span>
     );
+  };
+
+  // 计算心跳是否超时（接近 15 分钟）
+  const getHeartbeatStatus = () => {
+    if (!instance?.last_heartbeat) return { status: 'unknown', message: '尚无心跳记录' };
+
+    const lastBeat = new Date(instance.last_heartbeat).getTime();
+    const now = Date.now();
+    const diffMinutes = (now - lastBeat) / 60000;
+
+    if (diffMinutes < 5) {
+      return { status: 'healthy', message: '正常' };
+    } else if (diffMinutes < 10) {
+      return { status: 'warning', message: `${Math.round(diffMinutes)} 分钟前` };
+    } else if (diffMinutes < 15) {
+      return { status: 'critical', message: `${Math.round(diffMinutes)} 分钟前 (即将超时)` };
+    } else {
+      return { status: 'timeout', message: '已超时' };
+    }
+  };
+
+  // 计算创建进度
+  const getProvisioningProgress = () => {
+    if (!instance) return 0;
+
+    const status = instance.status;
+    if (status === 'running') return 100;
+    if (status === 'error' || status === 'destroyed') return 0;
+
+    if (status === 'pending') {
+      return 20; // 数据库记录已创建
+    }
+
+    if (status === 'provisioning') {
+      // 根据时间估算进度
+      if (instance.provisioned_at) {
+        const elapsed = (Date.now() - new Date(instance.provisioned_at).getTime()) / 1000;
+        // 预估 2 分钟完成
+        const progress = Math.min(20 + (elapsed / 120) * 70, 90);
+        return Math.round(progress);
+      }
+      return 50;
+    }
+
+    return 0;
   };
 
   const getLogLevelColor = (level: string) => {
@@ -250,14 +366,115 @@ export default function InstanceDetailPage() {
         </div>
       </div>
 
+      {/* VPS 创建进度卡片 */}
+      {(instance.status === 'pending' || instance.status === 'provisioning') && (
+        <Card className="border-brand-primary/30 bg-brand-primary/5">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-brand-primary/20 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 text-brand-primary animate-spin" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">VPS 正在创建中</h3>
+                <p className="text-text-secondary text-sm">
+                  {instance.status === 'pending' ? '正在初始化资源...' : '正在配置服务器环境...'}
+                </p>
+              </div>
+            </div>
+
+            {/* 创建进度条 */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-text-secondary">创建进度</span>
+                <span className="text-brand-primary">{getProvisioningProgress()}%</span>
+              </div>
+              <div className="w-full bg-bg-tertiary rounded-full h-2">
+                <div
+                  className="bg-brand-primary h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${getProvisioningProgress()}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 创建步骤 */}
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-success" />
+                <span className="text-text-secondary">订阅已确认</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {instance.status === 'pending' ? (
+                  <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 text-success" />
+                )}
+                <span className="text-text-secondary">创建云服务器</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {instance.status === 'provisioning' ? (
+                  <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full border border-text-tertiary" />
+                )}
+                <span className="text-text-secondary">安装交易环境</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full border border-text-tertiary" />
+                <span className="text-text-secondary">等待首次心跳</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-text-tertiary mt-4">
+              预计需要 2-5 分钟，请耐心等待。如超过 10 分钟仍未完成，系统将自动标记为失败。
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 创建失败警告 */}
+      {instance.status === 'error' && (
+        <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
+          <div className="flex items-start gap-3">
+            <XCircle className="w-6 h-6 text-danger flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-danger font-medium mb-1">VPS 创建失败</h4>
+              <p className="text-danger/80 text-sm mb-3">
+                {instance.destroy_reason || '创建过程中发生错误，请联系客服处理。'}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => router.push('/wallet/billing')}>
+                  查看账单
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => window.open('mailto:support@quantfi.com')}>
+                  联系客服
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 僵尸节点警告 */}
       {instance.status === 'zombie' && (
+        <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-danger flex-shrink-0" />
+          <div>
+            <h4 className="text-danger font-medium mb-1">僵尸节点警告</h4>
+            <p className="text-danger/80 text-sm">
+              此实例已超过 15 分钟无心跳，将被自动销毁并退款
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 心跳超时预警（即将成为僵尸节点）*/}
+      {instance.status === 'running' && getHeartbeatStatus().status === 'critical' && (
         <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
           <div>
-            <h4 className="text-warning font-medium mb-1">僵尸节点警告</h4>
+            <h4 className="text-warning font-medium mb-1">心跳超时预警</h4>
             <p className="text-warning/80 text-sm">
-              此实例已超过 15 分钟无心跳，将被自动销毁并退款
+              最后心跳时间：{getHeartbeatStatus().message}。如持续无响应，实例将被标记为僵尸节点。
             </p>
           </div>
         </div>
@@ -305,12 +522,49 @@ export default function InstanceDetailPage() {
             </div>
           </div>
 
-          {instance.last_heartbeat && (
-            <div className="mt-6 pt-6 border-t border-border-primary">
-              <p className="text-text-secondary text-sm mb-1">最后心跳</p>
-              <p className="text-white">{formatDateTime(instance.last_heartbeat)}</p>
+          {/* 心跳状态 */}
+          <div className="mt-6 pt-6 border-t border-border-primary">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-text-secondary text-sm mb-1">最后心跳</p>
+                <div className="flex items-center gap-2">
+                  {instance.last_heartbeat ? (
+                    <>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          getHeartbeatStatus().status === 'healthy'
+                            ? 'bg-success'
+                            : getHeartbeatStatus().status === 'warning'
+                              ? 'bg-warning'
+                              : getHeartbeatStatus().status === 'critical'
+                                ? 'bg-danger animate-pulse'
+                                : 'bg-text-tertiary'
+                        }`}
+                      />
+                      <p className="text-white">{formatDateTime(instance.last_heartbeat)}</p>
+                    </>
+                  ) : (
+                    <p className="text-text-tertiary">尚无心跳记录</p>
+                  )}
+                </div>
+                {instance.last_heartbeat && getHeartbeatStatus().status !== 'healthy' && (
+                  <p
+                    className={`text-xs mt-1 ${
+                      getHeartbeatStatus().status === 'critical' ? 'text-danger' : 'text-warning'
+                    }`}
+                  >
+                    {getHeartbeatStatus().message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-text-secondary text-sm mb-1">Droplet ID</p>
+                <p className="text-white font-mono text-sm">
+                  {instance.droplet_id || '尚未分配'}
+                </p>
+              </div>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -380,6 +634,111 @@ export default function InstanceDetailPage() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* K 线数据下载 */}
+      {instance.status === 'running' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-brand-primary" />
+              历史 K 线数据
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-text-secondary text-sm mb-4">
+              回测需要历史 K 线数据。首次使用或需要更新数据时，请点击下载。
+            </p>
+
+            {/* 下载状态显示 */}
+            {klineStatus.status === 'completed' && (
+              <div className="flex items-center gap-2 text-success mb-4 p-3 bg-success/10 rounded-lg">
+                <CheckCircle className="w-5 h-5" />
+                <div>
+                  <span className="font-medium">数据已就绪</span>
+                  <p className="text-sm text-success/80">可以进行回测</p>
+                </div>
+              </div>
+            )}
+
+            {klineStatus.status === 'downloading' && (
+              <div className="flex items-center gap-2 text-warning mb-4 p-3 bg-warning/10 rounded-lg">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <div>
+                  <span className="font-medium">正在下载中...</span>
+                  <p className="text-sm text-warning/80">
+                    {klineStatus.progress !== undefined
+                      ? `进度: ${klineStatus.progress}%`
+                      : klineStatus.message || '请稍候'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {klineStatus.status === 'error' && (
+              <div className="flex items-center gap-2 text-danger mb-4 p-3 bg-danger/10 rounded-lg">
+                <XCircle className="w-5 h-5" />
+                <div>
+                  <span className="font-medium">下载失败</span>
+                  <p className="text-sm text-danger/80">
+                    {klineStatus.message || '请重试'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 时间周期选择 */}
+            <div className="mb-4">
+              <label className="text-sm text-text-secondary block mb-2">
+                选择 K 线周期
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => toggleTimeframe(tf)}
+                    disabled={klineStatus.status === 'downloading'}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selectedTimeframes.includes(tf)
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-bg-tertiary text-text-secondary hover:text-white hover:bg-bg-tertiary/80'
+                    } ${
+                      klineStatus.status === 'downloading'
+                        ? 'opacity-50 cursor-not-allowed'
+                        : ''
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 交易对说明 */}
+            <p className="text-xs text-text-tertiary mb-4">
+              将下载以下交易对数据：BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT
+            </p>
+
+            {/* 下载按钮 */}
+            <Button
+              onClick={handleDownloadKline}
+              disabled={
+                klineDownloading ||
+                klineStatus.status === 'downloading' ||
+                selectedTimeframes.length === 0
+              }
+              isLoading={klineDownloading || klineStatus.status === 'downloading'}
+              className="w-full sm:w-auto"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {klineStatus.status === 'downloading'
+                ? '下载中...'
+                : klineStatus.status === 'completed'
+                  ? '更新数据'
+                  : '下载历史数据'}
+            </Button>
           </CardContent>
         </Card>
       )}

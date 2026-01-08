@@ -26,7 +26,6 @@ import { UpdateStrategyConfigDto } from './dto/update-strategy-config.dto';
 import { StrategyResponseDto, StrategyDetailResponseDto } from './dto/strategy-response.dto';
 import { StrategyConfigResponseDto } from './dto/strategy-config-response.dto';
 import { BacktestRequestDto, BacktestResultDto } from './dto/backtest.dto';
-import { VisualBacktestRequestDto } from './dto/visual-backtest.dto';
 import { UploadStrategyDto, UploadStrategyResponseDto } from './dto/upload-strategy.dto';
 import {
   StrategyRevenueStatsDto,
@@ -305,53 +304,6 @@ export class StrategiesController {
   }
 
   /**
-   * 自定义策略回测（可视化配置器）
-   *
-   * 核心逻辑：基于用户配置的指标和条件进行模拟回测
-   * - 不需要 VPS
-   * - 使用历史 K 线数据计算指标
-   * - 根据买卖条件模拟交易
-   */
-  @Post('backtest/visual')
-  @ApiBearerAuth()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '自定义策略回测（可视化配置器）' })
-  @ApiResponse({
-    status: 200,
-    description: '回测完成',
-    type: BacktestResultDto,
-  })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  async runVisualBacktest(
-    @CurrentUser('sub') userId: string,
-    @Body() dto: VisualBacktestRequestDto,
-  ) {
-    this.logger.log(
-      `用户 ${userId} 发起自定义策略回测: ${dto.name}, 指标数=${dto.indicators.length}`,
-    );
-
-    try {
-      const result = await this.backtestService.runVisualBacktest(dto);
-
-      return {
-        code: 0,
-        message: 'success',
-        data: result,
-      };
-    } catch (error: any) {
-      this.logger.error(`自定义策略回测失败: ${error.message}`, error.stack);
-      throw new HttpException(
-        {
-          code: 50001,
-          message: `回测失败: ${error.message}`,
-          data: null,
-        },
-        HttpStatus.OK,
-      );
-    }
-  }
-
-  /**
    * 执行策略回测
    *
    * 核心逻辑：回测由用户 VPS 上的 Freqtrade 执行
@@ -591,7 +543,7 @@ export class StrategiesController {
   /**
    * 申请策略上架审核
    * 用户将自己创建的个人策略提交到策略市场
-   * 流程：个人策略 -> 提交审核 -> 回测验证 -> 试运行 -> 人工审核 -> 上架
+   * 流程：个人策略 -> 前端检测 -> 提交审核 -> 人工审核 -> 上架
    */
   @Post(':id/submit-for-review')
   @ApiBearerAuth()
@@ -606,12 +558,22 @@ export class StrategiesController {
   async submitForReview(
     @CurrentUser('sub') userId: string,
     @Param('id') strategyId: string,
+    @Body() body?: {
+      description?: string;
+      autoCheckResult?: {
+        backtestReturn: number | null;
+        backtestWinRate: number | null;
+        backtestDrawdown: number | null;
+      };
+    },
   ) {
     this.logger.log(`用户 ${userId} 申请策略上架: ${strategyId}`);
 
     const result = await this.strategiesService.submitStrategyForReview(
       strategyId,
       userId,
+      body?.description,
+      body?.autoCheckResult,
     );
 
     return {

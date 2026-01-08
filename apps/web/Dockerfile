@@ -54,7 +54,7 @@ RUN adduser --system --uid 1001 nextjs
 
 # 设置环境变量
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV PORT=3002
 ENV HOSTNAME="0.0.0.0"
 
 # 复制 Next.js 独立输出
@@ -72,11 +72,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/sta
 USER nextjs
 
 # 暴露端口
-EXPOSE 3001
+EXPOSE 3002
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3001 || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3002 || exit 1
 
 # 启动命令
 CMD ["node", "server.js"]

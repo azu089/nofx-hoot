@@ -14,6 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/dto/jwt-payload.dto';
 import { CreateInstanceDto, HeartbeatDto } from './dto/instance-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
+import { FreqtradeService } from '../freqtrade/freqtrade.service';
 
 /**
  * VPS 实例控制器
@@ -28,7 +29,10 @@ import { Public } from '../../common/decorators/public.decorator';
 @Controller('instances')
 @UseGuards(JwtAuthGuard)
 export class InstancesController {
-  constructor(private readonly instancesService: InstancesService) {}
+  constructor(
+    private readonly instancesService: InstancesService,
+    private readonly freqtradeService: FreqtradeService,
+  ) {}
 
   /**
    * 购买订阅（唯一入口）
@@ -143,5 +147,155 @@ export class InstancesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.instancesService.getFreqtradeTrades(id, user.sub);
+  }
+
+  /**
+   * 下载历史 K 线数据
+   * POST /api/instances/:id/download-kline
+   *
+   * 回测前需要先下载历史 K 线数据到 VPS
+   * 通过 Freqtrade 的 download-data 命令实现
+   */
+  @Post(':id/download-kline')
+  async downloadKlineData(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    dto: {
+      pairs: string[];
+      timeframes: string[];
+      startDate?: string;
+      exchange?: string;
+    },
+  ) {
+    // 验证实例归属
+    const instance = await this.instancesService.findById(id, user.sub);
+    if (!instance) {
+      return {
+        code: 404,
+        message: '实例不存在',
+        data: null,
+      };
+    }
+
+    if (instance.status !== 'running') {
+      return {
+        code: 400,
+        message: '实例未运行，请先启动实例',
+        data: null,
+      };
+    }
+
+    if (!instance.ip_address) {
+      return {
+        code: 400,
+        message: '实例 IP 地址尚未分配',
+        data: null,
+      };
+    }
+
+    // 调用 FreqtradeService 下载 K 线
+    const result = await this.freqtradeService.downloadKlineData(
+      instance.ip_address,
+      {
+        exchange: dto.exchange || 'binance',
+        pairs: dto.pairs || ['BTC/USDT', 'ETH/USDT'],
+        timeframes: dto.timeframes || ['1h', '4h', '1d'],
+        startDate: dto.startDate,
+      },
+    );
+
+    return {
+      code: 0,
+      message: result.message,
+      data: {
+        status: result.status,
+        taskId: result.taskId,
+      },
+    };
+  }
+
+  /**
+   * 获取 K 线下载状态
+   * GET /api/instances/:id/kline-status
+   *
+   * 检查 K 线数据下载进度和可用数据
+   */
+  @Get(':id/kline-status')
+  async getKlineStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('taskId') taskId?: string,
+  ) {
+    // 验证实例归属
+    const instance = await this.instancesService.findById(id, user.sub);
+    if (!instance) {
+      return {
+        code: 404,
+        message: '实例不存在',
+        data: null,
+      };
+    }
+
+    if (!instance.ip_address) {
+      return {
+        code: 400,
+        message: '实例 IP 地址尚未分配',
+        data: null,
+      };
+    }
+
+    // 获取下载状态
+    const status = await this.freqtradeService.getKlineDownloadStatus(
+      instance.ip_address,
+      taskId,
+    );
+
+    return {
+      code: 0,
+      message: 'success',
+      data: status,
+    };
+  }
+
+  /**
+   * 获取已下载的 K 线数据信息
+   * GET /api/instances/:id/kline-data
+   *
+   * 返回 VPS 上可用的 K 线数据列表
+   */
+  @Get(':id/kline-data')
+  async getAvailableKlineData(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    // 验证实例归属
+    const instance = await this.instancesService.findById(id, user.sub);
+    if (!instance) {
+      return {
+        code: 404,
+        message: '实例不存在',
+        data: null,
+      };
+    }
+
+    if (!instance.ip_address) {
+      return {
+        code: 400,
+        message: '实例 IP 地址尚未分配',
+        data: null,
+      };
+    }
+
+    // 获取可用数据
+    const data = await this.freqtradeService.getAvailableKlineData(
+      instance.ip_address,
+    );
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
   }
 }

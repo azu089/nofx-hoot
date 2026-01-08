@@ -38,7 +38,7 @@ const Dialog = forwardRef<HTMLDivElement, DialogProps>(
     if (!open) return null;
 
     return (
-      <div className="fixed inset-0 z-modal flex items-center justify-center">
+      <div className="fixed inset-0 z-modal flex items-start justify-center p-4 pt-16 md:pt-20">
         {/* 遮罩层 */}
         <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -49,15 +49,16 @@ const Dialog = forwardRef<HTMLDivElement, DialogProps>(
         <div
           ref={ref}
           className={cn(
-            'relative bg-bg-secondary rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden',
+            'relative bg-bg-secondary rounded-xl shadow-2xl max-w-md w-full overflow-hidden',
             'border border-border-primary',
+            'max-h-[85vh] md:max-h-[80vh] flex flex-col', // 移动端 85vh，桌面端 80vh
             className
           )}
           {...props}
         >
-          {/* 头部 */}
+          {/* 头部 - 固定不滚动 */}
           {(title || description) && (
-            <div className="px-6 py-4 border-b border-border-primary">
+            <div className="px-6 py-4 border-b border-border-primary flex-shrink-0">
               <div className="flex items-start justify-between">
                 <div>
                   {title && (
@@ -77,8 +78,8 @@ const Dialog = forwardRef<HTMLDivElement, DialogProps>(
             </div>
           )}
 
-          {/* 内容 */}
-          <div className="px-6 py-4">{children}</div>
+          {/* 内容 - 可滚动区域 */}
+          <div className="px-6 py-4 overflow-y-auto flex-1">{children}</div>
         </div>
       </div>
     );
@@ -98,7 +99,7 @@ const DialogFooter = forwardRef<HTMLDivElement, DialogFooterProps>(
       <div
         ref={ref}
         className={cn(
-          'flex items-center justify-end gap-3 px-6 py-4 bg-bg-secondary/50 border-t border-border-primary',
+          'flex items-center justify-end gap-3 px-6 py-3 border-t border-border-primary flex-shrink-0',
           className
         )}
         {...props}

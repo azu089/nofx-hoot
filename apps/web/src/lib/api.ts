@@ -489,6 +489,44 @@ export const instancesApi = {
         error?: string;
       }>;
     }>>('/instances/stop-all'),
+
+  // === K 线数据下载 ===
+
+  // 下载历史 K 线数据
+  downloadKline: (
+    id: string,
+    data: {
+      pairs: string[];
+      timeframes: string[];
+      startDate?: string;
+      exchange?: string;
+    }
+  ) =>
+    api.post<never, ApiResponse<{
+      status: string;
+      taskId?: string;
+    }>>(`/instances/${id}/download-kline`, data),
+
+  // 获取 K 线下载状态
+  getKlineStatus: (id: string, taskId?: string) =>
+    api.get<never, ApiResponse<{
+      status: 'idle' | 'downloading' | 'completed' | 'error';
+      progress?: number;
+      message?: string;
+      lastUpdated?: string;
+      availablePairs?: string[];
+    }>>(`/instances/${id}/kline-status`, { params: { taskId } }),
+
+  // 获取已下载的 K 线数据
+  getKlineData: (id: string) =>
+    api.get<never, ApiResponse<{
+      exchange: string;
+      pairs: Array<{
+        pair: string;
+        timeframes: string[];
+        dataRange?: { start: string; end: string };
+      }>;
+    }>>(`/instances/${id}/kline-data`),
 };
 
 // Billing API
@@ -686,7 +724,7 @@ export const strategiesApi = {
     stake_amount: string;
     max_open_trades: number;
     leverage: number;
-    stoploss: number;
+    stoploss?: number; // 可选，跟随策略代码时不传
     trailing_stop?: boolean;
     trailing_stop_positive?: number;
     trailing_stop_positive_offset?: number;
@@ -698,6 +736,7 @@ export const strategiesApi = {
     pair_whitelist?: string[];
     blacklist?: string[];
     custom_config?: Record<string, unknown>;
+    follow_strategy_code?: boolean; // 跟随策略代码（止损/止盈/K线/追踪止损使用代码中的值）
   }) =>
     api.post<never, ApiResponse<{
       id: string;
@@ -810,6 +849,14 @@ export const strategiesApi = {
       totalPages: number;
     }>>('/strategies/revenue/logs', { params }),
 
+  /** 提现策略收益 */
+  withdrawRevenue: (amount: number) =>
+    api.post<never, ApiResponse<{
+      withdrawalId: string;
+      amount: string;
+      status: string;
+    }>>('/strategies/revenue/withdraw', { amount }),
+
   /** 获取策略升级进度 */
   getUpgradeProgress: (strategyId: string) =>
     api.get<never, ApiResponse<{
@@ -827,12 +874,19 @@ export const strategiesApi = {
     }>>(`/strategies/${strategyId}/upgrade-progress`),
 
   /** 提交策略上架申请（从我的策略提交到市场） */
-  submitForReview: (strategyId: string) =>
+  submitForReview: (strategyId: string, data?: {
+    description?: string;
+    autoCheckResult?: {
+      backtestReturn: number | null;
+      backtestWinRate: number | null;
+      backtestDrawdown: number | null;
+    };
+  }) =>
     api.post<never, ApiResponse<{
       strategyId: string;
       reviewStatus: string;
       message: string;
-    }>>(`/strategies/${strategyId}/submit-for-review`),
+    }>>(`/strategies/${strategyId}/submit-for-review`, data),
 
   /** 代码回测 - 在用户 VPS Freqtrade 上执行 */
   runCodeBacktest: (data: {
@@ -862,39 +916,24 @@ export const strategiesApi = {
       }>;
     }>>('/strategies/backtest/code', data),
 
-  /** 可视化策略回测 - 在 Master 服务器本地执行（不需要 VPS） */
-  runVisualBacktest: (data: {
-    name: string;
-    indicators: Array<{
-      id: string;
-      type: 'RSI' | 'MACD' | 'MA' | 'EMA' | 'BOLLINGER' | 'ATR' | 'STOCH' | 'ADX';
-      params: Record<string, number>;
-    }>;
-    buyConditions: Array<{
-      id: string;
-      indicator: string;
-      field?: string;
-      operator: '<' | '>' | '==' | 'cross_above' | 'cross_below';
-      value: number | string;
-    }>;
-    sellConditions: Array<{
-      id: string;
-      indicator: string;
-      field?: string;
-      operator: '<' | '>' | '==' | 'cross_above' | 'cross_below';
-      value: number | string;
-    }>;
-    riskManagement: {
-      stoploss: number;
-      takeProfit: number;
-      trailingStop: boolean;
-      trailingStopOffset?: number;
-    };
+  /**
+   * 执行策略回测（Freqtrade）
+   *
+   * 在用户 VPS 上通过 Freqtrade 执行回测
+   * 要求：用户必须有活跃的 VPS 实例
+   */
+  backtest: (data: {
+    strategyId: string;
     pairs: string[];
     startDate: string;
     endDate: string;
     initialCapital: number;
+    stoploss?: number;
+    takeprofit?: number;
+    timeframe?: string;
     leverage?: number;
+    maxOpenTrades?: number;
+    followStrategyCode?: boolean; // 跟随策略代码（止损/止盈/K线/追踪止损使用代码中的值）
   }) =>
     api.post<never, ApiResponse<{
       totalReturn: number;
@@ -905,14 +944,13 @@ export const strategiesApi = {
       avgProfit: number;
       avgLoss: number;
       profitFactor: number;
-      curve: Array<{ date: string; value: number; trades: number }>;
+      curve: Array<{ date: string; value: number }>;
       strategyName: string;
       startDate: string;
       endDate: string;
       initialCapital: number;
-      finalCapital: number;
       pairs: string[];
-    }>>('/strategies/backtest/visual', data),
+    }>>('/strategies/backtest', data),
 };
 
 // API Keys API

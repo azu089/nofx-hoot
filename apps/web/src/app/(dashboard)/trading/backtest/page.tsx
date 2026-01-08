@@ -2,46 +2,39 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, Button } from '@/components/ui';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { strategiesApi, Strategy } from '@/lib/api';
-import { formatCurrency, formatPercent } from '@/lib/utils';
-import { SymbolSearch } from '@/components/features/trading';
-import { StrategySelector } from '@/components/features/strategies/StrategySelector';
+import { StrategySelector, ParamsHelpModal } from '@/components/features/strategies';
 import {
   loadStrategyConfig,
   getDefaultConfig,
-  type MinimalRoiEntry,
 } from '@/types/strategy-config';
 import {
   TrendingUp,
   TrendingDown,
   Activity,
-  DollarSign,
-  Percent,
-  Target,
-  Hash,
   BarChart3,
   PlayCircle,
   AlertCircle,
-  AlertTriangle,
-  Sliders,
-  Code,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
-  Settings,
   Save,
   CheckCircle2,
+  Loader2,
+  RotateCcw,
+  X,
+  Clock,
+  Target,
+  ArrowLeft,
+  Search,
   Plus,
-  Trash2,
-  Calendar,
-  Zap,
-  RefreshCw,
-  Star,
+  Shield,
+  AlertTriangle,
+  Code,
+  HelpCircle,
 } from 'lucide-react';
-import Link from 'next/link';
 import {
   AreaChart,
   Area,
@@ -54,6 +47,8 @@ import {
 
 // ============ 类型定义 ============
 
+type PageState = 'config' | 'loading' | 'result';
+
 interface BacktestResult {
   totalReturn: number;
   winRate: number;
@@ -63,72 +58,31 @@ interface BacktestResult {
   avgProfit: number;
   avgLoss: number;
   profitFactor: number;
-  curve: Array<{ date: string; value: number; trades: number }>;
+  curveData: Array<{ date: string; value: number }>;
 }
 
-// 页面模式
-type PageMode = 'config' | 'loading' | 'result';
-
-// ============ 常量配置 ============
-
+// 默认交易对
 const DEFAULT_PAIRS = ['BTC/USDT', 'ETH/USDT'];
-
-const TIMEFRAME_OPTIONS = [
-  { value: '1m', label: '1分钟' },
-  { value: '5m', label: '5分钟' },
-  { value: '15m', label: '15分钟' },
-  { value: '1h', label: '1小时' },
-  { value: '4h', label: '4小时' },
-  { value: '1d', label: '1天' },
+const HOT_PAIRS = ['SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT'];
+// 所有可选交易对（用于搜索）
+const ALL_PAIRS = [
+  'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT',
+  'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'MATIC/USDT',
+  'LINK/USDT', 'UNI/USDT', 'ATOM/USDT', 'LTC/USDT', 'ETC/USDT',
+  'FIL/USDT', 'APT/USDT', 'ARB/USDT', 'OP/USDT', 'NEAR/USDT',
+  'AAVE/USDT', 'MKR/USDT', 'SNX/USDT', 'CRV/USDT', 'LDO/USDT',
+  'SAND/USDT', 'MANA/USDT', 'AXS/USDT', 'GALA/USDT', 'IMX/USDT',
 ];
-
-const EXCHANGE_OPTIONS = [
-  { value: 'binance', label: 'Binance' },
-  { value: 'okx', label: 'OKX' },
-  { value: 'bybit', label: 'Bybit' },
-  { value: 'huobi', label: 'Huobi' },
-  { value: 'kucoin', label: 'KuCoin' },
-];
-
-// 快速日期选择选项
-const QUICK_DATE_OPTIONS = [
-  { label: '1周', days: 7 },
-  { label: '1月', days: 30 },
-  { label: '3月', days: 90 },
-  { label: '6月', days: 180 },
-];
-
-// 热门交易对
-const HOT_PAIRS = ['SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT'];
 
 // ============ 骨架屏组件 ============
 
 function BacktestSkeleton() {
   return (
-    <div className="space-y-3 pb-24">
-      <div className="h-8 w-20 bg-bg-tertiary rounded animate-pulse" />
-      <div className="animate-pulse space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="h-14 bg-bg-tertiary rounded-lg" />
-          <div className="h-14 bg-bg-tertiary rounded-lg" />
-        </div>
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 bg-bg-tertiary rounded-lg" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============ 步骤标题组件 ============
-
-function StepTitle({ step, title }: { step: number; title: string }) {
-  return (
-    <div className="flex items-center gap-2 py-3">
-      <div className="w-6 h-6 rounded-full bg-brand-primary/20 flex items-center justify-center">
-        <span className="text-xs font-bold text-brand-primary">{step}</span>
-      </div>
-      <span className="text-sm font-medium text-text-primary">{title}</span>
+    <div className="space-y-4 animate-pulse">
+      <div className="h-10 bg-bg-tertiary rounded-lg w-48" />
+      <div className="h-32 bg-bg-tertiary rounded-lg" />
+      <div className="h-24 bg-bg-tertiary rounded-lg" />
+      <div className="h-24 bg-bg-tertiary rounded-lg" />
     </div>
   );
 }
@@ -140,128 +94,107 @@ function BacktestPageInner() {
   const router = useRouter();
   const defaultConfig = getDefaultConfig();
 
-  // 页面模式状态
-  const [pageMode, setPageMode] = useState<PageMode>('config');
+  // 页面状态
+  const [pageState, setPageState] = useState<PageState>('config');
 
-  // 表单状态
+  // 策略选择（含 content 字段用于判断是否有代码）
   const [strategyId, setStrategyId] = useState('');
+  const [sourceStrategy, setSourceStrategy] = useState<(Strategy & { content?: string }) | null>(null);
+
+  // 回测参数
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [initialCapital, setInitialCapital] = useState('10000');
   const [selectedPairs, setSelectedPairs] = useState<string[]>(DEFAULT_PAIRS);
-
-  // 高级回测参数
-  const [timeframe, setTimeframe] = useState('5m');
-  const [fee, setFee] = useState('0.001');
-  const [maxOpenTrades, setMaxOpenTrades] = useState('3');
-  const [stakeAmount, setStakeAmount] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(true);
-  const [exchange, setExchange] = useState('binance');
-
-  // 止损止盈参数
   const [stopLoss, setStopLoss] = useState('-5');
   const [takeProfit, setTakeProfit] = useState('10');
 
-  // 杠杆设置
+  // 高级参数
+  const [timeframe, setTimeframe] = useState('5m');
+  const [fee, setFee] = useState('0.001');
+  const [maxOpenTrades, setMaxOpenTrades] = useState('3');
   const [leverage, setLeverage] = useState('1');
-  const [isContractMode, setIsContractMode] = useState(false);
+  const [exchange, setExchange] = useState('binance');
+  const [showAdvanced, setShowAdvanced] = useState(true);
 
-  // 高级配置
-  const [minimalRoi, setMinimalRoi] = useState<MinimalRoiEntry[]>(defaultConfig.minimalRoi);
+  // 跟随策略代码（止损/止盈/K线/追踪止损使用代码中的值）
+  const [followStrategyCode, setFollowStrategyCode] = useState(true);
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  const [showParamsHelp, setShowParamsHelp] = useState(false);
+  const [pairSearch, setPairSearch] = useState('');
+  const [showPairSearch, setShowPairSearch] = useState(false);
+
+  // 风控参数
+  const [dryRun, setDryRun] = useState(false);
   const [trailingStop, setTrailingStop] = useState(false);
-  const [trailingStopPositive, setTrailingStopPositive] = useState('0.01');
-  const [trailingStopOffset, setTrailingStopOffset] = useState('0.02');
-  const [trailingOnlyOffsetReached, setTrailingOnlyOffsetReached] = useState(true);
   const [stoplossOnExchange, setStoplossOnExchange] = useState(true);
-  const [blacklist, setBlacklist] = useState<string[]>([]);
-  const [crashProtection, setCrashProtection] = useState(false);
-  const [crashThreshold, setCrashThreshold] = useState('-10');
-  const [crashTimeframe, setCrashTimeframe] = useState('5');
+  const [unfilledTimeout, setUnfilledTimeout] = useState('10'); // 未成交超时（分钟）
+  const [cancelOpenOrders, setCancelOpenOrders] = useState(true); // 退出时取消挂单
 
-  // 数据状态
+  // 黑天鹅防护
+  const [blackSwanEnabled, setBlackSwanEnabled] = useState(false);
+  const [blackSwanThreshold, setBlackSwanThreshold] = useState('-10');
+  const [blackSwanTimeframe, setBlackSwanTimeframe] = useState('5');
+  const [blackSwanAction, setBlackSwanAction] = useState('pause');
+
+  // 结果和状态
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sourceStrategy, setSourceStrategy] = useState<Strategy | null>(null);
-  const [fromStrategyDetail, setFromStrategyDetail] = useState(false);
-
-  // 保存状态
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [directSaving, setDirectSaving] = useState(false);
 
   // ============ 初始化 ============
 
   useEffect(() => {
-    const init = async () => {
-      // 设置默认日期（最近3个月）
-      const end = new Date();
-      const start = new Date();
-      start.setMonth(start.getMonth() - 3);
-      setEndDate(end.toISOString().split('T')[0]);
-      setStartDate(start.toISOString().split('T')[0]);
+    // 设置默认日期（最近3个月）
+    const end = new Date();
+    const start = new Date();
+    start.setMonth(start.getMonth() - 3);
+    setEndDate(end.toISOString().split('T')[0]);
+    setStartDate(start.toISOString().split('T')[0]);
 
-      // 优先从 sessionStorage 读取配置
-      const savedConfig = loadStrategyConfig();
-      if (savedConfig) {
-        setStrategyId(savedConfig.strategyId);
-        setInitialCapital(savedConfig.capital);
-        setStopLoss(savedConfig.stopLoss);
-        setTakeProfit(savedConfig.takeProfit);
-        setMaxOpenTrades(savedConfig.maxPositions);
-        setTimeframe(savedConfig.timeframe);
-        setExchange(savedConfig.exchange);
-        if (savedConfig.fee) setFee(savedConfig.fee);
+    // 读取 sessionStorage 配置
+    const savedConfig = loadStrategyConfig();
+    if (savedConfig) {
+      setStrategyId(savedConfig.strategyId);
+      setInitialCapital(savedConfig.capital);
+      setStopLoss(savedConfig.stopLoss);
+      setTakeProfit(savedConfig.takeProfit);
+      setMaxOpenTrades(savedConfig.maxPositions);
+      setTimeframe(savedConfig.timeframe);
+      setExchange(savedConfig.exchange);
+      const pairs = savedConfig.selectedCoins.map(c => c.includes('/') ? c : `${c}/USDT`);
+      setSelectedPairs(pairs);
 
-        const pairs = savedConfig.selectedCoins.map(c => c.includes('/') ? c : `${c}/USDT`);
-        setSelectedPairs(pairs);
-
-        setMinimalRoi(savedConfig.minimalRoi);
-        setTrailingStop(savedConfig.trailingStop);
-        setTrailingStopPositive(savedConfig.trailingStopPositive);
-        setTrailingStopOffset(savedConfig.trailingStopOffset);
-        setTrailingOnlyOffsetReached(savedConfig.trailingOnlyOffsetReached);
-        setStoplossOnExchange(savedConfig.stoplossOnExchange);
-        setBlacklist(savedConfig.blacklist);
-
-        setFromStrategyDetail(true);
-
-        try {
-          const response = await strategiesApi.getDetail(savedConfig.strategyId);
-          if (response.data) {
-            setSourceStrategy(response.data as Strategy);
-          }
-        } catch (err) {
-          console.error('获取策略详情失败:', err);
+      // 获取策略详情
+      strategiesApi.getDetail(savedConfig.strategyId).then(response => {
+        if (response.data) {
+          setSourceStrategy(response.data as Strategy);
         }
-        return;
-      }
+      }).catch(console.error);
+    }
+  }, []);
 
-      // 兼容 URL 参数
-      const urlStrategyId = searchParams.get('strategyId');
-      if (urlStrategyId) {
-        setStrategyId(urlStrategyId);
-        try {
-          const response = await strategiesApi.getDetail(urlStrategyId);
-          if (response.data) {
-            setSourceStrategy(response.data as Strategy);
-          }
-        } catch (err) {
-          console.error('获取策略详情失败:', err);
+  // 从 URL 参数读取策略
+  useEffect(() => {
+    const urlStrategyId = searchParams.get('strategyId');
+    if (urlStrategyId && urlStrategyId !== strategyId) {
+      setStrategyId(urlStrategyId);
+      strategiesApi.getDetail(urlStrategyId).then(response => {
+        if (response.data) {
+          setSourceStrategy(response.data as Strategy);
         }
-      }
-    };
-
-    init();
+      }).catch(console.error);
+    }
   }, [searchParams]);
 
   // ============ 事件处理 ============
 
-  const handleStrategyChange = (id: string, strategy: Strategy | null) => {
+  const handleStrategyChange = (id: string, strategy: (Strategy & { content?: string }) | null) => {
     setStrategyId(id);
     setSourceStrategy(strategy);
   };
 
-  // 快速日期选择
   const handleQuickDateSelect = (days: number) => {
     const end = new Date();
     const start = new Date();
@@ -270,93 +203,158 @@ function BacktestPageInner() {
     setStartDate(start.toISOString().split('T')[0]);
   };
 
-  // 添加热门交易对
   const handleAddHotPair = (pair: string) => {
     if (!selectedPairs.includes(pair) && selectedPairs.length < 10) {
       setSelectedPairs([...selectedPairs, pair]);
     }
   };
 
+  const handleRemovePair = (pair: string) => {
+    setSelectedPairs(selectedPairs.filter(p => p !== pair));
+  };
+
   // 开始回测
-  const handleBacktest = async () => {
+  const handleStartBacktest = async () => {
     if (!strategyId) {
-      setError('请选择策略');
+      setError('请先选择一个策略');
       return;
     }
-    if (!startDate || !endDate) {
-      setError('请选择日期范围');
-      return;
-    }
-    if (!initialCapital || parseFloat(initialCapital) <= 0) {
-      setError('请输入有效的初始资金');
-      return;
-    }
+
     if (selectedPairs.length === 0) {
       setError('请至少选择一个交易对');
       return;
     }
 
     setError(null);
-    setPageMode('loading');
+    setPageState('loading');
 
     try {
-      // TODO: 调用真实回测 API
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const mockResult = generateMockBacktestResult(
-        parseFloat(initialCapital),
-        new Date(startDate),
-        new Date(endDate)
-      );
-      setResult(mockResult);
-      setPageMode('result');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '回测失败，请重试');
-      setPageMode('config');
+      // 判断是否跟随策略代码（确保返回布尔值）
+      const shouldFollowCode = !!(sourceStrategy?.content && followStrategyCode);
+
+      // 调用真实 Freqtrade 回测 API
+      // 当跟随策略代码时，不传 stoploss/takeprofit/timeframe，让后端使用代码中的值
+      const response = await strategiesApi.backtest({
+        strategyId,
+        pairs: selectedPairs,
+        startDate,
+        endDate,
+        initialCapital: parseFloat(initialCapital),
+        leverage: parseFloat(leverage),
+        maxOpenTrades: parseInt(maxOpenTrades, 10),
+        // 只有不跟随代码时才传这些参数
+        ...(!shouldFollowCode && {
+          stoploss: parseFloat(stopLoss),
+          takeprofit: parseFloat(takeProfit),
+          timeframe,
+        }),
+        // 标记是否跟随策略代码
+        followStrategyCode: shouldFollowCode,
+      });
+
+      if (response.code !== 0) {
+        throw new Error(response.message || '回测失败');
+      }
+
+      // 映射 API 响应到前端结构
+      const apiResult = response.data;
+      const backtestResult: BacktestResult = {
+        totalReturn: apiResult.totalReturn,
+        winRate: apiResult.winRate,
+        maxDrawdown: apiResult.maxDrawdown,
+        sharpeRatio: apiResult.sharpeRatio,
+        totalTrades: apiResult.totalTrades,
+        avgProfit: apiResult.avgProfit,
+        avgLoss: apiResult.avgLoss,
+        profitFactor: apiResult.profitFactor,
+        curveData: apiResult.curve || generateMockCurveData(),
+      };
+
+      setResult(backtestResult);
+      setPageState('result');
+    } catch (err: any) {
+      // 检查是否是无 VPS 的错误
+      if (err?.response?.data?.code === 40301) {
+        setError('您还没有活跃的 VPS 实例，请先购买 VPS 服务后再进行回测');
+      } else {
+        setError(err instanceof Error ? err.message : '回测失败，请稍后重试');
+      }
+      setPageState('config');
     }
   };
 
-  // 保存配置
+  // 生成模拟收益曲线
+  const generateMockCurveData = () => {
+    const data = [];
+    let value = parseFloat(initialCapital);
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const step = Math.max(1, Math.floor(days / 50));
+
+    for (let i = 0; i <= days; i += step) {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      value = value * (1 + (Math.random() - 0.45) * 0.03);
+      data.push({
+        date: date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
+        value: Math.round(value),
+      });
+    }
+    return data;
+  };
+
+  // 保存到我的策略
   const handleSaveToMyStrategies = async () => {
-    if (!result || !strategyId) return;
+    if (!strategyId) return;
 
     setSaving(true);
     setSaveSuccess(false);
 
     try {
+      // 判断是否跟随策略代码（确保返回布尔值）
+      const shouldFollowCode = !!(sourceStrategy?.content && followStrategyCode);
+
       const configToSave = {
         strategy_id: strategyId,
         stake_amount: initialCapital,
         max_open_trades: parseInt(maxOpenTrades) || 3,
-        leverage: isContractMode ? parseInt(leverage) : 1,
-        stoploss: parseFloat(stopLoss) / 100,
-        trailing_stop: trailingStop,
-        timeframe: timeframe,
+        leverage: parseInt(leverage) || 1,
         pair_whitelist: selectedPairs,
-        blacklist: blacklist,
+        // 风控参数（只有不跟随代码时才覆盖）
+        stoploss_on_exchange: stoplossOnExchange,
+        // 标记是否跟随策略代码
+        follow_strategy_code: shouldFollowCode,
+        // 只有不跟随代码时才传这些参数
+        ...(!shouldFollowCode && {
+          stoploss: parseFloat(stopLoss) / 100,
+          timeframe: timeframe,
+          trailing_stop: trailingStop,
+        }),
         custom_config: {
-          take_profit: parseFloat(takeProfit) / 100,
           fee: parseFloat(fee),
-          stake_amount_per_trade: stakeAmount || undefined,
           exchange: exchange,
-          minimal_roi: minimalRoi.reduce((acc, entry) => {
-            acc[entry.minutes.toString()] = entry.roi;
-            return acc;
-          }, {} as Record<string, number>),
-          trailing_stop_positive: trailingStop ? parseFloat(trailingStopPositive) : undefined,
-          trailing_stop_positive_offset: trailingStop ? parseFloat(trailingStopOffset) : undefined,
-          trailing_only_offset_is_reached: trailingStop ? trailingOnlyOffsetReached : undefined,
-          stoploss_on_exchange: stoplossOnExchange,
-          crash_protection: crashProtection,
-          crash_threshold: crashProtection ? parseFloat(crashThreshold) : undefined,
-          crash_timeframe: crashProtection ? parseInt(crashTimeframe) : undefined,
-          backtest_summary: {
-            totalReturn: result.totalReturn,
-            winRate: result.winRate,
-            maxDrawdown: result.maxDrawdown,
-            sharpeRatio: result.sharpeRatio,
-            totalTrades: result.totalTrades,
-            dateRange: { startDate, endDate },
-          },
+          dry_run: dryRun,
+          // 只有不跟随代码时才传止盈
+          ...(!shouldFollowCode && {
+            take_profit: parseFloat(takeProfit) / 100,
+          }),
+          // 黑天鹅防护
+          crash_protection: blackSwanEnabled,
+          crash_threshold: blackSwanEnabled ? blackSwanThreshold : null,
+          crash_timeframe: blackSwanEnabled ? blackSwanTimeframe : null,
+          crash_action: blackSwanEnabled ? blackSwanAction : null,
+          // 如果有回测结果，添加回测摘要
+          ...(result && {
+            backtest_summary: {
+              totalReturn: result.totalReturn,
+              winRate: result.winRate,
+              maxDrawdown: result.maxDrawdown,
+              sharpeRatio: result.sharpeRatio,
+              totalTrades: result.totalTrades,
+              dateRange: { startDate, endDate },
+            },
+          }),
         },
       };
 
@@ -364,78 +362,16 @@ function BacktestPageInner() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
-      console.error('保存失败:', err);
-      setError(err instanceof Error ? err.message : '保存失败，请重试');
+      setError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }
   };
 
-  // 直接保存
-  const handleDirectSave = async () => {
-    if (!strategyId) {
-      setError('请选择策略');
-      return;
-    }
-    if (!initialCapital || parseFloat(initialCapital) <= 0) {
-      setError('请输入有效的初始资金');
-      return;
-    }
-    if (selectedPairs.length === 0) {
-      setError('请至少选择一个交易对');
-      return;
-    }
-
-    setError(null);
-    setDirectSaving(true);
-
-    try {
-      const configToSave = {
-        strategy_id: strategyId,
-        stake_amount: initialCapital,
-        max_open_trades: parseInt(maxOpenTrades) || 3,
-        leverage: isContractMode ? parseInt(leverage) : 1,
-        stoploss: parseFloat(stopLoss) / 100,
-        trailing_stop: trailingStop,
-        timeframe: timeframe,
-        pair_whitelist: selectedPairs,
-        blacklist: blacklist,
-        custom_config: {
-          take_profit: parseFloat(takeProfit) / 100,
-          fee: parseFloat(fee),
-          stake_amount_per_trade: stakeAmount || undefined,
-          exchange: exchange,
-          is_contract_mode: isContractMode,
-          minimal_roi: minimalRoi.reduce((acc, entry) => {
-            acc[entry.minutes.toString()] = entry.roi;
-            return acc;
-          }, {} as Record<string, number>),
-          trailing_stop_positive: trailingStop ? parseFloat(trailingStopPositive) : undefined,
-          trailing_stop_positive_offset: trailingStop ? parseFloat(trailingStopOffset) : undefined,
-          trailing_only_offset_is_reached: trailingStop ? trailingOnlyOffsetReached : undefined,
-          stoploss_on_exchange: stoplossOnExchange,
-          crash_protection: crashProtection,
-          crash_threshold: crashProtection ? parseFloat(crashThreshold) : undefined,
-          crash_timeframe: crashProtection ? parseInt(crashTimeframe) : undefined,
-        },
-      };
-
-      await strategiesApi.createConfig(configToSave);
-      router.push('/strategies/my?saved=true');
-    } catch (err) {
-      console.error('保存失败:', err);
-      setError(err instanceof Error ? err.message : '保存失败，请重试');
-    } finally {
-      setDirectSaving(false);
-    }
-  };
-
-  // 重新配置
   const handleReconfig = () => {
-    setPageMode('config');
+    setPageState('config');
   };
 
-  // 获取风险评级
   const getRiskRating = (sharpe: number) => {
     if (sharpe >= 2) return { grade: 'A', label: '优秀', color: 'text-success', bg: 'bg-success/20' };
     if (sharpe >= 1.5) return { grade: 'B', label: '良好', color: 'text-brand-primary', bg: 'bg-brand-primary/20' };
@@ -443,701 +379,629 @@ function BacktestPageInner() {
     return { grade: 'D', label: '较差', color: 'text-danger', bg: 'bg-danger/20' };
   };
 
-  // 已移除顶部副标题文案
-
   // ============ 渲染：加载状态 ============
-
-  if (pageMode === 'loading') {
+  if (pageState === 'loading') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center space-y-6 pb-24">
-        <div className="w-16 h-16 border-4 border-brand-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-lg font-medium text-white mb-2">正在回测中</p>
-          <p className="text-text-secondary text-sm">策略：{sourceStrategy?.name || '未知策略'}</p>
-          <p className="text-text-tertiary text-xs mt-1">{startDate} ~ {endDate}</p>
+          <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-white mb-2">正在回测中...</h3>
+          <p className="text-text-secondary text-sm">
+            {sourceStrategy?.name || '策略'} · {selectedPairs.length} 个交易对
+          </p>
         </div>
       </div>
     );
   }
 
-  // ============ 渲染：回测结果 ============
-
-  if (pageMode === 'result' && result) {
-    const rating = getRiskRating(result.sharpeRatio);
+  // ============ 渲染：结果页面 ============
+  if (pageState === 'result' && result) {
+    const riskRating = getRiskRating(result.sharpeRatio);
 
     return (
-      <div className="space-y-3 pb-28">
-        {/* 紧凑头部 */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleReconfig}
-            className="flex items-center justify-center w-8 h-8 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-            aria-label="返回"
-          >
-            <ChevronDown className="w-5 h-5 rotate-90" />
-          </button>
-          <div>
-            <span className="text-sm font-medium text-text-primary">回测结果</span>
-            <p className="text-xs text-text-tertiary">{sourceStrategy?.name || '策略'} · {startDate.slice(5)} ~ {endDate.slice(5)}</p>
-          </div>
-        </div>
-
-        {/* 核心收益卡片 */}
-        <Card className="bg-gradient-to-br from-brand-primary/10 to-success/10 border-brand-primary/30">
-          <CardContent className="p-6 text-center">
-            <p className="text-text-secondary text-sm mb-2">总收益率</p>
-            <p className={`text-4xl font-bold ${result.totalReturn >= 0 ? 'text-success' : 'text-danger'}`}>
-              {result.totalReturn >= 0 ? '+' : ''}{result.totalReturn.toFixed(2)}%
-            </p>
-            <div className={`inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full ${rating.bg}`}>
-              <Star className={`w-4 h-4 ${rating.color}`} />
-              <span className={`text-sm font-medium ${rating.color}`}>
-                风险评级: {rating.grade} ({rating.label})
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 三指标卡片 */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-lg font-bold text-white">{result.winRate.toFixed(0)}%</p>
-              <p className="text-[10px] text-text-tertiary">胜率</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-lg font-bold text-danger">{result.maxDrawdown.toFixed(1)}%</p>
-              <p className="text-[10px] text-text-tertiary">最大回撤</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 text-center">
-              <p className="text-lg font-bold text-brand-primary">{result.sharpeRatio.toFixed(2)}</p>
-              <p className="text-[10px] text-text-tertiary">夏普比率</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* 收益曲线 */}
+      <div className="pb-6 space-y-4">
+        {/* 主卡片 */}
         <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-brand-primary" />
-              收益曲线
-            </h3>
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={result.curve}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3772FF" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3772FF" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
-                  <XAxis dataKey="date" stroke="#848E9C" tick={{ fill: '#848E9C', fontSize: 10 }} tickLine={false} />
-                  <YAxis stroke="#848E9C" tick={{ fill: '#848E9C', fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1E222D', border: '1px solid #2B3139', borderRadius: '8px' }}
-                    labelStyle={{ color: '#FFFFFF', fontSize: 12 }}
-                    itemStyle={{ color: '#3772FF', fontSize: 12 }}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="#3772FF" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
-                </AreaChart>
-              </ResponsiveContainer>
+          <CardContent className="p-0">
+            {/* 返回按钮 + 核心收益 */}
+            <div className="relative p-4 text-center bg-gradient-to-b from-brand-primary/5 to-transparent">
+              <button
+                onClick={handleReconfig}
+                className="absolute left-3 top-3 p-1.5 text-text-secondary hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <p className={`text-4xl font-bold ${result.totalReturn >= 0 ? 'text-success' : 'text-danger'}`}>
+                {result.totalReturn >= 0 ? '+' : ''}{result.totalReturn.toFixed(2)}%
+              </p>
+              <p className="text-text-tertiary text-xs mt-1">总收益率</p>
+              <div className={`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-xs ${riskRating.bg} ${riskRating.color}`}>
+                ⭐ 风险评级: {riskRating.grade} ({riskRating.label})
+              </div>
+            </div>
+
+            {/* 四个核心指标 - 一行，无分割线 */}
+            <div className="grid grid-cols-4 py-3 px-2">
+              <div className="text-center">
+                <p className="text-base font-bold text-white">{result.winRate.toFixed(0)}%</p>
+                <p className="text-[10px] text-text-tertiary">胜率</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-danger">{result.maxDrawdown.toFixed(0)}%</p>
+                <p className="text-[10px] text-text-tertiary">最大回撤</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-brand-primary">{result.sharpeRatio.toFixed(2)}</p>
+                <p className="text-[10px] text-text-tertiary">夏普比率</p>
+              </div>
+              <div className="text-center">
+                <p className="text-base font-bold text-white">{result.totalTrades}</p>
+                <p className="text-[10px] text-text-tertiary">交易次数</p>
+              </div>
+            </div>
+
+            {/* 收益曲线 */}
+            <div className="px-4 pb-4">
+              <h4 className="text-xs font-medium text-text-tertiary mb-2">收益曲线</h4>
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={result.curveData}>
+                    <defs>
+                      <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3772FF" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3772FF" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: '#5E6673', fontSize: 9 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#5E6673', fontSize: 9 }} axisLine={false} tickLine={false} width={40} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#1E222D',
+                        border: '1px solid #2B3139',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3772FF"
+                      strokeWidth={1.5}
+                      fillOpacity={1}
+                      fill="url(#colorValue)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 详细统计 - 紧凑列表 */}
+            <div className="px-4 pb-4">
+              <h4 className="text-xs font-medium text-text-tertiary mb-2">详细统计</h4>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">平均盈利</span>
+                  <span className="text-success">${result.avgProfit.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">平均亏损</span>
+                  <span className="text-danger">${Math.abs(result.avgLoss).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">盈亏比</span>
+                  <span className="text-white">{result.profitFactor.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">初始资金</span>
+                  <span className="text-white">${parseFloat(initialCapital).toLocaleString()}</span>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* 详细统计 */}
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-medium text-text-primary mb-3 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-brand-primary" />
-              详细统计
-            </h3>
-            <div className="space-y-2">
-              <div className="flex justify-between py-2 border-b border-border-primary/30">
-                <span className="text-text-secondary text-sm">交易次数</span>
-                <span className="text-white font-medium">{result.totalTrades} 笔</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-border-primary/30">
-                <span className="text-text-secondary text-sm">平均盈利</span>
-                <span className="text-success font-medium">+{formatCurrency(result.avgProfit)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-border-primary/30">
-                <span className="text-text-secondary text-sm">平均亏损</span>
-                <span className="text-danger font-medium">{formatCurrency(result.avgLoss)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-border-primary/30">
-                <span className="text-text-secondary text-sm">盈亏比</span>
-                <span className="text-white font-medium">{result.profitFactor.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-border-primary/30">
-                <span className="text-text-secondary text-sm">初始资金</span>
-                <span className="text-white font-medium">{formatCurrency(parseFloat(initialCapital))}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-text-secondary text-sm">最终资金</span>
-                <span className="text-success font-medium">
-                  {formatCurrency(parseFloat(initialCapital) * (1 + result.totalReturn / 100))}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 固定底部操作栏 */}
-        <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-bg-primary/95 backdrop-blur-md border-t border-border-primary z-50">
-          <div className="max-w-lg mx-auto space-y-2">
-            <Button
-              className="w-full h-12"
-              onClick={handleSaveToMyStrategies}
-              isLoading={saving}
-              disabled={saving || saveSuccess}
-            >
-              {saveSuccess ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5 mr-2" />
-                  已保存到我的策略
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5 mr-2" />
-                  保存到我的策略
-                </>
-              )}
-            </Button>
-            <button
-              onClick={handleReconfig}
-              className="w-full py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <RefreshCw className="w-4 h-4 inline mr-1" />
-              重新配置
-            </button>
-          </div>
-        </div>
+        {/* 保存按钮 - 卡片下方 */}
+        <Button
+          onClick={handleSaveToMyStrategies}
+          disabled={saving || saveSuccess}
+          className="w-full"
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : saveSuccess ? (
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+          ) : (
+            <Save className="w-4 h-4 mr-2" />
+          )}
+          {saving ? '保存中...' : saveSuccess ? '已保存到我的策略' : '保存到我的策略'}
+        </Button>
       </div>
     );
   }
 
-  // ============ 渲染：配置表单 ============
+  // ============ 渲染：配置页面 ============
+
+  // 回测周期选项
+  const PERIOD_OPTIONS = [
+    { label: '1周', days: 7 },
+    { label: '1月', days: 30 },
+    { label: '3月', days: 90 },
+    { label: '6月', days: 180 },
+    { label: '1年', days: 365 },
+  ];
+
+  // 计算当前选中的周期
+  const getSelectedPeriod = () => {
+    if (!startDate || !endDate) return 90; // 默认3月
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const match = PERIOD_OPTIONS.find(p => Math.abs(p.days - days) < 3);
+    return match ? match.days : null;
+  };
+
+  const selectedPeriod = getSelectedPeriod();
 
   return (
     <div className="space-y-3 pb-32">
-      {/* 移动端紧凑返回按钮 */}
-      <div className="lg:hidden flex items-center gap-2">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center justify-center w-8 h-8 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-          aria-label="返回"
-        >
-          <ChevronDown className="w-5 h-5 rotate-90" />
-        </button>
-        <span className="text-sm text-text-secondary">回测</span>
-      </div>
-
-      {/* 高级回测入口 */}
-      <div className="grid grid-cols-2 gap-2">
-        <Link href="/trading/backtest/visual">
-          <Card className="hover:border-brand-primary/50 transition-colors cursor-pointer h-full">
-            <CardContent className="p-2.5 flex items-center gap-2">
-              <div className="w-8 h-8 bg-brand-primary/20 rounded-lg flex items-center justify-center shrink-0">
-                <Sliders className="w-4 h-4 text-brand-primary" />
-              </div>
-              <p className="text-text-primary font-medium text-sm">自定义策略</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/trading/backtest/code">
-          <Card className="hover:border-brand-primary/50 transition-colors cursor-pointer h-full">
-            <CardContent className="p-2.5 flex items-center gap-2">
-              <div className="w-8 h-8 bg-warning/20 rounded-lg flex items-center justify-center shrink-0">
-                <Code className="w-4 h-4 text-warning" />
-              </div>
-              <p className="text-text-primary font-medium text-sm">代码上传</p>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Step 1: 选择策略 - 设置 overflow-visible 确保下拉不被截断 */}
+      {/* 单卡片表单 */}
       <Card className="overflow-visible">
-        <CardContent className="p-4 overflow-visible">
-          <StepTitle step={1} title="选择策略" />
-          <StrategySelector
-            value={strategyId}
-            onChange={handleStrategyChange}
-            preselectedStrategy={sourceStrategy}
-            placeholder="搜索或选择策略..."
-          />
-        </CardContent>
-      </Card>
+        <CardContent className="p-0 overflow-visible">
+          <div className="divide-y divide-border-primary">
 
-      {/* Step 2: 回测时间 */}
-      <Card>
-        <CardContent className="p-4">
-          <StepTitle step={2} title="回测时间" />
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <label className="block text-xs text-text-tertiary mb-1">起始日期</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-text-tertiary mb-1">结束日期</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-warning" />
-            <span className="text-xs text-text-tertiary mr-2">快速选择:</span>
-            {QUICK_DATE_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                onClick={() => handleQuickDateSelect(opt.days)}
-                className="px-2 py-1 rounded text-xs bg-bg-tertiary text-text-secondary hover:bg-brand-primary/20 hover:text-brand-primary transition-colors"
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Step 3: 资金与风控 */}
-      <Card>
-        <CardContent className="p-4">
-          <StepTitle step={3} title="资金与风控" />
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs text-text-tertiary mb-1">初始资金 (USDT)</label>
-              <Input
-                type="number"
-                value={initialCapital}
-                onChange={(e) => setInitialCapital(e.target.value)}
-                placeholder="10000"
-                min="100"
-                step="100"
-                className="text-lg font-medium"
-              />
-              <p className="text-[10px] text-text-tertiary mt-1">推荐: $1,000 - $100,000</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-text-tertiary mb-1">止损 (%)</label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(e.target.value)}
-                    placeholder="-5"
-                    min="-50"
-                    max="0"
-                    className="pr-8"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-danger text-sm">%</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-text-tertiary mb-1">止盈 (%)</label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    value={takeProfit}
-                    onChange={(e) => setTakeProfit(e.target.value)}
-                    placeholder="10"
-                    min="0"
-                    max="100"
-                    className="pr-8"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-success text-sm">%</span>
-                </div>
-              </div>
-            </div>
-            <p className="text-[10px] text-text-tertiary">止损推荐 -5% 至 -15%，止盈推荐 5% 至 30%</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Step 4: 交易对选择 */}
-      <Card>
-        <CardContent className="p-4">
-          <StepTitle step={4} title="交易对选择" />
-          <SymbolSearch
-            selectedSymbols={selectedPairs}
-            onSelectionChange={setSelectedPairs}
-            maxSelection={10}
-          />
-          <div className="mt-3">
-            <p className="text-xs text-text-tertiary mb-2">热门交易对:</p>
-            <div className="flex flex-wrap gap-2">
-              {HOT_PAIRS.filter(p => !selectedPairs.includes(p)).slice(0, 6).map((pair) => (
+            {/* 选择策略 - 返回按钮在左侧，问号在右侧 */}
+            <div className="p-4 overflow-visible">
+              <div className="flex items-center gap-3">
                 <button
-                  key={pair}
-                  onClick={() => handleAddHotPair(pair)}
-                  className="px-2 py-1 rounded text-xs bg-bg-tertiary text-text-secondary hover:bg-brand-primary/20 hover:text-brand-primary transition-colors"
+                  onClick={() => router.back()}
+                  className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors"
                 >
-                  + {pair.replace('/USDT', '')}
+                  <ArrowLeft className="w-5 h-5" />
                 </button>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 高级参数（折叠） */}
-      <Card>
-        <CardContent className="p-0">
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full flex items-center justify-between p-4"
-          >
-            <span className="text-sm text-text-secondary font-medium flex items-center gap-2">
-              <Settings className="w-4 h-4" />
-              高级参数 (可选)
-            </span>
-            {showAdvanced ? (
-              <ChevronUp className="w-4 h-4 text-text-tertiary" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-text-tertiary" />
-            )}
-          </button>
-
-          {showAdvanced && (
-            <div className="p-4 pt-0 space-y-4 border-t border-border-primary/30">
-              {/* 交易所选择 */}
-              <div>
-                <label className="block text-xs text-text-tertiary mb-1">交易所</label>
-                <select
-                  className="w-full bg-bg-tertiary border border-border-secondary rounded-lg p-2.5 text-white text-sm focus:border-brand-primary outline-none"
-                  value={exchange}
-                  onChange={(e) => setExchange(e.target.value)}
+                <div className="flex-1 overflow-visible">
+                  <StrategySelector
+                    value={strategyId}
+                    onChange={handleStrategyChange}
+                    label=""
+                    placeholder="搜索或选择策略..."
+                    preselectedStrategy={sourceStrategy}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowParamsHelp(true)}
+                  className="p-2 rounded-lg hover:bg-bg-tertiary text-text-tertiary hover:text-brand-primary transition-colors"
+                  title="查看参数说明"
                 >
-                  {EXCHANGE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                  <HelpCircle className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 回测周期 */}
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-brand-primary" />
+                <span className="text-sm font-medium text-white">回测周期</span>
+              </div>
+              {/* 预设周期按钮 */}
+              <div className="flex flex-wrap gap-2 mb-2">
+                {PERIOD_OPTIONS.map((item) => (
+                  <button
+                    key={item.days}
+                    onClick={() => {
+                      handleQuickDateSelect(item.days);
+                      setShowCustomDate(false);
+                    }}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                      selectedPeriod === item.days && !showCustomDate
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setShowCustomDate(!showCustomDate)}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                    showCustomDate || selectedPeriod === null
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white'
+                  }`}
+                >
+                  自定义
+                </button>
+              </div>
+              {/* 自定义日期（仅点击自定义时显示）*/}
+              {showCustomDate && (
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div>
+                    <label className="block text-xs text-text-tertiary mb-1">开始日期</label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-tertiary mb-1">结束日期</label>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 资金与交易对 */}
+            <div className="p-4">
+              {/* 初始资金 */}
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-text-tertiary">💰 初始资金 (USDT)</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+                  <Input
+                    type="number"
+                    value={initialCapital}
+                    onChange={(e) => setInitialCapital(e.target.value)}
+                    placeholder="10000"
+                    className="text-sm pl-7"
+                  />
+                </div>
               </div>
 
-              {/* K 线周期 */}
+              {/* 交易对选择 */}
               <div>
-                <label className="block text-xs text-text-tertiary mb-2">K 线周期</label>
-                <div className="flex flex-wrap gap-2">
-                  {TIMEFRAME_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setTimeframe(opt.value)}
-                      className={`px-3 py-1.5 rounded text-xs transition-colors ${
-                        timeframe === opt.value
-                          ? 'bg-brand-primary text-white'
-                          : 'bg-bg-tertiary text-text-secondary hover:bg-border-secondary'
-                      }`}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-text-tertiary">🎯 交易对</span>
+                  <span className="text-xs text-text-tertiary">{selectedPairs.length}/10</span>
+                </div>
+
+                {/* 搜索框 */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+                  <Input
+                    type="text"
+                    value={pairSearch}
+                    onChange={(e) => {
+                      setPairSearch(e.target.value.toUpperCase());
+                      setShowPairSearch(true);
+                    }}
+                    onFocus={() => setShowPairSearch(true)}
+                    placeholder="搜索交易对，如 BTC、ETH..."
+                    className="text-sm pl-9"
+                  />
+                  {/* 搜索结果下拉 */}
+                  {showPairSearch && pairSearch && (
+                    <div className="absolute z-50 w-full mt-1 bg-bg-secondary border border-border-primary rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {ALL_PAIRS
+                        .filter(p => p.includes(pairSearch) && !selectedPairs.includes(p))
+                        .slice(0, 8)
+                        .map((pair) => (
+                          <button
+                            key={pair}
+                            onClick={() => {
+                              handleAddHotPair(pair);
+                              setPairSearch('');
+                              setShowPairSearch(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm text-white hover:bg-bg-tertiary flex items-center justify-between"
+                          >
+                            <span>{pair}</span>
+                            <Plus className="w-4 h-4 text-brand-primary" />
+                          </button>
+                        ))}
+                      {ALL_PAIRS.filter(p => p.includes(pairSearch) && !selectedPairs.includes(p)).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-text-tertiary">未找到匹配的交易对</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 已选交易对 */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedPairs.map((pair) => (
+                    <span
+                      key={pair}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-brand-primary/20 text-brand-primary text-xs rounded"
                     >
-                      {opt.label}
+                      {pair}
+                      <button onClick={() => handleRemovePair(pair)} className="hover:text-white">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* 热门交易对 */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-text-tertiary">热门:</span>
+                  {HOT_PAIRS.filter(p => !selectedPairs.includes(p)).slice(0, 5).map((pair) => (
+                    <button
+                      key={pair}
+                      onClick={() => handleAddHotPair(pair)}
+                      className="px-2 py-0.5 text-xs bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white rounded transition-colors"
+                    >
+                      +{pair.replace('/USDT', '')}
                     </button>
                   ))}
                 </div>
               </div>
+            </div>
 
-              {/* 合约模式与杠杆 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-text-secondary">合约交易模式</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsContractMode(!isContractMode);
-                      if (!isContractMode) setLeverage('1');
-                    }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      isContractMode ? 'bg-brand-primary' : 'bg-bg-tertiary'
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isContractMode ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
+            {/* 高级参数（折叠） */}
+            <div className="p-4">
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center justify-between w-full"
+              >
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-text-tertiary" />
+                  <span className="text-sm text-text-secondary">高级参数</span>
+                  <span className="text-xs text-text-tertiary">止损/止盈/杠杆/K线</span>
                 </div>
-                {isContractMode && (
+                {showAdvanced ? (
+                  <ChevronUp className="w-4 h-4 text-text-tertiary" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-text-tertiary" />
+                )}
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-4 space-y-3">
+                  {/* 跟随策略代码开关 - 仅当选择了策略且策略有代码时显示 */}
+                  {sourceStrategy?.content && (
+                    <div className="p-3 bg-bg-tertiary/50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Code className="w-4 h-4 text-brand-primary" />
+                          <span className="text-sm text-white">跟随策略代码</span>
+                        </div>
+                        <Switch
+                          id="follow-strategy-code"
+                          checked={followStrategyCode}
+                          onChange={(e) => setFollowStrategyCode(e.target.checked)}
+                          size="sm"
+                        />
+                      </div>
+                      <p className="text-xs text-text-tertiary mt-1">
+                        {followStrategyCode
+                          ? '止损/止盈/K线/追踪止损将使用代码中的设置'
+                          : '使用下方配置覆盖代码中的设置'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 交易所（放首位） */}
                   <div>
-                    <label className="block text-xs text-text-tertiary mb-2">杠杆倍数</label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min="1"
-                        max="20"
+                    <label className="block text-xs text-text-tertiary mb-1">交易所</label>
+                    <select
+                      value={exchange}
+                      onChange={(e) => setExchange(e.target.value)}
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white"
+                    >
+                      <option value="binance">Binance</option>
+                      <option value="okx">OKX</option>
+                      <option value="bybit">Bybit</option>
+                    </select>
+                  </div>
+
+                  {/* 止损止盈 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">
+                        止损 (%)
+                        {sourceStrategy?.content && followStrategyCode && (
+                          <span className="ml-1 text-warning">· 代码优先</span>
+                        )}
+                      </label>
+                      <Input
+                        type="number"
+                        value={stopLoss}
+                        onChange={(e) => setStopLoss(e.target.value)}
+                        disabled={!!sourceStrategy?.content && followStrategyCode}
+                        className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">
+                        止盈 (%)
+                        {sourceStrategy?.content && followStrategyCode && (
+                          <span className="ml-1 text-warning">· 代码优先</span>
+                        )}
+                      </label>
+                      <Input
+                        type="number"
+                        value={takeProfit}
+                        onChange={(e) => setTakeProfit(e.target.value)}
+                        disabled={!!sourceStrategy?.content && followStrategyCode}
+                        className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* K线周期和杠杆 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">
+                        K线周期
+                        {sourceStrategy?.content && followStrategyCode && (
+                          <span className="ml-1 text-warning">· 代码优先</span>
+                        )}
+                      </label>
+                      <select
+                        value={timeframe}
+                        onChange={(e) => setTimeframe(e.target.value)}
+                        disabled={!!sourceStrategy?.content && followStrategyCode}
+                        className={`w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <option value="1m">1分钟</option>
+                        <option value="5m">5分钟</option>
+                        <option value="15m">15分钟</option>
+                        <option value="1h">1小时</option>
+                        <option value="4h">4小时</option>
+                        <option value="1d">1天</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
+                      <Input
+                        type="number"
                         value={leverage}
                         onChange={(e) => setLeverage(e.target.value)}
-                        className="flex-1 accent-brand-primary"
+                        min="1"
+                        max="20"
+                        className="text-sm"
                       />
-                      <span className="text-white font-medium w-12 text-right">{leverage}x</span>
                     </div>
-                    <p className="text-xs text-warning mt-1">高杠杆风险极高，新手建议 1-3x</p>
                   </div>
-                )}
-              </div>
 
-              {/* 最大持仓数 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
-                  <select
-                    className="w-full bg-bg-tertiary border border-border-secondary rounded-lg p-2.5 text-white text-sm focus:border-brand-primary outline-none"
-                    value={maxOpenTrades}
-                    onChange={(e) => setMaxOpenTrades(e.target.value)}
-                  >
-                    {[1, 2, 3, 5, 10, 20].map((num) => (
-                      <option key={num} value={num}>{num} 个</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">手续费率</label>
-                  <Input
-                    type="number"
-                    value={fee}
-                    onChange={(e) => setFee(e.target.value)}
-                    min="0"
-                    max="0.01"
-                    step="0.0001"
-                    placeholder="0.001"
-                  />
-                </div>
-              </div>
-
-              {/* 移动止损 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-text-secondary">启用移动止损</label>
-                  <button
-                    type="button"
-                    onClick={() => setTrailingStop(!trailingStop)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      trailingStop ? 'bg-brand-primary' : 'bg-bg-tertiary'
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      trailingStop ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
-                </div>
-                {trailingStop && (
-                  <div className="pl-4 space-y-3 border-l-2 border-brand-primary/30">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs text-text-tertiary mb-1">触发收益 (%)</label>
-                        <Input
-                          type="number"
-                          value={trailingStopPositive}
-                          onChange={(e) => setTrailingStopPositive(e.target.value)}
-                          placeholder="0.01"
-                          step="0.01"
-                          min="0"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-text-tertiary mb-1">偏移量 (%)</label>
-                        <Input
-                          type="number"
-                          value={trailingStopOffset}
-                          onChange={(e) => setTrailingStopOffset(e.target.value)}
-                          placeholder="0.02"
-                          step="0.01"
-                          min="0"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs text-text-tertiary">仅在达到偏移量后触发</label>
-                      <button
-                        type="button"
-                        onClick={() => setTrailingOnlyOffsetReached(!trailingOnlyOffsetReached)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          trailingOnlyOffsetReached ? 'bg-brand-primary' : 'bg-bg-tertiary'
-                        }`}
-                      >
-                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                          trailingOnlyOffsetReached ? 'translate-x-5' : 'translate-x-1'
-                        }`} />
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-text-tertiary">
-                      当收益达到 {trailingStopPositive}% 后，止损线将跟随价格移动，保持 {trailingStopOffset}% 偏移
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* 止损交易所执行 */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-sm text-text-secondary">止损在交易所执行</label>
-                  <p className="text-[10px] text-text-tertiary">推荐开启，避免网络延迟</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStoplossOnExchange(!stoplossOnExchange)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    stoplossOnExchange ? 'bg-brand-primary' : 'bg-bg-tertiary'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    stoplossOnExchange ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
-                </button>
-              </div>
-
-              {/* 最小收益设置 (minimal_roi) */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-text-secondary">分阶止盈 (ROI)</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (minimalRoi.length < 5) {
-                        setMinimalRoi([...minimalRoi, { minutes: 0, roi: 0.05 }]);
-                      }
-                    }}
-                    className="text-xs text-brand-primary hover:text-brand-secondary"
-                  >
-                    + 添加阶段
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {minimalRoi.map((entry, index) => (
-                    <div key={index} className="flex items-center gap-2">
+                  {/* 最大持仓 + 手续费 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
                       <Input
                         type="number"
-                        value={entry.minutes}
-                        onChange={(e) => {
-                          const newRoi = [...minimalRoi];
-                          newRoi[index].minutes = parseInt(e.target.value) || 0;
-                          setMinimalRoi(newRoi);
-                        }}
-                        placeholder="分钟"
-                        className="w-20 text-xs"
-                        min="0"
+                        value={maxOpenTrades}
+                        onChange={(e) => setMaxOpenTrades(e.target.value)}
+                        className="text-sm"
                       />
-                      <span className="text-xs text-text-tertiary">分钟后</span>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">手续费率 (%)</label>
                       <Input
                         type="number"
-                        value={entry.roi}
-                        onChange={(e) => {
-                          const newRoi = [...minimalRoi];
-                          newRoi[index].roi = parseFloat(e.target.value) || 0;
-                          setMinimalRoi(newRoi);
-                        }}
-                        placeholder="收益率"
-                        className="w-20 text-xs"
+                        value={(parseFloat(fee) * 100).toFixed(2)}
+                        onChange={(e) => setFee((parseFloat(e.target.value) / 100).toString())}
                         step="0.01"
                         min="0"
+                        max="1"
+                        className="text-sm"
                       />
-                      <span className="text-xs text-text-tertiary">止盈</span>
-                      {minimalRoi.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setMinimalRoi(minimalRoi.filter((_, i) => i !== index))}
-                          className="p-1 text-danger hover:bg-danger/10 rounded"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
                     </div>
-                  ))}
-                </div>
-                <p className="text-[10px] text-text-tertiary">
-                  示例：0分钟后10%止盈，60分钟后5%止盈，表示持仓时间越长止盈条件越宽松
-                </p>
-              </div>
-
-              {/* 黑名单管理 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-text-secondary">交易对黑名单</label>
-                  <span className="text-xs text-text-tertiary">{blacklist.length} 个</span>
-                </div>
-                {blacklist.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {blacklist.map((pair, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-danger/10 text-danger text-xs rounded"
-                      >
-                        {pair}
-                        <button
-                          type="button"
-                          onClick={() => setBlacklist(blacklist.filter((_, i) => i !== index))}
-                          className="hover:bg-danger/20 rounded-full p-0.5"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    placeholder="输入交易对，如 LUNA/USDT"
-                    className="flex-1 text-xs"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const input = e.currentTarget;
-                        const value = input.value.trim().toUpperCase();
-                        if (value && !blacklist.includes(value)) {
-                          setBlacklist([...blacklist, value]);
-                          input.value = '';
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                <p className="text-[10px] text-text-tertiary">
-                  添加不参与交易的币种，回车确认
-                </p>
-              </div>
 
-              {/* 黑天鹅防护 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-warning" />
-                  <label className="text-sm text-text-secondary">黑天鹅防护</label>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCrashProtection(!crashProtection)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    crashProtection ? 'bg-warning' : 'bg-bg-tertiary'
-                  }`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    crashProtection ? 'translate-x-6' : 'translate-x-1'
-                  }`} />
-                </button>
-              </div>
+                  {/* 未成交超时 */}
+                  <div>
+                    <label className="block text-xs text-text-tertiary mb-1">未成交超时 (分钟)</label>
+                    <Input
+                      type="number"
+                      value={unfilledTimeout}
+                      onChange={(e) => setUnfilledTimeout(e.target.value)}
+                      min="1"
+                      max="60"
+                      className="text-sm"
+                    />
+                  </div>
 
-              {/* 配置来源提示 */}
-              {fromStrategyDetail && (
-                <div className="p-3 bg-success/5 border border-success/20 rounded-lg">
-                  <p className="text-xs text-success">✓ 配置已从策略详情页同步</p>
+                  {/* 风控设置区 - 简洁模式 */}
+                  <div className="pt-3 border-t border-border-primary">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Shield className="w-3.5 h-3.5 text-brand-primary" />
+                      <span className="text-xs text-text-tertiary font-medium">风控设置</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                      <label htmlFor="switch-dry-run" className="flex items-center justify-between py-1.5 cursor-pointer">
+                        <span className="text-sm text-white">模拟交易</span>
+                        <Switch id="switch-dry-run" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} size="sm" />
+                      </label>
+
+                      <div className={`flex items-center justify-between py-1.5 ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}>
+                        <span className="text-sm text-white">
+                          移动止损
+                          {sourceStrategy?.content && followStrategyCode && (
+                            <span className="ml-1 text-xs text-warning">· 代码优先</span>
+                          )}
+                        </span>
+                        <Switch
+                          id="switch-trailing-stop"
+                          checked={trailingStop}
+                          onChange={(e) => setTrailingStop(e.target.checked)}
+                          disabled={!!sourceStrategy?.content && followStrategyCode}
+                          size="sm"
+                        />
+                      </div>
+
+                      <label htmlFor="switch-stoploss-exchange" className="flex items-center justify-between py-1.5 cursor-pointer">
+                        <span className="text-sm text-white">交易所止损</span>
+                        <Switch id="switch-stoploss-exchange" checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
+                      </label>
+
+                      <label htmlFor="switch-cancel-orders" className="flex items-center justify-between py-1.5 cursor-pointer">
+                        <span className="text-sm text-white">退出取消挂单</span>
+                        <Switch id="switch-cancel-orders" checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 黑天鹅防护区 */}
+                  <div className="pt-3 border-t border-border-primary">
+                    <label htmlFor="switch-black-swan" className="flex items-center justify-between py-1.5 cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                        <span className="text-sm text-white">黑天鹅防护</span>
+                      </div>
+                      <Switch id="switch-black-swan" checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
+                    </label>
+
+                    {blackSwanEnabled && (
+                      <div className="mt-2 mx-3 p-3 bg-bg-tertiary/50 rounded-lg space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs text-text-tertiary mb-1">触发阈值 (%)</label>
+                            <Input
+                              type="number"
+                              value={blackSwanThreshold}
+                              onChange={(e) => setBlackSwanThreshold(e.target.value)}
+                              min="-50"
+                              max="0"
+                              className="text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-text-tertiary mb-1">检测窗口 (分钟)</label>
+                            <Input
+                              type="number"
+                              value={blackSwanTimeframe}
+                              onChange={(e) => setBlackSwanTimeframe(e.target.value)}
+                              min="1"
+                              max="60"
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-text-tertiary mb-1">触发动作</label>
+                          <select
+                            value={blackSwanAction}
+                            onChange={(e) => setBlackSwanAction(e.target.value)}
+                            className="w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white"
+                          >
+                            <option value="pause">暂停交易</option>
+                            <option value="close_all">全部平仓</option>
+                            <option value="notify_only">仅通知</option>
+                          </select>
+                        </div>
+                        <p className="text-xs text-warning flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          当任一交易对在 {blackSwanTimeframe} 分钟内跌幅超过 {Math.abs(Number(blackSwanThreshold))}% 时触发
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1149,88 +1013,42 @@ function BacktestPageInner() {
         </div>
       )}
 
-      {/* 固定底部操作栏 */}
-      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-bg-primary/95 backdrop-blur-md border-t border-border-primary z-50">
-        <div className="max-w-lg mx-auto space-y-2">
+      {/* 固定底部按钮 */}
+      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-bg-primary/95 backdrop-blur border-t border-border-primary lg:left-64 z-50">
+        <div className="flex gap-3">
           <Button
-            className="w-full h-12"
-            onClick={handleBacktest}
-            disabled={directSaving}
+            onClick={handleStartBacktest}
+            disabled={!strategyId}
+            className="flex-1"
           >
-            <PlayCircle className="w-5 h-5 mr-2" />
+            <PlayCircle className="w-4 h-4 mr-2" />
             开始回测
           </Button>
-          <button
-            onClick={handleDirectSave}
-            disabled={directSaving}
-            className="w-full py-2 text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+          <Button
+            onClick={handleSaveToMyStrategies}
+            disabled={!strategyId || saving}
+            variant="outline"
+            className="flex-1"
           >
-            {directSaving ? '保存中...' : '直接保存到我的策略'}
-          </button>
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : saveSuccess ? (
+              <CheckCircle2 className="w-4 h-4 mr-2 text-success" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            {saving ? '保存中...' : saveSuccess ? '已保存' : '保存配置'}
+          </Button>
         </div>
       </div>
+
+      {/* 参数帮助弹窗 */}
+      <ParamsHelpModal open={showParamsHelp} onClose={() => setShowParamsHelp(false)} />
     </div>
   );
 }
 
-// ============ 模拟数据生成 ============
-
-function generateMockBacktestResult(
-  initialCapital: number,
-  startDate: Date,
-  endDate: Date
-): BacktestResult {
-  const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const curve: Array<{ date: string; value: number; trades: number }> = [];
-
-  let currentValue = initialCapital;
-  let maxValue = initialCapital;
-  let maxDrawdown = 0;
-  let totalTrades = 0;
-  let winTrades = 0;
-
-  for (let i = 0; i <= days; i += 7) {
-    const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-    const change = (Math.random() * 8 - 3) / 100;
-    currentValue *= 1 + change;
-
-    if (currentValue > maxValue) {
-      maxValue = currentValue;
-    }
-    const drawdown = ((maxValue - currentValue) / maxValue) * 100;
-    if (drawdown > maxDrawdown) {
-      maxDrawdown = drawdown;
-    }
-
-    const trades = Math.floor(Math.random() * 5);
-    totalTrades += trades;
-    winTrades += Math.floor(trades * (0.55 + Math.random() * 0.15));
-
-    curve.push({
-      date: date.toISOString().split('T')[0],
-      value: Math.round(currentValue * 100) / 100,
-      trades,
-    });
-  }
-
-  const totalReturn = ((currentValue - initialCapital) / initialCapital) * 100;
-  const winRate = totalTrades > 0 ? (winTrades / totalTrades) * 100 : 0;
-
-  return {
-    totalReturn,
-    winRate,
-    maxDrawdown: -maxDrawdown,
-    sharpeRatio: 1.2 + Math.random() * 0.8,
-    totalTrades,
-    avgProfit: 45 + Math.random() * 30,
-    avgLoss: -25 - Math.random() * 15,
-    profitFactor: 1.5 + Math.random() * 1.0,
-    curve,
-  };
-}
-
-// ============ 导出 ============
-
+// 导出组件
 export default function BacktestPage() {
   return (
     <Suspense fallback={<BacktestSkeleton />}>

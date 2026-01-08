@@ -12,6 +12,7 @@ export interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   className?: string;
   showCloseButton?: boolean;
+  position?: 'center' | 'top';
 }
 
 const Modal = ({
@@ -22,6 +23,7 @@ const Modal = ({
   size = 'md',
   className,
   showCloseButton = true,
+  position = 'center',
 }: ModalProps) => {
   // ESC 键关闭
   useEffect(() => {
@@ -67,7 +69,10 @@ const Modal = ({
       />
 
       {/* 弹窗内容 */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className={cn(
+        "fixed inset-0 z-50 flex justify-center p-4 overflow-y-auto",
+        position === 'center' ? 'items-center' : 'items-start pt-16'
+      )}>
         <div
           className={cn(
             'relative w-full bg-bg-secondary border border-border-primary rounded-xl shadow-lg animate-in',

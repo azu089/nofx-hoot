@@ -85,6 +85,10 @@ export class CrashProtectionTask {
 
   /**
    * 获取启用了黑天鹅防护的活跃策略配置
+   *
+   * 支持两种配置方式：
+   * 1. 新方式：black_swan.enabled = true（推荐）
+   * 2. 旧方式：custom_config.crash_protection = true（向后兼容）
    */
   private async getActiveProtectedConfigs(): Promise<any[]> {
     const configs = await this.prisma.client.user_strategy_configs.findMany({
@@ -102,9 +106,16 @@ export class CrashProtectionTask {
       },
     });
 
-    // 过滤出启用了 crash_protection 的配置
+    // 过滤出启用了黑天鹅防护的配置
     return configs.filter((config) => {
       const customConfig = (config.custom_config as Record<string, any>) || {};
+
+      // 新方式：检查 black_swan.enabled
+      if (customConfig.black_swan?.enabled === true) {
+        return true;
+      }
+
+      // 旧方式：向后兼容
       return customConfig.crash_protection === true;
     });
   }
@@ -200,14 +211,24 @@ export class CrashProtectionTask {
 
   /**
    * 检查并触发保护
+   *
+   * 支持两种配置格式：
+   * 1. 新方式：black_swan.threshold, black_swan.timeframe_minutes, black_swan.action
+   * 2. 旧方式：crash_threshold, crash_timeframe
    */
   private async checkAndTriggerProtection(
     config: any,
     currentPrices: Map<string, number>,
   ) {
     const customConfig = (config.custom_config as Record<string, any>) || {};
-    const threshold = customConfig.crash_threshold || -10; // 默认 -10%
-    const timeframe = customConfig.crash_timeframe || 5; // 默认 5 分钟
+
+    // 优先使用新配置格式
+    const blackSwanConfig = customConfig.black_swan || {};
+    const threshold =
+      blackSwanConfig.threshold ?? customConfig.crash_threshold ?? -10; // 默认 -10%
+    const timeframe =
+      blackSwanConfig.timeframe_minutes ?? customConfig.crash_timeframe ?? 5; // 默认 5 分钟
+    const action = blackSwanConfig.action || 'pause'; // 默认暂停
 
     // 检查是否已经触发过（1小时内不重复触发）
     const protectionKey = `${config.id}_${Math.floor(Date.now() / 3600000)}`;
@@ -241,7 +262,7 @@ export class CrashProtectionTask {
           `触发黑天鹅防护: ${pair} 在 ${timeframe} 分钟内下跌 ${priceChange.toFixed(2)}%（阈值: ${threshold}%）`,
         );
 
-        await this.triggerProtection(config, pair, priceChange);
+        await this.triggerProtection(config, pair, priceChange, action);
         this.triggeredProtections.add(protectionKey);
         break; // 一个交易对触发即可
       }
@@ -249,49 +270,87 @@ export class CrashProtectionTask {
   }
 
   /**
-   * 触发保护：暂停策略
+   * 触发保护
+   *
+   * 支持三种动作：
+   * - pause: 暂停交易
+   * - close_all: 全部平仓
+   * - notify_only: 仅通知
    */
   private async triggerProtection(
     config: any,
     pair: string,
     priceChange: number,
+    action: string = 'pause',
   ) {
     const instance = config.instances;
 
     if (!instance || !instance.ip_address) {
-      this.logger.warn(`策略 ${config.id} 没有绑定 VPS，无法暂停`);
+      this.logger.warn(`策略 ${config.id} 没有绑定 VPS，无法执行保护动作`);
       return;
     }
 
     try {
-      // 1. 调用 Freqtrade API 停止策略
+      // 根据动作类型执行不同操作
       if (!this.isSandbox) {
-        await this.freqtradeService.stop(instance.ip_address);
+        switch (action) {
+          case 'pause':
+            // 暂停交易
+            await this.freqtradeService.stop(instance.ip_address);
+            this.logger.log(`策略 ${config.id}: 已暂停交易`);
+            break;
+
+          case 'close_all':
+            // 全部平仓（先平仓再暂停）
+            try {
+              await this.freqtradeService.forceExitAll(instance.ip_address);
+              this.logger.log(`策略 ${config.id}: 已执行全部平仓`);
+            } catch (exitError) {
+              this.logger.error(`全部平仓失败: ${exitError.message}`);
+            }
+            await this.freqtradeService.stop(instance.ip_address);
+            break;
+
+          case 'notify_only':
+            // 仅通知，不执行任何交易操作
+            this.logger.log(`策略 ${config.id}: 仅发送通知（不暂停）`);
+            break;
+
+          default:
+            // 默认暂停
+            await this.freqtradeService.stop(instance.ip_address);
+        }
       }
 
-      // 2. 更新数据库状态
+      // 更新数据库状态（仅在非 notify_only 时更新 is_active）
+      const updateData: any = {
+        custom_config: {
+          ...(config.custom_config as object),
+          crash_protection_triggered: true,
+          crash_protection_triggered_at: new Date().toISOString(),
+          crash_protection_reason: `${pair} 下跌 ${priceChange.toFixed(2)}%`,
+          crash_protection_action: action,
+        },
+      };
+
+      if (action !== 'notify_only') {
+        updateData.is_active = false;
+      }
+
       await this.prisma.client.user_strategy_configs.update({
         where: { id: config.id },
-        data: {
-          is_active: false,
-          custom_config: {
-            ...(config.custom_config as object),
-            crash_protection_triggered: true,
-            crash_protection_triggered_at: new Date().toISOString(),
-            crash_protection_reason: `${pair} 下跌 ${priceChange.toFixed(2)}%`,
-          },
-        },
+        data: updateData,
       });
 
-      // 3. 记录事件日志
+      // 记录事件日志
       this.logger.log(
-        `黑天鹅防护已触发: 策略=${config.id}, 用户=${config.user_id}, 原因=${pair} 下跌 ${priceChange.toFixed(2)}%`,
+        `黑天鹅防护已触发: 策略=${config.id}, 用户=${config.user_id}, 动作=${action}, 原因=${pair} 下跌 ${priceChange.toFixed(2)}%`,
       );
 
-      // TODO: 4. 发送通知给用户（邮件/站内信）
+      // TODO: 发送通知给用户（邮件/站内信）
       // await this.notificationService.send(config.user_id, {
       //   title: '黑天鹅防护已触发',
-      //   content: `您的策略已被自动暂停，原因：${pair} 在短时间内下跌 ${Math.abs(priceChange).toFixed(2)}%`,
+      //   content: `您的策略已被自动${action === 'pause' ? '暂停' : action === 'close_all' ? '平仓并暂停' : '标记'}，原因：${pair} 在短时间内下跌 ${Math.abs(priceChange).toFixed(2)}%`,
       // });
     } catch (error) {
       this.logger.error(
