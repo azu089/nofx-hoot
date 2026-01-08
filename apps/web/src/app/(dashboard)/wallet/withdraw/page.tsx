@@ -9,11 +9,10 @@ import type { Metadata } from 'next';
 //   title: '提现 | QuantFi',
 //   description: '将 USDT 提现到您的钱包地址，支持 TRC20/ERC20/BEP20',
 // };
-import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, MobileHeader } from '@/components/ui';
 import { withdrawalsApi, userApi, authApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
-  ArrowLeft,
   CheckCircle,
   Clock,
   XCircle,
@@ -208,12 +207,7 @@ export default function WithdrawPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h1 className="text-2xl font-bold text-white">提现</h1>
-        </div>
+        <MobileHeader title="提现" />
         <div className="animate-pulse space-y-6">
           <div className="h-64 bg-bg-tertiary rounded-xl" />
           <div className="h-64 bg-bg-tertiary rounded-xl" />
@@ -225,18 +219,15 @@ export default function WithdrawPage() {
   return (
     <div className="space-y-6">
       {/* 顶部导航 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
+      <MobileHeader
+        title="提现"
+        rightAction={
+          <Button variant="ghost" size="sm" onClick={fetchData}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            刷新
           </Button>
-          <h1 className="text-2xl font-bold text-white">提现</h1>
-        </div>
-        <Button variant="ghost" size="sm" onClick={fetchData}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          刷新
-        </Button>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 提现表单 */}

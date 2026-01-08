@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Logger,
   ForbiddenException,
 } from '@nestjs/common';
@@ -1314,6 +1315,132 @@ export class AdminService {
     return { success: true, strategyId: id, isActive: newStatus };
   }
 
+  // ==================== 策略审核 (Phase 16) ====================
+
+  /**
+   * 获取待审核策略列表
+   */
+  async getPendingStrategies(params: { page?: number; limit?: number }) {
+    const { page = 1, limit = 20 } = params;
+    const skip = (page - 1) * limit;
+
+    const [strategies, total] = await Promise.all([
+      this.prisma.client.strategies.findMany({
+        where: {
+          owner_type: 'user', // 只查用户上传的策略
+          review_status: {
+            in: ['pending', 'flagged'], // 待审核或需人工审核
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          owner_type: true,
+          uploader_id: true,
+          review_status: true,
+          auto_check_passed: true,
+          auto_check_warnings: true,
+          created_at: true,
+          updated_at: true,
+        },
+        orderBy: [
+          { review_status: 'asc' }, // flagged 优先
+          { created_at: 'asc' }, // 早提交的优先
+        ],
+        skip,
+        take: limit,
+      }),
+      this.prisma.client.strategies.count({
+        where: {
+          owner_type: 'user',
+          review_status: {
+            in: ['pending', 'flagged'],
+          },
+        },
+      }),
+    ]);
+
+    return {
+      strategies,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 审核通过策略
+   */
+  async approveStrategy(id: string, adminId: string) {
+    const strategy = await this.prisma.client.strategies.findUnique({
+      where: { id },
+    });
+
+    if (!strategy) {
+      throw new NotFoundException('策略不存在');
+    }
+
+    if (strategy.review_status === 'approved') {
+      throw new BadRequestException('策略已通过审核');
+    }
+
+    await this.prisma.client.strategies.update({
+      where: { id },
+      data: {
+        review_status: 'approved',
+        reviewed_by: adminId,
+        reviewed_at: new Date(),
+        is_public: true, // 审核通过自动上架
+        is_active: true,
+      },
+    });
+
+    await this.logAudit(adminId, 'approve_strategy', 'strategy', id, {
+      name: strategy.name,
+      uploaderId: strategy.uploader_id,
+    });
+
+    return { success: true, strategyId: id, status: 'approved' };
+  }
+
+  /**
+   * 拒绝策略
+   */
+  async rejectStrategy(id: string, adminId: string, reason: string) {
+    const strategy = await this.prisma.client.strategies.findUnique({
+      where: { id },
+    });
+
+    if (!strategy) {
+      throw new NotFoundException('策略不存在');
+    }
+
+    if (strategy.review_status === 'rejected') {
+      throw new BadRequestException('策略已被拒绝');
+    }
+
+    await this.prisma.client.strategies.update({
+      where: { id },
+      data: {
+        review_status: 'rejected',
+        reject_reason: reason,
+        reviewed_by: adminId,
+        reviewed_at: new Date(),
+        is_public: false, // 拒绝后下架
+        is_active: false,
+      },
+    });
+
+    await this.logAudit(adminId, 'reject_strategy', 'strategy', id, {
+      name: strategy.name,
+      uploaderId: strategy.uploader_id,
+      reason,
+    });
+
+    return { success: true, strategyId: id, status: 'rejected', reason };
+  }
+
   // ==================== 审计日志 ====================
 
   /**
@@ -1558,5 +1685,1015 @@ export class AdminService {
     this.logger.log(`管理员 ${adminId} 拒绝代理商提现 ${withdrawalId}，原因: ${reason || '无'}`);
 
     return { success: true, withdrawalId };
+  }
+
+  // ==================== 充值管理 ====================
+
+  /**
+   * 获取充值列表
+   */
+  async getDeposits(params: { page?: number; limit?: number; status?: string }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {};
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    const [deposits, total, pendingCount] = await Promise.all([
+      this.prisma.client.deposits.findMany({
+        where,
+        include: {
+          users_deposits_user_idTousers: {
+            select: { id: true, email: true },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.client.deposits.count({ where }),
+      this.prisma.client.deposits.count({ where: { status: 'pending' } }),
+    ]);
+
+    return {
+      data: deposits.map((d) => ({
+        id: d.id,
+        userId: d.user_id,
+        userEmail: d.users_deposits_user_idTousers?.email || 'unknown',
+        amount: d.amount.toString(),
+        currency: d.currency,
+        method: d.method,
+        chain: d.chain,
+        fromAddress: d.from_address,
+        txHash: d.tx_hash,
+        proofImageUrl: d.proof_image_url,
+        status: d.status,
+        rejectReason: d.reject_reason,
+        reviewedBy: d.reviewed_by,
+        reviewedAt: d.reviewed_at,
+        createdAt: d.created_at,
+      })),
+      total,
+      pending: pendingCount,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 审核通过充值
+   */
+  async approveDeposit(depositId: string, adminId: string) {
+    const deposit = await this.prisma.client.deposits.findUnique({
+      where: { id: depositId },
+      include: { users_deposits_user_idTousers: { select: { email: true } } },
+    });
+
+    if (!deposit) {
+      throw new NotFoundException('充值记录不存在');
+    }
+
+    if (deposit.status !== 'pending') {
+      throw new BadRequestException(`充值记录状态为 ${deposit.status}，无法审核`);
+    }
+
+    // 使用事务：更新充值状态 + 增加用户余额
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. 更新充值记录状态
+      await tx.deposits.update({
+        where: { id: depositId },
+        data: {
+          status: 'approved',
+          reviewed_by: adminId,
+          reviewed_at: new Date(),
+        },
+      });
+
+      // 2. 增加用户余额
+      await tx.wallets.update({
+        where: { user_id: deposit.user_id },
+        data: {
+          usdt_balance: {
+            increment: deposit.amount,
+          },
+          updated_at: new Date(),
+        },
+      });
+
+      // 3. 记录计费日志
+      await tx.billing_logs.create({
+        data: {
+          user_id: deposit.user_id,
+          unique_order_id: `deposit_approve_${deposit.id}_${Date.now()}`,
+          billing_type: 'deposit',
+          amount: deposit.amount,
+          currency: deposit.currency,
+          reference_type: 'deposit',
+          reference_id: deposit.id,
+          description: `充值审核通过：${deposit.method}`,
+          status: 'completed',
+        },
+      });
+    });
+
+    await this.logAudit(adminId, 'approve_deposit', 'deposit', depositId, {
+      userId: deposit.user_id,
+      userEmail: deposit.users_deposits_user_idTousers?.email,
+      amount: deposit.amount.toString(),
+      method: deposit.method,
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} 审核通过充值 ${depositId}，金额：${deposit.amount}`,
+    );
+
+    return { success: true, depositId };
+  }
+
+  /**
+   * 拒绝充值
+   */
+  async rejectDeposit(depositId: string, adminId: string, reason?: string) {
+    const deposit = await this.prisma.client.deposits.findUnique({
+      where: { id: depositId },
+      include: { users_deposits_user_idTousers: { select: { email: true } } },
+    });
+
+    if (!deposit) {
+      throw new NotFoundException('充值记录不存在');
+    }
+
+    if (deposit.status !== 'pending') {
+      throw new BadRequestException(`充值记录状态为 ${deposit.status}，无法审核`);
+    }
+
+    await this.prisma.client.deposits.update({
+      where: { id: depositId },
+      data: {
+        status: 'rejected',
+        reviewed_by: adminId,
+        reviewed_at: new Date(),
+        reject_reason: reason || '未通过审核',
+      },
+    });
+
+    await this.logAudit(adminId, 'reject_deposit', 'deposit', depositId, {
+      userId: deposit.user_id,
+      userEmail: deposit.users_deposits_user_idTousers?.email,
+      amount: deposit.amount.toString(),
+      reason,
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} 拒绝充值 ${depositId}，原因：${reason || '未通过审核'}`,
+    );
+
+    return { success: true, depositId };
+  }
+
+  // ==================== 手动余额调整 ====================
+
+  /**
+   * 手动调整用户余额
+   */
+  async adjustBalance(
+    adminId: string,
+    userId: string,
+    data: {
+      type: 'add' | 'deduct';
+      amount: string;
+      reason: string;
+    },
+  ) {
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const wallet = await this.prisma.client.wallets.findUnique({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('用户钱包不存在');
+    }
+
+    const amount = new Decimal(data.amount);
+    if (amount.lte(0)) {
+      throw new BadRequestException('金额必须大于0');
+    }
+
+    const currentBalance = new Decimal(wallet.usdt_balance.toString());
+
+    // 如果是扣款，检查余额是否足够
+    if (data.type === 'deduct' && currentBalance.lt(amount)) {
+      throw new BadRequestException(
+        `用户余额不足，当前余额：${currentBalance.toString()}，扣款金额：${amount.toString()}`,
+      );
+    }
+
+    const newBalance = data.type === 'add'
+      ? currentBalance.plus(amount)
+      : currentBalance.minus(amount);
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. 更新钱包余额
+      await tx.wallets.update({
+        where: { user_id: userId },
+        data: {
+          usdt_balance: newBalance.toString(),
+          updated_at: new Date(),
+        },
+      });
+
+      // 2. 记录计费日志
+      await tx.billing_logs.create({
+        data: {
+          user_id: userId,
+          unique_order_id: `admin_adjust_${adminId}_${userId}_${Date.now()}`,
+          billing_type: data.type === 'add' ? 'admin_add' : 'admin_deduct',
+          amount: data.type === 'add' ? amount.toString() : amount.negated().toString(),
+          currency: 'USDT',
+          reference_type: 'admin_adjustment',
+          reference_id: adminId,
+          description: `管理员${data.type === 'add' ? '加款' : '扣款'}：${data.reason}`,
+          status: 'completed',
+        },
+      });
+    });
+
+    await this.logAudit(adminId, 'adjust_balance', 'wallet', userId, {
+      userId,
+      userEmail: user.email,
+      type: data.type,
+      amount: amount.toString(),
+      reason: data.reason,
+      previousBalance: currentBalance.toString(),
+      newBalance: newBalance.toString(),
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} ${data.type === 'add' ? '加款' : '扣款'} 用户 ${userId} 金额 ${amount}，原因：${data.reason}`,
+    );
+
+    return {
+      success: true,
+      userId,
+      previousBalance: currentBalance.toString(),
+      newBalance: newBalance.toString(),
+      adjustment: data.type === 'add' ? `+${amount}` : `-${amount}`,
+    };
+  }
+
+  /**
+   * 获取余额调整记录
+   */
+  async getBalanceAdjustments(params: { page?: number; limit?: number; userId?: string }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {
+      billing_type: {
+        in: ['admin_add', 'admin_deduct'],
+      },
+    };
+
+    if (params.userId) {
+      where.user_id = params.userId;
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.client.billing_logs.findMany({
+        where,
+        include: {
+          users: {
+            select: { id: true, email: true },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.client.billing_logs.count({ where }),
+    ]);
+
+    return {
+      data: logs.map((log) => ({
+        id: log.id,
+        userId: log.user_id,
+        userEmail: log.users?.email || 'unknown',
+        type: log.billing_type === 'admin_add' ? 'add' : 'deduct',
+        amount: new Decimal(log.amount.toString()).abs().toString(),
+        reason: log.description,
+        operatorId: log.reference_id,
+        createdAt: log.created_at,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // ==================== 代理商管理 ====================
+
+  /**
+   * 获取代理商列表
+   */
+  async getAgents(params: { page?: number; limit?: number; search?: string; status?: string }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {};
+
+    if (params.search) {
+      where.OR = [
+        { name: { contains: params.search, mode: 'insensitive' } },
+        { email: { contains: params.search, mode: 'insensitive' } },
+        { code: { contains: params.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    const [agents, total] = await Promise.all([
+      this.prisma.client.agents.findMany({
+        where,
+        include: {
+          _count: {
+            select: { users: true },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.client.agents.count({ where }),
+    ]);
+
+    return {
+      data: agents.map((agent) => ({
+        id: agent.id,
+        code: agent.code,
+        name: agent.name,
+        email: agent.email,
+        level: agent.level,
+        commissionRate: agent.commission_rate.toString(),
+        totalUsers: agent.total_users,
+        actualUsers: agent._count.users,
+        totalCommission: agent.total_commission.toString(),
+        status: agent.status,
+        parentAgentId: agent.parent_agent_id,
+        createdAt: agent.created_at,
+        updatedAt: agent.updated_at,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 获取代理商详情
+   */
+  async getAgentDetail(agentId: string) {
+    const agent = await this.prisma.client.agents.findUnique({
+      where: { id: agentId },
+      include: {
+        _count: {
+          select: { users: true, agent_commissions: true, agent_withdrawals: true },
+        },
+      },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('代理商不存在');
+    }
+
+    // 获取最近的佣金和提现记录
+    const [recentCommissions, recentWithdrawals, pendingWithdrawals] = await Promise.all([
+      this.prisma.client.agent_commissions.findMany({
+        where: { agent_id: agentId },
+        orderBy: { created_at: 'desc' },
+        take: 5,
+        include: {
+          users: { select: { email: true } },
+        },
+      }),
+      this.prisma.client.agent_withdrawals.findMany({
+        where: { agent_id: agentId },
+        orderBy: { created_at: 'desc' },
+        take: 5,
+      }),
+      this.prisma.client.agent_withdrawals.count({
+        where: { agent_id: agentId, status: 'pending' },
+      }),
+    ]);
+
+    return {
+      id: agent.id,
+      code: agent.code,
+      name: agent.name,
+      email: agent.email,
+      level: agent.level,
+      commissionRate: agent.commission_rate.toString(),
+      totalUsers: agent.total_users,
+      actualUsers: agent._count.users,
+      totalCommission: agent.total_commission.toString(),
+      status: agent.status,
+      parentAgentId: agent.parent_agent_id,
+      createdAt: agent.created_at,
+      updatedAt: agent.updated_at,
+      stats: {
+        totalCommissions: agent._count.agent_commissions,
+        totalWithdrawals: agent._count.agent_withdrawals,
+        pendingWithdrawals,
+      },
+      recentCommissions: recentCommissions.map((c) => ({
+        id: c.id,
+        userId: c.user_id,
+        userEmail: c.users?.email || 'unknown',
+        amount: c.commission_amount.toString(),
+        source: c.source_type,
+        status: c.status,
+        createdAt: c.created_at,
+      })),
+      recentWithdrawals: recentWithdrawals.map((w) => ({
+        id: w.id,
+        amount: w.amount.toString(),
+        status: w.status,
+        createdAt: w.created_at,
+      })),
+    };
+  }
+
+  /**
+   * 更新代理商配置
+   */
+  async updateAgent(
+    adminId: string,
+    agentId: string,
+    data: {
+      commissionRate?: string;
+      status?: string;
+      name?: string;
+    },
+  ) {
+    const agent = await this.prisma.client.agents.findUnique({
+      where: { id: agentId },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('代理商不存在');
+    }
+
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date(),
+    };
+
+    if (data.commissionRate !== undefined) {
+      const rate = new Decimal(data.commissionRate);
+      if (rate.lt(0) || rate.gt(1)) {
+        throw new BadRequestException('佣金比例必须在 0 到 1 之间');
+      }
+      updateData.commission_rate = rate.toString();
+    }
+
+    if (data.status !== undefined) {
+      if (!['active', 'suspended', 'pending'].includes(data.status)) {
+        throw new BadRequestException('无效的状态值');
+      }
+      updateData.status = data.status;
+    }
+
+    if (data.name !== undefined) {
+      updateData.name = data.name;
+    }
+
+    const updated = await this.prisma.client.agents.update({
+      where: { id: agentId },
+      data: updateData,
+    });
+
+    await this.logAudit(adminId, 'update_agent', 'agent', agentId, {
+      agentCode: agent.code,
+      changes: data,
+      previousCommissionRate: agent.commission_rate.toString(),
+      previousStatus: agent.status,
+    });
+
+    this.logger.log(`管理员 ${adminId} 更新代理商 ${agentId} 配置`);
+
+    return {
+      success: true,
+      agent: {
+        id: updated.id,
+        code: updated.code,
+        name: updated.name,
+        commissionRate: updated.commission_rate.toString(),
+        status: updated.status,
+      },
+    };
+  }
+
+  /**
+   * 将用户设置为代理商
+   * 1. 检查用户是否存在
+   * 2. 检查是否已经是代理商
+   * 3. 生成唯一邀请码
+   * 4. 在 agents 表中创建记录
+   */
+  async promoteUserToAgent(
+    adminId: string,
+    userId: string,
+    data: {
+      name: string;
+      commissionRate?: string;
+    },
+  ) {
+    // 1. 查找用户
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 2. 检查是否已经是代理商
+    const existingAgent = await this.prisma.client.agents.findUnique({
+      where: { email: user.email },
+    });
+
+    if (existingAgent) {
+      throw new BadRequestException('该用户已经是代理商');
+    }
+
+    // 3. 生成唯一邀请码 (6位大写字母+数字)
+    let code: string;
+    let isUnique = false;
+    while (!isUnique) {
+      code = this.generateAgentCode();
+      const existing = await this.prisma.client.agents.findUnique({
+        where: { code },
+      });
+      isUnique = !existing;
+    }
+
+    // 4. 设置佣金比例
+    const commissionRate = data.commissionRate
+      ? new Decimal(data.commissionRate)
+      : new Decimal('0.10'); // 默认 10%
+
+    if (commissionRate.lt(0) || commissionRate.gt(1)) {
+      throw new BadRequestException('佣金比例必须在 0 到 1 之间');
+    }
+
+    // 5. 创建代理商记录
+    const agent = await this.prisma.client.agents.create({
+      data: {
+        code: code!,
+        name: data.name,
+        email: user.email,
+        level: 1,
+        commission_rate: commissionRate.toString(),
+        total_users: 0,
+        total_commission: 0,
+        status: 'active',
+      },
+    });
+
+    // 6. 记录审计日志
+    await this.logAudit(adminId, 'promote_to_agent', 'user', userId, {
+      userEmail: user.email,
+      agentId: agent.id,
+      agentCode: agent.code,
+      commissionRate: commissionRate.toString(),
+    });
+
+    this.logger.log(`管理员 ${adminId} 将用户 ${userId} (${user.email}) 设置为代理商`);
+
+    return {
+      success: true,
+      agent: {
+        id: agent.id,
+        code: agent.code,
+        name: agent.name,
+        email: agent.email,
+        commissionRate: agent.commission_rate.toString(),
+        status: agent.status,
+      },
+    };
+  }
+
+  /**
+   * 生成代理商邀请码
+   */
+  private generateAgentCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  /**
+   * 检查用户是否为代理商
+   */
+  async checkUserAgentStatus(userId: string) {
+    // 查找用户
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 查找代理商记录
+    const agent = await this.prisma.client.agents.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        commission_rate: true,
+        total_users: true,
+        status: true,
+      },
+    });
+
+    if (!agent) {
+      return { isAgent: false };
+    }
+
+    return {
+      isAgent: true,
+      agent: {
+        id: agent.id,
+        code: agent.code,
+        name: agent.name,
+        commissionRate: agent.commission_rate.toString(),
+        totalUsers: agent.total_users,
+        status: agent.status,
+      },
+    };
+  }
+
+  /**
+   * 撤销代理商身份
+   */
+  async revokeAgentStatus(adminId: string, userId: string) {
+    // 查找用户
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 查找代理商记录
+    const agent = await this.prisma.client.agents.findUnique({
+      where: { email: user.email },
+    });
+
+    if (!agent) {
+      throw new BadRequestException('该用户不是代理商');
+    }
+
+    // 检查是否有下级用户
+    const usersCount = await this.prisma.client.users.count({
+      where: { agent_id: agent.id },
+    });
+
+    if (usersCount > 0) {
+      throw new BadRequestException(`该代理商有 ${usersCount} 个下级用户，无法撤销身份`);
+    }
+
+    // 删除代理商记录
+    await this.prisma.client.agents.delete({
+      where: { id: agent.id },
+    });
+
+    // 记录审计日志
+    await this.logAudit(adminId, 'revoke_agent', 'user', userId, {
+      userEmail: user.email,
+      agentId: agent.id,
+      agentCode: agent.code,
+    });
+
+    this.logger.log(`管理员 ${adminId} 撤销了用户 ${userId} (${user.email}) 的代理商身份`);
+
+    return {
+      success: true,
+      message: '代理商身份已撤销',
+    };
+  }
+
+  // ==================== 用户密码重置 ====================
+
+  /**
+   * 重置用户密码
+   */
+  async resetUserPassword(adminId: string, userId: string, newPassword?: string) {
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 如果未提供新密码，生成随机密码
+    const password = newPassword || this.generateRandomPassword();
+
+    // 加密密码
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await this.prisma.client.users.update({
+      where: { id: userId },
+      data: {
+        password_hash: hashedPassword,
+        updated_at: new Date(),
+      },
+    });
+
+    await this.logAudit(adminId, 'reset_password', 'user', userId, {
+      userEmail: user.email,
+      isRandomPassword: !newPassword,
+    });
+
+    this.logger.log(`管理员 ${adminId} 重置用户 ${userId} (${user.email}) 的密码`);
+
+    return {
+      success: true,
+      userId,
+      email: user.email,
+      // 只在使用随机密码时返回密码
+      temporaryPassword: !newPassword ? password : undefined,
+    };
+  }
+
+  /**
+   * 生成随机密码
+   */
+  private generateRandomPassword(length = 12): string {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let password = '';
+    for (let i = 0; i < length; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+
+  // ==================== 质押管理 ====================
+
+  /**
+   * 获取质押统计
+   */
+  async getStakingStats() {
+    const [activeStakes, totalStaked, totalRewards] = await Promise.all([
+      this.prisma.client.stakes.count({ where: { status: 'active' } }),
+      this.prisma.client.stakes.aggregate({
+        where: { status: 'active' },
+        _sum: { amount: true },
+      }),
+      this.prisma.client.stakes.aggregate({
+        _sum: { accumulated_reward: true },
+      }),
+    ]);
+
+    // 按类型统计
+    const typeStats = await this.prisma.client.stakes.groupBy({
+      by: ['stake_type'],
+      where: { status: 'active' },
+      _count: true,
+      _sum: { amount: true },
+    });
+
+    return {
+      activeStakes,
+      totalStaked: totalStaked._sum.amount?.toString() || '0',
+      totalRewards: totalRewards._sum.accumulated_reward?.toString() || '0',
+      byType: typeStats.map((t) => ({
+        type: t.stake_type,
+        count: t._count,
+        amount: t._sum.amount?.toString() || '0',
+      })),
+    };
+  }
+
+  /**
+   * 获取质押列表
+   */
+  async getStakes(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    stakeType?: string;
+    userId?: string;
+  }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {};
+
+    if (params.status) {
+      where.status = params.status;
+    }
+
+    if (params.stakeType) {
+      where.stake_type = params.stakeType;
+    }
+
+    if (params.userId) {
+      where.user_id = params.userId;
+    }
+
+    const [stakes, total] = await Promise.all([
+      this.prisma.client.stakes.findMany({
+        where,
+        include: {
+          users: { select: { id: true, email: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.client.stakes.count({ where }),
+    ]);
+
+    return {
+      data: stakes.map((s) => ({
+        id: s.id,
+        userId: s.user_id,
+        userEmail: s.users?.email || 'unknown',
+        stakeType: s.stake_type,
+        amount: s.amount.toString(),
+        startTime: s.start_time,
+        endTime: s.end_time,
+        lockPeriodDays: s.lock_period_days,
+        weightMultiplier: s.weight_multiplier.toString(),
+        accumulatedReward: s.accumulated_reward.toString(),
+        claimableReward: s.claimable_reward.toString(),
+        status: s.status,
+        earlyUnstakeAt: s.early_unstake_at,
+        penaltyAmount: s.penalty_amount?.toString() || '0',
+        createdAt: s.created_at,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // ==================== 交易报表导出 ====================
+
+  /**
+   * 获取交易报表数据
+   */
+  async getTradeReport(params: {
+    startDate?: string;
+    endDate?: string;
+    userId?: string;
+  }) {
+    const where: Record<string, unknown> = {};
+
+    if (params.startDate || params.endDate) {
+      where.opened_at = {};
+      if (params.startDate) {
+        (where.opened_at as Record<string, unknown>).gte = new Date(params.startDate);
+      }
+      if (params.endDate) {
+        (where.opened_at as Record<string, unknown>).lte = new Date(params.endDate);
+      }
+    }
+
+    if (params.userId) {
+      where.user_id = params.userId;
+    }
+
+    const trades = await this.prisma.client.trade_history.findMany({
+      where,
+      include: {
+        users: { select: { email: true } },
+      },
+      orderBy: { opened_at: 'desc' },
+      take: 10000, // 限制最大导出数量
+    });
+
+    type TradeRecord = (typeof trades)[number];
+
+    // 计算统计数据
+    const stats = {
+      totalTrades: trades.length,
+      totalVolume: trades.reduce((sum: number, t: TradeRecord) => sum + parseFloat(t.quantity?.toString() || '0'), 0),
+      totalPnl: trades.reduce((sum: number, t: TradeRecord) => sum + parseFloat(t.pnl?.toString() || '0'), 0),
+      totalFees: trades.reduce((sum: number, t: TradeRecord) => sum + parseFloat(t.gas_fee?.toString() || '0'), 0),
+      winCount: trades.filter((t: TradeRecord) => parseFloat(t.pnl?.toString() || '0') > 0).length,
+      lossCount: trades.filter((t: TradeRecord) => parseFloat(t.pnl?.toString() || '0') < 0).length,
+    };
+
+    return {
+      stats,
+      trades: trades.map((t: TradeRecord) => ({
+        id: t.id,
+        userId: t.user_id,
+        userEmail: t.users?.email || 'unknown',
+        instanceId: t.instance_id,
+        symbol: t.symbol,
+        side: t.side,
+        quantity: t.quantity?.toString() || '0',
+        price: t.entry_price?.toString() || '0',
+        pnl: t.pnl?.toString() || '0',
+        fee: t.gas_fee?.toString() || '0',
+        createdAt: t.opened_at,
+      })),
+    };
+  }
+
+  /**
+   * 获取收入报表数据
+   */
+  async getRevenueReport(params: {
+    startDate?: string;
+    endDate?: string;
+    billingType?: string;
+  }) {
+    const where: Record<string, unknown> = {
+      status: 'completed',
+    };
+
+    if (params.startDate || params.endDate) {
+      where.created_at = {};
+      if (params.startDate) {
+        (where.created_at as Record<string, unknown>).gte = new Date(params.startDate);
+      }
+      if (params.endDate) {
+        (where.created_at as Record<string, unknown>).lte = new Date(params.endDate);
+      }
+    }
+
+    if (params.billingType) {
+      where.billing_type = params.billingType;
+    }
+
+    const billings = await this.prisma.client.billing_logs.findMany({
+      where,
+      include: {
+        users: { select: { email: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 10000,
+    });
+
+    // 按类型统计
+    const byType: Record<string, { count: number; amount: number }> = {};
+    billings.forEach((b) => {
+      const type = b.billing_type;
+      if (!byType[type]) {
+        byType[type] = { count: 0, amount: 0 };
+      }
+      byType[type].count++;
+      byType[type].amount += parseFloat(b.amount?.toString() || '0');
+    });
+
+    return {
+      stats: {
+        totalRecords: billings.length,
+        totalRevenue: billings.reduce((sum, b) => sum + parseFloat(b.amount?.toString() || '0'), 0),
+        byType: Object.entries(byType).map(([type, data]) => ({
+          type,
+          count: data.count,
+          amount: data.amount.toFixed(8),
+        })),
+      },
+      records: billings.map((b) => ({
+        id: b.id,
+        userId: b.user_id,
+        userEmail: b.users?.email || 'unknown',
+        type: b.billing_type,
+        amount: b.amount?.toString() || '0',
+        description: b.description || '',
+        createdAt: b.created_at,
+      })),
+    };
   }
 }

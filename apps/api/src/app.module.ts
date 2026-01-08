@@ -34,6 +34,9 @@ import { AiModule } from './modules/ai/ai.module';
 import { ConfigsModule } from './modules/configs/configs.module';
 import { CmsModule } from './modules/cms/cms.module';
 import { TradingModule } from './modules/trading/trading.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
+import { MarketModule } from './modules/market/market.module';
+import { ExchangeModule } from './modules/exchange/exchange.module';
 
 @Module({
   imports: [
@@ -60,12 +63,15 @@ import { TradingModule } from './modules/trading/trading.module';
     TokensModule, // 代币模块（积分兑换、线性释放）
     StakingModule, // 质押模块
     AgentsModule, // 代理商模块
-    GamefiModule, // GameFi 统一模块（积分/质押/代币/排行榜）
+    GamefiModule, // 生态中心统一模块（积分/质押/代币/排行榜）
     AdminModule, // 管理后台模块
     AiModule, // AI 模块（策略生成/交易解读）
     ConfigsModule, // 配置中心模块（系统配置）
     CmsModule, // CMS 模块（内容/Banner/帮助文档）
     TradingModule, // 交易机器人模块（机器人控制/持仓/订单）
+    TelegramModule, // Telegram Mini App 模块
+    MarketModule, // 市场数据模块（交易对搜索）
+    ExchangeModule, // 资产兑换模块（闪兑功能）
   ],
   controllers: [AppController],
   providers: [

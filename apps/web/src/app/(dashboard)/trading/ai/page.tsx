@@ -16,6 +16,7 @@ import {
   Clock,
   BarChart3,
 } from 'lucide-react';
+import { MobileHeader } from '@/components/ui/MobileBackButton';
 
 interface GeneratedStrategy {
   name: string;
@@ -159,24 +160,16 @@ export default function AIStrategyPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-brand-primary" />
-            AI 策略生成器
-          </h1>
-          <p className="text-text-secondary mt-1">
-            使用 AI 自动生成 Freqtrade 交易策略代码
-          </p>
-        </div>
-
-        {/* 配额显示 */}
-        {quota && (
-          <div className="text-right">
-            <div className="text-sm text-text-secondary">本月剩余配额</div>
-            <div className="text-xl font-bold text-white">
+    <div className="space-y-6">
+      {/* 页面标题 - 带返回按钮 */}
+      <MobileHeader
+        title="AI 策略生成器"
+        subtitle="使用 AI 自动生成 Freqtrade 交易策略代码"
+        rightAction={
+          quota && (
+            <div className="text-right">
+              <div className="text-xs text-text-secondary">本月剩余配额</div>
+              <div className="text-lg font-bold text-white">
               {quota.limit === -1 ? (
                 <span className="text-brand-primary">无限制</span>
               ) : (
@@ -189,8 +182,9 @@ export default function AIStrategyPage() {
               )}
             </div>
           </div>
-        )}
-      </div>
+          )
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 左侧：生成表单 */}

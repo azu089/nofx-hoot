@@ -21,8 +21,9 @@ import { StakeDto } from '../staking/dto/stake.dto';
 import { ExchangeTokenDto } from '../tokens/dto/exchange-token.dto';
 
 /**
- * GameFi 统一控制器
+ * 生态中心统一控制器
  * 整合积分、质押、代币功能，提供统一的 /api/gamefi/* 路由
+ * 注：API 路由保持 /api/gamefi 不变，仅文档展示更新为"生态中心"
  *
  * 路由设计：
  * - GET  /api/gamefi/overview - 概览数据
@@ -37,7 +38,7 @@ import { ExchangeTokenDto } from '../tokens/dto/exchange-token.dto';
  * - GET  /api/gamefi/tokens/vesting - 释放进度
  * - GET  /api/gamefi/leaderboard - 排行榜
  */
-@ApiTags('GameFi')
+@ApiTags('生态中心 (Ecosystem)')
 @Controller('gamefi')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuthStore } from '@/stores/auth.store';
 
 // 代理商侧边栏导航项
 const agentNavItems = [
@@ -22,10 +23,35 @@ export default function AgentLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { _hasHydrated } = useAuthStore();
   const [isLoading, setIsLoading] = useState(true);
   const [isAgent, setIsAgent] = useState(false);
 
+  // 标记客户端是否已挂载，避免 hydration 不匹配
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 标记是否已完成初始检查
+  const hasInitializedRef = useRef(false);
+
+  // 申请页面不需要检查代理商身份
+  const isApplyPage = pathname === '/agent/apply';
+
+  // 客户端挂载后设置 mounted 状态
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // 等待 hydration 完成
+    if (!_hasHydrated || hasInitializedRef.current) return;
+
+    // 申请页面跳过代理商检查，直接显示内容
+    if (isApplyPage) {
+      setIsLoading(false);
+      hasInitializedRef.current = true;
+      return;
+    }
+
     // 检查是否是代理商
     const checkAgentStatus = async () => {
       try {
@@ -49,18 +75,25 @@ export default function AgentLayout({
         router.push('/login');
       } finally {
         setIsLoading(false);
+        hasInitializedRef.current = true;
       }
     };
 
     checkAgentStatus();
-  }, [router]);
+  }, [router, isApplyPage, _hasHydrated]);
 
-  if (isLoading) {
+  // 加载中（包括客户端未挂载、hydration 未完成的情况）
+  if (!isMounted || !_hasHydrated || isLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--brand-primary)]" />
       </div>
     );
+  }
+
+  // 申请页面使用简单布局，不显示侧边栏
+  if (isApplyPage) {
+    return <>{children}</>;
   }
 
   return (

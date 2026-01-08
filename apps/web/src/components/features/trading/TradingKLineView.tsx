@@ -6,8 +6,10 @@ import { KLineChart, KLineDataPoint, TradeMarker } from '@/components/charts';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Maximize2, X, Info } from 'lucide-react';
 import type { UTCTimestamp } from 'lightweight-charts';
+import { klineApi } from '@/lib/api';
+import { TradeSignalCard, type TradeSignal } from './TradeSignalCard';
 
-// 交易记录类型
+// 交易记录类型（扩展支持 Freqtrade 信号详情）
 export interface TradeRecord {
   id: string;
   pair: string;
@@ -16,16 +18,27 @@ export interface TradeRecord {
   close_time?: number;    // Unix timestamp
   open_rate: number;
   close_rate?: number;
+  current_rate?: number;  // 当前价格（持仓中）
   amount: number;
+  stake_amount?: number;  // 投入金额
   profit?: number;
   profit_percent?: number;
   is_open?: boolean;
+  // Freqtrade 信号详情
+  buy_tag?: string;       // 买入触发条件标签
+  sell_reason?: string;   // 卖出原因
+  strategy?: string;      // 策略名称
+  timeframe?: string;     // K线周期
+  leverage?: number;      // 杠杆倍数
+  stop_loss?: number;     // 止损价格
+  stop_loss_pct?: number; // 止损百分比
 }
 
 // 组件属性
 interface TradingKLineViewProps {
   symbol: string;
   trades?: TradeRecord[];
+  /** 图表高度，默认响应式：移动端 280px，平板 350px，桌面 400px */
   height?: number;
   showControls?: boolean;
   onTradeClick?: (trade: TradeRecord) => void;
@@ -69,7 +82,7 @@ function generateMockKlineData(days: number = 30): KLineDataPoint[] {
 export function TradingKLineView({
   symbol,
   trades = [],
-  height = 400,
+  height: propHeight,
   showControls = true,
   onTradeClick,
   className = '',
@@ -80,19 +93,58 @@ export function TradingKLineView({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState<TradeRecord | null>(null);
 
+  // 响应式高度：移动端 280px，平板 350px，桌面 400px
+  const [responsiveHeight, setResponsiveHeight] = useState(propHeight || 400);
+
+  useEffect(() => {
+    if (propHeight) {
+      setResponsiveHeight(propHeight);
+      return;
+    }
+
+    const updateHeight = () => {
+      const width = window.innerWidth;
+      if (width < 768) {
+        setResponsiveHeight(280); // 移动端
+      } else if (width < 1024) {
+        setResponsiveHeight(350); // 平板
+      } else {
+        setResponsiveHeight(400); // 桌面
+      }
+    };
+
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [propHeight]);
+
+  // 使用 responsiveHeight 代替固定 height
+  const height = responsiveHeight;
+
   // 获取 K 线数据
   const fetchKlineData = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: 实际 API 调用
-      // const res = await klineApi.get(symbol, timeframe);
-      // setKlineData(res.data);
+      // 尝试从 API 获取真实数据
+      const res = await klineApi.get(symbol, timeframe, 500);
 
-      // 模拟数据
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setKlineData(generateMockKlineData(30));
+      // 转换 API 数据为图表格式
+      const apiData: KLineDataPoint[] = res.data.map((item) => ({
+        time: item.time as UTCTimestamp,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume,
+      }));
+
+      setKlineData(apiData);
     } catch (error) {
-      console.error('Failed to fetch kline:', error);
+      console.warn('API 数据获取失败，使用模拟数据:', error);
+
+      // 降级：使用模拟数据
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setKlineData(generateMockKlineData(30));
     } finally {
       setLoading(false);
     }
@@ -143,72 +195,29 @@ export function TradingKLineView({
     setIsFullscreen(!isFullscreen);
   };
 
-  // 交易详情弹窗
-  const TradeDetailPopup = ({ trade }: { trade: TradeRecord }) => {
-    const isProfit = (trade.profit || 0) >= 0;
-
-    return (
-      <div className="absolute top-4 right-4 z-50 w-72 bg-bg-secondary border border-border-primary rounded-lg shadow-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-medium text-text-primary">{trade.pair}</h4>
-          <button
-            onClick={() => setSelectedTrade(null)}
-            className="text-text-tertiary hover:text-text-primary"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-text-secondary">方向</span>
-            <span className={trade.side === 'buy' ? 'text-success' : 'text-danger'}>
-              {trade.side === 'buy' ? '买入' : '卖出'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-text-secondary">开仓价</span>
-            <span className="text-text-primary">${trade.open_rate.toLocaleString()}</span>
-          </div>
-          {trade.close_rate && (
-            <div className="flex justify-between">
-              <span className="text-text-secondary">平仓价</span>
-              <span className="text-text-primary">${trade.close_rate.toLocaleString()}</span>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-text-secondary">数量</span>
-            <span className="text-text-primary">{trade.amount}</span>
-          </div>
-          {trade.profit !== undefined && (
-            <div className="flex justify-between pt-2 border-t border-border-primary">
-              <span className="text-text-secondary">盈亏</span>
-              <span className={isProfit ? 'text-success font-medium' : 'text-danger font-medium'}>
-                {isProfit ? '+' : ''}{trade.profit.toFixed(2)} USDT
-                <span className="text-xs ml-1">
-                  ({isProfit ? '+' : ''}{((trade.profit_percent || 0) * 100).toFixed(2)}%)
-                </span>
-              </span>
-            </div>
-          )}
-        </div>
-
-        {onTradeClick && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full mt-3"
-            onClick={() => {
-              onTradeClick(trade);
-              setSelectedTrade(null);
-            }}
-          >
-            查看详情
-          </Button>
-        )}
-      </div>
-    );
-  };
+  // 将 TradeRecord 转换为 TradeSignal（用于 TradeSignalCard）
+  const convertToTradeSignal = (trade: TradeRecord): TradeSignal => ({
+    id: trade.id,
+    pair: trade.pair,
+    side: trade.side,
+    open_rate: trade.open_rate,
+    close_rate: trade.close_rate,
+    current_rate: trade.current_rate,
+    amount: trade.amount,
+    stake_amount: trade.stake_amount,
+    profit: trade.profit,
+    profit_percent: trade.profit_percent,
+    open_time: trade.open_time,
+    close_time: trade.close_time,
+    buy_tag: trade.buy_tag,
+    sell_reason: trade.sell_reason,
+    strategy: trade.strategy,
+    timeframe: trade.timeframe,
+    leverage: trade.leverage,
+    stop_loss: trade.stop_loss,
+    stop_loss_pct: trade.stop_loss_pct,
+    is_open: trade.is_open,
+  });
 
   // 全屏模式
   if (isFullscreen) {
@@ -251,7 +260,14 @@ export function TradingKLineView({
                 onTimeframeChange={handleTimeframeChange}
               />
             )}
-            {selectedTrade && <TradeDetailPopup trade={selectedTrade} />}
+            {/* 交易信号详情卡片 */}
+            {selectedTrade && (
+              <TradeSignalCard
+                trade={convertToTradeSignal(selectedTrade)}
+                open={!!selectedTrade}
+                onClose={() => setSelectedTrade(null)}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -302,18 +318,55 @@ export function TradingKLineView({
             onTimeframeChange={handleTimeframeChange}
           />
         )}
-        {selectedTrade && <TradeDetailPopup trade={selectedTrade} />}
+        {/* 交易信号详情卡片 */}
+        {selectedTrade && (
+          <TradeSignalCard
+            trade={convertToTradeSignal(selectedTrade)}
+            open={!!selectedTrade}
+            onClose={() => setSelectedTrade(null)}
+          />
+        )}
 
-        {/* 图例说明 */}
-        {markers.length > 0 && (
-          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border-primary">
-            <div className="flex items-center gap-2 text-sm">
-              <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-l-transparent border-r-transparent border-b-success" />
-              <span className="text-text-secondary">买入点 (B)</span>
+        {/* 图例说明 + 交易列表 */}
+        {trades.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-border-primary">
+            {/* 图例 */}
+            <div className="flex items-center gap-4 mb-3">
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-l-transparent border-r-transparent border-b-success" />
+                <span className="text-text-secondary">买入点 (B)</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[10px] border-l-transparent border-r-transparent border-t-danger" />
+                <span className="text-text-secondary">卖出点 (S)</span>
+              </div>
+              <span className="text-xs text-text-tertiary ml-auto">点击交易查看详情</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[10px] border-l-transparent border-r-transparent border-t-danger" />
-              <span className="text-text-secondary">卖出点 (S)</span>
+            {/* 交易列表（可点击查看信号详情） */}
+            <div className="flex flex-wrap gap-2">
+              {trades.slice(0, 5).map((trade) => (
+                <button
+                  key={trade.id}
+                  onClick={() => {
+                    setSelectedTrade(trade);
+                    onTradeClick?.(trade);
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-bg-tertiary hover:bg-bg-secondary transition-colors text-sm"
+                >
+                  <span className={trade.profit_percent && trade.profit_percent > 0 ? 'text-success' : trade.profit_percent && trade.profit_percent < 0 ? 'text-danger' : 'text-text-primary'}>
+                    {trade.side === 'buy' ? '买' : '卖'}
+                  </span>
+                  <span className="text-text-secondary">@{trade.open_rate?.toFixed(2)}</span>
+                  {trade.profit_percent !== undefined && (
+                    <span className={trade.profit_percent > 0 ? 'text-success' : 'text-danger'}>
+                      {trade.profit_percent > 0 ? '+' : ''}{(trade.profit_percent * 100).toFixed(2)}%
+                    </span>
+                  )}
+                </button>
+              ))}
+              {trades.length > 5 && (
+                <span className="px-3 py-1.5 text-sm text-text-tertiary">+{trades.length - 5} 更多</span>
+              )}
             </div>
           </div>
         )}

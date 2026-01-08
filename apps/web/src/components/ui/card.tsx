@@ -9,6 +9,14 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   glowColor?: 'primary' | 'success' | 'danger' | 'warning';
 }
 
+// P1修复：Tailwind 无法识别动态类，使用静态映射
+const glowClasses = {
+  primary: 'glow-border-primary',
+  success: 'glow-border-success',
+  danger: 'glow-border-danger',
+  warning: 'glow-border-warning',
+} as const;
+
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', hover = false, glowColor = 'primary', ...props }, ref) => {
     const variants = {
@@ -17,8 +25,8 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
       bordered: 'bg-bg-primary border-border-primary border-2',
       // 新增: 玻璃效果变体
       glass: 'glass-card bg-transparent',
-      // 新增: 发光边框变体
-      glow: `bg-bg-secondary border-border-primary glow-border glow-border-${glowColor}`,
+      // 新增: 发光边框变体 - 使用静态类映射
+      glow: `bg-bg-secondary border-border-primary glow-border ${glowClasses[glowColor]}`,
       // 新增: 渐变背景变体
       gradient: 'bg-gradient-to-br from-bg-secondary to-bg-tertiary border-border-primary',
     };

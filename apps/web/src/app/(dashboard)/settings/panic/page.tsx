@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
+import { MobileHeader } from '@/components/ui';
 import {
   AlertTriangle,
   Power,
@@ -12,142 +13,195 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  Loader2,
 } from 'lucide-react';
+import { instancesApi } from '@/lib/api';
+import { toast } from 'sonner';
+
+interface Instance {
+  id: string;
+  status: string;
+  ip_address: string;
+  region: string;
+  cpu_usage: string | null;
+  memory_usage: string | null;
+  last_heartbeat: string | null;
+}
+
+interface PanicLog {
+  id: number;
+  action: string;
+  status: 'success' | 'failed';
+  time: string;
+  details: string;
+}
 
 export default function PanicPage() {
+  // 加载状态
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
   // 确认弹窗状态
   const [showPanicModal, setShowPanicModal] = useState(false);
   const [showStopModal, setShowStopModal] = useState(false);
   const [password, setPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
 
-  // 操作日志
-  const [panicLogs, setPanicLogs] = useState([
-    {
-      id: 1,
-      action: '一键清仓',
-      status: 'success',
-      time: '2025-12-20 15:30:25',
-      details: '已将 BTC/ETH/SOL 全部卖出，收益 +$1,234.56',
-    },
-    {
-      id: 2,
-      action: '停止所有机器人',
-      status: 'success',
-      time: '2025-12-15 10:15:00',
-      details: '已停止 3 个交易实例',
-    },
-    {
-      id: 3,
-      action: '一键清仓',
-      status: 'failed',
-      time: '2025-12-10 08:45:30',
-      details: '交易所 API 超时，部分订单未成交',
-    },
-  ]);
+  // 操作日志（本地存储）
+  const [panicLogs, setPanicLogs] = useState<PanicLog[]>([]);
 
-  // 当前持仓统计（示例数据）
-  const [positions, setPositions] = useState({
-    totalValue: 12345.67,
-    btc: { amount: 0.5, value: 5000 },
-    eth: { amount: 2.3, value: 4500 },
-    sol: { amount: 100, value: 2845.67 },
-  });
+  // 运行中的实例
+  const [runningInstances, setRunningInstances] = useState<Instance[]>([]);
 
-  // 运行中的机器人统计
-  const [runningBots, setRunningBots] = useState({
-    total: 3,
-    instances: ['VPS-001', 'VPS-002', 'VPS-003'],
-  });
+  // 加载数据
+  useEffect(() => {
+    fetchData();
+    // 从 localStorage 恢复操作日志
+    const savedLogs = localStorage.getItem('panicLogs');
+    if (savedLogs) {
+      try {
+        setPanicLogs(JSON.parse(savedLogs));
+      } catch (e) {
+        console.error('Failed to parse panic logs:', e);
+      }
+    }
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const res = await instancesApi.list();
+      if (res.code === 0) {
+        // 只显示运行中的实例
+        const running = res.data.filter((i: Instance) => i.status === 'running');
+        setRunningInstances(running);
+      }
+    } catch (error) {
+      console.error('Failed to fetch instances:', error);
+      toast.error('获取实例列表失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 添加操作日志
+  const addLog = (action: string, status: 'success' | 'failed', details: string) => {
+    const newLog: PanicLog = {
+      id: Date.now(),
+      action,
+      status,
+      time: new Date().toLocaleString('zh-CN'),
+      details,
+    };
+    const updatedLogs = [newLog, ...panicLogs].slice(0, 20); // 只保留最近 20 条
+    setPanicLogs(updatedLogs);
+    localStorage.setItem('panicLogs', JSON.stringify(updatedLogs));
+  };
 
   // 一键清仓
   const handlePanicSell = async () => {
     if (!password) {
-      alert('请输入密码确认');
+      toast.error('请输入密码确认');
       return;
     }
 
     try {
-      // TODO: 调用 API - POST /api/instances/panic-sell
-      console.log('一键清仓:', { password });
+      setSubmitting(true);
+      const res = await instancesApi.panicSell();
 
-      // 添加日志
-      setPanicLogs([
-        {
-          id: Date.now(),
-          action: '一键清仓',
-          status: 'success',
-          time: new Date().toLocaleString('zh-CN'),
-          details: `已将所有持仓卖出，总价值 $${positions.totalValue.toFixed(2)}`,
-        },
-        ...panicLogs,
-      ]);
+      if (res.code === 0) {
+        const { instancesProcessed, successCount, failedCount } = res.data;
 
-      // 清空持仓
-      setPositions({
-        totalValue: 0,
-        btc: { amount: 0, value: 0 },
-        eth: { amount: 0, value: 0 },
-        sol: { amount: 0, value: 0 },
-      });
+        if (successCount > 0) {
+          toast.success(`一键清仓成功！处理了 ${instancesProcessed} 个实例`);
+          addLog(
+            '一键清仓',
+            'success',
+            `成功清仓 ${successCount} 个实例${failedCount > 0 ? `，${failedCount} 个失败` : ''}`
+          );
+        } else if (instancesProcessed === 0) {
+          toast.info('没有运行中的实例需要清仓');
+          addLog('一键清仓', 'success', '没有运行中的实例');
+        } else {
+          toast.error(`清仓失败：${failedCount} 个实例处理失败`);
+          addLog('一键清仓', 'failed', `${failedCount} 个实例处理失败`);
+        }
+
+        // 刷新实例列表
+        await fetchData();
+      } else {
+        toast.error(res.message || '操作失败');
+        addLog('一键清仓', 'failed', res.message || '未知错误');
+      }
 
       setShowPanicModal(false);
       setPassword('');
-      alert('一键清仓成功！所有持仓已卖出');
-    } catch (error) {
+    } catch (error: any) {
       console.error('一键清仓失败:', error);
-      alert('操作失败，请稍后重试');
+      toast.error('操作失败，请稍后重试');
+      addLog('一键清仓', 'failed', error.message || '网络错误');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   // 停止所有机器人
   const handleStopAll = async () => {
     if (!password) {
-      alert('请输入密码确认');
+      toast.error('请输入密码确认');
       return;
     }
 
     try {
-      // TODO: 调用 API - POST /api/instances/stop-all
-      console.log('停止所有机器人:', { password });
+      setSubmitting(true);
+      const res = await instancesApi.stopAll();
 
-      // 添加日志
-      setPanicLogs([
-        {
-          id: Date.now(),
-          action: '停止所有机器人',
-          status: 'success',
-          time: new Date().toLocaleString('zh-CN'),
-          details: `已停止 ${runningBots.total} 个交易实例`,
-        },
-        ...panicLogs,
-      ]);
+      if (res.code === 0) {
+        const { stoppedCount, failedCount } = res.data;
 
-      // 清空运行中的机器人
-      setRunningBots({
-        total: 0,
-        instances: [],
-      });
+        if (stoppedCount > 0) {
+          toast.success(`已停止 ${stoppedCount} 个实例`);
+          addLog(
+            '停止所有机器人',
+            'success',
+            `成功停止 ${stoppedCount} 个实例${failedCount > 0 ? `，${failedCount} 个失败` : ''}`
+          );
+        } else if (stoppedCount === 0 && failedCount === 0) {
+          toast.info('没有运行中的实例');
+          addLog('停止所有机器人', 'success', '没有运行中的实例');
+        } else {
+          toast.error(`停止失败：${failedCount} 个实例处理失败`);
+          addLog('停止所有机器人', 'failed', `${failedCount} 个实例处理失败`);
+        }
+
+        // 刷新实例列表
+        await fetchData();
+      } else {
+        toast.error(res.message || '操作失败');
+        addLog('停止所有机器人', 'failed', res.message || '未知错误');
+      }
 
       setShowStopModal(false);
       setPassword('');
-      alert('已停止所有机器人');
-    } catch (error) {
+    } catch (error: any) {
       console.error('停止失败:', error);
-      alert('操作失败，请稍后重试');
+      toast.error('操作失败，请稍后重试');
+      addLog('停止所有机器人', 'failed', error.message || '网络错误');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  return (
-    <div className="p-6 space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center gap-3">
-        <AlertTriangle className="w-8 h-8 text-danger" />
-        <div>
-          <h1 className="text-2xl font-bold text-white">紧急按钮</h1>
-          <p className="text-sm text-text-secondary">在紧急情况下快速止损或停止交易</p>
-        </div>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-brand-primary" />
       </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6 pb-20 lg:pb-6">
+      <MobileHeader title="紧急按钮" subtitle="在紧急情况下快速止损或停止交易" />
 
       {/* 警告提示 */}
       <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg flex items-start gap-3">
@@ -161,77 +215,45 @@ export default function PanicPage() {
       </div>
 
       {/* 当前状态 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 持仓统计 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <DollarSign className="w-5 h-5" />
-              当前持仓
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Power className="w-5 h-5" />
+            运行中的交易实例
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {runningInstances.length === 0 ? (
+            <div className="text-center py-8">
+              <Power className="w-12 h-12 mx-auto text-text-tertiary opacity-50 mb-3" />
+              <p className="text-text-secondary">当前没有运行中的交易实例</p>
+              <p className="text-xs text-text-tertiary mt-1">所有实例已停止或未创建</p>
+            </div>
+          ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-text-secondary">总价值</span>
+                <span className="text-text-secondary">运行实例数</span>
                 <span className="text-2xl font-bold text-white">
-                  ${positions.totalValue.toFixed(2)}
+                  {runningInstances.length}
                 </span>
               </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">BTC</span>
-                  <span className="text-white">
-                    {positions.btc.amount} (${positions.btc.value.toFixed(2)})
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">ETH</span>
-                  <span className="text-white">
-                    {positions.eth.amount} (${positions.eth.value.toFixed(2)})
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">SOL</span>
-                  <span className="text-white">
-                    {positions.sol.amount} (${positions.sol.value.toFixed(2)})
-                  </span>
-                </div>
+              <div className="space-y-2">
+                {runningInstances.map((instance) => (
+                  <div key={instance.id} className="flex items-center gap-2 p-2 bg-bg-tertiary/30 rounded-lg">
+                    <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                    <span className="text-sm text-text-secondary font-mono">
+                      {instance.id.substring(0, 8)}...
+                    </span>
+                    <span className="text-xs text-text-tertiary">
+                      {instance.region || '未知区域'}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* 运行中的机器人 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Power className="w-5 h-5" />
-              运行中的机器人
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">运行实例</span>
-                <span className="text-2xl font-bold text-white">
-                  {runningBots.total}
-                </span>
-              </div>
-              {runningBots.instances.length > 0 && (
-                <div className="space-y-1 text-sm">
-                  {runningBots.instances.map((instance, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                      <span className="text-text-secondary">{instance}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* 紧急操作按钮 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -243,7 +265,7 @@ export default function PanicPage() {
               一键清仓 (Panic Sell)
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <div className="text-sm text-text-secondary space-y-2">
               <p>
                 <strong className="text-white">功能说明：</strong>
@@ -265,7 +287,7 @@ export default function PanicPage() {
               className="w-full"
               size="lg"
               onClick={() => setShowPanicModal(true)}
-              disabled={positions.totalValue === 0}
+              disabled={runningInstances.length === 0}
             >
               <AlertTriangle className="w-5 h-5 mr-2" />
               一键清仓
@@ -281,7 +303,7 @@ export default function PanicPage() {
               停止所有机器人
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <div className="text-sm text-text-secondary space-y-2">
               <p>
                 <strong className="text-white">功能说明：</strong>
@@ -303,7 +325,7 @@ export default function PanicPage() {
               className="w-full bg-warning hover:bg-warning/90"
               size="lg"
               onClick={() => setShowStopModal(true)}
-              disabled={runningBots.total === 0}
+              disabled={runningInstances.length === 0}
             >
               <Power className="w-5 h-5 mr-2" />
               停止所有机器人
@@ -321,13 +343,14 @@ export default function PanicPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {panicLogs.length === 0 ? (
-              <div className="text-center py-8 text-text-tertiary">
-                <p>暂无操作记录</p>
-              </div>
-            ) : (
-              panicLogs.map((log) => (
+          {panicLogs.length === 0 ? (
+            <div className="text-center py-8 text-text-tertiary">
+              <Clock className="w-12 h-12 mx-auto opacity-50 mb-3" />
+              <p>暂无操作记录</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {panicLogs.map((log) => (
                 <div
                   key={log.id}
                   className="flex items-start gap-3 p-4 bg-bg-tertiary/50 rounded-lg"
@@ -352,9 +375,9 @@ export default function PanicPage() {
                     </span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -372,17 +395,18 @@ export default function PanicPage() {
           <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
             <p className="text-danger text-sm">
               <strong>警告：</strong>
-              此操作将立即卖出所有持仓（总价值 $
-              {positions.totalValue.toFixed(2)}），换成 USDT。操作不可撤销！
+              此操作将立即卖出所有 {runningInstances.length} 个运行中实例的全部持仓，换成 USDT。操作不可撤销！
             </p>
           </div>
 
           <div className="space-y-2 text-sm text-text-secondary">
             <p>将执行以下操作：</p>
             <ul className="list-disc list-inside space-y-1 text-text-tertiary">
-              <li>卖出 {positions.btc.amount} BTC</li>
-              <li>卖出 {positions.eth.amount} ETH</li>
-              <li>卖出 {positions.sol.amount} SOL</li>
+              {runningInstances.map((instance) => (
+                <li key={instance.id}>
+                  清仓实例 {instance.id.substring(0, 8)}...
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -409,9 +433,13 @@ export default function PanicPage() {
               variant="danger"
               className="flex-1"
               onClick={handlePanicSell}
-              disabled={!password}
+              disabled={!password || submitting}
             >
-              确认清仓
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                '确认清仓'
+              )}
             </Button>
           </div>
         </div>
@@ -431,7 +459,7 @@ export default function PanicPage() {
           <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg">
             <p className="text-warning text-sm">
               <strong>提示：</strong>
-              此操作将停止所有运行中的交易实例（共 {runningBots.total}{' '}
+              此操作将停止所有运行中的交易实例（共 {runningInstances.length}{' '}
               个），但不会清空持仓。
             </p>
           </div>
@@ -439,8 +467,10 @@ export default function PanicPage() {
           <div className="space-y-2 text-sm text-text-secondary">
             <p>将停止以下实例：</p>
             <ul className="list-disc list-inside space-y-1 text-text-tertiary">
-              {runningBots.instances.map((instance, index) => (
-                <li key={index}>{instance}</li>
+              {runningInstances.map((instance) => (
+                <li key={instance.id}>
+                  {instance.id.substring(0, 8)}... ({instance.region || '未知区域'})
+                </li>
               ))}
             </ul>
           </div>
@@ -468,9 +498,13 @@ export default function PanicPage() {
               variant="danger"
               className="flex-1 bg-warning hover:bg-warning/90"
               onClick={handleStopAll}
-              disabled={!password}
+              disabled={!password || submitting}
             >
-              确认停止
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                '确认停止'
+              )}
             </Button>
           </div>
         </div>

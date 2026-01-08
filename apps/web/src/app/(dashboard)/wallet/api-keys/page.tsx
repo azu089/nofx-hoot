@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, MobileHeader } from '@/components/ui';
 import { apiKeysApi } from '@/lib/api';
 import {
   Key,
@@ -13,7 +13,6 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
-  ArrowLeft,
   AlertTriangle,
 } from 'lucide-react';
 
@@ -71,8 +70,8 @@ export default function ApiKeysPage() {
       await apiKeysApi.create({
         exchange: formData.exchange,
         label: formData.label,
-        api_key: formData.apiKey,
-        api_secret: formData.apiSecret,
+        apiKey: formData.apiKey,
+        secretKey: formData.apiSecret,
       });
       setFormData({ exchange: 'binance', label: '', apiKey: '', apiSecret: '' });
       setShowAddForm(false);
@@ -126,13 +125,7 @@ export default function ApiKeysPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            返回
-          </Button>
-        </div>
-        <h1 className="text-2xl font-bold text-white">API Key 管理</h1>
+        <MobileHeader title="API Key 管理" />
         <div className="animate-pulse space-y-4">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-24 bg-bg-tertiary rounded-xl" />
@@ -144,20 +137,15 @@ export default function ApiKeysPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => router.back()}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          返回
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">API Key 管理</h1>
-        <Button onClick={() => setShowAddForm(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          添加 API Key
-        </Button>
-      </div>
+      <MobileHeader
+        title="API Key 管理"
+        rightAction={
+          <Button onClick={() => setShowAddForm(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            添加
+          </Button>
+        }
+      />
 
       {/* 安全提示 */}
       <Card className="border-warning/30 bg-warning/5">

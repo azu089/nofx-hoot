@@ -10,6 +10,7 @@ import type { Metadata } from 'next';
 //   description: '管理账户信息、安全设置、通知偏好、外观和语言设置',
 // };
 import { userApi, instancesApi, authApi } from '@/lib/api';
+import { useUiStore } from '@/stores/ui.store';
 import {
   User,
   Shield,
@@ -18,11 +19,22 @@ import {
   Globe,
   LogOut,
   ChevronRight,
+  ChevronLeft,
   Check,
   AlertTriangle,
   X,
   Loader2,
+  Download,
+  Smartphone,
+  Share,
+  Plus,
+  Moon,
+  Sun,
+  Monitor,
 } from 'lucide-react';
+import { usePWA } from '@/hooks/usePWA';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface UserProfile {
   id: string;
@@ -32,7 +44,18 @@ interface UserProfile {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { logout } = useAuthStore();
   const [activeSection, setActiveSection] = useState<string>('account');
+
+  // PWA 安装状态
+  const { canInstall, isInstalled, isIOS, isSafari, install } = usePWA();
+
+  // 退出登录处理
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['user', 'profile'],
@@ -141,6 +164,7 @@ export default function SettingsPage() {
   const menuItems = [
     { id: 'account', label: '账户信息', icon: User },
     { id: 'security', label: '安全设置', icon: Shield },
+    { id: 'app', label: '应用设置', icon: Smartphone },
     { id: 'panic', label: '紧急按钮', icon: AlertTriangle, danger: true },
     { id: 'notifications', label: '通知设置', icon: Bell },
     { id: 'appearance', label: '外观设置', icon: Palette },
@@ -187,19 +211,46 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] p-6">
-      {/* 页面标题 */}
-      <div className="mb-8">
+    <div className="min-h-screen bg-[var(--bg-primary)] p-4 lg:p-6 pb-24 lg:pb-6">
+      {/* 页面标题 - 桌面端显示标题，移动端不显示 */}
+      <div className="hidden lg:block mb-8">
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">设置</h1>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
           管理您的账户和偏好设置
         </p>
       </div>
 
+      {/* 移动端：横向滚动菜单 */}
+      <div className="lg:hidden mb-4 -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {menuItems.map((item) => {
+            const isDanger = 'danger' in item && item.danger;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveSection(item.id)}
+                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-colors ${
+                  activeSection === item.id
+                    ? isDanger
+                      ? 'bg-[var(--danger)] text-white'
+                      : 'bg-[var(--brand-primary)] text-white'
+                    : isDanger
+                      ? 'bg-[var(--danger)]/10 text-[var(--danger)]'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                <span className="whitespace-nowrap">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex gap-6">
-        {/* 左侧菜单 */}
-        <div className="w-64 flex-shrink-0">
-          <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] overflow-hidden">
+        {/* 桌面端：左侧菜单 */}
+        <div className="hidden lg:block w-64 flex-shrink-0">
+          <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] overflow-hidden sticky top-20">
             {menuItems.map((item) => {
               const isDanger = 'danger' in item && item.danger;
               return (
@@ -225,20 +276,15 @@ export default function SettingsPage() {
               );
             })}
 
-            {/* 退出登录 */}
-            <button className="w-full flex items-center gap-3 px-4 py-3 text-left text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors border-t border-[var(--border-primary)]">
-              <LogOut className="w-5 h-5" />
-              <span>退出登录</span>
-            </button>
           </div>
         </div>
 
         {/* 右侧内容 */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {/* 账户信息 */}
           {activeSection === 'account' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
+              <h2 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] mb-4 lg:mb-6">
                 账户信息
               </h2>
 
@@ -307,7 +353,7 @@ export default function SettingsPage() {
 
           {/* 安全设置 */}
           {activeSection === 'security' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6">
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
               <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
                 安全设置
               </h2>
@@ -376,9 +422,89 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* 应用设置 */}
+          {activeSection === 'app' && (
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
+                应用设置
+              </h2>
+
+              <div className="space-y-4">
+                {/* PWA 安装 */}
+                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-[var(--brand-primary)]/10 rounded-xl flex items-center justify-center">
+                      <Download className="w-6 h-6 text-[var(--brand-primary)]" />
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-primary)] font-medium">安装应用</p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        {isInstalled
+                          ? '应用已安装到您的设备'
+                          : '安装到桌面，获得原生体验'}
+                      </p>
+                    </div>
+                  </div>
+                  {isInstalled ? (
+                    <span className="flex items-center gap-1 text-sm text-[var(--success)]">
+                      <Check className="w-4 h-4" />
+                      已安装
+                    </span>
+                  ) : canInstall ? (
+                    <button
+                      onClick={install}
+                      className="px-4 py-2 bg-[var(--brand-primary)] hover:bg-[var(--brand-secondary)] text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      安装
+                    </button>
+                  ) : isIOS && isSafari ? (
+                    <div className="text-right">
+                      <p className="text-xs text-[var(--text-tertiary)] mb-1">iOS 安装步骤：</p>
+                      <div className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+                        <Share className="w-3 h-3" />
+                        <span>→</span>
+                        <Plus className="w-3 h-3" />
+                        <span>添加到主屏幕</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-[var(--text-tertiary)]">
+                      请使用 Chrome 或 Safari
+                    </span>
+                  )}
+                </div>
+
+                {/* 缓存管理 */}
+                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
+                  <div>
+                    <p className="text-[var(--text-primary)] font-medium">清除缓存</p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      清除应用缓存数据
+                    </p>
+                  </div>
+                  <button className="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-[var(--border-primary)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors">
+                    清除
+                  </button>
+                </div>
+
+                {/* 版本信息 */}
+                <div className="flex items-center justify-between py-4">
+                  <div>
+                    <p className="text-[var(--text-primary)] font-medium">版本信息</p>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      当前版本
+                    </p>
+                  </div>
+                  <span className="text-sm text-[var(--text-tertiary)]">v1.15.0</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 通知设置 */}
           {activeSection === 'notifications' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6">
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
               <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
                 通知设置
               </h2>
@@ -410,36 +536,12 @@ export default function SettingsPage() {
 
           {/* 外观设置 */}
           {activeSection === 'appearance' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-                外观设置
-              </h2>
-
-              <div className="space-y-6">
-                <div>
-                  <p className="text-[var(--text-primary)] font-medium mb-3">主题</p>
-                  <div className="flex gap-4">
-                    {['暗黑模式', '浅色模式', '跟随系统'].map((theme, index) => (
-                      <button
-                        key={index}
-                        className={`px-4 py-2 rounded-lg border ${
-                          index === 0
-                            ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/10 text-[var(--brand-primary)]'
-                            : 'border-[var(--border-primary)] text-[var(--text-secondary)] hover:border-[var(--text-tertiary)]'
-                        }`}
-                      >
-                        {theme}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AppearanceSettings />
           )}
 
           {/* 语言设置 */}
           {activeSection === 'language' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6">
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
               <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
                 语言设置
               </h2>
@@ -718,6 +820,62 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// 外观设置组件（独立出来以使用 hooks）
+function AppearanceSettings() {
+  const { themeMode, setThemeMode, applyTheme } = useUiStore();
+
+  // 初始化时应用主题
+  useEffect(() => {
+    applyTheme();
+  }, [applyTheme]);
+
+  const themeOptions = [
+    { mode: 'dark' as const, label: '暗黑模式', icon: Moon },
+    { mode: 'light' as const, label: '浅色模式', icon: Sun },
+    { mode: 'system' as const, label: '跟随系统', icon: Monitor },
+  ];
+
+  return (
+    <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
+      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
+        外观设置
+      </h2>
+
+      <div className="space-y-6">
+        <div>
+          <p className="text-[var(--text-primary)] font-medium mb-3">主题模式</p>
+          <div className="flex flex-wrap gap-3">
+            {themeOptions.map(({ mode, label, icon: Icon }) => (
+              <button
+                key={mode}
+                onClick={() => setThemeMode(mode)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-lg border transition-all ${
+                  themeMode === mode
+                    ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/10 text-[var(--brand-primary)]'
+                    : 'border-[var(--border-primary)] text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span>{label}</span>
+                {themeMode === mode && (
+                  <Check className="w-4 h-4 ml-1" />
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-[var(--text-tertiary)] mt-3">
+            {themeMode === 'system'
+              ? '主题将根据您的系统设置自动切换'
+              : themeMode === 'dark'
+                ? '使用暗色背景，适合夜间使用'
+                : '使用浅色背景，适合日间使用'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,17 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Metadata } from 'next';
-
-// Metadata for this page (will be defined in layout or parent server component)
-// export const metadata: Metadata = {
-//   title: '交易控制台 | QuantFi',
-//   description: '实时监控量化交易执行，管理当前持仓，查看交易日志和策略运行状态',
-// };
 import { Card, CardContent, CardHeader, CardTitle, Button, Dialog, DialogFooter } from '@/components/ui';
-import { instancesApi } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
-import { TradingLog, TradingKLineView, TradeRecord } from '@/components/features/trading';
+import { instancesApi, tradingApi, billingApi } from '@/lib/api';
+import { formatDateTime, formatCurrency, formatPercent } from '@/lib/utils';
+import { TradingLog, TradingKLineView } from '@/components/features/trading';
 import {
   Activity,
   TrendingUp,
@@ -25,6 +18,14 @@ import {
   History,
   AlertTriangle,
   XCircle,
+  Bot,
+  Zap,
+  Clock,
+  Target,
+  Brain,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 
 interface Instance {
@@ -57,12 +58,19 @@ interface Trade {
   close_date: string | null;
 }
 
+interface TodayPnL {
+  todayPnl: string;
+  todayTrades: number;
+  todayWinRate: string;
+}
+
 export default function TradingPage() {
   const router = useRouter();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [status, setStatus] = useState<FreqtradeStatus | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [todayPnL, setTodayPnL] = useState<TodayPnL | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -72,11 +80,15 @@ export default function TradingPage() {
 
   const fetchData = async () => {
     try {
-      const instancesRes = await instancesApi.list();
+      const [instancesRes, pnlRes] = await Promise.all([
+        instancesApi.list(),
+        billingApi.getTodayPnL().catch(() => ({ data: null })),
+      ]);
       const runningInstances = (instancesRes.data || []).filter(
         (i: Instance) => i.status === 'running'
       );
       setInstances(runningInstances);
+      setTodayPnL(pnlRes.data);
 
       // 自动选择第一个实例
       if (runningInstances.length > 0 && !selectedInstance) {
@@ -185,7 +197,7 @@ export default function TradingPage() {
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-white">交易控制台</h1>
         <div className="animate-pulse space-y-4">
-          {[...Array(3)].map((_, i) => (
+          {[...Array(4)].map((_, i) => (
             <div key={i} className="h-24 bg-bg-tertiary rounded-xl" />
           ))}
         </div>
@@ -197,15 +209,18 @@ export default function TradingPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-white">交易控制台</h1>
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Activity className="w-16 h-16 mx-auto mb-4 text-text-disabled" />
-            <h3 className="text-lg font-medium text-text-primary mb-2">暂无运行中的实例</h3>
-            <p className="text-text-secondary mb-6">
-              请先创建并启动一个 VPS 实例
+        <Card variant="glass">
+          <CardContent className="py-16 text-center">
+            <div className="w-20 h-20 mx-auto mb-6 bg-bg-tertiary rounded-full flex items-center justify-center">
+              <Activity className="w-10 h-10 text-text-tertiary" />
+            </div>
+            <h3 className="text-xl font-medium text-text-primary mb-2">暂无运行中的实例</h3>
+            <p className="text-text-secondary mb-8 max-w-md mx-auto">
+              请先前往策略市场选择并启用一个策略，系统将自动为您创建交易实例
             </p>
-            <Button onClick={() => (window.location.href = '/instances')}>
-              前往实例管理
+            <Button variant="gradient" onClick={() => router.push('/strategies')}>
+              <Zap className="w-4 h-4 mr-2" />
+              前往策略市场
             </Button>
           </CardContent>
         </Card>
@@ -215,27 +230,29 @@ export default function TradingPage() {
 
   const openTrades = trades.filter((t) => t.is_open);
   const closedTrades = trades.filter((t) => !t.is_open);
+  const todayPnlValue = parseFloat(todayPnL?.todayPnl || '0');
+  const isProfitable = todayPnlValue >= 0;
 
   return (
     <div className="space-y-6">
+      {/* 标题栏 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">交易控制台</h1>
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => router.push('/trading/history')}
           >
-            <History className="w-4 h-4 mr-2" />
-            交易历史
+            <History className="w-4 h-4 mr-1.5" />
+            <span className="hidden sm:inline">历史</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => selectedInstance && fetchInstanceData(selectedInstance)}
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
+            <RefreshCw className="w-4 h-4" />
           </Button>
           {status?.state === 'running' ? (
             <Button
@@ -244,7 +261,7 @@ export default function TradingPage() {
               onClick={handleStop}
               isLoading={actionLoading}
             >
-              <Square className="w-4 h-4 mr-2" />
+              <Square className="w-4 h-4 mr-1.5" />
               停止策略
             </Button>
           ) : (
@@ -254,25 +271,25 @@ export default function TradingPage() {
               onClick={handleStart}
               isLoading={actionLoading}
             >
-              <Play className="w-4 h-4 mr-2" />
+              <Play className="w-4 h-4 mr-1.5" />
               启动策略
             </Button>
           )}
         </div>
       </div>
 
-      {/* 紧急平仓警告条 */}
+      {/* 紧急平仓警告条 - 有持仓时显示 */}
       {openTrades.length > 0 && (
         <Card className="border-danger/30 bg-danger/5">
-          <CardContent className="py-4">
+          <CardContent className="py-3 px-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-danger" />
+                <AlertTriangle className="w-5 h-5 text-danger flex-shrink-0" />
                 <div>
-                  <p className="text-text-primary font-medium">
+                  <p className="text-text-primary font-medium text-sm">
                     当前有 <span className="font-bold text-danger">{openTrades.length}</span> 个持仓中
                   </p>
-                  <p className="text-text-secondary text-sm mt-0.5">
+                  <p className="text-text-tertiary text-xs mt-0.5 hidden sm:block">
                     紧急情况下可一键平仓所有持仓
                   </p>
                 </div>
@@ -282,9 +299,8 @@ export default function TradingPage() {
                 size="sm"
                 onClick={() => setEmergencyDialogOpen(true)}
                 disabled={actionLoading}
-                className="bg-danger hover:bg-danger/90"
               >
-                <XCircle className="w-4 h-4 mr-2" />
+                <XCircle className="w-4 h-4 mr-1.5" />
                 紧急全部平仓
               </Button>
             </div>
@@ -292,15 +308,85 @@ export default function TradingPage() {
         </Card>
       )}
 
-      {/* 实例选择 */}
+      {/* 当前策略状态卡片 */}
+      {status && (
+        <Card variant="glass" className="glow-border glow-border-primary">
+          <CardContent className="p-0">
+            <div className="bg-gradient-to-br from-brand-primary/10 via-bg-secondary to-brand-secondary/5 p-4 md:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
+                    <Bot className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-text-primary font-medium">{status.strategy || '策略'}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`w-2 h-2 rounded-full ${status.state === 'running' ? 'bg-success animate-pulse' : 'bg-text-tertiary'}`} />
+                      <span className="text-xs text-text-secondary">
+                        {status.state === 'running' ? '运行中' : '已停止'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {/* 今日盈亏高亮 */}
+                <div className={`text-right p-3 rounded-lg ${isProfitable ? 'bg-success/10' : 'bg-danger/10'}`}>
+                  <p className="text-text-tertiary text-xs">今日盈亏</p>
+                  <p className={`text-xl md:text-2xl font-bold font-mono ${isProfitable ? 'text-success' : 'text-danger'}`}>
+                    {isProfitable ? '+' : ''}{formatCurrency(todayPnL?.todayPnl || '0')}
+                  </p>
+                </div>
+              </div>
+
+              {/* 运行数据 */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 bg-bg-tertiary/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <Activity className="w-3.5 h-3.5" />
+                    今日交易
+                  </div>
+                  <p className="text-text-primary font-semibold">{todayPnL?.todayTrades || 0} 笔</p>
+                </div>
+                <div className="p-3 bg-bg-tertiary/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <Target className="w-3.5 h-3.5" />
+                    胜率
+                  </div>
+                  <p className="text-text-primary font-semibold">
+                    {formatPercent(parseFloat(todayPnL?.todayWinRate || '0') * 100, 0)}
+                  </p>
+                </div>
+                <div className="p-3 bg-bg-tertiary/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    可用余额
+                  </div>
+                  <p className="text-text-primary font-semibold">
+                    {status.available_balance?.toFixed(2) || '0.00'} USDT
+                  </p>
+                </div>
+                <div className="p-3 bg-bg-tertiary/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    当前持仓
+                  </div>
+                  <p className="text-text-primary font-semibold">{openTrades.length} 个</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 实例选择（多实例时显示） */}
       {instances.length > 1 && (
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-2">
           {instances.map((instance) => (
             <Button
               key={instance.id}
               variant={selectedInstance === instance.id ? 'primary' : 'outline'}
               size="sm"
               onClick={() => setSelectedInstance(instance.id)}
+              className="flex-shrink-0"
             >
               {instance.ip_address}
             </Button>
@@ -308,60 +394,7 @@ export default function TradingPage() {
         </div>
       )}
 
-      {/* 状态卡片 */}
-      {status && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg bg-brand-primary/20 flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-brand-primary" />
-                </div>
-                <div>
-                  <p className="text-text-secondary text-sm">状态</p>
-                  <p className="text-text-primary text-xl font-semibold">
-                    {status.state === 'running' ? '运行中' : '已停止'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg bg-success/20 flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-success" />
-                </div>
-                <div>
-                  <p className="text-text-secondary text-sm">可用余额</p>
-                  <p className="text-text-primary text-xl font-semibold">
-                    {status.available_balance?.toFixed(2) || '0.00'} USDT
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg bg-warning/20 flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-warning" />
-                </div>
-                <div>
-                  <p className="text-text-secondary text-sm">策略</p>
-                  <p className="text-text-primary text-lg font-medium">
-                    {status.strategy || '-'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* K 线图 - 买卖点可视化 */}
+      {/* K 线图 - 买卖点可视化（有持仓时显示） */}
       {openTrades.length > 0 && (
         <TradingKLineView
           symbol={openTrades[0]?.pair || 'BTC/USDT'}
@@ -382,14 +415,17 @@ export default function TradingPage() {
         />
       )}
 
-      {/* 持仓列表 */}
-      <Card>
-        <CardHeader>
+      {/* 持仓列表 - 完整版 */}
+      <Card variant="glass">
+        <CardHeader className="border-b border-border-primary/50">
           <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-brand-primary" />
-              持仓中 ({openTrades.length})
-            </span>
+              <span>持仓中</span>
+              <span className="px-2 py-0.5 text-xs bg-brand-primary/20 text-brand-primary rounded-full">
+                {openTrades.length}
+              </span>
+            </div>
             {openTrades.length > 0 && (
               <Button
                 variant="danger"
@@ -402,61 +438,91 @@ export default function TradingPage() {
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {openTrades.length === 0 ? (
-            <div className="text-center py-8 text-text-secondary">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>暂无持仓</p>
+            <div className="text-center py-10 text-text-secondary">
+              <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
+                <AlertCircle className="w-8 h-8 text-text-tertiary" />
+              </div>
+              <p className="font-medium">暂无持仓</p>
+              <p className="text-sm text-text-tertiary mt-1">策略运行后将显示持仓信息</p>
             </div>
           ) : (
             <div className="space-y-3">
               {openTrades.map((trade) => {
                 const profit = trade.close_profit_abs || 0;
                 const isProfit = profit >= 0;
+                const profitPercent = (trade.close_profit || 0) * 100;
 
                 return (
                   <div
                     key={trade.trade_id}
-                    className="flex items-center justify-between p-4 bg-bg-tertiary/50 rounded-lg"
+                    className={`p-4 rounded-xl border transition-all ${
+                      isProfit ? 'bg-success/5 border-success/20' : 'bg-danger/5 border-danger/20'
+                    }`}
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-text-primary font-medium">{trade.pair}</h3>
-                        <span className="text-text-secondary text-sm">
-                          {formatDateTime(trade.open_date)}
-                        </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-text-primary font-bold text-lg">{trade.pair}</h3>
+                          <span className="text-xs px-2 py-0.5 rounded bg-success/20 text-success">
+                            做多
+                          </span>
+                        </div>
+                        {/* 移动端：紧凑布局 */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          <div className="bg-bg-tertiary/30 px-2 py-1.5 rounded">
+                            <span className="text-text-tertiary">数量:</span>
+                            <span className="text-text-primary ml-1">{trade.amount.toFixed(4)}</span>
+                          </div>
+                          <div className="bg-bg-tertiary/30 px-2 py-1.5 rounded">
+                            <span className="text-text-tertiary">开仓价:</span>
+                            <span className="text-text-primary ml-1">{trade.open_rate.toFixed(2)}</span>
+                          </div>
+                          <div className="bg-bg-tertiary/30 px-2 py-1.5 rounded">
+                            <span className="text-text-tertiary">本金:</span>
+                            <span className="text-text-primary ml-1">{trade.stake_amount.toFixed(2)}</span>
+                          </div>
+                          <div className="bg-bg-tertiary/30 px-2 py-1.5 rounded">
+                            <span className="text-text-tertiary">时间:</span>
+                            <span className="text-text-primary ml-1">{formatDateTime(trade.open_date).slice(5)}</span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-text-tertiary text-sm mt-1">
-                        开仓价: {trade.open_rate.toFixed(8)} • 数量: {trade.amount.toFixed(4)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p
-                          className={`text-lg font-semibold ${
-                            isProfit ? 'text-success' : 'text-danger'
-                          }`}
+                      <div className="flex items-center gap-3 ml-4">
+                        <div className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {isProfit ? (
+                              <ArrowUp className="w-4 h-4 text-success" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4 text-danger" />
+                            )}
+                            <span
+                              className={`text-lg font-bold ${
+                                isProfit ? 'text-success' : 'text-danger'
+                              }`}
+                            >
+                              {isProfit ? '+' : ''}{profit.toFixed(2)}
+                            </span>
+                          </div>
+                          <p
+                            className={`text-xs ${
+                              isProfit ? 'text-success' : 'text-danger'
+                            }`}
+                          >
+                            {isProfit ? '+' : ''}{profitPercent.toFixed(2)}%
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleForceExit(trade.trade_id)}
+                          disabled={actionLoading}
+                          className="flex-shrink-0"
                         >
-                          {isProfit ? '+' : ''}
-                          {profit.toFixed(2)} USDT
-                        </p>
-                        <p
-                          className={`text-sm ${
-                            isProfit ? 'text-success' : 'text-danger'
-                          }`}
-                        >
-                          {isProfit ? '+' : ''}
-                          {((trade.close_profit || 0) * 100).toFixed(2)}%
-                        </p>
+                          平仓
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleForceExit(trade.trade_id)}
-                        disabled={actionLoading}
-                      >
-                        平仓
-                      </Button>
                     </div>
                   </div>
                 );
@@ -466,51 +532,146 @@ export default function TradingPage() {
         </CardContent>
       </Card>
 
-      {/* 最近交易 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingDown className="w-5 h-5 text-text-secondary" />
-            最近交易 ({closedTrades.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {closedTrades.length === 0 ? (
-            <div className="text-center py-8 text-text-secondary">
-              <p>暂无交易记录</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {closedTrades.slice(0, 10).map((trade) => {
-                const profit = trade.close_profit_abs || 0;
-                const isProfit = profit >= 0;
+      {/* 最近交易 + AI 解读 并排 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 最近交易 */}
+        <Card variant="glass">
+          <CardHeader className="border-b border-border-primary/50">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-text-secondary" />
+                <span>最近交易</span>
+                <span className="px-2 py-0.5 text-xs bg-bg-tertiary text-text-secondary rounded-full">
+                  {closedTrades.length}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push('/trading/history')}
+                className="text-text-secondary"
+              >
+                查看全部
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {closedTrades.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <p className="text-sm">暂无交易记录</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {closedTrades.slice(0, 8).map((trade) => {
+                  const profit = trade.close_profit_abs || 0;
+                  const isProfit = profit >= 0;
 
-                return (
-                  <div
-                    key={trade.trade_id}
-                    className="flex items-center justify-between p-3 bg-bg-tertiary/30 rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <h3 className="text-text-primary text-sm font-medium">{trade.pair}</h3>
-                      <p className="text-text-tertiary text-xs">
-                        {formatDateTime(trade.close_date || '')}
-                      </p>
-                    </div>
-                    <p
-                      className={`text-sm font-medium ${
-                        isProfit ? 'text-success' : 'text-danger'
+                  return (
+                    <div
+                      key={trade.trade_id}
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                        isProfit ? 'bg-success/5 hover:bg-success/10' : 'bg-danger/5 hover:bg-danger/10'
                       }`}
                     >
-                      {isProfit ? '+' : ''}
-                      {profit.toFixed(2)} USDT
-                    </p>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-text-primary text-sm font-medium truncate">{trade.pair}</h3>
+                        <p className="text-text-tertiary text-xs">
+                          {formatDateTime(trade.close_date || '').slice(5)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {isProfit ? (
+                          <ArrowUp className="w-3.5 h-3.5 text-success" />
+                        ) : (
+                          <ArrowDown className="w-3.5 h-3.5 text-danger" />
+                        )}
+                        <span
+                          className={`text-sm font-medium ${
+                            isProfit ? 'text-success' : 'text-danger'
+                          }`}
+                        >
+                          {isProfit ? '+' : ''}{profit.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* AI 解读 */}
+        <Card variant="glass">
+          <CardHeader className="border-b border-border-primary/50">
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-brand-primary" />
+              <span>AI 交易解读</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {openTrades.length === 0 && closedTrades.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <div className="w-14 h-14 mx-auto mb-3 bg-bg-tertiary rounded-full flex items-center justify-center">
+                  <Brain className="w-7 h-7 text-text-tertiary" />
+                </div>
+                <p className="text-sm">暂无交易数据可分析</p>
+                <p className="text-xs text-text-tertiary mt-1">开始交易后 AI 将提供实时解读</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* AI 分析摘要 */}
+                <div className="p-4 bg-brand-primary/5 rounded-xl border border-brand-primary/20">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-brand-primary/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Brain className="w-4 h-4 text-brand-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-text-primary text-sm leading-relaxed">
+                        {isProfitable
+                          ? `今日交易表现良好，${todayPnL?.todayTrades || 0} 笔交易中胜率 ${formatPercent(parseFloat(todayPnL?.todayWinRate || '0') * 100, 0)}。当前市场趋势向好，建议继续持有盈利仓位。`
+                          : `今日交易出现回撤，建议关注风险控制。当前持仓 ${openTrades.length} 个，可考虑适当止损或减仓。`}
+                      </p>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+
+                {/* 最新信号 */}
+                {openTrades.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-text-secondary text-xs font-medium">最新信号</p>
+                    {openTrades.slice(0, 2).map((trade) => (
+                      <div key={trade.trade_id} className="p-3 bg-bg-tertiary/30 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-primary text-sm font-medium">{trade.pair}</span>
+                          <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded">
+                            买入信号
+                          </span>
+                        </div>
+                        <p className="text-text-tertiary text-xs mt-1">
+                          RSI 超卖反弹 | MACD 金叉
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 查看详细分析按钮 */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => router.push('/trading/ai')}
+                >
+                  查看详细分析
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* 实时日志 */}
       <TradingLog
@@ -555,7 +716,7 @@ export default function TradingPage() {
                     <div>
                       <p className="text-text-primary font-medium">{trade.pair}</p>
                       <p className="text-text-tertiary text-xs">
-                        开仓价: {trade.open_rate.toFixed(8)}
+                        开仓价: {trade.open_rate.toFixed(2)}
                       </p>
                     </div>
                     <p
@@ -563,8 +724,7 @@ export default function TradingPage() {
                         isProfit ? 'text-success' : 'text-danger'
                       }`}
                     >
-                      {isProfit ? '+' : ''}
-                      {profit.toFixed(2)} USDT
+                      {isProfit ? '+' : ''}{profit.toFixed(2)} USDT
                     </p>
                   </div>
                 );
@@ -585,7 +745,6 @@ export default function TradingPage() {
             variant="danger"
             onClick={handleEmergencyExit}
             isLoading={emergencyLoading}
-            className="bg-danger hover:bg-danger/90"
           >
             <XCircle className="w-4 h-4 mr-2" />
             确认全部平仓

@@ -20,6 +20,7 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  _hasHydrated: boolean; // 标记 store 是否已从 localStorage hydrate
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
@@ -27,6 +28,7 @@ interface AuthState {
   logout: () => void;
   checkAuth: () => Promise<void>;
   setUser: (user: User | null) => void;
+  setHasHydrated: (state: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -35,6 +37,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: false,
       isAuthenticated: false,
+      _hasHydrated: false,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true });
@@ -129,10 +132,18 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user: User | null) => {
         set({ user, isAuthenticated: !!user });
       },
+
+      setHasHydrated: (state: boolean) => {
+        set({ _hasHydrated: state });
+      },
     }),
     {
       name: 'quantfi-auth',
       partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      onRehydrateStorage: () => (state) => {
+        // 当从 localStorage 恢复状态后，标记已 hydrate
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

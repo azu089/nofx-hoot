@@ -7,12 +7,19 @@ import { JwtPayload } from '../auth/dto/jwt-payload.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PurchaseCardDto } from './dto/wallet-response.dto';
 
+// 模拟充值地址（生产环境应从钱包服务获取）
+const DEPOSIT_ADDRESSES: Record<string, string> = {
+  TRC20: 'TQuantFiDepositTRC20Address123456789',
+  ERC20: '0xQuantFiDepositERC20Address123456789abcdef',
+  BEP20: '0xQuantFiDepositBEP20Address123456789abcdef',
+};
+
 /**
  * 钱包控制器
- * 路由前缀: /api/wallets
+ * 路由前缀: /api/wallets 和 /api/wallet
  */
 @ApiTags('钱包管理')
-@Controller('wallets')
+@Controller()
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class WalletsController {
@@ -25,7 +32,7 @@ export class WalletsController {
    * 获取当前用户钱包信息
    * GET /api/wallets/me
    */
-  @Get('me')
+  @Get('wallets/me')
   @ApiOperation({ summary: '获取钱包信息' })
   async getMyWallet(@CurrentUser() user: JwtPayload) {
     return {
@@ -36,10 +43,41 @@ export class WalletsController {
   }
 
   /**
+   * 获取充值地址
+   * GET /api/wallet/deposit-address
+   */
+  @Get('wallet/deposit-address')
+  @ApiOperation({ summary: '获取充值地址' })
+  @ApiQuery({ name: 'chain', required: true, description: '链类型: TRC20, ERC20, BEP20' })
+  async getDepositAddress(
+    @CurrentUser() user: JwtPayload,
+    @Query('chain') chain: string,
+  ) {
+    const address = DEPOSIT_ADDRESSES[chain.toUpperCase()];
+    if (!address) {
+      return {
+        code: 40000,
+        message: '不支持的链类型',
+        data: null,
+      };
+    }
+    return {
+      code: 0,
+      message: 'success',
+      data: {
+        chain: chain.toUpperCase(),
+        address,
+        minDeposit: '10',
+        confirmations: chain.toUpperCase() === 'TRC20' ? 19 : 12,
+      },
+    };
+  }
+
+  /**
    * 获取当前用户余额概览
    * GET /api/wallets/balance
    */
-  @Get('balance')
+  @Get('wallets/balance')
   @ApiOperation({ summary: '获取余额概览' })
   async getBalance(@CurrentUser() user: JwtPayload) {
     return {
@@ -53,7 +91,7 @@ export class WalletsController {
    * 获取交易记录
    * GET /api/wallets/transactions
    */
-  @Get('transactions')
+  @Get('wallets/transactions')
   @ApiOperation({ summary: '获取交易记录' })
   @ApiQuery({ name: 'type', required: false, description: '交易类型 (deposit/withdraw/transfer)' })
   @ApiQuery({ name: 'limit', required: false, description: '每页条数' })
@@ -128,7 +166,7 @@ export class WalletsController {
    *
    * 点卡用于支付燃油费（盈利抽成 20%）
    */
-  @Post('purchase-card')
+  @Post('wallets/purchase-card')
   @ApiOperation({ summary: '购买点卡', description: '使用 USDT 购买点卡，点卡用于支付燃油费' })
   @ApiBody({ type: PurchaseCardDto })
   async purchaseCard(

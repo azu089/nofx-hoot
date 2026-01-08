@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 /* QuantFi 暗黑主题全局样式 - 华尔街风格配色 */
-:root {
+/* 暗黑主题（默认） */
+:root,
+[data-theme="dark"] {
   /* 背景层次 */
   --bg-primary: #0B0E11;        /* 主背景 - 深黑蓝 */
   --bg-secondary: #131722;       /* 次级背景 - 卡片 */
@@ -106,6 +108,50 @@
   --border: var(--border-primary);
   --card: var(--bg-secondary);
   --primary: var(--brand-primary);
+}
+
+/* 浅色主题 */
+[data-theme="light"] {
+  /* 背景层次 */
+  --bg-primary: #F8FAFC;         /* 主背景 - 浅灰白 */
+  --bg-secondary: #FFFFFF;        /* 次级背景 - 纯白卡片 */
+  --bg-tertiary: #F1F5F9;         /* 第三层 - 输入框/悬浮 */
+  --bg-elevated: rgba(0, 0, 0, 0.02); /* 浮层 */
+
+  /* 品牌色（保持不变） */
+  --brand-primary: #3772FF;
+  --brand-secondary: #2962FF;
+  --brand-gradient: linear-gradient(135deg, #3772FF 0%, #00D9E8 100%);
+
+  /* 语义色（保持不变） */
+  --success: #00C087;
+  --success-bg: rgba(0, 192, 135, 0.1);
+  --danger: #F23645;
+  --danger-bg: rgba(242, 54, 69, 0.1);
+  --warning: #F7931A;
+  --warning-bg: rgba(247, 147, 26, 0.1);
+
+  /* 文字 */
+  --text-primary: #0F172A;        /* 主文字 - 深色 */
+  --text-secondary: #64748B;      /* 次要文字 */
+  --text-tertiary: #94A3B8;       /* 辅助文字 */
+  --text-disabled: #CBD5E1;       /* 禁用文字 */
+
+  /* 边框 */
+  --border-primary: #E2E8F0;      /* 主边框 */
+  --border-secondary: #F1F5F9;    /* 次级边框 */
+  --border-focus: #3772FF;        /* 聚焦边框 */
+
+  /* 阴影（浅色适配） */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* 玻璃效果（浅色适配） */
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-light: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-hover: rgba(0, 0, 0, 0.15);
 }
 
 * {
@@ -464,9 +510,26 @@ select {
 /* ====== 网格背景纹理 ====== */
 .bg-grid-pattern {
   background-image:
-    linear-gradient(rgba(55, 114, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(55, 114, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(55, 114, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(55, 114, 255, 0.015) 1px, transparent 1px);
   background-size: 50px 50px;
+}
+
+/* 全页铺满的固定网格 - 若隐若现 */
+.bg-grid-full {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(rgba(55, 114, 255, 0.006) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(55, 114, 255, 0.006) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .bg-grid-pattern-dense {
@@ -617,3 +680,170 @@ select {
 .delay-300 { animation-delay: 300ms; }
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
+
+/* ====== 移动端 App 体验优化 ====== */
+
+/* 页面过渡动画 - 桌面端：淡入 + 向上滑动 */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-enter {
+  animation: pageEnter 0.25s var(--ease-out) forwards;
+}
+
+/* 移动端专用：更明显的滑动效果 */
+@media (max-width: 1024px) {
+  @keyframes pageEnterMobile {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-page-enter {
+    animation: pageEnterMobile 0.2s var(--ease-out) forwards;
+  }
+}
+
+/* ====== 移动端滚动优化 ====== */
+@media (max-width: 1024px) {
+  body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* 滚动容器 */
+  .scroll-container {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+/* 隐藏移动端滚动条但保持可滚动 */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ====== iOS 安全区域适配 ====== */
+:root {
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+}
+
+/* 底部安全区 padding */
+.pb-safe {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+/* 顶部安全区 padding */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* ====== 触感反馈增强 ====== */
+.touch-feedback {
+  transition: transform 0.15s var(--ease-out), opacity 0.15s var(--ease-out);
+}
+
+.touch-feedback:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* 底部导航专用触感 */
+.nav-touch-feedback {
+  transition: transform 0.1s var(--ease-out), opacity 0.1s var(--ease-out);
+}
+
+.nav-touch-feedback:active {
+  transform: scale(0.9);
+  opacity: 0.7;
+}
+
+/* ====== 骨架屏动画 ====== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ====== 下拉刷新指示器 ====== */
+.pull-indicator {
+  transition: transform 0.2s var(--ease-out), opacity 0.2s var(--ease-out);
+}
+
+.pull-indicator.pulling {
+  opacity: 1;
+}
+
+.pull-indicator.refreshing {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ====== 语义化阴影工具类 (P2: 替代硬编码 shadow-[...]) ====== */
+.shadow-glow-sm {
+  box-shadow: 0 0 6px rgba(55, 114, 255, 0.5);
+}
+
+.shadow-glow-md {
+  box-shadow: 0 0 12px rgba(55, 114, 255, 0.3);
+}
+
+.shadow-glow-lg {
+  box-shadow: 0 0 20px rgba(55, 114, 255, 0.5);
+}
+
+.shadow-glow-success {
+  box-shadow: 0 0 12px rgba(0, 192, 135, 0.3);
+}
+
+.shadow-glow-danger {
+  box-shadow: 0 0 12px rgba(242, 54, 69, 0.3);
+}
+
+.drop-shadow-glow {
+  filter: drop-shadow(0 0 4px rgba(55, 114, 255, 0.5));
+}

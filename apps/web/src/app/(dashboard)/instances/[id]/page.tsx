@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+// 直接从源文件导入，避免 barrel export 导致的客户端模块解析问题
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { instancesApi, backupsApi } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import {

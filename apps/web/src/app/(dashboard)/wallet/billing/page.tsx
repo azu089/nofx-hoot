@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, MobileHeader } from '@/components/ui';
 import { billingApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
   Receipt,
-  ArrowLeft,
   Download,
   Filter,
   ArrowDownToLine,
@@ -74,13 +73,19 @@ export default function BillingPage() {
         return <ArrowDownToLine className="w-4 h-4 text-success" />;
       case 'withdrawal':
         return <ArrowUpFromLine className="w-4 h-4 text-danger" />;
-      case 'vps_subscription':
+      case 'subscription':
         return <Server className="w-4 h-4 text-brand-primary" />;
       case 'gas_fee':
         return <Fuel className="w-4 h-4 text-warning" />;
       case 'bonus':
       case 'referral':
         return <Gift className="w-4 h-4 text-success" />;
+      case 'token_purchase':
+      case 'token_sale':
+        return <Receipt className="w-4 h-4 text-purple-400" />;
+      case 'staking':
+      case 'unstaking':
+        return <Server className="w-4 h-4 text-blue-400" />;
       default:
         return <Receipt className="w-4 h-4 text-text-secondary" />;
     }
@@ -90,11 +95,15 @@ export default function BillingPage() {
     const map: Record<string, string> = {
       deposit: '充值',
       withdrawal: '提现',
-      vps_subscription: 'VPS 订阅',
-      gas_fee: '燃油费',
-      bonus: '奖励',
-      referral: '推荐奖励',
+      subscription: '会员订阅',
+      gas_fee: '燃油费（点卡）',
+      bonus: '奖励（积分）',
+      referral: '邀请返佣（积分）',
       refund: '退款',
+      token_purchase: '代币购买',
+      token_sale: '代币出售',
+      staking: '质押',
+      unstaking: '解除质押',
     };
     return map[type] || type;
   };
@@ -125,13 +134,7 @@ export default function BillingPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            返回
-          </Button>
-        </div>
-        <h1 className="text-2xl font-bold text-white">账单明细</h1>
+        <MobileHeader title="账单明细" />
         <div className="animate-pulse space-y-4">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-24 bg-bg-tertiary rounded-xl" />
@@ -143,20 +146,15 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" onClick={() => router.back()}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          返回
-        </Button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">账单明细</h1>
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="w-4 h-4 mr-2" />
-          导出 CSV
-        </Button>
-      </div>
+      <MobileHeader
+        title="账单明细"
+        rightAction={
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="w-4 h-4 mr-2" />
+            导出
+          </Button>
+        }
+      />
 
       {/* 统计卡片 */}
       {stats && (
@@ -181,7 +179,7 @@ export default function BillingPage() {
 
           <Card>
             <CardContent className="p-6">
-              <p className="text-text-secondary text-sm mb-1">VPS 费用</p>
+              <p className="text-text-secondary text-sm mb-1">会员订阅</p>
               <p className="text-white text-2xl font-bold">
                 {formatCurrency(stats.vpsExpense)}
               </p>
@@ -190,7 +188,7 @@ export default function BillingPage() {
 
           <Card>
             <CardContent className="p-6">
-              <p className="text-text-secondary text-sm mb-1">燃油费</p>
+              <p className="text-text-secondary text-sm mb-1">燃油费（点卡）</p>
               <p className="text-white text-2xl font-bold">
                 {formatCurrency(stats.gasFeeExpense)}
               </p>
@@ -216,9 +214,12 @@ export default function BillingPage() {
               <option value="all">全部</option>
               <option value="deposit">充值</option>
               <option value="withdrawal">提现</option>
-              <option value="vps_subscription">VPS 订阅</option>
-              <option value="gas_fee">燃油费</option>
-              <option value="bonus">奖励</option>
+              <option value="subscription">会员订阅</option>
+              <option value="gas_fee">燃油费（点卡）</option>
+              <option value="bonus">奖励（积分）</option>
+              <option value="referral">邀请返佣</option>
+              <option value="token_purchase">代币购买</option>
+              <option value="token_sale">代币出售</option>
             </select>
           </div>
         </CardContent>

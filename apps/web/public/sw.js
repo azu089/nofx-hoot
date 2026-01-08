@@ -4,14 +4,8 @@ const CACHE_VERSION = 'quantfi-v1';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 
-// 需要缓存的静态资源
+// 需要缓存的静态资源（仅缓存确定存在的资源）
 const STATIC_ASSETS = [
-  '/',
-  '/dashboard',
-  '/trading',
-  '/wallet',
-  '/gamefi',
-  '/settings',
   '/manifest.json',
   '/offline.html',
 ];
@@ -20,9 +14,25 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
+    caches.open(STATIC_CACHE).then(async (cache) => {
       console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_ASSETS);
+      // 使用 addAll 的替代方案，忽略失败的请求
+      const results = await Promise.allSettled(
+        STATIC_ASSETS.map(async (url) => {
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              await cache.put(url, response);
+              return { url, success: true };
+            }
+            return { url, success: false, reason: 'not ok' };
+          } catch (error) {
+            console.log('[SW] Failed to cache:', url);
+            return { url, success: false, reason: error.message };
+          }
+        })
+      );
+      console.log('[SW] Cache results:', results);
     })
   );
   // 跳过等待，立即激活

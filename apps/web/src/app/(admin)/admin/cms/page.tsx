@@ -56,12 +56,73 @@ interface HelpDocItem {
 
 type EditingItem = ContentItem | BannerItem | HelpDocItem | null;
 
+// 表单状态类型 - 使用 camelCase 与后端 DTO 匹配
+interface ContentFormData {
+  contentKey: string;
+  contentType: string;
+  title: string;
+  content: string;
+  locale: string;
+  isPublished: boolean;
+  sortOrder: number;
+}
+
+interface BannerFormData {
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  linkUrl: string;
+  position: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+interface HelpDocFormData {
+  slug: string;
+  title: string;
+  category: string;
+  content: string;
+  isPublished: boolean;
+  sortOrder: number;
+}
+
 export default function CmsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabType>('contents');
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<EditingItem>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 表单状态
+  const [contentForm, setContentForm] = useState<ContentFormData>({
+    contentKey: '',
+    contentType: 'text',
+    title: '',
+    content: '',
+    locale: 'zh-CN',
+    isPublished: false,
+    sortOrder: 0,
+  });
+
+  const [bannerForm, setBannerForm] = useState<BannerFormData>({
+    title: '',
+    subtitle: '',
+    imageUrl: '',
+    linkUrl: '',
+    position: 'home_hero',
+    isActive: true,
+    sortOrder: 0,
+  });
+
+  const [helpDocForm, setHelpDocForm] = useState<HelpDocFormData>({
+    slug: '',
+    title: '',
+    category: 'faq',
+    content: '',
+    isPublished: false,
+    sortOrder: 0,
+  });
 
   // 获取内容列表
   const { data: contentsRes, isLoading: contentsLoading } = useQuery({
@@ -115,12 +176,105 @@ export default function CmsPage() {
 
   const handleEdit = (item: ContentItem | BannerItem | HelpDocItem) => {
     setEditingItem(item);
+    // 根据类型填充表单 - 后端返回 snake_case，转换为 camelCase
+    if (activeTab === 'contents') {
+      const contentItem = item as ContentItem;
+      setContentForm({
+        contentKey: contentItem.content_key,
+        contentType: contentItem.content_type,
+        title: contentItem.title || '',
+        content: contentItem.content,
+        locale: contentItem.locale,
+        isPublished: contentItem.is_published,
+        sortOrder: contentItem.sort_order,
+      });
+    } else if (activeTab === 'banners') {
+      const bannerItem = item as BannerItem;
+      setBannerForm({
+        title: bannerItem.title,
+        subtitle: bannerItem.subtitle || '',
+        imageUrl: bannerItem.image_url,
+        linkUrl: bannerItem.link_url || '',
+        position: bannerItem.position,
+        isActive: bannerItem.is_active,
+        sortOrder: bannerItem.sort_order,
+      });
+    } else {
+      const helpDoc = item as HelpDocItem;
+      setHelpDocForm({
+        slug: helpDoc.slug,
+        title: helpDoc.title,
+        category: helpDoc.category,
+        content: '', // 需要单独获取内容
+        isPublished: helpDoc.is_published,
+        sortOrder: helpDoc.sort_order,
+      });
+    }
     setShowModal(true);
   };
 
   const handleCreate = () => {
     setEditingItem(null);
+    // 重置表单 - 使用 camelCase 字段名
+    setContentForm({
+      contentKey: '',
+      contentType: 'text',
+      title: '',
+      content: '',
+      locale: 'zh-CN',
+      isPublished: false,
+      sortOrder: 0,
+    });
+    setBannerForm({
+      title: '',
+      subtitle: '',
+      imageUrl: '',
+      linkUrl: '',
+      position: 'home_hero',
+      isActive: true,
+      sortOrder: 0,
+    });
+    setHelpDocForm({
+      slug: '',
+      title: '',
+      category: 'faq',
+      content: '',
+      isPublished: false,
+      sortOrder: 0,
+    });
     setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      if (activeTab === 'contents') {
+        if (editingItem) {
+          await adminApi.updateCmsContent(editingItem.id, contentForm);
+        } else {
+          await adminApi.createCmsContent(contentForm);
+        }
+      } else if (activeTab === 'banners') {
+        if (editingItem) {
+          await adminApi.updateCmsBanner(editingItem.id, bannerForm);
+        } else {
+          await adminApi.createCmsBanner(bannerForm);
+        }
+      } else {
+        if (editingItem) {
+          await adminApi.updateCmsHelpDoc(editingItem.id, helpDocForm);
+        } else {
+          await adminApi.createCmsHelpDoc(helpDocForm);
+        }
+      }
+      toast.success(editingItem ? '更新成功' : '创建成功');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'cms'] });
+      setShowModal(false);
+    } catch (error) {
+      toast.error('操作失败');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const tabs = [
@@ -451,7 +605,7 @@ export default function CmsPage() {
         )}
       </div>
 
-      {/* 编辑弹窗占位 - 实际应该是一个完整的表单组件 */}
+      {/* 编辑弹窗 */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[#131722] rounded-xl border border-[#2B3139] w-full max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -468,10 +622,235 @@ export default function CmsPage() {
                 <X className="w-5 h-5 text-[#848E9C]" />
               </button>
             </div>
-            <div className="p-6">
-              <p className="text-[#848E9C] text-center py-8">
-                表单功能开发中...
-              </p>
+            <div className="p-6 space-y-4">
+              {/* 内容表单 */}
+              {activeTab === 'contents' && (
+                <>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">内容键 *</label>
+                    <input
+                      type="text"
+                      value={contentForm.contentKey}
+                      onChange={(e) => setContentForm({ ...contentForm, contentKey: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="例如: landing.hero.title"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[#848E9C] text-sm mb-2">内容类型</label>
+                      <select
+                        value={contentForm.contentType}
+                        onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
+                        className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                      >
+                        <option value="text">文本</option>
+                        <option value="richtext">富文本</option>
+                        <option value="json">JSON</option>
+                        <option value="image">图片</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[#848E9C] text-sm mb-2">语言</label>
+                      <select
+                        value={contentForm.locale}
+                        onChange={(e) => setContentForm({ ...contentForm, locale: e.target.value })}
+                        className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                      >
+                        <option value="zh-CN">中文</option>
+                        <option value="en">English</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">标题</label>
+                    <input
+                      type="text"
+                      value={contentForm.title}
+                      onChange={(e) => setContentForm({ ...contentForm, title: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="内容标题（可选）"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">内容 *</label>
+                    <textarea
+                      value={contentForm.content}
+                      onChange={(e) => setContentForm({ ...contentForm, content: e.target.value })}
+                      rows={6}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="输入内容..."
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={contentForm.isPublished}
+                        onChange={(e) => setContentForm({ ...contentForm, isPublished: e.target.checked })}
+                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                      />
+                      <span className="text-white">发布</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <input
+                        type="number"
+                        value={contentForm.sortOrder}
+                        onChange={(e) => setContentForm({ ...contentForm, sortOrder: parseInt(e.target.value) || 0 })}
+                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Banner 表单 */}
+              {activeTab === 'banners' && (
+                <>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">标题 *</label>
+                    <input
+                      type="text"
+                      value={bannerForm.title}
+                      onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="Banner 标题"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">副标题</label>
+                    <input
+                      type="text"
+                      value={bannerForm.subtitle}
+                      onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="Banner 副标题（可选）"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">图片 URL *</label>
+                    <input
+                      type="text"
+                      value={bannerForm.imageUrl}
+                      onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">链接 URL</label>
+                    <input
+                      type="text"
+                      value={bannerForm.linkUrl}
+                      onChange={(e) => setBannerForm({ ...bannerForm, linkUrl: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="点击跳转地址（可选）"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">展示位置</label>
+                    <select
+                      value={bannerForm.position}
+                      onChange={(e) => setBannerForm({ ...bannerForm, position: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                    >
+                      <option value="home_hero">首页 Hero</option>
+                      <option value="home_promo">首页推广</option>
+                      <option value="login_side">登录侧边</option>
+                      <option value="dashboard_top">仪表盘顶部</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bannerForm.isActive}
+                        onChange={(e) => setBannerForm({ ...bannerForm, isActive: e.target.checked })}
+                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                      />
+                      <span className="text-white">启用</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <input
+                        type="number"
+                        value={bannerForm.sortOrder}
+                        onChange={(e) => setBannerForm({ ...bannerForm, sortOrder: parseInt(e.target.value) || 0 })}
+                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* 帮助文档表单 */}
+              {activeTab === 'help-docs' && (
+                <>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">URL 别名 *</label>
+                    <input
+                      type="text"
+                      value={helpDocForm.slug}
+                      onChange={(e) => setHelpDocForm({ ...helpDocForm, slug: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="例如: how-to-start"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">标题 *</label>
+                    <input
+                      type="text"
+                      value={helpDocForm.title}
+                      onChange={(e) => setHelpDocForm({ ...helpDocForm, title: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      placeholder="文档标题"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">分类</label>
+                    <select
+                      value={helpDocForm.category}
+                      onChange={(e) => setHelpDocForm({ ...helpDocForm, category: e.target.value })}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                    >
+                      <option value="faq">常见问题</option>
+                      <option value="tutorial">教程</option>
+                      <option value="guide">指南</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[#848E9C] text-sm mb-2">内容 * (Markdown)</label>
+                    <textarea
+                      value={helpDocForm.content}
+                      onChange={(e) => setHelpDocForm({ ...helpDocForm, content: e.target.value })}
+                      rows={10}
+                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF] font-mono text-sm"
+                      placeholder="# 标题&#10;&#10;内容..."
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={helpDocForm.isPublished}
+                        onChange={(e) => setHelpDocForm({ ...helpDocForm, isPublished: e.target.checked })}
+                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                      />
+                      <span className="text-white">发布</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <input
+                        type="number"
+                        value={helpDocForm.sortOrder}
+                        onChange={(e) => setHelpDocForm({ ...helpDocForm, sortOrder: parseInt(e.target.value) || 0 })}
+                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div className="p-6 border-t border-[#2B3139] flex justify-end gap-3">
               <button
@@ -481,9 +860,11 @@ export default function CmsPage() {
                 取消
               </button>
               <button
-                className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors disabled:opacity-50"
               >
-                保存
+                {isSaving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>

@@ -9,11 +9,10 @@ import type { Metadata } from 'next';
 //   title: '充值 | QuantFi',
 //   description: '通过 TRC20/ERC20/BEP20 充值 USDT 到您的 QuantFi 账户',
 // };
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, MobileHeader } from '@/components/ui';
 import { depositsApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
-  ArrowLeft,
   Copy,
   CheckCircle,
   Clock,
@@ -105,12 +104,7 @@ export default function DepositPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h1 className="text-2xl font-bold text-white">充值</h1>
-        </div>
+        <MobileHeader title="充值" />
         <div className="animate-pulse space-y-6">
           <div className="h-64 bg-bg-tertiary rounded-xl" />
           <div className="h-64 bg-bg-tertiary rounded-xl" />
@@ -125,18 +119,15 @@ export default function DepositPage() {
   return (
     <div className="space-y-6">
       {/* 顶部导航 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4" />
+      <MobileHeader
+        title="充值"
+        rightAction={
+          <Button variant="ghost" size="sm" onClick={fetchDeposits}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            刷新
           </Button>
-          <h1 className="text-2xl font-bold text-white">充值</h1>
-        </div>
-        <Button variant="ghost" size="sm" onClick={fetchDeposits}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          刷新
-        </Button>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 充值信息卡片 */}

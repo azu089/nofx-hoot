@@ -25,8 +25,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       success: 'bg-success text-white hover:bg-success/90 focus:ring-success shadow-md hover:shadow-lg hover:-translate-y-0.5',
       // 新增: 渐变按钮
       gradient: 'bg-gradient-button text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 focus:ring-brand-primary',
-      // 新增: 发光按钮
-      glow: 'bg-brand-primary text-white shadow-lg hover:shadow-[0_0_20px_rgba(55,114,255,0.5)] focus:ring-brand-primary hover:-translate-y-0.5',
+      // 新增: 发光按钮 (P2优化：使用语义化阴影类)
+      glow: 'bg-brand-primary text-white shadow-lg hover:shadow-glow-lg focus:ring-brand-primary hover:-translate-y-0.5',
     };
 
     const sizes = {

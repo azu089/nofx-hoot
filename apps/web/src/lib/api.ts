@@ -242,6 +242,23 @@ export const authApi = {
 
   verifyTotp: (token: string) =>
     api.post<never, ApiResponse<{ verified: boolean }>>('/auth/totp/verify', { token }),
+
+  // 设备管理
+  getDevices: () =>
+    api.get<never, ApiResponse<Array<{
+      hash: string;
+      createdAt: string;
+      lastSeenAt: string;
+      loginCount: number;
+      browser: string;
+      os: string;
+    }>>>('/auth/devices'),
+
+  removeDevice: (hash: string) =>
+    api.post<never, ApiResponse<void>>('/auth/devices/remove', { hash }),
+
+  clearAllDevices: () =>
+    api.post<never, ApiResponse<void>>('/auth/devices/clear'),
 };
 
 // User API
@@ -254,6 +271,9 @@ export const userApi = {
       usdt_balance: string;
       point_balance: string;
     }>>('/users/profile'),
+
+  updateProfile: (data: { password?: string }) =>
+    api.patch<never, ApiResponse<void>>('/users/profile', data),
 
   getWallet: () =>
     api.get<never, ApiResponse<{
@@ -268,6 +288,75 @@ export const userApi = {
       token_locked: string;
       token_vesting: string;
     }>>('/wallets/me'),
+
+  // 邀请返佣相关
+  getInviteInfo: () =>
+    api.get<never, ApiResponse<{
+      inviteCode: string;
+      inviteLink: string;
+    }>>('/users/referral/info'),
+
+  getInviteStats: () =>
+    api.get<never, ApiResponse<{
+      totalInvites: number;
+      activeUsers: number;
+      totalCommission: string;
+      pendingCommission: string;
+      recentInvites: Array<{
+        id: string;
+        email: string;
+        createdAt: string;
+        status: string;
+        commission: string;
+      }>;
+    }>>('/users/referral/stats'),
+
+  getInvitedUsers: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      email: string;
+      createdAt: string;
+      status: string;
+      totalSpent: string;
+      totalCommission: string;
+    }>>>('/users/referral/list'),
+
+  // 获取团队成员（一级/二级）
+  getTeamMembers: (level?: number) =>
+    api.get<never, ApiResponse<{
+      level1: Array<{
+        id: string;
+        email: string;
+        status: string;
+        vipLevel: number;
+        createdAt: string;
+        commission: string;
+        level: number;
+      }>;
+      level2: Array<{
+        id: string;
+        email: string;
+        status: string;
+        vipLevel: number;
+        createdAt: string;
+        commission: string;
+        level: number;
+        referrerEmail?: string;
+      }>;
+      total: number;
+      level1Count: number;
+      level2Count: number;
+    }>>(`/users/referral/team${level ? `?level=${level}` : ''}`),
+
+  getLoginLogs: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      ip: string;
+      device: string;
+      location: string;
+      time: string;
+      status: string;
+    }>>>('/users/login-logs'),
 };
 
 // Instances API
@@ -297,24 +386,16 @@ export const instancesApi = {
       last_heartbeat: string | null;
     }>>(`/instances/${id}`),
 
-  create: (region?: string, usePoints?: boolean) =>
-    api.post<never, ApiResponse<{ id: string; status: string }>>('/instances', { region, usePoints }),
+  // 购买订阅（唯一入口，VPS 自动创建）
+  subscribe: (region?: string, usePoints?: boolean) =>
+    api.post<never, ApiResponse<{
+      subscription: { vipLevel: number; expiresAt: string; fee: string };
+      instance: { id: string; status: string };
+    }>>('/instances/subscribe', { region, usePoints }),
 
-  destroy: (id: string) =>
-    api.delete<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}`),
-
+  // 心跳上报（VPS 内部调用）
   heartbeat: (id: string, data: { cpu_usage?: string; memory_usage?: string }) =>
     api.post<never, ApiResponse<{ id: string }>>(`/instances/${id}/heartbeat`, data),
-
-  // 实例控制
-  start: (id: string) =>
-    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/start`),
-
-  stop: (id: string) =>
-    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/stop`),
-
-  restart: (id: string) =>
-    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/restart`),
 
   // Freqtrade 状态
   getStatus: (id: string) =>
@@ -356,10 +437,29 @@ export const instancesApi = {
       close_date: string | null;
     }>>>(`/instances/${id}/trades`),
 
+  // === 紧急操作（Panic 功能保留）===
+
+  // 强制平仓单个交易
   forceExit: (id: string, tradeId?: string) =>
     api.post<never, ApiResponse<{ trade_id: string }>>(`/instances/${id}/force-exit`, {
       trade_id: tradeId,
     }),
+
+  // 停止单个实例
+  stop: (id: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/stop`),
+
+  // 启动单个实例
+  start: (id: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/start`),
+
+  // 重启单个实例
+  restart: (id: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/restart`),
+
+  // 销毁实例
+  destroy: (id: string) =>
+    api.delete<never, ApiResponse<{ id: string }>>(`/instances/${id}`),
 
   // 一键清仓（Panic Sell）
   panicSell: () =>
@@ -376,6 +476,19 @@ export const instancesApi = {
         error?: string;
       }>;
     }>>('/instances/panic-sell'),
+
+  // 停止所有实例
+  stopAll: () =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      stoppedCount: number;
+      failedCount: number;
+      results: Array<{
+        instanceId: string;
+        success: boolean;
+        error?: string;
+      }>;
+    }>>('/instances/stop-all'),
 };
 
 // Billing API
@@ -432,6 +545,14 @@ export const depositsApi = {
       status: string;
       created_at: string;
     }>>>('/deposits'),
+
+  // 获取充值地址
+  getDepositAddress: (chain: 'TRC20' | 'ERC20' | 'BEP20') =>
+    api.get<never, ApiResponse<{
+      address: string;
+      chain: string;
+      qrCode?: string;
+    }>>('/wallet/deposit-address', { params: { chain } }),
 };
 
 // Withdrawals API
@@ -510,8 +631,8 @@ export interface Strategy {
 
 // Strategies API
 export const strategiesApi = {
-  list: () =>
-    api.get<never, ApiResponse<Strategy[]>>('/strategies'),
+  list: (params?: { type?: string; source?: string; sort?: string }) =>
+    api.get<never, ApiResponse<Strategy[]>>('/strategies', { params }),
 
   getDetail: (id: string) =>
     api.get<never, ApiResponse<Strategy & { content?: string }>>(`/strategies/${id}`),
@@ -532,6 +653,266 @@ export const strategiesApi = {
       total_pnl: string;
       subscribed_at: string;
     }>>>('/strategies/my'),
+
+  /** 获取我的策略配置列表（包含详细配置参数） */
+  getMyConfigs: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      user_id: string;
+      strategy_id: string;
+      instance_id: string | null;
+      stake_amount: string;
+      max_open_trades: number;
+      leverage: number;
+      stoploss: string;
+      trailing_stop: boolean;
+      trailing_stop_positive: string | null;
+      blacklist: string[];
+      custom_config: Record<string, unknown>;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+      strategy: {
+        id: string;
+        name: string;
+        description: string | null;
+        is_public: boolean;
+      };
+    }>>>('/strategies/my-configs/list'),
+
+  /** 创建策略配置（保存到我的策略） */
+  createConfig: (data: {
+    strategy_id: string;
+    stake_amount: string;
+    max_open_trades: number;
+    leverage: number;
+    stoploss: number;
+    trailing_stop?: boolean;
+    trailing_stop_positive?: number;
+    trailing_stop_positive_offset?: number;
+    trailing_only_offset_is_reached?: boolean;
+    timeframe?: string;
+    minimal_roi?: Array<{ minutes: number; roi: number }>;
+    stoploss_on_exchange?: boolean;
+    exchange?: string;
+    pair_whitelist?: string[];
+    blacklist?: string[];
+    custom_config?: Record<string, unknown>;
+  }) =>
+    api.post<never, ApiResponse<{
+      id: string;
+      strategy_id: string;
+      stake_amount: string;
+      max_open_trades: number;
+      leverage: number;
+      stoploss: string;
+      trailing_stop: boolean;
+      is_active: boolean;
+      created_at: string;
+    }>>('/strategies/configs', data),
+
+  /** 更新策略配置 */
+  updateConfig: (id: string, data: {
+    stake_amount?: string;
+    max_open_trades?: number;
+    leverage?: number;
+    stoploss?: number;
+    trailing_stop?: boolean;
+    trailing_stop_positive?: number;
+    timeframe?: string;
+    pair_whitelist?: string[];
+    blacklist?: string[];
+    custom_config?: Record<string, unknown>;
+  }) =>
+    api.patch<never, ApiResponse<{
+      id: string;
+      updated_at: string;
+    }>>(`/strategies/configs/${id}`, data),
+
+  /** 删除策略配置 */
+  deleteConfig: (id: string) =>
+    api.delete<never, ApiResponse<{ message: string }>>(`/strategies/configs/${id}`),
+
+  // ===== Phase 16.5: 策略上传与收益分成 =====
+
+  /** 上传策略 */
+  upload: (data: {
+    name: string;
+    description?: string;
+    content: string;
+    backtestStartDate: string;
+    backtestEndDate: string;
+    backtestInitialCapital: number;
+    backtestPairs: string[];
+  }) =>
+    api.post<never, ApiResponse<{
+      strategyId: string;
+      reviewStatus: string;
+      autoCheckPassed: boolean;
+      warnings: string[];
+      backtestSummary: {
+        totalReturn: number;
+        winRate: number;
+        maxDrawdown: number;
+        sharpeRatio: number;
+      };
+    }>>('/strategies/upload', data),
+
+  /** 获取我上传的策略列表 */
+  getMyUploads: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      reviewStatus: string;
+      createdAt: string;
+      totalUsers: number;
+      totalProfit: string;
+      avgWinRate: string | null;
+      revenueShareRate: string | null;
+      revenueShareEnabled: boolean;
+    }>>>('/strategies/my-uploads'),
+
+  /** 获取策略收益统计 */
+  getRevenueStats: () =>
+    api.get<never, ApiResponse<{
+      totalRevenue: string;
+      pendingRevenue: string;
+      settledRevenue: string;
+      revenueByStrategy: Array<{
+        strategyId: string;
+        strategyName: string;
+        revenue: string;
+        users: number;
+        tier: string;
+      }>;
+    }>>('/strategies/revenue/stats'),
+
+  /** 获取策略收益明细 */
+  getRevenueLogs: (params?: {
+    page?: number;
+    limit?: number;
+    strategyId?: string;
+  }) =>
+    api.get<never, ApiResponse<{
+      logs: Array<{
+        id: string;
+        strategyName: string;
+        userName: string;
+        baseAmount: string;
+        revenueAmount: string;
+        revenueShareRate: string;
+        status: string;
+        createdAt: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/strategies/revenue/logs', { params }),
+
+  /** 获取策略升级进度 */
+  getUpgradeProgress: (strategyId: string) =>
+    api.get<never, ApiResponse<{
+      currentTier: string;
+      currentRate: string;
+      nextTier?: {
+        level: string;
+        requiredUsers: number;
+        requiredProfit: number;
+        requiredWinRate: number;
+        progressUsers: number;
+        progressProfit: number;
+        progressWinRate: number;
+      };
+    }>>(`/strategies/${strategyId}/upgrade-progress`),
+
+  /** 提交策略上架申请（从我的策略提交到市场） */
+  submitForReview: (strategyId: string) =>
+    api.post<never, ApiResponse<{
+      strategyId: string;
+      reviewStatus: string;
+      message: string;
+    }>>(`/strategies/${strategyId}/submit-for-review`),
+
+  /** 代码回测 - 在用户 VPS Freqtrade 上执行 */
+  runCodeBacktest: (data: {
+    code: string;
+    pairs: string[];
+    startDate: string;
+    endDate: string;
+    initialCapital: number;
+  }) =>
+    api.post<never, ApiResponse<{
+      total_return: number;
+      win_rate: number;
+      total_trades: number;
+      max_drawdown: number;
+      sharpe_ratio: number;
+      profit_factor: number;
+      avg_profit: number;
+      avg_loss: number;
+      trades: Array<{
+        pair: string;
+        side: string;
+        entry_price: number;
+        exit_price: number;
+        pnl: number;
+        entry_time: string;
+        exit_time: string;
+      }>;
+    }>>('/strategies/backtest/code', data),
+
+  /** 可视化策略回测 - 在 Master 服务器本地执行（不需要 VPS） */
+  runVisualBacktest: (data: {
+    name: string;
+    indicators: Array<{
+      id: string;
+      type: 'RSI' | 'MACD' | 'MA' | 'EMA' | 'BOLLINGER' | 'ATR' | 'STOCH' | 'ADX';
+      params: Record<string, number>;
+    }>;
+    buyConditions: Array<{
+      id: string;
+      indicator: string;
+      field?: string;
+      operator: '<' | '>' | '==' | 'cross_above' | 'cross_below';
+      value: number | string;
+    }>;
+    sellConditions: Array<{
+      id: string;
+      indicator: string;
+      field?: string;
+      operator: '<' | '>' | '==' | 'cross_above' | 'cross_below';
+      value: number | string;
+    }>;
+    riskManagement: {
+      stoploss: number;
+      takeProfit: number;
+      trailingStop: boolean;
+      trailingStopOffset?: number;
+    };
+    pairs: string[];
+    startDate: string;
+    endDate: string;
+    initialCapital: number;
+    leverage?: number;
+  }) =>
+    api.post<never, ApiResponse<{
+      totalReturn: number;
+      winRate: number;
+      maxDrawdown: number;
+      sharpeRatio: number;
+      totalTrades: number;
+      avgProfit: number;
+      avgLoss: number;
+      profitFactor: number;
+      curve: Array<{ date: string; value: number; trades: number }>;
+      strategyName: string;
+      startDate: string;
+      endDate: string;
+      initialCapital: number;
+      finalCapital: number;
+      pairs: string[];
+    }>>('/strategies/backtest/visual', data),
 };
 
 // API Keys API
@@ -547,7 +928,7 @@ export const apiKeysApi = {
       last_verified_at: string | null;
     }>>>('/api-keys'),
 
-  create: (data: { exchange: string; label: string; api_key: string; api_secret: string; passphrase?: string }) =>
+  create: (data: { exchange: string; label: string; apiKey: string; secretKey: string; passphrase?: string }) =>
     api.post<never, ApiResponse<{ id: string }>>('/api-keys', data),
 
   delete: (id: string) =>
@@ -583,8 +964,16 @@ export const tradingApi = {
       created_at: string;
     }>>>('/trading/orders', { params: { status } }),
 
-  // 交易历史（从 /trades 接口）
-  getTrades: (params?: { instance_id?: string; limit?: number; offset?: number }) =>
+  // 交易历史（从 /trades 接口，支持服务端筛选和分页）
+  getTrades: (params?: {
+    instance_id?: string;
+    pair?: string;
+    pnl_status?: 'all' | 'profit' | 'loss';
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
     api.get<never, ApiResponse<{
       trades: Array<{
         id: string;
@@ -598,6 +987,9 @@ export const tradingApi = {
         executed_at: string;
       }>;
       total: number;
+      limit: number;
+      offset: number;
+      has_more: boolean;
     }>>('/trades', { params }),
 
   getStats: () =>
@@ -610,6 +1002,29 @@ export const tradingApi = {
       bestTrade: string;
       worstTrade: string;
     }>>('/trades/stats'),
+
+  // 按时间段获取盈亏统计
+  getStatsByPeriod: (params: {
+    period: 'today' | 'week' | 'month' | 'custom';
+    start_date?: string;
+    end_date?: string;
+  }) =>
+    api.get<never, ApiResponse<{
+      period: string;
+      start_date: string;
+      end_date: string;
+      total_trades: number;
+      win_trades: number;
+      loss_trades: number;
+      win_rate: string;
+      total_pnl: string;
+      total_profit: string;
+      total_loss: string;
+      best_trade: string;
+      worst_trade: string;
+      avg_pnl_per_trade: string;
+      total_gas_fee: string;
+    }>>('/trades/stats/period', { params }),
 
   startBot: (strategyId: string, config?: Record<string, unknown>) =>
     api.post<never, ApiResponse<{ id: string; status: string }>>('/trading/bot/start', {
@@ -627,11 +1042,67 @@ export const tradingApi = {
       uptime?: number;
       trades_today?: number;
     }>>('/trading/bot/status'),
+
+  /** 获取 Freqtrade 完整运行配置 */
+  getConfig: () =>
+    api.get<never, ApiResponse<{
+      strategy?: string;
+      timeframe?: string;
+      stake_currency?: string;
+      stake_amount?: string | number;
+      max_open_trades?: number;
+      dry_run?: boolean;
+      exchange?: { name: string };
+      pair_whitelist?: string[];
+      pair_blacklist?: string[];
+      stoploss?: number;
+      trailing_stop?: boolean;
+      trailing_stop_positive?: number;
+      minimal_roi?: Record<string, number>;
+    }>>('/trading/config'),
+
+  /** 获取账户余额 */
+  getBalance: () =>
+    api.get<never, ApiResponse<{
+      currencies: Array<{
+        currency: string;
+        free: number;
+        balance: number;
+        used: number;
+        est_stake: number;
+      }>;
+      total: number;
+      stake_currency: string;
+    }>>('/trading/balance'),
+
+  /** 强制平仓单个交易 */
+  forceExit: (tradeId: string) =>
+    api.post<never, ApiResponse<{ status: string }>>('/trading/force-exit', {
+      trade_id: tradeId,
+    }),
+
+  /** 紧急全部平仓 */
+  forceExitAll: () =>
+    api.post<never, ApiResponse<{ status: string }>>('/trading/force-exit-all'),
 };
 
-// GameFi API - 匹配后端 /api/gamefi/* 路由
-export const gamefiApi = {
-  // GameFi 概览
+// 市场数据 API
+export const marketApi = {
+  // 搜索交易对
+  searchSymbols: (search?: string, limit?: number) =>
+    api.get<never, ApiResponse<string[]>>('/market/symbols', {
+      params: { search, limit },
+    }),
+
+  // 获取热门交易对
+  getPopularSymbols: () =>
+    api.get<never, ApiResponse<string[]>>('/market/symbols/popular'),
+};
+
+// 生态中心 API - 匹配后端 /api/gamefi/* 路由
+// 注：API 路由保持 /api/gamefi 不变，仅变量命名更新为 ecosystemApi
+export const ecosystemApi = {
+  // 生态中心概览
   getOverview: () =>
     api.get<never, ApiResponse<{
       points: {
@@ -814,6 +1285,9 @@ export const gamefiApi = {
       period: string;
     }>>('/gamefi/leaderboard', { params }),
 };
+
+// 向后兼容导出（保留 gamefiApi）
+export const gamefiApi = ecosystemApi;
 
 // Admin API（管理后台）
 export const adminApi = {
@@ -1057,6 +1531,84 @@ export const adminApi = {
       total: number;
     }>>('/admin/audit-logs', { params }),
 
+  // ==================== VPS 监控 ====================
+  getAdminInstances: (params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        ip: string;
+        region: string;
+        status: string;
+        cpu: number;
+        memory: number;
+        disk: number;
+        uptime: string;
+        lastHeartbeat: string;
+        strategy: string;
+        createdAt: string;
+      }>;
+      total: number;
+      running: number;
+      stopped: number;
+      zombie: number;
+    }>>('/admin/instances', { params }),
+
+  stopInstance: (instanceId: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/admin/instances/${instanceId}/stop`),
+
+  restartInstance: (instanceId: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/admin/instances/${instanceId}/restart`),
+
+  destroyInstance: (instanceId: string) =>
+    api.delete<never, ApiResponse<{ id: string }>>(`/admin/instances/${instanceId}`),
+
+  // Kill Switch
+  getKillSwitchStatus: () =>
+    api.get<never, ApiResponse<{
+      lastActivatedAt: string | null;
+      lastActivatedBy: string | null;
+      lastReason: string | null;
+      totalInstances: number;
+      runningInstances: number;
+      stoppedInstances: number;
+    }>>('/admin/kill-switch/status'),
+
+  activateKillSwitch: (reason: string) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      message: string;
+      stoppedCount: number;
+      failedCount: number;
+    }>>('/admin/kill-switch', { reason }),
+
+  // 代理商提现审核
+  getAgentWithdrawals: (params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        agentId: string;
+        agentEmail: string;
+        agentName: string;
+        amount: string;
+        status: string;
+        createdAt: string;
+        processedAt: string | null;
+        processedBy: string | null;
+        txHash: string | null;
+        rejectReason: string | null;
+      }>;
+      total: number;
+      pending: number;
+    }>>('/admin/agents/withdrawals', { params }),
+
+  approveAgentWithdrawal: (id: string, txHash?: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/admin/agents/withdrawals/${id}/approve`, { txHash }),
+
+  rejectAgentWithdrawal: (id: string, reason?: string) =>
+    api.post<never, ApiResponse<{ id: string; status: string }>>(`/admin/agents/withdrawals/${id}/reject`, { reason }),
+
   // ==================== 配置中心 ====================
   getConfigs: (category?: string) =>
     api.get<never, ApiResponse<Array<{
@@ -1222,6 +1774,258 @@ export const adminApi = {
 
   deleteCmsHelpDoc: (id: string) =>
     api.delete<never, ApiResponse<{ message: string }>>(`/admin/cms/help-docs/${id}`),
+
+  // ==================== 充值管理 ====================
+  getDeposits: (params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        amount: string;
+        currency: string;
+        method: string;
+        chain: string | null;
+        fromAddress: string | null;
+        txHash: string | null;
+        proofImageUrl: string | null;
+        status: string;
+        rejectReason: string | null;
+        reviewedBy: string | null;
+        reviewedAt: string | null;
+        createdAt: string;
+      }>;
+      total: number;
+      pending: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/deposits', { params }),
+
+  approveDeposit: (id: string) =>
+    api.post<never, ApiResponse<{ success: boolean; depositId: string }>>(`/admin/deposits/${id}/approve`),
+
+  rejectDeposit: (id: string, reason?: string) =>
+    api.post<never, ApiResponse<{ success: boolean; depositId: string }>>(`/admin/deposits/${id}/reject`, { reason }),
+
+  // ==================== 余额调整 ====================
+  adjustBalance: (userId: string, data: { type: 'add' | 'deduct'; amount: string; reason: string }) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      userId: string;
+      previousBalance: string;
+      newBalance: string;
+      adjustment: string;
+    }>>(`/admin/users/${userId}/adjust-balance`, data),
+
+  getBalanceAdjustments: (params?: { page?: number; limit?: number; userId?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        type: 'add' | 'deduct';
+        amount: string;
+        reason: string;
+        operatorId: string;
+        createdAt: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/balance-adjustments', { params }),
+
+  // ==================== 代理商管理 ====================
+  getAgents: (params?: { page?: number; limit?: number; search?: string; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        code: string;
+        name: string;
+        email: string;
+        level: number;
+        commissionRate: string;
+        totalUsers: number;
+        actualUsers: number;
+        totalCommission: string;
+        status: string;
+        parentAgentId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/agents', { params }),
+
+  getAgentDetail: (id: string) =>
+    api.get<never, ApiResponse<{
+      id: string;
+      code: string;
+      name: string;
+      email: string;
+      level: number;
+      commissionRate: string;
+      totalUsers: number;
+      actualUsers: number;
+      totalCommission: string;
+      status: string;
+      parentAgentId: string | null;
+      createdAt: string;
+      updatedAt: string;
+      stats: {
+        totalCommissions: number;
+        totalWithdrawals: number;
+        pendingWithdrawals: number;
+      };
+      recentCommissions: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        amount: string;
+        source: string;
+        status: string;
+        createdAt: string;
+      }>;
+      recentWithdrawals: Array<{
+        id: string;
+        amount: string;
+        status: string;
+        createdAt: string;
+      }>;
+    }>>(`/admin/agents/${id}`),
+
+  updateAgent: (id: string, data: { commissionRate?: string; status?: string; name?: string }) =>
+    api.patch<never, ApiResponse<{
+      success: boolean;
+      agent: {
+        id: string;
+        code: string;
+        name: string;
+        commissionRate: string;
+        status: string;
+      };
+    }>>(`/admin/agents/${id}`, data),
+
+  // ==================== 质押管理 ====================
+  getStakingStats: () =>
+    api.get<never, ApiResponse<{
+      activeStakes: number;
+      totalStaked: string;
+      totalRewards: string;
+      byType: Array<{
+        type: string;
+        count: number;
+        amount: string;
+      }>;
+    }>>('/admin/staking/stats'),
+
+  getStakes: (params?: { page?: number; limit?: number; status?: string; stakeType?: string; userId?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        stakeType: string;
+        amount: string;
+        startTime: string;
+        endTime: string;
+        lockPeriodDays: number;
+        weightMultiplier: string;
+        accumulatedReward: string;
+        claimableReward: string;
+        status: string;
+        earlyUnstakeAt: string | null;
+        penaltyAmount: string;
+        createdAt: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/staking', { params }),
+
+  // ==================== 报表导出 ====================
+  getTradeReport: (params?: { startDate?: string; endDate?: string; userId?: string }) =>
+    api.get<never, ApiResponse<{
+      stats: {
+        totalTrades: number;
+        totalVolume: number;
+        totalPnl: number;
+        totalFees: number;
+        winCount: number;
+        lossCount: number;
+      };
+      trades: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        instanceId: string | null;
+        symbol: string;
+        side: string;
+        quantity: string;
+        price: string;
+        pnl: string;
+        fee: string;
+        createdAt: string;
+      }>;
+    }>>('/admin/reports/trades', { params }),
+
+  getRevenueReport: (params?: { startDate?: string; endDate?: string; billingType?: string }) =>
+    api.get<never, ApiResponse<{
+      stats: {
+        totalRecords: number;
+        totalRevenue: number;
+        byType: Array<{
+          type: string;
+          count: number;
+          amount: string;
+        }>;
+      };
+      records: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        type: string;
+        amount: string;
+        description: string;
+        createdAt: string;
+      }>;
+    }>>('/admin/reports/revenue', { params }),
+
+  // ==================== 用户转代理商 ====================
+  /** 将用户设置为代理商 */
+  promoteUserToAgent: (userId: string, data: { name: string; commissionRate?: string }) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      agent: {
+        id: string;
+        code: string;
+        name: string;
+        email: string;
+        commissionRate: string;
+        status: string;
+      };
+    }>>(`/admin/users/${userId}/promote-to-agent`, data),
+
+  /** 撤销用户的代理商身份 */
+  revokeAgentStatus: (userId: string) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      message: string;
+    }>>(`/admin/users/${userId}/revoke-agent`),
+
+  /** 检查用户是否为代理商 */
+  checkUserAgentStatus: (userId: string) =>
+    api.get<never, ApiResponse<{
+      isAgent: boolean;
+      agent?: {
+        id: string;
+        code: string;
+        name: string;
+        commissionRate: string;
+        totalUsers: number;
+        status: string;
+      };
+    }>>(`/admin/users/${userId}/agent-status`),
 };
 
 // Agent API（代理商后台）
@@ -1410,6 +2214,23 @@ export const aiApi = {
       model: string;
       created_at: string;
     }>>>('/ai/generation-history', { params: { type, limit } }),
+
+  // 解读单笔交易（智能投顾）
+  interpretTrade: (data: {
+    pair: string;
+    side: string;
+    amount: string;
+    price: string;
+    pnl: string;
+    executed_at: string;
+  }) =>
+    api.post<never, ApiResponse<{
+      trigger: string;
+      trend: string;
+      action: string;
+      explanation: string;
+      sentiment: 'bullish' | 'bearish' | 'neutral';
+    }>>('/ai/interpret-trade', data),
 };
 
 // ==================== 公开 CMS API（无需登录）====================
@@ -1473,6 +2294,93 @@ export const publicApi = {
       content: string;
       tags: string[];
     }>>(`/cms/help-docs/${slug}`),
+};
+
+// K 线数据 API
+export const klineApi = {
+  // 获取 K 线数据
+  get: (symbol: string, interval: string = '1h', limit: number = 500) =>
+    api.get<never, ApiResponse<Array<{
+      time: number;       // Unix timestamp
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      volume: number;
+    }>>>('/market/kline', { params: { symbol, interval, limit } }),
+};
+
+// 资产兑换 API（闪兑）
+export const exchangeApi = {
+  // 获取支持的兑换对
+  getPairs: () =>
+    api.get<never, ApiResponse<{
+      pairs: Array<{
+        from: string;
+        to: string;
+        rate: string;
+        fee_rate: string;
+        min_amount: string;
+        max_amount: string;
+      }>;
+    }>>('/exchange/pairs'),
+
+  // 获取兑换报价
+  getQuote: (data: {
+    from_asset: 'usdt' | 'card' | 'points' | 'token';
+    to_asset: 'usdt' | 'card' | 'points' | 'token';
+    amount: string;
+    mode?: 'standard' | 'instant';
+  }) =>
+    api.post<never, ApiResponse<{
+      quote_id: string;
+      from_asset: string;
+      from_amount: string;
+      to_asset: string;
+      to_amount: string;
+      exchange_rate: string;
+      fee_rate: string;
+      fee_amount: string;
+      expires_at: string;
+      // 积分兑换专用
+      instant_amount?: string;
+      vesting_amount?: string;
+      vesting_days?: number;
+      burned_amount?: string;
+    }>>('/exchange/quote', data),
+
+  // 执行兑换
+  convert: (data: { quote_id: string }) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      transaction_id: string;
+      from_asset: string;
+      from_amount: string;
+      to_asset: string;
+      to_amount: string;
+      new_from_balance: string;
+      new_to_balance: string;
+    }>>('/exchange/convert', data),
+
+  // 获取兑换历史
+  getHistory: (params?: { page?: number; limit?: number }) =>
+    api.get<never, ApiResponse<{
+      items: Array<{
+        id: string;
+        from_asset: string;
+        from_amount: string;
+        to_asset: string;
+        to_amount: string;
+        exchange_rate: string;
+        fee_amount: string;
+        mode?: string;
+        status: string;
+        created_at: string;
+      }>;
+      total: number;
+      page: number;
+      limit: number;
+    }>>('/exchange/history', { params }),
 };
 
 export default api;

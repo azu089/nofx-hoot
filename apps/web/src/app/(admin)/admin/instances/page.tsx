@@ -10,78 +10,11 @@ import {
   RefreshCw,
   Trash2,
   Search,
-  Filter,
   Cpu,
   HardDrive,
   Wifi,
-  Clock,
 } from 'lucide-react';
-
-// 模拟 VPS 管理 API
-const instancesApi = {
-  getInstances: async (params: { page: number; status?: string }) => {
-    // TODO: 对接真实 API
-    return {
-      data: [
-        {
-          id: 'vps-001',
-          userId: 'user-1',
-          userEmail: 'user1@example.com',
-          ip: '128.199.123.45',
-          region: 'sgp1',
-          status: 'running',
-          cpu: 45,
-          memory: 62,
-          disk: 30,
-          uptime: '15 天 3 小时',
-          lastHeartbeat: '30 秒前',
-          strategy: 'Grid Trading',
-          createdAt: '2024-12-10',
-        },
-        {
-          id: 'vps-002',
-          userId: 'user-2',
-          userEmail: 'user2@example.com',
-          ip: '128.199.123.46',
-          region: 'nyc3',
-          status: 'running',
-          cpu: 78,
-          memory: 85,
-          disk: 55,
-          uptime: '7 天 12 小时',
-          lastHeartbeat: '45 秒前',
-          strategy: 'DCA Bot',
-          createdAt: '2024-12-18',
-        },
-        {
-          id: 'vps-003',
-          userId: 'user-3',
-          userEmail: 'user3@example.com',
-          ip: '128.199.123.47',
-          region: 'ams3',
-          status: 'zombie',
-          cpu: 0,
-          memory: 0,
-          disk: 45,
-          uptime: '-',
-          lastHeartbeat: '20 分钟前',
-          strategy: 'Arbitrage',
-          createdAt: '2024-12-01',
-        },
-      ],
-      total: 456,
-      running: 423,
-      stopped: 20,
-      zombie: 13,
-    };
-  },
-  restartInstance: async (instanceId: string) => {
-    return { success: true };
-  },
-  destroyInstance: async (instanceId: string) => {
-    return { success: true };
-  },
-};
+import { adminApi } from '@/lib/api';
 
 export default function AdminInstancesPage() {
   const queryClient = useQueryClient();
@@ -89,25 +22,50 @@ export default function AdminInstancesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin', 'instances', page, statusFilter],
-    queryFn: () => instancesApi.getInstances({ page, status: statusFilter }),
+    queryFn: async () => {
+      const response = await adminApi.getAdminInstances({
+        page,
+        limit: 20,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+      });
+      return response.data;
+    },
     refetchInterval: 30000, // 每 30 秒刷新
   });
 
   const restartMutation = useMutation({
-    mutationFn: instancesApi.restartInstance,
+    mutationFn: adminApi.restartInstance,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'instances'] });
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: adminApi.stopInstance,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'instances'] });
     },
   });
 
   const destroyMutation = useMutation({
-    mutationFn: instancesApi.destroyInstance,
+    mutationFn: adminApi.destroyInstance,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'instances'] });
     },
   });
+
+  // 过滤搜索结果
+  const filteredData = data?.data?.filter((instance) => {
+    if (!search) return true;
+    const searchLower = search.toLowerCase();
+    return (
+      instance.id?.toLowerCase().includes(searchLower) ||
+      instance.ip?.toLowerCase().includes(searchLower) ||
+      instance.userEmail?.toLowerCase().includes(searchLower)
+    );
+  }) || [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -197,6 +155,13 @@ export default function AdminInstancesPage() {
           <option value="stopped">已停止</option>
           <option value="zombie">僵尸节点</option>
         </select>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-3 bg-[#3772FF] text-white rounded-lg hover:bg-[#3772FF]/80 flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          刷新
+        </button>
       </div>
 
       {/* 实例列表 */}
@@ -221,8 +186,14 @@ export default function AdminInstancesPage() {
                     加载中...
                   </td>
                 </tr>
+              ) : filteredData.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-[#848E9C]">
+                    暂无实例数据
+                  </td>
+                </tr>
               ) : (
-                data?.data.map((instance) => (
+                filteredData.map((instance) => (
                   <tr key={instance.id} className="border-b border-[#2B3139] hover:bg-[#1E222D]">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -230,16 +201,16 @@ export default function AdminInstancesPage() {
                           <Server className="w-5 h-5 text-[#3772FF]" />
                         </div>
                         <div>
-                          <p className="text-white font-medium">{instance.ip}</p>
-                          <p className="text-[#848E9C] text-xs">{instance.id} · {instance.region}</p>
+                          <p className="text-white font-medium">{instance.ip || '-'}</p>
+                          <p className="text-[#848E9C] text-xs">{instance.id?.slice(0, 8)} · {instance.region || '-'}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-white text-sm">{instance.userEmail}</p>
+                      <p className="text-white text-sm">{instance.userEmail || '-'}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-white text-sm">{instance.strategy}</p>
+                      <p className="text-white text-sm">{instance.strategy || '-'}</p>
                     </td>
                     <td className="px-6 py-4">
                       <div className="space-y-1">
@@ -248,24 +219,24 @@ export default function AdminInstancesPage() {
                           <div className="w-16 h-1.5 bg-[#2B3139] rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${
-                                instance.cpu > 80 ? 'bg-[#F23645]' : 'bg-[#00C087]'
+                                (instance.cpu || 0) > 80 ? 'bg-[#F23645]' : 'bg-[#00C087]'
                               }`}
-                              style={{ width: `${instance.cpu}%` }}
+                              style={{ width: `${instance.cpu || 0}%` }}
                             />
                           </div>
-                          <span className="text-[#848E9C]">{instance.cpu}%</span>
+                          <span className="text-[#848E9C]">{instance.cpu || 0}%</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           <HardDrive className="w-3 h-3 text-[#848E9C]" />
                           <div className="w-16 h-1.5 bg-[#2B3139] rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${
-                                instance.memory > 80 ? 'bg-[#F23645]' : 'bg-[#3772FF]'
+                                (instance.memory || 0) > 80 ? 'bg-[#F23645]' : 'bg-[#3772FF]'
                               }`}
-                              style={{ width: `${instance.memory}%` }}
+                              style={{ width: `${instance.memory || 0}%` }}
                             />
                           </div>
-                          <span className="text-[#848E9C]">{instance.memory}%</span>
+                          <span className="text-[#848E9C]">{instance.memory || 0}%</span>
                         </div>
                       </div>
                     </td>
@@ -279,14 +250,24 @@ export default function AdminInstancesPage() {
                         instance.status === 'zombie' ? 'text-[#F23645]' : 'text-[#848E9C]'
                       }`}>
                         <Wifi className="w-4 h-4" />
-                        {instance.lastHeartbeat}
+                        {instance.lastHeartbeat || '-'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {instance.status === 'running' && (
+                          <button
+                            onClick={() => stopMutation.mutate(instance.id)}
+                            disabled={stopMutation.isPending}
+                            className="p-2 hover:bg-[#2B3139] rounded-lg disabled:opacity-50"
+                            title="停止"
+                          >
+                            <Power className="w-5 h-5 text-[#F7931A]" />
+                          </button>
+                        )}
                         <button
                           onClick={() => restartMutation.mutate(instance.id)}
-                          disabled={instance.status === 'zombie'}
+                          disabled={instance.status === 'zombie' || restartMutation.isPending}
                           className="p-2 hover:bg-[#2B3139] rounded-lg disabled:opacity-50"
                           title="重启"
                         >
@@ -298,7 +279,8 @@ export default function AdminInstancesPage() {
                               destroyMutation.mutate(instance.id);
                             }
                           }}
-                          className="p-2 hover:bg-[#2B3139] rounded-lg"
+                          disabled={destroyMutation.isPending}
+                          className="p-2 hover:bg-[#2B3139] rounded-lg disabled:opacity-50"
                           title="销毁"
                         >
                           <Trash2 className="w-5 h-5 text-[#F23645]" />

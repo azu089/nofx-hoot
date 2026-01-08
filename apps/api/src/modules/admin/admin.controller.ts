@@ -782,6 +782,36 @@ export class AdminController {
     };
   }
 
+  // ==================== 策略审核 (Phase 16) ====================
+
+  /**
+   * 获取待审核策略列表
+   * GET /api/admin/strategies/pending-review
+   * 注意：此路由必须在 strategies/:id 之前定义
+   */
+  @Get('strategies/pending-review')
+  @ApiOperation({ summary: '获取待审核策略列表' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getPendingStrategies(
+    @CurrentUser() admin: JwtPayload,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 查询待审核策略列表`);
+
+    const result = await this.adminService.getPendingStrategies({
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data: result,
+    };
+  }
+
   /**
    * 获取策略详情
    * GET /api/admin/strategies/:id
@@ -866,6 +896,60 @@ export class AdminController {
     return {
       code: 0,
       message: result.isActive ? '策略已上架' : '策略已下架',
+      data: result,
+    };
+  }
+
+  /**
+   * 审核通过策略
+   * POST /api/admin/strategies/:id/approve
+   */
+  @Post('strategies/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '审核通过策略' })
+  async approveStrategy(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 审核通过策略 ${id}`);
+
+    const result = await this.adminService.approveStrategy(id, admin.sub);
+
+    return {
+      code: 0,
+      message: '策略审核通过',
+      data: result,
+    };
+  }
+
+  /**
+   * 拒绝策略
+   * POST /api/admin/strategies/:id/reject
+   */
+  @Post('strategies/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '拒绝策略' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: '拒绝原因' },
+      },
+      required: ['reason'],
+    },
+  })
+  async rejectStrategy(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 拒绝策略 ${id}`);
+
+    const result = await this.adminService.rejectStrategy(id, admin.sub, reason);
+
+    return {
+      code: 0,
+      message: '策略已拒绝',
       data: result,
     };
   }
@@ -955,6 +1039,411 @@ export class AdminController {
       code: 0,
       message: result.message,
       data: result,
+    };
+  }
+
+  // ==================== 充值管理 ====================
+
+  /**
+   * 获取充值列表
+   * GET /api/admin/deposits
+   */
+  @Get('deposits')
+  @ApiOperation({ summary: '获取充值列表' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected'] })
+  async getDeposits(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.adminService.getDeposits({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      status,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 审核通过充值
+   * POST /api/admin/deposits/:id/approve
+   */
+  @Post('deposits/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '审核通过充值' })
+  async approveDeposit(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') depositId: string,
+  ) {
+    const result = await this.adminService.approveDeposit(depositId, admin.sub);
+
+    return {
+      code: 0,
+      message: '充值已审核通过',
+      data: result,
+    };
+  }
+
+  /**
+   * 拒绝充值
+   * POST /api/admin/deposits/:id/reject
+   */
+  @Post('deposits/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '拒绝充值' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: '拒绝原因' },
+      },
+    },
+  })
+  async rejectDeposit(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') depositId: string,
+    @Body('reason') reason?: string,
+  ) {
+    const result = await this.adminService.rejectDeposit(depositId, admin.sub, reason);
+
+    return {
+      code: 0,
+      message: '充值已拒绝',
+      data: result,
+    };
+  }
+
+  // ==================== 手动余额调整 ====================
+
+  /**
+   * 手动调整用户余额
+   * POST /api/admin/users/:id/adjust-balance
+   */
+  @Post('users/:id/adjust-balance')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '手动调整用户余额' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['type', 'amount', 'reason'],
+      properties: {
+        type: { type: 'string', enum: ['add', 'deduct'], description: '操作类型' },
+        amount: { type: 'string', description: '金额' },
+        reason: { type: 'string', description: '调整原因' },
+      },
+    },
+  })
+  async adjustBalance(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') userId: string,
+    @Body() body: { type: 'add' | 'deduct'; amount: string; reason: string },
+  ) {
+    if (!body.type || !body.amount || !body.reason) {
+      return {
+        code: 40001,
+        message: '缺少必要参数',
+        data: null,
+      };
+    }
+
+    const result = await this.adminService.adjustBalance(admin.sub, userId, body);
+
+    return {
+      code: 0,
+      message: `余额${body.type === 'add' ? '加款' : '扣款'}成功`,
+      data: result,
+    };
+  }
+
+  /**
+   * 获取余额调整记录
+   * GET /api/admin/balance-adjustments
+   */
+  @Get('balance-adjustments')
+  @ApiOperation({ summary: '获取余额调整记录' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'userId', required: false, type: String })
+  async getBalanceAdjustments(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+  ) {
+    const data = await this.adminService.getBalanceAdjustments({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      userId,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  // ==================== 代理商管理 ====================
+
+  /**
+   * 获取代理商列表
+   * GET /api/admin/agents
+   */
+  @Get('agents')
+  @ApiOperation({ summary: '获取代理商列表' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: ['active', 'suspended', 'pending'] })
+  async getAgents(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.adminService.getAgents({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      search,
+      status,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 获取代理商详情
+   * GET /api/admin/agents/:id
+   */
+  @Get('agents/:id')
+  @ApiOperation({ summary: '获取代理商详情' })
+  async getAgentDetail(@Param('id') agentId: string) {
+    const data = await this.adminService.getAgentDetail(agentId);
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 更新代理商配置
+   * PATCH /api/admin/agents/:id
+   */
+  @Patch('agents/:id')
+  @ApiOperation({ summary: '更新代理商配置' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        commissionRate: { type: 'string', description: '佣金比例 (0-1)' },
+        status: { type: 'string', enum: ['active', 'suspended'], description: '状态' },
+        name: { type: 'string', description: '代理商名称' },
+      },
+    },
+  })
+  async updateAgent(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') agentId: string,
+    @Body() body: { commissionRate?: string; status?: string; name?: string },
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 更新代理商 ${agentId}`);
+
+    const result = await this.adminService.updateAgent(admin.sub, agentId, body);
+
+    return {
+      code: 0,
+      message: '代理商配置更新成功',
+      data: result,
+    };
+  }
+
+  /**
+   * 将用户设置为代理商
+   * POST /api/admin/users/:id/promote-to-agent
+   */
+  @Post('users/:id/promote-to-agent')
+  @ApiOperation({ summary: '将用户设置为代理商' })
+  @ApiParam({ name: 'id', description: '用户 ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '代理商名称' },
+        commissionRate: { type: 'string', description: '佣金比例 (0-1)', example: '0.10' },
+      },
+      required: ['name'],
+    },
+  })
+  async promoteUserToAgent(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') userId: string,
+    @Body() body: { name: string; commissionRate?: string },
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 将用户 ${userId} 设置为代理商`);
+
+    const result = await this.adminService.promoteUserToAgent(admin.sub, userId, body);
+
+    return {
+      code: 0,
+      message: '用户已成功设置为代理商',
+      data: result,
+    };
+  }
+
+  /**
+   * 撤销用户的代理商身份
+   * POST /api/admin/users/:id/revoke-agent
+   */
+  @Post('users/:id/revoke-agent')
+  @ApiOperation({ summary: '撤销用户的代理商身份' })
+  @ApiParam({ name: 'id', description: '用户 ID' })
+  async revokeAgentStatus(
+    @CurrentUser() admin: JwtPayload,
+    @Param('id') userId: string,
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 撤销用户 ${userId} 的代理商身份`);
+
+    const result = await this.adminService.revokeAgentStatus(admin.sub, userId);
+
+    return {
+      code: 0,
+      message: result.message,
+      data: result,
+    };
+  }
+
+  /**
+   * 检查用户是否为代理商
+   * GET /api/admin/users/:id/agent-status
+   */
+  @Get('users/:id/agent-status')
+  @ApiOperation({ summary: '检查用户是否为代理商' })
+  @ApiParam({ name: 'id', description: '用户 ID' })
+  async checkUserAgentStatus(@Param('id') userId: string) {
+    const result = await this.adminService.checkUserAgentStatus(userId);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: result,
+    };
+  }
+
+  // ==================== 质押管理 ====================
+
+  /**
+   * 获取质押统计
+   * GET /api/admin/staking/stats
+   */
+  @Get('staking/stats')
+  @ApiOperation({ summary: '获取质押统计' })
+  async getStakingStats() {
+    const data = await this.adminService.getStakingStats();
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 获取质押列表
+   * GET /api/admin/staking
+   */
+  @Get('staking')
+  @ApiOperation({ summary: '获取质押列表' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'status', required: false, enum: ['active', 'completed', 'cancelled'] })
+  @ApiQuery({ name: 'stakeType', required: false, enum: ['A', 'B'] })
+  @ApiQuery({ name: 'userId', required: false, type: String })
+  async getStakes(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('stakeType') stakeType?: string,
+    @Query('userId') userId?: string,
+  ) {
+    const data = await this.adminService.getStakes({
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+      status,
+      stakeType,
+      userId,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  // ==================== 报表导出 ====================
+
+  /**
+   * 获取交易报表
+   * GET /api/admin/reports/trades
+   */
+  @Get('reports/trades')
+  @ApiOperation({ summary: '获取交易报表' })
+  @ApiQuery({ name: 'startDate', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'userId', required: false, type: String })
+  async getTradeReport(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('userId') userId?: string,
+  ) {
+    const data = await this.adminService.getTradeReport({
+      startDate,
+      endDate,
+      userId,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 获取收入报表
+   * GET /api/admin/reports/revenue
+   */
+  @Get('reports/revenue')
+  @ApiOperation({ summary: '获取收入报表' })
+  @ApiQuery({ name: 'startDate', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'endDate', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'billingType', required: false, type: String })
+  async getRevenueReport(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('billingType') billingType?: string,
+  ) {
+    const data = await this.adminService.getRevenueReport({
+      startDate,
+      endDate,
+      billingType,
+    });
+
+    return {
+      code: 0,
+      message: 'success',
+      data,
     };
   }
 }

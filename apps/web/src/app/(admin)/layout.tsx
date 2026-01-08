@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -15,6 +15,18 @@ import {
   AlertOctagon,
   LogOut,
   ChevronLeft,
+  ScrollText,
+  Settings,
+  FileCode,
+  ClipboardCheck,
+  FileText,
+  Wallet,
+  ShieldAlert,
+  ArrowDownToLine,
+  CircleDollarSign,
+  UserPlus,
+  Lock,
+  BarChart3,
 } from 'lucide-react';
 
 const adminNavItems = [
@@ -22,9 +34,19 @@ const adminNavItems = [
   { href: '/admin/users', label: '用户管理', icon: Users },
   { href: '/admin/instances', label: 'VPS 监控', icon: Server },
   { href: '/admin/finance', label: '财务审计', icon: DollarSign },
+  { href: '/admin/finance/deposits', label: '充值审核', icon: ArrowDownToLine },
   { href: '/admin/finance/withdrawals', label: '提现审核', icon: FileCheck },
-  { href: '/admin/strategies', label: '策略管理', icon: FileCheck },
+  { href: '/admin/finance/balance', label: '余额调整', icon: CircleDollarSign },
+  { href: '/admin/staking', label: '质押管理', icon: Lock },
+  { href: '/admin/reports', label: '报表导出', icon: BarChart3 },
+  { href: '/admin/agents', label: '代理商管理', icon: UserPlus },
+  { href: '/admin/agents/withdrawals', label: '代理商提现', icon: Wallet },
+  { href: '/admin/strategies', label: '策略管理', icon: FileCode },
+  { href: '/admin/strategies/review', label: '策略审核', icon: ClipboardCheck },
   { href: '/admin/announcements', label: '公告管理', icon: Megaphone },
+  { href: '/admin/cms', label: 'CMS 管理', icon: FileText },
+  { href: '/admin/audit-logs', label: '审计日志', icon: ScrollText },
+  { href: '/admin/configs', label: '系统配置', icon: Settings },
   { href: '/admin/kill-switch', label: '紧急开关', icon: AlertOctagon },
 ];
 
@@ -35,23 +57,46 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, checkAuth, user, logout } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, user, logout, _hasHydrated } = useAuthStore();
+
+  // 标记客户端是否已挂载，避免 hydration 不匹配
+  const [isMounted, setIsMounted] = useState(false);
+
+  // 标记是否已完成初始认证检查，避免导航过程中的竞态条件
+  const hasInitializedRef = useRef(false);
+
+  // 客户端挂载后设置 mounted 状态
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login');
+    // 等待 hydration 完成后，只在初始加载时调用 checkAuth
+    if (_hasHydrated && !hasInitializedRef.current) {
+      checkAuth();
     }
-    // TODO: 添加管理员角色检查
-    // if (!isLoading && isAuthenticated && user?.role !== 'admin') {
-    //   router.push('/dashboard');
-    // }
-  }, [isAuthenticated, isLoading, router, user]);
+  }, [checkAuth, _hasHydrated]);
 
-  if (isLoading) {
+  useEffect(() => {
+    // 等待 hydration 完成后进行认证检查
+    if (!_hasHydrated) return;
+
+    if (!isLoading) {
+      if (!hasInitializedRef.current) {
+        // 初始检查完成
+        hasInitializedRef.current = true;
+        if (!isAuthenticated) {
+          router.push('/login');
+        } else if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+          // 管理员角色检查：只有 admin 或 super_admin 可以访问
+          router.push('/admin/unauthorized');
+        }
+      }
+    }
+  }, [isAuthenticated, isLoading, router, user, _hasHydrated]);
+
+  // 加载中（包括客户端未挂载、hydration 未完成的情况）
+  if (!isMounted || !_hasHydrated || isLoading) {
     return (
       <div className="min-h-screen bg-[#0B0E11] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">

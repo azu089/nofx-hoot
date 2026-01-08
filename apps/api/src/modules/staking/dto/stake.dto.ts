@@ -4,8 +4,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  Min,
   Matches,
+  ValidateIf,
   IsIn,
 } from 'class-validator';
 
@@ -20,6 +20,9 @@ export const ALLOWED_LOCK_DAYS = [30, 90, 180, 365];
 
 /**
  * 质押 DTO
+ *
+ * A 类质押（积分）：无需锁定期，lock_days 可选（会被忽略）
+ * B 类质押（代币）：必须指定 lock_days，且只能是 30/90/180/365 天
  */
 export class StakeDto {
   @IsString()
@@ -31,8 +34,10 @@ export class StakeDto {
   @IsNotEmpty({ message: '质押类型不能为空' })
   stake_type: 'A' | 'B';
 
-  @IsOptional()
+  // 仅 B 类质押需要验证 lock_days
+  @ValidateIf((o) => o.stake_type === 'B')
+  @IsNotEmpty({ message: 'B 类质押必须指定锁定天数' })
   @IsNumber({}, { message: '锁定天数必须为数字' })
-  @IsIn(ALLOWED_LOCK_DAYS, { message: '锁定天数只能是 30、90、180 或 365 天' })
-  lock_days?: number; // 仅 B 类需要，且必须在白名单内
+  @IsIn(ALLOWED_LOCK_DAYS, { message: 'B 类质押锁定天数只能是 30、90、180 或 365 天' })
+  lock_days?: number;
 }

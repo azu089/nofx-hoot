@@ -66,9 +66,9 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <Card className="w-full max-w-md">
+      <Card variant="glass" className="w-full max-w-md glow-border glow-border-success">
         <CardContent className="py-12 text-center">
-          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4" />
+          <CheckCircle className="w-16 h-16 text-success mx-auto mb-4 animate-scale-in" />
           <h2 className="text-2xl font-bold text-white mb-2">注册成功！</h2>
           <p className="text-text-secondary mb-4">您的账户已创建，正在跳转到登录页面...</p>
           <Link href="/login">
@@ -80,7 +80,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card variant="glass" className="w-full max-w-md glow-border glow-border-primary">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">注册</CardTitle>
         <p className="text-text-secondary mt-2">创建账户，开启量化之旅</p>

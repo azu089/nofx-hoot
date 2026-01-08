@@ -1,8 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, CrosshairMode, LineStyle } from 'lightweight-charts';
-import type { IChartApi, UTCTimestamp, SeriesMarker, Time } from 'lightweight-charts';
+import {
+  createChart,
+  ColorType,
+  CrosshairMode,
+  LineStyle,
+  CandlestickSeries,
+  HistogramSeries,
+} from 'lightweight-charts';
+import type { IChartApi, UTCTimestamp, SeriesMarker, Time, ISeriesApi } from 'lightweight-charts';
 
 // K 线数据点
 export interface KLineDataPoint {
@@ -54,10 +61,8 @@ export function KLineChart({
 }: KLineChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const candlestickSeriesRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const volumeSeriesRef = useRef<any>(null);
+  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState(timeframe);
 
   // 初始化图表
@@ -108,8 +113,7 @@ export function KLineChart({
     chartRef.current = chart;
 
     // 添加 K 线系列 - lightweight-charts v5 API
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candlestickSeries = (chart as any).addCandlestickSeries({
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#00C087',
       downColor: '#F23645',
       borderUpColor: '#00C087',
@@ -121,8 +125,7 @@ export function KLineChart({
 
     // 添加成交量系列
     if (showVolume) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const volumeSeries = (chart as any).addHistogramSeries({
+      const volumeSeries = chart.addSeries(HistogramSeries, {
         color: '#3772FF',
         priceFormat: {
           type: 'volume',
@@ -174,8 +177,8 @@ export function KLineChart({
       volumeSeriesRef.current.setData(volumeData);
     }
 
-    // 设置买卖点标记
-    if (markers.length > 0 && candlestickSeriesRef.current.setMarkers) {
+    // 设置买卖点标记 - v5 API: 使用 series.attachPrimitive 或直接在 series 上设置
+    if (markers.length > 0 && candlestickSeriesRef.current) {
       const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
         time: m.time as Time,
         position: m.position,
@@ -184,7 +187,9 @@ export function KLineChart({
         text: m.text,
         size: m.size || 1,
       }));
-      candlestickSeriesRef.current.setMarkers(seriesMarkers);
+      // v5 中 setMarkers 仍然在 series 上，使用类型断言
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (candlestickSeriesRef.current as any).setMarkers(seriesMarkers);
     }
 
     // 自动滚动到最新
@@ -267,8 +272,8 @@ export function MiniKLineChart({
 
     chartRef.current = chart;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candlestickSeries = (chart as any).addCandlestickSeries({
+    // lightweight-charts v5 API
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#00C087',
       downColor: '#F23645',
       borderUpColor: '#00C087',

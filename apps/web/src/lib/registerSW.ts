@@ -6,6 +6,19 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     return null;
   }
 
+  // 开发环境下不注册 Service Worker，避免缓存导致的刷新问题
+  if (process.env.NODE_ENV === 'development') {
+    // 如果之前注册过，先注销
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+        console.log('[PWA] Dev mode: Unregistered Service Worker');
+      }
+    }
+    return null;
+  }
+
   // 检查浏览器是否支持 Service Worker
   if (!('serviceWorker' in navigator)) {
     console.log('[PWA] Service Worker not supported');

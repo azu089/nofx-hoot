@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, MobileHeader } from '@/components/ui';
 import { Bell, Mail, MessageSquare, CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface NotificationSettings {
@@ -71,13 +71,16 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">通知设置</h1>
-        <Button onClick={handleSave} isLoading={saving}>
-          <CheckCircle className="w-4 h-4 mr-2" />
-          保存设置
-        </Button>
-      </div>
+      <MobileHeader
+        title="通知设置"
+        subtitle="配置通知渠道和类型"
+        rightAction={
+          <Button onClick={handleSave} isLoading={saving}>
+            <CheckCircle className="w-4 h-4 mr-2" />
+            保存设置
+          </Button>
+        }
+      />
 
       {/* 通知渠道 */}
       <Card>

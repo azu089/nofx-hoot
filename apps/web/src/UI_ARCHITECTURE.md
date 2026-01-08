@@ -152,7 +152,7 @@ apps/web/src/
 │   │   │   ├── billing/page.tsx      # 账单明细
 │   │   │   └── points/page.tsx       # 点卡/积分
 │   │   │
-│   │   ├── gamefi/                   # GameFi 中心
+│   │   ├── ecosystem/                # 生态中心
 │   │   │   ├── page.tsx              # 概览
 │   │   │   ├── staking/page.tsx      # 质押大厅
 │   │   │   ├── exchange/page.tsx     # 积分兑换
@@ -537,13 +537,13 @@ apps/web/src/
 
 ---
 
-### 3.6 用户端 - GameFi 中心 `/gamefi`
+### 3.6 用户端 - 生态中心 `/ecosystem`
 
-#### 概览页 `/gamefi`
+#### 概览页 `/ecosystem`
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  GameFi 中心                                       │
+│  生态中心                                          │
 ├────────────────────────────────────────────────────┤
 │                                                    │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │
@@ -1010,13 +1010,13 @@ interface TradingState {
   panicSell: () => Promise<void>;
 }
 
-// stores/gamefi.store.ts
-interface GameFiState {
+// stores/ecosystem.store.ts (原 gamefi.store.ts)
+interface EcosystemState {
   points: string;
   stakes: Stake[];
   vestingOrders: VestingOrder[];
   pendingRewards: string;
-  fetchGameFi: () => Promise<void>;
+  fetchEcosystem: () => Promise<void>;
 }
 
 // stores/ui.store.ts
@@ -1047,7 +1047,7 @@ const queryKeys = {
   strategy: (id) => ['strategy', id],
   myStrategies: ['myStrategies'],
 
-  // GameFi
+  // 生态中心 (Ecosystem)
   stakes: ['stakes'],
   vestingOrders: ['vestingOrders'],
   leaderboard: ['leaderboard'],

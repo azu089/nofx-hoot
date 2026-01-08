@@ -49,7 +49,7 @@ export default function LoginPage() {
   };
 
   return (
-    <Card className="w-full max-w-md">
+    <Card variant="glass" className="w-full max-w-md glow-border glow-border-primary">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">登录</CardTitle>
         <p className="text-text-secondary mt-2">欢迎回来，请登录您的账户</p>

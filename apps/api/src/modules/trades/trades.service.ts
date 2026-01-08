@@ -3,7 +3,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
 import { PointsService } from '../points/points.service';
 import { TradeStatsDto } from './dto/trade-stats.dto';
-import { QueryTradesDto } from './dto/trade-response.dto';
+import {
+  QueryTradesDto,
+  PnlStatus,
+  PaginatedTradesResponseDto,
+} from './dto/trade-response.dto';
+import {
+  PeriodStatsQueryDto,
+  PeriodStatsResponseDto,
+  PeriodType,
+} from './dto/period-stats.dto';
 import Decimal from 'decimal.js';
 
 /**
@@ -174,34 +183,104 @@ export class TradesService {
   }
 
   /**
-   * 获取用户的交易历史
+   * 获取用户的交易历史（支持分页和筛选）
+   * @param userId 用户 ID
+   * @param query 查询参数
+   * @returns 分页的交易列表
    */
-  async findByUser(userId: string, query: QueryTradesDto) {
+  async findByUser(
+    userId: string,
+    query: QueryTradesDto,
+  ): Promise<PaginatedTradesResponseDto> {
     const where: any = {
       user_id: userId,
     };
 
+    // 实例筛选
     if (query.instance_id) {
       where.instance_id = query.instance_id;
     }
 
+    // 策略筛选
     if (query.strategy_id) {
       where.strategy_id = query.strategy_id;
     }
 
+    // 状态筛选
     if (query.status) {
       where.status = query.status;
     }
 
+    // 精确交易对筛选
     if (query.symbol) {
       where.symbol = query.symbol;
     }
 
-    return this.prisma.client.trade_history.findMany({
-      where,
-      orderBy: { opened_at: 'desc' },
-      take: 100, // 最多返回 100 条
-    });
+    // 模糊交易对搜索 (pair 参数)
+    if (query.pair) {
+      where.symbol = {
+        contains: query.pair.toUpperCase(),
+        mode: 'insensitive',
+      };
+    }
+
+    // 盈亏状态筛选
+    if (query.pnl_status && query.pnl_status !== PnlStatus.ALL) {
+      if (query.pnl_status === PnlStatus.PROFIT) {
+        where.pnl = { gt: '0' };
+      } else if (query.pnl_status === PnlStatus.LOSS) {
+        where.pnl = { lt: '0' };
+      }
+    }
+
+    // 日期范围筛选 (基于关闭时间或开仓时间)
+    if (query.start_date || query.end_date) {
+      where.OR = [
+        // 已关闭交易：按关闭时间筛选
+        {
+          status: 'closed',
+          closed_at: {
+            ...(query.start_date && { gte: new Date(query.start_date) }),
+            ...(query.end_date && {
+              lte: new Date(query.end_date + 'T23:59:59.999Z'),
+            }),
+          },
+        },
+        // 未关闭交易：按开仓时间筛选
+        {
+          status: 'open',
+          opened_at: {
+            ...(query.start_date && { gte: new Date(query.start_date) }),
+            ...(query.end_date && {
+              lte: new Date(query.end_date + 'T23:59:59.999Z'),
+            }),
+          },
+        },
+      ];
+    }
+
+    // 分页参数
+    const limit = query.limit || 20;
+    const offset = query.offset || 0;
+
+    // 并行查询数据和总数
+    const [trades, total] = await Promise.all([
+      this.prisma.client.trade_history.findMany({
+        where,
+        orderBy: { opened_at: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      this.prisma.client.trade_history.count({ where }),
+    ]);
+
+    return {
+      trades: trades as any,
+      total,
+      limit,
+      offset,
+      has_more: offset + trades.length < total,
+    };
   }
 
   /**
@@ -288,5 +367,148 @@ export class TradesService {
       best_trade: bestTrade.toFixed(8),
       worst_trade: worstTrade.toFixed(8),
     };
+  }
+
+  /**
+   * 按时间段计算用户盈亏统计
+   * @param userId 用户 ID
+   * @param query 时间段查询参数
+   */
+  async calculatePnLByPeriod(
+    userId: string,
+    query: PeriodStatsQueryDto,
+  ): Promise<PeriodStatsResponseDto> {
+    // 1. 计算时间范围
+    const { startDate, endDate } = this.calculateDateRange(query);
+
+    this.logger.debug(
+      `计算盈亏统计: 用户 ${userId}, 时间段 ${query.period}, ${startDate.toISOString()} - ${endDate.toISOString()}`,
+    );
+
+    // 2. 查询时间范围内的已关闭交易
+    const trades = await this.prisma.client.trade_history.findMany({
+      where: {
+        user_id: userId,
+        status: 'closed',
+        closed_at: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    // 3. 使用 Decimal.js 计算统计数据
+    let totalPnl = new Decimal(0);
+    let totalProfit = new Decimal(0);
+    let totalLoss = new Decimal(0);
+    let totalGasFee = new Decimal(0);
+    let winTrades = 0;
+    let lossTrades = 0;
+    let bestTrade = new Decimal(0);
+    let worstTrade = new Decimal(0);
+
+    for (const trade of trades) {
+      if (trade.pnl) {
+        const pnl = new Decimal(trade.pnl);
+        totalPnl = totalPnl.plus(pnl);
+
+        if (pnl.greaterThan(0)) {
+          totalProfit = totalProfit.plus(pnl);
+          winTrades++;
+
+          if (pnl.greaterThan(bestTrade)) {
+            bestTrade = pnl;
+          }
+        } else if (pnl.lessThan(0)) {
+          totalLoss = totalLoss.plus(pnl);
+          lossTrades++;
+
+          if (pnl.lessThan(worstTrade)) {
+            worstTrade = pnl;
+          }
+        }
+      }
+
+      if (trade.gas_fee) {
+        totalGasFee = totalGasFee.plus(new Decimal(trade.gas_fee));
+      }
+    }
+
+    const totalTrades = trades.length;
+    const winRate =
+      totalTrades > 0
+        ? new Decimal(winTrades).dividedBy(totalTrades)
+        : new Decimal(0);
+
+    const avgPnl =
+      totalTrades > 0 ? totalPnl.dividedBy(totalTrades) : new Decimal(0);
+
+    return {
+      period: query.period,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0],
+      total_trades: totalTrades,
+      win_trades: winTrades,
+      loss_trades: lossTrades,
+      win_rate: winRate.toFixed(4),
+      total_pnl: totalPnl.toFixed(8),
+      total_profit: totalProfit.toFixed(8),
+      total_loss: totalLoss.toFixed(8),
+      best_trade: bestTrade.toFixed(8),
+      worst_trade: worstTrade.toFixed(8),
+      avg_pnl_per_trade: avgPnl.toFixed(8),
+      total_gas_fee: totalGasFee.toFixed(8),
+    };
+  }
+
+  /**
+   * 根据时间段类型计算日期范围
+   */
+  private calculateDateRange(query: PeriodStatsQueryDto): {
+    startDate: Date;
+    endDate: Date;
+  } {
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(now);
+
+    // 设置结束时间为今天的 23:59:59
+    endDate.setHours(23, 59, 59, 999);
+
+    switch (query.period) {
+      case PeriodType.TODAY:
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case PeriodType.WEEK:
+        startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 7);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case PeriodType.MONTH:
+        startDate = new Date(now);
+        startDate.setMonth(startDate.getMonth() - 1);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+
+      case PeriodType.CUSTOM:
+        if (!query.start_date || !query.end_date) {
+          throw new Error('自定义时间段必须指定开始日期和结束日期');
+        }
+        startDate = new Date(query.start_date);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(query.end_date);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      default:
+        // 默认今日
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+    }
+
+    return { startDate, endDate };
   }
 }

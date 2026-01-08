@@ -2,11 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from '../modules/billing/billing.service';
+import { DigitalOceanService } from '../modules/digitalocean/digitalocean.service';
 import Decimal from 'decimal.js';
 
 /**
  * 订阅扣费定时任务
- * 每天检查 VIP 到期用户，自动续费或降级
+ * 每天检查 VIP 到期用户，自动续费或立即销毁
+ *
+ * 规则（白皮书 2.1）：
+ * - 订阅即将到期 + 余额充足 = 自动续费
+ * - 订阅到期 + 余额不足 = VIP 降级 + VPS 立即销毁（无宽限期）
  */
 @Injectable()
 export class SubscriptionTask {
@@ -22,6 +27,7 @@ export class SubscriptionTask {
   constructor(
     private readonly prisma: PrismaService,
     private readonly billingService: BillingService,
+    private readonly digitalOceanService: DigitalOceanService,
   ) {}
 
   /**
@@ -121,11 +127,8 @@ export class SubscriptionTask {
   }
 
   /**
-   * 处理欠费
-   * 策略：
-   * 1. 首次欠费：发送提醒，给予 3 天宽限期
-   * 2. 宽限期后仍欠费：VIP 降级到 0
-   * 3. 降级后停止该用户的 VPS 实例
+   * 处理欠费（无宽限期）
+   * 策略：订阅到期 + 余额不足 = 立即降级 + VPS 销毁
    */
   private async handleArrears(
     user: any,
@@ -135,17 +138,14 @@ export class SubscriptionTask {
   ) {
     const now = new Date();
     const expiresAt = new Date(user.vip_expires_at);
-    const daysOverdue = Math.floor(
-      (now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60 * 24),
-    );
 
-    if (daysOverdue <= 0) {
-      // 还未到期，只记录即将欠费
+    if (now < expiresAt) {
+      // 还未到期，只记录警告（提前 24 小时提醒）
       this.logger.warn(
-        `用户 ${user.id} 余额不足 (${balance} < ${price})，即将欠费`,
+        `用户 ${user.id} 余额不足 (${balance} < ${price})，订阅即将到期`,
       );
 
-      // 记录欠费日志
+      // 记录欠费警告日志
       await this.prisma.client.billing_logs.create({
         data: {
           user_id: user.id,
@@ -153,26 +153,30 @@ export class SubscriptionTask {
           billing_type: 'arrears_warning',
           amount: price.toString(),
           currency: 'USDT',
-          description: `VIP${vipLevel} 订阅即将到期，余额不足`,
+          description: `VIP${vipLevel} 订阅即将到期，余额不足，请及时充值`,
           status: 'pending',
         },
       });
-    } else if (daysOverdue <= 3) {
-      // 宽限期内（1-3 天）
-      this.logger.warn(
-        `用户 ${user.id} 欠费 ${daysOverdue} 天，在宽限期内`,
-      );
     } else {
-      // 超过宽限期，执行降级
-      await this.downgradeUser(user);
+      // 已到期，立即执行降级和 VPS 销毁（无宽限期）
+      await this.downgradeAndDestroyVps(user, vipLevel);
     }
   }
 
   /**
-   * VIP 降级处理
+   * VIP 降级并销毁 VPS
+   * 规则（白皮书 2.1）：订阅到期 = VPS 立即销毁（无宽限期）
    */
-  private async downgradeUser(user: any) {
-    this.logger.warn(`用户 ${user.id} 超过欠费宽限期，执行降级`);
+  private async downgradeAndDestroyVps(user: any, vipLevel: number) {
+    this.logger.warn(`用户 ${user.id} 订阅到期，执行降级并立即销毁 VPS`);
+
+    // 先获取该用户的活跃实例（需要调用 DO API 销毁）
+    const activeInstances = await this.prisma.client.instances.findMany({
+      where: {
+        user_id: user.id,
+        status: { notIn: ['destroyed', 'error'] },
+      },
+    });
 
     await this.prisma.client.$transaction(async (tx) => {
       // 1. VIP 降级到 0
@@ -185,14 +189,16 @@ export class SubscriptionTask {
         },
       });
 
-      // 2. 停止该用户的所有 VPS 实例
+      // 2. 销毁该用户的所有活跃 VPS 实例（订阅到期立即销毁，无宽限期）
       await tx.instances.updateMany({
         where: {
           user_id: user.id,
-          status: 'running',
+          status: { notIn: ['destroyed', 'error'] },
         },
         data: {
-          status: 'stopped',
+          status: 'destroyed',
+          destroyed_at: new Date(),
+          destroy_reason: `VIP${vipLevel} 订阅到期，系统自动销毁`,
           updated_at: new Date(),
         },
       });
@@ -201,17 +207,39 @@ export class SubscriptionTask {
       await tx.billing_logs.create({
         data: {
           user_id: user.id,
-          unique_order_id: `downgrade_${user.id}_${Date.now()}`,
+          unique_order_id: `downgrade_destroy_${user.id}_${Date.now()}`,
           billing_type: 'vip_downgrade',
           amount: '0',
           currency: 'USDT',
-          description: '因欠费超过宽限期，VIP 降级到免费版',
+          description: `VIP${vipLevel} 订阅到期，降级到免费版，${activeInstances.length} 个 VPS 实例已销毁`,
           status: 'completed',
         },
       });
     });
 
-    this.logger.log(`用户 ${user.id} 已降级到免费版，VPS 实例已停止`);
+    // 4. 调用 DO API 销毁实际的 Droplet（事务外执行，避免 API 失败导致回滚）
+    for (const instance of activeInstances) {
+      if (instance.droplet_id) {
+        try {
+          this.logger.warn(
+            `[订阅到期销毁] 正在销毁 Droplet: ${instance.droplet_id}, 实例: ${instance.id}`,
+          );
+          await this.digitalOceanService.destroyDroplet(instance.droplet_id);
+          this.logger.log(
+            `[订阅到期销毁] Droplet ${instance.droplet_id} 销毁成功`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `[订阅到期销毁] 销毁 Droplet ${instance.droplet_id} 失败: ${error.message}`,
+          );
+          // 即使 DO API 失败，数据库状态已经是 destroyed，后续可以手动清理
+        }
+      }
+    }
+
+    this.logger.log(
+      `用户 ${user.id} 已降级到免费版，${activeInstances.length} 个 VPS 实例已标记为销毁`,
+    );
   }
 
   /**

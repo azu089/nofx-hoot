@@ -74,22 +74,38 @@ export class AuthService {
       }
     }
 
-    // 3. 如果提供了邀请码，验证代理商是否存在
+    // 3. 如果提供了邀请码，验证邀请码来源
+    // 邀请码可以来自：1. 代理商（agents 表）2. 普通用户（users 表）
     let agentId: string | null = null;
+    let referredByUserId: string | null = null;
+
     if (inviteCode) {
+      // 先检查是否是代理商邀请码
       const agent = await this.prisma.client.agents.findUnique({
         where: { code: inviteCode },
       });
 
-      if (!agent) {
-        throw new BadRequestException('邀请码无效');
-      }
+      if (agent) {
+        if (agent.status !== 'active') {
+          throw new BadRequestException('该代理商已被禁用');
+        }
+        agentId = agent.id;
+      } else {
+        // 再检查是否是普通用户邀请码
+        const referrer = await this.prisma.client.users.findUnique({
+          where: { invite_code: inviteCode },
+        });
 
-      if (agent.status !== 'active') {
-        throw new BadRequestException('该代理商已被禁用');
-      }
+        if (!referrer) {
+          throw new BadRequestException('邀请码无效');
+        }
 
-      agentId = agent.id;
+        if (referrer.status !== 'active') {
+          throw new BadRequestException('邀请人账号已被禁用');
+        }
+
+        referredByUserId = referrer.id;
+      }
     }
 
     // 4. bcrypt 加密密码
@@ -103,6 +119,7 @@ export class AuthService {
           email,
           password_hash: passwordHash,
           agent_id: agentId,
+          referred_by_user_id: referredByUserId, // 普通用户邀请关系
           status: 'active',
         },
       });

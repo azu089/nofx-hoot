@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Checkbox } from '@/components/ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Checkbox, MobileHeader } from '@/components/ui';
 import { Search, X, AlertTriangle, Save } from 'lucide-react';
 import { useToast } from '@/components/ui';
 
@@ -77,12 +77,10 @@ export default function BlacklistPage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">币种黑名单</h1>
-        <p className="text-text-secondary mt-1">
-          选择您不希望策略交易的币种
-        </p>
-      </div>
+      <MobileHeader
+        title="币种黑名单"
+        subtitle="选择您不希望策略交易的币种"
+      />
 
       {/* 高风险提示 */}
       <div className="flex items-start gap-3 p-4 bg-warning/10 border border-warning/20 rounded-lg">

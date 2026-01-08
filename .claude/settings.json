@@ -1,6 +1,11 @@
 {
   "$schema": "https://claude.ai/schemas/claude-code-settings.json",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [".claude/hooks/prompt-submit-check.sh"]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write",

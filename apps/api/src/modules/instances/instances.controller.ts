@@ -18,11 +18,39 @@ import { Public } from '../../common/decorators/public.decorator';
 /**
  * VPS 实例控制器
  * 路由前缀: /api/instances
+ *
+ * 核心规则（白皮书 2.1）：
+ * - 用户只能查看 VPS 状态
+ * - VPS 创建由订阅购买自动触发
+ * - VPS 销毁由订阅到期自动触发
+ * - 用户不能手动创建/销毁 VPS
  */
 @Controller('instances')
 @UseGuards(JwtAuthGuard)
 export class InstancesController {
   constructor(private readonly instancesService: InstancesService) {}
+
+  /**
+   * 购买订阅（唯一入口）
+   * 流程：扣费 → 更新订阅 → 自动创建 VPS
+   * POST /api/instances/subscribe
+   */
+  @Post('subscribe')
+  async purchaseSubscription(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { usePoints?: boolean; region?: string },
+  ) {
+    const result = await this.instancesService.purchaseSubscription(
+      user.sub,
+      body.usePoints !== false,
+      body.region || 'sgp1',
+    );
+    return {
+      code: 0,
+      message: '订阅成功，VPS 已自动创建',
+      data: result,
+    };
+  }
 
   /**
    * 一键清仓（Panic Sell）
@@ -41,17 +69,8 @@ export class InstancesController {
     };
   }
 
-  /**
-   * 创建 VPS 实例
-   * POST /api/instances
-   */
-  @Post()
-  async create(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreateInstanceDto,
-  ) {
-    return this.instancesService.create(user.sub, dto);
-  }
+  // 注意：移除了用户手动创建/销毁 VPS 的接口
+  // VPS 生命周期完全由订阅状态控制
 
   /**
    * 获取当前用户的所有实例
@@ -74,18 +93,8 @@ export class InstancesController {
     return this.instancesService.findById(id, user.sub);
   }
 
-  /**
-   * 销毁实例
-   * DELETE /api/instances/:id
-   */
-  @Delete(':id')
-  async destroy(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-    @Query('reason') reason?: string,
-  ) {
-    return this.instancesService.destroy(id, user.sub, reason || '用户主动销毁');
-  }
+  // 已移除：destroy, start, stop, restart, force-exit 接口
+  // 用户不能手动操作 VPS，只能查看状态
 
   /**
    * 心跳上报（VPS 调用，无需用户认证）
@@ -101,55 +110,7 @@ export class InstancesController {
   }
 
   /**
-   * 启动策略
-   * POST /api/instances/:id/start
-   */
-  @Post(':id/start')
-  async startStrategy(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.instancesService.startStrategy(id, user.sub);
-  }
-
-  /**
-   * 停止策略
-   * POST /api/instances/:id/stop
-   */
-  @Post(':id/stop')
-  async stopStrategy(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.instancesService.stopStrategy(id, user.sub);
-  }
-
-  /**
-   * 重启实例
-   * POST /api/instances/:id/restart
-   */
-  @Post(':id/restart')
-  async restart(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.instancesService.restart(id, user.sub);
-  }
-
-  /**
-   * 手动同步状态
-   * POST /api/instances/:id/sync
-   */
-  @Post(':id/sync')
-  async syncStatus(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.instancesService.syncStatus(id, user.sub);
-  }
-
-  /**
-   * 获取实例运行状态（Freqtrade）
+   * 获取实例运行状态（Freqtrade）- 只读
    * GET /api/instances/:id/status
    */
   @Get(':id/status')
@@ -161,7 +122,7 @@ export class InstancesController {
   }
 
   /**
-   * 获取实例余额（Freqtrade）
+   * 获取实例余额（Freqtrade）- 只读
    * GET /api/instances/:id/balance
    */
   @Get(':id/balance')
@@ -173,7 +134,7 @@ export class InstancesController {
   }
 
   /**
-   * 获取实例交易（Freqtrade）
+   * 获取实例交易（Freqtrade）- 只读
    * GET /api/instances/:id/trades
    */
   @Get(':id/trades')
@@ -182,18 +143,5 @@ export class InstancesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.instancesService.getFreqtradeTrades(id, user.sub);
-  }
-
-  /**
-   * 紧急平仓（单个交易）
-   * POST /api/instances/:id/force-exit
-   */
-  @Post(':id/force-exit')
-  async forceExit(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-    @Body() body: { trade_id?: string },
-  ) {
-    return this.instancesService.forceExit(id, user.sub, body.trade_id);
   }
 }

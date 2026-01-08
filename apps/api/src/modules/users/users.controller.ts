@@ -4,6 +4,7 @@ import {
   Patch,
   Post,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -124,6 +125,100 @@ export class UsersController {
       code: 0,
       message: '2FA 已禁用',
       data: safeUser,
+    };
+  }
+
+  /**
+   * 获取邀请信息
+   * GET /api/users/referral/info
+   * 需要认证
+   */
+  @Get('referral/info')
+  async getInviteInfo(@CurrentUser() user: JwtPayload) {
+    this.logger.log(`用户 ${user.sub} 查询邀请信息`);
+
+    const inviteInfo = await this.usersService.getInviteInfo(user.sub);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: inviteInfo,
+    };
+  }
+
+  /**
+   * 获取邀请统计
+   * GET /api/users/referral/stats
+   * 需要认证
+   */
+  @Get('referral/stats')
+  async getInviteStats(@CurrentUser() user: JwtPayload) {
+    this.logger.log(`用户 ${user.sub} 查询邀请统计`);
+
+    const stats = await this.usersService.getInviteStats(user.sub);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: stats,
+    };
+  }
+
+  /**
+   * 获取被邀请用户列表
+   * GET /api/users/referral/list
+   * 需要认证
+   */
+  @Get('referral/list')
+  async getInvitedUsers(@CurrentUser() user: JwtPayload) {
+    this.logger.log(`用户 ${user.sub} 查询被邀请用户列表`);
+
+    const users = await this.usersService.getInvitedUsers(user.sub);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: users,
+    };
+  }
+
+  /**
+   * 获取团队成员列表（一级/二级）
+   * GET /api/users/referral/team?level=1|2
+   * 需要认证
+   */
+  @Get('referral/team')
+  async getTeamMembers(
+    @CurrentUser() user: JwtPayload,
+    @Query('level') level?: string,
+  ) {
+    this.logger.log(`用户 ${user.sub} 查询团队成员, level=${level || '全部'}`);
+
+    const levelNum = level ? parseInt(level, 10) : undefined;
+    const team = await this.usersService.getTeamMembers(user.sub, levelNum);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: team,
+    };
+  }
+
+  /**
+   * 获取登录日志
+   * GET /api/users/login-logs
+   * 需要认证
+   */
+  @Get('login-logs')
+  async getLoginLogs(@CurrentUser() user: JwtPayload) {
+    this.logger.log(`用户 ${user.sub} 查询登录日志`);
+
+    const logs = await this.usersService.getLoginLogs(user.sub);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: logs,
     };
   }
 }

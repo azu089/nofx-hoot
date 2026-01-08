@@ -18,6 +18,7 @@ import {
   Code,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function AdminStrategiesPage() {
   const queryClient = useQueryClient();
@@ -45,7 +46,10 @@ export default function AdminStrategiesPage() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
       setShowEditor(false);
       setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
-      alert('策略创建成功');
+      toast.success('策略创建成功');
+    },
+    onError: () => {
+      toast.error('策略创建失败');
     },
   });
 
@@ -56,7 +60,10 @@ export default function AdminStrategiesPage() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
       setShowEditor(false);
       setEditingStrategy(null);
-      alert('策略更新成功');
+      toast.success('策略更新成功');
+    },
+    onError: () => {
+      toast.error('策略更新失败');
     },
   });
 
@@ -64,14 +71,21 @@ export default function AdminStrategiesPage() {
     mutationFn: adminApi.deleteStrategy,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
-      alert('策略删除成功');
+      toast.success('策略删除成功');
+    },
+    onError: () => {
+      toast.error('策略删除失败');
     },
   });
 
   const toggleMutation = useMutation({
     mutationFn: adminApi.toggleStrategyStatus,
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
+      toast.success('策略状态已更新');
+    },
+    onError: () => {
+      toast.error('操作失败');
     },
   });
 
@@ -340,8 +354,8 @@ export default function AdminStrategiesPage() {
               </button>
               <button
                 onClick={() => {
-                  if (!formData.name || !formData.description || !formData.code) {
-                    alert('请填写完整信息');
+                  if (!formData.name || !formData.description) {
+                    toast.error('请填写完整信息');
                     return;
                   }
                   if (editingStrategy) {

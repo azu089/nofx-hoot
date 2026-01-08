@@ -6,6 +6,7 @@ import { IsString, IsBoolean, IsOptional, IsIn } from 'class-validator';
  */
 export class UpdateConfigDto {
   @ApiProperty({ description: '配置值' })
+  @IsOptional()
   value: any;
 
   @ApiPropertyOptional({ description: '配置描述' })

@@ -18,12 +18,12 @@ import Decimal from 'decimal.js';
  * VPS 实例服务
  * 处理 VPS 编排、监控、心跳检测等业务逻辑
  *
- * 注意事项：
- * - 创建 VPS 前必须检查用户余额（$25 订阅费）
- * - 余额不足时拒绝创建并抛出异常
- * - 销毁 VPS 前必须备份到 S3
- * - 心跳超时时间：15 分钟
- * - 所有操作必须记录审计日志
+ * 核心规则（白皮书 2.1）：
+ * - 用户购买订阅 → VPS 自动创建
+ * - 订阅到期 → VPS 立即销毁（无宽限期）
+ * - 用户只能查看 VPS 状态，没有手动创建/销毁权限
+ * - VPS 销毁前必须备份到 S3
+ * - 心跳超时 15 分钟 → 僵尸节点 → 销毁
  */
 @Injectable()
 export class InstancesService {
@@ -41,15 +41,35 @@ export class InstancesService {
   ) {}
 
   /**
-   * 创建 VPS 实例（调用 DO API）
+   * 购买订阅（唯一入口）
+   * 流程：扣费 → 更新订阅状态 → 自动创建 VPS
    *
-   * 订阅逻辑：
-   * - 首次创建 VPS：扣除 25 USDT 订阅费，订阅期 1 个月
-   * - 订阅有效期内：可随意创建/销毁 VPS，不再收费
-   * - 订阅过期：需要续费才能创建新 VPS
+   * @param userId 用户 ID
+   * @param usePoints 是否使用积分抵扣（默认 true）
+   * @param region VPS 区域（默认 sgp1）
+   * @returns 订阅结果 + VPS 实例信息
    */
-  async create(userId: string, dto: CreateInstanceDto) {
-    // 1. 检查用户是否已有活跃实例
+  async purchaseSubscription(
+    userId: string,
+    usePoints: boolean = true,
+    region: string = 'sgp1',
+  ) {
+    // 1. 检查是否已有活跃订阅
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { vip_expires_at: true, vip_level: true },
+    });
+
+    const now = new Date();
+    const hasActiveSubscription = user?.vip_expires_at && new Date(user.vip_expires_at) > now;
+
+    if (hasActiveSubscription) {
+      throw new ConflictException(
+        `您已有有效订阅，到期时间: ${user.vip_expires_at}。无需重复购买。`,
+      );
+    }
+
+    // 2. 检查是否已有活跃 VPS（理论上不可能，但做防护）
     const existingInstance = await this.prisma.client.instances.findFirst({
       where: {
         user_id: userId,
@@ -58,71 +78,59 @@ export class InstancesService {
     });
 
     if (existingInstance) {
-      throw new ConflictException('用户已有活跃实例，请先销毁现有实例');
+      throw new ConflictException('您已有活跃的 VPS 实例');
     }
 
-    // 2. 检查用户订阅状态
-    const user = await this.prisma.client.users.findUnique({
+    // 3. 扣费（通过 BillingService）
+    this.logger.log(`用户 ${userId} 开始购买订阅，费用: ${this.SUBSCRIPTION_FEE} USDT`);
+
+    const billingResult = await this.billingService.chargeSubscription(
+      userId,
+      this.SUBSCRIPTION_FEE.toString(),
+      'VPS 实例订阅 - 月费',
+      usePoints,
+    );
+
+    // 4. 更新订阅状态
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    await this.prisma.client.users.update({
       where: { id: userId },
-      select: { vip_expires_at: true },
+      data: {
+        vip_level: 1,
+        vip_expires_at: expiresAt,
+      },
     });
 
-    const now = new Date();
-    const isSubscriptionValid = user?.vip_expires_at && new Date(user.vip_expires_at) > now;
+    this.logger.log(`用户 ${userId} 订阅成功，到期时间: ${expiresAt.toISOString()}`);
 
-    // 3. 如果订阅无效，需要扣费
-    if (!isSubscriptionValid) {
-      // 检查余额
-      const wallet = await this.prisma.client.wallets.findUnique({
-        where: { user_id: userId },
-      });
+    // 5. 自动创建 VPS
+    const instance = await this.createVpsInternal(userId, region);
 
-      if (!wallet) {
-        throw new BadRequestException('钱包不存在，请先创建钱包');
-      }
+    return {
+      subscription: {
+        vipLevel: 1,
+        expiresAt: expiresAt.toISOString(),
+        fee: this.SUBSCRIPTION_FEE.toString(),
+        pointsUsed: billingResult.pointsUsed,
+        usdtUsed: billingResult.usdtUsed,
+      },
+      instance,
+    };
+  }
 
-      const balance = new Decimal(wallet.usdt_balance);
-      this.logger.log(`用户 ${userId} 当前余额: ${balance}, 订阅费: ${this.SUBSCRIPTION_FEE}`);
-
-      if (balance.lt(this.SUBSCRIPTION_FEE)) {
-        throw new BadRequestException(
-          `余额不足，创建 VPS 需要 ${this.SUBSCRIPTION_FEE} USDT，当前余额: ${balance} USDT`,
-        );
-      }
-
-      // 扣除订阅费（通过 BillingService 幂等扣费，支持积分抵扣）
-      const usePoints = dto.usePoints !== false; // 默认使用积分抵扣
-      try {
-        await this.billingService.chargeSubscription(
-          userId,
-          this.SUBSCRIPTION_FEE.toString(),
-          'VPS 实例订阅 - 月费',
-          usePoints,
-        );
-
-        // 更新订阅到期时间（1个月后）
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-        await this.prisma.client.users.update({
-          where: { id: userId },
-          data: { vip_expires_at: expiresAt },
-        });
-
-        this.logger.log(`用户 ${userId} 订阅扣费成功: ${this.SUBSCRIPTION_FEE} USDT, 到期时间: ${expiresAt.toISOString()}`);
-      } catch (error) {
-        this.logger.error(`订阅扣费失败: ${error.message}`, error.stack);
-        throw new BadRequestException(`订阅扣费失败: ${error.message}`);
-      }
-    } else {
-      this.logger.log(`用户 ${userId} 订阅有效，到期时间: ${user.vip_expires_at}, 无需扣费`);
-    }
-
-    // 4. 创建实例记录（状态为 pending）
+  /**
+   * 内部方法：创建 VPS 实例
+   * 仅供 purchaseSubscription 和系统内部调用
+   */
+  private async createVpsInternal(userId: string, region: string = 'sgp1') {
+    // 创建实例记录（状态为 pending）
     const instance = await this.prisma.client.instances.create({
       data: {
         user_id: userId,
-        region: dto.region || 'sgp1',
-        size: dto.size || 's-1vcpu-1gb',
+        region: region,
+        size: 's-1vcpu-1gb',
         status: 'pending',
       },
     });
@@ -760,6 +768,84 @@ export class InstancesService {
       message: `一键清仓完成，处理了 ${runningInstances.length} 个实例`,
       instancesProcessed: runningInstances.length,
       successCount,
+      failedCount,
+      results,
+    };
+  }
+
+  /**
+   * 停止所有运行中的实例
+   * @param userId 用户 ID
+   * @returns 停止结果摘要
+   */
+  async stopAll(userId: string) {
+    this.logger.warn(`[STOP ALL] 用户 ${userId} 触发停止所有实例`);
+
+    // 1. 获取用户所有运行中的实例
+    const runningInstances = await this.prisma.client.instances.findMany({
+      where: {
+        user_id: userId,
+        status: 'running',
+      },
+    });
+
+    if (runningInstances.length === 0) {
+      return {
+        success: true,
+        stoppedCount: 0,
+        failedCount: 0,
+        results: [],
+      };
+    }
+
+    this.logger.warn(
+      `[STOP ALL] 用户 ${userId} 有 ${runningInstances.length} 个运行中的实例`,
+    );
+
+    // 2. 对每个实例执行停止
+    const results = [];
+
+    for (const instance of runningInstances) {
+      try {
+        await this.stopStrategy(instance.id, userId);
+
+        this.pushLog(
+          instance.id,
+          `[STOP ALL] 实例已被用户批量停止`,
+          'warn',
+          { triggeredBy: userId },
+        );
+
+        results.push({
+          instanceId: instance.id,
+          success: true,
+        });
+
+        this.logger.warn(`[STOP ALL] 实例 ${instance.id} 已停止`);
+      } catch (error) {
+        this.logger.error(
+          `[STOP ALL] 实例 ${instance.id} 停止失败: ${error.message}`,
+        );
+
+        results.push({
+          instanceId: instance.id,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    // 3. 统计结果
+    const stoppedCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
+
+    this.logger.warn(
+      `[STOP ALL] 用户 ${userId} 停止所有实例完成，成功: ${stoppedCount}，失败: ${failedCount}`,
+    );
+
+    return {
+      success: true,
+      stoppedCount,
       failedCount,
       results,
     };

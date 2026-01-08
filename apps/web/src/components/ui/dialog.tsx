@@ -15,19 +15,19 @@ export interface DialogProps extends HTMLAttributes<HTMLDivElement> {
 
 const Dialog = forwardRef<HTMLDivElement, DialogProps>(
   ({ className, open, onClose, title, description, children, ...props }, ref) => {
-    // 按 ESC 关闭
+    // 按 ESC 关闭 - useEffect 必须在条件渲染之前调用
     useEffect(() => {
+      if (!open) return;
+
       const handleEscape = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && open) {
+        if (e.key === 'Escape') {
           onClose();
         }
       };
 
-      if (open) {
-        document.addEventListener('keydown', handleEscape);
-        // 禁止背景滚动
-        document.body.style.overflow = 'hidden';
-      }
+      document.addEventListener('keydown', handleEscape);
+      // 禁止背景滚动
+      document.body.style.overflow = 'hidden';
 
       return () => {
         document.removeEventListener('keydown', handleEscape);

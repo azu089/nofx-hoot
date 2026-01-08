@@ -54,6 +54,36 @@ export class BacktestRequestDto {
   @Min(-1)
   @Max(0)
   stoploss?: number;
+
+  @ApiPropertyOptional({ description: '止盈比例', example: 0.1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(10)
+  takeprofit?: number;
+
+  @ApiPropertyOptional({
+    description: 'K 线周期',
+    example: '4h',
+    enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d'],
+  })
+  @IsOptional()
+  @IsString()
+  timeframe?: string;
+
+  @ApiPropertyOptional({ description: '最大持仓数', example: 3 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(20)
+  maxOpenTrades?: number;
+
+  @ApiPropertyOptional({ description: '手续费率', example: 0.001 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(0.01)
+  fee?: number;
 }
 
 /**

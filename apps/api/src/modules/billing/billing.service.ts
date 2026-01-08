@@ -91,6 +91,12 @@ export class BillingService {
         users: {
           include: {
             wallets: true,
+            referrer: {
+              select: {
+                id: true,
+                referred_by_user_id: true, // 二级邀请人
+              },
+            },
           },
         },
       },
@@ -191,7 +197,7 @@ export class BillingService {
             ? `交易 ${trade.symbol} 盈利抽成 20% (点卡不足，欠费)`
             : `交易 ${trade.symbol} 盈利抽成 20%`;
 
-          await tx.billing_logs.create({
+          const billingLog = await tx.billing_logs.create({
             data: {
               user_id: trade.user_id,
               unique_order_id: orderId,
@@ -213,6 +219,93 @@ export class BillingService {
               updated_at: new Date(),
             },
           });
+
+          // ===== 普通用户邀请返佣（与代理商系统独立）=====
+          // 检查该用户是否有邀请人，如果有则发放积分返佣
+          if (trade.users?.referred_by_user_id) {
+            await this.processUserReferralCommission(
+              tx,
+              trade.user_id,
+              trade.users.referred_by_user_id,
+              gasFee,
+              'gas_fee',
+              billingLog.id,
+            );
+          }
+
+          // ===== Phase 16.7: 策略收益分成 =====
+          // 如果交易使用了用户上传的策略，且该策略启用了分成
+          if (trade.strategy_id) {
+            const strategy = await tx.strategies.findUnique({
+              where: { id: trade.strategy_id },
+              select: {
+                owner_type: true,
+                uploader_id: true,
+                revenue_share_enabled: true,
+                revenue_share_rate: true,
+              },
+            });
+
+            // 仅对用户上传且启用分成的策略进行分成
+            if (
+              strategy &&
+              strategy.owner_type === 'user' &&
+              strategy.revenue_share_enabled &&
+              strategy.revenue_share_rate &&
+              strategy.uploader_id
+            ) {
+              const shareRate = new Decimal(strategy.revenue_share_rate);
+              const revenueAmount = pnl.times(shareRate); // 从盈利中计算分成金额
+
+              this.logger.log(
+                `交易 ${trade.id} 使用用户策略 ${trade.strategy_id}，分成 ${revenueAmount} (${shareRate.times(100)}%)`,
+              );
+
+              // 创建策略收益分成记录
+              await tx.strategy_revenue_logs.create({
+                data: {
+                  strategy_id: trade.strategy_id,
+                  uploader_id: strategy.uploader_id,
+                  user_id: trade.user_id,
+                  billing_log_id: billingLog.id, // 直接使用已创建的 billingLog
+                  base_amount: pnl.toString(),
+                  revenue_share_rate: shareRate.toString(),
+                  revenue_amount: revenueAmount.toString(),
+                  platform_deduction: revenueAmount.toString(),
+                  status: 'settled', // 实时结算
+                  settled_at: new Date(),
+                },
+              });
+
+              // 实时结算：增加策略创作者的余额
+              await tx.wallets.upsert({
+                where: { user_id: strategy.uploader_id },
+                create: {
+                  user_id: strategy.uploader_id,
+                  usdt_balance: revenueAmount.toString(),
+                  card_balance: '0',
+                  points_balance: '0',
+                },
+                update: {
+                  usdt_balance: {
+                    increment: revenueAmount.toString(),
+                  },
+                  updated_at: new Date(),
+                },
+              });
+
+              // 更新策略的累计盈利（用于等级计算）
+              await tx.strategies.update({
+                where: { id: trade.strategy_id },
+                data: {
+                  total_profit: {
+                    increment: revenueAmount.toString(),
+                  },
+                  updated_at: new Date(),
+                },
+              });
+            }
+          }
         });
 
         detail.status = 'charged';
@@ -675,5 +768,140 @@ export class BillingService {
       netPnl: item.totalPnl.minus(item.totalGasFee).toFixed(8),
       trades: item.trades,
     }));
+  }
+
+  // ===== 普通用户邀请返佣系统（与代理商系统完全独立）=====
+
+  // 一级返佣比例：10%
+  private readonly USER_REFERRAL_RATE_L1 = new Decimal('0.10');
+  // 二级返佣比例：5%
+  private readonly USER_REFERRAL_RATE_L2 = new Decimal('0.05');
+
+  /**
+   * 处理普通用户邀请返佣
+   * 当被邀请用户产生消费时，给邀请人发放积分返佣
+   *
+   * 规则：
+   * - 一级返佣：10%（直接邀请人）
+   * - 二级返佣：5%（邀请人的邀请人）
+   * - 返佣以积分形式发放
+   *
+   * @param tx 事务对象
+   * @param inviteeId 被邀请人（消费者）ID
+   * @param referrerId 一级邀请人 ID
+   * @param baseAmount 消费基数（燃油费或订阅费）
+   * @param sourceType 来源类型：gas_fee | subscription
+   * @param sourceId 关联的账单 ID
+   */
+  private async processUserReferralCommission(
+    tx: any,
+    inviteeId: string,
+    referrerId: string,
+    baseAmount: Decimal,
+    sourceType: string,
+    sourceId: string,
+  ): Promise<void> {
+    // 防止自己邀请自己（理论上不应发生）
+    if (inviteeId === referrerId) {
+      this.logger.warn(`用户 ${inviteeId} 的邀请人是自己，跳过返佣`);
+      return;
+    }
+
+    // ===== 一级返佣 =====
+    const l1Commission = baseAmount.times(this.USER_REFERRAL_RATE_L1).toDecimalPlaces(8);
+
+    if (l1Commission.gt(0)) {
+      // 创建一级返佣记录
+      await tx.user_commissions.create({
+        data: {
+          referrer_id: referrerId,
+          invitee_id: inviteeId,
+          level: 1,
+          source_type: sourceType,
+          source_id: sourceId,
+          base_amount: baseAmount.toString(),
+          commission_rate: this.USER_REFERRAL_RATE_L1.toString(),
+          commission_amount: l1Commission.toString(),
+          status: 'settled',
+          settled_at: new Date(),
+        },
+      });
+
+      // 增加一级邀请人的积分余额
+      await tx.wallets.upsert({
+        where: { user_id: referrerId },
+        create: {
+          user_id: referrerId,
+          usdt_balance: '0',
+          card_balance: '0',
+          points_balance: l1Commission.toString(),
+        },
+        update: {
+          points_balance: {
+            increment: l1Commission.toNumber(),
+          },
+          updated_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `一级返佣：用户 ${inviteeId} 消费 ${baseAmount}，邀请人 ${referrerId} 获得 ${l1Commission} 积分 (10%)`,
+      );
+
+      // ===== 二级返佣 =====
+      // 查询一级邀请人的邀请人（二级）
+      const l1Referrer = await tx.users.findUnique({
+        where: { id: referrerId },
+        select: { referred_by_user_id: true },
+      });
+
+      if (l1Referrer?.referred_by_user_id) {
+        const l2ReferrerId = l1Referrer.referred_by_user_id;
+
+        // 防止循环引用
+        if (l2ReferrerId !== inviteeId && l2ReferrerId !== referrerId) {
+          const l2Commission = baseAmount.times(this.USER_REFERRAL_RATE_L2).toDecimalPlaces(8);
+
+          if (l2Commission.gt(0)) {
+            // 创建二级返佣记录
+            await tx.user_commissions.create({
+              data: {
+                referrer_id: l2ReferrerId,
+                invitee_id: inviteeId,
+                level: 2,
+                source_type: sourceType,
+                source_id: sourceId,
+                base_amount: baseAmount.toString(),
+                commission_rate: this.USER_REFERRAL_RATE_L2.toString(),
+                commission_amount: l2Commission.toString(),
+                status: 'settled',
+                settled_at: new Date(),
+              },
+            });
+
+            // 增加二级邀请人的积分余额
+            await tx.wallets.upsert({
+              where: { user_id: l2ReferrerId },
+              create: {
+                user_id: l2ReferrerId,
+                usdt_balance: '0',
+                card_balance: '0',
+                points_balance: l2Commission.toString(),
+              },
+              update: {
+                points_balance: {
+                  increment: l2Commission.toNumber(),
+                },
+                updated_at: new Date(),
+              },
+            });
+
+            this.logger.log(
+              `二级返佣：用户 ${inviteeId} 消费 ${baseAmount}，二级邀请人 ${l2ReferrerId} 获得 ${l2Commission} 积分 (5%)`,
+            );
+          }
+        }
+      }
+    }
   }
 }
