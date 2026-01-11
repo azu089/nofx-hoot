@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { GenerateStrategyDto, AnalyzeTradesDto } from './dto/generate-strategy.dto';
+import { GenerateStrategyDto, AnalyzeTradesDto, InterpretTradeDto } from './dto/generate-strategy.dto';
 import OpenAI from 'openai';
 
 /**
@@ -61,21 +61,63 @@ const ANALYSIS_SYSTEM_PROMPT = `你是一个专业的量化交易分析师，擅
   "riskScore": 风险得分1-100
 }`;
 
+/**
+ * 单笔持仓解读的系统提示词
+ */
+const INTERPRET_TRADE_SYSTEM_PROMPT = `你是一位专业的量化交易分析师，擅长解读加密货币交易信号和持仓逻辑。
+
+你的任务是为用户解读单笔持仓背后的交易逻辑，包括：
+1. 触发信号：基于技术指标分析为什么策略会在这个价位开仓
+2. 趋势判断：分析当前市场趋势是否符合策略预期
+3. 执行动作：说明具体的开仓操作细节
+4. 核心解读：用专业但易懂的语言总结这笔持仓的核心逻辑和当前状态
+
+风格要求：
+- 专业、客观、基于技术分析
+- 语言简洁、直接、易懂
+- 避免过于口语化的表达
+- 关注技术指标和市场信号
+- 提供可操作的观察建议
+
+返回 JSON 格式：
+{
+  "trigger": "触发条件（如：RSI 指标触发超卖信号，价格处于支撑位附近）",
+  "trend": "趋势判断（如：市场趋势符合策略预期，价格按计划运行）",
+  "action": "执行动作（如：以 $XX,XXX 市价买入 X.XXXX BTC）",
+  "explanation": "核心解读（80-120字，专业总结这笔持仓的逻辑和当前状态）",
+  "sentiment": "市场情绪：bullish(看涨) / bearish(看跌) / neutral(中性)"
+}`;
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private openai: OpenAI | null = null;
+  private deepseek: OpenAI | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
+    // 初始化 OpenAI（用于策略生成和账户分析）
+    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (openaiKey) {
+      this.openai = new OpenAI({ apiKey: openaiKey });
       this.logger.log('OpenAI API 已初始化');
     } else {
-      this.logger.warn('未配置 OPENAI_API_KEY，AI 功能将使用模拟模式');
+      this.logger.warn('未配置 OPENAI_API_KEY，策略生成和账户分析将使用模拟模式');
+    }
+
+    // 初始化 DeepSeek（用于单笔持仓解读）
+    const deepseekKey = this.configService.get<string>('DEEPSEEK_API_KEY');
+    const deepseekBaseUrl = this.configService.get<string>('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com';
+    if (deepseekKey) {
+      this.deepseek = new OpenAI({
+        apiKey: deepseekKey,
+        baseURL: deepseekBaseUrl,
+      });
+      this.logger.log('DeepSeek API 已初始化');
+    } else {
+      this.logger.warn('未配置 DEEPSEEK_API_KEY，持仓解读将使用模拟模式');
     }
   }
 
@@ -486,6 +528,167 @@ class AI${dto.riskLevel.charAt(0).toUpperCase() + dto.riskLevel.slice(1)}Strateg
       ],
       emotionalScore: Math.round(emotionalScore),
       riskScore: Math.round(riskScore),
+    };
+  }
+
+  /**
+   * AI 解读单笔持仓（智能投顾）
+   */
+  async interpretTrade(
+    userId: string,
+    dto: InterpretTradeDto,
+  ): Promise<{
+    trigger: string;
+    trend: string;
+    action: string;
+    explanation: string;
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+  }> {
+    const { pair, side, amount, price, pnl, executed_at } = dto;
+
+    // 生成缓存键（基于交易对、价格、盈亏）
+    const cacheKey = `interpret:${pair}:${price}:${pnl}`;
+
+    // 尝试从缓存获取（1小时有效期）
+    try {
+      const cached = await this.prisma.client.ai_generations.findFirst({
+        where: {
+          user_id: userId,
+          type: 'interpretation',
+          input: cacheKey,
+          created_at: {
+            gte: new Date(Date.now() - 60 * 60 * 1000), // 1小时内
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      if (cached && cached.output) {
+        this.logger.log(`使用缓存的持仓解读: ${cacheKey}`);
+        return JSON.parse(cached.output);
+      }
+    } catch (error) {
+      this.logger.warn(`缓存读取失败: ${error.message}`);
+    }
+
+    const pnlNum = parseFloat(pnl);
+    const isProfit = pnlNum >= 0;
+    const holdingTime = this.calculateHoldingTime(executed_at);
+
+    const userPrompt = `请分析以下持仓：
+交易对：${pair}
+方向：${side === 'buy' || side === 'long' ? '做多' : '做空'}
+数量：${amount}
+开仓价格：$${price}
+当前盈亏：${isProfit ? '+' : ''}$${pnl}
+持仓时长：${holdingTime}
+
+请基于技术分析，解读这笔持仓的触发信号、趋势判断和当前状态。`;
+
+    let result: {
+      trigger: string;
+      trend: string;
+      action: string;
+      explanation: string;
+      sentiment: 'bullish' | 'bearish' | 'neutral';
+    };
+
+    if (this.deepseek) {
+      // 调用 DeepSeek API
+      try {
+        const response = await this.deepseek.chat.completions.create({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: INTERPRET_TRADE_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.7,
+          max_tokens: 800,
+          response_format: { type: 'json_object' },
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error('DeepSeek 返回内容为空');
+        }
+
+        result = JSON.parse(content);
+
+        // 保存解读记录
+        await this.prisma.client.ai_generations.create({
+          data: {
+            user_id: userId,
+            type: 'interpretation',
+            input: cacheKey,
+            output: content,
+            tokens_used: response.usage?.total_tokens || 0,
+            model: 'deepseek-chat',
+          },
+        });
+
+        this.logger.log(`用户 ${userId} 持仓解读成功，消耗 ${response.usage?.total_tokens || 0} tokens`);
+      } catch (error) {
+        this.logger.error(`DeepSeek 解读失败: ${error.message}`);
+        // 降级到模拟模式
+        result = this.generateMockInterpretation(dto);
+      }
+    } else {
+      // 模拟模式
+      result = this.generateMockInterpretation(dto);
+    }
+
+    return result;
+  }
+
+  /**
+   * 计算持仓时长（格式化）
+   */
+  private calculateHoldingTime(executedAt: string): string {
+    const now = Date.now();
+    const start = new Date(executedAt).getTime();
+    const diff = now - start;
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}天${hours % 24}小时`;
+    }
+    if (hours > 0) {
+      return `${hours}小时${minutes}分`;
+    }
+    return `${minutes}分钟`;
+  }
+
+  /**
+   * 生成模拟持仓解读（无 DeepSeek API 时使用）
+   */
+  private generateMockInterpretation(dto: InterpretTradeDto): {
+    trigger: string;
+    trend: string;
+    action: string;
+    explanation: string;
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+  } {
+    const { pair, side, amount, price, pnl } = dto;
+    const pnlNum = parseFloat(pnl);
+    const isProfit = pnlNum >= 0;
+    const direction = side === 'buy' || side === 'long' ? '做多' : '做空';
+
+    // 解析币种（如 BTC/USDT -> BTC）
+    const baseCoin = pair.split('/')[0];
+
+    return {
+      trigger: `RSI 指标触发${isProfit ? '超卖' : '超买'}信号（RSI ${isProfit ? '< 30' : '> 70'}），${pair} 价格${isProfit ? '处于支撑位' : '接近阻力位'}附近`,
+      trend: isProfit
+        ? '市场趋势符合策略预期，价格按计划方向运行，当前处于盈利状态'
+        : '市场出现短期反向波动，价格偏离预期区间，建议关注止损位',
+      action: `以 $${parseFloat(price).toLocaleString()} 市价${direction === '做多' ? '买入' : '卖出'} ${parseFloat(amount).toFixed(4)} ${baseCoin}`,
+      explanation: isProfit
+        ? `该持仓基于技术指标精准捕捉${direction}机会，当前浮盈 $${Math.abs(pnlNum).toFixed(2)}。策略在 ${pair} ${isProfit ? '超卖区间' : '超买区间'}触发信号，市场趋势符合预期，建议继续持有并关注止盈位。`
+        : `该持仓当前浮亏 $${Math.abs(pnlNum).toFixed(2)}，主要由短期市场波动导致。策略逻辑基于${pair}技术指标，当前价格仍在止损范围内，建议继续观察市场走势，避免恐慌性平仓。`,
+      sentiment: isProfit ? 'bullish' : (pnlNum < -10 ? 'bearish' : 'neutral'),
     };
   }
 }

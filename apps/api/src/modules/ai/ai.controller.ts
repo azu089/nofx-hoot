@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AiService } from './ai.service';
-import { GenerateStrategyDto, AnalyzeTradesDto } from './dto/generate-strategy.dto';
+import { GenerateStrategyDto, AnalyzeTradesDto, InterpretTradeDto } from './dto/generate-strategy.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('AI')
@@ -43,6 +43,20 @@ export class AiController {
     return {
       code: 0,
       message: '分析完成',
+      data: result,
+    };
+  }
+
+  /**
+   * 解读单笔持仓（智能投顾）
+   */
+  @Post('interpret-trade')
+  @ApiOperation({ summary: '解读单笔持仓', description: 'AI 解读单笔交易的触发信号、趋势判断和执行动作' })
+  async interpretTrade(@Request() req: any, @Body() dto: InterpretTradeDto) {
+    const result = await this.aiService.interpretTrade(req.user.sub, dto);
+    return {
+      code: 0,
+      message: '解读完成',
       data: result,
     };
   }

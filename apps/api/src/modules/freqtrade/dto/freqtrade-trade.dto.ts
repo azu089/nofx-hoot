@@ -37,6 +37,11 @@ export class FreqtradeOpenTradeDto {
   current_profit_pct?: string;
   stop_loss?: string;
   initial_stop_loss?: string;
+  stop_loss_pct?: number;        // 止损百分比
+  stoploss_order_id?: string;    // 止损订单ID
+  stoploss_last_update?: string; // 止损最后更新时间
+  min_rate?: number;             // 最低价
+  max_rate?: number;             // 最高价
   strategy: string;
   open_date: string;
   leverage?: number;

@@ -1,12 +1,12 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth.store';
 import { Card, CardContent, Button } from '@/components/ui';
 import {
   User,
   Shield,
-  Gift,
   Sparkles,
   ChevronRight,
   LogOut,
@@ -15,6 +15,7 @@ import {
   Users,
   Settings,
   Megaphone,
+  TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -82,10 +83,18 @@ function MenuItem({ href, icon: Icon, label, description, badge, variant = 'defa
 
 export default function MePage() {
   const { user, isAuthenticated, logout } = useAuthStore();
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
   // 判断用户角色
   const isAgent = user?.isAgent === true;
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+  // 获取订阅状态（暂时使用 VIP 等级判断，后续可接入真实订阅 API）
+  useEffect(() => {
+    if (isAuthenticated) {
+      setIsSubscribed((user?.vipLevel ?? 0) > 0);
+    }
+  }, [isAuthenticated, user?.vipLevel]);
 
   const handleLogout = () => {
     logout();
@@ -147,8 +156,62 @@ export default function MePage() {
         </CardContent>
       </Card>
 
+      {/* 会员订阅卡片 - P0 最显眼位置 */}
+      <Link href="/subscription">
+        <Card className={cn(
+          'overflow-hidden transition-all hover:border-brand-primary/50',
+          isSubscribed
+            ? 'bg-gradient-to-r from-warning/10 to-warning/5 border-warning/30'
+            : 'bg-gradient-to-r from-brand-primary/10 to-brand-primary/5 border-brand-primary/30'
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                'w-12 h-12 rounded-xl flex items-center justify-center',
+                isSubscribed
+                  ? 'bg-gradient-to-br from-warning to-warning/60'
+                  : 'bg-gradient-to-br from-brand-primary to-brand-primary/60'
+              )}>
+                <Crown className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-white font-bold">会员订阅</h3>
+                  {isSubscribed && (
+                    <span className="px-2 py-0.5 text-xs font-medium bg-success/20 text-success rounded-full">
+                      已订阅
+                    </span>
+                  )}
+                </div>
+                <p className="text-text-secondary text-sm truncate">
+                  {isSubscribed
+                    ? 'VPS + 全部策略已解锁'
+                    : '升级解锁 VPS + 全部策略'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {!isSubscribed && (
+                  <span className="text-sm font-medium text-brand-primary">
+                    ¥25/月起
+                  </span>
+                )}
+                <ChevronRight className="w-5 h-5 text-text-tertiary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+
       {/* 功能入口列表 - 精简为个人相关入口 */}
       <div className="space-y-2">
+        <MenuItem
+          href="/me/exchanges"
+          icon={TrendingUp}
+          label="推荐交易所"
+          description="注册返佣，享手续费优惠"
+          variant="success"
+          badge="返佣"
+        />
         <MenuItem
           href="/settings"
           icon={Settings}
@@ -160,12 +223,6 @@ export default function MePage() {
           icon={Megaphone}
           label="公告中心"
           description="查看最新公告"
-        />
-        <MenuItem
-          href="/referral"
-          icon={Gift}
-          label="邀请返佣"
-          description="已邀请 23 人"
         />
         <MenuItem
           href="/help"

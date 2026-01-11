@@ -116,6 +116,7 @@ module.exports = {
         'fade-out': 'fadeOut var(--duration-normal) var(--ease-in)',
         'slide-in': 'slideIn var(--duration-normal) var(--ease-out)',
         'slide-out': 'slideOut var(--duration-normal) var(--ease-in)',
+        'marquee': 'marquee 8s linear infinite',
       },
       keyframes: {
         fadeIn: {
@@ -133,6 +134,10 @@ module.exports = {
         slideOut: {
           '0%': { opacity: '1', transform: 'translateY(0)' },
           '100%': { opacity: '0', transform: 'translateY(10px)' },
+        },
+        marquee: {
+          '0%': { transform: 'translateX(0%)' },
+          '100%': { transform: 'translateX(-50%)' },
         },
       },
       transitionDuration: {

@@ -9,7 +9,7 @@ import type { Metadata } from 'next';
 //   title: '充值 | QuantFi',
 //   description: '通过 TRC20/ERC20/BEP20 充值 USDT 到您的 QuantFi 账户',
 // };
-import { Card, CardContent, CardHeader, CardTitle, Button, MobileHeader } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { depositsApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
@@ -19,6 +19,7 @@ import {
   XCircle,
   RefreshCw,
   QrCode,
+  ChevronLeft,
 } from 'lucide-react';
 
 type Chain = 'TRC20' | 'ERC20' | 'BEP20';
@@ -104,7 +105,6 @@ export default function DepositPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <MobileHeader title="充值" />
         <div className="animate-pulse space-y-6">
           <div className="h-64 bg-bg-tertiary rounded-xl" />
           <div className="h-64 bg-bg-tertiary rounded-xl" />
@@ -118,24 +118,26 @@ export default function DepositPage() {
 
   return (
     <div className="space-y-6">
-      {/* 顶部导航 */}
-      <MobileHeader
-        title="充值"
-        rightAction={
-          <Button variant="ghost" size="sm" onClick={fetchDeposits}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-        }
-      />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 充值信息卡片 */}
         <Card>
-          <CardHeader>
-            <CardTitle>选择充值网络</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="p-4 space-y-6">
+            {/* 标题行：返回按钮 + 标题 + 刷新按钮 */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => router.back()}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-tertiary transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5 text-text-secondary" />
+                </button>
+                <h2 className="text-lg font-semibold text-white">选择充值网络</h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={fetchDeposits} className="text-text-secondary">
+                <RefreshCw className="w-4 h-4 mr-1" />
+                刷新
+              </Button>
+            </div>
             {/* 链选择 Tabs */}
             <div className="flex gap-2 p-1 bg-bg-tertiary rounded-lg">
               {(Object.keys(CHAIN_INFO) as Chain[]).map((chain) => (

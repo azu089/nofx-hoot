@@ -281,4 +281,12 @@ export class CreateStrategyConfigDto {
   @IsOptional()
   @IsBoolean()
   dry_run?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否跟随策略代码中的参数配置（止损/止盈/K线/追踪止损）',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  follow_strategy_code?: boolean;
 }

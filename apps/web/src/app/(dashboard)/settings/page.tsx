@@ -1,880 +1,141 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import type { Metadata } from 'next';
-
-// Metadata for this page (will be defined in layout or parent server component)
-// export const metadata: Metadata = {
-//   title: '设置 | QuantFi',
-//   description: '管理账户信息、安全设置、通知偏好、外观和语言设置',
-// };
-import { userApi, instancesApi, authApi } from '@/lib/api';
-import { useUiStore } from '@/stores/ui.store';
+import { useRouter } from 'next/navigation';
 import {
   User,
   Shield,
   Bell,
   Palette,
   Globe,
-  LogOut,
+  Info,
   ChevronRight,
-  ChevronLeft,
-  Check,
-  AlertTriangle,
-  X,
-  Loader2,
-  Download,
-  Smartphone,
-  Share,
-  Plus,
-  Moon,
-  Sun,
-  Monitor,
+  Ban,
 } from 'lucide-react';
-import { usePWA } from '@/hooks/usePWA';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/auth.store';
 
-interface UserProfile {
-  id: string;
-  email: string;
-  vip_level: number;
-  created_at: string;
-}
-
+/**
+ * 设置主页 - iOS 风格分组卡片列表
+ * 将7个Tab改为纵向滚动的卡片列表,分为3组
+ */
 export default function SettingsPage() {
   const router = useRouter();
-  const { logout } = useAuthStore();
-  const [activeSection, setActiveSection] = useState<string>('account');
 
-  // PWA 安装状态
-  const { canInstall, isInstalled, isIOS, isSafari, install } = usePWA();
-
-  // 退出登录处理
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
-
-  const { data: profileData, isLoading } = useQuery({
-    queryKey: ['user', 'profile'],
-    queryFn: () => userApi.getProfile(),
-  });
-
-  const profile = profileData?.data as UserProfile | undefined;
-
-  const [isPanicConfirmOpen, setIsPanicConfirmOpen] = useState(false);
-  const [isPanicLoading, setIsPanicLoading] = useState(false);
-  const [panicConfirmInput, setPanicConfirmInput] = useState('');
-  const [panicResult, setPanicResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-
-  // 2FA 状态
-  const [totpEnabled, setTotpEnabled] = useState(false);
-  const [totpLoading, setTotpLoading] = useState(true);
-  const [show2FASetup, setShow2FASetup] = useState(false);
-  const [show2FADisable, setShow2FADisable] = useState(false);
-  const [totpSetup, setTotpSetup] = useState<{ secret: string; qrCode: string } | null>(null);
-  const [totpCode, setTotpCode] = useState('');
-  const [disablePassword, setDisablePassword] = useState('');
-  const [totpActionLoading, setTotpActionLoading] = useState(false);
-
-  // 获取 2FA 状态
-  const fetchTotpStatus = async () => {
-    try {
-      const res = await authApi.getTotpStatus();
-      setTotpEnabled(res.data?.enabled || false);
-    } catch {
-      setTotpEnabled(false);
-    } finally {
-      setTotpLoading(false);
-    }
-  };
-
-  // 页面加载时获取 2FA 状态
-  useEffect(() => {
-    fetchTotpStatus();
-  }, []);
-
-  // 开始设置 2FA
-  const startSetup2FA = async () => {
-    setTotpActionLoading(true);
-    try {
-      const res = await authApi.setupTotp();
-      setTotpSetup({
-        secret: res.data.secret,
-        qrCode: res.data.qrCode,
-      });
-      setShow2FASetup(true);
-      setTotpCode('');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '获取二维码失败');
-    } finally {
-      setTotpActionLoading(false);
-    }
-  };
-
-  // 确认启用 2FA
-  const confirmEnable2FA = async () => {
-    if (!totpSetup || totpCode.length !== 6) {
-      alert('请输入6位验证码');
-      return;
-    }
-
-    setTotpActionLoading(true);
-    try {
-      await authApi.enableTotp(totpCode, totpSetup.secret);
-      setTotpEnabled(true);
-      setShow2FASetup(false);
-      setTotpCode('');
-      setTotpSetup(null);
-      alert('2FA 已成功启用');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '启用失败');
-    } finally {
-      setTotpActionLoading(false);
-    }
-  };
-
-  // 确认禁用 2FA
-  const confirmDisable2FA = async () => {
-    if (totpCode.length !== 6 || !disablePassword) {
-      alert('请输入验证码和密码');
-      return;
-    }
-
-    setTotpActionLoading(true);
-    try {
-      await authApi.disableTotp(totpCode, disablePassword);
-      setTotpEnabled(false);
-      setShow2FADisable(false);
-      setTotpCode('');
-      setDisablePassword('');
-      alert('2FA 已禁用');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '禁用失败');
-    } finally {
-      setTotpActionLoading(false);
-    }
-  };
-
-  const menuItems = [
-    { id: 'account', label: '账户信息', icon: User },
-    { id: 'security', label: '安全设置', icon: Shield },
-    { id: 'app', label: '应用设置', icon: Smartphone },
-    { id: 'panic', label: '紧急按钮', icon: AlertTriangle, danger: true },
-    { id: 'notifications', label: '通知设置', icon: Bell },
-    { id: 'appearance', label: '外观设置', icon: Palette },
-    { id: 'language', label: '语言设置', icon: Globe },
+  // 设置项分组
+  const settingsGroups = [
+    {
+      title: '账户与安全',
+      items: [
+        {
+          icon: User,
+          label: '账户信息',
+          desc: '邮箱、会员等级、注册时间',
+          path: '/settings/account',
+        },
+        {
+          icon: Shield,
+          label: '安全设置',
+          desc: '密码、两步验证、登录历史',
+          path: '/settings/security',
+        },
+        {
+          icon: Bell,
+          label: '消息通知',
+          desc: '交易通知、账户通知、系统公告',
+          path: '/settings/notifications',
+        },
+      ],
+    },
+    {
+      title: '交易设置',
+      items: [
+        {
+          icon: Ban,
+          label: '黑名单管理',
+          desc: '交易对黑名单配置',
+          path: '/settings/blacklist',
+        },
+      ],
+    },
+    {
+      title: '应用偏好',
+      items: [
+        {
+          icon: Palette,
+          label: '外观设置',
+          desc: '暗黑模式、浅色模式、跟随系统',
+          path: '/settings/appearance',
+        },
+        {
+          icon: Globe,
+          label: '语言设置',
+          desc: '简体中文、English、繁體中文、日本語',
+          path: '/settings/language',
+        },
+        {
+          icon: Info,
+          label: '关于应用',
+          desc: '版本信息、PWA 安装、缓存管理、隐私条款',
+          path: '/settings/about',
+        },
+      ],
+    },
   ];
 
-  const handlePanicSell = async () => {
-    setIsPanicLoading(true);
-    setPanicResult(null);
-
-    try {
-      const response = await instancesApi.panicSell();
-      setPanicResult({
-        success: response.data.success,
-        message: response.data.message || '一键清仓已执行',
-      });
-    } catch (error) {
-      setPanicResult({
-        success: false,
-        message: error instanceof Error ? error.message : '清仓失败，请稍后重试',
-      });
-    } finally {
-      setIsPanicLoading(false);
-      setIsPanicConfirmOpen(false);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const getVipLevelName = (level: number) => {
-    const names: Record<number, string> = {
-      0: '普通用户',
-      1: 'VIP 1',
-      2: 'VIP 2',
-      3: 'VIP 3',
-    };
-    return names[level] || `VIP ${level}`;
-  };
-
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] p-4 lg:p-6 pb-24 lg:pb-6">
-      {/* 页面标题 - 桌面端显示标题，移动端不显示 */}
+    <div className="min-h-screen bg-bg-primary p-4 lg:p-6 pb-24 lg:pb-6">
+      {/* 页面标题 - 桌面端显示,移动端不显示 */}
       <div className="hidden lg:block mb-8">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">设置</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">
+        <h1 className="text-2xl font-bold text-text-primary">设置</h1>
+        <p className="text-sm text-text-secondary mt-1">
           管理您的账户和偏好设置
         </p>
       </div>
 
-      {/* 移动端：横向滚动菜单 */}
-      <div className="lg:hidden mb-4 -mx-4 px-4">
-        <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {menuItems.map((item) => {
-            const isDanger = 'danger' in item && item.danger;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveSection(item.id)}
-                className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-colors ${
-                  activeSection === item.id
-                    ? isDanger
-                      ? 'bg-[var(--danger)] text-white'
-                      : 'bg-[var(--brand-primary)] text-white'
-                    : isDanger
-                      ? 'bg-[var(--danger)]/10 text-[var(--danger)]'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
-                }`}
-              >
-                <item.icon className="w-4 h-4" />
-                <span className="whitespace-nowrap">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* iOS 风格分组卡片列表 */}
+      <div className="space-y-6 max-w-2xl mx-auto">
+        {settingsGroups.map((group, groupIndex) => (
+          <div key={groupIndex}>
+            {/* 分组标题 */}
+            <h2 className="text-xs text-text-tertiary uppercase tracking-wider mb-2 px-2">
+              {group.title}
+            </h2>
 
-      <div className="flex gap-6">
-        {/* 桌面端：左侧菜单 */}
-        <div className="hidden lg:block w-64 flex-shrink-0">
-          <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] overflow-hidden sticky top-20">
-            {menuItems.map((item) => {
-              const isDanger = 'danger' in item && item.danger;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                    activeSection === item.id
-                      ? isDanger
-                        ? 'bg-[var(--danger)]/10 text-[var(--danger)] border-l-2 border-[var(--danger)]'
-                        : 'bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] border-l-2 border-[var(--brand-primary)]'
-                      : isDanger
-                        ? 'text-[var(--danger)] hover:bg-[var(--danger)]/5'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
-                  {activeSection === item.id && (
-                    <Check className="w-4 h-4 ml-auto" />
-                  )}
-                </button>
-              );
-            })}
+            {/* 分组卡片容器 */}
+            <div className="bg-bg-secondary rounded-xl border border-border-primary overflow-hidden">
+              {group.items.map((item, itemIndex) => {
+                const Icon = item.icon;
+                const isLast = itemIndex === group.items.length - 1;
 
-          </div>
-        </div>
-
-        {/* 右侧内容 */}
-        <div className="flex-1 min-w-0">
-          {/* 账户信息 */}
-          {activeSection === 'account' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-              <h2 className="text-base lg:text-lg font-semibold text-[var(--text-primary)] mb-4 lg:mb-6">
-                账户信息
-              </h2>
-
-              {isLoading ? (
-                <div className="animate-pulse space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-16 bg-[var(--bg-tertiary)] rounded" />
-                  ))}
-                </div>
-              ) : profile ? (
-                <div className="space-y-4">
-                  {/* 邮箱 */}
-                  <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">邮箱</p>
-                      <p className="text-[var(--text-primary)] font-medium">
-                        {profile.email}
-                      </p>
-                    </div>
-                    <button className="text-[var(--brand-primary)] text-sm hover:underline">
-                      修改
-                    </button>
-                  </div>
-
-                  {/* VIP 等级 */}
-                  <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">会员等级</p>
-                      <p className="text-[var(--text-primary)] font-medium">
-                        {getVipLevelName(profile.vip_level)}
-                      </p>
-                    </div>
-                    <button className="text-[var(--brand-primary)] text-sm hover:underline">
-                      升级
-                    </button>
-                  </div>
-
-                  {/* 注册时间 */}
-                  <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">注册时间</p>
-                      <p className="text-[var(--text-primary)] font-medium">
-                        {formatDate(profile.created_at)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 用户 ID */}
-                  <div className="flex items-center justify-between py-4">
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">用户 ID</p>
-                      <p className="text-[var(--text-primary)] font-mono text-sm">
-                        {profile.id}
-                      </p>
-                    </div>
-                    <button className="text-[var(--text-tertiary)] text-sm hover:text-[var(--text-secondary)]">
-                      复制
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[var(--text-secondary)]">加载失败</p>
-              )}
-            </div>
-          )}
-
-          {/* 安全设置 */}
-          {activeSection === 'security' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-                安全设置
-              </h2>
-
-              <div className="space-y-4">
-                {/* 修改密码 */}
-                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">修改密码</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      定期修改密码以保护账户安全
-                    </p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
-                </div>
-
-                {/* 两步验证 (2FA) */}
-                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">两步验证 (2FA)</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      使用 Google Authenticator 增强账户安全
-                    </p>
-                  </div>
-                  {totpLoading ? (
-                    <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
-                  ) : totpEnabled ? (
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-[var(--success)] flex items-center gap-1">
-                        <Check className="w-4 h-4" />
-                        已启用
-                      </span>
-                      <button
-                        onClick={() => {
-                          setShow2FADisable(true);
-                          setTotpCode('');
-                          setDisablePassword('');
-                        }}
-                        className="text-sm text-[var(--danger)] hover:underline"
-                      >
-                        禁用
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={startSetup2FA}
-                      disabled={totpActionLoading}
-                      className="px-4 py-2 bg-[var(--brand-primary)] text-white text-sm rounded-lg hover:bg-[var(--brand-secondary)] transition-colors disabled:opacity-50"
-                    >
-                      {totpActionLoading ? '加载中...' : '启用'}
-                    </button>
-                  )}
-                </div>
-
-                {/* 登录历史 */}
-                <div className="flex items-center justify-between py-4">
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">登录历史</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      查看最近的登录记录
-                    </p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-[var(--text-tertiary)]" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 应用设置 */}
-          {activeSection === 'app' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-                应用设置
-              </h2>
-
-              <div className="space-y-4">
-                {/* PWA 安装 */}
-                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[var(--brand-primary)]/10 rounded-xl flex items-center justify-center">
-                      <Download className="w-6 h-6 text-[var(--brand-primary)]" />
-                    </div>
-                    <div>
-                      <p className="text-[var(--text-primary)] font-medium">安装应用</p>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        {isInstalled
-                          ? '应用已安装到您的设备'
-                          : '安装到桌面，获得原生体验'}
-                      </p>
-                    </div>
-                  </div>
-                  {isInstalled ? (
-                    <span className="flex items-center gap-1 text-sm text-[var(--success)]">
-                      <Check className="w-4 h-4" />
-                      已安装
-                    </span>
-                  ) : canInstall ? (
-                    <button
-                      onClick={install}
-                      className="px-4 py-2 bg-[var(--brand-primary)] hover:bg-[var(--brand-secondary)] text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      安装
-                    </button>
-                  ) : isIOS && isSafari ? (
-                    <div className="text-right">
-                      <p className="text-xs text-[var(--text-tertiary)] mb-1">iOS 安装步骤：</p>
-                      <div className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-                        <Share className="w-3 h-3" />
-                        <span>→</span>
-                        <Plus className="w-3 h-3" />
-                        <span>添加到主屏幕</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-[var(--text-tertiary)]">
-                      请使用 Chrome 或 Safari
-                    </span>
-                  )}
-                </div>
-
-                {/* 缓存管理 */}
-                <div className="flex items-center justify-between py-4 border-b border-[var(--border-primary)]">
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">清除缓存</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      清除应用缓存数据
-                    </p>
-                  </div>
-                  <button className="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-[var(--border-primary)] text-[var(--text-secondary)] text-sm rounded-lg transition-colors">
-                    清除
-                  </button>
-                </div>
-
-                {/* 版本信息 */}
-                <div className="flex items-center justify-between py-4">
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">版本信息</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      当前版本
-                    </p>
-                  </div>
-                  <span className="text-sm text-[var(--text-tertiary)]">v1.15.0</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 通知设置 */}
-          {activeSection === 'notifications' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-                通知设置
-              </h2>
-
-              <div className="space-y-4">
-                {[
-                  { label: '交易通知', desc: '接收交易执行、止盈止损等通知' },
-                  { label: '账户通知', desc: '接收充值、提现、余额变动等通知' },
-                  { label: '系统公告', desc: '接收平台公告和维护通知' },
-                  { label: '营销推送', desc: '接收优惠活动和新功能推送' },
-                ].map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between py-4 border-b border-[var(--border-primary)] last:border-b-0"
-                  >
-                    <div>
-                      <p className="text-[var(--text-primary)] font-medium">{item.label}</p>
-                      <p className="text-sm text-[var(--text-secondary)]">{item.desc}</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" className="sr-only peer" defaultChecked />
-                      <div className="w-11 h-6 bg-[var(--bg-tertiary)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-primary)]"></div>
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 外观设置 */}
-          {activeSection === 'appearance' && (
-            <AppearanceSettings />
-          )}
-
-          {/* 语言设置 */}
-          {activeSection === 'language' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-                语言设置
-              </h2>
-
-              <div className="space-y-2">
-                {['简体中文', 'English', '繁體中文', '日本語'].map((lang, index) => (
+                return (
                   <button
-                    key={index}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border ${
-                      index === 0
-                        ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/10'
-                        : 'border-[var(--border-primary)] hover:border-[var(--text-tertiary)]'
+                    key={itemIndex}
+                    onClick={() => router.push(item.path)}
+                    className={`w-full flex items-center gap-4 p-4 hover:bg-bg-tertiary/50 transition-colors ${
+                      !isLast ? 'border-b border-border-primary' : ''
                     }`}
                   >
-                    <span
-                      className={
-                        index === 0
-                          ? 'text-[var(--brand-primary)]'
-                          : 'text-[var(--text-secondary)]'
-                      }
-                    >
-                      {lang}
-                    </span>
-                    {index === 0 && <Check className="w-5 h-5 text-[var(--brand-primary)]" />}
+                    {/* 图标 */}
+                    <div className="w-10 h-10 rounded-lg bg-brand-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-5 h-5 text-brand-primary" />
+                    </div>
+
+                    {/* 文字信息 */}
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="text-text-primary font-medium">
+                        {item.label}
+                      </p>
+                      <p className="text-xs text-text-tertiary mt-0.5 truncate">
+                        {item.desc}
+                      </p>
+                    </div>
+
+                    {/* 右箭头 */}
+                    <ChevronRight className="w-5 h-5 text-text-tertiary flex-shrink-0" />
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 紧急按钮 - Panic Sell */}
-          {activeSection === 'panic' && (
-            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--danger)]/30 p-6">
-              <h2 className="text-lg font-semibold text-[var(--danger)] mb-6 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" />
-                紧急按钮 - 一键清仓
-              </h2>
-
-              {/* 警告说明 */}
-              <div className="bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg p-4 mb-6">
-                <p className="text-[var(--danger)] text-sm font-medium mb-2">
-                  警告：此操作将立即清空所有持仓
-                </p>
-                <ul className="text-[var(--text-secondary)] text-sm space-y-1">
-                  <li>• 所有运行中的实例将执行全部平仓</li>
-                  <li>• 此操作不可撤销</li>
-                  <li>• 平仓按市价执行，可能产生滑点</li>
-                  <li>• 仅在紧急情况下使用</li>
-                </ul>
-              </div>
-
-              {/* 执行结果显示 */}
-              {panicResult && (
-                <div
-                  className={`rounded-lg p-4 mb-6 ${
-                    panicResult.success
-                      ? 'bg-[var(--success)]/10 border border-[var(--success)]/30'
-                      : 'bg-[var(--danger)]/10 border border-[var(--danger)]/30'
-                  }`}
-                >
-                  <p
-                    className={`text-sm font-medium ${
-                      panicResult.success ? 'text-[var(--success)]' : 'text-[var(--danger)]'
-                    }`}
-                  >
-                    {panicResult.message}
-                  </p>
-                </div>
-              )}
-
-              {/* 确认对话框 */}
-              {isPanicConfirmOpen ? (
-                <div className="space-y-4">
-                  <p className="text-[var(--text-primary)] font-medium">
-                    确定要执行一键清仓吗？
-                  </p>
-                  <p className="text-[var(--text-secondary)] text-sm">
-                    请输入 &quot;CONFIRM&quot; 确认操作：
-                  </p>
-                  <input
-                    type="text"
-                    value={panicConfirmInput}
-                    onChange={(e) => setPanicConfirmInput(e.target.value)}
-                    placeholder="输入 CONFIRM"
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-4 py-2 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--danger)]"
-                  />
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        if (panicConfirmInput === 'CONFIRM') {
-                          handlePanicSell();
-                          setPanicConfirmInput('');
-                        }
-                      }}
-                      disabled={isPanicLoading || panicConfirmInput !== 'CONFIRM'}
-                      className="flex-1 bg-[var(--danger)] hover:bg-[var(--danger)]/80 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isPanicLoading ? '执行中...' : '确认清仓'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsPanicConfirmOpen(false);
-                        setPanicConfirmInput('');
-                      }}
-                      disabled={isPanicLoading}
-                      className="flex-1 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)]/80 text-[var(--text-secondary)] font-medium py-3 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      取消
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setIsPanicConfirmOpen(true)}
-                  className="w-full bg-[var(--danger)] hover:bg-[var(--danger)]/80 text-white font-bold py-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <AlertTriangle className="w-5 h-5" />
-                  一键清仓
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 2FA 设置弹窗 */}
-      {show2FASetup && totpSetup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[var(--bg-secondary)] rounded-xl p-6 w-full max-w-md mx-4 border border-[var(--border-primary)]">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Shield className="w-5 h-5 text-[var(--brand-primary)]" />
-                设置两步验证
-              </h2>
-              <button
-                onClick={() => setShow2FASetup(false)}
-                className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* 步骤1：扫描二维码 */}
-              <div>
-                <p className="text-[var(--text-secondary)] text-sm mb-3">
-                  1. 使用 Google Authenticator 扫描二维码
-                </p>
-                <div className="flex justify-center p-4 bg-white rounded-lg">
-                  <img
-                    src={totpSetup.qrCode}
-                    alt="2FA QR Code"
-                    className="w-48 h-48"
-                  />
-                </div>
-              </div>
-
-              {/* 密钥备份 */}
-              <div>
-                <p className="text-[var(--text-secondary)] text-sm mb-2">
-                  或手动输入密钥：
-                </p>
-                <div className="bg-[var(--bg-tertiary)] rounded-lg p-3">
-                  <code className="text-[var(--brand-primary)] font-mono text-sm break-all">
-                    {totpSetup.secret}
-                  </code>
-                </div>
-                <p className="text-[var(--text-tertiary)] text-xs mt-2">
-                  请妥善保存此密钥，用于恢复
-                </p>
-              </div>
-
-              {/* 步骤2：输入验证码 */}
-              <div>
-                <p className="text-[var(--text-secondary)] text-sm mb-2">
-                  2. 输入 App 显示的 6 位验证码
-                </p>
-                <input
-                  type="text"
-                  value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="输入验证码"
-                  maxLength={6}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-4 py-3 text-[var(--text-primary)] text-center text-2xl tracking-widest font-mono placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--brand-primary)]"
-                />
-              </div>
-
-              {/* 操作按钮 */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShow2FASetup(false)}
-                  className="flex-1 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)]/80 text-[var(--text-secondary)] font-medium py-3 rounded-lg transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={confirmEnable2FA}
-                  disabled={totpActionLoading || totpCode.length !== 6}
-                  className="flex-1 bg-[var(--brand-primary)] hover:bg-[var(--brand-secondary)] text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {totpActionLoading ? '验证中...' : '确认启用'}
-                </button>
-              </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* 2FA 禁用弹窗 */}
-      {show2FADisable && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[var(--bg-secondary)] rounded-xl p-6 w-full max-w-sm mx-4 border border-[var(--border-primary)]">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-[var(--danger)] flex items-center gap-2">
-                <Shield className="w-5 h-5" />
-                禁用两步验证
-              </h2>
-              <button
-                onClick={() => setShow2FADisable(false)}
-                className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg p-3">
-                <p className="text-[var(--danger)] text-sm">
-                  警告：禁用两步验证会降低账户安全性
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[var(--text-secondary)] text-sm mb-2">
-                  验证码
-                </label>
-                <input
-                  type="text"
-                  value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="输入 6 位验证码"
-                  maxLength={6}
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-4 py-2 text-[var(--text-primary)] text-center tracking-widest font-mono placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--danger)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[var(--text-secondary)] text-sm mb-2">
-                  账户密码
-                </label>
-                <input
-                  type="password"
-                  value={disablePassword}
-                  onChange={(e) => setDisablePassword(e.target.value)}
-                  placeholder="输入账户密码"
-                  className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-4 py-2 text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--danger)]"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShow2FADisable(false)}
-                  className="flex-1 bg-[var(--bg-tertiary)] hover:bg-[var(--bg-tertiary)]/80 text-[var(--text-secondary)] font-medium py-3 rounded-lg transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={confirmDisable2FA}
-                  disabled={totpActionLoading || totpCode.length !== 6 || !disablePassword}
-                  className="flex-1 bg-[var(--danger)] hover:bg-[var(--danger)]/80 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {totpActionLoading ? '验证中...' : '确认禁用'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 外观设置组件（独立出来以使用 hooks）
-function AppearanceSettings() {
-  const { themeMode, setThemeMode, applyTheme } = useUiStore();
-
-  // 初始化时应用主题
-  useEffect(() => {
-    applyTheme();
-  }, [applyTheme]);
-
-  const themeOptions = [
-    { mode: 'dark' as const, label: '暗黑模式', icon: Moon },
-    { mode: 'light' as const, label: '浅色模式', icon: Sun },
-    { mode: 'system' as const, label: '跟随系统', icon: Monitor },
-  ];
-
-  return (
-    <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 lg:p-6">
-      <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">
-        外观设置
-      </h2>
-
-      <div className="space-y-6">
-        <div>
-          <p className="text-[var(--text-primary)] font-medium mb-3">主题模式</p>
-          <div className="flex flex-wrap gap-3">
-            {themeOptions.map(({ mode, label, icon: Icon }) => (
-              <button
-                key={mode}
-                onClick={() => setThemeMode(mode)}
-                className={`flex items-center gap-2 px-4 py-3 rounded-lg border transition-all ${
-                  themeMode === mode
-                    ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/10 text-[var(--brand-primary)]'
-                    : 'border-[var(--border-primary)] text-[var(--text-secondary)] hover:border-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)]'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{label}</span>
-                {themeMode === mode && (
-                  <Check className="w-4 h-4 ml-1" />
-                )}
-              </button>
-            ))}
-          </div>
-          <p className="text-sm text-[var(--text-tertiary)] mt-3">
-            {themeMode === 'system'
-              ? '主题将根据您的系统设置自动切换'
-              : themeMode === 'dark'
-                ? '使用暗色背景，适合夜间使用'
-                : '使用浅色背景，适合日间使用'}
-          </p>
-        </div>
+        ))}
       </div>
     </div>
   );

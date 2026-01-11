@@ -8,7 +8,6 @@ import {
   TrendingDown,
   Clock,
   Target,
-  Shield,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -26,7 +25,7 @@ interface TradeInsight {
   sentiment: 'bullish' | 'bearish' | 'neutral';
 }
 
-interface Position {
+export interface Position {
   trade_id: number;
   pair: string;
   is_open: boolean;
@@ -38,65 +37,55 @@ interface Position {
   close_profit_abs: number | null;
   open_date: string;
   close_date: string | null;
-  // 增强字段（可选，后端可能暂未提供）
   current_rate?: number;
+  leverage?: number;
   stoploss?: number;
-  stop_loss_abs?: number;
   stop_loss_pct?: number;
+  take_profit_pct?: number;
   min_rate?: number;
   max_rate?: number;
-  leverage?: number;
 }
 
 interface PositionCardProps {
   position: Position;
-  onClose?: (tradeId: number) => Promise<void>;
   disabled?: boolean;
 }
 
-/**
- * 格式化持仓时长
- * @param openDate 开仓时间
- * @returns 格式化后的时长字符串
- */
+// 格式化价格
+function formatPrice(price: number): string {
+  if (price >= 1000) return price.toFixed(2);
+  if (price >= 1) return price.toFixed(4);
+  return price.toFixed(6);
+}
+
+// 格式化持仓时长 (极简版: 3h, 2d 5h)
 function formatHoldingTime(openDate: string): string {
-  const now = new Date();
-  const open = new Date(openDate);
-  const diffMs = now.getTime() - open.getTime();
+  const now = Date.now();
+  const start = new Date(openDate).getTime();
+  const diff = now - start;
 
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-  if (days > 0) {
-    return `${days}天 ${hours}时`;
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
   }
   if (hours > 0) {
-    return `${hours}时 ${minutes}分`;
+    return `${hours}h`;
   }
-  return `${minutes}分`;
+  return `${minutes}m`;
 }
 
 /**
- * 格式化价格
+ * 持仓卡片组件 V2 - 简洁版
+ * 参考 Binance/OKX 设计理念：
+ * - 默认只显示核心信息（交易对、盈亏、价格、简单操作）
+ * - 展开后显示详细信息（止损、最高最低价、开仓时间等）
  */
-function formatPrice(price: number): string {
-  if (price >= 1000) {
-    return price.toFixed(2);
-  }
-  if (price >= 1) {
-    return price.toFixed(4);
-  }
-  return price.toFixed(8);
-}
-
-/**
- * 增强版持仓卡片组件
- * 显示详细持仓信息：当前价、止损/止盈、持仓时长、浮盈率
- */
-export function PositionCard({ position, onClose, disabled }: PositionCardProps) {
+export function PositionCard({ position, disabled }: PositionCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [closing, setClosing] = useState(false);
   // AI 解读状态
   const [insight, setInsight] = useState<TradeInsight | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -118,6 +107,13 @@ export function PositionCard({ position, onClose, disabled }: PositionCardProps)
   // 止损价格
   const stoplossPrice = position.stoploss
     ? position.open_rate * (1 + position.stoploss)
+    : position.stop_loss_pct
+    ? position.open_rate * (1 + position.stop_loss_pct / 100)
+    : null;
+
+  // 止盈价格
+  const takeProfitPrice = position.take_profit_pct
+    ? position.open_rate * (1 + position.take_profit_pct / 100)
     : null;
 
   // 距离止损的百分比
@@ -125,18 +121,13 @@ export function PositionCard({ position, onClose, disabled }: PositionCardProps)
     ? ((currentRate - stoplossPrice) / currentRate) * 100
     : null;
 
+  // 距离止盈的百分比
+  const distanceToTakeProfit = takeProfitPrice
+    ? ((takeProfitPrice - currentRate) / currentRate) * 100
+    : null;
+
   // 最高/最低价
   const hasMinMax = position.min_rate !== undefined && position.max_rate !== undefined;
-
-  const handleClose = async () => {
-    if (!onClose) return;
-    setClosing(true);
-    try {
-      await onClose(position.trade_id);
-    } finally {
-      setClosing(false);
-    }
-  };
 
   // 获取 AI 解读
   const fetchInsight = async () => {
@@ -160,16 +151,17 @@ export function PositionCard({ position, onClose, disabled }: PositionCardProps)
       setInsightExpanded(true);
     } catch {
       // 如果 API 不存在，使用模拟数据
+      const baseCoin = position.pair.split('/')[0];
       const mockInsight: TradeInsight = {
-        trigger: `RSI 指标触发超卖信号 (RSI < 30)，${position.pair} 价格处于支撑位附近`,
+        trigger: `RSI 指标触发${isProfit ? '超卖' : '超买'}信号（RSI ${isProfit ? '< 30' : '> 70'}），${position.pair} 价格${isProfit ? '处于支撑位' : '接近阻力位'}附近`,
         trend: isProfit
-          ? '市场趋势判断正确，价格按预期方向运行'
-          : '市场出现反向波动，建议关注止损位',
-        action: `以 $${formatPrice(position.open_rate)} 市价买入 ${position.amount.toFixed(4)} ${position.pair.split('/')[0]}`,
+          ? '市场趋势符合策略预期，价格按计划方向运行，当前处于盈利状态'
+          : '市场出现短期反向波动，价格偏离预期区间，建议关注止损位',
+        action: `以 $${formatPrice(position.open_rate)} 市价买入 ${position.amount.toFixed(4)} ${baseCoin}`,
         explanation: isProfit
-          ? `老板，这笔持仓目前浮盈 $${Math.abs(unrealizedPnl).toFixed(2)}！策略在 ${position.pair} 超卖区间精准抄底，持续持有中。`
-          : `老板，这笔持仓目前浮亏 $${Math.abs(unrealizedPnl).toFixed(2)}，主要是市场波动，但还在止损范围内，继续观察。`,
-        sentiment: isProfit ? 'bullish' : 'bearish',
+          ? `该持仓基于技术指标精准捕捉做多机会，当前浮盈 $${Math.abs(unrealizedPnl).toFixed(2)}。策略在 ${position.pair} ${isProfit ? '超卖区间' : '超买区间'}触发信号，市场趋势符合预期，建议继续持有并关注止盈位。`
+          : `该持仓当前浮亏 $${Math.abs(unrealizedPnl).toFixed(2)}，主要由短期市场波动导致。策略逻辑基于${position.pair}技术指标，当前价格仍在止损范围内，建议继续观察市场走势，避免恐慌性平仓。`,
+        sentiment: isProfit ? 'bullish' : (unrealizedPnl < -10 ? 'bearish' : 'neutral'),
       };
       setInsight(mockInsight);
       setInsightExpanded(true);
@@ -180,14 +172,15 @@ export function PositionCard({ position, onClose, disabled }: PositionCardProps)
 
   return (
     <div className="bg-bg-tertiary/50 rounded-xl border border-border-primary overflow-hidden">
-      {/* 主要信息 */}
+      {/* 默认简洁视图 */}
       <div className="p-4">
-        {/* 头部：交易对 + 方向 + 杠杆 */}
-        <div className="flex items-center justify-between mb-3">
+        {/* 第一行：交易对 + 标签 + 盈亏 */}
+        <div className="flex items-start justify-between mb-2.5">
+          {/* 左侧：交易对 + 标签 */}
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-text-primary">{position.pair}</span>
+            <h3 className="text-lg font-bold text-text-primary">{position.pair}</h3>
             <span className="px-1.5 py-0.5 text-xs font-medium bg-success/20 text-success rounded">
-              多
+              做多
             </span>
             {position.leverage && position.leverage > 1 && (
               <span className="px-1.5 py-0.5 text-xs font-medium bg-warning/20 text-warning rounded">
@@ -195,228 +188,158 @@ export function PositionCard({ position, onClose, disabled }: PositionCardProps)
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-tertiary">
-            <Clock className="w-3.5 h-3.5" />
-            {holdingTime}
-          </div>
-        </div>
 
-        {/* 价格行：开仓价 → 当前价 */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex-1">
-            <p className="text-xs text-text-tertiary mb-1">开仓价</p>
-            <p className="text-text-primary font-mono">{formatPrice(position.open_rate)}</p>
-          </div>
-          <div className="text-text-tertiary">→</div>
-          <div className="flex-1">
-            <p className="text-xs text-text-tertiary mb-1">当前价</p>
-            <p className={`font-mono font-medium ${isProfit ? 'text-success' : 'text-danger'}`}>
-              {formatPrice(currentRate)}
-            </p>
-          </div>
-          <div className="flex-1 text-right">
-            <p className="text-xs text-text-tertiary mb-1">浮动盈亏</p>
-            <p className={`text-lg font-bold ${isProfit ? 'text-success' : 'text-danger'}`}>
+          {/* 右侧：盈亏金额 */}
+          <div className="text-right">
+            <p className={`text-2xl font-bold leading-tight ${isProfit ? 'text-success' : 'text-danger'}`}>
               {isProfit ? '+' : ''}{unrealizedPnl.toFixed(2)}
             </p>
-            <p className={`text-xs ${isProfit ? 'text-success' : 'text-danger'}`}>
+            <p className={`text-xs mt-0.5 ${isProfit ? 'text-success' : 'text-danger'}`}>
               {isProfit ? '+' : ''}{unrealizedPnlPercent.toFixed(2)}%
             </p>
           </div>
         </div>
 
-        {/* 风控信息 */}
-        <div className="flex items-center gap-4 text-sm">
-          {/* 止损 */}
-          {stoplossPrice && (
-            <div className="flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-danger" />
-              <span className="text-text-tertiary">止损</span>
-              <span className="text-danger font-mono">{formatPrice(stoplossPrice)}</span>
-              {distanceToStoploss !== null && (
-                <span className="text-xs text-text-tertiary">
-                  ({distanceToStoploss > 0 ? '+' : ''}{distanceToStoploss.toFixed(1)}%)
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* 持仓量 */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-text-tertiary">数量</span>
-            <span className="text-text-primary font-mono">{position.amount.toFixed(4)}</span>
+        {/* 第二行：价格信息（开仓价 → 当前价） */}
+        <div className="flex items-center justify-between mb-3 text-sm">
+          {/* 开仓价 */}
+          <div>
+            <p className="text-text-tertiary text-xs mb-0.5">开仓</p>
+            <p className="text-text-primary font-mono leading-tight">{formatPrice(position.open_rate)}</p>
           </div>
 
-          {/* 本金 */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-text-tertiary">本金</span>
-            <span className="text-text-primary font-mono">${position.stake_amount.toFixed(2)}</span>
+          {/* 箭头 */}
+          <div className="px-3 text-text-tertiary">→</div>
+
+          {/* 当前价 */}
+          <div>
+            <p className="text-text-tertiary text-xs mb-0.5">当前</p>
+            <p className={`font-mono font-medium leading-tight ${isProfit ? 'text-success' : 'text-danger'}`}>
+              {formatPrice(currentRate)}
+            </p>
+          </div>
+
+          {/* 持仓时长 */}
+          <div className="ml-auto flex items-center gap-1.5 text-text-tertiary">
+            <Clock className="w-3.5 h-3.5" />
+            <span className="text-xs">{holdingTime}</span>
           </div>
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center justify-between mt-4">
+        {/* 第三行：操作按钮 */}
+        <div className="flex items-center gap-2">
+          {/* AI 解读按钮 */}
           <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+            onClick={fetchInsight}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 hover:from-brand-primary/20 hover:to-brand-secondary/20 rounded-lg text-sm font-medium text-brand-primary transition-all"
           >
-            {expanded ? (
-              <>
-                <ChevronUp className="w-4 h-4" />
-                收起详情
-              </>
+            {insightLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                <ChevronDown className="w-4 h-4" />
-                展开详情
-              </>
+              <Sparkles className="w-4 h-4" />
             )}
+            <span>{insightLoading ? 'AI 分析中...' : 'AI 解读'}</span>
           </button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClose}
-            disabled={disabled || closing}
+          {/* 展开详情按钮 */}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="px-4 py-2 text-sm text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary/70 rounded-lg transition-colors border border-border-primary"
           >
-            {closing ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                平仓中
-              </>
-            ) : (
-              '平仓'
-            )}
-          </Button>
+            {expanded ? '收起' : '详情'}
+          </button>
         </div>
       </div>
 
-      {/* 展开的详细信息 */}
+      {/* 展开详情区域 - 两行布局 */}
       {expanded && (
-        <div className="px-4 pb-4 pt-0">
-          <div className="pt-3 border-t border-border-primary/50 grid grid-cols-2 gap-3 text-sm">
-            {/* 价格波动范围 */}
-            {hasMinMax && (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-text-tertiary flex items-center gap-1.5">
-                    <TrendingDown className="w-3.5 h-3.5 text-danger" />
-                    最低价
-                  </span>
-                  <span className="text-text-primary font-mono">{formatPrice(position.min_rate!)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-text-tertiary flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-success" />
-                    最高价
-                  </span>
-                  <span className="text-text-primary font-mono">{formatPrice(position.max_rate!)}</span>
-                </div>
-              </>
-            )}
-
-            {/* 止损百分比 */}
-            {position.stop_loss_pct && (
-              <div className="flex items-center justify-between">
-                <span className="text-text-tertiary">止损设置</span>
-                <span className="text-danger">{(position.stop_loss_pct * 100).toFixed(1)}%</span>
-              </div>
-            )}
-
-            {/* 开仓时间 */}
-            <div className="flex items-center justify-between col-span-2">
-              <span className="text-text-tertiary">开仓时间</span>
-              <span className="text-text-primary">
-                {new Date(position.open_date).toLocaleString('zh-CN', {
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </span>
-            </div>
-
-            {/* Trade ID */}
-            <div className="flex items-center justify-between col-span-2">
-              <span className="text-text-tertiary">交易ID</span>
-              <span className="text-text-primary font-mono">#{position.trade_id}</span>
-            </div>
-          </div>
-
-          {/* AI 解读按钮 */}
-          <div className="mt-4 pt-3 border-t border-border-primary/30">
-            <button
-              onClick={fetchInsight}
-              className="flex items-center gap-2 text-sm text-brand-primary hover:text-brand-secondary transition-colors"
-            >
-              {insightLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
+        <div className="px-4 pb-3 pt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="space-y-2">
+            {/* 第一行：持仓 | 价值 | 本金 | 止损 | 止盈 */}
+            <div className="flex items-center gap-3 text-xs text-text-secondary flex-wrap">
+              <span>持仓 {position.amount.toFixed(4)}</span>
+              <span className="text-text-tertiary">|</span>
+              <span>价值 ${(position.amount * currentRate).toFixed(2)}</span>
+              <span className="text-text-tertiary">|</span>
+              <span>本金 ${position.stake_amount.toFixed(2)}</span>
+              {stoplossPrice && (
+                <>
+                  <span className="text-text-tertiary">|</span>
+                  <span className="text-danger">止损 {formatPrice(stoplossPrice)}</span>
+                </>
               )}
-              <span>{insightLoading ? 'AI 分析中...' : insightExpanded ? '收起 AI 解读' : 'AI 解读这笔持仓'}</span>
-              {!insightLoading && (insightExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />)}
-            </button>
+              {takeProfitPrice && (
+                <>
+                  <span className="text-text-tertiary">|</span>
+                  <span className="text-success">止盈 {formatPrice(takeProfitPrice)}</span>
+                </>
+              )}
+            </div>
 
-            {/* AI 解读内容 */}
-            {insightExpanded && insight && (
-              <div className="mt-3 p-4 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl border border-brand-primary/20 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                {/* 人话解读 - 最重要，放最上面 */}
-                <div className={`p-3 rounded-lg ${isProfit ? 'bg-success/10 border border-success/20' : 'bg-danger/10 border border-danger/20'}`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isProfit ? 'bg-success/20' : 'bg-danger/20'}`}>
-                      {isProfit ? (
-                        <TrendingUp className="w-4 h-4 text-success" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4 text-danger" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white">智能投顾解读</p>
-                      <p className={`text-sm mt-1 ${isProfit ? 'text-success' : 'text-danger'}`}>
-                        {insight.explanation}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 信号卡片三要素 */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* 触发条件 */}
-                  <div className="p-3 bg-bg-tertiary/50 rounded-lg border border-border-primary/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Target className="w-4 h-4 text-warning" />
-                      <span className="text-xs font-medium text-text-tertiary">触发条件</span>
-                    </div>
-                    <p className="text-sm text-text-primary">{insight.trigger}</p>
-                  </div>
-
-                  {/* 趋势判断 */}
-                  <div className="p-3 bg-bg-tertiary/50 rounded-lg border border-border-primary/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Activity className="w-4 h-4 text-brand-primary" />
-                      <span className="text-xs font-medium text-text-tertiary">趋势判断</span>
-                    </div>
-                    <p className="text-sm text-text-primary">{insight.trend}</p>
-                  </div>
-
-                  {/* 执行动作 */}
-                  <div className="p-3 bg-bg-tertiary/50 rounded-lg border border-border-primary/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap className="w-4 h-4 text-success" />
-                      <span className="text-xs font-medium text-text-tertiary">执行动作</span>
-                    </div>
-                    <p className="text-sm text-text-primary">{insight.action}</p>
-                  </div>
-                </div>
-
-                {/* AI 标识 */}
-                <div className="flex items-center justify-end gap-2 text-xs text-text-tertiary">
-                  <Sparkles className="w-3 h-3 text-brand-primary" />
-                  <span>由 QuantFi AI 智能投顾生成</span>
-                </div>
+            {/* 第二行：最高 / 最低 */}
+            {hasMinMax && position.max_rate && position.min_rate && (
+              <div className="flex items-center gap-3 text-xs text-text-secondary">
+                <span className="text-success">最高 {formatPrice(position.max_rate)}</span>
+                <span className="text-text-tertiary">/</span>
+                <span className="text-danger">最低 {formatPrice(position.min_rate)}</span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* AI 解读内容 - 独立区域 */}
+      {insightExpanded && insight && (
+        <div className="px-4 pb-3 pt-2.5">
+          <div className="p-3 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl border border-brand-primary/20 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* 人话解读 - 最重要 */}
+            <div className={`p-2.5 rounded-lg ${isProfit ? 'bg-success/10 border border-success/20' : 'bg-danger/10 border border-danger/20'}`}>
+              <div className="flex items-start gap-2.5">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isProfit ? 'bg-success/20' : 'bg-danger/20'}`}>
+                  {isProfit ? (
+                    <TrendingUp className="w-3.5 h-3.5 text-success" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5 text-danger" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white mb-0.5">💡 智能投顾解读</p>
+                  <p className={`text-sm leading-snug ${isProfit ? 'text-success' : 'text-danger'}`}>
+                    {insight.explanation}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 技术详情 */}
+            <div className="space-y-1.5 text-sm">
+              {/* 触发条件 */}
+              <div className="flex items-start gap-2">
+                <Activity className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-text-tertiary text-xs mb-0.5">触发信号</p>
+                  <p className="text-text-secondary text-sm leading-snug">{insight.trigger}</p>
+                </div>
+              </div>
+
+              {/* 趋势判断 */}
+              <div className="flex items-start gap-2">
+                <Zap className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-text-tertiary text-xs mb-0.5">趋势分析</p>
+                  <p className="text-text-secondary text-sm leading-snug">{insight.trend}</p>
+                </div>
+              </div>
+
+              {/* 执行动作 */}
+              <div className="flex items-start gap-2">
+                <Target className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-text-tertiary text-xs mb-0.5">执行操作</p>
+                  <p className="text-text-secondary text-sm leading-snug">{insight.action}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

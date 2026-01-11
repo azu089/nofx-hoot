@@ -2,36 +2,33 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
-import { billingApi, instancesApi, userApi, tradingApi, strategiesApi } from '@/lib/api';
-import { formatCurrency, formatPercent, formatDateTime } from '@/lib/utils';
-import { PnLChart } from '@/components/charts';
+import { Card, CardContent, Button } from '@/components/ui';
+import { billingApi, userApi } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import { AnnouncementBanner } from '@/components/features/dashboard';
+import { usePWA } from '@/hooks/usePWA';
 import {
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  Server,
-  Activity,
   RefreshCw,
-  Play,
-  Pause,
-  Bot,
-  ArrowUp,
-  ArrowDown,
-  Sparkles,
-  Zap,
-  History,
-  Settings,
+  Coins,
+  Server,
+  Crown,
+  Download,
+  Key,
+  Users,
   ChevronRight,
-  Cpu,
-  HardDrive,
+  ChevronDown,
+  Check,
+  Gift,
+  Newspaper,
+  ExternalLink,
+  Clock,
 } from 'lucide-react';
 
 interface DashboardData {
   wallet: {
     usdt_balance: string;
     points_balance: string;
+    token_balance?: string;
   } | null;
   todayPnL: {
     todayPnl: string;
@@ -41,86 +38,25 @@ interface DashboardData {
     todayWinRate: string;
     todayGasFee: string;
   } | null;
-  pnlCurve: Array<{
-    date: string;
-    pnl: number;
-    cumulative: number;
-  }>;
-  instances: Array<{
-    id: string;
-    status: string;
-    ip_address: string;
-    last_heartbeat: string | null;
-    cpu_usage?: string | number | null;
-    memory_usage?: string | number | null;
-    region?: string;
-  }>;
-  botStatus: {
-    running: boolean;
-    strategy_id?: string;
-    strategy_name?: string;
-    uptime?: number;
-    trades_today?: number;
-  } | null;
-  positions: Array<{
-    id: string;
-    symbol: string;
-    side: string;
-    size: string;
-    entry_price: string;
-    current_price: string;
-    unrealized_pnl: string;
-    leverage: number;
-  }>;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { canInstall, install, isIOS, isSafari } = usePWA();
   const [data, setData] = useState<DashboardData>({
     wallet: null,
     todayPnL: null,
-    pnlCurve: [],
-    instances: [],
-    botStatus: null,
-    positions: [],
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [chartPeriod, setChartPeriod] = useState<7 | 30 | 90>(30);
 
   const fetchData = async () => {
     try {
-      const [
-        walletRes,
-        pnlRes,
-        curveRes,
-        instancesRes,
-        botStatusRes,
-        positionsRes,
-      ] = await Promise.all([
+      const [walletRes, pnlRes] = await Promise.all([
         userApi.getWallet().catch(() => ({ data: null })),
         billingApi.getTodayPnL().catch(() => ({ data: null })),
-        billingApi.getPnLCurve(chartPeriod).catch(() => ({ data: null })),
-        instancesApi.list().catch(() => ({ data: [] })),
-        tradingApi.getBotStatus().catch(() => ({ data: null })),
-        tradingApi.getPositions().catch(() => ({ data: [] })),
       ]);
-
-      // 转换曲线数据格式
-      const curveData = curveRes.data?.curve?.map((item: { date: string; pnl: string; cumulativePnl: string }) => ({
-        date: item.date,
-        pnl: parseFloat(item.pnl) || 0,
-        cumulative: parseFloat(item.cumulativePnl) || 0,
-      })) || [];
-
-      setData({
-        wallet: walletRes.data,
-        todayPnL: pnlRes.data,
-        pnlCurve: curveData,
-        instances: instancesRes.data || [],
-        botStatus: botStatusRes.data,
-        positions: positionsRes.data || [],
-      });
+      setData({ wallet: walletRes.data, todayPnL: pnlRes.data });
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -129,147 +65,76 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [chartPeriod]);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchData();
+  const handleRefresh = () => { setRefreshing(true); fetchData(); };
+
+  const handlePWAInstall = () => {
+    if (canInstall) install();
+    else if (isIOS && isSafari) alert('请点击底部分享按钮，选择「添加到主屏幕」');
+    else alert('当前浏览器不支持安装，请使用 Chrome 或 Safari');
   };
-
-  // 机器人控制
-  const handleBotAction = async (action: 'start' | 'stop') => {
-    try {
-      if (action === 'start') {
-        router.push('/strategies');
-      } else {
-        await tradingApi.stopBot();
-        fetchData();
-      }
-    } catch (error) {
-      console.error(`Failed to ${action} bot:`, error);
-    }
-  };
-
-  const runningInstances = data.instances.filter(
-    (i) => i.status === 'running' || i.status === 'provisioning'
-  );
-  const runningInstance = runningInstances[0];
 
   const pnlValue = parseFloat(data.todayPnL?.todayPnl || '0');
   const isProfitable = pnlValue >= 0;
   const totalBalance = parseFloat(data.wallet?.usdt_balance || '0');
-
-  // 计算总资产盈亏比例（假设根据今日盈亏）
   const pnlPercent = totalBalance > 0 ? (pnlValue / totalBalance) * 100 : 0;
+
+  const quickEntries = [
+    { icon: Server, label: 'VPS 实例', href: '/instances', color: 'text-brand-primary' },
+    { icon: Crown, label: '会员订阅', href: '/subscription', color: 'text-warning' },
+    { icon: Download, label: '安装 APP', href: '#pwa', color: 'text-success', onClick: handlePWAInstall },
+    { icon: Key, label: 'API 绑定', href: '/wallet/api-keys', color: 'text-danger' },
+    { icon: Coins, label: '生态中心', href: '/ecosystem/staking', color: 'text-purple-400' },
+    { icon: Users, label: '邀请好友', href: '/referral', color: 'text-cyan-400' },
+  ];
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">仪表盘</h1>
-        {/* Hero 骨架屏 */}
-        <Card className="animate-pulse">
-          <CardContent className="p-6">
-            <div className="h-32 bg-bg-tertiary rounded-xl" />
-          </CardContent>
-        </Card>
-        {/* 曲线骨架屏 */}
-        <Card className="animate-pulse">
-          <CardContent className="p-6">
-            <div className="h-64 bg-bg-tertiary rounded-xl" />
-          </CardContent>
-        </Card>
-        {/* 其他骨架 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[...Array(2)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="h-24 bg-bg-tertiary rounded" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="space-y-4">
+        <div className="animate-pulse h-40 bg-bg-tertiary rounded-xl" />
+        <div className="animate-pulse h-12 bg-bg-tertiary rounded-xl" />
+        <div className="animate-pulse h-24 bg-bg-tertiary rounded-xl" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* 公告跑马灯 */}
-      <AnnouncementBanner />
-
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">仪表盘</h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
-
-      {/* Hero 资产卡片 - 合并总资产、今日盈亏、点卡 */}
-      <Card variant="glass" className="glow-border glow-border-primary overflow-hidden">
+    <div className="space-y-4">
+      {/* 资产卡片 */}
+      <Card variant="glass" className="overflow-hidden">
         <CardContent className="p-0">
-          {/* 渐变背景 */}
-          <div className="bg-gradient-to-br from-brand-primary/20 via-bg-secondary to-brand-secondary/10 p-6">
-            {/* 总资产 */}
-            <div className="mb-6">
-              <p className="text-text-secondary text-sm mb-1">总资产</p>
-              <div className="flex items-baseline gap-3">
-                <span className="text-4xl md:text-5xl font-bold text-white font-mono tracking-tight">
+          <div className="bg-gradient-to-br from-brand-primary/20 via-bg-secondary to-brand-secondary/10 p-5">
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-text-secondary text-sm">总资产 (USDT)</p>
+                <Button variant="ghost" size="sm" onClick={handleRefresh} disabled={refreshing} className="h-7 w-7 p-0">
+                  <RefreshCw className={`w-4 h-4 text-text-tertiary ${refreshing ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+              <div className="cursor-pointer" onClick={() => router.push('/wallet')}>
+                <span className="text-4xl font-bold text-white font-mono tracking-tight">
                   {formatCurrency(data.wallet?.usdt_balance || '0')}
                 </span>
               </div>
             </div>
-
-            {/* 今日盈亏 + 点卡 */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {/* 今日盈亏 */}
-              <div className={`p-4 rounded-xl ${isProfitable ? 'bg-success/10 border border-success/20' : 'bg-danger/10 border border-danger/20'}`}>
-                <p className="text-text-secondary text-xs mb-1">今日盈亏</p>
-                <div className="flex items-center gap-2">
-                  {isProfitable ? (
-                    <ArrowUp className="w-5 h-5 text-success" />
-                  ) : (
-                    <ArrowDown className="w-5 h-5 text-danger" />
-                  )}
-                  <span className={`text-xl md:text-2xl font-bold font-mono ${isProfitable ? 'text-success' : 'text-danger'}`}>
-                    {isProfitable ? '+' : ''}{formatCurrency(data.todayPnL?.todayPnl || '0')}
-                  </span>
-                </div>
-                <p className={`text-xs mt-1 ${isProfitable ? 'text-success/80' : 'text-danger/80'}`}>
-                  {isProfitable ? '+' : ''}{formatPercent(pnlPercent, 2)}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="cursor-pointer" onClick={() => router.push('/trading')}>
+                <p className="text-text-tertiary text-xs mb-1">今日盈亏</p>
+                <p className={`text-lg font-bold font-mono ${isProfitable ? 'text-success' : 'text-danger'}`}>
+                  {isProfitable ? '+' : ''}{pnlPercent.toFixed(2)}%
                 </p>
               </div>
-
-              {/* 点卡余额 */}
-              <div className="p-4 rounded-xl bg-warning/10 border border-warning/20">
-                <p className="text-text-secondary text-xs mb-1">点卡余额</p>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-warning" />
-                  <span className="text-xl md:text-2xl font-bold font-mono text-warning">
-                    {parseInt(data.wallet?.points_balance || '0').toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-xs mt-1 text-text-tertiary">点</p>
+              <div className="cursor-pointer" onClick={() => router.push('/ecosystem/points')}>
+                <p className="text-text-tertiary text-xs mb-1">点卡</p>
+                <p className="text-lg font-bold font-mono text-warning">
+                  {parseInt(data.wallet?.points_balance || '0').toLocaleString()}
+                </p>
               </div>
-
-              {/* 今日交易（移动端隐藏） */}
-              <div className="hidden md:block p-4 rounded-xl bg-brand-primary/10 border border-brand-primary/20">
-                <p className="text-text-secondary text-xs mb-1">今日交易</p>
-                <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-brand-primary" />
-                  <span className="text-xl md:text-2xl font-bold font-mono text-brand-primary">
-                    {data.todayPnL?.todayTrades || 0}
-                  </span>
-                </div>
-                <p className="text-xs mt-1 text-text-tertiary">
-                  胜率 {formatPercent(parseFloat(data.todayPnL?.todayWinRate || '0') * 100, 0)}
+              <div className="cursor-pointer" onClick={() => router.push('/ecosystem/token')}>
+                <p className="text-text-tertiary text-xs mb-1">代币</p>
+                <p className="text-lg font-bold font-mono text-purple-400">
+                  {parseInt(data.wallet?.token_balance || '0').toLocaleString()}
                 </p>
               </div>
             </div>
@@ -277,373 +142,402 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* 30天收益曲线 */}
-      <Card variant="glass" className="glow-border glow-border-primary overflow-hidden">
-        <CardHeader className="border-b border-border-primary/50">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-gradient-primary">收益曲线</span>
-            </CardTitle>
-            {/* 周期切换 */}
-            <div className="flex gap-1 bg-bg-tertiary/50 rounded-lg p-1">
-              {([7, 30, 90] as const).map((period) => (
+      {/* 公告横幅 */}
+      <AnnouncementBanner />
+
+      {/* 快捷入口 - 6宫格 */}
+      <Card variant="glass">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-3 gap-4">
+            {quickEntries.map((entry) => (
+              <button
+                key={entry.label}
+                onClick={() => entry.onClick ? entry.onClick() : router.push(entry.href)}
+                className="flex flex-col items-center gap-2 py-2 group"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-bg-tertiary flex items-center justify-center group-hover:bg-bg-primary/50 transition-colors">
+                  <entry.icon className={`w-5 h-5 ${entry.color}`} />
+                </div>
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{entry.label}</span>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 市场情绪 - 仪表盘样式 */}
+      <FearGreedGauge />
+
+      {/* 新手任务 - 可收起卡片 */}
+      <OnboardingCard />
+
+      {/* 热门资讯 - 默认收起 */}
+      <CryptoNewsCard />
+    </div>
+  );
+}
+
+// 市场情绪指数 - 专业横条样式
+function FearGreedGauge() {
+  const [data, setData] = useState<{ value: string; value_classification: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('https://api.alternative.me/fng/?limit=1')
+      .then(res => res.json())
+      .then(result => { if (result.data?.[0]) setData(result.data[0]); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Card variant="glass">
+        <CardContent className="p-4">
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 w-32 bg-bg-tertiary rounded" />
+            <div className="h-2 bg-bg-tertiary rounded-full" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const value = data ? parseInt(data.value) : 50;
+  const classification = data?.value_classification || 'Neutral';
+
+  const config: Record<string, { label: string; color: string; bgColor: string }> = {
+    'Extreme Fear': { label: '极度恐惧', color: 'text-[#EA3943]', bgColor: 'bg-[#EA3943]' },
+    'Fear': { label: '恐惧', color: 'text-[#EA8C00]', bgColor: 'bg-[#EA8C00]' },
+    'Neutral': { label: '中性', color: 'text-[#93959B]', bgColor: 'bg-[#93959B]' },
+    'Greed': { label: '贪婪', color: 'text-[#16C784]', bgColor: 'bg-[#16C784]' },
+    'Extreme Greed': { label: '极度贪婪', color: 'text-[#16C784]', bgColor: 'bg-[#16C784]' },
+  };
+  const { label, color, bgColor } = config[classification] || config['Neutral'];
+
+  return (
+    <Card variant="glass">
+      <CardContent className="p-4">
+        {/* 标题行 */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-text-secondary">Fear & Greed Index</span>
+          <div className="flex items-center gap-2">
+            <span className={`text-xl font-bold font-mono ${color}`}>{value}</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${bgColor} text-white font-medium`}>
+              {label}
+            </span>
+          </div>
+        </div>
+
+        {/* 渐变进度条 */}
+        <div className="relative">
+          <div className="h-2 rounded-full bg-gradient-to-r from-[#EA3943] via-[#F3D42F] to-[#16C784]" />
+          {/* 指示器 */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 transition-all duration-500"
+            style={{ left: `${value}%` }}
+          >
+            <div className="relative -translate-x-1/2">
+              <div className="w-3 h-3 rounded-full bg-white border-2 border-bg-primary shadow-lg" />
+            </div>
+          </div>
+        </div>
+
+        {/* 刻度标签 */}
+        <div className="flex justify-between mt-1.5 text-[10px] text-text-tertiary">
+          <span>0 极度恐惧</span>
+          <span>50 中性</span>
+          <span>100 极度贪婪</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// 新手任务卡片
+function OnboardingCard() {
+  const router = useRouter();
+  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const tasks = [
+    {
+      id: 'bind-api',
+      title: '绑定交易所 API',
+      description: '连接您的交易所账户',
+      href: '/wallet/api-keys',
+      checkKey: 'onboarding_api_bound',
+      points: 5
+    },
+    {
+      id: 'first-deposit',
+      title: '首次充值 ≥50U',
+      description: '充值 USDT 开启量化交易',
+      href: '/wallet/deposit',
+      checkKey: 'onboarding_first_deposit',
+      points: 20
+    },
+    {
+      id: 'subscribe-strategy',
+      title: '订阅付费策略',
+      description: '选择一个策略开始跟单',
+      href: '/strategies',
+      checkKey: 'onboarding_strategy_subscribed',
+      points: 15
+    },
+    {
+      id: 'start-bot',
+      title: '机器人运行 24h',
+      description: '让策略持续运行一天',
+      href: '/trading',
+      checkKey: 'onboarding_bot_started',
+      points: 10
+    },
+  ];
+
+  useEffect(() => {
+    const completed = new Set<string>();
+    tasks.forEach((task) => {
+      if (localStorage.getItem(task.checkKey) === 'true') completed.add(task.id);
+    });
+    setCompletedTasks(completed);
+    setIsLoaded(true);
+    setCollapsed(localStorage.getItem('onboarding_collapsed') === 'true');
+  }, []);
+
+  const toggleCollapse = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem('onboarding_collapsed', String(next));
+  };
+
+  const completedCount = completedTasks.size;
+  const totalCount = tasks.length;
+  const progress = (completedCount / totalCount) * 100;
+  const totalPoints = tasks.reduce((sum, t) => sum + t.points, 0);
+  const earnedPoints = tasks.filter((t) => completedTasks.has(t.id)).reduce((sum, t) => sum + t.points, 0);
+
+  // 全部完成则不显示
+  if (isLoaded && completedCount === totalCount) return null;
+
+  return (
+    <Card variant="glass">
+      <CardContent className="p-4">
+        {/* 标题行 - 可点击收起 */}
+        <button
+          onClick={toggleCollapse}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-2">
+            <Gift className="w-4 h-4 text-warning" />
+            <span className="text-sm font-medium text-text-primary">新手任务</span>
+            <span className="text-xs text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded">{completedCount}/{totalCount}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-warning font-medium">+{totalPoints - earnedPoints} 积分待领</span>
+            <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+          </div>
+        </button>
+
+        {/* 进度条 */}
+        <div className="mt-3 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary rounded-full transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="text-xs text-text-tertiary mt-1">已完成 {completedCount}/{totalCount}，获得 {earnedPoints}/{totalPoints} 积分</p>
+
+        {/* 任务列表 - 可收起 */}
+        {!collapsed && (
+          <div className="mt-4 space-y-2">
+            {tasks.map((task, index) => {
+              const done = completedTasks.has(task.id);
+              return (
                 <button
-                  key={period}
-                  onClick={() => setChartPeriod(period)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                    chartPeriod === period
-                      ? 'bg-brand-primary text-white'
-                      : 'text-text-secondary hover:text-text-primary'
+                  key={task.id}
+                  onClick={() => !done && router.push(task.href)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                    done
+                      ? 'bg-success/10 cursor-default'
+                      : 'bg-bg-tertiary hover:bg-bg-tertiary/70'
                   }`}
                 >
-                  {period}天
+                  {/* 序号或完成图标 */}
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    done
+                      ? 'bg-success text-white'
+                      : 'bg-bg-secondary text-text-tertiary border border-border-primary'
+                  }`}>
+                    {done ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <span className="text-xs font-medium">{index + 1}</span>
+                    )}
+                  </div>
+
+                  {/* 任务内容 */}
+                  <div className="flex-1 text-left min-w-0">
+                    <p className={`text-sm font-medium ${done ? 'text-success line-through' : 'text-text-primary'}`}>
+                      {task.title}
+                    </p>
+                    <p className="text-xs text-text-tertiary truncate">{task.description}</p>
+                  </div>
+
+                  {/* 积分奖励 */}
+                  <div className={`flex items-center gap-1 flex-shrink-0 ${done ? 'text-success' : 'text-warning'}`}>
+                    {done ? (
+                      <span className="text-xs">已领取</span>
+                    ) : (
+                      <>
+                        <span className="text-xs font-medium">+{task.points}</span>
+                        <ChevronRight className="w-4 h-4 text-text-tertiary" />
+                      </>
+                    )}
+                  </div>
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="p-4 md:p-6">
-            <PnLChart data={data.pnlCurve} height={250} />
-          </div>
-        </CardContent>
-      </Card>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-      {/* 机器人状态 + VPS 状态 并排 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 机器人状态（概览版） */}
-        <Card variant="glass" hover>
-          <CardHeader className="border-b border-border-primary/50 pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
-                <Bot className="w-4 h-4 text-white" />
-              </div>
-              <span>机器人状态</span>
-              {data.botStatus?.running && (
-                <span className="ml-auto px-2 py-0.5 text-xs bg-success/20 text-success rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
-                  运行中
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            {!data.botStatus?.running ? (
-              <div className="text-center py-6">
-                <div className="w-14 h-14 mx-auto mb-3 bg-bg-tertiary rounded-full flex items-center justify-center">
-                  <Bot className="w-7 h-7 text-text-tertiary" />
-                </div>
-                <p className="text-text-secondary text-sm mb-4">机器人未运行</p>
-                <Button
-                  variant="gradient"
-                  size="sm"
-                  onClick={() => router.push('/strategies')}
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  选择策略启动
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* 策略名称 */}
-                <div className="flex items-center justify-between p-3 bg-success/5 rounded-lg border border-success/20">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-success" />
-                    <span className="text-sm text-text-primary font-medium">
-                      {data.botStatus.strategy_name || '策略运行中'}
-                    </span>
-                  </div>
-                </div>
+// 加密资讯卡片接口
+interface CryptoNews {
+  id: string;
+  title: string;
+  url: string;
+  source: string;
+  published_on: number;
+  imageurl: string;
+}
 
-                {/* 运行时长 + 今日交易 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-bg-tertiary/30 rounded-lg">
-                    <p className="text-text-tertiary text-xs">运行时长</p>
-                    <p className="text-text-primary font-medium mt-1">
-                      {data.botStatus.uptime
-                        ? `${Math.floor(data.botStatus.uptime / 3600)}h ${Math.floor((data.botStatus.uptime % 3600) / 60)}m`
-                        : '-'}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-bg-tertiary/30 rounded-lg">
-                    <p className="text-text-tertiary text-xs">今日交易</p>
-                    <p className="text-text-primary font-medium mt-1">
-                      {data.botStatus.trades_today || 0} 笔
-                    </p>
-                  </div>
-                </div>
+// 热门资讯卡片 - 默认收起
+function CryptoNewsCard() {
+  const [news, setNews] = useState<CryptoNews[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [collapsed, setCollapsed] = useState(true); // 默认收起
+  const [hasLoaded, setHasLoaded] = useState(false);
 
-                {/* 操作按钮 */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleBotAction('stop')}
-                  >
-                    <Pause className="w-4 h-4 mr-1" />
-                    停止
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => router.push('/trading')}
-                  >
-                    去控制台
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+  // 展开时才加载数据
+  const loadNews = async () => {
+    if (hasLoaded) return;
+    setLoading(true);
+    try {
+      const res = await fetch('https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular');
+      const data = await res.json();
+      if (data.Data) {
+        setNews(data.Data.slice(0, 10)); // 取前10条
+      }
+      setHasLoaded(true);
+    } catch (error) {
+      console.error('Failed to fetch news:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        {/* VPS 状态（概览版） */}
-        <Card variant="glass" hover>
-          <CardHeader className="border-b border-border-primary/50 pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-success to-success/60 rounded-lg flex items-center justify-center">
-                <Server className="w-4 h-4 text-white" />
-              </div>
-              <span>VPS 状态</span>
-              {runningInstances.length > 0 && (
-                <span className="ml-auto px-2 py-0.5 text-xs bg-success/20 text-success rounded-full">
-                  {runningInstances.length} 运行中
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            {runningInstances.length === 0 ? (
-              <div className="text-center py-6">
-                <div className="w-14 h-14 mx-auto mb-3 bg-bg-tertiary rounded-full flex items-center justify-center">
-                  <Server className="w-7 h-7 text-text-tertiary" />
-                </div>
-                <p className="text-text-secondary text-sm mb-4">暂无运行中实例</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push('/strategies')}
-                >
-                  去策略市场
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* 主实例信息 */}
-                <div className="p-3 bg-bg-tertiary/30 rounded-lg border border-border-primary/50">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                      <span className="text-text-primary text-sm font-medium">
-                        {runningInstance?.ip_address || '分配中...'}
-                      </span>
-                    </div>
-                    <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded">
-                      运行中
-                    </span>
-                  </div>
+  const toggleCollapse = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (!next && !hasLoaded) {
+      loadNews();
+    }
+  };
 
-                  {/* CPU / RAM 使用率 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="w-4 h-4 text-text-tertiary" />
-                      <div className="flex-1">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-text-tertiary">CPU</span>
-                          <span className="text-text-secondary">{parseFloat(String(runningInstance?.cpu_usage || 25))}%</span>
-                        </div>
-                        <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-brand-primary rounded-full transition-all"
-                            style={{ width: `${parseFloat(String(runningInstance?.cpu_usage || 25))}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="w-4 h-4 text-text-tertiary" />
-                      <div className="flex-1">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-text-tertiary">RAM</span>
-                          <span className="text-text-secondary">{parseFloat(String(runningInstance?.memory_usage || 60))}%</span>
-                        </div>
-                        <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-success rounded-full transition-all"
-                            style={{ width: `${parseFloat(String(runningInstance?.memory_usage || 60))}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+  // 格式化时间
+  const formatTime = (timestamp: number) => {
+    const now = Date.now() / 1000;
+    const diff = now - timestamp;
+    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+    return `${Math.floor(diff / 86400)} 天前`;
+  };
 
-                {/* 查看详情按钮 */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => router.push(`/instances/${runningInstance?.id}`)}
-                >
-                  查看详情
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 当前持仓（最多4个） */}
-      <Card variant="glass" className="glow-border glow-border-primary">
-        <CardHeader className="border-b border-border-primary/50">
-          <CardTitle className="flex items-center justify-between">
+  return (
+    <>
+      <Card variant="glass">
+        <CardContent className="p-4">
+          {/* 标题行 - 可点击展开 */}
+          <button
+            onClick={toggleCollapse}
+            className="w-full flex items-center justify-between"
+          >
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
-                <Activity className="w-4 h-4 text-white" />
-              </div>
-              <span>当前持仓</span>
-              {data.positions.length > 0 && (
-                <span className="px-2 py-0.5 text-xs bg-brand-primary/20 text-brand-primary rounded-full">
-                  {data.positions.length} 个
-                </span>
-              )}
+              <Newspaper className="w-4 h-4 text-brand-primary" />
+              <span className="text-sm font-medium text-text-primary">热门资讯</span>
+              <span className="text-xs text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded">CryptoCompare</span>
             </div>
-            {data.positions.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push('/trading')}
-                className="text-text-secondary hover:text-text-primary"
-              >
-                查看全部
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          {data.positions.length === 0 ? (
-            <div className="text-center py-8 text-text-secondary">
-              <div className="w-14 h-14 mx-auto mb-3 bg-bg-tertiary rounded-full flex items-center justify-center">
-                <Activity className="w-7 h-7 text-text-tertiary" />
-              </div>
-              <p className="text-sm">暂无持仓</p>
-              <p className="text-xs mt-1 text-text-tertiary">机器人开始交易后会显示持仓</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-tertiary">{collapsed ? '点击展开' : '点击收起'}</span>
+              <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform ${collapsed ? '-rotate-90' : ''}`} />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* 最多显示4个持仓 */}
-              {data.positions.slice(0, 4).map((position) => {
-                const unrealizedPnl = parseFloat(position.unrealized_pnl);
-                const isProfitable = unrealizedPnl >= 0;
-                const entryPrice = parseFloat(position.entry_price);
-                const currentPrice = parseFloat(position.current_price);
-                const pnlPercent =
-                  entryPrice > 0
-                    ? ((currentPrice - entryPrice) / entryPrice) * 100
-                    : 0;
+          </button>
 
-                return (
-                  <div
-                    key={position.id}
-                    onClick={() => router.push('/trading')}
-                    className={`flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] ${
-                      isProfitable ? 'bg-success/5 border border-success/20' : 'bg-danger/5 border border-danger/20'
-                    }`}
+          {/* 资讯列表 - 可收起 */}
+          {!collapsed && (
+            <div className="mt-4 space-y-3">
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="animate-pulse flex gap-3">
+                      <div className="w-16 h-12 bg-bg-tertiary rounded" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 bg-bg-tertiary rounded w-3/4" />
+                        <div className="h-2 bg-bg-tertiary rounded w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : news.length === 0 ? (
+                <p className="text-center text-text-tertiary text-sm py-4">暂无资讯</p>
+              ) : (
+                news.map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex gap-3 p-2 -mx-2 rounded-lg hover:bg-bg-tertiary/50 transition-colors group"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-text-primary font-bold">{position.symbol}</span>
-                        <span
-                          className={`text-xs px-1.5 py-0.5 rounded ${
-                            position.side === 'buy'
-                              ? 'bg-success/20 text-success'
-                              : 'bg-danger/20 text-danger'
-                          }`}
-                        >
-                          {position.side === 'buy' ? '多' : '空'}
-                        </span>
-                        {position.leverage > 1 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-warning/20 text-warning">
-                            {position.leverage}x
-                          </span>
-                        )}
-                      </div>
+                    {/* 缩略图 */}
+                    <div className="w-16 h-12 flex-shrink-0 rounded overflow-hidden bg-bg-tertiary">
+                      <img
+                        src={item.imageurl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {isProfitable ? (
-                          <ArrowUp className="w-4 h-4 text-success" />
-                        ) : (
-                          <ArrowDown className="w-4 h-4 text-danger" />
-                        )}
-                        <span
-                          className={`font-bold ${
-                            isProfitable ? 'text-success' : 'text-danger'
-                          }`}
-                        >
-                          {isProfitable ? '+' : ''}
-                          {formatPercent(pnlPercent, 2)}
+                    {/* 内容 */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-text-primary line-clamp-2 group-hover:text-brand-primary transition-colors">
+                        {item.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-text-tertiary">{item.source}</span>
+                        <span className="text-text-tertiary">·</span>
+                        <span className="text-xs text-text-tertiary flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatTime(item.published_on)}
                         </span>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                    {/* 外链图标 */}
+                    <ExternalLink className="w-4 h-4 text-text-tertiary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1" />
+                  </a>
+                ))
+              )}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* 快捷入口 */}
-      <Card variant="glass">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-4 gap-3">
-            <button
-              onClick={() => router.push('/strategies')}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-colors"
-            >
-              <div className="w-10 h-10 bg-brand-primary/20 rounded-lg flex items-center justify-center">
-                <Zap className="w-5 h-5 text-brand-primary" />
-              </div>
-              <span className="text-xs text-text-secondary">策略市场</span>
-            </button>
-            <button
-              onClick={() => router.push('/wallet/deposit')}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-colors"
-            >
-              <div className="w-10 h-10 bg-success/20 rounded-lg flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-success" />
-              </div>
-              <span className="text-xs text-text-secondary">充值</span>
-            </button>
-            <button
-              onClick={() => router.push('/trading/history')}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-colors"
-            >
-              <div className="w-10 h-10 bg-warning/20 rounded-lg flex items-center justify-center">
-                <History className="w-5 h-5 text-warning" />
-              </div>
-              <span className="text-xs text-text-secondary">交易历史</span>
-            </button>
-            <button
-              onClick={() => router.push('/settings')}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-colors"
-            >
-              <div className="w-10 h-10 bg-text-secondary/20 rounded-lg flex items-center justify-center">
-                <Settings className="w-5 h-5 text-text-secondary" />
-              </div>
-              <span className="text-xs text-text-secondary">设置</span>
-            </button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    </>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
-import { Terminal, Pause, Play, Trash2, Download, Wifi, WifiOff } from 'lucide-react';
+import { Button } from '@/components/ui';
+import { Pause, Play, Trash2, Download, WifiOff, ChevronDown, ChevronUp } from 'lucide-react';
 import { wsClient, LogEvent } from '@/lib/websocket';
 import { getToken } from '@/lib/api';
 
@@ -17,14 +17,17 @@ interface LogEntry {
 interface TradingLogProps {
   instanceId: string | null;
   isConnected?: boolean;
+  /** 自定义最大高度（px） */
+  maxHeight?: number;
 }
 
-export function TradingLog({ instanceId, isConnected = false }: TradingLogProps) {
+export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }: TradingLogProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   const [filter, setFilter] = useState<string>('all');
   const [wsConnected, setWsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const logsBufferRef = useRef<LogEntry[]>([]);
 
@@ -200,63 +203,79 @@ export function TradingLog({ instanceId, isConnected = false }: TradingLogProps)
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-primary-400" />
-            实时日志
-            {/* WebSocket 连接状态指示器 */}
-            <div className="flex items-center gap-1.5" title={wsConnected ? 'WebSocket 已连接' : connectionError || 'WebSocket 未连接'}>
-              {wsConnected ? (
-                <Wifi className="w-4 h-4 text-success-400" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-text-tertiary" />
-              )}
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  wsConnected ? 'bg-success-400 animate-pulse' : 'bg-text-tertiary'
-                }`}
-              />
-            </div>
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <select
-              className="bg-bg-tertiary border border-border-secondary rounded px-2 py-1 text-sm text-text-primary"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-            >
-              <option value="all">全部</option>
-              <option value="info">Info</option>
-              <option value="warn">Warn</option>
-              <option value="error">Error</option>
-              <option value="debug">Debug</option>
-            </select>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsPaused(!isPaused)}
-              title={isPaused ? '继续' : '暂停'}
-            >
-              {isPaused ? (
-                <Play className="w-4 h-4" />
-              ) : (
-                <Pause className="w-4 h-4" />
-              )}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleClear} title="清空">
-              <Trash2 className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleDownload} title="下载">
-              <Download className="w-4 h-4" />
-            </Button>
-          </div>
+    <div className="space-y-2">
+      {/* 工具栏 - 移动端优化布局 */}
+      <div className="flex items-center justify-between px-2 gap-2">
+        {/* 操作按钮组 - 左侧紧凑排列 */}
+        <div className="flex items-center gap-1">
+          {!isCollapsed && (
+            <>
+              <select
+                className="bg-bg-tertiary rounded px-2 py-1 text-sm text-text-primary border-0"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                <option value="all">全部</option>
+                <option value="info">信息</option>
+                <option value="warn">警告</option>
+                <option value="error">错误</option>
+                <option value="debug">调试</option>
+              </select>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsPaused(!isPaused)}
+                title={isPaused ? '继续' : '暂停'}
+              >
+                {isPaused ? (
+                  <Play className="w-4 h-4" />
+                ) : (
+                  <Pause className="w-4 h-4" />
+                )}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleClear} title="清空">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleDownload} title="下载">
+                <Download className="w-4 h-4" />
+              </Button>
+            </>
+          )}
         </div>
-      </CardHeader>
-      <CardContent>
+
+        {/* 右侧：状态 + 折叠按钮 */}
+        <div className="flex items-center gap-2">
+          {/* WebSocket 连接状态指示器 */}
+          <div className="flex items-center gap-1.5" title={wsConnected ? 'WebSocket 已连接' : connectionError || 'WebSocket 未连接'}>
+            {wsConnected ? (
+              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-text-tertiary" />
+            )}
+          </div>
+
+          {/* 折叠/展开按钮 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            title={isCollapsed ? '展开日志' : '折叠日志'}
+          >
+            {isCollapsed ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronUp className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* 日志内容区 - 支持折叠 */}
+      {!isCollapsed && (
         <div
           ref={logContainerRef}
-          className="h-64 overflow-y-auto bg-bg-secondary rounded-lg p-4 font-mono text-sm"
+          className="overflow-y-auto px-2 font-mono text-sm animate-in fade-in slide-in-from-top-2 duration-200"
+          style={{ height: maxHeight }}
         >
           {filteredLogs.length === 0 ? (
             <div className="text-text-tertiary text-center py-8">
@@ -279,7 +298,7 @@ export function TradingLog({ instanceId, isConnected = false }: TradingLogProps)
                     [{formatTime(log.timestamp)}]
                   </span>
                   <span
-                    className={`px-1.5 py-0.5 rounded text-xs ${getLevelBadge(log.level)}`}
+                    className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getLevelBadge(log.level)}`}
                   >
                     {log.level.toUpperCase()}
                   </span>
@@ -289,12 +308,14 @@ export function TradingLog({ instanceId, isConnected = false }: TradingLogProps)
             </div>
           )}
         </div>
-        {isPaused && (
-          <div className="mt-2 text-center text-warning text-sm">
-            日志已暂停，点击播放按钮继续
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+
+      {/* 暂停提示 */}
+      {!isCollapsed && isPaused && (
+        <div className="px-2 text-center text-warning text-sm">
+          日志已暂停，点击播放按钮继续
+        </div>
+      )}
+    </div>
   );
 }

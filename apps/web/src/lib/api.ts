@@ -541,6 +541,13 @@ export const billingApi = {
       todayGasFee: string;
     }>>('/billing/today-pnl'),
 
+  getMonthlyPnL: () =>
+    api.get<never, ApiResponse<{
+      monthlyPnl: string;
+      monthlyTrades: number;
+      monthlyWinRate: string;
+    }>>('/billing/monthly-pnl'),
+
   getPnLCurve: (days?: number) =>
     api.get<never, ApiResponse<{
       curve: Array<{ date: string; pnl: string; cumulativePnl: string; trades: number }>;
@@ -771,6 +778,14 @@ export const strategiesApi = {
   /** 删除策略配置 */
   deleteConfig: (id: string) =>
     api.delete<never, ApiResponse<{ message: string }>>(`/strategies/configs/${id}`),
+
+  /** 启动策略 */
+  startStrategy: (configId: string) =>
+    api.post<never, ApiResponse<{ message: string }>>(`/strategies/configs/${configId}/start`),
+
+  /** 停止策略 */
+  stopStrategy: (configId: string) =>
+    api.post<never, ApiResponse<{ message: string }>>(`/strategies/configs/${configId}/stop`),
 
   // ===== Phase 16.5: 策略上传与收益分成 =====
 
@@ -2419,6 +2434,71 @@ export const exchangeApi = {
       page: number;
       limit: number;
     }>>('/exchange/history', { params }),
+};
+
+// ==================== 交易所推广链接 API ====================
+export const exchangeLinksApi = {
+  /** 获取所有启用的交易所链接（公开接口） */
+  getActiveLinks: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      exchange_id: string;
+      name: string;
+      logo: string;
+      rebate: string;
+      link: string;
+      description: string | null;
+      features: string[];
+    }>>>('/exchange-links'),
+
+  /** 获取所有交易所链接（管理员） */
+  getAllLinks: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      exchange_id: string;
+      name: string;
+      logo: string;
+      rebate: string;
+      link: string;
+      description: string | null;
+      features: string[];
+      is_active: boolean;
+      sort_order: number;
+      created_at: string;
+      updated_at: string;
+    }>>>('/exchange-links/all'),
+
+  /** 创建交易所链接（管理员） */
+  createLink: (data: {
+    exchange_id: string;
+    name: string;
+    logo: string;
+    rebate: string;
+    link: string;
+    description?: string;
+    features?: string[];
+    is_active?: boolean;
+    sort_order?: number;
+  }) =>
+    api.post<never, ApiResponse<{ id: string }>>('/exchange-links', data),
+
+  /** 更新交易所链接（管理员） */
+  updateLink: (id: string, data: {
+    exchange_id?: string;
+    name?: string;
+    logo?: string;
+    rebate?: string;
+    link?: string;
+    description?: string;
+    features?: string[];
+    is_active?: boolean;
+    sort_order?: number;
+  }) =>
+    api.put<never, ApiResponse<{ message: string }>>(`/exchange-links/${id}`, data),
+
+  /** 删除交易所链接（管理员） */
+  deleteLink: (id: string) =>
+    api.delete<never, ApiResponse<{ message: string }>>(`/exchange-links/${id}`),
 };
 
 export default api;

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
-import { tradingApi } from '@/lib/api';
+import { tradingApi, billingApi } from '@/lib/api';
+import { PnLChart } from '@/components/charts/PnLChart';
 import {
   TrendingUp,
   TrendingDown,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 
 type PeriodType = 'today' | 'week' | 'month' | 'custom';
+type DaysPeriod = 7 | 30 | 90 | 'custom';
 
 interface PeriodStats {
   period: string;
@@ -33,55 +35,113 @@ interface PeriodStats {
   total_gas_fee: string;
 }
 
+// 曲线数据点
+interface ChartDataPoint {
+  date: string;
+  pnl: number;
+  cumulative: number;
+}
+
 interface PeriodPnLStatsProps {
   /** 是否显示完整统计卡片，默认 true */
   showFullCard?: boolean;
   /** 是否在头部显示标题，默认 true */
   showHeader?: boolean;
+  /** 是否显示收益曲线，默认 false */
+  showChart?: boolean;
+  /** 曲线图表高度，默认 200 */
+  chartHeight?: number;
   /** 自定义类名 */
   className?: string;
 }
 
 /**
  * 按时间段盈亏统计组件
- * 支持今日/本周/本月/自定义时间段查询
+ * 支持 7天/30天/90天/自定义时间段查询
+ * 可选显示收益曲线图表
  */
 export function PeriodPnLStats({
   showFullCard = true,
   showHeader = true,
+  showChart = false,
+  chartHeight = 200,
   className = '',
 }: PeriodPnLStatsProps) {
-  const [period, setPeriod] = useState<PeriodType>('today');
+  // 使用天数作为主要时间段选择
+  const [daysPeriod, setDaysPeriod] = useState<DaysPeriod>(30);
   const [stats, setStats] = useState<PeriodStats | null>(null);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 自定义日期（备用）
+  // 自定义日期
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showCustomPicker, setShowCustomPicker] = useState(false);
 
-  const fetchStats = async (selectedPeriod: PeriodType, startDate?: string, endDate?: string) => {
+  // 天数到 API period 的映射
+  const daysToPeriod = (days: DaysPeriod): PeriodType => {
+    if (days === 7) return 'week';
+    if (days === 30) return 'month';
+    if (days === 90) return 'custom'; // 90天需要用自定义
+    return 'custom';
+  };
+
+  const fetchData = async (days: DaysPeriod, startDate?: string, endDate?: string) => {
     setLoading(true);
     setError(null);
 
     try {
-      const params: {
+      // 构建统计 API 参数
+      const statsParams: {
         period: PeriodType;
         start_date?: string;
         end_date?: string;
-      } = { period: selectedPeriod };
+      } = { period: daysToPeriod(days) };
 
-      if (selectedPeriod === 'custom' && startDate && endDate) {
-        params.start_date = startDate;
-        params.end_date = endDate;
+      // 计算日期范围
+      let chartDays = typeof days === 'number' ? days : 30;
+
+      if (days === 'custom' && startDate && endDate) {
+        statsParams.period = 'custom';
+        statsParams.start_date = startDate;
+        statsParams.end_date = endDate;
+        // 计算自定义日期的天数差
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        chartDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      } else if (days === 90) {
+        // 90天需要用自定义日期
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 90);
+        statsParams.period = 'custom';
+        statsParams.start_date = start.toISOString().split('T')[0];
+        statsParams.end_date = end.toISOString().split('T')[0];
       }
 
-      const res = await tradingApi.getStatsByPeriod(params);
-      if (res.code === 0 && res.data) {
-        setStats(res.data);
+      // 并行获取统计数据和曲线数据
+      const [statsRes, curveRes] = await Promise.all([
+        tradingApi.getStatsByPeriod(statsParams),
+        showChart ? billingApi.getPnLCurve(chartDays).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      ]);
+
+      if (statsRes.code === 0 && statsRes.data) {
+        setStats(statsRes.data);
       } else {
-        setError(res.message || '获取统计数据失败');
+        setError(statsRes.message || '获取统计数据失败');
+      }
+
+      // 处理曲线数据
+      if (curveRes.data?.curve) {
+        const curveData = curveRes.data.curve.map((item: { date: string; pnl: string; cumulativePnl: string }) => ({
+          date: item.date,
+          pnl: parseFloat(item.pnl) || 0,
+          cumulative: parseFloat(item.cumulativePnl) || 0,
+        }));
+        setChartData(curveData);
+      } else {
+        setChartData([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取统计数据失败');
@@ -91,22 +151,22 @@ export function PeriodPnLStats({
   };
 
   useEffect(() => {
-    fetchStats(period);
-  }, [period]);
+    fetchData(daysPeriod);
+  }, [daysPeriod, showChart]);
 
-  const handlePeriodChange = (newPeriod: PeriodType) => {
-    if (newPeriod === 'custom') {
+  const handleDaysChange = (days: DaysPeriod) => {
+    if (days === 'custom') {
       setShowCustomPicker(true);
     } else {
       setShowCustomPicker(false);
-      setPeriod(newPeriod);
+      setDaysPeriod(days);
     }
   };
 
   const handleCustomDateConfirm = () => {
     if (customStartDate && customEndDate) {
-      setPeriod('custom');
-      fetchStats('custom', customStartDate, customEndDate);
+      setDaysPeriod('custom');
+      fetchData('custom', customStartDate, customEndDate);
       setShowCustomPicker(false);
     }
   };
@@ -127,10 +187,10 @@ export function PeriodPnLStats({
     return `${num.toFixed(1)}%`;
   };
 
-  const periodLabels: Record<PeriodType, string> = {
-    today: '今日',
-    week: '本周',
-    month: '本月',
+  const daysLabels: Record<DaysPeriod, string> = {
+    7: '7天',
+    30: '30天',
+    90: '90天',
     custom: '自定义',
   };
 
@@ -138,19 +198,21 @@ export function PeriodPnLStats({
     <>
       {/* 时间段选择器 */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(['today', 'week', 'month', 'custom'] as PeriodType[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => handlePeriodChange(p)}
-            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-              period === p
-                ? 'bg-brand-primary text-white'
-                : 'bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80'
-            }`}
-          >
-            {periodLabels[p]}
-          </button>
-        ))}
+        <div className="flex gap-1 bg-bg-tertiary/50 rounded-lg p-1">
+          {([7, 30, 90, 'custom'] as DaysPeriod[]).map((d) => (
+            <button
+              key={d}
+              onClick={() => handleDaysChange(d)}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                daysPeriod === d
+                  ? 'bg-brand-primary text-white'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {daysLabels[d]}
+            </button>
+          ))}
+        </div>
 
         {/* 自定义日期选择器 */}
         {showCustomPicker && (
@@ -187,7 +249,7 @@ export function PeriodPnLStats({
         <div className="flex items-center justify-center gap-2 py-8 text-text-secondary">
           <AlertCircle className="w-5 h-5 text-danger" />
           <span>{error}</span>
-          <Button size="sm" variant="outline" onClick={() => fetchStats(period)}>
+          <Button size="sm" variant="outline" onClick={() => fetchData(daysPeriod)}>
             重试
           </Button>
         </div>
@@ -285,6 +347,17 @@ export function PeriodPnLStats({
             </div>
           </div>
 
+          {/* 收益曲线 */}
+          {showChart && (
+            <div className="pt-4 border-t border-border-primary/30">
+              <div className="flex items-center gap-2 text-text-secondary text-sm mb-3">
+                <TrendingUp className="w-4 h-4 text-brand-primary" />
+                收益曲线
+              </div>
+              <PnLChart data={chartData} height={chartHeight} />
+            </div>
+          )}
+
           {/* 底部统计 */}
           <div className="flex items-center justify-between text-sm text-text-tertiary pt-2 border-t border-border-primary/30">
             <span>
@@ -309,7 +382,7 @@ export function PeriodPnLStats({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-brand-primary" />
-            盈利统计
+            收益概览
           </CardTitle>
         </CardHeader>
       )}

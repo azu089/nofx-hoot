@@ -7,4 +7,6 @@ export { PanicButton } from './PanicButton';
 export { TradeAiInsightCard } from './TradeAiInsightCard';
 export { PeriodPnLStats } from './PeriodPnLStats';
 export { SymbolSearch } from './SymbolSearch';
-export { PositionCard } from './PositionCard';
+export { PositionCard, type Position } from './PositionCard';
+export { TradingHeroCard } from './TradingHeroCard';
+export { BotStatusCard } from './BotStatusCard';

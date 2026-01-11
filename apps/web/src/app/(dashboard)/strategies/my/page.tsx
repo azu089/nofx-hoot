@@ -347,13 +347,21 @@ export default function MyStrategiesPage() {
 
   const handleSaveEdit = async () => {
     if (!selectedConfig) return;
+
+    // 前端验证：止损必须在 -100% 到 0% 之间
+    const stoplossValue = parseFloat(editForm.stoploss);
+    if (isNaN(stoplossValue) || stoplossValue < -100 || stoplossValue > 0) {
+      alert('止损值必须在 -100% 到 0% 之间');
+      return;
+    }
+
     setActionLoading(true);
     try {
       // 构建 API 请求数据（使用 number 类型）
       const apiData = {
         stake_amount: editForm.stake_amount,
         max_open_trades: editForm.max_open_trades,
-        stoploss: parseFloat(editForm.stoploss) / 100, // API 需要 number
+        stoploss: stoplossValue / 100, // API 需要 number，转为小数
         leverage: editForm.leverage,
         trailing_stop: editForm.trailing_stop,
         trailing_stop_positive: editForm.trailing_stop && editForm.trailing_stop_positive
@@ -1306,6 +1314,9 @@ function EditConfigForm({
             type="number"
             value={form.stoploss}
             onChange={(e) => setForm(prev => ({ ...prev, stoploss: e.target.value }))}
+            min="-100"
+            max="0"
+            step="0.1"
             className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-white text-sm focus:border-brand-primary focus:outline-none"
           />
         </div>

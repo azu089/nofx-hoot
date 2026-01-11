@@ -1,0 +1,84 @@
+### Page state
+- Page URL: http://localhost:3002/trading
+- Page Title: QuantFi - Web3 量化 SaaS 平台
+- Page Snapshot:
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e7]:
+    - banner [ref=e8]:
+      - generic [ref=e11]:
+        - link "QuantFi 量化交易平台" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e15]
+          - generic [ref=e18]:
+            - generic [ref=e19]: QuantFi
+            - generic [ref=e20]: 量化交易平台
+        - link [ref=e265] [cursor=pointer]:
+          - /url: /wallet
+          - img [ref=e266]
+    - main [ref=e191]:
+      - generic [ref=e194]:
+        - generic [ref=e270]:
+          - heading "交易控制台" [level=1] [ref=e272]
+          - button [ref=e274] [cursor=pointer]:
+            - img [ref=e275]
+        - generic [ref=e208]:
+          - paragraph [ref=e209]: 累计盈亏
+          - generic [ref=e210]:
+            - img [ref=e211]
+            - paragraph [ref=e214]: +$0.00
+          - paragraph [ref=e215]:
+            - img [ref=e216]
+            - text: 0.0%
+          - application [ref=e221]
+          - paragraph [ref=e222]: 交易 0笔 · 胜率 0% · 燃油费 $0.00
+        - generic [ref=e224]:
+          - generic [ref=e225]:
+            - img [ref=e279]
+            - generic [ref=e282]: 机器人状态
+          - generic [ref=e283]:
+            - img [ref=e285]
+            - paragraph [ref=e287]: 暂无运行中的策略
+            - button "选择策略开始交易" [ref=e288] [cursor=pointer]:
+              - img [ref=e289]
+              - text: 选择策略开始交易
+        - generic [ref=e238]:
+          - button "持仓" [ref=e239] [cursor=pointer]:
+            - img [ref=e240]
+            - text: 持仓
+          - button "历史" [ref=e243] [cursor=pointer]:
+            - img [ref=e244]
+            - text: 历史
+          - button "日志" [ref=e248] [cursor=pointer]:
+            - img [ref=e249]
+            - text: 日志
+        - generic [ref=e253]:
+          - img [ref=e255]
+          - paragraph [ref=e258]: 暂无持仓
+          - paragraph [ref=e259]: 启动策略后将显示持仓信息
+    - navigation [ref=e291]:
+      - generic [ref=e292]:
+        - link "首页" [ref=e293] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e295]
+          - generic [ref=e298]: 首页
+        - link "交易" [ref=e299] [cursor=pointer]:
+          - /url: /trading
+          - img [ref=e301]
+          - generic [ref=e305]: 交易
+        - link "策略" [ref=e306] [cursor=pointer]:
+          - /url: /strategies
+          - img [ref=e308]
+          - generic [ref=e310]: 策略
+        - link "资产" [ref=e311] [cursor=pointer]:
+          - /url: /wallet
+          - img [ref=e313]
+          - generic [ref=e316]: 资产
+        - link "我的" [ref=e317] [cursor=pointer]:
+          - /url: /me
+          - img [ref=e319]
+          - generic [ref=e322]: 我的
+    - button [ref=e261] [cursor=pointer]:
+      - img [ref=e262]
+```

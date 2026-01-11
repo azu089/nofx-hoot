@@ -398,6 +398,54 @@ export class BillingService {
   }
 
   /**
+   * 获取用户当月盈亏统计
+   * @param userId 用户 ID
+   */
+  async getMonthlyPnL(userId: string): Promise<{
+    monthlyPnl: string;
+    monthlyTrades: number;
+    monthlyWinRate: string;
+  }> {
+    // 获取当月开始时间 (UTC)
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+
+    // 查询当月交易
+    const trades = await this.prisma.client.trade_history.findMany({
+      where: {
+        user_id: userId,
+        status: 'closed',
+        closed_at: { gte: monthStart },
+      },
+    });
+
+    let monthlyPnl = new Decimal(0);
+    let winTrades = 0;
+
+    for (const trade of trades) {
+      if (trade.pnl) {
+        const pnl = new Decimal(trade.pnl);
+        monthlyPnl = monthlyPnl.plus(pnl);
+
+        if (pnl.gt(0)) {
+          winTrades++;
+        }
+      }
+    }
+
+    const winRate = trades.length > 0
+      ? new Decimal(winTrades).dividedBy(trades.length)
+      : new Decimal(0);
+
+    return {
+      monthlyPnl: monthlyPnl.toFixed(8),
+      monthlyTrades: trades.length,
+      monthlyWinRate: winRate.toFixed(4),
+    };
+  }
+
+  /**
    * 获取用户收益曲线
    * @param userId 用户 ID
    * @param days 天数（默认 30 天）

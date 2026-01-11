@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsArray,
   IsOptional,
+  IsBoolean,
   Min,
   Max,
   ArrayMinSize,
@@ -84,6 +85,14 @@ export class BacktestRequestDto {
   @Min(0)
   @Max(0.01)
   fee?: number;
+
+  @ApiPropertyOptional({
+    description: '是否跟随策略代码中的参数配置（止损/止盈/K线/追踪止损）',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  followStrategyCode?: boolean;
 }
 
 /**

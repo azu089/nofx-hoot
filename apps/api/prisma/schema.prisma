@@ -860,3 +860,23 @@ model user_commissions {
   @@index([created_at], map: "idx_user_commissions_created")
   @@index([source_id], map: "idx_user_commissions_source")
 }
+
+// ==================== 交易所推广链接管理 ====================
+
+/// 交易所推广链接配置表（后台管理）
+model exchange_links {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exchange_id String   @unique @db.VarChar(50)  // binance | okx | bybit
+  name        String   @db.VarChar(100)  // 交易所名称
+  logo        String   @db.VarChar(20)  // emoji 或 图标 URL
+  rebate      String   @db.VarChar(10)  // 返佣比例显示文本，如 "20%"
+  link        String   @db.VarChar(500)  // 推广链接
+  description String?  @db.Text  // 交易所描述
+  features    Json?    @default("[]")  // 特性标签 JSON 数组
+  is_active   Boolean  @default(true)  // 是否启用
+  sort_order  Int      @default(0)  // 排序
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([is_active, sort_order], map: "idx_exchange_links_active_sort")
+}

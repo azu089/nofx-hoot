@@ -80,3 +80,8 @@ export { PWAInstallPrompt } from './PWAInstallPrompt';
 
 export { Slider } from './slider';
 export type { SliderProps } from './slider';
+
+export { DateRangePicker } from './DateRangePicker';
+
+export { Sheet } from './sheet';
+export type { SheetProps } from './sheet';

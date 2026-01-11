@@ -70,6 +70,23 @@ export class BillingController {
   }
 
   /**
+   * 获取当月盈亏统计
+   */
+  @Get('monthly-pnl')
+  @ApiOperation({ summary: '获取当月盈亏统计' })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取当月盈亏',
+  })
+  async getMonthlyPnL(@CurrentUser('sub') userId: string) {
+    return {
+      code: 0,
+      message: 'success',
+      data: await this.billingService.getMonthlyPnL(userId),
+    };
+  }
+
+  /**
    * 获取收益曲线
    */
   @Get('pnl-curve')

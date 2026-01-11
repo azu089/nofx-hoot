@@ -306,7 +306,11 @@ function BacktestPageInner() {
 
   // 保存到我的策略
   const handleSaveToMyStrategies = async () => {
-    if (!strategyId) return;
+    console.log('[DEBUG] handleSaveToMyStrategies - strategyId:', strategyId);
+    if (!strategyId) {
+      setError('请先选择一个策略');
+      return;
+    }
 
     setSaving(true);
     setSaveSuccess(false);
@@ -321,13 +325,14 @@ function BacktestPageInner() {
         max_open_trades: parseInt(maxOpenTrades) || 3,
         leverage: parseInt(leverage) || 1,
         pair_whitelist: selectedPairs,
-        // 风控参数（只有不跟随代码时才覆盖）
+        // stoploss 是必填字段，需要始终发送（负数，范围 -1 到 0）
+        stoploss: parseFloat(stopLoss) / 100,
+        // 风控参数
         stoploss_on_exchange: stoplossOnExchange,
         // 标记是否跟随策略代码
         follow_strategy_code: shouldFollowCode,
-        // 只有不跟随代码时才传这些参数
+        // 只有不跟随代码时才传这些可选参数
         ...(!shouldFollowCode && {
-          stoploss: parseFloat(stopLoss) / 100,
           timeframe: timeframe,
           trailing_stop: trailingStop,
         }),
@@ -358,6 +363,7 @@ function BacktestPageInner() {
         },
       };
 
+      console.log('[DEBUG] configToSave:', JSON.stringify(configToSave, null, 2));
       await strategiesApi.createConfig(configToSave);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

@@ -125,6 +125,17 @@ export class InstancesService {
    * 仅供 purchaseSubscription 和系统内部调用
    */
   private async createVpsInternal(userId: string, region: string = 'sgp1') {
+    // 🔒 开发模式保护：禁止创建 VPS
+    const isDevelopmentMode = process.env.DEVELOPMENT_MODE === 'true';
+    if (isDevelopmentMode) {
+      this.logger.warn(
+        `⚠️  开发模式已启用，VPS 创建被阻止（用户: ${userId}）`,
+      );
+      throw new BadRequestException(
+        '开发模式下禁止创建 VPS。请在生产环境或将 DEVELOPMENT_MODE 设为 false 后重试。',
+      );
+    }
+
     // 创建实例记录（状态为 pending）
     const instance = await this.prisma.client.instances.create({
       data: {

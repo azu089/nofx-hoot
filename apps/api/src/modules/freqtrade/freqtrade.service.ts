@@ -277,6 +277,9 @@ export class FreqtradeService {
           current_profit_pct: '1.67',
           stop_loss: '2900.00',
           initial_stop_loss: '2900.00',
+          stop_loss_pct: -3.33,        // 止损百分比 -3.33%
+          min_rate: 2980.00,            // 最低价
+          max_rate: 3080.00,            // 最高价
           strategy: 'SampleStrategy',
           open_date: '2024-01-02 10:00:00',
           leverage: 1,

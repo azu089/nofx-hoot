@@ -37,6 +37,7 @@ import { TradingModule } from './modules/trading/trading.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { MarketModule } from './modules/market/market.module';
 import { ExchangeModule } from './modules/exchange/exchange.module';
+import { ExchangeLinksModule } from './modules/exchange-links/exchange-links.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ExchangeModule } from './modules/exchange/exchange.module';
     TelegramModule, // Telegram Mini App 模块
     MarketModule, // 市场数据模块（交易对搜索）
     ExchangeModule, // 资产兑换模块（闪兑功能）
+    ExchangeLinksModule, // 交易所推广链接模块
   ],
   controllers: [AppController],
   providers: [

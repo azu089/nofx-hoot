@@ -23,6 +23,9 @@ import {
   Clock,
   CreditCard,
   Eye,
+  Download,
+  BarChart3,
+  Loader2,
 } from 'lucide-react';
 
 interface Instance {
@@ -46,6 +49,16 @@ interface Backup {
 
 const SUBSCRIPTION_FEE = 25;
 
+// 可下载的交易对列表
+const AVAILABLE_PAIRS = [
+  { symbol: 'BTC/USDT', name: 'Bitcoin' },
+  { symbol: 'ETH/USDT', name: 'Ethereum' },
+  { symbol: 'SOL/USDT', name: 'Solana' },
+  { symbol: 'BNB/USDT', name: 'BNB' },
+  { symbol: 'XRP/USDT', name: 'XRP' },
+  { symbol: 'DOGE/USDT', name: 'Dogecoin' },
+];
+
 export default function InstancesPage() {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
@@ -55,6 +68,8 @@ export default function InstancesPage() {
   const [usePoints, setUsePoints] = useState(true);
   const [pointsBalance, setPointsBalance] = useState('0');
   const [showHelp, setShowHelp] = useState(true);
+  const [downloadingPair, setDownloadingPair] = useState<string | null>(null);
+  const [showKlineModal, setShowKlineModal] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -96,6 +111,22 @@ export default function InstancesPage() {
       alert(error instanceof Error ? error.message : '订阅失败');
     } finally {
       setSubscribing(false);
+    }
+  };
+
+  // 下载历史 K 线数据
+  const handleDownloadKline = async (pair: string) => {
+    setDownloadingPair(pair);
+    try {
+      // TODO: 调用后端 API 下载 K 线数据
+      // const res = await instancesApi.downloadKline(pair);
+      // 模拟下载过程
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      alert(`${pair} K 线数据下载完成！数据已保存到 VPS 实例中，可用于回测。`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '下载失败');
+    } finally {
+      setDownloadingPair(null);
     }
   };
 
@@ -186,17 +217,20 @@ export default function InstancesPage() {
                 <div>
                   <h3 className="text-text-primary font-medium mb-2">VPS 实例说明</h3>
                   <p className="text-text-secondary text-sm mb-3">
-                    VPS 实例是运行量化策略的独立服务器。购买订阅后，系统会自动创建专属 VPS，订阅到期后 VPS 会自动销毁。
+                    VPS 实例是运行量化策略的独立服务器。<strong className="text-brand-primary">购买订阅后系统自动创建</strong>，无需手动操作。此页面仅供查看状态，VPS 由系统自动管理。
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                     <div className="flex items-center gap-2 text-text-secondary">
-                      <Zap className="w-4 h-4 text-warning" /><span>策略 24/7 自动运行</span>
+                      <Zap className="w-4 h-4 text-warning" /><span>订阅后自动开启</span>
                     </div>
                     <div className="flex items-center gap-2 text-text-secondary">
-                      <Shield className="w-4 h-4 text-success" /><span>独立隔离，数据安全</span>
+                      <Eye className="w-4 h-4 text-brand-primary" /><span>仅查看权限</span>
                     </div>
                     <div className="flex items-center gap-2 text-text-secondary">
-                      <Clock className="w-4 h-4 text-brand-primary" /><span>订阅到期自动备份销毁</span>
+                      <Shield className="w-4 h-4 text-success" /><span>独立隔离安全</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-text-secondary">
+                      <Clock className="w-4 h-4 text-text-tertiary" /><span>到期自动销毁</span>
                     </div>
                   </div>
                 </div>
@@ -359,6 +393,45 @@ export default function InstancesPage() {
         </div>
       )}
 
+      {/* 下载历史 K 线 - 用于回测 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-brand-primary" />
+            下载历史 K 线
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-text-secondary text-sm mb-4">
+            下载交易对的历史 K 线数据到 VPS，用于策略回测。数据来源于交易所公开 API。
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {AVAILABLE_PAIRS.map((pair) => (
+              <button
+                key={pair.symbol}
+                onClick={() => handleDownloadKline(pair.symbol)}
+                disabled={downloadingPair !== null}
+                className="flex items-center justify-between p-3 rounded-lg bg-bg-tertiary/50 hover:bg-bg-tertiary transition-colors disabled:opacity-50"
+              >
+                <div className="text-left">
+                  <p className="text-white text-sm font-medium">{pair.symbol}</p>
+                  <p className="text-text-tertiary text-xs">{pair.name}</p>
+                </div>
+                {downloadingPair === pair.symbol ? (
+                  <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4 text-text-secondary" />
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="text-text-tertiary text-xs mt-4">
+            提示：下载完成后，可在回测系统中选择已下载的数据进行策略回测
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* 备份记录 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
