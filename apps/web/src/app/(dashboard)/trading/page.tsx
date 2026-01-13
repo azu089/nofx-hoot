@@ -275,60 +275,59 @@ export default function TradingPage() {
   }
 
   return (
-    <div className="pb-20">
-      {/* 统一大卡片 - 整合账户总览 + Tab 切换 + 内容区 */}
-      <div className="bg-bg-secondary rounded-xl overflow-hidden">
-        {/* 账户总览统一卡片 */}
-        <TradingHeroCard />
+    <div className="min-h-screen bg-bg-primary pb-24">
+      {/* 账户总览区域 - 纯黑背景 */}
+      <TradingHeroCard />
 
-        {/* Tab 切换区 - 无间距直接连接 */}
-        <div className="flex items-center justify-around border-b border-border-primary">
-          <TabButton
-            active={activeTab === 'positions'}
-            onClick={() => setActiveTab('positions')}
-            label="持仓"
-            badge={positions.length > 0 ? positions.length : undefined}
+      {/* Tab 切换栏 - 移动端无边框 */}
+      <div className="flex items-center justify-around lg:border-b lg:border-border-primary/30">
+        <TabButton
+          active={activeTab === 'positions'}
+          onClick={() => setActiveTab('positions')}
+          label="持仓"
+          badge={positions.length > 0 ? positions.length : undefined}
+        />
+        <TabButton
+          active={activeTab === 'history'}
+          onClick={() => setActiveTab('history')}
+          label="历史"
+        />
+        <TabButton
+          active={activeTab === 'logs'}
+          onClick={() => setActiveTab('logs')}
+          label="日志"
+          showDot={!!runningInstanceId}
+        />
+      </div>
+
+      {/* Tab 内容区 - 纯黑背景 */}
+      <div className="min-h-[200px]">
+        {/* 持仓 Tab */}
+        {activeTab === 'positions' && (
+          <PositionsTab
+            positions={positions}
+            onEmergencyExit={() => setEmergencyDialogOpen(true)}
           />
-          <TabButton
-            active={activeTab === 'history'}
-            onClick={() => setActiveTab('history')}
-            label="历史"
+        )}
+
+        {/* 历史 Tab */}
+        {activeTab === 'history' && (
+          <HistoryTab
+            trades={historyTrades}
+            onViewAll={() => router.push('/trading/history')}
           />
-          <TabButton
-            active={activeTab === 'logs'}
-            onClick={() => setActiveTab('logs')}
-            label="日志"
-            showDot={!!runningInstanceId}
-          />
-        </div>
+        )}
 
-        {/* Tab 内容区 - 无间距直接连接 */}
-        <div className="min-h-[200px] p-4">
-          {/* 持仓 Tab */}
-          {activeTab === 'positions' && (
-            <PositionsTab
-              positions={positions}
-              onEmergencyExit={() => setEmergencyDialogOpen(true)}
-            />
-          )}
-
-          {/* 历史 Tab */}
-          {activeTab === 'history' && (
-            <HistoryTab
-              trades={historyTrades}
-              onViewAll={() => router.push('/trading/history')}
-            />
-          )}
-
-          {/* 日志 Tab */}
-          {activeTab === 'logs' && (
+        {/* 日志 Tab */}
+        {activeTab === 'logs' && (
+          <div className="p-4">
             <TradingLog
               instanceId={runningInstanceId}
               isConnected={!!runningInstanceId}
               maxHeight={400}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 紧急平仓确认对话框 */}
@@ -429,9 +428,9 @@ function TabButton({ active, onClick, label, badge, showDot }: TabButtonProps) {
         )}
       </div>
 
-      {/* 底部激活指示器 */}
+      {/* 底部激活指示器 - 仅桌面端显示 */}
       {active && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary" />
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary hidden lg:block" />
       )}
     </button>
   );
@@ -446,11 +445,11 @@ interface PositionsTabProps {
 function PositionsTab({ positions, onEmergencyExit }: PositionsTabProps) {
   if (positions.length === 0) {
     return (
-      <div className="text-center py-16">
+      <div className="text-center py-16 px-4">
         <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
           <TrendingUp className="w-8 h-8 text-text-tertiary" />
         </div>
-        <p className="text-text-secondary font-medium mb-2">📊 暂无持仓</p>
+        <p className="text-text-secondary font-medium mb-2">暂无持仓</p>
         <button
           onClick={() => window.location.href = '/strategies'}
           className="text-brand-primary text-sm hover:underline"
@@ -462,26 +461,28 @@ function PositionsTab({ positions, onEmergencyExit }: PositionsTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* 紧急平仓按钮 */}
-      <div className="flex justify-end">
-        <Button
-          variant="danger"
-          size="sm"
+    <div>
+      {/* 紧急平仓按钮 - 悬浮在右上角 */}
+      <div className="flex justify-end px-4 py-3">
+        <button
           onClick={onEmergencyExit}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-danger/10 text-danger text-sm rounded-full hover:bg-danger/20 transition-colors"
         >
-          <AlertTriangle className="w-4 h-4 mr-2" />
+          <AlertTriangle className="w-3.5 h-3.5" />
           紧急全部平仓
-        </Button>
+        </button>
       </div>
 
-      {/* 持仓列表 */}
-      {positions.map((position) => (
-        <PositionCard
-          key={position.trade_id}
-          position={position}
-        />
-      ))}
+      {/* 持仓列表 - 斑马纹背景 */}
+      <div>
+        {positions.map((position, index) => (
+          <PositionCard
+            key={position.trade_id}
+            position={position}
+            zebra={index % 2 === 1}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -495,11 +496,11 @@ interface HistoryTabProps {
 function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
   if (trades.length === 0) {
     return (
-      <div className="text-center py-16">
+      <div className="text-center py-16 px-4">
         <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
           <Clock className="w-8 h-8 text-text-tertiary" />
         </div>
-        <p className="text-text-secondary font-medium mb-2">📜 暂无历史记录</p>
+        <p className="text-text-secondary font-medium mb-2">暂无历史记录</p>
         <button
           onClick={() => window.location.href = '/strategies'}
           className="text-brand-primary text-sm hover:underline"
@@ -511,8 +512,10 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
   }
 
   return (
-    <div className="space-y-2">
-      {trades.map((trade) => {
+    <div>
+      {/* 历史记录列表 - 纯黑背景 */}
+      <div>
+      {trades.map((trade, index) => {
         const pnl = parseFloat(trade.pnl || '0');
         const isProfit = pnl >= 0;
         const amount = parseFloat(trade.amount || '0');
@@ -541,10 +544,12 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
           }
         };
 
+        const isZebra = index % 2 === 1;
+
         return (
           <div
             key={trade.id}
-            className="bg-bg-secondary border border-border-primary rounded-xl p-4 space-y-3 hover:border-brand-primary/50 transition-colors"
+            className={`px-4 py-4 space-y-3 ${isZebra ? 'bg-bg-secondary' : ''}`}
           >
             {/* Row 1: 交易对 + 方向标签 + 杠杆 + 盈亏(金额+百分比) */}
             <div className="flex items-start justify-between">
@@ -578,7 +583,7 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
             </div>
 
             {/* Row 2: 开仓价 → 平仓价 */}
-            <div className="flex items-center justify-between bg-bg-tertiary/30 rounded-lg p-2.5">
+            <div className="flex items-center justify-between bg-bg-secondary lg:bg-bg-tertiary/30 rounded-lg p-2.5">
               <div className="flex-1">
                 <p className="text-text-tertiary text-xs mb-0.5">开仓价</p>
                 <p className="text-text-primary font-mono text-sm">
@@ -621,7 +626,7 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
             </div>
 
             {/* Row 4: 开仓时间 + 平仓时间 */}
-            <div className="flex items-center justify-between text-xs text-text-tertiary pt-1 border-t border-border-primary/30">
+            <div className="flex items-center justify-between text-xs text-text-tertiary pt-1">
               <div className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 <span>开仓: {formatDateTime(trade.executed_at)}</span>
@@ -633,12 +638,18 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
           </div>
         );
       })}
+      </div>
 
       {/* 查看全部按钮 */}
-      <Button variant="ghost" className="w-full mt-4" onClick={onViewAll}>
-        查看全部历史
-        <ChevronRight className="w-4 h-4 ml-2" />
-      </Button>
+      <div className="px-4 py-4">
+        <button
+          onClick={onViewAll}
+          className="w-full flex items-center justify-center gap-2 py-3 text-text-secondary hover:text-text-primary text-sm transition-colors"
+        >
+          查看全部历史
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

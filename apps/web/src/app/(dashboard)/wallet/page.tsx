@@ -10,7 +10,6 @@ import {
   Wallet,
   ArrowDownToLine,
   ArrowUpFromLine,
-  Copy,
   CheckCircle,
   Clock,
   XCircle,
@@ -19,10 +18,7 @@ import {
   Shield,
   Eye,
   EyeOff,
-  Coins,
-  Sparkles,
   Receipt,
-  CreditCard,
   ArrowLeftRight,
 } from 'lucide-react';
 
@@ -34,6 +30,36 @@ interface WalletData {
   card_balance: string;
   token_balance: string;
 }
+
+// ========== 资产图标配置（专业货币 Logo - 参考 Binance/OKX） ==========
+type AssetType = 'usdt' | 'points' | 'token' | 'card';
+
+const ASSET_ICONS: Record<AssetType, { icon: string; label: string; bgColor: string }> = {
+  usdt: { icon: '/icons/usdt.svg', label: 'USDT', bgColor: 'bg-[#26A17B]/20' },
+  points: { icon: '/icons/points.svg', label: '积分', bgColor: 'bg-[#FFD700]/20' },
+  token: { icon: '/icons/qfi.svg', label: 'QFI 代币', bgColor: 'bg-[#3772FF]/20' },
+  card: { icon: '/icons/card.svg', label: '点卡', bgColor: 'bg-[#F7931A]/20' },
+};
+
+// 资产图标组件 - 专业货币 Logo 样式
+const AssetIcon = ({ asset, size = 40 }: { asset: AssetType; size?: number }) => {
+  const config = ASSET_ICONS[asset];
+  return (
+    <div
+      className={`${config.bgColor} rounded-full flex items-center justify-center shrink-0`}
+      style={{ width: size, height: size }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={config.icon}
+        alt={config.label}
+        width={size * 0.55}
+        height={size * 0.55}
+        className="object-contain"
+      />
+    </div>
+  );
+};
 
 interface Transaction {
   id: string;
@@ -255,200 +281,172 @@ export default function WalletPage() {
 
       {/* 移动端 */}
       <div className="lg:hidden">
-        {/* 移动端总资产卡片 */}
-        <div className="bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl p-5 mb-4 shadow-lg shadow-brand-primary/20">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-white/80 text-sm">总资产 (USDT)</span>
-            {/* 眼睛按钮 - 显示/隐藏余额 */}
-            <button
-              onClick={() => setHideBalance(!hideBalance)}
-              className="p-1.5 rounded-lg bg-white/10 active:bg-white/20 transition-colors"
-            >
-              {hideBalance ? (
-                <EyeOff className="w-4 h-4 text-white/80" />
-              ) : (
-                <Eye className="w-4 h-4 text-white/80" />
-              )}
-            </button>
-          </div>
-          <p className="text-3xl font-bold text-white mb-4">
-            {hideBalance ? '****' : formatCurrency(wallet?.usdt_balance || '0')}
-          </p>
+        {/* 移动端总资产卡片 - 光球脉动效果 */}
+        <div className="relative bg-bg-secondary rounded-2xl p-5 mb-4 overflow-hidden">
+          {/* 光球脉动效果 */}
+          <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
 
-          {/* 移动端快捷操作按钮 - 充值、提现、闪兑、账单 */}
-          <div className="grid grid-cols-4 gap-2">
-            <button
-              onClick={() => router.push('/wallet/deposit')}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/10 rounded-xl active:bg-white/20 transition-all"
-            >
-              <ArrowDownToLine className="w-5 h-5 text-white" />
-              <span className="text-white text-xs font-medium">充值</span>
-            </button>
-            <button
-              onClick={() => router.push('/wallet/withdraw')}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/10 rounded-xl active:bg-white/20 transition-all"
-            >
-              <ArrowUpFromLine className="w-5 h-5 text-white" />
-              <span className="text-white text-xs font-medium">提现</span>
-            </button>
-            <button
-              onClick={() => router.push('/wallet/exchange')}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/10 rounded-xl active:bg-white/20 transition-all"
-            >
-              <ArrowLeftRight className="w-5 h-5 text-white" />
-              <span className="text-white text-xs font-medium">闪兑</span>
-            </button>
-            <button
-              onClick={() => router.push('/wallet/billing')}
-              className="flex flex-col items-center justify-center gap-1 p-3 bg-white/10 rounded-xl active:bg-white/20 transition-all"
-            >
-              <Receipt className="w-5 h-5 text-white" />
-              <span className="text-white text-xs font-medium">账单</span>
-            </button>
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-text-secondary text-sm">总资产 (USDT)</span>
+              {/* 眼睛按钮 - 显示/隐藏余额 */}
+              <button
+                onClick={() => setHideBalance(!hideBalance)}
+                className="p-1.5 rounded-lg bg-white/5 active:bg-white/10 transition-colors"
+              >
+                {hideBalance ? (
+                  <EyeOff className="w-4 h-4 text-text-tertiary" />
+                ) : (
+                  <Eye className="w-4 h-4 text-text-tertiary" />
+                )}
+              </button>
+            </div>
+            <p className="text-3xl font-bold font-mono text-white mb-4">
+              {hideBalance ? '****' : formatCurrency(wallet?.usdt_balance || '0')}
+            </p>
+
+            {/* 移动端快捷操作按钮 - 充值、提现、闪兑、账单 */}
+            <div className="grid grid-cols-4 gap-2">
+              <button
+                onClick={() => router.push('/wallet/deposit')}
+                className="flex flex-col items-center justify-center gap-1 p-3 bg-white/5 rounded-xl active:bg-white/10 transition-all"
+              >
+                <ArrowDownToLine className="w-5 h-5 text-brand-primary" />
+                <span className="text-text-secondary text-xs font-medium">充值</span>
+              </button>
+              <button
+                onClick={() => router.push('/wallet/withdraw')}
+                className="flex flex-col items-center justify-center gap-1 p-3 bg-white/5 rounded-xl active:bg-white/10 transition-all"
+              >
+                <ArrowUpFromLine className="w-5 h-5 text-warning" />
+                <span className="text-text-secondary text-xs font-medium">提现</span>
+              </button>
+              <button
+                onClick={() => router.push('/wallet/exchange')}
+                className="flex flex-col items-center justify-center gap-1 p-3 bg-white/5 rounded-xl active:bg-white/10 transition-all"
+              >
+                <ArrowLeftRight className="w-5 h-5 text-success" />
+                <span className="text-text-secondary text-xs font-medium">闪兑</span>
+              </button>
+              <button
+                onClick={() => router.push('/wallet/billing')}
+                className="flex flex-col items-center justify-center gap-1 p-3 bg-white/5 rounded-xl active:bg-white/10 transition-all"
+              >
+                <Receipt className="w-5 h-5 text-text-tertiary" />
+                <span className="text-text-secondary text-xs font-medium">账单</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 移动端资产明细 - USDT、积分、代币、点卡 */}
-        <Card className="lg:hidden">
-          <CardHeader>
-            <CardTitle className="text-base">资产明细</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        {/* 移动端资产明细 - 极简流畅风格 */}
+        <div className="lg:hidden">
+          <h3 className="text-text-secondary text-sm px-4 py-3">资产明细</h3>
+
+          {/* 资产列表 - 纯黑背景 + 斑马纹 */}
+          <div>
             {/* USDT */}
-            <div className="flex items-center justify-between p-3 bg-bg-tertiary/50 rounded-lg">
+            <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-primary/20 rounded-lg flex items-center justify-center">
-                  <Wallet className="w-5 h-5 text-brand-primary" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">USDT</p>
-                  <p className="text-text-tertiary text-sm">可用资产</p>
-                </div>
+                <AssetIcon asset="usdt" size={40} />
+                <p className="text-white font-medium">USDT</p>
               </div>
-              <p className="text-white font-bold">
+              <p className="text-white font-semibold">
                 {hideBalance ? '****' : formatCurrency(wallet?.usdt_balance || '0')}
               </p>
             </div>
 
-            {/* 积分 */}
-            <div className="flex items-center justify-between p-3 bg-bg-tertiary/50 rounded-lg">
+            {/* 积分 - 斑马纹 */}
+            <div className="flex items-center justify-between px-4 py-4 bg-bg-secondary">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-success/20 rounded-lg flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-success" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">积分</p>
-                  <p className="text-text-tertiary text-sm">可兑换 QFI 代币</p>
-                </div>
+                <AssetIcon asset="points" size={40} />
+                <p className="text-white font-medium">积分</p>
               </div>
-              <p className="text-white font-bold">
+              <p className="text-white font-semibold">
                 {hideBalance ? '****' : parseFloat(wallet?.points_balance || '0').toLocaleString()}
               </p>
             </div>
 
             {/* QFI 代币 */}
-            <div className="flex items-center justify-between p-3 bg-bg-tertiary/50 rounded-lg">
+            <div className="flex items-center justify-between px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                  <Coins className="w-5 h-5 text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">QFI 代币</p>
-                  <p className="text-text-tertiary text-sm">平台治理代币</p>
-                </div>
+                <AssetIcon asset="token" size={40} />
+                <p className="text-white font-medium">QFI 代币</p>
               </div>
-              <p className="text-white font-bold">
+              <p className="text-white font-semibold">
                 {hideBalance ? '****' : parseFloat(wallet?.token_balance || '0').toFixed(4)}
               </p>
             </div>
 
-            {/* 点卡 */}
-            <div className="flex items-center justify-between p-3 bg-bg-tertiary/50 rounded-lg">
+            {/* 点卡 - 斑马纹 */}
+            <div className="flex items-center justify-between px-4 py-4 bg-bg-secondary">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-warning/20 rounded-lg flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-warning" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">点卡</p>
-                  <p className="text-text-tertiary text-sm">抵扣交易手续费</p>
-                </div>
+                <AssetIcon asset="card" size={40} />
+                <p className="text-white font-medium">点卡</p>
               </div>
-              <p className="text-white font-bold">
+              <p className="text-white font-semibold">
                 {hideBalance ? '****' : parseFloat(wallet?.card_balance || '0').toFixed(2)}
               </p>
-            </div>
-          </CardContent>
-        </Card>
-
-      </div>
-
-      {/* 资产卡片 - 桌面端 */}
-      <div className="hidden lg:grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl p-6 shadow-lg shadow-brand-primary/20">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/80 text-sm">USDT</p>
-              <p className="text-2xl font-bold text-white mt-1">
-                {formatCurrency(wallet?.usdt_balance || '0')}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-              <Wallet className="w-6 h-6 text-white" />
             </div>
           </div>
         </div>
 
-        <Card>
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-text-secondary text-sm">积分</p>
-                <p className="text-2xl font-bold text-white mt-1">
-                  {parseFloat(wallet?.points_balance || '0').toLocaleString()}
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-success/20 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      </div>
 
-        {/* QFI 代币卡片 - 桌面端 */}
-        <Card>
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-text-secondary text-sm">QFI 代币</p>
-                </div>
-                <p className="text-2xl font-bold text-white mt-1">
-                  {parseFloat(wallet?.token_balance || '0').toFixed(4)}
-                </p>
-              </div>
-              <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                <Coins className="w-6 h-6 text-purple-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* 资产卡片 - 桌面端统一大卡片 + 光球脉动 */}
+      <div className="hidden lg:block relative bg-bg-secondary rounded-2xl p-6 overflow-hidden">
+        {/* 光球脉动效果 */}
+        <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
 
-        {/* 点卡卡片 - 桌面端 */}
-        <Card>
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-text-secondary text-sm">点卡</p>
-                <p className="text-2xl font-bold text-white mt-1">
-                  {parseFloat(wallet?.card_balance || '0').toFixed(2)}
-                </p>
+        <div className="relative z-10">
+          {/* 标题行 */}
+          <div className="flex items-center justify-between mb-6">
+            <span className="text-text-secondary text-sm">资产概览</span>
+            <Button variant="ghost" size="sm" onClick={fetchData}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
+            </Button>
+          </div>
+
+          {/* 主要数据 - USDT 余额 */}
+          <div className="mb-6">
+            <p className="text-text-tertiary text-sm mb-1">USDT 余额</p>
+            <p className="text-4xl font-bold font-mono text-white">
+              {formatCurrency(wallet?.usdt_balance || '0')}
+            </p>
+          </div>
+
+          {/* 次要数据 - 三列布局 */}
+          <div className="grid grid-cols-3 gap-6 pt-6 border-t border-border-primary/30">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AssetIcon asset="points" size={32} />
+                <span className="text-text-secondary text-sm">积分</span>
               </div>
-              <div className="w-12 h-12 bg-warning/20 rounded-lg flex items-center justify-center">
-                <CreditCard className="w-6 h-6 text-warning" />
-              </div>
+              <p className="text-2xl font-bold font-mono text-white">
+                {parseFloat(wallet?.points_balance || '0').toLocaleString()}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AssetIcon asset="token" size={32} />
+                <span className="text-text-secondary text-sm">QFI 代币</span>
+              </div>
+              <p className="text-2xl font-bold font-mono text-white">
+                {parseFloat(wallet?.token_balance || '0').toFixed(4)}
+              </p>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AssetIcon asset="card" size={32} />
+                <span className="text-text-secondary text-sm">点卡</span>
+              </div>
+              <p className="text-2xl font-bold font-mono text-white">
+                {parseFloat(wallet?.card_balance || '0').toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 快捷入口 - 桌面端 */}

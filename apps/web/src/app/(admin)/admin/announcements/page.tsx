@@ -72,24 +72,24 @@ export default function AdminAnnouncementsPage() {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-[#F7931A]" />;
+        return <AlertTriangle className="w-5 h-5 text-warning" />;
       case 'success':
-        return <CheckCircle className="w-5 h-5 text-[#00C087]" />;
+        return <CheckCircle className="w-5 h-5 text-success" />;
       case 'info':
       default:
-        return <Info className="w-5 h-5 text-[#3772FF]" />;
+        return <Info className="w-5 h-5 text-brand-primary" />;
     }
   };
 
   const getTypeBadge = (type: string) => {
     switch (type) {
       case 'warning':
-        return <span className="px-2 py-1 bg-[#F7931A]/10 text-[#F7931A] rounded text-xs">警告</span>;
+        return <span className="px-2 py-1 bg-warning/10 text-warning rounded text-xs">警告</span>;
       case 'success':
-        return <span className="px-2 py-1 bg-[#00C087]/10 text-[#00C087] rounded text-xs">喜讯</span>;
+        return <span className="px-2 py-1 bg-success/10 text-success rounded text-xs">喜讯</span>;
       case 'info':
       default:
-        return <span className="px-2 py-1 bg-[#3772FF]/10 text-[#3772FF] rounded text-xs">通知</span>;
+        return <span className="px-2 py-1 bg-brand-primary/10 text-brand-primary rounded text-xs">通知</span>;
     }
   };
 
@@ -99,14 +99,14 @@ export default function AdminAnnouncementsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">公告管理</h1>
-          <p className="text-[#848E9C] mt-1">发布和管理平台公告</p>
+          <p className="text-text-secondary mt-1">发布和管理平台公告</p>
         </div>
         <button
           onClick={() => {
             setEditingAnnouncement(null);
             setShowEditor(true);
           }}
-          className="px-4 py-2 bg-[#3772FF] text-white rounded-lg flex items-center gap-2 hover:bg-[#2962FF]"
+          className="px-4 py-2 bg-brand-primary text-white rounded-lg flex items-center gap-2 hover:bg-brand-secondary"
         >
           <Plus className="w-5 h-5" />
           发布公告
@@ -116,18 +116,18 @@ export default function AdminAnnouncementsPage() {
       {/* 公告列表 */}
       <div className="space-y-4">
         {isLoading ? (
-          <div className="text-center py-12 text-[#848E9C]">加载中...</div>
+          <div className="text-center py-12 text-text-secondary">加载中...</div>
         ) : !announcements?.data || announcements.data.length === 0 ? (
-          <div className="text-center py-12 text-[#848E9C]">暂无公告</div>
+          <div className="text-center py-12 text-text-secondary">暂无公告</div>
         ) : (
           announcements.data.map((announcement) => (
             <div
               key={announcement.id}
-              className="bg-[#131722] rounded-xl border border-[#2B3139] p-6"
+              className="glass-card p-4"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-[#1E222D] rounded-lg flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 bg-bg-tertiary rounded-lg flex items-center justify-center shrink-0">
                     {getTypeIcon(announcement.type)}
                   </div>
                   <div className="flex-1">
@@ -136,16 +136,16 @@ export default function AdminAnnouncementsPage() {
                       {getTypeBadge(announcement.type)}
                       <span className={`px-2 py-1 rounded text-xs ${
                         announcement.status === 'published'
-                          ? 'bg-[#00C087]/10 text-[#00C087]'
-                          : 'bg-[#848E9C]/10 text-[#848E9C]'
+                          ? 'bg-success/10 text-success'
+                          : 'bg-text-secondary/10 text-text-secondary'
                       }`}>
                         {announcement.status === 'published' ? '已发布' : '草稿'}
                       </span>
                     </div>
-                    <p className="text-[#848E9C] text-sm line-clamp-2">
+                    <p className="text-text-secondary text-sm line-clamp-2">
                       {announcement.content}
                     </p>
-                    <div className="flex items-center gap-4 mt-3 text-xs text-[#848E9C]">
+                    <div className="flex items-center gap-4 mt-3 text-xs text-text-secondary">
                       {announcement.publishedAt && (
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
@@ -162,13 +162,13 @@ export default function AdminAnnouncementsPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleMutation.mutate(announcement.id)}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
+                    className="p-2 hover:bg-bg-tertiary rounded-lg"
                     title={announcement.status === 'published' ? '取消发布' : '发布'}
                   >
                     {announcement.status === 'published' ? (
-                      <EyeOff className="w-5 h-5 text-[#848E9C]" />
+                      <EyeOff className="w-5 h-5 text-text-secondary" />
                     ) : (
-                      <Megaphone className="w-5 h-5 text-[#00C087]" />
+                      <Megaphone className="w-5 h-5 text-success" />
                     )}
                   </button>
                   <button
@@ -181,10 +181,10 @@ export default function AdminAnnouncementsPage() {
                       });
                       setShowEditor(true);
                     }}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
+                    className="p-2 hover:bg-bg-tertiary rounded-lg"
                     title="编辑"
                   >
-                    <Edit className="w-5 h-5 text-[#3772FF]" />
+                    <Edit className="w-5 h-5 text-brand-primary" />
                   </button>
                   <button
                     onClick={() => {
@@ -192,10 +192,10 @@ export default function AdminAnnouncementsPage() {
                         deleteMutation.mutate(announcement.id);
                       }
                     }}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
+                    className="p-2 hover:bg-bg-tertiary rounded-lg"
                     title="删除"
                   >
-                    <Trash2 className="w-5 h-5 text-[#F23645]" />
+                    <Trash2 className="w-5 h-5 text-danger" />
                   </button>
                 </div>
               </div>
@@ -207,27 +207,27 @@ export default function AdminAnnouncementsPage() {
       {/* 编辑弹窗 */}
       {showEditor && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#131722] rounded-xl p-6 w-full max-w-2xl border border-[#2B3139]">
+          <div className="bg-bg-secondary rounded-xl p-6 w-full max-w-2xl border border-border-primary">
             <h3 className="text-lg font-semibold text-white mb-4">
               {editingAnnouncement ? '编辑公告' : '发布公告'}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-[#848E9C] text-sm mb-2">标题</label>
+                <label className="block text-text-secondary text-sm mb-2">标题</label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white placeholder-[#848E9C] focus:outline-none focus:border-[#3772FF]"
+                  className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-secondary focus:outline-none focus:border-brand-primary"
                   placeholder="输入公告标题"
                 />
               </div>
               <div>
-                <label className="block text-[#848E9C] text-sm mb-2">类型</label>
+                <label className="block text-text-secondary text-sm mb-2">类型</label>
                 <select
                   value={formData.type}
                   onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                  className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                 >
                   <option value="info">通知</option>
                   <option value="warning">警告</option>
@@ -235,11 +235,11 @@ export default function AdminAnnouncementsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-[#848E9C] text-sm mb-2">内容</label>
+                <label className="block text-text-secondary text-sm mb-2">内容</label>
                 <textarea
                   value={formData.content}
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white placeholder-[#848E9C] focus:outline-none focus:border-[#3772FF] min-h-[150px]"
+                  className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-secondary focus:outline-none focus:border-brand-primary min-h-[150px]"
                   placeholder="输入公告内容"
                 />
               </div>
@@ -251,7 +251,7 @@ export default function AdminAnnouncementsPage() {
                   setFormData({ title: '', content: '', type: 'info' });
                   setEditingAnnouncement(null);
                 }}
-                className="flex-1 px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139]"
+                className="flex-1 px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary"
               >
                 取消
               </button>
@@ -268,7 +268,7 @@ export default function AdminAnnouncementsPage() {
                   }
                 }}
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="flex-1 px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending
                   ? '处理中...'

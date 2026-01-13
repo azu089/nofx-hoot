@@ -37,7 +37,7 @@ export function MobileTabBar() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-bg-secondary/95 backdrop-blur-sm border-t border-border-primary z-fixed">
+    <nav className="fixed bottom-0 left-0 right-0 bg-bg-primary/95 backdrop-blur-md z-fixed">
       <div className="h-14 flex pb-safe">
         {tabs.map((tab) => {
           const active = isActive(tab.path);

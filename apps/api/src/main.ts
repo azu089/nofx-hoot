@@ -9,7 +9,42 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 
+/**
+ * 验证生产环境必需的环境变量
+ */
+function validateProductionEnv() {
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv !== 'production') return;
+
+  const requiredVars = [
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'ENCRYPTION_KEY',
+    'CORS_ORIGIN',
+  ];
+
+  const missing = requiredVars.filter((v) => !process.env[v]);
+
+  if (missing.length > 0) {
+    console.error('========================================');
+    console.error('错误: 生产环境缺少必需的环境变量:');
+    missing.forEach((v) => console.error(`  - ${v}`));
+    console.error('========================================');
+    console.error('请参考 .env.production.example 配置');
+    process.exit(1);
+  }
+
+  // 验证 JWT_SECRET 强度
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+    console.error('错误: JWT_SECRET 长度必须至少 32 字符');
+    process.exit(1);
+  }
+}
+
 async function bootstrap() {
+  // 生产环境变量验证
+  validateProductionEnv();
+
   const app = await NestFactory.create(AppModule);
 
   // 获取配置服务
@@ -18,13 +53,22 @@ async function bootstrap() {
   // 全局前缀
   app.setGlobalPrefix('api');
 
-  // 启用 CORS（支持用户前端和管理后台）
-  const allowedOrigins = [
-    'http://localhost:3001', // 用户前端
-    'http://localhost:3002', // 管理后台
-  ];
+  // 启用 CORS（从环境变量读取，支持多域名）
+  const corsOrigin = configService.get<string>('app.corsOrigin') || 'http://localhost:3001,http://localhost:3002';
+  const allowedOrigins = corsOrigin.split(',').map(origin => origin.trim());
+
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // 允许无 origin 的请求（如服务器到服务器）
+      if (!origin) return callback(null, true);
+
+      // 检查是否在白名单中
+      if (allowedOrigins.some(allowed => origin === allowed || allowed === '*')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
@@ -167,7 +211,7 @@ Authorization: Bearer <JWT_TOKEN>
   if (nodeEnv !== 'production') {
     console.log(`   API 文档: http://localhost:${port}/api/docs`);
   }
-  console.log(`   CORS: localhost:3001, localhost:3002`);
+  console.log(`   CORS: ${allowedOrigins.join(', ')}`);
 }
 
 bootstrap();

@@ -29,7 +29,7 @@ export function MobileHeader({ showBack, title, rightContent }: MobileHeaderProp
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-bg-secondary/95 backdrop-blur-sm border-b border-border-primary pt-safe">
+    <header className="sticky top-0 z-50 bg-bg-primary/95 backdrop-blur-md pt-safe">
       <div className="h-14 flex items-center justify-between px-4">
         {/* 左侧 */}
         <div className="flex items-center">

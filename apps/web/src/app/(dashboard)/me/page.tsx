@@ -10,13 +10,18 @@ import {
   Sparkles,
   ChevronRight,
   LogOut,
-  Crown,
+  Download,
   HelpCircle,
   Users,
   Settings,
   Megaphone,
-  TrendingUp,
+  Check,
+  Share,
+  Plus,
+  Crown,
+  Gift,
 } from 'lucide-react';
+import { usePWA } from '@/hooks/usePWA';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,9 +42,10 @@ interface MenuItemProps {
   description?: string;
   badge?: string;
   variant?: 'default' | 'success' | 'warning' | 'danger';
+  isOdd?: boolean;
 }
 
-function MenuItem({ href, icon: Icon, label, description, badge, variant = 'default' }: MenuItemProps) {
+function MenuItem({ href, icon: Icon, label, description, badge, variant = 'default', isOdd = false }: MenuItemProps) {
   const variantStyles = {
     default: 'text-text-secondary group-hover:text-brand-primary',
     success: 'text-success',
@@ -57,10 +63,15 @@ function MenuItem({ href, icon: Icon, label, description, badge, variant = 'defa
   return (
     <Link
       href={href}
-      className="flex items-center gap-4 p-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-all group"
+      className={cn(
+        'flex items-center gap-4 px-4 py-4 transition-all group',
+        // 移动端斑马纹效果
+        'lg:rounded-xl lg:bg-bg-tertiary/30 lg:hover:bg-bg-tertiary/50',
+        isOdd ? 'bg-bg-secondary' : ''
+      )}
     >
       <div className={cn(
-        'w-10 h-10 rounded-xl flex items-center justify-center transition-colors',
+        'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
         bgStyles[variant]
       )}>
         <Icon className={cn('w-5 h-5', variantStyles[variant])} />
@@ -83,18 +94,11 @@ function MenuItem({ href, icon: Icon, label, description, badge, variant = 'defa
 
 export default function MePage() {
   const { user, isAuthenticated, logout } = useAuthStore();
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const { canInstall, isInstalled, isIOS, isSafari, install } = usePWA();
 
   // 判断用户角色
   const isAgent = user?.isAgent === true;
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-
-  // 获取订阅状态（暂时使用 VIP 等级判断，后续可接入真实订阅 API）
-  useEffect(() => {
-    if (isAuthenticated) {
-      setIsSubscribed((user?.vipLevel ?? 0) > 0);
-    }
-  }, [isAuthenticated, user?.vipLevel]);
 
   const handleLogout = () => {
     logout();
@@ -114,15 +118,38 @@ export default function MePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* 页面标题 - 仅桌面端显示 */}
       <div className="hidden lg:block">
         <h1 className="text-2xl font-bold text-text-primary">我的</h1>
         <p className="text-text-secondary mt-1">管理你的账户和偏好设置</p>
       </div>
 
-      {/* 用户信息卡片 */}
-      <Card variant="glass" className="overflow-hidden">
+      {/* 移动端用户信息区域 - 极简风格 */}
+      <div className="lg:hidden">
+        <div className="flex items-center gap-4 px-4 py-6">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center">
+            <User className="w-8 h-8 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg font-bold text-text-primary">
+                {user?.email?.split('@')[0] || '用户'}
+              </h2>
+              {user?.vipLevel && user.vipLevel > 0 && (
+                <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-warning/20 text-warning rounded-full">
+                  <Crown className="w-3 h-3" />
+                  VIP{user.vipLevel}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-text-tertiary truncate">{user?.email}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 桌面端用户信息卡片 */}
+      <Card variant="glass" className="overflow-hidden hidden lg:block">
         {/* 顶部装饰 */}
         <div className="h-16 bg-gradient-to-r from-brand-primary/30 via-brand-secondary/20 to-brand-primary/30" />
 
@@ -156,61 +183,124 @@ export default function MePage() {
         </CardContent>
       </Card>
 
-      {/* 会员订阅卡片 - P0 最显眼位置 */}
-      <Link href="/subscription">
-        <Card className={cn(
-          'overflow-hidden transition-all hover:border-brand-primary/50',
-          isSubscribed
-            ? 'bg-gradient-to-r from-warning/10 to-warning/5 border-warning/30'
-            : 'bg-gradient-to-r from-brand-primary/10 to-brand-primary/5 border-brand-primary/30'
-        )}>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-4">
-              <div className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center',
-                isSubscribed
-                  ? 'bg-gradient-to-br from-warning to-warning/60'
-                  : 'bg-gradient-to-br from-brand-primary to-brand-primary/60'
-              )}>
-                <Crown className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-white font-bold">会员订阅</h3>
-                  {isSubscribed && (
-                    <span className="px-2 py-0.5 text-xs font-medium bg-success/20 text-success rounded-full">
-                      已订阅
-                    </span>
-                  )}
-                </div>
-                <p className="text-text-secondary text-sm truncate">
-                  {isSubscribed
-                    ? 'VPS + 全部策略已解锁'
-                    : '升级解锁 VPS + 全部策略'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {!isSubscribed && (
-                  <span className="text-sm font-medium text-brand-primary">
-                    ¥25/月起
-                  </span>
-                )}
-                <ChevronRight className="w-5 h-5 text-text-tertiary" />
+      {/* 功能入口列表 - 移动端极简风格，桌面端保持卡片 */}
+      <div className="lg:hidden">
+        {/* 安装 APP - PWA 安装入口 */}
+        <button
+          onClick={() => canInstall && install()}
+          disabled={isInstalled}
+          className="w-full flex items-center gap-4 px-4 py-4 transition-all group text-left"
+        >
+          <div className={cn(
+            'w-10 h-10 rounded-full flex items-center justify-center',
+            isInstalled ? 'bg-success/10' : 'bg-brand-primary/10'
+          )}>
+            <Download className={cn('w-5 h-5', isInstalled ? 'text-success' : 'text-brand-primary')} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-text-primary">安装 APP</p>
+            <p className="text-xs text-text-tertiary mt-0.5 truncate">
+              {isInstalled ? '已安装到设备' : '添加到主屏幕，获得原生体验'}
+            </p>
+          </div>
+          {isInstalled ? (
+            <span className="flex items-center gap-1 text-xs text-success">
+              <Check className="w-4 h-4" />
+              已安装
+            </span>
+          ) : canInstall ? (
+            <span className="px-2.5 py-1 text-xs font-medium bg-brand-primary text-white rounded-lg">
+              安装
+            </span>
+          ) : isIOS && isSafari ? (
+            <div className="flex items-center gap-1 text-xs text-text-tertiary">
+              <Share className="w-3 h-3" />
+              <span>→</span>
+              <Plus className="w-3 h-3" />
+            </div>
+          ) : (
+            <span className="text-xs text-text-tertiary">请用 Chrome</span>
+          )}
+        </button>
+
+        <MenuItem
+          href="/settings/checkin"
+          icon={Gift}
+          label="每日签到"
+          description="签到领积分，连续签到更多奖励"
+          variant="warning"
+          isOdd={true}
+        />
+        <MenuItem
+          href="/settings"
+          icon={Settings}
+          label="设置"
+          description="账户、安全、通知"
+          isOdd={false}
+        />
+        <MenuItem
+          href="/announcements"
+          icon={Megaphone}
+          label="公告中心"
+          description="查看最新公告"
+          isOdd={true}
+        />
+        <MenuItem
+          href="/help"
+          icon={HelpCircle}
+          label="帮助与反馈"
+          isOdd={false}
+        />
+      </div>
+
+      {/* 桌面端功能入口 */}
+      <div className="hidden lg:block space-y-2">
+        {/* 安装 APP - 桌面端 */}
+        <button
+          onClick={() => canInstall && install()}
+          disabled={isInstalled}
+          className="w-full flex items-center gap-4 px-4 py-4 rounded-xl bg-bg-tertiary/30 hover:bg-bg-tertiary/50 transition-all group text-left"
+        >
+          <div className={cn(
+            'w-10 h-10 rounded-full flex items-center justify-center transition-colors',
+            isInstalled ? 'bg-success/10' : 'bg-brand-primary/10 group-hover:bg-brand-primary/20'
+          )}>
+            <Download className={cn('w-5 h-5', isInstalled ? 'text-success' : 'text-text-secondary group-hover:text-brand-primary')} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-text-primary">安装 APP</p>
+            <p className="text-xs text-text-tertiary mt-0.5 truncate">
+              {isInstalled ? '已安装到设备' : '添加到桌面，获得原生体验'}
+            </p>
+          </div>
+          {isInstalled ? (
+            <span className="flex items-center gap-1 text-sm text-success">
+              <Check className="w-4 h-4" />
+              已安装
+            </span>
+          ) : canInstall ? (
+            <span className="px-3 py-1.5 text-xs font-medium bg-brand-primary hover:bg-brand-secondary text-white rounded-lg transition-colors">
+              安装
+            </span>
+          ) : isIOS && isSafari ? (
+            <div className="text-right">
+              <p className="text-xs text-text-tertiary mb-1">iOS 安装:</p>
+              <div className="flex items-center gap-1 text-xs text-text-secondary">
+                <Share className="w-3 h-3" />
+                <span>→</span>
+                <Plus className="w-3 h-3" />
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </Link>
-
-      {/* 功能入口列表 - 精简为个人相关入口 */}
-      <div className="space-y-2">
+          ) : (
+            <span className="text-sm text-text-tertiary">请使用 Chrome/Safari</span>
+          )}
+        </button>
         <MenuItem
-          href="/me/exchanges"
-          icon={TrendingUp}
-          label="推荐交易所"
-          description="注册返佣，享手续费优惠"
-          variant="success"
-          badge="返佣"
+          href="/settings/checkin"
+          icon={Gift}
+          label="每日签到"
+          description="签到领积分，连续签到更多奖励"
+          variant="warning"
         />
         <MenuItem
           href="/settings"
@@ -234,11 +324,33 @@ export default function MePage() {
       {/* 角色特殊入口 */}
       {(isAgent || isAdmin) && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-text-tertiary uppercase px-1 flex items-center gap-1.5">
+          <p className="text-xs font-medium text-text-tertiary uppercase px-4 lg:px-1 flex items-center gap-1.5">
             <Sparkles className="w-3 h-3 text-brand-primary" />
             特殊权限
           </p>
-          <div className="space-y-2">
+          <div className="lg:hidden">
+            {isAgent && (
+              <MenuItem
+                href="/agent"
+                icon={Users}
+                label="代理商中心"
+                description="查看返佣、推广业绩"
+                variant="success"
+                isOdd={false}
+              />
+            )}
+            {isAdmin && (
+              <MenuItem
+                href="/admin"
+                icon={Shield}
+                label="管理后台"
+                description="用户管理、系统配置"
+                variant="warning"
+                isOdd={isAgent ? true : false}
+              />
+            )}
+          </div>
+          <div className="hidden lg:block space-y-2">
             {isAgent && (
               <MenuItem
                 href="/agent"
@@ -261,11 +373,11 @@ export default function MePage() {
         </div>
       )}
 
-      {/* 退出登录 */}
-      <div className="pt-4">
+      {/* 退出登录 - 移动端样式 */}
+      <div className="pt-4 px-4 lg:px-0">
         <Button
           variant="ghost"
-          className="w-full justify-center text-danger hover:bg-danger/10 hover:text-danger"
+          className="w-full justify-center text-danger hover:bg-danger/10 hover:text-danger lg:bg-bg-tertiary/30"
           onClick={handleLogout}
         >
           <LogOut className="w-4 h-4 mr-2" />

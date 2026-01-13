@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { DepositsService } from './deposits.service';
 import { CreateDepositDto } from './dto/create-deposit.dto';
 import { ReviewDepositDto } from './dto/deposit-response.dto';
@@ -57,9 +58,10 @@ export class DepositsController {
 
   /**
    * 管理员查看所有待审核充值
-   * GET /api/admin/deposits
+   * GET /api/deposits/admin
    */
   @Get('admin')
+  @UseGuards(AdminGuard)
   async findPending() {
     const deposits = await this.depositsService.findPending();
 
@@ -72,9 +74,10 @@ export class DepositsController {
 
   /**
    * 管理员审核充值
-   * POST /api/admin/deposits/:id/review
+   * POST /api/deposits/admin/:id/review
    */
   @Post('admin/:id/review')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   async review(
     @Request() req: any,

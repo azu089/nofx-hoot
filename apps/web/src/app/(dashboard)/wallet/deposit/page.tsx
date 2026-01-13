@@ -20,6 +20,7 @@ import {
   RefreshCw,
   QrCode,
   ChevronLeft,
+  ChevronDown,
 } from 'lucide-react';
 
 type Chain = 'TRC20' | 'ERC20' | 'BEP20';
@@ -117,12 +118,83 @@ export default function DepositPage() {
   const currentChainInfo = CHAIN_INFO[activeChain];
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 充值信息卡片 */}
-        <Card>
+    <div className="space-y-4 lg:space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+        {/* 充值信息区域 - 移动端极简风格 */}
+        <div className="lg:hidden space-y-4">
+          {/* 标题行 */}
+          <div className="flex items-center justify-between px-4">
+            <h2 className="text-lg font-semibold text-white">选择充值网络</h2>
+            <Button variant="ghost" size="sm" onClick={fetchDeposits} className="text-text-secondary">
+              <RefreshCw className="w-4 h-4 mr-1" />
+              刷新
+            </Button>
+          </div>
+
+          {/* 链选择 Tabs - 纯黑背景 */}
+          <div className="flex gap-2 px-4">
+            {(Object.keys(CHAIN_INFO) as Chain[]).map((chain) => (
+              <button
+                key={chain}
+                onClick={() => setActiveChain(chain)}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
+                  activeChain === chain
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-bg-secondary text-text-secondary'
+                }`}
+              >
+                {chain}
+              </button>
+            ))}
+          </div>
+
+          {/* 充值地址 */}
+          <div className="px-4 space-y-2">
+            <label className="block text-sm text-text-secondary">充值地址</label>
+            <div className="flex items-center gap-2 p-3 bg-bg-secondary rounded-lg">
+              <code className="flex-1 text-sm text-white break-all font-mono">
+                {currentAddress}
+              </code>
+              <button
+                onClick={() => handleCopy(currentAddress)}
+                className="p-2 hover:bg-bg-tertiary rounded transition flex-shrink-0"
+                title="复制地址"
+              >
+                {copied ? (
+                  <CheckCircle className="w-5 h-5 text-success" />
+                ) : (
+                  <Copy className="w-5 h-5 text-text-secondary" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 二维码 - 纯黑背景 */}
+          <div className="flex flex-col items-center gap-3 py-6 mx-4 bg-bg-secondary rounded-xl">
+            <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
+              <QrCode className="w-24 h-24 text-text-secondary" />
+            </div>
+          </div>
+
+          {/* 底部说明 - 折叠式 */}
+          <div className="mx-4 pt-4 border-t border-border-primary/20">
+            <details className="group">
+              <summary className="flex items-center justify-between cursor-pointer text-text-tertiary text-xs py-2">
+                <span>最低 {currentChainInfo.minDeposit} USDT · {currentChainInfo.confirmations} 个区块确认</span>
+                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+              </summary>
+              <ul className="text-xs text-text-tertiary space-y-1 pt-2 pb-2">
+                <li>• 请勿充值其他币种</li>
+                <li>• 通常 10-30 分钟到账</li>
+              </ul>
+            </details>
+          </div>
+
+        </div>
+
+        {/* 桌面端充值信息卡片 */}
+        <Card className="hidden lg:block">
           <CardContent className="p-4 space-y-6">
-            {/* 标题行：返回按钮 + 标题 + 刷新按钮 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <button
@@ -138,7 +210,6 @@ export default function DepositPage() {
                 刷新
               </Button>
             </div>
-            {/* 链选择 Tabs */}
             <div className="flex gap-2 p-1 bg-bg-tertiary rounded-lg">
               {(Object.keys(CHAIN_INFO) as Chain[]).map((chain) => (
                 <button
@@ -154,8 +225,6 @@ export default function DepositPage() {
                 </button>
               ))}
             </div>
-
-            {/* 充值地址 */}
             <div className="space-y-2">
               <label className="block text-sm text-text-secondary">充值地址</label>
               <div className="flex items-center gap-2 p-3 bg-bg-tertiary rounded-lg border border-border-secondary">
@@ -178,16 +247,12 @@ export default function DepositPage() {
                 请向此地址转账 USDT，确保选择正确的网络：{currentChainInfo.name}
               </p>
             </div>
-
-            {/* 二维码占位符 */}
             <div className="flex flex-col items-center gap-3 p-6 bg-bg-tertiary rounded-lg">
               <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
                 <QrCode className="w-24 h-24 text-text-secondary" />
               </div>
               <p className="text-sm text-text-secondary">扫描二维码充值</p>
             </div>
-
-            {/* 重要提示 */}
             <div className="space-y-2 p-4 bg-warning/10 border border-warning/30 rounded-lg">
               <h4 className="text-sm font-medium text-warning">重要提示</h4>
               <ul className="text-xs text-text-secondary space-y-1 list-disc list-inside">
@@ -200,8 +265,8 @@ export default function DepositPage() {
           </CardContent>
         </Card>
 
-        {/* 充值记录 */}
-        <Card>
+        {/* 充值记录 - 桌面端 */}
+        <Card className="hidden lg:block">
           <CardHeader>
             <CardTitle>充值记录</CardTitle>
           </CardHeader>
@@ -248,8 +313,8 @@ export default function DepositPage() {
         </Card>
       </div>
 
-      {/* 充值流程说明 */}
-      <Card>
+      {/* 充值流程说明 - 桌面端 */}
+      <Card className="hidden lg:block">
         <CardHeader>
           <CardTitle>充值流程</CardTitle>
         </CardHeader>

@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
+  Gift,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
 import { toast } from 'sonner';
@@ -36,6 +38,8 @@ const categoryIcons: Record<string, IconComponent> = {
   vip: Crown,
   feature: Zap,
   agent: Users,
+  referral: Gift,
+  exchange: ArrowRightLeft,
 };
 
 const categoryLabels: Record<string, string> = {
@@ -43,6 +47,8 @@ const categoryLabels: Record<string, string> = {
   vip: 'VIP 配置',
   feature: '功能开关',
   agent: '代理商配置',
+  referral: '邀请返佣',
+  exchange: '积分兑换',
 };
 
 export default function ConfigsPage() {
@@ -108,7 +114,7 @@ export default function ConfigsPage() {
           <select
             value={editValue ? 'true' : 'false'}
             onChange={(e) => setEditValue(e.target.value === 'true')}
-            className="bg-[#1E222D] border border-[#2B3139] rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:border-[#3772FF]"
+            className="bg-bg-tertiary border border-border-primary rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:border-brand-primary"
           >
             <option value="true">启用</option>
             <option value="false">禁用</option>
@@ -121,7 +127,7 @@ export default function ConfigsPage() {
             type="number"
             value={typeof editValue === 'number' ? editValue : ''}
             onChange={(e) => setEditValue(parseFloat(e.target.value))}
-            className="bg-[#1E222D] border border-[#2B3139] rounded px-3 py-1.5 text-white text-sm w-32 focus:outline-none focus:border-[#3772FF]"
+            className="bg-bg-tertiary border border-border-primary rounded px-3 py-1.5 text-white text-sm w-32 focus:outline-none focus:border-brand-primary"
           />
         );
       }
@@ -130,7 +136,7 @@ export default function ConfigsPage() {
           type="text"
           value={typeof editValue === 'string' ? editValue : ''}
           onChange={(e) => setEditValue(e.target.value)}
-          className="bg-[#1E222D] border border-[#2B3139] rounded px-3 py-1.5 text-white text-sm w-48 focus:outline-none focus:border-[#3772FF]"
+          className="bg-bg-tertiary border border-border-primary rounded px-3 py-1.5 text-white text-sm w-48 focus:outline-none focus:border-brand-primary"
         />
       );
     }
@@ -140,8 +146,8 @@ export default function ConfigsPage() {
       return (
         <span className={`px-2 py-1 rounded text-xs ${
           config.configValue
-            ? 'bg-[#00C087]/10 text-[#00C087]'
-            : 'bg-[#F23645]/10 text-[#F23645]'
+            ? 'bg-success/10 text-success'
+            : 'bg-danger/10 text-danger'
         }`}>
           {config.configValue ? '启用' : '禁用'}
         </span>
@@ -154,7 +160,7 @@ export default function ConfigsPage() {
   };
 
   // 按分类分组
-  const categories = ['billing', 'vip', 'feature', 'agent'];
+  const categories = ['billing', 'vip', 'feature', 'agent', 'referral', 'exchange'];
 
   return (
     <div className="space-y-6">
@@ -165,12 +171,12 @@ export default function ConfigsPage() {
             <Settings className="w-6 h-6" />
             配置中心
           </h1>
-          <p className="text-[#848E9C] mt-1">管理系统配置参数</p>
+          <p className="text-text-secondary mt-1">管理系统配置参数</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => refetch()}
-            className="px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139] transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary transition-colors flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
             刷新
@@ -178,7 +184,7 @@ export default function ConfigsPage() {
           <button
             onClick={() => initMutation.mutate()}
             disabled={initMutation.isPending}
-            className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             {initMutation.isPending ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -191,7 +197,7 @@ export default function ConfigsPage() {
       </div>
 
       {/* 分类标签 */}
-      <div className="flex gap-2 border-b border-[#2B3139] pb-4">
+      <div className="flex gap-2 border-b border-border-primary pb-4">
         {categories.map((cat) => {
           const Icon = categoryIcons[cat] || Settings;
           return (
@@ -200,8 +206,8 @@ export default function ConfigsPage() {
               onClick={() => setActiveCategory(cat)}
               className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
                 activeCategory === cat
-                  ? 'bg-[#3772FF] text-white'
-                  : 'bg-[#1E222D] text-[#848E9C] hover:text-white hover:bg-[#2B3139]'
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-bg-tertiary text-text-secondary hover:text-white hover:bg-bg-tertiary'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -212,44 +218,44 @@ export default function ConfigsPage() {
       </div>
 
       {/* 配置列表 */}
-      <div className="bg-[#131722] rounded-xl border border-[#2B3139]">
+      <div className="glass-card">
         {isLoading ? (
           <div className="p-8 text-center">
-            <RefreshCw className="w-8 h-8 text-[#3772FF] animate-spin mx-auto" />
-            <p className="text-[#848E9C] mt-2">加载中...</p>
+            <RefreshCw className="w-8 h-8 text-brand-primary animate-spin mx-auto" />
+            <p className="text-text-secondary mt-2">加载中...</p>
           </div>
         ) : configs.length === 0 ? (
           <div className="p-8 text-center">
-            <AlertCircle className="w-12 h-12 text-[#848E9C] mx-auto" />
-            <p className="text-[#848E9C] mt-2">暂无配置项</p>
-            <p className="text-[#5E6673] text-sm mt-1">
+            <AlertCircle className="w-12 h-12 text-text-secondary mx-auto" />
+            <p className="text-text-secondary mt-2">暂无配置项</p>
+            <p className="text-text-tertiary text-sm mt-1">
               点击上方"初始化默认配置"按钮创建
             </p>
           </div>
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#2B3139]">
-                <th className="text-left py-4 px-6 text-[#848E9C] font-medium">配置项</th>
-                <th className="text-left py-4 px-6 text-[#848E9C] font-medium">当前值</th>
-                <th className="text-left py-4 px-6 text-[#848E9C] font-medium">公开</th>
-                <th className="text-right py-4 px-6 text-[#848E9C] font-medium">操作</th>
+              <tr className="border-b border-border-primary">
+                <th className="text-left py-4 px-6 text-text-secondary font-medium">配置项</th>
+                <th className="text-left py-4 px-6 text-text-secondary font-medium">当前值</th>
+                <th className="text-left py-4 px-6 text-text-secondary font-medium">公开</th>
+                <th className="text-right py-4 px-6 text-text-secondary font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
               {configs.map((config: ConfigItem) => (
                 <tr
                   key={config.configKey}
-                  className="border-b border-[#2B3139] last:border-0 hover:bg-[#1E222D]/50"
+                  className="border-b border-border-primary last:border-0 hover:bg-bg-tertiary/50"
                 >
                   <td className="py-4 px-6">
                     <div>
                       <p className="text-white font-medium">{config.label}</p>
-                      <p className="text-[#5E6673] text-xs font-mono mt-0.5">
+                      <p className="text-text-tertiary text-xs font-mono mt-0.5">
                         {config.configKey}
                       </p>
                       {config.description && (
-                        <p className="text-[#848E9C] text-sm mt-1">
+                        <p className="text-text-secondary text-sm mt-1">
                           {config.description}
                         </p>
                       )}
@@ -260,11 +266,11 @@ export default function ConfigsPage() {
                   </td>
                   <td className="py-4 px-6">
                     {config.isPublic ? (
-                      <span className="px-2 py-1 bg-[#00C087]/10 text-[#00C087] text-xs rounded">
+                      <span className="px-2 py-1 bg-success/10 text-success text-xs rounded">
                         公开
                       </span>
                     ) : (
-                      <span className="px-2 py-1 bg-[#848E9C]/10 text-[#848E9C] text-xs rounded">
+                      <span className="px-2 py-1 bg-text-secondary/10 text-text-secondary text-xs rounded">
                         私有
                       </span>
                     )}
@@ -275,7 +281,7 @@ export default function ConfigsPage() {
                         <button
                           onClick={() => handleSave(config.configKey)}
                           disabled={updateMutation.isPending}
-                          className="p-2 bg-[#00C087] text-white rounded-lg hover:bg-[#00C087]/80 transition-colors disabled:opacity-50"
+                          className="p-2 bg-success text-white rounded-lg hover:bg-success/80 transition-colors disabled:opacity-50"
                         >
                           {updateMutation.isPending ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -285,7 +291,7 @@ export default function ConfigsPage() {
                         </button>
                         <button
                           onClick={handleCancel}
-                          className="p-2 bg-[#F23645]/10 text-[#F23645] rounded-lg hover:bg-[#F23645]/20 transition-colors"
+                          className="p-2 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 transition-colors"
                         >
                           取消
                         </button>
@@ -293,7 +299,7 @@ export default function ConfigsPage() {
                     ) : (
                       <button
                         onClick={() => handleEdit(config)}
-                        className="px-3 py-1.5 bg-[#3772FF]/10 text-[#3772FF] rounded-lg hover:bg-[#3772FF]/20 transition-colors text-sm"
+                        className="px-3 py-1.5 bg-brand-primary/10 text-brand-primary rounded-lg hover:bg-brand-primary/20 transition-colors text-sm"
                       >
                         编辑
                       </button>

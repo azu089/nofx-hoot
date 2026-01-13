@@ -38,6 +38,7 @@ import { TelegramModule } from './modules/telegram/telegram.module';
 import { MarketModule } from './modules/market/market.module';
 import { ExchangeModule } from './modules/exchange/exchange.module';
 import { ExchangeLinksModule } from './modules/exchange-links/exchange-links.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { ExchangeLinksModule } from './modules/exchange-links/exchange-links.mod
     ConfigModule, // 配置模块（全局）
     PrismaModule, // Prisma 数据库模块
     RedisModule, // Redis 模块（全局）
+    EmailModule, // 邮件模块（全局）
     EventsModule, // WebSocket 事件模块（实时推送）
     AuthModule, // 认证模块
     UsersModule, // 用户模块

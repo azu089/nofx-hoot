@@ -9,7 +9,7 @@ import type { Metadata } from 'next';
 //   title: '提现 | QuantFi',
 //   description: '将 USDT 提现到您的钱包地址，支持 TRC20/ERC20/BEP20',
 // };
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, MobileHeader } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
 import { withdrawalsApi, userApi, authApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Shield,
   X,
+  ChevronDown,
 } from 'lucide-react';
 
 type Chain = 'TRC20' | 'ERC20' | 'BEP20';
@@ -207,7 +208,13 @@ export default function WithdrawPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <MobileHeader title="提现" />
+        {/* 刷新按钮 - 移动端只显示图标 */}
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={fetchData} disabled>
+            <RefreshCw className="w-4 h-4 lg:mr-2" />
+            <span className="hidden lg:inline">刷新</span>
+          </Button>
+        </div>
         <div className="animate-pulse space-y-6">
           <div className="h-64 bg-bg-tertiary rounded-xl" />
           <div className="h-64 bg-bg-tertiary rounded-xl" />
@@ -217,34 +224,171 @@ export default function WithdrawPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* 顶部导航 */}
-      <MobileHeader
-        title="提现"
-        rightAction={
-          <Button variant="ghost" size="sm" onClick={fetchData}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-        }
-      />
+    <div className="space-y-4 lg:space-y-6">
+      {/* 刷新按钮 - 移动端只显示图标 */}
+      <div className="flex justify-end px-4 lg:px-0">
+        <Button variant="ghost" size="sm" onClick={fetchData}>
+          <RefreshCw className="w-4 h-4 lg:mr-2" />
+          <span className="hidden lg:inline">刷新</span>
+        </Button>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 提现表单 */}
-        <Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+        {/* 提现表单 - 移动端极简风格 */}
+        <div className="lg:hidden space-y-4">
+          {/* 可提现余额 - 统一资产卡片 + 光球脉动 */}
+          <div className="mx-4 p-5 relative bg-bg-secondary rounded-2xl overflow-hidden">
+            {/* 光球脉动效果 */}
+            <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
+            <div className="relative z-10">
+              <p className="text-sm text-text-secondary mb-1">可提现余额</p>
+              <p className="text-3xl font-bold font-mono text-white">
+                {formatCurrency(balance)}
+              </p>
+            </div>
+          </div>
+
+          {/* 提现网络 */}
+          <div className="px-4">
+            <label className="block text-sm text-text-secondary mb-2">
+              提现网络
+            </label>
+            <select
+              value={chain}
+              onChange={(e) => setChain(e.target.value as Chain)}
+              className="w-full px-4 py-3 bg-bg-secondary rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            >
+              {(Object.keys(CHAIN_FEES) as Chain[]).map((c) => (
+                <option key={c} value={c}>
+                  {CHAIN_FEES[c].name} (手续费: {CHAIN_FEES[c].fee} USDT)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 提现金额 */}
+          <div className="px-4">
+            <label className="block text-sm text-text-secondary mb-2">
+              提现金额
+            </label>
+            <div className="relative">
+              <Input
+                type="number"
+                placeholder="输入提现金额"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="pr-20 bg-bg-secondary border-0"
+                step="0.01"
+                min="0"
+              />
+              <button
+                onClick={handleMaxAmount}
+                className="absolute right-3 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-brand-primary hover:bg-brand-secondary text-white rounded transition"
+              >
+                最大
+              </button>
+            </div>
+          </div>
+
+          {/* 收款地址 */}
+          <div className="px-4">
+            <label className="block text-sm text-text-secondary mb-2">
+              收款地址
+            </label>
+            <Input
+              type="text"
+              placeholder={`输入 ${chain} 地址`}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="bg-bg-secondary border-0"
+            />
+          </div>
+
+          {/* 提交按钮 */}
+          <div className="px-4">
+            <Button
+              className="w-full"
+              onClick={handleSubmit}
+              isLoading={submitting}
+              disabled={!amount || !address || amountNum <= 0}
+            >
+              提交提现申请
+            </Button>
+          </div>
+
+          {/* 底部说明 - 折叠式 */}
+          <div className="mx-4 pt-4">
+            <details className="group">
+              <summary className="flex items-center justify-between cursor-pointer text-text-tertiary text-xs py-2">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                  最低 {fee + 5} USDT · 1-24 小时到账
+                </span>
+                <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" />
+              </summary>
+              <ul className="text-xs text-text-tertiary space-y-1 pt-2 pb-2">
+                <li>• 请仔细核对收款地址，转账后无法撤销</li>
+                <li>• 请确保网络与收款地址匹配</li>
+              </ul>
+            </details>
+          </div>
+
+          {/* 提现记录标题 */}
+          <h3 className="text-text-secondary text-sm px-4 pt-4">提现记录</h3>
+
+          {/* 提现记录列表 - 斑马纹 */}
+          {withdrawals.length === 0 ? (
+            <div className="text-center py-8 text-text-secondary">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">暂无提现记录</p>
+            </div>
+          ) : (
+            <div>
+              {withdrawals.map((withdrawal, index) => (
+                <div
+                  key={withdrawal.id}
+                  className={`px-4 py-4 space-y-2 ${index % 2 === 1 ? 'bg-bg-secondary' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-medium">
+                        -{formatCurrency(withdrawal.amount)}
+                      </span>
+                      <span className="px-2 py-0.5 bg-[#1a1d24] rounded text-xs text-text-secondary">
+                        {withdrawal.chain}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(withdrawal.status)}
+                      <span className="text-sm text-text-secondary">
+                        {getStatusText(withdrawal.status)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-text-tertiary truncate">
+                    {withdrawal.to_address}
+                  </p>
+                  <p className="text-xs text-text-tertiary">
+                    {formatDateTime(withdrawal.created_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 桌面端提现表单 */}
+        <Card className="hidden lg:block">
           <CardHeader>
             <CardTitle>提现信息</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* 可提现余额 */}
             <div className="p-4 bg-bg-tertiary rounded-lg">
               <p className="text-sm text-text-secondary mb-1">可提现余额</p>
               <p className="text-2xl font-bold text-white">
                 {formatCurrency(balance)}
               </p>
             </div>
-
-            {/* 提现链选择 */}
             <div>
               <label className="block text-sm text-text-secondary mb-2">
                 提现网络
@@ -261,8 +405,6 @@ export default function WithdrawPage() {
                 ))}
               </select>
             </div>
-
-            {/* 提现金额 */}
             <div>
               <label className="block text-sm text-text-secondary mb-2">
                 提现金额
@@ -285,8 +427,6 @@ export default function WithdrawPage() {
                 </button>
               </div>
             </div>
-
-            {/* 收款地址 */}
             <Input
               label="收款地址"
               type="text"
@@ -294,8 +434,6 @@ export default function WithdrawPage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
-
-            {/* 费用明细 */}
             {amountNum > 0 && (
               <div className="space-y-2 p-4 bg-bg-tertiary/50 rounded-lg">
                 <div className="flex justify-between text-sm">
@@ -313,8 +451,6 @@ export default function WithdrawPage() {
                 </div>
               </div>
             )}
-
-            {/* 提交按钮 */}
             <Button
               className="w-full"
               onClick={handleSubmit}
@@ -323,16 +459,12 @@ export default function WithdrawPage() {
             >
               提交提现申请
             </Button>
-
-            {/* 2FA 提示 */}
             {totpEnabled && (
               <div className="flex items-center gap-2 text-sm text-text-secondary justify-center">
                 <Shield className="w-4 h-4" />
                 <span>提现需要 2FA 验证</span>
               </div>
             )}
-
-            {/* 安全提示 */}
             <div className="p-4 bg-warning/10 border border-warning/30 rounded-lg">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
@@ -350,8 +482,8 @@ export default function WithdrawPage() {
           </CardContent>
         </Card>
 
-        {/* 提现记录 */}
-        <Card>
+        {/* 桌面端提现记录 */}
+        <Card className="hidden lg:block">
           <CardHeader>
             <CardTitle>提现记录</CardTitle>
           </CardHeader>

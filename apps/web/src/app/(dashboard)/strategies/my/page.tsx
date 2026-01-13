@@ -639,8 +639,8 @@ export default function MyStrategiesPage() {
   // ============ 渲染 ============
   return (
     <div className="space-y-4 pb-20">
-      {/* 返回按钮 */}
-      <div className="flex items-center">
+      {/* 返回按钮 - 移动端由 MobileLayout 提供，这里只在桌面端显示 */}
+      <div className="hidden lg:flex items-center">
         <button
           onClick={() => router.back()}
           className="w-8 h-8 flex items-center justify-center rounded-lg bg-bg-secondary hover:bg-bg-tertiary transition-colors"
@@ -652,9 +652,9 @@ export default function MyStrategiesPage() {
       {/* 入口按钮组 */}
       <div className="grid grid-cols-2 gap-3">
         <Button
-          variant="outline"
+          variant="ghost"
           onClick={() => router.push('/strategies')}
-          className="h-9 flex items-center justify-center gap-1.5 text-sm"
+          className="h-9 flex items-center justify-center gap-1.5 text-sm bg-bg-secondary lg:bg-transparent lg:border lg:border-border-primary"
         >
           <Store className="w-3.5 h-3.5" />
           <span>添加策略</span>
@@ -673,7 +673,7 @@ export default function MyStrategiesPage() {
         <select
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value)}
-          className="px-2 py-1 bg-bg-secondary rounded text-xs text-text-secondary focus:outline-none"
+          className="px-2 py-1 bg-bg-secondary lg:bg-bg-secondary rounded text-xs text-text-secondary focus:outline-none"
         >
           {SOURCE_FILTERS.map(f => (
             <option key={f.key} value={f.key}>{f.label}</option>
@@ -682,7 +682,7 @@ export default function MyStrategiesPage() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-2 py-1 bg-bg-secondary rounded text-xs text-text-secondary focus:outline-none"
+          className="px-2 py-1 bg-bg-secondary lg:bg-bg-secondary rounded text-xs text-text-secondary focus:outline-none"
         >
           {TYPE_FILTERS.map(f => (
             <option key={f.key} value={f.key}>{f.label}</option>
@@ -695,15 +695,18 @@ export default function MyStrategiesPage() {
 
       {/* 策略列表 */}
       {filteredConfigs.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Settings className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+        <>
+          {/* 移动端空状态 */}
+          <div className="lg:hidden py-12 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-bg-secondary rounded-full flex items-center justify-center">
+              <Settings className="w-8 h-8 text-text-tertiary opacity-50" />
+            </div>
             <h3 className="text-base font-medium text-text-primary mb-2">还没有配置策略</h3>
             <p className="text-text-secondary text-sm mb-4">
               从策略市场选择，或创建自己的策略
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => router.push('/strategies')}>
+              <Button variant="ghost" className="bg-bg-secondary" onClick={() => router.push('/strategies')}>
                 <Store className="w-4 h-4 mr-2" />
                 添加策略
               </Button>
@@ -712,28 +715,162 @@ export default function MyStrategiesPage() {
                 创建策略
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          {/* 桌面端空状态 */}
+          <Card className="hidden lg:block">
+            <CardContent className="p-12 text-center">
+              <Settings className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+              <h3 className="text-base font-medium text-text-primary mb-2">还没有配置策略</h3>
+              <p className="text-text-secondary text-sm mb-4">
+                从策略市场选择，或创建自己的策略
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" onClick={() => router.push('/strategies')}>
+                  <Store className="w-4 h-4 mr-2" />
+                  添加策略
+                </Button>
+                <Button onClick={() => router.push('/strategies/create')}>
+                  <Code className="w-4 h-4 mr-2" />
+                  创建策略
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       ) : (
-        <div className="space-y-4">
-          {filteredConfigs.map((config) => {
-            const isActive = config.is_active;
-            const source = getStrategySource(config.strategy);
-            const tradeType = getTradeType(config.strategy);
-            // 只有个人策略（非公开且非系统）才能上传
-            const canUpload = !config.strategy.is_public && config.strategy.owner_type !== 'system';
+        <>
+          {/* ===== 移动端策略列表 - 斑马纹 ===== */}
+          <div className="lg:hidden rounded-xl overflow-hidden">
+            {filteredConfigs.map((config, index) => {
+              const isActive = config.is_active;
+              const source = getStrategySource(config.strategy);
+              const tradeType = getTradeType(config.strategy);
+              const canUpload = !config.strategy.is_public && config.strategy.owner_type !== 'system';
+              const backtestWinRate = parseFloat(config.strategy.backtest_win_rate || '0');
+              const backtestDrawdown = parseFloat(config.strategy.backtest_max_drawdown || '0');
+              const backtestSharpe = parseFloat(config.strategy.backtest_sharpe_ratio || '0');
 
-            // 回测数据
-            const backtestWinRate = parseFloat(config.strategy.backtest_win_rate || '0');
-            const backtestDrawdown = parseFloat(config.strategy.backtest_max_drawdown || '0');
-            const backtestSharpe = parseFloat(config.strategy.backtest_sharpe_ratio || '0');
+              return (
+                <div
+                  key={config.id}
+                  className={`p-4 ${index % 2 === 1 ? 'bg-bg-secondary' : ''}`}
+                >
+                  {/* ===== Row 1: 策略名 + 现货/合约 + 来源 + 运行状态 + 启停按钮 ===== */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <h3 className="text-white font-semibold text-base truncate flex-1">{config.strategy.name}</h3>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${tradeType.color} ${tradeType.textColor}`}>
+                      {tradeType.label}
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${source.color} ${source.textColor}`}>
+                      {source.label}
+                    </span>
+                    <div className={`flex items-center gap-1 px-2 py-0.5 rounded shrink-0 ${isActive ? 'bg-success/10' : 'bg-bg-tertiary'}`}>
+                      <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-success animate-pulse' : 'bg-text-tertiary'}`} />
+                      <span className={`text-xs font-medium ${isActive ? 'text-success' : 'text-text-tertiary'}`}>
+                        {isActive ? '运行中' : '已停止'}
+                      </span>
+                    </div>
+                    {isActive ? (
+                      <button
+                        onClick={() => handleStopStrategy(config)}
+                        className="w-9 h-9 flex items-center justify-center rounded-full bg-danger/10 text-danger hover:bg-danger/20 transition-colors shrink-0"
+                      >
+                        <Pause className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenStartModal(config)}
+                        className="w-9 h-9 flex items-center justify-center rounded-full bg-success/10 text-success hover:bg-success/20 transition-colors shrink-0"
+                      >
+                        <Play className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
 
-            return (
-              <Card
-                key={config.id}
-                className="transition-all border-0"
-              >
-                <CardContent className="p-4">
+                  {/* ===== Row 2: 胜率 | 回撤 | 夏普 (3列) ===== */}
+                  <div className="grid grid-cols-3 gap-3 py-3">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-white">{backtestWinRate.toFixed(0)}%</p>
+                      <p className="text-xs text-text-tertiary">胜率</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-danger">-{Math.abs(backtestDrawdown).toFixed(1)}%</p>
+                      <p className="text-xs text-text-tertiary">最大回撤</p>
+                    </div>
+                    <div className="text-center">
+                      <p className={`text-lg font-bold ${backtestSharpe >= 1 ? 'text-success' : backtestSharpe >= 0.5 ? 'text-warning' : 'text-text-secondary'}`}>
+                        {backtestSharpe.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-text-tertiary">夏普比率</p>
+                    </div>
+                  </div>
+
+                  {/* ===== Row 3: 操作按钮行 ===== */}
+                  <div className="flex items-center gap-2 pt-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/strategies/${config.strategy_id}`)}
+                      className="flex-1 h-8 text-sm text-text-secondary hover:text-white bg-bg-secondary"
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      详情
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleOpenEditModal(config)}
+                      className="flex-1 h-8 text-sm text-text-secondary hover:text-white bg-bg-secondary"
+                    >
+                      <Settings className="w-4 h-4 mr-1" />
+                      编辑
+                    </Button>
+                    {canUpload && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenUploadModal(config)}
+                        className="flex-1 h-8 text-sm text-brand-primary hover:bg-brand-primary/10 bg-bg-secondary"
+                      >
+                        <Upload className="w-4 h-4 mr-1" />
+                        上架
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setSelectedConfig(config); setShowDeleteModal(true); }}
+                      disabled={isActive}
+                      className="h-8 px-2 text-text-tertiary hover:text-danger disabled:opacity-30 bg-bg-secondary"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ===== 桌面端策略列表 - 保持卡片样式 ===== */}
+          <div className="hidden lg:block space-y-4">
+            {filteredConfigs.map((config) => {
+              const isActive = config.is_active;
+              const source = getStrategySource(config.strategy);
+              const tradeType = getTradeType(config.strategy);
+              // 只有个人策略（非公开且非系统）才能上传
+              const canUpload = !config.strategy.is_public && config.strategy.owner_type !== 'system';
+
+              // 回测数据
+              const backtestWinRate = parseFloat(config.strategy.backtest_win_rate || '0');
+              const backtestDrawdown = parseFloat(config.strategy.backtest_max_drawdown || '0');
+              const backtestSharpe = parseFloat(config.strategy.backtest_sharpe_ratio || '0');
+
+              return (
+                <Card
+                  key={config.id}
+                  className="transition-all border-0"
+                >
+                  <CardContent className="p-4">
                   {/* ===== Row 1: 策略名 + 现货/合约 + 来源 + 运行状态 + 启停按钮 ===== */}
                   <div className="flex items-center gap-2 mb-3">
                     {/* 策略名称 */}
@@ -835,8 +972,8 @@ export default function MyStrategiesPage() {
               </Card>
             );
           })}
-
-        </div>
+          </div>
+        </>
       )}
 
       {/* 启动确认弹窗 */}

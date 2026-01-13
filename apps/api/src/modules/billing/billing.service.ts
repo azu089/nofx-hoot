@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PointsService } from '../points/points.service';
+import { ConfigsService } from '../configs/configs.service';
 import { GasFeeResultDto, GasFeeDetailDto, TodayPnLDto, PnLCurveResponseDto, PnLCurvePointDto } from './dto/gas-fee.dto';
 import { BillingLogResponseDto } from './dto/billing-log-response.dto';
 import Decimal from 'decimal.js';
@@ -42,6 +43,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => PointsService))
     private readonly pointsService: PointsService,
+    private readonly configsService: ConfigsService,
   ) {}
 
   /**
@@ -70,6 +72,9 @@ export class BillingService {
   async calculateGasFee(tradeId?: string, instanceId?: string): Promise<GasFeeResultDto> {
     this.logger.log('开始计算燃油费抽成（从点卡扣除）');
 
+    // 获取动态返佣比例配置（统一从 ConfigsService 获取）
+    const gasFeeRates = await this.configsService.getReferralRates('gas_fee');
+
     // 1. 查询需要处理的交易（盈利 + 未抽成）
     const where: any = {
       status: 'closed', // 只处理已平仓交易
@@ -91,7 +96,8 @@ export class BillingService {
         users: {
           include: {
             wallets: true,
-            referrer: {
+            // 自引用关系：获取邀请人信息（referred_by_user_id 指向的用户）
+            users: {
               select: {
                 id: true,
                 referred_by_user_id: true, // 二级邀请人
@@ -230,6 +236,7 @@ export class BillingService {
               gasFee,
               'gas_fee',
               billingLog.id,
+              gasFeeRates,
             );
           }
 
@@ -585,6 +592,9 @@ export class BillingService {
     const orderId = this.generateOrderId('subscription', userId);
     const chargeAmount = new Decimal(amount);
 
+    // 获取动态返佣比例配置（统一从 ConfigsService 获取）
+    const subscriptionRates = await this.configsService.getReferralRates('subscription');
+
     // 检查钱包余额和积分余额
     const wallet = await this.prisma.client.wallets.findUnique({
       where: { user_id: userId },
@@ -593,6 +603,12 @@ export class BillingService {
     if (!wallet) {
       throw new BadRequestException('钱包不存在');
     }
+
+    // 查询用户邀请关系（用于订阅返佣）
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { referred_by_user_id: true },
+    });
 
     const balance = new Decimal(wallet.usdt_balance);
     const pointsBalance = new Decimal(wallet.points_balance || '0');
@@ -614,9 +630,13 @@ export class BillingService {
 
     // 检查 USDT 余额是否足够支付剩余部分
     if (balance.lt(usdtToUse)) {
-      throw new BadRequestException(
-        `余额不足，需支付 ${usdtToUse} USDT (已使用 ${pointsToUse} 积分抵扣)，当前余额 ${balance} USDT`,
-      );
+      // 安全：不暴露具体余额信息
+      this.logger.warn(`用户 ${userId} 订阅余额不足`, {
+        required: usdtToUse.toString(),
+        currentBalance: balance.toString(),
+        pointsUsed: pointsToUse.toString(),
+      });
+      throw new BadRequestException('余额不足，请先充值');
     }
 
     // 事务：扣积分 + 扣 USDT + 记录
@@ -659,7 +679,7 @@ export class BillingService {
       }
 
       // 3. 记录订阅扣费日志
-      return tx.billing_logs.create({
+      const billingLog = await tx.billing_logs.create({
         data: {
           user_id: userId,
           unique_order_id: orderId,
@@ -670,6 +690,21 @@ export class BillingService {
           status: 'completed',
         },
       });
+
+      // 4. 处理订阅费邀请返佣（从系统配置读取比例）
+      if (user?.referred_by_user_id) {
+        await this.processUserReferralCommission(
+          tx,
+          userId,
+          user.referred_by_user_id,
+          chargeAmount,
+          'subscription',
+          billingLog.id,
+          subscriptionRates,
+        );
+      }
+
+      return billingLog;
     });
 
     this.logger.log(
@@ -819,19 +854,15 @@ export class BillingService {
   }
 
   // ===== 普通用户邀请返佣系统（与代理商系统完全独立）=====
-
-  // 一级返佣比例：10%
-  private readonly USER_REFERRAL_RATE_L1 = new Decimal('0.10');
-  // 二级返佣比例：5%
-  private readonly USER_REFERRAL_RATE_L2 = new Decimal('0.05');
+  // 返佣比例统一从 ConfigsService.getReferralRates() 获取
 
   /**
    * 处理普通用户邀请返佣
    * 当被邀请用户产生消费时，给邀请人发放积分返佣
    *
    * 规则：
-   * - 一级返佣：10%（直接邀请人）
-   * - 二级返佣：5%（邀请人的邀请人）
+   * - 一级返佣：从系统配置读取（默认 10%）
+   * - 二级返佣：从系统配置读取（默认 5%）
    * - 返佣以积分形式发放
    *
    * @param tx 事务对象
@@ -840,6 +871,7 @@ export class BillingService {
    * @param baseAmount 消费基数（燃油费或订阅费）
    * @param sourceType 来源类型：gas_fee | subscription
    * @param sourceId 关联的账单 ID
+   * @param rates 返佣比例配置
    */
   private async processUserReferralCommission(
     tx: any,
@@ -848,6 +880,7 @@ export class BillingService {
     baseAmount: Decimal,
     sourceType: string,
     sourceId: string,
+    rates: { l1: Decimal; l2: Decimal },
   ): Promise<void> {
     // 防止自己邀请自己（理论上不应发生）
     if (inviteeId === referrerId) {
@@ -856,7 +889,7 @@ export class BillingService {
     }
 
     // ===== 一级返佣 =====
-    const l1Commission = baseAmount.times(this.USER_REFERRAL_RATE_L1).toDecimalPlaces(8);
+    const l1Commission = baseAmount.times(rates.l1).toDecimalPlaces(8);
 
     if (l1Commission.gt(0)) {
       // 创建一级返佣记录
@@ -868,7 +901,7 @@ export class BillingService {
           source_type: sourceType,
           source_id: sourceId,
           base_amount: baseAmount.toString(),
-          commission_rate: this.USER_REFERRAL_RATE_L1.toString(),
+          commission_rate: rates.l1.toString(),
           commission_amount: l1Commission.toString(),
           status: 'settled',
           settled_at: new Date(),
@@ -893,7 +926,7 @@ export class BillingService {
       });
 
       this.logger.log(
-        `一级返佣：用户 ${inviteeId} 消费 ${baseAmount}，邀请人 ${referrerId} 获得 ${l1Commission} 积分 (10%)`,
+        `一级返佣：用户 ${inviteeId} 消费 ${baseAmount}，邀请人 ${referrerId} 获得 ${l1Commission} 积分 (${rates.l1.times(100)}%)`,
       );
 
       // ===== 二级返佣 =====
@@ -908,7 +941,7 @@ export class BillingService {
 
         // 防止循环引用
         if (l2ReferrerId !== inviteeId && l2ReferrerId !== referrerId) {
-          const l2Commission = baseAmount.times(this.USER_REFERRAL_RATE_L2).toDecimalPlaces(8);
+          const l2Commission = baseAmount.times(rates.l2).toDecimalPlaces(8);
 
           if (l2Commission.gt(0)) {
             // 创建二级返佣记录
@@ -920,7 +953,7 @@ export class BillingService {
                 source_type: sourceType,
                 source_id: sourceId,
                 base_amount: baseAmount.toString(),
-                commission_rate: this.USER_REFERRAL_RATE_L2.toString(),
+                commission_rate: rates.l2.toString(),
                 commission_amount: l2Commission.toString(),
                 status: 'settled',
                 settled_at: new Date(),
@@ -945,7 +978,7 @@ export class BillingService {
             });
 
             this.logger.log(
-              `二级返佣：用户 ${inviteeId} 消费 ${baseAmount}，二级邀请人 ${l2ReferrerId} 获得 ${l2Commission} 积分 (5%)`,
+              `二级返佣：用户 ${inviteeId} 消费 ${baseAmount}，二级邀请人 ${l2ReferrerId} 获得 ${l2Commission} 积分 (${rates.l2.times(100)}%)`,
             );
           }
         }

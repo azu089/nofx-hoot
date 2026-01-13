@@ -221,7 +221,7 @@ export default function StrategyManagePage() {
 
   return (
     <div className="space-y-4 pb-20">
-      {/* 收益概览卡片（含标题和返回按钮）*/}
+      {/* 收益概览卡片（含标题和返回按钮）- 返回按钮移动端隐藏（由 MobileLayout 提供）*/}
       <Card className="bg-gradient-to-r from-success/10 to-brand-primary/10 border-success/30">
         <CardContent className="p-4">
           {/* 标题行：返回按钮 + 标题 + 收益明细 */}
@@ -229,7 +229,7 @@ export default function StrategyManagePage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => router.back()}
-                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                className="p-1.5 -ml-1.5 rounded-lg hover:bg-white/10 transition-colors hidden lg:block"
               >
                 <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -273,7 +273,7 @@ export default function StrategyManagePage() {
             className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
               filter === f.key
                 ? 'bg-brand-primary text-white'
-                : 'bg-bg-secondary text-text-secondary hover:bg-bg-tertiary'
+                : 'bg-bg-secondary lg:bg-bg-secondary text-text-secondary hover:bg-bg-tertiary'
             }`}
           >
             {f.label}
@@ -287,11 +287,14 @@ export default function StrategyManagePage() {
       {filter !== 'logs' && (
         <>
 
-      {/* 策略列表 */}
+      {/* 策略列表 - 空状态 */}
       {filteredStrategies.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileCode className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+        <>
+          {/* 移动端空状态 */}
+          <div className="lg:hidden py-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto mb-3">
+              <FileCode className="w-8 h-8 text-text-tertiary" />
+            </div>
             <h3 className="text-base font-medium text-text-primary mb-2">
               {filter === 'all' ? '还没有上传策略' : `没有${FILTERS.find(f => f.key === filter)?.label}的策略`}
             </h3>
@@ -302,49 +305,66 @@ export default function StrategyManagePage() {
               <FileCode className="w-4 h-4 mr-1.5" />
               去我的策略
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+          {/* 桌面端空状态 */}
+          <Card className="hidden lg:block">
+            <CardContent className="py-12 text-center">
+              <FileCode className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+              <h3 className="text-base font-medium text-text-primary mb-2">
+                {filter === 'all' ? '还没有上传策略' : `没有${FILTERS.find(f => f.key === filter)?.label}的策略`}
+              </h3>
+              <p className="text-text-secondary text-sm mb-4">
+                在「我的策略」中点击上架按钮，即可将策略提交审核
+              </p>
+              <Button size="sm" onClick={() => router.push('/strategies/my')}>
+                <FileCode className="w-4 h-4 mr-1.5" />
+                去我的策略
+              </Button>
+            </CardContent>
+          </Card>
+        </>
       ) : (
-        <div className="space-y-3">
-          {filteredStrategies.map(strategy => {
-            const statusStyle = getStatusStyle(strategy.reviewStatus);
-            const StatusIcon = statusStyle.icon;
+        <>
+          {/* 移动端策略列表 - 斑马纹 */}
+          <div className="lg:hidden rounded-xl overflow-hidden">
+            {filteredStrategies.map((strategy, index) => {
+              const statusStyle = getStatusStyle(strategy.reviewStatus);
+              const StatusIcon = statusStyle.icon;
 
-            // 获取回测数据
-            const backtestReturn = parseFloat(strategy.backtestTotalReturn || '0');
-            const backtestWinRate = parseFloat(strategy.backtestWinRate || '0');
-            const backtestDrawdown = parseFloat(strategy.backtestMaxDrawdown || '0');
-            const sharpeRatio = (backtestReturn / (backtestDrawdown || 1) * 0.5).toFixed(2);
+              // 获取回测数据
+              const backtestReturn = parseFloat(strategy.backtestTotalReturn || '0');
+              const backtestWinRate = parseFloat(strategy.backtestWinRate || '0');
+              const backtestDrawdown = parseFloat(strategy.backtestMaxDrawdown || '0');
+              const sharpeRatio = (backtestReturn / (backtestDrawdown || 1) * 0.5).toFixed(2);
 
-            // 交易类型
-            const tradeType = strategy.tradeType || 'spot';
+              // 交易类型
+              const tradeType = strategy.tradeType || 'spot';
 
-            // 格式化日期
-            const formatDate = (dateStr?: string) => {
-              if (!dateStr) return '-';
-              const date = new Date(dateStr);
-              return `${date.getMonth() + 1}/${date.getDate()}`;
-            };
+              // 格式化日期
+              const formatDate = (dateStr?: string) => {
+                if (!dateStr) return '-';
+                const date = new Date(dateStr);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+              };
 
-            // 根据状态显示不同日期
-            const getDateInfo = () => {
-              if (strategy.reviewStatus === 'approved' && strategy.approvedAt) {
-                return { label: '上架', date: formatDate(strategy.approvedAt) };
-              }
-              if (strategy.reviewStatus === 'rejected' && strategy.rejectedAt) {
-                return { label: '下架', date: formatDate(strategy.rejectedAt) };
-              }
-              return { label: '创建', date: formatDate(strategy.createdAt) };
-            };
-            const dateInfo = getDateInfo();
+              // 根据状态显示不同日期
+              const getDateInfo = () => {
+                if (strategy.reviewStatus === 'approved' && strategy.approvedAt) {
+                  return { label: '上架', date: formatDate(strategy.approvedAt) };
+                }
+                if (strategy.reviewStatus === 'rejected' && strategy.rejectedAt) {
+                  return { label: '下架', date: formatDate(strategy.rejectedAt) };
+                }
+                return { label: '创建', date: formatDate(strategy.createdAt) };
+              };
+              const dateInfo = getDateInfo();
 
-            return (
-              <Card
-                key={strategy.id}
-                className="hover:border-brand-primary/30 transition-colors cursor-pointer"
-                onClick={() => router.push(`/strategies/${strategy.id}`)}
-              >
-                <CardContent className="p-3">
+              return (
+                <div
+                  key={strategy.id}
+                  className={`p-3 cursor-pointer ${index % 2 === 1 ? 'bg-bg-secondary' : ''}`}
+                  onClick={() => router.push(`/strategies/${strategy.id}`)}
+                >
                   {/* 第一行：策略名称 + 状态 + 日期 */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -390,126 +410,327 @@ export default function StrategyManagePage() {
 
                   {/* 第三行：操作按钮 */}
                   <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="flex-1 text-xs h-7"
+                    <button
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-text-secondary bg-bg-secondary rounded-lg"
                       onClick={() => router.push(`/strategies/${strategy.id}`)}
                     >
-                      <Eye className="w-3 h-3 mr-1" />
+                      <Eye className="w-3 h-3" />
                       详情
-                    </Button>
+                    </button>
                     {strategy.reviewStatus === 'draft' && (
-                      <Button size="sm" variant="outline" className="flex-1 text-xs h-7">
-                        <Play className="w-3 h-3 mr-1" />
+                      <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-brand-primary bg-brand-primary/10 rounded-lg">
+                        <Play className="w-3 h-3" />
                         提交回测
-                      </Button>
+                      </button>
                     )}
                     {strategy.reviewStatus === 'backtest_passed' && (
-                      <Button size="sm" className="flex-1 text-xs h-7">
-                        <Activity className="w-3 h-3 mr-1" />
+                      <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-white bg-brand-primary rounded-lg">
+                        <Activity className="w-3 h-3" />
                         开始试运行
-                      </Button>
+                      </button>
                     )}
                     {strategy.reviewStatus === 'approved' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 text-xs h-7 text-danger border-danger/30 hover:bg-danger/10"
-                      >
-                        <ArrowDownCircle className="w-3 h-3 mr-1" />
+                      <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-danger bg-danger/10 rounded-lg">
+                        <ArrowDownCircle className="w-3 h-3" />
                         下架
-                      </Button>
+                      </button>
                     )}
                     {strategy.reviewStatus === 'rejected' && (
-                      <Button size="sm" variant="outline" className="flex-1 text-xs h-7">
-                        <Play className="w-3 h-3 mr-1" />
+                      <button className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-brand-primary bg-brand-primary/10 rounded-lg">
+                        <Play className="w-3 h-3" />
                         重新提交
-                      </Button>
+                      </button>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 桌面端策略列表 */}
+          <div className="hidden lg:block space-y-3">
+            {filteredStrategies.map(strategy => {
+              const statusStyle = getStatusStyle(strategy.reviewStatus);
+              const StatusIcon = statusStyle.icon;
+
+              // 获取回测数据
+              const backtestReturn = parseFloat(strategy.backtestTotalReturn || '0');
+              const backtestWinRate = parseFloat(strategy.backtestWinRate || '0');
+              const backtestDrawdown = parseFloat(strategy.backtestMaxDrawdown || '0');
+              const sharpeRatio = (backtestReturn / (backtestDrawdown || 1) * 0.5).toFixed(2);
+
+              // 交易类型
+              const tradeType = strategy.tradeType || 'spot';
+
+              // 格式化日期
+              const formatDate = (dateStr?: string) => {
+                if (!dateStr) return '-';
+                const date = new Date(dateStr);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+              };
+
+              // 根据状态显示不同日期
+              const getDateInfo = () => {
+                if (strategy.reviewStatus === 'approved' && strategy.approvedAt) {
+                  return { label: '上架', date: formatDate(strategy.approvedAt) };
+                }
+                if (strategy.reviewStatus === 'rejected' && strategy.rejectedAt) {
+                  return { label: '下架', date: formatDate(strategy.rejectedAt) };
+                }
+                return { label: '创建', date: formatDate(strategy.createdAt) };
+              };
+              const dateInfo = getDateInfo();
+
+              return (
+                <Card
+                  key={strategy.id}
+                  className="hover:border-brand-primary/30 transition-colors cursor-pointer"
+                  onClick={() => router.push(`/strategies/${strategy.id}`)}
+                >
+                  <CardContent className="p-3">
+                    {/* 第一行：策略名称 + 状态 + 日期 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <h3 className="text-white font-medium text-sm truncate">{strategy.name}</h3>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          tradeType === 'futures'
+                            ? 'bg-warning/15 text-warning'
+                            : 'bg-brand-primary/15 text-brand-primary'
+                        }`}>
+                          {tradeType === 'futures' ? '合约' : '现货'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] flex items-center gap-1 px-1.5 py-0.5 rounded ${statusStyle.bg} ${statusStyle.text}`}>
+                          <StatusIcon className={`w-3 h-3 ${strategy.reviewStatus === 'backtest_running' ? 'animate-spin' : ''}`} />
+                          {statusStyle.label}
+                        </span>
+                        <span className="text-[10px] text-text-tertiary">
+                          {dateInfo.label} {dateInfo.date}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 第二行：四指标横排 */}
+                    <div className="grid grid-cols-4 gap-2 py-2 bg-bg-tertiary/50 rounded-md px-2">
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-white">{backtestWinRate.toFixed(0)}%</p>
+                        <p className="text-[10px] text-text-tertiary">胜率</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-danger">-{backtestDrawdown.toFixed(0)}%</p>
+                        <p className="text-[10px] text-text-tertiary">回撤</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-white">{sharpeRatio}</p>
+                        <p className="text-[10px] text-text-tertiary">夏普</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-brand-primary">{strategy.totalUsers}</p>
+                        <p className="text-[10px] text-text-tertiary">订阅</p>
+                      </div>
+                    </div>
+
+                    {/* 第三行：操作按钮 */}
+                    <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="flex-1 text-xs h-7"
+                        onClick={() => router.push(`/strategies/${strategy.id}`)}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        详情
+                      </Button>
+                      {strategy.reviewStatus === 'draft' && (
+                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7">
+                          <Play className="w-3 h-3 mr-1" />
+                          提交回测
+                        </Button>
+                      )}
+                      {strategy.reviewStatus === 'backtest_passed' && (
+                        <Button size="sm" className="flex-1 text-xs h-7">
+                          <Activity className="w-3 h-3 mr-1" />
+                          开始试运行
+                        </Button>
+                      )}
+                      {strategy.reviewStatus === 'approved' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 text-xs h-7 text-danger border-danger/30 hover:bg-danger/10"
+                        >
+                          <ArrowDownCircle className="w-3 h-3 mr-1" />
+                          下架
+                        </Button>
+                      )}
+                      {strategy.reviewStatus === 'rejected' && (
+                        <Button size="sm" variant="outline" className="flex-1 text-xs h-7">
+                          <Play className="w-3 h-3 mr-1" />
+                          重新提交
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
         </>
       )}
 
       {/* 记录内容 */}
       {filter === 'logs' && (
-        <div className="space-y-3">
+        <>
           {listingLogs.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Bell className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+            <>
+              {/* 移动端空状态 */}
+              <div className="lg:hidden py-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto mb-3">
+                  <Bell className="w-8 h-8 text-text-tertiary" />
+                </div>
                 <h3 className="text-base font-medium text-text-primary mb-2">暂无上架记录</h3>
                 <p className="text-text-secondary text-sm">
                   提交策略审核后，相关通知将在这里显示
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+              {/* 桌面端空状态 */}
+              <Card className="hidden lg:block">
+                <CardContent className="py-12 text-center">
+                  <Bell className="w-12 h-12 text-text-tertiary mx-auto mb-3 opacity-50" />
+                  <h3 className="text-base font-medium text-text-primary mb-2">暂无上架记录</h3>
+                  <p className="text-text-secondary text-sm">
+                    提交策略审核后，相关通知将在这里显示
+                  </p>
+                </CardContent>
+              </Card>
+            </>
           ) : (
-            listingLogs.map(log => {
-              const style = getLogStyle(log.action);
-              const LogIcon = style.icon;
+            <>
+              {/* 移动端记录列表 - 斑马纹 */}
+              <div className="lg:hidden rounded-xl overflow-hidden">
+                {listingLogs.map((log, index) => {
+                  const style = getLogStyle(log.action);
+                  const LogIcon = style.icon;
 
-              // 格式化时间
-              const formatDateTime = (dateStr: string) => {
-                const date = new Date(dateStr);
-                return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-              };
+                  // 格式化时间
+                  const formatDateTime = (dateStr: string) => {
+                    const date = new Date(dateStr);
+                    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                  };
 
-              return (
-                <Card key={log.id} className="hover:border-brand-primary/30 transition-colors">
-                  <CardContent className="p-3">
-                    <div className="flex items-start gap-3">
-                      {/* 图标 */}
-                      <div className={`p-2 rounded-lg ${style.bg}`}>
-                        <LogIcon className={`w-4 h-4 ${style.color}`} />
-                      </div>
-
-                      {/* 内容 */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-sm font-medium ${style.color}`}>
-                            {style.label}
-                          </span>
-                          <span className="text-xs text-text-tertiary">
-                            {formatDateTime(log.createdAt)}
-                          </span>
+                  return (
+                    <div key={log.id} className={`p-3 ${index % 2 === 1 ? 'bg-bg-secondary' : ''}`}>
+                      <div className="flex items-start gap-3">
+                        {/* 图标 */}
+                        <div className={`p-2 rounded-full ${style.bg}`}>
+                          <LogIcon className={`w-4 h-4 ${style.color}`} />
                         </div>
-                        <p className="text-sm text-white truncate">
-                          {log.strategyName}
-                        </p>
-                        {/* 拒绝理由 */}
-                        {log.action === 'reject' && log.reason && (
-                          <div className="mt-2 p-2 bg-danger/10 rounded-md">
-                            <p className="text-xs text-danger font-medium mb-1">拒绝理由：</p>
-                            <p className="text-xs text-text-secondary">{log.reason}</p>
+
+                        {/* 内容 */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-sm font-medium ${style.color}`}>
+                              {style.label}
+                            </span>
+                            <span className="text-xs text-text-tertiary">
+                              {formatDateTime(log.createdAt)}
+                            </span>
                           </div>
-                        )}
-                        {/* 通过提示 */}
-                        {log.action === 'approve' && (
-                          <p className="text-xs text-success mt-1">
-                            策略已成功上架到策略市场
+                          <p className="text-sm text-white truncate">
+                            {log.strategyName}
                           </p>
-                        )}
-                        {/* 申请中提示 */}
-                        {log.action === 'apply' && (
-                          <p className="text-xs text-text-tertiary mt-1">
-                            审核中，预计 1-3 个工作日
-                          </p>
-                        )}
+                          {/* 拒绝理由 */}
+                          {log.action === 'reject' && log.reason && (
+                            <div className="mt-2 p-2 bg-danger/10 rounded-md">
+                              <p className="text-xs text-danger font-medium mb-1">拒绝理由：</p>
+                              <p className="text-xs text-text-secondary">{log.reason}</p>
+                            </div>
+                          )}
+                          {/* 通过提示 */}
+                          {log.action === 'approve' && (
+                            <p className="text-xs text-success mt-1">
+                              策略已成功上架到策略市场
+                            </p>
+                          )}
+                          {/* 申请中提示 */}
+                          {log.action === 'apply' && (
+                            <p className="text-xs text-text-tertiary mt-1">
+                              审核中，预计 1-3 个工作日
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })
+                  );
+                })}
+              </div>
+
+              {/* 桌面端记录列表 */}
+              <div className="hidden lg:block space-y-3">
+                {listingLogs.map(log => {
+                  const style = getLogStyle(log.action);
+                  const LogIcon = style.icon;
+
+                  // 格式化时间
+                  const formatDateTime = (dateStr: string) => {
+                    const date = new Date(dateStr);
+                    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                  };
+
+                  return (
+                    <Card key={log.id} className="hover:border-brand-primary/30 transition-colors">
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-3">
+                          {/* 图标 */}
+                          <div className={`p-2 rounded-lg ${style.bg}`}>
+                            <LogIcon className={`w-4 h-4 ${style.color}`} />
+                          </div>
+
+                          {/* 内容 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-sm font-medium ${style.color}`}>
+                                {style.label}
+                              </span>
+                              <span className="text-xs text-text-tertiary">
+                                {formatDateTime(log.createdAt)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-white truncate">
+                              {log.strategyName}
+                            </p>
+                            {/* 拒绝理由 */}
+                            {log.action === 'reject' && log.reason && (
+                              <div className="mt-2 p-2 bg-danger/10 rounded-md">
+                                <p className="text-xs text-danger font-medium mb-1">拒绝理由：</p>
+                                <p className="text-xs text-text-secondary">{log.reason}</p>
+                              </div>
+                            )}
+                            {/* 通过提示 */}
+                            {log.action === 'approve' && (
+                              <p className="text-xs text-success mt-1">
+                                策略已成功上架到策略市场
+                              </p>
+                            )}
+                            {/* 申请中提示 */}
+                            {log.action === 'apply' && (
+                              <p className="text-xs text-text-tertiary mt-1">
+                                审核中，预计 1-3 个工作日
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
           )}
-        </div>
+        </>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MaxLength, IsOptional, IsBoolean, ValidateNested } from 'class-validator';
+import { IsEmail, IsString, MaxLength, IsOptional, IsBoolean, ValidateNested, Length } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsStrongPassword } from '../../../common/validators/password-strength.validator';
 import { FingerprintDto } from './login.dto';
@@ -20,6 +20,10 @@ export class RegisterDto {
     requireSpecialChar: false,
   })
   password: string;
+
+  @IsString({ message: '验证码必须是字符串' })
+  @Length(6, 6, { message: '验证码必须是6位数字' })
+  verificationCode: string;
 
   @IsOptional()
   @IsString({ message: '邀请码必须是字符串' })

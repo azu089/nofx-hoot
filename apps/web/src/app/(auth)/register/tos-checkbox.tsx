@@ -98,7 +98,7 @@ export function TosCheckbox({ checked, onChange, error }: TosCheckboxProps) {
 
               <h4 className="font-semibold text-[var(--text-primary)]">5. 费用说明</h4>
               <p>
-                订阅费：$25/月，按月计费<br/>
+                订阅费：$20/月起，按月计费<br/>
                 燃油费：从盈利中收取 20% 作为平台服务费（Gas Fee）
               </p>
 

@@ -173,7 +173,7 @@ export default function TelegramCheckin() {
           </li>
           <li className="flex items-start gap-2">
             <Sparkles size={14} className="text-brand-primary flex-shrink-0 mt-0.5" />
-            <span>积分可兑换 QFI 代币或抵扣服务费</span>
+            <span>积分可兑换 QFI 代币或抵扣 VIP 订阅费</span>
           </li>
         </ul>
       </div>
@@ -187,8 +187,8 @@ export default function TelegramCheckin() {
             <p className="text-xs text-text-tertiary">100:1 兑换比例</p>
           </div>
           <div className="p-3 bg-bg-tertiary rounded-lg">
-            <p className="text-sm text-text-primary">抵扣手续费</p>
-            <p className="text-xs text-text-tertiary">1:0.01 USDT</p>
+            <p className="text-sm text-text-primary">抵扣 VIP 订阅费</p>
+            <p className="text-xs text-text-tertiary">1 积分 = 1 USDT</p>
           </div>
           <div className="p-3 bg-bg-tertiary rounded-lg">
             <p className="text-sm text-text-primary">VIP 加速</p>

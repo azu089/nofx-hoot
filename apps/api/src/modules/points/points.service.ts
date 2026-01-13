@@ -38,6 +38,10 @@ export class PointsService {
     3: new Decimal('2.0'), // VIP3 2.0x
   };
 
+  // 交易挖矿邀请返佣比例：5%（一级）、2.5%（二级）
+  private readonly TRADE_REFERRAL_RATE_L1 = new Decimal('0.05');
+  private readonly TRADE_REFERRAL_RATE_L2 = new Decimal('0.025');
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -75,10 +79,13 @@ export class PointsService {
   ): Promise<string> {
     const prisma = tx || this.prisma.client;
 
-    // 1. 查询用户 VIP 等级
+    // 1. 查询用户 VIP 等级和邀请关系
     const user = await prisma.users.findUnique({
       where: { id: userId },
-      select: { vip_level: true },
+      select: {
+        vip_level: true,
+        referred_by_user_id: true,
+      },
     });
 
     if (!user) {
@@ -116,7 +123,7 @@ export class PointsService {
       return '0';
     }
 
-    // 5. 使用事务：更新钱包 + 记录日志
+    // 5. 使用事务：更新钱包 + 记录日志 + 邀请返佣
     const orderId = this.generateOrderId('points_earn', userId);
 
     await prisma.$transaction(async (innerTx: any) => {
@@ -132,7 +139,7 @@ export class PointsService {
       });
 
       // 5.2 创建积分获取日志
-      await innerTx.billing_logs.create({
+      const pointsLog = await innerTx.billing_logs.create({
         data: {
           user_id: userId,
           unique_order_id: orderId,
@@ -145,11 +152,142 @@ export class PointsService {
           status: 'completed',
         },
       });
+
+      // 5.3 处理交易挖矿邀请返佣（5% 返积分）
+      if (user.referred_by_user_id) {
+        await this.processTradePointsReferral(
+          innerTx,
+          userId,
+          user.referred_by_user_id,
+          earnedPoints,
+          pointsLog.id,
+        );
+      }
     });
 
     this.logger.log(`用户 ${userId} 从交易 ${tradeId} 获得 ${earnedPoints} 积分`);
 
     return earnedPoints.toString();
+  }
+
+  /**
+   * 处理交易挖矿积分的邀请返佣
+   * 交易挖矿积分 5% 返积分给一级邀请人，2.5% 返积分给二级邀请人
+   *
+   * @param tx 事务对象
+   * @param inviteeId 被邀请人（获得积分者）ID
+   * @param referrerId 一级邀请人 ID
+   * @param basePoints 被邀请人获得的积分
+   * @param sourceId 关联的积分日志 ID
+   */
+  private async processTradePointsReferral(
+    tx: any,
+    inviteeId: string,
+    referrerId: string,
+    basePoints: Decimal,
+    sourceId: string,
+  ): Promise<void> {
+    // 防止自己邀请自己
+    if (inviteeId === referrerId) {
+      this.logger.warn(`用户 ${inviteeId} 的邀请人是自己，跳过返佣`);
+      return;
+    }
+
+    // ===== 一级返佣（5%）=====
+    const l1Commission = basePoints.times(this.TRADE_REFERRAL_RATE_L1).toDecimalPlaces(8);
+
+    if (l1Commission.gt(0)) {
+      // 创建一级返佣记录
+      await tx.user_commissions.create({
+        data: {
+          referrer_id: referrerId,
+          invitee_id: inviteeId,
+          level: 1,
+          source_type: 'trade_points',
+          source_id: sourceId,
+          base_amount: basePoints.toString(),
+          commission_rate: this.TRADE_REFERRAL_RATE_L1.toString(),
+          commission_amount: l1Commission.toString(),
+          status: 'settled',
+          settled_at: new Date(),
+        },
+      });
+
+      // 增加一级邀请人的积分余额
+      await tx.wallets.upsert({
+        where: { user_id: referrerId },
+        create: {
+          user_id: referrerId,
+          usdt_balance: '0',
+          card_balance: '0',
+          points_balance: l1Commission.toString(),
+        },
+        update: {
+          points_balance: {
+            increment: l1Commission.toNumber(),
+          },
+          updated_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `交易挖矿一级返佣：用户 ${inviteeId} 获得 ${basePoints} 积分，邀请人 ${referrerId} 获得 ${l1Commission} 积分 (5%)`,
+      );
+
+      // ===== 二级返佣（2.5%）=====
+      const l1Referrer = await tx.users.findUnique({
+        where: { id: referrerId },
+        select: { referred_by_user_id: true },
+      });
+
+      if (l1Referrer?.referred_by_user_id) {
+        const l2ReferrerId = l1Referrer.referred_by_user_id;
+
+        // 防止循环引用
+        if (l2ReferrerId !== inviteeId && l2ReferrerId !== referrerId) {
+          const l2Commission = basePoints.times(this.TRADE_REFERRAL_RATE_L2).toDecimalPlaces(8);
+
+          if (l2Commission.gt(0)) {
+            // 创建二级返佣记录
+            await tx.user_commissions.create({
+              data: {
+                referrer_id: l2ReferrerId,
+                invitee_id: inviteeId,
+                level: 2,
+                source_type: 'trade_points',
+                source_id: sourceId,
+                base_amount: basePoints.toString(),
+                commission_rate: this.TRADE_REFERRAL_RATE_L2.toString(),
+                commission_amount: l2Commission.toString(),
+                status: 'settled',
+                settled_at: new Date(),
+              },
+            });
+
+            // 增加二级邀请人的积分余额
+            await tx.wallets.upsert({
+              where: { user_id: l2ReferrerId },
+              create: {
+                user_id: l2ReferrerId,
+                usdt_balance: '0',
+                card_balance: '0',
+                points_balance: l2Commission.toString(),
+              },
+              update: {
+                points_balance: {
+                  increment: l2Commission.toNumber(),
+                },
+                updated_at: new Date(),
+              },
+            });
+
+            this.logger.log(
+              `交易挖矿二级返佣：用户 ${inviteeId} 获得 ${basePoints} 积分，二级邀请人 ${l2ReferrerId} 获得 ${l2Commission} 积分 (2.5%)`,
+            );
+          }
+        }
+      }
+    }
   }
 
   /**

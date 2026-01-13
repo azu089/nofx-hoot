@@ -293,19 +293,19 @@ export default function CmsPage() {
     return (
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#2B3139]">
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">内容键</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">标题</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">类型</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">状态</th>
-            <th className="text-right py-4 px-6 text-[#848E9C] font-medium">操作</th>
+          <tr className="border-b border-border-primary">
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">内容键</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">标题</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">类型</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">状态</th>
+            <th className="text-right py-4 px-6 text-text-secondary font-medium">操作</th>
           </tr>
         </thead>
         <tbody>
           {filteredContents.map((item: ContentItem) => (
             <tr
               key={item.id}
-              className="border-b border-[#2B3139] last:border-0 hover:bg-[#1E222D]/50"
+              className="border-b border-border-primary last:border-0 hover:bg-bg-tertiary/50"
             >
               <td className="py-4 px-6">
                 <span className="text-white font-mono text-sm">{item.content_key}</span>
@@ -314,18 +314,18 @@ export default function CmsPage() {
                 <span className="text-white">{item.title || '-'}</span>
               </td>
               <td className="py-4 px-6">
-                <span className="px-2 py-1 bg-[#3772FF]/10 text-[#3772FF] text-xs rounded">
+                <span className="px-2 py-1 bg-brand-primary/10 text-brand-primary text-xs rounded">
                   {item.content_type}
                 </span>
               </td>
               <td className="py-4 px-6">
                 {item.is_published ? (
-                  <span className="flex items-center gap-1 text-[#00C087] text-sm">
+                  <span className="flex items-center gap-1 text-success text-sm">
                     <Eye className="w-4 h-4" />
                     已发布
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-[#848E9C] text-sm">
+                  <span className="flex items-center gap-1 text-text-secondary text-sm">
                     <EyeOff className="w-4 h-4" />
                     草稿
                   </span>
@@ -335,13 +335,13 @@ export default function CmsPage() {
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => handleEdit(item)}
-                    className="p-2 text-[#3772FF] hover:bg-[#3772FF]/10 rounded-lg transition-colors"
+                    className="p-2 text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete('contents', item.id, item.content_key)}
-                    className="p-2 text-[#F23645] hover:bg-[#F23645]/10 rounded-lg transition-colors"
+                    className="p-2 text-danger hover:bg-danger/10 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -363,22 +363,22 @@ export default function CmsPage() {
     return (
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#2B3139]">
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">图片</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">标题</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">位置</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">状态</th>
-            <th className="text-right py-4 px-6 text-[#848E9C] font-medium">操作</th>
+          <tr className="border-b border-border-primary">
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">图片</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">标题</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">位置</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">状态</th>
+            <th className="text-right py-4 px-6 text-text-secondary font-medium">操作</th>
           </tr>
         </thead>
         <tbody>
           {filteredBanners.map((item: BannerItem) => (
             <tr
               key={item.id}
-              className="border-b border-[#2B3139] last:border-0 hover:bg-[#1E222D]/50"
+              className="border-b border-border-primary last:border-0 hover:bg-bg-tertiary/50"
             >
               <td className="py-4 px-6">
-                <div className="w-24 h-14 bg-[#1E222D] rounded overflow-hidden">
+                <div className="w-24 h-14 bg-bg-tertiary rounded overflow-hidden">
                   {item.image_url ? (
                     <img
                       src={item.image_url}
@@ -387,7 +387,7 @@ export default function CmsPage() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Image className="w-6 h-6 text-[#5E6673]" />
+                      <Image className="w-6 h-6 text-text-tertiary" />
                     </div>
                   )}
                 </div>
@@ -396,23 +396,23 @@ export default function CmsPage() {
                 <div>
                   <p className="text-white">{item.title}</p>
                   {item.subtitle && (
-                    <p className="text-[#848E9C] text-sm">{item.subtitle}</p>
+                    <p className="text-text-secondary text-sm">{item.subtitle}</p>
                   )}
                 </div>
               </td>
               <td className="py-4 px-6">
-                <span className="px-2 py-1 bg-[#F7931A]/10 text-[#F7931A] text-xs rounded">
+                <span className="px-2 py-1 bg-warning/10 text-warning text-xs rounded">
                   {item.position}
                 </span>
               </td>
               <td className="py-4 px-6">
                 {item.is_active ? (
-                  <span className="flex items-center gap-1 text-[#00C087] text-sm">
+                  <span className="flex items-center gap-1 text-success text-sm">
                     <Eye className="w-4 h-4" />
                     启用
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-[#848E9C] text-sm">
+                  <span className="flex items-center gap-1 text-text-secondary text-sm">
                     <EyeOff className="w-4 h-4" />
                     禁用
                   </span>
@@ -422,13 +422,13 @@ export default function CmsPage() {
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => handleEdit(item)}
-                    className="p-2 text-[#3772FF] hover:bg-[#3772FF]/10 rounded-lg transition-colors"
+                    className="p-2 text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete('banners', item.id, item.title)}
-                    className="p-2 text-[#F23645] hover:bg-[#F23645]/10 rounded-lg transition-colors"
+                    className="p-2 text-danger hover:bg-danger/10 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -451,49 +451,49 @@ export default function CmsPage() {
     return (
       <table className="w-full">
         <thead>
-          <tr className="border-b border-[#2B3139]">
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">标题</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">分类</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">浏览量</th>
-            <th className="text-left py-4 px-6 text-[#848E9C] font-medium">状态</th>
-            <th className="text-right py-4 px-6 text-[#848E9C] font-medium">操作</th>
+          <tr className="border-b border-border-primary">
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">标题</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">分类</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">浏览量</th>
+            <th className="text-left py-4 px-6 text-text-secondary font-medium">状态</th>
+            <th className="text-right py-4 px-6 text-text-secondary font-medium">操作</th>
           </tr>
         </thead>
         <tbody>
           {filteredDocs.map((item: HelpDocItem) => (
             <tr
               key={item.id}
-              className="border-b border-[#2B3139] last:border-0 hover:bg-[#1E222D]/50"
+              className="border-b border-border-primary last:border-0 hover:bg-bg-tertiary/50"
             >
               <td className="py-4 px-6">
                 <div>
                   <p className="text-white">{item.title}</p>
-                  <p className="text-[#5E6673] text-xs font-mono mt-0.5">/{item.slug}</p>
+                  <p className="text-text-tertiary text-xs font-mono mt-0.5">/{item.slug}</p>
                 </div>
               </td>
               <td className="py-4 px-6">
                 <span className={`px-2 py-1 text-xs rounded ${
                   item.category === 'faq'
-                    ? 'bg-[#3772FF]/10 text-[#3772FF]'
+                    ? 'bg-brand-primary/10 text-brand-primary'
                     : item.category === 'tutorial'
-                    ? 'bg-[#00C087]/10 text-[#00C087]'
-                    : 'bg-[#F7931A]/10 text-[#F7931A]'
+                    ? 'bg-success/10 text-success'
+                    : 'bg-warning/10 text-warning'
                 }`}>
                   {item.category === 'faq' ? '常见问题' :
                    item.category === 'tutorial' ? '教程' : '指南'}
                 </span>
               </td>
               <td className="py-4 px-6">
-                <span className="text-[#848E9C]">{item.view_count || 0}</span>
+                <span className="text-text-secondary">{item.view_count || 0}</span>
               </td>
               <td className="py-4 px-6">
                 {item.is_published ? (
-                  <span className="flex items-center gap-1 text-[#00C087] text-sm">
+                  <span className="flex items-center gap-1 text-success text-sm">
                     <Eye className="w-4 h-4" />
                     已发布
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-[#848E9C] text-sm">
+                  <span className="flex items-center gap-1 text-text-secondary text-sm">
                     <EyeOff className="w-4 h-4" />
                     草稿
                   </span>
@@ -503,13 +503,13 @@ export default function CmsPage() {
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => handleEdit(item)}
-                    className="p-2 text-[#3772FF] hover:bg-[#3772FF]/10 rounded-lg transition-colors"
+                    className="p-2 text-brand-primary hover:bg-brand-primary/10 rounded-lg transition-colors"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete('help-docs', item.id, item.title)}
-                    className="p-2 text-[#F23645] hover:bg-[#F23645]/10 rounded-lg transition-colors"
+                    className="p-2 text-danger hover:bg-danger/10 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -534,11 +534,11 @@ export default function CmsPage() {
             <FileText className="w-6 h-6" />
             内容管理系统
           </h1>
-          <p className="text-[#848E9C] mt-1">管理网站内容、Banner 和帮助文档</p>
+          <p className="text-text-secondary mt-1">管理网站内容、Banner 和帮助文档</p>
         </div>
         <button
           onClick={handleCreate}
-          className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors flex items-center gap-2"
+          className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary transition-colors flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
           新建
@@ -559,8 +559,8 @@ export default function CmsPage() {
                 }}
                 className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'bg-[#3772FF] text-white'
-                    : 'bg-[#1E222D] text-[#848E9C] hover:text-white hover:bg-[#2B3139]'
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-bg-tertiary text-text-secondary hover:text-white hover:bg-bg-tertiary'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -570,18 +570,18 @@ export default function CmsPage() {
           })}
         </div>
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#5E6673]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
           <input
             type="text"
             placeholder="搜索..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-[#1E222D] border border-[#2B3139] rounded-lg pl-10 pr-4 py-2 text-white text-sm w-64 focus:outline-none focus:border-[#3772FF]"
+            className="bg-bg-tertiary border border-border-primary rounded-lg pl-10 pr-4 py-2 text-white text-sm w-64 focus:outline-none focus:border-brand-primary"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5E6673] hover:text-white"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
@@ -590,11 +590,11 @@ export default function CmsPage() {
       </div>
 
       {/* 内容列表 */}
-      <div className="bg-[#131722] rounded-xl border border-[#2B3139]">
+      <div className="glass-card">
         {isLoading ? (
           <div className="p-8 text-center">
-            <RefreshCw className="w-8 h-8 text-[#3772FF] animate-spin mx-auto" />
-            <p className="text-[#848E9C] mt-2">加载中...</p>
+            <RefreshCw className="w-8 h-8 text-brand-primary animate-spin mx-auto" />
+            <p className="text-text-secondary mt-2">加载中...</p>
           </div>
         ) : (
           <>
@@ -608,8 +608,8 @@ export default function CmsPage() {
       {/* 编辑弹窗 */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#131722] rounded-xl border border-[#2B3139] w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-[#2B3139] flex items-center justify-between">
+          <div className="bg-bg-secondary rounded-xl border border-border-primary w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-border-primary flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white">
                 {editingItem ? '编辑' : '新建'}
                 {activeTab === 'contents' ? '内容' :
@@ -617,9 +617,9 @@ export default function CmsPage() {
               </h2>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-[#2B3139] rounded-lg transition-colors"
+                className="p-2 hover:bg-bg-tertiary rounded-lg transition-colors"
               >
-                <X className="w-5 h-5 text-[#848E9C]" />
+                <X className="w-5 h-5 text-text-secondary" />
               </button>
             </div>
             <div className="p-6 space-y-4">
@@ -627,22 +627,22 @@ export default function CmsPage() {
               {activeTab === 'contents' && (
                 <>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">内容键 *</label>
+                    <label className="block text-text-secondary text-sm mb-2">内容键 *</label>
                     <input
                       type="text"
                       value={contentForm.contentKey}
                       onChange={(e) => setContentForm({ ...contentForm, contentKey: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="例如: landing.hero.title"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[#848E9C] text-sm mb-2">内容类型</label>
+                      <label className="block text-text-secondary text-sm mb-2">内容类型</label>
                       <select
                         value={contentForm.contentType}
                         onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
-                        className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                        className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none"
                       >
                         <option value="text">文本</option>
                         <option value="richtext">富文本</option>
@@ -651,11 +651,11 @@ export default function CmsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[#848E9C] text-sm mb-2">语言</label>
+                      <label className="block text-text-secondary text-sm mb-2">语言</label>
                       <select
                         value={contentForm.locale}
                         onChange={(e) => setContentForm({ ...contentForm, locale: e.target.value })}
-                        className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                        className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none"
                       >
                         <option value="zh-CN">中文</option>
                         <option value="en">English</option>
@@ -663,22 +663,22 @@ export default function CmsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">标题</label>
+                    <label className="block text-text-secondary text-sm mb-2">标题</label>
                     <input
                       type="text"
                       value={contentForm.title}
                       onChange={(e) => setContentForm({ ...contentForm, title: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="内容标题（可选）"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">内容 *</label>
+                    <label className="block text-text-secondary text-sm mb-2">内容 *</label>
                     <textarea
                       value={contentForm.content}
                       onChange={(e) => setContentForm({ ...contentForm, content: e.target.value })}
                       rows={6}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="输入内容..."
                     />
                   </div>
@@ -688,17 +688,17 @@ export default function CmsPage() {
                         type="checkbox"
                         checked={contentForm.isPublished}
                         onChange={(e) => setContentForm({ ...contentForm, isPublished: e.target.checked })}
-                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                        className="w-4 h-4 rounded bg-bg-tertiary border-border-primary"
                       />
                       <span className="text-white">发布</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <label className="text-text-secondary text-sm">排序:</label>
                       <input
                         type="number"
                         value={contentForm.sortOrder}
                         onChange={(e) => setContentForm({ ...contentForm, sortOrder: parseInt(e.target.value) || 0 })}
-                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-primary rounded text-white text-center"
                       />
                     </div>
                   </div>
@@ -709,51 +709,51 @@ export default function CmsPage() {
               {activeTab === 'banners' && (
                 <>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">标题 *</label>
+                    <label className="block text-text-secondary text-sm mb-2">标题 *</label>
                     <input
                       type="text"
                       value={bannerForm.title}
                       onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="Banner 标题"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">副标题</label>
+                    <label className="block text-text-secondary text-sm mb-2">副标题</label>
                     <input
                       type="text"
                       value={bannerForm.subtitle}
                       onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="Banner 副标题（可选）"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">图片 URL *</label>
+                    <label className="block text-text-secondary text-sm mb-2">图片 URL *</label>
                     <input
                       type="text"
                       value={bannerForm.imageUrl}
                       onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="https://..."
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">链接 URL</label>
+                    <label className="block text-text-secondary text-sm mb-2">链接 URL</label>
                     <input
                       type="text"
                       value={bannerForm.linkUrl}
                       onChange={(e) => setBannerForm({ ...bannerForm, linkUrl: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="点击跳转地址（可选）"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">展示位置</label>
+                    <label className="block text-text-secondary text-sm mb-2">展示位置</label>
                     <select
                       value={bannerForm.position}
                       onChange={(e) => setBannerForm({ ...bannerForm, position: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none"
                     >
                       <option value="home_hero">首页 Hero</option>
                       <option value="home_promo">首页推广</option>
@@ -767,17 +767,17 @@ export default function CmsPage() {
                         type="checkbox"
                         checked={bannerForm.isActive}
                         onChange={(e) => setBannerForm({ ...bannerForm, isActive: e.target.checked })}
-                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                        className="w-4 h-4 rounded bg-bg-tertiary border-border-primary"
                       />
                       <span className="text-white">启用</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <label className="text-text-secondary text-sm">排序:</label>
                       <input
                         type="number"
                         value={bannerForm.sortOrder}
                         onChange={(e) => setBannerForm({ ...bannerForm, sortOrder: parseInt(e.target.value) || 0 })}
-                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-primary rounded text-white text-center"
                       />
                     </div>
                   </div>
@@ -788,31 +788,31 @@ export default function CmsPage() {
               {activeTab === 'help-docs' && (
                 <>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">URL 别名 *</label>
+                    <label className="block text-text-secondary text-sm mb-2">URL 别名 *</label>
                     <input
                       type="text"
                       value={helpDocForm.slug}
                       onChange={(e) => setHelpDocForm({ ...helpDocForm, slug: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="例如: how-to-start"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">标题 *</label>
+                    <label className="block text-text-secondary text-sm mb-2">标题 *</label>
                     <input
                       type="text"
                       value={helpDocForm.title}
                       onChange={(e) => setHelpDocForm({ ...helpDocForm, title: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                       placeholder="文档标题"
                     />
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">分类</label>
+                    <label className="block text-text-secondary text-sm mb-2">分类</label>
                     <select
                       value={helpDocForm.category}
                       onChange={(e) => setHelpDocForm({ ...helpDocForm, category: e.target.value })}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none"
                     >
                       <option value="faq">常见问题</option>
                       <option value="tutorial">教程</option>
@@ -820,12 +820,12 @@ export default function CmsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[#848E9C] text-sm mb-2">内容 * (Markdown)</label>
+                    <label className="block text-text-secondary text-sm mb-2">内容 * (Markdown)</label>
                     <textarea
                       value={helpDocForm.content}
                       onChange={(e) => setHelpDocForm({ ...helpDocForm, content: e.target.value })}
                       rows={10}
-                      className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF] font-mono text-sm"
+                      className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary font-mono text-sm"
                       placeholder="# 标题&#10;&#10;内容..."
                     />
                   </div>
@@ -835,34 +835,34 @@ export default function CmsPage() {
                         type="checkbox"
                         checked={helpDocForm.isPublished}
                         onChange={(e) => setHelpDocForm({ ...helpDocForm, isPublished: e.target.checked })}
-                        className="w-4 h-4 rounded bg-[#1E222D] border-[#2B3139]"
+                        className="w-4 h-4 rounded bg-bg-tertiary border-border-primary"
                       />
                       <span className="text-white">发布</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <label className="text-[#848E9C] text-sm">排序:</label>
+                      <label className="text-text-secondary text-sm">排序:</label>
                       <input
                         type="number"
                         value={helpDocForm.sortOrder}
                         onChange={(e) => setHelpDocForm({ ...helpDocForm, sortOrder: parseInt(e.target.value) || 0 })}
-                        className="w-20 px-2 py-1 bg-[#1E222D] border border-[#2B3139] rounded text-white text-center"
+                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-primary rounded text-white text-center"
                       />
                     </div>
                   </div>
                 </>
               )}
             </div>
-            <div className="p-6 border-t border-[#2B3139] flex justify-end gap-3">
+            <div className="p-6 border-t border-border-primary flex justify-end gap-3">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139] transition-colors"
+                className="px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors disabled:opacity-50"
+                className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary transition-colors disabled:opacity-50"
               >
                 {isSaving ? '保存中...' : '保存'}
               </button>

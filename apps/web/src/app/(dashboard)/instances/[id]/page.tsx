@@ -21,7 +21,6 @@ import {
   MapPin,
   Terminal,
   Download,
-  Database,
   CheckCircle,
   Loader2,
   XCircle,
@@ -58,14 +57,6 @@ interface LogEntry {
   message: string;
 }
 
-interface KlineStatus {
-  status: 'idle' | 'downloading' | 'completed' | 'error';
-  progress?: number;
-  message?: string;
-  lastUpdated?: string;
-  availablePairs?: string[];
-}
-
 export default function InstanceDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -76,11 +67,6 @@ export default function InstanceDetailPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  // K 线下载相关状态
-  const [klineStatus, setKlineStatus] = useState<KlineStatus>({ status: 'idle' });
-  const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>(['1h', '4h', '1d']);
-  const [klineDownloading, setKlineDownloading] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -183,55 +169,6 @@ export default function InstanceDetailPage() {
       alert(error instanceof Error ? error.message : '备份失败');
     } finally {
       setActionLoading(null);
-    }
-  };
-
-  // K 线下载相关函数
-  const toggleTimeframe = (tf: string) => {
-    setSelectedTimeframes((prev) =>
-      prev.includes(tf) ? prev.filter((t) => t !== tf) : [...prev, tf]
-    );
-  };
-
-  const fetchKlineStatus = async () => {
-    try {
-      const res = await instancesApi.getKlineStatus(instanceId);
-      if (res.code === 0 && res.data) {
-        setKlineStatus(res.data);
-      }
-    } catch (error) {
-      console.error('获取 K 线状态失败:', error);
-    }
-  };
-
-  const handleDownloadKline = async () => {
-    if (selectedTimeframes.length === 0) {
-      alert('请至少选择一个时间周期');
-      return;
-    }
-
-    setKlineDownloading(true);
-    try {
-      const res = await instancesApi.downloadKline(instanceId, {
-        pairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT'],
-        timeframes: selectedTimeframes,
-      });
-
-      if (res.code === 0) {
-        setKlineStatus({ status: 'downloading', message: res.message });
-        // 启动轮询检查状态
-        const pollInterval = setInterval(async () => {
-          await fetchKlineStatus();
-        }, 3000);
-        // 30 秒后停止轮询
-        setTimeout(() => clearInterval(pollInterval), 30000);
-      } else {
-        alert(res.message || '下载启动失败');
-      }
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '下载失败');
-    } finally {
-      setKlineDownloading(false);
     }
   };
 
@@ -634,111 +571,6 @@ export default function InstanceDetailPage() {
                 />
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* K 线数据下载 */}
-      {instance.status === 'running' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-brand-primary" />
-              历史 K 线数据
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-text-secondary text-sm mb-4">
-              回测需要历史 K 线数据。首次使用或需要更新数据时，请点击下载。
-            </p>
-
-            {/* 下载状态显示 */}
-            {klineStatus.status === 'completed' && (
-              <div className="flex items-center gap-2 text-success mb-4 p-3 bg-success/10 rounded-lg">
-                <CheckCircle className="w-5 h-5" />
-                <div>
-                  <span className="font-medium">数据已就绪</span>
-                  <p className="text-sm text-success/80">可以进行回测</p>
-                </div>
-              </div>
-            )}
-
-            {klineStatus.status === 'downloading' && (
-              <div className="flex items-center gap-2 text-warning mb-4 p-3 bg-warning/10 rounded-lg">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <div>
-                  <span className="font-medium">正在下载中...</span>
-                  <p className="text-sm text-warning/80">
-                    {klineStatus.progress !== undefined
-                      ? `进度: ${klineStatus.progress}%`
-                      : klineStatus.message || '请稍候'}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {klineStatus.status === 'error' && (
-              <div className="flex items-center gap-2 text-danger mb-4 p-3 bg-danger/10 rounded-lg">
-                <XCircle className="w-5 h-5" />
-                <div>
-                  <span className="font-medium">下载失败</span>
-                  <p className="text-sm text-danger/80">
-                    {klineStatus.message || '请重试'}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* 时间周期选择 */}
-            <div className="mb-4">
-              <label className="text-sm text-text-secondary block mb-2">
-                选择 K 线周期
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
-                  <button
-                    key={tf}
-                    onClick={() => toggleTimeframe(tf)}
-                    disabled={klineStatus.status === 'downloading'}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      selectedTimeframes.includes(tf)
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-bg-tertiary text-text-secondary hover:text-white hover:bg-bg-tertiary/80'
-                    } ${
-                      klineStatus.status === 'downloading'
-                        ? 'opacity-50 cursor-not-allowed'
-                        : ''
-                    }`}
-                  >
-                    {tf}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 交易对说明 */}
-            <p className="text-xs text-text-tertiary mb-4">
-              将下载以下交易对数据：BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT
-            </p>
-
-            {/* 下载按钮 */}
-            <Button
-              onClick={handleDownloadKline}
-              disabled={
-                klineDownloading ||
-                klineStatus.status === 'downloading' ||
-                selectedTimeframes.length === 0
-              }
-              isLoading={klineDownloading || klineStatus.status === 'downloading'}
-              className="w-full sm:w-auto"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              {klineStatus.status === 'downloading'
-                ? '下载中...'
-                : klineStatus.status === 'completed'
-                  ? '更新数据'
-                  : '下载历史数据'}
-            </Button>
           </CardContent>
         </Card>
       )}

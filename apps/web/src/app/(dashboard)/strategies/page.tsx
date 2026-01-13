@@ -108,8 +108,26 @@ export default function StrategiesPage() {
   return (
     <div className="space-y-3 lg:space-y-6 pb-20 lg:pb-0">
       {/* ===== 移动端布局 ===== */}
-      <div className="lg:hidden">
-        {/* 顶部搜索栏 - 搜索框 + 右侧筛选按钮 */}
+      <div className="lg:hidden px-4 pt-4">
+        {/* 功能入口按钮 - 两个并排（放在搜索框上方，视觉更突出）*/}
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => router.push('/strategies/my')}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 glass-content text-text-primary text-sm font-medium hover:border-brand-primary/30 transition-colors"
+          >
+            <FolderOpen className="w-4 h-4 text-brand-primary" />
+            我的策略
+          </button>
+          <button
+            onClick={() => router.push('/strategies/manage')}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 glass-content text-text-primary text-sm font-medium hover:border-brand-primary/30 transition-colors"
+          >
+            <Upload className="w-4 h-4 text-brand-primary" />
+            策略管理
+          </button>
+        </div>
+
+        {/* 搜索栏 - 搜索框 + 右侧筛选按钮 */}
         <div className="flex items-center gap-2 mb-3">
           {/* 搜索框 */}
           <div className="flex-1 relative">
@@ -119,14 +137,16 @@ export default function StrategiesPage() {
               placeholder="搜索策略..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-3 py-2.5 bg-bg-secondary border border-border-primary rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-brand-primary"
+              className="w-full pl-10 pr-3 py-2.5 bg-bg-tertiary rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary"
             />
           </div>
           {/* 筛选按钮 - 右侧外部 */}
           <button
             onClick={() => setFilterPanelOpen(!filterPanelOpen)}
             className={`p-2.5 rounded-lg transition-colors ${
-              filterPanelOpen ? 'bg-brand-primary text-white' : 'bg-bg-secondary border border-border-primary text-text-secondary'
+              filterPanelOpen
+                ? 'bg-brand-primary text-white'
+                : 'bg-bg-tertiary text-text-secondary'
             }`}
           >
             <SlidersHorizontal className="w-5 h-5" />
@@ -135,7 +155,7 @@ export default function StrategiesPage() {
 
         {/* 移动端筛选面板（搜索栏下方展开）*/}
         {filterPanelOpen && (
-          <div className="bg-bg-secondary rounded-xl p-4 mb-3 border border-border-primary">
+          <div className="glass-content p-4 mb-3">
             <div className="space-y-4">
               {/* 策略类型 */}
               <div>
@@ -258,24 +278,6 @@ export default function StrategiesPage() {
             </div>
           </div>
         )}
-
-        {/* 功能入口按钮 - 两个并排 */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => router.push('/strategies/my')}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-primary/10 border border-brand-primary/30 rounded-lg text-brand-primary text-sm font-medium"
-          >
-            <FolderOpen className="w-4 h-4" />
-            我的策略
-          </button>
-          <button
-            onClick={() => router.push('/strategies/manage')}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-bg-secondary border border-border-primary rounded-lg text-text-secondary text-sm font-medium"
-          >
-            <Upload className="w-4 h-4" />
-            策略管理
-          </button>
-        </div>
       </div>
 
       {/* ===== 桌面端布局 ===== */}
@@ -389,9 +391,10 @@ export default function StrategiesPage() {
 
       {/* 策略列表 */}
       {filteredStrategies.length === 0 ? (
-        <Card variant="glass">
-          <CardContent className="py-12 text-center">
-            <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
+        <>
+          {/* 移动端空状态 */}
+          <div className="lg:hidden mx-4 py-12 text-center glass-content rounded-xl">
+            <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary/50 rounded-full flex items-center justify-center">
               <Zap className="w-8 h-8 text-text-tertiary" />
             </div>
             <h3 className="text-lg font-medium text-text-primary mb-2">
@@ -400,28 +403,38 @@ export default function StrategiesPage() {
             <p className="text-text-secondary text-sm">
               {strategies.length === 0 ? '策略正在准备中' : '尝试调整筛选条件'}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          {/* 桌面端空状态 */}
+          <Card variant="glass" className="hidden lg:block">
+            <CardContent className="py-12 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
+                <Zap className="w-8 h-8 text-text-tertiary" />
+              </div>
+              <h3 className="text-lg font-medium text-text-primary mb-2">
+                {strategies.length === 0 ? '暂无可用策略' : '没有符合条件的策略'}
+              </h3>
+              <p className="text-text-secondary text-sm">
+                {strategies.length === 0 ? '策略正在准备中' : '尝试调整筛选条件'}
+              </p>
+            </CardContent>
+          </Card>
+        </>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-          {filteredStrategies.map((strategy) => {
-            // 获取交易类型
-            const tradeType = (strategy as any).trade_type || 'spot';
+        <>
+          {/* ===== 移动端策略列表 - 斑马纹列表 ===== */}
+          <div className="lg:hidden mx-4 rounded-xl overflow-hidden glass-content">
+            {filteredStrategies.map((strategy, index) => {
+              const tradeType = (strategy as any).trade_type || 'spot';
+              const backtestWinRate = Number((strategy as any).backtest_win_rate ?? strategy.performance_stats?.backtest?.win_rate ?? 0);
+              const backtestMaxDrawdown = Number((strategy as any).backtest_max_drawdown ?? strategy.performance_stats?.backtest?.max_drawdown ?? 0);
+              const backtestTotalReturn = Number((strategy as any).backtest_total_return ?? 0);
+              const sharpeRatio = (backtestTotalReturn / (backtestMaxDrawdown || 1) * 0.5).toFixed(2);
 
-            // 获取回测数据
-            const backtestWinRate = Number((strategy as any).backtest_win_rate ?? strategy.performance_stats?.backtest?.win_rate ?? 0);
-            const backtestMaxDrawdown = Number((strategy as any).backtest_max_drawdown ?? strategy.performance_stats?.backtest?.max_drawdown ?? 0);
-            const backtestTotalReturn = Number((strategy as any).backtest_total_return ?? 0);
-            const sharpeRatio = (backtestTotalReturn / (backtestMaxDrawdown || 1) * 0.5).toFixed(2);
-
-            return (
-              <Card
-                key={strategy.id}
-                variant="glass"
-                hover
-                className="overflow-hidden"
-              >
-                <CardContent className="p-3">
+              return (
+                <div
+                  key={strategy.id}
+                  className={`p-3 ${index % 2 === 1 ? 'bg-bg-primary/30' : ''}`}
+                >
                   {/* 第一行：策略名称 + 标签 */}
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-white font-medium text-sm truncate flex-1 min-w-0">{strategy.name}</h3>
@@ -462,9 +475,9 @@ export default function StrategiesPage() {
                   {/* 第三行：双按钮 */}
                   <div className="flex gap-2">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="flex-1 h-8 text-xs"
+                      className="flex-1 h-8 text-xs bg-bg-tertiary"
                       onClick={() => router.push(`/strategies/${strategy.id}`)}
                     >
                       详情
@@ -478,11 +491,90 @@ export default function StrategiesPage() {
                       回测
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ===== 桌面端策略列表 - 保持卡片样式 ===== */}
+          <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredStrategies.map((strategy) => {
+              const tradeType = (strategy as any).trade_type || 'spot';
+              const backtestWinRate = Number((strategy as any).backtest_win_rate ?? strategy.performance_stats?.backtest?.win_rate ?? 0);
+              const backtestMaxDrawdown = Number((strategy as any).backtest_max_drawdown ?? strategy.performance_stats?.backtest?.max_drawdown ?? 0);
+              const backtestTotalReturn = Number((strategy as any).backtest_total_return ?? 0);
+              const sharpeRatio = (backtestTotalReturn / (backtestMaxDrawdown || 1) * 0.5).toFixed(2);
+
+              return (
+                <Card
+                  key={strategy.id}
+                  variant="glass"
+                  hover
+                  className="overflow-hidden"
+                >
+                  <CardContent className="p-3">
+                    {/* 第一行：策略名称 + 标签 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-white font-medium text-sm truncate flex-1 min-w-0">{strategy.name}</h3>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          tradeType === 'futures'
+                            ? 'bg-warning/15 text-warning'
+                            : 'bg-brand-primary/15 text-brand-primary'
+                        }`}>
+                          {tradeType === 'futures' ? '合约' : '现货'}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          strategy.owner_type === 'system'
+                            ? 'bg-warning/15 text-warning'
+                            : 'bg-success/15 text-success'
+                        }`}>
+                          {strategy.owner_type === 'system' ? '官方' : '社区'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 第二行：三指标横排 */}
+                    <div className="grid grid-cols-3 gap-2 py-2 bg-bg-tertiary/50 rounded-md px-2 mb-2">
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-white">{backtestWinRate.toFixed(0)}%</p>
+                        <p className="text-[10px] text-text-tertiary">胜率</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-danger">-{backtestMaxDrawdown.toFixed(0)}%</p>
+                        <p className="text-[10px] text-text-tertiary">回撤</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-white">{sharpeRatio}</p>
+                        <p className="text-[10px] text-text-tertiary">夏普</p>
+                      </div>
+                    </div>
+
+                    {/* 第三行：双按钮 */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs"
+                        onClick={() => router.push(`/strategies/${strategy.id}`)}
+                      >
+                        详情
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="flex-1 h-8 text-xs"
+                        onClick={() => router.push(`/trading/backtest?strategyId=${strategy.id}`)}
+                      >
+                        回测
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
 
     </div>

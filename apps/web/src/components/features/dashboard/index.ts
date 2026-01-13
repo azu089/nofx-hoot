@@ -9,3 +9,6 @@ export type { AiAnalysisModalProps } from './AiAnalysisModal';
 
 export { FearGreedIndex } from './FearGreedIndex';
 export { OnboardingTasks } from './OnboardingTasks';
+
+// 高保真 v0 组件
+export { AssetHeroCard } from './AssetHeroCard';

@@ -85,3 +85,6 @@ export { DateRangePicker } from './DateRangePicker';
 
 export { Sheet } from './sheet';
 export type { SheetProps } from './sheet';
+
+export { ConfirmModal } from './confirm-modal';
+export type { ConfirmModalProps } from './confirm-modal';

@@ -238,10 +238,13 @@ export class AdminService {
     // 构建查询条件
     const where: any = {};
     if (search) {
-      where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { id: { contains: search } },
-      ];
+      // 检查是否是有效的 UUID 格式
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search);
+      if (isUUID) {
+        where.id = search;
+      } else {
+        where.email = { contains: search, mode: 'insensitive' };
+      }
     }
     if (status && status !== 'all') {
       where.status = status;
@@ -264,7 +267,12 @@ export class AdminService {
         const [wallet, instanceCount, tradesCount] = await Promise.all([
           this.prisma.client.wallets.findFirst({
             where: { user_id: user.id },
-            select: { usdt_balance: true },
+            select: {
+              usdt_balance: true,
+              points_balance: true,
+              card_balance: true,
+              token_balance: true,
+            },
           }),
           this.prisma.client.instances.count({
             where: { user_id: user.id },
@@ -281,11 +289,20 @@ export class AdminService {
           balance: wallet?.usdt_balance
             ? new Decimal(wallet.usdt_balance.toString()).toFixed(2)
             : '0.00',
+          pointsBalance: wallet?.points_balance
+            ? new Decimal(wallet.points_balance.toString()).toFixed(2)
+            : '0.00',
+          cardBalance: wallet?.card_balance
+            ? new Decimal(wallet.card_balance.toString()).toFixed(2)
+            : '0.00',
+          tokenBalance: wallet?.token_balance
+            ? new Decimal(wallet.token_balance.toString()).toFixed(2)
+            : '0.00',
           status: user.status,
           instanceCount,
           totalTrades: tradesCount,
           createdAt: user.created_at.toISOString().split('T')[0],
-          lastLogin: this.formatTimeAgo(user.updated_at),
+          lastLogin: user.updated_at ? user.updated_at.toISOString() : null,
         };
       })
     );
@@ -1894,9 +1911,13 @@ export class AdminService {
 
     // 如果是扣款，检查余额是否足够
     if (data.type === 'deduct' && currentBalance.lt(amount)) {
-      throw new BadRequestException(
-        `用户余额不足，当前余额：${currentBalance.toString()}，扣款金额：${amount.toString()}`,
-      );
+      // 管理员操作：记录日志但不在响应中暴露用户余额
+      this.logger.warn(`管理员扣款失败：用户余额不足`, {
+        userId,
+        currentBalance: currentBalance.toString(),
+        deductAmount: amount.toString(),
+      });
+      throw new BadRequestException('用户余额不足，无法扣款');
     }
 
     const newBalance = data.type === 'add'
@@ -2694,6 +2715,425 @@ export class AdminService {
         description: b.description || '',
         createdAt: b.created_at,
       })),
+    };
+  }
+
+  // ==================== 用户级代理商管理（is_agent 字段）====================
+
+  /**
+   * 设置用户为代理商（基于 is_agent 字段）
+   * 不同于 agents 表的代理商系统，这是简化的用户级代理商
+   * @param adminId 管理员 ID
+   * @param userId 用户 ID
+   * @param isAgent 是否为代理商
+   * @param commissionRate 佣金比例（0.01-0.50）
+   */
+  async setUserAgentStatus(
+    adminId: string,
+    userId: string,
+    isAgent: boolean,
+    commissionRate?: number,
+  ) {
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, is_agent: true, agent_commission_rate: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    // 校验佣金比例
+    let rate: string | null = null;
+    if (isAgent && commissionRate !== undefined) {
+      if (commissionRate < 0.01 || commissionRate > 0.50) {
+        throw new BadRequestException('佣金比例必须在 1% 到 50% 之间');
+      }
+      rate = new Decimal(commissionRate).toDecimalPlaces(4).toString();
+    } else if (isAgent && !commissionRate && !user.agent_commission_rate) {
+      // 默认 10%
+      rate = '0.1000';
+    }
+
+    await this.prisma.client.users.update({
+      where: { id: userId },
+      data: {
+        is_agent: isAgent,
+        ...(rate !== null && { agent_commission_rate: rate }),
+        updated_at: new Date(),
+      },
+    });
+
+    await this.logAudit(adminId, isAgent ? 'set_user_as_agent' : 'revoke_user_agent', 'user', userId, {
+      userEmail: user.email,
+      previousIsAgent: user.is_agent,
+      newIsAgent: isAgent,
+      commissionRate: rate,
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} ${isAgent ? '设置' : '撤销'} 用户 ${userId} (${user.email}) 的代理商身份`,
+    );
+
+    return {
+      success: true,
+      userId,
+      isAgent,
+      commissionRate: rate || user.agent_commission_rate?.toString() || null,
+    };
+  }
+
+  /**
+   * 更新用户代理商佣金比例
+   */
+  async updateUserAgentCommissionRate(
+    adminId: string,
+    userId: string,
+    commissionRate: number,
+  ) {
+    const user = await this.prisma.client.users.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, is_agent: true, agent_commission_rate: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    if (!user.is_agent) {
+      throw new BadRequestException('该用户不是代理商');
+    }
+
+    if (commissionRate < 0.01 || commissionRate > 0.50) {
+      throw new BadRequestException('佣金比例必须在 1% 到 50% 之间');
+    }
+
+    const rate = new Decimal(commissionRate).toDecimalPlaces(4).toString();
+
+    await this.prisma.client.users.update({
+      where: { id: userId },
+      data: {
+        agent_commission_rate: rate,
+        updated_at: new Date(),
+      },
+    });
+
+    await this.logAudit(adminId, 'update_agent_commission_rate', 'user', userId, {
+      userEmail: user.email,
+      previousRate: user.agent_commission_rate?.toString(),
+      newRate: rate,
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} 更新代理商 ${userId} 的佣金比例为 ${commissionRate * 100}%`,
+    );
+
+    return {
+      success: true,
+      userId,
+      commissionRate: rate,
+    };
+  }
+
+  /**
+   * 获取用户级代理商列表（基于 is_agent 字段）
+   */
+  async getUserAgents(params: { page?: number; limit?: number; search?: string }) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {
+      is_agent: true,
+    };
+
+    if (params.search) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.search);
+      if (isUUID) {
+        where.id = params.search;
+      } else {
+        where.email = { contains: params.search, mode: 'insensitive' };
+      }
+    }
+
+    const [agents, total] = await Promise.all([
+      this.prisma.client.users.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          is_agent: true,
+          agent_commission_rate: true,
+          created_at: true,
+          updated_at: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.client.users.count({ where }),
+    ]);
+
+    // 查询每个代理商的下级数量和佣金统计
+    const agentsWithStats = await Promise.all(
+      agents.map(async (agent) => {
+        // 统计下级用户数（referred_by_user_id = 代理商的用户 ID）
+        const referralCount = await this.prisma.client.users.count({
+          where: { referred_by_user_id: agent.id },
+        });
+
+        // 统计佣金（从 user_commissions 表）
+        const commissionStats = await this.prisma.client.user_commissions.aggregate({
+          where: {
+            referrer_id: agent.id,
+          },
+          _sum: { commission_amount: true },
+        });
+
+        // 统计待结算和已结算
+        const [pendingCommission, settledCommission] = await Promise.all([
+          this.prisma.client.user_commissions.aggregate({
+            where: { referrer_id: agent.id, status: 'pending' },
+            _sum: { commission_amount: true },
+          }),
+          this.prisma.client.user_commissions.aggregate({
+            where: { referrer_id: agent.id, status: 'settled' },
+            _sum: { commission_amount: true },
+          }),
+        ]);
+
+        return {
+          id: agent.id,
+          email: agent.email,
+          isAgent: agent.is_agent,
+          commissionRate: agent.agent_commission_rate?.toString() || '0.1000',
+          referralCount,
+          totalCommission: commissionStats._sum.commission_amount?.toString() || '0',
+          pendingCommission: pendingCommission._sum.commission_amount?.toString() || '0',
+          settledCommission: settledCommission._sum.commission_amount?.toString() || '0',
+          createdAt: agent.created_at,
+        };
+      }),
+    );
+
+    return {
+      data: agentsWithStats,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * 手动结算代理商佣金
+   * 将待结算的佣金（user_commissions 表中 status=pending）结算到代理商的钱包
+   * @param adminId 管理员 ID
+   * @param agentId 代理商用户 ID
+   * @param amount 结算金额（USDT）
+   * @param remark 备注说明
+   */
+  async settleUserAgentCommission(
+    adminId: string,
+    agentId: string,
+    amount: string,
+    remark?: string,
+  ) {
+    const agent = await this.prisma.client.users.findUnique({
+      where: { id: agentId },
+      select: { id: true, email: true, is_agent: true },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    if (!agent.is_agent) {
+      throw new BadRequestException('该用户不是代理商');
+    }
+
+    const settleAmount = new Decimal(amount);
+    if (settleAmount.lte(0)) {
+      throw new BadRequestException('结算金额必须大于 0');
+    }
+
+    // 查询待结算佣金总额
+    const pendingTotal = await this.prisma.client.user_commissions.aggregate({
+      where: { referrer_id: agentId, status: 'pending' },
+      _sum: { commission_amount: true },
+    });
+
+    const pendingAmount = new Decimal(pendingTotal._sum.commission_amount?.toString() || '0');
+
+    if (settleAmount.gt(pendingAmount)) {
+      throw new BadRequestException(
+        `结算金额超过待结算总额，待结算佣金: ${pendingAmount.toFixed(8)} USDT`,
+      );
+    }
+
+    // 使用事务：更新佣金状态 + 增加钱包余额 + 记录日志
+    const orderId = `agent_settle_${agentId}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. 按时间顺序获取待结算的佣金记录，直到累计金额达到结算金额
+      const pendingCommissions = await tx.user_commissions.findMany({
+        where: { referrer_id: agentId, status: 'pending' },
+        orderBy: { created_at: 'asc' },
+      });
+
+      let remainingAmount = settleAmount;
+      const settledIds: string[] = [];
+
+      for (const commission of pendingCommissions) {
+        if (remainingAmount.lte(0)) break;
+
+        const commissionAmount = new Decimal(commission.commission_amount.toString());
+
+        if (commissionAmount.lte(remainingAmount)) {
+          // 全部结算
+          settledIds.push(commission.id);
+          remainingAmount = remainingAmount.minus(commissionAmount);
+        } else {
+          // 部分结算（创建新记录保留剩余）
+          // 简化处理：只结算完整的佣金记录
+          break;
+        }
+      }
+
+      if (settledIds.length === 0) {
+        throw new BadRequestException('没有可结算的佣金记录');
+      }
+
+      // 2. 更新佣金状态为已结算
+      await tx.user_commissions.updateMany({
+        where: { id: { in: settledIds } },
+        data: {
+          status: 'settled',
+          settled_at: new Date(),
+        },
+      });
+
+      // 计算实际结算金额
+      const actualSettleAmount = settleAmount.minus(remainingAmount);
+
+      // 3. 增加代理商钱包余额（USDT）
+      await tx.wallets.upsert({
+        where: { user_id: agentId },
+        create: {
+          user_id: agentId,
+          usdt_balance: actualSettleAmount.toString(),
+          card_balance: '0',
+          points_balance: '0',
+        },
+        update: {
+          usdt_balance: {
+            increment: actualSettleAmount.toNumber(),
+          },
+          updated_at: new Date(),
+        },
+      });
+
+      // 4. 记录计费日志
+      await tx.billing_logs.create({
+        data: {
+          user_id: agentId,
+          unique_order_id: orderId,
+          billing_type: 'agent_commission_settle',
+          amount: actualSettleAmount.toString(),
+          currency: 'USDT',
+          description: `代理商佣金结算${remark ? `：${remark}` : ''}`,
+          status: 'completed',
+        },
+      });
+    });
+
+    await this.logAudit(adminId, 'settle_agent_commission', 'user', agentId, {
+      agentEmail: agent.email,
+      settleAmount: settleAmount.toString(),
+      remark,
+    });
+
+    this.logger.log(
+      `管理员 ${adminId} 为代理商 ${agentId} (${agent.email}) 结算佣金 ${settleAmount} USDT`,
+    );
+
+    return {
+      success: true,
+      agentId,
+      settledAmount: settleAmount.toString(),
+      orderId,
+    };
+  }
+
+  /**
+   * 获取代理商的下级用户列表
+   */
+  async getAgentReferrals(
+    agentId: string,
+    params: { page?: number; limit?: number },
+  ) {
+    const page = params.page || 1;
+    const limit = params.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const agent = await this.prisma.client.users.findUnique({
+      where: { id: agentId },
+      select: { id: true, is_agent: true },
+    });
+
+    if (!agent) {
+      throw new NotFoundException('代理商不存在');
+    }
+
+    if (!agent.is_agent) {
+      throw new BadRequestException('该用户不是代理商');
+    }
+
+    const [referrals, total] = await Promise.all([
+      this.prisma.client.users.findMany({
+        where: { referred_by_user_id: agentId },
+        select: {
+          id: true,
+          email: true,
+          vip_level: true,
+          status: true,
+          created_at: true,
+        },
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.client.users.count({
+        where: { referred_by_user_id: agentId },
+      }),
+    ]);
+
+    // 查询每个下级用户产生的佣金
+    const referralsWithCommission = await Promise.all(
+      referrals.map(async (user) => {
+        const commission = await this.prisma.client.user_commissions.aggregate({
+          where: {
+            referrer_id: agentId,
+            invitee_id: user.id,
+          },
+          _sum: { commission_amount: true },
+        });
+
+        return {
+          id: user.id,
+          email: user.email,
+          vipLevel: user.vip_level,
+          status: user.status,
+          totalCommission: commission._sum.commission_amount?.toString() || '0',
+          registeredAt: user.created_at,
+        };
+      }),
+    );
+
+    return {
+      data: referralsWithCommission,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     };
   }
 }

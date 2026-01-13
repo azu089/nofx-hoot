@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, MobileHeader } from '@/components/ui';
+import { MobileHeader } from '@/components/ui';
 import { apiKeysApi } from '@/lib/api';
 import {
   Key,
@@ -14,7 +13,11 @@ import {
   XCircle,
   RefreshCw,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ApiKey {
   id: string;
@@ -27,12 +30,12 @@ interface ApiKey {
 }
 
 export default function ApiKeysPage() {
-  const router = useRouter();
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showSecurityTips, setShowSecurityTips] = useState(false);
 
   // 添加表单
   const [formData, setFormData] = useState({
@@ -40,8 +43,10 @@ export default function ApiKeysPage() {
     label: '',
     apiKey: '',
     apiSecret: '',
+    passphrase: '', // OKX 专用
   });
   const [showSecret, setShowSecret] = useState(false);
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchApiKeys = async () => {
@@ -65,6 +70,12 @@ export default function ApiKeysPage() {
       return;
     }
 
+    // OKX 需要密钥密码
+    if (formData.exchange === 'okx' && !formData.passphrase) {
+      alert('OKX 需要填写密钥密码 (Passphrase)');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await apiKeysApi.create({
@@ -72,8 +83,9 @@ export default function ApiKeysPage() {
         label: formData.label,
         apiKey: formData.apiKey,
         secretKey: formData.apiSecret,
+        passphrase: formData.exchange === 'okx' ? formData.passphrase : undefined,
       });
-      setFormData({ exchange: 'binance', label: '', apiKey: '', apiSecret: '' });
+      setFormData({ exchange: 'binance', label: '', apiKey: '', apiSecret: '', passphrase: '' });
       setShowAddForm(false);
       fetchApiKeys();
       alert('API Key 添加成功');
@@ -105,16 +117,31 @@ export default function ApiKeysPage() {
       await apiKeysApi.delete(id);
       fetchApiKeys();
       alert('删除成功');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '删除失败');
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || '删除失败';
+      if (message.includes('停止') || message.includes('running')) {
+        alert('请先到交易控制台停止正在运行的策略，然后再删除 API Key');
+      } else {
+        alert(message);
+      }
     } finally {
       setDeleting(null);
     }
   };
 
+  const getExchangeLogo = (exchange: string) => {
+    const logos: Record<string, string> = {
+      binance: '🟡',
+      okx: '⚫',
+      bybit: '🟠',
+      gate: '🔵',
+    };
+    return logos[exchange] || '🔑';
+  };
+
   const getExchangeName = (exchange: string) => {
     const map: Record<string, string> = {
-      binance: '币安 Binance',
+      binance: '币安',
       okx: 'OKX',
       bybit: 'Bybit',
       gate: 'Gate.io',
@@ -124,11 +151,11 @@ export default function ApiKeysPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <MobileHeader title="API Key 管理" />
-        <div className="animate-pulse space-y-4">
+      <div className="min-h-screen bg-bg-primary">
+        <MobileHeader title="API Key" />
+        <div className="px-4 pt-4 space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-24 bg-bg-tertiary rounded-xl" />
+            <div key={i} className="h-20 bg-bg-secondary rounded-xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -136,178 +163,274 @@ export default function ApiKeysPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-bg-primary pb-24">
       <MobileHeader
-        title="API Key 管理"
+        title="API Key"
         rightAction={
-          <Button onClick={() => setShowAddForm(true)}>
-            <Plus className="w-4 h-4 mr-2" />
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-brand-primary text-white text-sm rounded-lg"
+          >
+            <Plus className="w-4 h-4" />
             添加
-          </Button>
+          </button>
         }
       />
 
-      {/* 安全提示 */}
-      <Card className="border-warning/30 bg-warning/5">
-        <CardContent className="py-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-text-secondary">
-              <p className="font-medium text-warning mb-1">安全提示</p>
-              <ul className="list-disc list-inside space-y-1 text-text-secondary">
-                <li>请确保 API Key 只开启交易权限，禁止开启提现权限</li>
-                <li>建议设置 IP 白名单限制</li>
-                <li>您的 API Secret 将使用 AES-256 加密存储</li>
-              </ul>
-            </div>
+      {/* ========== API Key 列表 ========== */}
+      {apiKeys.length === 0 ? (
+        <div className="px-4 py-16 text-center">
+          <div className="w-20 h-20 mx-auto mb-4 bg-bg-secondary rounded-full flex items-center justify-center">
+            <Key className="w-10 h-10 text-text-tertiary" />
           </div>
-        </CardContent>
-      </Card>
-
-      {/* 添加表单 */}
-      {showAddForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>添加新的 API Key</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="block text-sm text-text-secondary mb-2">交易所</label>
-              <select
-                value={formData.exchange}
-                onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
-                className="w-full px-4 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-white"
+          <h3 className="text-lg font-medium text-white mb-2">暂无 API Key</h3>
+          <p className="text-text-secondary text-sm mb-6">添加您的交易所 API Key 以开始交易</p>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-xl"
+          >
+            <Plus className="w-5 h-5" />
+            添加 API Key
+          </button>
+        </div>
+      ) : (
+        <div className="pt-2">
+          <div className="px-4 mb-2">
+            <p className="text-text-tertiary text-xs">已绑定 {apiKeys.length} 个交易所</p>
+          </div>
+          <div className="space-y-px">
+            {apiKeys.map((key) => (
+              <div
+                key={key.id}
+                className="bg-bg-secondary px-4 py-3"
               >
-                <option value="binance">币安 Binance</option>
-                <option value="okx">OKX</option>
-                <option value="bybit">Bybit</option>
-                <option value="gate">Gate.io</option>
-              </select>
-            </div>
-
-            <Input
-              label="标签名称"
-              placeholder="例如: 主账户"
-              value={formData.label}
-              onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-            />
-
-            <Input
-              label="API Key"
-              placeholder="输入 API Key"
-              value={formData.apiKey}
-              onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-            />
-
-            <div className="relative">
-              <Input
-                label="API Secret"
-                type={showSecret ? 'text' : 'password'}
-                placeholder="输入 API Secret"
-                value={formData.apiSecret}
-                onChange={(e) => setFormData({ ...formData, apiSecret: e.target.value })}
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-3 top-9 text-text-secondary hover:text-white"
-              >
-                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowAddForm(false)}
-              >
-                取消
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleAdd}
-                isLoading={submitting}
-              >
-                保存
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* API Key 列表 */}
-      <div className="space-y-4">
-        {apiKeys.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Key className="w-16 h-16 mx-auto mb-4 text-text-disabled" />
-              <h3 className="text-lg font-medium text-white mb-2">暂无 API Key</h3>
-              <p className="text-text-secondary mb-4">添加您的交易所 API Key 以开始交易</p>
-              <Button onClick={() => setShowAddForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                添加 API Key
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          apiKeys.map((key) => (
-            <Card key={key.id}>
-              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-brand-primary/20 rounded-lg flex items-center justify-center">
-                      <Key className="w-6 h-6 text-brand-primary" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center text-xl">
+                      {getExchangeLogo(key.exchange)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-white font-medium">{key.label}</h3>
-                        <span className="px-2 py-0.5 bg-bg-tertiary text-text-secondary text-xs rounded">
+                        <span className="text-white font-medium">{key.label}</span>
+                        <span className="text-text-tertiary text-xs">
                           {getExchangeName(key.exchange)}
                         </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-text-tertiary text-xs font-mono">
+                          {key.api_key_masked}
+                        </span>
                         {key.is_valid ? (
-                          <span className="flex items-center gap-1 text-success text-xs">
+                          <span className="flex items-center gap-0.5 text-success text-[10px]">
                             <CheckCircle className="w-3 h-3" />
                             已验证
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1 text-danger text-xs">
+                          <span className="flex items-center gap-0.5 text-danger text-[10px]">
                             <XCircle className="w-3 h-3" />
                             未验证
                           </span>
                         )}
                       </div>
-                      <p className="text-text-tertiary text-sm mt-1">
-                        {key.api_key_masked}
-                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                  <div className="flex items-center gap-1">
+                    <button
                       onClick={() => handleVerify(key.id)}
                       disabled={verifying === key.id}
+                      className="p-2 text-text-secondary hover:text-white active:bg-bg-tertiary rounded-lg transition-colors"
                     >
                       <RefreshCw
-                        className={`w-4 h-4 ${verifying === key.id ? 'animate-spin' : ''}`}
+                        className={cn('w-4 h-4', verifying === key.id && 'animate-spin')}
                       />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    </button>
+                    <button
                       onClick={() => handleDelete(key.id)}
                       disabled={deleting === key.id}
+                      className="p-2 text-text-secondary hover:text-danger active:bg-bg-tertiary rounded-lg transition-colors"
                     >
-                      <Trash2 className="w-4 h-4 text-danger" />
-                    </Button>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========== 安全提示 - 可收起展开 ========== */}
+      <div className="px-4 mt-6">
+        <button
+          onClick={() => setShowSecurityTips(!showSecurityTips)}
+          className="flex items-center justify-between w-full py-3 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-warning" />
+            <span className="text-sm text-text-secondary">安全提示</span>
+          </div>
+          {showSecurityTips ? (
+            <ChevronUp className="w-4 h-4 text-text-tertiary" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-text-tertiary" />
+          )}
+        </button>
+
+        {showSecurityTips && (
+          <div className="pb-4 space-y-2 text-xs text-text-tertiary">
+            <p>• 请确保 API Key 只开启交易权限，禁止开启提现权限</p>
+            <p>• 建议设置 IP 白名单限制</p>
+            <p>• 您的 API Secret 将使用 AES-256 加密存储</p>
+            <p>• OKX 用户需要额外提供密钥密码 (Passphrase)</p>
+          </div>
         )}
       </div>
+
+      {/* ========== 添加表单弹窗 ========== */}
+      {showAddForm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
+          <div className="w-full max-w-lg bg-bg-secondary rounded-t-2xl animate-in slide-in-from-bottom duration-300">
+            {/* 弹窗头部 */}
+            <div className="flex items-center justify-between px-4 py-4 border-b border-border-primary">
+              <h3 className="text-lg font-medium text-white">添加 API Key</h3>
+              <button
+                onClick={() => setShowAddForm(false)}
+                className="p-1 text-text-tertiary hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 表单内容 */}
+            <div className="px-4 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* 交易所选择 */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">选择交易所</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { value: 'binance', label: '币安', icon: '🟡' },
+                    { value: 'okx', label: 'OKX', icon: '⚫' },
+                    { value: 'bybit', label: 'Bybit', icon: '🟠' },
+                    { value: 'gate', label: 'Gate', icon: '🔵' },
+                  ].map((ex) => (
+                    <button
+                      key={ex.value}
+                      onClick={() => setFormData({ ...formData, exchange: ex.value })}
+                      className={cn(
+                        'flex flex-col items-center gap-1 py-3 rounded-xl transition-colors',
+                        formData.exchange === ex.value
+                          ? 'bg-brand-primary/20 border border-brand-primary'
+                          : 'bg-bg-tertiary border border-transparent'
+                      )}
+                    >
+                      <span className="text-xl">{ex.icon}</span>
+                      <span className={cn(
+                        'text-xs',
+                        formData.exchange === ex.value ? 'text-brand-primary' : 'text-text-secondary'
+                      )}>
+                        {ex.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 标签名称 */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">标签名称</label>
+                <input
+                  type="text"
+                  placeholder="例如: 主账户"
+                  value={formData.label}
+                  onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                  className="w-full px-4 py-3 bg-bg-tertiary rounded-xl text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                />
+              </div>
+
+              {/* API Key */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">API Key</label>
+                <input
+                  type="text"
+                  placeholder="输入 API Key"
+                  value={formData.apiKey}
+                  onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                  className="w-full px-4 py-3 bg-bg-tertiary rounded-xl text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary font-mono text-sm"
+                />
+              </div>
+
+              {/* API Secret */}
+              <div>
+                <label className="block text-sm text-text-secondary mb-2">API Secret</label>
+                <div className="relative">
+                  <input
+                    type={showSecret ? 'text' : 'password'}
+                    placeholder="输入 API Secret"
+                    value={formData.apiSecret}
+                    onChange={(e) => setFormData({ ...formData, apiSecret: e.target.value })}
+                    className="w-full px-4 py-3 pr-12 bg-bg-tertiary rounded-xl text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecret(!showSecret)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-tertiary"
+                  >
+                    {showSecret ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* OKX 专用：密钥密码 */}
+              {formData.exchange === 'okx' && (
+                <div>
+                  <label className="block text-sm text-text-secondary mb-2">
+                    密钥密码 (Passphrase)
+                    <span className="text-danger ml-1">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassphrase ? 'text' : 'password'}
+                      placeholder="输入创建 API 时设置的密码"
+                      value={formData.passphrase}
+                      onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
+                      className="w-full px-4 py-3 pr-12 bg-bg-tertiary rounded-xl text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassphrase(!showPassphrase)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-tertiary"
+                    >
+                      {showPassphrase ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-text-tertiary">
+                    OKX 创建 API Key 时需要设置的密码，与登录密码不同
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-4 py-4 pb-8 border-t border-border-primary">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddForm(false)}
+                  className="flex-1 py-3 bg-bg-tertiary text-white rounded-xl"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleAdd}
+                  disabled={submitting}
+                  className="flex-1 py-3 bg-brand-primary text-white rounded-xl disabled:opacity-50"
+                >
+                  {submitting ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, HttpCode, HttpStatus, Ip, Logger, UseGuard
 import { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { VerificationCodeService } from './verification-code.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto, UserResponseDto } from './dto/auth-response.dto';
@@ -14,6 +15,11 @@ import {
   TotpSetupResponseDto,
   TotpStatusResponseDto,
 } from './dto/totp.dto';
+import {
+  SendVerificationCodeDto,
+  VerifyCodeDto,
+  SendCodeResponseDto,
+} from './dto/verification-code.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -27,7 +33,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly verificationCodeService: VerificationCodeService,
+  ) {}
 
   /**
    * 用户注册接口
@@ -106,6 +115,66 @@ export class AuthController {
       code: 0,
       message: '刷新成功',
       data: result,
+    };
+  }
+
+  // ==================== 验证码相关接口 ====================
+
+  /**
+   * 发送验证码
+   * POST /api/auth/send-code
+   *
+   * @param dto 包含邮箱和验证码类型
+   * @returns 发送结果
+   */
+  @Public()
+  @Post('send-code')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '发送验证码' })
+  async sendVerificationCode(@Body() dto: SendVerificationCodeDto): Promise<{
+    code: number;
+    message: string;
+    data: SendCodeResponseDto;
+  }> {
+    const result = await this.verificationCodeService.sendCode(dto.email, dto.type);
+
+    this.logger.log(`发送验证码: ${dto.email}, type=${dto.type}, success=${result.success}`);
+
+    return {
+      code: result.success ? 0 : 40001,
+      message: result.message,
+      data: result,
+    };
+  }
+
+  /**
+   * 验证验证码（独立接口，用于前端预验证）
+   * POST /api/auth/verify-code
+   *
+   * @param dto 包含邮箱、验证码和类型
+   * @returns 验证结果
+   */
+  @Public()
+  @Post('verify-code')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '验证验证码' })
+  async verifyVerificationCode(@Body() dto: VerifyCodeDto): Promise<{
+    code: number;
+    message: string;
+    data: { verified: boolean };
+  }> {
+    // 不消费验证码，只验证（注册时再消费）
+    const result = await this.verificationCodeService.verifyCode(
+      dto.email,
+      dto.code,
+      dto.type,
+      false, // 不消费
+    );
+
+    return {
+      code: result.success ? 0 : 40002,
+      message: result.message,
+      data: { verified: result.success },
     };
   }
 

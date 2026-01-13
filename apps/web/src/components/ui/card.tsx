@@ -4,7 +4,7 @@ import { HTMLAttributes, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'elevated' | 'bordered' | 'glass' | 'glow' | 'gradient';
+  variant?: 'default' | 'elevated' | 'bordered' | 'glass' | 'glow' | 'gradient' | 'hero';
   hover?: boolean;
   glowColor?: 'primary' | 'success' | 'danger' | 'warning';
 }
@@ -20,15 +20,18 @@ const glowClasses = {
 const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ className, variant = 'default', hover = false, glowColor = 'primary', ...props }, ref) => {
     const variants = {
-      default: 'bg-bg-secondary border-border-primary',
-      elevated: 'bg-bg-secondary border-border-primary shadow-lg',
+      // 默认卡片 - 泛微光边框效果
+      default: 'glass-content',
+      elevated: 'glass-content shadow-lg',
       bordered: 'bg-bg-primary border-border-primary border-2',
-      // 新增: 玻璃效果变体
+      // 玻璃效果变体
       glass: 'glass-card bg-transparent',
-      // 新增: 发光边框变体 - 使用静态类映射
+      // 发光边框变体 - 使用静态类映射
       glow: `bg-bg-secondary border-border-primary glow-border ${glowClasses[glowColor]}`,
-      // 新增: 渐变背景变体
+      // 渐变背景变体
       gradient: 'bg-gradient-to-br from-bg-secondary to-bg-tertiary border-border-primary',
+      // 英雄卡片 - 呼吸光晕效果（适用于资产/数据类）
+      hero: 'glass-hero',
     };
 
     const hoverClass = hover ? 'card-hover cursor-pointer' : '';
@@ -37,7 +40,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={cn(
-          'rounded-xl border backdrop-blur-sm transition-all duration-300',
+          'rounded-xl transition-all duration-300',
           variants[variant],
           hoverClass,
           className

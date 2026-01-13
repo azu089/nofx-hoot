@@ -104,7 +104,7 @@ export default function UserDetailPage() {
   if (userLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-[#848E9C]">加载中...</div>
+        <div className="text-text-secondary">加载中...</div>
       </div>
     );
   }
@@ -112,10 +112,10 @@ export default function UserDetailPage() {
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <div className="text-[#848E9C]">用户不存在</div>
+        <div className="text-text-secondary">用户不存在</div>
         <button
           onClick={() => router.back()}
-          className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF]"
+          className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary"
         >
           返回
         </button>
@@ -135,7 +135,7 @@ export default function UserDetailPage() {
       {/* 返回按钮 */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-[#848E9C] hover:text-white"
+        className="flex items-center gap-2 text-text-secondary hover:text-white"
       >
         <ArrowLeft className="w-5 h-5" />
         返回用户列表
@@ -144,22 +144,22 @@ export default function UserDetailPage() {
       {/* 用户信息卡片 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 左侧：用户基本信息 */}
-        <div className="lg:col-span-2 bg-[#131722] rounded-xl border border-[#2B3139] p-6">
+        <div className="lg:col-span-2 glass-card p-4">
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-[#3772FF]/10 rounded-full flex items-center justify-center">
-                <Mail className="w-8 h-8 text-[#3772FF]" />
+              <div className="w-16 h-16 bg-brand-primary/10 rounded-full flex items-center justify-center">
+                <Mail className="w-8 h-8 text-brand-primary" />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-white">{user.email}</h2>
-                <p className="text-[#848E9C] text-sm mt-1">{user.id}</p>
+                <p className="text-text-secondary text-sm mt-1">{user.id}</p>
               </div>
             </div>
             <span
               className={`px-3 py-1 rounded text-sm font-medium ${
                 user.status === 'active'
-                  ? 'bg-[#00C087]/10 text-[#00C087]'
-                  : 'bg-[#F23645]/10 text-[#F23645]'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-danger/10 text-danger'
               }`}
             >
               {user.status === 'active' ? '正常' : '已封禁'}
@@ -168,30 +168,30 @@ export default function UserDetailPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <p className="text-[#848E9C] text-sm mb-1">VIP 等级</p>
+              <p className="text-text-secondary text-sm mb-1">VIP 等级</p>
               <p className="text-white font-medium flex items-center gap-1">
-                <Shield className="w-4 h-4 text-[#3772FF]" />
+                <Shield className="w-4 h-4 text-brand-primary" />
                 VIP {user.vipLevel}
               </p>
             </div>
             <div>
-              <p className="text-[#848E9C] text-sm mb-1">余额</p>
+              <p className="text-text-secondary text-sm mb-1">余额</p>
               <p className="text-white font-medium flex items-center gap-1">
-                <DollarSign className="w-4 h-4 text-[#00C087]" />
+                <DollarSign className="w-4 h-4 text-success" />
                 {user.balance}
               </p>
             </div>
             <div>
-              <p className="text-[#848E9C] text-sm mb-1">注册时间</p>
+              <p className="text-text-secondary text-sm mb-1">注册时间</p>
               <p className="text-white text-sm flex items-center gap-1">
-                <Calendar className="w-4 h-4 text-[#848E9C]" />
+                <Calendar className="w-4 h-4 text-text-secondary" />
                 {user.createdAt}
               </p>
             </div>
             <div>
-              <p className="text-[#848E9C] text-sm mb-1">最后登录</p>
+              <p className="text-text-secondary text-sm mb-1">最后登录</p>
               <p className="text-white text-sm flex items-center gap-1">
-                <Clock className="w-4 h-4 text-[#848E9C]" />
+                <Clock className="w-4 h-4 text-text-secondary" />
                 {user.lastLogin}
               </p>
             </div>
@@ -199,15 +199,15 @@ export default function UserDetailPage() {
         </div>
 
         {/* 右侧：操作按钮 */}
-        <div className="bg-[#131722] rounded-xl border border-[#2B3139] p-6">
+        <div className="glass-card p-4">
           <h3 className="text-white font-medium mb-4">管理操作</h3>
           <div className="space-y-3">
             <button
               onClick={() => banMutation.mutate(userId)}
               className={`w-full px-4 py-3 rounded-lg flex items-center gap-2 ${
                 user.status === 'active'
-                  ? 'bg-[#F23645]/10 text-[#F23645] hover:bg-[#F23645]/20'
-                  : 'bg-[#00C087]/10 text-[#00C087] hover:bg-[#00C087]/20'
+                  ? 'bg-danger/10 text-danger hover:bg-danger/20'
+                  : 'bg-success/10 text-success hover:bg-success/20'
               }`}
             >
               <Ban className="w-5 h-5" />
@@ -215,7 +215,7 @@ export default function UserDetailPage() {
             </button>
             <button
               onClick={() => resetPasswordMutation.mutate(userId)}
-              className="w-full px-4 py-3 bg-[#1E222D] text-white rounded-lg flex items-center gap-2 hover:bg-[#2B3139]"
+              className="w-full px-4 py-3 bg-bg-tertiary text-white rounded-lg flex items-center gap-2 hover:bg-bg-tertiary"
             >
               <Key className="w-5 h-5" />
               重置密码
@@ -225,12 +225,12 @@ export default function UserDetailPage() {
                 setNewVipLevel(user.vipLevel);
                 setShowVipModal(true);
               }}
-              className="w-full px-4 py-3 bg-[#1E222D] text-white rounded-lg flex items-center gap-2 hover:bg-[#2B3139]"
+              className="w-full px-4 py-3 bg-bg-tertiary text-white rounded-lg flex items-center gap-2 hover:bg-bg-tertiary"
             >
               <Shield className="w-5 h-5" />
               调整VIP等级
             </button>
-            <button className="w-full px-4 py-3 bg-[#1E222D] text-white rounded-lg flex items-center gap-2 hover:bg-[#2B3139]">
+            <button className="w-full px-4 py-3 bg-bg-tertiary text-white rounded-lg flex items-center gap-2 hover:bg-bg-tertiary">
               <LogOut className="w-5 h-5" />
               强制登出
             </button>
@@ -239,8 +239,8 @@ export default function UserDetailPage() {
       </div>
 
       {/* Tab 导航 */}
-      <div className="bg-[#131722] rounded-xl border border-[#2B3139] overflow-hidden">
-        <div className="border-b border-[#2B3139]">
+      <div className="glass-card overflow-hidden">
+        <div className="border-b border-border-primary">
           <div className="flex">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -250,8 +250,8 @@ export default function UserDetailPage() {
                   onClick={() => setActiveTab(tab.key)}
                   className={`flex-1 px-6 py-4 flex items-center justify-center gap-2 ${
                     activeTab === tab.key
-                      ? 'text-[#3772FF] border-b-2 border-[#3772FF]'
-                      : 'text-[#848E9C] hover:text-white'
+                      ? 'text-brand-primary border-b-2 border-brand-primary'
+                      : 'text-text-secondary hover:text-white'
                   }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -268,38 +268,38 @@ export default function UserDetailPage() {
           {activeTab === 'instances' && (
             <div className="overflow-x-auto">
               {instancesLoading ? (
-                <div className="text-center py-8 text-[#848E9C]">加载中...</div>
+                <div className="text-center py-8 text-text-secondary">加载中...</div>
               ) : !instances || instances.length === 0 ? (
-                <div className="text-center py-8 text-[#848E9C]">暂无实例</div>
+                <div className="text-center py-8 text-text-secondary">暂无实例</div>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#2B3139]">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">实例ID</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">状态</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">IP地址</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">区域</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">创建时间</th>
+                    <tr className="border-b border-border-primary">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">实例ID</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">状态</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">IP地址</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">区域</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">创建时间</th>
                     </tr>
                   </thead>
                   <tbody>
                     {instances.map((instance) => (
-                      <tr key={instance.id} className="border-b border-[#2B3139]">
+                      <tr key={instance.id} className="border-b border-border-primary">
                         <td className="px-4 py-3 text-white text-sm">{instance.id}</td>
                         <td className="px-4 py-3">
                           <span
                             className={`px-2 py-1 rounded text-xs ${
                               instance.status === 'running'
-                                ? 'bg-[#00C087]/10 text-[#00C087]'
-                                : 'bg-[#848E9C]/10 text-[#848E9C]'
+                                ? 'bg-success/10 text-success'
+                                : 'bg-text-secondary/10 text-text-secondary'
                             }`}
                           >
                             {instance.status === 'running' ? '运行中' : '已停止'}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-white text-sm">{instance.ipAddress}</td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{instance.region}</td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{instance.createdAt}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{instance.region}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{instance.createdAt}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -312,31 +312,31 @@ export default function UserDetailPage() {
           {activeTab === 'trades' && (
             <div className="overflow-x-auto">
               {tradesLoading ? (
-                <div className="text-center py-8 text-[#848E9C]">加载中...</div>
+                <div className="text-center py-8 text-text-secondary">加载中...</div>
               ) : !trades?.data || trades.data.length === 0 ? (
-                <div className="text-center py-8 text-[#848E9C]">暂无交易记录</div>
+                <div className="text-center py-8 text-text-secondary">暂无交易记录</div>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#2B3139]">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">交易对</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">方向</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-[#848E9C]">数量</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-[#848E9C]">价格</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-[#848E9C]">盈亏</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">时间</th>
+                    <tr className="border-b border-border-primary">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">交易对</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">方向</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">数量</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">价格</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">盈亏</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">时间</th>
                     </tr>
                   </thead>
                   <tbody>
                     {trades.data.map((trade) => (
-                      <tr key={trade.id} className="border-b border-[#2B3139]">
+                      <tr key={trade.id} className="border-b border-border-primary">
                         <td className="px-4 py-3 text-white text-sm">{trade.pair}</td>
                         <td className="px-4 py-3">
                           <span
                             className={`px-2 py-1 rounded text-xs ${
                               trade.side === 'buy'
-                                ? 'bg-[#00C087]/10 text-[#00C087]'
-                                : 'bg-[#F23645]/10 text-[#F23645]'
+                                ? 'bg-success/10 text-success'
+                                : 'bg-danger/10 text-danger'
                             }`}
                           >
                             {trade.side === 'buy' ? '买入' : '卖出'}
@@ -347,14 +347,14 @@ export default function UserDetailPage() {
                         <td className="px-4 py-3 text-right">
                           <span
                             className={`text-sm ${
-                              parseFloat(trade.pnl) >= 0 ? 'text-[#00C087]' : 'text-[#F23645]'
+                              parseFloat(trade.pnl) >= 0 ? 'text-success' : 'text-danger'
                             }`}
                           >
                             {parseFloat(trade.pnl) >= 0 ? '+' : ''}
                             {trade.pnl}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{trade.executedAt}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{trade.executedAt}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -367,30 +367,30 @@ export default function UserDetailPage() {
           {activeTab === 'billing' && (
             <div className="overflow-x-auto">
               {billingLoading ? (
-                <div className="text-center py-8 text-[#848E9C]">加载中...</div>
+                <div className="text-center py-8 text-text-secondary">加载中...</div>
               ) : !billing?.data || billing.data.length === 0 ? (
-                <div className="text-center py-8 text-[#848E9C]">暂无账单记录</div>
+                <div className="text-center py-8 text-text-secondary">暂无账单记录</div>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#2B3139]">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">类型</th>
-                      <th className="px-4 py-3 text-right text-sm font-medium text-[#848E9C]">金额</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">描述</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">时间</th>
+                    <tr className="border-b border-border-primary">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">类型</th>
+                      <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">金额</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">描述</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">时间</th>
                     </tr>
                   </thead>
                   <tbody>
                     {billing.data.map((bill) => (
-                      <tr key={bill.id} className="border-b border-[#2B3139]">
+                      <tr key={bill.id} className="border-b border-border-primary">
                         <td className="px-4 py-3">
-                          <span className="px-2 py-1 bg-[#3772FF]/10 text-[#3772FF] rounded text-xs">
+                          <span className="px-2 py-1 bg-brand-primary/10 text-brand-primary rounded text-xs">
                             {bill.type}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-white text-sm text-right">{bill.amount}</td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{bill.description}</td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{bill.createdAt}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{bill.description}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{bill.createdAt}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -403,32 +403,32 @@ export default function UserDetailPage() {
           {activeTab === 'logs' && (
             <div className="overflow-x-auto">
               {logsLoading ? (
-                <div className="text-center py-8 text-[#848E9C]">加载中...</div>
+                <div className="text-center py-8 text-text-secondary">加载中...</div>
               ) : !logs?.data || logs.data.length === 0 ? (
-                <div className="text-center py-8 text-[#848E9C]">暂无登录记录</div>
+                <div className="text-center py-8 text-text-secondary">暂无登录记录</div>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#2B3139]">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">IP 地址</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">设备</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">位置</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-[#848E9C]">时间</th>
+                    <tr className="border-b border-border-primary">
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">IP 地址</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">设备</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">位置</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">时间</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.data.map((log) => (
-                      <tr key={log.id} className="border-b border-[#2B3139]">
+                      <tr key={log.id} className="border-b border-border-primary">
                         <td className="px-4 py-3 text-white text-sm">{log.ip}</td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm flex items-center gap-2">
+                        <td className="px-4 py-3 text-text-secondary text-sm flex items-center gap-2">
                           <Monitor className="w-4 h-4" />
                           {log.device}
                         </td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm flex items-center gap-1">
+                        <td className="px-4 py-3 text-text-secondary text-sm flex items-center gap-1">
                           <MapPin className="w-4 h-4" />
                           {log.location}
                         </td>
-                        <td className="px-4 py-3 text-[#848E9C] text-sm">{log.createdAt}</td>
+                        <td className="px-4 py-3 text-text-secondary text-sm">{log.createdAt}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -442,15 +442,15 @@ export default function UserDetailPage() {
       {/* VIP 等级调整弹窗 */}
       {showVipModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#131722] rounded-xl p-6 w-full max-w-md border border-[#2B3139]">
+          <div className="bg-bg-secondary rounded-xl p-6 w-full max-w-md border border-border-primary">
             <h3 className="text-lg font-semibold text-white mb-4">调整 VIP 等级</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-[#848E9C] text-sm mb-2">当前等级: VIP {user.vipLevel}</label>
+                <label className="block text-text-secondary text-sm mb-2">当前等级: VIP {user.vipLevel}</label>
                 <select
                   value={newVipLevel}
                   onChange={(e) => setNewVipLevel(Number(e.target.value))}
-                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                  className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white focus:outline-none focus:border-brand-primary"
                 >
                   <option value={0}>VIP 0 (普通用户)</option>
                   <option value={1}>VIP 1</option>
@@ -464,13 +464,13 @@ export default function UserDetailPage() {
             <div className="flex gap-4 mt-6">
               <button
                 onClick={() => setShowVipModal(false)}
-                className="flex-1 px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139]"
+                className="flex-1 px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary"
               >
                 取消
               </button>
               <button
                 onClick={() => updateVipMutation.mutate({ userId, vipLevel: newVipLevel })}
-                className="flex-1 px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF]"
+                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary"
               >
                 确认调整
               </button>

@@ -9,18 +9,24 @@ import {
   UseGuards,
   Logger,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RevenueService } from './revenue.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 
 /**
  * 收入分配控制器
  *
  * 路由：
- * - GET  /api/revenue/current - 当前周期收入
- * - GET  /api/revenue/history - 分配历史
+ * - GET  /api/revenue/current - 当前周期收入（需要认证）
+ * - GET  /api/revenue/history - 分配历史（需要认证）
  * - POST /api/revenue/distribute - 执行分配（管理员）
- * - GET  /api/revenue/stats - 统计数据
+ * - GET  /api/revenue/stats - 统计数据（需要认证）
  */
+@ApiTags('Revenue')
+@ApiBearerAuth()
 @Controller('revenue')
+@UseGuards(JwtAuthGuard) // 默认需要 JWT 认证
 export class RevenueController {
   private readonly logger = new Logger(RevenueController.name);
 
@@ -126,7 +132,7 @@ export class RevenueController {
    */
   @Post('distribute')
   @HttpCode(HttpStatus.OK)
-  // @UseGuards(AdminGuard) // TODO: 添加管理员权限守卫
+  @UseGuards(AdminGuard) // 需要管理员权限
   async distribute(
     @Body('periodStart') periodStart: string,
     @Body('periodEnd') periodEnd: string,
@@ -214,6 +220,7 @@ export class RevenueController {
    */
   @Post('simulate-buyback')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(AdminGuard) // 需要管理员权限
   async simulateBuyback(@Body('amount') amount: string) {
     try {
       if (!amount) {

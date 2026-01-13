@@ -60,7 +60,7 @@ export function MobileNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-fixed lg:hidden bg-bg-secondary/95 backdrop-blur-lg border-t border-border-primary">
+    <nav className="fixed bottom-0 left-0 right-0 z-fixed lg:hidden bg-bg-secondary/95 backdrop-blur-lg border-t border-border-primary" role="navigation" aria-label="主导航">
       {/* 安全区域适配 iOS */}
       <div className="flex items-center justify-around h-16 pb-safe">
         {navItems.map((item) => {
@@ -79,6 +79,8 @@ export function MobileNav() {
                 // 激活状态微放大
                 isActive && 'scale-105'
               )}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
             >
               <div className={cn(
                 'relative p-2 rounded-xl transition-all duration-200',
@@ -95,10 +97,11 @@ export function MobileNav() {
                       : 'text-text-secondary'
                   )}
                   strokeWidth={isActive ? 2.5 : 2}
+                  aria-hidden="true"
                 />
                 {/* 活跃指示点 (P2优化：使用语义化阴影类) */}
                 {isActive && (
-                  <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-primary shadow-glow-sm" />
+                  <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-primary shadow-glow-sm" aria-hidden="true" />
                 )}
               </div>
               <span

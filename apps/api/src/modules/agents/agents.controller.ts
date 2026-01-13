@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { AgentsService } from './agents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterAgentDto } from './dto/register-agent.dto';
@@ -30,6 +31,7 @@ import { WithdrawCommissionDto } from './dto/withdraw-commission.dto';
  */
 @ApiTags('Agents')
 @Controller('agents')
+@UseGuards(JwtAuthGuard) // 默认需要 JWT 认证
 export class AgentsController {
   private readonly logger = new Logger(AgentsController.name);
 
@@ -59,8 +61,9 @@ export class AgentsController {
 
   /**
    * POST /api/agents/register
-   * 代理商注册（公开接口）
+   * 代理商注册（公开接口，但建议生产环境添加频率限制）
    */
+  @Public()
   @Post('register')
   @ApiOperation({ summary: '代理商注册' })
   async register(@Body() dto: RegisterAgentDto) {

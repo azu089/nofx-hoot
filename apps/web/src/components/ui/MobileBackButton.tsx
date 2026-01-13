@@ -55,23 +55,9 @@ export function MobileBackButton({
     }
   };
 
-  return (
-    <div className={cn(
-      'lg:hidden flex items-center gap-3 mb-4',
-      className
-    )}>
-      <button
-        onClick={handleBack}
-        className="flex items-center justify-center w-10 h-10 rounded-xl bg-bg-secondary border border-border-primary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-        aria-label="返回"
-      >
-        <ArrowLeft className="w-5 h-5" />
-      </button>
-      {title && (
-        <h1 className="text-lg font-semibold text-text-primary">{title}</h1>
-      )}
-    </div>
-  );
+  // MobileLayout 已提供统一的 Header，此组件在移动端不再需要
+  // 保留此组件仅为向后兼容，建议使用 MobileLayout 提供的统一 Header
+  return null;
 }
 
 /**
@@ -107,29 +93,16 @@ export function MobileHeader({
 
   return (
     <div className={cn('mb-6', className)}>
-      {/* 移动端头部 */}
+      {/* 移动端头部 - MobileLayout 已提供统一 Header，这里只保留 rightAction */}
       <div className="lg:hidden">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            {!isMainPage && (
-              <button
-                onClick={handleBack}
-                className="flex items-center justify-center w-10 h-10 -ml-2 rounded-xl text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-                aria-label="返回"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            )}
-            <h1 className="text-xl font-bold text-text-primary">{title}</h1>
+        {rightAction && (
+          <div className="flex justify-end mb-2">
+            {rightAction}
           </div>
-          {rightAction}
-        </div>
-        {subtitle && (
-          <p className="text-sm text-text-secondary">{subtitle}</p>
         )}
       </div>
 
-      {/* 桌面端头部 - 也显示返回按钮 */}
+      {/* 桌面端头部 - 显示完整的返回按钮和标题 */}
       <div className="hidden lg:block">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

@@ -474,7 +474,7 @@ export class TelegramApiService {
     const strategy = await this.prisma.client.strategies.findUnique({
       where: { id: strategyId },
       include: {
-        uploader: {
+        users_strategies_uploader_idTousers: {
           select: { id: true, email: true, telegram_username: true },
         },
       },
@@ -537,10 +537,10 @@ export class TelegramApiService {
         closedAt: t.closed_at,
       })),
       // 作者信息
-      author: strategy.uploader
+      author: strategy.users_strategies_uploader_idTousers
         ? {
-            id: strategy.uploader.id,
-            username: strategy.uploader.telegram_username || strategy.uploader.email?.split('@')[0],
+            id: strategy.users_strategies_uploader_idTousers.id,
+            username: strategy.users_strategies_uploader_idTousers.telegram_username || strategy.users_strategies_uploader_idTousers.email?.split('@')[0],
           }
         : null,
       createdAt: strategy.created_at,

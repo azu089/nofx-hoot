@@ -2,6 +2,20 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { ConfigResponseDto, ConfigCategory } from './dto/config.dto';
+import Decimal from 'decimal.js';
+
+/**
+ * 返佣比例类型
+ */
+export type ReferralRateType = 'subscription' | 'gas_fee' | 'card_purchase' | 'trade_points';
+
+/**
+ * 返佣比例返回格式
+ */
+export interface ReferralRates {
+  l1: Decimal;
+  l2: Decimal;
+}
 
 /**
  * 配置中心服务
@@ -252,9 +266,25 @@ export class ConfigsService {
       { key: 'feature.staking_enabled', value: true, type: 'boolean', category: 'feature', label: '质押功能', isPublic: true },
 
       // 代理商配置
-      { key: 'agent.level_1_rate', value: 0.1, type: 'number', category: 'agent', label: '一级返佣比例', isPublic: false },
-      { key: 'agent.level_2_rate', value: 0.05, type: 'number', category: 'agent', label: '二级返佣比例', isPublic: false },
+      { key: 'agent.level_1_rate', value: 0.1, type: 'number', category: 'agent', label: '代理商一级返佣比例', isPublic: false },
+      { key: 'agent.level_2_rate', value: 0.05, type: 'number', category: 'agent', label: '代理商二级返佣比例', isPublic: false },
       { key: 'agent.min_withdraw', value: 50, type: 'number', category: 'agent', label: '最低提佣金额', isPublic: false },
+      { key: 'agent.default_commission_rate', value: 0.1, type: 'number', category: 'agent', label: '代理商默认佣金比例', isPublic: false },
+
+      // 邀请返佣配置（普通用户）
+      { key: 'referral.subscription_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '订阅费一级返佣比例', description: '被邀请人订阅时，一级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.subscription_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '订阅费二级返佣比例', description: '被邀请人订阅时，二级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.gas_fee_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '燃油费一级返佣比例', description: '被邀请人产生燃油费时，一级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.gas_fee_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '燃油费二级返佣比例', description: '被邀请人产生燃油费时，二级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.card_purchase_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '点卡购买一级返佣比例', description: '被邀请人购买点卡时，一级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.card_purchase_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '点卡购买二级返佣比例', description: '被邀请人购买点卡时，二级邀请人获得积分比例', isPublic: false },
+      { key: 'referral.trade_points_l1_rate', value: 0.05, type: 'number', category: 'referral', label: '交易挖矿一级返佣比例', description: '被邀请人交易挖矿获得积分时，一级邀请人获得比例', isPublic: false },
+      { key: 'referral.trade_points_l2_rate', value: 0.025, type: 'number', category: 'referral', label: '交易挖矿二级返佣比例', description: '被邀请人交易挖矿获得积分时，二级邀请人获得比例', isPublic: false },
+
+      // 积分兑换配置
+      { key: 'exchange.points_to_qfi_rate', value: 100, type: 'number', category: 'exchange', label: '积分兑换QFI比例', description: '100积分=1QFI', isPublic: true },
+      { key: 'exchange.points_to_usdt_rate', value: 1, type: 'number', category: 'exchange', label: '积分抵扣USDT比例', description: '1积分=1USDT', isPublic: true },
+      { key: 'exchange.min_exchange_points', value: 100, type: 'number', category: 'exchange', label: '最低兑换积分', isPublic: true },
     ];
 
     let created = 0;
@@ -294,5 +324,87 @@ export class ConfigsService {
   private async clearCache(): Promise<void> {
     await this.redis.del(this.CACHE_KEY_PUBLIC);
     await this.redis.del(this.CACHE_KEY_ALL);
+  }
+
+  // ===== 返佣配置统一入口 =====
+
+  /**
+   * 默认返佣比例（仅在配置不存在时使用）
+   */
+  private readonly DEFAULT_REFERRAL_RATES: Record<ReferralRateType, { l1: Decimal; l2: Decimal }> = {
+    subscription: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
+    gas_fee: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
+    card_purchase: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
+    trade_points: { l1: new Decimal('0.05'), l2: new Decimal('0.025') },
+  };
+
+  /**
+   * 返佣配置键映射
+   */
+  private readonly REFERRAL_CONFIG_KEYS: Record<ReferralRateType, { l1: string; l2: string }> = {
+    subscription: {
+      l1: 'referral.subscription_l1_rate',
+      l2: 'referral.subscription_l2_rate',
+    },
+    gas_fee: {
+      l1: 'referral.gas_fee_l1_rate',
+      l2: 'referral.gas_fee_l2_rate',
+    },
+    card_purchase: {
+      l1: 'referral.card_purchase_l1_rate',
+      l2: 'referral.card_purchase_l2_rate',
+    },
+    trade_points: {
+      l1: 'referral.trade_points_l1_rate',
+      l2: 'referral.trade_points_l2_rate',
+    },
+  };
+
+  /**
+   * 获取返佣比例（统一入口）
+   * 从系统配置读取，如果配置不存在则使用默认值
+   *
+   * @param type 返佣类型：subscription | gas_fee | card_purchase | trade_points
+   * @returns 一级和二级返佣比例
+   *
+   * @example
+   * const rates = await configsService.getReferralRates('subscription');
+   * const commission = amount.times(rates.l1); // 一级返佣
+   */
+  async getReferralRates(type: ReferralRateType): Promise<ReferralRates> {
+    const keys = this.REFERRAL_CONFIG_KEYS[type];
+    const defaults = this.DEFAULT_REFERRAL_RATES[type];
+
+    const [l1Rate, l2Rate] = await Promise.all([
+      this.getConfig(keys.l1),
+      this.getConfig(keys.l2),
+    ]);
+
+    return {
+      l1: l1Rate !== null ? new Decimal(l1Rate) : defaults.l1,
+      l2: l2Rate !== null ? new Decimal(l2Rate) : defaults.l2,
+    };
+  }
+
+  /**
+   * 获取积分兑换配置
+   * @returns 积分兑换相关配置
+   */
+  async getExchangeRates(): Promise<{
+    pointsToQfi: Decimal;
+    pointsToUsdt: Decimal;
+    minExchangePoints: Decimal;
+  }> {
+    const [qfiRate, usdtRate, minPoints] = await Promise.all([
+      this.getConfig('exchange.points_to_qfi_rate'),
+      this.getConfig('exchange.points_to_usdt_rate'),
+      this.getConfig('exchange.min_exchange_points'),
+    ]);
+
+    return {
+      pointsToQfi: qfiRate !== null ? new Decimal(qfiRate) : new Decimal('100'),
+      pointsToUsdt: usdtRate !== null ? new Decimal(usdtRate) : new Decimal('1'),
+      minExchangePoints: minPoints !== null ? new Decimal(minPoints) : new Decimal('100'),
+    };
   }
 }

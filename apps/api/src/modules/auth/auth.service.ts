@@ -5,6 +5,8 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +22,7 @@ import {
 import { TotpService } from '../../common/services/totp.service';
 import { LoginLogService } from '../../common/services/login-log.service';
 import { FingerprintService, FingerprintCheckResult } from '../../common/services/fingerprint.service';
+import { VerificationCodeService } from './verification-code.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -41,10 +44,13 @@ export class AuthService {
     private readonly totpService: TotpService,
     private readonly loginLogService: LoginLogService,
     private readonly fingerprintService: FingerprintService,
+    @Inject(forwardRef(() => VerificationCodeService))
+    private readonly verificationCodeService: VerificationCodeService,
   ) {}
 
   /**
    * 用户注册
+   * 0. 验证邮箱验证码
    * 1. 检查邮箱是否已存在
    * 2. 检查设备指纹（反作弊）
    * 3. bcrypt 加密密码
@@ -54,7 +60,19 @@ export class AuthService {
    * 7. 返回用户信息（不含密码）
    */
   async register(dto: RegisterDto): Promise<UserResponseDto> {
-    const { email, password, inviteCode, fingerprint } = dto;
+    const { email, password, verificationCode, inviteCode, fingerprint } = dto;
+
+    // 0. 验证邮箱验证码
+    const codeVerification = await this.verificationCodeService.verifyCode(
+      email,
+      verificationCode,
+      'register',
+      true, // 消费验证码
+    );
+
+    if (!codeVerification.success) {
+      throw new BadRequestException(codeVerification.message);
+    }
 
     // 1. 检查邮箱是否已存在
     const existingUser = await this.prisma.client.users.findUnique({

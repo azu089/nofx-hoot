@@ -76,17 +76,17 @@ export default function ExchangeHistoryPage() {
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
-      {/* 页面标题 */}
+      {/* 页面标题 - 移动端由 MobileLayout 提供，这里只在桌面端显示返回按钮 */}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => router.back()}
-          className="p-2"
+          className="p-2 hidden lg:flex"
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <h1 className="text-xl font-bold text-text-primary">兑换记录</h1>
+        <h1 className="text-xl font-bold text-text-primary hidden lg:block">兑换记录</h1>
         <Button
           variant="ghost"
           size="sm"

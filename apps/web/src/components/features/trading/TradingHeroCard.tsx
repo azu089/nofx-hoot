@@ -73,6 +73,7 @@ export function TradingHeroCard({
   const [monthlyData, setMonthlyData] = useState<MonthlyPnLData | null>(null);
   const [curveData, setCurveData] = useState<CurveData | null>(null);
   const [botInstance, setBotInstance] = useState<BotInstance | null>(null);
+  const [exchangeBalance, setExchangeBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,8 +137,18 @@ export function TradingHeroCard({
           startedAt: (instance as any).created_at || new Date().toISOString(),
           positionCount: 0,
         });
+        // 获取交易所余额
+        try {
+          const balanceRes = await instancesApi.getBalance(instance.id);
+          if (balanceRes.code === 0 && balanceRes.data) {
+            setExchangeBalance(balanceRes.data.total);
+          }
+        } catch {
+          setExchangeBalance(null);
+        }
       } else {
         setBotInstance(null);
+        setExchangeBalance(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取数据失败');
@@ -247,12 +258,15 @@ export function TradingHeroCard({
   }
 
   return (
-    <>
-      {/* 卡片头部：账户类型 + 日期筛选 */}
-      <div className="px-4 pt-4 pb-3 border-b border-border-primary/50">
+    <div className="mx-4 mt-4 mb-4 relative bg-bg-secondary rounded-2xl overflow-hidden lg:mx-0 lg:mt-0 lg:mb-0 lg:bg-transparent lg:rounded-none lg:border-0 lg:shadow-none lg:overflow-visible">
+      {/* 光球脉动效果 - 仅移动端显示 */}
+      <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary lg:hidden" />
+      <div className="relative z-10">
+      {/* 卡片头部：账户类型 + 日期筛选 - 移动端无边框 */}
+      <div className="px-4 pt-4 pb-3 lg:px-0">
         <div className="flex items-center justify-between gap-3">
           {/* 左侧：账户类型 Tab */}
-          <div className="flex items-center gap-1 bg-bg-primary/50 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-white/5 lg:bg-bg-primary/50 rounded-lg p-1">
             <button
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 accountType === 'spot'
@@ -275,10 +289,10 @@ export function TradingHeroCard({
             </button>
           </div>
 
-          {/* 右侧：日期筛选 */}
+          {/* 右侧：日期筛选 - 移动端无边框样式 */}
           <div className="flex items-center gap-2">
             <select
-              className="bg-bg-tertiary hover:bg-bg-tertiary/70 rounded-lg px-3 py-2 text-xs text-text-primary border border-border-primary hover:border-brand-primary focus:border-brand-primary outline-none transition-colors"
+              className="bg-white/5 lg:bg-transparent hover:bg-bg-tertiary/30 rounded-lg px-3 py-2 text-xs text-text-primary border-0 lg:border lg:border-border-primary/50 hover:lg:border-brand-primary focus:lg:border-brand-primary outline-none transition-colors"
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value as any)}
             >
@@ -301,7 +315,15 @@ export function TradingHeroCard({
       </div>
 
       {/* 卡片主体 */}
-      <div className="p-6">
+      <div className="px-4 pb-6 lg:p-6">
+
+        {/* 交易所余额 */}
+        <div className="flex items-center justify-between mb-4 pb-4 border-b border-border-primary/30">
+          <span className="text-text-tertiary text-sm">交易所余额</span>
+          <span className="text-xl font-bold font-mono text-success">
+            {exchangeBalance !== null ? `$${exchangeBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
+          </span>
+        </div>
 
         {/* 三栏布局 */}
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -399,6 +421,7 @@ export function TradingHeroCard({
           </Button>
         </div>
       </div>
-    </>
+      </div>
+    </div>
   );
 }

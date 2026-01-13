@@ -187,6 +187,22 @@ export default function DashboardLayout({
   );
 }
 
+// Web3 全局背景组件 - 增强版 v3.0
+function Web3Background() {
+  return (
+    <>
+      {/* 多层渐变背景 */}
+      <div className="bg-gradient-overlay" />
+      {/* 科技网格 */}
+      <div className="bg-grid-pattern" />
+      {/* 动态光球 */}
+      <div className="bg-orbs" />
+      {/* 扫描线效果 */}
+      <div className="scanline" />
+    </>
+  );
+}
+
 // 内部组件，使用 sidebarCollapsed 状态
 function DashboardContent({
   children,
@@ -202,12 +218,13 @@ function DashboardContent({
   const { sidebarCollapsed } = useUiStore();
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="min-h-screen bg-bg-primary relative">
+      <Web3Background />
       <Header />
       <Sidebar />
       <main
-        className={`pt-16 transition-all duration-300 ${
-          sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'
+        className={`pt-16 transition-all duration-300 relative z-10 ${
+          sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-56'
         }`}
       >
         {/* 移动端需要额外的底部 padding 来避开 MobileNav + 安全区 */}

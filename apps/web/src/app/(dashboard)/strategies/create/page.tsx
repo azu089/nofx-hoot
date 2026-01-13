@@ -126,12 +126,23 @@ const DANGEROUS_KEYWORDS = [
 
 function CreateStrategySkeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      <div className="h-10 bg-bg-tertiary rounded-lg w-48" />
-      <div className="h-12 bg-bg-tertiary rounded-lg" />
-      <div className="h-64 bg-bg-tertiary rounded-lg" />
-      <div className="h-24 bg-bg-tertiary rounded-lg" />
-    </div>
+    <>
+      {/* 移动端骨架屏 - 无边框极简风格 */}
+      <div className="lg:hidden space-y-4 animate-pulse">
+        <div className="h-10 bg-bg-tertiary/50 rounded-lg w-48" />
+        <div className="h-12 bg-bg-tertiary/50 rounded-lg" />
+        <div className="h-64 bg-bg-tertiary/50 rounded-lg" />
+        <div className="h-24 bg-bg-tertiary/50 rounded-lg" />
+      </div>
+
+      {/* 桌面端骨架屏 - 保持卡片样式 */}
+      <div className="hidden lg:block space-y-4 animate-pulse">
+        <div className="h-10 bg-bg-tertiary rounded-lg w-48" />
+        <div className="h-12 bg-bg-tertiary rounded-lg" />
+        <div className="h-64 bg-bg-tertiary rounded-lg" />
+        <div className="h-24 bg-bg-tertiary rounded-lg" />
+      </div>
+    </>
   );
 }
 
@@ -452,7 +463,16 @@ function CreateStrategyPageInner() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto mb-4" />
+          {/* 移动端 - 使用 rounded-full 图标容器 */}
+          <div className="lg:hidden">
+            <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto mb-4">
+              <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
+            </div>
+          </div>
+          {/* 桌面端 - 保持原样 */}
+          <div className="hidden lg:block">
+            <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto mb-4" />
+          </div>
           <h3 className="text-lg font-medium text-white mb-2">正在准备回测...</h3>
           <p className="text-text-secondary text-sm">
             {strategyName || '新策略'} · {selectedPairs.length} 个交易对
@@ -468,33 +488,577 @@ function CreateStrategyPageInner() {
 
   return (
     <div className="space-y-3 pb-32">
-      {/* 单卡片表单 */}
-      <Card className="overflow-visible">
-        <CardContent className="p-4 overflow-visible space-y-4">
+      {/* ====== 移动端布局 - 无边框极简风格 ====== */}
+      <div className="lg:hidden space-y-4">
+        {/* 模式切换 Tab + 问号按钮 */}
+        <div className="relative">
+          {/* 问号帮助按钮 - 右上角 */}
+          <button
+            type="button"
+            onClick={() => setShowParamsHelp(true)}
+            className="absolute -top-1 -right-1 p-1.5 rounded-full bg-bg-secondary text-text-tertiary hover:text-brand-primary transition-colors z-10"
+            title="查看参数说明"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
+          <div className="flex gap-2 p-1 bg-bg-secondary rounded-lg">
+            <button
+              onClick={() => setMode('template')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                mode === 'template'
+                  ? 'bg-brand-primary text-white'
+                  : 'text-text-secondary hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              策略模板
+            </button>
+            <button
+              onClick={() => setMode('code')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                mode === 'code'
+                  ? 'bg-brand-primary text-white'
+                  : 'text-text-secondary hover:text-white'
+              }`}
+            >
+              <Code className="w-4 h-4" />
+              代码上传
+            </button>
+          </div>
+        </div>
 
-            {/* 返回按钮 + 标题 + 问号 */}
+        {/* 策略名称 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-2">策略名称</label>
+          <Input
+            value={strategyName}
+            onChange={(e) => setStrategyName(e.target.value)}
+            placeholder={selectedTemplate ? `我的${selectedTemplate.name}` : '输入策略名称'}
+            className="text-sm"
+          />
+        </div>
+
+        {/* 模板选择（策略模板模式） */}
+        {mode === 'template' && (
+          <>
+            {/* 折叠式模板选择器 */}
             <div>
-              <div className="flex items-center gap-3">
+              <TemplateSelector
+                selectedId={selectedTemplateId}
+                onSelect={setSelectedTemplateId}
+              />
+            </div>
+
+            {/* 策略条件说明卡片 */}
+            {selectedTemplate && (
+              <div>
+                <StrategyConditionCard
+                  template={selectedTemplate}
+                  indicators={editedIndicators}
+                  buyConditions={editedBuyConditions}
+                  sellConditions={editedSellConditions}
+                  onIndicatorChange={handleIndicatorChange}
+                  onBuyConditionChange={handleBuyConditionChange}
+                  onSellConditionChange={handleSellConditionChange}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 代码编辑器（代码模式） */}
+        {mode === 'code' && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-bg-secondary flex items-center justify-center">
+                  <Shield className="w-3.5 h-3.5 text-brand-primary" />
+                </div>
+                <span className="text-sm font-medium text-white">策略代码</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {codeValid === true && (
+                  <span className="flex items-center gap-1 text-xs text-success">
+                    <CheckCircle className="w-3 h-3" />
+                    验证通过
+                  </span>
+                )}
+                {codeValid === false && (
+                  <span className="flex items-center gap-1 text-xs text-danger">
+                    <XCircle className="w-3 h-3" />
+                    有错误
+                  </span>
+                )}
                 <button
-                  onClick={() => router.back()}
-                  className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors"
+                  onClick={() => setCode(CODE_TEMPLATE)}
+                  className="p-1.5 rounded-full bg-bg-secondary text-text-tertiary hover:text-white transition-colors"
+                  title="重置代码"
                 >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <h1 className="flex-1 text-lg font-medium text-white">自定义策略</h1>
-                <button
-                  type="button"
-                  onClick={() => setShowParamsHelp(true)}
-                  className="p-2 rounded-lg hover:bg-bg-tertiary text-text-tertiary hover:text-brand-primary transition-colors"
-                  title="查看参数说明"
-                >
-                  <HelpCircle className="w-5 h-5" />
+                  <RotateCcw className="w-4 h-4" />
                 </button>
               </div>
             </div>
+            <textarea
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="w-full h-64 p-3 bg-bg-secondary rounded-lg text-xs font-mono text-white resize-none focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              spellCheck={false}
+            />
+            <div className="flex items-center justify-between mt-2 text-xs text-text-tertiary">
+              <span>{code.split('\n').length} 行</span>
+              {!hasActiveVps && (
+                <span className="text-warning">需要运行中的 VPS 才能执行代码回测</span>
+              )}
+            </div>
+            {codeWarnings.length > 0 && (
+              <div className="mt-2 p-2 bg-warning/10 rounded-lg">
+                {codeWarnings.map((w, i) => (
+                  <p key={i} className="text-xs text-warning">{w}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-            {/* 模式切换 Tab */}
-            <div>
+        {/* 回测周期 */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full bg-bg-secondary flex items-center justify-center">
+              <Clock className="w-3.5 h-3.5 text-brand-primary" />
+            </div>
+            <span className="text-sm font-medium text-white">回测周期</span>
+          </div>
+          {/* 预设周期按钮 */}
+          <div className="flex flex-wrap gap-2 mb-2">
+            {PERIOD_OPTIONS.map((item) => (
+              <button
+                key={item.days}
+                onClick={() => handleQuickDateSelect(item.days)}
+                className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                  selectedPeriod === item.days && !showCustomDate
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-bg-secondary text-text-secondary hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowCustomDate(!showCustomDate)}
+              className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                showCustomDate || selectedPeriod === null
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-bg-secondary text-text-secondary hover:text-white'
+              }`}
+            >
+              自定义
+            </button>
+          </div>
+          {/* 自定义日期 */}
+          {showCustomDate && (
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div>
+                <label className="block text-xs text-text-tertiary mb-1">开始日期</label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-text-tertiary mb-1">结束日期</label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 资金与交易对 */}
+        <div>
+          {/* 初始资金 */}
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-text-tertiary">初始资金 (USDT)</span>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+              <Input
+                type="number"
+                value={initialCapital}
+                onChange={(e) => setInitialCapital(e.target.value)}
+                placeholder="10000"
+                className="text-sm pl-7"
+              />
+            </div>
+          </div>
+
+          {/* 交易对选择 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-text-tertiary">🎯 交易对</span>
+              <span className="text-xs text-text-tertiary">{selectedPairs.length}/10</span>
+            </div>
+
+            {/* 搜索框 */}
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+              <Input
+                type="text"
+                value={pairSearch}
+                onChange={(e) => {
+                  setPairSearch(e.target.value.toUpperCase());
+                  setShowPairSearch(true);
+                }}
+                onFocus={() => setShowPairSearch(true)}
+                placeholder="搜索交易对，如 BTC、ETH..."
+                className="text-sm pl-9"
+              />
+              {/* 搜索结果下拉 */}
+              {showPairSearch && pairSearch && (
+                <div className="absolute z-50 w-full mt-1 bg-bg-secondary rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  {ALL_PAIRS
+                    .filter(p => p.includes(pairSearch) && !selectedPairs.includes(p))
+                    .slice(0, 8)
+                    .map((pair) => (
+                      <button
+                        key={pair}
+                        onClick={() => handleAddPair(pair)}
+                        className="w-full px-3 py-2 text-left text-sm text-white hover:bg-bg-tertiary flex items-center justify-between"
+                      >
+                        <span>{pair}</span>
+                        <Plus className="w-4 h-4 text-brand-primary" />
+                      </button>
+                    ))}
+                  {ALL_PAIRS.filter(p => p.includes(pairSearch) && !selectedPairs.includes(p)).length === 0 && (
+                    <div className="px-3 py-2 text-sm text-text-tertiary">未找到匹配的交易对</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 已选交易对 */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {selectedPairs.map((pair) => (
+                <span
+                  key={pair}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-brand-primary/20 text-brand-primary text-xs rounded"
+                >
+                  {pair}
+                  <button onClick={() => handleRemovePair(pair)} className="hover:text-white">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* 热门交易对 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-text-tertiary">热门:</span>
+              {HOT_PAIRS.filter(p => !selectedPairs.includes(p)).slice(0, 5).map((pair) => (
+                <button
+                  key={pair}
+                  onClick={() => handleAddPair(pair)}
+                  className="px-2 py-0.5 text-xs bg-bg-secondary text-text-secondary hover:text-white rounded transition-colors"
+                >
+                  +{pair.replace('/USDT', '')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 高级参数（折叠） */}
+        <div className="bg-bg-secondary rounded-xl p-4">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center justify-between w-full"
+          >
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-text-tertiary" />
+              <span className="text-sm text-text-secondary">高级参数</span>
+              <span className="text-xs text-text-tertiary">止损/止盈/杠杆/K线</span>
+            </div>
+            {showAdvanced ? (
+              <ChevronUp className="w-4 h-4 text-text-tertiary" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-text-tertiary" />
+            )}
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-4 space-y-3">
+              {/* 代码模式：跟随策略代码开关 */}
+              {mode === 'code' && (
+                <div className="p-3 bg-bg-tertiary/30 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Code className="w-4 h-4 text-brand-primary" />
+                      <span className="text-sm text-white">跟随策略代码</span>
+                    </div>
+                    <Switch
+                      id="follow-strategy-code-mobile"
+                      checked={followStrategyCode}
+                      onChange={(e) => setFollowStrategyCode(e.target.checked)}
+                      size="sm"
+                    />
+                  </div>
+                  <p className="text-xs text-text-tertiary mt-1.5 ml-6">
+                    {followStrategyCode
+                      ? '止损/止盈/K线/追踪止损将使用代码中的设置'
+                      : '使用下方配置覆盖代码中的设置'}
+                  </p>
+                </div>
+              )}
+
+              {/* 交易所 */}
+              <div>
+                <label className="block text-xs text-text-tertiary mb-1">交易所</label>
+                <select
+                  value={exchange}
+                  onChange={(e) => setExchange(e.target.value)}
+                  className="w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white"
+                >
+                  <option value="binance">Binance</option>
+                  <option value="okx">OKX</option>
+                  <option value="bybit">Bybit</option>
+                </select>
+              </div>
+
+              {/* 止损止盈 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    止损 (%)
+                    {mode === 'code' && followStrategyCode && (
+                      <span className="ml-1 text-warning">· 代码优先</span>
+                    )}
+                  </label>
+                  <Input
+                    type="number"
+                    value={stoploss}
+                    onChange={(e) => setStoploss(e.target.value)}
+                    disabled={mode === 'code' && followStrategyCode}
+                    className={`text-sm ${mode === 'code' && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    止盈 (%)
+                    {mode === 'code' && followStrategyCode && (
+                      <span className="ml-1 text-warning">· 代码优先</span>
+                    )}
+                  </label>
+                  <Input
+                    type="number"
+                    value={takeProfit}
+                    onChange={(e) => setTakeProfit(e.target.value)}
+                    disabled={mode === 'code' && followStrategyCode}
+                    className={`text-sm ${mode === 'code' && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  />
+                </div>
+              </div>
+
+              {/* K线周期和杠杆 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    K线周期
+                    {mode === 'code' && followStrategyCode && (
+                      <span className="ml-1 text-warning">· 代码优先</span>
+                    )}
+                  </label>
+                  <select
+                    value={timeframe}
+                    onChange={(e) => setTimeframe(e.target.value)}
+                    disabled={mode === 'code' && followStrategyCode}
+                    className={`w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white ${mode === 'code' && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="1m">1分钟</option>
+                    <option value="5m">5分钟</option>
+                    <option value="15m">15分钟</option>
+                    <option value="1h">1小时</option>
+                    <option value="4h">4小时</option>
+                    <option value="1d">1天</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
+                  <Input
+                    type="number"
+                    value={leverage}
+                    onChange={(e) => setLeverage(e.target.value)}
+                    min="1"
+                    max="20"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 最大持仓 + 手续费 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
+                  <Input
+                    type="number"
+                    value={maxOpenTrades}
+                    onChange={(e) => setMaxOpenTrades(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">手续费率 (%)</label>
+                  <Input
+                    type="number"
+                    value={(parseFloat(fee) * 100).toFixed(2)}
+                    onChange={(e) => setFee((parseFloat(e.target.value) / 100).toString())}
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 未成交超时 */}
+              <div>
+                <label className="block text-xs text-text-tertiary mb-1">未成交超时 (分钟)</label>
+                <Input
+                  type="number"
+                  value={unfilledTimeout}
+                  onChange={(e) => setUnfilledTimeout(e.target.value)}
+                  min="1"
+                  max="60"
+                  className="text-sm"
+                />
+              </div>
+
+              {/* 风控设置区 */}
+              <div className="pt-3 border-t border-border-primary/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-3.5 h-3.5 text-brand-primary" />
+                  <span className="text-xs text-text-tertiary font-medium">风控设置</span>
+                </div>
+
+                <div className="space-y-2">
+                  <label className={`flex items-center justify-between py-1.5 ${mode === 'code' && followStrategyCode ? 'opacity-50' : 'cursor-pointer'}`}>
+                    <span className="text-sm text-white">
+                      移动止损
+                      {mode === 'code' && followStrategyCode && (
+                        <span className="ml-1 text-xs text-warning">· 代码优先</span>
+                      )}
+                    </span>
+                    <Switch
+                      checked={trailingStop}
+                      onChange={(e) => setTrailingStop(e.target.checked)}
+                      disabled={mode === 'code' && followStrategyCode}
+                      size="sm"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between py-1.5 cursor-pointer">
+                    <span className="text-sm text-white">交易所止损</span>
+                    <Switch checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
+                  </label>
+
+                  <label className="flex items-center justify-between py-1.5 cursor-pointer">
+                    <span className="text-sm text-white">退出取消挂单</span>
+                    <Switch checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
+                  </label>
+                </div>
+              </div>
+
+              {/* 黑天鹅防护区 */}
+              <div className="pt-3 border-t border-border-primary/30">
+                <label className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                    <span className="text-sm text-white">黑天鹅防护</span>
+                  </div>
+                  <Switch checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
+                </label>
+
+                {blackSwanEnabled && (
+                  <div className="mt-2 p-3 bg-bg-tertiary/30 rounded-lg space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-text-tertiary mb-1">触发阈值 (%)</label>
+                        <Input
+                          type="number"
+                          value={blackSwanThreshold}
+                          onChange={(e) => setBlackSwanThreshold(e.target.value)}
+                          min="-50"
+                          max="0"
+                          className="text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-text-tertiary mb-1">检测窗口 (分钟)</label>
+                        <Input
+                          type="number"
+                          value={blackSwanTimeframe}
+                          onChange={(e) => setBlackSwanTimeframe(e.target.value)}
+                          min="1"
+                          max="60"
+                          className="text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">触发动作</label>
+                      <select
+                        value={blackSwanAction}
+                        onChange={(e) => setBlackSwanAction(e.target.value)}
+                        className="w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white"
+                      >
+                        <option value="pause">暂停交易</option>
+                        <option value="close_all">全部平仓</option>
+                        <option value="notify_only">仅通知</option>
+                      </select>
+                    </div>
+                    <p className="text-xs text-warning flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      当任一交易对在 {blackSwanTimeframe} 分钟内跌幅超过 {Math.abs(Number(blackSwanThreshold))}% 时触发
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ====== 桌面端布局 - 保持卡片样式 ====== */}
+      <Card className="hidden lg:block overflow-visible">
+        <CardContent className="p-4 overflow-visible space-y-4">
+
+            {/* 返回按钮 + 标题 - 桌面端显示 */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.back()}
+                className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <h1 className="flex-1 text-lg font-medium text-white">自定义策略</h1>
+            </div>
+
+            {/* 模式切换 Tab + 问号按钮 */}
+            <div className="relative">
+              {/* 问号帮助按钮 - 右上角 */}
+              <button
+                type="button"
+                onClick={() => setShowParamsHelp(true)}
+                className="absolute -top-1 -right-1 p-1.5 rounded-lg hover:bg-bg-tertiary text-text-tertiary hover:text-brand-primary transition-colors z-10"
+                title="查看参数说明"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </button>
               <div className="flex gap-2 p-1 bg-bg-tertiary rounded-lg">
                 <button
                   onClick={() => setMode('template')}
@@ -1025,16 +1589,24 @@ function CreateStrategyPageInner() {
         </CardContent>
       </Card>
 
-      {/* 错误提示 */}
+      {/* 错误提示 - 移动端无边框 */}
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg">
-          <AlertCircle className="w-4 h-4 text-danger flex-shrink-0" />
-          <p className="text-sm text-danger">{error}</p>
-        </div>
+        <>
+          {/* 移动端 */}
+          <div className="lg:hidden flex items-center gap-2 p-3 bg-danger/10 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-danger flex-shrink-0" />
+            <p className="text-sm text-danger">{error}</p>
+          </div>
+          {/* 桌面端 */}
+          <div className="hidden lg:flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-danger flex-shrink-0" />
+            <p className="text-sm text-danger">{error}</p>
+          </div>
+        </>
       )}
 
-      {/* 固定底部按钮 */}
-      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-bg-primary/95 backdrop-blur border-t border-border-primary lg:left-64 z-50">
+      {/* 固定底部按钮 - 移动端无边框 */}
+      <div className="fixed bottom-16 lg:bottom-0 left-0 right-0 p-4 bg-bg-primary/95 backdrop-blur border-t border-border-primary/30 lg:border-border-primary lg:left-64 z-50">
         <Button
           onClick={handleBacktest}
           disabled={mode === 'code' && !codeValid}

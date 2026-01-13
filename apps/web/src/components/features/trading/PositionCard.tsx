@@ -49,6 +49,7 @@ export interface Position {
 interface PositionCardProps {
   position: Position;
   disabled?: boolean;
+  zebra?: boolean;
 }
 
 // 格式化价格
@@ -84,7 +85,7 @@ function formatHoldingTime(openDate: string): string {
  * - 默认只显示核心信息（交易对、盈亏、价格、简单操作）
  * - 展开后显示详细信息（止损、最高最低价、开仓时间等）
  */
-export function PositionCard({ position, disabled }: PositionCardProps) {
+export function PositionCard({ position, disabled, zebra }: PositionCardProps) {
   const [expanded, setExpanded] = useState(false);
   // AI 解读状态
   const [insight, setInsight] = useState<TradeInsight | null>(null);
@@ -171,9 +172,9 @@ export function PositionCard({ position, disabled }: PositionCardProps) {
   };
 
   return (
-    <div className="bg-bg-tertiary/50 rounded-xl border border-border-primary overflow-hidden">
+    <div className={zebra ? 'bg-[#000000]' : ''}>
       {/* 默认简洁视图 */}
-      <div className="p-4">
+      <div className="px-4 py-4">
         {/* 第一行：交易对 + 标签 + 盈亏 */}
         <div className="flex items-start justify-between mb-2.5">
           {/* 左侧：交易对 + 标签 */}
@@ -244,7 +245,7 @@ export function PositionCard({ position, disabled }: PositionCardProps) {
           {/* 展开详情按钮 */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="px-4 py-2 text-sm text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary/70 rounded-lg transition-colors border border-border-primary"
+            className="px-4 py-2 text-sm text-text-tertiary hover:text-text-primary bg-bg-tertiary/50 hover:bg-bg-tertiary rounded-lg transition-colors"
           >
             {expanded ? '收起' : '详情'}
           </button>
@@ -291,9 +292,9 @@ export function PositionCard({ position, disabled }: PositionCardProps) {
       {/* AI 解读内容 - 独立区域 */}
       {insightExpanded && insight && (
         <div className="px-4 pb-3 pt-2.5">
-          <div className="p-3 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl border border-brand-primary/20 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
-            {/* 人话解读 - 最重要 */}
-            <div className={`p-2.5 rounded-lg ${isProfit ? 'bg-success/10 border border-success/20' : 'bg-danger/10 border border-danger/20'}`}>
+          <div className="p-3 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl lg:border lg:border-brand-primary/20 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* 人话解读 - 最重要 - 移动端无边框 */}
+            <div className={`p-2.5 rounded-lg ${isProfit ? 'bg-success/10 lg:border lg:border-success/20' : 'bg-danger/10 lg:border lg:border-danger/20'}`}>
               <div className="flex items-start gap-2.5">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isProfit ? 'bg-success/20' : 'bg-danger/20'}`}>
                   {isProfit ? (

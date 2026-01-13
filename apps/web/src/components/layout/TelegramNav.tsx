@@ -7,11 +7,11 @@ import { hapticFeedback } from '@/lib/telegram';
 
 // TG 小程序专用路由（所有路由以 /tg 为前缀）
 const navItems = [
-  { href: '/tg', icon: Home, label: '首页', pattern: /^\/tg(\/?|\/checkin|\/invite)$/ },
+  { href: '/tg', icon: Home, label: '首页', pattern: /^\/tg(\/?|\/checkin|\/invite|\/announcements|\/help)$/ },
   { href: '/tg/trading', icon: TrendingUp, label: '交易', pattern: /^\/tg\/trading(\/|$)/ },
   { href: '/tg/strategies', icon: Zap, label: '策略', pattern: /^\/tg\/strategies(\/|$)/ },
   { href: '/tg/wallet', icon: Wallet, label: '资产', pattern: /^\/tg\/wallet(\/|$)/ },
-  { href: '/tg/profile', icon: User, label: '我的', pattern: /^\/tg\/profile(\/|$)/ },
+  { href: '/tg/settings', icon: User, label: '我的', pattern: /^\/tg\/(settings|profile|instances|ecosystem)(\/|$)/ },
 ];
 
 export function TelegramNav() {

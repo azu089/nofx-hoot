@@ -10,12 +10,12 @@ import { exchangeApi, userApi } from '@/lib/api';
 // 资产类型
 type AssetType = 'usdt' | 'card' | 'points' | 'token';
 
-// 资产配置
-const ASSET_CONFIG: Record<AssetType, { label: string; icon: string; color: string }> = {
-  usdt: { label: 'USDT', icon: '💵', color: 'text-green-400' },
-  card: { label: '点卡', icon: '🎫', color: 'text-blue-400' },
-  points: { label: '积分', icon: '⭐', color: 'text-yellow-400' },
-  token: { label: 'QFI', icon: '🪙', color: 'text-purple-400' },
+// 资产配置 - 使用专业货币图标 (参考 Binance/OKX 设计)
+const ASSET_CONFIG: Record<AssetType, { label: string; icon: string; color: string; bgColor: string }> = {
+  usdt: { label: 'USDT', icon: '/icons/usdt.svg', color: 'text-[#26A17B]', bgColor: 'bg-[#26A17B]/20' },
+  card: { label: '点卡', icon: '/icons/card.svg', color: 'text-[#F7931A]', bgColor: 'bg-[#F7931A]/20' },
+  points: { label: '积分', icon: '/icons/points.svg', color: 'text-[#FFD700]', bgColor: 'bg-[#FFD700]/20' },
+  token: { label: 'QFI', icon: '/icons/qfi.svg', color: 'text-[#3772FF]', bgColor: 'bg-[#3772FF]/20' },
 };
 
 // 兑换规则矩阵
@@ -26,13 +26,35 @@ const EXCHANGE_RULES: Record<AssetType, AssetType[]> = {
   token: ['usdt'],            // QFI → USDT
 };
 
-// 点卡套餐配置
+// 点卡套餐配置（燃油费预充）
 const CARD_PACKAGES = [
-  { amount: 100, bonus: 0, label: '入门' },
-  { amount: 500, bonus: 5, label: '标准' },
-  { amount: 1000, bonus: 10, label: '高级' },
-  { amount: 5000, bonus: 20, label: '尊享' },
+  { amount: 50, bonus: 0, label: '体验' },
+  { amount: 100, bonus: 5, label: '入门' },
+  { amount: 200, bonus: 8, label: '标准' },
+  { amount: 500, bonus: 12, label: '高级' },
+  { amount: 1000, bonus: 18, label: '尊享' },
+  { amount: 2000, bonus: 25, label: '旗舰' },
 ];
+
+// 资产图标组件 - 专业货币 Logo 样式 (参考 Binance/OKX)
+const AssetIcon = ({ asset, size = 24 }: { asset: AssetType; size?: number }) => {
+  const config = ASSET_CONFIG[asset];
+  return (
+    <div
+      className="flex items-center justify-center rounded-full overflow-hidden shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={config.icon}
+        alt={config.label}
+        width={size}
+        height={size}
+        className="w-full h-full object-cover"
+      />
+    </div>
+  );
+};
 
 interface QuoteData {
   quote_id: string;
@@ -290,10 +312,10 @@ export default function ExchangePage() {
         }
       />
 
-      {/* 兑换卡片 - 紧凑布局 */}
-      <Card className="p-4">
+      {/* 兑换卡片 - 移动端极简风格 */}
+      <div className="lg:hidden space-y-4 px-4">
         {/* 来源资产 - 支付区块 */}
-        <div className="p-3 bg-bg-tertiary rounded-xl">
+        <div className="p-4 bg-bg-secondary rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-text-tertiary">支付</span>
             <span className="text-xs text-text-tertiary">
@@ -307,7 +329,7 @@ export default function ExchangePage() {
               onClick={() => setShowFromSelector(!showFromSelector)}
               className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg hover:bg-bg-primary transition-colors shrink-0"
             >
-              <span className="text-lg">{ASSET_CONFIG[fromAsset].icon}</span>
+              <AssetIcon asset={fromAsset} size={24} />
               <span className={`font-medium ${ASSET_CONFIG[fromAsset].color}`}>
                 {ASSET_CONFIG[fromAsset].label}
               </span>
@@ -342,11 +364,11 @@ export default function ExchangePage() {
                     setFromAsset(asset);
                     setShowFromSelector(false);
                   }}
-                  className={`w-full flex items-center gap-2 p-3 hover:bg-bg-tertiary transition-colors ${
+                  className={`w-full flex items-center gap-3 p-3 hover:bg-bg-tertiary transition-colors ${
                     fromAsset === asset ? 'bg-bg-tertiary' : ''
                   }`}
                 >
-                  <span className="text-lg">{ASSET_CONFIG[asset].icon}</span>
+                  <AssetIcon asset={asset} size={28} />
                   <span className={ASSET_CONFIG[asset].color}>{ASSET_CONFIG[asset].label}</span>
                   <span className="ml-auto text-sm text-text-tertiary">
                     {parseFloat(getBalance(asset)).toFixed(2)}
@@ -374,7 +396,7 @@ export default function ExchangePage() {
         </div>
 
         {/* 目标资产 - 获得区块 */}
-        <div className="p-3 bg-bg-tertiary rounded-xl">
+        <div className="p-4 bg-bg-secondary rounded-xl">
           {availableToAssets.length > 0 ? (
             <>
               <div className="flex items-center justify-between mb-2">
@@ -390,7 +412,7 @@ export default function ExchangePage() {
                   onClick={() => setShowToSelector(!showToSelector)}
                   className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg hover:bg-bg-primary transition-colors shrink-0"
                 >
-                  <span className="text-lg">{ASSET_CONFIG[toAsset].icon}</span>
+                  <AssetIcon asset={toAsset} size={24} />
                   <span className={`font-medium ${ASSET_CONFIG[toAsset].color}`}>
                     {ASSET_CONFIG[toAsset].label}
                   </span>
@@ -420,11 +442,11 @@ export default function ExchangePage() {
                         setToAsset(asset);
                         setShowToSelector(false);
                       }}
-                      className={`w-full flex items-center gap-2 p-3 hover:bg-bg-tertiary transition-colors ${
+                      className={`w-full flex items-center gap-3 p-3 hover:bg-bg-tertiary transition-colors ${
                         toAsset === asset ? 'bg-bg-tertiary' : ''
                       }`}
                     >
-                      <span className="text-lg">{ASSET_CONFIG[asset].icon}</span>
+                      <AssetIcon asset={asset} size={28} />
                       <span className={ASSET_CONFIG[asset].color}>{ASSET_CONFIG[asset].label}</span>
                       <span className="ml-auto text-sm text-text-tertiary">
                         {parseFloat(getBalance(asset)).toFixed(2)}
@@ -444,7 +466,7 @@ export default function ExchangePage() {
 
         {/* USDT → 点卡套餐选择 */}
         {fromAsset === 'usdt' && toAsset === 'card' && (
-          <div className="mt-3">
+          <div>
             <label className="block text-xs text-text-tertiary mb-2">优惠套餐</label>
             <div className="grid grid-cols-4 gap-2">
               {CARD_PACKAGES.map((pkg) => (
@@ -452,10 +474,10 @@ export default function ExchangePage() {
                   key={pkg.amount}
                   type="button"
                   onClick={() => handleSelectPackage(pkg)}
-                  className={`p-2 rounded-lg border text-center transition-colors ${
+                  className={`p-2 rounded-lg text-center transition-colors ${
                     selectedPackage === pkg.amount
-                      ? 'border-brand-primary bg-brand-primary/10'
-                      : 'border-border-primary hover:border-brand-primary/50'
+                      ? 'bg-brand-primary/20 ring-1 ring-brand-primary'
+                      : 'bg-bg-secondary'
                   }`}
                 >
                   <div className="text-sm font-medium text-text-primary">{pkg.amount}</div>
@@ -466,7 +488,7 @@ export default function ExchangePage() {
               ))}
             </div>
             {bonusInfo && bonusInfo.bonusAmount > 0 && (
-              <div className="mt-2 p-2 bg-success/10 border border-success/30 rounded-lg">
+              <div className="mt-2 p-2 bg-success/10 rounded-lg">
                 <div className="flex justify-between text-xs">
                   <span className="text-text-secondary">{bonusInfo.package.label}套餐 +{bonusInfo.package.bonus}%</span>
                   <span className="text-success font-medium">
@@ -480,16 +502,16 @@ export default function ExchangePage() {
 
         {/* 积分兑换模式选择 */}
         {fromAsset === 'points' && toAsset === 'token' && (
-          <div className="mt-3 p-3 bg-bg-tertiary rounded-lg border border-border-primary">
+          <div className="p-3 bg-bg-secondary rounded-xl">
             <label className="block text-sm text-text-secondary mb-2">兑换模式</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setMode('standard')}
-                className={`p-3 rounded-lg border text-left transition-colors ${
+                className={`p-3 rounded-lg text-left transition-colors ${
                   mode === 'standard'
-                    ? 'border-brand-primary bg-brand-primary/10'
-                    : 'border-border-primary hover:border-brand-primary/50'
+                    ? 'bg-brand-primary/20 ring-1 ring-brand-primary'
+                    : 'bg-bg-primary'
                 }`}
               >
                 <div className="font-medium text-sm text-text-primary">标准模式</div>
@@ -500,10 +522,10 @@ export default function ExchangePage() {
               <button
                 type="button"
                 onClick={() => setMode('instant')}
-                className={`p-3 rounded-lg border text-left transition-colors ${
+                className={`p-3 rounded-lg text-left transition-colors ${
                   mode === 'instant'
-                    ? 'border-warning bg-warning/10'
-                    : 'border-border-primary hover:border-warning/50'
+                    ? 'bg-warning/20 ring-1 ring-warning'
+                    : 'bg-bg-primary'
                 }`}
               >
                 <div className="font-medium text-sm text-warning">急速模式</div>
@@ -517,7 +539,7 @@ export default function ExchangePage() {
 
         {/* 兑换详情 */}
         {quote && (
-          <div className="mt-3 space-y-2 p-3 bg-bg-tertiary rounded-lg border border-border-primary">
+          <div className="space-y-2 p-3 bg-bg-secondary rounded-xl">
             <div className="flex justify-between text-sm">
               <span className="text-text-tertiary">兑换比例</span>
               <span className="text-text-primary">
@@ -582,7 +604,7 @@ export default function ExchangePage() {
 
         {/* 错误提示 */}
         {error && (
-          <div className="mt-3 flex items-center gap-2 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
+          <div className="flex items-center gap-2 p-3 bg-danger/10 rounded-lg text-danger text-sm">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {error}
           </div>
@@ -590,13 +612,144 @@ export default function ExchangePage() {
 
         {/* 成功提示 */}
         {success && (
-          <div className="mt-3 flex items-center gap-2 p-3 bg-success/10 border border-success/30 rounded-lg text-success text-sm">
+          <div className="flex items-center gap-2 p-3 bg-success/10 rounded-lg text-success text-sm">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             {success}
           </div>
         )}
 
         {/* 确认按钮 */}
+        <Button
+          className="w-full"
+          size="lg"
+          disabled={!quote || loading || quoteExpiry <= 0}
+          onClick={handleConvert}
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              兑换中...
+            </>
+          ) : (
+            '确认兑换'
+          )}
+        </Button>
+      </div>
+
+      {/* 提示信息 - 移动端 */}
+      <div className="lg:hidden mx-4 p-4 bg-bg-secondary rounded-xl">
+        <h3 className="text-sm font-medium text-text-primary mb-2">兑换说明</h3>
+        <ul className="text-xs text-text-tertiary space-y-1">
+          <li>• USDT → 点卡：1:1 兑换，0 手续费</li>
+          <li className="pl-3 text-success">└ 套餐优惠：50体验/100+5%/200+8%/500+12%/1000+18%/2000+25%</li>
+          <li>• USDT → QFI：市场价格，1% 手续费</li>
+          <li>• 积分 → QFI：1000:1 兑换，支持标准/急速模式</li>
+          <li>• QFI → USDT：市场价格，1% 手续费</li>
+          <li>• 点卡和积分不支持反向兑换</li>
+        </ul>
+      </div>
+
+      {/* 桌面端兑换卡片 */}
+      <Card className="hidden lg:block p-4">
+        {/* 来源资产 - 支付区块 */}
+        <div className="p-3 bg-bg-tertiary rounded-xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-text-tertiary">支付</span>
+            <span className="text-xs text-text-tertiary">
+              可用: {parseFloat(getBalance(fromAsset)).toFixed(4)} {ASSET_CONFIG[fromAsset].label}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowFromSelector(!showFromSelector)}
+              className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg hover:bg-bg-primary transition-colors shrink-0"
+            >
+              <AssetIcon asset={fromAsset} size={24} />
+              <span className={`font-medium ${ASSET_CONFIG[fromAsset].color}`}>
+                {ASSET_CONFIG[fromAsset].label}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform ${showFromSelector ? 'rotate-180' : ''}`} />
+            </button>
+            <div className="flex-1 text-right">
+              <Input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                className="border-0 bg-transparent text-xl font-bold text-right p-0 h-auto"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSetMax}
+              className="px-2 py-1 text-xs text-brand-primary hover:text-brand-secondary bg-brand-primary/10 rounded"
+            >
+              最大
+            </button>
+          </div>
+        </div>
+
+        {/* 交换按钮 */}
+        <div className="flex justify-center -my-3 relative z-10">
+          <button
+            type="button"
+            onClick={handleSwap}
+            disabled={!canSwap}
+            className={`p-2 rounded-full border-4 border-bg-secondary transition-colors ${
+              canSwap
+                ? 'bg-brand-primary hover:bg-brand-secondary text-white'
+                : 'bg-bg-tertiary text-text-tertiary cursor-not-allowed'
+            }`}
+          >
+            <ArrowUpDown className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 目标资产 */}
+        <div className="p-3 bg-bg-tertiary rounded-xl">
+          {availableToAssets.length > 0 ? (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-text-tertiary">获得</span>
+                <span className="text-xs text-text-tertiary">
+                  持有: {parseFloat(getBalance(toAsset)).toFixed(4)} {ASSET_CONFIG[toAsset].label}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowToSelector(!showToSelector)}
+                  className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg hover:bg-bg-primary transition-colors shrink-0"
+                >
+                  <AssetIcon asset={toAsset} size={24} />
+                  <span className={`font-medium ${ASSET_CONFIG[toAsset].color}`}>
+                    {ASSET_CONFIG[toAsset].label}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-text-tertiary transition-transform ${showToSelector ? 'rotate-180' : ''}`} />
+                </button>
+                <div className="flex-1 text-right">
+                  <div className="text-xl font-bold text-text-primary">
+                    {quoteLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin ml-auto" />
+                    ) : quote ? (
+                      parseFloat(quote.to_amount).toFixed(4)
+                    ) : (
+                      '0'
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="py-4 text-center">
+              <Wallet className="w-6 h-6 text-text-tertiary mx-auto mb-1" />
+              <p className="text-sm text-text-tertiary">该资产不支持兑换</p>
+            </div>
+          )}
+        </div>
+
+        {/* 确认按钮 - 桌面端 */}
         <Button
           className="w-full mt-4"
           size="lg"
@@ -614,12 +767,12 @@ export default function ExchangePage() {
         </Button>
       </Card>
 
-      {/* 提示信息 */}
-      <Card className="p-4">
+      {/* 提示信息 - 桌面端 */}
+      <Card className="hidden lg:block p-4">
         <h3 className="text-sm font-medium text-text-primary mb-2">兑换说明</h3>
         <ul className="text-xs text-text-tertiary space-y-1">
           <li>• USDT → 点卡：1:1 兑换，0 手续费</li>
-          <li className="pl-3 text-success">└ 套餐优惠：100入门/500+5%/1000+10%/5000+20%</li>
+          <li className="pl-3 text-success">└ 套餐优惠：50体验/100+5%/200+8%/500+12%/1000+18%/2000+25%</li>
           <li>• USDT → QFI：市场价格，1% 手续费</li>
           <li>• 积分 → QFI：1000:1 兑换，支持标准/急速模式</li>
           <li>• QFI → USDT：市场价格，1% 手续费</li>

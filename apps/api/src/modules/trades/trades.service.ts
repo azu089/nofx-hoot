@@ -196,8 +196,23 @@ export class TradesService {
       user_id: userId,
     };
 
-    // 实例筛选
+    // 实例筛选（验证实例归属）
     if (query.instance_id) {
+      // 安全：验证实例是否属于当前用户
+      const instance = await this.prisma.client.instances.findFirst({
+        where: { id: query.instance_id, user_id: userId },
+        select: { id: true },
+      });
+      if (!instance) {
+        // 返回空结果而不是错误，避免泄露实例存在性
+        return {
+          trades: [],
+          total: 0,
+          limit: query.limit || 20,
+          offset: query.offset || 0,
+          has_more: false,
+        };
+      }
       where.instance_id = query.instance_id;
     }
 

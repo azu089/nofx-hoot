@@ -11,6 +11,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { WithdrawalsService } from './withdrawals.service';
 import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { ReviewWithdrawalDto } from './dto/withdrawal-response.dto';
@@ -58,9 +59,10 @@ export class WithdrawalsController {
 
   /**
    * 管理员查看所有待审核提现
-   * GET /api/admin/withdrawals
+   * GET /api/withdrawals/admin
    */
   @Get('admin')
+  @UseGuards(AdminGuard)
   async findPending() {
     const withdrawals = await this.withdrawalsService.findPending();
 
@@ -73,9 +75,10 @@ export class WithdrawalsController {
 
   /**
    * 管理员审核提现
-   * POST /api/admin/withdrawals/:id/review
+   * POST /api/withdrawals/admin/:id/review
    */
   @Post('admin/:id/review')
+  @UseGuards(AdminGuard)
   @HttpCode(HttpStatus.OK)
   async review(
     @Request() req: any,

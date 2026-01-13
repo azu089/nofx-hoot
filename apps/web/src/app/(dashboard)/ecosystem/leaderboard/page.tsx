@@ -8,7 +8,6 @@ import {
   Trophy,
   Star,
   Medal,
-  RefreshCw,
 } from 'lucide-react';
 import { MobileHeader } from '@/components/ui';
 
@@ -97,12 +96,6 @@ export default function LeaderboardPage() {
       <MobileHeader
         title="积分排行榜"
         subtitle="查看积分排名"
-        rightAction={
-          <Button variant="ghost" size="sm" onClick={fetchData}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-        }
       />
 
       {leaderboard.length === 0 ? (

@@ -29,8 +29,8 @@ import Decimal from 'decimal.js';
 export class InstancesService {
   private readonly logger = new Logger(InstancesService.name);
 
-  // VPS 订阅费（美元/月）
-  private readonly SUBSCRIPTION_FEE = new Decimal('25');
+  // VPS 订阅费（美元/月）- 基准价 $20
+  private readonly SUBSCRIPTION_FEE = new Decimal('20');
 
   constructor(
     private readonly prisma: PrismaService,

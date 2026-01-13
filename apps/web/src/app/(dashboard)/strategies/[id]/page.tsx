@@ -157,7 +157,12 @@ export default function StrategyDetailPage() {
   if (loading) {
     return (
       <div className="pb-24">
-        <Card className="animate-pulse">
+        {/* 移动端加载状态 */}
+        <div className="lg:hidden animate-pulse">
+          <div className="p-4 h-96 bg-bg-tertiary/50 rounded-xl" />
+        </div>
+        {/* 桌面端加载状态 */}
+        <Card className="hidden lg:block animate-pulse">
           <div className="p-6 h-96 bg-bg-tertiary rounded" />
         </Card>
       </div>
@@ -168,7 +173,18 @@ export default function StrategyDetailPage() {
   if (!strategy) {
     return (
       <div className="pb-24">
-        <Card>
+        {/* 移动端空状态 */}
+        <div className="lg:hidden py-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-bg-secondary flex items-center justify-center mx-auto mb-4">
+            <XCircle className="w-8 h-8 text-danger" />
+          </div>
+          <p className="text-text-secondary">策略不存在</p>
+          <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+            返回
+          </Button>
+        </div>
+        {/* 桌面端空状态 */}
+        <Card className="hidden lg:block">
           <div className="p-12 text-center">
             <XCircle className="w-12 h-12 mx-auto mb-4 text-danger" />
             <p className="text-text-secondary">策略不存在</p>
@@ -188,173 +204,152 @@ export default function StrategyDetailPage() {
   const totalReturn = parseFloat(metrics.totalReturn);
 
   return (
-    <div>
-      {/* ====== 单一大卡片 ====== */}
-      <Card>
-        <div className="p-4 lg:p-6 space-y-5">
-
-          {/* 顶部：返回按钮 + 标题 + 操作按钮 */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3 flex-1 min-w-0">
-              {/* 返回按钮 */}
-              <button
-                onClick={() => router.back()}
-                className="shrink-0 p-1.5 -ml-1.5 rounded-lg hover:bg-bg-tertiary transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5 text-text-secondary" />
-              </button>
-              {/* 标题和标签 */}
-              <div className="flex-1 min-w-0">
-                <h1 className="text-xl font-bold text-white mb-2 truncate">{strategy.name}</h1>
-                <div className="flex flex-wrap items-center gap-2">
-                  {strategy.owner_type === 'system' ? (
-                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary border border-brand-primary/30">
-                      <BadgeCheck className="w-3 h-3" />
-                      官方
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">
-                      <UserCircle className="w-3 h-3" />
-                      社区
-                    </span>
-                  )}
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full border",
-                    tradeType === 'futures'
-                      ? 'bg-warning/15 text-warning border-warning/30'
-                      : 'bg-bg-tertiary text-text-secondary border-border-primary'
-                  )}>
-                    {tradeType === 'futures' ? '合约' : '现货'}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">
-                    {typeConfig.label}
-                  </span>
-                </div>
-              </div>
-            </div>
-            {/* 右侧操作按钮 */}
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={handleShare} className="p-2 rounded-lg hover:bg-bg-tertiary transition-colors">
-                <Share2 className="w-5 h-5 text-text-secondary" />
-              </button>
-              <button className="p-2 rounded-lg hover:bg-warning/10 transition-colors">
-                <Star className="w-5 h-5 text-text-tertiary hover:text-warning" />
-              </button>
+    <div className="pb-20">
+      {/* ====== 移动端布局 - 无边框极简风格 ====== */}
+      <div className="lg:hidden space-y-4">
+        {/* 顶部：标题 + 操作按钮 */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-white mb-2 truncate">{strategy.name}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              {strategy.owner_type === 'system' ? (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary">
+                  <BadgeCheck className="w-3 h-3" />
+                  官方
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary">
+                  <UserCircle className="w-3 h-3" />
+                  社区
+                </span>
+              )}
+              <span className={cn(
+                "text-xs px-2 py-0.5 rounded-full",
+                tradeType === 'futures'
+                  ? 'bg-warning/15 text-warning'
+                  : 'bg-bg-secondary text-text-secondary'
+              )}>
+                {tradeType === 'futures' ? '合约' : '现货'}
+              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-bg-secondary text-text-secondary">
+                {typeConfig.label}
+              </span>
             </div>
           </div>
-
-          {/* 策略描述 */}
-          <p className="text-sm text-text-secondary leading-relaxed">
-            {strategy.description || typeConfig.description}
-          </p>
-
-          {/* 分隔线 */}
-          <div className="border-t border-border-primary" />
-
-          {/* 回测表现 */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-white">回测表现</h2>
-              <div className="flex gap-1 bg-bg-tertiary rounded-lg p-0.5">
-                {(['7d', '30d', '90d'] as TimeRange[]).map((range) => (
-                  <button
-                    key={range}
-                    onClick={() => setTimeRange(range)}
-                    className={cn(
-                      'px-3 py-1.5 text-xs rounded-md transition-colors',
-                      timeRange === range
-                        ? 'bg-brand-primary text-white'
-                        : 'text-text-secondary hover:text-text-primary'
-                    )}
-                  >
-                    {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 回测指标 - 按参考图顺序：胜率、最大回撤、夏普比率、交易次数 */}
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              <div className="text-center">
-                <p className="text-lg font-bold text-white">{metrics.winRate}%</p>
-                <p className="text-xs text-text-tertiary mt-1">胜率</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-danger">-{metrics.maxDrawdown}%</p>
-                <p className="text-xs text-text-tertiary mt-1">最大回撤</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-white">{metrics.sharpeRatio}</p>
-                <p className="text-xs text-text-tertiary mt-1">夏普比率</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-white">{metrics.tradeCount}</p>
-                <p className="text-xs text-text-tertiary mt-1">交易次数</p>
-              </div>
-            </div>
-
-            {/* 收益曲线 */}
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  stroke="#5E6673"
-                  style={{ fontSize: 10 }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  stroke="#5E6673"
-                  style={{ fontSize: 10 }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={45}
-                  tickFormatter={(v) => `${(v/1000).toFixed(0)}k`}
-                  domain={['dataMin - 500', 'dataMax + 500']}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1E222D',
-                    border: '1px solid #2B3139',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value) => [`$${Number(value).toLocaleString()}`, '净值']}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={totalReturn >= 0 ? "#00C087" : "#F23645"}
-                  strokeWidth={2}
-                  fill="url(#profitGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* 分隔线 */}
-          <div className="border-t border-border-primary" />
-
-          {/* 风险提示 */}
-          <div className="flex items-start gap-2 p-3 bg-warning/5 rounded-lg border border-warning/20">
-            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-            <p className="text-xs text-text-secondary">
-              以上数据为历史回测结果，不代表未来收益，请根据自身风险承受能力谨慎投资。
-            </p>
+          {/* 右侧操作按钮 */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={handleShare} className="p-2 rounded-full bg-bg-secondary">
+              <Share2 className="w-5 h-5 text-text-secondary" />
+            </button>
+            <button className="p-2 rounded-full bg-bg-secondary">
+              <Star className="w-5 h-5 text-text-tertiary" />
+            </button>
           </div>
         </div>
-      </Card>
 
-      {/* 操作按钮 - 卡片下方 */}
-      <div className="pt-3">
+        {/* 策略描述 */}
+        <p className="text-sm text-text-secondary leading-relaxed">
+          {strategy.description || typeConfig.description}
+        </p>
+
+        {/* 回测表现区块 */}
+        <div className="bg-bg-secondary rounded-xl p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-medium text-white">回测表现</h2>
+            <div className="flex gap-1 bg-bg-primary rounded-lg p-0.5">
+              {(['7d', '30d', '90d'] as TimeRange[]).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => setTimeRange(range)}
+                  className={cn(
+                    'px-3 py-1.5 text-xs rounded-md transition-colors',
+                    timeRange === range
+                      ? 'bg-brand-primary text-white'
+                      : 'text-text-secondary hover:text-text-primary'
+                  )}
+                >
+                  {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 回测指标 */}
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="text-center">
+              <p className="text-lg font-bold text-white">{metrics.winRate}%</p>
+              <p className="text-xs text-text-tertiary mt-1">胜率</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-danger">-{metrics.maxDrawdown}%</p>
+              <p className="text-xs text-text-tertiary mt-1">最大回撤</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-white">{metrics.sharpeRatio}</p>
+              <p className="text-xs text-text-tertiary mt-1">夏普比率</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-white">{metrics.tradeCount}</p>
+              <p className="text-xs text-text-tertiary mt-1">交易次数</p>
+            </div>
+          </div>
+
+          {/* 收益曲线 */}
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="profitGradientMobile" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
+              <XAxis
+                dataKey="date"
+                stroke="#5E6673"
+                style={{ fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                stroke="#5E6673"
+                style={{ fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                width={40}
+                tickFormatter={(v) => `${(v/1000).toFixed(0)}k`}
+                domain={['dataMin - 500', 'dataMax + 500']}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1E222D',
+                  border: '1px solid #2B3139',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                }}
+                formatter={(value) => [`$${Number(value).toLocaleString()}`, '净值']}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={totalReturn >= 0 ? "#00C087" : "#F23645"}
+                strokeWidth={2}
+                fill="url(#profitGradientMobile)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* 风险提示 */}
+        <div className="flex items-start gap-2 p-3 bg-warning/5 rounded-lg">
+          <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+          <p className="text-xs text-text-secondary">
+            以上数据为历史回测结果，不代表未来收益，请根据自身风险承受能力谨慎投资。
+          </p>
+        </div>
+
+        {/* 操作按钮 */}
         <Button
           className="w-full h-11 text-base font-semibold"
           size="lg"
@@ -363,6 +358,180 @@ export default function StrategyDetailPage() {
           使用此策略
           <ArrowRight className="w-5 h-5 ml-2" />
         </Button>
+      </div>
+
+      {/* ====== 桌面端布局 - 保持卡片样式 ====== */}
+      <div className="hidden lg:block">
+        <Card>
+          <div className="p-6 space-y-5">
+            {/* 顶部：返回按钮 + 标题 + 操作按钮 */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <button
+                  onClick={() => router.back()}
+                  className="shrink-0 p-1.5 -ml-1.5 rounded-lg hover:bg-bg-tertiary transition-colors"
+                >
+                  <ChevronLeft className="w-5 h-5 text-text-secondary" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-xl font-bold text-white mb-2 truncate">{strategy.name}</h1>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {strategy.owner_type === 'system' ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-brand-primary/15 text-brand-primary border border-brand-primary/30">
+                        <BadgeCheck className="w-3 h-3" />
+                        官方
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">
+                        <UserCircle className="w-3 h-3" />
+                        社区
+                      </span>
+                    )}
+                    <span className={cn(
+                      "text-xs px-2 py-0.5 rounded-full border",
+                      tradeType === 'futures'
+                        ? 'bg-warning/15 text-warning border-warning/30'
+                        : 'bg-bg-tertiary text-text-secondary border-border-primary'
+                    )}>
+                      {tradeType === 'futures' ? '合约' : '现货'}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-bg-tertiary text-text-secondary border border-border-primary">
+                      {typeConfig.label}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={handleShare} className="p-2 rounded-lg hover:bg-bg-tertiary transition-colors">
+                  <Share2 className="w-5 h-5 text-text-secondary" />
+                </button>
+                <button className="p-2 rounded-lg hover:bg-warning/10 transition-colors">
+                  <Star className="w-5 h-5 text-text-tertiary hover:text-warning" />
+                </button>
+              </div>
+            </div>
+
+            {/* 策略描述 */}
+            <p className="text-sm text-text-secondary leading-relaxed">
+              {strategy.description || typeConfig.description}
+            </p>
+
+            {/* 分隔线 */}
+            <div className="border-t border-border-primary" />
+
+            {/* 回测表现 */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-medium text-white">回测表现</h2>
+                <div className="flex gap-1 bg-bg-tertiary rounded-lg p-0.5">
+                  {(['7d', '30d', '90d'] as TimeRange[]).map((range) => (
+                    <button
+                      key={range}
+                      onClick={() => setTimeRange(range)}
+                      className={cn(
+                        'px-3 py-1.5 text-xs rounded-md transition-colors',
+                        timeRange === range
+                          ? 'bg-brand-primary text-white'
+                          : 'text-text-secondary hover:text-text-primary'
+                      )}
+                    >
+                      {range === '7d' ? '7天' : range === '30d' ? '30天' : '90天'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 回测指标 */}
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">{metrics.winRate}%</p>
+                  <p className="text-xs text-text-tertiary mt-1">胜率</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-danger">-{metrics.maxDrawdown}%</p>
+                  <p className="text-xs text-text-tertiary mt-1">最大回撤</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">{metrics.sharpeRatio}</p>
+                  <p className="text-xs text-text-tertiary mt-1">夏普比率</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-white">{metrics.tradeCount}</p>
+                  <p className="text-xs text-text-tertiary mt-1">交易次数</p>
+                </div>
+              </div>
+
+              {/* 收益曲线 */}
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0.3} />
+                      <stop offset="100%" stopColor={totalReturn >= 0 ? "#00C087" : "#F23645"} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#5E6673"
+                    style={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    stroke="#5E6673"
+                    style={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={45}
+                    tickFormatter={(v) => `${(v/1000).toFixed(0)}k`}
+                    domain={['dataMin - 500', 'dataMax + 500']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1E222D',
+                      border: '1px solid #2B3139',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(value) => [`$${Number(value).toLocaleString()}`, '净值']}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke={totalReturn >= 0 ? "#00C087" : "#F23645"}
+                    strokeWidth={2}
+                    fill="url(#profitGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* 分隔线 */}
+            <div className="border-t border-border-primary" />
+
+            {/* 风险提示 */}
+            <div className="flex items-start gap-2 p-3 bg-warning/5 rounded-lg border border-warning/20">
+              <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+              <p className="text-xs text-text-secondary">
+                以上数据为历史回测结果，不代表未来收益，请根据自身风险承受能力谨慎投资。
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* 操作按钮 - 卡片下方 */}
+        <div className="pt-3">
+          <Button
+            className="w-full h-11 text-base font-semibold"
+            size="lg"
+            onClick={handleUseStrategy}
+          >
+            使用此策略
+            <ArrowRight className="w-5 h-5 ml-2" />
+          </Button>
+        </div>
       </div>
     </div>
   );

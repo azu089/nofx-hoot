@@ -27,11 +27,14 @@ type User = {
   email: string;
   vipLevel: number;
   balance: string;
+  pointsBalance: string;
+  cardBalance: string;
+  tokenBalance: string;
   status: string;
   instanceCount: number;
   totalTrades: number;
   createdAt: string;
-  lastLogin: string;
+  lastLogin: string | null;
 };
 
 export default function BalanceAdjustmentPage() {

@@ -15,7 +15,7 @@ export function Header() {
   const { user, isAuthenticated, logout } = useAuthStore();
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-fixed glass-card border-b border-border-primary/50">
+    <header className="fixed top-0 left-0 right-0 z-fixed bg-bg-primary/95 backdrop-blur-lg">
       {/* 顶部渐变装饰线 */}
       <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-brand-primary/50 to-transparent" />
 

@@ -130,6 +130,23 @@ export class DepositsService {
           status: 'completed',
         },
       });
+
+      // 4. 记录审计日志
+      await tx.admin_audit_logs.create({
+        data: {
+          admin_id: adminId,
+          action: 'deposit_approve',
+          target_type: 'deposit',
+          target_id: depositId,
+          details: {
+            user_id: deposit.user_id,
+            amount: deposit.amount.toString(),
+            currency: deposit.currency,
+            method: deposit.method,
+            chain: deposit.chain,
+          },
+        },
+      });
     });
 
     this.logger.log(
@@ -160,15 +177,35 @@ export class DepositsService {
       throw new BadRequestException(`充值记录状态为 ${deposit.status}，无法审核`);
     }
 
-    // 更新充值记录状态
-    await this.prisma.client.deposits.update({
-      where: { id: depositId },
-      data: {
-        status: 'rejected',
-        reviewed_by: adminId,
-        reviewed_at: new Date(),
-        reject_reason: rejectReason,
-      },
+    // 使用事务：更新充值记录状态 + 记录审计日志
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. 更新充值记录状态
+      await tx.deposits.update({
+        where: { id: depositId },
+        data: {
+          status: 'rejected',
+          reviewed_by: adminId,
+          reviewed_at: new Date(),
+          reject_reason: rejectReason,
+        },
+      });
+
+      // 2. 记录审计日志
+      await tx.admin_audit_logs.create({
+        data: {
+          admin_id: adminId,
+          action: 'deposit_reject',
+          target_type: 'deposit',
+          target_id: depositId,
+          details: {
+            user_id: deposit.user_id,
+            amount: deposit.amount.toString(),
+            currency: deposit.currency,
+            method: deposit.method,
+            reject_reason: rejectReason,
+          },
+        },
+      });
     });
 
     this.logger.log(

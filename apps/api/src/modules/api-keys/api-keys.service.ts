@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -99,6 +100,7 @@ export class ApiKeysService {
 
   /**
    * 删除 API Key
+   * 前置条件：用户没有正在运行的策略实例
    */
   async delete(id: string, userId: string): Promise<void> {
     const apiKey = await this.prisma.client.api_keys.findFirst({
@@ -107,6 +109,20 @@ export class ApiKeysService {
 
     if (!apiKey) {
       throw new NotFoundException('API Key 不存在');
+    }
+
+    // 检查是否有正在运行的实例
+    const runningInstance = await this.prisma.client.instances.findFirst({
+      where: {
+        user_id: userId,
+        status: 'running',
+      },
+    });
+
+    if (runningInstance) {
+      throw new BadRequestException(
+        '请先停止正在运行的策略，然后再删除 API Key',
+      );
     }
 
     await this.prisma.client.api_keys.delete({

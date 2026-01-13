@@ -210,11 +210,12 @@ export const authApi = {
       };
     }>>('/auth/login', { email, password, fingerprint }),
 
-  register: (email: string, password: string, inviteCode?: string, fingerprint?: DeviceFingerprintData) =>
+  register: (email: string, password: string, verificationCode: string, inviteCode?: string, fingerprint?: DeviceFingerprintData) =>
     api.post<never, ApiResponse<{ id: string; email: string }>>('/auth/register', {
       email,
       password,
-      invite_code: inviteCode,
+      verificationCode,
+      inviteCode,
       fingerprint,
     }),
 
@@ -268,6 +269,7 @@ export const userApi = {
       id: string;
       email: string;
       vip_level: number;
+      vip_expires_at: string | null;
       usdt_balance: string;
       point_balance: string;
     }>>('/users/profile'),
@@ -357,6 +359,17 @@ export const userApi = {
       time: string;
       status: string;
     }>>>('/users/login-logs'),
+
+  // 获取公告列表（用户端）
+  getAnnouncements: () =>
+    api.get<never, ApiResponse<Array<{
+      id: string;
+      title: string;
+      content: string;
+      type: string;
+      publishedAt: string | null;
+      createdAt: string;
+    }>>>('/announcements'),
 };
 
 // Instances API
@@ -1382,11 +1395,14 @@ export const adminApi = {
         email: string;
         vipLevel: number;
         balance: string;
+        pointsBalance: string;
+        cardBalance: string;
+        tokenBalance: string;
         status: string;
         instanceCount: number;
         totalTrades: number;
         createdAt: string;
-        lastLogin: string;
+        lastLogin: string | null;
       }>;
       total: number;
       page: number;
@@ -1400,6 +1416,10 @@ export const adminApi = {
   // 重置密码
   resetPassword: (userId: string) =>
     api.post<never, ApiResponse<{ success: boolean; tempPassword: string }>>(`/admin/users/${userId}/reset-password`),
+
+  // 调整用户资产
+  adjustUserBalance: (userId: string, data: { type: string; amount: string; reason: string }) =>
+    api.post<never, ApiResponse<{ success: boolean }>>(`/admin/users/${userId}/adjust-balance`, data),
 
   // 财务统计
   getFinanceStats: (period?: string) =>
@@ -2079,6 +2099,294 @@ export const adminApi = {
         status: string;
       };
     }>>(`/admin/users/${userId}/agent-status`),
+
+  // ==================== 黑名单管理 ====================
+  getBlacklist: (params?: { page?: number; search?: string; type?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        type: string;
+        value: string;
+        reason: string | null;
+        expiresAt: string | null;
+        isActive: boolean;
+        createdAt: string;
+        createdBy: string | null;
+      }>;
+      stats: Record<string, number>;
+      total: number;
+      totalPages: number;
+    }>>('/admin/blacklist', { params }),
+
+  addToBlacklist: (data: { type: string; value: string; reason?: string; expiresAt?: string }) =>
+    api.post<never, ApiResponse<{ id: string }>>('/admin/blacklist', data),
+
+  removeFromBlacklist: (id: string) =>
+    api.delete<never, ApiResponse<{ success: boolean }>>(`/admin/blacklist/${id}`),
+
+  updateBlacklist: (id: string, data: { reason?: string; expiresAt?: string; isActive?: boolean }) =>
+    api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/blacklist/${id}`, data),
+
+  // ==================== 会话管理 ====================
+  getSessions: (params?: { page?: number; userId?: string; activeOnly?: boolean }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        deviceType: string | null;
+        deviceName: string | null;
+        ipAddress: string | null;
+        location: string | null;
+        lastActiveAt: string;
+        createdAt: string;
+        isExpired: boolean;
+      }>;
+      stats: { activeSessions: number; mobileCount: number; desktopCount: number };
+      total: number;
+      totalPages: number;
+    }>>('/admin/sessions', { params }),
+
+  revokeSession: (sessionId: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>(`/admin/sessions/${sessionId}/revoke`),
+
+  revokeAllSessions: (userId: string, excludeSessionId?: string) =>
+    api.post<never, ApiResponse<{ success: boolean; revokedCount: number }>>('/admin/sessions/revoke-all', {
+      userId,
+      excludeSessionId,
+    }),
+
+  // ==================== 2FA 管理 ====================
+  reset2FA: (userId: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>(`/admin/users/${userId}/reset-2fa`),
+
+  // ==================== API Key 监管 ====================
+  getAllApiKeys: (params?: { page?: number; userId?: string; exchange?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        exchange: string;
+        label: string;
+        permissions: string[];
+        isActive: boolean;
+        lastUsedAt: string | null;
+        createdAt: string;
+        riskLevel: string;
+      }>;
+      stats: { total: number; active: number; highRisk: number; revoked: number };
+      total: number;
+      totalPages: number;
+    }>>('/admin/api-keys', { params }),
+
+  revokeApiKey: (keyId: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>(`/admin/api-keys/${keyId}/revoke`),
+
+  // ==================== 弹窗公告 ====================
+  getPopups: () =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        title: string;
+        content: string;
+        type: string;
+        targetAudience: string;
+        priority: number;
+        imageUrl: string | null;
+        actionUrl: string | null;
+        actionLabel: string | null;
+        isActive: boolean;
+        startAt: string | null;
+        endAt: string | null;
+        showOnce: boolean;
+        createdAt: string;
+        readCount: number;
+      }>;
+    }>>('/admin/popups'),
+
+  createPopup: (data: {
+    title: string;
+    content: string;
+    type?: string;
+    targetAudience?: string;
+    priority?: number;
+    imageUrl?: string;
+    actionUrl?: string;
+    actionLabel?: string;
+    startAt?: string;
+    endAt?: string;
+    showOnce?: boolean;
+  }) =>
+    api.post<never, ApiResponse<{ id: string }>>('/admin/popups', data),
+
+  updatePopup: (id: string, data: Partial<{
+    title: string;
+    content: string;
+    type: string;
+    targetAudience: string;
+    priority: number;
+    imageUrl: string;
+    actionUrl: string;
+    actionLabel: string;
+    isActive: boolean;
+    startAt: string;
+    endAt: string;
+    showOnce: boolean;
+  }>) =>
+    api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/popups/${id}`, data),
+
+  deletePopup: (id: string) =>
+    api.delete<never, ApiResponse<{ success: boolean }>>(`/admin/popups/${id}`),
+
+  // ==================== 品牌配置 ====================
+  getBrandConfigs: () =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        key: string;
+        value: string;
+        category: string;
+        description: string;
+      }>;
+    }>>('/admin/brand-configs'),
+
+  updateBrandConfigs: (configs: Array<{ key: string; value: string }>) =>
+    api.post<never, ApiResponse<{ success: boolean }>>('/admin/brand-configs/batch', { configs }),
+
+  // ==================== VPS 性能监控 ====================
+  getInstanceMetrics: (params?: { search?: string; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        instanceId: string;
+        instanceName: string;
+        userId: string;
+        userEmail: string;
+        cpuUsage: number;
+        memoryUsage: number;
+        diskUsage: number;
+        networkIn: number;
+        networkOut: number;
+        status: string;
+        lastHeartbeat: string;
+        uptimeSeconds: number;
+      }>;
+    }>>('/admin/instances/metrics', { params }),
+
+  // ==================== 登录告警 ====================
+  getLoginAlerts: (params?: { page?: number; userId?: string; severity?: string; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        alertType: string;
+        severity: string;
+        description: string;
+        ipAddress: string;
+        location: string | null;
+        deviceInfo: string | null;
+        status: string;
+        createdAt: string;
+        reviewedAt: string | null;
+        reviewedBy: string | null;
+      }>;
+      stats: { total: number; pending: number; critical: number; today: number };
+      total: number;
+      totalPages: number;
+    }>>('/admin/login-alerts', { params }),
+
+  reviewLoginAlert: (id: string, status: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>(`/admin/login-alerts/${id}/review`, { status }),
+
+  // ==================== RBAC 权限管理 ====================
+  getRoles: () =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        name: string;
+        displayName: string;
+        description: string | null;
+        permissions: string[];
+        isSystem: boolean;
+        userCount: number;
+        createdAt: string;
+      }>;
+    }>>('/admin/rbac/roles'),
+
+  createRole: (data: { name: string; displayName: string; description?: string; permissions: string[] }) =>
+    api.post<never, ApiResponse<{ id: string }>>('/admin/rbac/roles', data),
+
+  updateRole: (id: string, data: Partial<{ displayName: string; description: string; permissions: string[] }>) =>
+    api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/rbac/roles/${id}`, data),
+
+  deleteRole: (id: string) =>
+    api.delete<never, ApiResponse<{ success: boolean }>>(`/admin/rbac/roles/${id}`),
+
+  getAdminUsers: (params?: { search?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        email: string;
+        roles: string[];
+        lastLogin: string | null;
+      }>;
+    }>>('/admin/rbac/users', { params }),
+
+  assignRole: (userId: string, roleId: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>('/admin/rbac/assign', { userId, roleId }),
+
+  removeRole: (userId: string, roleId: string) =>
+    api.post<never, ApiResponse<{ success: boolean }>>('/admin/rbac/remove', { userId, roleId }),
+
+  // ==================== 用户提现审核 ====================
+  getWithdrawals: (params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        amount: string;
+        address: string;
+        chain: string;
+        status: string;
+        createdAt: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/withdrawals', { params }),
+
+  approveWithdrawal: (id: string, txHash?: string) =>
+    api.post<never, ApiResponse<{ success: boolean; withdrawalId: string; newStatus: string }>>(`/admin/withdrawals/${id}/approve`, { txHash }),
+
+  rejectWithdrawal: (id: string, reason?: string) =>
+    api.post<never, ApiResponse<{ success: boolean; withdrawalId: string; newStatus: string }>>(`/admin/withdrawals/${id}/reject`, { reason }),
+
+  // ==================== 策略审核 ====================
+  getPendingStrategies: (params?: { page?: number; limit?: number }) =>
+    api.get<never, ApiResponse<{
+      strategies: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        owner_type: string;
+        uploader_id: string | null;
+        review_status: string;
+        auto_check_passed: boolean;
+        auto_check_warnings: string[] | null;
+        created_at: string;
+        updated_at: string;
+      }>;
+      total: number;
+      page: number;
+      totalPages: number;
+    }>>('/admin/strategies/pending-review', { params }),
+
+  approveStrategy: (id: string) =>
+    api.post<never, ApiResponse<{ id: string; review_status: string }>>(`/admin/strategies/${id}/approve`),
+
+  rejectStrategy: (id: string, reason: string) =>
+    api.post<never, ApiResponse<{ id: string; review_status: string }>>(`/admin/strategies/${id}/reject`, { reason }),
 };
 
 // Agent API（代理商后台）

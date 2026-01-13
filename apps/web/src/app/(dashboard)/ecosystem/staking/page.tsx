@@ -1,21 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, CardContent, Button, Input, Dialog, DialogFooter, useToast, MobileHeader } from '@/components/ui';
+import { Button, Input, Dialog, DialogFooter, useToast } from '@/components/ui';
 import { gamefiApi, userApi } from '@/lib/api';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import {
   Lock,
   Unlock,
-  TrendingUp,
   AlertTriangle,
   Gift,
-  RefreshCw,
   Coins,
   Sparkles,
   Clock,
-  ChevronRight,
   Loader2,
+  ChevronRight,
 } from 'lucide-react';
 
 // ========== 类型定义 ==========
@@ -35,7 +33,6 @@ interface Stake {
 }
 
 // ========== 常量配置 ==========
-// 根据项目需求 3.3：B类权重 1.0x - 3.0x (随时间递增)
 const LOCK_PERIODS = [
   { days: 30, weight: 1.0 },
   { days: 90, weight: 1.5 },
@@ -52,15 +49,13 @@ export default function StakingPage() {
   const [tokenBalance, setTokenBalance] = useState('0');
   const [loading, setLoading] = useState(true);
 
-  // 质押表单状态
-  const [stakeType, setStakeType] = useState<'A' | 'B'>('A');
+  const [stakeType, setStakeType] = useState<'A' | 'B'>('B');
   const [stakeAmount, setStakeAmount] = useState('');
   const [lockDays, setLockDays] = useState(30);
   const [staking, setStaking] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [unstaking, setUnstaking] = useState<string | null>(null);
 
-  // 解押弹窗
   const [unstakeDialog, setUnstakeDialog] = useState<{
     open: boolean;
     stake: Stake | null;
@@ -109,11 +104,6 @@ export default function StakingPage() {
     if (type === 'A') return 1.0;
     const period = LOCK_PERIODS.find(p => p.days === days);
     return period?.weight || 1.0;
-  };
-
-  // 计算获得的 veToken 权重 = 质押金额 × 权重乘数
-  const calculateVeToken = (amount: number, weight: number) => {
-    return (amount * weight).toFixed(2);
   };
 
   const canUnstake = (stake: Stake) => {
@@ -206,354 +196,247 @@ export default function StakingPage() {
 
   // ========== 统计数据 ==========
   const activeStakes = stakes.filter((s) => s.status === 'active');
-  const totalStaked = activeStakes.reduce((sum, s) => sum + parseFloat(s.amount), 0);
+  const aTypeStakes = activeStakes.filter((s) => s.stake_type === 'A');
+  const bTypeStakes = activeStakes.filter((s) => s.stake_type === 'B');
+
+  const totalPointsStaked = aTypeStakes.reduce((sum, s) => sum + parseFloat(s.amount), 0);
+  const totalTokenStaked = bTypeStakes.reduce((sum, s) => sum + parseFloat(s.amount), 0);
   const totalWeight = activeStakes.reduce((sum, s) => sum + parseFloat(s.amount) * parseFloat(s.weight), 0);
   const totalClaimable = activeStakes.reduce((sum, s) => sum + parseFloat(s.claimable_reward || '0'), 0);
-  const avgWeight = totalStaked > 0 ? (totalWeight / totalStaked).toFixed(2) : '0.00';
 
   // ========== 加载状态 ==========
   if (loading) {
     return (
-      <div className="space-y-6">
-        <MobileHeader title="质押中心" />
-        <div className="animate-pulse space-y-4">
-          <div className="h-40 bg-bg-tertiary rounded-xl" />
-          <div className="h-12 bg-bg-tertiary rounded-xl" />
-          <div className="h-64 bg-bg-tertiary rounded-xl" />
+      <div className="min-h-screen bg-bg-primary">
+        <div className="animate-pulse p-4 space-y-4">
+          <div className="h-24 bg-bg-secondary rounded-xl" />
+          <div className="h-20 bg-bg-secondary rounded-xl" />
+          <div className="h-48 bg-bg-secondary rounded-xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 lg:space-y-6">
-      <MobileHeader
-        title="质押中心"
-        rightAction={
-          <Button variant="ghost" size="sm" onClick={fetchData}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-        }
-      />
+    <div className="min-h-screen bg-bg-primary pb-24">
 
-      {/* ========== 总览卡片（渐变背景） ========== */}
-      <div className="bg-gradient-to-br from-brand-primary/20 via-brand-secondary/10 to-bg-secondary rounded-2xl p-5 border border-brand-primary/20">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-text-secondary text-sm mb-1">我的总质押</p>
-            <p className="text-3xl font-bold text-white">
-              {formatCurrency(totalStaked.toString())}
-            </p>
+      {/* ========== 数据总览 - 统一资产卡片 + 光球脉动 ========== */}
+      <div className="mx-4 mt-2 mb-4 relative bg-bg-secondary rounded-2xl p-5 overflow-hidden">
+        {/* 光球脉动效果 */}
+        <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
+
+        <div className="relative z-10">
+          {/* 主数据 - 总权重 */}
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <p className="text-text-tertiary text-xs mb-1">总权重</p>
+              <p className="text-3xl font-bold font-mono text-white">{totalWeight.toFixed(2)}</p>
+            </div>
+            {totalClaimable > 0 && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleClaimRewards}
+                isLoading={claiming}
+              >
+                <Gift className="w-4 h-4 mr-1" />
+                领取 ${totalClaimable.toFixed(2)}
+              </Button>
+            )}
           </div>
-          <div className="w-14 h-14 bg-brand-primary/20 rounded-xl flex items-center justify-center">
-            <Lock className="w-7 h-7 text-brand-primary" />
+
+          {/* 次要数据 - 三列布局 */}
+          <div className="grid grid-cols-3 gap-4 pt-4">
+            <div>
+              <p className="text-text-tertiary text-xs mb-1">积分质押</p>
+              <p className="text-lg font-bold font-mono text-white">{totalPointsStaked.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-text-tertiary text-xs mb-1">代币质押</p>
+              <p className="text-lg font-bold font-mono text-white">{totalTokenStaked.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-text-tertiary text-xs mb-1">待领分红</p>
+              <p className="text-lg font-bold font-mono text-warning">${totalClaimable.toFixed(2)}</p>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-bg-primary/50 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <TrendingUp className="w-3.5 h-3.5 text-success" />
-              <span className="text-text-tertiary text-xs">平均权重</span>
-            </div>
-            <p className="text-white font-bold text-lg">{avgWeight}x</p>
-          </div>
-          <div className="bg-bg-primary/50 rounded-xl p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Gift className="w-3.5 h-3.5 text-warning" />
-              <span className="text-text-tertiary text-xs">待领取分红</span>
-            </div>
-            <p className="text-warning font-bold text-lg">${totalClaimable.toFixed(2)}</p>
-          </div>
-        </div>
-
-        {totalClaimable > 0 && (
-          <Button
-            variant="primary"
-            className="w-full"
-            onClick={handleClaimRewards}
-            isLoading={claiming}
+      {/* ========== 质押类型选择 - 紧凑横向切换 ========== */}
+      <div className="px-4 mb-4">
+        <div className="flex bg-bg-secondary rounded-xl p-1">
+          <button
+            onClick={() => setStakeType('B')}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              stakeType === 'B'
+                ? 'bg-brand-primary text-white'
+                : 'text-text-secondary'
+            }`}
           >
-            <Gift className="w-4 h-4 mr-2" />
-            领取分红 (${totalClaimable.toFixed(2)} USDT)
-          </Button>
-        )}
+            代币质押 · 最高3.0x
+          </button>
+          <button
+            onClick={() => setStakeType('A')}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              stakeType === 'A'
+                ? 'bg-brand-primary text-white'
+                : 'text-text-secondary'
+            }`}
+          >
+            积分质押 · 1.0x
+          </button>
+        </div>
       </div>
 
-      {/* ========== 质押类型 Tab ========== */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setStakeType('A')}
-          className={`p-4 rounded-xl border-2 transition-all ${
-            stakeType === 'A'
-              ? 'border-brand-primary bg-brand-primary/10'
-              : 'border-border-primary bg-bg-secondary hover:border-brand-primary/50'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-5 h-5 text-warning" />
-            <span className="text-white font-semibold">积分质押</span>
-          </div>
-          <p className="text-brand-primary text-2xl font-bold">1.0x</p>
-          <p className="text-text-tertiary text-xs mt-1">固定权重 · 随时赎回</p>
-        </button>
-        <button
-          onClick={() => setStakeType('B')}
-          className={`p-4 rounded-xl border-2 transition-all ${
-            stakeType === 'B'
-              ? 'border-brand-primary bg-brand-primary/10'
-              : 'border-border-primary bg-bg-secondary hover:border-brand-primary/50'
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Coins className="w-5 h-5 text-brand-primary" />
-            <span className="text-white font-semibold">代币质押</span>
-          </div>
-          <p className="text-brand-primary text-2xl font-bold">最高 3.0x</p>
-          <p className="text-text-tertiary text-xs mt-1">锁定期 · 高收益</p>
-        </button>
-      </div>
-
-      {/* ========== 质押表单 ========== */}
-      <Card>
-        <CardContent className="p-4 lg:p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-white font-semibold">新建质押</h3>
-            <span className="text-text-tertiary text-sm">
+      {/* ========== 质押表单 - 融入式设计 ========== */}
+      <div className="px-4 space-y-4">
+        {/* 金额输入 */}
+        <div className="bg-bg-secondary rounded-xl p-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-text-tertiary text-sm">质押数量</span>
+            <span className="text-text-tertiary text-xs">
               可用: {stakeType === 'A'
                 ? `${parseFloat(pointsBalance).toLocaleString()} 积分`
                 : `${parseFloat(tokenBalance).toLocaleString()} QFI`
               }
             </span>
           </div>
-
-          {/* 金额输入 */}
-          <div className="relative">
+          <div className="flex items-center gap-3">
             <Input
               type="number"
-              placeholder="输入质押金额"
+              placeholder="0"
               value={stakeAmount}
               onChange={(e) => setStakeAmount(e.target.value)}
-              className="pr-16"
+              className="flex-1 text-xl bg-transparent border-none p-0 h-auto font-semibold"
             />
             <button
               onClick={() => setStakeAmount(stakeType === 'A' ? pointsBalance : tokenBalance)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-primary text-sm font-medium hover:text-brand-secondary"
+              className="text-brand-primary text-sm font-medium px-3 py-1.5 bg-brand-primary/10 rounded-lg"
             >
               全部
             </button>
           </div>
+        </div>
 
-          {/* 锁定期选择（仅代币质押） */}
-          {stakeType === 'B' && (
-            <div>
-              <p className="text-text-secondary text-sm mb-3">选择锁定期</p>
-              <div className="grid grid-cols-4 gap-2">
-                {LOCK_PERIODS.map((period) => (
-                  <button
-                    key={period.days}
-                    onClick={() => setLockDays(period.days)}
-                    className={`p-3 rounded-xl border transition-all text-center ${
-                      lockDays === period.days
-                        ? 'border-brand-primary bg-brand-primary/10'
-                        : 'border-border-primary bg-bg-tertiary hover:border-brand-primary/50'
-                    }`}
-                  >
-                    <p className="text-white font-semibold text-sm">{period.days}天</p>
-                    <p className="text-brand-primary font-bold">{period.weight}x</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 权重预览 - veToken 模型，不展示预计收益（分红取决于平台收入） */}
-          {stakeAmount && parseFloat(stakeAmount) > 0 && (
-            <div className="bg-bg-tertiary/50 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-primary" />
-                <span className="text-white font-medium">获得权重</span>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-text-tertiary text-xs mb-1">权重乘数</p>
-                  <p className="text-brand-primary text-xl font-bold">
-                    {getWeight(stakeType, lockDays).toFixed(1)}x
-                  </p>
-                </div>
-                <div>
-                  <p className="text-text-tertiary text-xs mb-1">获得 veQFI</p>
-                  <p className="text-success text-xl font-bold">
-                    {calculateVeToken(parseFloat(stakeAmount), getWeight(stakeType, lockDays))}
-                  </p>
-                </div>
-              </div>
-              <p className="text-text-tertiary text-xs pt-2 border-t border-border-secondary">
-                veQFI 权重决定你的分红比例，分红来自平台收入的回购奖励池
-              </p>
-            </div>
-          )}
-
-          {/* 风险提示 - 根据项目需求 3.3 */}
-          <div className={`p-3 rounded-xl flex items-start gap-2 ${
-            stakeType === 'A' ? 'bg-danger/10 border border-danger/30' : 'bg-warning/10 border border-warning/30'
-          }`}>
-            <AlertTriangle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-              stakeType === 'A' ? 'text-danger' : 'text-warning'
-            }`} />
-            <div>
-              <p className={`text-sm font-medium ${stakeType === 'A' ? 'text-danger' : 'text-warning'}`}>
-                {stakeType === 'A' ? '解押惩罚提示' : '提前解押提示'}
-              </p>
-              <p className="text-text-secondary text-xs mt-1">
-                {stakeType === 'A'
-                  ? '积分质押解押将扣除 50% 本金作为惩罚（销毁）'
-                  : `代币质押需锁定 ${lockDays} 天。提前解押：不扣本金，仅扣除累计收益 + 3% 手续费`
-                }
-              </p>
+        {/* 锁定期选择（仅代币质押） */}
+        {stakeType === 'B' && (
+          <div className="bg-bg-secondary rounded-xl p-4">
+            <p className="text-text-tertiary text-sm mb-3">锁定期</p>
+            <div className="grid grid-cols-4 gap-2">
+              {LOCK_PERIODS.map((period) => (
+                <button
+                  key={period.days}
+                  onClick={() => setLockDays(period.days)}
+                  className={`py-2 rounded-lg text-center transition-all ${
+                    lockDays === period.days
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-bg-tertiary text-text-secondary'
+                  }`}
+                >
+                  <p className="text-xs">{period.days}天</p>
+                  <p className="font-semibold">{period.weight}x</p>
+                </button>
+              ))}
             </div>
           </div>
+        )}
 
-          {/* 确认按钮 */}
-          <Button
-            variant="primary"
-            className="w-full h-12 text-base"
-            onClick={handleStake}
-            isLoading={staking}
-            disabled={!stakeAmount || parseFloat(stakeAmount) <= 0}
-          >
-            {staking ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                质押中...
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4 mr-2" />
-                确认质押
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+        {/* 权重预览 */}
+        {stakeAmount && parseFloat(stakeAmount) > 0 && (
+          <div className="bg-bg-secondary rounded-xl p-4 flex justify-between items-center">
+            <span className="text-text-secondary text-sm">获得权重</span>
+            <span className="text-brand-primary font-bold text-lg">
+              +{(parseFloat(stakeAmount) * getWeight(stakeType, lockDays)).toFixed(2)}
+            </span>
+          </div>
+        )}
 
-      {/* ========== 质押中订单 ========== */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold">
-            质押中 ({activeStakes.length}笔)
-          </h3>
+        {/* 风险提示 - 简化 */}
+        <div className={`rounded-xl p-3 flex items-center gap-2 ${
+          stakeType === 'A' ? 'bg-danger/10' : 'bg-warning/10'
+        }`}>
+          <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${
+            stakeType === 'A' ? 'text-danger' : 'text-warning'
+          }`} />
+          <p className="text-text-secondary text-xs">
+            {stakeType === 'A'
+              ? '解押将扣除 50% 积分'
+              : `锁定 ${lockDays} 天，提前解押扣收益+3%手续费`
+            }
+          </p>
+        </div>
+
+        {/* 确认按钮 */}
+        <Button
+          variant="primary"
+          className="w-full h-12"
+          onClick={handleStake}
+          isLoading={staking}
+          disabled={!stakeAmount || parseFloat(stakeAmount) <= 0}
+        >
+          {staking ? '质押中...' : '确认质押'}
+        </Button>
+      </div>
+
+      {/* ========== 质押记录 - 列表式 ========== */}
+      <div className="mt-6">
+        <div className="px-4 flex items-center justify-between mb-3">
+          <h3 className="text-white font-medium">我的质押</h3>
+          <span className="text-text-tertiary text-sm">{activeStakes.length} 笔</span>
         </div>
 
         {activeStakes.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
-                <Lock className="w-8 h-8 text-text-tertiary" />
-              </div>
-              <h4 className="text-white font-medium mb-2">暂无质押中订单</h4>
-              <p className="text-text-secondary text-sm">
-                开始质押，获得分红权重
-              </p>
-            </CardContent>
-          </Card>
+          <div className="px-4 py-12 text-center">
+            <Lock className="w-12 h-12 text-text-tertiary mx-auto mb-3" />
+            <p className="text-text-secondary text-sm">暂无质押记录</p>
+          </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-px">
             {activeStakes.map((stake) => {
               const isUnlocked = canUnstake(stake);
               const progress = getUnlockProgress(stake);
               const remaining = getRemainingDays(stake);
 
               return (
-                <Card key={stake.id} className="overflow-hidden">
-                  <CardContent className="p-4">
-                    {/* 头部 */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          stake.stake_type === 'A' ? 'bg-warning/20' : 'bg-brand-primary/20'
-                        }`}>
-                          {stake.stake_type === 'A' ? (
-                            <Sparkles className="w-5 h-5 text-warning" />
-                          ) : (
-                            <Coins className="w-5 h-5 text-brand-primary" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-white font-medium">
-                            {stake.stake_type === 'A' ? '积分质押' : '代币质押'}
-                          </p>
-                          <p className="text-text-tertiary text-xs">
-                            权重 {parseFloat(stake.weight).toFixed(1)}x · veQFI {(parseFloat(stake.amount) * parseFloat(stake.weight)).toFixed(0)}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        isUnlocked
-                          ? 'bg-success/20 text-success'
-                          : 'bg-warning/20 text-warning'
-                      }`}>
-                        {isUnlocked ? '可赎回' : '锁定中'}
-                      </span>
-                    </div>
-
-                    {/* 数据行 */}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div>
-                        <p className="text-text-tertiary text-xs">质押金额</p>
-                        <p className="text-white font-semibold">
-                          {formatCurrency(stake.amount)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-text-tertiary text-xs">累计分红</p>
-                        <p className="text-success font-semibold">
-                          +${parseFloat(stake.accumulated_reward).toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* 进度条（B类锁定中） */}
-                    {stake.stake_type === 'B' && !isUnlocked && (
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-text-tertiary">
-                            <Clock className="w-3 h-3 inline mr-1" />
-                            剩余 {remaining} 天
-                          </span>
-                          <span className="text-text-secondary">{progress.toFixed(0)}%</span>
-                        </div>
-                        <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary rounded-full transition-all"
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 操作按钮 */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => handleUnstake(stake)}
-                      disabled={unstaking === stake.id}
-                    >
-                      {unstaking === stake.id ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          赎回中...
-                        </>
+                <div
+                  key={stake.id}
+                  className="bg-bg-secondary px-4 py-3 flex items-center justify-between"
+                  onClick={() => handleUnstake(stake)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      stake.stake_type === 'A' ? 'bg-warning/20' : 'bg-brand-primary/20'
+                    }`}>
+                      {stake.stake_type === 'A' ? (
+                        <Sparkles className="w-5 h-5 text-warning" />
                       ) : (
-                        <>
-                          <Unlock className="w-4 h-4 mr-2" />
-                          申请赎回
-                        </>
+                        <Coins className="w-5 h-5 text-brand-primary" />
                       )}
-                    </Button>
-                  </CardContent>
-                </Card>
+                    </div>
+                    <div>
+                      <p className="text-white font-medium">
+                        {formatCurrency(stake.amount)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
+                      </p>
+                      <p className="text-text-tertiary text-xs">
+                        {parseFloat(stake.weight).toFixed(1)}x ·
+                        {stake.stake_type === 'B' && !isUnlocked
+                          ? ` 剩余 ${remaining} 天`
+                          : ' 可赎回'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <p className="text-success text-sm font-medium">
+                        +${parseFloat(stake.accumulated_reward).toFixed(2)}
+                      </p>
+                      <p className="text-text-tertiary text-xs">累计分红</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-text-tertiary" />
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -562,48 +445,37 @@ export default function StakingPage() {
 
       {/* ========== 历史记录 ========== */}
       {stakes.filter(s => s.status !== 'active').length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-semibold">
-              历史记录 ({stakes.filter(s => s.status !== 'active').length}笔)
-            </h3>
+        <div className="mt-6">
+          <div className="px-4 mb-3">
+            <h3 className="text-text-secondary text-sm">历史记录</h3>
           </div>
-
-          <div className="space-y-3">
+          <div className="space-y-px">
             {stakes.filter(s => s.status !== 'active').map((stake) => (
-              <Card key={stake.id} className="overflow-hidden opacity-70">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        stake.stake_type === 'A' ? 'bg-warning/10' : 'bg-brand-primary/10'
-                      }`}>
-                        {stake.stake_type === 'A' ? (
-                          <Sparkles className="w-5 h-5 text-warning/60" />
-                        ) : (
-                          <Coins className="w-5 h-5 text-brand-primary/60" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-text-secondary font-medium">
-                          {stake.stake_type === 'A' ? '积分质押' : '代币质押'}
-                        </p>
-                        <p className="text-text-tertiary text-xs">
-                          {formatCurrency(stake.amount)} · 权重 {parseFloat(stake.weight).toFixed(1)}x
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs px-2 py-1 rounded-full bg-bg-tertiary text-text-secondary">
-                        已赎回
-                      </span>
-                      <p className="text-success text-xs mt-1">
-                        累计分红 +${parseFloat(stake.accumulated_reward).toFixed(2)}
-                      </p>
-                    </div>
+              <div
+                key={stake.id}
+                className="bg-bg-secondary/50 px-4 py-3 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    stake.stake_type === 'A' ? 'bg-warning/10' : 'bg-brand-primary/10'
+                  }`}>
+                    {stake.stake_type === 'A' ? (
+                      <Sparkles className="w-5 h-5 text-warning/50" />
+                    ) : (
+                      <Coins className="w-5 h-5 text-brand-primary/50" />
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  <div>
+                    <p className="text-text-secondary">
+                      {formatCurrency(stake.amount)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
+                    </p>
+                    <p className="text-text-tertiary text-xs">已赎回</p>
+                  </div>
+                </div>
+                <p className="text-success/70 text-sm">
+                  +${parseFloat(stake.accumulated_reward).toFixed(2)}
+                </p>
+              </div>
             ))}
           </div>
         </div>
@@ -617,20 +489,14 @@ export default function StakingPage() {
       >
         {unstakeDialog.stake && (
           <div className="space-y-4">
-            <div className="bg-bg-tertiary/50 rounded-xl p-4 space-y-3">
-              <div className="flex justify-between">
-                <span className="text-text-secondary">质押类型</span>
-                <span className="text-white font-medium">
-                  {unstakeDialog.stake.stake_type === 'A' ? '积分质押' : '代币质押'}
-                </span>
-              </div>
-              <div className="flex justify-between">
+            <div className="space-y-3">
+              <div className="flex justify-between py-2 border-b border-border-primary">
                 <span className="text-text-secondary">质押金额</span>
                 <span className="text-white font-medium">
                   {formatCurrency(unstakeDialog.stake.amount)} {unstakeDialog.stake.stake_type === 'A' ? '积分' : 'QFI'}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between py-2 border-b border-border-primary">
                 <span className="text-text-secondary">累计分红</span>
                 <span className="text-success font-medium">
                   +${parseFloat(unstakeDialog.stake.accumulated_reward).toFixed(2)}
@@ -638,42 +504,27 @@ export default function StakingPage() {
               </div>
             </div>
 
-            {/* 惩罚/手续费说明 - 根据项目需求 3.3 */}
-            <div className={`p-4 rounded-xl ${
-              unstakeDialog.stake.stake_type === 'A'
-                ? 'bg-danger/10 border border-danger/30'
-                : 'bg-warning/10 border border-warning/30'
+            <div className={`p-3 rounded-xl ${
+              unstakeDialog.stake.stake_type === 'A' ? 'bg-danger/10' : 'bg-warning/10'
             }`}>
-              <div className="flex items-start gap-2">
-                <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${
-                  unstakeDialog.stake.stake_type === 'A' ? 'text-danger' : 'text-warning'
-                }`} />
-                <div>
-                  <p className={`font-medium ${
-                    unstakeDialog.stake.stake_type === 'A' ? 'text-danger' : 'text-warning'
-                  }`}>
-                    {unstakeDialog.stake.stake_type === 'A' ? '解押惩罚' : '提前解押扣除'}
-                  </p>
-                  <p className="text-text-secondary text-sm mt-1">
-                    {unstakeDialog.stake.stake_type === 'A'
-                      ? `扣除 50% 本金（${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分将被销毁）`
-                      : `不扣本金，扣除累计收益 $${parseFloat(unstakeDialog.stake.accumulated_reward).toFixed(2)} + 3% 手续费 ${(parseFloat(unstakeDialog.stake.amount) * 0.03).toFixed(2)} QFI`
-                    }
-                  </p>
-                </div>
-              </div>
+              <p className={`text-sm ${
+                unstakeDialog.stake.stake_type === 'A' ? 'text-danger' : 'text-warning'
+              }`}>
+                {unstakeDialog.stake.stake_type === 'A'
+                  ? `解押将扣除 50% 本金（${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分销毁）`
+                  : `扣除累计收益 + 3% 手续费`
+                }
+              </p>
             </div>
 
-            <div className="bg-bg-tertiary/50 rounded-xl p-4">
-              <div className="flex justify-between">
-                <span className="text-text-secondary">预计返还本金</span>
-                <span className="text-white font-bold text-lg">
-                  {unstakeDialog.stake.stake_type === 'A'
-                    ? `${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分`
-                    : `${(parseFloat(unstakeDialog.stake.amount) - parseFloat(unstakeDialog.stake.amount) * 0.03).toFixed(2)} QFI`
-                  }
-                </span>
-              </div>
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-text-secondary">预计返还</span>
+              <span className="text-white font-bold text-xl">
+                {unstakeDialog.stake.stake_type === 'A'
+                  ? `${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分`
+                  : `${(parseFloat(unstakeDialog.stake.amount) * 0.97).toFixed(2)} QFI`
+                }
+              </span>
             </div>
           </div>
         )}
@@ -685,6 +536,7 @@ export default function StakingPage() {
             取消
           </Button>
           <Button
+            variant="danger"
             onClick={confirmUnstake}
             isLoading={unstaking !== null}
           >

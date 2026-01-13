@@ -24,7 +24,7 @@ interface AuthState {
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, inviteCode?: string) => Promise<void>;
+  register: (email: string, password: string, verificationCode: string, inviteCode?: string) => Promise<void>;
   logout: () => void;
   checkAuth: () => Promise<void>;
   setUser: (user: User | null) => void;
@@ -75,7 +75,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      register: async (email: string, password: string, inviteCode?: string) => {
+      register: async (email: string, password: string, verificationCode: string, inviteCode?: string) => {
         set({ isLoading: true });
         try {
           // 收集设备指纹
@@ -86,7 +86,7 @@ export const useAuthStore = create<AuthState>()(
             console.warn('设备指纹收集失败:', err);
           }
 
-          const response = await authApi.register(email, password, inviteCode, fingerprint);
+          const response = await authApi.register(email, password, verificationCode, inviteCode, fingerprint);
           if (response.code !== 0) {
             throw new Error(response.message || '注册失败');
           }

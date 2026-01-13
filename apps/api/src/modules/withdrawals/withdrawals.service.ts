@@ -214,6 +214,25 @@ export class WithdrawalsService {
           status: 'completed',
         },
       });
+
+      // 5. 记录审计日志
+      await tx.admin_audit_logs.create({
+        data: {
+          admin_id: adminId,
+          action: 'withdrawal_approve',
+          target_type: 'withdrawal',
+          target_id: withdrawalId,
+          details: {
+            user_id: withdrawal.user_id,
+            amount: withdrawal.amount.toString(),
+            fee: withdrawal.fee.toString(),
+            currency: withdrawal.currency,
+            chain: withdrawal.chain,
+            to_address: withdrawal.to_address,
+            tx_hash: txHash,
+          },
+        },
+      });
     });
 
     this.logger.log(
@@ -265,6 +284,25 @@ export class WithdrawalsService {
         totalAmount.toString(),
         tx,
       );
+
+      // 3. 记录审计日志
+      await tx.admin_audit_logs.create({
+        data: {
+          admin_id: adminId,
+          action: 'withdrawal_reject',
+          target_type: 'withdrawal',
+          target_id: withdrawalId,
+          details: {
+            user_id: withdrawal.user_id,
+            amount: withdrawal.amount.toString(),
+            fee: withdrawal.fee.toString(),
+            currency: withdrawal.currency,
+            chain: withdrawal.chain,
+            to_address: withdrawal.to_address,
+            reject_reason: rejectReason,
+          },
+        },
+      });
     });
 
     this.logger.log(
