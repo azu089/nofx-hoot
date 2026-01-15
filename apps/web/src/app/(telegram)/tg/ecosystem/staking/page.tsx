@@ -163,12 +163,36 @@ export default function TgStakingPage() {
         </div>
       </div>
 
-      {/* 质押类型说明 */}
-      <div className="flex items-start gap-2 p-3 bg-bg-secondary border border-border-primary rounded-xl">
-        <Info className="w-4 h-4 text-brand-primary flex-shrink-0 mt-0.5" />
-        <div className="text-xs text-text-secondary">
-          <p><span className="text-brand-primary">A类质押</span>：灵活存取，随时赎回</p>
-          <p><span className="text-success">B类质押</span>：定期锁定，收益更高</p>
+      {/* 权重计算说明 */}
+      <div className="p-3 bg-bg-secondary border border-border-primary rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <Info className="w-4 h-4 text-brand-primary flex-shrink-0" />
+          <span className="text-sm font-medium text-white">权重计算说明</span>
+        </div>
+        <div className="text-xs text-text-secondary space-y-1.5">
+          <p className="flex items-start gap-1.5">
+            <span className="text-brand-primary">•</span>
+            <span>1000 积分 = 1 QFI 的质押权重</span>
+          </p>
+          <p className="flex items-start gap-1.5">
+            <span className="text-brand-primary">•</span>
+            <span><span className="text-brand-primary">A类</span>：积分质押，权重固定 1.0x</span>
+          </p>
+          <p className="flex items-start gap-1.5">
+            <span className="text-success">•</span>
+            <span><span className="text-success">B类</span>：QFI 质押，权重随时间递增（veToken 模型）</span>
+          </p>
+          <div className="bg-bg-tertiary/50 rounded-lg p-2 mt-2">
+            <p className="text-text-tertiary text-[10px] leading-relaxed">
+              B 类权重公式：<span className="text-white">min(1.0 + 已质押天数/180, 3.0)</span>
+            </p>
+            <p className="text-text-tertiary text-[10px] mt-1">
+              180天达到 2.0x · 360天达到 3.0x 上限
+            </p>
+          </div>
+          <p className="text-success text-[10px] mt-2">
+            示例：质押 10,000 积分 → 归一化权重 = 10 × 1.0 = 10
+          </p>
         </div>
       </div>
 

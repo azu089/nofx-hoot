@@ -15,6 +15,7 @@ import { StakingRewardsTask } from './staking-rewards.task';
 import { StrategyPerformanceTask } from './strategy-performance.task'; // Phase 16
 import { LogStreamingTask } from './log-streaming.task';
 import { CrashProtectionTask } from './crash-protection.task'; // 黑天鹅防护
+import { DividendTask } from './dividend.task'; // 周分红任务
 
 /**
  * 定时任务模块
@@ -49,6 +50,7 @@ import { CrashProtectionTask } from './crash-protection.task'; // 黑天鹅防�
     StrategyPerformanceTask, // Phase 16
     LogStreamingTask, // 日志流推送
     CrashProtectionTask, // 黑天鹅防护
+    DividendTask, // 周分红任务
   ],
   exports: [
     TradeSyncTask,
@@ -58,6 +60,7 @@ import { CrashProtectionTask } from './crash-protection.task'; // 黑天鹅防�
     StrategyPerformanceTask, // Phase 16
     LogStreamingTask,
     CrashProtectionTask, // 黑天鹅防护
+    DividendTask, // 周分红任务
   ],
 })
 export class TasksModule {}

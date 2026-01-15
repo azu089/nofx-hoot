@@ -21,6 +21,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { StakingService } from '../staking/staking.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -50,7 +51,10 @@ import {
 export class AdminController {
   private readonly logger = new Logger(AdminController.name);
 
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly stakingService: StakingService,
+  ) {}
 
   /**
    * 获取平台统计数据
@@ -1350,17 +1354,20 @@ export class AdminController {
   // ==================== 质押管理 ====================
 
   /**
-   * 获取质押统计
+   * 获取质押统计（含归一化权重）
    * GET /api/admin/staking/stats
    */
   @Get('staking/stats')
-  @ApiOperation({ summary: '获取质押统计' })
-  async getStakingStats() {
-    const data = await this.adminService.getStakingStats();
+  @ApiOperation({ summary: '获取质押全局统计' })
+  async getStakingStats(@CurrentUser() admin: JwtPayload) {
+    this.logger.log(`管理员 ${admin.sub} 查询质押统计`);
+
+    const stats = await this.stakingService.getGlobalStats();
+
     return {
       code: 0,
       message: 'success',
-      data,
+      data: stats,
     };
   }
 
@@ -1567,6 +1574,37 @@ export class AdminController {
       code: 0,
       message: 'success',
       data,
+    };
+  }
+
+  // ==================== 分红管理 ====================
+
+  /**
+   * 手动执行周分红
+   * POST /api/admin/dividends/execute
+   *
+   * 分红规则：
+   * - 分红池 = 本周燃油费 × 20%
+   * - 70% USDT 立即到账
+   * - 30% QFI 90天线性释放
+   */
+  @Post('dividends/execute')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '手动执行周分红' })
+  async executeWeeklyDividend(@CurrentUser() admin: JwtPayload) {
+    this.logger.log(`管理员 ${admin.sub} 手动触发周分红`);
+
+    const result = await this.stakingService.distributeWeeklyDividends();
+
+    return {
+      code: result.success ? 0 : 1,
+      message: result.message,
+      data: {
+        totalDividend: result.totalDividend,
+        usdtDistributed: result.usdtDistributed,
+        qfiDistributed: result.qfiDistributed,
+        stakersCount: result.stakersCount,
+      },
     };
   }
 }

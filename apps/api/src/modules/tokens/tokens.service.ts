@@ -361,6 +361,8 @@ export class TokensService {
         lastReleaseAt: order.last_release_at,
         progress: Math.round(progress * 100) / 100,
         daysRemaining,
+        orderType: (order.order_type as 'exchange' | 'dividend') || 'exchange',
+        sourceType: order.source_type || undefined,
       };
     });
 
@@ -674,16 +676,13 @@ export class TokensService {
    * @param userId 用户 ID
    * @param qfiAmount QFI 数量
    * @param vestingDays 释放天数
-   * @param sourceType 来源类型（weekly_reward）
-   *
-   * 注意：需要先执行 P1-1 数据库迁移添加 order_type 和 source_type 字段后，
-   * 才能完整记录分红订单的来源信息。
+   * @param sourceType 来源类型（weekly_reward | buyback）
    */
   async createDividendVestingOrder(
     userId: string,
     qfiAmount: Decimal,
     vestingDays: number,
-    _sourceType: string, // 暂未使用，等待 P1-1 数据库迁移
+    sourceType: string,
   ): Promise<void> {
     const vestingEndAt = new Date();
     vestingEndAt.setDate(vestingEndAt.getDate() + vestingDays);
@@ -698,14 +697,15 @@ export class TokensService {
       });
 
       // 2. 创建释放订单
-      // TODO: P1-1 完成后，添加 order_type: 'dividend' 和 source_type 字段
       await tx.token_orders.create({
         data: {
           user_id: userId,
+          order_type: 'dividend', // 分红订单
+          source_type: sourceType, // weekly_reward | buyback
           points_spent: '0', // 分红无积分消耗
           tokens_total: qfiAmount.toString(),
           exchange_rate: '0', // 分红无兑换率
-          vesting_mode: 'dividend', // 使用 vesting_mode 临时区分分红订单
+          vesting_mode: 'standard', // 标准释放模式
           tokens_released: '0',
           tokens_pending: qfiAmount.toString(),
           tokens_burned: '0',
@@ -718,7 +718,7 @@ export class TokensService {
     });
 
     this.logger.log(
-      `为用户 ${userId} 创建分红释放订单: ${qfiAmount.toString()} QFI, ${vestingDays} 天释放`,
+      `为用户 ${userId} 创建分红释放订单: ${qfiAmount.toString()} QFI, ${vestingDays} 天释放, 来源: ${sourceType}`,
     );
   }
 }

@@ -3,9 +3,13 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WalletsService } from '../wallets/wallets.service';
+import { TokensService } from '../tokens/tokens.service';
+import { ConfigsService } from '../configs/configs.service';
 import { StakeDto, STAKE_LIMITS, ALLOWED_LOCK_DAYS } from './dto/stake.dto';
 import {
   StakeResponseDto,
@@ -45,6 +49,9 @@ export class StakingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly walletsService: WalletsService,
+    @Inject(forwardRef(() => TokensService))
+    private readonly tokensService: TokensService,
+    private readonly configsService: ConfigsService,
   ) {}
 
   /**
@@ -696,6 +703,191 @@ export class StakingService {
       typeAStats,
       typeBStats,
     };
+  }
+
+  // ===================== 周分红功能 =====================
+
+  /**
+   * 执行周分红分配
+   *
+   * 资金来源：燃油费收入的 20%（= 总收入 40% × 回购池分红 50%）
+   * 分配规则：70% USDT 立即到账 + 30% QFI 90天释放
+   *
+   * @returns 分红结果
+   */
+  async distributeWeeklyDividends(): Promise<{
+    totalDividend: string;
+    usdtDistributed: string;
+    qfiDistributed: string;
+    stakersCount: number;
+    success: boolean;
+    message: string;
+  }> {
+    return await this.prisma.client.$transaction(async (tx) => {
+      // 1. 计算本周燃油费总收入
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const gasFees = await tx.billing_logs.aggregate({
+        where: {
+          billing_type: 'gas_fee',
+          created_at: { gte: weekAgo },
+          status: 'completed',
+        },
+        _sum: { amount: true },
+      });
+
+      const totalGasFee = new Decimal(gasFees._sum.amount || 0);
+      if (totalGasFee.lte(0)) {
+        this.logger.log('本周无燃油费收入，跳过分红');
+        return {
+          totalDividend: '0',
+          usdtDistributed: '0',
+          qfiDistributed: '0',
+          stakersCount: 0,
+          success: true,
+          message: '本周无燃油费收入',
+        };
+      }
+
+      // 2. 计算分红池 = 燃油费 × 20%（白皮书：40%回购池 × 50%分红）
+      const dividendPool = totalGasFee.times(0.2);
+
+      this.logger.log(
+        `本周燃油费收入: ${totalGasFee.toString()} USDT, 分红池: ${dividendPool.toString()} USDT`,
+      );
+
+      // 3. 获取所有活跃质押，计算归一化权重
+      const activeStakes = await tx.stakes.findMany({
+        where: { status: 'active' },
+      });
+
+      if (activeStakes.length === 0) {
+        this.logger.log('无活跃质押，跳过分红');
+        return {
+          totalDividend: dividendPool.toString(),
+          usdtDistributed: '0',
+          qfiDistributed: '0',
+          stakersCount: 0,
+          success: true,
+          message: '无活跃质押者',
+        };
+      }
+
+      // 4. 计算总归一化权重
+      const stakesWithWeight = activeStakes.map((stake) => ({
+        stake,
+        normalizedWeight: this.calculateNormalizedWeight(stake),
+      }));
+
+      const totalWeight = stakesWithWeight.reduce(
+        (sum, s) => sum.plus(s.normalizedWeight),
+        new Decimal(0),
+      );
+
+      if (totalWeight.lte(0)) {
+        this.logger.warn('总归一化权重为 0，跳过分红');
+        return {
+          totalDividend: dividendPool.toString(),
+          usdtDistributed: '0',
+          qfiDistributed: '0',
+          stakersCount: 0,
+          success: false,
+          message: '总归一化权重为 0',
+        };
+      }
+
+      // 5. 获取 QFI 价格
+      const qfiPrice = await this.configsService.getQFIPrice();
+
+      // 6. 按权重分配
+      let totalUsdtDistributed = new Decimal(0);
+      let totalQfiDistributed = new Decimal(0);
+      const userDividends: Map<string, { usdt: Decimal; qfi: Decimal }> = new Map();
+
+      for (const { stake, normalizedWeight } of stakesWithWeight) {
+        // 用户分红 = 分红池 × (用户权重 / 总权重)
+        const userDividend = dividendPool
+          .times(normalizedWeight)
+          .div(totalWeight)
+          .toDecimalPlaces(8);
+
+        if (userDividend.gt(0)) {
+          // 70% USDT 立即到账
+          const usdtReward = userDividend.times(0.7).toDecimalPlaces(8);
+
+          // 30% 转换为 QFI
+          const qfiValue = userDividend.times(0.3);
+          const qfiAmount = qfiValue.div(qfiPrice).toDecimalPlaces(8);
+
+          // 累计到用户
+          const existing = userDividends.get(stake.user_id) || {
+            usdt: new Decimal(0),
+            qfi: new Decimal(0),
+          };
+          userDividends.set(stake.user_id, {
+            usdt: existing.usdt.plus(usdtReward),
+            qfi: existing.qfi.plus(qfiAmount),
+          });
+
+          totalUsdtDistributed = totalUsdtDistributed.plus(usdtReward);
+          totalQfiDistributed = totalQfiDistributed.plus(qfiAmount);
+        }
+      }
+
+      // 7. 批量更新钱包和创建释放订单
+      for (const [userId, dividend] of userDividends) {
+        // 70% USDT 立即到账
+        if (dividend.usdt.gt(0)) {
+          await tx.wallets.update({
+            where: { user_id: userId },
+            data: { usdt_balance: { increment: dividend.usdt.toNumber() } },
+          });
+        }
+
+        // 30% QFI 创建 90 天释放订单
+        if (dividend.qfi.gt(0)) {
+          await this.tokensService.createDividendVestingOrder(
+            userId,
+            dividend.qfi,
+            90, // 90 天释放
+            'weekly_reward',
+          );
+        }
+      }
+
+      // 8. 记录分红日志
+      const now = new Date();
+      await tx.revenue_distributions.create({
+        data: {
+          period_start: weekAgo,
+          period_end: now,
+          total_revenue: totalGasFee.toString(),
+          operations_amount: '0',
+          buyback_amount: dividendPool.toString(),
+          reserve_amount: '0',
+          tokens_distributed: totalQfiDistributed.toString(),
+          distribution_type: 'weekly_dividend',
+          usdt_distributed: totalUsdtDistributed.toString(),
+          qfi_distributed: totalQfiDistributed.toString(),
+          stakers_count: userDividends.size,
+          status: 'completed',
+        },
+      });
+
+      const message = `周分红完成: 分红池 ${dividendPool.toFixed(2)} USDT, ` +
+        `分配 USDT ${totalUsdtDistributed.toFixed(2)}, QFI ${totalQfiDistributed.toFixed(4)}, ` +
+        `惠及 ${userDividends.size} 人`;
+
+      this.logger.log(message);
+
+      return {
+        totalDividend: dividendPool.toString(),
+        usdtDistributed: totalUsdtDistributed.toString(),
+        qfiDistributed: totalQfiDistributed.toString(),
+        stakersCount: userDividends.size,
+        success: true,
+        message,
+      };
+    });
   }
 
   /**

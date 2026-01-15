@@ -23,6 +23,8 @@ interface VestingOrder {
   endDate: string;
   dailyRelease: string;
   progress: number;
+  orderType: 'exchange' | 'dividend';  // 订单类型
+  sourceType?: string;                 // 来源类型 (weekly_reward | buyback)
 }
 
 export default function TgVestingPage() {
@@ -48,6 +50,8 @@ export default function TgVestingPage() {
         endDate: order.vestingEndAt,
         dailyRelease: (parseFloat(order.tokensTotal) / 90).toFixed(8),
         progress: order.progress,
+        orderType: order.orderType || 'exchange',
+        sourceType: order.sourceType,
       }));
       setOrders(vestingOrders);
     } catch (error) {
@@ -185,9 +189,19 @@ export default function TgVestingPage() {
                     {/* 订单标题 */}
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-white font-medium text-sm">
-                          订单 #{order.id.slice(0, 8)}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-white font-medium text-sm">
+                            订单 #{order.id.slice(0, 8)}
+                          </h4>
+                          {/* 订单来源标签 */}
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            order.orderType === 'dividend'
+                              ? 'bg-brand-primary/20 text-brand-primary'
+                              : 'bg-bg-tertiary text-text-secondary'
+                          }`}>
+                            {order.orderType === 'dividend' ? '周分红' : '积分兑换'}
+                          </span>
+                        </div>
                         <p className="text-text-tertiary text-xs mt-0.5 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {new Date(order.startDate).toLocaleDateString('zh-CN')} -

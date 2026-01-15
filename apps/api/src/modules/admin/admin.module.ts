@@ -4,6 +4,7 @@ import { AdminService } from './admin.service';
 import { AdminEnhancedController } from './admin-enhanced.controller';
 import { AdminEnhancedService } from './admin-enhanced.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { StakingModule } from '../staking/staking.module';
 
 /**
  * 管理员模块
@@ -20,9 +21,10 @@ import { PrismaModule } from '../../prisma/prisma.module';
  * - VPS 监控
  * - 登录告警
  * - RBAC 权限
+ * - 分红管理（周分红手动触发）
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, StakingModule],
   controllers: [AdminController, AdminEnhancedController],
   providers: [AdminService, AdminEnhancedService],
   exports: [AdminService, AdminEnhancedService],

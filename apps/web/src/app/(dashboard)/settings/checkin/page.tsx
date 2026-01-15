@@ -181,7 +181,7 @@ export default function CheckinPage() {
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 bg-bg-tertiary rounded-lg">
             <p className="text-sm text-text-primary">兑换 QFI</p>
-            <p className="text-xs text-text-tertiary">100:1 兑换比例</p>
+            <p className="text-xs text-text-tertiary">1000:1 兑换比例</p>
           </div>
           <div className="p-3 bg-bg-tertiary rounded-lg">
             <p className="text-sm text-text-primary">抵扣 VIP 订阅费</p>

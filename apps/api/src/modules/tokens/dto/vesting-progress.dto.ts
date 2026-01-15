@@ -24,4 +24,6 @@ export class VestingOrderDto {
   lastReleaseAt: Date | null;
   progress: number; // 释放进度百分比 (0-100)
   daysRemaining: number; // 剩余天数
+  orderType: 'exchange' | 'dividend'; // 订单类型：兑换 | 分红
+  sourceType?: string; // 来源类型 (weekly_reward | buyback)
 }
