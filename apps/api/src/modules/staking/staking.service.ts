@@ -288,18 +288,20 @@ export class StakingService {
   }
 
   /**
-   * 计算权重（B 类）
+   * 计算时间倍率（B 类 veToken 模型）
    * weight = min(1.0 + (已质押天数 / 180), 3.0)
    *
    * @param stake 质押记录
-   * @returns 权重乘数
+   * @returns 时间倍率
    */
-  calculateWeight(stake: any): Decimal {
+  calculateTimeFactor(stake: any): Decimal {
     if (stake.stake_type === 'A') {
-      return new Decimal(1.0);
+      return new Decimal(1.0); // A 类固定 1.0x
     }
 
-    // B 类：随时间递增
+    // B 类：随时间递增 (veToken 模型)
+    // 公式: min(1.0 + 已质押天数/180, 3.0)
+    // 即：质押满 180 天达到 2.0x，质押满 360 天达到 3.0x 上限
     const now = new Date();
     const stakedDays = Math.floor(
       (now.getTime() - stake.start_time.getTime()) / (24 * 60 * 60 * 1000),
@@ -311,6 +313,50 @@ export class StakingService {
 
     // 最高 3.0x
     return Decimal.min(weight, new Decimal(3.0));
+  }
+
+  /**
+   * 计算权重乘数（兼容旧逻辑，等同于 calculateTimeFactor）
+   * @deprecated 使用 calculateTimeFactor 或 calculateNormalizedWeight
+   */
+  calculateWeight(stake: any): Decimal {
+    return this.calculateTimeFactor(stake);
+  }
+
+  /**
+   * 计算归一化权重（白皮书规则）
+   *
+   * 归一化公式：
+   * - A 类归一化数量 = 积分数量 / 1000（1000 积分 = 1 QFI 权重）
+   * - B 类归一化数量 = 代币数量（已经是 QFI）
+   *
+   * 最终权重 = 归一化数量 × 时间倍率
+   *
+   * 示例：
+   * - 质押 10,000 积分（A类） → 权重 = 10 × 1.0 = 10
+   * - 质押 10 QFI（B类，已质押 90 天） → 时间倍率 = 1.5 → 权重 = 10 × 1.5 = 15
+   * - 质押 10 QFI（B类，已质押 180 天） → 时间倍率 = 2.0 → 权重 = 10 × 2.0 = 20
+   * - 质押 10 QFI（B类，已质押 360+ 天） → 时间倍率 = 3.0 → 权重 = 10 × 3.0 = 30
+   *
+   * @param stake 质押记录
+   * @returns 归一化后的权重值
+   */
+  calculateNormalizedWeight(stake: any): Decimal {
+    // 1. 归一化为 QFI 等价数量
+    let qfiEquivalent: Decimal;
+    if (stake.stake_type === 'A') {
+      // A 类：1000 积分 = 1 QFI 权重
+      qfiEquivalent = new Decimal(stake.amount).div(1000);
+    } else {
+      // B 类：已经是 QFI
+      qfiEquivalent = new Decimal(stake.amount);
+    }
+
+    // 2. 计算时间倍率
+    const timeFactor = this.calculateTimeFactor(stake);
+
+    // 3. 最终权重 = 归一化数量 × 时间倍率
+    return qfiEquivalent.times(timeFactor);
   }
 
   /**
@@ -459,19 +505,21 @@ export class StakingService {
         new Decimal(0),
       );
 
-    // 计算平均权重
-    let totalWeight = new Decimal(0);
+    // 计算归一化总权重
+    let totalNormalizedWeight = new Decimal(0);
+    let totalTimeFactor = new Decimal(0);
     let activeStakes = 0;
 
     for (const stake of stakes.filter((s) => s.status === 'active')) {
-      const weight = this.calculateWeight(stake);
-      totalWeight = totalWeight.plus(weight);
+      totalNormalizedWeight = totalNormalizedWeight.plus(this.calculateNormalizedWeight(stake));
+      totalTimeFactor = totalTimeFactor.plus(this.calculateTimeFactor(stake));
       activeStakes++;
     }
 
-    const averageWeight =
+    // 平均时间倍率
+    const averageTimeFactor =
       activeStakes > 0
-        ? totalWeight.dividedBy(activeStakes)
+        ? totalTimeFactor.dividedBy(activeStakes)
         : new Decimal(0);
 
     return {
@@ -479,12 +527,18 @@ export class StakingService {
       claimable: claimable.toString(),
       claimed: claimed.toString(),
       staked_amount: stakedAmount.toString(),
-      average_weight: averageWeight.toFixed(2),
+      average_weight: averageTimeFactor.toFixed(2), // 平均时间倍率
+      normalized_weight: totalNormalizedWeight.toFixed(4), // 归一化总权重
     };
   }
 
   /**
    * 计算并分配收益（定时任务调用）
+   *
+   * 使用归一化权重计算（白皮书规则）：
+   * - 1000 积分 = 1 QFI 权重
+   * - B 类权重随时间递增
+   *
    * @param totalReward 本期总收益（来自收入分配池）
    * @returns 分配结果
    */
@@ -510,33 +564,33 @@ export class StakingService {
         return { distributed: '0', stakesUpdated: 0 };
       }
 
-      // 2. 计算每个质押的权重
+      // 2. 计算每个质押的归一化权重
       const stakesWithWeight = activeStakes.map((stake) => ({
         stake,
-        weight: this.calculateWeight(stake),
-        weightedAmount: this.calculateWeight(stake).times(new Decimal(stake.amount)),
+        timeFactor: this.calculateTimeFactor(stake),
+        normalizedWeight: this.calculateNormalizedWeight(stake),
       }));
 
-      // 3. 计算总加权金额
-      const totalWeightedAmount = stakesWithWeight.reduce(
-        (sum, s) => sum.plus(s.weightedAmount),
+      // 3. 计算总归一化权重
+      const totalNormalizedWeight = stakesWithWeight.reduce(
+        (sum, s) => sum.plus(s.normalizedWeight),
         new Decimal(0),
       );
 
-      if (totalWeightedAmount.lte(0)) {
-        this.logger.warn('总加权金额为 0，跳过收益分配');
+      if (totalNormalizedWeight.lte(0)) {
+        this.logger.warn('总归一化权重为 0，跳过收益分配');
         return { distributed: '0', stakesUpdated: 0 };
       }
 
-      // 4. 按权重分配收益
+      // 4. 按归一化权重分配收益
       let totalDistributed = new Decimal(0);
       let stakesUpdated = 0;
 
-      for (const { stake, weightedAmount } of stakesWithWeight) {
-        // 用户收益 = 总收益 × (用户加权金额 / 总加权金额)
+      for (const { stake, timeFactor, normalizedWeight } of stakesWithWeight) {
+        // 用户收益 = 总收益 × (用户归一化权重 / 总归一化权重)
         const userReward = totalRewardDecimal
-          .times(weightedAmount)
-          .dividedBy(totalWeightedAmount)
+          .times(normalizedWeight)
+          .dividedBy(totalNormalizedWeight)
           .toDecimalPlaces(8);
 
         if (userReward.gt(0)) {
@@ -548,7 +602,7 @@ export class StakingService {
             where: { id: stake.id },
             data: {
               claimable_reward: newClaimable.toNumber(),
-              weight_multiplier: this.calculateWeight(stake).toNumber(),
+              weight_multiplier: timeFactor.toNumber(), // 记录时间倍率
             },
           });
 
@@ -556,7 +610,7 @@ export class StakingService {
           stakesUpdated++;
 
           this.logger.debug(
-            `质押 ${stake.id} 获得收益 ${userReward.toString()} QFI`,
+            `质押 ${stake.id} 获得收益 ${userReward.toString()} QFI（归一化权重: ${normalizedWeight.toFixed(4)}）`,
           );
         }
       }
@@ -574,23 +628,39 @@ export class StakingService {
 
   /**
    * 获取全局质押统计（用于收益分配）
+   *
+   * 返回归一化权重统计（白皮书规则）：
+   * - totalStaked: 原始质押金额（不区分类型）
+   * - totalNormalizedWeight: 归一化后的总权重（1000 积分 = 1 QFI 权重）
+   *
    * @returns 全局统计数据
    */
   async getGlobalStats(): Promise<{
     totalStaked: string;
     totalWeighted: string;
+    totalNormalizedWeight: string;
     activeStakesCount: number;
     totalClaimable: string;
+    typeAStats: { count: number; totalStaked: string; normalizedWeight: string };
+    typeBStats: { count: number; totalStaked: string; normalizedWeight: string };
   }> {
     const activeStakes = await this.prisma.client.stakes.findMany({
       where: { status: 'active' },
     });
 
+    // 总原始金额
     const totalStaked = activeStakes.reduce(
       (sum, s) => sum.plus(new Decimal(s.amount)),
       new Decimal(0),
     );
 
+    // 归一化总权重（使用新的归一化公式）
+    const totalNormalizedWeight = activeStakes.reduce(
+      (sum, s) => sum.plus(this.calculateNormalizedWeight(s)),
+      new Decimal(0),
+    );
+
+    // 兼容旧接口：totalWeighted
     const totalWeighted = activeStakes.reduce(
       (sum, s) => sum.plus(this.calculateWeight(s).times(new Decimal(s.amount))),
       new Decimal(0),
@@ -601,11 +671,30 @@ export class StakingService {
       new Decimal(0),
     );
 
+    // 分类统计
+    const typeAStakes = activeStakes.filter(s => s.stake_type === 'A');
+    const typeBStakes = activeStakes.filter(s => s.stake_type === 'B');
+
+    const typeAStats = {
+      count: typeAStakes.length,
+      totalStaked: typeAStakes.reduce((sum, s) => sum.plus(new Decimal(s.amount)), new Decimal(0)).toString(),
+      normalizedWeight: typeAStakes.reduce((sum, s) => sum.plus(this.calculateNormalizedWeight(s)), new Decimal(0)).toString(),
+    };
+
+    const typeBStats = {
+      count: typeBStakes.length,
+      totalStaked: typeBStakes.reduce((sum, s) => sum.plus(new Decimal(s.amount)), new Decimal(0)).toString(),
+      normalizedWeight: typeBStakes.reduce((sum, s) => sum.plus(this.calculateNormalizedWeight(s)), new Decimal(0)).toString(),
+    };
+
     return {
       totalStaked: totalStaked.toString(),
-      totalWeighted: totalWeighted.toString(),
+      totalWeighted: totalWeighted.toString(), // 兼容旧接口
+      totalNormalizedWeight: totalNormalizedWeight.toString(),
       activeStakesCount: activeStakes.length,
       totalClaimable: totalClaimable.toString(),
+      typeAStats,
+      typeBStats,
     };
   }
 

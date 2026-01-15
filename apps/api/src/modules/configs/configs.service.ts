@@ -282,9 +282,12 @@ export class ConfigsService {
       { key: 'referral.trade_points_l2_rate', value: 0.025, type: 'number', category: 'referral', label: '交易挖矿二级返佣比例', description: '被邀请人交易挖矿获得积分时，二级邀请人获得比例', isPublic: false },
 
       // 积分兑换配置
-      { key: 'exchange.points_to_qfi_rate', value: 100, type: 'number', category: 'exchange', label: '积分兑换QFI比例', description: '100积分=1QFI', isPublic: true },
+      { key: 'exchange.points_to_qfi_rate', value: 1000, type: 'number', category: 'exchange', label: '积分兑换QFI比例', description: '1000积分=1QFI', isPublic: true },
       { key: 'exchange.points_to_usdt_rate', value: 1, type: 'number', category: 'exchange', label: '积分抵扣USDT比例', description: '1积分=1USDT', isPublic: true },
       { key: 'exchange.min_exchange_points', value: 100, type: 'number', category: 'exchange', label: '最低兑换积分', isPublic: true },
+
+      // 代币价格配置
+      { key: 'token.qfi_price', value: 0.5, type: 'number', category: 'token', label: 'QFI 代币价格（USDT）', description: '当前 QFI 代币价格，用于分红计算', isPublic: true },
     ];
 
     let created = 0;
@@ -402,9 +405,19 @@ export class ConfigsService {
     ]);
 
     return {
-      pointsToQfi: qfiRate !== null ? new Decimal(qfiRate) : new Decimal('100'),
+      pointsToQfi: qfiRate !== null ? new Decimal(qfiRate) : new Decimal('1000'),
       pointsToUsdt: usdtRate !== null ? new Decimal(usdtRate) : new Decimal('1'),
       minExchangePoints: minPoints !== null ? new Decimal(minPoints) : new Decimal('100'),
     };
+  }
+
+  /**
+   * 获取 QFI 代币价格（USDT）
+   * 用于分红计算等场景
+   * @returns QFI 价格（默认 $0.50）
+   */
+  async getQFIPrice(): Promise<Decimal> {
+    const price = await this.getConfig('token.qfi_price');
+    return price !== null ? new Decimal(price) : new Decimal('0.5');
   }
 }

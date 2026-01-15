@@ -66,5 +66,6 @@ export class RewardStatsResponseDto {
   claimable: string; // 可领取收益
   claimed: string; // 已领取收益
   staked_amount: string; // 质押中金额
-  average_weight: string; // 平均权重
+  average_weight: string; // 平均时间倍率
+  normalized_weight?: string; // 归一化总权重（1000 积分 = 1 QFI 权重）
 }

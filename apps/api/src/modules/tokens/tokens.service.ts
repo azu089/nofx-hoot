@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConfigsService } from '../configs/configs.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import Decimal from 'decimal.js';
 import {
@@ -51,7 +52,10 @@ export class TokensService {
   private readonly FAST_IMMEDIATE_PERCENT = new Decimal(0.5); // 急速模式 50% 立即
   private readonly FAST_BURN_PERCENT = new Decimal(0.5); // 急速模式 50% 销毁
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configsService: ConfigsService,
+  ) {}
 
   /**
    * 积分兑换代币
@@ -650,5 +654,71 @@ export class TokensService {
         },
       },
     });
+  }
+
+  // ===================== 代币价格与分红功能 =====================
+
+  /**
+   * 获取 QFI 代币价格（USDT）
+   * 从系统配置读取，默认 $0.50
+   * @returns QFI 价格
+   */
+  async getQFIPrice(): Promise<Decimal> {
+    return this.configsService.getQFIPrice();
+  }
+
+  /**
+   * 创建分红释放订单
+   * 用于周分红中的 QFI 部分（30% QFI 90天释放）
+   *
+   * @param userId 用户 ID
+   * @param qfiAmount QFI 数量
+   * @param vestingDays 释放天数
+   * @param sourceType 来源类型（weekly_reward）
+   *
+   * 注意：需要先执行 P1-1 数据库迁移添加 order_type 和 source_type 字段后，
+   * 才能完整记录分红订单的来源信息。
+   */
+  async createDividendVestingOrder(
+    userId: string,
+    qfiAmount: Decimal,
+    vestingDays: number,
+    _sourceType: string, // 暂未使用，等待 P1-1 数据库迁移
+  ): Promise<void> {
+    const vestingEndAt = new Date();
+    vestingEndAt.setDate(vestingEndAt.getDate() + vestingDays);
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // 1. 增加钱包的 token_vesting
+      await tx.wallets.update({
+        where: { user_id: userId },
+        data: {
+          token_vesting: { increment: qfiAmount.toNumber() },
+        },
+      });
+
+      // 2. 创建释放订单
+      // TODO: P1-1 完成后，添加 order_type: 'dividend' 和 source_type 字段
+      await tx.token_orders.create({
+        data: {
+          user_id: userId,
+          points_spent: '0', // 分红无积分消耗
+          tokens_total: qfiAmount.toString(),
+          exchange_rate: '0', // 分红无兑换率
+          vesting_mode: 'dividend', // 使用 vesting_mode 临时区分分红订单
+          tokens_released: '0',
+          tokens_pending: qfiAmount.toString(),
+          tokens_burned: '0',
+          vesting_start_at: new Date(),
+          vesting_end_at: vestingEndAt,
+          last_release_at: null,
+          status: 'vesting',
+        },
+      });
+    });
+
+    this.logger.log(
+      `为用户 ${userId} 创建分红释放订单: ${qfiAmount.toString()} QFI, ${vestingDays} 天释放`,
+    );
   }
 }

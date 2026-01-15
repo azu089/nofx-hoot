@@ -252,6 +252,7 @@ model instances {
   @@index([status], map: "idx_instances_status")
 }
 
+/// 收入分配记录表：支持周分红和回购销毁记录
 model revenue_distributions {
   id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   period_start       DateTime @db.Timestamptz(6)
@@ -265,12 +266,17 @@ model revenue_distributions {
   tokens_bought      Decimal? @default(0) @db.Decimal(18, 8)
   tokens_burned      Decimal? @default(0) @db.Decimal(18, 8)
   tokens_distributed Decimal? @default(0) @db.Decimal(18, 8)
+  distribution_type  String?  @db.VarChar(30) // weekly_dividend | buyback | reserve
+  usdt_distributed   Decimal? @db.Decimal(18, 8) // 分配的 USDT 金额
+  qfi_distributed    Decimal? @db.Decimal(18, 8) // 分配的 QFI 数量
+  stakers_count      Int?     // 参与分红的质押者数量
   status             String   @default("pending") @db.VarChar(20)
   created_at         DateTime @default(now()) @db.Timestamptz(6)
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([period_start, period_end], map: "idx_revenue_distributions_period")
   @@index([status], map: "idx_revenue_distributions_status")
+  @@index([distribution_type], map: "idx_revenue_distributions_type")
 }
 
 model schema_migrations {
@@ -399,9 +405,12 @@ model token_burns {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// 代币订单表：支持积分兑换订单和分红释放订单
 model token_orders {
   id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   user_id          String    @db.Uuid
+  order_type       String    @default("exchange") @db.VarChar(20) // exchange | dividend
+  source_type      String?   @db.VarChar(30) // weekly_reward | buyback | null
   points_spent     Decimal   @db.Decimal(18, 8)
   tokens_total     Decimal   @db.Decimal(18, 8)
   exchange_rate    Decimal   @db.Decimal(18, 8)
@@ -419,6 +428,7 @@ model token_orders {
 
   @@index([status], map: "idx_token_orders_status")
   @@index([user_id], map: "idx_token_orders_user")
+  @@index([order_type], map: "idx_token_orders_type")
 }
 
 model trade_history {
