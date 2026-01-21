@@ -1,19 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useTelegramContext } from '@/components/providers/TelegramProvider';
 import {
   User,
   Shield,
-  Bell,
-  Palette,
-  Globe,
   Info,
   ChevronRight,
-  Gift,
   Power,
   LogOut,
+  Bell,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -21,20 +21,39 @@ export default function TgSettingsPage() {
   const router = useRouter();
   const { haptic, user: tgUser } = useTelegramContext();
   const { user, logout } = useAuthStore();
+  const [copied, setCopied] = useState(false);
+
+  // 生成短 ID（取 UUID 前 8 位，大写）
+  const getShortId = (id: string) => {
+    if (!id) return '';
+    return id.split('-')[0].toUpperCase();
+  };
+
+  // 复制短 ID 到剪贴板
+  const copyUserId = async () => {
+    const userId = (user as any)?.id;
+    if (!userId) return;
+    const shortId = getShortId(userId);
+    try {
+      await navigator.clipboard.writeText(shortId);
+      setCopied(true);
+      haptic('notification_success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 降级方案
+      const input = document.createElement('input');
+      input.value = shortId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopied(true);
+      haptic('notification_success');
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const settingsGroups = [
-    {
-      title: '每日福利',
-      items: [
-        {
-          icon: Gift,
-          label: '每日签到',
-          desc: '签到得积分',
-          path: '/tg/settings/checkin',
-          color: 'text-warning',
-        },
-      ],
-    },
     {
       title: '账户与安全',
       items: [
@@ -46,18 +65,18 @@ export default function TgSettingsPage() {
           color: 'text-brand-primary',
         },
         {
+          icon: Bell,
+          label: '通知设置',
+          desc: '推送通知偏好',
+          path: '/tg/settings/notifications',
+          color: 'text-purple-400',
+        },
+        {
           icon: Shield,
           label: '安全设置',
           desc: '密码、两步验证',
           path: '/tg/settings/security',
           color: 'text-success',
-        },
-        {
-          icon: Bell,
-          label: '消息通知',
-          desc: '交易、账户通知',
-          path: '/tg/settings/notifications',
-          color: 'text-brand-primary',
         },
       ],
     },
@@ -74,22 +93,8 @@ export default function TgSettingsPage() {
       ],
     },
     {
-      title: '应用偏好',
+      title: '其他',
       items: [
-        {
-          icon: Palette,
-          label: '外观设置',
-          desc: '主题切换',
-          path: '/tg/settings/appearance',
-          color: 'text-brand-primary',
-        },
-        {
-          icon: Globe,
-          label: '语言设置',
-          desc: '简体中文',
-          path: '/tg/settings/language',
-          color: 'text-success',
-        },
         {
           icon: Info,
           label: '关于应用',
@@ -121,12 +126,23 @@ export default function TgSettingsPage() {
             <h2 className="text-white font-bold">
               {tgUser?.first_name || user?.email?.split('@')[0] || '用户'}
             </h2>
-            <p className="text-text-tertiary text-sm">
-              {user?.email || 'Telegram 用户'}
-            </p>
-            <div className="flex items-center gap-2 mt-1">
+            {/* 用户 ID - 短 ID 格式，支持复制 */}
+            {(user as any)?.id && (
+              <button
+                onClick={copyUserId}
+                className="flex items-center gap-1.5 mt-0.5 text-text-secondary text-xs font-mono hover:text-text-primary transition-colors active:scale-95"
+              >
+                <span>ID: {getShortId((user as any).id)}</span>
+                {copied ? (
+                  <Check className="w-3 h-3 text-success" />
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
+              </button>
+            )}
+            <div className="flex items-center gap-2 mt-1.5">
               <span className="px-2 py-0.5 bg-warning/20 text-warning text-xs rounded">
-                {user?.memberLevel || 'VIP 0'}
+                {(user as any)?.memberLevel || 'VIP 0'}
               </span>
             </div>
           </div>

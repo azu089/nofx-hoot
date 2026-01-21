@@ -12,54 +12,30 @@ import {
 } from 'lucide-react';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { PullToRefreshIndicator } from '@/components/ui/pull-to-refresh';
+import { gamefiApi } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth.store';
 
-interface LeaderboardUser {
+interface LeaderboardEntry {
   rank: number;
-  username: string;
-  avatar?: string;
-  points: number;
-  change: number;
-}
-
-interface LeaderboardData {
-  myRank: {
-    position: number;
-    points: number;
-    change: number;
-  };
-  topUsers: LeaderboardUser[];
+  userId: string;
+  email: string;
+  totalPoints: string;
+  todayPoints: string;
+  vipLevel: number;
 }
 
 export default function TgLeaderboardPage() {
   const router = useRouter();
-  const { haptic, user } = useTelegramContext();
-  const [data, setData] = useState<LeaderboardData | null>(null);
+  const { haptic, user: tgUser } = useTelegramContext();
+  const { user } = useAuthStore();
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'daily' | 'weekly' | 'total'>('total');
 
   const fetchData = async () => {
     try {
-      // 模拟数据
-      const mockData: LeaderboardData = {
-        myRank: {
-          position: 128,
-          points: 12580,
-          change: 5,
-        },
-        topUsers: [
-          { rank: 1, username: 'CryptoKing', points: 985600, change: 0 },
-          { rank: 2, username: 'QuantMaster', points: 856200, change: 1 },
-          { rank: 3, username: 'TradeBot88', points: 752100, change: -1 },
-          { rank: 4, username: 'AlgoTrader', points: 698500, change: 2 },
-          { rank: 5, username: 'DefiPro', points: 625800, change: 0 },
-          { rank: 6, username: 'BlockchainX', points: 589200, change: 3 },
-          { rank: 7, username: 'SmartMoney', points: 545600, change: -2 },
-          { rank: 8, username: 'TechTrader', points: 498700, change: 1 },
-          { rank: 9, username: 'CoinHunter', points: 456300, change: 0 },
-          { rank: 10, username: 'WhaleLord', points: 412800, change: -1 },
-        ],
-      };
-      setData(mockData);
+      const res = await gamefiApi.getLeaderboard({ limit: 100 });
+      setLeaderboard(res.data?.entries || []);
     } catch (error) {
       console.error('获取排行榜失败:', error);
     } finally {
@@ -105,6 +81,16 @@ export default function TgLeaderboardPage() {
     }
   };
 
+  // 获取我的排名
+  const myRank = leaderboard.find(e => e.userId === user?.id);
+  const myRankIndex = myRank ? leaderboard.findIndex(e => e.userId === user?.id) + 1 : 0;
+
+  // 脱敏邮箱显示
+  const maskEmail = (email: string) => {
+    if (!email) return '***';
+    return email.replace(/(.{2}).*(@.*)/, '$1***$2');
+  };
+
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -135,22 +121,19 @@ export default function TgLeaderboardPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-lg">
-                {user?.first_name?.[0] || 'U'}
+                {tgUser?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
               </div>
               <div>
-                <p className="font-medium text-white">{user?.first_name || '我'}</p>
+                <p className="font-medium text-white">{tgUser?.first_name || maskEmail(user?.email || '')}</p>
                 <p className="text-sm text-text-secondary">
-                  {data?.myRank.points.toLocaleString()} 积分
+                  {myRank ? parseFloat(myRank.totalPoints).toLocaleString() : '0'} 积分
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-warning">#{data?.myRank.position}</p>
-              {data?.myRank.change !== 0 && (
-                <p className={`text-xs ${data?.myRank.change > 0 ? 'text-success' : 'text-danger'}`}>
-                  {data?.myRank.change > 0 ? '↑' : '↓'} {Math.abs(data?.myRank.change)}
-                </p>
-              )}
+              <p className="text-2xl font-bold text-warning">
+                {myRankIndex > 0 ? `#${myRankIndex}` : '未上榜'}
+              </p>
             </div>
           </div>
         </div>
@@ -178,32 +161,40 @@ export default function TgLeaderboardPage() {
 
         {/* 排行榜列表 */}
         <div className="space-y-2">
-          {data?.topUsers.map((item) => (
-            <div
-              key={item.rank}
-              className={`flex items-center justify-between p-3 rounded-xl border ${getRankBg(item.rank)}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 flex items-center justify-center">
-                  {getRankIcon(item.rank)}
-                </div>
-                <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-white font-medium">
-                  {item.avatar || item.username[0]}
-                </div>
-                <div>
-                  <p className="font-medium text-white">{item.username}</p>
-                  <p className="text-xs text-text-tertiary">
-                    {item.points.toLocaleString()} 积分
-                  </p>
+          {leaderboard.length === 0 ? (
+            <div className="text-center py-8 text-text-tertiary">
+              暂无排行数据
+            </div>
+          ) : (
+            leaderboard.map((entry) => (
+              <div
+                key={entry.userId}
+                className={`flex items-center justify-between p-3 rounded-xl border ${getRankBg(entry.rank)} ${
+                  entry.userId === user?.id ? 'ring-2 ring-brand-primary' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 flex items-center justify-center">
+                    {getRankIcon(entry.rank)}
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-white font-medium">
+                    {entry.email?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">
+                      {maskEmail(entry.email)}
+                      {entry.vipLevel > 0 && (
+                        <span className="ml-1 text-xs text-warning">VIP{entry.vipLevel}</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-text-tertiary">
+                      {parseFloat(entry.totalPoints).toLocaleString()} 积分
+                    </p>
+                  </div>
                 </div>
               </div>
-              {item.change !== 0 && (
-                <span className={`text-xs ${item.change > 0 ? 'text-success' : 'text-danger'}`}>
-                  {item.change > 0 ? '↑' : '↓'} {Math.abs(item.change)}
-                </span>
-              )}
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </>

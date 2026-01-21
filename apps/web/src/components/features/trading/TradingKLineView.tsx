@@ -45,40 +45,6 @@ interface TradingKLineViewProps {
   className?: string;
 }
 
-// 模拟 K 线数据生成（实际应从 API 获取）
-function generateMockKlineData(days: number = 30): KLineDataPoint[] {
-  const data: KLineDataPoint[] = [];
-  const now = Math.floor(Date.now() / 1000);
-  const hourInSeconds = 3600;
-  let price = 42000 + Math.random() * 2000; // BTC 基准价
-
-  for (let i = days * 24; i >= 0; i--) {
-    const time = (now - i * hourInSeconds) as UTCTimestamp;
-    const volatility = 0.002 + Math.random() * 0.008; // 0.2% - 1% 波动
-    const direction = Math.random() > 0.48 ? 1 : -1; // 略微偏多
-
-    const open = price;
-    const change = price * volatility * direction;
-    const close = price + change;
-    const high = Math.max(open, close) * (1 + Math.random() * 0.003);
-    const low = Math.min(open, close) * (1 - Math.random() * 0.003);
-    const volume = 100 + Math.random() * 500;
-
-    data.push({
-      time,
-      open,
-      high,
-      low,
-      close,
-      volume,
-    });
-
-    price = close;
-  }
-
-  return data;
-}
-
 export function TradingKLineView({
   symbol,
   trades = [],
@@ -140,11 +106,9 @@ export function TradingKLineView({
 
       setKlineData(apiData);
     } catch (error) {
-      console.warn('API 数据获取失败，使用模拟数据:', error);
-
-      // 降级：使用模拟数据
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setKlineData(generateMockKlineData(30));
+      console.error('K 线数据获取失败:', error);
+      // API 失败时显示空状态
+      setKlineData([]);
     } finally {
       setLoading(false);
     }

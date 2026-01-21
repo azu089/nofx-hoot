@@ -234,54 +234,48 @@ export class UsersService {
     const totalInvites = invitedUsers.length;
     const activeUsers = invitedUsers.filter((u) => u.status === 'active').length;
 
-    // 查询该用户的返佣统计
-    const commissionStats = await this.prisma.client.user_commissions.aggregate({
+    // 查询该用户的所有返佣记录
+    const allCommissions = await this.prisma.client.user_commissions.findMany({
       where: { referrer_id: id },
-      _sum: {
+      select: {
         commission_amount: true,
+        status: true,
+        invitee_id: true,
       },
     });
 
-    // 查询待结算返佣（status = 'pending'）
-    const pendingStats = await this.prisma.client.user_commissions.aggregate({
-      where: {
-        referrer_id: id,
-        status: 'pending',
-      },
-      _sum: {
-        commission_amount: true,
-      },
-    });
+    // 手动计算总返佣
+    const totalCommission = allCommissions.reduce(
+      (sum, c) => sum + Number(c.commission_amount || 0),
+      0,
+    );
+
+    // 手动计算待结算返佣
+    const pendingCommission = allCommissions
+      .filter((c) => c.status === 'pending')
+      .reduce((sum, c) => sum + Number(c.commission_amount || 0), 0);
 
     // 获取每个被邀请用户的返佣贡献
-    const recentInvites = await Promise.all(
-      invitedUsers.slice(0, 10).map(async (invitee) => {
-        // 查询该被邀请人产生的返佣
-        const commission = await this.prisma.client.user_commissions.aggregate({
-          where: {
-            referrer_id: id,
-            invitee_id: invitee.id,
-          },
-          _sum: {
-            commission_amount: true,
-          },
-        });
+    const recentInvites = invitedUsers.slice(0, 10).map((invitee) => {
+      // 计算该被邀请人产生的返佣
+      const inviteeCommission = allCommissions
+        .filter((c) => c.invitee_id === invitee.id)
+        .reduce((sum, c) => sum + Number(c.commission_amount || 0), 0);
 
-        return {
-          id: invitee.id,
-          email: invitee.email,
-          createdAt: invitee.created_at.toISOString(),
-          status: invitee.status,
-          commission: (commission._sum.commission_amount || 0).toString(),
-        };
-      }),
-    );
+      return {
+        id: invitee.id,
+        email: invitee.email,
+        createdAt: invitee.created_at.toISOString(),
+        status: invitee.status,
+        commission: inviteeCommission.toFixed(8),
+      };
+    });
 
     return {
       totalInvites,
       activeUsers,
-      totalCommission: (commissionStats._sum.commission_amount || 0).toString(),
-      pendingCommission: (pendingStats._sum.commission_amount || 0).toString(),
+      totalCommission: totalCommission.toFixed(8),
+      pendingCommission: pendingCommission.toFixed(8),
       recentInvites,
     };
   }
@@ -310,29 +304,35 @@ export class UsersService {
       take: limit,
     });
 
-    // 获取每个被邀请用户产生的返佣
-    const result = await Promise.all(
-      invitedUsers.map(async (invitee) => {
-        const commission = await this.prisma.client.user_commissions.aggregate({
-          where: {
-            referrer_id: id,
-            invitee_id: invitee.id,
-          },
-          _sum: {
-            commission_amount: true,
-          },
-        });
+    // 一次性获取所有相关返佣记录
+    const inviteeIds = invitedUsers.map((u) => u.id);
+    const allCommissions = await this.prisma.client.user_commissions.findMany({
+      where: {
+        referrer_id: id,
+        invitee_id: { in: inviteeIds },
+      },
+      select: {
+        invitee_id: true,
+        commission_amount: true,
+      },
+    });
 
-        return {
-          id: invitee.id,
-          email: invitee.email,
-          status: invitee.status,
-          vipLevel: invitee.vip_level,
-          createdAt: invitee.created_at.toISOString(),
-          totalCommission: (commission._sum.commission_amount || 0).toString(),
-        };
-      }),
-    );
+    // 构建返佣映射
+    const commissionMap = new Map<string, number>();
+    for (const c of allCommissions) {
+      const current = commissionMap.get(c.invitee_id) || 0;
+      commissionMap.set(c.invitee_id, current + Number(c.commission_amount || 0));
+    }
+
+    // 组装结果
+    const result = invitedUsers.map((invitee) => ({
+      id: invitee.id,
+      email: invitee.email,
+      status: invitee.status,
+      vipLevel: invitee.vip_level,
+      createdAt: invitee.created_at.toISOString(),
+      totalCommission: (commissionMap.get(invitee.id) || 0).toFixed(8),
+    }));
 
     return result;
   }
@@ -363,41 +363,6 @@ export class UsersService {
       take: limit,
     });
 
-    // 获取一级成员的返佣贡献
-    const level1WithCommission = await Promise.all(
-      level1Members.map(async (member) => {
-        const commission = await this.prisma.client.user_commissions.aggregate({
-          where: {
-            referrer_id: id,
-            invitee_id: member.id,
-            level: 1,
-          },
-          _sum: { commission_amount: true },
-        });
-
-        return {
-          id: member.id,
-          email: member.email,
-          status: member.status,
-          vipLevel: member.vip_level,
-          createdAt: member.created_at.toISOString(),
-          commission: (commission._sum.commission_amount || 0).toString(),
-          level: 1,
-        };
-      }),
-    );
-
-    // 如果只查一级，直接返回
-    if (level === 1) {
-      return {
-        level1: level1WithCommission,
-        level2: [],
-        total: level1WithCommission.length,
-        level1Count: level1WithCommission.length,
-        level2Count: 0,
-      };
-    }
-
     // 二级成员：被一级成员邀请的
     const level1Ids = level1Members.map((m) => m.id);
     const level2Members = level1Ids.length > 0
@@ -416,33 +381,66 @@ export class UsersService {
         })
       : [];
 
-    // 获取二级成员的返佣贡献
-    const level2WithCommission = await Promise.all(
-      level2Members.map(async (member) => {
-        const commission = await this.prisma.client.user_commissions.aggregate({
+    // 一次性获取所有相关的返佣记录
+    const allMemberIds = [...level1Ids, ...level2Members.map((m) => m.id)];
+    const allCommissions = allMemberIds.length > 0
+      ? await this.prisma.client.user_commissions.findMany({
           where: {
             referrer_id: id,
-            invitee_id: member.id,
-            level: 2,
+            invitee_id: { in: allMemberIds },
           },
-          _sum: { commission_amount: true },
-        });
+          select: {
+            invitee_id: true,
+            commission_amount: true,
+            level: true,
+          },
+        })
+      : [];
 
-        // 找到其邀请人（一级成员）的邮箱
-        const referrer = level1Members.find((m) => m.id === member.referred_by_user_id);
+    // 构建返佣映射（按 invitee_id 和 level 分组）
+    const commissionMap = new Map<string, number>();
+    for (const c of allCommissions) {
+      const key = `${c.invitee_id}_${c.level}`;
+      const current = commissionMap.get(key) || 0;
+      commissionMap.set(key, current + Number(c.commission_amount || 0));
+    }
 
-        return {
-          id: member.id,
-          email: member.email,
-          status: member.status,
-          vipLevel: member.vip_level,
-          createdAt: member.created_at.toISOString(),
-          commission: (commission._sum.commission_amount || 0).toString(),
-          level: 2,
-          referrerEmail: referrer?.email || '未知',
-        };
-      }),
-    );
+    // 组装一级成员结果
+    const level1WithCommission = level1Members.map((member) => ({
+      id: member.id,
+      email: member.email,
+      status: member.status,
+      vipLevel: member.vip_level,
+      createdAt: member.created_at.toISOString(),
+      commission: (commissionMap.get(`${member.id}_1`) || 0).toFixed(8),
+      level: 1,
+    }));
+
+    // 如果只查一级，直接返回
+    if (level === 1) {
+      return {
+        level1: level1WithCommission,
+        level2: [],
+        total: level1WithCommission.length,
+        level1Count: level1WithCommission.length,
+        level2Count: 0,
+      };
+    }
+
+    // 组装二级成员结果
+    const level2WithCommission = level2Members.map((member) => {
+      const referrer = level1Members.find((m) => m.id === member.referred_by_user_id);
+      return {
+        id: member.id,
+        email: member.email,
+        status: member.status,
+        vipLevel: member.vip_level,
+        createdAt: member.created_at.toISOString(),
+        commission: (commissionMap.get(`${member.id}_2`) || 0).toFixed(8),
+        level: 2,
+        referrerEmail: referrer?.email || '未知',
+      };
+    });
 
     // 如果只查二级，只返回二级
     if (level === 2) {

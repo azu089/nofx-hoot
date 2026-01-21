@@ -113,7 +113,7 @@ export class CmsService {
         expire_at: dto.expireAt ? new Date(dto.expireAt) : null,
         sort_order: dto.sortOrder ?? 0,
         metadata: dto.metadata,
-        updated_by: userId,
+        updated_by: userId || undefined,
       },
     });
   }

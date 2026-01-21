@@ -20,6 +20,7 @@ import {
   Plus,
   Crown,
   Gift,
+  Copy,
 } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
 import { cn } from '@/lib/utils';
@@ -95,6 +96,35 @@ function MenuItem({ href, icon: Icon, label, description, badge, variant = 'defa
 export default function MePage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const { canInstall, isInstalled, isIOS, isSafari, install } = usePWA();
+  const [copied, setCopied] = useState(false);
+
+  // 生成短 ID（取 UUID 前 8 位，大写）
+  const getShortId = (id: string) => {
+    if (!id) return '';
+    return id.split('-')[0].toUpperCase();
+  };
+
+  // 复制短 ID 到剪贴板
+  const copyUserId = async () => {
+    const userId = user?.id;
+    if (!userId) return;
+    const shortId = getShortId(userId);
+    try {
+      await navigator.clipboard.writeText(shortId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 降级方案
+      const input = document.createElement('input');
+      input.value = shortId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   // 判断用户角色
   const isAgent = user?.isAgent === true;
@@ -143,7 +173,21 @@ export default function MePage() {
                 </span>
               )}
             </div>
-            <p className="text-sm text-text-tertiary truncate">{user?.email}</p>
+            {/* 用户短 ID - 点击复制 */}
+            {user?.id && (
+              <button
+                onClick={copyUserId}
+                className="flex items-center gap-1.5 mt-0.5 text-text-tertiary text-xs font-mono hover:text-text-secondary transition-colors active:scale-95"
+              >
+                <span>ID: {getShortId(user.id)}</span>
+                {copied ? (
+                  <Check className="w-3 h-3 text-success" />
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
+              </button>
+            )}
+            <p className="text-sm text-text-tertiary truncate mt-0.5">{user?.email}</p>
           </div>
         </div>
       </div>
@@ -171,7 +215,21 @@ export default function MePage() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-text-tertiary truncate">{user?.email}</p>
+              {/* 用户短 ID - 桌面端 */}
+              {user?.id && (
+                <button
+                  onClick={copyUserId}
+                  className="flex items-center gap-1.5 mt-0.5 text-text-tertiary text-xs font-mono hover:text-text-secondary transition-colors"
+                >
+                  <span>ID: {getShortId(user.id)}</span>
+                  {copied ? (
+                    <Check className="w-3 h-3 text-success" />
+                  ) : (
+                    <Copy className="w-3 h-3" />
+                  )}
+                </button>
+              )}
+              <p className="text-sm text-text-tertiary truncate mt-0.5">{user?.email}</p>
             </div>
             <Link href="/settings">
               <Button variant="outline" size="sm" className="flex-shrink-0">

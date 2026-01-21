@@ -24,9 +24,10 @@ interface ApiKey {
   id: string;
   exchange: string;
   label: string;
-  status: 'active' | 'invalid' | 'testing';
-  createdAt: string;
-  lastUsedAt?: string;
+  api_key_masked: string;
+  is_valid: boolean;
+  created_at: string;
+  last_verified_at: string | null;
 }
 
 export default function TgApiKeysPage() {
@@ -69,11 +70,11 @@ export default function TgApiKeysPage() {
     haptic('impact_medium');
 
     try {
-      await apiKeysApi.add({
+      await apiKeysApi.create({
         exchange: formData.exchange,
         label: formData.label || `${formData.exchange} API Key`,
         apiKey: formData.apiKey,
-        apiSecret: formData.apiSecret,
+        secretKey: formData.apiSecret,
       });
       haptic('notification_success');
       setShowAddForm(false);
@@ -99,16 +100,11 @@ export default function TgApiKeysPage() {
     }
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'active':
-        return { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: '正常' };
-      case 'invalid':
-        return { icon: XCircle, color: 'text-danger', bg: 'bg-danger/10', label: '失效' };
-      case 'testing':
-        return { icon: Loader2, color: 'text-warning', bg: 'bg-warning/10', label: '验证中' };
-      default:
-        return { icon: AlertCircle, color: 'text-text-secondary', bg: 'bg-bg-tertiary', label: '未知' };
+  const getStatusStyle = (isValid: boolean) => {
+    if (isValid) {
+      return { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10', label: '正常' };
+    } else {
+      return { icon: XCircle, color: 'text-danger', bg: 'bg-danger/10', label: '失效' };
     }
   };
 
@@ -251,7 +247,7 @@ export default function TgApiKeysPage() {
       ) : (
         <div className="space-y-3">
           {apiKeys.map((apiKey) => {
-            const statusStyle = getStatusStyle(apiKey.status);
+            const statusStyle = getStatusStyle(apiKey.is_valid);
             const StatusIcon = statusStyle.icon;
 
             return (
@@ -270,13 +266,13 @@ export default function TgApiKeysPage() {
                     </div>
                   </div>
                   <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs ${statusStyle.bg} ${statusStyle.color}`}>
-                    <StatusIcon className={`w-3 h-3 ${apiKey.status === 'testing' ? 'animate-spin' : ''}`} />
+                    <StatusIcon className="w-3 h-3" />
                     {statusStyle.label}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-text-tertiary">
-                  <span>添加于 {new Date(apiKey.createdAt).toLocaleDateString()}</span>
+                  <span>添加于 {new Date(apiKey.created_at).toLocaleDateString()}</span>
                   <button
                     onClick={() => handleDelete(apiKey.id)}
                     className="flex items-center gap-1 text-danger"

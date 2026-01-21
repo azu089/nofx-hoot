@@ -142,13 +142,13 @@ export class AuthService {
         },
       });
 
-      // 自动创建钱包
+      // 自动创建钱包（含注册奖励积分）
       await tx.wallets.create({
         data: {
           user_id: newUser.id,
           usdt_balance: 0,
           usdt_frozen: 0,
-          points_balance: 0,
+          points_balance: 100, // 注册奖励：新用户获得 100 积分
           points_frozen: 0,
           token_balance: 0,
           token_locked: 0,

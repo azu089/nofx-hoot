@@ -72,8 +72,8 @@ export class BillingService {
   async calculateGasFee(tradeId?: string, instanceId?: string): Promise<GasFeeResultDto> {
     this.logger.log('开始计算燃油费抽成（从点卡扣除）');
 
-    // 获取动态返佣比例配置（统一从 ConfigsService 获取）
-    const gasFeeRates = await this.configsService.getReferralRates('gas_fee');
+    // 注：gas_fee 返佣已删除，因为燃油费来自点卡消耗，与 card_purchase 返佣重复
+    // 用户购买点卡时已经发放返佣，消耗点卡时不再重复返佣
 
     // 1. 查询需要处理的交易（盈利 + 未抽成）
     const where: any = {
@@ -96,13 +96,6 @@ export class BillingService {
         users: {
           include: {
             wallets: true,
-            // 自引用关系：获取邀请人信息（referred_by_user_id 指向的用户）
-            users: {
-              select: {
-                id: true,
-                referred_by_user_id: true, // 二级邀请人
-              },
-            },
           },
         },
       },
@@ -226,18 +219,30 @@ export class BillingService {
             },
           });
 
-          // ===== 普通用户邀请返佣（与代理商系统独立）=====
-          // 检查该用户是否有邀请人，如果有则发放积分返佣
-          if (trade.users?.referred_by_user_id) {
-            await this.processUserReferralCommission(
-              tx,
-              trade.user_id,
-              trade.users.referred_by_user_id,
-              gasFee,
-              'gas_fee',
-              billingLog.id,
-              gasFeeRates,
-            );
+          // ===== 燃油费 USDT 返佣（返给邀请人）=====
+          // 注：这里返的是 USDT，与点卡购买返佣（积分）不重复
+          const user = await tx.users.findUnique({
+            where: { id: trade.user_id },
+            select: { referred_by_user_id: true },
+          });
+          if (user?.referred_by_user_id) {
+            // 查询一级邀请人的邀请人（二级）
+            const l1Referrer = await tx.users.findUnique({
+              where: { id: user.referred_by_user_id },
+              select: { id: true, referred_by_user_id: true },
+            });
+            if (l1Referrer) {
+              const rates = await this.configsService.getReferralRates('gas_fee');
+              await this.processGasFeeReferral(
+                tx,
+                trade.user_id,
+                l1Referrer.id,
+                l1Referrer.referred_by_user_id || null,
+                gasFee,
+                billingLog.id,
+                rates,
+              );
+            }
           }
 
           // ===== Phase 16.7: 策略收益分成 =====
@@ -984,5 +989,175 @@ export class BillingService {
         }
       }
     }
+  }
+
+  /**
+   * 处理燃油费 USDT 返佣
+   * 从燃油费中返 USDT 给一级和二级邀请人
+   *
+   * @param tx Prisma 事务
+   * @param inviteeId 被邀请人 ID（产生燃油费的用户）
+   * @param l1ReferrerId 一级邀请人 ID
+   * @param l2ReferrerId 二级邀请人 ID（可为 null）
+   * @param gasFeeAmount 燃油费金额
+   * @param sourceId 来源 ID（billing_log ID）
+   * @param rates 返佣比例
+   */
+  private async processGasFeeReferral(
+    tx: any,
+    inviteeId: string,
+    l1ReferrerId: string,
+    l2ReferrerId: string | null,
+    gasFeeAmount: Decimal,
+    sourceId: string,
+    rates: { l1: Decimal; l2: Decimal },
+  ): Promise<void> {
+    // ===== 一级返佣（USDT）=====
+    const l1Commission = gasFeeAmount.times(rates.l1).toDecimalPlaces(8);
+
+    if (l1Commission.gt(0)) {
+      // 防止自己邀请自己
+      if (l1ReferrerId === inviteeId) {
+        this.logger.warn(`检测到自我邀请，跳过一级返佣: ${inviteeId}`);
+        return;
+      }
+
+      // 创建一级返佣记录
+      await tx.user_commissions.create({
+        data: {
+          referrer_id: l1ReferrerId,
+          invitee_id: inviteeId,
+          level: 1,
+          source_type: 'gas_fee',
+          source_id: sourceId,
+          base_amount: gasFeeAmount.toString(),
+          commission_rate: rates.l1.toString(),
+          commission_amount: l1Commission.toString(),
+          commission_currency: 'USDT', // 返 USDT
+          status: 'settled',
+          settled_at: new Date(),
+        },
+      });
+
+      // 增加一级邀请人的 USDT 余额
+      await tx.wallets.upsert({
+        where: { user_id: l1ReferrerId },
+        create: {
+          user_id: l1ReferrerId,
+          usdt_balance: l1Commission.toString(),
+          card_balance: '0',
+          points_balance: '0',
+        },
+        update: {
+          usdt_balance: {
+            increment: l1Commission.toNumber(),
+          },
+          updated_at: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `燃油费一级返佣：用户 ${inviteeId} 燃油费 ${gasFeeAmount}，一级邀请人 ${l1ReferrerId} 获得 ${l1Commission} USDT (${rates.l1.times(100)}%)`,
+      );
+
+      // ===== 二级返佣（USDT）=====
+      if (l2ReferrerId) {
+        // 防止循环邀请
+        if (l2ReferrerId === inviteeId || l2ReferrerId === l1ReferrerId) {
+          this.logger.warn(`检测到循环邀请，跳过二级返佣: ${l2ReferrerId}`);
+          return;
+        }
+
+        const l2Commission = gasFeeAmount.times(rates.l2).toDecimalPlaces(8);
+
+        if (l2Commission.gt(0)) {
+          // 创建二级返佣记录
+          await tx.user_commissions.create({
+            data: {
+              referrer_id: l2ReferrerId,
+              invitee_id: inviteeId,
+              level: 2,
+              source_type: 'gas_fee',
+              source_id: sourceId,
+              base_amount: gasFeeAmount.toString(),
+              commission_rate: rates.l2.toString(),
+              commission_amount: l2Commission.toString(),
+              commission_currency: 'USDT', // 返 USDT
+              status: 'settled',
+              settled_at: new Date(),
+            },
+          });
+
+          // 增加二级邀请人的 USDT 余额
+          await tx.wallets.upsert({
+            where: { user_id: l2ReferrerId },
+            create: {
+              user_id: l2ReferrerId,
+              usdt_balance: l2Commission.toString(),
+              card_balance: '0',
+              points_balance: '0',
+            },
+            update: {
+              usdt_balance: {
+                increment: l2Commission.toNumber(),
+              },
+              updated_at: new Date(),
+            },
+          });
+
+          this.logger.log(
+            `燃油费二级返佣：用户 ${inviteeId} 燃油费 ${gasFeeAmount}，二级邀请人 ${l2ReferrerId} 获得 ${l2Commission} USDT (${rates.l2.times(100)}%)`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * 获取用户账单统计
+   * @param userId 用户 ID
+   */
+  async getStats(userId: string): Promise<{
+    totalIncome: string;
+    totalExpense: string;
+    subscriptionExpense: string;
+    cardExpense: string;
+  }> {
+    // 查询用户所有计费日志
+    const logs = await this.prisma.client.billing_logs.findMany({
+      where: { user_id: userId },
+    });
+
+    let totalIncome = new Decimal(0);
+    let totalExpense = new Decimal(0);
+    let subscriptionExpense = new Decimal(0);
+    let cardExpense = new Decimal(0);
+
+    for (const log of logs) {
+      const amount = new Decimal(log.amount);
+
+      // 根据计费类型分类
+      if (log.billing_type === 'deposit' || log.billing_type === 'referral_commission') {
+        // 收入类型
+        totalIncome = totalIncome.plus(amount.abs());
+      } else {
+        // 支出类型
+        totalExpense = totalExpense.plus(amount.abs());
+
+        // 细分支出类型
+        if (log.billing_type === 'subscription' || log.billing_type === 'vps_subscription') {
+          subscriptionExpense = subscriptionExpense.plus(amount.abs());
+        } else if (log.billing_type === 'gas_fee' || log.billing_type === 'card_deduction') {
+          cardExpense = cardExpense.plus(amount.abs());
+        }
+      }
+    }
+
+    return {
+      totalIncome: totalIncome.toFixed(8),
+      totalExpense: totalExpense.toFixed(8),
+      subscriptionExpense: subscriptionExpense.toFixed(8),
+      cardExpense: cardExpense.toFixed(8),
+    };
   }
 }

@@ -77,14 +77,14 @@ export default function TradingPage() {
         i.status === 'running' || i.status === 'active'
       );
 
-      // 如果没有真实运行实例,使用模拟实例(展示 UI)
-      if (runningInstances.length === 0) {
-        setRunningInstanceId('mock-instance-001');
-        setRunningStrategyName('RSI 超卖策略');
-      } else {
+      // 设置运行中的实例（如果有）
+      if (runningInstances.length > 0) {
         const instance = runningInstances[0] as any;
         setRunningInstanceId(instance?.id || null);
         setRunningStrategyName(instance?.strategy_name || instance?.name || '未命名策略');
+      } else {
+        setRunningInstanceId(null);
+        setRunningStrategyName('');
       }
 
       // 设置持仓数据（映射字段）
@@ -110,119 +110,19 @@ export default function TradingPage() {
         max_rate: pos.max_rate,
       }));
 
-      // 如果没有真实持仓数据，使用模拟数据展示 UI
-      if (mappedPositions.length === 0) {
-        const now = new Date();
-        const mockPositions: Position[] = [
-          {
-            trade_id: 1001,
-            pair: 'BTC/USDT',
-            is_open: true,
-            open_rate: 67800.50,
-            close_rate: null,
-            amount: 0.0235,
-            stake_amount: 1593.31,
-            close_profit: null,
-            close_profit_abs: 125.80,
-            open_date: new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString(), // 3小时前
-            close_date: null,
-            current_rate: 69150.20,
-            leverage: 3,
-            stoploss: -0.05, // -5%
-            stop_loss_pct: -5,  // 止损百分比 -5%
-            take_profit_pct: 10, // 止盈百分比 +10%
-            min_rate: 67200.00,
-            max_rate: 69500.00,
-          },
-          {
-            trade_id: 1002,
-            pair: 'ETH/USDT',
-            is_open: true,
-            open_rate: 3520.80,
-            close_rate: null,
-            amount: 0.854,
-            stake_amount: 3005.96,
-            close_profit: null,
-            close_profit_abs: -42.50,
-            open_date: new Date(now.getTime() - 7 * 60 * 60 * 1000).toISOString(), // 7小时前
-            close_date: null,
-            current_rate: 3470.50,
-            leverage: 1,
-            stoploss: -0.03, // -3%
-            stop_loss_pct: -3,  // 止损百分比 -3%
-            take_profit_pct: 8,  // 止盈百分比 +8%
-            min_rate: 3450.00,
-            max_rate: 3580.00,
-          },
-        ];
-        setPositions(mockPositions);
-      } else {
-        setPositions(mappedPositions);
-      }
+      // 设置真实持仓数据（空数组时显示空状态）
+      setPositions(mappedPositions);
 
       // 设置历史交易数据
       const historyData = historyRes.data?.trades || [];
-      const firstHistory = historyData[0] as any;
 
-      // 如果没有真实历史数据或数据不完整，使用模拟数据展示 UI
-      if (historyData.length === 0 || (!firstHistory?.entry_price && !firstHistory?.price) || !firstHistory?.amount || !firstHistory?.executed_at) {
-        const mockHistory: HistoryTrade[] = [
-          {
-            id: 'trade-001',
-            pair: 'BTC/USDT',
-            side: 'buy',
-            amount: '0.0215',
-            entry_price: '67200.00',
-            exit_price: '73050.00',
-            leverage: 3,
-            pnl: '125.80',
-            pnl_percentage: '1.87',
-            fee: '2.50',
-            gas_fee: '25.16',
-            executed_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-002',
-            pair: 'ETH/USDT',
-            side: 'buy',
-            amount: '0.82',
-            entry_price: '3580.50',
-            exit_price: '3529.15',
-            leverage: 1,
-            pnl: '-42.30',
-            pnl_percentage: '-1.43',
-            fee: '1.20',
-            gas_fee: '0.00',
-            executed_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-003',
-            pair: 'SOL/USDT',
-            side: 'sell',
-            amount: '8.5',
-            entry_price: '98.20',
-            exit_price: '94.85',
-            leverage: 2,
-            pnl: '28.50',
-            pnl_percentage: '3.41',
-            fee: '0.75',
-            gas_fee: '5.70',
-            executed_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString(),
-          },
-        ];
-        setHistoryTrades(mockHistory);
-      } else {
-        // 映射 API 数据到 HistoryTrade 类型
-        const mappedHistory: HistoryTrade[] = historyData.map((trade: any) => ({
-          ...trade,
-          entry_price: trade.entry_price || trade.price || '0',
-          exit_price: trade.exit_price || trade.close_price || '0',
-        }));
-        setHistoryTrades(mappedHistory);
-      }
+      // 映射 API 数据到 HistoryTrade 类型（空数组时显示空状态）
+      const mappedHistory: HistoryTrade[] = historyData.map((trade: any) => ({
+        ...trade,
+        entry_price: trade.entry_price || trade.price || '0',
+        exit_price: trade.exit_price || trade.close_price || '0',
+      }));
+      setHistoryTrades(mappedHistory);
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {

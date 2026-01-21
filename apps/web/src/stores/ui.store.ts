@@ -2,11 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 type ThemeMode = 'dark' | 'light' | 'system';
+type Language = 'zh' | 'en';
 
 interface UiStore {
   // 状态
   themeMode: ThemeMode;  // 用户选择的主题模式
   resolvedTheme: 'dark' | 'light';  // 实际应用的主题
+  language: Language;  // 用户语言偏好
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;  // 侧边栏是否折叠
   mobileMenuOpen: boolean;
@@ -20,6 +22,7 @@ interface UiStore {
   // 操作
   setThemeMode: (mode: ThemeMode) => void;
   setResolvedTheme: (theme: 'dark' | 'light') => void;
+  setLanguage: (lang: Language) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -47,6 +50,7 @@ export const useUiStore = create<UiStore>()(
       // 默认暗黑主题
       themeMode: 'dark',
       resolvedTheme: 'dark',
+      language: 'zh',  // 默认中文
       sidebarOpen: true,
       sidebarCollapsed: false,
       mobileMenuOpen: false,
@@ -64,6 +68,8 @@ export const useUiStore = create<UiStore>()(
         set({ resolvedTheme: theme });
         get().applyTheme();
       },
+
+      setLanguage: (lang) => set({ language: lang }),
 
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
@@ -106,6 +112,7 @@ export const useUiStore = create<UiStore>()(
       name: 'quantfi-ui-store', // localStorage key
       partialize: (state) => ({
         themeMode: state.themeMode,
+        language: state.language,
         sidebarOpen: state.sidebarOpen,
         sidebarCollapsed: state.sidebarCollapsed,
         readAnnouncementIds: state.readAnnouncementIds,

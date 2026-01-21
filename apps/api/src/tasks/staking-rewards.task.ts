@@ -128,13 +128,13 @@ export class StakingRewardsTask {
         return { distributed: '0', stakesUpdated: 0 };
       }
 
-      // 2. 计算每个质押的权重和加权金额
+      // 2. 计算每个质押的归一化权重
       const stakesWithWeight = activeStakes.map((stake) => {
-        const weight = this.stakingService.calculateWeight(stake);
+        const normalizedWeight = this.stakingService.calculateNormalizedWeight(stake);
         return {
           stake,
-          weight,
-          weightedAmount: weight.times(new Decimal(stake.amount)),
+          weight: normalizedWeight,
+          weightedAmount: normalizedWeight, // 归一化权重已包含数量和倍数
         };
       });
 

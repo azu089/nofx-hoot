@@ -97,186 +97,22 @@ export default function TradingHistoryPage() {
       const tradesData = tradesRes.data?.trades || [];
       const statsData = statsRes.data;
 
-      // 如果 API 返回空数据或数据不完整，使用 Mock 数据
-      const firstTrade = tradesData[0] as any;
-      if ((tradesData.length === 0 || (!firstTrade?.entry_price && !firstTrade?.price) || !firstTrade?.amount || !firstTrade?.executed_at) && page === 0) {
-        const mockTrades: Trade[] = [
-          {
-            id: 'trade-history-001',
-            instance_id: 'inst-001',
-            pair: 'BTC/USDT',
-            side: 'buy',
-            amount: '0.0215',
-            entry_price: '67200.00',
-            exit_price: '73050.00',
-            leverage: 3,
-            pnl: '125.80',
-            pnl_percentage: '1.87',
-            fee: '2.50',
-            gas_fee: '25.16', // 盈利20%抽成
-            executed_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-002',
-            instance_id: 'inst-001',
-            pair: 'ETH/USDT',
-            side: 'buy',
-            amount: '1.2345',
-            entry_price: '3850.00',
-            exit_price: '3815.73',
-            leverage: 1,
-            pnl: '-42.30',
-            pnl_percentage: '-0.89',
-            fee: '1.20',
-            gas_fee: '0.00', // 亏损不抽成
-            executed_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-003',
-            instance_id: 'inst-001',
-            pair: 'SOL/USDT',
-            side: 'sell',
-            amount: '15.6789',
-            entry_price: '105.50',
-            exit_price: '103.69',
-            leverage: 2,
-            pnl: '28.50',
-            pnl_percentage: '1.72',
-            fee: '0.85',
-            gas_fee: '5.70', // 盈利20%抽成
-            executed_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-004',
-            instance_id: 'inst-001',
-            pair: 'BNB/USDT',
-            side: 'buy',
-            amount: '3.456',
-            entry_price: '420.00',
-            exit_price: '424.52',
-            leverage: 1,
-            pnl: '15.60',
-            pnl_percentage: '1.08',
-            fee: '0.45',
-            gas_fee: '3.12', // 盈利20%抽成
-            executed_at: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 34 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-005',
-            instance_id: 'inst-001',
-            pair: 'ADA/USDT',
-            side: 'sell',
-            amount: '850.123',
-            entry_price: '0.65',
-            exit_price: '0.6722',
-            leverage: 1,
-            pnl: '-18.90',
-            pnl_percentage: '-3.42',
-            fee: '0.30',
-            gas_fee: '0.00', // 亏损不抽成
-            executed_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 46 * 60 * 60 * 1000).toISOString(),
-          },
-        ];
-
-        const mockStats: TradeStats = {
-          totalTrades: 5,
-          winRate: '0.60',
-          totalPnl: '108.70',
-          avgProfit: '56.63',
-          avgLoss: '-30.60',
-          bestTrade: '125.80',
-          worstTrade: '-42.30',
-        };
-
-        setTrades(mockTrades);
-        setTotal(mockTrades.length);
-        setStats(mockStats);
-      } else {
-        // 映射 API 数据到 Trade 类型
-        const mappedTrades: Trade[] = tradesData.map((trade: any) => ({
-          ...trade,
-          entry_price: trade.entry_price || trade.price || '0',
-          exit_price: trade.exit_price || trade.close_price || '0',
-        }));
-        setTrades(mappedTrades);
-        setTotal(tradesRes.data?.total || 0);
-        setStats(statsData);
-      }
+      // 映射 API 数据到 Trade 类型
+      const mappedTrades: Trade[] = tradesData.map((trade: any) => ({
+        ...trade,
+        entry_price: trade.entry_price || trade.price || '0',
+        exit_price: trade.exit_price || trade.close_price || '0',
+      }));
+      setTrades(mappedTrades);
+      setTotal(tradesRes.data?.total || 0);
+      setStats(statsData);
     } catch (error) {
       console.error('Failed to fetch data:', error);
 
-      // 出错时也使用 Mock 数据
-      if (page === 0) {
-        const mockTrades: Trade[] = [
-          {
-            id: 'trade-history-001',
-            instance_id: 'inst-001',
-            pair: 'BTC/USDT',
-            side: 'buy',
-            amount: '0.0215',
-            entry_price: '67200.00',
-            exit_price: '73050.00',
-            leverage: 3,
-            pnl: '125.80',
-            pnl_percentage: '1.87',
-            fee: '2.50',
-            gas_fee: '25.16',
-            executed_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-002',
-            instance_id: 'inst-001',
-            pair: 'ETH/USDT',
-            side: 'buy',
-            amount: '1.2345',
-            entry_price: '3850.00',
-            exit_price: '3815.73',
-            leverage: 1,
-            pnl: '-42.30',
-            pnl_percentage: '-0.89',
-            fee: '1.20',
-            gas_fee: '0.00',
-            executed_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'trade-history-003',
-            instance_id: 'inst-001',
-            pair: 'SOL/USDT',
-            side: 'sell',
-            amount: '15.6789',
-            entry_price: '105.50',
-            exit_price: '103.69',
-            leverage: 2,
-            pnl: '28.50',
-            pnl_percentage: '1.72',
-            fee: '0.85',
-            gas_fee: '5.70',
-            executed_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-            closed_at: new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString(),
-          },
-        ];
-
-        const mockStats: TradeStats = {
-          totalTrades: 3,
-          winRate: '0.67',
-          totalPnl: '112.00',
-          avgProfit: '77.15',
-          avgLoss: '-42.30',
-          bestTrade: '125.80',
-          worstTrade: '-42.30',
-        };
-
-        setTrades(mockTrades);
-        setTotal(mockTrades.length);
-        setStats(mockStats);
-      }
+      // 出错时设置空数据
+      setTrades([]);
+      setTotal(0);
+      setStats(null);
     } finally {
       setLoading(false);
     }

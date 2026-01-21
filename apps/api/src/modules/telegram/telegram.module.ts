@@ -4,6 +4,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegramController } from './telegram.controller';
 import { TelegramService } from './telegram.service';
 import { TelegramApiService } from './telegram-api.service';
+import { TelegramBotService } from './telegram-bot.service';
+import { TelegramNotificationService } from './telegram-notification.service';
 import { TelegramGuard } from './telegram.guard';
 import { PrismaModule } from '../../prisma/prisma.module';
 
@@ -25,7 +27,19 @@ import { PrismaModule } from '../../prisma/prisma.module';
     }),
   ],
   controllers: [TelegramController],
-  providers: [TelegramService, TelegramApiService, TelegramGuard],
-  exports: [TelegramService, TelegramApiService, TelegramGuard],
+  providers: [
+    TelegramService,
+    TelegramApiService,
+    TelegramBotService,
+    TelegramNotificationService,
+    TelegramGuard,
+  ],
+  exports: [
+    TelegramService,
+    TelegramApiService,
+    TelegramBotService,
+    TelegramNotificationService,
+    TelegramGuard,
+  ],
 })
 export class TelegramModule {}

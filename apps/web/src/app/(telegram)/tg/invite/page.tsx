@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Users,
   Copy,
@@ -23,6 +24,7 @@ interface InviteData {
 }
 
 export default function TelegramInvite() {
+  const router = useRouter();
   const { haptic, webApp } = useTelegramContext();
   const [data, setData] = useState<InviteData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -201,14 +203,17 @@ export default function TelegramInvite() {
         className="w-full flex items-center justify-between p-4 bg-bg-secondary border border-border-primary rounded-xl"
         onClick={() => {
           haptic('selection');
-          // 跳转到邀请记录页面
+          router.push('/tg/invite/members');
         }}
       >
         <div className="flex items-center gap-3">
           <Users size={20} className="text-text-tertiary" />
           <span className="text-sm text-text-primary">邀请记录</span>
         </div>
-        <ChevronRight size={18} className="text-text-tertiary" />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-tertiary">{data?.totalInvited || 0} 人</span>
+          <ChevronRight size={18} className="text-text-tertiary" />
+        </div>
       </button>
 
       {/* 返佣明细入口 */}
@@ -216,14 +221,17 @@ export default function TelegramInvite() {
         className="w-full flex items-center justify-between p-4 bg-bg-secondary border border-border-primary rounded-xl"
         onClick={() => {
           haptic('selection');
-          // 跳转到返佣明细页面
+          router.push('/tg/invite/commissions');
         }}
       >
         <div className="flex items-center gap-3">
           <TrendingUp size={20} className="text-text-tertiary" />
           <span className="text-sm text-text-primary">返佣明细</span>
         </div>
-        <ChevronRight size={18} className="text-text-tertiary" />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-success">${parseFloat(data?.totalCommission || '0').toFixed(2)}</span>
+          <ChevronRight size={18} className="text-text-tertiary" />
+        </div>
       </button>
     </div>
   );

@@ -474,7 +474,7 @@ export class TelegramApiService {
     const strategy = await this.prisma.client.strategies.findUnique({
       where: { id: strategyId },
       include: {
-        users_strategies_uploader_idTousers: {
+        uploader: {
           select: { id: true, email: true, telegram_username: true },
         },
       },
@@ -537,10 +537,10 @@ export class TelegramApiService {
         closedAt: t.closed_at,
       })),
       // 作者信息
-      author: strategy.users_strategies_uploader_idTousers
+      author: strategy.uploader
         ? {
-            id: strategy.users_strategies_uploader_idTousers.id,
-            username: strategy.users_strategies_uploader_idTousers.telegram_username || strategy.users_strategies_uploader_idTousers.email?.split('@')[0],
+            id: strategy.uploader.id,
+            username: strategy.uploader.telegram_username || strategy.uploader.email?.split('@')[0],
           }
         : null,
       createdAt: strategy.created_at,
@@ -967,5 +967,191 @@ export class TelegramApiService {
     this.logger.log(`用户 ${userId} 绑定邮箱 ${email}`);
 
     return { success: true, message: '邮箱绑定成功' };
+  }
+
+  // ==================== 新手任务系统 ====================
+
+  /**
+   * 新手任务配置
+   * 任务类型 -> 积分奖励
+   */
+  private readonly ONBOARDING_TASKS: Record<string, { points: number; description: string }> = {
+    'bind-api': { points: 5, description: '绑定交易所 API' },
+    'first-deposit': { points: 20, description: '首次充值 ≥50U' },
+    'subscribe-strategy': { points: 15, description: '订阅付费策略' },
+    'start-bot': { points: 10, description: '机器人运行 24h' },
+  };
+
+  /**
+   * 获取用户新手任务完成状态
+   */
+  async getOnboardingTasks(userId: string) {
+    // 查询已完成的任务
+    const completedTasks = await this.prisma.client.billing_logs.findMany({
+      where: {
+        user_id: userId,
+        billing_type: 'onboarding_task',
+      },
+      select: {
+        reference_id: true,
+        amount: true,
+        created_at: true,
+      },
+    });
+
+    const completedTaskIds = new Set(completedTasks.map((t: any) => t.reference_id));
+
+    // 构造任务列表
+    const tasks = Object.entries(this.ONBOARDING_TASKS).map(([taskId, config]) => ({
+      id: taskId,
+      title: config.description,
+      points: config.points,
+      completed: completedTaskIds.has(taskId),
+      completedAt: completedTasks.find((t: any) => t.reference_id === taskId)?.created_at || null,
+    }));
+
+    // 计算总积分和已获得积分
+    const totalPoints = Object.values(this.ONBOARDING_TASKS).reduce((sum, t) => sum + t.points, 0);
+    const earnedPoints = tasks.filter(t => t.completed).reduce((sum, t) => sum + t.points, 0);
+
+    return {
+      tasks,
+      totalPoints,
+      earnedPoints,
+      completedCount: tasks.filter(t => t.completed).length,
+      totalCount: tasks.length,
+    };
+  }
+
+  /**
+   * 完成新手任务并发放积分
+   * @param userId 用户 ID
+   * @param taskId 任务 ID（如 bind-api, first-deposit 等）
+   */
+  async completeOnboardingTask(userId: string, taskId: string) {
+    // 验证任务类型
+    const taskConfig = this.ONBOARDING_TASKS[taskId];
+    if (!taskConfig) {
+      throw new BadRequestException(`无效的任务类型: ${taskId}`);
+    }
+
+    // 检查任务是否已完成（幂等性）
+    const existingTask = await this.prisma.client.billing_logs.findFirst({
+      where: {
+        user_id: userId,
+        billing_type: 'onboarding_task',
+        reference_id: taskId,
+      },
+    });
+
+    if (existingTask) {
+      return {
+        success: false,
+        message: '任务已完成',
+        alreadyCompleted: true,
+        pointsEarned: '0',
+      };
+    }
+
+    // 根据任务类型验证条件是否满足
+    const conditionMet = await this.checkTaskCondition(userId, taskId);
+    if (!conditionMet) {
+      return {
+        success: false,
+        message: '任务条件未满足',
+        alreadyCompleted: false,
+        pointsEarned: '0',
+      };
+    }
+
+    const pointsEarned = new Decimal(taskConfig.points);
+
+    // 使用事务：记录任务完成 + 发放积分
+    await this.prisma.client.$transaction(async (tx: any) => {
+      // 创建任务完成记录
+      await tx.billing_logs.create({
+        data: {
+          user_id: userId,
+          unique_order_id: `onboarding_${taskId}_${userId}_${Date.now()}`,
+          billing_type: 'onboarding_task',
+          reference_type: 'onboarding',
+          reference_id: taskId,
+          amount: pointsEarned,
+          currency: 'POINTS',
+          description: `新手任务奖励: ${taskConfig.description}`,
+          status: 'completed',
+        },
+      });
+
+      // 增加积分
+      await tx.wallets.update({
+        where: { user_id: userId },
+        data: {
+          points_balance: { increment: pointsEarned.toNumber() },
+        },
+      });
+    });
+
+    this.logger.log(`用户 ${userId} 完成新手任务 ${taskId}，获得 ${pointsEarned} 积分`);
+
+    return {
+      success: true,
+      message: `任务完成，获得 ${pointsEarned} 积分`,
+      alreadyCompleted: false,
+      pointsEarned: pointsEarned.toString(),
+    };
+  }
+
+  /**
+   * 验证任务条件是否满足
+   */
+  private async checkTaskCondition(userId: string, taskId: string): Promise<boolean> {
+    switch (taskId) {
+      case 'bind-api': {
+        // 检查是否绑定了 API Key
+        const apiKeyCount = await this.prisma.client.api_keys.count({
+          where: { user_id: userId, is_active: true },
+        });
+        return apiKeyCount > 0;
+      }
+
+      case 'first-deposit': {
+        // 检查是否有充值 ≥50 USDT 的记录
+        const deposit = await this.prisma.client.billing_logs.findFirst({
+          where: {
+            user_id: userId,
+            billing_type: 'deposit',
+            status: 'completed',
+            amount: { gte: 50 },
+          },
+        });
+        return !!deposit;
+      }
+
+      case 'subscribe-strategy': {
+        // 检查是否订阅了策略
+        const subscription = await this.prisma.client.user_strategy_configs.findFirst({
+          where: { user_id: userId },
+        });
+        return !!subscription;
+      }
+
+      case 'start-bot': {
+        // 检查是否有运行超过 24 小时的策略
+        // 使用策略配置的激活时间或交易记录来判断
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const longRunningConfig = await this.prisma.client.user_strategy_configs.findFirst({
+          where: {
+            user_id: userId,
+            is_active: true,
+            created_at: { lte: oneDayAgo },
+          },
+        });
+        return !!longRunningConfig;
+      }
+
+      default:
+        return false;
+    }
   }
 }

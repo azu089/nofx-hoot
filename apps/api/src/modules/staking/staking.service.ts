@@ -10,7 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { TokensService } from '../tokens/tokens.service';
 import { ConfigsService } from '../configs/configs.service';
-import { StakeDto, STAKE_LIMITS, ALLOWED_LOCK_DAYS } from './dto/stake.dto';
+import { StakeDto, STAKE_LIMITS, ALLOWED_LOCK_DAYS, LOCK_PERIOD_WEIGHTS } from './dto/stake.dto';
 import {
   StakeResponseDto,
   StakeListResponseDto,
@@ -21,26 +21,27 @@ import Decimal from 'decimal.js';
 /**
  * 质押服务
  *
- * 双轨质押系统（白皮书 v5.0 第 3.3 节）：
+ * 统一质押系统（白皮书 v5.1）：
  *
- * A 类（积分质押）：
+ * 积分质押（A 类）：
  * - 资产来源：points_balance（积分余额）
- * - 权重：固定 1.0x
- * - 解押惩罚：扣除 50% 本金（销毁）
- * - 锁定期：无（随时可解押）
- * - 状态：V1 开放
+ * - 权重：归一化后 × 锁定期倍数（1000积分 = 1 QFI 基础权重）
+ * - 解押惩罚：阶梯递减（根据锁定期和剩余时间）
+ * - 锁定期：30/90/180/365 天
  *
- * B 类（代币质押）：
+ * 代币质押（B 类）：
  * - 资产来源：token_balance（代币余额）
- * - 权重：1.0x-3.0x，公式 = min(1.0 + 已质押天数/180, 3.0)
- * - 解押惩罚：仅 3% 手续费（无论是否到期）
- * - 锁定期：用户选择（30/90/180/365 天）
+ * - 权重：代币数量 × 锁定期倍数
+ * - 解押惩罚：固定 3% 手续费
+ * - 锁定期：30/90/180/365 天
  * - 状态：需要开关控制（ENABLE_TOKEN_STAKING 环境变量）
  *
+ * 锁定期权重倍数：30天=1.2x, 90天=1.5x, 180天=2.0x, 365天=3.0x
+ *
  * 分红规则：
- * - 来源：燃油费（盈利抽成）的 30%
+ * - 来源：燃油费收入的 20%
  * - 周期：每周一次
- * - 结算：USDT（直接打入 usdt_balance）
+ * - 分配：70% USDT 立即到账 + 30% QFI 90天释放
  */
 @Injectable()
 export class StakingService {
@@ -83,7 +84,7 @@ export class StakingService {
       throw new BadRequestException(`质押金额不能超过 ${STAKE_LIMITS.MAX_AMOUNT}`);
     }
 
-    // B 类开关检查
+    // 代币质押开关检查
     if (stake_type === 'B') {
       const enableTokenStaking = process.env.ENABLE_TOKEN_STAKING === 'true';
       if (!enableTokenStaking) {
@@ -91,20 +92,14 @@ export class StakingService {
       }
     }
 
-    // B 类必须提供锁定天数，且在白名单内
-    if (stake_type === 'B') {
-      if (lock_days === undefined || lock_days <= 0) {
-        throw new BadRequestException('B 类质押必须设置锁定天数（大于 0）');
-      }
-      if (!ALLOWED_LOCK_DAYS.includes(lock_days)) {
-        throw new BadRequestException(
-          `B 类质押锁定天数只能是 ${ALLOWED_LOCK_DAYS.join('、')} 天`,
-        );
-      }
+    // 验证锁定天数（积分和代币质押都需要）
+    if (lock_days === undefined || !ALLOWED_LOCK_DAYS.includes(lock_days)) {
+      throw new BadRequestException(
+        `锁定天数只能是 ${ALLOWED_LOCK_DAYS.join('、')} 天`,
+      );
     }
 
-    // A 类锁定天数固定为 0
-    const finalLockDays = stake_type === 'A' ? 0 : lock_days!;
+    const finalLockDays = lock_days;
 
     // 计算结束时间
     const startTime = new Date();
@@ -164,6 +159,8 @@ export class StakingService {
       }
 
       // 3. 创建质押记录
+      // 权重倍数由锁定期决定（积分和代币质押相同）
+      const weightMultiplier = LOCK_PERIOD_WEIGHTS[finalLockDays] || 1.0;
       const stake = await tx.stakes.create({
         data: {
           user_id: userId,
@@ -172,7 +169,7 @@ export class StakingService {
           start_time: startTime,
           lock_period_days: finalLockDays,
           end_time: endTime,
-          weight_multiplier: stake_type === 'A' ? 1.0 : 1.0, // 初始权重（B 类会动态计算）
+          weight_multiplier: weightMultiplier,
           accumulated_reward: 0,
           status: 'active',
         },
@@ -226,10 +223,12 @@ export class StakingService {
       const isEarly = now < stake.end_time;
 
       if (stake.stake_type === 'A') {
-        // A 类：扣除 50% 本金（销毁）
-        penaltyAmount = new Decimal(stake.amount).times(0.5);
+        // A 类：阶梯递减惩罚（基于锁定期和已质押时间）
+        const penaltyRate = this.calculatePointsPenaltyRate(stake);
+        penaltyAmount = new Decimal(stake.amount).times(penaltyRate);
+        const penaltyPercent = penaltyRate.times(100).toFixed(1);
         this.logger.warn(
-          `用户 ${userId} 解押 A 类质押，50% 本金销毁，惩罚金额 ${penaltyAmount.toString()}`,
+          `用户 ${userId} 解押 A 类质押，锁定期 ${stake.lock_period_days} 天，惩罚率 ${penaltyPercent}%，惩罚金额 ${penaltyAmount.toString()}`,
         );
       } else if (stake.stake_type === 'B') {
         // B 类：仅扣 3% 手续费（无论是否到期）
@@ -295,55 +294,33 @@ export class StakingService {
   }
 
   /**
-   * 计算时间倍率（B 类 veToken 模型）
-   * weight = min(1.0 + (已质押天数 / 180), 3.0)
+   * 获取锁定期权重倍数
+   * 统一模型：积分和代币质押使用相同的锁定期倍数
    *
-   * @param stake 质押记录
-   * @returns 时间倍率
+   * @param lockDays 锁定天数
+   * @returns 权重倍数
    */
-  calculateTimeFactor(stake: any): Decimal {
-    if (stake.stake_type === 'A') {
-      return new Decimal(1.0); // A 类固定 1.0x
-    }
-
-    // B 类：随时间递增 (veToken 模型)
-    // 公式: min(1.0 + 已质押天数/180, 3.0)
-    // 即：质押满 180 天达到 2.0x，质押满 360 天达到 3.0x 上限
-    const now = new Date();
-    const stakedDays = Math.floor(
-      (now.getTime() - stake.start_time.getTime()) / (24 * 60 * 60 * 1000),
-    );
-
-    const weight = new Decimal(1.0).plus(
-      new Decimal(stakedDays).dividedBy(180),
-    );
-
-    // 最高 3.0x
-    return Decimal.min(weight, new Decimal(3.0));
+  getLockPeriodWeight(lockDays: number): Decimal {
+    const weight = LOCK_PERIOD_WEIGHTS[lockDays] || 1.0;
+    return new Decimal(weight);
   }
 
   /**
-   * 计算权重乘数（兼容旧逻辑，等同于 calculateTimeFactor）
-   * @deprecated 使用 calculateTimeFactor 或 calculateNormalizedWeight
-   */
-  calculateWeight(stake: any): Decimal {
-    return this.calculateTimeFactor(stake);
-  }
-
-  /**
-   * 计算归一化权重（白皮书规则）
+   * 计算归一化权重（统一模型）
    *
    * 归一化公式：
-   * - A 类归一化数量 = 积分数量 / 1000（1000 积分 = 1 QFI 权重）
-   * - B 类归一化数量 = 代币数量（已经是 QFI）
+   * - 积分质押：归一化数量 = 积分数量 / 1000（1000 积分 = 1 QFI 基础权重）
+   * - 代币质押：归一化数量 = 代币数量（已经是 QFI）
    *
-   * 最终权重 = 归一化数量 × 时间倍率
+   * 最终权重 = 归一化数量 × 锁定期倍数
+   *
+   * 锁定期倍数：30天=1.2x, 90天=1.5x, 180天=2.0x, 365天=3.0x
    *
    * 示例：
-   * - 质押 10,000 积分（A类） → 权重 = 10 × 1.0 = 10
-   * - 质押 10 QFI（B类，已质押 90 天） → 时间倍率 = 1.5 → 权重 = 10 × 1.5 = 15
-   * - 质押 10 QFI（B类，已质押 180 天） → 时间倍率 = 2.0 → 权重 = 10 × 2.0 = 20
-   * - 质押 10 QFI（B类，已质押 360+ 天） → 时间倍率 = 3.0 → 权重 = 10 × 3.0 = 30
+   * - 质押 1000 积分，30 天锁定 → 权重 = 1 × 1.2 = 1.2
+   * - 质押 1 QFI，30 天锁定 → 权重 = 1 × 1.2 = 1.2（相同）
+   * - 质押 10,000 积分，90 天锁定 → 权重 = 10 × 1.5 = 15
+   * - 质押 10 QFI，180 天锁定 → 权重 = 10 × 2.0 = 20
    *
    * @param stake 质押记录
    * @returns 归一化后的权重值
@@ -352,18 +329,110 @@ export class StakingService {
     // 1. 归一化为 QFI 等价数量
     let qfiEquivalent: Decimal;
     if (stake.stake_type === 'A') {
-      // A 类：1000 积分 = 1 QFI 权重
+      // 积分质押：1000 积分 = 1 QFI 基础权重
       qfiEquivalent = new Decimal(stake.amount).div(1000);
     } else {
-      // B 类：已经是 QFI
+      // 代币质押：已经是 QFI
       qfiEquivalent = new Decimal(stake.amount);
     }
 
-    // 2. 计算时间倍率
-    const timeFactor = this.calculateTimeFactor(stake);
+    // 2. 获取锁定期权重倍数
+    const lockWeight = this.getLockPeriodWeight(stake.lock_period_days);
 
-    // 3. 最终权重 = 归一化数量 × 时间倍率
-    return qfiEquivalent.times(timeFactor);
+    // 3. 最终权重 = 归一化数量 × 锁定期倍数
+    return qfiEquivalent.times(lockWeight);
+  }
+
+  /**
+   * 积分质押惩罚配置表
+   * 阶梯递减：锁定期越长，到期后惩罚越低
+   */
+  private readonly POINTS_PENALTY_TABLE: Record<number, { early: number; mature: number }> = {
+    30:  { early: 0.40, mature: 0.10 },  // 30天：提前40%，到期10%
+    90:  { early: 0.30, mature: 0.05 },  // 90天：提前30%，到期5%
+    180: { early: 0.20, mature: 0.02 },  // 180天：提前20%，到期2%
+    365: { early: 0.10, mature: 0.00 },  // 365天：提前10%，到期0%
+  };
+
+  /**
+   * 计算积分质押解押惩罚率（阶梯递减）
+   *
+   * 公式：实际惩罚 = 到期惩罚 + (基础惩罚 - 到期惩罚) × 剩余比例
+   *
+   * @param stake 质押记录
+   * @returns 惩罚率（0-1）
+   */
+  calculatePointsPenaltyRate(stake: any): Decimal {
+    const lockDays = stake.lock_period_days;
+    const config = this.POINTS_PENALTY_TABLE[lockDays];
+
+    if (!config) {
+      // 未知锁定期，使用默认 50%
+      return new Decimal(0.5);
+    }
+
+    const now = new Date();
+    const endTime = new Date(stake.end_time);
+    const isMatured = now >= endTime;
+
+    if (isMatured) {
+      // 到期后使用到期惩罚率
+      return new Decimal(config.mature);
+    }
+
+    // 未到期：阶梯递减
+    const startTime = new Date(stake.start_time);
+    const totalDays = lockDays;
+    const stakedMs = now.getTime() - startTime.getTime();
+    const stakedDays = Math.floor(stakedMs / (24 * 60 * 60 * 1000));
+    const remainingDays = Math.max(0, totalDays - stakedDays);
+    const remainingRatio = new Decimal(remainingDays).div(totalDays);
+
+    // 实际惩罚 = 到期惩罚 + (基础惩罚 - 到期惩罚) × 剩余比例
+    const penalty = new Decimal(config.mature).plus(
+      new Decimal(config.early - config.mature).times(remainingRatio)
+    );
+
+    return penalty;
+  }
+
+  /**
+   * 获取质押的惩罚预览信息
+   */
+  getPenaltyPreview(stake: any): {
+    currentPenaltyRate: string;
+    maturePenaltyRate: string;
+    remainingDays: number;
+    isMatured: boolean;
+  } {
+    const now = new Date();
+    const endTime = new Date(stake.end_time);
+    const startTime = new Date(stake.start_time);
+    const isMatured = now >= endTime;
+
+    const totalDays = stake.lock_period_days;
+    const stakedMs = now.getTime() - startTime.getTime();
+    const stakedDays = Math.floor(stakedMs / (24 * 60 * 60 * 1000));
+    const remainingDays = Math.max(0, totalDays - stakedDays);
+
+    if (stake.stake_type === 'A') {
+      const config = this.POINTS_PENALTY_TABLE[totalDays] || { early: 0.5, mature: 0.5 };
+      const currentRate = this.calculatePointsPenaltyRate(stake);
+      return {
+        currentPenaltyRate: currentRate.times(100).toFixed(1),
+        maturePenaltyRate: (config.mature * 100).toFixed(1),
+        remainingDays,
+        isMatured,
+      };
+    } else {
+      // 代币质押固定 3%
+      return {
+        currentPenaltyRate: '3.0',
+        maturePenaltyRate: '3.0',
+        remainingDays,
+        isMatured,
+      };
+    }
   }
 
   /**
@@ -519,7 +588,7 @@ export class StakingService {
 
     for (const stake of stakes.filter((s) => s.status === 'active')) {
       totalNormalizedWeight = totalNormalizedWeight.plus(this.calculateNormalizedWeight(stake));
-      totalTimeFactor = totalTimeFactor.plus(this.calculateTimeFactor(stake));
+      totalTimeFactor = totalTimeFactor.plus(this.getLockPeriodWeight(stake.lock_period_days));
       activeStakes++;
     }
 
@@ -574,7 +643,7 @@ export class StakingService {
       // 2. 计算每个质押的归一化权重
       const stakesWithWeight = activeStakes.map((stake) => ({
         stake,
-        timeFactor: this.calculateTimeFactor(stake),
+        lockWeight: this.getLockPeriodWeight(stake.lock_period_days),
         normalizedWeight: this.calculateNormalizedWeight(stake),
       }));
 
@@ -593,7 +662,7 @@ export class StakingService {
       let totalDistributed = new Decimal(0);
       let stakesUpdated = 0;
 
-      for (const { stake, timeFactor, normalizedWeight } of stakesWithWeight) {
+      for (const { stake, lockWeight, normalizedWeight } of stakesWithWeight) {
         // 用户收益 = 总收益 × (用户归一化权重 / 总归一化权重)
         const userReward = totalRewardDecimal
           .times(normalizedWeight)
@@ -609,7 +678,7 @@ export class StakingService {
             where: { id: stake.id },
             data: {
               claimable_reward: newClaimable.toNumber(),
-              weight_multiplier: timeFactor.toNumber(), // 记录时间倍率
+              weight_multiplier: lockWeight.toNumber(), // 记录锁定期权重倍数
             },
           });
 
@@ -667,9 +736,9 @@ export class StakingService {
       new Decimal(0),
     );
 
-    // 兼容旧接口：totalWeighted
+    // 兼容旧接口：totalWeighted（使用锁定期权重）
     const totalWeighted = activeStakes.reduce(
-      (sum, s) => sum.plus(this.calculateWeight(s).times(new Decimal(s.amount))),
+      (sum, s) => sum.plus(this.getLockPeriodWeight(s.lock_period_days).times(new Decimal(s.amount))),
       new Decimal(0),
     );
 

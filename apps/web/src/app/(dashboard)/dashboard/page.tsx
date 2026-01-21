@@ -95,7 +95,7 @@ export default function DashboardPage() {
     { icon: TrendingUp, label: '交易所', href: '/me/exchanges', bgClass: 'bg-success/15', iconClass: 'text-success' },
     { icon: Server, label: 'VPS 实例', href: '/instances', bgClass: 'bg-brand-primary/15', iconClass: 'text-brand-primary' },
     { icon: Key, label: 'API 绑定', href: '/wallet/api-keys', bgClass: 'bg-danger/15', iconClass: 'text-danger' },
-    { icon: Coins, label: '生态中心', href: '/ecosystem/staking', bgClass: 'bg-purple-500/15', iconClass: 'text-purple-400' },
+    { icon: Coins, label: '生态中心', href: '/ecosystem', bgClass: 'bg-purple-500/15', iconClass: 'text-purple-400' },
     { icon: Users, label: '邀请好友', href: '/referral', bgClass: 'bg-cyan-500/15', iconClass: 'text-cyan-400' },
   ];
 
@@ -541,24 +541,52 @@ function MarketSentiment() {
 // ============ 新手任务 - 移动端极简版 ============
 function OnboardingSectionMobile() {
   const router = useRouter();
-  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+  const [tasks, setTasks] = useState<Array<{
+    id: string;
+    title: string;
+    points: number;
+    completed: boolean;
+  }>>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [earnedPoints, setEarnedPoints] = useState(0);
 
-  const tasks = [
-    { id: 'bind-api', title: '绑定交易所 API', href: '/wallet/api-keys', checkKey: 'onboarding_api_bound', points: 5 },
-    { id: 'first-deposit', title: '首次充值 ≥50U', href: '/wallet/deposit', checkKey: 'onboarding_first_deposit', points: 20 },
-    { id: 'subscribe-strategy', title: '订阅付费策略', href: '/strategies', checkKey: 'onboarding_strategy_subscribed', points: 15 },
-    { id: 'start-bot', title: '机器人运行 24h', href: '/trading', checkKey: 'onboarding_bot_started', points: 10 },
-  ];
+  // 任务对应的跳转链接
+  const taskHrefMap: Record<string, string> = {
+    'bind-api': '/wallet/api-keys',
+    'first-deposit': '/wallet/deposit',
+    'subscribe-strategy': '/strategies',
+    'start-bot': '/trading',
+  };
+
+  // 从后端获取任务状态
+  const fetchTasks = async () => {
+    try {
+      const res = await userApi.getOnboardingTasks();
+      if (res.data) {
+        setTasks(res.data.tasks);
+        setTotalPoints(res.data.totalPoints);
+        setEarnedPoints(res.data.earnedPoints);
+      }
+    } catch (error) {
+      console.error('Failed to fetch onboarding tasks:', error);
+      // 后端请求失败时使用默认任务列表
+      setTasks([
+        { id: 'bind-api', title: '绑定交易所 API', points: 5, completed: false },
+        { id: 'first-deposit', title: '首次充值 ≥50U', points: 20, completed: false },
+        { id: 'subscribe-strategy', title: '订阅付费策略', points: 15, completed: false },
+        { id: 'start-bot', title: '机器人运行 24h', points: 10, completed: false },
+      ]);
+      setTotalPoints(50);
+      setEarnedPoints(0);
+    } finally {
+      setIsLoaded(true);
+    }
+  };
 
   useEffect(() => {
-    const completed = new Set<string>();
-    tasks.forEach((task) => {
-      if (localStorage.getItem(task.checkKey) === 'true') completed.add(task.id);
-    });
-    setCompletedTasks(completed);
-    setIsLoaded(true);
+    fetchTasks();
     setCollapsed(localStorage.getItem('onboarding_collapsed') === 'true');
   }, []);
 
@@ -568,13 +596,11 @@ function OnboardingSectionMobile() {
     localStorage.setItem('onboarding_collapsed', String(next));
   };
 
-  const completedCount = completedTasks.size;
+  const completedCount = tasks.filter(t => t.completed).length;
   const totalCount = tasks.length;
-  const progress = (completedCount / totalCount) * 100;
-  const totalPoints = tasks.reduce((sum, t) => sum + t.points, 0);
-  const earnedPoints = tasks.filter((t) => completedTasks.has(t.id)).reduce((sum, t) => sum + t.points, 0);
+  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
-  if (isLoaded && completedCount === totalCount) return null;
+  if (isLoaded && completedCount === totalCount && totalCount > 0) return null;
 
   return (
     <div className="rounded-xl glass-content overflow-hidden">
@@ -612,30 +638,30 @@ function OnboardingSectionMobile() {
       {!collapsed && (
         <div className="px-4 pb-4 space-y-2">
           {tasks.map((task, index) => {
-            const done = completedTasks.has(task.id);
+            const href = taskHrefMap[task.id] || '/dashboard';
             return (
               <button
                 key={task.id}
-                onClick={() => !done && router.push(task.href)}
+                onClick={() => !task.completed && router.push(href)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                  done ? 'bg-success/10' : 'bg-bg-primary hover:bg-bg-tertiary'
+                  task.completed ? 'bg-success/10' : 'bg-bg-primary hover:bg-bg-tertiary'
                 }`}
-                aria-label={done ? `任务已完成: ${task.title}` : `前往完成任务: ${task.title}`}
-                disabled={done}
+                aria-label={task.completed ? `任务已完成: ${task.title}` : `前往完成任务: ${task.title}`}
+                disabled={task.completed}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  done ? 'bg-success' : 'bg-bg-tertiary'
+                  task.completed ? 'bg-success' : 'bg-bg-tertiary'
                 }`}>
-                  {done ? (
+                  {task.completed ? (
                     <Check className="w-3.5 h-3.5 text-white" aria-hidden="true" />
                   ) : (
                     <span className="text-xs text-text-tertiary">{index + 1}</span>
                   )}
                 </div>
-                <span className={`flex-1 text-left text-sm ${done ? 'text-success line-through' : 'text-white'}`}>
+                <span className={`flex-1 text-left text-sm ${task.completed ? 'text-success line-through' : 'text-white'}`}>
                   {task.title}
                 </span>
-                {done ? (
+                {task.completed ? (
                   <span className="text-xs text-success">已完成</span>
                 ) : (
                   <div className="flex items-center gap-1 text-warning">
@@ -655,24 +681,52 @@ function OnboardingSectionMobile() {
 // ============ 新手任务 - 桌面端 ============
 function OnboardingSection() {
   const router = useRouter();
-  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+  const [tasks, setTasks] = useState<Array<{
+    id: string;
+    title: string;
+    points: number;
+    completed: boolean;
+  }>>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [earnedPoints, setEarnedPoints] = useState(0);
 
-  const tasks = [
-    { id: 'bind-api', title: '绑定交易所 API', href: '/wallet/api-keys', checkKey: 'onboarding_api_bound', points: 5 },
-    { id: 'first-deposit', title: '首次充值 ≥50U', href: '/wallet/deposit', checkKey: 'onboarding_first_deposit', points: 20 },
-    { id: 'subscribe-strategy', title: '订阅付费策略', href: '/strategies', checkKey: 'onboarding_strategy_subscribed', points: 15 },
-    { id: 'start-bot', title: '机器人运行 24h', href: '/trading', checkKey: 'onboarding_bot_started', points: 10 },
-  ];
+  // 任务对应的跳转链接
+  const taskHrefMap: Record<string, string> = {
+    'bind-api': '/wallet/api-keys',
+    'first-deposit': '/wallet/deposit',
+    'subscribe-strategy': '/strategies',
+    'start-bot': '/trading',
+  };
+
+  // 从后端获取任务状态
+  const fetchTasks = async () => {
+    try {
+      const res = await userApi.getOnboardingTasks();
+      if (res.data) {
+        setTasks(res.data.tasks);
+        setTotalPoints(res.data.totalPoints);
+        setEarnedPoints(res.data.earnedPoints);
+      }
+    } catch (error) {
+      console.error('Failed to fetch onboarding tasks:', error);
+      // 后端请求失败时使用默认任务列表
+      setTasks([
+        { id: 'bind-api', title: '绑定交易所 API', points: 5, completed: false },
+        { id: 'first-deposit', title: '首次充值 ≥50U', points: 20, completed: false },
+        { id: 'subscribe-strategy', title: '订阅付费策略', points: 15, completed: false },
+        { id: 'start-bot', title: '机器人运行 24h', points: 10, completed: false },
+      ]);
+      setTotalPoints(50);
+      setEarnedPoints(0);
+    } finally {
+      setIsLoaded(true);
+    }
+  };
 
   useEffect(() => {
-    const completed = new Set<string>();
-    tasks.forEach((task) => {
-      if (localStorage.getItem(task.checkKey) === 'true') completed.add(task.id);
-    });
-    setCompletedTasks(completed);
-    setIsLoaded(true);
+    fetchTasks();
     setCollapsed(localStorage.getItem('onboarding_collapsed') === 'true');
   }, []);
 
@@ -682,13 +736,11 @@ function OnboardingSection() {
     localStorage.setItem('onboarding_collapsed', String(next));
   };
 
-  const completedCount = completedTasks.size;
+  const completedCount = tasks.filter(t => t.completed).length;
   const totalCount = tasks.length;
-  const progress = (completedCount / totalCount) * 100;
-  const totalPoints = tasks.reduce((sum, t) => sum + t.points, 0);
-  const earnedPoints = tasks.filter((t) => completedTasks.has(t.id)).reduce((sum, t) => sum + t.points, 0);
+  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
-  if (isLoaded && completedCount === totalCount) return null;
+  if (isLoaded && completedCount === totalCount && totalCount > 0) return null;
 
   return (
     <div className="rounded-2xl glass-content overflow-hidden">
@@ -726,30 +778,30 @@ function OnboardingSection() {
       {!collapsed && (
         <div className="px-4 pb-4 space-y-2">
           {tasks.map((task, index) => {
-            const done = completedTasks.has(task.id);
+            const href = taskHrefMap[task.id] || '/dashboard';
             return (
               <button
                 key={task.id}
-                onClick={() => !done && router.push(task.href)}
+                onClick={() => !task.completed && router.push(href)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                  done ? 'bg-success/10' : 'bg-bg-tertiary hover:bg-bg-tertiary/80'
+                  task.completed ? 'bg-success/10' : 'bg-bg-tertiary hover:bg-bg-tertiary/80'
                 }`}
-                aria-label={done ? `任务已完成: ${task.title}` : `前往完成任务: ${task.title}`}
-                disabled={done}
+                aria-label={task.completed ? `任务已完成: ${task.title}` : `前往完成任务: ${task.title}`}
+                disabled={task.completed}
               >
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  done ? 'bg-success' : 'bg-bg-tertiary border border-border-primary'
+                  task.completed ? 'bg-success' : 'bg-bg-tertiary border border-border-primary'
                 }`}>
-                  {done ? (
+                  {task.completed ? (
                     <Check className="w-3.5 h-3.5 text-white" aria-hidden="true" />
                   ) : (
                     <span className="text-xs text-text-tertiary">{index + 1}</span>
                   )}
                 </div>
-                <span className={`flex-1 text-left text-sm ${done ? 'text-success line-through' : 'text-white'}`}>
+                <span className={`flex-1 text-left text-sm ${task.completed ? 'text-success line-through' : 'text-white'}`}>
                   {task.title}
                 </span>
-                {done ? (
+                {task.completed ? (
                   <span className="text-xs text-success">已完成</span>
                 ) : (
                   <div className="flex items-center gap-1 text-warning">

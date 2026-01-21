@@ -15,14 +15,24 @@ export const STAKE_LIMITS = {
   MAX_AMOUNT: '1000000', // 最大质押 100万
 };
 
-// B 类允许的锁定天数
+// 允许的锁定天数（积分和代币质押通用）
 export const ALLOWED_LOCK_DAYS = [30, 90, 180, 365];
+
+// 锁定期权重倍数表（积分和代币质押通用）
+export const LOCK_PERIOD_WEIGHTS: Record<number, number> = {
+  30: 1.2,   // 30 天 → 1.2x
+  90: 1.5,   // 90 天 → 1.5x
+  180: 2.0,  // 180 天 → 2.0x
+  365: 3.0,  // 365 天 → 3.0x
+};
 
 /**
  * 质押 DTO
  *
- * A 类质押（积分）：无需锁定期，lock_days 可选（会被忽略）
- * B 类质押（代币）：必须指定 lock_days，且只能是 30/90/180/365 天
+ * 积分质押（A 类）和代币质押（B 类）统一规则：
+ * - 都必须指定 lock_days（30/90/180/365 天）
+ * - 权重倍数相同（由锁定期决定）
+ * - 权重归一化：1000 积分 = 1 QFI 的基础权重
  */
 export class StakeDto {
   @IsString()
@@ -34,10 +44,9 @@ export class StakeDto {
   @IsNotEmpty({ message: '质押类型不能为空' })
   stake_type: 'A' | 'B';
 
-  // 仅 B 类质押需要验证 lock_days
-  @ValidateIf((o) => o.stake_type === 'B')
-  @IsNotEmpty({ message: 'B 类质押必须指定锁定天数' })
+  // 积分和代币质押都必须指定锁定天数
+  @IsNotEmpty({ message: '必须指定锁定天数' })
   @IsNumber({}, { message: '锁定天数必须为数字' })
-  @IsIn(ALLOWED_LOCK_DAYS, { message: 'B 类质押锁定天数只能是 30、90、180 或 365 天' })
-  lock_days?: number;
+  @IsIn(ALLOWED_LOCK_DAYS, { message: '锁定天数只能是 30、90、180 或 365 天' })
+  lock_days: number;
 }

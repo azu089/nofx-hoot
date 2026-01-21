@@ -14,6 +14,9 @@ import {
   Clock,
   Loader2,
   ChevronRight,
+  TrendingUp,
+  Calendar,
+  CheckCircle,
 } from 'lucide-react';
 
 // ========== 类型定义 ==========
@@ -32,12 +35,26 @@ interface Stake {
   return_preview?: string;
 }
 
+interface VestingOrder {
+  id: string;
+  totalAmount: string;
+  releasedAmount: string;
+  remainingAmount: string;
+  startDate: string;
+  endDate: string;
+  dailyRelease: string;
+  progress: number;
+  orderType: 'exchange' | 'dividend';
+  sourceType?: string;
+}
+
 // ========== 常量配置 ==========
+// 锁定期权重倍数表（积分和代币质押通用）
 const LOCK_PERIODS = [
-  { days: 30, weight: 1.0 },
-  { days: 90, weight: 1.5 },
-  { days: 180, weight: 2.0 },
-  { days: 365, weight: 3.0 },
+  { days: 30, weight: 1.2, penalty: { early: 40, mature: 10 } },
+  { days: 90, weight: 1.5, penalty: { early: 30, mature: 5 } },
+  { days: 180, weight: 2.0, penalty: { early: 20, mature: 2 } },
+  { days: 365, weight: 3.0, penalty: { early: 10, mature: 0 } },
 ];
 
 export default function StakingPage() {
@@ -61,12 +78,18 @@ export default function StakingPage() {
     stake: Stake | null;
   }>({ open: false, stake: null });
 
+  // 释放进度相关状态
+  const [vestingOrders, setVestingOrders] = useState<VestingOrder[]>([]);
+  const [totalVesting, setTotalVesting] = useState('0');
+  const [totalReleased, setTotalReleased] = useState('0');
+
   // ========== 数据获取 ==========
   const fetchData = async () => {
     try {
-      const [stakesRes, walletRes] = await Promise.all([
+      const [stakesRes, walletRes, vestingRes] = await Promise.all([
         gamefiApi.getStakes(),
         userApi.getWallet(),
+        gamefiApi.getVestingProgress(),
       ]);
 
       const stakesData = stakesRes.data?.stakes || [];
@@ -87,6 +110,23 @@ export default function StakingPage() {
 
       setPointsBalance(walletRes.data?.points_balance || '0');
       setTokenBalance(walletRes.data?.token_balance || '0');
+
+      // 设置释放进度数据
+      setTotalVesting(vestingRes.data?.pending || '0');
+      setTotalReleased(vestingRes.data?.released || '0');
+      const orders = (vestingRes.data?.vestingOrders || []).map((order: any) => ({
+        id: order.orderId,
+        totalAmount: order.tokensTotal,
+        releasedAmount: order.tokensReleased,
+        remainingAmount: order.tokensPending,
+        startDate: order.vestingStartAt,
+        endDate: order.vestingEndAt,
+        dailyRelease: (parseFloat(order.tokensTotal) / 90).toFixed(8),
+        progress: order.progress,
+        orderType: order.orderType || 'exchange',
+        sourceType: order.sourceType,
+      }));
+      setVestingOrders(orders);
     } catch (error) {
       console.error('Failed to fetch staking data:', error);
       toast.error('加载质押数据失败');
@@ -100,19 +140,49 @@ export default function StakingPage() {
   }, []);
 
   // ========== 计算函数 ==========
+  // 统一权重计算：积分和代币质押使用相同的锁定期倍数
   const getWeight = (type: string, days: number) => {
-    if (type === 'A') return 1.0;
     const period = LOCK_PERIODS.find(p => p.days === days);
-    return period?.weight || 1.0;
+    return period?.weight || 1.2;
   };
 
+  // 计算归一化权重（1000 积分 = 1 QFI）
+  const getNormalizedWeight = (type: string, amount: string, days: number) => {
+    const amountNum = parseFloat(amount) || 0;
+    const weight = getWeight(type, days);
+    // A 类：积分 / 1000；B 类：直接使用代币数量
+    const normalized = type === 'A' ? amountNum / 1000 : amountNum;
+    return normalized * weight;
+  };
+
+  // 获取当前惩罚率预览
+  const getPenaltyInfo = (stake: Stake) => {
+    if (stake.stake_type === 'B') {
+      return { rate: 3, text: '3% 手续费' };
+    }
+    // 积分质押：使用后端返回的惩罚预览或计算默认值
+    if (stake.early_penalty) {
+      const penalty = parseFloat(stake.early_penalty);
+      const rate = (penalty / parseFloat(stake.amount)) * 100;
+      return { rate, text: `${rate.toFixed(1)}%` };
+    }
+    // 默认按锁定期查表
+    const period = LOCK_PERIODS.find(p => p.days === stake.lock_days);
+    return { rate: period?.penalty.early || 40, text: `${period?.penalty.early || 40}%` };
+  };
+
+  // 判断是否可解押（现在积分质押也有锁定期）
   const canUnstake = (stake: Stake) => {
-    if (stake.stake_type === 'A') return true;
+    // 所有类型都可以解押，只是惩罚不同
+    return true;
+  };
+
+  // 判断是否已到期
+  const isMatured = (stake: Stake) => {
     return new Date(stake.unlocks_at) <= new Date();
   };
 
   const getUnlockProgress = (stake: Stake) => {
-    if (stake.stake_type === 'A') return 100;
     const start = new Date(stake.created_at).getTime();
     const end = new Date(stake.unlocks_at).getTime();
     const now = Date.now();
@@ -147,7 +217,7 @@ export default function StakingPage() {
       await gamefiApi.stake({
         type: stakeType,
         amount: stakeAmount,
-        lockDays: stakeType === 'A' ? 0 : lockDays,
+        lockDays: lockDays, // 积分和代币质押都需要锁定期
       });
       setStakeAmount('');
       fetchData();
@@ -204,6 +274,15 @@ export default function StakingPage() {
   const totalWeight = activeStakes.reduce((sum, s) => sum + parseFloat(s.amount) * parseFloat(s.weight), 0);
   const totalClaimable = activeStakes.reduce((sum, s) => sum + parseFloat(s.claimable_reward || '0'), 0);
 
+  // 释放进度统计
+  const vestingProgress = () => {
+    const vesting = parseFloat(totalVesting);
+    const released = parseFloat(totalReleased);
+    if (vesting === 0 && released === 0) return 0;
+    return Math.round((released / (vesting + released)) * 100);
+  };
+  const dailyReleaseTotal = vestingOrders.reduce((sum, order) => sum + parseFloat(order.dailyRelease), 0);
+
   // ========== 加载状态 ==========
   if (loading) {
     return (
@@ -256,8 +335,8 @@ export default function StakingPage() {
               <p className="text-lg font-bold font-mono text-white">{totalTokenStaked.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-text-tertiary text-xs mb-1">待领分红</p>
-              <p className="text-lg font-bold font-mono text-warning">${totalClaimable.toFixed(2)}</p>
+              <p className="text-text-tertiary text-xs mb-1">待释放代币</p>
+              <p className="text-lg font-bold font-mono text-warning">{parseFloat(totalVesting).toLocaleString()} QFI</p>
             </div>
           </div>
         </div>
@@ -274,7 +353,7 @@ export default function StakingPage() {
                 : 'text-text-secondary'
             }`}
           >
-            代币质押 · 最高3.0x
+            代币质押 · QFI
           </button>
           <button
             onClick={() => setStakeType('A')}
@@ -284,7 +363,7 @@ export default function StakingPage() {
                 : 'text-text-secondary'
             }`}
           >
-            积分质押 · 1.0x
+            积分质押 · 1000:1
           </button>
         </div>
       </div>
@@ -319,52 +398,77 @@ export default function StakingPage() {
           </div>
         </div>
 
-        {/* 锁定期选择（仅代币质押） */}
-        {stakeType === 'B' && (
-          <div className="bg-bg-secondary rounded-xl p-4">
-            <p className="text-text-tertiary text-sm mb-3">锁定期</p>
-            <div className="grid grid-cols-4 gap-2">
-              {LOCK_PERIODS.map((period) => (
-                <button
-                  key={period.days}
-                  onClick={() => setLockDays(period.days)}
-                  className={`py-2 rounded-lg text-center transition-all ${
-                    lockDays === period.days
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-bg-tertiary text-text-secondary'
-                  }`}
-                >
-                  <p className="text-xs">{period.days}天</p>
-                  <p className="font-semibold">{period.weight}x</p>
-                </button>
-              ))}
-            </div>
+        {/* 锁定期选择（积分和代币质押通用） */}
+        <div className="bg-bg-secondary rounded-xl p-4">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-text-tertiary text-sm">锁定期</span>
+            {stakeType === 'A' && (
+              <span className="text-text-tertiary text-xs">
+                到期惩罚 {LOCK_PERIODS.find(p => p.days === lockDays)?.penalty.mature || 10}%
+              </span>
+            )}
           </div>
-        )}
+          <div className="grid grid-cols-4 gap-2">
+            {LOCK_PERIODS.map((period) => (
+              <button
+                key={period.days}
+                onClick={() => setLockDays(period.days)}
+                className={`py-2 rounded-lg text-center transition-all ${
+                  lockDays === period.days
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-bg-tertiary text-text-secondary'
+                }`}
+              >
+                <p className="text-xs">{period.days}天</p>
+                <p className="font-semibold">{period.weight}x</p>
+                {stakeType === 'A' && (
+                  <p className="text-[10px] text-success/80 mt-0.5">
+                    到期{period.penalty.mature}%
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* 权重预览 */}
         {stakeAmount && parseFloat(stakeAmount) > 0 && (
-          <div className="bg-bg-secondary rounded-xl p-4 flex justify-between items-center">
-            <span className="text-text-secondary text-sm">获得权重</span>
-            <span className="text-brand-primary font-bold text-lg">
-              +{(parseFloat(stakeAmount) * getWeight(stakeType, lockDays)).toFixed(2)}
-            </span>
+          <div className="bg-bg-secondary rounded-xl p-4">
+            <div className="flex justify-between items-center">
+              <span className="text-text-secondary text-sm">获得权重</span>
+              <span className="text-brand-primary font-bold text-lg">
+                +{getNormalizedWeight(stakeType, stakeAmount, lockDays).toFixed(2)}
+              </span>
+            </div>
+            {stakeType === 'A' && (
+              <p className="text-text-tertiary text-xs mt-2">
+                {parseFloat(stakeAmount).toLocaleString()} 积分 ÷ 1000 × {getWeight(stakeType, lockDays)}x = {getNormalizedWeight(stakeType, stakeAmount, lockDays).toFixed(2)}
+              </p>
+            )}
           </div>
         )}
 
-        {/* 风险提示 - 简化 */}
-        <div className={`rounded-xl p-3 flex items-center gap-2 ${
-          stakeType === 'A' ? 'bg-danger/10' : 'bg-warning/10'
+        {/* 风险提示 */}
+        <div className={`rounded-xl p-3 ${
+          stakeType === 'A' ? 'bg-warning/10' : 'bg-brand-primary/10'
         }`}>
-          <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${
-            stakeType === 'A' ? 'text-danger' : 'text-warning'
-          }`} />
-          <p className="text-text-secondary text-xs">
-            {stakeType === 'A'
-              ? '解押将扣除 50% 积分'
-              : `锁定 ${lockDays} 天，提前解押扣收益+3%手续费`
-            }
-          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${
+              stakeType === 'A' ? 'text-warning' : 'text-brand-primary'
+            }`} />
+            <span className="text-text-secondary text-xs font-medium">解押规则</span>
+          </div>
+          {stakeType === 'A' ? (
+            <div className="text-text-tertiary text-xs space-y-1 ml-6">
+              <p>• 提前解押：惩罚 {LOCK_PERIODS.find(p => p.days === lockDays)?.penalty.early || 40}%</p>
+              <p>• 到期解押：惩罚 {LOCK_PERIODS.find(p => p.days === lockDays)?.penalty.mature || 10}%</p>
+              <p className="text-success">• 365 天锁定到期免惩罚</p>
+            </div>
+          ) : (
+            <p className="text-text-tertiary text-xs ml-6">
+              锁定 {lockDays} 天，解押扣除 3% 手续费
+            </p>
+          )}
         </div>
 
         {/* 确认按钮 */}
@@ -394,14 +498,13 @@ export default function StakingPage() {
         ) : (
           <div className="space-y-px">
             {activeStakes.map((stake) => {
-              const isUnlocked = canUnstake(stake);
-              const progress = getUnlockProgress(stake);
+              const matured = isMatured(stake);
               const remaining = getRemainingDays(stake);
 
               return (
                 <div
                   key={stake.id}
-                  className="bg-bg-secondary px-4 py-3 flex items-center justify-between"
+                  className="bg-bg-secondary px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-bg-tertiary/50 transition-colors"
                   onClick={() => handleUnstake(stake)}
                 >
                   <div className="flex items-center gap-3">
@@ -419,10 +522,10 @@ export default function StakingPage() {
                         {formatCurrency(stake.amount)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
                       </p>
                       <p className="text-text-tertiary text-xs">
-                        {parseFloat(stake.weight).toFixed(1)}x ·
-                        {stake.stake_type === 'B' && !isUnlocked
-                          ? ` 剩余 ${remaining} 天`
-                          : ' 可赎回'
+                        {parseFloat(stake.weight).toFixed(1)}x · {stake.lock_days}天 ·
+                        {matured
+                          ? <span className="text-success"> 已到期</span>
+                          : ` 剩余 ${remaining} 天`
                         }
                       </p>
                     </div>
@@ -442,6 +545,154 @@ export default function StakingPage() {
           </div>
         )}
       </div>
+
+      {/* ========== 分红记录模块 ========== */}
+      {(parseFloat(totalVesting) > 0 || parseFloat(totalReleased) > 0 || vestingOrders.length > 0) && (
+        <div className="mt-6">
+          <div className="px-4 flex items-center justify-between mb-3">
+            <h3 className="text-white font-medium">分红记录</h3>
+            <span className="text-text-tertiary text-sm">{vestingOrders.length} 笔</span>
+          </div>
+
+          {/* 分红订单列表 - 显示每周分红明细 */}
+          {vestingOrders.length > 0 ? (
+            <div className="space-y-px">
+              {vestingOrders.map((order) => {
+                const daysRemaining = Math.ceil(
+                  (new Date(order.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                );
+                const isCompleted = order.progress >= 100;
+                const isDividend = order.orderType === 'dividend';
+
+                // 分红订单：QFI 是 30%，反推 USDT 部分（70%）
+                // USDT = QFI数量 × QFI价格 / 0.3 × 0.7
+                // 假设 QFI 价格 $0.50
+                const qfiPrice = 0.5;
+                const qfiAmount = parseFloat(order.totalAmount);
+                const usdtAmount = isDividend ? (qfiAmount * qfiPrice / 0.3 * 0.7) : 0;
+
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-bg-secondary px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium text-sm">
+                          #{order.id.slice(0, 8)}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            isDividend
+                              ? 'bg-brand-primary/20 text-brand-primary'
+                              : 'bg-bg-tertiary text-text-secondary'
+                          }`}
+                        >
+                          {isDividend ? '周分红' : '积分兑换'}
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          isCompleted
+                            ? 'bg-success/20 text-success'
+                            : 'bg-brand-primary/20 text-brand-primary'
+                        }`}
+                      >
+                        {isCompleted ? '已完成' : '释放中'}
+                      </span>
+                    </div>
+
+                    {/* 分红明细：周分红显示 USDT(已到账) + QFI(释放中) */}
+                    {isDividend ? (
+                      <>
+                        {/* 分红双列：USDT 已到账 + QFI 释放中 */}
+                        <div className="grid grid-cols-2 gap-3 mb-2">
+                          <div className="bg-success/10 rounded-lg p-2">
+                            <p className="text-success font-bold text-base">
+                              ${usdtAmount.toFixed(2)}
+                            </p>
+                            <p className="text-text-tertiary text-[10px]">USDT 已到账 (70%)</p>
+                          </div>
+                          <div className="bg-brand-primary/10 rounded-lg p-2">
+                            <p className="text-brand-primary font-bold text-base">
+                              {qfiAmount.toFixed(2)} QFI
+                            </p>
+                            <p className="text-text-tertiary text-[10px]">代币释放中 (30%)</p>
+                          </div>
+                        </div>
+                        {/* QFI 释放进度 */}
+                        <div className="bg-bg-tertiary/50 rounded-lg p-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-text-tertiary text-xs">代币释放进度</span>
+                            <span className="text-brand-primary text-xs font-medium">{order.progress}%</span>
+                          </div>
+                          <div className="w-full bg-bg-tertiary rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full transition-all ${
+                                isCompleted ? 'bg-success' : 'bg-brand-primary'
+                              }`}
+                              style={{ width: `${order.progress}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-text-tertiary mt-1">
+                            <span>已释放 {parseFloat(order.releasedAmount).toFixed(2)} | 待释放 {parseFloat(order.remainingAmount).toFixed(2)}</span>
+                            {!isCompleted && daysRemaining > 0 && (
+                              <span>剩余 {daysRemaining} 天</span>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* 积分兑换订单：只显示代币释放 */}
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          <div>
+                            <p className="text-white font-semibold text-sm">
+                              {parseFloat(order.totalAmount).toFixed(2)}
+                            </p>
+                            <p className="text-text-tertiary text-[10px]">代币总量</p>
+                          </div>
+                          <div>
+                            <p className="text-success font-semibold text-sm">
+                              {parseFloat(order.releasedAmount).toFixed(2)}
+                            </p>
+                            <p className="text-text-tertiary text-[10px]">已释放</p>
+                          </div>
+                          <div>
+                            <p className="text-warning font-semibold text-sm">
+                              {parseFloat(order.remainingAmount).toFixed(2)}
+                            </p>
+                            <p className="text-text-tertiary text-[10px]">待释放</p>
+                          </div>
+                        </div>
+                        {/* 代币释放进度条 */}
+                        <div className="w-full bg-bg-tertiary rounded-full h-1.5 mb-2">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${
+                              isCompleted ? 'bg-success' : 'bg-brand-primary'
+                            }`}
+                            style={{ width: `${order.progress}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-xs text-text-tertiary">
+                          <span>每日释放 {parseFloat(order.dailyRelease).toFixed(4)} QFI</span>
+                          {!isCompleted && daysRemaining > 0 && (
+                            <span>剩余 {daysRemaining} 天</span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mx-4 py-8 text-center">
+              <p className="text-text-tertiary text-sm">暂无分红记录</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ========== 历史记录 ========== */}
       {stakes.filter(s => s.status !== 'active').length > 0 && (
@@ -487,47 +738,84 @@ export default function StakingPage() {
         onClose={() => setUnstakeDialog({ open: false, stake: null })}
         title="确认解押"
       >
-        {unstakeDialog.stake && (
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex justify-between py-2 border-b border-border-primary">
-                <span className="text-text-secondary">质押金额</span>
-                <span className="text-white font-medium">
-                  {formatCurrency(unstakeDialog.stake.amount)} {unstakeDialog.stake.stake_type === 'A' ? '积分' : 'QFI'}
-                </span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-border-primary">
-                <span className="text-text-secondary">累计分红</span>
-                <span className="text-success font-medium">
-                  +${parseFloat(unstakeDialog.stake.accumulated_reward).toFixed(2)}
-                </span>
-              </div>
-            </div>
+        {unstakeDialog.stake && (() => {
+          const stake = unstakeDialog.stake;
+          const penaltyInfo = getPenaltyInfo(stake);
+          const amount = parseFloat(stake.amount);
+          const isMatured = new Date(stake.unlocks_at) <= new Date();
+          const period = LOCK_PERIODS.find(p => p.days === stake.lock_days);
 
-            <div className={`p-3 rounded-xl ${
-              unstakeDialog.stake.stake_type === 'A' ? 'bg-danger/10' : 'bg-warning/10'
-            }`}>
-              <p className={`text-sm ${
-                unstakeDialog.stake.stake_type === 'A' ? 'text-danger' : 'text-warning'
+          // 计算惩罚和返还金额
+          let penaltyAmount: number;
+          let returnAmount: number;
+
+          if (stake.stake_type === 'A') {
+            // 积分质押：使用后端返回的预览或计算
+            if (stake.early_penalty && stake.return_preview) {
+              penaltyAmount = parseFloat(stake.early_penalty);
+              returnAmount = parseFloat(stake.return_preview);
+            } else {
+              const rate = isMatured ? (period?.penalty.mature || 10) : (period?.penalty.early || 40);
+              penaltyAmount = amount * rate / 100;
+              returnAmount = amount - penaltyAmount;
+            }
+          } else {
+            // 代币质押：固定 3%
+            penaltyAmount = amount * 0.03;
+            returnAmount = amount * 0.97;
+          }
+
+          return (
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex justify-between py-2 border-b border-border-primary">
+                  <span className="text-text-secondary">质押金额</span>
+                  <span className="text-white font-medium">
+                    {formatCurrency(stake.amount)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border-primary">
+                  <span className="text-text-secondary">锁定期</span>
+                  <span className="text-white font-medium">
+                    {stake.lock_days} 天 {isMatured ? '(已到期)' : `(剩余 ${getRemainingDays(stake)} 天)`}
+                  </span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-border-primary">
+                  <span className="text-text-secondary">累计分红</span>
+                  <span className="text-success font-medium">
+                    +${parseFloat(stake.accumulated_reward).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div className={`p-3 rounded-xl ${
+                stake.stake_type === 'A' ? 'bg-warning/10' : 'bg-brand-primary/10'
               }`}>
-                {unstakeDialog.stake.stake_type === 'A'
-                  ? `解押将扣除 50% 本金（${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分销毁）`
-                  : `扣除累计收益 + 3% 手续费`
-                }
-              </p>
-            </div>
+                {stake.stake_type === 'A' ? (
+                  <div className="space-y-2">
+                    <p className="text-warning text-sm font-medium">
+                      {isMatured ? '到期解押' : '提前解押'}惩罚：{penaltyInfo.text}
+                    </p>
+                    <p className="text-text-tertiary text-xs">
+                      惩罚金额：{penaltyAmount.toFixed(2)} 积分（销毁）
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-brand-primary text-sm">
+                    扣除 3% 手续费：{penaltyAmount.toFixed(2)} QFI
+                  </p>
+                )}
+              </div>
 
-            <div className="flex justify-between items-center pt-2">
-              <span className="text-text-secondary">预计返还</span>
-              <span className="text-white font-bold text-xl">
-                {unstakeDialog.stake.stake_type === 'A'
-                  ? `${(parseFloat(unstakeDialog.stake.amount) * 0.5).toFixed(2)} 积分`
-                  : `${(parseFloat(unstakeDialog.stake.amount) * 0.97).toFixed(2)} QFI`
-                }
-              </span>
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-text-secondary">预计返还</span>
+                <span className="text-white font-bold text-xl">
+                  {returnAmount.toFixed(2)} {stake.stake_type === 'A' ? '积分' : 'QFI'}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         <DialogFooter>
           <Button
             variant="ghost"

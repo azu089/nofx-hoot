@@ -37,7 +37,7 @@ export default function TgAccountPage() {
     VIP3: { label: 'VIP 3', color: 'text-brand-primary', desc: '铂金会员' },
   };
 
-  const level = memberLevelInfo[user?.memberLevel as keyof typeof memberLevelInfo] || memberLevelInfo.VIP0;
+  const level = memberLevelInfo[(user as any)?.memberLevel as keyof typeof memberLevelInfo] || memberLevelInfo.VIP0;
 
   return (
     <div className="space-y-4 pb-24">

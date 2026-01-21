@@ -260,6 +260,10 @@ export const authApi = {
 
   clearAllDevices: () =>
     api.post<never, ApiResponse<void>>('/auth/devices/clear'),
+
+  // 修改密码
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.post<never, ApiResponse<void>>('/auth/password/change', data),
 };
 
 // User API
@@ -370,6 +374,57 @@ export const userApi = {
       publishedAt: string | null;
       createdAt: string;
     }>>>('/announcements'),
+
+  // ==================== 新手任务 ====================
+
+  // 获取新手任务列表
+  getOnboardingTasks: () =>
+    api.get<never, ApiResponse<{
+      tasks: Array<{
+        id: string;
+        title: string;
+        points: number;
+        completed: boolean;
+        completedAt: string | null;
+      }>;
+      totalPoints: number;
+      earnedPoints: number;
+      completedCount: number;
+      totalCount: number;
+    }>>('/telegram/onboarding/tasks'),
+
+  // 完成新手任务
+  completeOnboardingTask: (taskId: string) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      message: string;
+      alreadyCompleted: boolean;
+      pointsEarned: string;
+    }>>(`/telegram/onboarding/tasks/${taskId}/complete`),
+
+  // 获取返佣历史记录
+  getCommissionHistory: (params?: { page?: number; limit?: number }) =>
+    api.get<never, ApiResponse<{
+      items: Array<{
+        id: string;
+        amount: string;
+        type: string;
+        sourceUserId: string;
+        sourceUserEmail: string;
+        level: number;
+        description: string;
+        createdAt: string;
+      }>;
+      total: number;
+    }>>('/users/referral/commissions', { params }),
+
+  // 获取返佣统计
+  getCommissionStats: () =>
+    api.get<never, ApiResponse<{
+      totalCommission: string;
+      thisMonthCommission: string;
+      pendingCommission: string;
+    }>>('/users/referral/commission-stats'),
 };
 
 // Instances API
@@ -1196,6 +1251,22 @@ export const ecosystemApi = {
         nextReleaseDate: string | null;
       };
     }>>('/gamefi/overview'),
+
+  // 签到
+  getCheckinStatus: () =>
+    api.get<never, ApiResponse<{
+      checkedToday: boolean;
+      streak: number;
+      totalPoints: number;
+      weekDays: boolean[];
+    }>>('/gamefi/checkin/status'),
+
+  checkin: () =>
+    api.post<never, ApiResponse<{
+      points: number;
+      streak: number;
+      totalPoints: number;
+    }>>('/gamefi/checkin'),
 
   // 积分
   getPointsBalance: () =>

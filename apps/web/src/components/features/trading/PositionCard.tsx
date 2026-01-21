@@ -91,6 +91,7 @@ export function PositionCard({ position, disabled, zebra }: PositionCardProps) {
   const [insight, setInsight] = useState<TradeInsight | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightExpanded, setInsightExpanded] = useState(false);
+  const [insightError, setInsightError] = useState(false);
 
   // 计算盈亏
   const currentRate = position.current_rate || position.open_rate;
@@ -137,7 +138,13 @@ export function PositionCard({ position, disabled, zebra }: PositionCardProps) {
       return;
     }
 
+    if (insightError) {
+      setInsightExpanded(!insightExpanded);
+      return;
+    }
+
     setInsightLoading(true);
+    setInsightError(false);
 
     try {
       const res = await aiApi.interpretTrade({
@@ -151,20 +158,8 @@ export function PositionCard({ position, disabled, zebra }: PositionCardProps) {
       setInsight(res.data);
       setInsightExpanded(true);
     } catch {
-      // 如果 API 不存在，使用模拟数据
-      const baseCoin = position.pair.split('/')[0];
-      const mockInsight: TradeInsight = {
-        trigger: `RSI 指标触发${isProfit ? '超卖' : '超买'}信号（RSI ${isProfit ? '< 30' : '> 70'}），${position.pair} 价格${isProfit ? '处于支撑位' : '接近阻力位'}附近`,
-        trend: isProfit
-          ? '市场趋势符合策略预期，价格按计划方向运行，当前处于盈利状态'
-          : '市场出现短期反向波动，价格偏离预期区间，建议关注止损位',
-        action: `以 $${formatPrice(position.open_rate)} 市价买入 ${position.amount.toFixed(4)} ${baseCoin}`,
-        explanation: isProfit
-          ? `该持仓基于技术指标精准捕捉做多机会，当前浮盈 $${Math.abs(unrealizedPnl).toFixed(2)}。策略在 ${position.pair} ${isProfit ? '超卖区间' : '超买区间'}触发信号，市场趋势符合预期，建议继续持有并关注止盈位。`
-          : `该持仓当前浮亏 $${Math.abs(unrealizedPnl).toFixed(2)}，主要由短期市场波动导致。策略逻辑基于${position.pair}技术指标，当前价格仍在止损范围内，建议继续观察市场走势，避免恐慌性平仓。`,
-        sentiment: isProfit ? 'bullish' : (unrealizedPnl < -10 ? 'bearish' : 'neutral'),
-      };
-      setInsight(mockInsight);
+      // API 失败时设置错误状态，显示友好提示
+      setInsightError(true);
       setInsightExpanded(true);
     } finally {
       setInsightLoading(false);
@@ -290,58 +285,69 @@ export function PositionCard({ position, disabled, zebra }: PositionCardProps) {
       )}
 
       {/* AI 解读内容 - 独立区域 */}
-      {insightExpanded && insight && (
+      {insightExpanded && (
         <div className="px-4 pb-3 pt-2.5">
-          <div className="p-3 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl lg:border lg:border-brand-primary/20 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
-            {/* 人话解读 - 最重要 - 移动端无边框 */}
-            <div className={`p-2.5 rounded-lg ${isProfit ? 'bg-success/10 lg:border lg:border-success/20' : 'bg-danger/10 lg:border lg:border-danger/20'}`}>
-              <div className="flex items-start gap-2.5">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isProfit ? 'bg-success/20' : 'bg-danger/20'}`}>
-                  {isProfit ? (
-                    <TrendingUp className="w-3.5 h-3.5 text-success" />
-                  ) : (
-                    <TrendingDown className="w-3.5 h-3.5 text-danger" />
-                  )}
+          {insightError ? (
+            // API 失败时显示错误提示
+            <div className="p-4 bg-bg-tertiary/50 rounded-xl border border-border-primary animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2.5 text-text-tertiary">
+                <Sparkles className="w-4 h-4 flex-shrink-0" />
+                <p className="text-sm">AI 解读暂时不可用，请稍后再试</p>
+              </div>
+            </div>
+          ) : insight ? (
+            // 成功时显示解读内容
+            <div className="p-3 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 rounded-xl lg:border lg:border-brand-primary/20 space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+              {/* 人话解读 - 最重要 - 移动端无边框 */}
+              <div className={`p-2.5 rounded-lg ${isProfit ? 'bg-success/10 lg:border lg:border-success/20' : 'bg-danger/10 lg:border lg:border-danger/20'}`}>
+                <div className="flex items-start gap-2.5">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isProfit ? 'bg-success/20' : 'bg-danger/20'}`}>
+                    {isProfit ? (
+                      <TrendingUp className="w-3.5 h-3.5 text-success" />
+                    ) : (
+                      <TrendingDown className="w-3.5 h-3.5 text-danger" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white mb-0.5">💡 智能投顾解读</p>
+                    <p className={`text-sm leading-snug ${isProfit ? 'text-success' : 'text-danger'}`}>
+                      {insight.explanation}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white mb-0.5">💡 智能投顾解读</p>
-                  <p className={`text-sm leading-snug ${isProfit ? 'text-success' : 'text-danger'}`}>
-                    {insight.explanation}
-                  </p>
+              </div>
+
+              {/* 技术详情 */}
+              <div className="space-y-1.5 text-sm">
+                {/* 触发条件 */}
+                <div className="flex items-start gap-2">
+                  <Activity className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-tertiary text-xs mb-0.5">触发信号</p>
+                    <p className="text-text-secondary text-sm leading-snug">{insight.trigger}</p>
+                  </div>
+                </div>
+
+                {/* 趋势判断 */}
+                <div className="flex items-start gap-2">
+                  <Zap className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-tertiary text-xs mb-0.5">趋势分析</p>
+                    <p className="text-text-secondary text-sm leading-snug">{insight.trend}</p>
+                  </div>
+                </div>
+
+                {/* 执行动作 */}
+                <div className="flex items-start gap-2">
+                  <Target className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-tertiary text-xs mb-0.5">执行操作</p>
+                    <p className="text-text-secondary text-sm leading-snug">{insight.action}</p>
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* 技术详情 */}
-            <div className="space-y-1.5 text-sm">
-              {/* 触发条件 */}
-              <div className="flex items-start gap-2">
-                <Activity className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-text-tertiary text-xs mb-0.5">触发信号</p>
-                  <p className="text-text-secondary text-sm leading-snug">{insight.trigger}</p>
-                </div>
-              </div>
-
-              {/* 趋势判断 */}
-              <div className="flex items-start gap-2">
-                <Zap className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-text-tertiary text-xs mb-0.5">趋势分析</p>
-                  <p className="text-text-secondary text-sm leading-snug">{insight.trend}</p>
-                </div>
-              </div>
-
-              {/* 执行动作 */}
-              <div className="flex items-start gap-2">
-                <Target className="w-3.5 h-3.5 text-brand-primary flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-text-tertiary text-xs mb-0.5">执行操作</p>
-                  <p className="text-text-secondary text-sm leading-snug">{insight.action}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          ) : null}
         </div>
       )}
     </div>

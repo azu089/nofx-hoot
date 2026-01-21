@@ -578,12 +578,12 @@ export class AdminEnhancedService {
       data: {
         content_key: dto.contentKey,
         content_type: dto.contentType,
-        title: dto.title,
+        title: dto.title || dto.contentKey,
         content: dto.content,
         locale: dto.locale || 'zh-CN',
         sort_order: dto.sortOrder || 0,
         metadata: dto.metadata,
-        updated_by: adminId,
+        updated_by: adminId || undefined,
       },
     });
   }

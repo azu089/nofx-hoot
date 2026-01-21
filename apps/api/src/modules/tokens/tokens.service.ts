@@ -241,9 +241,14 @@ export class TokensService {
         return;
       }
 
-      // 计算每日释放量：80% 代币 / 90 天
+      // 计算每日释放量
       const tokensTotal = new Decimal(order.tokens_total);
-      const vestingAmount = tokensTotal.mul(new Decimal(0.8)); // 80% 待释放
+
+      // 根据订单类型决定释放比例
+      // - exchange（兑换订单）：20% 立即到账 + 80% 释放 → vestingAmount = 80%
+      // - dividend（分红订单）：100% 全部释放 → vestingAmount = 100%
+      const vestingRatio = order.order_type === 'dividend' ? 1.0 : 0.8;
+      const vestingAmount = tokensTotal.mul(new Decimal(vestingRatio));
       const dailyRelease = vestingAmount.div(this.STANDARD_VESTING_DAYS);
 
       // 如果待释放余额小于每日释放量，则释放全部

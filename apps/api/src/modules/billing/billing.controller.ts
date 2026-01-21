@@ -110,6 +110,23 @@ export class BillingController {
   }
 
   /**
+   * 获取账单统计
+   */
+  @Get('stats')
+  @ApiOperation({ summary: '获取账单统计' })
+  @ApiResponse({
+    status: 200,
+    description: '成功获取账单统计',
+  })
+  async getStats(@CurrentUser('sub') userId: string) {
+    return {
+      code: 0,
+      message: 'success',
+      data: await this.billingService.getStats(userId),
+    };
+  }
+
+  /**
    * 获取计费日志
    */
   @Get('logs')

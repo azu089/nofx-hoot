@@ -11,7 +11,6 @@ import {
   Info,
   ChevronRight,
   Ban,
-  Gift,
 } from 'lucide-react';
 import { MobileHeader } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -26,17 +25,6 @@ export default function SettingsPage() {
 
   // 设置项分组
   const settingsGroups = [
-    {
-      title: '每日福利',
-      items: [
-        {
-          icon: Gift,
-          label: '每日签到',
-          desc: '签到得积分，抵扣 VIP 订阅费',
-          path: '/settings/checkin',
-        },
-      ],
-    },
     {
       title: '账户与安全',
       items: [

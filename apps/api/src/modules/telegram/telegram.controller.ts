@@ -21,6 +21,8 @@ import {
 } from '@nestjs/swagger';
 import { TelegramService } from './telegram.service';
 import { TelegramApiService } from './telegram-api.service';
+import { TelegramNotificationService, NotificationSettings } from './telegram-notification.service';
+import { TelegramBotService } from './telegram-bot.service';
 import {
   TelegramAuthDto,
   LinkTelegramDto,
@@ -46,6 +48,8 @@ export class TelegramController {
   constructor(
     private readonly telegramService: TelegramService,
     private readonly telegramApiService: TelegramApiService,
+    private readonly notificationService: TelegramNotificationService,
+    private readonly botService: TelegramBotService,
   ) {}
 
   // ==================== 认证相关 ====================
@@ -370,5 +374,90 @@ export class TelegramController {
     @Body() dto: { email: string; password: string },
   ) {
     return this.telegramApiService.bindEmail(req.user.sub, dto.email, dto.password);
+  }
+
+  // ==================== 新手任务 ====================
+
+  @Get('onboarding/tasks')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取新手任务列表' })
+  @ApiResponse({
+    status: 200,
+    description: '任务列表',
+  })
+  async getOnboardingTasks(@Request() req: any) {
+    return this.telegramApiService.getOnboardingTasks(req.user.sub);
+  }
+
+  @Post('onboarding/tasks/:taskId/complete')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '完成新手任务' })
+  @ApiResponse({
+    status: 200,
+    description: '任务完成结果',
+  })
+  async completeOnboardingTask(
+    @Request() req: any,
+    @Param('taskId') taskId: string,
+  ) {
+    return this.telegramApiService.completeOnboardingTask(req.user.sub, taskId);
+  }
+
+  // ==================== 通知设置 API ====================
+
+  @Get('notification-settings')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取通知设置' })
+  @ApiResponse({
+    status: 200,
+    description: '通知设置',
+  })
+  async getNotificationSettings(@Request() req: any) {
+    return {
+      code: 0,
+      data: await this.notificationService.getNotificationSettings(req.user.sub),
+    };
+  }
+
+  @Post('notification-settings')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新通知设置' })
+  @ApiResponse({
+    status: 200,
+    description: '更新成功',
+  })
+  async updateNotificationSettings(
+    @Request() req: any,
+    @Body() settings: Partial<NotificationSettings>,
+  ) {
+    const updatedSettings = await this.notificationService.updateNotificationSettings(
+      req.user.sub,
+      settings,
+    );
+    return {
+      code: 0,
+      message: '设置已更新',
+      data: updatedSettings,
+    };
+  }
+
+  // ==================== Webhook（生产环境用）====================
+
+  @Post('webhook')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Telegram Bot Webhook' })
+  async handleWebhook(@Body() body: any) {
+    const bot = this.botService.getBotInstance();
+    if (bot) {
+      await bot.handleUpdate(body);
+    }
+    return { ok: true };
   }
 }

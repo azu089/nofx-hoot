@@ -6,8 +6,12 @@ import Decimal from 'decimal.js';
 
 /**
  * 返佣比例类型
+ * - subscription: 订阅费返佣（返积分给上级）
+ * - card_purchase: 点卡购买返佣（返积分给上级）
+ * - trade_points: 交易挖矿返佣（返积分给上级）
+ * - gas_fee: 燃油费返佣（返 USDT 给上级，从盈利抽成中分配）
  */
-export type ReferralRateType = 'subscription' | 'gas_fee' | 'card_purchase' | 'trade_points';
+export type ReferralRateType = 'subscription' | 'card_purchase' | 'trade_points' | 'gas_fee';
 
 /**
  * 返佣比例返回格式
@@ -274,12 +278,12 @@ export class ConfigsService {
       // 邀请返佣配置（普通用户）
       { key: 'referral.subscription_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '订阅费一级返佣比例', description: '被邀请人订阅时，一级邀请人获得积分比例', isPublic: false },
       { key: 'referral.subscription_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '订阅费二级返佣比例', description: '被邀请人订阅时，二级邀请人获得积分比例', isPublic: false },
-      { key: 'referral.gas_fee_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '燃油费一级返佣比例', description: '被邀请人产生燃油费时，一级邀请人获得积分比例', isPublic: false },
-      { key: 'referral.gas_fee_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '燃油费二级返佣比例', description: '被邀请人产生燃油费时，二级邀请人获得积分比例', isPublic: false },
       { key: 'referral.card_purchase_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '点卡购买一级返佣比例', description: '被邀请人购买点卡时，一级邀请人获得积分比例', isPublic: false },
       { key: 'referral.card_purchase_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '点卡购买二级返佣比例', description: '被邀请人购买点卡时，二级邀请人获得积分比例', isPublic: false },
       { key: 'referral.trade_points_l1_rate', value: 0.05, type: 'number', category: 'referral', label: '交易挖矿一级返佣比例', description: '被邀请人交易挖矿获得积分时，一级邀请人获得比例', isPublic: false },
       { key: 'referral.trade_points_l2_rate', value: 0.025, type: 'number', category: 'referral', label: '交易挖矿二级返佣比例', description: '被邀请人交易挖矿获得积分时，二级邀请人获得比例', isPublic: false },
+      { key: 'referral.gas_fee_l1_rate', value: 0.1, type: 'number', category: 'referral', label: '燃油费一级返佣比例', description: '被邀请人盈利扣燃油费时，一级邀请人获得 USDT 比例', isPublic: false },
+      { key: 'referral.gas_fee_l2_rate', value: 0.05, type: 'number', category: 'referral', label: '燃油费二级返佣比例', description: '被邀请人盈利扣燃油费时，二级邀请人获得 USDT 比例', isPublic: false },
 
       // 积分兑换配置
       { key: 'exchange.points_to_qfi_rate', value: 1000, type: 'number', category: 'exchange', label: '积分兑换QFI比例', description: '1000积分=1QFI', isPublic: true },
@@ -306,7 +310,7 @@ export class ConfigsService {
       await this.prisma.client.system_configs.create({
         data: {
           config_key: config.key,
-          config_value: config.value,
+          config_value: String(config.value),
           config_type: config.type,
           category: config.category,
           label: config.label,
@@ -336,9 +340,9 @@ export class ConfigsService {
    */
   private readonly DEFAULT_REFERRAL_RATES: Record<ReferralRateType, { l1: Decimal; l2: Decimal }> = {
     subscription: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
-    gas_fee: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
     card_purchase: { l1: new Decimal('0.10'), l2: new Decimal('0.05') },
     trade_points: { l1: new Decimal('0.05'), l2: new Decimal('0.025') },
+    gas_fee: { l1: new Decimal('0.10'), l2: new Decimal('0.05') }, // 燃油费返佣（USDT）
   };
 
   /**
@@ -349,10 +353,6 @@ export class ConfigsService {
       l1: 'referral.subscription_l1_rate',
       l2: 'referral.subscription_l2_rate',
     },
-    gas_fee: {
-      l1: 'referral.gas_fee_l1_rate',
-      l2: 'referral.gas_fee_l2_rate',
-    },
     card_purchase: {
       l1: 'referral.card_purchase_l1_rate',
       l2: 'referral.card_purchase_l2_rate',
@@ -361,13 +361,17 @@ export class ConfigsService {
       l1: 'referral.trade_points_l1_rate',
       l2: 'referral.trade_points_l2_rate',
     },
+    gas_fee: {
+      l1: 'referral.gas_fee_l1_rate',
+      l2: 'referral.gas_fee_l2_rate',
+    },
   };
 
   /**
    * 获取返佣比例（统一入口）
    * 从系统配置读取，如果配置不存在则使用默认值
    *
-   * @param type 返佣类型：subscription | gas_fee | card_purchase | trade_points
+   * @param type 返佣类型：subscription | card_purchase | trade_points
    * @returns 一级和二级返佣比例
    *
    * @example

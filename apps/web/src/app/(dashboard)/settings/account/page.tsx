@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { userApi } from '@/lib/api';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2, Check, Copy } from 'lucide-react';
 import { MobileHeader } from '@/components/ui';
 
 interface UserProfile {
@@ -19,6 +20,7 @@ interface UserProfile {
  */
 export default function AccountInfoPage() {
   const router = useRouter();
+  const [copied, setCopied] = useState(false);
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['user', 'profile'],
@@ -26,6 +28,34 @@ export default function AccountInfoPage() {
   });
 
   const profile = profileData?.data as UserProfile | undefined;
+
+  // 生成短ID（取UUID前8位）
+  const getShortId = (id: string) => {
+    // UUID格式: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    // 取前8位作为短ID
+    return id.split('-')[0].toUpperCase();
+  };
+
+  // 复制短ID到剪贴板（用于 Bot 绑定等场景）
+  const copyUserId = async () => {
+    if (!profile?.id) return;
+    const shortId = getShortId(profile.id);
+    try {
+      await navigator.clipboard.writeText(shortId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // 降级方案：创建临时input元素
+      const input = document.createElement('input');
+      input.value = shortId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('zh-CN', {
@@ -45,13 +75,12 @@ export default function AccountInfoPage() {
     return names[level] || `VIP ${level}`;
   };
 
-  // 账户信息列表
+  // 账户信息列表（不包含用户ID，单独处理）
   const accountItems = profile
     ? [
         { label: '邮箱', value: profile.email, action: '修改' },
         { label: '会员等级', value: getVipLevelName(profile.vip_level), action: '升级' },
         { label: '注册时间', value: formatDate(profile.created_at) },
-        { label: '用户 ID', value: profile.id, isMono: true, action: '复制' },
       ]
     : [];
 
@@ -89,11 +118,7 @@ export default function AccountInfoPage() {
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-text-tertiary mb-1">{item.label}</p>
-                  <p
-                    className={`text-sm text-text-primary font-medium ${
-                      item.isMono ? 'font-mono truncate' : ''
-                    }`}
-                  >
+                  <p className="text-sm text-text-primary font-medium">
                     {item.value}
                   </p>
                 </div>
@@ -104,6 +129,34 @@ export default function AccountInfoPage() {
                 )}
               </div>
             ))}
+            {/* 用户ID - 单独处理，支持复制 */}
+            <div className="px-4 py-4 flex items-center justify-between bg-bg-secondary">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-text-tertiary mb-1">用户 ID</p>
+                <p className="text-sm text-text-primary font-medium font-mono">
+                  {getShortId(profile.id)}
+                </p>
+                <p className="text-xs text-text-tertiary mt-1 font-mono truncate">
+                  {profile.id}
+                </p>
+              </div>
+              <button
+                onClick={copyUserId}
+                className="flex items-center gap-1 text-brand-primary text-sm ml-4 flex-shrink-0 active:scale-95 transition-transform"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    已复制
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    复制
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="p-12 text-center">
@@ -157,12 +210,28 @@ export default function AccountInfoPage() {
               <div className="p-4 flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-text-tertiary mb-1">用户 ID</p>
-                  <p className="text-text-secondary font-mono text-sm truncate">
+                  <p className="text-text-primary font-mono text-base font-medium">
+                    {getShortId(profile.id)}
+                  </p>
+                  <p className="text-text-tertiary font-mono text-xs mt-1 truncate">
                     {profile.id}
                   </p>
                 </div>
-                <button className="text-text-tertiary text-sm hover:text-text-secondary ml-4">
-                  复制
+                <button
+                  onClick={copyUserId}
+                  className="flex items-center gap-1 text-brand-primary text-sm hover:underline ml-4 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      已复制
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      复制
+                    </>
+                  )}
                 </button>
               </div>
             </div>

@@ -759,7 +759,7 @@ export class StrategiesService {
           uploader_id: userId,
         },
         include: {
-          strategies: {
+          strategy: {
             select: {
               id: true,
               name: true,
@@ -800,10 +800,10 @@ export class StrategiesService {
       if (!revenueByStrategyMap.has(log.strategy_id)) {
         revenueByStrategyMap.set(log.strategy_id, {
           strategyId: log.strategy_id,
-          strategyName: log.strategies.name,
+          strategyName: log.strategy.name,
           revenue: new Decimal(0),
           users: new Set<string>(),
-          tier: log.strategies.tier || 'bronze',
+          tier: log.strategy.tier || 'bronze',
         });
       }
 
@@ -857,12 +857,12 @@ export class StrategiesService {
       this.prisma.client.strategy_revenue_logs.findMany({
         where,
         include: {
-          strategies: {
+          strategy: {
             select: {
               name: true,
             },
           },
-          users_strategy_revenue_logs_user_idTousers: {
+          user: {
             select: {
               email: true,
             },
@@ -880,8 +880,8 @@ export class StrategiesService {
     return {
       logs: logs.map((log) => ({
         id: log.id,
-        strategyName: log.strategies.name,
-        userName: log.users_strategy_revenue_logs_user_idTousers.email.replace(/(.{2}).*(@.*)/, '$1***$2'), // 脱敏
+        strategyName: log.strategy.name,
+        userName: log.user.email.replace(/(.{2}).*(@.*)/, '$1***$2'), // 脱敏
         baseAmount: log.base_amount.toString(),
         revenueAmount: log.revenue_amount.toString(),
         revenueShareRate: log.revenue_share_rate.toString(),
