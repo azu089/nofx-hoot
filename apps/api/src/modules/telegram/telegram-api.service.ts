@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConfigsService } from '../configs/configs.service';
 import {
   TelegramDashboardDto,
   TelegramStrategiesResponseDto,
@@ -23,6 +24,7 @@ export class TelegramApiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly configsService: ConfigsService,
   ) {
     this.telegramBotUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'QuantFiBot';
     this.webAppUrl = this.configService.get<string>('WEB_APP_URL') || 'https://quantfi.app';
@@ -188,12 +190,16 @@ export class TelegramApiService {
       throw new NotFoundException('钱包不存在');
     }
 
-    // 充值地址（这里使用占位符，实际需要从配置或生成）
+    // 从系统配置中获取充值地址
+    const trc20Address = await this.configsService.getConfig('deposit.trc20_address');
+    const erc20Address = await this.configsService.getConfig('deposit.erc20_address');
+    const bep20Address = await this.configsService.getConfig('deposit.bep20_address');
+
     const depositAddresses = [
-      { chain: 'TRC20', address: 'TQuantFi...' },
-      { chain: 'ERC20', address: '0xQuantFi...' },
-      { chain: 'BEP20', address: '0xQuantFi...' },
-    ];
+      { chain: 'TRC20', address: trc20Address || '' },
+      { chain: 'ERC20', address: erc20Address || '' },
+      { chain: 'BEP20', address: bep20Address || '' },
+    ].filter(addr => addr.address); // 只返回已配置的地址
 
     return {
       usdtBalance: wallet.usdt_balance.toString(),

@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Check,
   AlertCircle,
+  Wallet,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
 import { toast } from 'sonner';
@@ -34,6 +35,7 @@ const categoryIcons: Record<string, React.ComponentType<{ className?: string }>>
   vip: Crown,
   feature: Zap,
   agent: Users,
+  deposit: Wallet,
 };
 
 const categoryLabels: Record<string, string> = {
@@ -41,6 +43,7 @@ const categoryLabels: Record<string, string> = {
   vip: 'VIP 配置',
   feature: '功能开关',
   agent: '代理商配置',
+  deposit: '充值配置',
 };
 
 export default function ConfigsPage() {
@@ -123,12 +126,17 @@ export default function ConfigsPage() {
           />
         );
       }
+      // 地址类字段使用更宽的输入框
+      const isAddressField = config.configKey.includes('address');
       return (
         <input
           type="text"
           value={typeof editValue === 'string' ? editValue : ''}
           onChange={(e) => setEditValue(e.target.value)}
-          className="bg-[#1E222D] border border-[#2B3139] rounded px-3 py-1.5 text-white text-sm w-48 focus:outline-none focus:border-[#3772FF]"
+          className={`bg-[#1E222D] border border-[#2B3139] rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:border-[#3772FF] ${
+            isAddressField ? 'w-96 font-mono text-xs' : 'w-48'
+          }`}
+          placeholder={isAddressField ? '请输入钱包地址' : ''}
         />
       );
     }
@@ -148,11 +156,21 @@ export default function ConfigsPage() {
     if (config.configType === 'number') {
       return <span className="text-white font-mono">{config.configValue}</span>;
     }
-    return <span className="text-white">{String(config.configValue)}</span>;
+    // 地址字段特殊显示
+    const isAddressField = config.configKey.includes('address');
+    const strValue = String(config.configValue);
+    if (isAddressField) {
+      return strValue ? (
+        <span className="text-white font-mono text-xs break-all max-w-xs">{strValue}</span>
+      ) : (
+        <span className="text-[#F23645] text-xs">未配置</span>
+      );
+    }
+    return <span className="text-white">{strValue}</span>;
   };
 
   // 按分类分组
-  const categories = ['billing', 'vip', 'feature', 'agent'];
+  const categories = ['deposit', 'billing', 'vip', 'feature', 'agent'];
 
   return (
     <div className="space-y-6">

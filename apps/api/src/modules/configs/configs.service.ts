@@ -292,6 +292,14 @@ export class ConfigsService {
 
       // 代币价格配置
       { key: 'token.qfi_price', value: 0.5, type: 'number', category: 'token', label: 'QFI 代币价格（USDT）', description: '当前 QFI 代币价格，用于分红计算', isPublic: true },
+
+      // 充值地址配置
+      { key: 'deposit.trc20_address', value: '', type: 'string', category: 'deposit', label: 'TRC20 充值地址', description: '波场链 USDT 收款地址', isPublic: true },
+      { key: 'deposit.erc20_address', value: '', type: 'string', category: 'deposit', label: 'ERC20 充值地址', description: '以太坊链 USDT 收款地址', isPublic: true },
+      { key: 'deposit.bep20_address', value: '', type: 'string', category: 'deposit', label: 'BEP20 充值地址', description: '币安链 USDT 收款地址', isPublic: true },
+      { key: 'deposit.trc20_min_amount', value: 10, type: 'number', category: 'deposit', label: 'TRC20 最低充值', description: 'TRC20 最低充值金额（USDT）', isPublic: true },
+      { key: 'deposit.erc20_min_amount', value: 20, type: 'number', category: 'deposit', label: 'ERC20 最低充值', description: 'ERC20 最低充值金额（USDT）', isPublic: true },
+      { key: 'deposit.bep20_min_amount', value: 10, type: 'number', category: 'deposit', label: 'BEP20 最低充值', description: 'BEP20 最低充值金额（USDT）', isPublic: true },
     ];
 
     let created = 0;

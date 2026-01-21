@@ -8,11 +8,13 @@ import { TelegramBotService } from './telegram-bot.service';
 import { TelegramNotificationService } from './telegram-notification.service';
 import { TelegramGuard } from './telegram.guard';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { ConfigsModule } from '../configs/configs.module';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule,
+    ConfigsModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {

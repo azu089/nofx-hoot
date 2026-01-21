@@ -10,7 +10,7 @@ import type { Metadata } from 'next';
 //   description: '通过 TRC20/ERC20/BEP20 充值 USDT 到您的 QuantFi 账户',
 // };
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
-import { depositsApi } from '@/lib/api';
+import { depositsApi, publicApi } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import {
   Copy,
@@ -39,13 +39,8 @@ interface Deposit {
   created_at: string;
 }
 
-const DEPOSIT_ADDRESSES: Record<Chain, string> = {
-  TRC20: 'TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSe',
-  ERC20: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-  BEP20: 'bnb1abc2def3ghi4jkl5mno6pqr7stu8vwx9yz0',
-};
-
-const CHAIN_INFO: Record<Chain, { name: string; minDeposit: number; confirmations: number }> = {
+// 默认配置（从后端获取后会覆盖）
+const DEFAULT_CHAIN_INFO: Record<Chain, { name: string; minDeposit: number; confirmations: number }> = {
   TRC20: { name: 'TRC20 (波场)', minDeposit: 10, confirmations: 1 },
   ERC20: { name: 'ERC20 (以太坊)', minDeposit: 20, confirmations: 12 },
   BEP20: { name: 'BEP20 (币安链)', minDeposit: 10, confirmations: 15 },
@@ -57,6 +52,49 @@ export default function DepositPage() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+
+  // 从后端获取的充值地址配置
+  const [depositAddresses, setDepositAddresses] = useState<Record<Chain, string>>({
+    TRC20: '',
+    ERC20: '',
+    BEP20: '',
+  });
+
+  // 从后端获取的最低充值金额配置
+  const [chainInfo, setChainInfo] = useState(DEFAULT_CHAIN_INFO);
+
+  // 获取公开配置（充值地址等）
+  const fetchConfigs = async () => {
+    try {
+      const res = await publicApi.getConfigs();
+      const configs = res.data || {};
+
+      // 更新充值地址
+      setDepositAddresses({
+        TRC20: configs['deposit.trc20_address'] || '',
+        ERC20: configs['deposit.erc20_address'] || '',
+        BEP20: configs['deposit.bep20_address'] || '',
+      });
+
+      // 更新最低充值金额
+      setChainInfo({
+        TRC20: {
+          ...DEFAULT_CHAIN_INFO.TRC20,
+          minDeposit: configs['deposit.trc20_min_amount'] || DEFAULT_CHAIN_INFO.TRC20.minDeposit,
+        },
+        ERC20: {
+          ...DEFAULT_CHAIN_INFO.ERC20,
+          minDeposit: configs['deposit.erc20_min_amount'] || DEFAULT_CHAIN_INFO.ERC20.minDeposit,
+        },
+        BEP20: {
+          ...DEFAULT_CHAIN_INFO.BEP20,
+          minDeposit: configs['deposit.bep20_min_amount'] || DEFAULT_CHAIN_INFO.BEP20.minDeposit,
+        },
+      });
+    } catch (error) {
+      console.error('获取充值配置失败:', error);
+    }
+  };
 
   const fetchDeposits = async () => {
     try {
@@ -70,7 +108,8 @@ export default function DepositPage() {
   };
 
   useEffect(() => {
-    fetchDeposits();
+    // 并行获取配置和充值记录
+    Promise.all([fetchConfigs(), fetchDeposits()]);
   }, []);
 
   const handleCopy = (text: string) => {
@@ -114,8 +153,8 @@ export default function DepositPage() {
     );
   }
 
-  const currentAddress = DEPOSIT_ADDRESSES[activeChain];
-  const currentChainInfo = CHAIN_INFO[activeChain];
+  const currentAddress = depositAddresses[activeChain];
+  const currentChainInfo = chainInfo[activeChain];
 
   return (
     <div className="space-y-4 lg:space-y-6">
@@ -133,7 +172,7 @@ export default function DepositPage() {
 
           {/* 链选择 Tabs - 纯黑背景 */}
           <div className="flex gap-2 px-4">
-            {(Object.keys(CHAIN_INFO) as Chain[]).map((chain) => (
+            {(Object.keys(chainInfo) as Chain[]).map((chain) => (
               <button
                 key={chain}
                 onClick={() => setActiveChain(chain)}
@@ -151,30 +190,38 @@ export default function DepositPage() {
           {/* 充值地址 */}
           <div className="px-4 space-y-2">
             <label className="block text-sm text-text-secondary">充值地址</label>
-            <div className="flex items-center gap-2 p-3 bg-bg-secondary rounded-lg">
-              <code className="flex-1 text-sm text-white break-all font-mono">
-                {currentAddress}
-              </code>
-              <button
-                onClick={() => handleCopy(currentAddress)}
-                className="p-2 hover:bg-bg-tertiary rounded transition flex-shrink-0"
-                title="复制地址"
-              >
-                {copied ? (
-                  <CheckCircle className="w-5 h-5 text-success" />
-                ) : (
-                  <Copy className="w-5 h-5 text-text-secondary" />
-                )}
-              </button>
-            </div>
+            {currentAddress ? (
+              <div className="flex items-center gap-2 p-3 bg-bg-secondary rounded-lg">
+                <code className="flex-1 text-sm text-white break-all font-mono">
+                  {currentAddress}
+                </code>
+                <button
+                  onClick={() => handleCopy(currentAddress)}
+                  className="p-2 hover:bg-bg-tertiary rounded transition flex-shrink-0"
+                  title="复制地址"
+                >
+                  {copied ? (
+                    <CheckCircle className="w-5 h-5 text-success" />
+                  ) : (
+                    <Copy className="w-5 h-5 text-text-secondary" />
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-danger/10 border border-danger/30 rounded-lg">
+                <p className="text-sm text-danger">该网络充值地址暂未配置，请选择其他网络或联系客服</p>
+              </div>
+            )}
           </div>
 
           {/* 二维码 - 纯黑背景 */}
-          <div className="flex flex-col items-center gap-3 py-6 mx-4 bg-bg-secondary rounded-xl">
-            <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
-              <QrCode className="w-24 h-24 text-text-secondary" />
+          {currentAddress && (
+            <div className="flex flex-col items-center gap-3 py-6 mx-4 bg-bg-secondary rounded-xl">
+              <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
+                <QrCode className="w-24 h-24 text-text-secondary" />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 底部说明 - 折叠式 */}
           <div className="mx-4 pt-4 border-t border-border-primary/20">
@@ -211,7 +258,7 @@ export default function DepositPage() {
               </Button>
             </div>
             <div className="flex gap-2 p-1 bg-bg-tertiary rounded-lg">
-              {(Object.keys(CHAIN_INFO) as Chain[]).map((chain) => (
+              {(Object.keys(chainInfo) as Chain[]).map((chain) => (
                 <button
                   key={chain}
                   onClick={() => setActiveChain(chain)}
@@ -227,32 +274,42 @@ export default function DepositPage() {
             </div>
             <div className="space-y-2">
               <label className="block text-sm text-text-secondary">充值地址</label>
-              <div className="flex items-center gap-2 p-3 bg-bg-tertiary rounded-lg border border-border-secondary">
-                <code className="flex-1 text-sm text-white break-all font-mono">
-                  {currentAddress}
-                </code>
-                <button
-                  onClick={() => handleCopy(currentAddress)}
-                  className="p-2 hover:bg-border-secondary rounded transition flex-shrink-0"
-                  title="复制地址"
-                >
-                  {copied ? (
-                    <CheckCircle className="w-4 h-4 text-success" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-text-secondary" />
-                  )}
-                </button>
-              </div>
-              <p className="text-xs text-text-tertiary">
-                请向此地址转账 USDT，确保选择正确的网络：{currentChainInfo.name}
-              </p>
+              {currentAddress ? (
+                <>
+                  <div className="flex items-center gap-2 p-3 bg-bg-tertiary rounded-lg border border-border-secondary">
+                    <code className="flex-1 text-sm text-white break-all font-mono">
+                      {currentAddress}
+                    </code>
+                    <button
+                      onClick={() => handleCopy(currentAddress)}
+                      className="p-2 hover:bg-border-secondary rounded transition flex-shrink-0"
+                      title="复制地址"
+                    >
+                      {copied ? (
+                        <CheckCircle className="w-4 h-4 text-success" />
+                      ) : (
+                        <Copy className="w-4 h-4 text-text-secondary" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-text-tertiary">
+                    请向此地址转账 USDT，确保选择正确的网络：{currentChainInfo.name}
+                  </p>
+                </>
+              ) : (
+                <div className="p-4 bg-danger/10 border border-danger/30 rounded-lg">
+                  <p className="text-sm text-danger">该网络充值地址暂未配置，请选择其他网络或联系客服</p>
+                </div>
+              )}
             </div>
-            <div className="flex flex-col items-center gap-3 p-6 bg-bg-tertiary rounded-lg">
-              <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
-                <QrCode className="w-24 h-24 text-text-secondary" />
+            {currentAddress && (
+              <div className="flex flex-col items-center gap-3 p-6 bg-bg-tertiary rounded-lg">
+                <div className="w-48 h-48 bg-white rounded-lg flex items-center justify-center">
+                  <QrCode className="w-24 h-24 text-text-secondary" />
+                </div>
+                <p className="text-sm text-text-secondary">扫描二维码充值</p>
               </div>
-              <p className="text-sm text-text-secondary">扫描二维码充值</p>
-            </div>
+            )}
             <div className="space-y-2 p-4 bg-warning/10 border border-warning/30 rounded-lg">
               <h4 className="text-sm font-medium text-warning">重要提示</h4>
               <ul className="text-xs text-text-secondary space-y-1 list-disc list-inside">
