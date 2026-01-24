@@ -24,6 +24,10 @@ export type LogAction =
   | 'instance_create'   // VPS 创建
   | 'instance_destroy'  // VPS 销毁
   | 'instance_ready'    // VPS 就绪（初始化完成）
+  | 'instance_retry'    // VPS 重试创建
+  | 'instance_create_failed' // VPS 创建失败（达到最大重试次数）
+  | 'instance_rebuild'  // VPS 重建成功
+  | 'instance_rebuild_failed' // VPS 重建失败
   | 'deploy_success'    // 部署成功（系统层面）
   | 'deploy_fail'       // 部署失败（系统层面）
   | 'heartbeat'         // 心跳

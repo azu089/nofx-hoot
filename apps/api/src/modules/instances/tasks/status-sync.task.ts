@@ -93,17 +93,77 @@ export class StatusSyncTask {
         : new Date(instance.created_at).getTime();
 
       if (now - startTime > this.PROVISIONING_TIMEOUT) {
-        this.logger.warn(
-          `[状态同步] 实例 ${instance.id} 创建超时（超过 10 分钟），标记为 error`,
-        );
+        const retryCount = instance.retry_count || 0;
+        const MAX_RETRIES = 3;
 
-        await this.prisma.client.instances.update({
-          where: { id: instance.id },
-          data: {
-            status: 'error',
-            destroy_reason: '创建超时（超过 10 分钟）',
-          },
-        });
+        if (retryCount < MAX_RETRIES) {
+          // 重试创建：销毁当前 Droplet，重新创建
+          this.logger.warn(
+            `[状态同步] 实例 ${instance.id} 创建超时，尝试重试 (${retryCount + 1}/${MAX_RETRIES})`,
+          );
+
+          try {
+            // 销毁旧 Droplet（如果存在）
+            if (instance.droplet_id) {
+              await this.digitalOceanService.destroyDroplet(instance.droplet_id);
+            }
+
+            // 更新重试计数，重置状态为 pending
+            await this.prisma.client.instances.update({
+              where: { id: instance.id },
+              data: {
+                status: 'pending',
+                droplet_id: null,
+                ip_address: null,
+                retry_count: retryCount + 1,
+                last_retry_at: new Date(),
+                destroy_reason: null,
+              },
+            });
+
+            this.logger.log(
+              `[状态同步] 实例 ${instance.id} 已重置为 pending，等待重新创建`,
+            );
+
+            // 记录重试日志
+            await this.instanceLogService.warn(
+              instance.user_id,
+              'instance_retry',
+              `VPS 创建超时，正在重试 (${retryCount + 1}/${MAX_RETRIES})`,
+              {
+                instanceId: instance.id,
+                details: { retryCount: retryCount + 1 },
+              },
+            );
+          } catch (retryError) {
+            this.logger.error(
+              `[状态同步] 实例 ${instance.id} 重试失败: ${retryError.message}`,
+            );
+          }
+        } else {
+          // 已达最大重试次数，标记为 error
+          this.logger.error(
+            `[状态同步] 实例 ${instance.id} 创建超时，已达最大重试次数 (${MAX_RETRIES})，标记为 error`,
+          );
+
+          await this.prisma.client.instances.update({
+            where: { id: instance.id },
+            data: {
+              status: 'error',
+              destroy_reason: `创建超时（已重试 ${MAX_RETRIES} 次）`,
+            },
+          });
+
+          await this.instanceLogService.error(
+            instance.user_id,
+            'instance_create_failed',
+            `VPS 创建失败，已重试 ${MAX_RETRIES} 次`,
+            {
+              instanceId: instance.id,
+              details: { retryCount: MAX_RETRIES },
+            },
+          );
+        }
 
         return;
       }
@@ -295,6 +355,121 @@ export class StatusSyncTask {
     await this.handleStatusSync();
   }
 
+  /**
+   * 每分钟检查需要重试重建的实例
+   * - status = 'pending'
+   * - droplet_id = null
+   * - retry_count > 0 (表示这是重试，不是新建)
+   */
+  @Cron('*/1 * * * *') // 每分钟执行
+  async handleRetryRebuild() {
+    try {
+      // 查询需要重试重建的实例
+      const retryInstances = await this.prisma.client.instances.findMany({
+        where: {
+          status: 'pending',
+          droplet_id: null,
+          retry_count: { gt: 0 }, // 重试次数 > 0，表示这是重试
+        },
+        include: {
+          users: {
+            select: { id: true },
+          },
+        },
+      });
+
+      if (retryInstances.length === 0) {
+        return;
+      }
+
+      this.logger.log(
+        `[重试重建] 找到 ${retryInstances.length} 个需要重建的实例`,
+      );
+
+      for (const instance of retryInstances) {
+        await this.rebuildInstance(instance);
+      }
+    } catch (error) {
+      this.logger.error(`[重试重建] 执行失败: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * 重建单个实例
+   */
+  private async rebuildInstance(instance: any) {
+    try {
+      const userId = instance.user_id;
+      this.logger.log(
+        `[重试重建] 开始重建实例 ${instance.id}，重试次数: ${instance.retry_count}`,
+      );
+
+      // 1. 调用 DO API 创建新 Droplet
+      const droplet = await this.digitalOceanService.createDroplet(
+        {
+          name: `quantfi-${userId.substring(0, 8)}-${instance.id.substring(0, 8)}`,
+          region: instance.region,
+          size: instance.size,
+          tags: ['quantfi', `user-${userId}`, `instance-${instance.id}`],
+        },
+        instance.id, // 传递 instanceId 用于生成 User Data
+      );
+
+      this.logger.log(
+        `[重试重建] Droplet 创建成功: ${droplet.id}, IP: ${droplet.ip}, 实例: ${instance.id}`,
+      );
+
+      // 2. 更新实例记录
+      await this.prisma.client.instances.update({
+        where: { id: instance.id },
+        data: {
+          droplet_id: droplet.id,
+          ip_address: droplet.ip || null,
+          status: droplet.status === 'active' ? 'provisioning' : 'pending',
+          provisioned_at: new Date(),
+        },
+      });
+
+      // 3. 记录重建成功日志
+      await this.instanceLogService.info(
+        userId,
+        'instance_rebuild',
+        `VPS 重建成功 (重试第 ${instance.retry_count} 次)`,
+        {
+          instanceId: instance.id,
+          details: {
+            dropletId: droplet.id,
+            ip: droplet.ip,
+          },
+        },
+      );
+
+      this.logger.log(
+        `[重试重建] 实例 ${instance.id} 重建完成，等待初始化`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[重试重建] 实例 ${instance.id} 重建失败: ${error.message}`,
+      );
+
+      // 重建失败，标记为 error
+      await this.prisma.client.instances.update({
+        where: { id: instance.id },
+        data: {
+          status: 'error',
+          destroy_reason: `重建失败: ${error.message}`,
+        },
+      });
+
+      await this.instanceLogService.error(
+        instance.user_id,
+        'instance_rebuild_failed',
+        `VPS 重建失败: ${error.message}`,
+        { instanceId: instance.id },
+      );
+    }
+  }
+
   // ==================== 心跳监控与自动修复 ====================
 
   /**
@@ -320,9 +495,17 @@ export class StatusSyncTask {
       const now = Date.now();
 
       for (const instance of instances) {
-        const lastHeartbeat = instance.last_heartbeat
-          ? new Date(instance.last_heartbeat).getTime()
-          : 0;
+        // 核心逻辑：只有收到过心跳的实例才进行超时检测
+        // last_heartbeat 为 null 表示实例还在初始化，尚未收到 ready 回调或首次心跳
+        // ready 回调和 heartbeat 方法都会设置 last_heartbeat
+        if (!instance.last_heartbeat) {
+          this.logger.debug(
+            `[心跳监控] 实例 ${instance.id} 尚未收到首次心跳，跳过检测（等待初始化完成）`,
+          );
+          continue;
+        }
+
+        const lastHeartbeat = new Date(instance.last_heartbeat).getTime();
         const timeSinceLastHeartbeat = now - lastHeartbeat;
 
         // 情况 1：超过 15 分钟，自动销毁

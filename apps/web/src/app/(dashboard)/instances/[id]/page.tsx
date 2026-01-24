@@ -280,7 +280,7 @@ export default function InstanceDetailPage() {
         </Button>
       </div>
 
-      {/* ========== VPS 状态卡片 ========== */}
+      {/* ========== VPS 详情卡片（合并版） ========== */}
       <Card className={
         instance.status === 'running' ? 'border-success/30' :
         instance.status === 'unhealthy' ? 'border-warning/30' :
@@ -290,13 +290,14 @@ export default function InstanceDetailPage() {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
             <Server className="w-5 h-5 text-brand-primary" />
-            VPS 状态
+            VPS 详情
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* ===== 状态区 ===== */}
           {/* 状态：running（正常） */}
           {instance.status === 'running' && (
-            <>
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
                   <CheckCircle className="w-5 h-5 text-success" />
@@ -306,25 +307,11 @@ export default function InstanceDetailPage() {
                   <p className="text-text-secondary text-sm">VPS 运行正常</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-text-tertiary">IP 地址</p>
-                  <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
-                </div>
-                <div>
-                  <p className="text-text-tertiary">最后心跳</p>
-                  <p className="text-white">{instance.last_heartbeat ? formatDateTime(instance.last_heartbeat) : '无'}</p>
-                </div>
-                <div>
-                  <p className="text-text-tertiary">运行时长</p>
-                  <p className="text-white">{calculateUptime(instance.created_at)}</p>
-                </div>
-                <div>
-                  <p className="text-text-tertiary">区域</p>
-                  <p className="text-white">{instance.region}</p>
-                </div>
+              <div className="text-right text-sm">
+                <p className="text-text-tertiary">运行时长</p>
+                <p className="text-white">{calculateUptime(instance.created_at)}</p>
               </div>
-            </>
+            </div>
           )}
 
           {/* 状态：unhealthy（异常修复中） */}
@@ -438,22 +425,159 @@ export default function InstanceDetailPage() {
 
           {/* 状态：error（创建失败） */}
           {instance.status === 'error' && (
-            <>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
-                  <XCircle className="w-5 h-5 text-danger" />
-                </div>
-                <div>
-                  <p className="text-danger font-medium">VPS 创建失败</p>
-                  <p className="text-text-secondary text-sm">
-                    {instance.destroy_reason || '未知错误，请联系客服'}
-                  </p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
+                <XCircle className="w-5 h-5 text-danger" />
               </div>
-            </>
+              <div>
+                <p className="text-danger font-medium">VPS 创建失败</p>
+                <p className="text-text-secondary text-sm">
+                  {instance.destroy_reason || '未知错误，请联系客服'}
+                </p>
+              </div>
+            </div>
           )}
 
-          {/* 操作按钮 */}
+          {/* ===== 基本信息区（非销毁状态显示） ===== */}
+          {instance.status !== 'destroyed' && (
+            <div className="pt-4 border-t border-border-primary">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-text-tertiary mb-1">IP 地址</p>
+                  <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary mb-1">区域</p>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-text-tertiary" />
+                    <p className="text-white">{instance.region}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-text-tertiary mb-1">Droplet ID</p>
+                  <p className="text-white font-mono text-xs">{instance.droplet_id || '未分配'}</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary mb-1">实例 ID</p>
+                  <p className="text-white font-mono text-xs truncate" title={instance.id}>{instance.id.substring(0, 8)}...</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary mb-1">创建时间</p>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-text-tertiary" />
+                    <p className="text-white">{formatDateTime(instance.created_at)}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-text-tertiary mb-1">当前策略</p>
+                  <p className="text-white">{instance.current_strategy || '未运行'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== 资源监控区（running 状态始终显示） ===== */}
+          {instance.status === 'running' && (
+            <div className="pt-4 border-t border-border-primary space-y-3">
+              <p className="text-text-secondary text-sm font-medium">资源监控</p>
+
+              {/* CPU 使用率 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-text-tertiary" />
+                    <span className="text-text-secondary text-sm">CPU</span>
+                  </div>
+                  <span className="text-white text-sm">
+                    {instance.cpu_usage != null ? `${instance.cpu_usage}%` : '等待数据...'}
+                  </span>
+                </div>
+                <div className="w-full bg-bg-tertiary rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      Number(instance.cpu_usage || 0) > 80 ? 'bg-danger' :
+                      Number(instance.cpu_usage || 0) > 60 ? 'bg-warning' : 'bg-brand-primary'
+                    }`}
+                    style={{ width: `${instance.cpu_usage || 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 内存使用率 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-text-tertiary" />
+                    <span className="text-text-secondary text-sm">内存</span>
+                  </div>
+                  <span className="text-white text-sm">
+                    {instance.memory_usage != null ? `${instance.memory_usage}%` : '等待数据...'}
+                  </span>
+                </div>
+                <div className="w-full bg-bg-tertiary rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      Number(instance.memory_usage || 0) > 85 ? 'bg-danger' :
+                      Number(instance.memory_usage || 0) > 70 ? 'bg-warning' : 'bg-success'
+                    }`}
+                    style={{ width: `${instance.memory_usage || 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 磁盘使用率 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-text-tertiary" />
+                    <span className="text-text-secondary text-sm">磁盘</span>
+                  </div>
+                  <span className="text-white text-sm">
+                    {instance.disk_usage != null ? `${instance.disk_usage}%` : '等待数据...'}
+                  </span>
+                </div>
+                <div className="w-full bg-bg-tertiary rounded-full h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      Number(instance.disk_usage || 0) > 90 ? 'bg-danger' :
+                      Number(instance.disk_usage || 0) > 75 ? 'bg-warning' : 'bg-warning'
+                    }`}
+                    style={{ width: `${instance.disk_usage || 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 最后心跳 */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      getHeartbeatStatus().status === 'healthy'
+                        ? 'bg-success'
+                        : getHeartbeatStatus().status === 'warning'
+                          ? 'bg-warning'
+                          : getHeartbeatStatus().status === 'critical'
+                            ? 'bg-danger animate-pulse'
+                            : 'bg-text-tertiary'
+                    }`}
+                  />
+                  <span className="text-text-secondary text-sm">最后心跳</span>
+                </div>
+                <span className="text-white text-sm">
+                  {instance.last_heartbeat ? formatDateTime(instance.last_heartbeat) : '等待首次心跳...'}
+                </span>
+              </div>
+              {getHeartbeatStatus().status !== 'healthy' && getHeartbeatStatus().status !== 'unknown' && (
+                <p className={`text-xs ${
+                  getHeartbeatStatus().status === 'critical' ? 'text-danger' : 'text-warning'
+                }`}>
+                  {getHeartbeatStatus().message}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ===== 操作按钮区 ===== */}
           {!isProcessing && (
             <div className="flex flex-wrap gap-3 pt-4 border-t border-border-primary">
               {canShowReboot && (
@@ -496,146 +620,6 @@ export default function InstanceDetailPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* 基本信息卡片 */}
-      {instance.status !== 'destroyed' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="w-4 h-4 text-brand-primary" />
-              详细信息
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-text-tertiary mb-1">实例 ID</p>
-                <p className="text-white font-mono text-xs break-all">{instance.id}</p>
-              </div>
-              <div>
-                <p className="text-text-tertiary mb-1">Droplet ID</p>
-                <p className="text-white font-mono text-xs">{instance.droplet_id || '未分配'}</p>
-              </div>
-              <div>
-                <p className="text-text-tertiary mb-1">IP 地址</p>
-                <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
-              </div>
-              <div>
-                <p className="text-text-tertiary mb-1">区域</p>
-                <div className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-text-tertiary" />
-                  <p className="text-white">{instance.region}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-text-tertiary mb-1">创建时间</p>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-text-tertiary" />
-                  <p className="text-white">{formatDateTime(instance.created_at)}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-text-tertiary mb-1">当前策略</p>
-                <p className="text-white">{instance.current_strategy || '未运行'}</p>
-              </div>
-            </div>
-
-            {/* 心跳状态 */}
-            {instance.last_heartbeat && (
-              <div className="mt-4 pt-4 border-t border-border-primary">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        getHeartbeatStatus().status === 'healthy'
-                          ? 'bg-success'
-                          : getHeartbeatStatus().status === 'warning'
-                            ? 'bg-warning'
-                            : getHeartbeatStatus().status === 'critical'
-                              ? 'bg-danger animate-pulse'
-                              : 'bg-text-tertiary'
-                      }`}
-                    />
-                    <span className="text-text-secondary text-sm">最后心跳</span>
-                  </div>
-                  <span className="text-white text-sm">{formatDateTime(instance.last_heartbeat)}</span>
-                </div>
-                {getHeartbeatStatus().status !== 'healthy' && (
-                  <p className={`text-xs mt-1 ${
-                    getHeartbeatStatus().status === 'critical' ? 'text-danger' : 'text-warning'
-                  }`}>
-                    {getHeartbeatStatus().message}
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 资源监控 */}
-      {instance.status === 'running' && (instance.cpu_usage || instance.memory_usage || instance.disk_usage) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="w-4 h-4 text-brand-primary" />
-              资源监控
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* CPU 使用率 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">CPU</span>
-                </div>
-                <span className="text-white text-sm">{instance.cpu_usage || '-'}%</span>
-              </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
-                <div
-                  className="bg-brand-primary h-1.5 rounded-full"
-                  style={{ width: `${instance.cpu_usage || 0}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 内存使用率 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">内存</span>
-                </div>
-                <span className="text-white text-sm">{instance.memory_usage || '-'}%</span>
-              </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
-                <div
-                  className="bg-success h-1.5 rounded-full"
-                  style={{ width: `${instance.memory_usage || 0}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 磁盘使用率 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <HardDrive className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">磁盘</span>
-                </div>
-                <span className="text-white text-sm">{instance.disk_usage || '-'}%</span>
-              </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
-                <div
-                  className="bg-warning h-1.5 rounded-full"
-                  style={{ width: `${instance.disk_usage || 0}%` }}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
