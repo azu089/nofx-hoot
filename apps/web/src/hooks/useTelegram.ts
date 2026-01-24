@@ -71,23 +71,68 @@ export function useTelegram(): UseTelegramReturn {
   const [colorScheme, setColorScheme] = useState<'light' | 'dark'>('dark');
   const [themeParams, setThemeParams] = useState<ThemeParams | null>(null);
 
-  // 初始化
+  // 动态加载 Telegram SDK
   useEffect(() => {
-    const inTelegram = isTelegramWebApp();
-    setIsTelegram(inTelegram);
+    console.log('[useTelegram] useEffect triggered');
 
-    if (inTelegram) {
-      // 获取用户和数据
-      setUser(getTelegramUser());
-      setInitData(getInitData());
-      setColorScheme(getColorScheme());
-      setThemeParams(getThemeParams());
-
-      // 展开并通知就绪
-      expandMiniApp();
-      ready();
-      setIsReady(true);
+    // 检查是否已加载 SDK
+    if ((window as any).Telegram?.WebApp) {
+      console.log('[useTelegram] SDK already loaded');
+      initTelegram();
+      return;
     }
+
+    console.log('[useTelegram] Loading Telegram SDK...');
+    // 动态加载 Telegram WebApp SDK
+    const script = document.createElement('script');
+    script.src = 'https://telegram.org/js/telegram-web-app.js';
+    script.async = false; // 同步加载以确保顺序
+    script.onload = () => {
+      console.log('[useTelegram] SDK loaded successfully');
+      // SDK 加载完成后初始化
+      initTelegram();
+    };
+    script.onerror = () => {
+      console.error('[useTelegram] Failed to load Telegram WebApp SDK');
+      setIsReady(true); // 标记为就绪（非 Telegram 环境）
+    };
+    document.head.appendChild(script);
+
+    function initTelegram() {
+      const webApp = (window as any).Telegram?.WebApp;
+      console.log('[useTelegram] initTelegram called', {
+        hasWebApp: !!webApp,
+        initData: webApp?.initData?.substring(0, 50) + '...',
+        initDataUnsafe: webApp?.initDataUnsafe,
+      });
+
+      const inTelegram = isTelegramWebApp();
+      setIsTelegram(inTelegram);
+      console.log('[useTelegram] isTelegram:', inTelegram);
+
+      if (inTelegram) {
+        const userData = getTelegramUser();
+        const initDataStr = getInitData();
+        console.log('[useTelegram] User data:', userData);
+        console.log('[useTelegram] initData length:', initDataStr?.length);
+
+        // 获取用户和数据
+        setUser(userData);
+        setInitData(initDataStr);
+        setColorScheme(getColorScheme());
+        setThemeParams(getThemeParams());
+
+        // 展开并通知就绪
+        expandMiniApp();
+        ready();
+      }
+      setIsReady(true);
+      console.log('[useTelegram] Ready!');
+    }
+
+    return () => {
+      // 清理：不移除 script，因为可能被其他组件使用
+    };
   }, []);
 
   // 显示主按钮

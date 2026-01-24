@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { promptInstall, isRunningAsPWA } from '@/lib/registerSW';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { isRunningAsPWA } from '@/lib/registerSW';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -39,6 +39,9 @@ export function usePWA() {
     dismissed: false,
   });
 
+  // 保存安装提示事件（在 hook 内部管理）
+  const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -60,24 +63,33 @@ export function usePWA() {
     }));
 
     // 监听安装提示事件（Android/Chrome）
-    const handleBeforeInstall = () => {
+    const handleBeforeInstall = (e: BeforeInstallPromptEvent) => {
+      // 阻止默认行为
+      e.preventDefault();
+      // 保存事件以便稍后使用
+      deferredPromptRef.current = e;
+      console.log('[PWA] Install prompt available (hook)');
       setState(prev => ({
         ...prev,
         canInstall: true,
       }));
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall as EventListener);
 
     // 监听 PWA 安装完成
-    window.addEventListener('appinstalled', () => {
+    const handleAppInstalled = () => {
+      console.log('[PWA] App installed');
+      deferredPromptRef.current = null;
       setState(prev => ({
         ...prev,
         isInstalled: true,
         canInstall: false,
         showPrompt: false,
       }));
-    });
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     // 5 秒后显示安装提示（如果满足条件）
     const timer = setTimeout(() => {
@@ -93,22 +105,46 @@ export function usePWA() {
     }, 5000);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall as EventListener);
+      window.removeEventListener('appinstalled', handleAppInstalled);
       clearTimeout(timer);
     };
   }, []);
 
   // 触发安装
   const install = useCallback(async () => {
-    const result = await promptInstall();
-    if (result) {
-      setState(prev => ({
-        ...prev,
-        isInstalled: true,
-        showPrompt: false,
-      }));
+    const deferredPrompt = deferredPromptRef.current;
+
+    if (!deferredPrompt) {
+      console.log('[PWA] No install prompt available');
+      return false;
     }
-    return result;
+
+    try {
+      // 显示安装提示
+      await deferredPrompt.prompt();
+
+      // 等待用户响应
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log('[PWA] Install prompt outcome:', outcome);
+
+      // 清除保存的事件
+      deferredPromptRef.current = null;
+
+      if (outcome === 'accepted') {
+        setState(prev => ({
+          ...prev,
+          isInstalled: true,
+          canInstall: false,
+          showPrompt: false,
+        }));
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[PWA] Install error:', error);
+      return false;
+    }
   }, []);
 
   // 关闭提示

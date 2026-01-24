@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { FreqtradeService } from '../modules/freqtrade/freqtrade.service';
 import { EventsGateway } from '../events/events.gateway';
+import { NetworkWhitelistService } from '../common/services/network-whitelist.service';
 
 /**
  * 日志流推送定时任务
@@ -27,6 +28,7 @@ export class LogStreamingTask {
     private readonly prisma: PrismaService,
     private readonly freqtradeService: FreqtradeService,
     private readonly eventsGateway: EventsGateway,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {}
 
   /**
@@ -57,9 +59,11 @@ export class LogStreamingTask {
         try {
           if (!instance.ip_address) return;
 
+          const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
           const result = await this.freqtradeService.getLogs(
             instance.ip_address,
             100, // 获取最新 100 条
+            apiToken,
           );
 
           // 3. 检查是否有新日志

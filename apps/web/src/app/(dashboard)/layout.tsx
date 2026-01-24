@@ -8,9 +8,7 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuthStore } from '@/stores/auth.store';
 import { useUiStore } from '@/stores/ui.store';
 import { useDeviceType } from '@/hooks/useDeviceType';
-// 直接从源文件导入，避免 barrel export 问题
-import { PanicButton } from '@/components/features/trading/PanicButton';
-import { instancesApi } from '@/lib/api';
+import { PWAInstallPrompt } from '@/components/ui/PWAInstallPrompt';
 import { isTelegramWebApp, setHeaderColor, setBackgroundColor, ready, expandMiniApp } from '@/lib/telegram';
 
 export default function DashboardLayout({
@@ -37,10 +35,6 @@ export default function DashboardLayout({
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  // 紧急按钮状态
-  const [runningInstanceIds, setRunningInstanceIds] = useState<string[]>([]);
-  const [openTradesCount, setOpenTradesCount] = useState(0);
 
   // 检测 Telegram 环境
   useEffect(() => {
@@ -80,43 +74,6 @@ export default function DashboardLayout({
     }
   }, [isAuthenticated, isLoading, router, _hasHydrated]);
 
-  // 获取运行中实例状态（用于紧急按钮）
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const fetchInstanceStatus = async () => {
-      try {
-        const res = await instancesApi.list();
-        const running = (res.data || []).filter(
-          (i: { status: string; id: string }) => i.status === 'running'
-        );
-        setRunningInstanceIds(running.map((i: { id: string }) => i.id));
-
-        // 获取持仓数量
-        let totalTrades = 0;
-        for (const instance of running) {
-          try {
-            const tradesRes = await instancesApi.getTrades(instance.id);
-            const openTrades = (tradesRes.data || []).filter(
-              (t: { is_open: boolean }) => t.is_open
-            );
-            totalTrades += openTrades.length;
-          } catch {
-            // 忽略单个实例的错误
-          }
-        }
-        setOpenTradesCount(totalTrades);
-      } catch (error) {
-        console.error('Failed to fetch instance status:', error);
-      }
-    };
-
-    fetchInstanceStatus();
-    // 每 30 秒刷新一次
-    const interval = setInterval(fetchInstanceStatus, 30000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
-
   // 加载中（包括客户端未挂载、hydration 未完成、设备检测未完成的情况）
   // 服务端和客户端初始渲染都返回相同的加载状态，避免 hydration 不匹配
   if (!isMounted || !_hasHydrated || isLoading || !deviceLoaded) {
@@ -141,15 +98,6 @@ export default function DashboardLayout({
       <div className="min-h-screen bg-bg-primary pb-20">
         <main className="p-4">{children}</main>
         <TelegramNav />
-        {/* 紧急按钮悬浮组件 */}
-        <PanicButton
-          runningInstanceIds={runningInstanceIds}
-          openTradesCount={openTradesCount}
-          onPanicComplete={() => {
-            setRunningInstanceIds([]);
-            setOpenTradesCount(0);
-          }}
-        />
       </div>
     );
   }
@@ -159,32 +107,14 @@ export default function DashboardLayout({
     return (
       <MobileLayout>
         {children}
-        {/* 紧急按钮悬浮组件 */}
-        <PanicButton
-          runningInstanceIds={runningInstanceIds}
-          openTradesCount={openTradesCount}
-          onPanicComplete={() => {
-            setRunningInstanceIds([]);
-            setOpenTradesCount(0);
-          }}
-        />
+        {/* PWA 安装提示（仅移动端显示） */}
+        <PWAInstallPrompt />
       </MobileLayout>
     );
   }
 
   // 桌面端：完整布局（≥ 768px）
-  return (
-    <DashboardContent
-      runningInstanceIds={runningInstanceIds}
-      openTradesCount={openTradesCount}
-      onPanicComplete={() => {
-        setRunningInstanceIds([]);
-        setOpenTradesCount(0);
-      }}
-    >
-      {children}
-    </DashboardContent>
-  );
+  return <DashboardContent>{children}</DashboardContent>;
 }
 
 // Web3 全局背景组件 - 增强版 v3.0
@@ -204,17 +134,7 @@ function Web3Background() {
 }
 
 // 内部组件，使用 sidebarCollapsed 状态
-function DashboardContent({
-  children,
-  runningInstanceIds,
-  openTradesCount,
-  onPanicComplete,
-}: {
-  children: React.ReactNode;
-  runningInstanceIds: string[];
-  openTradesCount: number;
-  onPanicComplete: () => void;
-}) {
+function DashboardContent({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed } = useUiStore();
 
   return (
@@ -231,12 +151,6 @@ function DashboardContent({
         <div className="p-4 lg:p-6 pb-24 lg:pb-6">{children}</div>
       </main>
       <MobileNav />
-      {/* 紧急按钮悬浮组件 */}
-      <PanicButton
-        runningInstanceIds={runningInstanceIds}
-        openTradesCount={openTradesCount}
-        onPanicComplete={onPanicComplete}
-      />
     </div>
   );
 }

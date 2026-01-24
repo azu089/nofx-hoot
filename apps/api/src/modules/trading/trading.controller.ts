@@ -14,6 +14,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/dto/jwt-payload.dto';
 import { InstancesService } from '../instances/instances.service';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
 
 /**
  * 交易机器人控制器
@@ -28,6 +29,7 @@ export class TradingController {
   constructor(
     private readonly instancesService: InstancesService,
     private readonly freqtradeService: FreqtradeService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {}
 
   /**
@@ -65,6 +67,15 @@ export class TradingController {
   }
 
   /**
+   * 生成 Freqtrade API Token
+   * @param instanceId 实例 ID
+   * @returns API Token
+   */
+  private getApiToken(instanceId: string): string {
+    return this.networkWhitelistService.generateFreqtradeToken(instanceId);
+  }
+
+  /**
    * 获取 Freqtrade 完整配置
    * GET /api/trading/config
    * 代理到 VPS Freqtrade: GET /api/v1/show_config
@@ -74,7 +85,8 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
-      const config = await this.freqtradeService.getConfig(instance.ip_address);
+      const apiToken = this.getApiToken(instance.id);
+      const config = await this.freqtradeService.getConfig(instance.ip_address, apiToken);
 
       return {
         code: 0,
@@ -104,8 +116,10 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
+      const apiToken = this.getApiToken(instance.id);
       const openTrades = await this.freqtradeService.getOpenTrades(
         instance.ip_address,
+        apiToken,
       );
 
       // 转换 Freqtrade 格式为前端期望的格式
@@ -131,13 +145,16 @@ export class TradingController {
       };
     } catch (error) {
       if (error instanceof HttpException) {
-        throw error;
+        // 如果是没有活跃 VPS，返回友好提示
+        return error.getResponse();
       }
-      this.logger.error(`获取持仓失败: ${error.message}`, error.stack);
+      // Freqtrade 连接失败时返回空数组，不抛出 500 错误
+      this.logger.warn(`获取持仓失败: ${error.message}`);
       return {
-        code: 50001,
-        message: '获取持仓失败，请检查 VPS 状态',
+        code: 0,
+        message: 'success',
         data: [],
+        notice: '交易机器人暂时不可用，请稍后重试',
       };
     }
   }
@@ -153,8 +170,10 @@ export class TradingController {
       const instance = await this.getUserActiveInstance(user.sub);
 
       // Freqtrade 的 open trades 就是当前活跃订单
+      const apiToken = this.getApiToken(instance.id);
       const openTrades = await this.freqtradeService.getOpenTrades(
         instance.ip_address,
+        apiToken,
       );
 
       const orders = openTrades.map((trade) => ({
@@ -175,13 +194,14 @@ export class TradingController {
       };
     } catch (error) {
       if (error instanceof HttpException) {
-        throw error;
+        return error.getResponse();
       }
-      this.logger.error(`获取订单失败: ${error.message}`, error.stack);
+      this.logger.warn(`获取订单失败: ${error.message}`);
       return {
-        code: 50001,
-        message: '获取订单失败，请检查 VPS 状态',
+        code: 0,
+        message: 'success',
         data: [],
+        notice: '交易机器人暂时不可用，请稍后重试',
       };
     }
   }
@@ -196,9 +216,10 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
+      const apiToken = this.getApiToken(instance.id);
       const [status, openTrades] = await Promise.all([
-        this.freqtradeService.getStatus(instance.ip_address),
-        this.freqtradeService.getOpenTrades(instance.ip_address),
+        this.freqtradeService.getStatus(instance.ip_address, apiToken),
+        this.freqtradeService.getOpenTrades(instance.ip_address, apiToken),
       ]);
 
       // 计算运行时间（基于实例创建时间）
@@ -221,18 +242,20 @@ export class TradingController {
       };
     } catch (error) {
       if (error instanceof HttpException) {
-        throw error;
+        return error.getResponse();
       }
-      this.logger.error(`获取机器人状态失败: ${error.message}`, error.stack);
+      this.logger.warn(`获取机器人状态失败: ${error.message}`);
       return {
-        code: 50001,
-        message: '获取机器人状态失败，请检查 VPS 状态',
+        code: 0,
+        message: 'success',
         data: {
           running: false,
-          state: 'error',
+          state: 'stopped',
           strategy_id: null,
+          strategy_name: null,
           uptime: 0,
           trades_today: 0,
+          notice: '交易机器人暂时不可用',
         },
       };
     }
@@ -255,7 +278,8 @@ export class TradingController {
         `用户 ${user.sub} 启动机器人，策略: ${body.strategy_id || '默认'}`,
       );
 
-      const result = await this.freqtradeService.start(instance.ip_address);
+      const apiToken = this.getApiToken(instance.id);
+      const result = await this.freqtradeService.start(instance.ip_address, apiToken);
 
       return {
         code: 0,
@@ -292,7 +316,8 @@ export class TradingController {
 
       this.logger.log(`用户 ${user.sub} 停止机器人`);
 
-      const result = await this.freqtradeService.stop(instance.ip_address);
+      const apiToken = this.getApiToken(instance.id);
+      const result = await this.freqtradeService.stop(instance.ip_address, apiToken);
 
       return {
         code: 0,
@@ -327,8 +352,10 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
+      const apiToken = this.getApiToken(instance.id);
       const balance = await this.freqtradeService.getBalance(
         instance.ip_address,
+        apiToken,
       );
 
       return {
@@ -366,9 +393,11 @@ export class TradingController {
         `用户 ${user.sub} 强制平仓交易 ${body.trade_id}`,
       );
 
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.forceExit(
         instance.ip_address,
         body.trade_id,
+        apiToken,
       );
 
       return {
@@ -404,8 +433,10 @@ export class TradingController {
 
       this.logger.warn(`用户 ${user.sub} 触发一键清仓！`);
 
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.forceExitAll(
         instance.ip_address,
+        apiToken,
       );
 
       return {
@@ -443,9 +474,11 @@ export class TradingController {
       const instance = await this.getUserActiveInstance(user.sub);
 
       const logLimit = limit ? parseInt(limit, 10) : 50;
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.getLogs(
         instance.ip_address,
         logLimit,
+        apiToken,
       );
 
       return {
@@ -490,11 +523,13 @@ export class TradingController {
       const instance = await this.getUserActiveInstance(user.sub);
 
       const candleLimit = limit ? parseInt(limit, 10) : 500;
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.getPairCandles(
         instance.ip_address,
         pair,
         timeframe || '5m',
         candleLimit,
+        apiToken,
       );
 
       return {
@@ -525,8 +560,10 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
+      const apiToken = this.getApiToken(instance.id);
       const strategies = await this.freqtradeService.getStrategies(
         instance.ip_address,
+        apiToken,
       );
 
       return {
@@ -557,8 +594,10 @@ export class TradingController {
     try {
       const instance = await this.getUserActiveInstance(user.sub);
 
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.getAvailablePairs(
         instance.ip_address,
+        apiToken,
       );
 
       return {
@@ -611,6 +650,7 @@ export class TradingController {
         `用户 ${user.sub} 执行回测: 策略=${body.strategy_name}, 时间范围=${body.start_date}~${body.end_date}`,
       );
 
+      const apiToken = this.getApiToken(instance.id);
       const result = await this.freqtradeService.runBacktest(
         instance.ip_address,
         body.strategy_name,
@@ -620,6 +660,7 @@ export class TradingController {
           endDate: body.end_date,
           initialCapital: body.initial_capital || 10000,
         },
+        apiToken,
       );
 
       return {

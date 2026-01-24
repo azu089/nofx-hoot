@@ -41,6 +41,21 @@ export class ConfigsController {
       data: await this.configsService.getPublicConfigs(),
     };
   }
+
+  /**
+   * 获取跑马灯公告（前端首页用，无需认证）
+   */
+  @Public()
+  @Get('announcements')
+  @ApiOperation({ summary: '获取跑马灯公告' })
+  @ApiResponse({ status: 200, description: '成功获取公告列表' })
+  async getMarqueeAnnouncements() {
+    return {
+      code: 0,
+      message: 'success',
+      data: await this.configsService.getMarqueeAnnouncements(),
+    };
+  }
 }
 
 /**

@@ -245,15 +245,17 @@ echo "API 端口: ${this.config.apiPort}"
   }
 
   /**
-   * 生成实例令牌
+   * 生成实例令牌（确定性生成，基于 instanceId 和 secret）
+   * 这样可以随时重新生成相同的 token，用于 VPS 认证
    * @param instanceId 实例 ID
    */
   generateInstanceToken(instanceId: string): string {
     const crypto = require('crypto');
     const secret = this.configService.get<string>('JWT_SECRET') || 'default-secret';
+    // 使用确定性的输入，确保相同的 instanceId 总是生成相同的 token
     return crypto
       .createHmac('sha256', secret)
-      .update(`${instanceId}-${Date.now()}`)
+      .update(`quantfi-instance-${instanceId}`)
       .digest('hex')
       .substring(0, 32);
   }
@@ -261,14 +263,17 @@ echo "API 端口: ${this.config.apiPort}"
   /**
    * 生成 Freqtrade API Token
    * 用于 Freqtrade API 的 Basic Auth 认证
+   * 注意：必须是确定性生成，同一个 instanceId 永远返回相同的 token
    * @param instanceId 实例 ID
    */
   generateFreqtradeToken(instanceId: string): string {
     const crypto = require('crypto');
     const secret = this.configService.get<string>('ENCRYPTION_KEY') || 'freqtrade-secret';
+    // 使用确定性输入，确保相同的 instanceId 总是生成相同的 token
+    // 移除了 Date.now()，修复了 Token 不一致导致认证失败的 Bug
     return crypto
       .createHmac('sha256', secret)
-      .update(`freqtrade-${instanceId}-${Date.now()}`)
+      .update(`freqtrade-${instanceId}`)
       .digest('hex')
       .substring(0, 24);
   }

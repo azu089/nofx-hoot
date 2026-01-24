@@ -1495,4 +1495,109 @@ export class AdminController {
       },
     };
   }
+
+  // ==================== 质押权重分布 ====================
+
+  /**
+   * 获取全网质押权重分布
+   * GET /api/admin/staking/weights
+   */
+  @Get('staking/weights')
+  @ApiOperation({ summary: '获取全网质押权重分布' })
+  async getStakingWeights() {
+    const data = await this.adminService.getStakingWeights();
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  // ==================== 交易明细 ====================
+
+  /**
+   * 获取全网交易明细
+   * GET /api/admin/finance/records
+   */
+  @Get('finance/records')
+  @ApiOperation({ summary: '获取全网交易明细' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiQuery({ name: 'type', required: false, type: String })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'startDate', required: false, type: String })
+  @ApiQuery({ name: 'endDate', required: false, type: String })
+  async getFinanceRecords(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('type') type?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.adminService.getFinanceRecords({
+      page: parseInt(page || '1'),
+      pageSize: parseInt(pageSize || '20'),
+      type,
+      search,
+      startDate,
+      endDate,
+    });
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  // ==================== Telegram Bot 配置 ====================
+
+  /**
+   * 获取 TG Bot 配置
+   * GET /api/admin/telegram/config
+   */
+  @Get('telegram/config')
+  @ApiOperation({ summary: '获取 TG Bot 配置' })
+  async getTelegramConfig() {
+    const data = await this.adminService.getTelegramConfig();
+    return {
+      code: 0,
+      message: 'success',
+      data,
+    };
+  }
+
+  /**
+   * 更新 TG Bot 配置
+   * PUT /api/admin/telegram/config
+   */
+  @Patch('telegram/config')
+  @ApiOperation({ summary: '更新 TG Bot 配置' })
+  async updateTelegramConfig(
+    @Body() config: any,
+    @CurrentUser() admin: JwtPayload,
+  ) {
+    this.logger.log(`管理员 ${admin.sub} 更新 TG Bot 配置`);
+    await this.adminService.updateTelegramConfig(config, admin.sub);
+    return {
+      code: 0,
+      message: 'success',
+    };
+  }
+
+  /**
+   * 重载 TG Bot 配置
+   * POST /api/admin/telegram/reload
+   */
+  @Post('telegram/reload')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '重载 TG Bot 配置（热更新）' })
+  async reloadTelegramConfig(@CurrentUser() admin: JwtPayload) {
+    this.logger.log(`管理员 ${admin.sub} 重载 TG Bot 配置`);
+    await this.adminService.reloadTelegramConfig();
+    return {
+      code: 0,
+      message: 'success',
+    };
+  }
 }

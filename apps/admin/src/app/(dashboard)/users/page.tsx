@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
@@ -15,9 +16,13 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
+import { useAdminAuthStore } from '@/stores/auth.store';
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAdminAuthStore();
+  const isAgent = currentUser?.isAgent || false; // 代理商只有查看权限
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -164,38 +169,43 @@ export default function AdminUsersPage() {
                             <button
                               onClick={() => {
                                 setSelectedUser(null);
-                                window.location.href = `/users/${user.id}`;
+                                router.push(`/users/${user.id}`);
                               }}
                               className="w-full px-4 py-2 text-left text-white hover:bg-[#2B3139] flex items-center gap-2"
                             >
                               <Eye className="w-4 h-4" />
                               查看详情
                             </button>
-                            <button
-                              onClick={() => {
-                                if (confirm('确定要重置该用户的密码吗？')) {
-                                  resetPasswordMutation.mutate(user.id);
-                                }
-                              }}
-                              disabled={resetPasswordMutation.isPending}
-                              className="w-full px-4 py-2 text-left text-white hover:bg-[#2B3139] flex items-center gap-2 disabled:opacity-50"
-                            >
-                              <Key className="w-4 h-4" />
-                              重置密码
-                            </button>
-                            <button
-                              onClick={() => {
-                                const action = user.status === 'active' ? '封禁' : '解除封禁';
-                                if (confirm(`确定要${action}该用户吗？此操作将立即生效。`)) {
-                                  banMutation.mutate(user.id);
-                                }
-                              }}
-                              disabled={banMutation.isPending}
-                              className="w-full px-4 py-2 text-left text-[#F23645] hover:bg-[#2B3139] flex items-center gap-2 disabled:opacity-50"
-                            >
-                              <Ban className="w-4 h-4" />
-                              {user.status === 'active' ? '封禁用户' : '解除封禁'}
-                            </button>
+                            {/* 代理商只有查看权限，隐藏修改操作 */}
+                            {!isAgent && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    if (confirm('确定要重置该用户的密码吗？')) {
+                                      resetPasswordMutation.mutate(user.id);
+                                    }
+                                  }}
+                                  disabled={resetPasswordMutation.isPending}
+                                  className="w-full px-4 py-2 text-left text-white hover:bg-[#2B3139] flex items-center gap-2 disabled:opacity-50"
+                                >
+                                  <Key className="w-4 h-4" />
+                                  重置密码
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const action = user.status === 'active' ? '封禁' : '解除封禁';
+                                    if (confirm(`确定要${action}该用户吗？此操作将立即生效。`)) {
+                                      banMutation.mutate(user.id);
+                                    }
+                                  }}
+                                  disabled={banMutation.isPending}
+                                  className="w-full px-4 py-2 text-left text-[#F23645] hover:bg-[#2B3139] flex items-center gap-2 disabled:opacity-50"
+                                >
+                                  <Ban className="w-4 h-4" />
+                                  {user.status === 'active' ? '封禁用户' : '解除封禁'}
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>

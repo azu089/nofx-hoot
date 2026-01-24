@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui';
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
-import { billingApi, tradingApi, instancesApi } from '@/lib/api';
+import { billingApi, instancesApi } from '@/lib/api';
 import { MiniPnLChart } from '@/components/charts/PnLChart';
 import type { DateRange } from 'react-day-picker';
 import {
@@ -73,7 +73,6 @@ export function TradingHeroCard({
   const [monthlyData, setMonthlyData] = useState<MonthlyPnLData | null>(null);
   const [curveData, setCurveData] = useState<CurveData | null>(null);
   const [botInstance, setBotInstance] = useState<BotInstance | null>(null);
-  const [exchangeBalance, setExchangeBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,27 +128,23 @@ export function TradingHeroCard({
         i.status === 'running' || i.status === 'active'
       );
       if (runningInstances.length > 0) {
-        const instance = runningInstances[0];
+        const instance = runningInstances[0] as any;
+        // 检查 Freqtrade 实际状态 - freqtrade_status 字段由心跳上报
+        // 可能值: 'running' | 'stopped' | 'idle' | 'unknown'
+        const ftStatus = instance.freqtrade_status || instance.ft_status;
+        const isRunning = ftStatus === 'running' || ftStatus === 'trading';
+
         setBotInstance({
           id: instance.id,
-          status: 'running',
-          strategyName: (instance as any).strategy_name || '量化策略',
-          startedAt: (instance as any).created_at || new Date().toISOString(),
+          status: isRunning ? 'running' : 'stopped',
+          strategyName: instance.strategy_name || '量化策略',
+          startedAt: instance.created_at || new Date().toISOString(),
           positionCount: 0,
         });
-        // 获取交易所余额
-        try {
-          const balanceRes = await instancesApi.getBalance(instance.id);
-          if (balanceRes.code === 0 && balanceRes.data) {
-            setExchangeBalance(balanceRes.data.total);
-          }
-        } catch {
-          setExchangeBalance(null);
-        }
       } else {
         setBotInstance(null);
-        setExchangeBalance(null);
       }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取数据失败');
     } finally {
@@ -316,15 +311,6 @@ export function TradingHeroCard({
 
       {/* 卡片主体 */}
       <div className="px-4 pb-6 lg:p-6">
-
-        {/* 交易所余额 */}
-        <div className="flex items-center justify-between mb-4 pb-4 border-b border-border-primary/30">
-          <span className="text-text-tertiary text-sm">交易所余额</span>
-          <span className="text-xl font-bold font-mono text-success">
-            {exchangeBalance !== null ? `$${exchangeBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '--'}
-          </span>
-        </div>
-
         {/* 三栏布局 */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           {/* 累计盈亏 */}
@@ -397,7 +383,8 @@ export function TradingHeroCard({
 
         {/* 操作按钮 */}
         <div className="flex gap-3">
-          {botInstance?.status === 'running' ? (
+          {botInstance && botInstance.status === 'running' ? (
+            // 有运行中的实例且 Freqtrade 正在运行 → 显示停止按钮
             <Button
               variant="danger"
               size="sm"
@@ -408,6 +395,7 @@ export function TradingHeroCard({
               停止机器人
             </Button>
           ) : (
+            // 无实例 或 实例存在但 Freqtrade 未运行 → 显示启动按钮
             <StrategyQuickControlSheet />
           )}
           <Button

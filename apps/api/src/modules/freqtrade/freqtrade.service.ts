@@ -65,11 +65,44 @@ export class FreqtradeService {
   private readonly defaultPort = 8080;
   private readonly defaultUsername = 'quantfi'; // 固定用户名
 
+  // 连接失败缓存：记录最近失败的 IP，避免重复超时
+  private failedConnections: Map<string, number> = new Map();
+  private readonly FAIL_CACHE_DURATION = 60000; // 1 分钟内不重试失败的连接
+  private readonly QUICK_TIMEOUT = 3000; // 快速超时：3 秒
+
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
     this.isSandbox = this.configService.get('SANDBOX_MODE') === 'true';
+  }
+
+  /**
+   * 检查 IP 是否在失败缓存中
+   */
+  private isConnectionFailed(ip: string): boolean {
+    const failedAt = this.failedConnections.get(ip);
+    if (!failedAt) return false;
+
+    if (Date.now() - failedAt > this.FAIL_CACHE_DURATION) {
+      this.failedConnections.delete(ip);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 标记 IP 连接失败
+   */
+  private markConnectionFailed(ip: string): void {
+    this.failedConnections.set(ip, Date.now());
+  }
+
+  /**
+   * 清除 IP 的失败标记（连接成功时调用）
+   */
+  private clearConnectionFailed(ip: string): void {
+    this.failedConnections.delete(ip);
   }
 
   /**
@@ -100,6 +133,14 @@ export class FreqtradeService {
    * @param apiToken Freqtrade API Token（可选，沙盒模式不需要）
    */
   private async get<T>(instanceIp: string, path: string, apiToken?: string): Promise<T> {
+    // 快速失败：如果该 IP 最近连接失败，直接返回错误
+    if (this.isConnectionFailed(instanceIp)) {
+      this.logger.debug(`Freqtrade GET 快速失败（缓存）: ${instanceIp}`);
+      throw new InternalServerErrorException(
+        `Freqtrade 暂时不可用，请稍后重试`,
+      );
+    }
+
     const url = this.buildUrl(instanceIp, path);
 
     try {
@@ -111,16 +152,19 @@ export class FreqtradeService {
 
       const response = await firstValueFrom(
         this.httpService.get<T>(url, {
-          timeout: 10000, // 10 秒超时
+          timeout: this.QUICK_TIMEOUT, // 3 秒快速超时
           headers: this.buildAuthHeaders(auth),
         }),
       );
 
+      // 连接成功，清除失败标记
+      this.clearConnectionFailed(instanceIp);
       return response.data as T;
     } catch (error: any) {
+      // 标记连接失败
+      this.markConnectionFailed(instanceIp);
       this.logger.error(
         `Freqtrade GET 失败: ${url}, 错误: ${error.message}`,
-        error.stack,
       );
       throw new InternalServerErrorException(
         `无法连接到 Freqtrade: ${error.message}`,
@@ -141,6 +185,14 @@ export class FreqtradeService {
     data?: any,
     apiToken?: string,
   ): Promise<T> {
+    // 快速失败：如果该 IP 最近连接失败，直接返回错误
+    if (this.isConnectionFailed(instanceIp)) {
+      this.logger.debug(`Freqtrade POST 快速失败（缓存）: ${instanceIp}`);
+      throw new InternalServerErrorException(
+        `Freqtrade 暂时不可用，请稍后重试`,
+      );
+    }
+
     const url = this.buildUrl(instanceIp, path);
 
     try {
@@ -152,16 +204,19 @@ export class FreqtradeService {
 
       const response = await firstValueFrom(
         this.httpService.post<T>(url, data, {
-          timeout: 10000,
+          timeout: this.QUICK_TIMEOUT, // 3 秒快速超时
           headers: this.buildAuthHeaders(auth),
         }),
       );
 
+      // 连接成功，清除失败标记
+      this.clearConnectionFailed(instanceIp);
       return response.data as T;
     } catch (error: any) {
+      // 标记连接失败
+      this.markConnectionFailed(instanceIp);
       this.logger.error(
         `Freqtrade POST 失败: ${url}, 错误: ${error.message}`,
-        error.stack,
       );
       throw new InternalServerErrorException(
         `无法连接到 Freqtrade: ${error.message}`,

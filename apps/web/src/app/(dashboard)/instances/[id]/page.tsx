@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-// 直接从源文件导入，避免 barrel export 导致的客户端模块解析问题
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { instancesApi, backupsApi } from '@/lib/api';
@@ -10,7 +9,6 @@ import { formatDateTime } from '@/lib/utils';
 import {
   Server,
   ArrowLeft,
-  Trash2,
   RefreshCw,
   Power,
   Activity,
@@ -19,11 +17,12 @@ import {
   AlertCircle,
   Clock,
   MapPin,
-  Terminal,
-  Download,
   CheckCircle,
   Loader2,
   XCircle,
+  Trash2,
+  Plus,
+  Wrench,
 } from 'lucide-react';
 
 interface Instance {
@@ -40,6 +39,7 @@ interface Instance {
   droplet_id?: string | null;
   provisioned_at?: string | null;
   destroy_reason?: string | null;
+  destroyed_at?: string | null;
 }
 
 interface Backup {
@@ -51,12 +51,6 @@ interface Backup {
   createdAt: string;
 }
 
-interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'warn' | 'error';
-  message: string;
-}
-
 export default function InstanceDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -64,11 +58,14 @@ export default function InstanceDetailPage() {
 
   const [instance, setInstance] = useState<Instance | null>(null);
   const [backups, setBackups] = useState<Backup[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = async (showRefreshFeedback = false) => {
+    if (showRefreshFeedback) {
+      setRefreshing(true);
+    }
     try {
       const [instanceRes, backupsRes] = await Promise.all([
         instancesApi.detail(instanceId),
@@ -77,96 +74,66 @@ export default function InstanceDetailPage() {
 
       setInstance(instanceRes.data);
       setBackups(backupsRes.data || []);
-
-      // Mock 日志数据
-      setLogs([
-        { timestamp: new Date().toISOString(), level: 'info', message: '策略已启动' },
-        { timestamp: new Date(Date.now() - 60000).toISOString(), level: 'info', message: '连接到币安交易所' },
-        { timestamp: new Date(Date.now() - 120000).toISOString(), level: 'warn', message: 'API 速率限制警告' },
-        { timestamp: new Date(Date.now() - 180000).toISOString(), level: 'info', message: '开仓 BTC/USDT 做多' },
-        { timestamp: new Date(Date.now() - 240000).toISOString(), level: 'error', message: '网络连接超时，正在重试...' },
-      ]);
     } catch (error) {
       console.error('Failed to fetch instance:', error);
       alert('加载失败');
       router.push('/instances');
     } finally {
       setLoading(false);
+      if (showRefreshFeedback) {
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchData();
-    // 每 10 秒刷新一次数据
-    const interval = setInterval(fetchData, 10000);
+    // 每 30 秒刷新一次数据
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [instanceId]);
 
-  const handleStart = async () => {
-    setActionLoading('start');
+  // 硬重启 VPS
+  const handleReboot = async () => {
+    if (!confirm('确定要重启 VPS 吗？重启过程约 2-3 分钟。')) return;
+
+    setActionLoading('reboot');
     try {
-      await instancesApi.start(instanceId);
-      await fetchData();
-      alert('策略已启动');
+      await instancesApi.reboot(instanceId);
+      alert('VPS 重启指令已发送，请等待 2-3 分钟后刷新页面查看状态。');
+      setTimeout(() => fetchData(), 30000);
     } catch (error) {
-      alert(error instanceof Error ? error.message : '启动失败');
+      alert(error instanceof Error ? error.message : 'VPS 重启失败');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleStop = async () => {
-    if (!confirm('确定要停止策略吗？')) return;
-
-    setActionLoading('stop');
-    try {
-      await instancesApi.stop(instanceId);
-      await fetchData();
-      alert('策略已停止');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '停止失败');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleRestart = async () => {
-    if (!confirm('确定要重启实例吗？')) return;
-
-    setActionLoading('restart');
-    try {
-      await instancesApi.restart(instanceId);
-      await fetchData();
-      alert('实例重启中...');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '重启失败');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
+  // 销毁 VPS
   const handleDestroy = async () => {
-    if (!confirm('确定要销毁此实例吗？销毁前会自动备份数据。')) return;
+    if (!confirm('确定要销毁此 VPS 吗？此操作不可恢复。')) return;
 
     setActionLoading('destroy');
     try {
-      await instancesApi.destroy(instanceId);
-      alert('实例已销毁');
-      router.push('/instances');
+      await instancesApi.destroyVps(instanceId);
+      alert('VPS 已销毁');
+      await fetchData();
     } catch (error) {
-      alert(error instanceof Error ? error.message : '销毁失败');
+      alert(error instanceof Error ? error.message : 'VPS 销毁失败');
+    } finally {
       setActionLoading(null);
     }
   };
 
-  const handleBackup = async () => {
-    setActionLoading('backup');
+  // 创建新 VPS
+  const handleCreateVps = async () => {
+    setActionLoading('create');
     try {
-      await backupsApi.backup(instanceId);
-      await fetchData();
-      alert('备份成功');
+      await instancesApi.create('sgp1');
+      alert('VPS 创建中，请等待 5-8 分钟');
+      router.push('/instances');
     } catch (error) {
-      alert(error instanceof Error ? error.message : '备份失败');
+      alert(error instanceof Error ? error.message : 'VPS 创建失败');
     } finally {
       setActionLoading(null);
     }
@@ -178,8 +145,10 @@ export default function InstanceDetailPage() {
       pending: 'bg-brand-primary/20 text-brand-primary',
       provisioning: 'bg-warning/20 text-warning',
       stopped: 'bg-bg-tertiary text-text-secondary',
-      destroyed: 'bg-danger/20 text-danger',
+      destroyed: 'bg-text-tertiary/20 text-text-tertiary',
       zombie: 'bg-danger/20 text-danger',
+      unhealthy: 'bg-warning/20 text-warning',
+      destroying: 'bg-warning/20 text-warning',
       error: 'bg-danger/20 text-danger',
     };
 
@@ -190,6 +159,8 @@ export default function InstanceDetailPage() {
       stopped: '已停止',
       destroyed: '已销毁',
       zombie: '僵尸节点',
+      unhealthy: '异常修复中',
+      destroying: '销毁中',
       error: '创建失败',
     };
 
@@ -200,7 +171,7 @@ export default function InstanceDetailPage() {
     );
   };
 
-  // 计算心跳是否超时（接近 15 分钟）
+  // 计算心跳状态
   const getHeartbeatStatus = () => {
     if (!instance?.last_heartbeat) return { status: 'unknown', message: '尚无心跳记录' };
 
@@ -227,15 +198,11 @@ export default function InstanceDetailPage() {
     if (status === 'running') return 100;
     if (status === 'error' || status === 'destroyed') return 0;
 
-    if (status === 'pending') {
-      return 20; // 数据库记录已创建
-    }
+    if (status === 'pending') return 20;
 
     if (status === 'provisioning') {
-      // 根据时间估算进度
       if (instance.provisioned_at) {
         const elapsed = (Date.now() - new Date(instance.provisioned_at).getTime()) / 1000;
-        // 预估 2 分钟完成
         const progress = Math.min(20 + (elapsed / 120) * 70, 90);
         return Math.round(progress);
       }
@@ -245,20 +212,19 @@ export default function InstanceDetailPage() {
     return 0;
   };
 
-  const getLogLevelColor = (level: string) => {
-    const colors: Record<string, string> = {
-      info: 'text-brand-primary',
-      warn: 'text-warning',
-      error: 'text-danger',
-    };
-    return colors[level] || 'text-text-secondary';
-  };
-
   const calculateUptime = (createdAt: string) => {
     const diff = Date.now() - new Date(createdAt).getTime();
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
     return `${hours}小时${minutes}分钟`;
+  };
+
+  // 计算预计销毁时间（从最后心跳算起 15 分钟）
+  const getEstimatedDestroyTime = () => {
+    if (!instance?.last_heartbeat) return null;
+    const lastBeat = new Date(instance.last_heartbeat).getTime();
+    const destroyTime = lastBeat + 15 * 60 * 1000;
+    return new Date(destroyTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   };
 
   if (loading) {
@@ -283,234 +249,336 @@ export default function InstanceDetailPage() {
     );
   }
 
+  // 判断是否可以显示操作按钮
+  const canShowReboot = ['running', 'unhealthy', 'zombie'].includes(instance.status);
+  const canShowDestroy = ['running', 'unhealthy', 'zombie', 'stopped'].includes(instance.status);
+  const canShowCreate = instance.status === 'destroyed';
+  const isProcessing = ['pending', 'provisioning', 'destroying'].includes(instance.status);
+
   return (
     <div className="space-y-6">
-      {/* 顶部导航 */}
+      {/* 顶部操作栏 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/instances')}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            返回
-          </Button>
-          <h1 className="text-2xl font-bold text-white">实例详情</h1>
+        <div className="flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/instances')}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              返回
+            </Button>
+            <h1 className="text-2xl font-bold text-white">实例详情</h1>
+          </div>
           {getStatusBadge(instance.status)}
         </div>
-        <div className="flex gap-3">
-          <Button variant="ghost" size="sm" onClick={fetchData}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline ml-2">{refreshing ? '刷新中...' : '刷新'}</span>
+        </Button>
       </div>
 
-      {/* VPS 创建进度卡片 */}
-      {(instance.status === 'pending' || instance.status === 'provisioning') && (
-        <Card className="border-brand-primary/30 bg-brand-primary/5">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 rounded-full bg-brand-primary/20 flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-brand-primary animate-spin" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">VPS 正在创建中</h3>
-                <p className="text-text-secondary text-sm">
-                  {instance.status === 'pending' ? '正在初始化资源...' : '正在配置服务器环境...'}
-                </p>
-              </div>
-            </div>
-
-            {/* 创建进度条 */}
-            <div className="mb-4">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-text-secondary">创建进度</span>
-                <span className="text-brand-primary">{getProvisioningProgress()}%</span>
-              </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-2">
-                <div
-                  className="bg-brand-primary h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${getProvisioningProgress()}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 创建步骤 */}
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-success" />
-                <span className="text-text-secondary">订阅已确认</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {instance.status === 'pending' ? (
-                  <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
-                ) : (
-                  <CheckCircle className="w-4 h-4 text-success" />
-                )}
-                <span className="text-text-secondary">创建云服务器</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {instance.status === 'provisioning' ? (
-                  <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />
-                ) : (
-                  <div className="w-4 h-4 rounded-full border border-text-tertiary" />
-                )}
-                <span className="text-text-secondary">安装交易环境</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full border border-text-tertiary" />
-                <span className="text-text-secondary">等待首次心跳</span>
-              </div>
-            </div>
-
-            <p className="text-xs text-text-tertiary mt-4">
-              预计需要 2-5 分钟，请耐心等待。如超过 10 分钟仍未完成，系统将自动标记为失败。
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 创建失败警告 */}
-      {instance.status === 'error' && (
-        <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
-          <div className="flex items-start gap-3">
-            <XCircle className="w-6 h-6 text-danger flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h4 className="text-danger font-medium mb-1">VPS 创建失败</h4>
-              <p className="text-danger/80 text-sm mb-3">
-                {instance.destroy_reason || '创建过程中发生错误，请联系客服处理。'}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => router.push('/wallet/billing')}>
-                  查看账单
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => window.open('mailto:support@quantfi.com')}>
-                  联系客服
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 僵尸节点警告 */}
-      {instance.status === 'zombie' && (
-        <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-danger flex-shrink-0" />
-          <div>
-            <h4 className="text-danger font-medium mb-1">僵尸节点警告</h4>
-            <p className="text-danger/80 text-sm">
-              此实例已超过 15 分钟无心跳，将被自动销毁并退款
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* 心跳超时预警（即将成为僵尸节点）*/}
-      {instance.status === 'running' && getHeartbeatStatus().status === 'critical' && (
-        <div className="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-warning flex-shrink-0" />
-          <div>
-            <h4 className="text-warning font-medium mb-1">心跳超时预警</h4>
-            <p className="text-warning/80 text-sm">
-              最后心跳时间：{getHeartbeatStatus().message}。如持续无响应，实例将被标记为僵尸节点。
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* 基本信息 */}
-      <Card>
-        <CardHeader>
+      {/* ========== VPS 状态卡片 ========== */}
+      <Card className={
+        instance.status === 'running' ? 'border-success/30' :
+        instance.status === 'unhealthy' ? 'border-warning/30' :
+        instance.status === 'destroyed' ? 'border-text-tertiary/30' :
+        'border-border-primary'
+      }>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
             <Server className="w-5 h-5 text-brand-primary" />
-            基本信息
+            VPS 状态
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <p className="text-text-secondary text-sm mb-1">实例 ID</p>
-              <p className="text-white font-mono">{instance.id}</p>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm mb-1">IP 地址</p>
-              <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm mb-1">区域</p>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-text-tertiary" />
-                <p className="text-white">{instance.region}</p>
-              </div>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm mb-1">创建时间</p>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-text-tertiary" />
-                <p className="text-white">{formatDateTime(instance.created_at)}</p>
-              </div>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm mb-1">运行时长</p>
-              <p className="text-white">{calculateUptime(instance.created_at)}</p>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm mb-1">当前策略</p>
-              <p className="text-white">{instance.current_strategy || '未运行'}</p>
-            </div>
-          </div>
-
-          {/* 心跳状态 */}
-          <div className="mt-6 pt-6 border-t border-border-primary">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <p className="text-text-secondary text-sm mb-1">最后心跳</p>
-                <div className="flex items-center gap-2">
-                  {instance.last_heartbeat ? (
-                    <>
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          getHeartbeatStatus().status === 'healthy'
-                            ? 'bg-success'
-                            : getHeartbeatStatus().status === 'warning'
-                              ? 'bg-warning'
-                              : getHeartbeatStatus().status === 'critical'
-                                ? 'bg-danger animate-pulse'
-                                : 'bg-text-tertiary'
-                        }`}
-                      />
-                      <p className="text-white">{formatDateTime(instance.last_heartbeat)}</p>
-                    </>
-                  ) : (
-                    <p className="text-text-tertiary">尚无心跳记录</p>
-                  )}
+        <CardContent className="space-y-4">
+          {/* 状态：running（正常） */}
+          {instance.status === 'running' && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-success" />
                 </div>
-                {instance.last_heartbeat && getHeartbeatStatus().status !== 'healthy' && (
-                  <p
-                    className={`text-xs mt-1 ${
-                      getHeartbeatStatus().status === 'critical' ? 'text-danger' : 'text-warning'
-                    }`}
-                  >
+                <div>
+                  <p className="text-white font-medium">运行中</p>
+                  <p className="text-text-secondary text-sm">VPS 运行正常</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-text-tertiary">IP 地址</p>
+                  <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary">最后心跳</p>
+                  <p className="text-white">{instance.last_heartbeat ? formatDateTime(instance.last_heartbeat) : '无'}</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary">运行时长</p>
+                  <p className="text-white">{calculateUptime(instance.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-text-tertiary">区域</p>
+                  <p className="text-white">{instance.region}</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 状态：unhealthy（异常修复中） */}
+          {instance.status === 'unhealthy' && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                  <Wrench className="w-5 h-5 text-warning animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-warning font-medium">检测到异常 - 正在自动修复</p>
+                  <p className="text-text-secondary text-sm">系统正在自动诊断并修复，无需您操作。</p>
+                </div>
+              </div>
+              <div className="p-3 bg-warning/10 rounded-lg text-sm">
+                <p className="text-warning">
+                  如修复失败，将在 <span className="font-medium">{getEstimatedDestroyTime()}</span> 自动销毁。
+                </p>
+                <p className="text-text-tertiary mt-1">💡 不想等待？您可以立即销毁并重建。</p>
+              </div>
+            </>
+          )}
+
+          {/* 状态：zombie（僵尸节点） */}
+          {instance.status === 'zombie' && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-danger" />
+                </div>
+                <div>
+                  <p className="text-danger font-medium">VPS 无响应</p>
+                  <p className="text-text-secondary text-sm">SSH 连接失败，等待自动销毁或手动处理。</p>
+                </div>
+              </div>
+              <div className="p-3 bg-danger/10 rounded-lg text-sm">
+                <p className="text-danger">
+                  将在 <span className="font-medium">{getEstimatedDestroyTime()}</span> 自动销毁。
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* 状态：destroyed（已销毁） */}
+          {instance.status === 'destroyed' && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-text-tertiary/20 flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-text-tertiary" />
+                </div>
+                <div>
+                  <p className="text-text-secondary font-medium">VPS 已销毁</p>
+                  <p className="text-text-tertiary text-sm">
+                    {instance.destroy_reason || '用户手动销毁'}
+                  </p>
+                </div>
+              </div>
+              {instance.destroyed_at && (
+                <div className="text-sm text-text-tertiary">
+                  销毁时间: {formatDateTime(instance.destroyed_at)}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 状态：pending/provisioning（创建中） */}
+          {(instance.status === 'pending' || instance.status === 'provisioning') && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-brand-primary animate-spin" />
+                </div>
+                <div>
+                  <p className="text-brand-primary font-medium">VPS 正在创建中</p>
+                  <p className="text-text-secondary text-sm">
+                    {instance.status === 'pending' ? '正在初始化资源...' : '正在配置服务器环境...'}
+                  </p>
+                </div>
+              </div>
+              {/* 进度条 */}
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-text-secondary">创建进度</span>
+                  <span className="text-brand-primary">{getProvisioningProgress()}%</span>
+                </div>
+                <div className="w-full bg-bg-tertiary rounded-full h-2">
+                  <div
+                    className="bg-brand-primary h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${getProvisioningProgress()}%` }}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-text-tertiary">
+                预计需要 5-8 分钟，请耐心等待。
+              </p>
+            </>
+          )}
+
+          {/* 状态：destroying（销毁中） */}
+          {instance.status === 'destroying' && (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 text-warning animate-spin" />
+              </div>
+              <div>
+                <p className="text-warning font-medium">VPS 正在销毁中</p>
+                <p className="text-text-secondary text-sm">请稍候...</p>
+              </div>
+            </div>
+          )}
+
+          {/* 状态：error（创建失败） */}
+          {instance.status === 'error' && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-danger" />
+                </div>
+                <div>
+                  <p className="text-danger font-medium">VPS 创建失败</p>
+                  <p className="text-text-secondary text-sm">
+                    {instance.destroy_reason || '未知错误，请联系客服'}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 操作按钮 */}
+          {!isProcessing && (
+            <div className="flex flex-wrap gap-3 pt-4 border-t border-border-primary">
+              {canShowReboot && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReboot}
+                  disabled={actionLoading !== null}
+                  isLoading={actionLoading === 'reboot'}
+                >
+                  <Power className="w-4 h-4 mr-2" />
+                  重启 VPS
+                </Button>
+              )}
+              {canShowDestroy && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDestroy}
+                  disabled={actionLoading !== null}
+                  isLoading={actionLoading === 'destroy'}
+                  className="border-danger/30 text-danger hover:bg-danger/10"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  销毁 VPS
+                </Button>
+              )}
+              {canShowCreate && (
+                <Button
+                  size="sm"
+                  onClick={handleCreateVps}
+                  disabled={actionLoading !== null}
+                  isLoading={actionLoading === 'create'}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  创建新 VPS
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 基本信息卡片 */}
+      {instance.status !== 'destroyed' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="w-4 h-4 text-brand-primary" />
+              详细信息
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-text-tertiary mb-1">实例 ID</p>
+                <p className="text-white font-mono text-xs break-all">{instance.id}</p>
+              </div>
+              <div>
+                <p className="text-text-tertiary mb-1">Droplet ID</p>
+                <p className="text-white font-mono text-xs">{instance.droplet_id || '未分配'}</p>
+              </div>
+              <div>
+                <p className="text-text-tertiary mb-1">IP 地址</p>
+                <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
+              </div>
+              <div>
+                <p className="text-text-tertiary mb-1">区域</p>
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-text-tertiary" />
+                  <p className="text-white">{instance.region}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-text-tertiary mb-1">创建时间</p>
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-text-tertiary" />
+                  <p className="text-white">{formatDateTime(instance.created_at)}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-text-tertiary mb-1">当前策略</p>
+                <p className="text-white">{instance.current_strategy || '未运行'}</p>
+              </div>
+            </div>
+
+            {/* 心跳状态 */}
+            {instance.last_heartbeat && (
+              <div className="mt-4 pt-4 border-t border-border-primary">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        getHeartbeatStatus().status === 'healthy'
+                          ? 'bg-success'
+                          : getHeartbeatStatus().status === 'warning'
+                            ? 'bg-warning'
+                            : getHeartbeatStatus().status === 'critical'
+                              ? 'bg-danger animate-pulse'
+                              : 'bg-text-tertiary'
+                      }`}
+                    />
+                    <span className="text-text-secondary text-sm">最后心跳</span>
+                  </div>
+                  <span className="text-white text-sm">{formatDateTime(instance.last_heartbeat)}</span>
+                </div>
+                {getHeartbeatStatus().status !== 'healthy' && (
+                  <p className={`text-xs mt-1 ${
+                    getHeartbeatStatus().status === 'critical' ? 'text-danger' : 'text-warning'
+                  }`}>
                     {getHeartbeatStatus().message}
                   </p>
                 )}
               </div>
-              <div>
-                <p className="text-text-secondary text-sm mb-1">Droplet ID</p>
-                <p className="text-white font-mono text-sm">
-                  {instance.droplet_id || '尚未分配'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 资源监控 */}
-      {instance.status === 'running' && (
+      {instance.status === 'running' && (instance.cpu_usage || instance.memory_usage || instance.disk_usage) && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-brand-primary" />
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="w-4 h-4 text-brand-primary" />
               资源监控
             </CardTitle>
           </CardHeader>
@@ -520,15 +588,13 @@ export default function InstanceDetailPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">CPU 使用率</span>
+                  <span className="text-text-secondary text-sm">CPU</span>
                 </div>
-                <span className="text-white font-medium">
-                  {instance.cpu_usage ? `${instance.cpu_usage}%` : '-'}
-                </span>
+                <span className="text-white text-sm">{instance.cpu_usage || '-'}%</span>
               </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-2">
+              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
                 <div
-                  className="bg-brand-primary h-2 rounded-full transition-all"
+                  className="bg-brand-primary h-1.5 rounded-full"
                   style={{ width: `${instance.cpu_usage || 0}%` }}
                 />
               </div>
@@ -539,15 +605,13 @@ export default function InstanceDetailPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">内存使用率</span>
+                  <span className="text-text-secondary text-sm">内存</span>
                 </div>
-                <span className="text-white font-medium">
-                  {instance.memory_usage ? `${instance.memory_usage}%` : '-'}
-                </span>
+                <span className="text-white text-sm">{instance.memory_usage || '-'}%</span>
               </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-2">
+              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
                 <div
-                  className="bg-success h-2 rounded-full transition-all"
+                  className="bg-success h-1.5 rounded-full"
                   style={{ width: `${instance.memory_usage || 0}%` }}
                 />
               </div>
@@ -558,15 +622,13 @@ export default function InstanceDetailPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <HardDrive className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-text-secondary text-sm">磁盘使用率</span>
+                  <span className="text-text-secondary text-sm">磁盘</span>
                 </div>
-                <span className="text-white font-medium">
-                  {instance.disk_usage ? `${instance.disk_usage}%` : '-'}
-                </span>
+                <span className="text-white text-sm">{instance.disk_usage || '-'}%</span>
               </div>
-              <div className="w-full bg-bg-tertiary rounded-full h-2">
+              <div className="w-full bg-bg-tertiary rounded-full h-1.5">
                 <div
-                  className="bg-warning h-2 rounded-full transition-all"
+                  className="bg-warning h-1.5 rounded-full"
                   style={{ width: `${instance.disk_usage || 0}%` }}
                 />
               </div>
@@ -574,155 +636,6 @@ export default function InstanceDetailPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* 操作按钮 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>实例操作</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            {instance.status === 'running' && (
-              <>
-                <Button
-                  onClick={handleStart}
-                  disabled={actionLoading !== null}
-                  isLoading={actionLoading === 'start'}
-                >
-                  <Power className="w-4 h-4 mr-2" />
-                  启动策略
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleStop}
-                  disabled={actionLoading !== null}
-                  isLoading={actionLoading === 'stop'}
-                >
-                  <Power className="w-4 h-4 mr-2" />
-                  停止策略
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleRestart}
-                  disabled={actionLoading !== null}
-                  isLoading={actionLoading === 'restart'}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  重启实例
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleBackup}
-                  disabled={actionLoading !== null}
-                  isLoading={actionLoading === 'backup'}
-                >
-                  <HardDrive className="w-4 h-4 mr-2" />
-                  创建备份
-                </Button>
-              </>
-            )}
-            <Button
-              variant="danger"
-              onClick={handleDestroy}
-              disabled={actionLoading !== null}
-              isLoading={actionLoading === 'destroy'}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              销毁实例
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 实时日志流 */}
-      {instance.status === 'running' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-brand-primary" />
-              实时日志（最近 20 条）
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-bg-primary rounded-lg p-4 font-mono text-sm space-y-2 max-h-96 overflow-y-auto">
-              {logs.length === 0 ? (
-                <p className="text-text-tertiary">暂无日志</p>
-              ) : (
-                logs.map((log, index) => (
-                  <div key={index} className="flex gap-3">
-                    <span className="text-text-disabled">
-                      {new Date(log.timestamp).toLocaleTimeString()}
-                    </span>
-                    <span className={getLogLevelColor(log.level)}>
-                      [{log.level.toUpperCase()}]
-                    </span>
-                    <span className="text-text-primary">{log.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 备份列表 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="w-5 h-5 text-brand-primary" />
-            备份列表
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {backups.length === 0 ? (
-            <div className="text-center py-8 text-text-secondary">
-              <HardDrive className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>暂无备份记录</p>
-              <Button variant="outline" className="mt-4" onClick={handleBackup}>
-                创建第一个备份
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {backups.map((backup) => (
-                <div
-                  key={backup.id}
-                  className="flex items-center justify-between p-4 bg-bg-tertiary/50 rounded-lg hover:bg-bg-tertiary transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <HardDrive className="w-5 h-5 text-text-tertiary mt-0.5" />
-                    <div>
-                      <p className="text-white font-medium">
-                        {formatDateTime(backup.createdAt)}
-                      </p>
-                      <p className="text-text-tertiary text-sm">
-                        大小: {(backup.sizeBytes / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-2 py-1 rounded text-xs ${
-                        backup.status === 'completed'
-                          ? 'bg-success/20 text-success'
-                          : 'bg-warning/20 text-warning'
-                      }`}
-                    >
-                      {backup.status === 'completed' ? '已完成' : backup.status}
-                    </span>
-                    {backup.status === 'completed' && (
-                      <Button variant="outline" size="sm">
-                        <Download className="w-4 h-4 mr-1" />
-                        恢复
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -547,15 +547,14 @@ export default function StakingPage() {
       </div>
 
       {/* ========== 分红记录模块 ========== */}
-      {(parseFloat(totalVesting) > 0 || parseFloat(totalReleased) > 0 || vestingOrders.length > 0) && (
-        <div className="mt-6">
-          <div className="px-4 flex items-center justify-between mb-3">
-            <h3 className="text-white font-medium">分红记录</h3>
-            <span className="text-text-tertiary text-sm">{vestingOrders.length} 笔</span>
-          </div>
+      <div className="mt-6">
+        <div className="px-4 flex items-center justify-between mb-3">
+          <h3 className="text-white font-medium">分红记录</h3>
+          <span className="text-text-tertiary text-sm">{vestingOrders.length} 笔</span>
+        </div>
 
-          {/* 分红订单列表 - 显示每周分红明细 */}
-          {vestingOrders.length > 0 ? (
+        {/* 分红订单列表 - 显示每周分红明细 */}
+        {vestingOrders.length > 0 ? (
             <div className="space-y-px">
               {vestingOrders.map((order) => {
                 const daysRemaining = Math.ceil(
@@ -691,8 +690,7 @@ export default function StakingPage() {
               <p className="text-text-tertiary text-sm">暂无分红记录</p>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* ========== 历史记录 ========== */}
       {stakes.filter(s => s.status !== 'active').length > 0 && (

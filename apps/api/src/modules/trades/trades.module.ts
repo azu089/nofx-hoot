@@ -4,6 +4,7 @@ import { TradesService } from './trades.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { FreqtradeModule } from '../freqtrade/freqtrade.module';
 import { PointsModule } from '../points/points.module';
+import { DigitalOceanModule } from '../digitalocean/digitalocean.module';
 
 /**
  * 交易历史模块
@@ -14,7 +15,7 @@ import { PointsModule } from '../points/points.module';
  * - 每 100 USDT 交易量 = 1 积分
  */
 @Module({
-  imports: [PrismaModule, FreqtradeModule, PointsModule],
+  imports: [PrismaModule, FreqtradeModule, PointsModule, DigitalOceanModule],
   controllers: [TradesController],
   providers: [TradesService],
   exports: [TradesService],

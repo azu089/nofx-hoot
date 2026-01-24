@@ -2722,4 +2722,253 @@ export class AdminService {
   // TODO: 需要在 Prisma Schema 中添加 is_agent 和 agent_commission_rate 字段后恢复
   // 以下方法已注释：setUserAgentStatus, updateUserAgentCommissionRate, getUserAgents, settleUserAgentCommission, getAgentReferrals
   // 详见 git history 或备份
+
+  // ==================== 质押权重分布 ====================
+
+  /**
+   * 获取全网质押权重分布
+   */
+  async getStakingWeights() {
+    // 获取所有活跃质押
+    const stakes = await this.prisma.client.stakes.findMany({
+      where: { status: 'active' },
+      include: {
+        users: { select: { id: true, email: true } },
+      },
+    });
+
+    // 计算每个用户的权重
+    const userWeights: Record<string, {
+      userId: string;
+      email: string;
+      stakeType: 'A' | 'B';
+      totalAmount: Decimal;
+      totalWeight: Decimal;
+      stakesCount: number;
+    }> = {};
+
+    let totalWeight = new Decimal(0);
+    let totalStaked = new Decimal(0);
+    let typeAWeight = new Decimal(0);
+    let typeBWeight = new Decimal(0);
+    let typeAStaked = new Decimal(0);
+    let typeBStaked = new Decimal(0);
+
+    stakes.forEach((stake) => {
+      const amount = new Decimal(stake.amount?.toString() || '0');
+      const weight = new Decimal(stake.weight_multiplier?.toString() || '1');
+      const stakeWeight = amount.times(weight);
+
+      totalWeight = totalWeight.plus(stakeWeight);
+      totalStaked = totalStaked.plus(amount);
+
+      if (stake.stake_type === 'A') {
+        typeAWeight = typeAWeight.plus(stakeWeight);
+        typeAStaked = typeAStaked.plus(amount);
+      } else {
+        typeBWeight = typeBWeight.plus(stakeWeight);
+        typeBStaked = typeBStaked.plus(amount);
+      }
+
+      const userId = stake.user_id;
+      if (!userWeights[userId]) {
+        userWeights[userId] = {
+          userId,
+          email: stake.users?.email || 'unknown',
+          stakeType: stake.stake_type as 'A' | 'B',
+          totalAmount: new Decimal(0),
+          totalWeight: new Decimal(0),
+          stakesCount: 0,
+        };
+      }
+      userWeights[userId].totalAmount = userWeights[userId].totalAmount.plus(amount);
+      userWeights[userId].totalWeight = userWeights[userId].totalWeight.plus(stakeWeight);
+      userWeights[userId].stakesCount++;
+    });
+
+    // 转换为数组并计算百分比
+    const distribution = Object.values(userWeights)
+      .map((u) => ({
+        userId: u.userId,
+        email: u.email,
+        stakeType: u.stakeType,
+        totalAmount: u.totalAmount.toFixed(8),
+        totalWeight: u.totalWeight.toFixed(8),
+        weightPercentage: totalWeight.isZero()
+          ? '0'
+          : u.totalWeight.div(totalWeight).times(100).toFixed(4),
+        stakesCount: u.stakesCount,
+      }))
+      .sort((a, b) => parseFloat(b.weightPercentage) - parseFloat(a.weightPercentage));
+
+    return {
+      totalWeight: totalWeight.toFixed(8),
+      totalStaked: totalStaked.toFixed(8),
+      typeAWeight: typeAWeight.toFixed(8),
+      typeBWeight: typeBWeight.toFixed(8),
+      typeAStaked: typeAStaked.toFixed(8),
+      typeBStaked: typeBStaked.toFixed(8),
+      totalStakers: Object.keys(userWeights).length,
+      distribution,
+    };
+  }
+
+  // ==================== 交易明细 ====================
+
+  /**
+   * 获取全网交易明细
+   */
+  async getFinanceRecords(params: {
+    page: number;
+    pageSize: number;
+    type?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { page, pageSize, type, search, startDate, endDate } = params;
+
+    const where: any = {};
+
+    // 类型筛选
+    if (type && type !== 'all') {
+      where.billing_type = type;
+    }
+
+    // 日期筛选
+    if (startDate || endDate) {
+      where.created_at = {};
+      if (startDate) {
+        where.created_at.gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.created_at.lte = end;
+      }
+    }
+
+    // 搜索（需要先查用户）
+    let userIds: string[] | undefined;
+    if (search) {
+      const users = await this.prisma.client.users.findMany({
+        where: {
+          email: { contains: search, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      userIds = users.map((u) => u.id);
+      if (userIds.length === 0) {
+        return { records: [], total: 0, page, pageSize, totalPages: 0 };
+      }
+      where.user_id = { in: userIds };
+    }
+
+    // 查询总数
+    const total = await this.prisma.client.billing_logs.count({ where });
+
+    // 查询记录
+    const records = await this.prisma.client.billing_logs.findMany({
+      where,
+      include: {
+        users: { select: { email: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
+    return {
+      records: records.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        userEmail: r.users?.email || 'unknown',
+        type: r.billing_type,
+        amount: r.amount?.toString() || '0',
+        currency: r.currency || 'USDT',
+        description: r.description || '',
+        reference_id: r.reference_id || '',
+        status: r.status || 'completed',
+        created_at: r.created_at,
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  // ==================== Telegram Bot 配置 ====================
+
+  /**
+   * 获取 TG Bot 配置
+   */
+  async getTelegramConfig() {
+    const configs = await this.prisma.client.system_configs.findMany({
+      where: {
+        config_key: { startsWith: 'tg_bot.' },
+      },
+    });
+
+    const result: Record<string, any> = {};
+    configs.forEach((c) => {
+      const key = c.config_key.replace('tg_bot.', '');
+      try {
+        result[key] = JSON.parse(c.config_value);
+      } catch {
+        result[key] = c.config_value;
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * 更新 TG Bot 配置
+   */
+  async updateTelegramConfig(config: Record<string, any>, adminId: string) {
+    const updates: { key: string; value: string }[] = [];
+
+    for (const [key, value] of Object.entries(config)) {
+      const configKey = `tg_bot.${key}`;
+      const configValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      updates.push({ key: configKey, value: configValue });
+    }
+
+    // 批量更新或插入
+    for (const { key, value } of updates) {
+      await this.prisma.client.system_configs.upsert({
+        where: { config_key: key },
+        update: {
+          config_value: value,
+          updated_at: new Date(),
+          updated_by: adminId,
+        },
+        create: {
+          config_key: key,
+          config_value: value,
+          config_type: 'string',
+          category: 'telegram',
+          label: key.replace('tg_bot.', ''),
+          is_public: false,
+          description: `Telegram Bot 配置: ${key}`,
+          updated_by: adminId,
+        },
+      });
+    }
+
+    // 清除缓存
+    // TODO: 调用 Redis 清除 tg_bot_config 缓存
+
+    this.logger.log(`管理员 ${adminId} 更新了 TG Bot 配置`);
+  }
+
+  /**
+   * 重载 TG Bot 配置（清除缓存，触发重新加载）
+   */
+  async reloadTelegramConfig() {
+    // TODO: 调用 TelegramBotService.reloadConfig()
+    // 目前只记录日志
+    this.logger.log('TG Bot 配置重载请求已发送');
+  }
 }

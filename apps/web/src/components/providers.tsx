@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/components/ui';
+import { RouteProgress } from '@/components/ui/RouteProgress';
 import { registerServiceWorker, setupInstallPrompt } from '@/lib/registerSW';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        {/* 路由切换进度条 - 提供即时反馈 */}
+        <Suspense fallback={null}>
+          <RouteProgress />
+        </Suspense>
         {children}
       </ToastProvider>
     </QueryClientProvider>

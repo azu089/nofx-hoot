@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException,
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStrategyConfigDto } from './dto/create-strategy-config.dto';
 import { UpdateStrategyConfigDto } from './dto/update-strategy-config.dto';
+import { StrategyDeployService } from './strategy-deploy.service';
 import Decimal from 'decimal.js';
 
 /**
@@ -12,7 +13,10 @@ import Decimal from 'decimal.js';
 export class StrategiesService {
   private readonly logger = new Logger(StrategiesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly deployService: StrategyDeployService,
+  ) {}
 
   /**
    * 获取所有公开策略列表
@@ -243,11 +247,32 @@ export class StrategiesService {
   }
 
   /**
-   * 创建用户策略配置
+   * 创建用户策略配置（保存到我的策略）
+   *
+   * 流程：
+   * 1. 检查用户是否有运行中的 VPS
+   * 2. 将用户其他策略设为非激活（Freqtrade 单实例只能运行一个策略）
+   * 3. 创建配置记录，设为激活状态
+   * 4. 自动部署策略到 VPS（上传代码 + 配置 + 重启）
+   *
    * @param userId 用户 ID
    * @param dto 创建 DTO
    */
   async createUserConfig(userId: string, dto: CreateStrategyConfigDto) {
+    // 1. 检查用户是否有运行中的 VPS
+    const instance = await this.prisma.client.instances.findFirst({
+      where: {
+        user_id: userId,
+        status: 'running',
+      },
+    });
+
+    if (!instance || !instance.ip_address) {
+      throw new BadRequestException(
+        '请先完成订阅并确认 VPS 已启动。保存策略需要 VPS 处于运行状态。',
+      );
+    }
+
     // 验证策略是否存在
     const strategy = await this.prisma.client.strategies.findUnique({
       where: { id: dto.strategy_id },
@@ -287,12 +312,22 @@ export class StrategiesService {
       }
     }
 
-    // 创建配置
+    // 2. 将用户其他所有策略设为非激活（Freqtrade 单实例只能运行一个策略）
+    await this.prisma.client.user_strategy_configs.updateMany({
+      where: {
+        user_id: userId,
+        is_active: true,
+      },
+      data: { is_active: false },
+    });
+    this.logger.log(`用户 ${userId} 所有策略已设为非激活`);
+
+    // 3. 创建配置记录，绑定 VPS 实例，设为激活状态
     const config = await this.prisma.client.user_strategy_configs.create({
       data: {
         user_id: userId,
         strategy_id: dto.strategy_id,
-        instance_id: dto.instance_id || null,
+        instance_id: instance.id, // 自动绑定用户的运行中 VPS
         stake_amount: dto.stake_amount,
         max_open_trades: dto.max_open_trades,
         leverage: dto.leverage,
@@ -301,6 +336,7 @@ export class StrategiesService {
         trailing_stop_positive: dto.trailing_stop_positive || null,
         blacklist: dto.blacklist || [],
         custom_config: dto.custom_config || {},
+        is_active: true, // 新创建的配置默认激活
       },
       include: {
         strategies: {
@@ -313,7 +349,21 @@ export class StrategiesService {
       },
     });
 
-    this.logger.log(`用户 ${userId} 创建策略配置: ${config.id}`);
+    this.logger.log(`用户 ${userId} 创建策略配置: ${config.id}, 绑定实例: ${instance.id}`);
+
+    // 4. 自动部署策略到 VPS
+    try {
+      await this.deployService.deployStrategy(userId, config.id);
+      this.logger.log(`策略 ${config.id} 已自动部署到 VPS ${instance.id}`);
+    } catch (error) {
+      // 部署失败时，将配置设为非激活，但保留记录
+      await this.prisma.client.user_strategy_configs.update({
+        where: { id: config.id },
+        data: { is_active: false },
+      });
+      this.logger.error(`策略部署失败: ${error.message}`, error.stack);
+      throw new BadRequestException(`策略保存成功但部署失败: ${error.message}`);
+    }
 
     return {
       ...config,
@@ -323,11 +373,15 @@ export class StrategiesService {
       blacklist: Array.isArray(config.blacklist) ? config.blacklist : [],
       custom_config: config.custom_config || {},
       strategy: config.strategies,
+      deployed: true, // 标记已部署
     };
   }
 
   /**
    * 更新用户策略配置
+   *
+   * 如果配置处于激活状态且绑定了 VPS，会自动重新部署到 VPS
+   *
    * @param id 配置 ID
    * @param userId 用户 ID
    * @param dto 更新 DTO
@@ -336,6 +390,9 @@ export class StrategiesService {
     // 查找配置
     const config = await this.prisma.client.user_strategy_configs.findUnique({
       where: { id },
+      include: {
+        instances: true,
+      },
     });
 
     if (!config) {
@@ -379,10 +436,24 @@ export class StrategiesService {
             description: true,
           },
         },
+        instances: true,
       },
     });
 
     this.logger.log(`用户 ${userId} 更新策略配置: ${id}`);
+
+    // 如果配置处于激活状态且绑定了运行中的 VPS，自动重新部署
+    let redeployed = false;
+    if (updated.is_active && updated.instances?.ip_address && updated.instances?.status === 'running') {
+      try {
+        await this.deployService.deployStrategy(userId, id);
+        this.logger.log(`策略 ${id} 已自动重新部署到 VPS`);
+        redeployed = true;
+      } catch (error) {
+        this.logger.warn(`策略重新部署失败（配置已更新）: ${error.message}`);
+        // 配置更新成功，但部署失败，不抛出错误，让用户手动重试
+      }
+    }
 
     // 安全类型转换
     const blacklistArray = Array.isArray(updated.blacklist) ? updated.blacklist : [];
@@ -407,6 +478,7 @@ export class StrategiesService {
       created_at: updated.created_at,
       updated_at: updated.updated_at,
       strategy: updated.strategies,
+      redeployed, // 标记是否已重新部署
     };
   }
 

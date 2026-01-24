@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Home, TrendingUp, Zap, Wallet, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect } from 'react';
 
 /**
  * MobileNav - 移动端底部导航
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils';
  */
 export function MobileNav() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const navItems = [
     {
@@ -59,6 +61,13 @@ export function MobileNav() {
     },
   ];
 
+  // 预加载所有导航页面，确保点击秒到
+  useEffect(() => {
+    navItems.forEach((item) => {
+      router.prefetch(item.href);
+    });
+  }, [router]);
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-fixed lg:hidden bg-bg-secondary/95 backdrop-blur-lg border-t border-border-primary" role="navigation" aria-label="主导航">
       {/* 安全区域适配 iOS */}
@@ -71,11 +80,12 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={true}
               className={cn(
                 'flex flex-col items-center justify-center flex-1 h-full gap-1',
-                'transition-all duration-150',
-                // 触感反馈：点击时缩放 + 透明度变化
-                'active:scale-90 active:opacity-70',
+                'transition-transform duration-75',
+                // 触感反馈：点击时缩放（更快的响应）
+                'active:scale-90',
                 // 激活状态微放大
                 isActive && 'scale-105'
               )}

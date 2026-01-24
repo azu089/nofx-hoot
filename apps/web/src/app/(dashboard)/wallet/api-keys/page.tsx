@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { MobileHeader } from '@/components/ui';
 import { apiKeysApi } from '@/lib/api';
 import {
@@ -29,6 +30,19 @@ interface ApiKey {
   last_verified_at: string | null;
 }
 
+interface VerifyResult {
+  valid: boolean;
+  permissions?: string[];
+  balances?: Array<{
+    currency: string;
+    free: string;
+    used: string;
+    total: string;
+  }>;
+  totalBalanceUsdt?: string;
+  error?: string;
+}
+
 export default function ApiKeysPage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +50,8 @@ export default function ApiKeysPage() {
   const [verifying, setVerifying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [showSecurityTips, setShowSecurityTips] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+  const [showVerifyResult, setShowVerifyResult] = useState(false);
 
   // 添加表单
   const [formData, setFormData] = useState({
@@ -70,25 +86,41 @@ export default function ApiKeysPage() {
       return;
     }
 
-    // OKX 需要密钥密码
-    if (formData.exchange === 'okx' && !formData.passphrase) {
-      alert('OKX 需要填写密钥密码 (Passphrase)');
+    // OKX 和 Bitget 需要密钥密码
+    if ((formData.exchange === 'okx' || formData.exchange === 'bitget') && !formData.passphrase) {
+      alert(`${formData.exchange === 'okx' ? 'OKX' : 'Bitget'} 需要填写密钥密码 (Passphrase)`);
       return;
     }
 
     setSubmitting(true);
     try {
-      await apiKeysApi.create({
+      // 1. 创建 API Key
+      const createRes = await apiKeysApi.create({
         exchange: formData.exchange,
         label: formData.label,
         apiKey: formData.apiKey,
         secretKey: formData.apiSecret,
-        passphrase: formData.exchange === 'okx' ? formData.passphrase : undefined,
+        passphrase: (formData.exchange === 'okx' || formData.exchange === 'bitget') ? formData.passphrase : undefined,
       });
+
       setFormData({ exchange: 'binance', label: '', apiKey: '', apiSecret: '', passphrase: '' });
       setShowAddForm(false);
+
+      // 2. 自动验证并获取余额
+      if (createRes.data?.id) {
+        setVerifying(createRes.data.id);
+        try {
+          const verifyRes = await apiKeysApi.verify(createRes.data.id);
+          setVerifyResult(verifyRes.data);
+          setShowVerifyResult(true);
+        } catch {
+          // 验证失败不影响添加成功
+        } finally {
+          setVerifying(null);
+        }
+      }
+
       fetchApiKeys();
-      alert('API Key 添加成功');
     } catch (error) {
       alert(error instanceof Error ? error.message : '添加失败');
     } finally {
@@ -99,9 +131,11 @@ export default function ApiKeysPage() {
   const handleVerify = async (id: string) => {
     setVerifying(id);
     try {
-      await apiKeysApi.verify(id);
+      const res = await apiKeysApi.verify(id);
       fetchApiKeys();
-      alert('验证成功');
+      // 显示验证结果弹窗（包含余额信息）
+      setVerifyResult(res.data);
+      setShowVerifyResult(true);
     } catch (error) {
       alert(error instanceof Error ? error.message : '验证失败');
     } finally {
@@ -129,14 +163,20 @@ export default function ApiKeysPage() {
     }
   };
 
-  const getExchangeLogo = (exchange: string) => {
-    const logos: Record<string, string> = {
-      binance: '🟡',
-      okx: '⚫',
-      bybit: '🟠',
-      gate: '🔵',
-    };
-    return logos[exchange] || '🔑';
+  const getExchangeLogo = (exchange: string, size: number = 24, invert: boolean = false) => {
+    const validExchanges = ['binance', 'okx', 'bybit', 'gate', 'bitget', 'coinbase'];
+    if (!validExchanges.includes(exchange)) {
+      return <span className="text-lg">🔑</span>;
+    }
+    return (
+      <Image
+        src={`/icons/exchanges/${exchange}.svg`}
+        alt={exchange}
+        width={size}
+        height={size}
+        className={cn('object-contain', invert && 'brightness-0 invert')}
+      />
+    );
   };
 
   const getExchangeName = (exchange: string) => {
@@ -145,6 +185,8 @@ export default function ApiKeysPage() {
       okx: 'OKX',
       bybit: 'Bybit',
       gate: 'Gate.io',
+      bitget: 'Bitget',
+      coinbase: 'Coinbase',
     };
     return map[exchange] || exchange;
   };
@@ -206,8 +248,8 @@ export default function ApiKeysPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center text-xl">
-                      {getExchangeLogo(key.exchange)}
+                    <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center">
+                      {getExchangeLogo(key.exchange, 24)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -234,15 +276,22 @@ export default function ApiKeysPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleVerify(key.id)}
                       disabled={verifying === key.id}
-                      className="p-2 text-text-secondary hover:text-white active:bg-bg-tertiary rounded-lg transition-colors"
+                      className={cn(
+                        "px-3 py-1.5 text-xs rounded-lg transition-colors",
+                        verifying === key.id
+                          ? "bg-bg-tertiary text-text-tertiary"
+                          : "bg-brand-primary/20 text-brand-primary hover:bg-brand-primary/30"
+                      )}
                     >
-                      <RefreshCw
-                        className={cn('w-4 h-4', verifying === key.id && 'animate-spin')}
-                      />
+                      {verifying === key.id ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        '验证'
+                      )}
                     </button>
                     <button
                       onClick={() => handleDelete(key.id)}
@@ -286,6 +335,99 @@ export default function ApiKeysPage() {
         )}
       </div>
 
+      {/* ========== 验证结果弹窗 ========== */}
+      {showVerifyResult && verifyResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm bg-bg-secondary rounded-2xl animate-in zoom-in-95 duration-200">
+            {/* 头部 */}
+            <div className="flex items-center justify-between px-4 py-4 border-b border-border-primary">
+              <h3 className="text-lg font-medium text-white">
+                {verifyResult.valid ? '验证成功' : '验证失败'}
+              </h3>
+              <button
+                onClick={() => setShowVerifyResult(false)}
+                className="p-1 text-text-tertiary hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 内容 */}
+            <div className="px-4 py-4">
+              {verifyResult.valid ? (
+                <>
+                  {/* 成功图标 */}
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 bg-success/20 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-8 h-8 text-success" />
+                    </div>
+                  </div>
+
+                  {/* 总资产 */}
+                  {verifyResult.totalBalanceUsdt && (
+                    <div className="text-center mb-4">
+                      <p className="text-text-secondary text-sm mb-1">交易所余额 (USDT)</p>
+                      <p className="text-2xl font-bold text-white">
+                        ${Number(verifyResult.totalBalanceUsdt).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 余额明细 */}
+                  {verifyResult.balances && verifyResult.balances.length > 0 && (
+                    <div className="bg-bg-tertiary rounded-xl p-3 space-y-2">
+                      <p className="text-text-tertiary text-xs mb-2">资产明细</p>
+                      {verifyResult.balances.map((b) => (
+                        <div key={b.currency} className="flex items-center justify-between">
+                          <span className="text-text-secondary text-sm">{b.currency}</span>
+                          <span className="text-white text-sm font-mono">
+                            {Number(b.total).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 权限 */}
+                  {verifyResult.permissions && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-text-tertiary text-xs">权限:</span>
+                      {verifyResult.permissions.map((p) => (
+                        <span key={p} className="px-2 py-0.5 bg-brand-primary/20 text-brand-primary text-xs rounded">
+                          {p === 'spot' ? '现货' : p === 'futures' ? '合约' : p}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* 失败图标 */}
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 bg-danger/20 rounded-full flex items-center justify-center">
+                      <XCircle className="w-8 h-8 text-danger" />
+                    </div>
+                  </div>
+                  <p className="text-center text-text-secondary">
+                    {verifyResult.error || 'API Key 验证失败，请检查配置'}
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* 底部按钮 */}
+            <div className="px-4 py-4 border-t border-border-primary">
+              <button
+                onClick={() => setShowVerifyResult(false)}
+                className="w-full py-3 bg-brand-primary text-white rounded-xl"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ========== 添加表单弹窗 ========== */}
       {showAddForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
@@ -303,29 +445,38 @@ export default function ApiKeysPage() {
 
             {/* 表单内容 */}
             <div className="px-4 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-              {/* 交易所选择 */}
+              {/* 交易所选择 - App 图标样式 */}
               <div>
-                <label className="block text-sm text-text-secondary mb-2">选择交易所</label>
-                <div className="grid grid-cols-4 gap-2">
+                <label className="block text-sm text-text-secondary mb-3">选择交易所</label>
+                <div className="grid grid-cols-3 gap-4">
                   {[
-                    { value: 'binance', label: '币安', icon: '🟡' },
-                    { value: 'okx', label: 'OKX', icon: '⚫' },
-                    { value: 'bybit', label: 'Bybit', icon: '🟠' },
-                    { value: 'gate', label: 'Gate', icon: '🔵' },
+                    { value: 'binance', label: '币安', bg: '#181A20' },
+                    { value: 'okx', label: 'OKX', bg: '#000000' },
+                    { value: 'bybit', label: 'Bybit', bg: '#131722' },
+                    { value: 'gate', label: 'Gate', bg: '#FFFFFF' },
+                    { value: 'bitget', label: 'Bitget', bg: '#00F0FF' },
+                    { value: 'coinbase', label: 'Coinbase', bg: '#0052FF' },
                   ].map((ex) => (
                     <button
                       key={ex.value}
                       onClick={() => setFormData({ ...formData, exchange: ex.value })}
-                      className={cn(
-                        'flex flex-col items-center gap-1 py-3 rounded-xl transition-colors',
-                        formData.exchange === ex.value
-                          ? 'bg-brand-primary/20 border border-brand-primary'
-                          : 'bg-bg-tertiary border border-transparent'
-                      )}
+                      className="flex flex-col items-center gap-2"
                     >
-                      <span className="text-xl">{ex.icon}</span>
+                      {/* 图标方框 - 独立的圆角方框，模仿 App 图标 */}
+                      <div
+                        className={cn(
+                          'w-14 h-14 rounded-2xl flex items-center justify-center transition-all overflow-hidden',
+                          formData.exchange === ex.value
+                            ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-bg-secondary'
+                            : 'ring-1 ring-white/10'
+                        )}
+                        style={{ backgroundColor: ex.bg }}
+                      >
+                        {getExchangeLogo(ex.value, 32)}
+                      </div>
+                      {/* 名称在方框外下方 */}
                       <span className={cn(
-                        'text-xs',
+                        'text-xs font-medium',
                         formData.exchange === ex.value ? 'text-brand-primary' : 'text-text-secondary'
                       )}>
                         {ex.label}
@@ -380,8 +531,8 @@ export default function ApiKeysPage() {
                 </div>
               </div>
 
-              {/* OKX 专用：密钥密码 */}
-              {formData.exchange === 'okx' && (
+              {/* OKX/Bitget 专用：密钥密码 */}
+              {(formData.exchange === 'okx' || formData.exchange === 'bitget') && (
                 <div>
                   <label className="block text-sm text-text-secondary mb-2">
                     密钥密码 (Passphrase)
@@ -404,7 +555,7 @@ export default function ApiKeysPage() {
                     </button>
                   </div>
                   <p className="mt-1.5 text-xs text-text-tertiary">
-                    OKX 创建 API Key 时需要设置的密码，与登录密码不同
+                    {formData.exchange === 'okx' ? 'OKX' : 'Bitget'} 创建 API Key 时需要设置的密码，与登录密码不同
                   </p>
                 </div>
               )}

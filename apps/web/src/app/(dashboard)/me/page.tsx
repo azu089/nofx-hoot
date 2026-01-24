@@ -6,7 +6,6 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Card, CardContent, Button } from '@/components/ui';
 import {
   User,
-  Shield,
   Sparkles,
   ChevronRight,
   LogOut,
@@ -379,54 +378,31 @@ export default function MePage() {
         />
       </div>
 
-      {/* 角色特殊入口 */}
-      {(isAgent || isAdmin) && (
+      {/* 代理商入口 */}
+      {isAgent && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-text-tertiary uppercase px-4 lg:px-1 flex items-center gap-1.5">
             <Sparkles className="w-3 h-3 text-brand-primary" />
             特殊权限
           </p>
           <div className="lg:hidden">
-            {isAgent && (
-              <MenuItem
-                href="/agent"
-                icon={Users}
-                label="代理商中心"
-                description="查看返佣、推广业绩"
-                variant="success"
-                isOdd={false}
-              />
-            )}
-            {isAdmin && (
-              <MenuItem
-                href="/admin"
-                icon={Shield}
-                label="管理后台"
-                description="用户管理、系统配置"
-                variant="warning"
-                isOdd={isAgent ? true : false}
-              />
-            )}
+            <MenuItem
+              href="/agent"
+              icon={Users}
+              label="代理商中心"
+              description="查看返佣、推广业绩"
+              variant="success"
+              isOdd={false}
+            />
           </div>
           <div className="hidden lg:block space-y-2">
-            {isAgent && (
-              <MenuItem
-                href="/agent"
-                icon={Users}
-                label="代理商中心"
-                description="查看返佣、推广业绩"
-                variant="success"
-              />
-            )}
-            {isAdmin && (
-              <MenuItem
-                href="/admin"
-                icon={Shield}
-                label="管理后台"
-                description="用户管理、系统配置"
-                variant="warning"
-              />
-            )}
+            <MenuItem
+              href="/agent"
+              icon={Users}
+              label="代理商中心"
+              description="查看返佣、推广业绩"
+              variant="success"
+            />
           </div>
         </div>
       )}

@@ -578,21 +578,17 @@ export class BillingService {
   }
 
   /**
-   * 订阅扣费（幂等，支持积分抵扣）
+   * 订阅扣费（幂等，仅支持 USDT）
    * @param userId 用户 ID
    * @param amount 金额 (USDT)
    * @param period 订阅周期描述
-   * @param usePoints 是否使用积分抵扣（默认 true）
    *
-   * 积分抵扣规则：
-   * - 1 积分 = 1 USDT
-   * - 优先使用积分，不足部分用 USDT 余额
+   * 注意：订阅只支持 USDT 支付，不支持积分抵扣
    */
   async chargeSubscription(
     userId: string,
     amount: string,
     period: string,
-    usePoints: boolean = true,
   ): Promise<BillingLogResponseDto & { pointsUsed: string; usdtUsed: string }> {
     const orderId = this.generateOrderId('subscription', userId);
     const chargeAmount = new Decimal(amount);
@@ -600,7 +596,7 @@ export class BillingService {
     // 获取动态返佣比例配置（统一从 ConfigsService 获取）
     const subscriptionRates = await this.configsService.getReferralRates('subscription');
 
-    // 检查钱包余额和积分余额
+    // 检查钱包 USDT 余额
     const wallet = await this.prisma.client.wallets.findUnique({
       where: { user_id: userId },
     });
@@ -616,74 +612,33 @@ export class BillingService {
     });
 
     const balance = new Decimal(wallet.usdt_balance);
-    const pointsBalance = new Decimal(wallet.points_balance || '0');
 
-    // 计算积分抵扣金额
-    let pointsToUse = new Decimal('0');
-    let usdtToUse = chargeAmount;
+    // 订阅只支持 USDT，不支持积分抵扣
+    const usdtToUse = chargeAmount;
 
-    if (usePoints && pointsBalance.gt(0)) {
-      // 积分抵扣：1 积分 = 1 USDT
-      const maxPointsDeduct = Decimal.min(pointsBalance, chargeAmount);
-      pointsToUse = maxPointsDeduct;
-      usdtToUse = chargeAmount.minus(pointsToUse);
-
-      this.logger.log(
-        `用户 ${userId} 订阅 ${amount} USDT，积分抵扣 ${pointsToUse}，剩余 ${usdtToUse} USDT`,
-      );
-    }
-
-    // 检查 USDT 余额是否足够支付剩余部分
+    // 检查 USDT 余额是否足够
     if (balance.lt(usdtToUse)) {
       // 安全：不暴露具体余额信息
       this.logger.warn(`用户 ${userId} 订阅余额不足`, {
         required: usdtToUse.toString(),
         currentBalance: balance.toString(),
-        pointsUsed: pointsToUse.toString(),
       });
-      throw new BadRequestException('余额不足，请先充值');
+      throw new BadRequestException('USDT 余额不足，请先充值');
     }
 
-    // 事务：扣积分 + 扣 USDT + 记录
+    // 事务：扣 USDT + 记录
     const log = await this.prisma.client.$transaction(async (tx) => {
-      // 1. 扣除积分（如有）
-      if (pointsToUse.gt(0)) {
-        const newPointsBalance = pointsBalance.minus(pointsToUse);
-        await tx.wallets.update({
-          where: { user_id: userId },
-          data: {
-            points_balance: newPointsBalance.toString(),
-            updated_at: new Date(),
-          },
-        });
+      // 1. 扣除 USDT
+      const newBalance = balance.minus(usdtToUse);
+      await tx.wallets.update({
+        where: { user_id: userId },
+        data: {
+          usdt_balance: newBalance.toString(),
+          updated_at: new Date(),
+        },
+      });
 
-        // 记录积分扣除日志
-        await tx.billing_logs.create({
-          data: {
-            user_id: userId,
-            unique_order_id: `${orderId}_points`,
-            billing_type: 'points_deduct',
-            amount: `-${pointsToUse.toString()}`,
-            currency: 'POINTS',
-            description: `订阅积分抵扣 - ${period}`,
-            status: 'completed',
-          },
-        });
-      }
-
-      // 2. 扣除 USDT（如有）
-      if (usdtToUse.gt(0)) {
-        const newBalance = balance.minus(usdtToUse);
-        await tx.wallets.update({
-          where: { user_id: userId },
-          data: {
-            usdt_balance: newBalance.toString(),
-            updated_at: new Date(),
-          },
-        });
-      }
-
-      // 3. 记录订阅扣费日志
+      // 2. 记录订阅扣费日志
       const billingLog = await tx.billing_logs.create({
         data: {
           user_id: userId,
@@ -691,12 +646,12 @@ export class BillingService {
           billing_type: 'subscription',
           amount: chargeAmount.toString(),
           currency: 'USDT',
-          description: `VIP 订阅费 - ${period} (积分抵扣: ${pointsToUse}, USDT: ${usdtToUse})`,
+          description: `VIP 订阅费 - ${period}`,
           status: 'completed',
         },
       });
 
-      // 4. 处理订阅费邀请返佣（从系统配置读取比例）
+      // 3. 处理订阅费邀请返佣（从系统配置读取比例）
       if (user?.referred_by_user_id) {
         await this.processUserReferralCommission(
           tx,
@@ -712,9 +667,7 @@ export class BillingService {
       return billingLog;
     });
 
-    this.logger.log(
-      `用户 ${userId} 订阅扣费成功: ${amount} USDT (积分 ${pointsToUse} + USDT ${usdtToUse})`,
-    );
+    this.logger.log(`用户 ${userId} 订阅扣费成功: ${amount} USDT`);
 
     return {
       id: log.id,
@@ -728,7 +681,7 @@ export class BillingService {
       description: log.description,
       status: log.status,
       createdAt: log.created_at,
-      pointsUsed: pointsToUse.toString(),
+      pointsUsed: '0', // 订阅不支持积分抵扣
       usdtUsed: usdtToUse.toString(),
     };
   }

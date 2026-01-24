@@ -93,7 +93,8 @@ export default function TgInstanceDetailPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    // 每 30 秒刷新一次（降低频率提升性能）
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [instanceId]);
 

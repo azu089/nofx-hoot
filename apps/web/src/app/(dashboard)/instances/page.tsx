@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { MobileHeader } from '@/components/ui/MobileBackButton';
-import { instancesApi, backupsApi, gamefiApi } from '@/lib/api';
+import { instancesApi, backupsApi, userApi } from '@/lib/api';
 import { formatDateTime, cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 import {
   Server,
   RefreshCw,
@@ -13,15 +14,17 @@ import {
   Cpu,
   AlertCircle,
   X,
-  Coins,
   ChevronDown,
   ChevronUp,
   Zap,
   Shield,
   Clock,
-  CreditCard,
   Eye,
   Info,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Crown,
 } from 'lucide-react';
 
 interface Instance {
@@ -46,17 +49,26 @@ interface Backup {
 const SUBSCRIPTION_FEE = 25;
 
 export default function InstancesPage() {
+  const router = useRouter();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [subscribing, setSubscribing] = useState(false);
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [usePoints, setUsePoints] = useState(true);
-  const [pointsBalance, setPointsBalance] = useState('0');
+  const [refreshing, setRefreshing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showBackupSection, setShowBackupSection] = useState(false);
 
-  const fetchData = async () => {
+  // 新增状态
+  const [isVip, setIsVip] = useState(false);
+  const [showNeedSubscribeModal, setShowNeedSubscribeModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [destroying, setDestroying] = useState(false);
+  const [showDestroyConfirm, setShowDestroyConfirm] = useState(false);
+
+  const fetchData = async (showRefreshFeedback = false) => {
+    if (showRefreshFeedback) {
+      setRefreshing(true);
+    }
     try {
       const [instancesRes, backupsRes] = await Promise.all([
         instancesApi.list(),
@@ -68,34 +80,72 @@ export default function InstancesPage() {
       console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
+      if (showRefreshFeedback) {
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchData();
+    checkVipStatus();
   }, []);
 
-  const openSubscribeModal = async () => {
-    setShowSubscribeModal(true);
+  // 获取 VIP 状态
+  const checkVipStatus = async () => {
     try {
-      const res = await gamefiApi.getPointsBalance();
-      setPointsBalance(res.data?.available || '0');
+      const res = await userApi.getProfile();
+      const vipExpiresAt = res.data?.vip_expires_at;
+      setIsVip(!!(vipExpiresAt && new Date(vipExpiresAt) > new Date()));
     } catch {
-      setPointsBalance('0');
+      setIsVip(false);
     }
   };
 
-  const handleSubscribe = async () => {
-    setSubscribing(true);
+  // 创建 VPS
+  const handleCreate = async () => {
+    if (!isVip) {
+      setShowNeedSubscribeModal(true);
+      return;
+    }
+    setCreating(true);
     try {
-      await instancesApi.subscribe('sgp1', usePoints);
-      setShowSubscribeModal(false);
+      await instancesApi.create('sgp1');
       fetchData();
-      alert('订阅成功，VPS 已自动创建');
+      alert('VPS 创建中，请等待 5-8 分钟');
     } catch (error) {
-      alert(error instanceof Error ? error.message : '订阅失败');
+      alert(error instanceof Error ? error.message : 'VPS 创建失败');
     } finally {
-      setSubscribing(false);
+      setCreating(false);
+    }
+  };
+
+  // 重启 VPS
+  const handleRestart = async (instanceId: string) => {
+    setRestarting(true);
+    try {
+      await instancesApi.restart(instanceId);
+      fetchData();
+      alert('VPS 重启中...');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '重启失败');
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  // 销毁 VPS
+  const handleDestroy = async (instanceId: string) => {
+    setDestroying(true);
+    try {
+      await instancesApi.destroy(instanceId);
+      fetchData();
+      setShowDestroyConfirm(false);
+      alert('VPS 已销毁');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '销毁失败');
+    } finally {
+      setDestroying(false);
     }
   };
 
@@ -138,24 +188,72 @@ export default function InstancesPage() {
 
   const activeInstances = instances.filter((i) => i.status !== 'destroyed');
   const hasActiveInstance = activeInstances.length > 0;
+  const activeInstance = activeInstances[0] || null;
+
+  // 按钮启用/禁用逻辑
+  const canCreate = !hasActiveInstance && !creating;
+  const canRestart = activeInstance && activeInstance.status === 'running' && !restarting;
+  const canDestroy = activeInstance && ['zombie', 'error'].includes(activeInstance.status) && !destroying;
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
       <MobileHeader
         title="实例管理"
         rightAction={
-          <div className="flex gap-2">
-            <button onClick={fetchData} className="p-2 text-text-secondary">
-              <RefreshCw className="w-4 h-4" />
+          <div className="flex gap-2 items-center">
+            {/* 刷新按钮 */}
+            <button
+              onClick={() => fetchData(true)}
+              className="p-2 text-text-secondary"
+              disabled={refreshing}
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
-            {!hasActiveInstance && (
-              <button
-                onClick={openSubscribeModal}
-                className="px-3 py-1.5 bg-brand-primary text-white text-sm rounded-lg"
-              >
-                购买
-              </button>
-            )}
+
+            {/* 创建按钮 - 有 VPS 时禁用 */}
+            <button
+              onClick={handleCreate}
+              disabled={!canCreate}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg flex items-center gap-1',
+                canCreate
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-bg-tertiary text-text-tertiary cursor-not-allowed'
+              )}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {creating ? '创建中...' : '创建'}
+            </button>
+
+            {/* 重启按钮 - 无 VPS 或非 running 时禁用 */}
+            <button
+              onClick={() => activeInstance && handleRestart(activeInstance.id)}
+              disabled={!canRestart}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg flex items-center gap-1',
+                canRestart
+                  ? 'bg-warning/20 text-warning'
+                  : 'bg-bg-tertiary text-text-tertiary cursor-not-allowed'
+              )}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              {restarting ? '重启中...' : '重启'}
+            </button>
+
+            {/* 销毁按钮 - 无 VPS 或状态正常时禁用（防手贱） */}
+            <button
+              onClick={() => setShowDestroyConfirm(true)}
+              disabled={!canDestroy}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded-lg flex items-center gap-1',
+                canDestroy
+                  ? 'bg-danger/20 text-danger'
+                  : 'bg-bg-tertiary text-text-tertiary cursor-not-allowed'
+              )}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              销毁
+            </button>
           </div>
         }
       />
@@ -167,14 +265,20 @@ export default function InstancesPage() {
             <Server className="w-10 h-10 text-text-tertiary" />
           </div>
           <h3 className="text-lg font-medium text-white mb-2">暂无 VPS 实例</h3>
-          <p className="text-text-secondary text-sm mb-6">购买订阅后，系统将自动为您创建专属 VPS</p>
-          <button
-            onClick={openSubscribeModal}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-xl"
-          >
-            <CreditCard className="w-5 h-5" />
-            购买订阅
-          </button>
+          <p className="text-text-secondary text-sm">
+            {isVip
+              ? '点击右上角「创建」按钮创建 VPS'
+              : '完成会员订阅后即可创建专属 VPS'}
+          </p>
+          {!isVip && (
+            <button
+              onClick={() => router.push('/subscription')}
+              className="mt-4 inline-flex items-center gap-2 px-6 py-3 bg-brand-primary text-white rounded-xl"
+            >
+              <Crown className="w-5 h-5" />
+              去订阅
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-px">
@@ -232,7 +336,7 @@ export default function InstancesPage() {
                 {instance.status === 'zombie' && (
                   <div className="mt-3 p-3 bg-warning/10 rounded-lg flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-warning" />
-                    <span className="text-warning text-xs">超过 15 分钟无心跳，将被自动销毁</span>
+                    <span className="text-warning text-xs">心跳超时，等待恢复中</span>
                   </div>
                 )}
                 {instance.status === 'provisioning' && (
@@ -350,95 +454,64 @@ export default function InstancesPage() {
         )}
       </div>
 
-      {/* ========== 购买订阅弹窗 ========== */}
-      {showSubscribeModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
-          <div className="w-full max-w-lg bg-bg-secondary rounded-t-2xl animate-in slide-in-from-bottom duration-300">
-            <div className="flex items-center justify-between px-4 py-4 border-b border-border-primary">
-              <h3 className="text-lg font-medium text-white">购买 VPS 订阅</h3>
-              <button onClick={() => setShowSubscribeModal(false)} className="p-1 text-text-tertiary">
-                <X className="w-5 h-5" />
+      {/* ========== 需要订阅提示弹窗 ========== */}
+      {showNeedSubscribeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm bg-bg-secondary rounded-2xl p-6">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto mb-4 bg-warning/20 rounded-full flex items-center justify-center">
+                <Crown className="w-8 h-8 text-warning" />
+              </div>
+              <h3 className="text-lg font-medium text-white mb-2">需要会员订阅</h3>
+              <p className="text-text-secondary text-sm">
+                完成会员订阅后即可创建 VPS
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNeedSubscribeModal(false)}
+                className="flex-1 py-3 bg-bg-tertiary text-white rounded-xl"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => router.push('/subscription')}
+                className="flex-1 py-3 bg-brand-primary text-white rounded-xl"
+              >
+                去订阅
               </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="px-4 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="p-3 bg-brand-primary/10 rounded-xl">
-                <p className="text-brand-primary text-sm">
-                  购买后系统将自动创建专属 VPS，到期后自动销毁并备份数据
-                </p>
+      {/* ========== 销毁确认弹窗 ========== */}
+      {showDestroyConfirm && activeInstance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-sm bg-bg-secondary rounded-2xl p-6">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 mx-auto mb-4 bg-danger/20 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-8 h-8 text-danger" />
               </div>
-
-              <div className="p-4 bg-bg-tertiary rounded-xl">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-text-secondary text-sm">订阅费用</span>
-                  <span className="text-white font-medium">{SUBSCRIPTION_FEE} USDT/月</span>
-                </div>
-                <p className="text-text-tertiary text-xs">首月订阅费将从您的账户扣除</p>
-              </div>
-
-              <div className="p-4 bg-bg-tertiary rounded-xl">
-                <div className="flex items-center gap-2 mb-1">
-                  <Coins className="w-4 h-4 text-warning" />
-                  <span className="text-text-secondary text-sm">积分余额</span>
-                  <span className="text-warning font-medium ml-auto">
-                    {parseFloat(pointsBalance).toFixed(2)} 积分
-                  </span>
-                </div>
-                <p className="text-text-tertiary text-xs">1 积分 = 1 USDT，可用于抵扣订阅费</p>
-              </div>
-
-              <label className="flex items-center gap-3 py-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={usePoints}
-                  onChange={(e) => setUsePoints(e.target.checked)}
-                  className="w-5 h-5 rounded border-border-secondary bg-bg-tertiary text-brand-primary"
-                />
-                <span className="text-white text-sm">使用积分抵扣</span>
-              </label>
-
-              {usePoints && parseFloat(pointsBalance) > 0 && (
-                <div className="p-4 bg-brand-primary/10 rounded-xl">
-                  <h4 className="text-brand-primary text-sm font-medium mb-2">费用明细</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-text-secondary">订阅费用</span>
-                      <span className="text-white">{SUBSCRIPTION_FEE} USDT</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-secondary">积分抵扣</span>
-                      <span className="text-warning">
-                        -{Math.min(parseFloat(pointsBalance), SUBSCRIPTION_FEE).toFixed(2)} USDT
-                      </span>
-                    </div>
-                    <div className="border-t border-brand-primary/20 my-2"></div>
-                    <div className="flex justify-between font-medium">
-                      <span className="text-text-secondary">实际支付</span>
-                      <span className="text-success">
-                        {Math.max(SUBSCRIPTION_FEE - parseFloat(pointsBalance), 0).toFixed(2)} USDT
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <h3 className="text-lg font-medium text-white mb-2">确认销毁 VPS？</h3>
+              <p className="text-text-secondary text-sm">
+                销毁后数据将自动备份，您可以稍后重新创建
+              </p>
             </div>
-
-            <div className="px-4 py-4 pb-8 border-t border-border-primary">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowSubscribeModal(false)}
-                  className="flex-1 py-3 bg-bg-tertiary text-white rounded-xl"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSubscribe}
-                  disabled={subscribing}
-                  className="flex-1 py-3 bg-brand-primary text-white rounded-xl disabled:opacity-50"
-                >
-                  {subscribing ? '订阅中...' : '确认订阅'}
-                </button>
-              </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDestroyConfirm(false)}
+                className="flex-1 py-3 bg-bg-tertiary text-white rounded-xl"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDestroy(activeInstance.id)}
+                disabled={destroying}
+                className="flex-1 py-3 bg-danger text-white rounded-xl disabled:opacity-50"
+              >
+                {destroying ? '销毁中...' : '确认销毁'}
+              </button>
             </div>
           </div>
         </div>

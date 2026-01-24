@@ -163,7 +163,34 @@ api.interceptors.response.use(
     }
 
     // 返回统一错误格式
-    const message = error.response?.data?.message || error.message || '请求失败';
+    let message = error.response?.data?.message || error.message || '请求失败';
+
+    // 将常见英文错误信息翻译为中文
+    const errorTranslations: Record<string, string> = {
+      'Network Error': '网络连接失败，请检查网络后重试',
+      'timeout of': '请求超时，请稍后重试',
+      'Request failed': '请求失败',
+      'ERR_NETWORK': '网络连接失败，请检查网络后重试',
+      'ECONNABORTED': '连接超时，请稍后重试',
+      'ECONNREFUSED': '服务器连接被拒绝',
+      'ETIMEDOUT': '连接超时，请稍后重试',
+      'Request aborted': '请求已取消',
+      'Unauthorized': '未授权，请重新登录',
+      'Forbidden': '无权限访问',
+      'Not Found': '请求的资源不存在',
+      'Internal Server Error': '服务器内部错误',
+      'Bad Gateway': '网关错误',
+      'Service Unavailable': '服务暂时不可用',
+    };
+
+    // 检查是否匹配已知的英文错误
+    for (const [english, chinese] of Object.entries(errorTranslations)) {
+      if (message.includes(english)) {
+        message = chinese;
+        break;
+      }
+    }
+
     return Promise.reject(new Error(message));
   }
 );
@@ -525,9 +552,28 @@ export const instancesApi = {
   restart: (id: string) =>
     api.post<never, ApiResponse<{ id: string; status: string }>>(`/instances/${id}/restart`),
 
-  // 销毁实例
+  // 硬重启 VPS（用于僵尸节点恢复）
+  reboot: (id: string) =>
+    api.post<never, ApiResponse<{ success: boolean; message: string }>>(`/instances/${id}/reboot`),
+
+  // 销毁实例（旧接口，使用 DELETE）
   destroy: (id: string) =>
     api.delete<never, ApiResponse<{ id: string }>>(`/instances/${id}`),
+
+  // 手动创建 VPS（需要有效订阅）
+  create: (region?: string) =>
+    api.post<never, ApiResponse<{
+      id: string;
+      status: string;
+      region: string;
+    }>>('/instances/create', { region }),
+
+  // 手动销毁 VPS
+  destroyVps: (id: string) =>
+    api.post<never, ApiResponse<{
+      id: string;
+      status: string;
+    }>>(`/instances/${id}/destroy`),
 
   // 一键清仓（Panic Sell）
   panicSell: () =>
@@ -847,13 +893,43 @@ export const strategiesApi = {
   deleteConfig: (id: string) =>
     api.delete<never, ApiResponse<{ message: string }>>(`/strategies/configs/${id}`),
 
+  /** 部署策略到 VPS（包含 API Key 注入和策略代码上传） */
+  deployStrategy: (configId: string) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      instanceId?: string;
+      strategy?: string;
+    }>>(`/strategies/configs/${configId}/deploy`),
+
   /** 启动策略 */
   startStrategy: (configId: string) =>
-    api.post<never, ApiResponse<{ message: string }>>(`/strategies/configs/${configId}/start`),
+    api.post<never, ApiResponse<{ success: boolean }>>(`/strategies/configs/${configId}/start`),
 
   /** 停止策略 */
   stopStrategy: (configId: string) =>
-    api.post<never, ApiResponse<{ message: string }>>(`/strategies/configs/${configId}/stop`),
+    api.post<never, ApiResponse<{ success: boolean }>>(`/strategies/configs/${configId}/stop`),
+
+  // ===== 日志 API =====
+
+  /** 获取交易日志（从交易机器人获取） */
+  getTradingLogs: (limit?: number) =>
+    api.get<never, ApiResponse<{
+      logs: string[];
+      log_count: number;
+      instanceId?: string;
+      message?: string;
+      notice?: string;
+    }>>(`/strategies/trading-logs`, { params: { limit: limit || 100 } }),
+
+  /** 获取 VPS 系统日志 */
+  getVpsLogs: (limit?: number) =>
+    api.get<never, ApiResponse<{
+      logs: Array<{ timestamp: string; level: string; message: string }>;
+      log_count: number;
+      instanceId?: string;
+      message?: string;
+      note?: string;
+    }>>(`/strategies/vps-logs`, { params: { limit: limit || 100 } }),
 
   // ===== Phase 16.5: 策略上传与收益分成 =====
 
@@ -1056,7 +1132,31 @@ export const apiKeysApi = {
     api.delete<never, ApiResponse<{ id: string }>>(`/api-keys/${id}`),
 
   verify: (id: string) =>
-    api.post<never, ApiResponse<{ valid: boolean; balances?: Record<string, string> }>>(`/api-keys/${id}/verify`),
+    api.post<never, ApiResponse<{
+      valid: boolean;
+      permissions?: string[];
+      balances?: Array<{
+        currency: string;
+        free: string;
+        used: string;
+        total: string;
+      }>;
+      totalBalanceUsdt?: string;
+      error?: string;
+    }>>(`/api-keys/${id}/verify`),
+
+  /** 获取所有绑定交易所的总余额 */
+  getBalances: () =>
+    api.get<never, ApiResponse<{
+      total: number;
+      balances: Array<{
+        exchange: string;
+        apiKeyId: string;
+        label: string;
+        usdtBalance: number;
+        isValid: boolean;
+      }>;
+    }>>('/api-keys/balances'),
 };
 
 // Trading API

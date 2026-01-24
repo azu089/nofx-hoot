@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
  */
 
 interface PanicButtonProps {
-  /** 当前运行中的实例 ID 列表 */
+  /** 当前运行中的策略实例 ID 列表 */
   runningInstanceIds?: string[];
   /** 当前持仓数量 */
   openTradesCount?: number;
@@ -123,8 +123,8 @@ export function PanicButton({
               </button>
             </div>
             <div className="space-y-2 text-xs text-text-secondary mb-3">
-              <p>• 运行中实例: {runningInstanceIds.length} 个</p>
-              <p>• 持仓中订单: {openTradesCount} 个</p>
+              <p>• 运行中策略: {runningInstanceIds.length} 个</p>
+              <p>• 当前持仓: {openTradesCount} 个</p>
             </div>
             <Button
               variant="danger"
@@ -188,7 +188,7 @@ export function PanicButton({
               <p className="text-text-primary font-medium mb-1">风险提示</p>
               <ul className="text-text-secondary space-y-1">
                 <li>• 将停止 {runningInstanceIds.length} 个运行中的策略</li>
-                <li>• 将平仓约 {openTradesCount} 个持仓订单</li>
+                <li>• 将平仓 {openTradesCount} 个持仓</li>
                 <li>• 可能以市价成交，存在滑点风险</li>
                 <li>• 操作不可撤销，请谨慎确认</li>
               </ul>

@@ -456,44 +456,423 @@ export default function CmsPage() {
         )}
       </div>
 
-      {/* 编辑弹窗占位 - 实际应该是一个完整的表单组件 */}
+      {/* 编辑弹窗 */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#131722] rounded-xl border border-[#2B3139] w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-[#2B3139] flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white">
-                {editingItem ? '编辑' : '新建'}
-                {activeTab === 'contents' ? '内容' :
-                 activeTab === 'banners' ? 'Banner' : '帮助文档'}
-              </h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-[#2B3139] rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-[#848E9C]" />
-              </button>
-            </div>
-            <div className="p-6">
-              <p className="text-[#848E9C] text-center py-8">
-                表单功能开发中...
-              </p>
-            </div>
-            <div className="p-6 border-t border-[#2B3139] flex justify-end gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139] transition-colors"
-              >
-                取消
-              </button>
-              <button
-                className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors"
-              >
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
+        <CmsEditModal
+          type={activeTab}
+          item={editingItem}
+          onClose={() => {
+            setShowModal(false);
+            setEditingItem(null);
+          }}
+          onSaved={() => {
+            setShowModal(false);
+            setEditingItem(null);
+            queryClient.invalidateQueries({ queryKey: ['admin', 'cms'] });
+          }}
+        />
       )}
+    </div>
+  );
+}
+
+// CMS 编辑弹窗组件
+function CmsEditModal({
+  type,
+  item,
+  onClose,
+  onSaved,
+}: {
+  type: TabType;
+  item: CmsItem | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEditing = !!item;
+
+  // 内容表单状态
+  const [contentForm, setContentForm] = useState({
+    contentKey: (item as ContentItem)?.content_key || '',
+    contentType: (item as ContentItem)?.content_type || 'announcement',
+    title: (item as ContentItem)?.title || '',
+    content: (item as ContentItem)?.content || '',
+    locale: (item as ContentItem)?.locale || 'zh-CN',
+    isPublished: (item as ContentItem)?.is_published ?? false,
+    sortOrder: (item as ContentItem)?.sort_order ?? 0,
+  });
+
+  // Banner 表单状态
+  const [bannerForm, setBannerForm] = useState({
+    title: (item as BannerItem)?.title || '',
+    subtitle: (item as BannerItem)?.subtitle || '',
+    imageUrl: (item as BannerItem)?.image_url || '',
+    linkUrl: (item as BannerItem)?.link_url || '',
+    position: (item as BannerItem)?.position || 'home_top',
+    isActive: (item as BannerItem)?.is_active ?? true,
+    sortOrder: (item as BannerItem)?.sort_order ?? 0,
+    buttonText: (item as BannerItem)?.button_text || '',
+  });
+
+  // 帮助文档表单状态
+  const [helpDocForm, setHelpDocForm] = useState({
+    slug: (item as HelpDocItem)?.slug || '',
+    title: (item as HelpDocItem)?.title || '',
+    category: (item as HelpDocItem)?.category || 'faq',
+    content: '',
+    isPublished: (item as HelpDocItem)?.is_published ?? false,
+    sortOrder: (item as HelpDocItem)?.sort_order ?? 0,
+  });
+
+  const [saving, setSaving] = useState(false);
+
+  // 创建内容
+  const createContentMutation = useMutation({
+    mutationFn: (data: typeof contentForm) =>
+      adminApi.createCmsContent({
+        contentKey: data.contentKey,
+        contentType: data.contentType,
+        title: data.title || undefined,
+        content: data.content,
+        locale: data.locale,
+        isPublished: data.isPublished,
+        sortOrder: data.sortOrder,
+      }),
+    onSuccess: () => {
+      toast.success('创建成功');
+      onSaved();
+    },
+    onError: () => {
+      toast.error('创建失败');
+    },
+  });
+
+  // 更新内容
+  const updateContentMutation = useMutation({
+    mutationFn: (data: typeof contentForm) =>
+      adminApi.updateCmsContent((item as ContentItem).id, {
+        title: data.title || undefined,
+        content: data.content,
+        isPublished: data.isPublished,
+        sortOrder: data.sortOrder,
+      }),
+    onSuccess: () => {
+      toast.success('更新成功');
+      onSaved();
+    },
+    onError: () => {
+      toast.error('更新失败');
+    },
+  });
+
+  // 创建 Banner
+  const createBannerMutation = useMutation({
+    mutationFn: (data: typeof bannerForm) =>
+      adminApi.createCmsBanner({
+        title: data.title,
+        subtitle: data.subtitle || undefined,
+        imageUrl: data.imageUrl,
+        linkUrl: data.linkUrl || undefined,
+        position: data.position,
+        isActive: data.isActive,
+        sortOrder: data.sortOrder,
+        buttonText: data.buttonText || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('创建成功');
+      onSaved();
+    },
+    onError: () => {
+      toast.error('创建失败');
+    },
+  });
+
+  // 更新 Banner
+  const updateBannerMutation = useMutation({
+    mutationFn: (data: typeof bannerForm) =>
+      adminApi.updateCmsBanner((item as BannerItem).id, {
+        title: data.title,
+        subtitle: data.subtitle || undefined,
+        imageUrl: data.imageUrl,
+        linkUrl: data.linkUrl || undefined,
+        isActive: data.isActive,
+        sortOrder: data.sortOrder,
+        buttonText: data.buttonText || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('更新成功');
+      onSaved();
+    },
+    onError: () => {
+      toast.error('更新失败');
+    },
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+
+    try {
+      if (type === 'contents') {
+        if (isEditing) {
+          await updateContentMutation.mutateAsync(contentForm);
+        } else {
+          await createContentMutation.mutateAsync(contentForm);
+        }
+      } else if (type === 'banners') {
+        if (isEditing) {
+          await updateBannerMutation.mutateAsync(bannerForm);
+        } else {
+          await createBannerMutation.mutateAsync(bannerForm);
+        }
+      } else {
+        // 帮助文档暂不支持，显示提示
+        toast.info('帮助文档编辑功能开发中');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderContentForm = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">内容键 *</label>
+          <input
+            type="text"
+            value={contentForm.contentKey}
+            onChange={(e) => setContentForm({ ...contentForm, contentKey: e.target.value })}
+            disabled={isEditing}
+            placeholder="如: announcement_welcome"
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF] disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">内容类型 *</label>
+          <select
+            value={contentForm.contentType}
+            onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
+            disabled={isEditing}
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF] disabled:opacity-50"
+          >
+            <option value="announcement">公告</option>
+            <option value="marquee">跑马灯</option>
+            <option value="notice">通知</option>
+            <option value="policy">政策</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[#848E9C] text-sm mb-2">标题</label>
+        <input
+          type="text"
+          value={contentForm.title}
+          onChange={(e) => setContentForm({ ...contentForm, title: e.target.value })}
+          placeholder="内容标题（可选）"
+          className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[#848E9C] text-sm mb-2">内容 *</label>
+        <textarea
+          value={contentForm.content}
+          onChange={(e) => setContentForm({ ...contentForm, content: e.target.value })}
+          placeholder="输入内容..."
+          rows={6}
+          className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF] resize-none"
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">语言</label>
+          <select
+            value={contentForm.locale}
+            onChange={(e) => setContentForm({ ...contentForm, locale: e.target.value })}
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          >
+            <option value="zh-CN">中文</option>
+            <option value="en-US">English</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">排序</label>
+          <input
+            type="number"
+            value={contentForm.sortOrder}
+            onChange={(e) => setContentForm({ ...contentForm, sortOrder: parseInt(e.target.value) || 0 })}
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">状态</label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={contentForm.isPublished}
+              onChange={(e) => setContentForm({ ...contentForm, isPublished: e.target.checked })}
+              className="w-4 h-4"
+            />
+            <span className="text-white">发布</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBannerForm = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">标题 *</label>
+          <input
+            type="text"
+            value={bannerForm.title}
+            onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+            placeholder="Banner 标题"
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">副标题</label>
+          <input
+            type="text"
+            value={bannerForm.subtitle}
+            onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+            placeholder="副标题（可选）"
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[#848E9C] text-sm mb-2">图片 URL *</label>
+        <input
+          type="url"
+          value={bannerForm.imageUrl}
+          onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })}
+          placeholder="https://..."
+          className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+        />
+        {bannerForm.imageUrl && (
+          <div className="mt-2 p-2 bg-[#1E222D] rounded-lg">
+            <img src={bannerForm.imageUrl} alt="Preview" className="max-h-32 rounded" />
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">链接 URL</label>
+          <input
+            type="url"
+            value={bannerForm.linkUrl}
+            onChange={(e) => setBannerForm({ ...bannerForm, linkUrl: e.target.value })}
+            placeholder="点击跳转链接（可选）"
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">按钮文字</label>
+          <input
+            type="text"
+            value={bannerForm.buttonText}
+            onChange={(e) => setBannerForm({ ...bannerForm, buttonText: e.target.value })}
+            placeholder="了解更多"
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">位置</label>
+          <select
+            value={bannerForm.position}
+            onChange={(e) => setBannerForm({ ...bannerForm, position: e.target.value })}
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          >
+            <option value="home_top">首页顶部</option>
+            <option value="home_middle">首页中部</option>
+            <option value="dashboard">仪表盘</option>
+            <option value="strategies">策略页</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">排序</label>
+          <input
+            type="number"
+            value={bannerForm.sortOrder}
+            onChange={(e) => setBannerForm({ ...bannerForm, sortOrder: parseInt(e.target.value) || 0 })}
+            className="w-full bg-[#1E222D] border border-[#2B3139] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#3772FF]"
+          />
+        </div>
+        <div>
+          <label className="block text-[#848E9C] text-sm mb-2">状态</label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={bannerForm.isActive}
+              onChange={(e) => setBannerForm({ ...bannerForm, isActive: e.target.checked })}
+              className="w-4 h-4"
+            />
+            <span className="text-white">启用</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderHelpDocForm = () => (
+    <div className="space-y-4">
+      <p className="text-[#848E9C] text-center py-8">
+        帮助文档编辑功能开发中...
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-[#131722] rounded-xl border border-[#2B3139] w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="p-6 border-b border-[#2B3139] flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-white">
+            {isEditing ? '编辑' : '新建'}
+            {type === 'contents' ? '内容' : type === 'banners' ? 'Banner' : '帮助文档'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-[#2B3139] rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-[#848E9C]" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="p-6">
+            {type === 'contents' && renderContentForm()}
+            {type === 'banners' && renderBannerForm()}
+            {type === 'help-docs' && renderHelpDocForm()}
+          </div>
+          <div className="p-6 border-t border-[#2B3139] flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139] transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF] transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <RefreshCw className="w-4 h-4 animate-spin" />}
+              保存
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -26,8 +26,8 @@ export class TelegramApiService {
     private readonly configService: ConfigService,
     private readonly configsService: ConfigsService,
   ) {
-    this.telegramBotUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'QuantFiBot';
-    this.webAppUrl = this.configService.get<string>('WEB_APP_URL') || 'https://quantfi.app';
+    this.telegramBotUsername = this.configService.get<string>('TELEGRAM_BOT_USERNAME') || 'TIZOCCBot';
+    this.webAppUrl = this.configService.get<string>('WEB_APP_URL') || 'https://tizo.cc/tg';
   }
 
   /**

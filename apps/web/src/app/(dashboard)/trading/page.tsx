@@ -1,22 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Dialog, DialogFooter } from '@/components/ui';
-import { tradingApi, instancesApi } from '@/lib/api';
-import { TradingLog, PositionCard } from '@/components/features/trading';
+import { tradingApi, instancesApi, strategiesApi } from '@/lib/api';
+import { PositionCard } from '@/components/features/trading';
 import { TradingHeroCard } from '@/components/features/trading/TradingHeroCard';
 import {
   TrendingUp,
-  AlertTriangle,
-  XCircle,
-  ChevronRight,
   Clock,
+  ChevronRight,
+  Server,
+  RefreshCw,
+  Download,
+  Trash2,
 } from 'lucide-react';
 import type { Position } from '@/components/features/trading/PositionCard';
+import { Button } from '@/components/ui';
 
-// Tab 类型
-type TabType = 'positions' | 'history' | 'logs';
+// Tab 类型 - 扁平化：交易日志和系统日志分开
+type TabType = 'positions' | 'history' | 'tradingLogs' | 'vpsLogs';
 
 interface HistoryTrade {
   id: string;
@@ -58,9 +60,6 @@ export default function TradingPage() {
   const [runningStrategyName, setRunningStrategyName] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // 紧急平仓对话框
-  const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
-  const [emergencyLoading, setEmergencyLoading] = useState(false);
 
   // 获取数据
   const fetchData = async () => {
@@ -146,19 +145,6 @@ export default function TradingPage() {
     }
   };
 
-  // 紧急平仓全部
-  const handleEmergencyExit = async () => {
-    setEmergencyLoading(true);
-    try {
-      await tradingApi.forceExitAll();
-      await fetchData();
-      setEmergencyDialogOpen(false);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : '紧急平仓失败');
-    } finally {
-      setEmergencyLoading(false);
-    }
-  };
 
   // 加载状态
   if (loading) {
@@ -179,7 +165,7 @@ export default function TradingPage() {
       {/* 账户总览区域 - 纯黑背景 */}
       <TradingHeroCard />
 
-      {/* Tab 切换栏 - 移动端无边框 */}
+      {/* Tab 切换栏 - 4 Tab 扁平化设计 */}
       <div className="flex items-center justify-around lg:border-b lg:border-border-primary/30">
         <TabButton
           active={activeTab === 'positions'}
@@ -193,10 +179,15 @@ export default function TradingPage() {
           label="历史"
         />
         <TabButton
-          active={activeTab === 'logs'}
-          onClick={() => setActiveTab('logs')}
-          label="日志"
+          active={activeTab === 'tradingLogs'}
+          onClick={() => setActiveTab('tradingLogs')}
+          label="交易日志"
           showDot={!!runningInstanceId}
+        />
+        <TabButton
+          active={activeTab === 'vpsLogs'}
+          onClick={() => setActiveTab('vpsLogs')}
+          label="系统日志"
         />
       </div>
 
@@ -204,10 +195,7 @@ export default function TradingPage() {
       <div className="min-h-[200px]">
         {/* 持仓 Tab */}
         {activeTab === 'positions' && (
-          <PositionsTab
-            positions={positions}
-            onEmergencyExit={() => setEmergencyDialogOpen(true)}
-          />
+          <PositionsTab positions={positions} />
         )}
 
         {/* 历史 Tab */}
@@ -218,78 +206,17 @@ export default function TradingPage() {
           />
         )}
 
-        {/* 日志 Tab */}
-        {activeTab === 'logs' && (
-          <div className="p-4">
-            <TradingLog
-              instanceId={runningInstanceId}
-              isConnected={!!runningInstanceId}
-              maxHeight={400}
-            />
-          </div>
+        {/* 交易日志 Tab */}
+        {activeTab === 'tradingLogs' && (
+          <TradingLogsTab instanceId={runningInstanceId} />
+        )}
+
+        {/* 系统日志 Tab */}
+        {activeTab === 'vpsLogs' && (
+          <VpsLogsTab instanceId={runningInstanceId} />
         )}
       </div>
 
-      {/* 紧急平仓确认对话框 */}
-      <Dialog
-        open={emergencyDialogOpen}
-        onClose={() => setEmergencyDialogOpen(false)}
-        title="紧急控制"
-        description="停止策略并平仓所有持仓"
-      >
-        <div className="space-y-4">
-          {/* 运行中的策略信息 */}
-          {runningInstanceId && (
-            <div className="p-3 bg-bg-tertiary rounded-lg border border-border-primary">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-text-tertiary text-xs">运行中实例</p>
-                <span className="px-2 py-0.5 text-xs bg-success/20 text-success rounded">
-                  运行中
-                </span>
-              </div>
-              <p className="text-text-primary font-medium">{runningStrategyName}</p>
-            </div>
-          )}
-
-          {/* 持仓统计 */}
-          <div className="p-3 bg-bg-tertiary rounded-lg border border-border-primary">
-            <p className="text-text-tertiary text-xs mb-2">持仓中订单</p>
-            <p className="text-text-primary font-medium text-lg">{positions.length} 个</p>
-          </div>
-
-          {/* 风险提示 */}
-          <div className="flex items-start gap-3 p-4 bg-danger/10 border border-danger/30 rounded-lg">
-            <AlertTriangle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" />
-            <div className="flex-1 text-sm">
-              <p className="text-text-primary font-medium mb-1">风险提示</p>
-              <ul className="text-text-secondary space-y-1">
-                <li>• 立即停止运行中的策略</li>
-                <li>• 市价平仓所有 {positions.length} 个持仓</li>
-                <li>• 可能存在滑点风险</li>
-                <li>• 操作不可撤销</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setEmergencyDialogOpen(false)}
-            disabled={emergencyLoading}
-          >
-            取消
-          </Button>
-          <Button
-            variant="danger"
-            onClick={handleEmergencyExit}
-            isLoading={emergencyLoading}
-          >
-            <XCircle className="w-4 h-4 mr-2" />
-            一键停止 & 平仓
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   );
 }
@@ -339,10 +266,9 @@ function TabButton({ active, onClick, label, badge, showDot }: TabButtonProps) {
 // 持仓 Tab 组件
 interface PositionsTabProps {
   positions: Position[];
-  onEmergencyExit: () => void;
 }
 
-function PositionsTab({ positions, onEmergencyExit }: PositionsTabProps) {
+function PositionsTab({ positions }: PositionsTabProps) {
   if (positions.length === 0) {
     return (
       <div className="text-center py-16 px-4">
@@ -362,17 +288,6 @@ function PositionsTab({ positions, onEmergencyExit }: PositionsTabProps) {
 
   return (
     <div>
-      {/* 紧急平仓按钮 - 悬浮在右上角 */}
-      <div className="flex justify-end px-4 py-3">
-        <button
-          onClick={onEmergencyExit}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-danger/10 text-danger text-sm rounded-full hover:bg-danger/20 transition-colors"
-        >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          紧急全部平仓
-        </button>
-      </div>
-
       {/* 持仓列表 - 斑马纹背景 */}
       <div>
         {positions.map((position, index) => (
@@ -549,6 +464,313 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
           查看全部历史
           <ChevronRight className="w-4 h-4" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+// 交易日志 Tab 组件
+interface LogEntry {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  message: string;
+}
+
+interface TradingLogsTabProps {
+  instanceId: string | null;
+}
+
+function TradingLogsTab({ instanceId }: TradingLogsTabProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    if (!instanceId) return;
+    setLoading(true);
+    try {
+      const res = await strategiesApi.getTradingLogs(100);
+      if (res.code === 0 && res.data) {
+        // 解析日志字符串
+        const rawLogs = res.data.logs || [];
+        const parsedLogs: LogEntry[] = rawLogs.map((logStr: string, index: number) => {
+          const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
+          return {
+            id: `log-${Date.now()}-${index}`,
+            timestamp: match?.[1] || new Date().toISOString(),
+            level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
+            message: match?.[3] || logStr,
+          };
+        });
+        setLogs(parsedLogs);
+        setNotice(res.data.notice || null);
+      }
+    } catch (error) {
+      console.error('获取交易日志失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [instanceId]);
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 30000);
+    return () => clearInterval(interval);
+  }, [fetchLogs]);
+
+  const handleClear = () => setLogs([]);
+
+  const handleDownload = () => {
+    const content = logs
+      .map((log) => `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`)
+      .join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trading-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getLevelStyle = (level: string) => {
+    switch (level) {
+      case 'error': return 'text-danger-400';
+      case 'warn': return 'text-warning';
+      case 'debug': return 'text-text-tertiary';
+      default: return 'text-text-primary';
+    }
+  };
+
+  const getLevelBadge = (level: string) => {
+    switch (level) {
+      case 'error': return 'bg-danger-500/20 text-danger-400';
+      case 'warn': return 'bg-warning/20 text-warning';
+      case 'debug': return 'bg-bg-tertiary text-text-tertiary';
+      default: return 'bg-primary-500/20 text-primary-400';
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    try {
+      return new Date(timestamp).toLocaleTimeString('zh-CN');
+    } catch {
+      return timestamp;
+    }
+  };
+
+  if (!instanceId) {
+    return (
+      <div className="text-center py-16 px-4">
+        <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
+          <TrendingUp className="w-8 h-8 text-text-tertiary" />
+        </div>
+        <p className="text-text-secondary font-medium mb-2">暂无运行中的实例</p>
+        <button
+          onClick={() => window.location.href = '/strategies'}
+          className="text-brand-primary text-sm hover:underline"
+        >
+          启动策略 →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      {/* 工具栏 */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-text-tertiary text-sm">
+          {logs.length} 条日志
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchLogs}
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleClear}>
+            <Trash2 className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleDownload}>
+            <Download className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* 提示信息 */}
+      {notice && (
+        <div className="mb-3 px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-warning text-sm">
+          {notice}
+        </div>
+      )}
+
+      {/* 日志列表 */}
+      <div className="h-[400px] overflow-y-auto font-mono text-sm space-y-1">
+        {logs.length === 0 ? (
+          <div className="text-center py-8 text-text-tertiary">
+            {loading ? '加载中...' : '暂无日志'}
+          </div>
+        ) : (
+          logs.map((log) => (
+            <div key={log.id} className="flex items-start gap-2">
+              <span className="text-text-disabled flex-shrink-0">
+                [{formatTime(log.timestamp)}]
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getLevelBadge(log.level)}`}>
+                {log.level.toUpperCase()}
+              </span>
+              <span className={getLevelStyle(log.level)}>{log.message}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 系统日志 Tab 组件
+interface VpsLogsTabProps {
+  instanceId: string | null;
+}
+
+function VpsLogsTab({ instanceId }: VpsLogsTabProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchLogs = useCallback(async () => {
+    if (!instanceId) return;
+    setLoading(true);
+    try {
+      const res = await strategiesApi.getVpsLogs(100);
+      if (res.code === 0 && res.data?.logs) {
+        const parsedLogs: LogEntry[] = res.data.logs.map((log: any, index: number) => ({
+          id: `vps-${Date.now()}-${index}`,
+          timestamp: log.timestamp || new Date().toISOString(),
+          level: (log.level as LogEntry['level']) || 'info',
+          message: log.message || '',
+        }));
+        setLogs(parsedLogs);
+      }
+    } catch (error) {
+      console.error('获取系统日志失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [instanceId]);
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 30000);
+    return () => clearInterval(interval);
+  }, [fetchLogs]);
+
+  const handleClear = () => setLogs([]);
+
+  const handleDownload = () => {
+    const content = logs
+      .map((log) => `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`)
+      .join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vps-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getLevelStyle = (level: string) => {
+    switch (level) {
+      case 'error': return 'text-danger-400';
+      case 'warn': return 'text-warning';
+      case 'debug': return 'text-text-tertiary';
+      default: return 'text-text-primary';
+    }
+  };
+
+  const getLevelBadge = (level: string) => {
+    switch (level) {
+      case 'error': return 'bg-danger-500/20 text-danger-400';
+      case 'warn': return 'bg-warning/20 text-warning';
+      case 'debug': return 'bg-bg-tertiary text-text-tertiary';
+      default: return 'bg-primary-500/20 text-primary-400';
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    try {
+      return new Date(timestamp).toLocaleTimeString('zh-CN');
+    } catch {
+      return timestamp;
+    }
+  };
+
+  if (!instanceId) {
+    return (
+      <div className="text-center py-16 px-4">
+        <div className="w-16 h-16 mx-auto mb-4 bg-bg-tertiary rounded-full flex items-center justify-center">
+          <Server className="w-8 h-8 text-text-tertiary" />
+        </div>
+        <p className="text-text-secondary font-medium mb-2">暂无运行中的实例</p>
+        <button
+          onClick={() => window.location.href = '/instances'}
+          className="text-brand-primary text-sm hover:underline"
+        >
+          查看实例 →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      {/* 工具栏 */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-text-tertiary text-sm">
+          {logs.length} 条日志
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchLogs}
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleClear}>
+            <Trash2 className="w-4 h-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleDownload}>
+            <Download className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* 日志列表 */}
+      <div className="h-[400px] overflow-y-auto font-mono text-sm space-y-1">
+        {logs.length === 0 ? (
+          <div className="text-center py-8 text-text-tertiary">
+            {loading ? '加载中...' : '暂无日志'}
+          </div>
+        ) : (
+          logs.map((log) => (
+            <div key={log.id} className="flex items-start gap-2">
+              <span className="text-text-disabled flex-shrink-0">
+                [{formatTime(log.timestamp)}]
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getLevelBadge(log.level)}`}>
+                {log.level.toUpperCase()}
+              </span>
+              <span className={getLevelStyle(log.level)}>{log.message}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

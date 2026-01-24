@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
 import { PointsService } from '../points/points.service';
 import { TradeStatsDto } from './dto/trade-stats.dto';
 import {
@@ -36,6 +37,7 @@ export class TradesService {
     private readonly prisma: PrismaService,
     private readonly freqtradeService: FreqtradeService,
     private readonly pointsService: PointsService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {}
 
   /**
@@ -66,8 +68,10 @@ export class TradesService {
 
     try {
       // 2. 调用 Freqtrade API 获取交易数据
+      const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
       const trades = await this.freqtradeService.getTrades(
         instance.ip_address,
+        apiToken,
       );
 
       this.logger.debug(`获取到 ${trades.length} 条交易记录`);

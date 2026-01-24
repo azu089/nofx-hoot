@@ -9,6 +9,8 @@ import { StrategyDeployService } from './strategy-deploy.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { InstancesModule } from '../instances/instances.module';
 import { FreqtradeModule } from '../freqtrade/freqtrade.module';
+import { ApiKeysModule } from '../api-keys/api-keys.module';
+import { DigitalOceanModule } from '../digitalocean/digitalocean.module';
 
 /**
  * 策略模块
@@ -20,7 +22,7 @@ import { FreqtradeModule } from '../freqtrade/freqtrade.module';
  * - 社区策略审核与收益分成
  */
 @Module({
-  imports: [PrismaModule, InstancesModule, FreqtradeModule, HttpModule],
+  imports: [PrismaModule, InstancesModule, FreqtradeModule, ApiKeysModule, DigitalOceanModule, HttpModule],
   controllers: [StrategiesController],
   providers: [
     StrategiesService,

@@ -1,39 +1,46 @@
 'use client';
 
 import { Volume2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 interface Announcement {
   id: string;
   content: string;
   type: 'info' | 'warning' | 'success';
+  isPinned?: boolean;
 }
 
 export interface AnnouncementBannerProps {
   announcements?: Announcement[];
 }
 
-// 默认公告（后续可从 API 获取）
+// 默认公告（API 无数据时显示）
 const defaultAnnouncements: Announcement[] = [
   {
-    id: '1',
-    content: '欢迎使用 QuantFi 量化交易平台，新用户注册即送 100 积分！',
-    type: 'success',
-  },
-  {
-    id: '2',
-    content: '系统将于本周六 02:00-04:00 进行维护升级，届时服务可能短暂中断',
-    type: 'warning',
-  },
-  {
-    id: '3',
-    content: 'RSI 反转策略本月收益率达 18.5%，立即查看',
+    id: 'default-1',
+    content: '欢迎使用 QuantFi 量化交易平台',
     type: 'info',
   },
 ];
 
 export function AnnouncementBanner({
-  announcements = defaultAnnouncements,
+  announcements: propAnnouncements,
 }: AnnouncementBannerProps) {
+  // 从 API 获取公告
+  const { data: apiAnnouncements } = useQuery({
+    queryKey: ['marquee-announcements'],
+    queryFn: async () => {
+      const response = await api.get('/configs/announcements');
+      return response.data.data as Announcement[];
+    },
+    staleTime: 60 * 1000, // 1 分钟
+    refetchOnWindowFocus: false,
+  });
+
+  // 优先使用 props，其次 API 数据，最后默认
+  const announcements = propAnnouncements || apiAnnouncements || defaultAnnouncements;
+
   if (announcements.length === 0) return null;
 
   // 合并所有公告为一条滚动文本

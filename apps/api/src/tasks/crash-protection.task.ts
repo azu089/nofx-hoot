@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { FreqtradeService } from '../modules/freqtrade/freqtrade.service';
 import { ConfigService } from '@nestjs/config';
+import { NetworkWhitelistService } from '../common/services/network-whitelist.service';
 import Decimal from 'decimal.js';
 
 /**
@@ -46,6 +47,7 @@ export class CrashProtectionTask {
     private readonly prisma: PrismaService,
     private readonly freqtradeService: FreqtradeService,
     private readonly configService: ConfigService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {
     this.isSandbox = this.configService.get('SANDBOX_MODE') === 'true';
   }
@@ -293,22 +295,23 @@ export class CrashProtectionTask {
     try {
       // 根据动作类型执行不同操作
       if (!this.isSandbox) {
+        const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
         switch (action) {
           case 'pause':
             // 暂停交易
-            await this.freqtradeService.stop(instance.ip_address);
+            await this.freqtradeService.stop(instance.ip_address, apiToken);
             this.logger.log(`策略 ${config.id}: 已暂停交易`);
             break;
 
           case 'close_all':
             // 全部平仓（先平仓再暂停）
             try {
-              await this.freqtradeService.forceExitAll(instance.ip_address);
+              await this.freqtradeService.forceExitAll(instance.ip_address, apiToken);
               this.logger.log(`策略 ${config.id}: 已执行全部平仓`);
             } catch (exitError) {
               this.logger.error(`全部平仓失败: ${exitError.message}`);
             }
-            await this.freqtradeService.stop(instance.ip_address);
+            await this.freqtradeService.stop(instance.ip_address, apiToken);
             break;
 
           case 'notify_only':
@@ -318,7 +321,7 @@ export class CrashProtectionTask {
 
           default:
             // 默认暂停
-            await this.freqtradeService.stop(instance.ip_address);
+            await this.freqtradeService.stop(instance.ip_address, apiToken);
         }
       }
 

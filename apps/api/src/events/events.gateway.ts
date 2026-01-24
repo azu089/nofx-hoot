@@ -37,7 +37,7 @@ import { JwtService } from '@nestjs/jwt';
     origin: '*', // 开发环境允许所有来源，生产环境需要配置具体域名
     credentials: true,
   },
-  namespace: '/events', // WebSocket 命名空间
+  // 使用默认 namespace (/)，简化客户端连接
 })
 export class EventsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -56,7 +56,7 @@ export class EventsGateway
    * Gateway 初始化
    */
   afterInit(server: Server) {
-    this.logger.log('WebSocket Gateway 已初始化');
+    this.logger.log('✅ WebSocket Gateway 已初始化');
   }
 
   /**

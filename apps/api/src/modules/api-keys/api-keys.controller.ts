@@ -49,6 +49,17 @@ export class ApiKeysController {
   }
 
   /**
+   * 获取用户所有交易所余额
+   * GET /api/api-keys/balances
+   * 注意：此路由必须放在 :id 路由之前，避免被 :id 匹配
+   */
+  @Get('balances')
+  @ApiOperation({ summary: '获取所有交易所余额' })
+  async getBalances(@CurrentUser() user: JwtPayload) {
+    return this.apiKeysService.getExchangeBalances(user.sub);
+  }
+
+  /**
    * 获取单个 API Key
    * GET /api/api-keys/:id
    */

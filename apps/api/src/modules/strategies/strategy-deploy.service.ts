@@ -9,8 +9,12 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
+import { ApiKeysService } from '../api-keys/api-keys.service';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
+import { InstanceLogService } from '../instances/instance-log.service';
 import { ConfigService } from '@nestjs/config';
 import Decimal from 'decimal.js';
+import * as crypto from 'crypto';
 
 /**
  * Freqtrade 配置接口
@@ -112,6 +116,9 @@ export class StrategyDeployService {
     private readonly prisma: PrismaService,
     private readonly httpService: HttpService,
     private readonly freqtradeService: FreqtradeService,
+    private readonly apiKeysService: ApiKeysService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
+    private readonly instanceLogService: InstanceLogService,
     private readonly configService: ConfigService,
   ) {
     this.isSandbox = this.configService.get('SANDBOX_MODE') === 'true';
@@ -165,44 +172,74 @@ export class StrategyDeployService {
       throw new BadRequestException('VPS 实例没有 IP 地址');
     }
 
-    // 3. 获取用户的 API Key
-    const apiKey = await this.prisma.client.api_keys.findFirst({
+    // 3. 获取用户的 API Key（优先使用配置中指定的，否则取第一个活跃的）
+    const apiKeyRecord = await this.prisma.client.api_keys.findFirst({
       where: {
         user_id: userId,
         is_active: true,
       },
     });
 
-    if (!apiKey) {
+    if (!apiKeyRecord) {
       throw new BadRequestException('请先绑定交易所 API Key');
     }
 
-    // 4. 获取策略代码
+    // 4. 解密 API Key（获取真实的 key 和 secret）
+    const decryptedKeys = await this.apiKeysService.getDecryptedKeys(
+      apiKeyRecord.id,
+      userId,
+    );
+
+    // 5. 获取策略代码
     const strategy = userConfig.strategies;
     if (!strategy || !strategy.content) {
       throw new BadRequestException('策略代码不存在');
     }
 
-    // 5. 生成 Freqtrade 配置
+    // 6. 生成 Freqtrade 配置（使用真实的 API Key 和 Token）
     const freqtradeConfig = this.generateFreqtradeConfig(
       userConfig,
-      apiKey,
+      apiKeyRecord,
       strategy.name,
+      decryptedKeys, // 传入解密后的密钥
+      instance.id,   // 传入实例 ID 用于生成真实 Token
     );
 
-    // 6. 部署到 VPS
+    // 7. 生成实例 Token（确定性生成，用于 VPS 认证）
+    const instanceToken = this.networkWhitelistService.generateInstanceToken(instance.id);
+
+    // 8. 部署到 VPS
     if (this.isSandbox) {
       this.logger.log('[沙盒模式] 模拟部署成功');
     } else {
-      await this.uploadStrategyToVps(
-        instance.ip_address,
-        strategy.name,
-        strategy.content,
-        freqtradeConfig,
-      );
+      try {
+        await this.uploadStrategyToVps(
+          instance.ip_address,
+          strategy.name,
+          strategy.content,
+          freqtradeConfig,
+          instanceToken,
+        );
+      } catch (error) {
+        // 记录部署失败的系统日志
+        await this.instanceLogService.error(
+          userId,
+          'deploy_fail',
+          `交易机器人部署失败: ${error.message}`,
+          {
+            instanceId: instance.id,
+            details: {
+              strategyName: strategy.name,
+              configId,
+              error: error.message,
+            },
+          },
+        );
+        throw error; // 继续抛出异常
+      }
     }
 
-    // 7. 更新配置状态
+    // 9. 更新配置状态
     await this.prisma.client.user_strategy_configs.update({
       where: { id: configId },
       data: {
@@ -212,6 +249,35 @@ export class StrategyDeployService {
     });
 
     this.logger.log(`策略部署成功: configId=${configId}, instance=${instance.id}`);
+
+    // 10. 记录操作日志（交易日志）
+    await this.instanceLogService.info(
+      userId,
+      'strategy_deploy',
+      `策略 ${strategy.name} 部署成功`,
+      {
+        instanceId: instance.id,
+        details: {
+          strategyName: strategy.name,
+          configId,
+          exchange: apiKeyRecord.exchange,
+        },
+      },
+    );
+
+    // 11. 记录系统日志（部署成功）
+    await this.instanceLogService.info(
+      userId,
+      'deploy_success',
+      '交易机器人部署成功',
+      {
+        instanceId: instance.id,
+        details: {
+          strategyName: strategy.name,
+          configId,
+        },
+      },
+    );
 
     return {
       success: true,
@@ -224,14 +290,18 @@ export class StrategyDeployService {
   /**
    * 生成 Freqtrade 配置
    * @param userConfig 用户策略配置
-   * @param apiKey API Key 记录
+   * @param apiKeyRecord API Key 数据库记录（包含交易所名称等）
    * @param strategyName 策略名称
+   * @param decryptedKeys 解密后的 API Key（可选，如果提供则使用真实密钥）
+   * @param instanceId VPS 实例 ID（用于生成真实的 API Token）
    * @returns Freqtrade 配置对象
    */
   generateFreqtradeConfig(
     userConfig: any,
-    apiKey: any,
+    apiKeyRecord: any,
     strategyName: string,
+    decryptedKeys?: { apiKey: string; secretKey: string },
+    instanceId?: string,
   ): FreqtradeConfig {
     // 解析自定义配置
     const customConfig = (userConfig.custom_config || {}) as Record<string, any>;
@@ -244,8 +314,12 @@ export class StrategyDeployService {
     );
 
     // 获取交易所名称
-    const exchangeName = (apiKey.exchange || 'binance').toLowerCase() as SupportedExchange;
+    const exchangeName = (apiKeyRecord.exchange || 'binance').toLowerCase() as SupportedExchange;
     const exchangeConfig = EXCHANGE_CONFIGS[exchangeName] || EXCHANGE_CONFIGS.binance;
+
+    // 确定使用的 API Key（真实或占位符）
+    const exchangeKey = decryptedKeys?.apiKey || '{{API_KEY}}';
+    const exchangeSecret = decryptedKeys?.secretKey || '{{API_SECRET}}';
 
     // 解析交易对白名单
     const pairWhitelist = this.parsePairWhitelist(customConfig.pair_whitelist || []);
@@ -310,11 +384,11 @@ export class StrategyDeployService {
       margin_mode: marginMode,
       leverage: userConfig.leverage || 1,
 
-      // 交易所配置
+      // 交易所配置（使用真实或占位符密钥）
       exchange: {
         name: exchangeConfig.ccxtName,
-        key: '{{API_KEY}}', // 占位符，实际部署时替换
-        secret: '{{API_SECRET}}', // 占位符，实际部署时替换
+        key: exchangeKey,
+        secret: exchangeSecret,
         ccxt_config: {
           enableRateLimit: true,
         },
@@ -325,16 +399,20 @@ export class StrategyDeployService {
         pair_blacklist: pairBlacklist,
       },
 
-      // API 服务配置
+      // API 服务配置（使用真实值而非占位符）
       api_server: {
         enabled: true,
         listen_ip_address: '0.0.0.0',
         listen_port: this.freqtradePort,
         verbosity: 'error',
-        jwt_secret_key: '{{JWT_SECRET}}', // 占位符
+        // 生成真实的 JWT Secret（每次部署生成新的）
+        jwt_secret_key: crypto.randomBytes(32).toString('hex'),
         CORS_origins: ['*'],
         username: 'quantfi',
-        password: '{{FREQTRADE_API_TOKEN}}', // 占位符
+        // 使用确定性生成的 API Token（基于 instanceId）
+        password: instanceId
+          ? this.networkWhitelistService.generateFreqtradeToken(instanceId)
+          : crypto.randomBytes(16).toString('hex'), // 降级为随机值
       },
 
       // 其他配置
@@ -446,65 +524,106 @@ export class StrategyDeployService {
 
   /**
    * 上传策略到 VPS
+   * 通过 VPS 上的代理服务（端口 8081）更新配置和策略
+   *
    * @param ip VPS IP 地址
    * @param strategyName 策略名称
    * @param strategyCode 策略代码
    * @param config Freqtrade 配置
+   * @param instanceToken 实例 Token（用于验证）
    */
   private async uploadStrategyToVps(
     ip: string,
     strategyName: string,
     strategyCode: string,
     config: FreqtradeConfig,
+    instanceToken?: string,
   ): Promise<void> {
-    const baseUrl = `http://${ip}:${this.freqtradePort}`;
+    // 使用代理服务端口 8081
+    const proxyUrl = `http://${ip}:8081`;
 
     try {
-      // 1. 上传策略代码
-      this.logger.log(`上传策略代码: ${strategyName}`);
-      await firstValueFrom(
+      this.logger.log(`部署策略到 VPS: ${ip}, 策略: ${strategyName}`);
+
+      // 调用代理服务的配置更新端点
+      const response = await firstValueFrom(
         this.httpService.post(
-          `${baseUrl}/api/v1/strategy/upload`,
+          `${proxyUrl}/api/update-config`,
           {
-            name: strategyName,
-            code: strategyCode,
+            config,
+            strategyName,
+            strategyCode,
           },
           {
-            timeout: 30000,
-            headers: this.getAuthHeaders(),
+            timeout: 60000, // 60 秒超时（包含重启时间）
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Instance-Token': instanceToken || '',
+            },
           },
         ),
       );
 
-      // 2. 上传配置文件
-      this.logger.log(`上传配置文件`);
-      await firstValueFrom(
-        this.httpService.post(
-          `${baseUrl}/api/v1/config/upload`,
-          { config },
-          {
-            timeout: 30000,
-            headers: this.getAuthHeaders(),
-          },
-        ),
-      );
-
-      // 3. 重载配置
-      this.logger.log(`重载配置`);
-      await firstValueFrom(
-        this.httpService.post(
-          `${baseUrl}/api/v1/reload_config`,
-          {},
-          {
-            timeout: 30000,
-            headers: this.getAuthHeaders(),
-          },
-        ),
-      );
-
-      this.logger.log(`策略上传完成: ${strategyName}`);
+      this.logger.log(`策略部署成功: ${strategyName}, 响应: ${JSON.stringify(response.data)}`);
     } catch (error: any) {
-      this.logger.error(`策略上传失败: ${error.message}`, error.stack);
+      this.logger.error(`策略部署失败: ${error.message}`, error.stack);
+
+      // 提供更友好的错误信息
+      if (error.code === 'ECONNREFUSED') {
+        throw new InternalServerErrorException(
+          'VPS 代理服务未响应，请检查 VPS 状态或稍后重试',
+        );
+      }
+      if (error.response?.status === 401) {
+        throw new InternalServerErrorException('VPS 验证失败，Token 无效');
+      }
+
+      throw new InternalServerErrorException(`策略部署失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 仅上传策略代码到 VPS（不更新配置，不重启）
+   * 用于回测前上传策略代码
+   *
+   * @param ip VPS IP 地址
+   * @param strategyName 策略名称
+   * @param strategyCode 策略代码
+   * @param instanceId 实例 ID（用于生成 Token）
+   */
+  async uploadStrategyOnly(
+    ip: string,
+    strategyName: string,
+    strategyCode: string,
+    instanceId: string,
+  ): Promise<void> {
+    const proxyUrl = `http://${ip}:8081`;
+    const instanceToken = this.networkWhitelistService.generateInstanceToken(instanceId);
+
+    try {
+      this.logger.log(`上传策略代码到 VPS: ${ip}, 策略: ${strategyName}`);
+
+      // 调用代理服务的策略上传端点（只上传策略，不更新配置）
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${proxyUrl}/api/upload-strategy`,
+          {
+            strategyName,
+            strategyCode,
+          },
+          {
+            timeout: 30000,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Instance-Token': instanceToken,
+            },
+          },
+        ),
+      );
+
+      this.logger.log(`策略上传成功: ${strategyName}`);
+    } catch (error: any) {
+      this.logger.error(`策略上传失败: ${error.message}`);
       throw new InternalServerErrorException(`策略上传失败: ${error.message}`);
     }
   }
@@ -553,9 +672,10 @@ export class StrategyDeployService {
       throw new BadRequestException('VPS 实例不可用');
     }
 
-    // 调用 Freqtrade 停止 API
+    // 调用 Freqtrade 停止 API（传入认证 Token）
     if (!this.isSandbox) {
-      await this.freqtradeService.stop(instance.ip_address);
+      const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
+      await this.freqtradeService.stop(instance.ip_address, apiToken);
     }
 
     // 更新状态
@@ -568,6 +688,17 @@ export class StrategyDeployService {
     });
 
     this.logger.log(`策略已停止: configId=${configId}`);
+
+    // 记录操作日志
+    await this.instanceLogService.info(
+      userId,
+      'bot_stop',
+      '交易机器人已停止',
+      {
+        instanceId: instance.id,
+        details: { configId },
+      },
+    );
 
     return {
       success: true,
@@ -593,6 +724,7 @@ export class StrategyDeployService {
       },
       include: {
         instances: true,
+        strategies: true,
       },
     });
 
@@ -609,9 +741,10 @@ export class StrategyDeployService {
       throw new BadRequestException(`VPS 实例未运行: ${instance.status}`);
     }
 
-    // 调用 Freqtrade 启动 API
+    // 调用 Freqtrade 启动 API（传入认证 Token）
     if (!this.isSandbox) {
-      await this.freqtradeService.start(instance.ip_address);
+      const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
+      await this.freqtradeService.start(instance.ip_address, apiToken);
     }
 
     // 更新状态
@@ -624,6 +757,18 @@ export class StrategyDeployService {
     });
 
     this.logger.log(`策略已启动: configId=${configId}`);
+
+    // 记录操作日志
+    const strategyName = userConfig.strategies?.name || '未知策略';
+    await this.instanceLogService.info(
+      userId,
+      'bot_start',
+      `交易机器人已启动，策略: ${strategyName}`,
+      {
+        instanceId: instance.id,
+        details: { configId, strategyName },
+      },
+    );
 
     return {
       success: true,

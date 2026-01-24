@@ -432,4 +432,48 @@ export class ConfigsService {
     const price = await this.getConfig('token.qfi_price');
     return price !== null ? new Decimal(price) : new Decimal('0.5');
   }
+
+  /**
+   * 获取跑马灯公告（公开接口）
+   * 返回已发布且在有效期内的公告
+   */
+  async getMarqueeAnnouncements(): Promise<any[]> {
+    const cacheKey = 'announcements:marquee';
+
+    // 先查缓存
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
+    const now = new Date();
+    const announcements = await this.prisma.client.announcements.findMany({
+      where: {
+        start_at: { lte: now },
+        OR: [{ end_at: null }, { end_at: { gt: now } }],
+      },
+      orderBy: [{ is_pinned: 'desc' }, { display_order: 'asc' }, { created_at: 'desc' }],
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        type: true,
+        is_pinned: true,
+        created_at: true,
+      },
+    });
+
+    const result = announcements.map((a: any) => ({
+      id: a.id,
+      content: a.title || a.content, // 跑马灯显示标题，没有标题则显示内容
+      type: a.type || 'info',
+      isPinned: a.is_pinned,
+    }));
+
+    // 写缓存 60 秒
+    await this.redis.set(cacheKey, JSON.stringify(result), 60);
+
+    return result;
+  }
 }

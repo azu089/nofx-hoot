@@ -42,9 +42,18 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
   // 自动认证
   useEffect(() => {
     async function authenticate() {
+      console.log('[TelegramProvider] authenticate called', {
+        DEV_MODE,
+        isTelegram: telegram.isTelegram,
+        isReady: telegram.isReady,
+        hasInitData: !!telegram.initData,
+        initDataLength: telegram.initData?.length,
+      });
+
       // 开发模式：直接认证通过，方便浏览器测试 TG 页面
       if (DEV_MODE && !telegram.isTelegram) {
         // 开发模式下无需 token 也能访问 TG 页面
+        console.log('[TelegramProvider] DEV_MODE: skipping auth');
         setIsAuthenticated(true);
         setUserId('dev-test-user');
         setIsLoading(false);
@@ -52,15 +61,18 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       }
 
       if (!telegram.isTelegram || !telegram.initData) {
+        console.log('[TelegramProvider] Not in Telegram or no initData, skipping auth');
         setIsLoading(false);
         return;
       }
 
       try {
+        console.log('[TelegramProvider] Calling /telegram/auth...');
         // 调用后端认证接口
         const response = await api.post('/telegram/auth', {
           initData: telegram.initData,
         });
+        console.log('[TelegramProvider] Auth response:', response);
 
         if (response.data?.accessToken) {
           // 保存 token
@@ -68,9 +80,10 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('refreshToken', response.data.refreshToken);
           setUserId(response.data.userId);
           setIsAuthenticated(true);
+          console.log('[TelegramProvider] Auth success, userId:', response.data.userId);
         }
       } catch (error) {
-        console.error('Telegram 认证失败:', error);
+        console.error('[TelegramProvider] Telegram 认证失败:', error);
       } finally {
         setIsLoading(false);
       }

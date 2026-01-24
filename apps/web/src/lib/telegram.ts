@@ -4,9 +4,13 @@
  */
 
 // 检查是否在 Telegram 环境中
+// 注意：仅检查 WebApp 对象存在不够，还需要检查 initData 是否有值
+// 因为在非 Telegram 环境加载 SDK 后 WebApp 对象也会存在，但 initData 为空
 export function isTelegramWebApp(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!(window as any).Telegram?.WebApp;
+  const webApp = (window as any).Telegram?.WebApp;
+  // 真正的 Telegram 环境中 initData 应该有值
+  return !!(webApp && webApp.initData);
 }
 
 // 获取 Telegram WebApp 实例

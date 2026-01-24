@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui';
-import { Pause, Play, Trash2, Download, WifiOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { Pause, Play, Trash2, Download, WifiOff, ChevronDown, ChevronUp, RefreshCw, Server, TrendingUp } from 'lucide-react';
 import { wsClient, LogEvent } from '@/lib/websocket';
-import { getToken } from '@/lib/api';
+import { getToken, strategiesApi } from '@/lib/api';
 
 interface LogEntry {
   id: string;
@@ -21,27 +21,38 @@ interface TradingLogProps {
   maxHeight?: number;
 }
 
+type LogTab = 'trading' | 'vps';
+
 export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }: TradingLogProps) {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isPaused, setIsPaused] = useState(false);
-  const [filter, setFilter] = useState<string>('all');
+  // Tab 状态
+  const [activeTab, setActiveTab] = useState<LogTab>('trading');
+
+  // 交易日志状态（WebSocket 实时）
+  const [tradingLogs, setTradingLogs] = useState<LogEntry[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // VPS 日志状态（HTTP 轮询）
+  const [vpsLogs, setVpsLogs] = useState<LogEntry[]>([]);
+  const [vpsLoading, setVpsLoading] = useState(false);
+
+  // 公共状态
+  const [isPaused, setIsPaused] = useState(false);
+  const [filter, setFilter] = useState<string>('all');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const logsBufferRef = useRef<LogEntry[]>([]);
 
   // 添加日志到缓冲区
-  const addLog = useCallback((log: LogEntry) => {
+  const addTradingLog = useCallback((log: LogEntry) => {
     if (isPaused) {
-      // 暂停时存入缓冲区
       logsBufferRef.current = [...logsBufferRef.current.slice(-99), log];
     } else {
-      setLogs((prev) => [...prev.slice(-99), log]);
+      setTradingLogs((prev) => [...prev.slice(-99), log]);
     }
   }, [isPaused]);
 
-  // 连接 WebSocket
+  // 连接 WebSocket（交易日志）
   useEffect(() => {
     const token = getToken();
     if (!token) return;
@@ -52,76 +63,71 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
         await wsClient.connect(token);
         setWsConnected(true);
 
-        // 添加连接成功日志
-        addLog({
+        addTradingLog({
           id: `sys-${Date.now()}`,
           timestamp: new Date().toISOString(),
           level: 'info',
-          message: 'WebSocket 连接成功',
+          message: '实时连接成功',
         });
       } catch (error) {
         console.error('WebSocket 连接失败:', error);
         setWsConnected(false);
         setConnectionError(error instanceof Error ? error.message : '连接失败');
 
-        addLog({
+        addTradingLog({
           id: `sys-${Date.now()}`,
           timestamp: new Date().toISOString(),
           level: 'error',
-          message: `WebSocket 连接失败: ${error instanceof Error ? error.message : '未知错误'}`,
+          message: `实时连接失败: ${error instanceof Error ? error.message : '未知错误'}`,
         });
       }
     };
 
     connect();
 
-    // 监听连接断开
     wsClient.on('disconnect', () => {
       setWsConnected(false);
-      addLog({
+      addTradingLog({
         id: `sys-${Date.now()}`,
         timestamp: new Date().toISOString(),
         level: 'warn',
-        message: 'WebSocket 连接断开',
+        message: '实时连接断开',
       });
     });
 
-    // 监听重连
     wsClient.on('connect', () => {
       setWsConnected(true);
       setConnectionError(null);
-      addLog({
+      addTradingLog({
         id: `sys-${Date.now()}`,
         timestamp: new Date().toISOString(),
         level: 'info',
-        message: 'WebSocket 已重新连接',
+        message: '实时连接已恢复',
       });
     });
 
     return () => {
       wsClient.disconnect();
     };
-  }, [addLog]);
+  }, [addTradingLog]);
 
   // 订阅实例日志
   useEffect(() => {
     if (!instanceId || !wsConnected) return;
 
-    // 订阅日志
     wsClient.subscribeToLogs(instanceId);
 
-    addLog({
+    addTradingLog({
       id: `sys-${Date.now()}`,
       timestamp: new Date().toISOString(),
       level: 'info',
       message: `已订阅实例 ${instanceId.slice(0, 8)}... 的日志`,
     });
 
-    // 监听日志事件
     const handleLog = (data: unknown) => {
       const event = data as LogEvent;
       if (event.instanceId === instanceId) {
-        addLog({
+        addTradingLog({
           id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
           timestamp: event.log.timestamp || event.timestamp,
           level: event.log.level || 'info',
@@ -136,12 +142,83 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
     return () => {
       wsClient.unsubscribeFromLogs(instanceId);
     };
-  }, [instanceId, wsConnected, addLog]);
+  }, [instanceId, wsConnected, addTradingLog]);
+
+  // 获取 VPS 日志（HTTP 拉取）
+  const fetchVpsLogs = useCallback(async () => {
+    if (!instanceId) return;
+
+    setVpsLoading(true);
+    try {
+      const res = await strategiesApi.getVpsLogs(100);
+      if (res.code === 0 && res.data.logs) {
+        const logs = res.data.logs.map((log: { timestamp: string; level: string; message: string }, index: number) => ({
+          id: `vps-${Date.now()}-${index}`,
+          timestamp: log.timestamp,
+          level: (log.level as LogEntry['level']) || 'info',
+          message: log.message,
+        }));
+        setVpsLogs(logs);
+      }
+    } catch (error) {
+      console.error('获取 VPS 日志失败:', error);
+    } finally {
+      setVpsLoading(false);
+    }
+  }, [instanceId]);
+
+  // 获取交易日志（HTTP 拉取，作为 WebSocket 的补充）
+  const fetchTradingLogs = useCallback(async () => {
+    if (!instanceId) return;
+
+    try {
+      const res = await strategiesApi.getTradingLogs(100);
+      if (res.code === 0 && res.data.logs) {
+        const logs = res.data.logs.map((logStr: string, index: number) => {
+          // 解析日志字符串格式：[timestamp] LEVEL - message
+          const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
+          return {
+            id: `api-${Date.now()}-${index}`,
+            timestamp: match?.[1] || new Date().toISOString(),
+            level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
+            message: match?.[3] || logStr,
+          };
+        });
+        // 合并到现有日志
+        setTradingLogs((prev) => {
+          const existingIds = new Set(prev.map((l: LogEntry) => l.message));
+          const newLogs = logs.filter((l: LogEntry) => !existingIds.has(l.message));
+          return [...prev, ...newLogs].slice(-100);
+        });
+      }
+    } catch (error) {
+      console.error('获取交易日志失败:', error);
+    }
+  }, [instanceId]);
+
+  // 切换到 VPS Tab 时加载日志
+  useEffect(() => {
+    if (activeTab === 'vps' && instanceId) {
+      fetchVpsLogs();
+    }
+  }, [activeTab, instanceId, fetchVpsLogs]);
+
+  // 定时刷新交易日志（补充 WebSocket）
+  useEffect(() => {
+    if (!instanceId || isPaused) return;
+
+    // 初始加载
+    fetchTradingLogs();
+
+    // 每 30 秒刷新一次
+    const interval = setInterval(fetchTradingLogs, 30000);
+    return () => clearInterval(interval);
+  }, [instanceId, isPaused, fetchTradingLogs]);
 
   // 恢复暂停时刷新缓冲区中的日志
   useEffect(() => {
     if (!isPaused && logsBufferRef.current.length > 0) {
-      setLogs((prev) => [...prev, ...logsBufferRef.current].slice(-100));
+      setTradingLogs((prev) => [...prev, ...logsBufferRef.current].slice(-100));
       logsBufferRef.current = [];
     }
   }, [isPaused]);
@@ -151,7 +228,7 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
     if (!isPaused && logContainerRef.current) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
-  }, [logs, isPaused]);
+  }, [tradingLogs, vpsLogs, isPaused, activeTab]);
 
   const getLevelStyle = (level: string) => {
     switch (level) {
@@ -179,13 +256,28 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
     }
   };
 
-  const filteredLogs = filter === 'all' ? logs : logs.filter((log) => log.level === filter);
+  // 当前显示的日志
+  const currentLogs = activeTab === 'trading' ? tradingLogs : vpsLogs;
+  const filteredLogs = filter === 'all' ? currentLogs : currentLogs.filter((log) => log.level === filter);
 
   const handleClear = () => {
-    setLogs([]);
+    if (activeTab === 'trading') {
+      setTradingLogs([]);
+    } else {
+      setVpsLogs([]);
+    }
+  };
+
+  const handleRefresh = () => {
+    if (activeTab === 'trading') {
+      fetchTradingLogs();
+    } else {
+      fetchVpsLogs();
+    }
   };
 
   const handleDownload = () => {
+    const logs = activeTab === 'trading' ? tradingLogs : vpsLogs;
     const content = logs
       .map((log) => `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`)
       .join('\n');
@@ -193,7 +285,7 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `trading-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `${activeTab}-log-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -204,9 +296,35 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
 
   return (
     <div className="space-y-2">
-      {/* 工具栏 - 移动端优化布局 */}
+      {/* Tab 切换 + 工具栏 */}
       <div className="flex items-center justify-between px-2 gap-2">
-        {/* 操作按钮组 - 左侧紧凑排列 */}
+        {/* Tab 切换 */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('trading')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
+              activeTab === 'trading'
+                ? 'bg-primary-500/20 text-primary-400'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            交易日志
+          </button>
+          <button
+            onClick={() => setActiveTab('vps')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
+              activeTab === 'vps'
+                ? 'bg-primary-500/20 text-primary-400'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+            }`}
+          >
+            <Server className="w-3.5 h-3.5" />
+            系统日志
+          </button>
+        </div>
+
+        {/* 操作按钮组 */}
         <div className="flex items-center gap-1">
           {!isCollapsed && (
             <>
@@ -224,15 +342,26 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsPaused(!isPaused)}
-                title={isPaused ? '继续' : '暂停'}
+                onClick={handleRefresh}
+                title="刷新"
+                disabled={vpsLoading}
               >
-                {isPaused ? (
-                  <Play className="w-4 h-4" />
-                ) : (
-                  <Pause className="w-4 h-4" />
-                )}
+                <RefreshCw className={`w-4 h-4 ${vpsLoading ? 'animate-spin' : ''}`} />
               </Button>
+              {activeTab === 'trading' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsPaused(!isPaused)}
+                  title={isPaused ? '继续' : '暂停'}
+                >
+                  {isPaused ? (
+                    <Play className="w-4 h-4" />
+                  ) : (
+                    <Pause className="w-4 h-4" />
+                  )}
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={handleClear} title="清空">
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -241,18 +370,17 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
               </Button>
             </>
           )}
-        </div>
 
-        {/* 右侧：状态 + 折叠按钮 */}
-        <div className="flex items-center gap-2">
-          {/* WebSocket 连接状态指示器 */}
-          <div className="flex items-center gap-1.5" title={wsConnected ? 'WebSocket 已连接' : connectionError || 'WebSocket 未连接'}>
-            {wsConnected ? (
-              <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            ) : (
-              <WifiOff className="w-4 h-4 text-text-tertiary" />
-            )}
-          </div>
+          {/* WebSocket 连接状态指示器（仅交易日志 Tab） */}
+          {activeTab === 'trading' && (
+            <div className="flex items-center gap-1.5 ml-2" title={wsConnected ? '实时连接正常' : connectionError || '实时连接断开'}>
+              {wsConnected ? (
+                <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+              ) : (
+                <WifiOff className="w-4 h-4 text-text-tertiary" />
+              )}
+            </div>
+          )}
 
           {/* 折叠/展开按钮 */}
           <Button
@@ -270,7 +398,7 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
         </div>
       </div>
 
-      {/* 日志内容区 - 支持折叠 */}
+      {/* 日志内容区 */}
       {!isCollapsed && (
         <div
           ref={logContainerRef}
@@ -281,13 +409,18 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
             <div className="text-text-tertiary text-center py-8">
               {!instanceId ? (
                 '请选择一个运行中的实例'
-              ) : !wsConnected ? (
+              ) : activeTab === 'trading' && !wsConnected ? (
                 <span className="flex flex-col items-center gap-2">
                   <WifiOff className="w-8 h-8 text-text-disabled" />
-                  {connectionError || '正在连接 WebSocket...'}
+                  {connectionError || '正在连接...'}
+                </span>
+              ) : vpsLoading ? (
+                <span className="flex flex-col items-center gap-2">
+                  <RefreshCw className="w-8 h-8 text-text-disabled animate-spin" />
+                  加载中...
                 </span>
               ) : (
-                '等待日志...'
+                '暂无日志'
               )}
             </div>
           ) : (
@@ -311,7 +444,7 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
       )}
 
       {/* 暂停提示 */}
-      {!isCollapsed && isPaused && (
+      {!isCollapsed && isPaused && activeTab === 'trading' && (
         <div className="px-2 text-center text-warning text-sm">
           日志已暂停，点击播放按钮继续
         </div>

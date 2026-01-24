@@ -24,6 +24,8 @@ export class DigitalOceanService {
   private readonly defaultRegion: string;
   private readonly defaultSize: string;
   private readonly defaultImage: string;
+  private readonly vpsPassword: string;
+  private readonly sshKeyIds: number[];
 
   // 沙盒模式下的模拟 Droplet 存储
   private sandboxDroplets: Map<string, DropletResponse> = new Map();
@@ -42,6 +44,13 @@ export class DigitalOceanService {
       this.configService.get<string>('DO_DEFAULT_SIZE') || 's-1vcpu-1gb';
     this.defaultImage =
       this.configService.get<string>('DO_DEFAULT_IMAGE') || 'docker-20-04';
+    this.vpsPassword =
+      this.configService.get<string>('DO_VPS_PASSWORD') || '';
+    // SSH Key IDs（从 DigitalOcean 控制台获取，多个用逗号分隔）
+    const sshKeyIdsStr = this.configService.get<string>('DO_SSH_KEY_IDS') || '';
+    this.sshKeyIds = sshKeyIdsStr
+      ? sshKeyIdsStr.split(',').map((id) => parseInt(id.trim(), 10))
+      : [];
 
     // 初始化 Axios 实例
     this.axiosInstance = axios.create({
@@ -100,7 +109,7 @@ export class DigitalOceanService {
         : this.getUserDataScript();
 
       // 构造请求体
-      const requestBody = {
+      const requestBody: Record<string, any> = {
         name: dto.name,
         region: dto.region || this.defaultRegion,
         size: dto.size || this.defaultSize,
@@ -111,6 +120,16 @@ export class DigitalOceanService {
         monitoring: true, // 启用监控
         user_data: userData, // 初始化脚本
       };
+
+      // 添加 SSH Keys（如果配置了）
+      if (this.sshKeyIds.length > 0) {
+        requestBody.ssh_keys = this.sshKeyIds;
+        this.logger.log(`使用 SSH Keys: ${this.sshKeyIds.join(', ')}`);
+      }
+
+      // 如果没有 SSH Keys，使用统一密码（DO 会发送到邮箱）
+      // 注意：DO API 不支持直接设置密码，密码是自动生成的
+      // 但我们在 user-data 脚本中可以修改密码
 
       // 调用 DO API
       const response = await this.axiosInstance.post('/droplets', requestBody);
@@ -200,6 +219,30 @@ export class DigitalOceanService {
       };
     } catch (error) {
       this.handleApiError(error, '查询 Droplet 失败');
+    }
+  }
+
+  /**
+   * 重启 Droplet（硬重启）
+   * 通过 DO Droplet Actions API 执行 reboot
+   */
+  async rebootDroplet(dropletId: string): Promise<void> {
+    this.logger.log(`重启 Droplet: ${dropletId}`);
+
+    // 沙盒模式：直接返回成功
+    if (this.isSandboxMode) {
+      this.logger.log(`[沙盒] 模拟重启 Droplet: ${dropletId}`);
+      return;
+    }
+
+    try {
+      // DigitalOcean Droplet Actions API - reboot
+      await this.axiosInstance.post(`/droplets/${dropletId}/actions`, {
+        type: 'reboot',
+      });
+      this.logger.log(`Droplet ${dropletId} 重启指令已发送`);
+    } catch (error) {
+      this.handleApiError(error, '重启 Droplet 失败');
     }
   }
 
@@ -399,13 +442,18 @@ echo "QuantFi VPS 初始化完成"
       // 生成 Freqtrade API Token（用于 Freqtrade API 认证）
       const freqtradeApiToken = this.networkWhitelistService.generateFreqtradeToken(instanceId);
 
+      // 获取主服务器 IP（用于代理端口白名单）
+      const masterServerIp = this.configService.get<string>('MASTER_SERVER_IP') || '0.0.0.0/0';
+
       // 替换所有占位符
       template = template.replace(/\{\{INSTANCE_ID\}\}/g, instanceId);
       template = template.replace(/\{\{API_ENDPOINT\}\}/g, apiEndpoint);
       template = template.replace(/\{\{INSTANCE_TOKEN\}\}/g, instanceToken);
       template = template.replace(/\{\{FREQTRADE_API_TOKEN\}\}/g, freqtradeApiToken);
       template = template.replace(/\{\{SSH_WHITELIST_RULES\}\}/g, sshWhitelistRules);
+      template = template.replace(/\{\{MASTER_SERVER_IP\}\}/g, masterServerIp);
       template = template.replace(/\{\{GENERATED_AT\}\}/g, new Date().toISOString());
+      template = template.replace(/\{\{VPS_PASSWORD\}\}/g, this.vpsPassword || 'QuantFi@Secure2024');
 
       // API_KEY_ENCRYPTED 暂时保留占位符（后续任务实现）
       template = template.replace(

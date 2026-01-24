@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, ReactNode } from 'react';
+import { useEffect, ReactNode, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminAuthStore } from '@/stores/auth.store';
 
@@ -10,26 +10,54 @@ interface AdminGuardProps {
 
 export function AdminGuard({ children }: AdminGuardProps) {
   const router = useRouter();
-  const { user, isLoading, isAuthenticated, checkAuth } = useAdminAuthStore();
+  const { user, isLoading, isAuthenticated, checkAuth, _hasHydrated } = useAdminAuthStore();
+  const hasInitializedRef = useRef(false);
+  const isCheckingRef = useRef(false);
 
-  useEffect(() => {
-    // 检查认证状态
-    checkAuth();
+  // 使用 useCallback 避免重复调用
+  const performAuthCheck = useCallback(async () => {
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    await checkAuth();
+    isCheckingRef.current = false;
   }, [checkAuth]);
 
   useEffect(() => {
-    // 等待加载完成后检查权限
-    if (!isLoading) {
-      if (!isAuthenticated) {
-        // 未登录，重定向到登录页
-        router.replace('/login');
-      } else if (user && user.role !== 'admin' && user.role !== 'super_admin') {
-        // 已登录但非管理员，显示权限不足
-        // 这里可以重定向到无权限页面，或者清除认证后重定向到登录
-        router.replace('/login');
+    // 等待 hydration 完成后，只在初始加载时调用 checkAuth
+    if (_hasHydrated && !hasInitializedRef.current) {
+      performAuthCheck();
+    }
+  }, [performAuthCheck, _hasHydrated]);
+
+  useEffect(() => {
+    // 等待 hydration 完成后进行认证检查
+    // 避免在 hydration 前因 isAuthenticated 为 false 导致错误重定向
+    if (!_hasHydrated) return;
+
+    if (!isLoading && !isCheckingRef.current) {
+      if (!hasInitializedRef.current) {
+        // 初始检查完成
+        hasInitializedRef.current = true;
+        if (!isAuthenticated) {
+          router.replace('/login');
+        } else if (user && user.role !== 'admin' && user.role !== 'super_admin') {
+          router.replace('/login');
+        }
       }
     }
-  }, [isLoading, isAuthenticated, user, router]);
+  }, [isLoading, isAuthenticated, user, router, _hasHydrated]);
+
+  // 等待 hydration 完成
+  if (!_hasHydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0B0E11]">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#2B3139] border-t-[#3772FF]"></div>
+          <p className="text-sm text-[#848E9C]">加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 加载中显示 loading 状态
   if (isLoading) {

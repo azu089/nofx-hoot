@@ -7,6 +7,8 @@ import {
   Body,
   UseGuards,
   Query,
+  Headers,
+  HttpCode,
 } from '@nestjs/common';
 import { InstancesService } from './instances.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -15,6 +17,7 @@ import { JwtPayload } from '../auth/dto/jwt-payload.dto';
 import { CreateInstanceDto, HeartbeatDto } from './dto/instance-response.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
 
 /**
  * VPS 实例控制器
@@ -32,21 +35,23 @@ export class InstancesController {
   constructor(
     private readonly instancesService: InstancesService,
     private readonly freqtradeService: FreqtradeService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {}
 
   /**
    * 购买订阅（唯一入口）
    * 流程：扣费 → 更新订阅 → 自动创建 VPS
    * POST /api/instances/subscribe
+   *
+   * 注意：订阅只支持 USDT 支付，不支持积分抵扣
    */
   @Post('subscribe')
   async purchaseSubscription(
     @CurrentUser() user: JwtPayload,
-    @Body() body: { usePoints?: boolean; region?: string },
+    @Body() body: { region?: string },
   ) {
     const result = await this.instancesService.purchaseSubscription(
       user.sub,
-      body.usePoints !== false,
       body.region || 'sgp1',
     );
     return {
@@ -73,8 +78,60 @@ export class InstancesController {
     };
   }
 
-  // 注意：移除了用户手动创建/销毁 VPS 的接口
-  // VPS 生命周期完全由订阅状态控制
+  /**
+   * 手动创建 VPS（需要有效订阅）
+   * POST /api/instances/create
+   *
+   * 限制：一个订阅账号只能创建 1 个 VPS
+   */
+  @Post('create')
+  async createVps(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { region?: string },
+  ) {
+    try {
+      const instance = await this.instancesService.createVps(
+        user.sub,
+        body.region || 'sgp1',
+      );
+      return {
+        code: 0,
+        message: 'VPS 创建中，请等待 5-8 分钟',
+        data: instance,
+      };
+    } catch (error) {
+      return {
+        code: 40001,
+        message: error.message || 'VPS 创建失败',
+        data: null,
+      };
+    }
+  }
+
+  /**
+   * 手动销毁 VPS
+   * POST /api/instances/:id/destroy
+   */
+  @Post(':id/destroy')
+  async destroyVps(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    try {
+      const result = await this.instancesService.destroyVps(id, user.sub);
+      return {
+        code: 0,
+        message: 'VPS 已销毁',
+        data: result,
+      };
+    } catch (error) {
+      return {
+        code: 40001,
+        message: error.message || 'VPS 销毁失败',
+        data: null,
+      };
+    }
+  }
 
   /**
    * 获取当前用户的所有实例
@@ -101,6 +158,33 @@ export class InstancesController {
   // 用户不能手动操作 VPS，只能查看状态
 
   /**
+   * 硬重启 VPS（用于僵尸节点恢复）
+   * POST /api/instances/:id/reboot
+   *
+   * 通过 DigitalOcean API 强制重启 Droplet
+   */
+  @Post(':id/reboot')
+  async rebootInstance(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    try {
+      const result = await this.instancesService.rebootInstance(id, user.sub);
+      return {
+        code: 0,
+        message: 'VPS 重启指令已发送',
+        data: result,
+      };
+    } catch (error) {
+      return {
+        code: 40001,
+        message: error.message || 'VPS 重启失败',
+        data: null,
+      };
+    }
+  }
+
+  /**
    * 心跳上报（VPS 调用，无需用户认证）
    * POST /api/instances/:id/heartbeat
    */
@@ -114,6 +198,29 @@ export class InstancesController {
   }
 
   /**
+   * VPS 初始化完成回调（VPS 调用，无需用户认证）
+   * POST /api/instances/:id/ready
+   *
+   * VPS 初始化脚本在所有服务就绪后调用此接口
+   * 用于立即更新实例状态为 running，无需等待心跳同步
+   */
+  @Public()
+  @Post(':id/ready')
+  @HttpCode(200)
+  async markAsReady(
+    @Param('id') id: string,
+    @Headers('x-instance-token') instanceToken: string,
+    @Body()
+    dto: {
+      status: string;
+      freqtradeStatus?: string;
+      proxyStatus?: string;
+    },
+  ) {
+    return this.instancesService.markAsReady(id, instanceToken, dto);
+  }
+
+  /**
    * 获取实例运行状态（Freqtrade）- 只读
    * GET /api/instances/:id/status
    */
@@ -122,7 +229,16 @@ export class InstancesController {
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.instancesService.getFreqtradeStatus(id, user.sub);
+    try {
+      const data = await this.instancesService.getFreqtradeStatus(id, user.sub);
+      return { code: 0, message: 'success', data };
+    } catch (error) {
+      return {
+        code: 40901,
+        message: error.message || '获取实例状态失败',
+        data: null,
+      };
+    }
   }
 
   /**
@@ -134,7 +250,16 @@ export class InstancesController {
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.instancesService.getFreqtradeBalance(id, user.sub);
+    try {
+      const data = await this.instancesService.getFreqtradeBalance(id, user.sub);
+      return { code: 0, message: 'success', data };
+    } catch (error) {
+      return {
+        code: 40901,
+        message: error.message || '获取实例余额失败',
+        data: null,
+      };
+    }
   }
 
   /**
@@ -146,7 +271,16 @@ export class InstancesController {
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.instancesService.getFreqtradeTrades(id, user.sub);
+    try {
+      const data = await this.instancesService.getFreqtradeTrades(id, user.sub);
+      return { code: 0, message: 'success', data };
+    } catch (error) {
+      return {
+        code: 40901,
+        message: error.message || '获取实例交易失败',
+        data: [],
+      };
+    }
   }
 
   /**
@@ -195,6 +329,7 @@ export class InstancesController {
     }
 
     // 调用 FreqtradeService 下载 K 线
+    const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
     const result = await this.freqtradeService.downloadKlineData(
       instance.ip_address,
       {
@@ -203,6 +338,7 @@ export class InstancesController {
         timeframes: dto.timeframes || ['1h', '4h', '1d'],
         startDate: dto.startDate,
       },
+      apiToken,
     );
 
     return {
@@ -246,9 +382,11 @@ export class InstancesController {
     }
 
     // 获取下载状态
+    const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
     const status = await this.freqtradeService.getKlineDownloadStatus(
       instance.ip_address,
       taskId,
+      apiToken,
     );
 
     return {
@@ -288,8 +426,10 @@ export class InstancesController {
     }
 
     // 获取可用数据
+    const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
     const data = await this.freqtradeService.getAvailableKlineData(
       instance.ip_address,
+      apiToken,
     );
 
     return {

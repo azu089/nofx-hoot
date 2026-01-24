@@ -70,7 +70,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body suppressHydrationWarning>
+      <body
+        suppressHydrationWarning
+        style={{ backgroundColor: '#0B0E11', minHeight: '100vh' }}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -58,9 +58,13 @@ class WebSocketClient {
       }
 
       this.token = token;
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001';
+      // 从 API URL 中提取 WebSocket URL（移除 /api 后缀）
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api';
+      const wsUrl = apiUrl.replace(/\/api$/, '');
+      console.log('[WebSocket] 连接到:', wsUrl);
 
-      this.socket = io(`${apiUrl}/events`, {
+      // 连接到默认 namespace (/)
+      this.socket = io(wsUrl, {
         auth: { token },
         transports: ['websocket', 'polling'],
         reconnection: true,

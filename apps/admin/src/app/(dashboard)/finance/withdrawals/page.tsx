@@ -15,6 +15,7 @@ import {
   User,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
+import { useAdminAuthStore } from '@/stores/auth.store';
 
 interface Withdrawal {
   id: string;
@@ -34,6 +35,8 @@ interface WithdrawalsData {
 
 export default function AdminWithdrawalsPage() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAdminAuthStore();
+  const isAgent = currentUser?.isAgent || false; // 代理商只有查看权限
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [selectedWithdrawal, setSelectedWithdrawal] = useState<string | null>(null);
@@ -225,7 +228,8 @@ export default function AdminWithdrawalsPage() {
                       {wd.createdAt}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {wd.status === 'pending' && (
+                      {/* 代理商只有查看权限，隐藏审核操作 */}
+                      {!isAgent && wd.status === 'pending' && (
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => {
@@ -249,6 +253,9 @@ export default function AdminWithdrawalsPage() {
                             拒绝
                           </button>
                         </div>
+                      )}
+                      {isAgent && wd.status === 'pending' && (
+                        <span className="text-[#848E9C] text-sm">仅查看</span>
                       )}
                     </td>
                   </tr>

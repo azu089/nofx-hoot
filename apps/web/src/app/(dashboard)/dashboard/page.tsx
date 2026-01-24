@@ -91,7 +91,7 @@ export default function DashboardPage() {
 
   // 使用 Tailwind 类名映射，避免 inline style
   const quickEntries = [
-    { icon: Crown, label: '会员订阅', href: '/instances', bgClass: 'bg-warning/15', iconClass: 'text-warning' },
+    { icon: Crown, label: '会员订阅', href: '/subscription', bgClass: 'bg-warning/15', iconClass: 'text-warning' },
     { icon: TrendingUp, label: '交易所', href: '/me/exchanges', bgClass: 'bg-success/15', iconClass: 'text-success' },
     { icon: Server, label: 'VPS 实例', href: '/instances', bgClass: 'bg-brand-primary/15', iconClass: 'text-brand-primary' },
     { icon: Key, label: 'API 绑定', href: '/wallet/api-keys', bgClass: 'bg-danger/15', iconClass: 'text-danger' },

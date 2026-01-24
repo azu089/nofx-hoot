@@ -77,4 +77,9 @@ export class HeartbeatDto {
   @Min(0)
   @Max(100)
   diskUsage?: number;
+
+  @ApiPropertyOptional({ description: 'Freqtrade 状态' })
+  @IsOptional()
+  @IsString()
+  freqtradeStatus?: string;
 }

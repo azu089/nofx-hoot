@@ -19,6 +19,7 @@ import {
   Activity,
   MapPin,
   Monitor,
+  Wallet,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
 
@@ -33,6 +34,14 @@ export default function UserDetailPage() {
   const [activeTab, setActiveTab] = useState<TabType>('instances');
   const [showVipModal, setShowVipModal] = useState(false);
   const [newVipLevel, setNewVipLevel] = useState(0);
+
+  // 调整资产弹窗状态
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustType, setAdjustType] = useState<'add' | 'deduct'>('add');
+  const [adjustAssetType, setAdjustAssetType] = useState<'usdt' | 'points' | 'card' | 'token'>('usdt');
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+  const [adjusting, setAdjusting] = useState(false);
 
   // 获取用户详情
   const { data: userRes, isLoading: userLoading } = useQuery({
@@ -100,6 +109,42 @@ export default function UserDetailPage() {
       alert('VIP 等级调整成功');
     },
   });
+
+  // 调整资产
+  const handleAdjustBalance = async () => {
+    if (!adjustAmount || parseFloat(adjustAmount) <= 0) {
+      alert('请输入有效金额');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      alert('请输入调整原因');
+      return;
+    }
+
+    setAdjusting(true);
+    try {
+      const res = await adminApi.adjustUserBalance(userId, {
+        type: adjustType,
+        amount: adjustAmount,
+        reason: adjustReason.trim(),
+        assetType: adjustAssetType,
+      });
+      if (res.code === 0) {
+        queryClient.invalidateQueries({ queryKey: ['admin', 'user', userId] });
+        setShowAdjustModal(false);
+        setAdjustAmount('');
+        setAdjustReason('');
+        alert('资产调整成功');
+      } else {
+        alert(res.message || '操作失败');
+      }
+    } catch (error) {
+      console.error('调整资产失败:', error);
+      alert('操作失败，请稍后重试');
+    } finally {
+      setAdjusting(false);
+    }
+  };
 
   if (userLoading) {
     return (
@@ -229,6 +274,19 @@ export default function UserDetailPage() {
             >
               <Shield className="w-5 h-5" />
               调整VIP等级
+            </button>
+            <button
+              onClick={() => {
+                setAdjustType('add');
+                setAdjustAssetType('usdt');
+                setAdjustAmount('');
+                setAdjustReason('');
+                setShowAdjustModal(true);
+              }}
+              className="w-full px-4 py-3 bg-[#F7931A]/10 text-[#F7931A] rounded-lg flex items-center gap-2 hover:bg-[#F7931A]/20"
+            >
+              <Wallet className="w-5 h-5" />
+              调整资产
             </button>
             <button className="w-full px-4 py-3 bg-[#1E222D] text-white rounded-lg flex items-center gap-2 hover:bg-[#2B3139]">
               <LogOut className="w-5 h-5" />
@@ -473,6 +531,124 @@ export default function UserDetailPage() {
                 className="flex-1 px-4 py-2 bg-[#3772FF] text-white rounded-lg hover:bg-[#2962FF]"
               >
                 确认调整
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 调整资产弹窗 */}
+      {showAdjustModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#131722] rounded-xl p-6 w-full max-w-md border border-[#2B3139]">
+            <h3 className="text-lg font-semibold text-white mb-4">调整用户资产</h3>
+            <div className="space-y-4">
+              {/* 操作类型 */}
+              <div>
+                <label className="block text-[#848E9C] text-sm mb-2">操作类型</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAdjustType('add')}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      adjustType === 'add'
+                        ? 'bg-[#00C087] text-white'
+                        : 'bg-[#1E222D] text-[#848E9C] hover:bg-[#2B3139]'
+                    }`}
+                  >
+                    增加
+                  </button>
+                  <button
+                    onClick={() => setAdjustType('deduct')}
+                    className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      adjustType === 'deduct'
+                        ? 'bg-[#F23645] text-white'
+                        : 'bg-[#1E222D] text-[#848E9C] hover:bg-[#2B3139]'
+                    }`}
+                  >
+                    扣除
+                  </button>
+                </div>
+              </div>
+
+              {/* 资产类型 */}
+              <div>
+                <label className="block text-[#848E9C] text-sm mb-2">资产类型</label>
+                <select
+                  value={adjustAssetType}
+                  onChange={(e) => setAdjustAssetType(e.target.value as 'usdt' | 'points' | 'card' | 'token')}
+                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white focus:outline-none focus:border-[#3772FF]"
+                >
+                  <option value="usdt">USDT 余额</option>
+                  <option value="points">积分 (Points)</option>
+                  <option value="card">点卡 (Card)</option>
+                  <option value="token">代币 (Token)</option>
+                </select>
+              </div>
+
+              {/* 金额 */}
+              <div>
+                <label className="block text-[#848E9C] text-sm mb-2">金额</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={adjustAmount}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
+                  placeholder="请输入调整金额"
+                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white placeholder-[#5E6673] focus:outline-none focus:border-[#3772FF]"
+                />
+              </div>
+
+              {/* 原因 */}
+              <div>
+                <label className="block text-[#848E9C] text-sm mb-2">调整原因（必填）</label>
+                <textarea
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  placeholder="请输入调整原因，将记录在审计日志中"
+                  rows={3}
+                  className="w-full px-4 py-3 bg-[#1E222D] border border-[#2B3139] rounded-lg text-white placeholder-[#5E6673] focus:outline-none focus:border-[#3772FF] resize-none"
+                />
+              </div>
+
+              {/* 预览 */}
+              <div className="p-3 bg-[#1E222D] rounded-lg border border-[#2B3139]">
+                <p className="text-sm text-[#848E9C]">操作预览：</p>
+                <p className="text-white mt-1">
+                  {adjustType === 'add' ? (
+                    <span className="text-[#00C087]">+ {adjustAmount || '0'}</span>
+                  ) : (
+                    <span className="text-[#F23645]">- {adjustAmount || '0'}</span>
+                  )}
+                  {' '}
+                  <span className="text-[#848E9C]">
+                    {adjustAssetType === 'usdt' && 'USDT'}
+                    {adjustAssetType === 'points' && '积分'}
+                    {adjustAssetType === 'card' && '点卡'}
+                    {adjustAssetType === 'token' && '代币'}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={() => setShowAdjustModal(false)}
+                disabled={adjusting}
+                className="flex-1 px-4 py-2 bg-[#1E222D] text-white rounded-lg hover:bg-[#2B3139] disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAdjustBalance}
+                disabled={adjusting || !adjustAmount || !adjustReason.trim()}
+                className={`flex-1 px-4 py-2 text-white rounded-lg disabled:opacity-50 ${
+                  adjustType === 'add'
+                    ? 'bg-[#00C087] hover:bg-[#00A070]'
+                    : 'bg-[#F23645] hover:bg-[#D02535]'
+                }`}
+              >
+                {adjusting ? '处理中...' : '确认调整'}
               </button>
             </div>
           </div>

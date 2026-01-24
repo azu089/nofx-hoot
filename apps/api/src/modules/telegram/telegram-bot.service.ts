@@ -47,12 +47,70 @@ function formatPnl(value: string | number | Decimal, decimals = 2): string {
 const LANG = {
   // ==================== /start 命令 ====================
   welcome_back: {
-    zh: (name: string) => `欢迎回来，${name}！\n\n您的专属量化交易助手已就绪\n\n输入 /help 查看所有命令`,
-    en: (name: string) => `Welcome back, ${name}!\n\nYour personal trading assistant is ready\n\nType /help to see all commands`,
+    zh: (name: string) => `欢迎回来，${name}！
+
+您的专属量化交易助手已就绪
+
+📋 快捷指令
+/balance - 查看余额
+/pnl - 今日盈亏
+/checkin - 每日签到
+/invite - 邀请好友
+/rank - 查看排名
+/help - 所有命令
+
+💡 点击左下角「打开应用」进入小程序`,
+    en: (name: string) => `Welcome back, ${name}!
+
+Your personal trading assistant is ready
+
+📋 Quick Commands
+/balance - Check balance
+/pnl - Today's PnL
+/checkin - Daily check-in
+/invite - Invite friends
+/rank - View ranking
+/help - All commands
+
+💡 Click "Open App" at bottom left to enter Mini App`,
   },
   welcome_new: {
-    zh: (name: string) => `欢迎使用 QuantFi，${name}！\n\n您的专属量化交易助手\n\n核心功能：\n• AI 智能策略 - 一键跟单\n• 实时交易通知 - 不错过任何机会\n• 每日盈亏报告 - 掌握账户动态\n\n新用户福利：\n• 注册即送 1000 积分\n• 首单盈利额外奖励`,
-    en: (name: string) => `Welcome to QuantFi, ${name}!\n\nYour personal trading assistant\n\nCore Features:\n• AI Smart Strategies - One-click copy trading\n• Real-time Notifications - Never miss an opportunity\n• Daily PnL Reports - Track your performance\n\nNew User Benefits:\n• 1000 points on registration\n• Bonus on first profitable trade`,
+    zh: (name: string) => `欢迎使用 TIZO，${name}！
+
+您的专属量化交易助手
+
+🚀 核心功能
+• AI 智能策略 - 一键跟单
+• 实时交易通知 - 不错过任何机会
+• 每日盈亏报告 - 掌握账户动态
+
+🎁 新用户福利
+• 注册即送 1000 积分
+• 首单盈利额外奖励
+
+📋 快捷指令
+/bind - 绑定账号
+/help - 所有命令
+
+💡 点击左下角「打开应用」进入小程序注册`,
+    en: (name: string) => `Welcome to TIZO, ${name}!
+
+Your personal trading assistant
+
+🚀 Core Features
+• AI Smart Strategies - One-click copy trading
+• Real-time Notifications - Never miss an opportunity
+• Daily PnL Reports - Track your performance
+
+🎁 New User Benefits
+• 1000 points on registration
+• Bonus on first profitable trade
+
+📋 Quick Commands
+/bind - Bind account
+/help - All commands
+
+💡 Click "Open App" at bottom left to register`,
   },
   invite_code_detected: {
     zh: (code: string) => `\n\n检测到邀请码: ${code}`,
@@ -517,20 +575,18 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // 构建"打开小程序"按钮
     const appButton = this.webAppUrl
       ? [{ text: t('btn_open_app', lang), web_app: { url: this.webAppUrl } }]
-      : [{ text: t('btn_open_app', lang), url: 'https://quantfi.app/tg' }];
+      : [{ text: t('btn_open_app', lang), url: 'https://tizo.cc/tg' }];
 
     // 社群链接
     const communityUrl = 'https://t.me/QuantFiCommunity';
 
     if (user) {
-      // 已绑定用户 - 丰富的快捷按钮
+      // 已绑定用户 - 快捷按钮（不再需要"打开小程序"按钮，用户可以点击左下角 Menu Button）
       const welcomeText = t('welcome_back', lang)(firstName);
       await ctx.reply(welcomeText, {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            // 主入口
-            appButton,
             // 常用功能 3 列
             [
               { text: lang === 'zh' ? '💰 余额' : '💰 Balance', callback_data: 'cmd_wallet' },
@@ -560,13 +616,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         welcomeMsg += t('invite_code_detected', lang)(startPayload);
       }
 
-      welcomeMsg += lang === 'zh' ? '\n\n输入 /help 查看所有命令' : '\n\nType /help to see all commands';
-
       await ctx.reply(welcomeMsg, {
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [
-            appButton,
             // 绑定 + 社群 + 语言
             [
               { text: t('btn_bind', lang), callback_data: 'cmd_bind' },
@@ -689,7 +742,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         inline_keyboard: [
           this.webAppUrl
             ? [{ text: t('btn_open_app', lang), web_app: { url: this.webAppUrl } }]
-            : [{ text: t('btn_open_app', lang), url: 'https://quantfi.app/tg' }],
+            : [{ text: t('btn_open_app', lang), url: 'https://tizo.cc/tg' }],
           [{ text: t('btn_cancel', lang), callback_data: 'cancel_bind' }],
         ],
       },
@@ -772,7 +825,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             inline_keyboard: [
               this.webAppUrl
                 ? [{ text: t('btn_open_app', lang), web_app: { url: this.webAppUrl } }]
-                : [{ text: t('btn_open_app', lang), url: 'https://quantfi.app/tg' }],
+                : [{ text: t('btn_open_app', lang), url: 'https://tizo.cc/tg' }],
               [{ text: t('btn_rebind', lang), callback_data: 'cmd_bind' }],
             ],
           },

@@ -5,10 +5,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * 创建 API Key DTO
  */
 export class CreateApiKeyDto {
-  @ApiProperty({ description: '交易所', example: 'binance', enum: ['binance', 'okx', 'bybit'] })
+  @ApiProperty({ description: '交易所', example: 'binance', enum: ['binance', 'okx', 'bybit', 'gate', 'bitget', 'coinbase'] })
   @IsString()
   @IsNotEmpty()
-  @IsIn(['binance', 'okx', 'bybit'])
+  @IsIn(['binance', 'okx', 'bybit', 'gate', 'bitget', 'coinbase'])
   exchange: string;
 
   @ApiProperty({ description: 'API Key', example: 'your-api-key' })
@@ -25,4 +25,9 @@ export class CreateApiKeyDto {
   @IsOptional()
   @IsString()
   label?: string;
+
+  @ApiPropertyOptional({ description: '密钥密码 (OKX/Bitget 专用)', example: 'your-passphrase' })
+  @IsOptional()
+  @IsString()
+  passphrase?: string;
 }

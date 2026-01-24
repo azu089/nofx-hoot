@@ -19,7 +19,9 @@ import { StrategiesService } from './strategies.service';
 import { BacktestService } from './backtest.service';
 import { AutoReviewService } from './auto-review.service';
 import { RevenuePricingService } from './revenue-pricing.service';
+import { StrategyDeployService } from './strategy-deploy.service';
 import { InstancesService } from '../instances/instances.service';
+import { InstanceLogService } from '../instances/instance-log.service';
 import { FreqtradeService } from '../freqtrade/freqtrade.service';
 import { CreateStrategyConfigDto } from './dto/create-strategy-config.dto';
 import { UpdateStrategyConfigDto } from './dto/update-strategy-config.dto';
@@ -37,6 +39,7 @@ import { WithdrawRevenueDto } from './dto/withdraw-revenue.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { NetworkWhitelistService } from '../../common/services/network-whitelist.service';
 
 /**
  * 策略控制器
@@ -53,8 +56,11 @@ export class StrategiesController {
     private readonly backtestService: BacktestService,
     private readonly autoReviewService: AutoReviewService,
     private readonly pricingService: RevenuePricingService,
+    private readonly deployService: StrategyDeployService,
     private readonly instancesService: InstancesService,
+    private readonly instanceLogService: InstanceLogService,
     private readonly freqtradeService: FreqtradeService,
+    private readonly networkWhitelistService: NetworkWhitelistService,
   ) {}
 
   /**
@@ -171,6 +177,184 @@ export class StrategiesController {
       code: 0,
       message: 'success',
       data: logs,
+    };
+  }
+
+  // ==================== 日志 API（必须放在 :id 之前）====================
+
+  /**
+   * 获取交易日志
+   * 合并 Freqtrade 交易日志 + 用户操作日志（API Key 绑定、策略部署等）
+   *
+   * 注意：此接口返回的是交易相关的所有日志，包括：
+   * - Freqtrade 日志：策略执行、开单/平仓、信号触发
+   * - 操作日志：API Key 绑定/验证、策略部署/启动/停止
+   */
+  @Get('trading-logs')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取交易日志' })
+  @ApiResponse({ status: 200, description: '成功获取日志' })
+  @ApiResponse({ status: 400, description: '无可用 VPS' })
+  async getTradingLogs(
+    @CurrentUser('sub') userId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const logLimit = Math.min(parseInt(limit || '100', 10), 500);
+    const allLogs: Array<{
+      id: string;
+      timestamp: string;
+      level: string;
+      message: string;
+      source: 'trading' | 'operation';
+    }> = [];
+
+    // 1. 获取用户的运行中 VPS 实例
+    const instances = await this.instancesService.findAllByUserId(userId);
+    const activeInstance = instances.find(
+      (i) => i.status === 'running' && i.ip_address,
+    );
+
+    // 2. 获取 Freqtrade 日志（如果 VPS 可用）
+    if (activeInstance?.ip_address) {
+      try {
+        const apiToken = this.networkWhitelistService.generateFreqtradeToken(activeInstance.id);
+        const result = await this.freqtradeService.getLogs(
+          activeInstance.ip_address,
+          logLimit,
+          apiToken,
+        );
+
+        // 转换日志格式（移除 Freqtrade 敏感信息）
+        result.logs.forEach((log, index) => {
+          // 解析日志时间戳（Freqtrade 格式: "2024-01-15 10:30:45,123 - freqtrade.xxx - INFO - message"）
+          const match = log.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+          const timestamp = match
+            ? new Date(match[1].replace(' ', 'T') + 'Z').toISOString()
+            : new Date().toISOString();
+
+          // 提取日志级别
+          const levelMatch = log.match(/- (INFO|WARNING|ERROR|DEBUG) -/i);
+          const level = levelMatch ? levelMatch[1].toLowerCase() : 'info';
+
+          // 清理日志消息
+          const sanitizedLog = log
+            .replace(/Freqtrade/gi, '交易机器人')
+            .replace(/freqtrade/gi, '交易机器人')
+            .replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - [\w.]+ - \w+ - /, '');
+
+          allLogs.push({
+            id: `ft-${Date.now()}-${index}`,
+            timestamp,
+            level: level === 'warning' ? 'warn' : level,
+            message: sanitizedLog || log,
+            source: 'trading',
+          });
+        });
+      } catch (error: any) {
+        this.logger.warn(`获取 Freqtrade 日志失败: ${error.message}`);
+      }
+    }
+
+    // 3. 获取用户交易相关操作日志（API Key、策略操作等）
+    const operationLogs = await this.instanceLogService.getTradingLogs(
+      userId,
+      logLimit,
+      activeInstance?.id,
+    );
+
+    // 添加操作日志（带 action 类型）
+    operationLogs.logs.forEach((log) => {
+      allLogs.push({
+        id: log.id,
+        timestamp: log.timestamp,
+        level: log.level,
+        message: log.message,
+        source: 'operation',
+        action: log.action, // 保留 action 类型供前端识别
+      } as any);
+    });
+
+    // 4. 按时间排序（最新的在前）
+    allLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // 5. 限制返回数量
+    const limitedLogs = allLogs.slice(0, logLimit);
+
+    return {
+      code: 0,
+      message: 'success',
+      data: {
+        logs: limitedLogs,
+        log_count: limitedLogs.length,
+        instanceId: activeInstance?.id,
+      },
+    };
+  }
+
+  /**
+   * 获取 VPS 系统日志
+   * 从数据库读取 VPS 基础设施相关日志
+   *
+   * 注意：此接口返回的是 VPS 基础设施层面的日志，包括：
+   * - VPS 创建/销毁
+   * - 心跳状态
+   * - 系统消息
+   * - 错误日志
+   *
+   * 交易相关操作（API Key、策略部署等）请使用 /trading-logs 接口
+   */
+  @Get('vps-logs')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取 VPS 系统日志' })
+  @ApiResponse({ status: 200, description: '成功获取日志' })
+  @ApiResponse({ status: 400, description: '无可用 VPS' })
+  async getVpsLogs(
+    @CurrentUser('sub') userId: string,
+    @Query('limit') limit?: string,
+  ) {
+    // 1. 获取用户的运行中 VPS 实例
+    const instances = await this.instancesService.findAllByUserId(userId);
+    const activeInstance = instances.find(
+      (i) => i.status === 'running' && i.ip_address,
+    );
+
+    // 2. 从数据库获取 VPS 系统日志（只获取基础设施相关的）
+    const logLimit = Math.min(parseInt(limit || '100', 10), 500);
+    const logsResult = await this.instanceLogService.getSystemLogs(
+      userId,
+      logLimit,
+      activeInstance?.id,
+    );
+
+    // 3. 如果没有日志且有活跃实例，添加一条状态日志
+    if (logsResult.logs.length === 0 && activeInstance) {
+      return {
+        code: 0,
+        message: 'success',
+        data: {
+          logs: [
+            {
+              id: 'status-' + Date.now(),
+              timestamp: new Date().toISOString(),
+              level: 'info',
+              action: 'system',
+              message: `VPS 实例运行中 (IP: ${activeInstance.ip_address})`,
+            },
+          ],
+          log_count: 1,
+          instanceId: activeInstance?.id,
+        },
+      };
+    }
+
+    return {
+      code: 0,
+      message: 'success',
+      data: {
+        logs: logsResult.logs,
+        log_count: logsResult.log_count,
+        instanceId: activeInstance?.id,
+      },
     };
   }
 
@@ -344,10 +528,12 @@ export class StrategiesController {
 
     // 2. 获取策略信息
     let strategyName = 'SampleStrategy';
+    let strategyCode: string | null = null;
     if (dto.strategyId) {
       const strategy = await this.strategiesService.findOne(dto.strategyId);
       if (strategy) {
         strategyName = strategy.name;
+        strategyCode = strategy.content;
       }
     }
 
@@ -355,8 +541,25 @@ export class StrategiesController {
       `用户 ${userId} 发起回测: 策略=${strategyName}, VPS=${activeInstance.ip_address}`,
     );
 
-    // 3. 调用 Freqtrade 回测
+    // 3. 先上传策略代码到 VPS（如果有策略代码）
+    if (strategyCode) {
+      try {
+        await this.deployService.uploadStrategyOnly(
+          activeInstance.ip_address,
+          strategyName,
+          strategyCode,
+          activeInstance.id,
+        );
+        this.logger.log(`策略 ${strategyName} 已上传到 VPS`);
+      } catch (uploadError: any) {
+        this.logger.warn(`策略上传失败（可能使用 VPS 已有策略）: ${uploadError.message}`);
+        // 上传失败不阻断回测，VPS 上可能已有该策略
+      }
+    }
+
+    // 4. 调用 Freqtrade 回测
     try {
+      const apiToken = this.networkWhitelistService.generateFreqtradeToken(activeInstance.id);
       const result = await this.freqtradeService.runBacktest(
         activeInstance.ip_address,
         strategyName, // 策略名称，Freqtrade 会加载对应的策略文件
@@ -366,6 +569,7 @@ export class StrategiesController {
           endDate: dto.endDate,
           initialCapital: dto.initialCapital,
         },
+        apiToken,
       );
 
       return {
@@ -476,6 +680,7 @@ export class StrategiesController {
     }
 
     // 2. 执行回测（验证策略有效性）- 通过 Freqtrade
+    const apiToken = this.networkWhitelistService.generateFreqtradeToken(activeInstance.id);
     const backtestResult = await this.freqtradeService.runBacktest(
       activeInstance.ip_address,
       dto.name,
@@ -485,6 +690,7 @@ export class StrategiesController {
         endDate: dto.backtestEndDate,
         initialCapital: dto.backtestInitialCapital,
       },
+      apiToken,
     );
 
     // 3. 创建策略记录
@@ -670,4 +876,98 @@ export class StrategiesController {
       },
     };
   }
+
+  // ==================== 策略部署与控制 API ====================
+
+  /**
+   * 部署策略到 VPS
+   * 将用户的策略配置和代码部署到 VPS 上的 Freqtrade
+   *
+   * 前置条件：
+   * 1. 用户已创建策略配置
+   * 2. 用户已购买 VPS 实例并绑定到配置
+   * 3. 用户已绑定交易所 API Key
+   */
+  @Post('configs/:id/deploy')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '部署策略到 VPS' })
+  @ApiResponse({ status: 200, description: '部署成功' })
+  @ApiResponse({ status: 400, description: '参数错误或前置条件不满足' })
+  @ApiResponse({ status: 404, description: '配置不存在' })
+  async deployStrategy(
+    @CurrentUser('sub') userId: string,
+    @Param('id') configId: string,
+  ) {
+    this.logger.log(`用户 ${userId} 请求部署策略配置: ${configId}`);
+
+    const result = await this.deployService.deployStrategy(userId, configId);
+
+    return {
+      code: 0,
+      message: result.message,
+      data: {
+        success: result.success,
+        instanceId: result.instanceId,
+        strategy: result.strategy,
+      },
+    };
+  }
+
+  /**
+   * 启动 VPS 上的策略
+   * 调用 Freqtrade 的 /start API
+   */
+  @Post('configs/:id/start')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '启动策略' })
+  @ApiResponse({ status: 200, description: '启动成功' })
+  @ApiResponse({ status: 400, description: 'VPS 实例不可用' })
+  @ApiResponse({ status: 404, description: '配置不存在' })
+  async startStrategy(
+    @CurrentUser('sub') userId: string,
+    @Param('id') configId: string,
+  ) {
+    this.logger.log(`用户 ${userId} 请求启动策略: ${configId}`);
+
+    const result = await this.deployService.startStrategy(userId, configId);
+
+    return {
+      code: 0,
+      message: result.message,
+      data: {
+        success: result.success,
+      },
+    };
+  }
+
+  /**
+   * 停止 VPS 上的策略
+   * 调用 Freqtrade 的 /stop API
+   */
+  @Post('configs/:id/stop')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '停止策略' })
+  @ApiResponse({ status: 200, description: '停止成功' })
+  @ApiResponse({ status: 400, description: 'VPS 实例不可用' })
+  @ApiResponse({ status: 404, description: '配置不存在' })
+  async stopStrategy(
+    @CurrentUser('sub') userId: string,
+    @Param('id') configId: string,
+  ) {
+    this.logger.log(`用户 ${userId} 请求停止策略: ${configId}`);
+
+    const result = await this.deployService.stopStrategy(userId, configId);
+
+    return {
+      code: 0,
+      message: result.message,
+      data: {
+        success: result.success,
+      },
+    };
+  }
+
 }

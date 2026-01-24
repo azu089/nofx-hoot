@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   Home,
@@ -10,7 +10,6 @@ import {
   Wallet,
   User,
   Users,
-  Shield,
   Sparkles,
   Megaphone,
   PanelLeftClose,
@@ -132,23 +131,24 @@ function NavItemComponent({
   return (
     <Link
       href={href}
+      prefetch={true}
       title={collapsed ? label : undefined}
       className={cn(
-        'flex items-center rounded-xl text-sm font-medium transition-all duration-200 group relative',
+        'flex items-center rounded-xl text-sm font-medium transition-colors duration-100 group relative',
         collapsed ? 'px-2 py-3 justify-center flex-col gap-1' : 'px-4 py-3 gap-3',
         isActive ? styles.active : styles.inactive
       )}
     >
       {/* 图标容器 - 与移动端风格一致 */}
       <div className={cn(
-        'relative p-2 rounded-xl transition-all duration-200',
+        'relative p-2 rounded-xl transition-colors duration-100',
         isActive
           ? 'bg-brand-primary/15 shadow-glow-md'
           : 'group-hover:bg-bg-tertiary/50'
       )}>
         <Icon
           className={cn(
-            'w-5 h-5 transition-all duration-200',
+            'w-5 h-5 transition-colors duration-100',
             isActive
               ? `${styles.iconColor} drop-shadow-glow`
               : 'text-text-secondary group-hover:text-text-primary'
@@ -191,12 +191,22 @@ function NavItemComponent({
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user } = useAuthStore();
   const { unreadAnnouncementsCount, setUnreadCount, sidebarCollapsed, toggleSidebarCollapsed } = useUiStore();
 
-  // 判断用户角色
+  // 判断用户角色（仅代理商在侧边栏显示特殊入口）
   const isAgent = user?.isAgent === true;
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+  // 预加载所有导航页面，确保点击秒到
+  useEffect(() => {
+    [...mainNavItems, ...bottomItems].forEach((item) => {
+      router.prefetch(item.href);
+    });
+    if (isAgent) {
+      router.prefetch('/agent');
+    }
+  }, [router, isAgent]);
 
   // 模拟获取未读公告数量（实际应从 API 获取）
   useEffect(() => {
@@ -272,8 +282,8 @@ export function Sidebar() {
             );
           })}
 
-          {/* 角色特殊入口 */}
-          {(isAgent || isAdmin) && (
+          {/* 代理商特殊入口 */}
+          {isAgent && (
             <div className="pt-3 mt-3 border-t border-border-primary/30 space-y-1">
               {!sidebarCollapsed && (
                 <p className="px-4 mb-2 text-[10px] font-semibold text-text-tertiary uppercase flex items-center gap-1.5">
@@ -283,28 +293,14 @@ export function Sidebar() {
               )}
 
               {/* 代理商入口 */}
-              {isAgent && (
-                <NavItemComponent
-                  href="/agent"
-                  label="代理中心"
-                  icon={Users}
-                  isActive={pathname.startsWith('/agent')}
-                  variant="success"
-                  collapsed={sidebarCollapsed}
-                />
-              )}
-
-              {/* 管理员入口 */}
-              {isAdmin && (
-                <NavItemComponent
-                  href="/admin"
-                  label="管理后台"
-                  icon={Shield}
-                  isActive={pathname.startsWith('/admin')}
-                  variant="warning"
-                  collapsed={sidebarCollapsed}
-                />
-              )}
+              <NavItemComponent
+                href="/agent"
+                label="代理中心"
+                icon={Users}
+                isActive={pathname.startsWith('/agent')}
+                variant="success"
+                collapsed={sidebarCollapsed}
+              />
             </div>
           )}
         </nav>

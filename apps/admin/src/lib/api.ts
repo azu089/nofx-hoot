@@ -609,6 +609,91 @@ export const adminApi = {
   deleteCmsHelpDoc: (id: string) =>
     api.delete<never, ApiResponse<{ message: string }>>(`/admin/cms/help-docs/${id}`),
 
+  // ==================== 用户资产调整 ====================
+  adjustUserBalance: (userId: string, data: { type: 'add' | 'deduct'; amount: string; reason: string; assetType?: string }) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      newBalance: string;
+      adjustment: { type: string; amount: string; reason: string };
+    }>>(`/admin/users/${userId}/adjust-balance`, data),
+
+  getBalanceAdjustments: (params?: { page?: number; limit?: number; userId?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        type: string;
+        amount: string;
+        reason: string;
+        adminEmail: string;
+        createdAt: string;
+      }>;
+      total: number;
+    }>>('/admin/balance-adjustments', { params }),
+
+  // ==================== 充值审核 ====================
+  getDeposits: (params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        amount: string;
+        chain: string;
+        txHash: string;
+        proofUrl: string;
+        status: string;
+        createdAt: string;
+        reviewedAt: string | null;
+        reviewedBy: string | null;
+      }>;
+      total: number;
+      pendingCount: number;
+    }>>('/admin/deposits', { params }),
+
+  approveDeposit: (id: string) =>
+    api.post<never, ApiResponse<{ success: boolean; userEmail: string; amount: string }>>(`/admin/deposits/${id}/approve`),
+
+  rejectDeposit: (id: string, reason?: string) =>
+    api.post<never, ApiResponse<{ success: boolean; userEmail: string }>>(`/admin/deposits/${id}/reject`, { reason }),
+
+  // ==================== 质押管理 ====================
+  getStakingStats: () =>
+    api.get<never, ApiResponse<{
+      totalStaked: string;
+      typeAStaked: string;
+      typeBStaked: string;
+      totalStakers: number;
+      pendingDividends: string;
+      lastDistributedAt: string | null;
+    }>>('/admin/staking/stats'),
+
+  getStakingList: (params?: { page?: number; limit?: number; type?: string; status?: string }) =>
+    api.get<never, ApiResponse<{
+      data: Array<{
+        id: string;
+        userId: string;
+        userEmail: string;
+        type: string;
+        amount: string;
+        lockDays: number;
+        status: string;
+        weight: number;
+        startDate: string;
+        endDate: string;
+        createdAt: string;
+      }>;
+      total: number;
+    }>>('/admin/staking', { params }),
+
+  distributeDividends: (data: { totalAmount: string; note?: string }) =>
+    api.post<never, ApiResponse<{
+      success: boolean;
+      distributed: string;
+      recipientCount: number;
+    }>>('/admin/staking/distribute-dividends', data),
+
   // ==================== 提现管理 ====================
   getWithdrawals: (params?: { page?: number; status?: string }) =>
     api.get<never, ApiResponse<{

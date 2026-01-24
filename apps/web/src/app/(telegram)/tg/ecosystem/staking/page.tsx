@@ -464,12 +464,11 @@ export default function TgStakingPage() {
       )}
 
       {/* ========== 分红记录模块 ========== */}
-      {(parseFloat(totalVesting) > 0 || parseFloat(totalReleased) > 0 || vestingOrders.length > 0) && (
-        <div className="mt-4">
-          <p className="text-white font-medium mb-3">分红记录</p>
+      <div className="mt-4">
+        <p className="text-white font-medium mb-3">分红记录</p>
 
-          {/* 分红订单列表 - 显示每周分红明细 */}
-          {vestingOrders.length > 0 ? (
+        {/* 分红订单列表 - 显示每周分红明细 */}
+        {vestingOrders.length > 0 ? (
             <div className="space-y-2">
               {vestingOrders.map((order) => {
                 const daysRemaining = Math.ceil(
@@ -601,8 +600,7 @@ export default function TgStakingPage() {
               <p className="text-text-tertiary text-sm">暂无分红记录</p>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* 解押确认弹窗 */}
       {unstakeDialog.open && unstakeDialog.stake && (

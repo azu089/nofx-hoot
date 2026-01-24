@@ -15,9 +15,12 @@ import {
   Info,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
+import { useAdminAuthStore } from '@/stores/auth.store';
 
 export default function AdminAnnouncementsPage() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAdminAuthStore();
+  const isAgent = currentUser?.isAgent || false; // 代理商只有查看权限
   const [showEditor, setShowEditor] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<any>(null);
   const [formData, setFormData] = useState({
@@ -101,16 +104,19 @@ export default function AdminAnnouncementsPage() {
           <h1 className="text-2xl font-bold text-white">公告管理</h1>
           <p className="text-[#848E9C] mt-1">发布和管理平台公告</p>
         </div>
-        <button
-          onClick={() => {
-            setEditingAnnouncement(null);
-            setShowEditor(true);
-          }}
-          className="px-4 py-2 bg-[#3772FF] text-white rounded-lg flex items-center gap-2 hover:bg-[#2962FF]"
-        >
-          <Plus className="w-5 h-5" />
-          发布公告
-        </button>
+        {/* 代理商只有查看权限，隐藏新建按钮 */}
+        {!isAgent && (
+          <button
+            onClick={() => {
+              setEditingAnnouncement(null);
+              setShowEditor(true);
+            }}
+            className="px-4 py-2 bg-[#3772FF] text-white rounded-lg flex items-center gap-2 hover:bg-[#2962FF]"
+          >
+            <Plus className="w-5 h-5" />
+            发布公告
+          </button>
+        )}
       </div>
 
       {/* 公告列表 */}
@@ -159,45 +165,48 @@ export default function AdminAnnouncementsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleMutation.mutate(announcement.id)}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
-                    title={announcement.status === 'published' ? '取消发布' : '发布'}
-                  >
-                    {announcement.status === 'published' ? (
-                      <EyeOff className="w-5 h-5 text-[#848E9C]" />
-                    ) : (
-                      <Megaphone className="w-5 h-5 text-[#00C087]" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingAnnouncement(announcement);
-                      setFormData({
-                        title: announcement.title,
-                        content: announcement.content,
-                        type: announcement.type,
-                      });
-                      setShowEditor(true);
-                    }}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
-                    title="编辑"
-                  >
-                    <Edit className="w-5 h-5 text-[#3772FF]" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('确定删除此公告吗？')) {
-                        deleteMutation.mutate(announcement.id);
-                      }
-                    }}
-                    className="p-2 hover:bg-[#1E222D] rounded-lg"
-                    title="删除"
-                  >
-                    <Trash2 className="w-5 h-5 text-[#F23645]" />
-                  </button>
-                </div>
+                {/* 代理商只有查看权限，隐藏操作按钮 */}
+                {!isAgent && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleMutation.mutate(announcement.id)}
+                      className="p-2 hover:bg-[#1E222D] rounded-lg"
+                      title={announcement.status === 'published' ? '取消发布' : '发布'}
+                    >
+                      {announcement.status === 'published' ? (
+                        <EyeOff className="w-5 h-5 text-[#848E9C]" />
+                      ) : (
+                        <Megaphone className="w-5 h-5 text-[#00C087]" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingAnnouncement(announcement);
+                        setFormData({
+                          title: announcement.title,
+                          content: announcement.content,
+                          type: announcement.type,
+                        });
+                        setShowEditor(true);
+                      }}
+                      className="p-2 hover:bg-[#1E222D] rounded-lg"
+                      title="编辑"
+                    >
+                      <Edit className="w-5 h-5 text-[#3772FF]" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('确定删除此公告吗？')) {
+                          deleteMutation.mutate(announcement.id);
+                        }
+                      }}
+                      className="p-2 hover:bg-[#1E222D] rounded-lg"
+                      title="删除"
+                    >
+                      <Trash2 className="w-5 h-5 text-[#F23645]" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
