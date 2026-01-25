@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
@@ -16,16 +16,22 @@ import {
   Shield,
   Zap,
   Code,
+  Upload,
+  FileText,
+  X,
 } from 'lucide-react';
 import { adminApi } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function AdminStrategiesPage() {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<any>(null);
+  const [uploadMode, setUploadMode] = useState<'text' | 'file'>('file'); // 默认文件上传
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -40,16 +46,36 @@ export default function AdminStrategiesPage() {
   });
   const strategies = strategiesRes?.data;
 
+  // 文本方式创建
   const createMutation = useMutation({
     mutationFn: adminApi.createStrategy,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
-      setShowEditor(false);
-      setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
+      resetForm();
       toast.success('策略创建成功');
     },
-    onError: () => {
-      toast.error('策略创建失败');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || '策略创建失败');
+    },
+  });
+
+  // 文件上传方式创建
+  const uploadMutation = useMutation({
+    mutationFn: async (data: { file: File; name: string; description?: string; config?: string }) => {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('name', data.name);
+      if (data.description) formData.append('description', data.description);
+      if (data.config) formData.append('config', data.config);
+      return adminApi.uploadStrategy(formData);
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
+      resetForm();
+      toast.success(`策略上传成功 (${(response.data?.fileSize / 1024).toFixed(1)} KB)`);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || '策略上传失败');
     },
   });
 
@@ -58,8 +84,7 @@ export default function AdminStrategiesPage() {
       adminApi.updateStrategy(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
-      setShowEditor(false);
-      setEditingStrategy(null);
+      resetForm();
       toast.success('策略更新成功');
     },
     onError: () => {
@@ -89,6 +114,60 @@ export default function AdminStrategiesPage() {
     },
   });
 
+  const resetForm = () => {
+    setShowEditor(false);
+    setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
+    setEditingStrategy(null);
+    setSelectedFile(null);
+    setUploadMode('file');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.py')) {
+        toast.error('只支持上传 .py 文件');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('文件大小不能超过 5MB');
+        return;
+      }
+      setSelectedFile(file);
+      // 自动填充策略名称（去掉 .py 后缀）
+      if (!formData.name) {
+        setFormData({ ...formData, name: file.name.replace('.py', '') });
+      }
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!formData.name) {
+      toast.error('请填写策略名称');
+      return;
+    }
+
+    if (editingStrategy) {
+      updateMutation.mutate({ id: editingStrategy.id, data: formData });
+    } else if (uploadMode === 'file') {
+      if (!selectedFile) {
+        toast.error('请选择策略文件');
+        return;
+      }
+      uploadMutation.mutate({
+        file: selectedFile,
+        name: formData.name,
+        description: formData.description,
+      });
+    } else {
+      if (!formData.code) {
+        toast.error('请输入策略代码');
+        return;
+      }
+      createMutation.mutate(formData);
+    }
+  };
+
   const getRiskBadge = (risk: string) => {
     switch (risk) {
       case 'low':
@@ -115,6 +194,8 @@ export default function AdminStrategiesPage() {
     }
   };
 
+  const isPending = createMutation.isPending || uploadMutation.isPending || updateMutation.isPending;
+
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
@@ -127,6 +208,8 @@ export default function AdminStrategiesPage() {
           onClick={() => {
             setEditingStrategy(null);
             setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
+            setSelectedFile(null);
+            setUploadMode('file');
             setShowEditor(true);
           }}
           className="px-4 py-2 bg-brand-primary text-white rounded-lg flex items-center gap-2 hover:bg-brand-secondary"
@@ -155,7 +238,9 @@ export default function AdminStrategiesPage() {
         ) : !strategies?.data || strategies.data.length === 0 ? (
           <div className="col-span-full text-center py-12 text-text-secondary">暂无策略</div>
         ) : (
-          strategies.data.map((strategy) => (
+          strategies.data
+            .filter((s: any) => !search || s.name?.toLowerCase().includes(search.toLowerCase()))
+            .map((strategy: any) => (
             <div
               key={strategy.id}
               className="glass-card overflow-hidden"
@@ -189,7 +274,7 @@ export default function AdminStrategiesPage() {
                       <div className="absolute right-0 top-full mt-1 w-40 bg-bg-tertiary border border-border-primary rounded-lg shadow-xl z-10">
                         <button
                           onClick={() => toggleMutation.mutate(strategy.id)}
-                          className="w-full px-4 py-2 text-left text-white hover:bg-bg-tertiary flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-white hover:bg-bg-secondary flex items-center gap-2"
                         >
                           {strategy.status === 'active' ? (
                             <>
@@ -208,15 +293,16 @@ export default function AdminStrategiesPage() {
                             setEditingStrategy(strategy);
                             setFormData({
                               name: strategy.name,
-                              description: strategy.description,
-                              type: strategy.type,
-                              code: '',
-                              riskLevel: strategy.riskLevel,
+                              description: strategy.description || '',
+                              type: strategy.type || 'grid',
+                              code: strategy.content || '',
+                              riskLevel: strategy.riskLevel || 'medium',
                             });
+                            setUploadMode('text');
                             setShowEditor(true);
                             setSelectedStrategy(null);
                           }}
-                          className="w-full px-4 py-2 text-left text-white hover:bg-bg-tertiary flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-white hover:bg-bg-secondary flex items-center gap-2"
                         >
                           <Edit className="w-4 h-4" />
                           编辑
@@ -228,7 +314,7 @@ export default function AdminStrategiesPage() {
                               setSelectedStrategy(null);
                             }
                           }}
-                          className="w-full px-4 py-2 text-left text-danger hover:bg-bg-tertiary flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-danger hover:bg-bg-secondary flex items-center gap-2"
                         >
                           <Trash2 className="w-4 h-4" />
                           删除
@@ -241,7 +327,7 @@ export default function AdminStrategiesPage() {
 
               {/* 内容 */}
               <div className="p-4 space-y-4">
-                <p className="text-text-secondary text-sm">{strategy.description}</p>
+                <p className="text-text-secondary text-sm line-clamp-2">{strategy.description || '暂无描述'}</p>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -264,7 +350,7 @@ export default function AdminStrategiesPage() {
                 <div className="flex items-center justify-between pt-2 border-t border-border-primary">
                   {getRiskBadge(strategy.riskLevel || 'medium')}
                   <span className="text-text-secondary text-xs">
-                    创建于 {strategy.createdAt || '-'}
+                    创建于 {strategy.createdAt ? new Date(strategy.createdAt).toLocaleDateString('zh-CN') : '-'}
                   </span>
                 </div>
               </div>
@@ -277,13 +363,47 @@ export default function AdminStrategiesPage() {
       {showEditor && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-bg-secondary rounded-xl p-6 w-full max-w-4xl border border-border-primary my-8">
-            <h3 className="text-lg font-semibold text-white mb-4">
-              {editingStrategy ? '编辑策略' : '添加策略'}
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">
+                {editingStrategy ? '编辑策略' : '添加策略'}
+              </h3>
+              <button onClick={resetForm} className="text-text-secondary hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
             <div className="space-y-4">
+              {/* 上传模式切换（仅新建时显示） */}
+              {!editingStrategy && (
+                <div className="flex gap-2 p-1 bg-bg-tertiary rounded-lg w-fit">
+                  <button
+                    onClick={() => setUploadMode('file')}
+                    className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
+                      uploadMode === 'file'
+                        ? 'bg-brand-primary text-white'
+                        : 'text-text-secondary hover:text-white'
+                    }`}
+                  >
+                    <Upload className="w-4 h-4" />
+                    文件上传
+                  </button>
+                  <button
+                    onClick={() => setUploadMode('text')}
+                    className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
+                      uploadMode === 'text'
+                        ? 'bg-brand-primary text-white'
+                        : 'text-text-secondary hover:text-white'
+                    }`}
+                  >
+                    <Code className="w-4 h-4" />
+                    代码粘贴
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-text-secondary text-sm mb-2">策略名称</label>
+                  <label className="block text-text-secondary text-sm mb-2">策略名称 *</label>
                   <input
                     type="text"
                     value={formData.name}
@@ -307,6 +427,7 @@ export default function AdminStrategiesPage() {
                   </select>
                 </div>
               </div>
+
               <div>
                 <label className="block text-text-secondary text-sm mb-2">风险等级</label>
                 <select
@@ -319,6 +440,7 @@ export default function AdminStrategiesPage() {
                   <option value="high">高风险</option>
                 </select>
               </div>
+
               <div>
                 <label className="block text-text-secondary text-sm mb-2">策略描述</label>
                 <textarea
@@ -328,50 +450,94 @@ export default function AdminStrategiesPage() {
                   placeholder="输入策略描述"
                 />
               </div>
-              <div>
-                <label className="block text-text-secondary text-sm mb-2 flex items-center gap-2">
-                  <Code className="w-4 h-4" />
-                  策略代码 (Python)
-                </label>
-                <textarea
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-secondary focus:outline-none focus:border-brand-primary min-h-[300px] font-mono text-sm"
-                  placeholder="# 输入 Python 策略代码&#10;def strategy():&#10;    pass"
-                />
-              </div>
+
+              {/* 文件上传区域 */}
+              {uploadMode === 'file' && !editingStrategy && (
+                <div>
+                  <label className="block text-text-secondary text-sm mb-2 flex items-center gap-2">
+                    <Upload className="w-4 h-4" />
+                    策略文件 (.py) *
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".py"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  {selectedFile ? (
+                    <div className="flex items-center gap-3 p-4 bg-bg-tertiary border border-brand-primary/50 rounded-lg">
+                      <FileText className="w-8 h-8 text-brand-primary" />
+                      <div className="flex-1">
+                        <p className="text-white font-medium">{selectedFile.name}</p>
+                        <p className="text-text-secondary text-sm">
+                          {(selectedFile.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedFile(null)}
+                        className="p-2 hover:bg-bg-secondary rounded-lg text-text-secondary hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full p-8 border-2 border-dashed border-border-primary hover:border-brand-primary rounded-lg text-center transition-colors"
+                    >
+                      <Upload className="w-10 h-10 mx-auto mb-3 text-text-tertiary" />
+                      <p className="text-text-secondary">点击或拖拽上传 Python 策略文件</p>
+                      <p className="text-text-tertiary text-sm mt-1">支持 .py 文件，最大 5MB</p>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 代码输入区域 */}
+              {(uploadMode === 'text' || editingStrategy) && (
+                <div>
+                  <label className="block text-text-secondary text-sm mb-2 flex items-center gap-2">
+                    <Code className="w-4 h-4" />
+                    策略代码 (Python) {!editingStrategy && '*'}
+                  </label>
+                  <textarea
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-secondary focus:outline-none focus:border-brand-primary min-h-[300px] font-mono text-sm"
+                    placeholder="# 输入 Python 策略代码&#10;from freqtrade.strategy import IStrategy&#10;&#10;class MyStrategy(IStrategy):&#10;    pass"
+                  />
+                </div>
+              )}
             </div>
+
             <div className="flex gap-4 mt-6">
               <button
-                onClick={() => {
-                  setShowEditor(false);
-                  setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
-                  setEditingStrategy(null);
-                }}
-                className="flex-1 px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary"
+                onClick={resetForm}
+                className="flex-1 px-4 py-2 bg-bg-tertiary text-white rounded-lg hover:bg-bg-tertiary/80"
               >
                 取消
               </button>
               <button
-                onClick={() => {
-                  if (!formData.name || !formData.description) {
-                    toast.error('请填写完整信息');
-                    return;
-                  }
-                  if (editingStrategy) {
-                    updateMutation.mutate({ id: editingStrategy.id, data: formData });
-                  } else {
-                    createMutation.mutate(formData);
-                  }
-                }}
-                disabled={createMutation.isPending || updateMutation.isPending}
-                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary disabled:opacity-50"
+                onClick={handleSubmit}
+                disabled={isPending}
+                className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-secondary disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {createMutation.isPending || updateMutation.isPending
-                  ? '处理中...'
-                  : editingStrategy
-                  ? '保存'
-                  : '创建'}
+                {isPending ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    处理中...
+                  </>
+                ) : editingStrategy ? (
+                  '保存'
+                ) : uploadMode === 'file' ? (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    上传策略
+                  </>
+                ) : (
+                  '创建策略'
+                )}
               </button>
             </div>
           </div>

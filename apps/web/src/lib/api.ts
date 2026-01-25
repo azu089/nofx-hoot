@@ -1739,6 +1739,14 @@ export const adminApi = {
   createStrategy: (data: { name: string; description: string; type: string; code: string; riskLevel: string }) =>
     api.post<never, ApiResponse<{ id: string }>>('/admin/strategies', data),
 
+  // 上传策略文件
+  uploadStrategy: (formData: FormData) =>
+    api.post<never, ApiResponse<{ id: string; filename: string; fileSize: number }>>('/admin/strategies/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+
   getAdminStrategy: (id: string) =>
     api.get<never, ApiResponse<{
       id: string;

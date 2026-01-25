@@ -11,7 +11,21 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+// Multer 文件类型
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+import { ApiConsumes } from '@nestjs/swagger';
 import {
   ApiTags,
   ApiOperation,
@@ -789,6 +803,90 @@ export class AdminController {
       code: 0,
       message: '策略创建成功',
       data: strategy,
+    };
+  }
+
+  /**
+   * 上传策略文件
+   * POST /api/admin/strategies/upload
+   * 支持上传 .py 文件，最大 5MB
+   */
+  @Post('strategies/upload')
+  @ApiOperation({ summary: '上传策略文件' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Python 策略文件 (.py)',
+        },
+        name: { type: 'string', description: '策略名称' },
+        description: { type: 'string', description: '策略描述' },
+        config: { type: 'string', description: '策略配置 JSON' },
+      },
+      required: ['file', 'name'],
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+      fileFilter: (req, file, callback) => {
+        if (!file.originalname.endsWith('.py')) {
+          return callback(
+            new BadRequestException('只支持上传 .py 文件'),
+            false,
+          );
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadStrategy(
+    @CurrentUser() admin: JwtPayload,
+    @UploadedFile() file: MulterFile,
+    @Body('name') name: string,
+    @Body('description') description?: string,
+    @Body('config') config?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('请上传策略文件');
+    }
+
+    if (!name) {
+      throw new BadRequestException('策略名称不能为空');
+    }
+
+    this.logger.log(
+      `管理员 ${admin.sub} 上传策略文件: ${file.originalname} (${file.size} bytes)`,
+    );
+
+    // 读取文件内容
+    const content = file.buffer.toString('utf-8');
+
+    // 创建策略
+    const strategy = await this.adminService.createStrategy(
+      {
+        name,
+        description,
+        content,
+        config,
+      },
+      admin.sub,
+    );
+
+    return {
+      code: 0,
+      message: '策略上传成功',
+      data: {
+        ...strategy,
+        filename: file.originalname,
+        fileSize: file.size,
+      },
     };
   }
 

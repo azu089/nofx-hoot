@@ -60,6 +60,7 @@
     "@types/ioredis": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/minimatch": "^6.0.0",
+    "@types/multer": "^2.0.0",
     "@types/node": "^20.17.10",
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.16.0",
