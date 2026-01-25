@@ -1737,7 +1737,11 @@ export const adminApi = {
     }>>('/admin/strategies', { params: { page } }),
 
   createStrategy: (data: { name: string; description: string; type: string; code: string; riskLevel: string }) =>
-    api.post<never, ApiResponse<{ id: string }>>('/admin/strategies', data),
+    api.post<never, ApiResponse<{ id: string }>>('/admin/strategies', {
+      name: data.name,
+      description: data.description,
+      content: data.code, // 后端字段是 content
+    }),
 
   // 上传策略文件
   uploadStrategy: (formData: FormData) =>
