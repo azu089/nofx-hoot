@@ -257,17 +257,27 @@ export default function InstanceDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* 顶部操作栏 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="hidden lg:flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => router.push('/instances')}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              返回
-            </Button>
-            <h1 className="text-2xl font-bold text-white">实例详情</h1>
-          </div>
-          {getStatusBadge(instance.status)}
+      {/* 移动端刷新按钮 - 固定在顶部栏右侧 */}
+      <button
+        className="fixed z-[60] lg:hidden p-2 text-text-secondary hover:text-white transition-colors"
+        style={{
+          top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+          right: '16px'
+        }}
+        onClick={() => fetchData(true)}
+        disabled={refreshing}
+      >
+        <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+      </button>
+
+      {/* 桌面端顶部操作栏 */}
+      <div className="hidden lg:flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/instances')}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            返回
+          </Button>
+          <h1 className="text-2xl font-bold text-white">VPS 详情</h1>
         </div>
         <Button
           variant="ghost"
@@ -276,7 +286,7 @@ export default function InstanceDetailPage() {
           disabled={refreshing}
         >
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline ml-2">{refreshing ? '刷新中...' : '刷新'}</span>
+          <span className="ml-2">{refreshing ? '刷新中...' : '刷新'}</span>
         </Button>
       </div>
 
@@ -287,13 +297,7 @@ export default function InstanceDetailPage() {
         instance.status === 'destroyed' ? 'border-text-tertiary/30' :
         'border-border-primary'
       }>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2">
-            <Server className="w-5 h-5 text-brand-primary" />
-            VPS 详情
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-6 space-y-4">
           {/* ===== 状态区 ===== */}
           {/* 状态：running（正常） */}
           {instance.status === 'running' && (
@@ -441,35 +445,29 @@ export default function InstanceDetailPage() {
           {/* ===== 基本信息区（非销毁状态显示） ===== */}
           {instance.status !== 'destroyed' && (
             <div className="pt-4 border-t border-border-primary">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-text-tertiary mb-1">IP 地址</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">IP 地址</p>
                   <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
                 </div>
-                <div>
-                  <p className="text-text-tertiary mb-1">区域</p>
-                  <div className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-text-tertiary" />
-                    <p className="text-white">{instance.region}</p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">区域</p>
+                  <p className="text-white">{instance.region}</p>
                 </div>
-                <div>
-                  <p className="text-text-tertiary mb-1">Droplet ID</p>
-                  <p className="text-white font-mono text-xs">{instance.droplet_id || '未分配'}</p>
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">Droplet ID</p>
+                  <p className="text-white font-mono">{instance.droplet_id || '未分配'}</p>
                 </div>
-                <div>
-                  <p className="text-text-tertiary mb-1">实例 ID</p>
-                  <p className="text-white font-mono text-xs truncate" title={instance.id}>{instance.id.substring(0, 8)}...</p>
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">实例 ID</p>
+                  <p className="text-white font-mono truncate" title={instance.id}>{instance.id.substring(0, 8)}...</p>
                 </div>
-                <div>
-                  <p className="text-text-tertiary mb-1">创建时间</p>
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-text-tertiary" />
-                    <p className="text-white">{formatDateTime(instance.created_at)}</p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">创建时间</p>
+                  <p className="text-white">{formatDateTime(instance.created_at)}</p>
                 </div>
-                <div>
-                  <p className="text-text-tertiary mb-1">当前策略</p>
+                <div className="space-y-1">
+                  <p className="text-text-tertiary text-xs">当前策略</p>
                   <p className="text-white">{instance.current_strategy || '未运行'}</p>
                 </div>
               </div>

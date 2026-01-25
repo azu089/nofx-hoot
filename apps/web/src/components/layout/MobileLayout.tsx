@@ -90,7 +90,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
 
     // 动态路由特殊处理
     if (pathname.match(/^\/strategies\/[^/]+$/)) return '策略详情';
-    if (pathname.match(/^\/instances\/[^/]+$/)) return '实例详情';
+    if (pathname.match(/^\/instances\/[^/]+$/)) return 'VPS 详情';
 
     // 前缀匹配（如 /admin/xxx）
     const matchedPath = Object.keys(PAGE_TITLES).find(
