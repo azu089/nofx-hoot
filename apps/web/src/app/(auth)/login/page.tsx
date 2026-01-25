@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -29,6 +29,12 @@ export default function LoginPage() {
   const router = useRouter();
   const { login, isLoading } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
+  const [isLocalhost, setIsLocalhost] = useState(false);
+
+  // 客户端检测是否为 localhost（避免水合错误）
+  useEffect(() => {
+    setIsLocalhost(window.location.hostname === 'localhost');
+  }, []);
 
   const {
     register,
@@ -99,8 +105,8 @@ export default function LoginPage() {
             登录
           </Button>
 
-          {/* 开发环境快速登录 */}
-          {process.env.NODE_ENV === 'development' && (
+          {/* 开发环境快速登录 - localhost 或开发模式时显示 */}
+          {(process.env.NODE_ENV === 'development' || isLocalhost) && (
             <div className="pt-4 border-t border-border-primary">
               <p className="text-center text-text-tertiary text-xs mb-3">开发测试</p>
               <Button
@@ -110,8 +116,8 @@ export default function LoginPage() {
                 onClick={async () => {
                   setError(null);
                   try {
-                    // 测试账号: test@example.com / Password123
-                    await login('test@example.com', 'Password123');
+                    // 测试账号: test@example.com / test123456
+                    await login('test@example.com', 'test123456');
                     router.push('/dashboard');
                   } catch (err) {
                     setError(err instanceof Error ? err.message : '测试账号登录失败');

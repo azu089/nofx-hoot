@@ -378,6 +378,102 @@ export class AdminService {
   }
 
   /**
+   * 获取返佣统计数据
+   */
+  async getReferralStats() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // 查询返佣记录
+    const [
+      todayCommissions,
+      monthCommissions,
+      totalCommissions,
+      activeReferrers,
+    ] = await Promise.all([
+      // 今日返佣
+      this.prisma.client.user_commissions.findMany({
+        where: {
+          created_at: { gte: todayStart },
+          status: 'settled',
+        },
+      }),
+      // 本月返佣
+      this.prisma.client.user_commissions.findMany({
+        where: {
+          created_at: { gte: monthStart },
+          status: 'settled',
+        },
+      }),
+      // 累计返佣
+      this.prisma.client.user_commissions.findMany({
+        where: { status: 'settled' },
+      }),
+      // 有邀请记录的用户数（活跃邀请人）- 统计有返佣记录的独立邀请人
+      this.prisma.client.user_commissions.groupBy({
+        by: ['referrer_id'],
+        where: { status: 'settled' },
+      }).then((groups: any[]) => groups.length),
+    ]);
+
+    // 计算各时间段返佣总额
+    const calculateTotal = (commissions: any[]) => {
+      return commissions.reduce(
+        (sum, c) => sum.plus(new Decimal(c.commission_amount.toString())),
+        new Decimal(0),
+      );
+    };
+
+    const todayTotal = calculateTotal(todayCommissions);
+    const monthTotal = calculateTotal(monthCommissions);
+    const total = calculateTotal(totalCommissions);
+
+    // 按类型统计
+    const byType = {
+      subscription: { count: 0, amount: new Decimal(0) },
+      card_purchase: { count: 0, amount: new Decimal(0) },
+      trade_points: { count: 0, amount: new Decimal(0) },
+      gas_fee: { count: 0, amount: new Decimal(0) },
+    };
+
+    for (const c of totalCommissions) {
+      const type = c.source_type as keyof typeof byType;
+      if (byType[type]) {
+        byType[type].count++;
+        byType[type].amount = byType[type].amount.plus(
+          new Decimal(c.commission_amount.toString()),
+        );
+      }
+    }
+
+    return {
+      today: todayTotal.toString(),
+      month: monthTotal.toString(),
+      total: total.toString(),
+      activeReferrers,
+      byType: {
+        subscription: {
+          count: byType.subscription.count,
+          amount: byType.subscription.amount.toString(),
+        },
+        card_purchase: {
+          count: byType.card_purchase.count,
+          amount: byType.card_purchase.amount.toString(),
+        },
+        trade_points: {
+          count: byType.trade_points.count,
+          amount: byType.trade_points.amount.toString(),
+        },
+        gas_fee: {
+          count: byType.gas_fee.count,
+          amount: byType.gas_fee.amount.toString(),
+        },
+      },
+    };
+  }
+
+  /**
    * 获取财务统计
    */
   async getFinanceStats(period: string = 'month') {
@@ -1171,6 +1267,7 @@ export class AdminService {
           id: s.id,
           name: s.name,
           description: s.description,
+          content: s.content, // 策略代码，编辑时需要
           ownerType: s.owner_type,
           isPublic: s.is_public,
           isActive: s.is_active,

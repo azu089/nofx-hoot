@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PointsController } from './points.controller';
 import { PointsService } from './points.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { ConfigsModule } from '../configs/configs.module';
 
 /**
  * 积分模块
@@ -14,7 +15,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
  * - 积分流水查询
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ConfigsModule],
   controllers: [PointsController],
   providers: [PointsService],
   exports: [PointsService], // 导出服务，供其他模块使用

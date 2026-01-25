@@ -50,7 +50,8 @@
       "Bash(npx next-forge@latest init --name my-quant-saas --package-manager pnpm)",
       "Bash(pnpm exec prisma generate:*)",
       "Bash(find:*)",
-      "Bash(git -C /Users/azu/主QuantFi log --oneline)"
+      "Bash(git -C /Users/azu/主QuantFi log --oneline)",
+      "Bash(ssh root@165.245.176.139 \"cd /opt/quantfi/apps/admin && cp .env.production .env.local && cat .env.local\")"
     ]
   }
 }

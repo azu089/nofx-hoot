@@ -1726,6 +1726,7 @@ export const adminApi = {
         id: string;
         name: string;
         description: string;
+        content: string; // 策略代码，编辑时需要
         type: string;
         status: string;
         subscribers: number;
@@ -1763,7 +1764,11 @@ export const adminApi = {
     }>>(`/admin/strategies/${id}`),
 
   updateStrategy: (id: string, data: { name?: string; description?: string; type?: string; code?: string; status?: string; riskLevel?: string }) =>
-    api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/strategies/${id}`, data),
+    api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/strategies/${id}`, {
+      name: data.name,
+      description: data.description,
+      content: data.code, // 后端字段是 content
+    }),
 
   deleteStrategy: (id: string) =>
     api.delete<never, ApiResponse<{ success: boolean }>>(`/admin/strategies/${id}`),
@@ -1883,6 +1888,21 @@ export const adminApi = {
 
   initConfigs: () =>
     api.post<never, ApiResponse<{ created: number; skipped: number }>>('/admin/configs/init'),
+
+  // ==================== 返佣管理 ====================
+  getReferralStats: () =>
+    api.get<never, ApiResponse<{
+      today: string;
+      month: string;
+      total: string;
+      activeReferrers: number;
+      byType: {
+        subscription: { count: number; amount: string };
+        card_purchase: { count: number; amount: string };
+        trade_points: { count: number; amount: string };
+        gas_fee: { count: number; amount: string };
+      };
+    }>>('/admin/referrals/stats'),
 
   // ==================== CMS 内容管理 ====================
   getCmsContents: (params?: { page?: number; limit?: number; locale?: string }) =>

@@ -138,7 +138,7 @@ export default function InstancesPage() {
   const handleDestroy = async (instanceId: string) => {
     setDestroying(true);
     try {
-      await instancesApi.destroy(instanceId);
+      await instancesApi.destroyVps(instanceId);
       fetchData();
       setShowDestroyConfirm(false);
       alert('VPS 已销毁');
@@ -351,7 +351,7 @@ export default function InstancesPage() {
                       <AlertCircle className="w-4 h-4 text-danger" />
                       <span className="text-danger text-xs font-medium">VPS 创建失败</span>
                     </div>
-                    <p className="text-danger/70 text-xs mt-1">请联系客服处理，订阅费用不会被扣除</p>
+                    <p className="text-danger/70 text-xs mt-1">请联系客服处理</p>
                   </div>
                 )}
               </div>

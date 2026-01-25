@@ -299,17 +299,22 @@ export class WalletsService {
         },
       });
 
-      // 4.3 处理邀请返佣（统一从 ConfigsService 获取比例）
+      // 4.3 处理邀请返佣（先检查开关，再获取比例）
       if (user?.referred_by_user_id) {
-        const rates = await this.configsService.getReferralRates('card_purchase');
-        await this.processCardPurchaseReferral(
-          tx,
-          userId,
-          user.referred_by_user_id,
-          purchaseAmount,
-          billingLog.id,
-          rates,
-        );
+        const isEnabled = await this.configsService.isReferralEnabled('card_purchase');
+        if (isEnabled) {
+          const rates = await this.configsService.getReferralRates('card_purchase');
+          await this.processCardPurchaseReferral(
+            tx,
+            userId,
+            user.referred_by_user_id,
+            purchaseAmount,
+            billingLog.id,
+            rates,
+          );
+        } else {
+          this.logger.log(`点卡购买返佣已关闭，跳过用户 ${userId} 的返佣处理`);
+        }
       }
 
       return {

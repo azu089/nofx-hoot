@@ -22,12 +22,14 @@ interface ExchangeRule {
   enabled: boolean;
 }
 
-// 点卡套餐配置
+// 点卡套餐配置（与前端 wallet/exchange/page.tsx 同步）
 const CARD_PACKAGES = [
-  { amount: 100, bonus: 0, label: '入门' },
-  { amount: 500, bonus: 5, label: '标准' },    // +5%
-  { amount: 1000, bonus: 10, label: '高级' },  // +10%
-  { amount: 5000, bonus: 20, label: '尊享' },  // +20%
+  { amount: 50, bonus: 0, label: '体验' },
+  { amount: 100, bonus: 5, label: '入门' },    // +5%
+  { amount: 200, bonus: 8, label: '标准' },    // +8%
+  { amount: 500, bonus: 12, label: '高级' },   // +12%
+  { amount: 1000, bonus: 18, label: '尊享' },  // +18%
+  { amount: 2000, bonus: 25, label: '旗舰' },  // +25%
 ];
 
 // 兑换规则配置

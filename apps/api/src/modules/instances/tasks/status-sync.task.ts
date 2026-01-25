@@ -211,7 +211,7 @@ export class StatusSyncTask {
         await this.instanceLogService.info(
           instance.user_id,
           'instance_ready',
-          'VPS 初始化完成，交易机器人已安装',
+          `VPS 初始化完成，交易机器人已部署 (IP: ${dropletStatus.ip})`,
           {
             instanceId: instance.id,
             details: {
@@ -697,6 +697,13 @@ export class StatusSyncTask {
         },
       });
 
+      // 5. 重置用户 API Key 验证状态（VPS 销毁后需要重新验证）
+      await this.prisma.client.api_keys.updateMany({
+        where: { user_id: instance.user_id },
+        data: { last_verified_at: null },
+      });
+      this.logger.log(`[心跳监控] 已重置用户 ${instance.user_id} 的 API Key 验证状态`);
+
       this.logger.log(`[心跳监控] 实例 ${instance.id} 已销毁`);
     } catch (error) {
       this.logger.error(
@@ -711,6 +718,12 @@ export class StatusSyncTask {
           destroyed_at: new Date(),
           destroy_reason: `${reason} (销毁过程中出错: ${error.message})`,
         },
+      });
+
+      // 重置 API Key 验证状态
+      await this.prisma.client.api_keys.updateMany({
+        where: { user_id: instance.user_id },
+        data: { last_verified_at: null },
       });
     }
   }

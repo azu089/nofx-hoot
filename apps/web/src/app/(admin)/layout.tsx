@@ -34,6 +34,7 @@ import {
   MessageSquareWarning,
   Activity,
   Shield,
+  Gift,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -93,6 +94,7 @@ const adminNavGroups: NavGroup[] = [
       { href: '/admin/finance/deposits', label: '充值审核', icon: ArrowDownToLine },
       { href: '/admin/finance/withdrawals', label: '提现审核', icon: FileCheck },
       { href: '/admin/finance/balance', label: '余额调整', icon: CircleDollarSign },
+      { href: '/admin/referrals', label: '返佣管理', icon: Gift },
       { href: '/admin/reports', label: '报表导出', icon: BarChart3 },
     ],
   },

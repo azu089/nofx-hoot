@@ -269,6 +269,14 @@ export class ConfigsService {
       { key: 'feature.agent_enabled', value: true, type: 'boolean', category: 'feature', label: '代理商系统', isPublic: true },
       { key: 'feature.staking_enabled', value: true, type: 'boolean', category: 'feature', label: '质押功能', isPublic: true },
 
+      // 返佣开关配置
+      { key: 'referral.enabled', value: true, type: 'boolean', category: 'referral', label: '全局返佣开关', description: '关闭后所有返佣停止发放', isPublic: false },
+      { key: 'referral.subscription_enabled', value: true, type: 'boolean', category: 'referral', label: '订阅费返佣开关', description: '返积分给邀请人', isPublic: false },
+      { key: 'referral.card_purchase_enabled', value: true, type: 'boolean', category: 'referral', label: '点卡购买返佣开关', description: '返积分给邀请人', isPublic: false },
+      { key: 'referral.trade_points_enabled', value: true, type: 'boolean', category: 'referral', label: '交易挖矿返佣开关', description: '返积分给邀请人', isPublic: false },
+      { key: 'referral.gas_fee_enabled', value: true, type: 'boolean', category: 'referral', label: '燃油费返佣开关', description: '返 USDT 给邀请人', isPublic: false },
+      { key: 'agent.enabled', value: true, type: 'boolean', category: 'agent', label: '代理商返佣开关', description: '代理商返佣总开关', isPublic: false },
+
       // 代理商配置
       { key: 'agent.level_1_rate', value: 0.1, type: 'number', category: 'agent', label: '代理商一级返佣比例', isPublic: false },
       { key: 'agent.level_2_rate', value: 0.05, type: 'number', category: 'agent', label: '代理商二级返佣比例', isPublic: false },
@@ -374,6 +382,49 @@ export class ConfigsService {
       l2: 'referral.gas_fee_l2_rate',
     },
   };
+
+  /**
+   * 返佣开关配置键映射
+   */
+  private readonly REFERRAL_SWITCH_KEYS: Record<ReferralRateType | 'global' | 'agent', string> = {
+    global: 'referral.enabled',
+    subscription: 'referral.subscription_enabled',
+    card_purchase: 'referral.card_purchase_enabled',
+    trade_points: 'referral.trade_points_enabled',
+    gas_fee: 'referral.gas_fee_enabled',
+    agent: 'agent.enabled',
+  };
+
+  /**
+   * 检查返佣是否启用
+   * 会同时检查全局开关和具体类型开关
+   *
+   * @param type 返佣类型：subscription | card_purchase | trade_points | gas_fee | agent
+   * @returns 是否启用
+   *
+   * @example
+   * if (!await configsService.isReferralEnabled('card_purchase')) {
+   *   return; // 返佣已关闭，跳过
+   * }
+   */
+  async isReferralEnabled(type: ReferralRateType | 'agent'): Promise<boolean> {
+    // 先检查全局开关
+    const globalEnabled = await this.getConfig(this.REFERRAL_SWITCH_KEYS.global);
+    if (globalEnabled === 'false' || globalEnabled === false) {
+      return false;
+    }
+
+    // 再检查具体类型开关
+    const typeKey = this.REFERRAL_SWITCH_KEYS[type];
+    const typeEnabled = await this.getConfig(typeKey);
+
+    // 默认启用（配置不存在时）
+    if (typeEnabled === null || typeEnabled === undefined) {
+      return true;
+    }
+
+    return typeEnabled !== 'false' && typeEnabled !== false;
+  }
 
   /**
    * 获取返佣比例（统一入口）

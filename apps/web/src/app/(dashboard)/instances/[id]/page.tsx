@@ -256,20 +256,7 @@ export default function InstanceDetailPage() {
   const isProcessing = ['pending', 'provisioning', 'destroying'].includes(instance.status);
 
   return (
-    <div className="space-y-6">
-      {/* 移动端刷新按钮 - 固定在顶部栏右侧 */}
-      <button
-        className="fixed z-[60] lg:hidden p-2 text-text-secondary hover:text-white transition-colors"
-        style={{
-          top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
-          right: '16px'
-        }}
-        onClick={() => fetchData(true)}
-        disabled={refreshing}
-      >
-        <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-      </button>
-
+    <div className="space-y-4">
       {/* 桌面端顶部操作栏 */}
       <div className="hidden lg:flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -311,9 +298,18 @@ export default function InstanceDetailPage() {
                   <p className="text-text-secondary text-sm">VPS 运行正常</p>
                 </div>
               </div>
-              <div className="text-right text-sm">
-                <p className="text-text-tertiary">运行时长</p>
-                <p className="text-white">{calculateUptime(instance.created_at)}</p>
+              <div className="flex items-center gap-3">
+                <div className="text-right text-sm">
+                  <p className="text-text-tertiary">运行时长</p>
+                  <p className="text-white">{calculateUptime(instance.created_at)}</p>
+                </div>
+                <button
+                  className="lg:hidden p-2 text-text-secondary hover:text-white transition-colors"
+                  onClick={() => fetchData(true)}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
           )}
@@ -429,16 +425,25 @@ export default function InstanceDetailPage() {
 
           {/* 状态：error（创建失败） */}
           {instance.status === 'error' && (
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
-                <XCircle className="w-5 h-5 text-danger" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
+                  <XCircle className="w-5 h-5 text-danger" />
+                </div>
+                <div>
+                  <p className="text-danger font-medium">VPS 创建失败</p>
+                  <p className="text-text-secondary text-sm">
+                    {instance.destroy_reason || '未知错误，请联系客服'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-danger font-medium">VPS 创建失败</p>
-                <p className="text-text-secondary text-sm">
-                  {instance.destroy_reason || '未知错误，请联系客服'}
-                </p>
-              </div>
+              <button
+                className="lg:hidden p-2 text-text-secondary hover:text-white transition-colors"
+                onClick={() => fetchData(true)}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           )}
 
@@ -450,7 +455,7 @@ export default function InstanceDetailPage() {
                   <p className="text-text-tertiary text-xs">IP 地址</p>
                   <p className="text-white font-mono">{instance.ip_address || '分配中...'}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 text-right">
                   <p className="text-text-tertiary text-xs">区域</p>
                   <p className="text-white">{instance.region}</p>
                 </div>
@@ -458,7 +463,7 @@ export default function InstanceDetailPage() {
                   <p className="text-text-tertiary text-xs">Droplet ID</p>
                   <p className="text-white font-mono">{instance.droplet_id || '未分配'}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 text-right">
                   <p className="text-text-tertiary text-xs">实例 ID</p>
                   <p className="text-white font-mono truncate" title={instance.id}>{instance.id.substring(0, 8)}...</p>
                 </div>
@@ -466,7 +471,7 @@ export default function InstanceDetailPage() {
                   <p className="text-text-tertiary text-xs">创建时间</p>
                   <p className="text-white">{formatDateTime(instance.created_at)}</p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 text-right">
                   <p className="text-text-tertiary text-xs">当前策略</p>
                   <p className="text-white">{instance.current_strategy || '未运行'}</p>
                 </div>

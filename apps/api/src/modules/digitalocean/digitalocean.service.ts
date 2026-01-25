@@ -39,7 +39,7 @@ export class DigitalOceanService {
     this.isSandboxMode =
       this.configService.get<string>('DO_SANDBOX_MODE') === 'true';
     this.defaultRegion =
-      this.configService.get<string>('DO_DEFAULT_REGION') || 'sgp1';
+      this.configService.get<string>('DO_DEFAULT_REGION') || 'fra1';
     this.defaultSize =
       this.configService.get<string>('DO_DEFAULT_SIZE') || 's-1vcpu-1gb';
     this.defaultImage =

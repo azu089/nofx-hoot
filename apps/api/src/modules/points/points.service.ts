@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ConfigsService } from '../configs/configs.service';
 import { PointsBalanceDto, PointsHistoryDto } from './dto/points-response.dto';
 import Decimal from 'decimal.js';
 import { randomBytes } from 'crypto';
@@ -42,7 +43,10 @@ export class PointsService {
   private readonly TRADE_REFERRAL_RATE_L1 = new Decimal('0.05');
   private readonly TRADE_REFERRAL_RATE_L2 = new Decimal('0.025');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configsService: ConfigsService,
+  ) {}
 
   /**
    * 生成唯一订单 ID（幂等性保证）
@@ -153,15 +157,20 @@ export class PointsService {
         },
       });
 
-      // 5.3 处理交易挖矿邀请返佣（5% 返积分）
+      // 5.3 处理交易挖矿邀请返佣（先检查开关，再处理返佣）
       if (user.referred_by_user_id) {
-        await this.processTradePointsReferral(
-          innerTx,
-          userId,
-          user.referred_by_user_id,
-          earnedPoints,
-          pointsLog.id,
-        );
+        const isTradePointsReferralEnabled = await this.configsService.isReferralEnabled('trade_points');
+        if (isTradePointsReferralEnabled) {
+          await this.processTradePointsReferral(
+            innerTx,
+            userId,
+            user.referred_by_user_id,
+            earnedPoints,
+            pointsLog.id,
+          );
+        } else {
+          this.logger.log(`交易挖矿返佣已关闭，跳过用户 ${userId} 的返佣处理`);
+        }
       }
     });
 

@@ -982,10 +982,10 @@ export class TelegramApiService {
    * 任务类型 -> 积分奖励
    */
   private readonly ONBOARDING_TASKS: Record<string, { points: number; description: string }> = {
-    'bind-api': { points: 5, description: '绑定交易所 API' },
-    'first-deposit': { points: 20, description: '首次充值 ≥50U' },
-    'subscribe-strategy': { points: 15, description: '订阅付费策略' },
-    'start-bot': { points: 10, description: '机器人运行 24h' },
+    'bind-api': { points: 100, description: '绑定交易所 API' },
+    'first-deposit': { points: 400, description: '首次点卡兑换 ≥50U' },
+    'subscribe-strategy': { points: 300, description: '保存策略配置' },
+    'start-bot': { points: 200, description: '机器人运行 24h' },
   };
 
   /**
@@ -1122,16 +1122,16 @@ export class TelegramApiService {
       }
 
       case 'first-deposit': {
-        // 检查是否有充值 ≥50 USDT 的记录
-        const deposit = await this.prisma.client.billing_logs.findFirst({
+        // 检查是否有点卡兑换 ≥50 USDT 的记录
+        const cardPurchase = await this.prisma.client.billing_logs.findFirst({
           where: {
             user_id: userId,
-            billing_type: 'deposit',
+            billing_type: 'card_purchase',
             status: 'completed',
             amount: { gte: 50 },
           },
         });
-        return !!deposit;
+        return !!cardPurchase;
       }
 
       case 'subscribe-strategy': {
@@ -1143,17 +1143,15 @@ export class TelegramApiService {
       }
 
       case 'start-bot': {
-        // 检查是否有运行超过 24 小时的策略
-        // 使用策略配置的激活时间或交易记录来判断
+        // 检查最近 24 小时内是否有交易记录
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const longRunningConfig = await this.prisma.client.user_strategy_configs.findFirst({
+        const recentTrade = await this.prisma.client.trade_history.findFirst({
           where: {
             user_id: userId,
-            is_active: true,
-            created_at: { lte: oneDayAgo },
+            closed_at: { gte: oneDayAgo },
           },
         });
-        return !!longRunningConfig;
+        return !!recentTrade;
       }
 
       default:

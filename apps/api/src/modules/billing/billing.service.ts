@@ -226,22 +226,28 @@ export class BillingService {
             select: { referred_by_user_id: true },
           });
           if (user?.referred_by_user_id) {
-            // 查询一级邀请人的邀请人（二级）
-            const l1Referrer = await tx.users.findUnique({
-              where: { id: user.referred_by_user_id },
-              select: { id: true, referred_by_user_id: true },
-            });
-            if (l1Referrer) {
-              const rates = await this.configsService.getReferralRates('gas_fee');
-              await this.processGasFeeReferral(
-                tx,
-                trade.user_id,
-                l1Referrer.id,
-                l1Referrer.referred_by_user_id || null,
-                gasFee,
-                billingLog.id,
-                rates,
-              );
+            // 先检查燃油费返佣开关
+            const isGasFeeReferralEnabled = await this.configsService.isReferralEnabled('gas_fee');
+            if (isGasFeeReferralEnabled) {
+              // 查询一级邀请人的邀请人（二级）
+              const l1Referrer = await tx.users.findUnique({
+                where: { id: user.referred_by_user_id },
+                select: { id: true, referred_by_user_id: true },
+              });
+              if (l1Referrer) {
+                const rates = await this.configsService.getReferralRates('gas_fee');
+                await this.processGasFeeReferral(
+                  tx,
+                  trade.user_id,
+                  l1Referrer.id,
+                  l1Referrer.referred_by_user_id || null,
+                  gasFee,
+                  billingLog.id,
+                  rates,
+                );
+              }
+            } else {
+              this.logger.log(`燃油费返佣已关闭，跳过用户 ${trade.user_id} 的返佣处理`);
             }
           }
 
@@ -651,17 +657,22 @@ export class BillingService {
         },
       });
 
-      // 3. 处理订阅费邀请返佣（从系统配置读取比例）
+      // 3. 处理订阅费邀请返佣（先检查开关，再处理返佣）
       if (user?.referred_by_user_id) {
-        await this.processUserReferralCommission(
-          tx,
-          userId,
-          user.referred_by_user_id,
-          chargeAmount,
-          'subscription',
-          billingLog.id,
-          subscriptionRates,
-        );
+        const isSubscriptionReferralEnabled = await this.configsService.isReferralEnabled('subscription');
+        if (isSubscriptionReferralEnabled) {
+          await this.processUserReferralCommission(
+            tx,
+            userId,
+            user.referred_by_user_id,
+            chargeAmount,
+            'subscription',
+            billingLog.id,
+            subscriptionRates,
+          );
+        } else {
+          this.logger.log(`订阅费返佣已关闭，跳过用户 ${userId} 的返佣处理`);
+        }
       }
 
       return billingLog;

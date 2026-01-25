@@ -357,6 +357,26 @@ export class AdminController {
     };
   }
 
+  // ==================== 返佣管理 ====================
+
+  /**
+   * 获取返佣统计
+   * GET /api/admin/referrals/stats
+   */
+  @Get('referrals/stats')
+  @ApiOperation({ summary: '获取返佣统计数据' })
+  async getReferralStats(@CurrentUser() user: JwtPayload) {
+    this.logger.log(`管理员 ${user.sub} 查询返佣统计`);
+
+    const stats = await this.adminService.getReferralStats();
+
+    return {
+      code: 0,
+      message: 'success',
+      data: stats,
+    };
+  }
+
   /**
    * 获取财务统计
    * GET /api/admin/finance/stats

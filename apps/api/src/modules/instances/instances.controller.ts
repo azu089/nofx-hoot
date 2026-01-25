@@ -52,7 +52,7 @@ export class InstancesController {
   ) {
     const result = await this.instancesService.purchaseSubscription(
       user.sub,
-      body.region || 'sgp1',
+      body.region || 'fra1',
     );
     return {
       code: 0,
@@ -92,7 +92,7 @@ export class InstancesController {
     try {
       const instance = await this.instancesService.createVps(
         user.sub,
-        body.region || 'sgp1',
+        body.region || 'fra1',
       );
       return {
         code: 0,

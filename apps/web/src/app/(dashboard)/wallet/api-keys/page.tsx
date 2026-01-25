@@ -170,7 +170,7 @@ export default function ApiKeysPage() {
     }
     return (
       <Image
-        src={`/icons/exchanges/${exchange}.svg`}
+        src={`/icons/exchanges/${exchange}.png`}
         alt={exchange}
         width={size}
         height={size}
@@ -248,8 +248,8 @@ export default function ApiKeysPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center">
-                      {getExchangeLogo(key.exchange, 24)}
+                    <div className="w-10 h-10 flex items-center justify-center">
+                      {getExchangeLogo(key.exchange, 40)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -450,29 +450,28 @@ export default function ApiKeysPage() {
                 <label className="block text-sm text-text-secondary mb-3">选择交易所</label>
                 <div className="grid grid-cols-3 gap-4">
                   {[
-                    { value: 'binance', label: '币安', bg: '#181A20' },
-                    { value: 'okx', label: 'OKX', bg: '#000000' },
-                    { value: 'bybit', label: 'Bybit', bg: '#131722' },
-                    { value: 'gate', label: 'Gate', bg: '#FFFFFF' },
-                    { value: 'bitget', label: 'Bitget', bg: '#00F0FF' },
-                    { value: 'coinbase', label: 'Coinbase', bg: '#0052FF' },
+                    { value: 'binance', label: '币安' },
+                    { value: 'okx', label: 'OKX' },
+                    { value: 'bybit', label: 'Bybit' },
+                    { value: 'gate', label: 'Gate' },
+                    { value: 'bitget', label: 'Bitget' },
+                    { value: 'coinbase', label: 'Coinbase' },
                   ].map((ex) => (
                     <button
                       key={ex.value}
                       onClick={() => setFormData({ ...formData, exchange: ex.value })}
                       className="flex flex-col items-center gap-2"
                     >
-                      {/* 图标方框 - 独立的圆角方框，模仿 App 图标 */}
+                      {/* 图标 - 直接显示用户提供的图标 */}
                       <div
                         className={cn(
                           'w-14 h-14 rounded-2xl flex items-center justify-center transition-all overflow-hidden',
                           formData.exchange === ex.value
                             ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-bg-secondary'
-                            : 'ring-1 ring-white/10'
+                            : ''
                         )}
-                        style={{ backgroundColor: ex.bg }}
                       >
-                        {getExchangeLogo(ex.value, 32)}
+                        {getExchangeLogo(ex.value, 56)}
                       </div>
                       {/* 名称在方框外下方 */}
                       <span className={cn(

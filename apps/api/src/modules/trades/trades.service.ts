@@ -69,10 +69,20 @@ export class TradesService {
     try {
       // 2. 调用 Freqtrade API 获取交易数据
       const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
-      const trades = await this.freqtradeService.getTrades(
+      const tradesResponse = await this.freqtradeService.getTrades(
         instance.ip_address,
         apiToken,
       );
+
+      // 确保 trades 是数组（Freqtrade 可能返回 { trades: [...] } 或直接 [...]）
+      const trades = Array.isArray(tradesResponse)
+        ? tradesResponse
+        : (tradesResponse as any)?.trades || [];
+
+      if (!Array.isArray(trades)) {
+        this.logger.warn(`实例 ${instanceId} 返回的交易数据格式异常: ${typeof trades}`);
+        return { synced: 0, message: '交易数据格式异常' };
+      }
 
       this.logger.debug(`获取到 ${trades.length} 条交易记录`);
 

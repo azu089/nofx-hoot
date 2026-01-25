@@ -227,7 +227,7 @@ model instances {
   id                                                                   String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   user_id                                                              String                  @db.Uuid
   droplet_id                                                           String?                 @db.VarChar(50)
-  region                                                               String                  @default("sgp1") @db.VarChar(20)
+  region                                                               String                  @default("fra1") @db.VarChar(20)
   size                                                                 String                  @default("s-1vcpu-1gb") @db.VarChar(20)
   ip_address                                                           String?                 @db.Inet
   status                                                               String                  @default("pending") @db.VarChar(20)

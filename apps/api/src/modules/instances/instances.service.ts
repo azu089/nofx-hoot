@@ -51,12 +51,12 @@ export class InstancesService {
    *
    * @param userId 用户 ID
    * @param usePoints 是否使用积分抵扣（默认 true）
-   * @param region VPS 区域（默认 sgp1）
+   * @param region VPS 区域（默认 fra1 法兰克福）
    * @returns 订阅结果 + VPS 实例信息
    */
   async purchaseSubscription(
     userId: string,
-    region: string = 'sgp1',
+    region: string = 'fra1',
   ) {
     // 1. 检查是否已有活跃订阅
     const user = await this.prisma.client.users.findUnique({
@@ -128,10 +128,10 @@ export class InstancesService {
    * 限制：一个订阅账号只能创建 1 个 VPS
    *
    * @param userId 用户 ID
-   * @param region VPS 区域（默认 sgp1）
+   * @param region VPS 区域（默认 fra1 法兰克福）
    * @returns VPS 实例信息
    */
-  async createVps(userId: string, region: string = 'sgp1') {
+  async createVps(userId: string, region: string = 'fra1') {
     // 1. 检查是否有有效订阅
     const user = await this.prisma.client.users.findUnique({
       where: { id: userId },
@@ -193,7 +193,7 @@ export class InstancesService {
    * 内部方法：创建 VPS 实例
    * 仅供 purchaseSubscription、createVps 和系统内部调用
    */
-  private async createVpsInternal(userId: string, region: string = 'sgp1') {
+  private async createVpsInternal(userId: string, region: string = 'fra1') {
     // 🔒 开发模式保护：禁止创建 VPS
     const isDevelopmentMode = process.env.DEVELOPMENT_MODE === 'true';
     if (isDevelopmentMode) {
@@ -266,15 +266,15 @@ export class InstancesService {
       );
 
       // 记录系统日志到数据库
+      // 注意：刚创建时 IP 可能还未分配，真正的 IP 会在初始化完成后的日志中记录
       await this.instanceLogService.info(
         userId,
         'instance_create',
-        `VPS 实例创建成功 (IP: ${droplet.ip})`,
+        'VPS 实例创建请求已提交，正在初始化',
         {
           instanceId: instance.id,
           details: {
             dropletId: droplet.id,
-            ip: droplet.ip,
             region: region,
           },
         },
@@ -360,6 +360,13 @@ export class InstancesService {
         },
       });
 
+      // 3. 重置用户 API Key 验证状态（VPS 销毁后需要重新验证）
+      await this.prisma.client.api_keys.updateMany({
+        where: { user_id: userId },
+        data: { last_verified_at: null },
+      });
+      this.logger.log(`已重置用户 ${userId} 的 API Key 验证状态`);
+
       this.logger.log(`销毁实例成功: ${id}, 原因: ${reason}`);
 
       // 推送实例销毁日志（WebSocket）
@@ -394,6 +401,12 @@ export class InstancesService {
           destroyed_at: new Date(),
           destroy_reason: `${reason} (DO API 失败: ${error.message})`,
         },
+      });
+
+      // 重置 API Key 验证状态
+      await this.prisma.client.api_keys.updateMany({
+        where: { user_id: userId },
+        data: { last_verified_at: null },
       });
 
       return updatedInstance;
@@ -540,10 +553,11 @@ export class InstancesService {
       await this.instanceLogService.info(
         instance.user_id,
         'instance_ready',
-        'VPS 初始化完成，交易机器人和代理服务已就绪',
+        `VPS 初始化完成，交易机器人已部署 (IP: ${instance.ip_address})`,
         {
           instanceId: id,
           details: {
+            ip: instance.ip_address,
             freqtradeStatus: dto.freqtradeStatus || 'unknown',
             proxyStatus: dto.proxyStatus || 'unknown',
           },
@@ -556,9 +570,10 @@ export class InstancesService {
       // 6. 推送日志
       this.pushLog(
         id,
-        `VPS 初始化完成，服务已就绪`,
+        `VPS 初始化完成，交易机器人已部署`,
         'info',
         {
+          ip: instance.ip_address,
           freqtradeStatus: dto.freqtradeStatus,
           proxyStatus: dto.proxyStatus,
         },

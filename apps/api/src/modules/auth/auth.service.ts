@@ -148,7 +148,7 @@ export class AuthService {
           user_id: newUser.id,
           usdt_balance: 0,
           usdt_frozen: 0,
-          points_balance: 100, // 注册奖励：新用户获得 100 积分
+          points_balance: 1000, // 注册奖励：新用户获得 1000 积分 ($0.50)
           points_frozen: 0,
           token_balance: 0,
           token_locked: 0,
