@@ -51,8 +51,10 @@ export class AdminService {
       this.prisma.client.users.count({
         where: { created_at: { gte: weekStart } },
       }),
-      // 总实例数
-      this.prisma.client.instances.count(),
+      // 【Bug #7 修复】总实例数（排除已销毁）
+      this.prisma.client.instances.count({
+        where: { status: { notIn: ['destroyed'] } },
+      }),
       // 运行中的实例
       this.prisma.client.instances.count({
         where: { status: 'running' },
@@ -274,8 +276,12 @@ export class AdminService {
               token_balance: true,
             },
           }),
+          // 【Bug #5 修复】排除已销毁实例
           this.prisma.client.instances.count({
-            where: { user_id: user.id },
+            where: {
+              user_id: user.id,
+              status: { notIn: ['destroyed'] },
+            },
           }),
           this.prisma.client.trade_history.count({
             where: { user_id: user.id },
@@ -814,11 +820,13 @@ export class AdminService {
    * 获取 Kill Switch 状态
    */
   async getKillSwitchStatus() {
-    // 统计各状态实例数量
+    // 【Bug #7 修复】统计各状态实例数量（排除已销毁）
     const [running, stopped, total] = await Promise.all([
       this.prisma.client.instances.count({ where: { status: 'running' } }),
       this.prisma.client.instances.count({ where: { status: 'stopped' } }),
-      this.prisma.client.instances.count(),
+      this.prisma.client.instances.count({
+        where: { status: { notIn: ['destroyed'] } },
+      }),
     ]);
 
     // 获取最近一次 kill switch 操作记录
@@ -903,7 +911,10 @@ export class AdminService {
     }
 
     const [instanceCount, tradesCount, stakingTotal] = await Promise.all([
-      this.prisma.client.instances.count({ where: { user_id: userId } }),
+      // 【Bug #5 修复】排除已销毁实例
+      this.prisma.client.instances.count({
+        where: { user_id: userId, status: { notIn: ['destroyed'] } },
+      }),
       this.prisma.client.trade_history.count({ where: { user_id: userId } }),
       this.prisma.client.stakes.aggregate({
         where: { user_id: userId, status: 'active' },
@@ -1263,14 +1274,27 @@ export class AdminService {
           where: { strategy_id: s.id, is_active: true },
         });
 
+        // 【Bug #2 修复】从 config 中提取 type 和 riskLevel
+        const config = s.config as Record<string, unknown> || {};
+
         return {
           id: s.id,
           name: s.name,
           description: s.description,
           content: s.content, // 策略代码，编辑时需要
+          code: s.content, // 前端使用 code 字段
+          type: (config.type as string) || 'grid',
+          riskLevel: (config.riskLevel as string) || 'medium',
           ownerType: s.owner_type,
           isPublic: s.is_public,
           isActive: s.is_active,
+          status: s.is_active ? 'active' : 'inactive',
+          reviewStatus: s.review_status,
+          // 【Bug #3 修复】返回性能指标
+          winRate: s.backtest_win_rate ? Number(s.backtest_win_rate) : null,
+          maxDrawdown: s.backtest_max_drawdown ? Number(s.backtest_max_drawdown) : null,
+          sharpeRatio: s.backtest_sharpe_ratio ? Number(s.backtest_sharpe_ratio) : null,
+          monthlyReturn: s.backtest_total_return ? Number(s.backtest_total_return) : null,
           subscriberCount,
           version: s.version,
           createdAt: s.created_at.toISOString(),
@@ -1285,16 +1309,30 @@ export class AdminService {
    * 创建策略
    */
   async createStrategy(dto: CreateStrategyDto, adminId: string) {
+    // 【Bug #3 修复】将 type 和 riskLevel 保存到 config
+    const config = dto.config ? JSON.parse(dto.config) : {};
+    if (dto.type) config.type = dto.type;
+    if (dto.riskLevel) config.riskLevel = dto.riskLevel;
+
     const strategy = await this.prisma.client.strategies.create({
       data: {
         name: dto.name,
         description: dto.description || null,
         content: dto.content,
-        config: dto.config ? JSON.parse(dto.config) : {},
-        owner_type: 'system',
+        config,
+        owner_type: 'platform',
         owner_id: null,
         is_public: dto.isPublic ?? true,
         is_active: dto.isActive ?? true,
+        // 【Bug #1 修复】后台创建的策略直接通过审核
+        review_status: 'approved',
+        reviewed_by: adminId,
+        reviewed_at: new Date(),
+        // 【Bug #3 修复】保存性能指标
+        backtest_win_rate: dto.winRate ?? null,
+        backtest_max_drawdown: dto.maxDrawdown ?? null,
+        backtest_sharpe_ratio: dto.sharpeRatio ?? null,
+        backtest_total_return: dto.monthlyReturn ?? null,
       },
     });
 
@@ -1325,16 +1363,29 @@ export class AdminService {
       where: { strategy_id: id, is_active: true },
     });
 
+    // 【Bug #2 修复】从 config 中提取 type 和 riskLevel
+    const config = strategy.config as Record<string, unknown> || {};
+
     return {
       id: strategy.id,
       name: strategy.name,
       description: strategy.description,
       content: strategy.content,
+      code: strategy.content, // 前端使用 code 字段
       config: strategy.config,
+      type: (config.type as string) || 'grid',
+      riskLevel: (config.riskLevel as string) || 'medium',
       ownerType: strategy.owner_type,
       isPublic: strategy.is_public,
       isActive: strategy.is_active,
+      status: strategy.is_active ? 'active' : 'inactive',
+      reviewStatus: strategy.review_status,
       performanceStats: strategy.performance_stats,
+      // 【Bug #3 修复】返回性能指标
+      winRate: strategy.backtest_win_rate ? Number(strategy.backtest_win_rate) : null,
+      maxDrawdown: strategy.backtest_max_drawdown ? Number(strategy.backtest_max_drawdown) : null,
+      sharpeRatio: strategy.backtest_sharpe_ratio ? Number(strategy.backtest_sharpe_ratio) : null,
+      monthlyReturn: strategy.backtest_total_return ? Number(strategy.backtest_total_return) : null,
       subscriberCount,
       version: strategy.version,
       createdAt: strategy.created_at.toISOString(),
@@ -1354,15 +1405,33 @@ export class AdminService {
       throw new NotFoundException('策略不存在');
     }
 
+    // 【Bug #3 修复】合并现有 config 与新的 type/riskLevel
+    let configUpdate = undefined;
+    if (dto.config || dto.type || dto.riskLevel) {
+      const existingConfig = (strategy.config as Record<string, unknown>) || {};
+      const newConfig = dto.config ? JSON.parse(dto.config) : {};
+      configUpdate = {
+        ...existingConfig,
+        ...newConfig,
+        ...(dto.type && { type: dto.type }),
+        ...(dto.riskLevel && { riskLevel: dto.riskLevel }),
+      };
+    }
+
     const updated = await this.prisma.client.strategies.update({
       where: { id },
       data: {
         ...(dto.name && { name: dto.name }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.content && { content: dto.content }),
-        ...(dto.config && { config: JSON.parse(dto.config) }),
+        ...(configUpdate && { config: configUpdate }),
         ...(dto.isPublic !== undefined && { is_public: dto.isPublic }),
         ...(dto.isActive !== undefined && { is_active: dto.isActive }),
+        // 【Bug #3 修复】更新性能指标
+        ...(dto.winRate !== undefined && { backtest_win_rate: dto.winRate }),
+        ...(dto.maxDrawdown !== undefined && { backtest_max_drawdown: dto.maxDrawdown }),
+        ...(dto.sharpeRatio !== undefined && { backtest_sharpe_ratio: dto.sharpeRatio }),
+        ...(dto.monthlyReturn !== undefined && { backtest_total_return: dto.monthlyReturn }),
         updated_at: new Date(),
       },
     });
@@ -1416,9 +1485,26 @@ export class AdminService {
 
     const newStatus = !strategy.is_active;
 
+    // 【Bug #4 修复】上架时同步更新 review_status 和 is_public
+    const updateData: Record<string, unknown> = {
+      is_active: newStatus,
+      updated_at: new Date(),
+    };
+
+    if (newStatus === true) {
+      // 上架时确保审核通过且公开
+      updateData.review_status = 'approved';
+      updateData.is_public = true;
+      updateData.reviewed_by = adminId;
+      updateData.reviewed_at = new Date();
+    } else {
+      // 下架时设为私有
+      updateData.is_public = false;
+    }
+
     await this.prisma.client.strategies.update({
       where: { id },
-      data: { is_active: newStatus, updated_at: new Date() },
+      data: updateData,
     });
 
     await this.logAudit(adminId, 'toggle_strategy', 'strategy', id, {

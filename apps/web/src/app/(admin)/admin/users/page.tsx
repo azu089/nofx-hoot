@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
@@ -44,6 +45,7 @@ type User = {
 };
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -257,7 +259,10 @@ export default function AdminUsersPage() {
     return (
       <div className="absolute right-0 top-full mt-1 w-48 bg-bg-tertiary border border-border-primary rounded-lg shadow-xl z-10">
         <button
-          onClick={() => {/* TODO: 查看详情 */}}
+          onClick={() => {
+            setSelectedUser(null);
+            router.push(`/admin/users/${user.id}`);
+          }}
           className="w-full px-4 py-2 text-left text-white hover:bg-bg-tertiary flex items-center gap-2"
         >
           <Eye className="w-4 h-4" />

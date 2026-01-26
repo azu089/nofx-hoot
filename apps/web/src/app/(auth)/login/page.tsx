@@ -27,7 +27,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading } = useAuthStore();
+  const { login, isLoading, user } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
   const [isLocalhost, setIsLocalhost] = useState(false);
 
@@ -48,7 +48,14 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(data.email, data.password);
-      router.push('/dashboard');
+      // 登录成功后，从 store 获取最新用户信息
+      const currentUser = useAuthStore.getState().user;
+      // 根据角色跳转到不同页面
+      if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');
     }
@@ -118,7 +125,12 @@ export default function LoginPage() {
                   try {
                     // 测试账号: test@example.com / test123456
                     await login('test@example.com', 'test123456');
-                    router.push('/dashboard');
+                    const currentUser = useAuthStore.getState().user;
+                    if (currentUser?.role === 'admin' || currentUser?.role === 'super_admin') {
+                      router.push('/admin');
+                    } else {
+                      router.push('/dashboard');
+                    }
                   } catch (err) {
                     setError(err instanceof Error ? err.message : '测试账号登录失败');
                   }
