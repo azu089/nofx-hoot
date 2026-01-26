@@ -225,28 +225,44 @@ export class StrategiesController {
         );
 
         // 转换日志格式（移除 Freqtrade 敏感信息）
-        result.logs.forEach((log, index) => {
-          // 解析日志时间戳（Freqtrade 格式: "2024-01-15 10:30:45,123 - freqtrade.xxx - INFO - message"）
-          const match = log.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
-          const timestamp = match
-            ? new Date(match[1].replace(' ', 'T') + 'Z').toISOString()
-            : new Date().toISOString();
+        // Freqtrade API 返回格式: [[timestamp_str, timestamp_num, module, level, message], ...]
+        result.logs.forEach((logEntry, index) => {
+          let timestamp: string;
+          let level: string;
+          let message: string;
 
-          // 提取日志级别
-          const levelMatch = log.match(/- (INFO|WARNING|ERROR|DEBUG) -/i);
-          const level = levelMatch ? levelMatch[1].toLowerCase() : 'info';
+          // 检查是否为数组格式（Freqtrade 新格式）
+          if (Array.isArray(logEntry)) {
+            // 格式: ["2026-01-26 18:23:41", 1769451821020.9358, "freqtrade.worker", "INFO", "message"]
+            const [timeStr, , , logLevel, logMessage] = logEntry;
+            timestamp = timeStr
+              ? new Date(timeStr.replace(' ', 'T') + 'Z').toISOString()
+              : new Date().toISOString();
+            level = (logLevel || 'info').toLowerCase();
+            message = logMessage || '';
+          } else {
+            // 兼容旧的字符串格式: "2024-01-15 10:30:45,123 - freqtrade.xxx - INFO - message"
+            const log = String(logEntry);
+            const match = log.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+            timestamp = match
+              ? new Date(match[1].replace(' ', 'T') + 'Z').toISOString()
+              : new Date().toISOString();
 
-          // 清理日志消息
-          const sanitizedLog = log
+            const levelMatch = log.match(/- (INFO|WARNING|ERROR|DEBUG) -/i);
+            level = levelMatch ? levelMatch[1].toLowerCase() : 'info';
+            message = log.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - [\w.]+ - \w+ - /, '');
+          }
+
+          // 清理日志消息（替换敏感词）
+          const sanitizedMessage = message
             .replace(/Freqtrade/gi, '交易机器人')
-            .replace(/freqtrade/gi, '交易机器人')
-            .replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - [\w.]+ - \w+ - /, '');
+            .replace(/freqtrade/gi, '交易机器人');
 
           allLogs.push({
             id: `ft-${Date.now()}-${index}`,
             timestamp,
             level: level === 'warning' ? 'warn' : level,
-            message: sanitizedLog || log,
+            message: sanitizedMessage || String(logEntry),
             source: 'trading',
           });
         });
