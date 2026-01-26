@@ -544,6 +544,14 @@ export class StrategyDeployService {
 
     try {
       this.logger.log(`部署策略到 VPS: ${ip}, 策略: ${strategyName}`);
+      // 调试日志：记录 Token 信息（只记录前 8 位，保护安全）
+      if (instanceToken) {
+        this.logger.debug(
+          `VPS 部署 Token: token前8位=${instanceToken.substring(0, 8)}, 长度=${instanceToken.length}`,
+        );
+      } else {
+        this.logger.warn(`⚠️ VPS 部署没有提供 instanceToken！`);
+      }
 
       // 调用代理服务的配置更新端点
       const response = await firstValueFrom(
@@ -575,7 +583,20 @@ export class StrategyDeployService {
         );
       }
       if (error.response?.status === 401) {
-        throw new InternalServerErrorException('VPS 验证失败，Token 无效');
+        // 详细记录 Token 验证失败的信息
+        this.logger.error(
+          `VPS Token 验证失败: ip=${ip}, 发送的token前8位=${instanceToken?.substring(0, 8) || 'N/A'}, ` +
+          `响应状态=${error.response?.status}, 响应信息=${JSON.stringify(error.response?.data || {})}`,
+        );
+        throw new InternalServerErrorException(
+          'VPS 验证失败，Token 无效。请检查后端日志确认 JWT_SECRET 和 ENCRYPTION_KEY 环境变量是否与 VPS 初始化时一致。',
+        );
+      }
+      if (error.response?.status === 403) {
+        this.logger.error(
+          `VPS 访问被拒绝: ip=${ip}, 响应=${JSON.stringify(error.response?.data || {})}`,
+        );
+        throw new InternalServerErrorException('VPS 访问被拒绝，请检查权限配置');
       }
 
       throw new InternalServerErrorException(`策略部署失败: ${error.message}`);

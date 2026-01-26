@@ -252,12 +252,27 @@ echo "API 端口: ${this.config.apiPort}"
   generateInstanceToken(instanceId: string): string {
     const crypto = require('crypto');
     const secret = this.configService.get<string>('JWT_SECRET') || 'default-secret';
+    const isUsingDefault = !this.configService.get<string>('JWT_SECRET');
+
     // 使用确定性的输入，确保相同的 instanceId 总是生成相同的 token
-    return crypto
+    const token = crypto
       .createHmac('sha256', secret)
       .update(`quantfi-instance-${instanceId}`)
       .digest('hex')
       .substring(0, 32);
+
+    // 调试日志：记录 Token 生成信息（不记录完整 Token，只记录前 8 位）
+    this.logger.debug(
+      `生成 Instance Token: instanceId=${instanceId}, token前8位=${token.substring(0, 8)}, 使用默认Secret=${isUsingDefault}`,
+    );
+
+    if (isUsingDefault) {
+      this.logger.warn(
+        `⚠️ JWT_SECRET 环境变量未设置，使用默认值生成 Token，这可能导致 VPS 认证失败！`,
+      );
+    }
+
+    return token;
   }
 
   /**
@@ -269,13 +284,28 @@ echo "API 端口: ${this.config.apiPort}"
   generateFreqtradeToken(instanceId: string): string {
     const crypto = require('crypto');
     const secret = this.configService.get<string>('ENCRYPTION_KEY') || 'freqtrade-secret';
+    const isUsingDefault = !this.configService.get<string>('ENCRYPTION_KEY');
+
     // 使用确定性输入，确保相同的 instanceId 总是生成相同的 token
     // 移除了 Date.now()，修复了 Token 不一致导致认证失败的 Bug
-    return crypto
+    const token = crypto
       .createHmac('sha256', secret)
       .update(`freqtrade-${instanceId}`)
       .digest('hex')
       .substring(0, 24);
+
+    // 调试日志：记录 Token 生成信息（不记录完整 Token，只记录前 8 位）
+    this.logger.debug(
+      `生成 Freqtrade Token: instanceId=${instanceId}, token前8位=${token.substring(0, 8)}, 使用默认Secret=${isUsingDefault}`,
+    );
+
+    if (isUsingDefault) {
+      this.logger.warn(
+        `⚠️ ENCRYPTION_KEY 环境变量未设置，使用默认值生成 Freqtrade Token，这可能导致 API 认证失败！`,
+      );
+    }
+
+    return token;
   }
 
   /**

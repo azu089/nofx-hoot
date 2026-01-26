@@ -67,8 +67,9 @@ export class FreqtradeService {
 
   // 连接失败缓存：记录最近失败的 IP，避免重复超时
   private failedConnections: Map<string, number> = new Map();
-  private readonly FAIL_CACHE_DURATION = 60000; // 1 分钟内不重试失败的连接
-  private readonly QUICK_TIMEOUT = 3000; // 快速超时：3 秒
+  private readonly FAIL_CACHE_DURATION = 30000; // 30 秒内不重试失败的连接（原 60 秒，减少以便更快恢复）
+  private readonly QUICK_TIMEOUT = 10000; // 超时：10 秒（原 3 秒，增加以适应网络波动）
+  private readonly MAX_RETRIES = 2; // 最大重试次数
 
   constructor(
     private readonly httpService: HttpService,
@@ -127,7 +128,7 @@ export class FreqtradeService {
   }
 
   /**
-   * 发送 GET 请求到 Freqtrade API
+   * 发送 GET 请求到 Freqtrade API（带重试机制）
    * @param instanceIp VPS IP 地址
    * @param path API 路径
    * @param apiToken Freqtrade API Token（可选，沙盒模式不需要）
@@ -142,38 +143,58 @@ export class FreqtradeService {
     }
 
     const url = this.buildUrl(instanceIp, path);
+    const auth: FreqtradeAuth | undefined = apiToken
+      ? { username: this.defaultUsername, password: apiToken }
+      : undefined;
 
-    try {
-      this.logger.debug(`Freqtrade GET: ${url}`);
+    let lastError: any;
 
-      const auth: FreqtradeAuth | undefined = apiToken
-        ? { username: this.defaultUsername, password: apiToken }
-        : undefined;
+    // 重试机制
+    for (let attempt = 0; attempt <= this.MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          this.logger.debug(`Freqtrade GET 重试 (${attempt}/${this.MAX_RETRIES}): ${url}`);
+          // 重试前等待 1 秒
+          await this.sleep(1000);
+        } else {
+          this.logger.debug(`Freqtrade GET: ${url}`);
+        }
 
-      const response = await firstValueFrom(
-        this.httpService.get<T>(url, {
-          timeout: this.QUICK_TIMEOUT, // 3 秒快速超时
-          headers: this.buildAuthHeaders(auth),
-        }),
-      );
+        const response = await firstValueFrom(
+          this.httpService.get<T>(url, {
+            timeout: this.QUICK_TIMEOUT,
+            headers: this.buildAuthHeaders(auth),
+          }),
+        );
 
-      // 连接成功，清除失败标记
-      this.clearConnectionFailed(instanceIp);
-      return response.data as T;
-    } catch (error: any) {
-      // 标记连接失败
-      this.markConnectionFailed(instanceIp);
-      this.logger.error(
-        `Freqtrade GET 失败: ${url}, 错误: ${error.message}`,
-      );
-      throw new InternalServerErrorException(
-        `无法连接到 Freqtrade: ${error.message}`,
-      );
+        // 连接成功，清除失败标记
+        this.clearConnectionFailed(instanceIp);
+        return response.data as T;
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(
+          `Freqtrade GET 失败 (尝试 ${attempt + 1}/${this.MAX_RETRIES + 1}): ${url}, 错误: ${error.message}`,
+        );
+
+        // 如果是 4xx 错误（客户端错误），不重试
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break;
+        }
+      }
     }
+
+    // 所有重试都失败，标记连接失败
+    this.markConnectionFailed(instanceIp);
+    this.logger.error(
+      `Freqtrade GET 最终失败: ${url}, 错误: ${lastError?.message}`,
+    );
+    throw new InternalServerErrorException(
+      `无法连接到 Freqtrade: ${lastError?.message}`,
+    );
   }
 
   /**
-   * 发送 POST 请求到 Freqtrade API
+   * 发送 POST 请求到 Freqtrade API（带重试机制）
    * @param instanceIp VPS IP 地址
    * @param path API 路径
    * @param data 请求体
@@ -194,34 +215,54 @@ export class FreqtradeService {
     }
 
     const url = this.buildUrl(instanceIp, path);
+    const auth: FreqtradeAuth | undefined = apiToken
+      ? { username: this.defaultUsername, password: apiToken }
+      : undefined;
 
-    try {
-      this.logger.debug(`Freqtrade POST: ${url}`);
+    let lastError: any;
 
-      const auth: FreqtradeAuth | undefined = apiToken
-        ? { username: this.defaultUsername, password: apiToken }
-        : undefined;
+    // 重试机制
+    for (let attempt = 0; attempt <= this.MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          this.logger.debug(`Freqtrade POST 重试 (${attempt}/${this.MAX_RETRIES}): ${url}`);
+          // 重试前等待 1 秒
+          await this.sleep(1000);
+        } else {
+          this.logger.debug(`Freqtrade POST: ${url}`);
+        }
 
-      const response = await firstValueFrom(
-        this.httpService.post<T>(url, data, {
-          timeout: this.QUICK_TIMEOUT, // 3 秒快速超时
-          headers: this.buildAuthHeaders(auth),
-        }),
-      );
+        const response = await firstValueFrom(
+          this.httpService.post<T>(url, data, {
+            timeout: this.QUICK_TIMEOUT,
+            headers: this.buildAuthHeaders(auth),
+          }),
+        );
 
-      // 连接成功，清除失败标记
-      this.clearConnectionFailed(instanceIp);
-      return response.data as T;
-    } catch (error: any) {
-      // 标记连接失败
-      this.markConnectionFailed(instanceIp);
-      this.logger.error(
-        `Freqtrade POST 失败: ${url}, 错误: ${error.message}`,
-      );
-      throw new InternalServerErrorException(
-        `无法连接到 Freqtrade: ${error.message}`,
-      );
+        // 连接成功，清除失败标记
+        this.clearConnectionFailed(instanceIp);
+        return response.data as T;
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(
+          `Freqtrade POST 失败 (尝试 ${attempt + 1}/${this.MAX_RETRIES + 1}): ${url}, 错误: ${error.message}`,
+        );
+
+        // 如果是 4xx 错误（客户端错误），不重试
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break;
+        }
+      }
     }
+
+    // 所有重试都失败，标记连接失败
+    this.markConnectionFailed(instanceIp);
+    this.logger.error(
+      `Freqtrade POST 最终失败: ${url}, 错误: ${lastError?.message}`,
+    );
+    throw new InternalServerErrorException(
+      `无法连接到 Freqtrade: ${lastError?.message}`,
+    );
   }
 
   /**
