@@ -335,6 +335,22 @@ const ccxt = require('ccxt');
 const fs = require('fs');
 const { exec } = require('child_process');
 
+// 加载环境变量（修复 PM2 启动时环境变量丢失的问题）
+const envPath = '/opt/quantfi/.env';
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const [key, value] = line.split('=');
+    if (key && value && !process.env[key]) {
+      process.env[key] = value.trim();
+    }
+  });
+  console.log('✅ 环境变量已从 .env 文件加载');
+  console.log('   INSTANCE_TOKEN 前8位:', process.env.INSTANCE_TOKEN?.substring(0, 8) || 'N/A');
+} else {
+  console.warn('⚠️ .env 文件不存在:', envPath);
+}
+
 const app = express();
 app.use(express.json());
 
