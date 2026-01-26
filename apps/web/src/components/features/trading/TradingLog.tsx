@@ -174,20 +174,33 @@ export function TradingLog({ instanceId, isConnected = false, maxHeight = 256 }:
     try {
       const res = await strategiesApi.getTradingLogs(100);
       if (res.code === 0 && res.data.logs) {
-        const logs = res.data.logs.map((logStr: string, index: number) => {
-          // 解析日志字符串格式：[timestamp] LEVEL - message
-          const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
-          return {
-            id: `api-${Date.now()}-${index}`,
-            timestamp: match?.[1] || new Date().toISOString(),
-            level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
-            message: match?.[3] || logStr,
-          };
+        // 后端返回的是对象数组 { id, timestamp, level, message, source }
+        const logs = res.data.logs.map((log: { id?: string; timestamp?: string; level?: string; message?: string } | string, index: number) => {
+          // 兼容两种格式：对象格式和字符串格式
+          if (typeof log === 'object' && log !== null) {
+            // 对象格式（新版 API）
+            return {
+              id: log.id || `api-${Date.now()}-${index}`,
+              timestamp: log.timestamp || new Date().toISOString(),
+              level: ((log.level || 'info').toLowerCase() as LogEntry['level']),
+              message: log.message || '',
+            };
+          } else {
+            // 字符串格式（兼容旧版）
+            const logStr = String(log);
+            const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
+            return {
+              id: `api-${Date.now()}-${index}`,
+              timestamp: match?.[1] || new Date().toISOString(),
+              level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
+              message: match?.[3] || logStr,
+            };
+          }
         });
         // 合并到现有日志
         setTradingLogs((prev) => {
-          const existingIds = new Set(prev.map((l: LogEntry) => l.message));
-          const newLogs = logs.filter((l: LogEntry) => !existingIds.has(l.message));
+          const existingIds = new Set(prev.map((l: LogEntry) => l.id));
+          const newLogs = logs.filter((l: LogEntry) => !existingIds.has(l.id));
           return [...prev, ...newLogs].slice(-100);
         });
       }

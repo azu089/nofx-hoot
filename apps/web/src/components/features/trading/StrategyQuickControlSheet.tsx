@@ -184,7 +184,7 @@ export function StrategyQuickControlSheet() {
                           </div>
                           <div>
                             <span className="text-text-tertiary">止损: </span>
-                            <span className="text-danger">{config.stoploss}%</span>
+                            <span className="text-danger">{(parseFloat(config.stoploss) * 100).toFixed(1)}%</span>
                           </div>
                           <div>
                             <span className="text-text-tertiary">最大持仓: </span>

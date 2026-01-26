@@ -215,13 +215,10 @@ export function TradingHeroCard({
     // }
   };
 
-  // 策略配置
+  // 策略配置 - 跳转到我的策略页面
   const handleStrategyConfig = () => {
-    if (botInstance) {
-      router.push(`/strategies/${botInstance.id}/config`);
-    } else {
-      router.push('/strategies');
-    }
+    // 跳转到我的策略页面，用户可以在那里查看和管理已订阅的策略
+    router.push('/strategies/my');
   };
 
   if (loading) {

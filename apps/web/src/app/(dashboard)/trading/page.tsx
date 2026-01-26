@@ -115,11 +115,24 @@ export default function TradingPage() {
       // 设置历史交易数据
       const historyData = historyRes.data?.trades || [];
 
-      // 映射 API 数据到 HistoryTrade 类型（空数组时显示空状态）
+      // 映射 API 数据到 HistoryTrade 类型
+      // 注意：后端返回的字段名与前端期望的不同
+      // 后端: symbol, quantity, opened_at, entry_price, exit_price
+      // 前端: pair, amount, executed_at, entry_price, exit_price
       const mappedHistory: HistoryTrade[] = historyData.map((trade: any) => ({
-        ...trade,
-        entry_price: trade.entry_price || trade.price || '0',
-        exit_price: trade.exit_price || trade.close_price || '0',
+        id: trade.id,
+        pair: trade.pair || trade.symbol || 'UNKNOWN',
+        side: trade.side || 'buy',
+        amount: trade.amount || trade.quantity || '0',
+        entry_price: trade.entry_price || trade.open_rate || trade.price || '0',
+        exit_price: trade.exit_price || trade.close_rate || trade.close_price || '0',
+        leverage: trade.leverage || 1,
+        pnl: trade.pnl || trade.profit_abs || '0',
+        pnl_percentage: trade.pnl_percentage || trade.profit_pct || null,
+        fee: trade.fee || trade.gas_fee || '0',
+        gas_fee: trade.gas_fee || null,
+        executed_at: trade.executed_at || trade.opened_at || trade.open_date || '',
+        closed_at: trade.closed_at || trade.close_date || null,
       }));
       setHistoryTrades(mappedHistory);
     } catch (error) {
@@ -421,7 +434,7 @@ function HistoryTab({ trades, onViewAll }: HistoryTabProps) {
               <div>
                 <p className="text-text-tertiary mb-0.5">数量</p>
                 <p className="text-text-primary font-mono">
-                  {isNaN(amount) ? '0.0000' : amount.toFixed(4)}
+                  {isNaN(amount) || amount === 0 ? '0' : amount < 0.0001 ? amount.toExponential(2) : amount.toFixed(8).replace(/\.?0+$/, '')}
                 </p>
               </div>
               <div>
@@ -492,16 +505,28 @@ function TradingLogsTab({ instanceId }: TradingLogsTabProps) {
     try {
       const res = await strategiesApi.getTradingLogs(100);
       if (res.code === 0 && res.data) {
-        // 解析日志字符串
         const rawLogs = res.data.logs || [];
-        const parsedLogs: LogEntry[] = rawLogs.map((logStr: string, index: number) => {
-          const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
-          return {
-            id: `log-${Date.now()}-${index}`,
-            timestamp: match?.[1] || new Date().toISOString(),
-            level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
-            message: match?.[3] || logStr,
-          };
+        // 兼容两种格式：对象数组和字符串数组
+        const parsedLogs: LogEntry[] = rawLogs.map((log: { id?: string; timestamp?: string; level?: string; message?: string } | string, index: number) => {
+          if (typeof log === 'object' && log !== null) {
+            // 对象格式（新版 API）
+            return {
+              id: log.id || `log-${Date.now()}-${index}`,
+              timestamp: log.timestamp || new Date().toISOString(),
+              level: ((log.level || 'info').toLowerCase() as LogEntry['level']),
+              message: log.message || '',
+            };
+          } else {
+            // 字符串格式（兼容旧版）
+            const logStr = String(log);
+            const match = logStr.match(/\[(.*?)\]\s*(\w+)\s*-?\s*(.*)/);
+            return {
+              id: `log-${Date.now()}-${index}`,
+              timestamp: match?.[1] || new Date().toISOString(),
+              level: (match?.[2]?.toLowerCase() as LogEntry['level']) || 'info',
+              message: match?.[3] || logStr,
+            };
+          }
         });
         setLogs(parsedLogs);
         setNotice(res.data.notice || null);

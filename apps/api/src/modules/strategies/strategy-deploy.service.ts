@@ -48,6 +48,34 @@ export interface FreqtradeConfig {
   margin_mode?: 'isolated' | 'cross';
   leverage?: number;
 
+  // 入场定价配置（Freqtrade 必需）
+  entry_pricing: {
+    price_side: 'same' | 'other' | 'bid' | 'ask';
+    use_order_book: boolean;
+    order_book_top: number;
+    price_last_balance?: number;
+    check_depth_of_market?: {
+      enabled: boolean;
+      bids_to_ask_delta: number;
+    };
+  };
+
+  // 出场定价配置（Freqtrade 必需）
+  exit_pricing: {
+    price_side: 'same' | 'other' | 'bid' | 'ask';
+    use_order_book: boolean;
+    order_book_top: number;
+  };
+
+  // 交易对列表配置（Freqtrade 必需）
+  pairlists: Array<{
+    method: string;
+    number_assets?: number;
+    sort_key?: string;
+    min_value?: number;
+    refresh_period?: number;
+  }>;
+
   // 交易所配置
   exchange: {
     name: string;
@@ -384,6 +412,30 @@ export class StrategyDeployService {
       margin_mode: marginMode,
       leverage: userConfig.leverage || 1,
 
+      // 入场定价配置（Freqtrade 必需字段）
+      entry_pricing: {
+        price_side: 'same',
+        use_order_book: true,
+        order_book_top: 1,
+        price_last_balance: 0.0,
+        check_depth_of_market: {
+          enabled: false,
+          bids_to_ask_delta: 1,
+        },
+      },
+
+      // 出场定价配置（Freqtrade 必需字段）
+      exit_pricing: {
+        price_side: 'same',
+        use_order_book: true,
+        order_book_top: 1,
+      },
+
+      // 交易对列表配置（Freqtrade 必需字段）
+      pairlists: [
+        { method: 'StaticPairList' },
+      ],
+
       // 交易所配置（使用真实或占位符密钥）
       exchange: {
         name: exchangeConfig.ccxtName,
@@ -418,7 +470,7 @@ export class StrategyDeployService {
       // 其他配置
       bot_name: `quantfi_${strategyName}`,
       initial_state: 'stopped',
-      force_entry_enable: false,
+      force_entry_enable: true, // 启用强制入场，便于测试
       internals: {
         process_throttle_secs: 5,
       },
