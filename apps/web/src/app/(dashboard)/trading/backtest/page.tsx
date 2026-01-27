@@ -149,6 +149,15 @@ function BacktestPageInner() {
   const [blackSwanTimeframe, setBlackSwanTimeframe] = useState('5');
   const [blackSwanAction, setBlackSwanAction] = useState('pause');
 
+  // 单笔交易金额（实盘用，区分于回测初始资金）
+  const [stakeAmount, setStakeAmount] = useState('10');
+
+  // DCA 补仓设置
+  const [dcaEnabled, setDcaEnabled] = useState(false);
+  const [dcaMaxEntries, setDcaMaxEntries] = useState('3');
+  const [dcaEntryPriceDrop, setDcaEntryPriceDrop] = useState('-5');
+  const [dcaAntiWaterfall, setDcaAntiWaterfall] = useState(true); // 防瀑布：快速下跌时暂停 DCA
+
   // 结果和状态
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -211,28 +220,35 @@ function BacktestPageInner() {
     }
   }, [searchParams]);
 
-  // 获取活跃的 VPS 实例
+  // 获取活跃的 VPS 实例（静默失败，不影响页面主要功能）
   useEffect(() => {
+    let isMounted = true;
     const fetchActiveInstance = async () => {
       try {
         const res = await instancesApi.list();
+        if (!isMounted) return;
         if (res.data && res.data.length > 0) {
           // 找到第一个运行中的实例
           const runningInstance = res.data.find((inst: any) => inst.status === 'running');
           if (runningInstance) {
             setActiveInstanceId(runningInstance.id);
             // 获取 K 线状态
-            const statusRes = await instancesApi.getKlineStatus(runningInstance.id);
-            if (statusRes.data) {
-              setKlineStatus(statusRes.data);
+            try {
+              const statusRes = await instancesApi.getKlineStatus(runningInstance.id);
+              if (isMounted && statusRes.data) {
+                setKlineStatus(statusRes.data);
+              }
+            } catch {
+              // K线状态获取失败，静默处理
             }
           }
         }
-      } catch (err) {
-        console.error('获取实例失败:', err);
+      } catch {
+        // 实例获取失败，静默处理（用户可能没有购买VPS）
       }
     };
     fetchActiveInstance();
+    return () => { isMounted = false; };
   }, []);
 
   // ============ 事件处理 ============
@@ -353,9 +369,10 @@ function BacktestPageInner() {
         leverage: parseFloat(leverage),
         maxOpenTrades: parseInt(maxOpenTrades, 10),
         // 只有不跟随代码时才传这些参数
+        // 注意：后端期望小数格式（-0.05 = -5%），前端显示百分比格式（-5）
         ...(!shouldFollowCode && {
-          stoploss: parseFloat(stopLoss),
-          takeprofit: parseFloat(takeProfit),
+          stoploss: parseFloat(stopLoss) / 100,
+          takeprofit: parseFloat(takeProfit) / 100,
           timeframe,
         }),
         // 标记是否跟随策略代码
@@ -431,7 +448,7 @@ function BacktestPageInner() {
 
       const configToSave = {
         strategy_id: strategyId,
-        stake_amount: initialCapital,
+        stake_amount: stakeAmount, // 单笔交易金额（实盘用）
         max_open_trades: parseInt(maxOpenTrades) || 3,
         leverage: parseInt(leverage) || 1,
         pair_whitelist: selectedPairs,
@@ -446,6 +463,9 @@ function BacktestPageInner() {
           timeframe: timeframe,
           trailing_stop: trailingStop,
         }),
+        // DCA 补仓配置
+        position_adjustment_enable: dcaEnabled,
+        max_entry_position_adjustment: dcaEnabled ? parseInt(dcaMaxEntries) || 3 : 0,
         custom_config: {
           fee: parseFloat(fee),
           exchange: exchange,
@@ -454,11 +474,17 @@ function BacktestPageInner() {
           ...(!shouldFollowCode && {
             take_profit: parseFloat(takeProfit) / 100,
           }),
+          // DCA 详细配置
+          dca_enabled: dcaEnabled,
+          dca_entry_price_drop: dcaEnabled ? parseFloat(dcaEntryPriceDrop) / 100 : null,
+          dca_anti_waterfall: dcaEnabled ? dcaAntiWaterfall : null,
           // 黑天鹅防护
           crash_protection: blackSwanEnabled,
           crash_threshold: blackSwanEnabled ? blackSwanThreshold : null,
           crash_timeframe: blackSwanEnabled ? blackSwanTimeframe : null,
           crash_action: blackSwanEnabled ? blackSwanAction : null,
+          // 回测初始资金（仅记录，不影响实盘）
+          backtest_initial_capital: initialCapital,
           // 如果有回测结果，添加回测摘要
           ...(result && {
             backtest_summary: {
@@ -678,15 +704,15 @@ function BacktestPageInner() {
 
   // 策略选择区块组件
   const StrategySelectorSection = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <div className={`p-4 overflow-visible ${isMobile ? 'bg-bg-secondary rounded-xl' : ''}`}>
-      <div className="flex items-center gap-3">
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl overflow-hidden' : 'overflow-visible'}`}>
+      <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={() => router.back()}
           className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors hidden lg:block"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="flex-1 overflow-visible">
+        <div className={`flex-1 min-w-0 ${isMobile ? '' : 'overflow-visible'}`}>
           <StrategySelector
             value={strategyId}
             onChange={handleStrategyChange}
@@ -698,7 +724,7 @@ function BacktestPageInner() {
         <button
           type="button"
           onClick={() => setShowParamsHelp(true)}
-          className={`p-2 rounded-lg text-text-tertiary hover:text-brand-primary transition-colors ${isMobile ? 'hover:bg-[#1a1d21]' : 'hover:bg-bg-tertiary'}`}
+          className={`p-2 rounded-lg text-text-tertiary hover:text-brand-primary transition-colors flex-shrink-0 ${isMobile ? 'hover:bg-[#1a1d21]' : 'hover:bg-bg-tertiary'}`}
           title="查看参数说明"
         >
           <HelpCircle className="w-5 h-5" />
@@ -709,7 +735,7 @@ function BacktestPageInner() {
 
   // 回测周期区块组件
   const PeriodSection = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <div className={`p-4 ${isMobile ? 'bg-bg-secondary rounded-xl mt-3' : ''}`}>
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl mt-3' : ''}`}>
       <div className="flex items-center gap-2 mb-3">
         <div className={isMobile ? 'w-7 h-7 rounded-full bg-brand-primary/10 flex items-center justify-center' : ''}>
           <Clock className="w-4 h-4 text-brand-primary" />
@@ -775,34 +801,80 @@ function BacktestPageInner() {
     </div>
   );
 
-  // 资金与交易对区块组件
-  const CapitalAndPairsSection = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <div className={`p-4 ${isMobile ? 'bg-bg-secondary rounded-xl mt-3' : ''}`}>
-      {/* 初始资金 */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs text-text-tertiary">💰 初始资金 (USDT)</span>
+  // 交易设置区块组件（移动端）
+  const TradingSettingsSection = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl mt-3' : ''}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <div className={isMobile ? 'w-7 h-7 rounded-full bg-brand-primary/10 flex items-center justify-center' : ''}>
+          <Activity className="w-4 h-4 text-brand-primary" />
         </div>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+        <span className="text-sm font-medium text-white">交易设置</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {/* 交易所 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">交易所</label>
+          <select
+            value={exchange}
+            onChange={(e) => setExchange(e.target.value)}
+            className={`w-full px-3 py-2 rounded-lg text-sm text-white ${isMobile ? 'bg-[#1a1d21]' : 'bg-bg-tertiary border border-border-secondary'}`}
+          >
+            <option value="binance">Binance</option>
+            <option value="okx">OKX</option>
+            <option value="bybit">Bybit</option>
+          </select>
+        </div>
+
+        {/* 单笔交易金额 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">单笔金额</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+            <Input
+              type="number"
+              value={stakeAmount}
+              onChange={(e) => setStakeAmount(e.target.value)}
+              placeholder="10"
+              className="text-sm pl-7"
+            />
+          </div>
+        </div>
+
+        {/* 最大持仓数 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">最大持仓</label>
           <Input
             type="number"
-            value={initialCapital}
-            onChange={(e) => setInitialCapital(e.target.value)}
-            placeholder="10000"
-            className="text-sm pl-7"
+            value={maxOpenTrades}
+            onChange={(e) => setMaxOpenTrades(e.target.value)}
+            min="1"
+            max="10"
+            className="text-sm"
+          />
+        </div>
+
+        {/* 杠杆倍数 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
+          <Input
+            type="number"
+            value={leverage}
+            onChange={(e) => setLeverage(e.target.value)}
+            min="1"
+            max="20"
+            className="text-sm"
           />
         </div>
       </div>
 
       {/* 交易对选择 */}
-      <div>
+      <div className="mt-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-text-tertiary">🎯 交易对</span>
+          <span className="text-xs text-text-tertiary">交易对</span>
           <span className="text-xs text-text-tertiary">{selectedPairs.length}/10</span>
         </div>
 
-        {/* 搜索框 */}
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
           <Input
@@ -813,10 +885,9 @@ function BacktestPageInner() {
               setShowPairSearch(true);
             }}
             onFocus={() => setShowPairSearch(true)}
-            placeholder="搜索交易对，如 BTC、ETH..."
+            placeholder="搜索交易对..."
             className="text-sm pl-9"
           />
-          {/* 搜索结果下拉 */}
           {showPairSearch && pairSearch && (
             <div className={`absolute z-50 w-full mt-1 rounded-lg shadow-lg max-h-40 overflow-y-auto ${isMobile ? 'bg-[#1a1d21]' : 'bg-bg-secondary border border-border-primary'}`}>
               {ALL_PAIRS
@@ -843,7 +914,6 @@ function BacktestPageInner() {
           )}
         </div>
 
-        {/* 已选交易对 */}
         <div className="flex flex-wrap gap-1.5 mb-2">
           {selectedPairs.map((pair) => (
             <span
@@ -858,7 +928,6 @@ function BacktestPageInner() {
           ))}
         </div>
 
-        {/* 热门交易对 */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-text-tertiary">热门:</span>
           {HOT_PAIRS.filter(p => !selectedPairs.includes(p)).slice(0, 5).map((pair) => (
@@ -875,147 +944,248 @@ function BacktestPageInner() {
     </div>
   );
 
-  return (
-    <div className="space-y-3 pb-32">
-      {/* ========== 移动端布局 - 极简风格 ========== */}
-      <div className="lg:hidden">
-        <StrategySelectorSection isMobile={true} />
-        <PeriodSection isMobile={true} />
-        <CapitalAndPairsSection isMobile={true} />
+  // 止盈止损区块组件（移动端）
+  const StopLossSection = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl mt-3' : ''}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={isMobile ? 'w-7 h-7 rounded-full bg-brand-primary/10 flex items-center justify-center' : ''}>
+            <Target className="w-4 h-4 text-brand-primary" />
+          </div>
+          <span className="text-sm font-medium text-white">止盈止损</span>
+        </div>
+        {sourceStrategy?.content && (
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <span className="text-text-tertiary">跟随代码</span>
+            <Switch
+              id="follow-strategy-code-mobile-sl"
+              checked={followStrategyCode}
+              onChange={(e) => setFollowStrategyCode(e.target.checked)}
+              size="sm"
+            />
+          </label>
+        )}
+      </div>
 
-        {/* 下载历史 K 线（折叠）- 移动端 */}
-        <div className="p-4 bg-bg-secondary rounded-xl mt-3">
-          <button
-            onClick={() => setShowKlineSection(!showKlineSection)}
-            className="flex items-center justify-between w-full"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-brand-primary/10 flex items-center justify-center">
-                <Database className="w-4 h-4 text-brand-primary" />
-              </div>
-              <span className="text-sm font-medium text-white">下载历史 K 线</span>
-              {klineStatus.status === 'completed' && (
-                <span className="text-xs text-success">· 数据已就绪</span>
-              )}
-              {klineStatus.status === 'downloading' && (
-                <span className="text-xs text-warning">· 下载中...</span>
-              )}
-            </div>
-            {showKlineSection ? (
-              <ChevronUp className="w-4 h-4 text-text-tertiary" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-text-tertiary" />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">
+            止损 (%)
+            {sourceStrategy?.content && followStrategyCode && (
+              <span className="ml-1 text-warning text-[10px]">代码优先</span>
             )}
-          </button>
+          </label>
+          <Input
+            type="number"
+            value={stopLoss}
+            onChange={(e) => setStopLoss(e.target.value)}
+            disabled={!!sourceStrategy?.content && followStrategyCode}
+            placeholder="-5"
+            className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-text-tertiary mb-1">
+            止盈 (%)
+            {sourceStrategy?.content && followStrategyCode && (
+              <span className="ml-1 text-warning text-[10px]">代码优先</span>
+            )}
+          </label>
+          <Input
+            type="number"
+            value={takeProfit}
+            onChange={(e) => setTakeProfit(e.target.value)}
+            disabled={!!sourceStrategy?.content && followStrategyCode}
+            placeholder="10"
+            className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
+          />
+        </div>
+      </div>
+    </div>
+  );
 
-          {showKlineSection && (
-            <div className="mt-4 space-y-4">
-              <p className="text-xs text-text-tertiary">
-                下载交易对的历史数据到 VPS，用于策略回测。数据范围将从「{startDate}」开始。
-              </p>
+  // DCA 补仓区块组件（移动端）
+  const DcaSection = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl mt-3' : ''}`}>
+      <label htmlFor="switch-dca-enabled-mobile" className="flex items-center justify-between mb-3 cursor-pointer">
+        <div className="flex items-center gap-2">
+          <div className={isMobile ? 'w-7 h-7 rounded-full bg-brand-primary/10 flex items-center justify-center' : ''}>
+            <TrendingDown className="w-4 h-4 text-brand-primary" />
+          </div>
+          <span className="text-sm font-medium text-white">DCA 补仓</span>
+        </div>
+        <Switch
+          id="switch-dca-enabled-mobile"
+          checked={dcaEnabled}
+          onChange={(e) => setDcaEnabled(e.target.checked)}
+          size="sm"
+        />
+      </label>
 
-              {/* 下载状态 - 移动端无边框 */}
-              {klineStatus.status === 'completed' && (
-                <div className="flex items-center gap-2 p-3 bg-success/10 rounded-lg">
-                  <CheckCircle2 className="w-4 h-4 text-success" />
-                  <span className="text-sm text-success">历史数据已就绪，可以进行回测</span>
-                </div>
-              )}
-
-              {klineStatus.status === 'downloading' && (
-                <div className="flex items-center gap-2 p-3 bg-warning/10 rounded-lg">
-                  <Loader2 className="w-4 h-4 text-warning animate-spin" />
-                  <div>
-                    <span className="text-sm text-warning">正在下载历史数据...</span>
-                    {klineStatus.progress !== undefined && (
-                      <span className="text-xs text-warning/80 ml-2">{klineStatus.progress}%</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {klineStatus.status === 'error' && (
-                <div className="flex items-center gap-2 p-3 bg-danger/10 rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-danger" />
-                  <span className="text-sm text-danger">{klineStatus.message || '下载失败'}</span>
-                </div>
-              )}
-
-              {/* 无 VPS 提示 */}
-              {!activeInstanceId && (
-                <div className="flex items-center gap-2 p-3 bg-[#1a1d21] rounded-lg">
-                  <AlertCircle className="w-4 h-4 text-text-tertiary" />
-                  <span className="text-xs text-text-tertiary">
-                    您还没有运行中的 VPS 实例，请先<button onClick={() => router.push('/instances')} className="text-brand-primary hover:underline">购买 VPS 服务</button>
-                  </span>
-                </div>
-              )}
-
-              {/* K 线周期选择 */}
-              <div>
-                <label className="text-xs text-text-tertiary block mb-2">K 线周期</label>
-                <div className="flex flex-wrap gap-2">
-                  {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
-                    <button
-                      key={tf}
-                      onClick={() => toggleKlineTimeframe(tf)}
-                      disabled={klineStatus.status === 'downloading'}
-                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                        selectedKlineTimeframes.includes(tf)
-                          ? 'bg-brand-primary text-white'
-                          : 'bg-[#1a1d21] hover:bg-[#23272e] text-text-secondary hover:text-white'
-                      } ${klineStatus.status === 'downloading' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 交易对说明 */}
-              <div className="text-xs text-text-tertiary">
-                将下载以下 {selectedPairs.length} 个交易对：
-                <span className="text-text-secondary ml-1">
-                  {selectedPairs.slice(0, 4).join(', ')}
-                  {selectedPairs.length > 4 && ` 等`}
-                </span>
-              </div>
-
-              {/* 下载按钮 */}
-              <Button
-                onClick={handleDownloadKline}
-                disabled={!activeInstanceId || klineDownloading || klineStatus.status === 'downloading' || selectedPairs.length === 0}
-                variant="outline"
-                className="w-full"
-              >
-                {klineDownloading || klineStatus.status === 'downloading' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    下载中...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" />
-                    {klineStatus.status === 'completed' ? '更新数据' : '下载历史数据'}
-                  </>
-                )}
-              </Button>
+      {dcaEnabled && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-tertiary mb-1">最大补仓次数</label>
+              <Input
+                type="number"
+                value={dcaMaxEntries}
+                onChange={(e) => setDcaMaxEntries(e.target.value)}
+                min="1"
+                max="10"
+                className="text-sm"
+              />
             </div>
-          )}
+            <div>
+              <label className="block text-xs text-text-tertiary mb-1">触发跌幅 (%)</label>
+              <Input
+                type="number"
+                value={dcaEntryPriceDrop}
+                onChange={(e) => setDcaEntryPriceDrop(e.target.value)}
+                min="-50"
+                max="0"
+                placeholder="-5"
+                className="text-sm"
+              />
+            </div>
+          </div>
+
+          <label htmlFor="switch-dca-anti-waterfall-mobile" className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${isMobile ? 'bg-[#1a1d21]' : 'bg-bg-tertiary/50'}`}>
+            <div className="flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-warning" />
+              <span className="text-sm text-white">防瀑布</span>
+              <span className="text-xs text-text-tertiary">5分钟跌5%暂停</span>
+            </div>
+            <Switch
+              id="switch-dca-anti-waterfall-mobile"
+              checked={dcaAntiWaterfall}
+              onChange={(e) => setDcaAntiWaterfall(e.target.checked)}
+              size="sm"
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+
+  // 回测配置区块组件 - 极简风格
+  const BacktestConfigSection = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`p-4 ${isMobile ? 'bg-bg-secondary/50 rounded-xl mt-3' : ''}`}>
+      {/* 标题 */}
+      <div className="flex items-center gap-2 mb-4">
+        <BarChart3 className="w-4 h-4 text-brand-primary" />
+        <span className="text-sm font-medium text-white">回测配置</span>
+      </div>
+
+      {/* 三列布局：周期 | 资金 | K线 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 回测周期 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-2">回测周期</label>
+          <div className="flex flex-wrap gap-1.5">
+            {PERIOD_OPTIONS.map((item) => (
+              <button
+                key={item.days}
+                onClick={() => {
+                  handleQuickDateSelect(item.days);
+                  setShowCustomDate(false);
+                }}
+                className={`px-2.5 py-1.5 text-xs rounded-md transition-colors ${
+                  selectedPeriod === item.days && !showCustomDate
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-bg-tertiary/50 hover:bg-bg-tertiary text-text-secondary hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* 高级参数（折叠）- 移动端 */}
-        <div className="p-4 bg-bg-secondary rounded-xl mt-3">
+        {/* 回测资金 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-2">回测资金 (USDT)</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+            <Input
+              type="number"
+              value={initialCapital}
+              onChange={(e) => setInitialCapital(e.target.value)}
+              placeholder="10000"
+              className="text-sm pl-7 h-9"
+            />
+          </div>
+        </div>
+
+        {/* K线周期 + 下载 */}
+        <div>
+          <label className="block text-xs text-text-tertiary mb-2">
+            K线数据
+            {klineStatus.status === 'completed' && <span className="ml-1 text-success">✓ 已下载</span>}
+            {klineStatus.status === 'downloading' && <span className="ml-1 text-warning">下载中...</span>}
+          </label>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
+                <button
+                  key={tf}
+                  onClick={() => toggleKlineTimeframe(tf)}
+                  disabled={klineStatus.status === 'downloading'}
+                  className={`px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    selectedKlineTimeframes.includes(tf)
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-bg-tertiary/50 hover:bg-bg-tertiary text-text-secondary'
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+            <Button
+              onClick={handleDownloadKline}
+              disabled={!activeInstanceId || klineDownloading || klineStatus.status === 'downloading'}
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs"
+            >
+              {klineDownloading || klineStatus.status === 'downloading' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+            </Button>
+          </div>
+          {!activeInstanceId && (
+            <p className="text-[10px] text-text-tertiary mt-1">
+              需要 <button onClick={() => router.push('/instances')} className="text-brand-primary hover:underline">VPS</button> 才能下载
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3 pb-32">
+      {/* ========== 移动端布局 - 紧凑风格 ========== */}
+      <div className="lg:hidden">
+        <StrategySelectorSection isMobile={true} />
+        <TradingSettingsSection isMobile={true} />
+        <StopLossSection isMobile={true} />
+        <DcaSection isMobile={true} />
+
+        {/* 高级参数（折叠）- 移动端精简版 */}
+        <div className="p-4 bg-bg-secondary/50 rounded-xl mt-3">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center justify-between w-full"
           >
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-full bg-bg-tertiary/50 flex items-center justify-center">
-                <Target className="w-4 h-4 text-text-tertiary" />
+                <Code className="w-4 h-4 text-text-tertiary" />
               </div>
               <span className="text-sm text-text-secondary">高级参数</span>
-              <span className="text-xs text-text-tertiary">止损/止盈/杠杆/K线</span>
+              <span className="text-xs text-text-tertiary">K线/风控</span>
             </div>
             {showAdvanced ? (
               <ChevronUp className="w-4 h-4 text-text-tertiary" />
@@ -1026,91 +1196,19 @@ function BacktestPageInner() {
 
           {showAdvanced && (
             <div className="mt-4 space-y-3">
-              {/* 跟随策略代码开关 - 仅当选择了策略且策略有代码时显示 */}
-              {sourceStrategy?.content && (
-                <div className="p-3 bg-brand-primary/10 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Code className="w-4 h-4 text-brand-primary" />
-                      <span className="text-sm text-white">跟随策略代码</span>
-                    </div>
-                    <Switch
-                      id="follow-strategy-code-mobile"
-                      checked={followStrategyCode}
-                      onChange={(e) => setFollowStrategyCode(e.target.checked)}
-                      size="sm"
-                    />
-                  </div>
-                  <p className="text-xs text-text-tertiary mt-1">
-                    {followStrategyCode
-                      ? '止损/止盈/K线/追踪止损将使用代码中的设置'
-                      : '使用下方配置覆盖代码中的设置'}
-                  </p>
-                </div>
-              )}
-
-              {/* 交易所（放首位） */}
-              <div>
-                <label className="block text-xs text-text-tertiary mb-1">交易所</label>
-                <select
-                  value={exchange}
-                  onChange={(e) => setExchange(e.target.value)}
-                  className="w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white"
-                >
-                  <option value="binance">Binance</option>
-                  <option value="okx">OKX</option>
-                  <option value="bybit">Bybit</option>
-                </select>
-              </div>
-
-              {/* 止损止盈 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">
-                    止损 (%)
-                    {sourceStrategy?.content && followStrategyCode && (
-                      <span className="ml-1 text-warning">· 代码优先</span>
-                    )}
-                  </label>
-                  <Input
-                    type="number"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(e.target.value)}
-                    disabled={!!sourceStrategy?.content && followStrategyCode}
-                    className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">
-                    止盈 (%)
-                    {sourceStrategy?.content && followStrategyCode && (
-                      <span className="ml-1 text-warning">· 代码优先</span>
-                    )}
-                  </label>
-                  <Input
-                    type="number"
-                    value={takeProfit}
-                    onChange={(e) => setTakeProfit(e.target.value)}
-                    disabled={!!sourceStrategy?.content && followStrategyCode}
-                    className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
-                </div>
-              </div>
-
-              {/* K线周期和杠杆 */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-text-tertiary mb-1">
                     K线周期
                     {sourceStrategy?.content && followStrategyCode && (
-                      <span className="ml-1 text-warning">· 代码优先</span>
+                      <span className="ml-1 text-warning text-[10px]">代码优先</span>
                     )}
                   </label>
                   <select
                     value={timeframe}
                     onChange={(e) => setTimeframe(e.target.value)}
                     disabled={!!sourceStrategy?.content && followStrategyCode}
-                    className={`w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`w-full px-3 py-2 bg-[#1a1d21] rounded-lg text-sm text-white ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
                   >
                     <option value="1m">1分钟</option>
                     <option value="5m">5分钟</option>
@@ -1119,30 +1217,6 @@ function BacktestPageInner() {
                     <option value="4h">4小时</option>
                     <option value="1d">1天</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
-                  <Input
-                    type="number"
-                    value={leverage}
-                    onChange={(e) => setLeverage(e.target.value)}
-                    min="1"
-                    max="20"
-                    className="text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* 最大持仓 + 手续费 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
-                  <Input
-                    type="number"
-                    value={maxOpenTrades}
-                    onChange={(e) => setMaxOpenTrades(e.target.value)}
-                    className="text-sm"
-                  />
                 </div>
                 <div>
                   <label className="block text-xs text-text-tertiary mb-1">手续费率 (%)</label>
@@ -1158,7 +1232,6 @@ function BacktestPageInner() {
                 </div>
               </div>
 
-              {/* 未成交超时 */}
               <div>
                 <label className="block text-xs text-text-tertiary mb-1">未成交超时 (分钟)</label>
                 <Input
@@ -1171,118 +1244,87 @@ function BacktestPageInner() {
                 />
               </div>
 
-              {/* 风控设置区 - 移动端简洁模式 */}
-              <div className="pt-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className="w-3.5 h-3.5 text-brand-primary" />
-                  <span className="text-xs text-text-tertiary font-medium">风控设置</span>
-                </div>
+              {/* 风控开关组 */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <label htmlFor="switch-dry-run-mobile2" className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-sm text-white">模拟交易</span>
+                  <Switch id="switch-dry-run-mobile2" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} size="sm" />
+                </label>
 
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  <label htmlFor="switch-dry-run-mobile" className="flex items-center justify-between py-1.5 cursor-pointer">
-                    <span className="text-sm text-white">模拟交易</span>
-                    <Switch id="switch-dry-run-mobile" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} size="sm" />
-                  </label>
+                <label htmlFor="switch-trailing-stop-mobile2" className={`flex items-center justify-between py-1.5 ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : 'cursor-pointer'}`}>
+                  <span className="text-sm text-white">移动止损</span>
+                  <Switch
+                    id="switch-trailing-stop-mobile2"
+                    checked={trailingStop}
+                    onChange={(e) => setTrailingStop(e.target.checked)}
+                    disabled={!!sourceStrategy?.content && followStrategyCode}
+                    size="sm"
+                  />
+                </label>
 
-                  <div className={`flex items-center justify-between py-1.5 ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}>
-                    <span className="text-sm text-white">
-                      移动止损
-                      {sourceStrategy?.content && followStrategyCode && (
-                        <span className="ml-1 text-xs text-warning">· 代码</span>
-                      )}
-                    </span>
-                    <Switch
-                      id="switch-trailing-stop-mobile"
-                      checked={trailingStop}
-                      onChange={(e) => setTrailingStop(e.target.checked)}
-                      disabled={!!sourceStrategy?.content && followStrategyCode}
-                      size="sm"
-                    />
-                  </div>
+                <label htmlFor="switch-stoploss-exchange-mobile2" className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-sm text-white">交易所止损</span>
+                  <Switch id="switch-stoploss-exchange-mobile2" checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
+                </label>
 
-                  <label htmlFor="switch-stoploss-exchange-mobile" className="flex items-center justify-between py-1.5 cursor-pointer">
-                    <span className="text-sm text-white">交易所止损</span>
-                    <Switch id="switch-stoploss-exchange-mobile" checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
-                  </label>
-
-                  <label htmlFor="switch-cancel-orders-mobile" className="flex items-center justify-between py-1.5 cursor-pointer">
-                    <span className="text-sm text-white">退出取消挂单</span>
-                    <Switch id="switch-cancel-orders-mobile" checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
-                  </label>
-                </div>
+                <label htmlFor="switch-cancel-orders-mobile2" className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-sm text-white">退出取消挂单</span>
+                  <Switch id="switch-cancel-orders-mobile2" checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
+                </label>
               </div>
 
-              {/* 黑天鹅防护区 - 移动端 */}
-              <div className="pt-3 border-t border-border-primary/20">
-                <label htmlFor="switch-black-swan-mobile" className="flex items-center justify-between py-1.5 cursor-pointer">
+              {/* 黑天鹅防护 */}
+              <div className="pt-2">
+                <label htmlFor="switch-black-swan-mobile2" className="flex items-center justify-between py-1.5 cursor-pointer">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="w-3.5 h-3.5 text-warning" />
                     <span className="text-sm text-white">黑天鹅防护</span>
                   </div>
-                  <Switch id="switch-black-swan-mobile" checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
+                  <Switch id="switch-black-swan-mobile2" checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
                 </label>
 
                 {blackSwanEnabled && (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-2 p-3 bg-[#1a1d21] rounded-lg space-y-3">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs text-text-tertiary mb-1">触发阈值 (%)</label>
-                        <Input
-                          type="number"
-                          value={blackSwanThreshold}
-                          onChange={(e) => setBlackSwanThreshold(e.target.value)}
-                          min="-50"
-                          max="0"
-                          className="text-sm"
-                        />
+                        <Input type="number" value={blackSwanThreshold} onChange={(e) => setBlackSwanThreshold(e.target.value)} min="-50" max="0" className="text-sm" />
                       </div>
                       <div>
                         <label className="block text-xs text-text-tertiary mb-1">检测窗口 (分钟)</label>
-                        <Input
-                          type="number"
-                          value={blackSwanTimeframe}
-                          onChange={(e) => setBlackSwanTimeframe(e.target.value)}
-                          min="1"
-                          max="60"
-                          className="text-sm"
-                        />
+                        <Input type="number" value={blackSwanTimeframe} onChange={(e) => setBlackSwanTimeframe(e.target.value)} min="1" max="60" className="text-sm" />
                       </div>
                     </div>
                     <div>
                       <label className="block text-xs text-text-tertiary mb-1">触发动作</label>
-                      <select
-                        value={blackSwanAction}
-                        onChange={(e) => setBlackSwanAction(e.target.value)}
-                        className="w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white"
-                      >
+                      <select value={blackSwanAction} onChange={(e) => setBlackSwanAction(e.target.value)} className="w-full px-3 py-2 bg-bg-tertiary rounded-lg text-sm text-white">
                         <option value="pause">暂停交易</option>
                         <option value="close_all">全部平仓</option>
                         <option value="notify_only">仅通知</option>
                       </select>
                     </div>
-                    <p className="text-xs text-text-tertiary flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 text-warning" />
-                      <span>当任一交易对在 {blackSwanTimeframe} 分钟内跌幅超过 {Math.abs(Number(blackSwanThreshold))}% 时触发</span>
-                    </p>
                   </div>
                 )}
               </div>
             </div>
           )}
         </div>
+
+        {/* 回测配置 - 移动端 */}
+        <BacktestConfigSection isMobile={true} />
       </div>
 
-      {/* ========== 桌面端布局 - 保留原样式 ========== */}
-      <Card className="overflow-visible hidden lg:block">
+      {/* ========== 桌面端布局 - 紧凑无分割线 ========== */}
+      <Card className="overflow-visible hidden lg:block max-w-4xl mx-auto">
         <CardContent className="p-0 overflow-visible">
-          <div className="divide-y divide-border-primary">
+          <div className="space-y-0">
 
-            {/* 选择策略 - 返回按钮移动端隐藏（由 MobileLayout 提供），问号在右侧 */}
+            {/* 策略选择器 */}
             <div className="p-4 overflow-visible">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => router.back()}
-                  className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors hidden lg:block"
+                  className="p-2 -ml-2 rounded-lg hover:bg-bg-tertiary text-text-secondary hover:text-white transition-colors"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
@@ -1306,93 +1348,80 @@ function BacktestPageInner() {
               </div>
             </div>
 
-            {/* 回测周期 */}
-            <div className="p-4">
+            {/* ═══════ 交易设置 ═══════ */}
+            <div className="px-4 pb-4">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-brand-primary" />
-                <span className="text-sm font-medium text-white">回测周期</span>
+                <Activity className="w-4 h-4 text-brand-primary" />
+                <span className="text-sm font-medium text-white">交易设置</span>
               </div>
-              {/* 预设周期按钮 */}
-              <div className="flex flex-wrap gap-2 mb-2">
-                {PERIOD_OPTIONS.map((item) => (
-                  <button
-                    key={item.days}
-                    onClick={() => {
-                      handleQuickDateSelect(item.days);
-                      setShowCustomDate(false);
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                      selectedPeriod === item.days && !showCustomDate
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setShowCustomDate(!showCustomDate)}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                    showCustomDate || selectedPeriod === null
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white'
-                  }`}
-                >
-                  自定义
-                </button>
-              </div>
-              {/* 自定义日期（仅点击自定义时显示）*/}
-              {showCustomDate && (
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  <div>
-                    <label className="block text-xs text-text-tertiary mb-1">开始日期</label>
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-tertiary mb-1">结束日期</label>
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* 资金与交易对 */}
-            <div className="p-4">
-              {/* 初始资金 */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-text-tertiary">💰 初始资金 (USDT)</span>
+              <div className="grid grid-cols-2 gap-3">
+                {/* 交易所 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">交易所</label>
+                  <select
+                    value={exchange}
+                    onChange={(e) => setExchange(e.target.value)}
+                    className="w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white"
+                  >
+                    <option value="binance">Binance</option>
+                    <option value="okx">OKX</option>
+                    <option value="bybit">Bybit</option>
+                  </select>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+
+                {/* 单笔交易金额 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    单笔金额 (USDT)
+                    <span className="ml-1 text-brand-primary cursor-help" title="每次开仓投入的金额，建议为总资金的1%-5%">?</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+                    <Input
+                      type="number"
+                      value={stakeAmount}
+                      onChange={(e) => setStakeAmount(e.target.value)}
+                      placeholder="10"
+                      className="text-sm pl-7"
+                    />
+                  </div>
+                </div>
+
+                {/* 最大持仓数 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
                   <Input
                     type="number"
-                    value={initialCapital}
-                    onChange={(e) => setInitialCapital(e.target.value)}
-                    placeholder="10000"
-                    className="text-sm pl-7"
+                    value={maxOpenTrades}
+                    onChange={(e) => setMaxOpenTrades(e.target.value)}
+                    min="1"
+                    max="10"
+                    className="text-sm"
+                  />
+                </div>
+
+                {/* 杠杆倍数 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
+                  <Input
+                    type="number"
+                    value={leverage}
+                    onChange={(e) => setLeverage(e.target.value)}
+                    min="1"
+                    max="20"
+                    className="text-sm"
                   />
                 </div>
               </div>
 
               {/* 交易对选择 */}
-              <div>
+              <div className="mt-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-text-tertiary">🎯 交易对</span>
+                  <span className="text-xs text-text-tertiary">交易对</span>
                   <span className="text-xs text-text-tertiary">{selectedPairs.length}/10</span>
                 </div>
 
-                {/* 搜索框 */}
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
                   <Input
@@ -1403,10 +1432,9 @@ function BacktestPageInner() {
                       setShowPairSearch(true);
                     }}
                     onFocus={() => setShowPairSearch(true)}
-                    placeholder="搜索交易对，如 BTC、ETH..."
+                    placeholder="搜索交易对..."
                     className="text-sm pl-9"
                   />
-                  {/* 搜索结果下拉 */}
                   {showPairSearch && pairSearch && (
                     <div className="absolute z-50 w-full mt-1 bg-bg-secondary border border-border-primary rounded-lg shadow-lg max-h-40 overflow-y-auto">
                       {ALL_PAIRS
@@ -1433,7 +1461,6 @@ function BacktestPageInner() {
                   )}
                 </div>
 
-                {/* 已选交易对 */}
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {selectedPairs.map((pair) => (
                     <span
@@ -1448,7 +1475,6 @@ function BacktestPageInner() {
                   ))}
                 </div>
 
-                {/* 热门交易对 */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs text-text-tertiary">热门:</span>
                   {HOT_PAIRS.filter(p => !selectedPairs.includes(p)).slice(0, 5).map((pair) => (
@@ -1464,135 +1490,132 @@ function BacktestPageInner() {
               </div>
             </div>
 
-            {/* 下载历史 K 线（折叠） */}
-            <div className="p-4">
-              <button
-                onClick={() => setShowKlineSection(!showKlineSection)}
-                className="flex items-center justify-between w-full"
-              >
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-brand-primary" />
-                  <span className="text-sm font-medium text-white">下载历史 K 线</span>
-                  {klineStatus.status === 'completed' && (
-                    <span className="text-xs text-success">· 数据已就绪</span>
-                  )}
-                  {klineStatus.status === 'downloading' && (
-                    <span className="text-xs text-warning">· 下载中...</span>
-                  )}
-                </div>
-                {showKlineSection ? (
-                  <ChevronUp className="w-4 h-4 text-text-tertiary" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-text-tertiary" />
+            {/* ═══════ 止盈止损 ═══════ */}
+            <div className="px-4 pb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Target className="w-4 h-4 text-brand-primary" />
+                <span className="text-sm font-medium text-white">止盈止损</span>
+                {sourceStrategy?.content && (
+                  <label className="flex items-center gap-1.5 ml-auto text-xs cursor-pointer">
+                    <span className="text-text-tertiary">跟随代码</span>
+                    <Switch
+                      id="follow-strategy-code-desktop"
+                      checked={followStrategyCode}
+                      onChange={(e) => setFollowStrategyCode(e.target.checked)}
+                      size="sm"
+                    />
+                  </label>
                 )}
-              </button>
+              </div>
 
-              {showKlineSection && (
-                <div className="mt-4 space-y-4">
-                  <p className="text-xs text-text-tertiary">
-                    下载交易对的历史数据到 VPS，用于策略回测。数据范围将从「{startDate}」开始。
-                  </p>
-
-                  {/* 下载状态 */}
-                  {klineStatus.status === 'completed' && (
-                    <div className="flex items-center gap-2 p-3 bg-success/10 border border-success/20 rounded-lg">
-                      <CheckCircle2 className="w-4 h-4 text-success" />
-                      <span className="text-sm text-success">历史数据已就绪，可以进行回测</span>
-                    </div>
-                  )}
-
-                  {klineStatus.status === 'downloading' && (
-                    <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg">
-                      <Loader2 className="w-4 h-4 text-warning animate-spin" />
-                      <div>
-                        <span className="text-sm text-warning">正在下载历史数据...</span>
-                        {klineStatus.progress !== undefined && (
-                          <span className="text-xs text-warning/80 ml-2">{klineStatus.progress}%</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {klineStatus.status === 'error' && (
-                    <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/20 rounded-lg">
-                      <AlertCircle className="w-4 h-4 text-danger" />
-                      <span className="text-sm text-danger">{klineStatus.message || '下载失败'}</span>
-                    </div>
-                  )}
-
-                  {/* 无 VPS 提示 */}
-                  {!activeInstanceId && (
-                    <div className="flex items-center gap-2 p-3 bg-bg-tertiary rounded-lg">
-                      <AlertCircle className="w-4 h-4 text-text-tertiary" />
-                      <span className="text-xs text-text-tertiary">
-                        您还没有运行中的 VPS 实例，请先<button onClick={() => router.push('/instances')} className="text-brand-primary hover:underline">购买 VPS 服务</button>
-                      </span>
-                    </div>
-                  )}
-
-                  {/* K 线周期选择 */}
-                  <div>
-                    <label className="text-xs text-text-tertiary block mb-2">K 线周期</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['5m', '15m', '1h', '4h', '1d'].map((tf) => (
-                        <button
-                          key={tf}
-                          onClick={() => toggleKlineTimeframe(tf)}
-                          disabled={klineStatus.status === 'downloading'}
-                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                            selectedKlineTimeframes.includes(tf)
-                              ? 'bg-brand-primary text-white'
-                              : 'bg-bg-tertiary hover:bg-border-secondary text-text-secondary hover:text-white'
-                          } ${klineStatus.status === 'downloading' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          {tf}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 交易对说明 */}
-                  <div className="text-xs text-text-tertiary">
-                    将下载以下 {selectedPairs.length} 个交易对：
-                    <span className="text-text-secondary ml-1">
-                      {selectedPairs.slice(0, 4).join(', ')}
-                      {selectedPairs.length > 4 && ` 等`}
-                    </span>
-                  </div>
-
-                  {/* 下载按钮 */}
-                  <Button
-                    onClick={handleDownloadKline}
-                    disabled={!activeInstanceId || klineDownloading || klineStatus.status === 'downloading' || selectedPairs.length === 0}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    {klineDownloading || klineStatus.status === 'downloading' ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        下载中...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4 mr-2" />
-                        {klineStatus.status === 'completed' ? '更新数据' : '下载历史数据'}
-                      </>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    止损 (%)
+                    {sourceStrategy?.content && followStrategyCode && (
+                      <span className="ml-1 text-warning text-[10px]">代码优先</span>
                     )}
-                  </Button>
+                  </label>
+                  <Input
+                    type="number"
+                    value={stopLoss}
+                    onChange={(e) => setStopLoss(e.target.value)}
+                    disabled={!!sourceStrategy?.content && followStrategyCode}
+                    placeholder="-5"
+                    className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-1">
+                    止盈 (%)
+                    {sourceStrategy?.content && followStrategyCode && (
+                      <span className="ml-1 text-warning text-[10px]">代码优先</span>
+                    )}
+                  </label>
+                  <Input
+                    type="number"
+                    value={takeProfit}
+                    onChange={(e) => setTakeProfit(e.target.value)}
+                    disabled={!!sourceStrategy?.content && followStrategyCode}
+                    placeholder="10"
+                    className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ═══════ DCA 补仓设置 ═══════ */}
+            <div className="px-4 pb-4">
+              <label htmlFor="switch-dca-enabled" className="flex items-center justify-between mb-3 cursor-pointer">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="w-4 h-4 text-brand-primary" />
+                  <span className="text-sm font-medium text-white">DCA 补仓</span>
+                  <span className="text-xs text-text-tertiary">下跌时自动加仓摊薄成本</span>
+                </div>
+                <Switch
+                  id="switch-dca-enabled"
+                  checked={dcaEnabled}
+                  onChange={(e) => setDcaEnabled(e.target.checked)}
+                  size="sm"
+                />
+              </label>
+
+              {dcaEnabled && (
+                <div className="space-y-3 pl-6">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">最大补仓次数</label>
+                      <Input
+                        type="number"
+                        value={dcaMaxEntries}
+                        onChange={(e) => setDcaMaxEntries(e.target.value)}
+                        min="1"
+                        max="10"
+                        className="text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-tertiary mb-1">触发跌幅 (%)</label>
+                      <Input
+                        type="number"
+                        value={dcaEntryPriceDrop}
+                        onChange={(e) => setDcaEntryPriceDrop(e.target.value)}
+                        min="-50"
+                        max="0"
+                        placeholder="-5"
+                        className="text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 防瀑布开关 */}
+                  <label htmlFor="switch-dca-anti-waterfall" className="flex items-center justify-between p-2 bg-bg-tertiary/50 rounded-lg cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-3.5 h-3.5 text-warning" />
+                      <span className="text-sm text-white">防瀑布保护</span>
+                      <span className="text-xs text-text-tertiary">5分钟内跌5%暂停补仓</span>
+                    </div>
+                    <Switch
+                      id="switch-dca-anti-waterfall"
+                      checked={dcaAntiWaterfall}
+                      onChange={(e) => setDcaAntiWaterfall(e.target.checked)}
+                      size="sm"
+                    />
+                  </label>
                 </div>
               )}
             </div>
 
-            {/* 高级参数（折叠） */}
-            <div className="p-4">
+            {/* ═══════ 高级参数（折叠） ═══════ */}
+            <div className="px-4 pb-4">
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="flex items-center justify-between w-full"
               >
                 <div className="flex items-center gap-2">
-                  <Target className="w-4 h-4 text-text-tertiary" />
+                  <Code className="w-4 h-4 text-text-tertiary" />
                   <span className="text-sm text-text-secondary">高级参数</span>
-                  <span className="text-xs text-text-tertiary">止损/止盈/杠杆/K线</span>
+                  <span className="text-xs text-text-tertiary">K线/手续费/风控</span>
                 </div>
                 {showAdvanced ? (
                   <ChevronUp className="w-4 h-4 text-text-tertiary" />
@@ -1602,92 +1625,20 @@ function BacktestPageInner() {
               </button>
 
               {showAdvanced && (
-                <div className="mt-4 space-y-3">
-                  {/* 跟随策略代码开关 - 仅当选择了策略且策略有代码时显示 */}
-                  {sourceStrategy?.content && (
-                    <div className="p-3 bg-bg-tertiary/50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Code className="w-4 h-4 text-brand-primary" />
-                          <span className="text-sm text-white">跟随策略代码</span>
-                        </div>
-                        <Switch
-                          id="follow-strategy-code"
-                          checked={followStrategyCode}
-                          onChange={(e) => setFollowStrategyCode(e.target.checked)}
-                          size="sm"
-                        />
-                      </div>
-                      <p className="text-xs text-text-tertiary mt-1">
-                        {followStrategyCode
-                          ? '止损/止盈/K线/追踪止损将使用代码中的设置'
-                          : '使用下方配置覆盖代码中的设置'}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* 交易所（放首位） */}
-                  <div>
-                    <label className="block text-xs text-text-tertiary mb-1">交易所</label>
-                    <select
-                      value={exchange}
-                      onChange={(e) => setExchange(e.target.value)}
-                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white"
-                    >
-                      <option value="binance">Binance</option>
-                      <option value="okx">OKX</option>
-                      <option value="bybit">Bybit</option>
-                    </select>
-                  </div>
-
-                  {/* 止损止盈 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-text-tertiary mb-1">
-                        止损 (%)
-                        {sourceStrategy?.content && followStrategyCode && (
-                          <span className="ml-1 text-warning">· 代码优先</span>
-                        )}
-                      </label>
-                      <Input
-                        type="number"
-                        value={stopLoss}
-                        onChange={(e) => setStopLoss(e.target.value)}
-                        disabled={!!sourceStrategy?.content && followStrategyCode}
-                        className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-text-tertiary mb-1">
-                        止盈 (%)
-                        {sourceStrategy?.content && followStrategyCode && (
-                          <span className="ml-1 text-warning">· 代码优先</span>
-                        )}
-                      </label>
-                      <Input
-                        type="number"
-                        value={takeProfit}
-                        onChange={(e) => setTakeProfit(e.target.value)}
-                        disabled={!!sourceStrategy?.content && followStrategyCode}
-                        className={`text-sm ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* K线周期和杠杆 */}
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="mt-3 space-y-3 pl-6">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs text-text-tertiary mb-1">
                         K线周期
                         {sourceStrategy?.content && followStrategyCode && (
-                          <span className="ml-1 text-warning">· 代码优先</span>
+                          <span className="ml-1 text-warning text-[10px]">代码优先</span>
                         )}
                       </label>
                       <select
                         value={timeframe}
                         onChange={(e) => setTimeframe(e.target.value)}
                         disabled={!!sourceStrategy?.content && followStrategyCode}
-                        className={`w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white ${sourceStrategy?.content && followStrategyCode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`w-full px-3 py-2 bg-bg-tertiary border border-border-secondary rounded-lg text-sm text-white ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}
                       >
                         <option value="1m">1分钟</option>
                         <option value="5m">5分钟</option>
@@ -1696,30 +1647,6 @@ function BacktestPageInner() {
                         <option value="4h">4小时</option>
                         <option value="1d">1天</option>
                       </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-text-tertiary mb-1">杠杆倍数</label>
-                      <Input
-                        type="number"
-                        value={leverage}
-                        onChange={(e) => setLeverage(e.target.value)}
-                        min="1"
-                        max="20"
-                        className="text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* 最大持仓 + 手续费 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-text-tertiary mb-1">最大持仓数</label>
-                      <Input
-                        type="number"
-                        value={maxOpenTrades}
-                        onChange={(e) => setMaxOpenTrades(e.target.value)}
-                        className="text-sm"
-                      />
                     </div>
                     <div>
                       <label className="block text-xs text-text-tertiary mb-1">手续费率 (%)</label>
@@ -1735,7 +1662,6 @@ function BacktestPageInner() {
                     </div>
                   </div>
 
-                  {/* 未成交超时 */}
                   <div>
                     <label className="block text-xs text-text-tertiary mb-1">未成交超时 (分钟)</label>
                     <Input
@@ -1748,59 +1674,47 @@ function BacktestPageInner() {
                     />
                   </div>
 
-                  {/* 风控设置区 - 简洁模式 */}
-                  <div className="pt-3 border-t border-border-primary">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Shield className="w-3.5 h-3.5 text-brand-primary" />
-                      <span className="text-xs text-text-tertiary font-medium">风控设置</span>
-                    </div>
+                  {/* 风控开关组 */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <label htmlFor="switch-dry-run-desktop" className="flex items-center justify-between py-1.5 cursor-pointer">
+                      <span className="text-sm text-white">模拟交易</span>
+                      <Switch id="switch-dry-run-desktop" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} size="sm" />
+                    </label>
 
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                      <label htmlFor="switch-dry-run" className="flex items-center justify-between py-1.5 cursor-pointer">
-                        <span className="text-sm text-white">模拟交易</span>
-                        <Switch id="switch-dry-run" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} size="sm" />
-                      </label>
+                    <label htmlFor="switch-trailing-stop-desktop" className={`flex items-center justify-between py-1.5 ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : 'cursor-pointer'}`}>
+                      <span className="text-sm text-white">移动止损</span>
+                      <Switch
+                        id="switch-trailing-stop-desktop"
+                        checked={trailingStop}
+                        onChange={(e) => setTrailingStop(e.target.checked)}
+                        disabled={!!sourceStrategy?.content && followStrategyCode}
+                        size="sm"
+                      />
+                    </label>
 
-                      <div className={`flex items-center justify-between py-1.5 ${sourceStrategy?.content && followStrategyCode ? 'opacity-50' : ''}`}>
-                        <span className="text-sm text-white">
-                          移动止损
-                          {sourceStrategy?.content && followStrategyCode && (
-                            <span className="ml-1 text-xs text-warning">· 代码优先</span>
-                          )}
-                        </span>
-                        <Switch
-                          id="switch-trailing-stop"
-                          checked={trailingStop}
-                          onChange={(e) => setTrailingStop(e.target.checked)}
-                          disabled={!!sourceStrategy?.content && followStrategyCode}
-                          size="sm"
-                        />
-                      </div>
+                    <label htmlFor="switch-stoploss-exchange-desktop" className="flex items-center justify-between py-1.5 cursor-pointer">
+                      <span className="text-sm text-white">交易所止损</span>
+                      <Switch id="switch-stoploss-exchange-desktop" checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
+                    </label>
 
-                      <label htmlFor="switch-stoploss-exchange" className="flex items-center justify-between py-1.5 cursor-pointer">
-                        <span className="text-sm text-white">交易所止损</span>
-                        <Switch id="switch-stoploss-exchange" checked={stoplossOnExchange} onChange={(e) => setStoplossOnExchange(e.target.checked)} size="sm" />
-                      </label>
-
-                      <label htmlFor="switch-cancel-orders" className="flex items-center justify-between py-1.5 cursor-pointer">
-                        <span className="text-sm text-white">退出取消挂单</span>
-                        <Switch id="switch-cancel-orders" checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
-                      </label>
-                    </div>
+                    <label htmlFor="switch-cancel-orders-desktop" className="flex items-center justify-between py-1.5 cursor-pointer">
+                      <span className="text-sm text-white">退出取消挂单</span>
+                      <Switch id="switch-cancel-orders-desktop" checked={cancelOpenOrders} onChange={(e) => setCancelOpenOrders(e.target.checked)} size="sm" />
+                    </label>
                   </div>
 
-                  {/* 黑天鹅防护区 */}
-                  <div className="pt-3 border-t border-border-primary">
-                    <label htmlFor="switch-black-swan" className="flex items-center justify-between py-1.5 cursor-pointer">
+                  {/* 黑天鹅防护 */}
+                  <div className="pt-2">
+                    <label htmlFor="switch-black-swan-desktop" className="flex items-center justify-between py-1.5 cursor-pointer">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-3.5 h-3.5 text-warning" />
                         <span className="text-sm text-white">黑天鹅防护</span>
                       </div>
-                      <Switch id="switch-black-swan" checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
+                      <Switch id="switch-black-swan-desktop" checked={blackSwanEnabled} onChange={(e) => setBlackSwanEnabled(e.target.checked)} size="sm" />
                     </label>
 
                     {blackSwanEnabled && (
-                      <div className="mt-2 mx-3 p-3 bg-bg-tertiary/50 rounded-lg space-y-3">
+                      <div className="mt-2 p-3 bg-bg-tertiary/50 rounded-lg space-y-3">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-text-tertiary mb-1">触发阈值 (%)</label>
@@ -1837,8 +1751,7 @@ function BacktestPageInner() {
                             <option value="notify_only">仅通知</option>
                           </select>
                         </div>
-                        <p className="text-xs text-warning flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
+                        <p className="text-xs text-text-tertiary">
                           当任一交易对在 {blackSwanTimeframe} 分钟内跌幅超过 {Math.abs(Number(blackSwanThreshold))}% 时触发
                         </p>
                       </div>
@@ -1846,6 +1759,99 @@ function BacktestPageInner() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* ═══════ 回测配置 - 极简三列布局 ═══════ */}
+            <div className="px-4 pt-3 pb-4 bg-bg-tertiary/30">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="w-4 h-4 text-brand-primary" />
+                <span className="text-sm font-medium text-white">回测配置</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                {/* 回测周期 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-2">回测周期</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PERIOD_OPTIONS.map((item) => (
+                      <button
+                        key={item.days}
+                        onClick={() => {
+                          handleQuickDateSelect(item.days);
+                          setShowCustomDate(false);
+                        }}
+                        className={`px-2.5 py-1.5 text-xs rounded-md transition-colors ${
+                          selectedPeriod === item.days && !showCustomDate
+                            ? 'bg-brand-primary text-white'
+                            : 'bg-bg-tertiary/50 hover:bg-bg-tertiary text-text-secondary hover:text-white'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 回测资金 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-2">回测资金 (USDT)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">$</span>
+                    <Input
+                      type="number"
+                      value={initialCapital}
+                      onChange={(e) => setInitialCapital(e.target.value)}
+                      placeholder="10000"
+                      className="text-sm pl-7 h-9"
+                    />
+                  </div>
+                </div>
+
+                {/* K线数据 + 下载 */}
+                <div>
+                  <label className="block text-xs text-text-tertiary mb-2">
+                    K线数据
+                    {klineStatus.status === 'completed' && <span className="ml-1 text-success">✓ 已下载</span>}
+                    {klineStatus.status === 'downloading' && <span className="ml-1 text-warning">下载中...</span>}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      {['1h', '4h', '1d'].map((tf) => (
+                        <button
+                          key={tf}
+                          onClick={() => toggleKlineTimeframe(tf)}
+                          disabled={klineStatus.status === 'downloading'}
+                          className={`px-2 py-1.5 text-xs rounded-md transition-colors ${
+                            selectedKlineTimeframes.includes(tf)
+                              ? 'bg-brand-primary text-white'
+                              : 'bg-bg-tertiary/50 hover:bg-bg-tertiary text-text-secondary'
+                          }`}
+                        >
+                          {tf}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      onClick={handleDownloadKline}
+                      disabled={!activeInstanceId || klineDownloading || klineStatus.status === 'downloading'}
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                    >
+                      {klineDownloading || klineStatus.status === 'downloading' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                  {!activeInstanceId && (
+                    <p className="text-[10px] text-text-tertiary mt-1">
+                      需要 <button onClick={() => router.push('/instances')} className="text-brand-primary hover:underline">VPS</button> 才能下载
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>

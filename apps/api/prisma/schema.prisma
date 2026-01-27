@@ -45,26 +45,25 @@ model agent_commissions {
 
 /// 用户邀请返佣记录（燃油费返佣、积分返佣）
 model user_commissions {
-  id                  String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  referrer_id         String    @db.Uuid                                          // 邀请人（获得返佣的人）
-  invitee_id          String    @db.Uuid                                          // 被邀请人（产生消费/交易的人）
-  level               Int       @db.SmallInt                                      // 返佣层级：1=一级，2=二级
-  source_type         String    @db.VarChar(30)                                   // 来源类型：gas_fee, card_purchase, subscription, trade_mining
-  source_id           String?   @db.Uuid                                          // 来源ID（关联 billing_logs）
-  base_amount         Decimal   @db.Decimal(18, 8)                               // 基数金额（燃油费/购买金额）
-  commission_rate     Decimal   @db.Decimal(5, 4)                                // 返佣比例
-  commission_amount   Decimal   @db.Decimal(18, 8)                               // 返佣金额
-  commission_currency String    @default("POINTS") @db.VarChar(10)               // 返佣币种：USDT, POINTS
-  status              String    @default("pending") @db.VarChar(20)              // 状态：pending, settled
-  settled_at          DateTime? @db.Timestamptz(6)
-  created_at          DateTime  @default(now()) @db.Timestamptz(6)
-  referrer            users     @relation("ReferrerCommissions", fields: [referrer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  invitee             users     @relation("InviteeCommissions", fields: [invitee_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referrer_id       String    @db.Uuid
+  invitee_id        String    @db.Uuid
+  level             Int       @default(1) @db.SmallInt
+  source_type       String    @db.VarChar(30)
+  source_id         String?   @db.Uuid
+  base_amount       Decimal   @db.Decimal(18, 8)
+  commission_rate   Decimal   @db.Decimal(5, 4)
+  commission_amount Decimal   @db.Decimal(18, 8)
+  status            String    @default("settled") @db.VarChar(20)
+  settled_at        DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  invitee           users     @relation("InviteeCommissions", fields: [invitee_id], references: [id], onDelete: Cascade)
+  referrer          users     @relation("ReferrerCommissions", fields: [referrer_id], references: [id], onDelete: Cascade)
 
-  @@index([referrer_id], map: "idx_user_commissions_referrer")
+  @@index([referrer_id, status], map: "idx_user_commissions_referrer")
   @@index([invitee_id], map: "idx_user_commissions_invitee")
-  @@index([source_type], map: "idx_user_commissions_source_type")
-  @@index([status], map: "idx_user_commissions_status")
+  @@index([created_at], map: "idx_user_commissions_created")
+  @@index([source_id], map: "idx_user_commissions_source")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -154,22 +153,25 @@ model backtests {
 }
 
 model billing_logs {
-  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id         String   @db.Uuid
-  unique_order_id String   @unique @db.VarChar(100)
-  billing_type    String   @db.VarChar(30)
-  amount          Decimal  @db.Decimal(18, 8)
-  currency        String   @default("USDT") @db.VarChar(10)
-  reference_type  String?  @db.VarChar(50)
-  reference_id    String?  @db.Uuid
-  description     String?
-  status          String   @default("completed") @db.VarChar(20)
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-  users           users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id               String                 @db.Uuid
+  unique_order_id       String                 @unique @db.VarChar(100)
+  billing_type          String                 @db.VarChar(30)
+  amount                Decimal                @db.Decimal(18, 8)
+  currency              String                 @default("USDT") @db.VarChar(10)
+  reference_type        String?                @db.VarChar(50)
+  reference_id          String?                @db.Uuid
+  description           String?
+  status                String                 @default("completed") @db.VarChar(20)
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  users                 users                  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  strategy_revenue_logs strategy_revenue_logs?
 
   @@index([created_at], map: "idx_billing_logs_created")
   @@index([billing_type], map: "idx_billing_logs_type")
   @@index([user_id], map: "idx_billing_logs_user")
+  @@index([user_id, status], map: "idx_billing_logs_user_status")
+  @@index([user_id, billing_type, status], map: "idx_billing_logs_user_type_status")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -227,24 +229,22 @@ model instances {
   id                                                                   String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   user_id                                                              String                  @db.Uuid
   droplet_id                                                           String?                 @db.VarChar(50)
-  region                                                               String                  @default("fra1") @db.VarChar(20)
+  region                                                               String                  @default("sgp1") @db.VarChar(20)
   size                                                                 String                  @default("s-1vcpu-1gb") @db.VarChar(20)
   ip_address                                                           String?                 @db.Inet
   status                                                               String                  @default("pending") @db.VarChar(20)
   last_heartbeat                                                       DateTime?               @db.Timestamptz(6)
   cpu_usage                                                            Decimal?                @db.Decimal(5, 2)
   memory_usage                                                         Decimal?                @db.Decimal(5, 2)
-  disk_usage                                                           Decimal?                @db.Decimal(5, 2)
   provisioned_at                                                       DateTime?               @db.Timestamptz(6)
   destroyed_at                                                         DateTime?               @db.Timestamptz(6)
   destroy_reason                                                       String?                 @db.VarChar(100)
-  last_diagnosis_at                                                    DateTime?               @db.Timestamptz(6)
-  current_strategy                                                     String?                 @db.VarChar(100)
-  freqtrade_status                                                     String?                 @db.VarChar(20)
-  retry_count                                                          Int                     @default(0)
-  last_retry_at                                                        DateTime?               @db.Timestamptz(6)
   created_at                                                           DateTime                @default(now()) @db.Timestamptz(6)
   updated_at                                                           DateTime                @default(now()) @db.Timestamptz(6)
+  disk_usage                                                           Decimal?                @db.Decimal(5, 2)
+  retry_count                                                          Int?                    @default(0)
+  freqtrade_status                                                     String?                 @db.VarChar(50)
+  last_diagnosis_at                                                    DateTime?               @db.Timestamp(6)
   instance_backups_instance_backups_instance_idToinstances             instance_backups[]      @relation("instance_backups_instance_idToinstances")
   instance_backups_instance_backups_restored_to_instance_idToinstances instance_backups[]      @relation("instance_backups_restored_to_instance_idToinstances")
   users                                                                users                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -258,16 +258,12 @@ model instances {
 /// 收入分配记录表：支持周分红和回购销毁记录
 model revenue_distributions {
   id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  distribution_type  String   @default("weekly_dividend") @db.VarChar(30)
   period_start       DateTime @db.Timestamptz(6)
   period_end         DateTime @db.Timestamptz(6)
   total_revenue      Decimal  @db.Decimal(18, 8)
   operations_amount  Decimal  @db.Decimal(18, 8)
   buyback_amount     Decimal  @db.Decimal(18, 8)
   reserve_amount     Decimal  @db.Decimal(18, 8)
-  usdt_distributed   Decimal  @default(0) @db.Decimal(18, 8)
-  qfi_distributed    Decimal  @default(0) @db.Decimal(18, 8)
-  stakers_count      Int      @default(0)
   buyback_executed   Boolean  @default(false)
   buyback_tx_hash    String?  @db.VarChar(100)
   tokens_bought      Decimal? @default(0) @db.Decimal(18, 8)
@@ -276,6 +272,10 @@ model revenue_distributions {
   status             String   @default("pending") @db.VarChar(20)
   created_at         DateTime @default(now()) @db.Timestamptz(6)
   updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  distribution_type  String?  @db.VarChar(30)
+  qfi_distributed    Decimal? @db.Decimal(18, 8)
+  stakers_count      Int?
+  usdt_distributed   Decimal? @db.Decimal(18, 8)
 
   @@index([period_start, period_end], map: "idx_revenue_distributions_period")
   @@index([status], map: "idx_revenue_distributions_status")
@@ -299,13 +299,13 @@ model stakes {
   end_time           DateTime  @db.Timestamptz(6)
   weight_multiplier  Decimal   @default(1.00) @db.Decimal(5, 2)
   accumulated_reward Decimal   @default(0) @db.Decimal(18, 8)
-  claimable_reward   Decimal   @default(0) @db.Decimal(18, 8)
   last_reward_at     DateTime? @db.Timestamptz(6)
   status             String    @default("active") @db.VarChar(20)
   early_unstake_at   DateTime? @db.Timestamptz(6)
   penalty_amount     Decimal?  @default(0) @db.Decimal(18, 8)
   created_at         DateTime  @default(now()) @db.Timestamptz(6)
   updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  claimable_reward   Decimal   @default(0) @db.Decimal(18, 8)
   users              users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([end_time], map: "idx_stakes_end_time")
@@ -315,52 +315,54 @@ model stakes {
 }
 
 model strategies {
-  id                      String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  owner_type              String                  @default("system") @db.VarChar(20)
-  owner_id                String?                 @db.Uuid
-  uploader_id             String?                 @db.Uuid
-  name                    String                  @db.VarChar(100)
-  description             String?
-  content                 String
-  config                  Json?                   @default("{}")
-  performance_stats       Json?                   @default("{\"live\": {\"win_rate\": 0, \"total_pnl\": 0, \"last_updated\": null, \"total_trades\": 0}, \"backtest\": {\"win_rate\": 0, \"max_drawdown\": 0, \"sharpe_ratio\": 0, \"total_trades\": 0, \"profit_factor\": 0}}")
-  is_public               Boolean                 @default(false)
-  is_active               Boolean                 @default(true)
-  version                 Int                     @default(1)
-  review_status           String                  @default("pending") @db.VarChar(20)
-  reviewed_by             String?                 @db.Uuid
-  reject_reason           String?
-  auto_check_passed       Boolean?
-  auto_check_warnings     Json?                   @default("[]")
-  tier                    String                  @default("bronze") @db.VarChar(20)
-  total_users             Int                     @default(0)
-  total_profit            Decimal                 @default(0) @db.Decimal(18, 8)
-  avg_win_rate            Decimal                 @default(0) @db.Decimal(5, 4)
-  avg_sharpe_ratio        Decimal                 @default(0) @db.Decimal(8, 4)
-  revenue_share_enabled   Boolean                 @default(false)
-  revenue_share_rate      Decimal                 @default(0) @db.Decimal(5, 4)
-  backtest_data           Json?                   @default("{}")
-  backtest_total_return   Decimal?                @db.Decimal(18, 8)
-  backtest_max_drawdown   Decimal?                @db.Decimal(8, 4)
-  backtest_win_rate       Decimal?                @db.Decimal(5, 4)
-  backtest_sharpe_ratio   Decimal?                @db.Decimal(8, 4)
-  backtest_total_trades   Int?
-  backtest_period_start   DateTime?               @db.Timestamptz(6)
-  backtest_period_end     DateTime?               @db.Timestamptz(6)
-  has_backtest            Boolean                 @default(false)
-  reviewed_at             DateTime?               @db.Timestamptz(6)
-  last_performance_calc   DateTime?               @db.Timestamptz(6)
-  created_at              DateTime                @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime                @default(now()) @db.Timestamptz(6)
-  uploader                users?                  @relation("StrategyUploader", fields: [uploader_id], references: [id])
-  backtests               backtests[]
-  trade_history           trade_history[]
-  user_strategy_configs   user_strategy_configs[]
-  strategy_revenue_logs   strategy_revenue_logs[]
+  id                                  String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  owner_type                          String                  @default("system") @db.VarChar(20)
+  owner_id                            String?                 @db.Uuid
+  name                                String                  @db.VarChar(100)
+  description                         String?
+  content                             String
+  config                              Json?                   @default("{}")
+  performance_stats                   Json?                   @default("{\"live\": {\"win_rate\": 0, \"total_pnl\": 0, \"last_updated\": null, \"total_trades\": 0}, \"backtest\": {\"win_rate\": 0, \"max_drawdown\": 0, \"sharpe_ratio\": 0, \"total_trades\": 0, \"profit_factor\": 0}}")
+  is_public                           Boolean                 @default(false)
+  is_active                           Boolean                 @default(true)
+  version                             Int                     @default(1)
+  created_at                          DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                          DateTime                @default(now()) @db.Timestamptz(6)
+  avg_win_rate                        Decimal?                @db.Decimal(5, 2)
+  backtest_data                       Json?
+  backtest_max_drawdown               Decimal?                @db.Decimal(10, 4)
+  backtest_period_end                 DateTime?               @db.Timestamptz(6)
+  backtest_period_start               DateTime?               @db.Timestamptz(6)
+  backtest_sharpe_ratio               Decimal?                @db.Decimal(10, 4)
+  backtest_total_return               Decimal?                @db.Decimal(10, 4)
+  backtest_total_trades               Int?
+  backtest_win_rate                   Decimal?                @db.Decimal(5, 2)
+  has_backtest                        Boolean                 @default(false)
+  last_performance_calc               DateTime?               @db.Timestamptz(6)
+  reject_reason                       String?
+  revenue_share_enabled               Boolean                 @default(false)
+  revenue_share_rate                  Decimal?                @db.Decimal(5, 4)
+  review_status                       String                  @default("pending") @db.VarChar(20)
+  reviewed_at                         DateTime?               @db.Timestamptz(6)
+  reviewed_by                         String?                 @db.Uuid
+  tier                                String                  @default("bronze") @db.VarChar(20)
+  total_profit                        Decimal                 @default(0) @db.Decimal(18, 8)
+  total_users                         Int                     @default(0)
+  uploader_id                         String?                 @db.Uuid
+  auto_check_passed                   Boolean                 @default(false)
+  auto_check_warnings                 Json?                   @default("[]")
+  avg_sharpe_ratio                    Decimal?                @db.Decimal(10, 4)
+  backtests                           backtests[]
+  users_strategies_reviewed_byTousers users?                  @relation("strategies_reviewed_byTousers", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uploader                            users?                  @relation("StrategyUploader", fields: [uploader_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  strategy_revenue_logs               strategy_revenue_logs[]
+  trade_history                       trade_history[]
+  user_strategy_configs               user_strategy_configs[]
 
   @@index([owner_type, owner_id], map: "idx_strategies_owner")
   @@index([review_status], map: "idx_strategies_review_status")
   @@index([uploader_id], map: "idx_strategies_uploader")
+  @@index([tier], map: "idx_strategies_tier")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -382,8 +384,6 @@ model token_burns {
 model token_orders {
   id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   user_id          String    @db.Uuid
-  order_type       String    @default("exchange") @db.VarChar(20)
-  source_type      String?   @db.VarChar(30)
   points_spent     Decimal   @db.Decimal(18, 8)
   tokens_total     Decimal   @db.Decimal(18, 8)
   exchange_rate    Decimal   @db.Decimal(18, 8)
@@ -397,6 +397,8 @@ model token_orders {
   status           String    @default("vesting") @db.VarChar(20)
   created_at       DateTime  @default(now()) @db.Timestamptz(6)
   updated_at       DateTime  @default(now()) @db.Timestamptz(6)
+  order_type       String    @default("exchange") @db.VarChar(20)
+  source_type      String?   @db.VarChar(30)
   users            users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([status], map: "idx_token_orders_status")
@@ -466,73 +468,71 @@ model user_strategy_configs {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model users {
-  id                                         String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  email                                      String                  @unique @db.VarChar(255)
-  password_hash                              String                  @db.VarChar(255)
-  two_factor_enabled                         Boolean                 @default(false)
-  two_factor_secret                          String?                 @db.VarChar(64)
-  vip_level                                  Int                     @default(0) @db.SmallInt
-  vip_expires_at                             DateTime?               @db.Timestamptz(6)
-  agent_id                                   String?                 @db.Uuid
-  invite_code                                String?                 @unique @db.VarChar(20)
-  device_fingerprints                        Json?                   @default("[]")
-  status                                     String                  @default("active") @db.VarChar(20)
-  last_login_at                              DateTime?               @db.Timestamptz(6)
-  last_login_ip                              String?                 @db.Inet
-  created_at                                 DateTime                @default(now()) @db.Timestamptz(6)
-  updated_at                                 DateTime                @default(now()) @db.Timestamptz(6)
-  role                                       String                  @default("user") @db.VarChar(20)
-  telegram_id                                BigInt?                 @unique
-  telegram_username                          String?                 @db.VarChar(100)
-  telegram_first_name                        String?                 @db.VarChar(100)
-  telegram_photo_url                         String?                 @db.VarChar(500)
-  telegram_linked_at                         DateTime?               @db.Timestamptz(6)
-  notification_settings                      Json?                   @default("{}")
-  referred_by_user_id                        String?                 @db.Uuid
-  admin_audit_logs                           admin_audit_logs[]
-  agent_commissions                          agent_commissions[]
-  api_keys                                   api_keys[]
-  backtests                                  backtests[]
-  billing_logs                               billing_logs[]
-  deposits_deposits_reviewed_byTousers       deposits[]              @relation("deposits_reviewed_byTousers")
-  deposits_deposits_user_idTousers           deposits[]              @relation("deposits_user_idTousers")
-  instance_backups                           instance_backups[]
-  instances                                  instances[]
-  stakes                                     stakes[]
-  token_orders                               token_orders[]
-  trade_history                              trade_history[]
-  user_strategy_configs                      user_strategy_configs[]
-  agents                                     agents?                 @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  wallets                                    wallets?
-  withdrawals_withdrawals_reviewed_byTousers withdrawals[]           @relation("withdrawals_reviewed_byTousers")
-  withdrawals_withdrawals_user_idTousers     withdrawals[]           @relation("withdrawals_user_idTousers")
-  // 用户返佣关系
-  commissions_as_referrer                    user_commissions[]      @relation("ReferrerCommissions")
-  commissions_as_invitee                     user_commissions[]      @relation("InviteeCommissions")
-  // CMS 关联
-  cms_contents                               cms_contents[]
-  cms_banners                                cms_banners[]
-  cms_help_docs                              cms_help_docs[]
-  popup_announcements                        popup_announcements[]   @relation("popup_created_by")
-  brand_configs                              brand_configs[]
-  // 会话管理
-  user_sessions                              user_sessions[]
-  // AI 生成
-  ai_generations                             ai_generations[]
-  // 积分兑换
-  exchange_transactions                      exchange_transactions[]
-  // 策略上传
-  uploaded_strategies                        strategies[]            @relation("StrategyUploader")
-  // 策略收益日志
-  strategy_revenue_logs                      strategy_revenue_logs[]
-  // 代币链上提现
-  token_onchain_withdrawals                  token_onchain_withdrawals[]
+  id                                                             String                      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                                                          String                      @unique @db.VarChar(255)
+  password_hash                                                  String                      @db.VarChar(255)
+  two_factor_enabled                                             Boolean                     @default(false)
+  two_factor_secret                                              String?                     @db.VarChar(64)
+  vip_level                                                      Int                         @default(0) @db.SmallInt
+  vip_expires_at                                                 DateTime?                   @db.Timestamptz(6)
+  agent_id                                                       String?                     @db.Uuid
+  invite_code                                                    String?                     @unique @db.VarChar(20)
+  device_fingerprints                                            Json?                       @default("[]")
+  status                                                         String                      @default("active") @db.VarChar(20)
+  last_login_at                                                  DateTime?                   @db.Timestamptz(6)
+  last_login_ip                                                  String?                     @db.Inet
+  created_at                                                     DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                                                     DateTime                    @default(now()) @db.Timestamptz(6)
+  role                                                           String                      @default("user") @db.VarChar(20)
+  telegram_first_name                                            String?                     @db.VarChar(100)
+  telegram_id                                                    BigInt?                     @unique
+  telegram_linked_at                                             DateTime?                   @db.Timestamptz(6)
+  telegram_photo_url                                             String?                     @db.VarChar(500)
+  telegram_username                                              String?                     @db.VarChar(100)
+  referred_by_user_id                                            String?                     @db.Uuid
+  notification_settings                                          Json?                       @default("{}")
+  admin_audit_logs                                               admin_audit_logs[]
+  agent_commissions                                              agent_commissions[]
+  agent_withdrawals                                              agent_withdrawals[]
+  ai_generations                                                 ai_generations[]
+  api_keys                                                       api_keys[]
+  backtests                                                      backtests[]
+  billing_logs                                                   billing_logs[]
+  cms_banners                                                    cms_banners[]
+  cms_contents                                                   cms_contents[]
+  cms_help_docs                                                  cms_help_docs[]
+  deposits_deposits_reviewed_byTousers                           deposits[]                  @relation("deposits_reviewed_byTousers")
+  deposits_deposits_user_idTousers                               deposits[]                  @relation("deposits_user_idTousers")
+  exchange_transactions                                          exchange_transactions[]
+  instance_backups                                               instance_backups[]
+  instances                                                      instances[]
+  login_logs                                                     login_logs[]
+  stakes                                                         stakes[]
+  strategies_strategies_reviewed_byTousers                       strategies[]                @relation("strategies_reviewed_byTousers")
+  uploaded_strategies                                            strategies[]                @relation("StrategyUploader")
+  strategy_revenue_logs_strategy_revenue_logs_uploader_idTousers strategy_revenue_logs[]     @relation("strategy_revenue_logs_uploader_idTousers")
+  strategy_revenue_logs                                          strategy_revenue_logs[]
+  system_configs                                                 system_configs[]
+  telegram_login_logs                                            telegram_login_logs[]
+  token_onchain_withdrawals                                      token_onchain_withdrawals[]
+  token_orders                                                   token_orders[]
+  trade_history                                                  trade_history[]
+  commissions_as_invitee                                         user_commissions[]          @relation("InviteeCommissions")
+  commissions_as_referrer                                        user_commissions[]          @relation("ReferrerCommissions")
+  user_strategy_configs                                          user_strategy_configs[]
+  agents                                                         agents?                     @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                                                          users?                      @relation("usersTousers", fields: [referred_by_user_id], references: [id])
+  other_users                                                    users[]                     @relation("usersTousers")
+  wallets                                                        wallets?
+  withdrawals_withdrawals_reviewed_byTousers                     withdrawals[]               @relation("withdrawals_reviewed_byTousers")
+  withdrawals_withdrawals_user_idTousers                         withdrawals[]               @relation("withdrawals_user_idTousers")
 
   @@index([agent_id], map: "idx_users_agent")
   @@index([email], map: "idx_users_email")
   @@index([status], map: "idx_users_status")
   @@index([vip_level], map: "idx_users_vip_level")
-  @@index([role], map: "idx_users_role")
+  @@index([referred_by_user_id], map: "idx_users_referred_by")
+  @@index([telegram_id], map: "idx_users_telegram_id")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -541,49 +541,48 @@ model wallets {
   user_id        String   @unique @db.Uuid
   usdt_balance   Decimal  @default(0) @db.Decimal(18, 8)
   usdt_frozen    Decimal  @default(0) @db.Decimal(18, 8)
-  card_balance   Decimal  @default(0) @db.Decimal(18, 8)
   points_balance Decimal  @default(0) @db.Decimal(18, 8)
   points_frozen  Decimal  @default(0) @db.Decimal(18, 8)
-  points_locked  Decimal  @default(0) @db.Decimal(18, 8)
   token_balance  Decimal  @default(0) @db.Decimal(18, 8)
   token_locked   Decimal  @default(0) @db.Decimal(18, 8)
   token_vesting  Decimal  @default(0) @db.Decimal(18, 8)
   created_at     DateTime @default(now()) @db.Timestamptz(6)
   updated_at     DateTime @default(now()) @db.Timestamptz(6)
+  card_balance   Decimal  @default(0) @db.Decimal(18, 8)
+  points_locked  Decimal  @default(0) @db.Decimal(18, 8)
   users          users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model withdrawals {
-  id                                   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id                              String    @db.Uuid
-  amount                               Decimal   @db.Decimal(18, 8)
-  currency                             String    @default("USDT") @db.VarChar(10)
-  fee                                  Decimal   @default(0) @db.Decimal(18, 8)
-  chain                                String    @db.VarChar(20)
-  to_address                           String    @db.VarChar(100)
-  tx_hash                              String?   @db.VarChar(100)
-  status                               String    @default("pending") @db.VarChar(20)
-  withdrawal_type                      String    @default("wallet") @db.VarChar(30)
-  reviewed_by                          String?   @db.Uuid
-  reviewed_at                          DateTime? @db.Timestamptz(6)
+  id                                   String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                              String                  @db.Uuid
+  amount                               Decimal                 @db.Decimal(18, 8)
+  currency                             String                  @default("USDT") @db.VarChar(10)
+  fee                                  Decimal                 @default(0) @db.Decimal(18, 8)
+  chain                                String                  @db.VarChar(20)
+  to_address                           String                  @db.VarChar(100)
+  tx_hash                              String?                 @db.VarChar(100)
+  status                               String                  @default("pending") @db.VarChar(20)
+  reviewed_by                          String?                 @db.Uuid
+  reviewed_at                          DateTime?               @db.Timestamptz(6)
   reject_reason                        String?
-  two_factor_verified                  Boolean   @default(false)
-  created_at                           DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at                           DateTime  @default(now()) @db.Timestamptz(6)
-  users_withdrawals_reviewed_byTousers users?    @relation("withdrawals_reviewed_byTousers", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users_withdrawals_user_idTousers     users     @relation("withdrawals_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  two_factor_verified                  Boolean                 @default(false)
+  created_at                           DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                           DateTime                @default(now()) @db.Timestamptz(6)
+  withdrawal_type                      String                  @default("wallet") @db.VarChar(20)
+  strategy_revenue_logs                strategy_revenue_logs[]
+  users_withdrawals_reviewed_byTousers users?                  @relation("withdrawals_reviewed_byTousers", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_withdrawals_user_idTousers     users                   @relation("withdrawals_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([created_at], map: "idx_withdrawals_created")
   @@index([status], map: "idx_withdrawals_status")
   @@index([user_id], map: "idx_withdrawals_user")
 }
 
-// ==================== CMS 内容管理系统 ====================
-
 /// CMS 内容表：用于管理网站文案、通知、协议等内容
 model cms_contents {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   content_key  String    @unique @db.VarChar(100)
   content_type String    @db.VarChar(50)
   title        String?   @db.VarChar(200)
@@ -593,21 +592,22 @@ model cms_contents {
   publish_at   DateTime? @db.Timestamptz(6)
   expire_at    DateTime? @db.Timestamptz(6)
   sort_order   Int       @default(0)
-  metadata     Json?     @default("{}")
+  metadata     Json?
   updated_by   String?   @db.Uuid
   created_at   DateTime  @default(now()) @db.Timestamptz(6)
   updated_at   DateTime  @default(now()) @db.Timestamptz(6)
-  users        users?    @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users        users?    @relation(fields: [updated_by], references: [id])
 
   @@index([content_type], map: "idx_cms_contents_type")
-  @@index([locale], map: "idx_cms_contents_locale")
+  @@index([content_key], map: "idx_cms_contents_key")
+  @@index([is_published], map: "idx_cms_contents_published")
 }
 
 /// CMS Banner 表：首页轮播图、广告位等
 model cms_banners {
-  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   position    String    @db.VarChar(50)
-  title       String?   @db.VarChar(200)
+  title       String    @db.VarChar(200)
   subtitle    String?   @db.VarChar(500)
   image_url   String    @db.VarChar(500)
   link_url    String?   @db.VarChar(500)
@@ -617,10 +617,11 @@ model cms_banners {
   start_at    DateTime? @db.Timestamptz(6)
   end_at      DateTime? @db.Timestamptz(6)
   sort_order  Int       @default(0)
+  click_count Int       @default(0)
   updated_by  String?   @db.Uuid
   created_at  DateTime  @default(now()) @db.Timestamptz(6)
   updated_at  DateTime  @default(now()) @db.Timestamptz(6)
-  users       users?    @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users       users?    @relation(fields: [updated_by], references: [id])
 
   @@index([position], map: "idx_cms_banners_position")
   @@index([is_active], map: "idx_cms_banners_active")
@@ -628,207 +629,63 @@ model cms_banners {
 
 /// CMS 帮助文档表：FAQ、教程、指南等
 model cms_help_docs {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   category     String   @db.VarChar(50)
   title        String   @db.VarChar(200)
   slug         String   @unique @db.VarChar(100)
-  summary      String?  @db.VarChar(500)
+  summary      String?
   content      String
-  tags         Json?    @default("[]")
-  is_published Boolean  @default(true)
+  tags         String[] @db.VarChar(50)
   view_count   Int      @default(0)
+  is_published Boolean  @default(true)
   sort_order   Int      @default(0)
   updated_by   String?  @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
   updated_at   DateTime @default(now()) @db.Timestamptz(6)
-  users        users?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users        users?   @relation(fields: [updated_by], references: [id])
 
   @@index([category], map: "idx_cms_help_docs_category")
-  @@index([is_published], map: "idx_cms_help_docs_published")
+  @@index([slug], map: "idx_cms_help_docs_slug")
 }
-
-// ==================== 弹窗公告 ====================
-
-/// 弹窗公告表：用于显示重要通知、促销活动等
-model popup_announcements {
-  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  title           String    @db.VarChar(200)
-  content         String
-  type            String    @default("info") @db.VarChar(20)
-  image_url       String?   @db.VarChar(500)
-  action_label    String?   @db.VarChar(50)
-  action_url      String?   @db.VarChar(500)
-  target_audience String    @default("all") @db.VarChar(20)
-  priority        Int       @default(0)
-  is_active       Boolean   @default(true)
-  show_once       Boolean   @default(false)
-  start_at        DateTime? @db.Timestamptz(6)
-  end_at          DateTime? @db.Timestamptz(6)
-  created_by      String?   @db.Uuid
-  created_at      DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
-  users           users?    @relation("popup_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([is_active], map: "idx_popup_announcements_active")
-  @@index([target_audience], map: "idx_popup_announcements_audience")
-}
-
-// ==================== 品牌配置 ====================
-
-/// 品牌配置表：Logo、颜色、联系方式等可配置项
-model brand_configs {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  config_key   String   @unique @db.VarChar(100)
-  config_value String
-  description  String?  @db.VarChar(500)
-  updated_by   String?  @db.Uuid
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime @default(now()) @db.Timestamptz(6)
-  users        users?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([config_key], map: "idx_brand_configs_key")
-}
-
-// ==================== 系统配置 ====================
 
 /// 系统配置表：返佣比例、功能开关等
 model system_configs {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   config_key   String   @unique @db.VarChar(100)
-  config_value String
-  config_type  String   @default("string") @db.VarChar(20)
-  category     String   @default("general") @db.VarChar(50)
+  config_value Json
+  config_type  String   @db.VarChar(50)
+  category     String   @db.VarChar(50)
   label        String   @db.VarChar(100)
-  description  String?  @db.VarChar(500)
+  description  String?
   is_public    Boolean  @default(false)
   updated_by   String?  @db.Uuid
   created_at   DateTime @default(now()) @db.Timestamptz(6)
   updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  users        users?   @relation(fields: [updated_by], references: [id])
 
   @@index([category], map: "idx_system_configs_category")
-  @@index([is_public], map: "idx_system_configs_public")
-}
-
-// ==================== 安全与管理 ====================
-
-/// 黑名单表：IP、设备、邮箱等封禁
-model blacklist {
-  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  type       String    @db.VarChar(30)
-  value      String    @db.VarChar(255)
-  reason     String?   @db.VarChar(500)
-  is_active  Boolean   @default(true)
-  expires_at DateTime? @db.Timestamptz(6)
-  created_by String?   @db.Uuid
-  created_at DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at DateTime  @default(now()) @db.Timestamptz(6)
-
-  @@index([type, value], map: "idx_blacklist_type_value")
-  @@index([is_active], map: "idx_blacklist_active")
-}
-
-/// 用户会话表：登录会话管理
-model user_sessions {
-  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id        String    @db.Uuid
-  token_hash     String    @db.VarChar(100)
-  device_info    String?   @db.VarChar(500)
-  ip_address     String?   @db.Inet
-  user_agent     String?   @db.VarChar(500)
-  is_active      Boolean   @default(true)
-  last_active_at DateTime  @default(now()) @db.Timestamptz(6)
-  expires_at     DateTime  @db.Timestamptz(6)
-  created_at     DateTime  @default(now()) @db.Timestamptz(6)
-  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([user_id], map: "idx_user_sessions_user")
-  @@index([is_active], map: "idx_user_sessions_active")
-  @@index([token_hash], map: "idx_user_sessions_token")
+  @@index([is_public], map: "idx_system_configs_is_public")
 }
 
 /// 登录日志表：记录所有登录行为
 model login_logs {
   id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id        String?  @db.Uuid
+  user_id        String   @db.Uuid
   ip_address     String?  @db.Inet
   user_agent     String?  @db.VarChar(500)
   device_type    String?  @db.VarChar(50)
-  browser        String?  @db.VarChar(50)
-  os             String?  @db.VarChar(50)
+  browser        String?  @db.VarChar(100)
+  os             String?  @db.VarChar(100)
   location       String?  @db.VarChar(200)
   login_status   String   @db.VarChar(20)
   failure_reason String?  @db.VarChar(200)
   created_at     DateTime @default(now()) @db.Timestamptz(6)
+  users          users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id], map: "idx_login_logs_user")
   @@index([created_at], map: "idx_login_logs_created")
-  @@index([login_status], map: "idx_login_logs_status")
+  @@index([ip_address], map: "idx_login_logs_ip")
 }
-
-/// 登录异常告警表
-model login_alerts {
-  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id     String    @db.Uuid
-  alert_type  String    @db.VarChar(50)
-  severity    String    @default("medium") @db.VarChar(20)
-  description String?   @db.VarChar(500)
-  details     Json?     @default("{}")
-  is_resolved Boolean   @default(false)
-  resolved_by String?   @db.Uuid
-  resolved_at DateTime? @db.Timestamptz(6)
-  created_at  DateTime  @default(now()) @db.Timestamptz(6)
-
-  @@index([user_id], map: "idx_login_alerts_user")
-  @@index([is_resolved], map: "idx_login_alerts_resolved")
-  @@index([severity], map: "idx_login_alerts_severity")
-}
-
-/// VPS 实例性能指标表
-model instance_metrics {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  instance_id  String   @db.Uuid
-  cpu_usage    Decimal  @db.Decimal(5, 2)
-  memory_usage Decimal  @db.Decimal(5, 2)
-  disk_usage   Decimal  @db.Decimal(5, 2)
-  network_in   BigInt?
-  network_out  BigInt?
-  recorded_at  DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([instance_id], map: "idx_instance_metrics_instance")
-  @@index([recorded_at], map: "idx_instance_metrics_recorded")
-}
-
-// ==================== RBAC 权限管理 ====================
-
-/// 管理员角色表
-model admin_roles {
-  id                      String                    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  name                    String                    @unique @db.VarChar(50)
-  display_name            String                    @db.VarChar(100)
-  description             String?                   @db.VarChar(500)
-  permissions             Json                      @default("[]")
-  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime                  @default(now()) @db.Timestamptz(6)
-  admin_role_assignments  admin_role_assignments[]
-
-  @@index([name], map: "idx_admin_roles_name")
-}
-
-/// 管理员角色分配表
-model admin_role_assignments {
-  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id     String      @db.Uuid
-  role_id     String      @db.Uuid
-  assigned_by String?     @db.Uuid
-  created_at  DateTime    @default(now()) @db.Timestamptz(6)
-  admin_roles admin_roles @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@unique([user_id, role_id])
-  @@index([user_id], map: "idx_admin_role_assignments_user")
-  @@index([role_id], map: "idx_admin_role_assignments_role")
-}
-
-// ==================== 代理商提现 ====================
 
 /// 代理商提现申请表
 model agent_withdrawals {
@@ -836,194 +693,207 @@ model agent_withdrawals {
   agent_id       String    @db.Uuid
   amount         Decimal   @db.Decimal(18, 8)
   fee            Decimal   @default(0) @db.Decimal(18, 8)
-  currency       String    @default("USDT") @db.VarChar(10)
-  chain          String?   @default("TRC20") @db.VarChar(20)
-  wallet_address String?   @db.VarChar(100)
-  tx_hash        String?   @db.VarChar(100)
   status         String    @default("pending") @db.VarChar(20)
+  wallet_address String?   @db.VarChar(255)
+  chain          String?   @db.VarChar(20)
+  tx_hash        String?   @db.VarChar(255)
   reviewed_by    String?   @db.Uuid
   reviewed_at    DateTime? @db.Timestamptz(6)
-  reject_reason  String?   @db.VarChar(500)
+  reject_reason  String?
   created_at     DateTime  @default(now()) @db.Timestamptz(6)
   updated_at     DateTime  @default(now()) @db.Timestamptz(6)
   agents         agents    @relation(fields: [agent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users          users?    @relation(fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([agent_id], map: "idx_agent_withdrawals_agent")
   @@index([status], map: "idx_agent_withdrawals_status")
-  @@index([created_at], map: "idx_agent_withdrawals_created")
 }
-
-// ==================== AI 生成记录 ====================
 
 /// AI 策略生成记录表
 model ai_generations {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id     String   @db.Uuid
-  type        String   @default("strategy") @db.VarChar(30)
-  input       String?
-  output      String?
-  tokens_used Int      @default(0)
+  type        String   @db.VarChar(20)
+  input       String
+  output      String
+  tokens_used Int?
   model       String?  @db.VarChar(50)
   created_at  DateTime @default(now()) @db.Timestamptz(6)
-  users       users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id], map: "idx_ai_generations_user")
   @@index([type], map: "idx_ai_generations_type")
   @@index([created_at], map: "idx_ai_generations_created")
 }
 
-// ==================== 交易所链接 ====================
-
 /// 交易所推广链接表
 model exchange_links {
-  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  exchange_id  String   @unique @db.VarChar(50)
-  name         String   @db.VarChar(100)
-  logo         String?  @db.VarChar(500)
-  rebate       String?  @db.VarChar(100)
-  link         String   @db.VarChar(500)
-  description  String?
-  features     Json?    @default("[]")
-  is_active    Boolean  @default(true)
-  sort_order   Int      @default(0)
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  exchange_id String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  logo        String   @db.VarChar(20)
+  rebate      String   @db.VarChar(10)
+  link        String   @db.VarChar(500)
+  description String?
+  features    Json?    @default("[]")
+  is_active   Boolean  @default(true)
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
 
-  @@index([is_active], map: "idx_exchange_links_active")
-  @@index([sort_order], map: "idx_exchange_links_sort")
+  @@index([is_active, sort_order], map: "idx_exchange_links_active_sort")
 }
-
-// ==================== 积分兑换交易 ====================
 
 /// 积分兑换交易记录表
 model exchange_transactions {
-  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id          String    @db.Uuid
-  type             String?   @db.VarChar(30)
-  from_asset       String    @db.VarChar(20)
-  from_amount      Decimal   @db.Decimal(18, 8)
-  to_asset         String    @db.VarChar(20)
-  to_amount        Decimal   @db.Decimal(18, 8)
-  exchange_rate    Decimal   @db.Decimal(18, 8)
-  fee_rate         Decimal   @default(0) @db.Decimal(5, 4)
-  fee_amount       Decimal   @default(0) @db.Decimal(18, 8)
-  mode             String    @default("standard") @db.VarChar(20)
-  instant_amount   Decimal?  @db.Decimal(18, 8)
-  vesting_amount   Decimal?  @db.Decimal(18, 8)
-  burned_amount    Decimal?  @db.Decimal(18, 8)
-  status           String    @default("pending") @db.VarChar(20)
-  token_order_id   String?   @db.Uuid
-  completed_at     DateTime? @db.Timestamptz(6)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  users            users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  from_asset     String   @db.VarChar(20)
+  from_amount    Decimal  @db.Decimal(18, 8)
+  to_asset       String   @db.VarChar(20)
+  to_amount      Decimal  @db.Decimal(18, 8)
+  exchange_rate  Decimal  @db.Decimal(18, 8)
+  fee_rate       Decimal  @default(0) @db.Decimal(8, 4)
+  fee_amount     Decimal  @default(0) @db.Decimal(18, 8)
+  mode           String?  @db.VarChar(20)
+  instant_amount Decimal? @db.Decimal(18, 8)
+  vesting_amount Decimal? @db.Decimal(18, 8)
+  burned_amount  Decimal? @db.Decimal(18, 8)
+  status         String   @default("pending") @db.VarChar(20)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+  users          users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id], map: "idx_exchange_transactions_user")
   @@index([status], map: "idx_exchange_transactions_status")
   @@index([created_at], map: "idx_exchange_transactions_created")
 }
 
-// ==================== 策略收益分成日志 ====================
-
 /// 策略收益分成日志表
 model strategy_revenue_logs {
-  id                 String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  strategy_id        String      @db.Uuid
-  user_id            String      @db.Uuid
-  uploader_id        String      @db.Uuid
-  base_amount        Decimal     @db.Decimal(18, 8)
-  revenue_amount     Decimal     @db.Decimal(18, 8)
-  gas_fee_amount     Decimal?    @db.Decimal(18, 8)
-  share_rate         Decimal?    @db.Decimal(5, 4)
-  revenue_share_rate Decimal     @db.Decimal(5, 4)
-  share_amount       Decimal?    @db.Decimal(18, 8)
-  platform_deduction Decimal?    @db.Decimal(18, 8)
-  status             String      @default("pending") @db.VarChar(20)
-  withdrawn          Boolean     @default(false)
-  withdrawal_id      String?     @db.Uuid
-  billing_log_id     String?     @db.Uuid
-  settled_at         DateTime?   @db.Timestamptz(6)
-  created_at         DateTime    @default(now()) @db.Timestamptz(6)
-  strategy           strategies  @relation(fields: [strategy_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user               users       @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  strategy_id                                    String       @db.Uuid
+  uploader_id                                    String       @db.Uuid
+  user_id                                        String       @db.Uuid
+  billing_log_id                                 String       @unique(map: "unique_billing_log_id") @db.Uuid
+  base_amount                                    Decimal      @db.Decimal(18, 8)
+  revenue_share_rate                             Decimal      @db.Decimal(5, 4)
+  revenue_amount                                 Decimal      @db.Decimal(18, 8)
+  platform_deduction                             Decimal      @db.Decimal(18, 8)
+  status                                         String       @default("pending") @db.VarChar(20)
+  settled_at                                     DateTime?    @db.Timestamptz(6)
+  settlement_tx_id                               String?      @db.Uuid
+  created_at                                     DateTime     @default(now()) @db.Timestamptz(6)
+  withdrawal_id                                  String?      @db.Uuid
+  withdrawn                                      Boolean      @default(false)
+  billing_logs                                   billing_logs @relation(fields: [billing_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  strategy                                       strategies   @relation(fields: [strategy_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_strategy_revenue_logs_uploader_idTousers users        @relation("strategy_revenue_logs_uploader_idTousers", fields: [uploader_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                                           users        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  withdrawals                                    withdrawals? @relation(fields: [withdrawal_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([strategy_id], map: "idx_strategy_revenue_logs_strategy")
-  @@index([user_id], map: "idx_strategy_revenue_logs_user")
-  @@index([uploader_id], map: "idx_strategy_revenue_logs_uploader")
-  @@index([created_at], map: "idx_strategy_revenue_logs_created")
+  @@index([strategy_id, created_at], map: "idx_strategy_revenue_logs_strategy")
+  @@index([uploader_id, status], map: "idx_strategy_revenue_logs_uploader")
+  @@index([billing_log_id], map: "idx_strategy_revenue_logs_billing")
+  @@index([uploader_id, withdrawn], map: "idx_strategy_revenue_logs_withdrawn")
 }
-
-// ==================== Telegram 登录日志 ====================
 
 /// Telegram 登录日志表
 model telegram_login_logs {
-  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   telegram_id    BigInt
-  user_id        String?   @db.Uuid
-  auth_date      DateTime? @db.Timestamptz(6)
-  init_data_hash String?   @db.VarChar(100)
-  ip_address     String?   @db.Inet
-  status         String    @default("success") @db.VarChar(20)
-  error_message  String?
-  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  user_id        String?  @db.Uuid
+  auth_date      DateTime @db.Timestamptz(6)
+  init_data_hash String   @db.VarChar(64)
+  ip_address     String?  @db.Inet
+  status         String   @db.VarChar(20)
+  error_message  String?  @db.VarChar(500)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  users          users?   @relation(fields: [user_id], references: [id])
 
   @@index([telegram_id], map: "idx_telegram_login_logs_telegram")
-  @@index([user_id], map: "idx_telegram_login_logs_user")
   @@index([created_at], map: "idx_telegram_login_logs_created")
+  @@index([status], map: "idx_telegram_login_logs_status")
 }
-
-// ==================== 代币链上提现 ====================
 
 /// 代币链上提现记录表
 model token_onchain_withdrawals {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  user_id      String    @db.Uuid
-  amount       Decimal   @db.Decimal(18, 8)
-  fee          Decimal   @default(0) @db.Decimal(18, 8)
-  chain        String?   @default("BSC") @db.VarChar(20)
-  to_address   String    @db.VarChar(100)
-  tx_hash      String?   @db.VarChar(100)
-  status       String    @default("pending") @db.VarChar(20)
-  reviewed_by  String?   @db.Uuid
-  reviewed_at  DateTime? @db.Timestamptz(6)
-  created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
-  users        users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  amount     Decimal  @db.Decimal(18, 8)
+  fee        Decimal  @db.Decimal(18, 8)
+  to_address String   @db.VarChar(100)
+  tx_hash    String?  @db.VarChar(100)
+  status     String   @default("pending") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id], map: "idx_token_onchain_withdrawals_user")
   @@index([status], map: "idx_token_onchain_withdrawals_status")
-  @@index([created_at], map: "idx_token_onchain_withdrawals_created")
 }
-
-// ==================== 代币回购记录 ====================
 
 /// 代币回购记录表
 model token_buybacks {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  usdt_spent  Decimal  @db.Decimal(18, 8)
-  qfi_bought  Decimal  @db.Decimal(18, 8)
-  price       Decimal  @db.Decimal(18, 8)
-  tx_hash     String?  @db.VarChar(100)
-  bought_at   DateTime @default(now()) @db.Timestamptz(6)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usdt_spent Decimal  @db.Decimal(18, 8)
+  qfi_bought Decimal  @db.Decimal(18, 8)
+  price      Decimal  @db.Decimal(18, 8)
+  tx_hash    String   @db.VarChar(100)
+  bought_at  DateTime @default(now()) @db.Timestamptz(6)
 
-  @@index([bought_at], map: "idx_token_buybacks_bought_at")
+  @@index([bought_at], map: "idx_token_buybacks_date")
 }
 
-// ==================== 实例操作日志 ====================
+model blacklist {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type       String    @db.VarChar(50)
+  value      String
+  reason     String?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+  is_active  Boolean?  @default(true)
+  expires_at DateTime? @db.Timestamp(6)
+}
 
-/// 实例操作日志表：记录 VPS 相关的系统操作
-model instance_logs {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  instance_id String?  @db.Uuid
-  user_id     String   @db.Uuid
-  action      String   @db.VarChar(50)     // 操作类型: api_key_bindxdeploystartxstopxheartbeat 等
-  level       String   @default("info") @db.VarChar(10)  // 日志级别: infoxwarnxerrorxdebug
-  message     String                        // 日志消息
-  details     Json?    @default("{}")       // 详细信息
-  ip_address  String?  @db.Inet
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
+model popup_announcements {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title      String    @db.VarChar(255)
+  content    String?
+  is_active  Boolean?  @default(true)
+  priority   Int?      @default(0)
+  start_at   DateTime? @db.Timestamp(6)
+  end_at     DateTime? @db.Timestamp(6)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+  type       String?   @default("info") @db.VarChar(50)
+}
 
-  @@index([instance_id], map: "idx_instance_logs_instance")
-  @@index([user_id], map: "idx_instance_logs_user")
-  @@index([action], map: "idx_instance_logs_action")
-  @@index([created_at], map: "idx_instance_logs_created")
+model user_sessions {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  token          String
+  ip_address     String?   @db.VarChar(50)
+  user_agent     String?
+  expires_at     DateTime  @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  is_active      Boolean?  @default(true)
+  last_active_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model brand_configs {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String    @unique @db.VarChar(255)
+  value       String?
+  description String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model instance_metrics {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  instance_id  String    @db.Uuid
+  metric_type  String    @db.VarChar(50)
+  metric_value Decimal?  @db.Decimal(18, 8)
+  recorded_at  DateTime? @default(now()) @db.Timestamp(6)
 }

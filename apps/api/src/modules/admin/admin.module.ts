@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
-import { AdminEnhancedController } from './admin-enhanced.controller';
-import { AdminEnhancedService } from './admin-enhanced.service';
+// TODO: 临时禁用 AdminEnhanced，数据库 schema 需要同步
+// import { AdminEnhancedController } from './admin-enhanced.controller';
+// import { AdminEnhancedService } from './admin-enhanced.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { StakingModule } from '../staking/staking.module';
 
@@ -25,8 +26,8 @@ import { StakingModule } from '../staking/staking.module';
  */
 @Module({
   imports: [PrismaModule, StakingModule],
-  controllers: [AdminController, AdminEnhancedController],
-  providers: [AdminService, AdminEnhancedService],
-  exports: [AdminService, AdminEnhancedService],
+  controllers: [AdminController],
+  providers: [AdminService],
+  exports: [AdminService],
 })
 export class AdminModule {}

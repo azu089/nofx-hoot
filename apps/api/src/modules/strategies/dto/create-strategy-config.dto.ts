@@ -289,4 +289,24 @@ export class CreateStrategyConfigDto {
   @IsOptional()
   @IsBoolean()
   follow_strategy_code?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否启用 DCA 补仓（Position Adjustment）',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  position_adjustment_enable?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'DCA 补仓最大次数',
+    example: 3,
+    minimum: 0,
+    maximum: 10,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  max_entry_position_adjustment?: number;
 }

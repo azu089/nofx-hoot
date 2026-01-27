@@ -3097,7 +3097,7 @@ export class AdminService {
     configs.forEach((c) => {
       const key = c.config_key.replace('tg_bot.', '');
       try {
-        result[key] = JSON.parse(c.config_value);
+        result[key] = JSON.parse(c.config_value as string);
       } catch {
         result[key] = c.config_value;
       }
