@@ -206,11 +206,12 @@ export class InstancesService {
     }
 
     // 创建实例记录（状态为 pending）
+    // 默认使用 s-2vcpu-2gb (2核2G)，避免 CPU 过载导致心跳超时
     const instance = await this.prisma.client.instances.create({
       data: {
         user_id: userId,
         region: region,
-        size: 's-1vcpu-1gb',
+        size: 's-2vcpu-2gb',
         status: 'pending',
       },
     });

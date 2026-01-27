@@ -43,10 +43,10 @@ export class CreateInstanceDto {
   @IsString()
   region?: string; // 默认 sgp1
 
-  @ApiPropertyOptional({ description: '规格', default: 's-1vcpu-1gb' })
+  @ApiPropertyOptional({ description: '规格', default: 's-2vcpu-2gb' })
   @IsOptional()
   @IsString()
-  size?: string;   // 默认 s-1vcpu-1gb
+  size?: string;   // 默认 s-2vcpu-2gb (2核2G，避免 CPU 过载)
 
   @ApiPropertyOptional({ description: '使用积分抵扣', default: false })
   @IsOptional()
