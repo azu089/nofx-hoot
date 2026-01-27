@@ -665,7 +665,11 @@ export class AdminEnhancedService {
   // ==================== 登录异常检测 ====================
 
   async getLoginAlerts(query: { userId?: string; resolved?: boolean; severity?: string; page?: number; limit?: number }) {
-    const { userId, resolved, severity, page = 1, limit = 20 } = query;
+    const userId = query.userId;
+    const resolved = query.resolved;
+    const severity = query.severity;
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 20;
 
     const where: any = {};
     if (userId) where.user_id = userId;
