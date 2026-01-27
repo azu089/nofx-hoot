@@ -668,7 +668,7 @@ function VpsLogsTab({ instanceId }: VpsLogsTabProps) {
   const [loading, setLoading] = useState(false);
 
   const fetchLogs = useCallback(async () => {
-    if (!instanceId) return;
+    // 即使没有活跃实例也获取日志（可以看到销毁原因等历史记录）
     setLoading(true);
     try {
       const res = await strategiesApi.getVpsLogs(100);
@@ -686,7 +686,7 @@ function VpsLogsTab({ instanceId }: VpsLogsTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [instanceId]);
+  }, []); // 不依赖 instanceId，始终获取用户所有系统日志
 
   useEffect(() => {
     fetchLogs();

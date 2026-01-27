@@ -38,6 +38,11 @@ export default function AdminStrategiesPage() {
     type: 'grid',
     code: '',
     riskLevel: 'medium',
+    // 性能指标字段
+    monthlyReturn: '',
+    winRate: '',
+    maxDrawdown: '',
+    sharpeRatio: '',
   });
 
   const { data: strategiesRes, isLoading } = useQuery({
@@ -61,12 +66,29 @@ export default function AdminStrategiesPage() {
 
   // 文件上传方式创建
   const uploadMutation = useMutation({
-    mutationFn: async (data: { file: File; name: string; description?: string; config?: string }) => {
+    mutationFn: async (data: {
+      file: File;
+      name: string;
+      description?: string;
+      config?: string;
+      type?: string;
+      riskLevel?: string;
+      monthlyReturn?: string;
+      winRate?: string;
+      maxDrawdown?: string;
+      sharpeRatio?: string;
+    }) => {
       const formData = new FormData();
       formData.append('file', data.file);
       formData.append('name', data.name);
       if (data.description) formData.append('description', data.description);
       if (data.config) formData.append('config', data.config);
+      if (data.type) formData.append('type', data.type);
+      if (data.riskLevel) formData.append('riskLevel', data.riskLevel);
+      if (data.monthlyReturn) formData.append('monthlyReturn', data.monthlyReturn);
+      if (data.winRate) formData.append('winRate', data.winRate);
+      if (data.maxDrawdown) formData.append('maxDrawdown', data.maxDrawdown);
+      if (data.sharpeRatio) formData.append('sharpeRatio', data.sharpeRatio);
       return adminApi.uploadStrategy(formData);
     },
     onSuccess: (response) => {
@@ -80,8 +102,21 @@ export default function AdminStrategiesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; description?: string; type?: string; code?: string; status?: string; riskLevel?: string } }) =>
-      adminApi.updateStrategy(id, data),
+    mutationFn: ({ id, data }: {
+      id: string;
+      data: {
+        name?: string;
+        description?: string;
+        type?: string;
+        code?: string;
+        status?: string;
+        riskLevel?: string;
+        monthlyReturn?: number;
+        winRate?: number;
+        maxDrawdown?: number;
+        sharpeRatio?: number;
+      }
+    }) => adminApi.updateStrategy(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'strategies'] });
       resetForm();
@@ -116,7 +151,17 @@ export default function AdminStrategiesPage() {
 
   const resetForm = () => {
     setShowEditor(false);
-    setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
+    setFormData({
+      name: '',
+      description: '',
+      type: 'grid',
+      code: '',
+      riskLevel: 'medium',
+      monthlyReturn: '',
+      winRate: '',
+      maxDrawdown: '',
+      sharpeRatio: '',
+    });
     setEditingStrategy(null);
     setSelectedFile(null);
     setUploadMode('file');
@@ -148,7 +193,20 @@ export default function AdminStrategiesPage() {
     }
 
     if (editingStrategy) {
-      updateMutation.mutate({ id: editingStrategy.id, data: formData });
+      updateMutation.mutate({
+        id: editingStrategy.id,
+        data: {
+          name: formData.name,
+          description: formData.description,
+          type: formData.type,
+          code: formData.code,
+          riskLevel: formData.riskLevel,
+          monthlyReturn: formData.monthlyReturn ? parseFloat(formData.monthlyReturn) : undefined,
+          winRate: formData.winRate ? parseFloat(formData.winRate) : undefined,
+          maxDrawdown: formData.maxDrawdown ? parseFloat(formData.maxDrawdown) : undefined,
+          sharpeRatio: formData.sharpeRatio ? parseFloat(formData.sharpeRatio) : undefined,
+        },
+      });
     } else if (uploadMode === 'file') {
       if (!selectedFile) {
         toast.error('请选择策略文件');
@@ -158,13 +216,29 @@ export default function AdminStrategiesPage() {
         file: selectedFile,
         name: formData.name,
         description: formData.description,
+        type: formData.type,
+        riskLevel: formData.riskLevel,
+        monthlyReturn: formData.monthlyReturn,
+        winRate: formData.winRate,
+        maxDrawdown: formData.maxDrawdown,
+        sharpeRatio: formData.sharpeRatio,
       });
     } else {
       if (!formData.code) {
         toast.error('请输入策略代码');
         return;
       }
-      createMutation.mutate(formData);
+      createMutation.mutate({
+        name: formData.name,
+        description: formData.description,
+        type: formData.type,
+        code: formData.code,
+        riskLevel: formData.riskLevel,
+        monthlyReturn: formData.monthlyReturn ? parseFloat(formData.monthlyReturn) : undefined,
+        winRate: formData.winRate ? parseFloat(formData.winRate) : undefined,
+        maxDrawdown: formData.maxDrawdown ? parseFloat(formData.maxDrawdown) : undefined,
+        sharpeRatio: formData.sharpeRatio ? parseFloat(formData.sharpeRatio) : undefined,
+      });
     }
   };
 
@@ -207,7 +281,17 @@ export default function AdminStrategiesPage() {
         <button
           onClick={() => {
             setEditingStrategy(null);
-            setFormData({ name: '', description: '', type: 'grid', code: '', riskLevel: 'medium' });
+            setFormData({
+              name: '',
+              description: '',
+              type: 'grid',
+              code: '',
+              riskLevel: 'medium',
+              monthlyReturn: '',
+              winRate: '',
+              maxDrawdown: '',
+              sharpeRatio: '',
+            });
             setSelectedFile(null);
             setUploadMode('file');
             setShowEditor(true);
@@ -297,6 +381,10 @@ export default function AdminStrategiesPage() {
                               type: strategy.type || 'grid',
                               code: strategy.content || '',
                               riskLevel: strategy.riskLevel || 'medium',
+                              monthlyReturn: strategy.monthlyReturn?.toString() || '',
+                              winRate: strategy.winRate?.toString() || '',
+                              maxDrawdown: strategy.maxDrawdown?.toString() || '',
+                              sharpeRatio: strategy.sharpeRatio?.toString() || '',
                             });
                             setUploadMode('text');
                             setShowEditor(true);
@@ -333,19 +421,43 @@ export default function AdminStrategiesPage() {
                   <div>
                     <p className="text-text-secondary text-xs">月收益</p>
                     <p className={`font-medium ${
-                      strategy.monthlyReturn?.startsWith?.('+') ? 'text-success' : 'text-white'
+                      strategy.monthlyReturn && strategy.monthlyReturn > 0 ? 'text-success' : 'text-white'
                     }`}>
-                      {strategy.monthlyReturn || '-'}
+                      {strategy.monthlyReturn != null ? `${strategy.monthlyReturn > 0 ? '+' : ''}${strategy.monthlyReturn}%` : '-'}
                     </p>
                   </div>
                   <div>
                     <p className="text-text-secondary text-xs">订阅者</p>
                     <p className="text-white font-medium flex items-center gap-1">
                       <Users className="w-4 h-4 text-text-secondary" />
-                      {strategy.subscribers ?? 0}
+                      {strategy.subscriberCount ?? strategy.subscribers ?? 0}
                     </p>
                   </div>
                 </div>
+
+                {/* 额外性能指标 */}
+                {(strategy.winRate || strategy.maxDrawdown || strategy.sharpeRatio) && (
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border-primary/50">
+                    {strategy.winRate != null && (
+                      <div className="text-center">
+                        <p className="text-text-tertiary text-xs">胜率</p>
+                        <p className="text-white text-sm font-medium">{strategy.winRate}%</p>
+                      </div>
+                    )}
+                    {strategy.maxDrawdown != null && (
+                      <div className="text-center">
+                        <p className="text-text-tertiary text-xs">回撤</p>
+                        <p className="text-danger text-sm font-medium">{strategy.maxDrawdown}%</p>
+                      </div>
+                    )}
+                    {strategy.sharpeRatio != null && (
+                      <div className="text-center">
+                        <p className="text-text-tertiary text-xs">夏普</p>
+                        <p className="text-white text-sm font-medium">{strategy.sharpeRatio}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between pt-2 border-t border-border-primary">
                   {getRiskBadge(strategy.riskLevel || 'medium')}
@@ -449,6 +561,67 @@ export default function AdminStrategiesPage() {
                   className="w-full px-4 py-3 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-secondary focus:outline-none focus:border-brand-primary min-h-[100px]"
                   placeholder="输入策略描述"
                 />
+              </div>
+
+              {/* 性能指标 - 用于策略市场卡片展示 */}
+              <div className="border border-border-primary rounded-lg p-4 bg-bg-tertiary/50">
+                <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-brand-primary" />
+                  性能指标（用于策略市场展示）
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-text-secondary text-xs mb-1.5">月收益率 (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.monthlyReturn}
+                      onChange={(e) => setFormData({ ...formData, monthlyReturn: e.target.value })}
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-tertiary text-sm focus:outline-none focus:border-brand-primary"
+                      placeholder="如: 15.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-text-secondary text-xs mb-1.5">胜率 (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={formData.winRate}
+                      onChange={(e) => setFormData({ ...formData, winRate: e.target.value })}
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-tertiary text-sm focus:outline-none focus:border-brand-primary"
+                      placeholder="如: 68.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-text-secondary text-xs mb-1.5">最大回撤 (%)</label>
+                    <input
+                      type="number"
+                      min="-100"
+                      max="0"
+                      step="0.1"
+                      value={formData.maxDrawdown}
+                      onChange={(e) => setFormData({ ...formData, maxDrawdown: e.target.value })}
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-tertiary text-sm focus:outline-none focus:border-brand-primary"
+                      placeholder="如: -12.3"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-text-secondary text-xs mb-1.5">夏普比率</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.sharpeRatio}
+                      onChange={(e) => setFormData({ ...formData, sharpeRatio: e.target.value })}
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-border-primary rounded-lg text-white placeholder-text-tertiary text-sm focus:outline-none focus:border-brand-primary"
+                      placeholder="如: 1.85"
+                    />
+                  </div>
+                </div>
+                <p className="text-text-tertiary text-xs mt-2">
+                  这些数据将显示在策略市场卡片上，帮助用户了解策略表现
+                </p>
               </div>
 
               {/* 文件上传区域 */}

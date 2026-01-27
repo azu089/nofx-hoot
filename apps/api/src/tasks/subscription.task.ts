@@ -203,6 +203,15 @@ export class SubscriptionTask {
         },
       });
 
+      // 2.1【Bug修复】将该用户所有活跃策略配置设为非活跃
+      await tx.user_strategy_configs.updateMany({
+        where: {
+          user_id: user.id,
+          is_active: true,
+        },
+        data: { is_active: false },
+      });
+
       // 3. 记录降级日志
       await tx.billing_logs.create({
         data: {

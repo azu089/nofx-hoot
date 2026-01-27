@@ -1737,11 +1737,27 @@ export const adminApi = {
       total: number;
     }>>('/admin/strategies', { params: { page } }),
 
-  createStrategy: (data: { name: string; description: string; type: string; code: string; riskLevel: string }) =>
+  createStrategy: (data: {
+    name: string;
+    description?: string;
+    type?: string;
+    code: string;
+    riskLevel?: string;
+    monthlyReturn?: number;
+    winRate?: number;
+    maxDrawdown?: number;
+    sharpeRatio?: number;
+  }) =>
     api.post<never, ApiResponse<{ id: string }>>('/admin/strategies', {
       name: data.name,
       description: data.description,
       content: data.code, // 后端字段是 content
+      type: data.type,
+      riskLevel: data.riskLevel,
+      monthlyReturn: data.monthlyReturn,
+      winRate: data.winRate,
+      maxDrawdown: data.maxDrawdown,
+      sharpeRatio: data.sharpeRatio,
     }),
 
   // 上传策略文件
@@ -1763,11 +1779,28 @@ export const adminApi = {
       riskLevel: string;
     }>>(`/admin/strategies/${id}`),
 
-  updateStrategy: (id: string, data: { name?: string; description?: string; type?: string; code?: string; status?: string; riskLevel?: string }) =>
+  updateStrategy: (id: string, data: {
+    name?: string;
+    description?: string;
+    type?: string;
+    code?: string;
+    status?: string;
+    riskLevel?: string;
+    monthlyReturn?: number;
+    winRate?: number;
+    maxDrawdown?: number;
+    sharpeRatio?: number;
+  }) =>
     api.patch<never, ApiResponse<{ success: boolean }>>(`/admin/strategies/${id}`, {
       name: data.name,
       description: data.description,
       content: data.code, // 后端字段是 content
+      type: data.type,
+      riskLevel: data.riskLevel,
+      monthlyReturn: data.monthlyReturn,
+      winRate: data.winRate,
+      maxDrawdown: data.maxDrawdown,
+      sharpeRatio: data.sharpeRatio,
     }),
 
   deleteStrategy: (id: string) =>

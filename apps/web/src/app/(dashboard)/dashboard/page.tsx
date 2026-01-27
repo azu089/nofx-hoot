@@ -114,7 +114,7 @@ export default function DashboardPage() {
       {/* 移动端极简布局 */}
       <div className="lg:hidden">
         {/* ========== 资产英雄卡片 - 光球脉动 ========== */}
-        <div className="mx-4 mt-4 mb-6 p-4 rounded-2xl relative bg-bg-secondary overflow-hidden">
+        <div className="mx-4 mt-4 mb-6 p-4 rounded-2xl relative bg-bg-secondary/50 overflow-hidden">
           {/* 光球脉动效果 */}
           <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
           <div className="relative z-10">
@@ -411,7 +411,7 @@ function MarketSentimentMobile() {
 
   if (loading) {
     return (
-      <div className="p-4 rounded-xl relative bg-bg-secondary overflow-hidden" aria-busy="true" aria-label="加载市场情绪指数">
+      <div className="p-4 rounded-xl relative bg-bg-secondary/50 overflow-hidden" aria-busy="true" aria-label="加载市场情绪指数">
         <div className="pointer-events-none absolute -top-16 right-0 h-32 w-32 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
         <div className="relative z-10 animate-pulse flex items-center justify-between">
           <div className="h-4 w-32 bg-border-primary rounded" />
@@ -435,7 +435,7 @@ function MarketSentimentMobile() {
   const { text, textClass, bgClass } = config[classification] || config['Neutral'];
 
   return (
-    <div className="p-4 rounded-xl relative bg-bg-secondary overflow-hidden">
+    <div className="p-4 rounded-xl relative bg-bg-secondary/50 overflow-hidden">
       <div className="pointer-events-none absolute -top-16 right-0 h-32 w-32 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary" />
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-3">

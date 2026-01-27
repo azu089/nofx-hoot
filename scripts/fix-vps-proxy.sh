@@ -3,28 +3,34 @@
 # VPS 代理服务修复脚本
 #
 # 使用方法：
-# 1. 先 SSH 到生产服务器 (api.tizo.cc)
-# 2. 从生产服务器 SSH 到 VPS: ssh root@167.99.66.11
-# 3. 在 VPS 上执行此脚本
+# 1. 通过 DigitalOcean 控制台登录 VPS
+# 2. 执行此脚本
 # ============================================================
 
 echo "=========================================="
-echo "QuantFi VPS 代理服务修复脚本"
+echo "QuantFi VPS 完整修复脚本"
 echo "=========================================="
 
+# ==================== 修复 SSH 配置 ====================
+echo "[0/6] 修复 SSH 配置（启用密码登录）..."
+sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+systemctl restart sshd 2>/dev/null || service ssh restart 2>/dev/null || true
+echo "✅ SSH 密码登录已启用"
+
 # 停止现有服务
-echo "[1/5] 停止现有代理服务..."
+echo "[1/6] 停止现有代理服务..."
 pm2 stop quantfi-proxy 2>/dev/null || true
 pm2 delete quantfi-proxy 2>/dev/null || true
 
 # 备份旧代码
-echo "[2/5] 备份旧代码..."
+echo "[2/6] 备份旧代码..."
 if [ -f /opt/quantfi/proxy/server.js ]; then
   cp /opt/quantfi/proxy/server.js /opt/quantfi/proxy/server.js.backup.$(date +%Y%m%d%H%M%S)
 fi
 
 # 写入修复后的代理服务代码
-echo "[3/5] 写入修复后的代理服务代码..."
+echo "[3/6] 写入修复后的代理服务代码..."
 cat > /opt/quantfi/proxy/server.js << 'PROXYEOF'
 const express = require('express');
 const ccxt = require('ccxt');
@@ -35,9 +41,14 @@ const envPath = '/opt/quantfi/.env';
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf-8');
   envContent.split('\n').forEach(line => {
-    const [key, value] = line.split('=');
-    if (key && value && !process.env[key]) {
-      process.env[key] = value.trim();
+    // 修复：正确处理值中包含 '=' 的情况（如 URL）
+    const idx = line.indexOf('=');
+    if (idx > 0) {
+      const key = line.substring(0, idx).trim();
+      const value = line.substring(idx + 1).trim();
+      if (key && value && !process.env[key]) {
+        process.env[key] = value;
+      }
     }
   });
   console.log('✅ 环境变量已从 .env 文件加载');
@@ -266,12 +277,12 @@ app.listen(PORT, '0.0.0.0', () => {
 PROXYEOF
 
 # 确保依赖已安装
-echo "[4/5] 安装/更新依赖..."
+echo "[4/6] 安装/更新依赖..."
 cd /opt/quantfi/proxy
 npm install --production 2>/dev/null || npm install
 
 # 重启服务
-echo "[5/5] 启动代理服务..."
+echo "[5/6] 启动代理服务..."
 pm2 start /opt/quantfi/proxy/server.js --name quantfi-proxy
 pm2 save
 

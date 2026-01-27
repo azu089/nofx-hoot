@@ -846,6 +846,12 @@ export class AdminController {
         name: { type: 'string', description: '策略名称' },
         description: { type: 'string', description: '策略描述' },
         config: { type: 'string', description: '策略配置 JSON' },
+        type: { type: 'string', description: '策略类型: grid, trend, dca, arbitrage, ai' },
+        riskLevel: { type: 'string', description: '风险等级: low, medium, high' },
+        monthlyReturn: { type: 'number', description: '月收益率 (%)' },
+        winRate: { type: 'number', description: '胜率 (0-100%)' },
+        maxDrawdown: { type: 'number', description: '最大回撤 (-100% - 0%)' },
+        sharpeRatio: { type: 'number', description: '夏普比率' },
       },
       required: ['file', 'name'],
     },
@@ -872,6 +878,12 @@ export class AdminController {
     @Body('name') name: string,
     @Body('description') description?: string,
     @Body('config') config?: string,
+    @Body('type') type?: string,
+    @Body('riskLevel') riskLevel?: string,
+    @Body('monthlyReturn') monthlyReturn?: string,
+    @Body('winRate') winRate?: string,
+    @Body('maxDrawdown') maxDrawdown?: string,
+    @Body('sharpeRatio') sharpeRatio?: string,
   ) {
     if (!file) {
       throw new BadRequestException('请上传策略文件');
@@ -888,13 +900,19 @@ export class AdminController {
     // 读取文件内容
     const content = file.buffer.toString('utf-8');
 
-    // 创建策略
+    // 创建策略（包含性能指标）
     const strategy = await this.adminService.createStrategy(
       {
         name,
         description,
         content,
         config,
+        type,
+        riskLevel,
+        monthlyReturn: monthlyReturn ? parseFloat(monthlyReturn) : undefined,
+        winRate: winRate ? parseFloat(winRate) : undefined,
+        maxDrawdown: maxDrawdown ? parseFloat(maxDrawdown) : undefined,
+        sharpeRatio: sharpeRatio ? parseFloat(sharpeRatio) : undefined,
       },
       admin.sub,
     );

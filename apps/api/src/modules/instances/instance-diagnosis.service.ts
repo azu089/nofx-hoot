@@ -15,6 +15,8 @@ export interface DiagnosisResult {
   port8080Open: boolean;
   diskUsagePercent: number;
   memoryAvailableMB: number;
+  cpuUsagePercent: number; // CPU 使用率
+  cpuOverloaded: boolean;  // CPU 是否过载 (>90%)
   repairActions: RepairAction[];
   rawOutput?: Record<string, string>;
 }
@@ -25,6 +27,7 @@ export interface DiagnosisResult {
 export type RepairAction =
   | { type: 'restart_proxy' }
   | { type: 'restart_freqtrade' }
+  | { type: 'restart_freqtrade_cpu_overload' } // CPU 过载时重启 Freqtrade
   | { type: 'kill_port_8081' }
   | { type: 'clear_logs' }
   | { type: 'reboot_vps' }
@@ -55,6 +58,8 @@ export class InstanceDiagnosisService {
       port8080Open: false,
       diskUsagePercent: 0,
       memoryAvailableMB: 0,
+      cpuUsagePercent: 0,
+      cpuOverloaded: false,
       repairActions: [],
       rawOutput: {},
     };
@@ -70,11 +75,12 @@ export class InstanceDiagnosisService {
     }
 
     // 2. 检查各项服务（并行执行提高效率）
-    const [proxyCheck, freqtradeCheck, diskCheck, memoryCheck] = await Promise.all([
+    const [proxyCheck, freqtradeCheck, diskCheck, memoryCheck, cpuCheck] = await Promise.all([
       this.checkProxyStatus(ipAddress),
       this.checkFreqtradeStatus(ipAddress),
       this.checkDiskUsage(ipAddress),
       this.checkMemory(ipAddress),
+      this.checkCpuUsage(ipAddress),
     ]);
 
     result.proxyStatus = proxyCheck.status;
@@ -91,12 +97,17 @@ export class InstanceDiagnosisService {
     result.memoryAvailableMB = memoryCheck.availableMB;
     if (result.rawOutput) result.rawOutput['memory'] = memoryCheck.raw;
 
+    result.cpuUsagePercent = cpuCheck.usagePercent;
+    result.cpuOverloaded = cpuCheck.overloaded;
+    if (result.rawOutput) result.rawOutput['cpu'] = cpuCheck.raw;
+
     // 3. 生成修复方案
     result.repairActions = this.generateRepairPlan(result);
 
     this.logger.log(
       `[诊断] 诊断完成: ${ipAddress}, SSH=${result.sshReachable}, ` +
         `Proxy=${result.proxyStatus}, Freqtrade=${result.freqtradeStatus}, ` +
+        `CPU=${result.cpuUsagePercent}%${result.cpuOverloaded ? '(过载!)' : ''}, ` +
         `Disk=${result.diskUsagePercent}%, Memory=${result.memoryAvailableMB}MB, ` +
         `Actions=${result.repairActions.length}`,
     );
@@ -232,10 +243,43 @@ export class InstanceDiagnosisService {
   }
 
   /**
+   * 检查 CPU 使用率
+   * 使用 top 命令获取瞬时 CPU 使用率
+   */
+  private async checkCpuUsage(ipAddress: string): Promise<{ usagePercent: number; overloaded: boolean; raw: string }> {
+    try {
+      // 使用 top 命令获取 CPU 使用率（idle 的反向）
+      // -b: batch mode, -n1: 只取一次, -d0.5: 0.5秒采样
+      const cmd = `ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@${ipAddress} "top -bn1 -d0.5 | grep 'Cpu(s)' | awk '{print 100 - \\$8}'"`;
+      const { stdout } = await execAsync(cmd, { timeout: this.SSH_TIMEOUT + 2000 }); // 多给2秒采样
+
+      const usagePercent = Math.round(parseFloat(stdout.trim()) || 0);
+      const overloaded = usagePercent >= 90;
+
+      if (overloaded) {
+        this.logger.warn(`[诊断] CPU 过载: ${usagePercent}%`);
+      }
+
+      return { usagePercent, overloaded, raw: stdout.trim() };
+    } catch (error) {
+      this.logger.debug(`[诊断] 检查 CPU 失败: ${error.message}`);
+      return { usagePercent: 0, overloaded: false, raw: error.message };
+    }
+  }
+
+  /**
    * 生成修复方案
    */
   private generateRepairPlan(result: DiagnosisResult): RepairAction[] {
     const actions: RepairAction[] = [];
+
+    // 优先级 0：CPU 过载（最高优先级，会导致心跳无法发送）
+    if (result.cpuOverloaded) {
+      this.logger.warn(`[诊断] CPU 过载: ${result.cpuUsagePercent}%，需要重启 Freqtrade`);
+      actions.push({ type: 'restart_freqtrade_cpu_overload' });
+      // CPU 过载时，直接返回，先解决 CPU 问题
+      return actions;
+    }
 
     // 优先级 1：磁盘满优先处理
     if (result.diskUsagePercent > 90) {

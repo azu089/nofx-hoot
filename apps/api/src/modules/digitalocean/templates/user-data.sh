@@ -42,6 +42,24 @@ retry() {
 echo "[1/12] 设置 root 密码..."
 echo "root:{{VPS_PASSWORD}}" | chpasswd && echo "✅ root 密码已设置" || echo "⚠️ root 密码设置失败"
 
+# ==================== 配置 Swap（防止 1GB VPS 内存不足）====================
+echo "[1.5/12] 配置 Swap..."
+if [ ! -f /swapfile ]; then
+  # 创建 1GB swap 文件
+  fallocate -l 1G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=1024
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  # 开机自动挂载
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  # 调整 swappiness（较低的值减少 swap 使用，但在内存紧张时仍会使用）
+  sysctl vm.swappiness=10
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+  echo "✅ Swap 配置完成（1GB）"
+else
+  echo "✅ Swap 已存在"
+fi
+
 # ==================== 系统更新 ====================
 echo "[2/12] 更新系统..."
 retry apt-get update -y || echo "⚠️ apt-get update 失败，继续执行..."
@@ -133,47 +151,76 @@ echo "y" | ufw reset 2>/dev/null || true
 ufw default deny incoming
 ufw default allow outgoing
 
-# 允许 SSH（仅来自主服务器）
-ufw allow from {{MASTER_SERVER_IP}} to any port 22
+# 验证主服务器 IP 格式
+MASTER_IP="{{MASTER_SERVER_IP}}"
+if [[ "$MASTER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?$ ]]; then
+  # 允许 SSH（仅来自主服务器）
+  ufw allow from $MASTER_IP to any port 22
+  # 允许代理服务（仅来自主服务器）
+  ufw allow from $MASTER_IP to any port 8081
+  echo "✅ UFW 已配置 IP 白名单: $MASTER_IP"
+else
+  # 降级：如果 IP 无效，允许所有来源（但有 fail2ban 保护）
+  echo "⚠️ MASTER_SERVER_IP 格式无效 ($MASTER_IP)，降级为允许所有来源"
+  ufw allow 22/tcp
+  ufw allow 8081/tcp
+fi
 
 # 允许 Freqtrade API（全开放，因为有 JWT 验证）
 ufw allow 8080/tcp
-
-# 允许代理服务（仅来自主服务器）
-ufw allow from {{MASTER_SERVER_IP}} to any port 8081
 
 # 启用防火墙（非交互式）
 echo "y" | ufw enable 2>/dev/null || true
 
 echo "✅ UFW 防火墙配置完成"
 
-# ==================== SSH 加固 ====================
-echo "[7/12] 加固 SSH..."
+# ==================== SSH 配置 ====================
+echo "[7/12] 配置 SSH..."
 
-sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+# 重要：保留密码登录，确保可以通过统一密码访问 VPS
+# 同时启用公钥认证作为备选方式
+sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-grep -q "^MaxAuthTries" /etc/ssh/sshd_config || echo "MaxAuthTries 3" >> /etc/ssh/sshd_config
-grep -q "^LoginGraceTime" /etc/ssh/sshd_config || echo "LoginGraceTime 30" >> /etc/ssh/sshd_config
+# 添加主服务器的 SSH 公钥（如果提供了的话）
+# 检查：非空、不包含 {{ 占位符、以 ssh- 开头（有效公钥格式）
+MASTER_KEY="{{MASTER_SSH_KEY}}"
+if [ -n "$MASTER_KEY" ] && [[ ! "$MASTER_KEY" =~ \{\{ ]] && [[ "$MASTER_KEY" =~ ^ssh- ]]; then
+  mkdir -p /root/.ssh
+  chmod 700 /root/.ssh
+  echo "$MASTER_KEY" >> /root/.ssh/authorized_keys
+  chmod 600 /root/.ssh/authorized_keys
+  echo "✅ 主服务器 SSH 公钥已添加"
+else
+  echo "ℹ️ 未提供有效的 SSH 公钥，跳过"
+fi
+
+# SSH 安全加固（不影响密码登录）
+grep -q "^MaxAuthTries" /etc/ssh/sshd_config || echo "MaxAuthTries 5" >> /etc/ssh/sshd_config
+grep -q "^LoginGraceTime" /etc/ssh/sshd_config || echo "LoginGraceTime 60" >> /etc/ssh/sshd_config
 
 systemctl restart sshd || true
+echo "✅ SSH 配置完成（密码登录已启用）"
 
 # ==================== 创建工作目录 ====================
 echo "[8/12] 创建工作目录..."
 mkdir -p /opt/quantfi/freqtrade/user_data/strategies
 mkdir -p /opt/quantfi/freqtrade/user_data/data
 mkdir -p /opt/quantfi/logs
-chmod 777 /opt/quantfi/logs
+chmod 755 /opt/quantfi/logs
 cd /opt/quantfi
 
-# 写入环境变量
+# 写入环境变量（安全：先设置权限再写入）
+touch /opt/quantfi/.env
+chmod 600 /opt/quantfi/.env
 cat > /opt/quantfi/.env <<ENVEOF
 INSTANCE_ID={{INSTANCE_ID}}
 API_ENDPOINT={{API_ENDPOINT}}
 INSTANCE_TOKEN={{INSTANCE_TOKEN}}
 FREQTRADE_API_TOKEN={{FREQTRADE_API_TOKEN}}
 ENVEOF
+echo "✅ 环境变量文件已创建（权限 600）"
 
 # ==================== 配置 Freqtrade ====================
 echo "[9/12] 配置 Freqtrade..."
@@ -340,9 +387,14 @@ const envPath = '/opt/quantfi/.env';
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf-8');
   envContent.split('\n').forEach(line => {
-    const [key, value] = line.split('=');
-    if (key && value && !process.env[key]) {
-      process.env[key] = value.trim();
+    // 修复：正确处理值中包含 '=' 的情况（如 URL）
+    const idx = line.indexOf('=');
+    if (idx > 0) {
+      const key = line.substring(0, idx).trim();
+      const value = line.substring(idx + 1).trim();
+      if (key && value && !process.env[key]) {
+        process.env[key] = value;
+      }
     }
   });
   console.log('✅ 环境变量已从 .env 文件加载');
@@ -455,7 +507,12 @@ app.post('/api/update-config', configLimiter, async (req, res) => {
   if (!instanceToken || requestToken !== instanceToken) return res.status(401).json({ error: 'Unauthorized' });
   try {
     if (strategyName && strategyCode) {
-      fs.writeFileSync('/opt/quantfi/freqtrade/user_data/strategies/' + strategyName + '.py', strategyCode, 'utf8');
+      // 安全检查：防止路径注入，只允许字母数字下划线
+      const safeName = strategyName.replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!safeName || safeName !== strategyName) {
+        return res.status(400).json({ error: 'Invalid strategy name' });
+      }
+      fs.writeFileSync('/opt/quantfi/freqtrade/user_data/strategies/' + safeName + '.py', strategyCode, 'utf8');
     }
     if (config) {
       fs.writeFileSync('/opt/quantfi/freqtrade/user_data/config.json', JSON.stringify(config, null, 2), 'utf8');
@@ -569,17 +626,64 @@ FT_STATUS="stopped"
 [ "$FT_READY" = true ] && FT_STATUS="running"
 
 # ==================== 配置心跳 ====================
+
+# 【方案A】独立轻量心跳脚本 - 包含 Freqtrade 状态检测
+# 设计目标：即使 CPU 100% 也能成功发送，且能检测 Freqtrade 运行状态
+cat > /opt/quantfi/heartbeat-lite.sh <<'HBLITEEOF'
+#!/bin/bash
+# 轻量心跳 - 检测 Freqtrade 容器状态（不采集系统指标）
+# 设计目标：
+#   1. 即使 CPU 100% 也能成功发送
+#   2. 能检测 Freqtrade 是否在运行
+#   3. 不依赖 top/free 等可能卡住的命令
+
+# 读取环境变量（最简单的方式）
+source /opt/quantfi/.env 2>/dev/null || true
+
+# 如果变量为空，从文件手动读取
+if [ -z "$INSTANCE_ID" ]; then
+  INSTANCE_ID=$(grep "^INSTANCE_ID=" /opt/quantfi/.env 2>/dev/null | cut -d= -f2)
+fi
+if [ -z "$API_ENDPOINT" ]; then
+  API_ENDPOINT=$(grep "^API_ENDPOINT=" /opt/quantfi/.env 2>/dev/null | cut -d= -f2)
+fi
+if [ -z "$INSTANCE_TOKEN" ]; then
+  INSTANCE_TOKEN=$(grep "^INSTANCE_TOKEN=" /opt/quantfi/.env 2>/dev/null | cut -d= -f2)
+fi
+
+# 快速检测 Freqtrade 容器状态（docker ps 非常轻量，不受 CPU 负载影响）
+FT_STATUS="stopped"
+if docker ps 2>/dev/null | grep -q freqtrade; then
+  FT_STATUS="running"
+fi
+
+# 发送轻量心跳（包含 Freqtrade 状态，5秒超时）
+curl -s --max-time 5 \
+  -X POST "${API_ENDPOINT}/api/instances/${INSTANCE_ID}/heartbeat" \
+  -H "Content-Type: application/json" \
+  -H "X-Instance-Token: ${INSTANCE_TOKEN}" \
+  -d "{\"freqtradeStatus\": \"${FT_STATUS}\"}" > /dev/null 2>&1
+
+# 退出码不影响 cron
+exit 0
+HBLITEEOF
+
+chmod +x /opt/quantfi/heartbeat-lite.sh
+echo "✅ 轻量心跳脚本已创建"
+
+# 完整心跳脚本 - 采集系统指标（可能在高负载时超时，但不影响轻量心跳）
 cat > /opt/quantfi/heartbeat.sh <<'HBEOF'
 #!/bin/bash
 source /opt/quantfi/.env
 
-# CPU 使用率（兼容不同 Linux 版本）
+# CPU 使用率（兼容不同 Linux 版本，不依赖 bc）
 # 解析 us + sy 得到总 CPU 使用率
 CPU_LINE=$(top -bn1 2>/dev/null | grep -E "Cpu|%Cpu" | head -1)
 if [ -n "$CPU_LINE" ]; then
   CPU_US=$(echo "$CPU_LINE" | grep -oP '\d+\.?\d*\s*us' | grep -oP '\d+\.?\d*' | head -1)
   CPU_SY=$(echo "$CPU_LINE" | grep -oP '\d+\.?\d*\s*sy' | grep -oP '\d+\.?\d*' | head -1)
-  CPU_USAGE=$(echo "${CPU_US:-0} + ${CPU_SY:-0}" | bc 2>/dev/null || echo "0")
+  # 使用 awk 替代 bc，避免依赖问题
+  CPU_USAGE=$(echo "${CPU_US:-0} ${CPU_SY:-0}" | awk '{printf "%.1f", $1 + $2}' 2>/dev/null || echo "0")
 else
   CPU_USAGE=0
 fi
@@ -599,20 +703,26 @@ DISK_USAGE=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
 FT_STATUS="stopped"
 docker ps 2>/dev/null | grep -q freqtrade && FT_STATUS="running"
 
-# 发送心跳
-curl -s -X POST "${API_ENDPOINT}/api/instances/${INSTANCE_ID}/heartbeat" \
+# 发送完整心跳（含指标，10秒超时）
+curl -s --max-time 10 -X POST "${API_ENDPOINT}/api/instances/${INSTANCE_ID}/heartbeat" \
   -H "Content-Type: application/json" \
   -H "X-Instance-Token: ${INSTANCE_TOKEN}" \
   -d "{\"cpuUsage\": ${CPU_USAGE}, \"memoryUsage\": ${MEM_USAGE}, \"diskUsage\": ${DISK_USAGE}, \"freqtradeStatus\": \"${FT_STATUS}\"}" > /dev/null 2>&1
 HBEOF
 
 chmod +x /opt/quantfi/heartbeat.sh
+echo "✅ 完整心跳脚本已创建"
 
-# 添加 cron（每 30 秒心跳 - 使用两条 cron 实现）
-# cron 最小粒度是 1 分钟，通过两条规则 + sleep 实现 30 秒间隔
-(crontab -l 2>/dev/null | grep -v "heartbeat.sh"; \
-echo "* * * * * /opt/quantfi/heartbeat.sh >> /opt/quantfi/logs/heartbeat.log 2>&1"; \
+# 配置 cron 心跳任务：
+# 1. 轻量心跳：每分钟运行（高优先级，不依赖任何复杂命令）
+# 2. 完整心跳：每分钟 30 秒时运行（采集指标，可能在高负载时超时）
+(crontab -l 2>/dev/null | grep -v "heartbeat"; \
+echo "# QuantFi 轻量心跳（每分钟，高优先级）"; \
+echo "* * * * * /opt/quantfi/heartbeat-lite.sh"; \
+echo "# QuantFi 完整心跳（每分钟30秒，含指标）"; \
 echo "* * * * * sleep 30 && /opt/quantfi/heartbeat.sh >> /opt/quantfi/logs/heartbeat.log 2>&1") | crontab -
+
+echo "✅ 心跳 cron 配置完成（轻量版 + 完整版）"
 
 # ==================== 发送就绪回调 ====================
 echo "[12/12] 通知平台 VPS 就绪..."

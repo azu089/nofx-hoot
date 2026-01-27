@@ -30,6 +30,8 @@ export class InstanceRepairService {
   private readonly REPAIR_COMMANDS: Record<string, string> = {
     restart_proxy: 'pm2 restart quantfi-proxy',
     restart_freqtrade: 'cd /opt/quantfi && docker compose up -d',
+    // CPU 过载时：先停止 Freqtrade（等 CPU 冷却），再重启
+    restart_freqtrade_cpu_overload: 'cd /opt/quantfi && docker compose down && sleep 10 && docker compose up -d',
     kill_port_8081: 'fuser -k 8081/tcp 2>/dev/null || true',
     clear_logs: 'truncate -s 0 /opt/quantfi/logs/*.log 2>/dev/null; docker logs freqtrade --tail 0 2>/dev/null',
     reboot_vps: 'reboot',

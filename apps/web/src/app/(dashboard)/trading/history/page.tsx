@@ -198,9 +198,10 @@ export default function TradingHistoryPage() {
           <div className="bg-bg-secondary border border-border-primary rounded-xl p-3 text-center">
             <p className="text-text-tertiary text-xs mb-1">胜率</p>
             <p className="text-white font-bold">
-              {isNaN(parseFloat(stats.winRate || '0'))
-                ? '0'
-                : (parseFloat(stats.winRate) * 100).toFixed(0)}
+              {(() => {
+                const winRate = parseFloat(stats.winRate || '0');
+                return isNaN(winRate) ? '0' : (winRate * 100).toFixed(0);
+              })()}
               %
             </p>
           </div>
@@ -211,11 +212,11 @@ export default function TradingHistoryPage() {
                 parseFloat(stats.totalPnl || '0') >= 0 ? 'text-success' : 'text-danger'
               }`}
             >
-              {isNaN(parseFloat(stats.totalPnl || '0'))
-                ? '$0.00'
-                : `${parseFloat(stats.totalPnl) >= 0 ? '+' : ''}$${Math.abs(
-                    parseFloat(stats.totalPnl)
-                  ).toFixed(2)}`}
+              {(() => {
+                const totalPnl = parseFloat(stats.totalPnl || '0');
+                if (isNaN(totalPnl)) return '$0.00';
+                return `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(2)}`;
+              })()}
             </p>
           </div>
         </div>

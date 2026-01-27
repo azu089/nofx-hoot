@@ -139,7 +139,20 @@ export class InstancesController {
    */
   @Get()
   async findAll(@CurrentUser() user: JwtPayload) {
-    return this.instancesService.findAllByUserId(user.sub);
+    try {
+      const instances = await this.instancesService.findAllByUserId(user.sub);
+      return {
+        code: 0,
+        message: 'success',
+        data: instances,
+      };
+    } catch (error) {
+      return {
+        code: 50001,
+        message: error.message || '获取实例列表失败',
+        data: [],
+      };
+    }
   }
 
   /**
@@ -151,7 +164,20 @@ export class InstancesController {
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.instancesService.findById(id, user.sub);
+    try {
+      const instance = await this.instancesService.findById(id, user.sub);
+      return {
+        code: 0,
+        message: 'success',
+        data: instance,
+      };
+    } catch (error) {
+      return {
+        code: 40401,
+        message: error.message || '实例不存在',
+        data: null,
+      };
+    }
   }
 
   // 已移除：destroy, start, stop, restart, force-exit 接口

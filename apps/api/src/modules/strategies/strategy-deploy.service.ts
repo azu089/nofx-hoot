@@ -814,10 +814,98 @@ export class StrategyDeployService {
       throw new BadRequestException(`VPS 实例未运行: ${instance.status}`);
     }
 
+    // 启动前余额检查
+    // userConfig 直接包含 stake_amount 和 max_open_trades 字段
+    const stakeAmount = userConfig.stake_amount
+      ? parseFloat(String(userConfig.stake_amount))
+      : 10;
+    const maxOpenTrades = userConfig.max_open_trades || 3;
+    const requiredBalance = stakeAmount * maxOpenTrades;
+
+    if (!this.isSandbox) {
+      try {
+        const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
+        const balanceData = await this.freqtradeService.getBalance(instance.ip_address, apiToken);
+
+        // 查找 USDT 余额
+        const usdtBalance = balanceData.currencies?.find(
+          (c) => c.currency === 'USDT' || c.currency === 'BUSD',
+        );
+        const availableBalance = parseFloat(usdtBalance?.free || '0');
+
+        if (availableBalance < requiredBalance) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: 40018,
+            message: `交易所余额不足。当前可用：$${availableBalance.toFixed(2)}，所需最小：$${requiredBalance.toFixed(2)}`,
+            data: {
+              error_type: 'INSUFFICIENT_BALANCE',
+              available: availableBalance,
+              required: requiredBalance,
+              stake_amount: stakeAmount,
+              max_open_trades: maxOpenTrades,
+              suggestion: '请充值到交易所，或减少单笔交易金额/最大持仓数',
+            },
+          });
+        }
+
+        this.logger.log(
+          `余额检查通过: 可用=${availableBalance}, 所需=${requiredBalance}`,
+        );
+      } catch (error: any) {
+        // 如果是余额不足错误，直接抛出
+        if (error.response?.code === 40018) {
+          throw error;
+        }
+        // 其他错误（如网络问题）记录日志但不阻止启动
+        this.logger.warn(`余额检查失败，继续启动: ${error.message}`);
+      }
+    }
+
     // 调用 Freqtrade 启动 API（传入认证 Token）
     if (!this.isSandbox) {
       const apiToken = this.networkWhitelistService.generateFreqtradeToken(instance.id);
-      await this.freqtradeService.start(instance.ip_address, apiToken);
+      try {
+        await this.freqtradeService.start(instance.ip_address, apiToken);
+      } catch (error: any) {
+        const errorMsg = error.message || '';
+
+        // 检测 Binance Hedge Mode 错误
+        if (errorMsg.includes('Hedge Mode') || errorMsg.includes('hedge mode')) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: 40016,
+            message: '检测到您的 Binance 账户使用双向持仓模式，请切换到单向持仓模式',
+            data: {
+              error_type: 'HEDGE_MODE_NOT_SUPPORTED',
+              guide: {
+                app: '打开 Binance App → 合约 → 右上角 ⋯ → 偏好设置 → 持仓模式 → 单向持仓',
+                web: '登录 Binance 网页 → 合约 → 右上角设置 → 持仓模式 → 单向持仓',
+              },
+              note: 'Freqtrade 量化交易引擎仅支持单向持仓模式（One-Way Mode）',
+            },
+          });
+        }
+
+        // 检测 Multi-Asset Mode 错误
+        if (errorMsg.includes('Multi-Asset Mode') || errorMsg.includes('multi-asset')) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: 40017,
+            message: '检测到您的 Binance 账户使用多资产模式，请切换到单资产模式',
+            data: {
+              error_type: 'MULTI_ASSET_MODE_NOT_SUPPORTED',
+              guide: {
+                app: '打开 Binance App → 合约 → 设置 → 资产模式 → 单资产模式',
+                web: '登录 Binance 网页 → 合约 → 设置 → 资产模式 → 单资产模式',
+              },
+            },
+          });
+        }
+
+        // 其他错误继续抛出
+        throw error;
+      }
     }
 
     // 更新状态

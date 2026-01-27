@@ -250,7 +250,7 @@ export function TradingHeroCard({
   }
 
   return (
-    <div className="mx-4 mt-4 mb-4 relative bg-bg-secondary rounded-2xl overflow-hidden lg:mx-0 lg:mt-0 lg:mb-0 lg:bg-transparent lg:rounded-none lg:border-0 lg:shadow-none lg:overflow-visible">
+    <div className="mx-4 mt-4 mb-4 relative bg-bg-secondary/50 rounded-2xl overflow-hidden lg:mx-0 lg:mt-0 lg:mb-0 lg:bg-transparent lg:rounded-none lg:border-0 lg:shadow-none lg:overflow-visible">
       {/* 光球脉动效果 - 仅移动端显示 */}
       <div className="pointer-events-none absolute -top-20 right-0 h-40 w-40 animate-pulse rounded-full opacity-30 blur-3xl bg-brand-primary lg:hidden" />
       <div className="relative z-10">

@@ -323,19 +323,28 @@ export default function AdminLayout({
     // 等待 hydration 完成后进行认证检查
     if (!_hasHydrated) return;
 
+    // 登录页面不需要认证检查
+    if (pathname === '/admin/login') return;
+
     if (!isLoading) {
       if (!hasInitializedRef.current) {
         // 初始检查完成
         hasInitializedRef.current = true;
         if (!isAuthenticated) {
-          router.push('/login');
+          // 跳转到管理后台专用登录页
+          router.push('/admin/login');
         } else if (user?.role !== 'admin' && user?.role !== 'super_admin') {
           // 管理员角色检查：只有 admin 或 super_admin 可以访问
           router.push('/admin/unauthorized');
         }
       }
     }
-  }, [isAuthenticated, isLoading, router, user, _hasHydrated]);
+  }, [isAuthenticated, isLoading, router, user, _hasHydrated, pathname]);
+
+  // 登录页面单独渲染，不使用管理后台布局
+  if (pathname === '/admin/login') {
+    return <>{children}</>;
+  }
 
   // 加载中（包括客户端未挂载、hydration 未完成的情况）
   if (!isMounted || !_hasHydrated || isLoading) {
@@ -392,7 +401,7 @@ export default function AdminLayout({
           <button
             onClick={() => {
               logout();
-              router.push('/login');
+              router.push('/admin/login');
             }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-text-secondary hover:bg-bg-tertiary hover:text-danger transition-colors"
           >

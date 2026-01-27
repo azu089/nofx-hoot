@@ -824,83 +824,113 @@ export class StrategiesService {
   async calculateUserRevenueStats(userId: string) {
     this.logger.log(`计算用户策略收益统计: ${userId}`);
 
-    // 查询所有收益记录
-    const revenueLogs = await this.prisma.client.strategy_revenue_logs.findMany(
-      {
-        where: {
-          uploader_id: userId,
-        },
-        include: {
-          strategy: {
-            select: {
-              id: true,
-              name: true,
-              tier: true,
-            },
+    try {
+      // 查询所有收益记录（不使用 include 避免关系问题）
+      const revenueLogs =
+        await this.prisma.client.strategy_revenue_logs.findMany({
+          where: {
+            uploader_id: userId,
           },
-        },
-      },
-    );
-
-    // 计算总收益
-    let totalRevenue = new Decimal(0);
-    let pendingRevenue = new Decimal(0);
-    let settledRevenue = new Decimal(0);
-
-    const revenueByStrategyMap = new Map<
-      string,
-      {
-        strategyId: string;
-        strategyName: string;
-        revenue: Decimal;
-        users: Set<string>;
-        tier: string;
-      }
-    >();
-
-    for (const log of revenueLogs) {
-      const amount = new Decimal(log.revenue_amount);
-      totalRevenue = totalRevenue.plus(amount);
-
-      if (log.status === 'settled') {
-        settledRevenue = settledRevenue.plus(amount);
-      } else {
-        pendingRevenue = pendingRevenue.plus(amount);
-      }
-
-      // 按策略分组统计
-      if (!revenueByStrategyMap.has(log.strategy_id)) {
-        revenueByStrategyMap.set(log.strategy_id, {
-          strategyId: log.strategy_id,
-          strategyName: log.strategy.name,
-          revenue: new Decimal(0),
-          users: new Set<string>(),
-          tier: log.strategy.tier || 'bronze',
         });
+
+      // 如果没有收益记录，返回空数据
+      if (revenueLogs.length === 0) {
+        return {
+          totalRevenue: '0',
+          pendingRevenue: '0',
+          settledRevenue: '0',
+          revenueByStrategy: [],
+        };
       }
 
-      const strategyStats = revenueByStrategyMap.get(log.strategy_id)!;
-      strategyStats.revenue = strategyStats.revenue.plus(amount);
-      strategyStats.users.add(log.user_id);
+      // 获取所有相关策略的 ID
+      const strategyIds = [...new Set(revenueLogs.map((log) => log.strategy_id))];
+
+      // 单独查询策略信息
+      const strategies = await this.prisma.client.strategies.findMany({
+        where: {
+          id: { in: strategyIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          tier: true,
+        },
+      });
+
+      // 创建策略 ID -> 策略信息的映射
+      const strategyMap = new Map(strategies.map((s) => [s.id, s]));
+
+      // 计算总收益
+      let totalRevenue = new Decimal(0);
+      let pendingRevenue = new Decimal(0);
+      let settledRevenue = new Decimal(0);
+
+      const revenueByStrategyMap = new Map<
+        string,
+        {
+          strategyId: string;
+          strategyName: string;
+          revenue: Decimal;
+          users: Set<string>;
+          tier: string;
+        }
+      >();
+
+      for (const log of revenueLogs) {
+        const amount = new Decimal(log.revenue_amount);
+        totalRevenue = totalRevenue.plus(amount);
+
+        if (log.status === 'settled') {
+          settledRevenue = settledRevenue.plus(amount);
+        } else {
+          pendingRevenue = pendingRevenue.plus(amount);
+        }
+
+        // 按策略分组统计
+        if (!revenueByStrategyMap.has(log.strategy_id)) {
+          const strategy = strategyMap.get(log.strategy_id);
+          revenueByStrategyMap.set(log.strategy_id, {
+            strategyId: log.strategy_id,
+            strategyName: strategy?.name || '未知策略',
+            revenue: new Decimal(0),
+            users: new Set<string>(),
+            tier: strategy?.tier || 'bronze',
+          });
+        }
+
+        const strategyStats = revenueByStrategyMap.get(log.strategy_id)!;
+        strategyStats.revenue = strategyStats.revenue.plus(amount);
+        strategyStats.users.add(log.user_id);
+      }
+
+      // 转换为数组
+      const revenueByStrategy = Array.from(revenueByStrategyMap.values()).map(
+        (item) => ({
+          strategyId: item.strategyId,
+          strategyName: item.strategyName,
+          revenue: item.revenue.toString(),
+          users: item.users.size,
+          tier: item.tier,
+        }),
+      );
+
+      return {
+        totalRevenue: totalRevenue.toString(),
+        pendingRevenue: pendingRevenue.toString(),
+        settledRevenue: settledRevenue.toString(),
+        revenueByStrategy,
+      };
+    } catch (error) {
+      this.logger.error(`计算收益统计失败: ${error.message}`);
+      // 返回空数据，避免前端崩溃
+      return {
+        totalRevenue: '0',
+        pendingRevenue: '0',
+        settledRevenue: '0',
+        revenueByStrategy: [],
+      };
     }
-
-    // 转换为数组
-    const revenueByStrategy = Array.from(revenueByStrategyMap.values()).map(
-      (item) => ({
-        strategyId: item.strategyId,
-        strategyName: item.strategyName,
-        revenue: item.revenue.toString(),
-        users: item.users.size,
-        tier: item.tier,
-      }),
-    );
-
-    return {
-      totalRevenue: totalRevenue.toString(),
-      pendingRevenue: pendingRevenue.toString(),
-      settledRevenue: settledRevenue.toString(),
-      revenueByStrategy,
-    };
   }
 
   /**
@@ -913,57 +943,87 @@ export class StrategiesService {
   ) {
     this.logger.log(`查询用户收益明细: ${userId}`);
 
-    const page = query.page || 1;
-    const limit = query.limit || 20;
-    const skip = (page - 1) * limit;
+    try {
+      const page = query.page || 1;
+      const limit = query.limit || 20;
+      const skip = (page - 1) * limit;
 
-    const where: any = {
-      uploader_id: userId,
-    };
+      const where: any = {
+        uploader_id: userId,
+      };
 
-    if (query.strategyId) {
-      where.strategy_id = query.strategyId;
+      if (query.strategyId) {
+        where.strategy_id = query.strategyId;
+      }
+
+      // 不使用 include 避免关系问题
+      const [logs, total] = await Promise.all([
+        this.prisma.client.strategy_revenue_logs.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: {
+            created_at: 'desc',
+          },
+        }),
+        this.prisma.client.strategy_revenue_logs.count({ where }),
+      ]);
+
+      // 如果没有日志，直接返回空数据
+      if (logs.length === 0) {
+        return {
+          logs: [],
+          total: 0,
+          page,
+          totalPages: 0,
+        };
+      }
+
+      // 获取相关的策略和用户信息
+      const strategyIds = [...new Set(logs.map((log) => log.strategy_id))];
+      const userIds = [...new Set(logs.map((log) => log.user_id))];
+
+      const [strategies, users] = await Promise.all([
+        this.prisma.client.strategies.findMany({
+          where: { id: { in: strategyIds } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.client.users.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true },
+        }),
+      ]);
+
+      const strategyMap = new Map(strategies.map((s) => [s.id, s]));
+      const userMap = new Map(users.map((u) => [u.id, u]));
+
+      return {
+        logs: logs.map((log) => ({
+          id: log.id,
+          strategyName: strategyMap.get(log.strategy_id)?.name || '未知策略',
+          userName: (userMap.get(log.user_id)?.email || 'unknown@email.com').replace(
+            /(.{2}).*(@.*)/,
+            '$1***$2',
+          ), // 脱敏
+          baseAmount: log.base_amount.toString(),
+          revenueAmount: log.revenue_amount.toString(),
+          revenueShareRate: log.revenue_share_rate.toString(),
+          status: log.status,
+          createdAt: log.created_at,
+        })),
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+    } catch (error) {
+      this.logger.error(`查询收益明细失败: ${error.message}`);
+      return {
+        logs: [],
+        total: 0,
+        page: query.page || 1,
+        totalPages: 0,
+      };
     }
-
-    const [logs, total] = await Promise.all([
-      this.prisma.client.strategy_revenue_logs.findMany({
-        where,
-        include: {
-          strategy: {
-            select: {
-              name: true,
-            },
-          },
-          user: {
-            select: {
-              email: true,
-            },
-          },
-        },
-        skip,
-        take: limit,
-        orderBy: {
-          created_at: 'desc',
-        },
-      }),
-      this.prisma.client.strategy_revenue_logs.count({ where }),
-    ]);
-
-    return {
-      logs: logs.map((log) => ({
-        id: log.id,
-        strategyName: log.strategy.name,
-        userName: log.user.email.replace(/(.{2}).*(@.*)/, '$1***$2'), // 脱敏
-        baseAmount: log.base_amount.toString(),
-        revenueAmount: log.revenue_amount.toString(),
-        revenueShareRate: log.revenue_share_rate.toString(),
-        status: log.status,
-        createdAt: log.created_at,
-      })),
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    };
   }
 
   /**

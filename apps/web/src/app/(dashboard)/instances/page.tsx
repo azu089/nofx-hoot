@@ -25,6 +25,7 @@ import {
   RotateCcw,
   Trash2,
   Crown,
+  History,
 } from 'lucide-react';
 
 interface Instance {
@@ -35,6 +36,8 @@ interface Instance {
   cpu_usage: string | null;
   memory_usage: string | null;
   last_heartbeat: string | null;
+  destroy_reason?: string | null;
+  destroyed_at?: string | null;
 }
 
 interface Backup {
@@ -64,6 +67,7 @@ export default function InstancesPage() {
   const [restarting, setRestarting] = useState(false);
   const [destroying, setDestroying] = useState(false);
   const [showDestroyConfirm, setShowDestroyConfirm] = useState(false);
+  const [showHistorySection, setShowHistorySection] = useState(false);
 
   const fetchData = async (showRefreshFeedback = false) => {
     if (showRefreshFeedback) {
@@ -187,6 +191,7 @@ export default function InstancesPage() {
   }
 
   const activeInstances = instances.filter((i) => i.status !== 'destroyed');
+  const destroyedInstances = instances.filter((i) => i.status === 'destroyed');
   const hasActiveInstance = activeInstances.length > 0;
   const activeInstance = activeInstances[0] || null;
 
@@ -357,6 +362,60 @@ export default function InstancesPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ========== 实例历史 - 可收起 ========== */}
+      {destroyedInstances.length > 0 && (
+        <div className="px-4 mt-6">
+          <button
+            onClick={() => setShowHistorySection(!showHistorySection)}
+            className="flex items-center justify-between w-full py-3 text-left"
+          >
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-text-secondary" />
+              <span className="text-sm text-white">实例历史</span>
+              <span className="text-text-tertiary text-xs">({destroyedInstances.length})</span>
+            </div>
+            {showHistorySection ? (
+              <ChevronUp className="w-4 h-4 text-text-tertiary" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-text-tertiary" />
+            )}
+          </button>
+
+          {showHistorySection && (
+            <div className="pb-4 space-y-2">
+              {destroyedInstances.slice(0, 10).map((instance) => (
+                <a
+                  key={instance.id}
+                  href={`/instances/${instance.id}`}
+                  className="block p-3 bg-bg-secondary rounded-xl"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-text-tertiary" />
+                      <span className="text-white text-sm">
+                        {instance.ip_address || '未分配 IP'}
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 bg-text-tertiary/20 text-text-tertiary rounded text-xs">
+                      已销毁
+                    </span>
+                  </div>
+                  <div className="text-danger/80 text-xs mb-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {instance.destroy_reason || '未知原因'}
+                  </div>
+                  {instance.destroyed_at && (
+                    <p className="text-text-tertiary text-xs">
+                      销毁时间: {formatDateTime(instance.destroyed_at)}
+                    </p>
+                  )}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

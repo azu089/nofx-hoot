@@ -40,6 +40,7 @@ export type LogAction =
   | 'diagnosis_result'  // 诊断结果
   | 'repair_success'    // 修复成功
   | 'repair_failed'     // 修复失败
+  | 'cpu_overload'      // CPU 过载告警
   | 'auto_destroy';     // 自动销毁
 
 /**
@@ -73,6 +74,7 @@ export const SYSTEM_LOG_ACTIONS: LogAction[] = [
   'diagnosis_result',
   'repair_success',
   'repair_failed',
+  'cpu_overload',
   'auto_destroy',
 ];
 

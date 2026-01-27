@@ -258,6 +258,23 @@ export class StrategiesController {
             .replace(/Freqtrade/gi, '交易机器人')
             .replace(/freqtrade/gi, '交易机器人');
 
+          // 过滤无价值的日志（心跳、检查交易等）
+          const FILTERED_PATTERNS = [
+            /Bot heartbeat/i,           // 心跳日志
+            /heartbeat.*PID/i,          // 心跳变体
+            /Checking trades/i,         // 检查交易（太频繁）
+            /Found 0 open trade/i,      // 无持仓检查
+            /process_throttle_secs/i,   // 内部配置日志
+          ];
+
+          const shouldFilter = FILTERED_PATTERNS.some(pattern =>
+            pattern.test(sanitizedMessage)
+          );
+
+          if (shouldFilter) {
+            return; // 跳过无价值日志
+          }
+
           allLogs.push({
             id: `ft-${Date.now()}-${index}`,
             timestamp,

@@ -445,6 +445,9 @@ echo "QuantFi VPS 初始化完成"
       // 获取主服务器 IP（用于代理端口白名单）
       const masterServerIp = this.configService.get<string>('MASTER_SERVER_IP') || '0.0.0.0/0';
 
+      // 获取主服务器 SSH 公钥（用于免密登录 VPS）
+      const masterSshKey = this.configService.get<string>('MASTER_SSH_KEY') || '';
+
       // 替换所有占位符
       template = template.replace(/\{\{INSTANCE_ID\}\}/g, instanceId);
       template = template.replace(/\{\{API_ENDPOINT\}\}/g, apiEndpoint);
@@ -452,6 +455,7 @@ echo "QuantFi VPS 初始化完成"
       template = template.replace(/\{\{FREQTRADE_API_TOKEN\}\}/g, freqtradeApiToken);
       template = template.replace(/\{\{SSH_WHITELIST_RULES\}\}/g, sshWhitelistRules);
       template = template.replace(/\{\{MASTER_SERVER_IP\}\}/g, masterServerIp);
+      template = template.replace(/\{\{MASTER_SSH_KEY\}\}/g, masterSshKey);
       template = template.replace(/\{\{GENERATED_AT\}\}/g, new Date().toISOString());
       template = template.replace(/\{\{VPS_PASSWORD\}\}/g, this.vpsPassword || 'QuantFi@Secure2024');
 

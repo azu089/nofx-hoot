@@ -367,6 +367,15 @@ export class InstancesService {
       });
       this.logger.log(`已重置用户 ${userId} 的 API Key 验证状态`);
 
+      // 4. 【Bug修复】将关联的策略配置设为非活跃状态
+      const updatedConfigs = await this.prisma.client.user_strategy_configs.updateMany({
+        where: { instance_id: id, is_active: true },
+        data: { is_active: false },
+      });
+      if (updatedConfigs.count > 0) {
+        this.logger.log(`已停止 ${updatedConfigs.count} 个关联策略`);
+      }
+
       this.logger.log(`销毁实例成功: ${id}, 原因: ${reason}`);
 
       // 推送实例销毁日志（WebSocket）
@@ -407,6 +416,12 @@ export class InstancesService {
       await this.prisma.client.api_keys.updateMany({
         where: { user_id: userId },
         data: { last_verified_at: null },
+      });
+
+      // 【Bug修复】将关联的策略配置设为非活跃状态（即使销毁失败也要停止策略）
+      await this.prisma.client.user_strategy_configs.updateMany({
+        where: { instance_id: id, is_active: true },
+        data: { is_active: false },
       });
 
       return updatedInstance;

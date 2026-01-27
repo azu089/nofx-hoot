@@ -31,8 +31,8 @@ import { InstanceRepairService } from '../instance-repair.service';
 export class StatusSyncTask {
   private readonly logger = new Logger(StatusSyncTask.name);
   private readonly PROVISIONING_TIMEOUT = 10 * 60 * 1000; // 10 分钟
-  private readonly HEARTBEAT_WARNING = 2 * 60 * 1000; // 2 分钟触发诊断
-  private readonly HEARTBEAT_TIMEOUT = 15 * 60 * 1000; // 15 分钟自动销毁
+  private readonly HEARTBEAT_WARNING = 3 * 60 * 1000; // 3 分钟触发诊断（原 2 分钟）
+  private readonly HEARTBEAT_TIMEOUT = 30 * 60 * 1000; // 30 分钟自动销毁（原 15 分钟）
 
   constructor(
     private readonly prisma: PrismaService,
@@ -569,17 +569,20 @@ export class StatusSyncTask {
     // 3. 执行诊断
     const diagnosis = await this.diagnosisService.diagnose(instance.ip_address);
 
-    // 4. 记录诊断结果
+    // 4. 记录诊断结果（包含 CPU 信息）
+    const cpuWarning = diagnosis.cpuOverloaded ? ` ⚠️ CPU过载(${diagnosis.cpuUsagePercent}%)` : '';
     await this.instanceLogService.info(
       instance.user_id,
       'diagnosis_result',
-      `诊断完成: SSH=${diagnosis.sshReachable}, Proxy=${diagnosis.proxyStatus}, Freqtrade=${diagnosis.freqtradeStatus}`,
+      `诊断完成: SSH=${diagnosis.sshReachable}, Proxy=${diagnosis.proxyStatus}, Freqtrade=${diagnosis.freqtradeStatus}, CPU=${diagnosis.cpuUsagePercent}%${cpuWarning}`,
       {
         instanceId: instance.id,
         details: {
           sshReachable: diagnosis.sshReachable,
           proxyStatus: diagnosis.proxyStatus,
           freqtradeStatus: diagnosis.freqtradeStatus,
+          cpuUsagePercent: diagnosis.cpuUsagePercent,
+          cpuOverloaded: diagnosis.cpuOverloaded,
           diskUsagePercent: diagnosis.diskUsagePercent,
           memoryAvailableMB: diagnosis.memoryAvailableMB,
           repairActions: diagnosis.repairActions.map((a) =>
@@ -588,6 +591,16 @@ export class StatusSyncTask {
         },
       },
     );
+
+    // 4.1 如果 CPU 过载，记录特殊告警日志
+    if (diagnosis.cpuOverloaded) {
+      await this.instanceLogService.error(
+        instance.user_id,
+        'cpu_overload',
+        `⚠️ CPU 过载告警: ${diagnosis.cpuUsagePercent}%，正在尝试重启 Freqtrade`,
+        { instanceId: instance.id },
+      );
+    }
 
     // 5. 如果 SSH 不可达，标记为 zombie 等待超时销毁
     if (!diagnosis.sshReachable) {
@@ -648,7 +661,7 @@ export class StatusSyncTask {
       await this.instanceLogService.warn(
         instance.user_id,
         'repair_failed',
-        '自动修复失败，将在15分钟后自动销毁',
+        '自动修复失败，将在30分钟后自动销毁',
         {
           instanceId: instance.id,
           details: {
@@ -666,10 +679,39 @@ export class StatusSyncTask {
    */
   private async autoDestroy(instance: any, reason: string) {
     this.logger.error(
-      `[心跳监控] 实例 ${instance.id} 自动销毁: ${reason}`,
+      `[心跳监控] 实例 ${instance.id} 准备自动销毁: ${reason}`,
     );
 
     try {
+      // 0. 【CPU 过载保护】销毁前再次检测 CPU 状态
+      // 如果 CPU 仍然过载，说明 Freqtrade 可能在高负载运算，不应立即销毁
+      const finalDiagnosis = await this.diagnosisService.diagnose(instance.ip_address);
+
+      if (finalDiagnosis.sshReachable && finalDiagnosis.cpuOverloaded) {
+        this.logger.warn(
+          `[心跳监控] 实例 ${instance.id} CPU 过载 (${finalDiagnosis.cpuUsagePercent}%)，暂不销毁，延长观察期`,
+        );
+
+        // 记录日志，说明因 CPU 过载延迟销毁
+        await this.instanceLogService.warn(
+          instance.user_id,
+          'cpu_overload',
+          `⚠️ CPU 持续过载 (${finalDiagnosis.cpuUsagePercent}%)，VPS 暂不销毁，继续等待恢复`,
+          { instanceId: instance.id },
+        );
+
+        // 重置心跳时间，给予额外 15 分钟缓冲
+        await this.prisma.client.instances.update({
+          where: { id: instance.id },
+          data: {
+            last_heartbeat: new Date(Date.now() - 10 * 60 * 1000), // 设为 10 分钟前，还有 5 分钟缓冲
+            status: 'unhealthy', // 保持 unhealthy 状态继续监控
+          },
+        });
+
+        return; // 不销毁，等待下一轮监控
+      }
+
       // 1. 更新状态为 destroying
       await this.prisma.client.instances.update({
         where: { id: instance.id },
@@ -706,6 +748,15 @@ export class StatusSyncTask {
       });
       this.logger.log(`[心跳监控] 已重置用户 ${instance.user_id} 的 API Key 验证状态`);
 
+      // 6. 【Bug修复】将关联的策略配置设为非活跃状态
+      const updatedConfigs = await this.prisma.client.user_strategy_configs.updateMany({
+        where: { instance_id: instance.id, is_active: true },
+        data: { is_active: false },
+      });
+      if (updatedConfigs.count > 0) {
+        this.logger.log(`[心跳监控] 已停止 ${updatedConfigs.count} 个关联策略`);
+      }
+
       this.logger.log(`[心跳监控] 实例 ${instance.id} 已销毁`);
     } catch (error) {
       this.logger.error(
@@ -726,6 +777,12 @@ export class StatusSyncTask {
       await this.prisma.client.api_keys.updateMany({
         where: { user_id: instance.user_id },
         data: { last_verified_at: null },
+      });
+
+      // 【Bug修复】将关联的策略配置设为非活跃状态（即使销毁失败也要停止策略）
+      await this.prisma.client.user_strategy_configs.updateMany({
+        where: { instance_id: instance.id, is_active: true },
+        data: { is_active: false },
       });
     }
   }
