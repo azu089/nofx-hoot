@@ -252,7 +252,7 @@ cat > /opt/quantfi/freqtrade/user_data/config.json <<FTCEOF
     "unit": "minutes"
   },
   "entry_pricing": {
-    "price_side": "same",
+    "price_side": "other",
     "use_order_book": true,
     "order_book_top": 1,
     "price_last_balance": 0.0,
@@ -262,7 +262,7 @@ cat > /opt/quantfi/freqtrade/user_data/config.json <<FTCEOF
     }
   },
   "exit_pricing": {
-    "price_side": "same",
+    "price_side": "other",
     "use_order_book": true,
     "order_book_top": 1
   },
@@ -513,13 +513,22 @@ app.post('/api/update-config', configLimiter, async (req, res) => {
         return res.status(400).json({ error: 'Invalid strategy name' });
       }
       fs.writeFileSync('/opt/quantfi/freqtrade/user_data/strategies/' + safeName + '.py', strategyCode, 'utf8');
+
+      // 同时更新 docker-compose.yml 中的策略名（关键修复！）
+      const dockerComposePath = '/opt/quantfi/docker-compose.yml';
+      let dockerCompose = fs.readFileSync(dockerComposePath, 'utf8');
+      // 替换 --strategy 后面的策略名
+      dockerCompose = dockerCompose.replace(/--strategy\s+\S+/g, '--strategy ' + safeName);
+      fs.writeFileSync(dockerComposePath, dockerCompose, 'utf8');
+      console.log('✅ docker-compose.yml 策略名已更新为:', safeName);
     }
     if (config) {
       fs.writeFileSync('/opt/quantfi/freqtrade/user_data/config.json', JSON.stringify(config, null, 2), 'utf8');
     }
-    exec('cd /opt/quantfi && docker compose restart freqtrade', (error) => {
+    // 使用 up -d --force-recreate 确保使用新的 docker-compose.yml 配置
+    exec('cd /opt/quantfi && docker compose up -d --force-recreate freqtrade', (error) => {
       if (error) return res.status(500).json({ error: 'Restart failed: ' + error.message });
-      res.json({ success: true, message: 'Config updated' });
+      res.json({ success: true, message: 'Config updated', strategy: strategyName });
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -36,15 +36,23 @@ export function StrategyQuickControlSheet() {
     enabled: open, // 只在打开时加载
   });
 
-  // 启动策略
+  // 部署并启动策略（会上传策略代码、API Key、配置到 VPS）
   const startMutation = useMutation({
-    mutationFn: (configId: string) => strategiesApi.startStrategy(configId),
+    mutationFn: (configId: string) => strategiesApi.deployStrategy(configId),
     onSuccess: () => {
-      toast.success('策略启动成功');
+      toast.success('策略部署并启动成功');
       queryClient.invalidateQueries({ queryKey: ['user-strategy-configs'] });
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || '启动失败');
+      const errorData = error.response?.data;
+      // 处理特殊错误类型
+      if (errorData?.data?.error_type === 'HEDGE_MODE_NOT_SUPPORTED') {
+        toast.error('请先在 Binance 切换到单向持仓模式', { duration: 8000 });
+      } else if (errorData?.data?.error_type === 'INSUFFICIENT_BALANCE') {
+        toast.error(`余额不足：需要 $${errorData.data.required}`, { duration: 5000 });
+      } else {
+        toast.error(errorData?.message || '部署失败');
+      }
     },
   });
 

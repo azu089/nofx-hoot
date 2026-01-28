@@ -209,14 +209,63 @@ export class StrategyDeployService {
     });
 
     if (!apiKeyRecord) {
-      throw new BadRequestException('请先绑定交易所 API Key');
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 40019,
+        message: '请先绑定交易所 API Key',
+        data: {
+          error_type: 'API_KEY_NOT_FOUND',
+          action: '请前往「资产 - API Key」页面绑定交易所 API',
+        },
+      });
+    }
+
+    // 3.1 检查 API Key 是否已验证（last_verified_at 不为空表示已验证）
+    if (!apiKeyRecord.last_verified_at) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 40020,
+        message: 'API Key 尚未验证，请先点击验证按钮确认 API Key 有效',
+        data: {
+          error_type: 'API_KEY_NOT_VERIFIED',
+          action: '请前往「资产 - API Key」页面，点击验证按钮',
+        },
+      });
     }
 
     // 4. 解密 API Key（获取真实的 key 和 secret）
-    const decryptedKeys = await this.apiKeysService.getDecryptedKeys(
-      apiKeyRecord.id,
-      userId,
-    );
+    let decryptedKeys: { apiKey: string; secretKey: string };
+    try {
+      decryptedKeys = await this.apiKeysService.getDecryptedKeys(
+        apiKeyRecord.id,
+        userId,
+      );
+    } catch (error) {
+      this.logger.error(`API Key 解密失败: ${error.message}`);
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 40021,
+        message: 'API Key 解密失败，请重新绑定',
+        data: {
+          error_type: 'API_KEY_DECRYPT_FAILED',
+          action: '请删除当前 API Key 并重新绑定',
+        },
+      });
+    }
+
+    // 4.1 检查解密后的密钥是否有效
+    if (!decryptedKeys.apiKey || !decryptedKeys.secretKey) {
+      this.logger.error(`API Key 为空: apiKey=${!!decryptedKeys.apiKey}, secretKey=${!!decryptedKeys.secretKey}`);
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 40022,
+        message: 'API Key 数据不完整，请重新绑定',
+        data: {
+          error_type: 'API_KEY_INCOMPLETE',
+          action: '请删除当前 API Key 并重新绑定',
+        },
+      });
+    }
 
     // 5. 获取策略代码
     const strategy = userConfig.strategies;
@@ -413,8 +462,9 @@ export class StrategyDeployService {
       leverage: userConfig.leverage || 1,
 
       // 入场定价配置（Freqtrade 必需字段）
+      // 注意：市价单必须使用 price_side: 'other'
       entry_pricing: {
-        price_side: 'same',
+        price_side: 'other',
         use_order_book: true,
         order_book_top: 1,
         price_last_balance: 0.0,
@@ -425,8 +475,9 @@ export class StrategyDeployService {
       },
 
       // 出场定价配置（Freqtrade 必需字段）
+      // 注意：市价单必须使用 price_side: 'other'
       exit_pricing: {
-        price_side: 'same',
+        price_side: 'other',
         use_order_book: true,
         order_book_top: 1,
       },
