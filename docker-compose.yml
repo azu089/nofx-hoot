@@ -1,63 +1,41 @@
 services:
-  # PostgreSQL 数据库服务
+  # === 数据库 ===
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16
     container_name: quantfi-postgres
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: quantfi
-      POSTGRES_USER: quantfi
-      POSTGRES_PASSWORD: quantfi_dev_password
-      # 设置时区
-      TZ: Asia/Shanghai
-      # 日志级别
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      # 使用 5433 避免与其他项目冲突
       - "5433:5432"
+    environment:
+      POSTGRES_USER: quantfi
+      POSTGRES_PASSWORD: quantfi123
+      POSTGRES_DB: quantfi
     volumes:
-      # 数据持久化
       - postgres_data:/var/lib/postgresql/data
-      # 如需自定义初始化脚本，可挂载 sql 文件
-      # - ./数据库/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - quantfi-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quantfi -d quantfi"]
+      test: ["CMD-SHELL", "pg_isready -U quantfi"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Redis 缓存服务
+  # === 缓存/消息队列 ===
   redis:
     image: redis:latest
     container_name: quantfi-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass quantfi_redis_password
-    environment:
-      TZ: Asia/Shanghai
     ports:
       - "6379:6379"
     volumes:
-      # 数据持久化（AOF 模式）
       - redis_data:/data
-    networks:
-      - quantfi-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-# 数据卷
+  # 注意：Freqtrade 使用源码方式运行，不在 Docker 中
+  # 启动命令：cd freqtrade && freqtrade trade --config user_data/config.json --strategy SampleStrategy
+
 volumes:
   postgres_data:
-    name: quantfi-postgres-data
   redis_data:
-    name: quantfi-redis-data
-
-# 网络
-networks:
-  quantfi-network:
-    name: quantfi-network
-    driver: bridge

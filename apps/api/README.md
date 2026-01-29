@@ -1,220 +1,98 @@
-# QuantFi 后端 API 服务
+<p align="center">
+  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
+</p>
 
-基于 NestJS 的后端 API 服务。
+[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
+[circleci-url]: https://circleci.com/gh/nestjs/nest
 
-## 快速开始
+  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
+    <p align="center">
+<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
+<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
+<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
+<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
+<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
+<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
+<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
+  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
+    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
+  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
+</p>
+  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
+  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
-### 1. 环境变量配置
+## Description
 
-```bash
-# 复制环境变量模板
-cp .env.example .env
+[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
-# 编辑 .env 文件，填写真实配置
-```
-
-### 2. 启动服务
-
-```bash
-# 开发模式
-pnpm dev
-
-# 生产构建
-pnpm build
-pnpm start:prod
-```
-
-### 3. 验证
-
-```bash
-# 健康检查
-curl http://localhost:4001/api/health
-
-# 数据库统计
-curl http://localhost:4001/api/db/stats
-```
-
-## 环境变量说明
-
-### 应用配置
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `NODE_ENV` | `development` | 运行环境 |
-| `PORT` | `4001` | 服务端口 |
-| `CORS_ORIGIN` | `http://localhost:3001` | CORS 允许来源 |
-
-### 数据库配置
-
-| 变量名 | 说明 |
-|--------|------|
-| `DATABASE_URL` | PostgreSQL 连接字符串 |
-| `DB_POOL_MIN` | 连接池最小连接数（默认 2） |
-| `DB_POOL_MAX` | 连接池最大连接数（默认 10） |
-
-### Redis 配置
-
-| 变量名 | 说明 |
-|--------|------|
-| `REDIS_HOST` | Redis 主机地址 |
-| `REDIS_PORT` | Redis 端口 |
-| `REDIS_PASSWORD` | Redis 密码 |
-| `REDIS_DB` | Redis 数据库编号 |
-
-### JWT 配置
-
-| 变量名 | 说明 |
-|--------|------|
-| `JWT_SECRET` | JWT 签名密钥（生产环境必须修改） |
-| `JWT_EXPIRES_IN` | JWT 过期时间 |
-| `JWT_REFRESH_EXPIRES_IN` | 刷新 Token 过期时间 |
-
-### 加密配置
-
-| 变量名 | 说明 |
-|--------|------|
-| `ENCRYPTION_KEY` | AES-256-GCM 加密密钥（64 位十六进制字符串） |
-
-生成方法：
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-## 配置模块使用
-
-在代码中使用配置：
-
-```typescript
-import { ConfigService } from '@nestjs/config';
-
-@Injectable()
-export class YourService {
-  constructor(private configService: ConfigService) {}
-
-  someMethod() {
-    // 读取应用配置
-    const port = this.configService.get<number>('app.port');
-    const nodeEnv = this.configService.get<string>('app.nodeEnv');
-
-    // 读取数据库配置
-    const databaseUrl = this.configService.get<string>('database.databaseUrl');
-
-    // 读取 Redis 配置
-    const redisHost = this.configService.get<string>('redis.host');
-    const redisPort = this.configService.get<number>('redis.port');
-
-    // 读取 JWT 配置
-    const jwtSecret = this.configService.get<string>('jwt.secret');
-
-    // 读取加密配置
-    const encryptionKey = this.configService.get<string>('encryption.key');
-  }
-}
-```
-
-## 目录结构
-
-```
-apps/api/
-├── src/
-│   ├── config/              # 配置模块
-│   │   ├── app.config.ts    # 应用配置
-│   │   ├── database.config.ts # 数据库配置
-│   │   ├── redis.config.ts  # Redis 配置
-│   │   ├── jwt.config.ts    # JWT 配置
-│   │   ├── encryption.config.ts # 加密配置
-│   │   └── config.module.ts # 配置模块
-│   ├── prisma/              # Prisma 模块
-│   ├── app.module.ts        # 根模块
-│   └── main.ts              # 入口文件
-├── .env                     # 环境变量（不提交）
-├── .env.example             # 环境变量模板
-└── package.json
-```
-
-## 安全注意事项
-
-### 开发环境
-
-- 可以使用默认配置
-- `.env` 文件不提交到 git
-
-### 生产环境
-
-**必须修改以下配置：**
-
-1. `JWT_SECRET` - 使用强随机密钥
-2. `ENCRYPTION_KEY` - 使用 64 位十六进制字符串（32 字节）
-3. `DATABASE_URL` - 使用生产数据库
-4. `REDIS_PASSWORD` - 使用强密码
-
-**验证检查：**
-
-- JWT_SECRET：生产环境自动检查，禁止包含 "default"、"change"
-- ENCRYPTION_KEY：生产环境自动检查，必须是 64 位十六进制
-- DATABASE_URL：自动验证格式，必须以 `postgresql://` 开头
-
-## API 接口
-
-### 健康检查
-
-```
-GET /api/health
-```
-
-响应示例：
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "status": "healthy",
-    "service": "quantfi-api",
-    "version": "0.1.0",
-    "database": "connected",
-    "timestamp": "2025-12-24T00:00:00.000Z"
-  }
-}
-```
-
-### 数据库统计
-
-```
-GET /api/db/stats
-```
-
-响应示例：
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "tables": ["users", "wallets", ...],
-    "count": 10
-  }
-}
-```
-
-## 故障排查
-
-### 端口被占用
+## Project setup
 
 ```bash
-# 查看占用 4001 端口的进程
-lsof -ti:4001
-
-# 杀掉进程
-lsof -ti:4001 | xargs kill -9
+$ pnpm install
 ```
 
-### 配置验证失败
+## Compile and run the project
 
-- 检查 `.env` 文件是否存在
-- 检查环境变量格式是否正确
-- 查看错误日志确定具体缺失的配置项
+```bash
+# development
+$ pnpm run start
 
-### 数据库连接失败
+# watch mode
+$ pnpm run start:dev
 
-- 检查 `DATABASE_URL` 格式是否正确
-- 确认 PostgreSQL 服务是否运行
-- 检查用户名、密码、端口是否正确
+# production mode
+$ pnpm run start:prod
+```
+
+## Run tests
+
+```bash
+# unit tests
+$ pnpm run test
+
+# e2e tests
+$ pnpm run test:e2e
+
+# test coverage
+$ pnpm run test:cov
+```
+
+## Deployment
+
+When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+
+If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+
+```bash
+$ pnpm install -g @nestjs/mau
+$ mau deploy
+```
+
+With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+
+## Resources
+
+Check out a few resources that may come in handy when working with NestJS:
+
+- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
+- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
+- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
+- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
+- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
+- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
+- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
+- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+
+## Support
+
+Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+
+## Stay in touch
+
+- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
+- Website - [https://nestjs.com](https://nestjs.com/)
+- Twitter - [@nestframework](https://twitter.com/nestframework)
+
+## License
+
+Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).

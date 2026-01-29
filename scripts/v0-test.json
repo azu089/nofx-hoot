@@ -1,0 +1,10 @@
+{
+  "model": "v0-1.0-md",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Create a simple dark theme button"
+    }
+  ],
+  "stream": false
+}

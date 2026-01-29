@@ -1,100 +1,92 @@
-'use client';
+import * as React from "react"
 
-import { HTMLAttributes, forwardRef } from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils"
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'elevated' | 'bordered' | 'glass' | 'glow' | 'gradient' | 'hero';
-  hover?: boolean;
-  glowColor?: 'primary' | 'success' | 'danger' | 'warning';
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-[#1E1E2E] py-6 shadow-sm",
+        className
+      )}
+      {...props}
+    />
+  )
 }
 
-// P1修复：Tailwind 无法识别动态类，使用静态映射
-const glowClasses = {
-  primary: 'glow-border-primary',
-  success: 'glow-border-success',
-  danger: 'glow-border-danger',
-  warning: 'glow-border-warning',
-} as const;
-
-const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ className, variant = 'default', hover = false, glowColor = 'primary', ...props }, ref) => {
-    const variants = {
-      // 默认卡片 - 泛微光边框效果
-      default: 'glass-content',
-      elevated: 'glass-content shadow-lg',
-      bordered: 'bg-bg-primary border-border-primary border-2',
-      // 玻璃效果变体
-      glass: 'glass-card bg-transparent',
-      // 发光边框变体 - 使用静态类映射
-      glow: `bg-bg-secondary border-border-primary glow-border ${glowClasses[glowColor]}`,
-      // 渐变背景变体
-      gradient: 'bg-gradient-to-br from-bg-secondary to-bg-tertiary border-border-primary',
-      // 英雄卡片 - 呼吸光晕效果（适用于资产/数据类）
-      hero: 'glass-hero',
-    };
-
-    const hoverClass = hover ? 'card-hover cursor-pointer' : '';
-
-    return (
-      <div
-        ref={ref}
-        className={cn(
-          'rounded-xl transition-all duration-300',
-          variants[variant],
-          hoverClass,
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-Card.displayName = 'Card';
-
-const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn('px-6 py-4 border-b border-border-primary', className)}
-    {...props}
-  />
-));
-CardHeader.displayName = 'CardHeader';
-
-const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h3
-      ref={ref}
-      className={cn('text-lg font-semibold text-text-primary', className)}
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className
+      )}
       {...props}
     />
   )
-);
-CardTitle.displayName = 'CardTitle';
+}
 
-const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
-  ({ className, ...props }, ref) => (
-    <p
-      ref={ref}
-      className={cn('text-sm text-text-secondary', className)}
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
       {...props}
     />
   )
-);
-CardDescription.displayName = 'CardDescription';
+}
 
-const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('px-6 py-4', className)} {...props} />
-));
-CardContent.displayName = 'CardContent';
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
 
-const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn('px-6 py-4 border-t border-border-primary', className)}
-    {...props}
-  />
-));
-CardFooter.displayName = 'CardFooter';
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
 
-export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter };
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-6", className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}

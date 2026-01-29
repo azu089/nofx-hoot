@@ -1,7 +1,19 @@
-# CLAUDE.md - QuantFi AI 开发规范
+# CLAUDE.md - Hoot AI 开发规范
 
-> 本文档适用于所有在 QuantFi 项目工作的 AI 助手
-> 版本: v1.2 | 基于: QUANTFI_ULTIMATE_WHITE_PAPER v4.0
+> 本文档适用于所有在 Hoot 项目工作的 AI 助手
+> 版本: v1.3 | 项目: Hoot - AI 量化交易平台
+> 代币名称: HOOT
+
+---
+
+## 本地开发配置
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| 前端 (Next.js) | **3001** | `pnpm dev` |
+| 后端 API (NestJS) | **4001** | NestJS 后端 |
+| PostgreSQL | **5433** | 数据库 |
+| Redis | **6379** | 缓存 |
 
 ---
 

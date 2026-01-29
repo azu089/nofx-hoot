@@ -1,0 +1,304 @@
+/* Hoot Glass Theme - 玻璃质感主题系统 */
+/* 核心原则：克制使用，层级分明，统一青色调 */
+
+/* ============================================
+   1. 背景光斑 - 让玻璃效果生效的基础
+   ============================================ */
+.glass-bg {
+  position: relative;
+  background-color: #07070A;
+}
+
+.glass-bg::before,
+.glass-bg::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 左上角青色光斑 */
+.glass-bg::before {
+  top: -10%;
+  left: -5%;
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.08) 0%, transparent 70%);
+  filter: blur(100px);
+}
+
+/* 右下角青色光斑 */
+.glass-bg::after {
+  bottom: -10%;
+  right: -5%;
+  width: 35%;
+  height: 35%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.06) 0%, transparent 70%);
+  filter: blur(100px);
+}
+
+/* ============================================
+   2. 玻璃卡片层级系统
+   ============================================ */
+
+/* 层级 1：最重要（每页只有1个）- 呼吸发光 */
+.glass-card-hero {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 20px;
+  box-shadow:
+    0 0 40px rgba(6, 182, 212, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: breathe 4s ease-in-out infinite;
+}
+
+/* 层级 2：重要（每页1-2个）- 微光边框 */
+.glass-card-primary {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: all 0.3s ease;
+}
+
+.glass-card-primary:hover {
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow:
+    0 0 20px rgba(6, 182, 212, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* 层级 3：普通（大部分元素）- 白色微边框 */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* 层级 4：弱（辅助元素）*/
+.glass-card-subtle {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+}
+
+/* ============================================
+   3. 呼吸光晕动画
+   ============================================ */
+@keyframes breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 30px rgba(6, 182, 212, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 50px rgba(6, 182, 212, 0.18),
+      0 0 80px rgba(6, 182, 212, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* 轻微的边框呼吸（用于次要元素）*/
+@keyframes breathe-subtle {
+  0%, 100% {
+    border-color: rgba(6, 182, 212, 0.2);
+  }
+  50% {
+    border-color: rgba(6, 182, 212, 0.3);
+  }
+}
+
+/* ============================================
+   4. 按钮系统 - 统一青色调
+   ============================================ */
+
+/* 主 CTA - 青色渐变按钮（每页1-2个）*/
+.glass-btn-primary {
+  background: linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  box-shadow:
+    0 4px 20px rgba(6, 182, 212, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.glass-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 30px rgba(6, 182, 212, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* 次要按钮 - 玻璃效果 */
+.glass-btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #F0F0F5;
+  transition: all 0.3s ease;
+}
+
+.glass-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 强调按钮 - 青色边框 */
+.glass-btn-accent {
+  background: rgba(6, 182, 212, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 12px;
+  color: #22D3EE;
+  transition: all 0.3s ease;
+}
+
+.glass-btn-accent:hover {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.5);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
+}
+
+/* ============================================
+   5. 底部导航 Tab 选中效果
+   ============================================ */
+.glass-tab {
+  position: relative;
+  color: #555566;
+  transition: color 0.3s ease;
+}
+
+.glass-tab-active {
+  color: #22D3EE;
+}
+
+.glass-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background: #06B6D4;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+}
+
+/* Tab 背景发光效果 */
+.glass-tab-active::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
+  border-radius: 12px;
+  z-index: -1;
+}
+
+/* ============================================
+   6. 分割线
+   ============================================ */
+.glass-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+}
+
+.glass-divider-vertical {
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+}
+
+/* ============================================
+   7. 文字颜色
+   ============================================ */
+.text-glass-primary { color: #F0F0F5; }
+.text-glass-secondary { color: #8888A0; }
+.text-glass-muted { color: #555566; }
+.text-glass-accent { color: #22D3EE; }
+.text-glass-success { color: #10B981; }
+.text-glass-danger { color: #F43F5E; }
+
+/* ============================================
+   8. 输入框
+   ============================================ */
+.glass-input {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #F0F0F5;
+  transition: all 0.3s ease;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+.glass-input::placeholder {
+  color: #555566;
+}
+
+/* ============================================
+   9. 状态标签
+   ============================================ */
+.glass-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.glass-badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #10B981;
+}
+
+.glass-badge-danger {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.25);
+  color: #F43F5E;
+}
+
+.glass-badge-accent {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.25);
+  color: #22D3EE;
+}

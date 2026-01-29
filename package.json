@@ -1,25 +1,42 @@
 {
-  "name": "quantfi",
-  "version": "0.1.0",
+  "name": "hoot",
+  "version": "1.0.0",
   "private": true,
-  "description": "QuantFi Web3 量化 SaaS 平台",
+  "description": "Hoot - AI Quantitative Trading Platform",
   "scripts": {
     "dev": "pnpm -r dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "api:dev": "pnpm --filter @quantfi/api dev",
-    "web:dev": "pnpm --filter @quantfi/web dev"
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
+  "keywords": [
+    "quantitative",
+    "trading",
+    "crypto",
+    "defi"
+  ],
+  "author": "Hoot Team",
+  "license": "UNLICENSED",
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@10.16.1",
+  "packageManager": "pnpm@10.0.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  },
   "dependencies": {
-    "@nestjs/axios": "^4.0.1",
-    "axios": "^1.13.2",
-    "recharts": "^3.6.0",
-    "v0-sdk": "^0.15.3"
+    "v0-sdk": "^0.16.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
   }
 }

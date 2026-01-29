@@ -1,4 +1,8 @@
-// QuantFi 共享模块入口
-// 后续添加共享类型、常量、工具函数
+/**
+ * @quantfi/shared
+ * 前后端共享的类型定义和常量
+ */
 
-export const VERSION = '0.1.0';
+// ========== 类型导出 ==========
+export * from './types';
+export * from './constants';
