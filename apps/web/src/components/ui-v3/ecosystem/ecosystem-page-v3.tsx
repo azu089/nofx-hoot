@@ -114,7 +114,9 @@ export function EcosystemPageV3({
     <div className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Hero Token Card */}
-          <div className="lg:col-span-2 backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
+          <div className="lg:col-span-2 glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             <div className="flex items-center gap-4 mb-6">
               <div className="relative w-16 h-16 bg-gradient-to-br from-cyan-500/20 to-cyan-400/10 rounded-2xl p-2 border border-cyan-500/20">
                 <Image
@@ -168,7 +170,9 @@ export function EcosystemPageV3({
           </div>
 
           {/* Claim Rewards Card - USDT Rewards */}
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             <div className="flex items-center gap-2 mb-4">
               <Gift className="w-5 h-5 text-cyan-400" />
               <h3 className="text-lg font-semibold">领取分红</h3>
@@ -212,7 +216,9 @@ export function EcosystemPageV3({
         </div>
 
         {/* Staking Section - With Lock Periods and Weights */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 mb-8 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 mb-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Lock className="w-6 h-6 text-cyan-400" />
@@ -636,28 +642,28 @@ export function EcosystemPageV3({
           <div>
             <h2 className="text-2xl font-bold mb-4">代币权益</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:border-cyan-500/30 transition-colors">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-colors overflow-hidden">
                 <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-3">
                   <TrendingUp className="w-6 h-6 text-cyan-400" />
                 </div>
                 <h3 className="font-semibold mb-2">燃油费分红</h3>
                 <p className="text-sm text-[#9090A0]">质押 HOOT 获得燃油费 40% 的 USDT 分红</p>
               </div>
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:border-cyan-500/30 transition-colors">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-colors overflow-hidden">
                 <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-3">
                   <Star className="w-6 h-6 text-cyan-400" />
                 </div>
                 <h3 className="font-semibold mb-2">策略订阅折扣</h3>
                 <p className="text-sm text-[#9090A0]">持有 HOOT 享受策略订阅费用折扣</p>
               </div>
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:border-cyan-500/30 transition-colors">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-colors overflow-hidden">
                 <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-3">
                   <Shield className="w-6 h-6 text-cyan-400" />
                 </div>
                 <h3 className="font-semibold mb-2">优先支持</h3>
                 <p className="text-sm text-[#9090A0]">享受优先客户服务支持</p>
               </div>
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:border-cyan-500/30 transition-colors">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-colors overflow-hidden">
                 <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-3">
                   <Users className="w-6 h-6 text-cyan-400" />
                 </div>
@@ -668,8 +674,10 @@ export function EcosystemPageV3({
           </div>
 
           {/* Token Distribution */}
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
-            <h2 className="text-2xl font-bold mb-4">代币分配</h2>
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
+            <h2 className="relative z-[2] text-2xl font-bold mb-4">代币分配</h2>
             <div className="relative w-48 h-48 mx-auto mb-6">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                 <circle
@@ -765,8 +773,10 @@ export function EcosystemPageV3({
         </div>
 
         {/* Leaderboard Preview */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
-          <div className="flex items-center justify-between mb-6">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
+          <div className="relative z-[2] flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Crown className="w-6 h-6 text-yellow-400" />
               <h2 className="text-2xl font-bold">质押排行榜</h2>

@@ -236,3 +236,136 @@
     transform: translate(5%, 5%);
   }
 }
+
+/* 边框跑动光效 - 环绕边框的光点 */
+@keyframes border-light-trace {
+  0% {
+    background-position: 0% 0%;
+  }
+  25% {
+    background-position: 100% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  75% {
+    background-position: 0% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+/* 旋转光效 - 使用conic gradient */
+@keyframes border-rotate {
+  0% {
+    --border-angle: 0deg;
+  }
+  100% {
+    --border-angle: 360deg;
+  }
+}
+
+/* 玻璃卡片 - 带跑动光效边框 */
+.glass-card-animated {
+  position: relative;
+  background: rgba(18, 18, 26, 0.5);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.glass-card-animated::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--border-angle, 0deg),
+    transparent 0%,
+    transparent 25%,
+    rgba(6, 182, 212, 0.4) 30%,
+    rgba(34, 211, 238, 0.6) 35%,
+    rgba(6, 182, 212, 0.4) 40%,
+    transparent 45%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-rotate 4s linear infinite;
+  pointer-events: none;
+}
+
+/* 支持 CSS 变量动画 (需要 @property) */
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* 边框渐变流动效果 - 基础亮度 + 流动高光 */
+.glass-border-glow {
+  position: relative;
+}
+
+/* 基础边框 - 默认可见亮度 */
+.glass-border-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: rgba(6, 182, 212, 0.12);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* 流动高光层 - 60%光线 + 两端各20%透明过渡 */
+.glass-border-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 10%,
+    rgba(6, 182, 212, 0.08) 20%,
+    rgba(34, 211, 238, 0.2) 30%,
+    rgba(34, 211, 238, 0.25) 50%,
+    rgba(34, 211, 238, 0.2) 70%,
+    rgba(6, 182, 212, 0.08) 80%,
+    transparent 90%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-flow 12s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.glass-border-glow > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 渐变流动动画 - 缓慢流动 */
+@keyframes border-flow {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

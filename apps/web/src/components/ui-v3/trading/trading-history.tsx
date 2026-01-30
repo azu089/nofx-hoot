@@ -45,7 +45,7 @@ interface TradingHistoryProps {
     avgPnl: number
   }
   onExport?: () => void
-  onFilter?: (filters: any) => void
+  onFilter?: (filters: Record<string, unknown>) => void
 }
 
 const defaultTrades: Trade[] = [
@@ -217,21 +217,21 @@ export function TradingHistory({
 
           {/* Stats Cards */}
           <div className="grid grid-cols-4 gap-4 mb-6">
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="text-[#9090A0] text-sm mb-1">总交易次数</div>
               <div className="text-2xl font-bold">{stats.totalTrades}</div>
             </div>
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="text-[#9090A0] text-sm mb-1">胜率</div>
               <div className="text-2xl font-bold text-green-400">{stats.winRate}%</div>
             </div>
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="text-[#9090A0] text-sm mb-1">总盈亏</div>
               <div className={`text-2xl font-bold ${stats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {stats.totalPnl >= 0 ? '+' : ''}${stats.totalPnl.toLocaleString()}
               </div>
             </div>
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="text-[#9090A0] text-sm mb-1">平均盈亏</div>
               <div className={`text-2xl font-bold ${stats.avgPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {stats.avgPnl >= 0 ? '+' : ''}${stats.avgPnl.toFixed(2)}
@@ -301,7 +301,7 @@ export function TradingHistory({
           </div>
 
           {/* Trades Table */}
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset]">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>

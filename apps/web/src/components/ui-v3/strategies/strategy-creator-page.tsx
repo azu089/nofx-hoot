@@ -28,8 +28,16 @@ import { cn } from '@/lib/utils'
 
 type TabType = 'external' | 'visual' | 'code'
 
+interface StrategyData {
+  type: 'tradingview' | 'visual' | 'code'
+  config?: unknown
+  conditions?: unknown[]
+  actions?: unknown[]
+  logic?: string
+}
+
 interface StrategyCreatorPageProps {
-  onSave?: (config: any) => void
+  onSave?: (config: StrategyData) => void
   onNavigate?: (path: string) => void
 }
 
@@ -105,7 +113,7 @@ export function StrategyCreatorPage({
   const [saveSuccess, setSaveSuccess] = useState(false)
 
   // 保存策略配置到"我的策略"
-  const handleSave = async (strategyData: any) => {
+  const handleSave = async (strategyData: StrategyData) => {
     setIsSaving(true)
     setSaveSuccess(false)
 
@@ -254,7 +262,7 @@ class MyStrategy(BaseStrategy):
         </div>
 
         {/* Tab Description */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-4 mb-6">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-4 mb-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-[#06B6D4]/10">
               {tabs.find(t => t.id === activeTab)?.icon}
@@ -270,7 +278,7 @@ class MyStrategy(BaseStrategy):
         {activeTab === 'external' && (
           <div className="space-y-4">
             {/* Webhook 配置 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <h3 className="text-lg font-semibold mb-4">TradingView Webhook</h3>
               <p className="text-[#9090A0] mb-4">通过 TradingView Alert 接收交易信号</p>
               <div className="bg-[#0A0A0F] rounded-xl p-4 mb-4">
@@ -288,7 +296,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 风控参数配置 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="w-5 h-5 text-cyan-400" />
                 <h3 className="text-lg font-semibold">风控参数配置</h3>
@@ -527,7 +535,7 @@ class MyStrategy(BaseStrategy):
         {activeTab === 'visual' && (
           <div className="space-y-4">
             {/* 交易所和交易对选择 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
                   <Globe className="w-4 h-4 text-cyan-400" />
@@ -584,7 +592,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 条件区块 - When */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
@@ -722,7 +730,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 动作区块 - Then */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
                   <Zap className="w-4 h-4 text-green-400" />
@@ -814,7 +822,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 风控参数配置 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
                   <Shield className="w-4 h-4 text-red-400" />
@@ -986,7 +994,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 策略预览 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <Info className="w-5 h-5 text-cyan-400" />
                 <h3 className="font-semibold">策略逻辑预览</h3>
@@ -1032,7 +1040,7 @@ class MyStrategy(BaseStrategy):
         {activeTab === 'code' && (
           <div className="space-y-4">
             {/* 策略基本信息 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <h3 className="text-lg font-semibold mb-4">策略配置</h3>
 
               {/* 策略名称 */}
@@ -1094,7 +1102,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 代码编辑器 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">Python 代码编辑器</h3>
                 <button
@@ -1146,7 +1154,7 @@ class MyStrategy(BaseStrategy):
             </div>
 
             {/* 策略模板 */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <h3 className="text-lg font-semibold mb-4">快速模板</h3>
               <div className="grid gap-3">
                 {[

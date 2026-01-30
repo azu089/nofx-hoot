@@ -91,6 +91,26 @@ const addPositionIndicators = [
   { id: 'manual', name: '手动加仓', desc: '仅手动操作' },
 ]
 
+// 切换开关组件 - 移到组件外部避免每次渲染重新创建
+const Toggle = ({ enabled, onChange, title }: { enabled: boolean; onChange: (v: boolean) => void; title?: string }) => (
+  <button
+    type="button"
+    onClick={() => onChange(!enabled)}
+    title={title || (enabled ? '点击关闭' : '点击开启')}
+    className={cn(
+      'relative w-11 h-6 rounded-full transition-colors',
+      enabled ? 'bg-cyan-500' : 'bg-[#2A2A3A]'
+    )}
+  >
+    <span
+      className={cn(
+        'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform',
+        enabled && 'translate-x-5'
+      )}
+    />
+  </button>
+)
+
 export function StrategyEditPage({
   strategyName = '量化交易策略',
   initialConfig,
@@ -190,26 +210,6 @@ export function StrategyEditPage({
   }
 
   const currentExchange = exchanges.find((e) => e.id === selectedExchange)
-
-  // 切换开关组件
-  const Toggle = ({ enabled, onChange, title }: { enabled: boolean; onChange: (v: boolean) => void; title?: string }) => (
-    <button
-      type="button"
-      onClick={() => onChange(!enabled)}
-      title={title || (enabled ? '点击关闭' : '点击开启')}
-      className={cn(
-        'relative w-11 h-6 rounded-full transition-colors',
-        enabled ? 'bg-cyan-500' : 'bg-[#2A2A3A]'
-      )}
-    >
-      <span
-        className={cn(
-          'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform',
-          enabled && 'translate-x-5'
-        )}
-      />
-    </button>
-  )
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] font-sans">

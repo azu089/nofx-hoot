@@ -240,7 +240,7 @@ export function ReferralPageV3({
 
         {/* 收益统计卡片 */}
         <div className="grid grid-cols-3 gap-4">
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <Wallet className="w-4 h-4 text-[#06B6D4]" />
               <span className="text-[#9090A0] text-sm">累计收益</span>
@@ -250,7 +250,7 @@ export function ReferralPageV3({
             </div>
           </div>
 
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-4 h-4 text-[#10B981]" />
               <span className="text-[#9090A0] text-sm">邀请人数</span>
@@ -260,7 +260,7 @@ export function ReferralPageV3({
             </div>
           </div>
 
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-[#F59E0B]" />
               <span className="text-[#9090A0] text-sm">本月收益</span>
@@ -272,7 +272,7 @@ export function ReferralPageV3({
         </div>
 
         {/* 邀请码卡片 - 简洁协调布局 */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(6,182,212,0.05)]">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset]">
           {/* 标题栏 */}
           <div className="p-5 border-b border-[#1E1E2E]">
             <div className="flex items-center gap-2">
@@ -351,7 +351,7 @@ export function ReferralPageV3({
         </div>
 
         {/* 我的邀请列表 */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(6,182,212,0.05)]">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset]">
           {/* 标题栏 */}
           <div className="p-5 border-b border-[#1E1E2E]">
             <div className="flex items-center justify-between">
@@ -499,7 +499,7 @@ export function ReferralPageV3({
         {/* ========== 介绍区域：规则说明 + 排行榜 ========== */}
 
         {/* 返佣规则（可折叠） */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset]">
           <button
             type="button"
             onClick={() => setShowRules(!showRules)}
@@ -571,7 +571,7 @@ export function ReferralPageV3({
         </div>
 
         {/* 邀请排行榜（可折叠） */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset]">
           <button
             type="button"
             onClick={() => setShowLeaderboard(!showLeaderboard)}

@@ -352,14 +352,14 @@ export function PositionsPageV3({
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header Section */}
         <div className="mb-4">
-          <h1 className="text-2xl font-bold text-[#F8F8FC]">交易中心</h1>
+          <h1 className="text-2xl font-bold text-[#F8F8FC]">交易</h1>
         </div>
 
         {/* Controls Row - Filters and Actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
             {/* 全部/现货/合约切换 */}
-            <div className="flex bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg p-1">
+            <div className="flex bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg p-1 shadow-[0_4px_16px_rgba(0,0,0,0.3)]">
               {(['all', 'spot', 'futures'] as const).map((type) => (
                 <button
                   key={type}
@@ -381,7 +381,7 @@ export function PositionsPageV3({
               <button
                 type="button"
                 onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A] transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
               >
                 <Wallet className="w-4 h-4 text-[#06B6D4]" />
                 <span className="text-sm text-[#F8F8FC]">{selectedAccount.name}</span>
@@ -389,7 +389,7 @@ export function PositionsPageV3({
               </button>
 
               {showAccountDropdown && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-lg shadow-[0_0_30px_rgba(6,182,212,0.05)] z-50 overflow-hidden">
+                <div className="absolute top-full left-0 mt-2 w-64 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
                   {mockAccounts.map((account) => (
                     <button
                       key={account.id}
@@ -414,7 +414,7 @@ export function PositionsPageV3({
             <button
               type="button"
               onClick={() => setShowDatePicker(!showDatePicker)}
-              className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A] transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
             >
               <Calendar className="w-4 h-4 text-[#06B6D4]" />
               <span className="text-sm text-[#F8F8FC]">{dateRange.start} ~ {dateRange.end}</span>
@@ -422,7 +422,7 @@ export function PositionsPageV3({
             </button>
 
             {showDatePicker && (
-              <div className="absolute top-full right-0 mt-2 w-80 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-lg shadow-[0_0_30px_rgba(6,182,212,0.05)] z-50 p-4">
+              <div className="absolute top-full right-0 mt-2 w-80 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 p-4">
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="date-start" className="text-xs text-[#9090A0] mb-1 block">开始日期</label>
@@ -485,58 +485,63 @@ export function PositionsPageV3({
           </div>
         </div>
 
-        {/* Consolidated Stats Card */}
-        <div className="bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.05)]">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {/* 总资产 - 不受筛选影响 */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50">
-              <div className="text-xs text-[#9090A0] mb-1">总资产</div>
-              <div className="text-xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
+        {/* Stats Row - 超清悬浮玻璃卡片 */}
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-5">
+          {/* 顶部高光 */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+          {/* 内发光效果 */}
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
+          <div className="relative z-[2] flex flex-wrap items-center gap-x-8 gap-y-4">
+            {/* 总资产 */}
+            <div>
+              <div className="text-xs text-[#606070] mb-0.5">总资产</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
             </div>
-            {/* 可用余额 - 受筛选影响 */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50">
-              <div className="text-xs text-[#9090A0] mb-1">
-                可用余额
-                {accountType !== 'all' && <span className="text-[#06B6D4] ml-1">({accountType === 'spot' ? '现货' : '合约'})</span>}
-              </div>
-              <div className="text-xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
+
+            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
+
+            {/* 可用余额 */}
+            <div>
+              <div className="text-xs text-[#606070] mb-0.5">可用余额</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
             </div>
-            {/* 未实现盈亏 - 受筛选影响 */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50">
-              <div className="text-xs text-[#9090A0] mb-1">
-                未实现盈亏
-                {accountType !== 'all' && <span className="text-[#06B6D4] ml-1">({accountType === 'spot' ? '现货' : '合约'})</span>}
-              </div>
-              <div className={`text-xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+
+            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
+
+            {/* 未实现盈亏 */}
+            <div>
+              <div className="text-xs text-[#606070] mb-0.5">未实现盈亏</div>
+              <div className={`text-2xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(2)}
               </div>
             </div>
-            {/* 总盈亏 - 受筛选影响（日期+类型） */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50">
-              <div className="text-xs text-[#9090A0] mb-1">
-                总盈亏
-                {accountType !== 'all' && <span className="text-[#06B6D4] ml-1">({accountType === 'spot' ? '现货' : '合约'})</span>}
-              </div>
-              <div className={`text-xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+
+            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
+
+            {/* 总盈亏 */}
+            <div>
+              <div className="text-xs text-[#606070] mb-0.5">总盈亏</div>
+              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
               </div>
             </div>
-            {/* 今日盈亏 - 受筛选影响 */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50">
-              <div className="text-xs text-[#9090A0] mb-1">
-                今日盈亏
-                {accountType !== 'all' && <span className="text-[#06B6D4] ml-1">({accountType === 'spot' ? '现货' : '合约'})</span>}
-              </div>
-              <div className={`text-xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+
+            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
+
+            {/* 今日盈亏 */}
+            <div>
+              <div className="text-xs text-[#606070] mb-0.5">今日盈亏</div>
+              <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
               </div>
             </div>
-            {/* 紧急平仓按钮 */}
-            <div className="p-3 rounded-xl bg-[#0A0A0F]/50 flex items-center justify-center">
+
+            {/* 紧急平仓 - 右侧 */}
+            <div className="ml-auto">
               <button
                 type="button"
                 onClick={onEmergencyCloseAll}
-                className="w-full py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+                className="px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center gap-2"
               >
                 <AlertTriangle className="w-4 h-4" />
                 紧急平仓
@@ -548,9 +553,13 @@ export function PositionsPageV3({
         {/* Main Content */}
         <div className="space-y-6">
 
-            {/* Tab Navigation - 新增策略管理 Tab */}
-            <div className="bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl shadow-[0_0_30px_rgba(6,182,212,0.05)] overflow-hidden">
-              <div className="flex border-b border-[#1E1E2E] overflow-x-auto">
+            {/* Tab Navigation - 超清悬浮玻璃质感 */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              {/* 顶部高光 */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+              {/* 内发光效果 - 青色渐变 */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
+              <div className="relative z-[2] flex border-b border-[#1E1E2E] overflow-x-auto">
                 {[
                   { id: 'positions', label: '当前持仓', count: filteredPositions.length, icon: BarChart3 },
                   { id: 'history', label: '历史订单', count: null, icon: RefreshCcw },
@@ -584,7 +593,7 @@ export function PositionsPageV3({
 
               {/* Current Positions Tab */}
               {activeTab === 'positions' && (
-                <div className="p-6">
+                <div className="relative z-[2] p-6">
                   {filteredPositions.length === 0 ? (
                     <div className="text-center py-12">
                       <BarChart3 className="w-12 h-12 text-[#606070] mx-auto mb-4" />
@@ -683,7 +692,7 @@ export function PositionsPageV3({
 
               {/* Orders Tab */}
               {activeTab === 'orders' && (
-                <div className="p-12 text-center text-[#9090A0]">
+                <div className="relative z-[2] p-12 text-center text-[#9090A0]">
                   <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>暂无挂单</p>
                 </div>
@@ -750,13 +759,13 @@ export function PositionsPageV3({
                     <div className="text-center py-12">
                       <Zap className="w-12 h-12 text-[#606070] mx-auto mb-4" />
                       <h3 className="text-xl font-semibold mb-2">暂无策略</h3>
-                      <p className="text-[#9090A0] mb-6">从策略市场选择策略，或创建自己的交易策略</p>
+                      <p className="text-[#9090A0] mb-6">浏览策略并订阅，或创建自己的交易策略</p>
                       <div className="flex justify-center gap-3">
                         <Button
                           onClick={onViewMarket}
                           className="bg-[#06B6D4] hover:bg-[#0891B2] text-white"
                         >
-                          浏览策略市场
+                          浏览策略
                         </Button>
                       </div>
                     </div>

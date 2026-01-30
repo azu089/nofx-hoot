@@ -30,19 +30,15 @@ export function MobileDashboardV3({
   onWithdraw,
   onViewPositions
 }: MobileDashboardV3Props) {
-  const [greeting, setGreeting] = useState('')
   const [activeTab, setActiveTab] = useState('home')
 
-  useEffect(() => {
+  // 计算问候语
+  const greeting = (() => {
     const hour = new Date().getHours()
-    if (hour < 12) {
-      setGreeting('早上好')
-    } else if (hour < 18) {
-      setGreeting('下午好')
-    } else {
-      setGreeting('晚上好')
-    }
-  }, [])
+    if (hour < 12) return '早上好'
+    if (hour < 18) return '下午好'
+    return '晚上好'
+  })()
 
   const quickStats = [
     { label: '今日盈亏', value: '+$2,847.32', change: '+12.4%', positive: true },

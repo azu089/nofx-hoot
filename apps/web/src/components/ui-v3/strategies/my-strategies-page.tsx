@@ -151,15 +151,15 @@ export function MyStrategiesPage({
 
         {/* Stats Overview - Simplified */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="text-[#9090A0] text-sm mb-1">策略总数</div>
             <div className="text-2xl font-bold">{strategies.length}</div>
           </div>
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="text-[#9090A0] text-sm mb-1">运行中</div>
             <div className="text-2xl font-bold text-green-400">{runningCount}</div>
           </div>
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl p-5">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="text-[#9090A0] text-sm mb-1">已暂停</div>
             <div className="text-2xl font-bold text-yellow-400">{pausedCount}</div>
           </div>
@@ -198,7 +198,7 @@ export function MyStrategiesPage({
 
         {/* Strategy List */}
         {filteredStrategies.length === 0 ? (
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-12 text-center">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-12 text-center shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <Zap className="w-12 h-12 text-[#606070] mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">暂无策略</h3>
             <p className="text-[#9090A0] mb-6">从策略市场选择策略，或创建自己的交易策略</p>
@@ -223,7 +223,7 @@ export function MyStrategiesPage({
             {filteredStrategies.map((strategy) => (
               <div
                 key={strategy.id}
-                className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6 hover:border-[#2A2A3A] transition-colors"
+                className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-colors overflow-hidden"
               >
                 <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                   {/* Strategy Info */}

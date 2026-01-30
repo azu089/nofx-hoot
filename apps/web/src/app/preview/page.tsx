@@ -28,6 +28,7 @@ import { TradingViewWebhookConfig } from '@/components/ui-v3/strategies/tradingv
 import { VisualStrategyBuilder } from '@/components/ui-v3/strategies/visual-strategy-builder'
 import { CodeEditor } from '@/components/ui-v3/strategies/code-editor'
 import { StrategyCreatorPage } from '@/components/ui-v3/strategies/strategy-creator-page'
+import { StrategyConfigPage } from '@/components/ui-v3/strategies/strategy-config-page'
 import { StrategySubscribeModal } from '@/components/ui-v3/strategies/strategy-subscribe-modal'
 // New pages
 import { NotificationsPage } from '@/components/ui-v3/notifications/notifications-page'
@@ -50,7 +51,7 @@ import { MobileSettingsV3 } from '@/components/ui-v3/mobile/mobile-settings-v3'
 // 注意：my-strategies 已合并到 trading 页面的"策略管理"Tab
 const sidebarNavItems = [
   { id: 'dashboard', label: '首页', icon: Home, pageIds: ['dashboard'] },
-  { id: 'strategy-market', label: '策略市场', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-edit', 'strategy-creator', 'tradingview-config', 'visual-builder', 'code-editor'] },
+  { id: 'strategy-market', label: '策略市场', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-edit', 'strategy-config', 'strategy-creator', 'tradingview-config', 'visual-builder', 'code-editor'] },
   { id: 'trading', label: '交易', icon: BarChart3, pageIds: ['trading', 'my-strategies'] },
   { id: 'wallet', label: '资产', icon: Wallet, pageIds: ['wallet', 'exchange', 'api-keys', 'deposit', 'withdraw'] },
   { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'notifications', 'help', 'subscription', 'about'] },
@@ -60,7 +61,7 @@ const sidebarNavItems = [
 const pagesWithSidebar = [
   'dashboard', 'strategy-market', 'strategy-detail', 'my-strategies', 'trading',
   'ecosystem', 'profile', 'wallet', 'exchange', 'api-keys', 'deposit', 'withdraw',
-  'referral', 'strategy-edit', 'strategy-creator', 'settings', 'tradingview-config', 'visual-builder', 'code-editor',
+  'referral', 'strategy-edit', 'strategy-config', 'strategy-creator', 'settings', 'tradingview-config', 'visual-builder', 'code-editor',
   'notifications', 'help', 'subscription', 'about'
 ]
 
@@ -82,6 +83,7 @@ type PreviewPage =
   | 'withdraw'
   | 'referral'
   | 'strategy-edit'
+  | 'strategy-config'
   | 'strategy-creator'
   | 'settings'
   | 'tradingview-config'
@@ -115,7 +117,8 @@ export default function PreviewPage() {
     { id: 'withdraw', name: '提现', category: '钱包页面' },
     { id: 'referral', name: '邀请好友', category: '用户页面', hasMobile: true },
     { id: 'strategy-creator', name: '创建策略', category: '策略创建' },
-    { id: 'strategy-edit', name: '策略配置', category: '策略创建', hasMobile: true },
+    { id: 'strategy-config', name: '策略配置(新)', category: '策略创建' },
+    { id: 'strategy-edit', name: '策略配置(旧)', category: '策略创建', hasMobile: true },
     { id: 'tradingview-config', name: 'TradingView', category: '策略创建' },
     { id: 'visual-builder', name: '可视化搭建', category: '策略创建' },
     { id: 'code-editor', name: '代码编辑器', category: '策略创建' },
@@ -246,7 +249,7 @@ export default function PreviewPage() {
                   {currentPage === 'strategy-edit' && (
                     <MobileStrategyEdit
                       strategyName="量化交易策略 Pro"
-                      onSave={(config: Record<string, unknown>) => console.log('保存配置:', config)}
+                      onSave={(config) => console.log('保存配置:', config)}
                       onBack={() => console.log('返回')}
                     />
                   )}
@@ -348,18 +351,7 @@ export default function PreviewPage() {
               )}
               {currentPage === 'dashboard' && (
                 <DashboardV3
-                  onDeposit={() => setCurrentPage('deposit')}
-                  onWithdraw={() => setCurrentPage('withdraw')}
-                  onStartTrading={() => setCurrentPage('trading')}
-                  onBrowseStrategies={() => setCurrentPage('strategy-market')}
-                  onConnectExchange={() => setCurrentPage('api-keys')}
-                  onViewAllPositions={() => setCurrentPage('trading')}
-                  onViewAllTrades={() => setCurrentPage('trading')}
-                  onGoToEcosystem={() => setCurrentPage('ecosystem')}
-                  onGoToApiKeys={() => setCurrentPage('api-keys')}
-                  onGoToReferral={() => setCurrentPage('referral')}
-                  onGoToSettings={() => setCurrentPage('settings')}
-                  onGoToNotifications={() => console.log('通知')}
+                  onNavigate={(path) => setCurrentPage(path as PreviewPage)}
                 />
               )}
               {currentPage === 'strategy-market' && (
@@ -370,13 +362,13 @@ export default function PreviewPage() {
                   onFilterChange={(f) => console.log('筛选:', f)}
                   onConfigureStrategy={(id) => {
                     console.log('配置策略:', id)
-                    setCurrentPage('strategy-edit')
+                    setCurrentPage('strategy-config')
                   }}
                   onCreateStrategy={() => setCurrentPage('strategy-creator')}
                   onNavigate={(path) => {
                     // 处理策略配置页面跳转
                     if (path.startsWith('/strategies/config')) {
-                      setCurrentPage('strategy-edit')
+                      setCurrentPage('strategy-config')
                     } else if (path === '/strategies') {
                       setCurrentPage('strategy-market')
                     } else {
@@ -465,6 +457,17 @@ export default function PreviewPage() {
                 <StrategyEditPage
                   strategyName="量化交易策略 Pro"
                   onSave={(config) => console.log('保存配置:', config)}
+                  onCancel={() => setCurrentPage('strategy-market')}
+                />
+              )}
+              {currentPage === 'strategy-config' && (
+                <StrategyConfigPage
+                  strategyName="MACD 趋势跟踪策略"
+                  onBack={() => setCurrentPage('strategy-market')}
+                  onSave={(config) => {
+                    console.log('保存配置:', config)
+                    setCurrentPage('trading')
+                  }}
                   onCancel={() => setCurrentPage('strategy-market')}
                 />
               )}

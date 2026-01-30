@@ -116,6 +116,72 @@ import {
 - Lucide React Icons
 - clsx + tailwind-merge (for cn utility)
 
+## 玻璃卡片设计规范
+
+### 超清悬浮玻璃卡片（桌面端标准）
+
+**设计参数 v1.0 (2026-01-30)**
+
+| 属性 | 值 | 说明 |
+|------|------|------|
+| 背景色 | `#12121A` | 卡片基础色 |
+| 背景透明度 | `30%` | 悬浮感 |
+| 模糊度 | `72px` | 超清晰 |
+| 边框色 | `cyan-500` | 青色调 |
+| 边框透明度 | `8%` | 微妙边框 |
+| 圆角 | `16px` | 中等圆角 |
+| 投影 | `0 8px 32px rgba(0,0,0,0.5)` | 深度感 |
+| 内边缘高光 | `rgba(255,255,255,0.02)` | 精致边缘 |
+| 顶部高光 | `cyan-400 / 15%` | 光照效果 |
+| 内发光 | `cyan-400 / 4%` | 科技质感 |
+
+**CSS 类名**: `glass-card-hd` 或 `glass-card-hd-animated`（带边框流动）
+
+**Tailwind 写法**:
+```tsx
+<div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+  {/* 顶部高光 */}
+  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+  {/* 内发光效果 */}
+  <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
+  {/* 内容 */}
+  <div className="relative z-[2]">
+    {children}
+  </div>
+</div>
+```
+
+### 边框流动动画
+
+| 属性 | 值 | 说明 |
+|------|------|------|
+| 基础边框 | `cyan-500 / 12%` | 默认可见 |
+| 流动高光长度 | `60%` | 光带核心区域 |
+| 透明过渡 | `两端各20%` | 柔和渐入渐出 |
+| 高光边缘 | `cyan-500 / 8%` | 渐变过渡 |
+| 高光区域 | `cyan-400 / 20%` | 主体亮度 |
+| 高光中心 | `cyan-400 / 25%` | 最亮点 |
+| 动画周期 | `12s` | 缓慢流动 |
+| 动画曲线 | `ease-in-out` | 平滑过渡 |
+
+**CSS 类名**: `glass-border-glow`（定义在 globals.css）
+
+### 应用范围
+
+**使用超清玻璃卡片的组件**:
+- Dashboard 主卡片
+- 策略市场卡片
+- 持仓页面统计栏
+- 生态页面卡片
+- 设置页面卡片
+- 交易控制台卡片
+
+**排除**（保持原设计）:
+- 钱包页面的钱包卡片（wallet-page-v3.tsx 中的余额卡片）
+- 移动端组件
+
+---
+
 ## 设计规范
 
 ### 字体
@@ -185,6 +251,7 @@ ui-v3/
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v3.4.0 | 2026-01-30 | 超清玻璃卡片设计：新增 glass-card-hd 类，30%透明度 + 72px模糊 + 边框流动动画；更新设计文档 |
 | v3.3.0 | 2026-01-29 | 全局风格统一：去除紫色，统一为青色调；更新交易所真实logo；更新项目logo |
 | v3.2.0 | 2026-01-29 | 优化用户体验：策略市场添加「我的策略」Tab和「创建策略」按钮；移动端「我的」页面添加资产快捷入口 |
 | v3.1.0 | 2026-01-29 | 新增用户自定义策略组件：VisualStrategyBuilder、TradingViewWebhookConfig、CodeEditor |

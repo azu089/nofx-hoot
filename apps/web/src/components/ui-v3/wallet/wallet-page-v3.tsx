@@ -417,10 +417,10 @@ export function WalletPageV3({
         {/* ===== 钱包 Tab 内容 ===== */}
         {pageTab === 'wallet' && (
           <>
-            {/* Balance Card - 呼吸光晕效果 */}
+            {/* Balance Card - 资产卡片（含快捷操作按钮） */}
             <div className="glow-card backdrop-blur-xl bg-[#12121A]/80 rounded-2xl p-6">
               <p className="text-[#9090A0] text-sm mb-2">总资产 (USDT)</p>
-              <div className="flex items-baseline gap-4">
+              <div className="flex items-baseline gap-4 mb-6">
                 <span className="text-4xl font-bold">${totalBalance.toLocaleString()}</span>
                 <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${
                   isPositiveChange ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
@@ -431,41 +431,44 @@ export function WalletPageV3({
                   </span>
                 </div>
               </div>
-            </div>
-
-            {/* Quick Actions - 紧凑的横向按钮组 */}
-            <div className="flex gap-3 flex-wrap mt-6">
-              <button
-                type="button"
-                onClick={onDeposit}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-xl font-medium transition-all shadow-[0_0_20px_rgba(6,182,212,0.2)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)]"
-              >
-                <ArrowDownToLine className="w-4 h-4" />
-                充值
-              </button>
-              <button
-                type="button"
-                onClick={onWithdraw}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] hover:border-[#3A3A4A] text-[#F8F8FC] rounded-xl font-medium transition-all"
-              >
-                <ArrowUpFromLine className="w-4 h-4" />
-                提现
-              </button>
-              <button
-                type="button"
-                onClick={onExchange}
-                className="flex items-center gap-2 px-5 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] hover:border-[#3A3A4A] text-[#F8F8FC] rounded-xl font-medium transition-all"
-              >
-                <ArrowLeftRight className="w-4 h-4" />
-                兑换
-              </button>
+              {/* Quick Actions - 卡片内按钮组 */}
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={onDeposit}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-xl font-medium transition-all shadow-[0_0_20px_rgba(6,182,212,0.2)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)]"
+                >
+                  <ArrowDownToLine className="w-4 h-4" />
+                  充值
+                </button>
+                <button
+                  type="button"
+                  onClick={onWithdraw}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] hover:border-[#3A3A4A] text-[#F8F8FC] rounded-xl font-medium transition-all"
+                >
+                  <ArrowUpFromLine className="w-4 h-4" />
+                  提现
+                </button>
+                <button
+                  type="button"
+                  onClick={onExchange}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] hover:border-[#3A3A4A] text-[#F8F8FC] rounded-xl font-medium transition-all"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  兑换
+                </button>
+              </div>
             </div>
 
             {/* Main Content - Assets & Transactions */}
             <div className="mt-6">
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              {/* 顶部高光 */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+              {/* 内发光效果 */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
               {/* Tab Navigation - 卡片内顶部 */}
-              <div className="flex border-b border-[#1E1E2E]">
+              <div className="relative z-[2] flex border-b border-[#1E1E2E]">
                 <button
                   type="button"
                   onClick={() => setSelectedTab('assets')}
@@ -499,7 +502,7 @@ export function WalletPageV3({
 
               {/* Assets Tab Content */}
               {selectedTab === 'assets' && (
-                <div className="p-6">
+                <div className="relative z-[2] p-6">
                   <div className="space-y-4">
                     {assets.map((asset) => (
                       <div
@@ -575,7 +578,7 @@ export function WalletPageV3({
 
               {/* Transactions Tab - 历史账单 */}
               {selectedTab === 'transactions' && (
-                <div className="p-6">
+                <div className="relative z-[2] p-6">
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -781,9 +784,13 @@ export function WalletPageV3({
 
         {/* ===== API Tab 内容 ===== */}
         {pageTab === 'api' && (
-          <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl overflow-hidden">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+            {/* 顶部高光 */}
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
+            {/* 内发光效果 */}
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-[#1E1E2E]">
+            <div className="relative z-[2] flex items-center justify-between p-6 border-b border-[#1E1E2E]">
               <div>
                 <h2 className="text-lg font-bold">交易所 API 管理</h2>
               </div>
@@ -798,7 +805,7 @@ export function WalletPageV3({
             </div>
 
             {/* API List */}
-            <div className="p-6">
+            <div className="relative z-[2] p-6">
               {exchanges.length === 0 ? (
                 <div className="p-8 rounded-xl bg-[#1E1E2E]/30 border border-[#2A2A3A] text-center">
                   <Key className="w-12 h-12 text-[#606070] mx-auto mb-3" />

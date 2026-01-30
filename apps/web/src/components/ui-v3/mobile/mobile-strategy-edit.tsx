@@ -4,18 +4,20 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronDown, ChevronUp, DollarSign, X, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+interface StrategyConfig {
+  exchange: string
+  amountPerTrade: number
+  selectedCoins: string[]
+  stopLoss: number
+  takeProfit: number
+  maxPositions: number
+}
+
 interface MobileStrategyEditProps {
   strategyId?: string
   strategyName?: string
-  initialConfig?: {
-    exchange: string
-    amountPerTrade: number
-    selectedCoins: string[]
-    stopLoss: number
-    takeProfit: number
-    maxPositions: number
-  }
-  onSave?: (config: any) => void
+  initialConfig?: StrategyConfig
+  onSave?: (config: StrategyConfig) => void
   onBack?: () => void
 }
 

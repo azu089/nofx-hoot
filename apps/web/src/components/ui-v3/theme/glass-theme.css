@@ -99,6 +99,83 @@
 }
 
 /* ============================================
+   2.5 超清悬浮玻璃卡片（桌面端标准）
+   ============================================ */
+/*
+ * 设计参数 v1.0 (2026-01-30):
+ * - 背景: #12121A / 30% 透明度
+ * - 模糊: 72px (超清晰)
+ * - 边框: cyan-500 / 8% 透明度
+ * - 阴影: 深度投影 + 内边缘高光
+ * - 顶部高光: cyan-400 / 15%
+ * - 内发光: cyan-400 / 4%
+ * - 边框流动动画: 12s 周期
+ */
+.glass-card-hd {
+  position: relative;
+  background: rgba(18, 18, 26, 0.30);
+  backdrop-filter: blur(72px);
+  -webkit-backdrop-filter: blur(72px);
+  border: 1px solid rgba(6, 182, 212, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+/* 顶部高光线 */
+.glass-card-hd::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(34, 211, 238, 0.15) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 内发光渐变 */
+.glass-card-hd::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    to bottom,
+    rgba(34, 211, 238, 0.04) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 内容层 - 确保在伪元素之上 */
+.glass-card-hd > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* 带流动边框版本 */
+.glass-card-hd-animated {
+  position: relative;
+  background: rgba(18, 18, 26, 0.30);
+  backdrop-filter: blur(72px);
+  -webkit-backdrop-filter: blur(72px);
+  border: 1px solid rgba(6, 182, 212, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+/* ============================================
    3. 呼吸光晕动画
    ============================================ */
 @keyframes breathe {

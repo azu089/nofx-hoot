@@ -92,14 +92,17 @@ const filterOptions = [
   { id: 'arbitrage', label: '套利' }
 ]
 
+// 预定义的高度值，避免在渲染时调用 Math.random()
+const sparklineHeights = [65, 45, 80, 55, 90, 40, 75, 60]
+
 function SparklinePlaceholder() {
   return (
     <div className="w-16 h-8 flex items-end space-x-0.5">
-      {[...Array(8)].map((_, i) => (
+      {sparklineHeights.map((height, i) => (
         <div
           key={i}
           className="bg-gradient-to-t from-cyan-500/60 to-cyan-400/80 rounded-sm flex-1"
-          style={{ height: `${Math.random() * 100 + 20}%` }}
+          style={{ height: `${height}%` }}
         />
       ))}
     </div>

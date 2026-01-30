@@ -25,6 +25,7 @@ export { MyStrategiesPage } from './strategies/my-strategies-page'
 
 // 策略编辑组件
 export { StrategyEditPage } from './strategies/strategy-edit-page'
+export { StrategyConfigPage } from './strategies/strategy-config-page'
 
 // 用户自定义策略组件
 export { VisualStrategyBuilder } from './strategies/visual-strategy-builder'

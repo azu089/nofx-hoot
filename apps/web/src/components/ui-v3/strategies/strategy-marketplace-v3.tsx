@@ -284,7 +284,7 @@ export function StrategyMarketplaceV3({
           {strategies.map((strategy) => (
             <div
               key={strategy.id}
-              className="bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:border-[#2A2A3A] hover:shadow-[0_0_40px_rgba(6,182,212,0.1)] transition-all cursor-pointer group"
+              className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-all cursor-pointer group overflow-hidden"
               onClick={() => onStrategyClick?.(strategy.id)}
             >
               {/* Header */}

@@ -132,7 +132,7 @@ export function WithdrawPage({
             {/* Left: Withdraw Form */}
             <div className="col-span-2 space-y-6">
               {/* Network Selector */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">选择网络</h2>
 
                 <div className="relative">
@@ -185,7 +185,7 @@ export function WithdrawPage({
               </div>
 
               {/* Withdraw Address */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">提现地址</h2>
 
                 <input
@@ -205,7 +205,7 @@ export function WithdrawPage({
               </div>
 
               {/* Amount */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold">提现金额</h2>
                   <div className="text-sm text-[#9090A0]">
@@ -281,7 +281,7 @@ export function WithdrawPage({
               </button>
 
               {/* Recent Withdrawals */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">最近提现</h2>
 
                 {recentWithdrawals.length > 0 ? (
@@ -333,7 +333,7 @@ export function WithdrawPage({
             {/* Right: Info Panel */}
             <div className="space-y-6">
               {/* Balance Card */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <Wallet className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">可提现余额</h3>
@@ -343,7 +343,7 @@ export function WithdrawPage({
               </div>
 
               {/* Processing Time */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <Clock className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">处理时间</h3>
@@ -356,7 +356,7 @@ export function WithdrawPage({
               </div>
 
               {/* Security Tips */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <Shield className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">安全提示</h3>
@@ -378,7 +378,7 @@ export function WithdrawPage({
               </div>
 
               {/* Help */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h3 className="font-semibold mb-3">需要帮助？</h3>
                 <p className="text-sm text-[#9090A0] mb-4">
                   如果您在提现过程中遇到问题，请联系客服。

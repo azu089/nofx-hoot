@@ -111,7 +111,7 @@ export function DepositPage({
             {/* Left: Deposit Form */}
             <div className="col-span-2 space-y-6">
               {/* Network Selector */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">选择网络</h2>
 
                 <div className="relative">
@@ -182,7 +182,7 @@ export function DepositPage({
               </div>
 
               {/* Deposit Address */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">充值地址</h2>
 
                 <div className="flex items-center gap-3 p-4 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl">
@@ -230,7 +230,7 @@ export function DepositPage({
               </div>
 
               {/* Recent Deposits */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">最近充值</h2>
 
                 {recentDeposits.length > 0 ? (
@@ -277,7 +277,7 @@ export function DepositPage({
             {/* Right: Info Panel */}
             <div className="space-y-6">
               {/* Security Tips */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <Shield className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">安全提示</h3>
@@ -299,7 +299,7 @@ export function DepositPage({
               </div>
 
               {/* Quick Stats */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <div className="flex items-center gap-2 mb-4">
                   <Wallet className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">账户余额</h3>
@@ -309,7 +309,7 @@ export function DepositPage({
               </div>
 
               {/* Help */}
-              <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-6">
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h3 className="font-semibold mb-3">需要帮助？</h3>
                 <p className="text-sm text-[#9090A0] mb-4">
                   如果您在充值过程中遇到问题，请联系客服。

@@ -154,13 +154,9 @@ export function LandingPage({
   onRegister,
   onViewStrategies,
 }: LandingPageProps) {
-  const [isVisible, setIsVisible] = useState(false)
+  const [isVisible] = useState(true) // 直接初始化为 true
   const [currentSlide, setCurrentSlide] = useState(0)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
-
-  useEffect(() => {
-    setIsVisible(true)
-  }, [])
 
   // 轮播自动播放
   useEffect(() => {
@@ -544,7 +540,7 @@ export function LandingPage({
                     </div>
                   </div>
                 </div>
-                <p className="text-[#9090A0] leading-relaxed">"{item.content}"</p>
+                <p className="text-[#9090A0] leading-relaxed">&ldquo;{item.content}&rdquo;</p>
               </div>
             ))}
           </div>
