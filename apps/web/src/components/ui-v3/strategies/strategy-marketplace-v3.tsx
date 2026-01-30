@@ -6,22 +6,20 @@ import {
   Filter,
   TrendingUp,
   ChevronDown,
-  Play,
-  Plus,
-  Eye,
-  Users
+  Plus
 } from 'lucide-react'
 
 interface Strategy {
   id: string
   name: string
   type: 'DCA' | 'Grid' | 'Arbitrage' | 'AI Signal'
+  marketType: '现货' | '合约'  // 现货或合约
   creator: string
   winRate: number
   totalReturn: number
   riskLevel: 'low' | 'medium' | 'high'
   subscribers: number
-  badges: ('Hot' | 'New' | 'Pro')[]
+  badges: ('热门' | '最新' | '专业版')[]
   isHot: boolean
 }
 
@@ -41,66 +39,72 @@ const mockStrategies: Strategy[] = [
     id: '1',
     name: 'DCA Bot Pro',
     type: 'DCA',
+    marketType: '现货',
     creator: 'CryptoMaster',
     winRate: 87.5,
     totalReturn: 156.8,
     riskLevel: 'low',
     subscribers: 2847,
-    badges: ['Hot', 'Pro'],
+    badges: ['热门', '专业版'],
     isHot: true
   },
   {
     id: '2',
     name: 'Grid Trading Master',
     type: 'Grid',
+    marketType: '合约',
     creator: 'GridKing',
     winRate: 73.2,
     totalReturn: 89.4,
     riskLevel: 'medium',
     subscribers: 1523,
-    badges: ['Pro'],
+    badges: ['专业版'],
     isHot: false
   },
   {
     id: '3',
     name: 'AI Signal Hunter',
     type: 'AI Signal',
+    marketType: '合约',
     creator: 'AITrader',
     winRate: 91.3,
     totalReturn: 234.7,
     riskLevel: 'high',
     subscribers: 892,
-    badges: ['New', 'Hot'],
+    badges: ['最新', '热门'],
     isHot: true
   },
   {
     id: '4',
     name: 'Arbitrage Eagle',
     type: 'Arbitrage',
+    marketType: '现货',
     creator: 'ArbiMaster',
     winRate: 95.1,
     totalReturn: 67.3,
     riskLevel: 'low',
     subscribers: 3241,
-    badges: ['Pro'],
+    badges: ['专业版'],
     isHot: false
   },
   {
     id: '5',
     name: 'Smart Grid Pro',
     type: 'Grid',
+    marketType: '现货',
     creator: 'GridExpert',
     winRate: 78.9,
     totalReturn: 112.5,
     riskLevel: 'medium',
     subscribers: 1876,
-    badges: ['Hot'],
+    badges: ['热门'],
     isHot: true
   },
   {
     id: '6',
     name: 'DCA Steady Growth',
     type: 'DCA',
+    marketType: '合约',
     creator: 'SteadyTrader',
     winRate: 82.4,
     totalReturn: 98.7,
@@ -110,13 +114,6 @@ const mockStrategies: Strategy[] = [
     isHot: false
   }
 ]
-
-const typeColors: Record<string, string> = {
-  'DCA': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'Grid': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  'Arbitrage': 'bg-green-500/20 text-green-400 border-green-500/30',
-  'AI Signal': 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-}
 
 const riskLevelColors: Record<string, string> = {
   'low': 'text-green-400',
@@ -128,12 +125,6 @@ const riskLevelText: Record<string, string> = {
   'low': '低',
   'medium': '中',
   'high': '高'
-}
-
-const badgeStyles: Record<string, string> = {
-  'Hot': 'bg-gradient-to-r from-red-500 to-orange-500 text-white',
-  'New': 'bg-gradient-to-r from-green-500 to-emerald-500 text-white',
-  'Pro': 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white'
 }
 
 const typeText: Record<string, string> = {
@@ -156,11 +147,14 @@ export function StrategyMarketplaceV3({
   void _onSubscribe
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('全部')
+  const [selectedMarketType, setSelectedMarketType] = useState('全部')
   const [selectedSort, setSelectedSort] = useState('热门')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
+  const [showMarketTypeDropdown, setShowMarketTypeDropdown] = useState(false)
   const [showSortDropdown, setShowSortDropdown] = useState(false)
 
-  const filterOptions = ['全部', '定投', '网格', '套利', 'AI信号']
+  const filterOptions = ['全部', '定投', '网格', 'AI信号', '套利']
+  const marketTypeOptions = ['全部', '现货', '合约']
   const sortOptions = ['热门', '胜率', '收益', '最新']
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,10 +169,24 @@ export function StrategyMarketplaceV3({
     onFilterChange?.(filter)
   }
 
+  const handleMarketTypeSelect = (marketType: string) => {
+    setSelectedMarketType(marketType)
+    setShowMarketTypeDropdown(false)
+  }
+
   const handleSortSelect = (sort: string) => {
     setSelectedSort(sort)
     setShowSortDropdown(false)
   }
+
+  // 筛选策略
+  const filteredStrategies = strategies.filter(strategy => {
+    const matchesSearch = strategy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         strategy.creator.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesFilter = selectedFilter === '全部' || typeText[strategy.type] === selectedFilter
+    const matchesMarketType = selectedMarketType === '全部' || strategy.marketType === selectedMarketType
+    return matchesSearch && matchesFilter && matchesMarketType
+  })
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">
@@ -204,12 +212,13 @@ export function StrategyMarketplaceV3({
                 />
               </div>
 
-              {/* Filter Dropdown */}
+              {/* Filter Dropdown - 策略类型 */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => {
                     setShowFilterDropdown(!showFilterDropdown)
+                    setShowMarketTypeDropdown(false)
                     setShowSortDropdown(false)
                   }}
                   className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm text-[#F8F8FC] hover:border-[#2A2A3A] transition-all"
@@ -236,6 +245,40 @@ export function StrategyMarketplaceV3({
                 )}
               </div>
 
+              {/* Market Type Dropdown - 现货/合约 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMarketTypeDropdown(!showMarketTypeDropdown)
+                    setShowFilterDropdown(false)
+                    setShowSortDropdown(false)
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm hover:border-[#2A2A3A] transition-all ${
+                    selectedMarketType === '现货' ? 'text-blue-400' : selectedMarketType === '合约' ? 'text-orange-400' : 'text-[#F8F8FC]'
+                  }`}
+                >
+                  {selectedMarketType === '全部' ? '市场' : selectedMarketType}
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {showMarketTypeDropdown && (
+                  <div className="absolute top-full mt-2 right-0 w-32 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-lg shadow-[0_0_30px_rgba(6,182,212,0.05)] z-10 overflow-hidden">
+                    {marketTypeOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => handleMarketTypeSelect(option)}
+                        className={`w-full px-4 py-2.5 text-left text-sm text-[#F8F8FC] hover:bg-[#1E1E2E] transition-colors ${
+                          selectedMarketType === option ? 'bg-[#1E1E2E] text-cyan-400' : ''
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Sort Dropdown */}
               <div className="relative">
                 <button
@@ -243,6 +286,7 @@ export function StrategyMarketplaceV3({
                   onClick={() => {
                     setShowSortDropdown(!showSortDropdown)
                     setShowFilterDropdown(false)
+                    setShowMarketTypeDropdown(false)
                   }}
                   className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm text-[#F8F8FC] hover:border-[#2A2A3A] transition-all"
                 >
@@ -280,92 +324,83 @@ export function StrategyMarketplaceV3({
             </div>
         </div>
 
-        {/* Strategy Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-          {strategies.map((strategy) => (
+        {/* Strategy Cards Grid - 极简流畅风格 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
+          {filteredStrategies.map((strategy) => (
             <div
               key={strategy.id}
-              className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] hover:border-cyan-500/20 transition-all cursor-pointer group overflow-hidden"
+              className="relative bg-[#12121A]/60 backdrop-blur-xl rounded-2xl p-5 hover:bg-[#12121A]/80 transition-all duration-200 cursor-pointer group"
               onClick={() => onStrategyClick?.(strategy.id)}
             >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <h3 className="text-lg font-semibold text-[#F8F8FC] group-hover:text-[#06B6D4] transition-colors">
-                      {strategy.name}
-                    </h3>
-                    {strategy.badges.map((badge) => (
-                      <span
-                        key={badge}
-                        className={`px-2 py-0.5 text-xs font-medium rounded-full ${badgeStyles[badge]}`}
-                      >
-                        {badge}
-                      </span>
-                    ))}
+              {/* 顶部：类型 + 徽章指示器 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-xs text-[#606070]">
+                  <span>{typeText[strategy.type]}</span>
+                  <span>·</span>
+                  <span className={strategy.marketType === '现货' ? 'text-blue-400' : 'text-orange-400'}>
+                    {strategy.marketType}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {strategy.badges.includes('热门') && (
+                    <span className="w-2 h-2 rounded-full bg-red-500" title="热门" />
+                  )}
+                  {strategy.badges.includes('最新') && (
+                    <span className="w-2 h-2 rounded-full bg-green-500" title="最新" />
+                  )}
+                  {strategy.badges.includes('专业版') && (
+                    <span className="w-2 h-2 rounded-full bg-purple-500" title="专业版" />
+                  )}
+                </div>
+              </div>
+
+              {/* 策略名称 */}
+              <h3 className="text-[#F8F8FC] font-semibold text-lg mb-1 group-hover:text-cyan-400 transition-colors">
+                {strategy.name}
+              </h3>
+
+              {/* 作者 */}
+              <p className="text-[#606070] text-sm mb-5">by {strategy.creator}</p>
+
+              {/* 核心数据 */}
+              <div className="flex items-end justify-between mb-4">
+                {/* 收益率 - 突出显示 */}
+                <div>
+                  <div className="text-green-400 text-3xl font-bold">+{strategy.totalReturn}%</div>
+                  <div className="text-[#606070] text-xs mt-1">总收益</div>
+                </div>
+
+                {/* 其他指标 */}
+                <div className="flex items-center gap-5 text-right">
+                  <div>
+                    <div className="text-[#F8F8FC] font-semibold">{strategy.winRate}%</div>
+                    <div className="text-[#606070] text-xs">胜率</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-md border ${typeColors[strategy.type]}`}>
-                      {typeText[strategy.type]}
-                    </span>
-                    <span className="text-[#9090A0] text-sm">by {strategy.creator}</span>
+                  <div>
+                    <div className={`font-semibold ${riskLevelColors[strategy.riskLevel]}`}>
+                      {riskLevelText[strategy.riskLevel]}
+                    </div>
+                    <div className="text-[#606070] text-xs">风险</div>
+                  </div>
+                  <div>
+                    <div className="text-[#F8F8FC] font-semibold">{strategy.subscribers.toLocaleString()}</div>
+                    <div className="text-[#606070] text-xs">使用</div>
                   </div>
                 </div>
               </div>
 
-              {/* Metrics */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div>
-                  <div className="text-[#606070] text-xs mb-1">胜率</div>
-                  <div className="text-[#F8F8FC] font-semibold">{strategy.winRate}%</div>
-                </div>
-                <div>
-                  <div className="text-[#606070] text-xs mb-1">总收益</div>
-                  <div className="text-green-400 font-semibold">+{strategy.totalReturn}%</div>
-                </div>
-                <div>
-                  <div className="text-[#606070] text-xs mb-1">风险</div>
-                  <div className={`font-semibold ${riskLevelColors[strategy.riskLevel]}`}>
-                    {riskLevelText[strategy.riskLevel]}
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-2 border-t border-[#1E1E2E]">
-                {/* 订阅人数 */}
-                <div className="flex items-center gap-2 text-[#9090A0]">
-                  <Users className="w-4 h-4" />
-                  <span className="text-sm">{strategy.subscribers.toLocaleString()} 人使用</span>
-                </div>
-
-                {/* 按钮组 */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onStrategyClick?.(strategy.id)
-                    }}
-                    className="px-3 py-1.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] hover:border-[#3A3A4A] text-[#F8F8FC] text-sm font-medium rounded-lg transition-all flex items-center gap-1.5"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    详情
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onNavigate?.(`/strategies/config?strategyId=${strategy.id}`)
-                      onConfigureStrategy?.(strategy.id)
-                    }}
-                    className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-cyan-400 text-black text-sm font-semibold rounded-lg hover:from-cyan-400 hover:to-cyan-300 hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all flex items-center gap-1.5"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    立即使用
-                  </button>
-                </div>
-              </div>
+              {/* 操作按钮 */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onNavigate?.(`/strategies/config?strategyId=${strategy.id}`)
+                  onConfigureStrategy?.(strategy.id)
+                }}
+                className="w-full py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-cyan-400 text-sm font-medium transition-all"
+              >
+                立即使用
+              </button>
             </div>
           ))}
         </div>

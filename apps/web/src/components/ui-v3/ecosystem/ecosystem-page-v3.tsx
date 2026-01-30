@@ -103,8 +103,7 @@ export function EcosystemPageV3({
 }: EcosystemPageV3Props) {
   const [stakeAmount, setStakeAmount] = useState('')
   const [selectedPeriod, setSelectedPeriod] = useState(stakingPeriods[1]) // Default 90 days
-  const [activeTab, setActiveTab] = useState<'stake' | 'history' | 'dividends'>('stake')
-  const [historySubTab, setHistorySubTab] = useState<'active' | 'historical'>('active')
+  const [activeTab, setActiveTab] = useState<'stake' | 'staking' | 'history' | 'dividends'>('stake')
 
   // 分类质押记录：质押中 = locked + unlocked，历史质押 = unstaked
   const activeStakes = stakeRecords.filter(r => r.status === 'locked' || r.status === 'unlocked')
@@ -115,8 +114,6 @@ export function EcosystemPageV3({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Hero Token Card */}
           <div className="lg:col-span-2 glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             <div className="flex items-center gap-4 mb-6">
               <div className="relative w-16 h-16 bg-gradient-to-br from-cyan-500/20 to-cyan-400/10 rounded-2xl p-2 border border-cyan-500/20">
                 <Image
@@ -171,8 +168,6 @@ export function EcosystemPageV3({
 
           {/* Claim Rewards Card - USDT Rewards */}
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             <div className="flex items-center gap-2 mb-4">
               <Gift className="w-5 h-5 text-cyan-400" />
               <h3 className="text-lg font-semibold">领取分红</h3>
@@ -217,8 +212,6 @@ export function EcosystemPageV3({
 
         {/* Staking Section - With Lock Periods and Weights */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 mb-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Lock className="w-6 h-6 text-cyan-400" />
@@ -228,7 +221,7 @@ export function EcosystemPageV3({
               <div className="text-sm text-[#9090A0]">
                 总质押量: <span className="text-cyan-400 font-semibold">{totalStaked} HOOT</span>
               </div>
-              {/* Tab Switcher */}
+              {/* Tab Switcher - 4 tabs */}
               <div className="flex bg-[#0A0A0F]/50 rounded-lg p-1">
                 <button
                   type="button"
@@ -243,6 +236,17 @@ export function EcosystemPageV3({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActiveTab('staking')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    activeTab === 'staking'
+                      ? 'bg-[#06B6D4] text-white'
+                      : 'text-[#9090A0] hover:text-[#F8F8FC]'
+                  }`}
+                >
+                  质押中 ({activeStakes.length})
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveTab('history')}
                   className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
                     activeTab === 'history'
@@ -250,7 +254,7 @@ export function EcosystemPageV3({
                       : 'text-[#9090A0] hover:text-[#F8F8FC]'
                   }`}
                 >
-                  质押记录
+                  历史质押 ({historicalStakes.length})
                 </button>
                 <button
                   type="button"
@@ -419,147 +423,116 @@ export function EcosystemPageV3({
             </div>
           )}
 
-          {activeTab === 'history' && (
-            /* Staking History Tab - 分为质押中/历史质押 */
-            <div className="space-y-4">
-              {/* 子 Tab 切换 */}
-              <div className="flex bg-[#0A0A0F]/50 rounded-lg p-1 w-fit">
-                <button
-                  type="button"
-                  onClick={() => setHistorySubTab('active')}
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                    historySubTab === 'active'
-                      ? 'bg-[#1E1E2E] text-[#F8F8FC]'
-                      : 'text-[#9090A0] hover:text-[#F8F8FC]'
-                  }`}
-                >
-                  质押中 ({activeStakes.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHistorySubTab('historical')}
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                    historySubTab === 'historical'
-                      ? 'bg-[#1E1E2E] text-[#F8F8FC]'
-                      : 'text-[#9090A0] hover:text-[#F8F8FC]'
-                  }`}
-                >
-                  历史质押 ({historicalStakes.length})
-                </button>
-              </div>
-
-              {/* 质押中列表 */}
-              {historySubTab === 'active' && (
-                <div className="space-y-3">
-                  {activeStakes.length > 0 ? (
-                    activeStakes.map((record) => (
-                      <div
-                        key={record.id}
-                        className="flex items-center justify-between p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                            record.status === 'locked' ? 'bg-yellow-500/20' : 'bg-green-500/20'
-                          }`}>
-                            {record.status === 'locked' ? (
-                              <Lock className="w-6 h-6 text-yellow-400" />
-                            ) : (
-                              <Coins className="w-6 h-6 text-green-400" />
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-semibold">{record.amount.toLocaleString()} HOOT</div>
-                            <div className="flex items-center gap-2 text-xs text-[#606070]">
-                              <span>质押于 {record.stakedAt}</span>
-                              <span>·</span>
-                              <span>{record.lockPeriod}天锁定期</span>
-                              <span>·</span>
-                              <span className="text-cyan-400">{record.weight}x 权重</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                          <div className="text-center">
-                            <div className={`text-sm font-medium ${record.status === 'locked' ? 'text-yellow-400' : 'text-green-400'}`}>
-                              {record.status === 'locked' ? `${record.daysRemaining}天后解锁` : '可解押'}
-                            </div>
-                            <div className="text-xs text-[#606070]">状态</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-green-400">${record.accumulatedRewards.toFixed(2)}</div>
-                            <div className="text-xs text-[#606070]">累计收益</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onUnstake?.(record.id)}
-                            disabled={record.status === 'locked'}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                              record.status === 'locked'
-                                ? 'border border-[#2A2A3A] text-[#606070] cursor-not-allowed'
-                                : 'border border-[#2A2A3A] text-[#9090A0] hover:border-cyan-500/50 hover:text-cyan-400 hover:bg-cyan-500/10'
-                            }`}
-                          >
-                            {record.status === 'locked' ? '锁定中' : '解押'}
-                          </button>
+          {/* 质押中 Tab */}
+          {activeTab === 'staking' && (
+            <div className="space-y-3">
+              {activeStakes.length > 0 ? (
+                activeStakes.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                        record.status === 'locked' ? 'bg-yellow-500/20' : 'bg-green-500/20'
+                      }`}>
+                        {record.status === 'locked' ? (
+                          <Lock className="w-6 h-6 text-yellow-400" />
+                        ) : (
+                          <Coins className="w-6 h-6 text-green-400" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-semibold">{record.amount.toLocaleString()} HOOT</div>
+                        <div className="flex items-center gap-2 text-xs text-[#606070]">
+                          <span>质押于 {record.stakedAt}</span>
+                          <span>·</span>
+                          <span>{record.lockPeriod}天锁定期</span>
+                          <span>·</span>
+                          <span className="text-cyan-400">{record.weight}x 权重</span>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-12">
-                      <Coins className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                      <p className="text-[#9090A0]">暂无进行中的质押</p>
-                      <p className="text-xs text-[#606070] mt-1">去上方新建质押开始赚取分红</p>
                     </div>
-                  )}
+
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <div className={`text-sm font-medium ${record.status === 'locked' ? 'text-yellow-400' : 'text-green-400'}`}>
+                          {record.status === 'locked' ? `${record.daysRemaining}天后解锁` : '可解押'}
+                        </div>
+                        <div className="text-xs text-[#606070]">状态</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-green-400">${record.accumulatedRewards.toFixed(2)}</div>
+                        <div className="text-xs text-[#606070]">累计收益</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onUnstake?.(record.id)}
+                        disabled={record.status === 'locked'}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                          record.status === 'locked'
+                            ? 'border border-[#2A2A3A] text-[#606070] cursor-not-allowed'
+                            : 'border border-[#2A2A3A] text-[#9090A0] hover:border-cyan-500/50 hover:text-cyan-400 hover:bg-cyan-500/10'
+                        }`}
+                      >
+                        {record.status === 'locked' ? '锁定中' : '解押'}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <Coins className="w-12 h-12 text-[#606070] mx-auto mb-4" />
+                  <p className="text-[#9090A0]">暂无进行中的质押</p>
+                  <p className="text-xs text-[#606070] mt-1">去「质押」标签新建质押开始赚取分红</p>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* 历史质押列表 */}
-              {historySubTab === 'historical' && (
-                <div className="space-y-3">
-                  {historicalStakes.length > 0 ? (
-                    historicalStakes.map((record) => (
-                      <div
-                        key={record.id}
-                        className="flex items-center justify-between p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#2A2A3A]">
-                            <Coins className="w-6 h-6 text-[#9090A0]" />
-                          </div>
-                          <div>
-                            <div className="font-semibold">{record.amount.toLocaleString()} HOOT</div>
-                            <div className="flex items-center gap-2 text-xs text-[#606070]">
-                              <span>质押于 {record.stakedAt}</span>
-                              <span>·</span>
-                              <span>解押于 {record.unstakedAt}</span>
-                              <span>·</span>
-                              <span>{record.lockPeriod}天锁定期</span>
-                              <span>·</span>
-                              <span className="text-cyan-400">{record.weight}x 权重</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-[#9090A0]">已解押</div>
-                            <div className="text-xs text-[#606070]">状态</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-bold text-green-400">${record.accumulatedRewards.toFixed(2)}</div>
-                            <div className="text-xs text-[#606070]">累计收益</div>
-                          </div>
+          {/* 历史质押 Tab */}
+          {activeTab === 'history' && (
+            <div className="space-y-3">
+              {historicalStakes.length > 0 ? (
+                historicalStakes.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#2A2A3A]">
+                        <Coins className="w-6 h-6 text-[#9090A0]" />
+                      </div>
+                      <div>
+                        <div className="font-semibold">{record.amount.toLocaleString()} HOOT</div>
+                        <div className="flex items-center gap-2 text-xs text-[#606070]">
+                          <span>质押于 {record.stakedAt}</span>
+                          <span>·</span>
+                          <span>解押于 {record.unstakedAt}</span>
+                          <span>·</span>
+                          <span>{record.lockPeriod}天锁定期</span>
+                          <span>·</span>
+                          <span className="text-cyan-400">{record.weight}x 权重</span>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-12">
-                      <Clock className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                      <p className="text-[#9090A0]">暂无历史质押记录</p>
                     </div>
-                  )}
+
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-[#9090A0]">已解押</div>
+                        <div className="text-xs text-[#606070]">状态</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-green-400">${record.accumulatedRewards.toFixed(2)}</div>
+                        <div className="text-xs text-[#606070]">累计收益</div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12">
+                  <Clock className="w-12 h-12 text-[#606070] mx-auto mb-4" />
+                  <p className="text-[#9090A0]">暂无历史质押记录</p>
                 </div>
               )}
             </div>
@@ -675,8 +648,6 @@ export function EcosystemPageV3({
 
           {/* Token Distribution */}
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
             <h2 className="relative z-[2] text-2xl font-bold mb-4">代币分配</h2>
             <div className="relative w-48 h-48 mx-auto mb-6">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
@@ -774,8 +745,6 @@ export function EcosystemPageV3({
 
         {/* Leaderboard Preview */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
           <div className="relative z-[2] flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Crown className="w-6 h-6 text-yellow-400" />

@@ -79,11 +79,12 @@ const riskPresets = {
 }
 
 export function StrategyConfigPage({
-  strategyName = 'MACD趋势跟踪策略',
+  strategyName: _strategyName = 'MACD趋势跟踪策略',
   onBack,
   onSave,
   onCancel
 }: StrategyConfigPageProps) {
+  void _strategyName // 策略名称，后续可显示在标题
   // 基础配置
   const [selectedExchange, setSelectedExchange] = useState('Binance')
   const [showExchangeDropdown, setShowExchangeDropdown] = useState(false)
@@ -194,29 +195,23 @@ export function StrategyConfigPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
+    <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between p-4 max-w-2xl mx-auto">
-          <button type="button" onClick={onBack} className="p-2 -ml-2 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+        <div className="flex items-center gap-3 p-4 max-w-2xl mx-auto">
+          <button type="button" onClick={onBack} className="p-2 -ml-2 hover:bg-[#1E1E2E] rounded-lg transition-colors" aria-label="返回">
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <div className="text-center">
-            <h1 className="text-lg font-semibold">策略配置</h1>
-            <p className="text-sm text-[#9090A0]">{strategyName}</p>
-          </div>
-          <div className="w-10" />
+          <h1 className="text-lg font-semibold">策略配置</h1>
         </div>
       </div>
 
-      <div className="p-4 max-w-2xl mx-auto pb-36">
+      {/* 可滚动内容区域 */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 max-w-2xl mx-auto pb-4">
         {/* 主配置卡片 - 超清悬浮玻璃效果 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          {/* 顶部高光 */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-          {/* 内发光效果 */}
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-
+          {/* 顶部高光 */}          {/* 内发光效果 */}
           {/* === 基础配置 === */}
           <div className="p-5">
             <h2 className="text-base font-semibold text-[#9090A0] mb-4">基础配置</h2>
@@ -681,10 +676,11 @@ export function StrategyConfigPage({
             </div>
           </div>
         </div>
+        </div>
       </div>
 
-      {/* 底部固定栏 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
+      {/* 底部固定栏 - 在容器内部 */}
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
         <div className="max-w-2xl mx-auto">
           {/* 摘要 */}
           <div className="flex items-center justify-center gap-6 mb-3 text-xs">

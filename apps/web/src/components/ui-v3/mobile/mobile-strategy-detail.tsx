@@ -319,20 +319,19 @@ export function MobileStrategyDetail({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
-      {/* 固定顶部标题栏 */}
-      <div className="sticky top-0 z-20 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-3">
+      {/* 顶部导航栏 */}
+      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 py-4">
           <button
             type="button"
             onClick={onBack}
-            title="返回"
-            aria-label="返回策略市场"
-            className="flex items-center gap-2 text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
+            aria-label="返回"
+            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-lg font-semibold">策略详情</h1>
-          <div className="w-5" /> {/* Spacer for centering */}
+          <h1 className="text-lg font-semibold text-white">策略详情</h1>
+          <div className="w-10" />
         </div>
       </div>
 

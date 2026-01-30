@@ -92,8 +92,6 @@ export function AboutPage({
 
         {/* App Info Card */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] text-center overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
           {/* Logo */}
           <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#06B6D4] to-[#0891B2] p-0.5 shadow-[0_0_30px_rgba(6,182,212,0.3)]">
             <div className="w-full h-full rounded-2xl bg-[#1A1A24] flex items-center justify-center overflow-hidden">

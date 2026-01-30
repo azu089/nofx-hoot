@@ -409,6 +409,47 @@ export function PositionsPageV3({
           </div>
         </div>
 
+        {/* Stats Row - 超清悬浮玻璃卡片 */}
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-6">
+          <div className="grid grid-cols-5 gap-4 text-center">
+            {/* 总资产 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">总资产</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
+            </div>
+
+            {/* 可用余额 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">可用余额</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
+            </div>
+
+            {/* 未实现盈亏 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">未实现盈亏</div>
+              <div className={`text-2xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(2)}
+              </div>
+            </div>
+
+            {/* 总盈亏 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">总盈亏</div>
+              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
+              </div>
+            </div>
+
+            {/* 今日盈亏 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">今日盈亏</div>
+              <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Controls Row 2 - Date Picker + Emergency Close (等宽) */}
         <div className="flex items-center gap-4">
           {/* Date Picker - flex-1 */}
@@ -497,57 +538,12 @@ export function PositionsPageV3({
           </button>
         </div>
 
-        {/* Stats Row - 超清悬浮玻璃卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-5">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-            {/* 总资产 */}
-            <div>
-              <div className="text-xs text-[#606070] mb-0.5">总资产</div>
-              <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
-            </div>
-
-            {/* 可用余额 */}
-            <div>
-              <div className="text-xs text-[#606070] mb-0.5">可用余额</div>
-              <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
-            </div>
-
-            {/* 未实现盈亏 */}
-            <div>
-              <div className="text-xs text-[#606070] mb-0.5">未实现盈亏</div>
-              <div className={`text-2xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(2)}
-              </div>
-            </div>
-
-            {/* 总盈亏 */}
-            <div>
-              <div className="text-xs text-[#606070] mb-0.5">总盈亏</div>
-              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
-              </div>
-            </div>
-
-            {/* 今日盈亏 */}
-            <div>
-              <div className="text-xs text-[#606070] mb-0.5">今日盈亏</div>
-              <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Main Content */}
         <div className="space-y-6">
 
             {/* Tab Navigation - 超清悬浮玻璃质感 */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-              {/* 顶部高光 */}
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-              {/* 内发光效果 - 青色渐变 */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-              <div className="relative z-[2] flex border-b border-[#1E1E2E] overflow-x-auto">
+              {/* 顶部高光 */}              {/* 内发光效果 - 青色渐变 */}              <div className="relative z-[2] flex border-b border-[#1E1E2E] overflow-x-auto">
                 {[
                   { id: 'positions', label: '当前持仓', count: filteredPositions.length, icon: BarChart3 },
                   { id: 'history', label: '历史订单', count: null, icon: RefreshCcw },

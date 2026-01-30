@@ -10,6 +10,7 @@ import {
   DollarSign,
   Clock,
   AlertTriangle,
+  XCircle,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,74 +44,77 @@ interface TradingConsoleProps {
   onStopAll?: () => void
   onStartBot?: () => void
   onRefresh?: () => void
+  onClosePosition?: (positionId: string) => void
+  onEmergencyCloseAll?: () => void
 }
 
-// Mock data
+// Mock data - 与移动端对齐
 const mockPositions: Position[] = [
   {
     id: '1',
     symbol: 'BTCUSDT',
     side: 'LONG',
-    size: 0.25,
-    entryPrice: 43250.0,
-    currentPrice: 43890.5,
-    pnl: 160.13,
-    pnlPercent: 1.48,
+    size: 0.5,
+    entryPrice: 43250.00,
+    currentPrice: 43720.50,
+    pnl: 1234.56,
+    pnlPercent: 5.68,
   },
   {
     id: '2',
     symbol: 'ETHUSDT',
     side: 'SHORT',
-    size: 2.5,
-    entryPrice: 2650.0,
-    currentPrice: 2680.25,
-    pnl: -75.63,
-    pnlPercent: -1.14,
+    size: 10.2,
+    entryPrice: 2650.00,
+    currentPrice: 2673.20,
+    pnl: -234.56,
+    pnlPercent: -0.87,
   },
   {
     id: '3',
-    symbol: 'SOLUSDT',
+    symbol: 'BTCUSDT',
     side: 'LONG',
-    size: 10,
-    entryPrice: 98.5,
-    currentPrice: 102.3,
-    pnl: 38.0,
-    pnlPercent: 3.86,
+    size: 0.2,
+    entryPrice: 42800.00,
+    currentPrice: 43720.50,
+    pnl: 184.10,
+    pnlPercent: 2.15,
   },
 ]
 
+// Mock data - 与移动端执行日志对齐
 const mockTrades: Trade[] = [
   {
     id: '1',
     symbol: 'BTCUSDT',
     side: 'BUY',
-    quantity: 0.1,
-    price: 43890.5,
+    quantity: 0.5,
+    price: 43250.00,
     timestamp: new Date(Date.now() - 2 * 60 * 1000),
   },
   {
     id: '2',
     symbol: 'ETHUSDT',
     side: 'SELL',
-    quantity: 0.5,
-    price: 2680.25,
-    timestamp: new Date(Date.now() - 5 * 60 * 1000),
+    quantity: 10.2,
+    price: 2650.00,
+    timestamp: new Date(Date.now() - 15 * 60 * 1000),
   },
   {
     id: '3',
-    symbol: 'SOLUSDT',
-    side: 'BUY',
-    quantity: 5,
-    price: 102.3,
-    timestamp: new Date(Date.now() - 8 * 60 * 1000),
+    symbol: 'DOGEUSDT',
+    side: 'SELL',
+    quantity: 10000,
+    price: 0.0892,
+    timestamp: new Date(Date.now() - 60 * 60 * 1000),
   },
   {
     id: '4',
     symbol: 'BTCUSDT',
-    side: 'SELL',
+    side: 'BUY',
     quantity: 0.05,
-    price: 43750.0,
-    timestamp: new Date(Date.now() - 12 * 60 * 1000),
+    price: 43500.00,
+    timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000),
   },
 ]
 
@@ -122,6 +126,8 @@ export function TradingConsole({
   onStopAll,
   onStartBot,
   onRefresh,
+  onClosePosition,
+  onEmergencyCloseAll,
 }: TradingConsoleProps) {
   const [botStatus, setBotStatus] = useState(initialBotStatus)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -189,12 +195,23 @@ export function TradingConsole({
               刷新
             </Button>
 
+            {/* 紧急清仓按钮 - 与移动端对齐 */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onEmergencyCloseAll}
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+            >
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              紧急清仓
+            </Button>
+
             {botStatus === 'running' ? (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleStopAll}
-                className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
               >
                 <Square className="w-4 h-4 mr-2" />
                 全部停止
@@ -355,6 +372,9 @@ export function TradingConsole({
                       <th className="text-right py-3 px-2 text-[#9090A0] font-medium text-sm">
                         盈亏
                       </th>
+                      <th className="text-center py-3 px-2 text-[#9090A0] font-medium text-sm">
+                        操作
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -406,6 +426,17 @@ export function TradingConsole({
                               {position.pnlPercent.toFixed(2)}%
                             </div>
                           </div>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onClosePosition?.(position.id)}
+                            className="border-red-500/30 text-red-400 hover:bg-red-500/10 px-3 py-1 text-xs"
+                          >
+                            <XCircle className="w-3 h-3 mr-1" />
+                            平仓
+                          </Button>
                         </td>
                       </tr>
                     ))}

@@ -1,37 +1,38 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import {
-  Coins,
   TrendingUp,
   Lock,
   Gift,
-  Star,
-  Shield,
-  Users,
   Crown,
   ChevronRight,
-  Home,
-  BarChart3,
-  Layers,
-  Wallet,
-  User,
   Clock,
-  Info
+  Percent,
+  Vote,
+  Zap,
+  History
 } from 'lucide-react'
 
 interface StakeRecord {
   id: string
   amount: number
-  stakedAt: string
-  lockPeriod: number // 锁定期天数
-  daysRemaining: number // 剩余解锁天数
+  lockPeriod: number
+  stakeDate: string
+  unlockDate: string
   weight: number
-  accumulatedRewards: number // USDT rewards
-  status: 'locked' | 'unlocked'
+  rewards: number
+  status: 'staking' | 'unlocked' | 'history'
 }
 
-// 质押周期选项
+interface DividendRecord {
+  id: string
+  date: string
+  amount: number
+  source: string
+}
+
 const stakingPeriods = [
   { id: '30', days: 30, label: '30天', weight: 1.0, apr: '8%' },
   { id: '90', days: 90, label: '90天', weight: 1.5, apr: '12%' },
@@ -43,85 +44,78 @@ interface MobileEcosystemV3Props {
   tokenPrice?: number
   priceChange24h?: number
   marketCap?: string
+  circulatingSupply?: string
+  totalSupply?: string
   totalStaked?: string
   userStaked?: number
-  pendingRewardsUsdt?: number
+  pendingRewards?: number
   nextDistribution?: string
   stakeRecords?: StakeRecord[]
-  onBuy?: () => void
-  onSell?: () => void
+  dividendRecords?: DividendRecord[]
   onStake?: (amount: number, periodDays: number) => void
   onUnstake?: (recordId: string) => void
   onClaimRewards?: () => void
-  onNavigate?: (tab: string) => void
 }
 
 const leaderboardData = [
   { rank: 1, address: '0x1234...5678', staked: '2.5M', weight: '3.0x', rewards: '$1,234' },
   { rank: 2, address: '0x2345...6789', staked: '1.8M', weight: '2.8x', rewards: '$890' },
   { rank: 3, address: '0x3456...7890', staked: '1.2M', weight: '2.5x', rewards: '$543' },
+  { rank: 4, address: '0x4567...8901', staked: '980K', weight: '2.2x', rewards: '$321' },
+  { rank: 5, address: '0x5678...9012', staked: '750K', weight: '2.0x', rewards: '$245' },
 ]
 
-const tokenBenefits = [
-  { icon: TrendingUp, label: '燃油费分红', desc: '40% USDT' },
-  { icon: Star, label: '策略折扣', desc: '订阅优惠' },
-  { icon: Shield, label: '优先支持', desc: '专属客服' },
-  { icon: Users, label: '治理投票', desc: '参与决策' },
+const defaultDividendRecords: DividendRecord[] = [
+  { id: '1', date: '2024-01-21', amount: 125.50, source: '平台手续费分红' },
+  { id: '2', date: '2024-01-14', amount: 98.30, source: '平台手续费分红' },
+  { id: '3', date: '2024-01-07', amount: 112.80, source: '平台手续费分红' },
 ]
 
 export function MobileEcosystemV3({
   tokenPrice = 0.245,
   priceChange24h = 12.5,
   marketCap = '24.5M',
+  circulatingSupply = '45.2M',
+  totalSupply = '100M',
   totalStaked = '35.2M',
   userStaked = 12500,
-  pendingRewardsUsdt = 234.56,
+  pendingRewards = 234.56,
   nextDistribution = '周日 00:00',
   stakeRecords = [
-    { id: '1', amount: 5000, stakedAt: '2025-12-01', lockPeriod: 90, daysRemaining: 45, weight: 1.5, accumulatedRewards: 45.23, status: 'locked' as const },
-    { id: '2', amount: 7500, stakedAt: '2025-10-15', lockPeriod: 180, daysRemaining: 0, weight: 2.0, accumulatedRewards: 189.33, status: 'unlocked' as const },
+    { id: '1', amount: 5000, lockPeriod: 90, stakeDate: '2025-01-15', unlockDate: '2025-04-15', weight: 1.5, rewards: 45.23, status: 'staking' as const },
+    { id: '2', amount: 8000, lockPeriod: 180, stakeDate: '2024-12-01', unlockDate: '2025-05-30', weight: 2.0, rewards: 120.50, status: 'staking' as const },
+    { id: '3', amount: 3000, lockPeriod: 90, stakeDate: '2024-10-01', unlockDate: '2025-01-01', weight: 1.5, rewards: 89.12, status: 'unlocked' as const },
+    { id: '4', amount: 2000, lockPeriod: 90, stakeDate: '2025-06-01', unlockDate: '2025-09-01', weight: 1.5, rewards: 56.78, status: 'history' as const },
+    { id: '5', amount: 4000, lockPeriod: 90, stakeDate: '2025-03-15', unlockDate: '2025-06-15', weight: 1.5, rewards: 89.12, status: 'history' as const },
   ],
-  onBuy,
-  onSell,
+  dividendRecords = defaultDividendRecords,
   onStake,
-  onUnstake,
-  onClaimRewards,
-  onNavigate
+  onUnstake: _onUnstake,
+  onClaimRewards
 }: MobileEcosystemV3Props) {
+  void _onUnstake // 后续实现解押功能时使用
   const [activeTab, setActiveTab] = useState<'token' | 'staking' | 'leaderboard'>('token')
-  const [navTab, setNavTab] = useState('ecosystem')
-  const [selectedPeriod, setSelectedPeriod] = useState(stakingPeriods[1]) // Default 90 days
+  const [stakingSubTab, setStakingSubTab] = useState<'stake' | 'staking' | 'history' | 'dividends'>('stake')
+  const [selectedPeriod, setSelectedPeriod] = useState(stakingPeriods[1])
   const [stakeAmount, setStakeAmount] = useState('')
 
-  const handleNavChange = (tabId: string) => {
-    setNavTab(tabId)
-    onNavigate?.(tabId)
-  }
-
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] max-w-md mx-auto pb-20">
-      {/* Header */}
-      <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#0A0A0F]/90 border-b border-[#1E1E2E] px-4 py-4">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-cyan-500 bg-clip-text text-transparent">
-          HOOT 生态
-        </h1>
-      </div>
-
-      {/* Tab Navigation */}
+    <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
+      {/* Tab */}
       <div className="px-4 py-3 flex gap-2">
         {[
           { id: 'token', label: '代币' },
           { id: 'staking', label: '质押' },
-          { id: 'leaderboard', label: '排行榜' },
+          { id: 'leaderboard', label: '排行' },
         ].map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? 'bg-[#06B6D4] text-black'
-                : 'bg-[#12121A]/50 border border-[#1E1E2E] text-[#9090A0]'
+                : 'bg-[#12121A] text-[#94A3B8]'
             }`}
           >
             {tab.label}
@@ -129,22 +123,31 @@ export function MobileEcosystemV3({
         ))}
       </div>
 
-      {/* Content */}
-      <div className="px-4 pb-4">
+      <div className="px-4 space-y-3">
+        {/* Token Tab */}
         {activeTab === 'token' && (
-          <div className="space-y-4">
+          <>
             {/* Token Hero Card */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
+
+              {/* Token Info with Image */}
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500/20 to-cyan-400/10 rounded-xl flex items-center justify-center border border-cyan-500/20">
-                  <Coins className="w-6 h-6 text-cyan-400" />
+                <div className="w-11 h-11 rounded-xl overflow-hidden bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 p-0.5">
+                  <Image
+                    src="/icons/hoot/logo.png"
+                    alt="HOOT"
+                    width={44}
+                    height={44}
+                    className="rounded-lg w-full h-full object-cover"
+                  />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">HOOT Token</h2>
+                  <span className="text-xs text-[#94A3B8]">HOOT</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xl font-bold text-cyan-400">${tokenPrice}</span>
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
-                      priceChange24h >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                    <span className="text-xl font-bold">${tokenPrice}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      priceChange24h >= 0 ? 'bg-[#22C55E]/10 text-[#22C55E]' : 'bg-[#EF4444]/10 text-[#EF4444]'
                     }`}>
                       {priceChange24h >= 0 ? '+' : ''}{priceChange24h}%
                     </span>
@@ -152,336 +155,377 @@ export function MobileEcosystemV3({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]">
-                  <div className="text-lg font-semibold">${marketCap}</div>
-                  <div className="text-xs text-[#606070]">市值</div>
+              {/* Stats 2x2 Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="text-sm font-semibold">${marketCap}</div>
+                  <div className="text-[10px] text-[#94A3B8]">市值</div>
                 </div>
-                <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]">
-                  <div className="text-lg font-semibold">{totalStaked}</div>
-                  <div className="text-xs text-[#606070]">总质押量</div>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="text-sm font-semibold">{circulatingSupply}</div>
+                  <div className="text-[10px] text-[#94A3B8]">流通量</div>
                 </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onBuy}
-                  className="flex-1 bg-[#06B6D4] text-black py-3 rounded-xl font-semibold"
-                >
-                  买入
-                </button>
-                <button
-                  type="button"
-                  onClick={onSell}
-                  className="flex-1 border border-[#2A2A3A] text-[#F8F8FC] py-3 rounded-xl font-semibold"
-                >
-                  卖出
-                </button>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="text-sm font-semibold">{totalSupply}</div>
+                  <div className="text-[10px] text-[#94A3B8]">总供应量</div>
+                </div>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="text-sm font-semibold">{totalStaked}</div>
+                  <div className="text-[10px] text-[#94A3B8]">总质押</div>
+                </div>
               </div>
             </div>
 
-            {/* Claim Rewards Card - USDT */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Gift className="w-5 h-5 text-cyan-400" />
-                <h3 className="font-semibold">领取分红</h3>
-              </div>
+            {/* Rewards Card */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
 
-              <div className="flex items-center justify-between mb-3 p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold text-green-400">${pendingRewardsUsdt.toFixed(2)}</div>
-                  <div className="text-xs text-[#606070]">待领取 USDT</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Gift className="w-4 h-4 text-[#22C55E]" />
+                    <span className="text-sm text-[#94A3B8]">待领取分红</span>
+                  </div>
+                  <div className="text-2xl font-bold text-[#22C55E]">${pendingRewards.toFixed(2)}</div>
+                  <div className="flex items-center gap-1 mt-1 text-xs text-[#94A3B8]">
+                    <Clock className="w-3 h-3" />
+                    <span>下次 {nextDistribution}</span>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={onClaimRewards}
-                  disabled={pendingRewardsUsdt <= 0}
-                  className={`px-4 py-2 rounded-xl font-medium text-sm ${
-                    pendingRewardsUsdt > 0
-                      ? 'bg-green-500 text-black'
-                      : 'bg-[#2A2A3A] text-[#606070]'
+                  disabled={pendingRewards <= 0}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium ${
+                    pendingRewards > 0
+                      ? 'bg-[#22C55E] text-black'
+                      : 'bg-[#1A1A24] text-[#94A3B8]'
                   }`}
                 >
                   领取
                 </button>
               </div>
-
-              <div className="flex items-center justify-between p-2 bg-[#0A0A0F]/30 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[#606070]" />
-                  <span className="text-sm text-[#9090A0]">下次发放</span>
-                </div>
-                <span className="text-sm text-cyan-400">{nextDistribution}</span>
-              </div>
             </div>
 
-            {/* Token Benefits */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <h3 className="font-semibold mb-3">代币权益</h3>
-              <div className="grid grid-cols-2 gap-3">
-                {tokenBenefits.map((benefit, index) => (
-                  <div key={index} className="p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]">
-                    <benefit.icon className="w-5 h-5 text-cyan-400 mb-2" />
-                    <div className="text-sm font-medium">{benefit.label}</div>
-                    <div className="text-xs text-[#606070]">{benefit.desc}</div>
+            {/* Benefits Grid - 4 Icon Cards */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
+              <div className="grid grid-cols-4 gap-2">
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#22C55E]/10 flex items-center justify-center">
+                    <Percent className="w-4 h-4 text-[#22C55E]" />
                   </div>
-                ))}
+                  <div className="text-[10px] text-white">40% 分红</div>
+                </div>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4 text-[#06B6D4]" />
+                  </div>
+                  <div className="text-[10px] text-white">订阅折扣</div>
+                </div>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#8B5CF6]/10 flex items-center justify-center">
+                    <Vote className="w-4 h-4 text-[#8B5CF6]" />
+                  </div>
+                  <div className="text-[10px] text-white">治理投票</div>
+                </div>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
+                    <Zap className="w-4 h-4 text-[#F59E0B]" />
+                  </div>
+                  <div className="text-[10px] text-white">优先参与</div>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
 
+        {/* Staking Tab */}
         {activeTab === 'staking' && (
-          <div className="space-y-4">
-            {/* Staking Overview */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Lock className="w-5 h-5 text-cyan-400" />
-                <h3 className="font-semibold">质押概览</h3>
-              </div>
+          <>
+            {/* Overview */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]">
-                  <div className="text-lg font-semibold">{userStaked.toLocaleString()}</div>
-                  <div className="text-xs text-[#606070]">我的总质押</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center">
+                  <div className="text-lg font-bold">{userStaked.toLocaleString()}</div>
+                  <div className="text-xs text-[#94A3B8]">我的质押</div>
                 </div>
-                <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl border border-green-500/30">
-                  <div className="text-lg font-semibold text-green-400">${pendingRewardsUsdt.toFixed(2)}</div>
-                  <div className="text-xs text-[#606070]">待领取 USDT</div>
-                </div>
-              </div>
-
-              {/* 分红规则说明 */}
-              <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-[#9090A0]">
-                    燃油费 40% 分给质押用户，10% 回购销毁
-                  </p>
+                <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center border border-[#22C55E]/20">
+                  <div className="text-lg font-bold text-[#22C55E]">${pendingRewards.toFixed(2)}</div>
+                  <div className="text-xs text-[#94A3B8]">待领取</div>
                 </div>
               </div>
             </div>
 
-            {/* New Stake Form */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <h3 className="font-semibold mb-4">新建质押</h3>
+            {/* Staking Sub-tabs - 4 Tabs */}
+            <div className="flex gap-1 bg-[#12121A]/50 rounded-lg p-1">
+              {[
+                { id: 'stake', label: '质押' },
+                { id: 'staking', label: '质押中', count: stakeRecords.filter(r => r.status === 'staking' || r.status === 'unlocked').length },
+                { id: 'history', label: '历史质押', count: stakeRecords.filter(r => r.status === 'history').length },
+                { id: 'dividends', label: '分红记录' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setStakingSubTab(tab.id as typeof stakingSubTab)}
+                  className={`flex-1 py-1.5 px-1 rounded-md text-[10px] font-medium transition-colors ${
+                    stakingSubTab === tab.id
+                      ? 'bg-[#06B6D4] text-black'
+                      : 'text-[#94A3B8]'
+                  }`}
+                >
+                  {tab.label}
+                  {'count' in tab && tab.count !== undefined && (
+                    <span className="ml-0.5">({tab.count})</span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-              {/* Amount Input */}
-              <div className="mb-4">
-                <label htmlFor="mobile-stake-amount" className="text-sm text-[#9090A0] mb-2 block">质押数量</label>
+            {/* Stake Form */}
+            {stakingSubTab === 'stake' && (
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+
+                <span className="text-sm font-medium">新建质押</span>
+
+                {/* Amount */}
                 <div className="relative">
                   <input
-                    id="mobile-stake-amount"
                     type="number"
                     value={stakeAmount}
                     onChange={(e) => setStakeAmount(e.target.value)}
-                    placeholder="输入质押数量"
-                    className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-[#F8F8FC] placeholder-[#606070] focus:border-cyan-500/50 focus:outline-none"
+                    placeholder="输入数量"
+                    className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm placeholder:text-[#94A3B8] focus:outline-none focus:border-[#06B6D4]"
                   />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-cyan-400"
-                  >
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-cyan-400">
                     最大
                   </button>
                 </div>
-              </div>
 
-              {/* Period Selection */}
-              <div className="mb-4">
-                <label className="text-sm text-[#9090A0] mb-2 block">锁定周期</label>
-                <div className="grid grid-cols-2 gap-2">
+                {/* Period */}
+                <div className="grid grid-cols-4 gap-2">
                   {stakingPeriods.map((period) => (
                     <button
                       key={period.id}
                       type="button"
                       onClick={() => setSelectedPeriod(period)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
+                      className={`py-2 rounded-lg text-xs font-medium transition-colors ${
                         selectedPeriod.id === period.id
-                          ? 'border-cyan-500 bg-cyan-500/10'
-                          : 'border-[#1E1E2E] bg-[#0A0A0F]/50'
+                          ? 'bg-[#06B6D4] text-black'
+                          : 'bg-[#1A1A24] text-[#94A3B8]'
                       }`}
                     >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-semibold text-sm">{period.label}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          selectedPeriod.id === period.id
-                            ? 'bg-cyan-500/20 text-cyan-400'
-                            : 'bg-[#1E1E2E] text-[#9090A0]'
-                        }`}>
-                          {period.weight}x
-                        </span>
-                      </div>
-                      <div className="text-xs text-[#606070]">年化 {period.apr}</div>
+                      {period.label}
                     </button>
                   ))}
                 </div>
+
+                {/* Weight Rules */}
+                <div className="bg-[#0A0A0F]/30 rounded-lg p-2.5 space-y-1">
+                  <span className="text-[10px] text-[#94A3B8]">权重规则</span>
+                  <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+                    {stakingPeriods.map((p) => (
+                      <div key={p.id} className={`text-center ${selectedPeriod.id === p.id ? 'text-cyan-400' : 'text-[#606070]'}`}>
+                        <div className="font-medium">{p.weight}x</div>
+                        <div>{p.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="flex items-center justify-between text-xs text-[#94A3B8] px-1">
+                  <span>权重 {selectedPeriod.weight}x</span>
+                  <span>年化 {selectedPeriod.apr}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onStake?.(Number(stakeAmount), selectedPeriod.days)}
+                  disabled={!stakeAmount || Number(stakeAmount) <= 0}
+                  className={`w-full py-3 rounded-xl text-sm font-medium ${
+                    stakeAmount && Number(stakeAmount) > 0
+                      ? 'bg-[#06B6D4] text-black'
+                      : 'bg-[#1A1A24] text-[#94A3B8]'
+                  }`}
+                >
+                  确认质押
+                </button>
               </div>
+            )}
 
-              <button
-                type="button"
-                onClick={() => onStake?.(Number(stakeAmount), selectedPeriod.days)}
-                disabled={!stakeAmount || Number(stakeAmount) <= 0}
-                className={`w-full py-3 rounded-xl font-semibold transition-all ${
-                  stakeAmount && Number(stakeAmount) > 0
-                    ? 'bg-gradient-to-r from-cyan-500 to-cyan-400 text-black'
-                    : 'bg-[#2A2A3A] text-[#606070] cursor-not-allowed'
-                }`}
-              >
-                确认质押
-              </button>
-            </div>
+            {/* 质押中 Tab */}
+            {stakingSubTab === 'staking' && (
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
 
-            {/* My Stake Records */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <h3 className="font-semibold mb-3">我的质押记录</h3>
-              {stakeRecords.length > 0 ? (
-                <div className="space-y-3">
-                  {stakeRecords.map((record) => (
-                    <div
-                      key={record.id}
-                      className="p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]"
-                    >
-                      <div className="flex items-center justify-between mb-2">
+                {stakeRecords.filter(r => r.status === 'staking' || r.status === 'unlocked').length > 0 ? (
+                  <div className="space-y-2">
+                    {stakeRecords.filter(r => r.status === 'staking' || r.status === 'unlocked').map((record) => (
+                      <div key={record.id} className="bg-[#0A0A0F]/30 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                              record.status === 'staking' ? 'bg-[#06B6D4]/10' : 'bg-[#22C55E]/10'
+                            }`}>
+                              <Lock className={`w-3.5 h-3.5 ${record.status === 'staking' ? 'text-[#06B6D4]' : 'text-[#22C55E]'}`} />
+                            </div>
+                            <div>
+                              <span className="text-sm font-bold">{record.amount.toLocaleString()} HOOT</span>
+                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x 权重</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              record.status === 'staking' ? 'bg-[#06B6D4]/10 text-[#06B6D4]' : 'bg-[#22C55E]/10 text-[#22C55E]'
+                            }`}>
+                              {record.status === 'staking' ? '质押中' : '已解押'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-[#606070] mb-2">
+                          质押于 {record.stakeDate} · 解押于 {record.unlockDate} · {record.lockPeriod}天锁定期
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#94A3B8]">累计收益</span>
+                          <span className="text-sm font-bold text-[#22C55E]">${record.rewards.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无质押中记录</div>
+                )}
+              </div>
+            )}
+
+            {/* 历史质押 Tab */}
+            {stakingSubTab === 'history' && (
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+
+                {stakeRecords.filter(r => r.status === 'history').length > 0 ? (
+                  <div className="space-y-2">
+                    {stakeRecords.filter(r => r.status === 'history').map((record) => (
+                      <div key={record.id} className="bg-[#0A0A0F]/30 rounded-xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-[#94A3B8]/10 flex items-center justify-center">
+                              <Lock className="w-3.5 h-3.5 text-[#94A3B8]" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-bold">{record.amount.toLocaleString()} HOOT</span>
+                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x 权重</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs px-2 py-0.5 rounded bg-[#94A3B8]/10 text-[#94A3B8]">
+                              已解押
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-[#606070] mb-2">
+                          质押于 {record.stakeDate} · 解押于 {record.unlockDate} · {record.lockPeriod}天锁定期
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#94A3B8]">累计收益</span>
+                          <span className="text-sm font-bold text-[#22C55E]">${record.rewards.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无历史质押记录</div>
+                )}
+              </div>
+            )}
+
+            {/* Dividend Records */}
+            {stakingSubTab === 'dividends' && (
+              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+
+                {dividendRecords.length > 0 ? (
+                  <div className="space-y-2">
+                    {dividendRecords.map((record) => (
+                      <div key={record.id} className="flex items-center justify-between py-2">
                         <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                            record.status === 'locked' ? 'bg-yellow-500/20' : 'bg-green-500/20'
-                          }`}>
-                            {record.status === 'locked' ? (
-                              <Lock className="w-4 h-4 text-yellow-400" />
-                            ) : (
-                              <Coins className="w-4 h-4 text-green-400" />
-                            )}
+                          <div className="w-7 h-7 rounded-lg bg-[#22C55E]/10 flex items-center justify-center">
+                            <History className="w-3.5 h-3.5 text-[#22C55E]" />
                           </div>
                           <div>
-                            <span className="font-medium">{record.amount.toLocaleString()} HOOT</span>
-                            <div className="text-xs text-[#606070]">{record.lockPeriod}天锁定</div>
+                            <span className="text-sm font-medium">{record.source}</span>
+                            <p className="text-xs text-[#94A3B8]">{record.date}</p>
                           </div>
                         </div>
-                        <span className="text-sm font-bold text-cyan-400">
-                          {record.weight.toFixed(1)}x
-                        </span>
+                        <span className="text-sm text-[#22C55E]">+${record.amount.toFixed(2)}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs ${record.status === 'locked' ? 'text-yellow-400' : 'text-green-400'}`}>
-                          {record.status === 'locked' ? `${record.daysRemaining}天后解锁` : '可解押'}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-green-400">${record.accumulatedRewards.toFixed(2)}</span>
-                          <button
-                            type="button"
-                            onClick={() => onUnstake?.(record.id)}
-                            disabled={record.status === 'locked'}
-                            className={`px-2 py-1 text-xs rounded ${
-                              record.status === 'locked'
-                                ? 'border border-[#2A2A3A] text-[#606070] cursor-not-allowed'
-                                : 'border border-cyan-500/50 text-cyan-400'
-                            }`}
-                          >
-                            {record.status === 'locked' ? '锁定中' : '解押'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Coins className="w-10 h-10 text-[#606070] mx-auto mb-2" />
-                  <p className="text-[#9090A0] text-sm">暂无质押记录</p>
-                </div>
-              )}
-            </div>
-          </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无分红记录</div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
+        {/* Leaderboard Tab */}
         {activeTab === 'leaderboard' && (
-          <div className="space-y-4">
+          <>
+            {/* My Rank */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-[#94A3B8]">我的排名</span>
+                  <div className="text-2xl font-bold">#128</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-[#94A3B8]">我的质押</span>
+                  <div className="text-lg font-bold text-cyan-400">{userStaked.toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+
             {/* Leaderboard */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Crown className="w-5 h-5 text-yellow-400" />
-                <h3 className="font-semibold">质押排行榜</h3>
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+
+              <div className="flex items-center gap-2">
+                <Crown className="w-4 h-4 text-[#F59E0B]" />
+                <span className="text-sm font-medium">TOP 5</span>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {leaderboardData.map((user) => (
-                  <div
-                    key={user.rank}
-                    className="flex items-center justify-between p-3 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E]"
-                  >
+                  <div key={user.rank} className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                        user.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-black' :
-                        user.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-500 text-black' :
-                        user.rank === 3 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white' :
-                        'bg-[#2A2A3A] text-[#9090A0]'
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                        user.rank === 1 ? 'bg-[#F59E0B] text-black' :
+                        user.rank === 2 ? 'bg-gray-400 text-black' :
+                        user.rank === 3 ? 'bg-orange-500 text-white' :
+                        'bg-[#1E1E2E] text-[#94A3B8]'
                       }`}>
                         {user.rank}
                       </div>
                       <div>
-                        <div className="font-mono text-sm">{user.address}</div>
-                        <div className="text-xs text-[#606070]">{user.staked} HOOT</div>
+                        <span className="text-sm font-mono">{user.address}</span>
+                        <p className="text-xs text-[#94A3B8]">{user.staked} HOOT</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium text-cyan-400">{user.weight}</div>
-                      <div className="text-xs text-green-400">{user.rewards}</div>
+                      <span className="text-sm text-cyan-400">{user.weight}</span>
+                      <p className="text-xs text-[#22C55E]">{user.rewards}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <button
-                type="button"
-                className="w-full mt-4 py-3 text-center text-sm text-[#9090A0] hover:text-[#F8F8FC] transition-colors flex items-center justify-center gap-1"
-              >
-                查看完整排行榜
-                <ChevronRight className="w-4 h-4" />
+              <button type="button" className="w-full py-2 text-sm text-[#94A3B8] flex items-center justify-center gap-1">
+                查看全部 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
-
-            {/* My Rank */}
-            <div className="backdrop-blur-xl bg-[#12121A]/80 border border-cyan-500/30 rounded-2xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-[#9090A0] mb-1">我的排名</div>
-                  <div className="text-2xl font-bold">#128</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-[#9090A0] mb-1">我的质押</div>
-                  <div className="text-lg font-semibold text-cyan-400">{userStaked.toLocaleString()}</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          </>
         )}
-      </div>
-
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md backdrop-blur-xl bg-[#0A0A0F]/95 border-t border-[#1E1E2E]">
-        <div className="grid grid-cols-5 py-2">
-          {[
-            { id: 'home', icon: Home, label: '首页' },
-            { id: 'trading', icon: BarChart3, label: '交易' },
-            { id: 'strategies', icon: Layers, label: '策略' },
-            { id: 'wallet', icon: Wallet, label: '钱包' },
-            { id: 'me', icon: User, label: '我的' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleNavChange(tab.id)}
-              className={`flex flex-col items-center py-2 px-1 transition-colors ${
-                navTab === tab.id ? 'text-[#06B6D4]' : 'text-[#606070]'
-              }`}
-            >
-              <tab.icon className="w-5 h-5 mb-1" />
-              <span className="text-xs">{tab.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   )

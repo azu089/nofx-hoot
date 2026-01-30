@@ -261,16 +261,6 @@ export function GlassEffectDemo() {
         </div>
       </div>
 
-      {/* CSS for scan animation */}
-      <style jsx>{`
-        @keyframes scan {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(500%); }
-        }
-        .animate-scan {
-          animation: scan 3s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   )
 }

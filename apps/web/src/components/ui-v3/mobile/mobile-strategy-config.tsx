@@ -41,6 +41,7 @@ interface StrategyConfigData {
   dcaMultiplier: number
   waterfallProtection: boolean
   blackSwanProtection: boolean
+  blackSwanType: string
   blackSwanTrigger: number
   blackSwanAction: string
   dailyMaxLoss: boolean
@@ -78,6 +79,8 @@ const availablePairs = [
   { symbol: 'SOL', name: 'Solana', price: '$178' },
   { symbol: 'XRP', name: 'XRP', price: '$2.45' },
   { symbol: 'DOGE', name: 'Dogecoin', price: '$0.32' },
+  { symbol: 'ADA', name: 'Cardano', price: '$0.85' },
+  { symbol: 'AVAX', name: 'Avalanche', price: '$38' },
 ]
 
 // 风险模板预设值
@@ -88,11 +91,12 @@ const riskPresets = {
 }
 
 export function MobileStrategyConfig({
-  strategyName = 'MACD趋势跟踪策略',
+  strategyName: _strategyName = 'MACD趋势跟踪策略',
   onBack,
   onSave,
   onCancel
 }: MobileStrategyConfigProps) {
+  void _strategyName // 策略名称，后续可显示在标题
   // 基础配置
   const [selectedExchange, setSelectedExchange] = useState('Binance')
   const [showExchangeDropdown, setShowExchangeDropdown] = useState(false)
@@ -119,9 +123,11 @@ export function MobileStrategyConfig({
   const [dcaTrigger, setDcaTrigger] = useState('5')
   const [dcaMultiplier, setDcaMultiplier] = useState('1.5')
   const [waterfallProtection, setWaterfallProtection] = useState(true)
+  const [waterfallTrigger] = useState('15')
 
   // 风控保护
   const [blackSwanProtection, setBlackSwanProtection] = useState(false)
+  const [blackSwanType] = useState<'coin_drop' | 'account_loss'>('account_loss')
   const [blackSwanTrigger, setBlackSwanTrigger] = useState('10')
   const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>('close_all')
   const [dailyMaxLoss, setDailyMaxLoss] = useState(false)
@@ -149,9 +155,9 @@ export function MobileStrategyConfig({
   const quickAmounts = ['50', '100', '200', '500']
 
   const blackSwanActions = [
-    { id: 'close_all', name: '全平', icon: LogOut },
-    { id: 'close_half', name: '减仓', icon: TrendingDown },
-    { id: 'pause', name: '暂停', icon: Pause },
+    { id: 'close_all', name: '全部平仓', icon: LogOut },
+    { id: 'close_half', name: '减仓50%', icon: TrendingDown },
+    { id: 'pause', name: '暂停开仓', icon: Pause },
   ]
 
   const removePair = (symbol: string) => {
@@ -191,6 +197,7 @@ export function MobileStrategyConfig({
       dcaMultiplier: parseFloat(dcaMultiplier),
       waterfallProtection,
       blackSwanProtection,
+      blackSwanType,
       blackSwanTrigger: parseFloat(blackSwanTrigger),
       blackSwanAction,
       dailyMaxLoss,
@@ -200,30 +207,26 @@ export function MobileStrategyConfig({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
-      {/* 固定顶部标题栏 */}
-      <div className="sticky top-0 z-20 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-3">
+    <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F8F8FC]">
+      {/* 顶部导航栏 */}
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 py-4">
           <button
             type="button"
             onClick={onBack}
-            title="返回"
             aria-label="返回"
-            className="p-2 -ml-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <div className="text-center">
-            <h1 className="text-lg font-semibold">策略配置</h1>
-            <p className="text-xs text-[#9090A0]">{strategyName}</p>
-          </div>
-          <div className="w-9" />
+          <h1 className="text-lg font-semibold text-white">策略配置</h1>
+          <div className="w-10" />
         </div>
       </div>
 
       {/* 可滚动内容区 */}
-      <div className="flex-1 overflow-auto pb-32">
-        <div className="p-4 space-y-4">
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 pb-6 space-y-4">
           {/* 基础配置 */}
           <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
             <div className="flex items-center gap-2 mb-4">
@@ -555,6 +558,9 @@ export function MobileStrategyConfig({
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-yellow-400" />
                   <span className="text-sm">防瀑布保护</span>
+                  {waterfallProtection && (
+                    <span className="text-xs text-[#606070]">跌幅&gt;{waterfallTrigger}%停止补仓</span>
+                  )}
                 </div>
                 <Toggle enabled={waterfallProtection} onChange={setWaterfallProtection} />
               </div>
@@ -583,7 +589,7 @@ export function MobileStrategyConfig({
                   {/* 触发条件 */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs text-[#606070]">账户亏损达到</label>
+                      <label className="text-xs text-[#606070]">当账户亏损达到</label>
                       <div className="flex items-center gap-1">
                         <input
                           type="text"
@@ -593,6 +599,13 @@ export function MobileStrategyConfig({
                         />
                         <span className="text-sm text-[#9090A0]">%</span>
                       </div>
+                    </div>
+
+                    {/* 杠杆换算提示 */}
+                    <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-2">
+                      <p className="text-[11px] text-yellow-400/80">
+                        💡 {leverage}x 杠杆下，币种跌 {(parseFloat(blackSwanTrigger) / parseFloat(leverage || '1')).toFixed(1)}% 即触发保护
+                      </p>
                     </div>
 
                     {/* 快捷阈值 */}
@@ -644,6 +657,9 @@ export function MobileStrategyConfig({
               <div className="flex items-center gap-2">
                 <span className="text-sm">📉</span>
                 <span className="text-sm font-medium">单日最大亏损</span>
+                {dailyMaxLoss && (
+                  <span className="text-xs text-[#606070]">超过{dailyMaxLossPercent}%暂停</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {dailyMaxLoss && (
@@ -664,8 +680,8 @@ export function MobileStrategyConfig({
         </div>
       </div>
 
-      {/* 底部固定栏 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4 z-20">
+      {/* 底部固定栏 - 在容器内部 */}
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
         {/* 摘要 */}
         <div className="flex items-center justify-center gap-4 mb-3 text-xs">
           <span className="text-[#606070]">

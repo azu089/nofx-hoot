@@ -42,7 +42,7 @@ export function MobileProfileV3({
   user = {
     username: 'CryptoTrader_Pro',
     email: 'use***@example.com',
-    memberSince: '2023年3月15日',
+    memberSince: '2023.3.15',
     vipLevel: 12,
     subscriptionTier: 'premium'
   },
@@ -82,7 +82,7 @@ export function MobileProfileV3({
 
       <div className="px-4 py-3 space-y-3">
         {/* Profile Card with Stats integrated */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
           <div className="flex items-center gap-3 mb-3">
             {/* 使用项目 Logo 作为头像 */}
             <div className="relative">
@@ -128,7 +128,7 @@ export function MobileProfileV3({
           <button
             type="button"
             onClick={() => onNavigate?.('/subscription')}
-            className="flex flex-col items-center justify-center p-4 bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl hover:bg-[#1E1E2E]/50 transition-colors"
+            className="glass-border-glow relative flex flex-col items-center justify-center p-4 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden hover:bg-[#1E1E2E]/50 transition-colors"
           >
             <Crown className="w-6 h-6 text-[#F59E0B] mb-1.5" />
             <span className="text-sm text-[#9090A0]">会员订阅</span>
@@ -136,12 +136,12 @@ export function MobileProfileV3({
           <button
             type="button"
             onClick={() => onNavigate?.('/announcements')}
-            className="flex flex-col items-center justify-center p-4 bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl hover:bg-[#1E1E2E]/50 transition-colors relative"
+            className="glass-border-glow relative flex flex-col items-center justify-center p-4 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden hover:bg-[#1E1E2E]/50 transition-colors"
           >
             <Bell className="w-6 h-6 text-[#8B5CF6] mb-1.5" />
             <span className="text-sm text-[#9090A0]">通知公告</span>
             {notifications.unreadCount > 0 && (
-              <span className="absolute top-2 right-2 w-5 h-5 bg-[#EF4444] rounded-full text-[10px] font-bold text-white flex items-center justify-center">
+              <span className="absolute top-2 right-2 w-5 h-5 bg-[#EF4444] rounded-full text-[10px] font-bold text-white flex items-center justify-center z-10">
                 {notifications.unreadCount > 9 ? '9+' : notifications.unreadCount}
               </span>
             )}
@@ -149,7 +149,7 @@ export function MobileProfileV3({
           <button
             type="button"
             onClick={() => onNavigate?.('/settings')}
-            className="flex flex-col items-center justify-center p-4 bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl hover:bg-[#1E1E2E]/50 transition-colors"
+            className="glass-border-glow relative flex flex-col items-center justify-center p-4 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden hover:bg-[#1E1E2E]/50 transition-colors"
           >
             <Settings className="w-6 h-6 text-[#06B6D4] mb-1.5" />
             <span className="text-sm text-[#9090A0]">设置</span>
@@ -157,7 +157,7 @@ export function MobileProfileV3({
           <button
             type="button"
             onClick={() => onNavigate?.('/help')}
-            className="flex flex-col items-center justify-center p-4 bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl hover:bg-[#1E1E2E]/50 transition-colors"
+            className="glass-border-glow relative flex flex-col items-center justify-center p-4 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden hover:bg-[#1E1E2E]/50 transition-colors"
           >
             <HelpCircle className="w-6 h-6 text-[#9090A0] mb-1.5" />
             <span className="text-sm text-[#9090A0]">帮助中心</span>
@@ -165,7 +165,7 @@ export function MobileProfileV3({
         </div>
 
         {/* Recent Activity - More compact */}
-        <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-3">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-3">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-sm">最近活动</h3>
             <button

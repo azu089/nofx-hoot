@@ -60,7 +60,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
     {
       title: '新功能上线',
       subtitle: 'AI智能调仓',
-      description: '根据市场变化自动优化持仓',
+      description: '根据市场变化自动优化持仓比例',
       gradient: 'from-purple-500/20 to-cyan-500/20',
       cta: '立即体验'
     },
@@ -95,9 +95,10 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   ]
 
   const announcements = [
-    '📢 系统维护：1月30日凌晨2点',
-    '🔥 新策略上线：趋势追踪Pro',
-    '🎁 邀请返佣进行中'
+    '📢 系统维护通知：1月30日凌晨2点进行例行维护',
+    '🔥 新策略上线：趋势追踪Pro，回测收益超200%',
+    '🎁 邀请返佣活动进行中，邀请好友最高得$100',
+    '📈 BTC突破10万美元，AI策略精准捕捉行情'
   ]
 
   // Touch handlers for carousel
@@ -200,7 +201,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
         {/* Scrolling Marquee */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden py-2 px-3">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
           <div className="flex items-center">
             <Megaphone className="w-3.5 h-3.5 text-[#06B6D4] mr-2 flex-shrink-0" />
             <div className="flex-1 overflow-hidden">
@@ -218,7 +218,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
         {/* Quick Access Grid */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-3">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
           <div className="grid grid-cols-4 gap-2">
             {quickAccessItems.map((item) => (
               <button
@@ -240,7 +239,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
         {/* Tab Switcher - Market/News */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
 
           {/* Tab Headers */}
           <div className="flex border-b border-[#1E1E2E]">
@@ -340,20 +338,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
         </div>
       </div>
 
-      {/* Marquee Animation */}
-      <style jsx global>{`
-        @keyframes marquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .animate-marquee {
-          animation: marquee 20s linear infinite;
-        }
-      `}</style>
     </div>
   )
 }

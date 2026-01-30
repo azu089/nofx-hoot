@@ -22,12 +22,14 @@ import { WithdrawPage } from '@/components/ui-v3/wallet/withdraw-page'
 import { ExchangePage } from '@/components/ui-v3/wallet/exchange-page'
 import { ReferralPageV3 } from '@/components/ui-v3/referral/referral-page-v3'
 // Strategy creation components
-import { VisualStrategyBuilder } from '@/components/ui-v3/strategies/visual-strategy-builder'
 import { StrategyCreatorPage } from '@/components/ui-v3/strategies/strategy-creator-page'
 import { StrategyConfigPage } from '@/components/ui-v3/strategies/strategy-config-page'
 import { StrategySubscribeModal } from '@/components/ui-v3/strategies/strategy-subscribe-modal'
 // New pages
 import { SubscriptionPage } from '@/components/ui-v3/subscription/subscription-page'
+import { HelpCenterPage } from '@/components/ui-v3/help/help-center-page'
+import { AboutPage } from '@/components/ui-v3/about/about-page'
+import { NotificationsPage } from '@/components/ui-v3/notifications/notifications-page'
 // Mobile components
 import { MobileDashboardV3 } from '@/components/ui-v3/mobile/mobile-dashboard-v3'
 import { MobileStrategiesV3 } from '@/components/ui-v3/mobile/mobile-strategies-v3'
@@ -35,28 +37,46 @@ import { MobileTradingCenter } from '@/components/ui-v3/mobile/mobile-trading-ce
 import { MobileStrategyDetail } from '@/components/ui-v3/mobile/mobile-strategy-detail'
 import { MobileStrategyConfig } from '@/components/ui-v3/mobile/mobile-strategy-config'
 import { MobileEcosystemV3 } from '@/components/ui-v3/mobile/mobile-ecosystem-v3'
-import { MobileProfileV3 } from '@/components/ui-v3/mobile/mobile-profile-v3'
-import { MobileWalletV3 } from '@/components/ui-v3/mobile/mobile-wallet-v3'
-import { MobileReferralV3 } from '@/components/ui-v3/mobile/mobile-referral-v3'
-import { MobileSettingsV3 } from '@/components/ui-v3/mobile/mobile-settings-v3'
+// Legacy mobile components - replaced by V0 generated versions
+// import { MobileProfileV3 } from '@/components/ui-v3/mobile/mobile-profile-v3'
+// import { MobileWalletV3 } from '@/components/ui-v3/mobile/mobile-wallet-v3'
+// import { MobileReferralV3 } from '@/components/ui-v3/mobile/mobile-referral-v3'
+// import { MobileSettingsV3 } from '@/components/ui-v3/mobile/mobile-settings-v3'
 import { MobileStrategyCreator } from '@/components/ui-v3/mobile/mobile-strategy-creator'
-import { MobileVisualBuilder } from '@/components/ui-v3/mobile/mobile-visual-builder'
 import { MobileNav } from '@/components/ui-v3/mobile/mobile-nav'
+// New mobile wallet pages
+import { MobileWalletPage } from '@/components/ui-v3/mobile/mobile-wallet-page'
+import { MobileDepositPage } from '@/components/ui-v3/mobile/mobile-deposit-page'
+import { MobileWithdrawPage } from '@/components/ui-v3/mobile/mobile-withdraw-page'
+import { MobileExchangePage } from '@/components/ui-v3/mobile/mobile-exchange-page'
+// New mobile auth and subscription pages
+import { MobileLoginPage } from '@/components/ui-v3/mobile/mobile-login-page'
+import { MobileRegisterPage } from '@/components/ui-v3/mobile/mobile-register-page'
+import { MobileSubscriptionPage } from '@/components/ui-v3/mobile/mobile-subscription-page'
+// New mobile profile, referral, settings pages (V0 generated)
+import { MobileProfilePage } from '@/components/ui-v3/mobile/mobile-profile-page'
+import { MobileReferralPage } from '@/components/ui-v3/mobile/mobile-referral-page'
+import { MobileSettingsPage } from '@/components/ui-v3/mobile/mobile-settings-page'
+// New mobile notifications, about, help pages (V0 generated)
+import { MobileNotificationsPage } from '@/components/ui-v3/mobile/mobile-notifications-page'
+import { MobileAboutPage } from '@/components/ui-v3/mobile/mobile-about-page'
+import { MobileHelpPage } from '@/components/ui-v3/mobile/mobile-help-page'
 
 // Sidebar navigation configuration - 5 tabs only
 const sidebarNavItems = [
   { id: 'dashboard', label: '首页', icon: Home, pageIds: ['dashboard'] },
-  { id: 'strategy-market', label: '策略', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-config', 'strategy-creator', 'visual-builder'] },
+  { id: 'strategy-market', label: '策略', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-config', 'strategy-creator'] },
   { id: 'trading', label: '交易', icon: BarChart3, pageIds: ['trading'] },
   { id: 'wallet', label: '资产', icon: Wallet, pageIds: ['wallet', 'exchange', 'api-keys', 'deposit', 'withdraw'] },
-  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'subscription'] },
+  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'subscription', 'help', 'about', 'notifications'] },
 ]
 
 // Pages that need sidebar (user pages, not public pages)
 const pagesWithSidebar = [
   'dashboard', 'strategy-market', 'strategy-detail', 'trading',
   'ecosystem', 'profile', 'wallet', 'exchange', 'api-keys', 'deposit', 'withdraw',
-  'referral', 'strategy-config', 'strategy-creator', 'settings', 'visual-builder', 'subscription'
+  'referral', 'strategy-config', 'strategy-creator', 'settings', 'subscription',
+  'help', 'about', 'notifications'
 ]
 
 type PreviewPage =
@@ -78,8 +98,10 @@ type PreviewPage =
   | 'strategy-config'
   | 'strategy-creator'
   | 'settings'
-  | 'visual-builder'
   | 'subscription'
+  | 'help'
+  | 'about'
+  | 'notifications'
 
 // 移动端 Tab 映射
 type MobileTab = 'home' | 'strategies' | 'trading' | 'assets' | 'me'
@@ -98,9 +120,11 @@ const pageToMobileTab: Partial<Record<PreviewPage, MobileTab>> = {
   'strategy-detail': 'strategies',
   'strategy-config': 'strategies',
   'strategy-creator': 'strategies',
-  'visual-builder': 'strategies',
   trading: 'trading',
   wallet: 'assets',
+  deposit: 'assets',
+  withdraw: 'assets',
+  exchange: 'assets',
   profile: 'me',
   referral: 'me',
   settings: 'me',
@@ -123,8 +147,8 @@ export default function PreviewPage() {
   const pages: { id: PreviewPage; name: string; category: string; hasMobile?: boolean }[] = [
     // 公开页面
     { id: 'landing', name: 'Landing', category: '公开' },
-    { id: 'login', name: '登录', category: '公开' },
-    { id: 'register', name: '注册', category: '公开' },
+    { id: 'login', name: '登录', category: '公开', hasMobile: true },
+    { id: 'register', name: '注册', category: '公开', hasMobile: true },
     // 核心页面 (5个底部Tab对应)
     { id: 'dashboard', name: '首页', category: '核心', hasMobile: true },
     { id: 'strategy-market', name: '策略', category: '核心', hasMobile: true },
@@ -135,17 +159,19 @@ export default function PreviewPage() {
     { id: 'strategy-detail', name: '策略详情', category: '策略', hasMobile: true },
     { id: 'strategy-config', name: '策略配置', category: '策略', hasMobile: true },
     { id: 'strategy-creator', name: '创建策略', category: '策略', hasMobile: true },
-    { id: 'visual-builder', name: '可视化', category: '策略', hasMobile: true },
     // 资产相关
-    { id: 'exchange', name: '兑换', category: '资产' },
+    { id: 'exchange', name: '兑换', category: '资产', hasMobile: true },
     { id: 'api-keys', name: 'API Keys', category: '资产' },
-    { id: 'deposit', name: '充值', category: '资产' },
-    { id: 'withdraw', name: '提现', category: '资产' },
+    { id: 'deposit', name: '充值', category: '资产', hasMobile: true },
+    { id: 'withdraw', name: '提现', category: '资产', hasMobile: true },
+    { id: 'ecosystem', name: '生态', category: '资产', hasMobile: true },
     // 其他页面
-    { id: 'ecosystem', name: '生态', category: '更多', hasMobile: true },
     { id: 'referral', name: '邀请', category: '更多', hasMobile: true },
     { id: 'settings', name: '设置', category: '更多', hasMobile: true },
-    { id: 'subscription', name: '会员', category: '更多' },
+    { id: 'subscription', name: '会员', category: '更多', hasMobile: true },
+    { id: 'help', name: '帮助', category: '更多', hasMobile: true },
+    { id: 'about', name: '关于', category: '更多', hasMobile: true },
+    { id: 'notifications', name: '公告', category: '更多', hasMobile: true },
   ]
 
   const categories = ['公开', '核心', '策略', '资产', '更多']
@@ -224,10 +250,25 @@ export default function PreviewPage() {
               <div className="w-[390px] h-[844px] bg-[#1A1A1A] rounded-[50px] p-3 shadow-2xl border-4 border-[#2A2A2A]">
                 {/* Notch */}
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 w-32 h-7 bg-black rounded-full z-10" />
-                {/* Screen */}
-                <div className="w-full h-full bg-[#0A0A0F] rounded-[40px] overflow-hidden relative">
+                {/* Screen - transform-gpu creates new containing block for fixed modals */}
+                <div className="w-full h-full bg-[#0A0A0F] rounded-[40px] overflow-hidden relative transform-gpu">
                   {/* 内容区域 - 底部留出导航栏空间 */}
                   <div className="h-[calc(100%-70px)] overflow-y-auto pb-2">
+                    {currentPage === 'login' && (
+                      <MobileLoginPage
+                        onLogin={(email) => console.log('登录:', email)}
+                        onWalletConnect={() => console.log('钱包连接')}
+                        onRegister={() => setCurrentPage('register')}
+                        onForgotPassword={() => console.log('忘记密码')}
+                      />
+                    )}
+                    {currentPage === 'register' && (
+                      <MobileRegisterPage
+                        onRegister={(data) => console.log('注册:', data)}
+                        onWalletConnect={() => console.log('钱包注册')}
+                        onLogin={() => setCurrentPage('login')}
+                      />
+                    )}
                     {currentPage === 'dashboard' && <MobileDashboardV3 />}
                     {currentPage === 'strategy-market' && (
                       <MobileStrategiesV3
@@ -251,25 +292,40 @@ export default function PreviewPage() {
                     {currentPage === 'trading' && <MobileTradingCenter />}
                     {currentPage === 'ecosystem' && <MobileEcosystemV3 />}
                     {currentPage === 'profile' && (
-                      <MobileProfileV3
+                      <MobileProfilePage
                         onNavigate={(path) => {
                           if (path === '/subscription') setCurrentPage('subscription')
                           else if (path === '/referral') setCurrentPage('referral')
+                          else if (path === '/notifications') setCurrentPage('notifications')
                           else if (path === '/settings') setCurrentPage('settings')
-                          else if (path === '/ecosystem') setCurrentPage('ecosystem')
-                          else if (path === '/wallet') setCurrentPage('wallet')
+                          else if (path === '/help') setCurrentPage('help')
+                          else if (path === '/about') setCurrentPage('about')
                           else console.log('导航到:', path)
                         }}
                         onLogout={() => setCurrentPage('login')}
                       />
                     )}
                     {currentPage === 'wallet' && (
-                      <MobileWalletV3
-                        onDeposit={() => console.log('充值')}
-                        onWithdraw={() => console.log('提现')}
+                      <MobileWalletPage
+                        onNavigate={(path) => {
+                          if (path === '/deposit') setCurrentPage('deposit')
+                          else if (path === '/withdraw') setCurrentPage('withdraw')
+                          else if (path === '/exchange') setCurrentPage('exchange')
+                        }}
                       />
                     )}
-                    {currentPage === 'referral' && <MobileReferralV3 />}
+                    {currentPage === 'deposit' && (
+                      <MobileDepositPage onBack={() => setCurrentPage('wallet')} />
+                    )}
+                    {currentPage === 'withdraw' && (
+                      <MobileWithdrawPage onBack={() => setCurrentPage('wallet')} />
+                    )}
+                    {currentPage === 'exchange' && (
+                      <MobileExchangePage onBack={() => setCurrentPage('wallet')} />
+                    )}
+                    {currentPage === 'referral' && (
+                      <MobileReferralPage onBack={() => setCurrentPage('profile')} />
+                    )}
                     {currentPage === 'strategy-config' && (
                       <MobileStrategyConfig
                         strategyName="MACD 趋势跟踪策略"
@@ -282,24 +338,29 @@ export default function PreviewPage() {
                       />
                     )}
                     {currentPage === 'settings' && (
-                      <MobileSettingsV3
-                        onLogout={() => setCurrentPage('login')}
+                      <MobileSettingsPage onBack={() => setCurrentPage('profile')} />
+                    )}
+                    {currentPage === 'subscription' && (
+                      <MobileSubscriptionPage
+                        currentTier="basic"
+                        onSubscribe={(tierId) => console.log('订阅:', tierId)}
+                        onBack={() => setCurrentPage('profile')}
                       />
+                    )}
+                    {currentPage === 'help' && (
+                      <MobileHelpPage onBack={() => setCurrentPage('profile')} />
+                    )}
+                    {currentPage === 'about' && (
+                      <MobileAboutPage onBack={() => setCurrentPage('profile')} />
+                    )}
+                    {currentPage === 'notifications' && (
+                      <MobileNotificationsPage onBack={() => setCurrentPage('profile')} />
                     )}
                     {currentPage === 'strategy-creator' && (
                       <MobileStrategyCreator
                         onBack={() => setCurrentPage('strategy-market')}
                         onSave={(data) => {
                           console.log('保存策略:', data)
-                          setCurrentPage('strategy-market')
-                        }}
-                      />
-                    )}
-                    {currentPage === 'visual-builder' && (
-                      <MobileVisualBuilder
-                        onBack={() => setCurrentPage('strategy-creator')}
-                        onSave={(data) => {
-                          console.log('保存可视化策略:', data)
                           setCurrentPage('strategy-market')
                         }}
                       />
@@ -532,9 +593,22 @@ export default function PreviewPage() {
                   onCancel={() => setCurrentPage('profile')}
                 />
               )}
-              {currentPage === 'visual-builder' && (
-                <VisualStrategyBuilder
-                  onClose={() => setCurrentPage('strategy-market')}
+              {currentPage === 'help' && (
+                <HelpCenterPage
+                  onNavigate={(path) => console.log('导航到:', path)}
+                  onContactSupport={(method) => console.log('联系支持:', method)}
+                />
+              )}
+              {currentPage === 'about' && (
+                <AboutPage
+                  onNavigate={(path) => console.log('导航到:', path)}
+                />
+              )}
+              {currentPage === 'notifications' && (
+                <NotificationsPage
+                  onNavigate={(path) => console.log('导航到:', path)}
+                  onMarkAsRead={(id) => console.log('标记已读:', id)}
+                  onMarkAllAsRead={() => console.log('全部标记已读')}
                 />
               )}
             </div>

@@ -5,19 +5,19 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Play,
   Save,
   AlertTriangle,
   Zap,
-  TrendingUp,
   TrendingDown,
   Info,
   X,
   Check,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Pause,
+  Square,
+  Bell
 } from 'lucide-react'
 
 interface MobileVisualBuilderProps {
@@ -85,22 +85,49 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
     { id: '1', type: 'buy', amount: '10', amountType: 'percent' }
   ])
   const [selectedPairs, setSelectedPairs] = useState<string[]>(['BTC', 'ETH'])
-  const [amount, setAmount] = useState('100')
-  const [leverage, setLeverage] = useState(1)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [amount, _setAmount] = useState('100')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [leverage, _setLeverage] = useState(1)
   const [stopLoss, setStopLoss] = useState(5)
   const [takeProfit, setTakeProfit] = useState(10)
-  const [stopLossEnabled, setStopLossEnabled] = useState(true)
-  const [takeProfitEnabled, setTakeProfitEnabled] = useState(true)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [stopLossEnabled, _setStopLossEnabled] = useState(true)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [takeProfitEnabled, _setTakeProfitEnabled] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [editingCondition, setEditingCondition] = useState<string | null>(null)
   const [editingAction, setEditingAction] = useState<string | null>(null)
+
+  // 风控参数状态
+  const [isTrailingStop, setIsTrailingStop] = useState(false)
+  const [trailingActivation, setTrailingActivation] = useState('5')
+  const [trailingCallback, setTrailingCallback] = useState('2')
+  const [dcaEnabled, setDcaEnabled] = useState(false)
+  const [dcaCount, setDcaCount] = useState('3')
+  const [dcaTrigger, setDcaTrigger] = useState('5')
+  const [dcaMultiplier, setDcaMultiplier] = useState('1.5')
+  const [waterfallProtection, setWaterfallProtection] = useState(true)
+  const [blackSwanProtection, setBlackSwanProtection] = useState(false)
+  const [blackSwanTrigger, setBlackSwanTrigger] = useState('10')
+  const [blackSwanAction, setBlackSwanAction] = useState<'close' | 'pause' | 'notify'>('close')
+  const [dailyMaxLoss, setDailyMaxLoss] = useState(false)
+  const [dailyMaxLossPercent, setDailyMaxLossPercent] = useState('5')
+
+  const blackSwanActions = [
+    { id: 'close', name: '平仓', icon: Square },
+    { id: 'pause', name: '暂停', icon: Pause },
+    { id: 'notify', name: '通知', icon: Bell },
+  ]
 
   // Toggle 组件
   const Toggle = ({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) => (
     <button
       type="button"
       onClick={() => onChange(!enabled)}
+      title={enabled ? '关闭' : '开启'}
+      aria-label={enabled ? '关闭' : '开启'}
       className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
         enabled ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
       }`}
@@ -175,9 +202,8 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
     setIsSaving(false)
   }
 
-  const getIndicatorLabel = (id: string) => {
-    return indicatorOptions.find(i => i.id === id)?.name || id
-  }
+  // getIndicatorLabel - 后续可用于显示指标名称
+  // const getIndicatorLabel = (id: string) => indicatorOptions.find(i => i.id === id)?.name || id
 
   const getOperatorLabel = (id: string) => {
     return operatorOptions.find(o => o.id === id)?.symbol || id
@@ -399,9 +425,9 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
+    <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F8F8FC]">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0F]/90 border-b border-[#1E1E2E]">
+      <div className="flex-shrink-0 backdrop-blur-xl bg-[#0A0A0F]/90 border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 py-3">
           <button
             type="button"
@@ -422,7 +448,7 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
       </div>
 
       {/* 内容区 */}
-      <div className="flex-1 overflow-auto pb-24">
+      <div className="flex-1 overflow-auto">
         <div className="p-4 space-y-4">
           {/* 策略名称 */}
           <div className="bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
@@ -583,81 +609,224 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
               <h3 className="font-semibold text-sm">风控设置</h3>
             </div>
 
+            {/* 止损止盈 */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="block text-xs text-[#606070] mb-1.5">每笔金额</label>
+                <label className="block text-xs text-[#F43F5E] mb-1.5">止损</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">$</span>
                   <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full pl-6 pr-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl text-sm focus:border-[#06B6D4] focus:outline-none"
+                    type="text"
+                    title="止损比例"
+                    value={stopLoss}
+                    onChange={(e) => setStopLoss(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none text-sm"
                   />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-[#606070] mb-1.5">杠杆</label>
-                <div className="flex gap-1">
-                  {[1, 2, 5, 10].map((lev) => (
-                    <button
-                      key={lev}
-                      type="button"
-                      onClick={() => setLeverage(lev)}
-                      className={`flex-1 py-2 rounded-lg text-xs ${
-                        leverage === lev
-                          ? 'bg-cyan-500/20 border border-cyan-500/50 text-cyan-400'
-                          : 'bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0]'
-                      }`}
-                    >
-                      {lev}x
-                    </button>
-                  ))}
+                <label className="block text-xs text-[#10B981] mb-1.5">止盈</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    title="止盈比例"
+                    value={takeProfit}
+                    onChange={(e) => setTakeProfit(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none text-sm"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-xl">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="w-4 h-4 text-red-400" />
-                  <span className="text-sm">止损</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Toggle enabled={stopLossEnabled} onChange={setStopLossEnabled} />
-                  {stopLossEnabled && (
-                    <div className="flex items-center gap-1">
+            {/* 移动止损 */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm">移动止损</span>
+                <Toggle enabled={isTrailingStop} onChange={setIsTrailingStop} />
+              </div>
+              {isTrailingStop && (
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-1.5">激活盈利</label>
+                    <div className="relative">
                       <input
-                        type="number"
-                        value={stopLoss}
-                        onChange={(e) => setStopLoss(Number(e.target.value))}
-                        className="w-12 px-2 py-1 bg-[#12121A] border border-[#2A2A3A] rounded text-xs text-center"
+                        type="text"
+                        title="激活盈利比例"
+                        value={trailingActivation}
+                        onChange={(e) => setTrailingActivation(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
                       />
-                      <span className="text-xs text-[#9090A0]">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
                     </div>
-                  )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-1.5">回撤比例</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        title="回撤比例"
+                        value={trailingCallback}
+                        onChange={(e) => setTrailingCallback(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
+                    </div>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* 补仓设置 */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm">补仓 (DCA)</span>
+                <Toggle enabled={dcaEnabled} onChange={setDcaEnabled} />
+              </div>
+              {dcaEnabled && (
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-1">次数</label>
+                    <input
+                      type="text"
+                      title="补仓次数"
+                      value={dcaCount}
+                      onChange={(e) => setDcaCount(e.target.value)}
+                      className="w-full px-2 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-1">跌幅%</label>
+                    <input
+                      type="text"
+                      title="触发跌幅"
+                      value={dcaTrigger}
+                      onChange={(e) => setDcaTrigger(e.target.value)}
+                      className="w-full px-2 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-1">倍率</label>
+                    <input
+                      type="text"
+                      title="补仓倍率"
+                      value={dcaMultiplier}
+                      onChange={(e) => setDcaMultiplier(e.target.value)}
+                      className="w-full px-2 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 防瀑布 */}
+            {dcaEnabled && (
+              <div className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-sm">防瀑布保护</span>
+                </div>
+                <Toggle enabled={waterfallProtection} onChange={setWaterfallProtection} />
+              </div>
+            )}
+          </div>
+
+          {/* 风控保护 */}
+          <div className="bg-[#12121A]/80 border border-[#1E1E2E] rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-base">🛡️</span>
+              <h3 className="font-semibold text-sm text-[#9090A0]">风控保护</h3>
+            </div>
+
+            {/* 黑天鹅保护 */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🦢</span>
+                  <span className="text-sm font-medium">黑天鹅保护</span>
+                </div>
+                <Toggle enabled={blackSwanProtection} onChange={setBlackSwanProtection} />
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-xl">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-green-400" />
-                  <span className="text-sm">止盈</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Toggle enabled={takeProfitEnabled} onChange={setTakeProfitEnabled} />
-                  {takeProfitEnabled && (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        value={takeProfit}
-                        onChange={(e) => setTakeProfit(Number(e.target.value))}
-                        className="w-12 px-2 py-1 bg-[#12121A] border border-[#2A2A3A] rounded text-xs text-center"
-                      />
-                      <span className="text-xs text-[#9090A0]">%</span>
+              {blackSwanProtection && (
+                <div className="p-3 bg-[#0A0A0F]/50 rounded-xl space-y-3 mt-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-[#606070]">账户亏损达到</label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          title="黑天鹅触发阈值"
+                          value={blackSwanTrigger}
+                          onChange={(e) => setBlackSwanTrigger(e.target.value)}
+                          className="w-12 px-2 py-1 bg-[#12121A] border border-[#1E1E2E] rounded text-sm text-center focus:border-[#06B6D4] focus:outline-none"
+                        />
+                        <span className="text-sm text-[#9090A0]">%</span>
+                      </div>
                     </div>
-                  )}
+                    <div className="flex gap-2 mb-2">
+                      {['5', '10', '15', '20'].map((val) => (
+                        <button
+                          type="button"
+                          key={val}
+                          onClick={() => setBlackSwanTrigger(val)}
+                          title={`设置为${val}%`}
+                          className={`flex-1 py-1 rounded text-xs transition-colors ${
+                            blackSwanTrigger === val
+                              ? 'bg-[#06B6D4]/20 text-[#06B6D4]'
+                              : 'bg-[#1E1E2E] text-[#606070]'
+                          }`}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-2">触发后执行</label>
+                    <div className="flex gap-2">
+                      {blackSwanActions.map((action) => (
+                        <button
+                          type="button"
+                          key={action.id}
+                          onClick={() => setBlackSwanAction(action.id as typeof blackSwanAction)}
+                          title={action.name}
+                          className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                            blackSwanAction === action.id
+                              ? 'bg-[#06B6D4] text-black'
+                              : 'bg-[#1E1E2E] text-[#9090A0]'
+                          }`}
+                        >
+                          <action.icon className="w-3.5 h-3.5" />
+                          {action.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* 单日最大亏损 */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📉</span>
+                <span className="text-sm font-medium">单日最大亏损</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {dailyMaxLoss && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      title="单日最大亏损比例"
+                      value={dailyMaxLossPercent}
+                      onChange={(e) => setDailyMaxLossPercent(e.target.value)}
+                      className="w-10 px-1.5 py-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded text-xs text-center focus:border-[#06B6D4] focus:outline-none"
+                    />
+                    <span className="text-xs text-[#606070]">%</span>
+                  </div>
+                )}
+                <Toggle enabled={dailyMaxLoss} onChange={setDailyMaxLoss} />
               </div>
             </div>
           </div>
@@ -693,7 +862,7 @@ export function MobileVisualBuilder({ onBack, onSave }: MobileVisualBuilderProps
       </div>
 
       {/* 底部按钮 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4 z-20">
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
         <div className="flex gap-3">
           <button
             type="button"

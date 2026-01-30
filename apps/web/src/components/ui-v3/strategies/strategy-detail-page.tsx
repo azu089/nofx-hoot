@@ -59,6 +59,8 @@ const strategyData = {
     { pair: 'BTC/USDT', side: 'buy', entry: 42150, exit: 43280, pnl: 2.68, date: '2026-01-27' },
     { pair: 'ETH/USDT', side: 'buy', entry: 2350, exit: 2420, pnl: 2.98, date: '2026-01-26' },
     { pair: 'SOL/USDT', side: 'buy', entry: 98.5, exit: 95.2, pnl: -3.35, date: '2026-01-25' },
+    { pair: 'BNB/USDT', side: 'buy', entry: 315, exit: 328, pnl: 4.13, date: '2026-01-24' },
+    { pair: 'XRP/USDT', side: 'buy', entry: 0.52, exit: 0.55, pnl: 5.77, date: '2026-01-23' },
   ],
 }
 

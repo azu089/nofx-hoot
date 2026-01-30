@@ -77,23 +77,48 @@ interface TVRiskConfig {
   takeProfitPercent: number
   trailingStopEnabled: boolean
   trailingStopPercent: number
+  trailingActivation: number
   maxDailyLoss: number
   maxDailyTrades: number
+  // DCA 补仓
+  dcaEnabled: boolean
+  dcaCount: number
+  dcaTrigger: number
+  dcaMultiplier: number
+  waterfallProtection: boolean
+  // 黑天鹅保护
+  blackSwanEnabled: boolean
+  blackSwanTrigger: number
+  blackSwanAction: 'close' | 'pause' | 'notify'
 }
 
 // 可视化策略风控配置
 interface VisualRiskConfig {
+  strategyName: string
   selectedExchange: string
   selectedCoins: string[]
   amountPerTrade: number
   maxPositions: number
+  leverage: number
   stopLossEnabled: boolean
   stopLossPercent: number
   takeProfitEnabled: boolean
   takeProfitPercent: number
+  trailingStopEnabled: boolean
+  trailingStopPercent: number
+  trailingActivation: number
   maxDailyLoss: number
   maxDailyTrades: number
-  leverage: number
+  // DCA 补仓
+  dcaEnabled: boolean
+  dcaCount: number
+  dcaTrigger: number
+  dcaMultiplier: number
+  waterfallProtection: boolean
+  // 黑天鹅保护
+  blackSwanEnabled: boolean
+  blackSwanTrigger: number
+  blackSwanAction: 'close' | 'pause' | 'notify'
 }
 
 // 代码策略配置
@@ -147,8 +172,19 @@ export function StrategyCreatorPage({
     takeProfitPercent: 10,
     trailingStopEnabled: false,
     trailingStopPercent: 3,
+    trailingActivation: 5,
     maxDailyLoss: 500,
     maxDailyTrades: 20,
+    // DCA 补仓
+    dcaEnabled: false,
+    dcaCount: 3,
+    dcaTrigger: 5,
+    dcaMultiplier: 1.5,
+    waterfallProtection: true,
+    // 黑天鹅保护
+    blackSwanEnabled: false,
+    blackSwanTrigger: 10,
+    blackSwanAction: 'close',
   })
   const [showTvAdvanced, setShowTvAdvanced] = useState(false)
 
@@ -163,17 +199,31 @@ export function StrategyCreatorPage({
 
   // 可视化策略风控配置
   const [visualConfig, setVisualConfig] = useState<VisualRiskConfig>({
+    strategyName: '',
     selectedExchange: 'binance',
     selectedCoins: ['BTC', 'ETH'],
     amountPerTrade: 100,
     maxPositions: 5,
+    leverage: 1,
     stopLossEnabled: true,
     stopLossPercent: 5,
     takeProfitEnabled: true,
     takeProfitPercent: 10,
+    trailingStopEnabled: false,
+    trailingStopPercent: 3,
+    trailingActivation: 5,
     maxDailyLoss: 500,
     maxDailyTrades: 20,
-    leverage: 1,
+    // DCA 补仓
+    dcaEnabled: false,
+    dcaCount: 3,
+    dcaTrigger: 5,
+    dcaMultiplier: 1.5,
+    waterfallProtection: true,
+    // 黑天鹅保护
+    blackSwanEnabled: false,
+    blackSwanTrigger: 10,
+    blackSwanAction: 'close',
   })
   const [showVisualAdvanced, setShowVisualAdvanced] = useState(false)
 
@@ -471,6 +521,177 @@ class MyStrategy(BaseStrategy):
                     )}
                   </div>
                 </div>
+                {tvConfig.trailingStopEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#606070]">激活盈利</span>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={tvConfig.trailingActivation}
+                          onChange={(e) => setTvConfig({ ...tvConfig, trailingActivation: Number(e.target.value) })}
+                          className="w-16 bg-[#12121A] border-[#2A2A3A] text-center text-sm"
+                        />
+                        <span className="text-[#9090A0] text-sm">%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* DCA 补仓 */}
+                <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm">补仓 (DCA)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTvConfig({ ...tvConfig, dcaEnabled: !tvConfig.dcaEnabled })}
+                    title={tvConfig.dcaEnabled ? "关闭DCA" : "开启DCA"}
+                    className={cn(
+                      "w-10 h-6 rounded-full transition-colors relative",
+                      tvConfig.dcaEnabled ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                      tvConfig.dcaEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
+                </div>
+                {tvConfig.dcaEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">次数</label>
+                        <Input
+                          type="number"
+                          value={tvConfig.dcaCount}
+                          onChange={(e) => setTvConfig({ ...tvConfig, dcaCount: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">跌幅触发 %</label>
+                        <Input
+                          type="number"
+                          value={tvConfig.dcaTrigger}
+                          onChange={(e) => setTvConfig({ ...tvConfig, dcaTrigger: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">倍率</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={tvConfig.dcaMultiplier}
+                          onChange={(e) => setTvConfig({ ...tvConfig, dcaMultiplier: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                        <span className="text-xs">防瀑布保护</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTvConfig({ ...tvConfig, waterfallProtection: !tvConfig.waterfallProtection })}
+                        title={tvConfig.waterfallProtection ? "关闭防瀑布" : "开启防瀑布"}
+                        className={cn(
+                          "w-10 h-6 rounded-full transition-colors relative",
+                          tvConfig.waterfallProtection ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                          tvConfig.waterfallProtection ? "right-1" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 黑天鹅保护 */}
+                <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🦢</span>
+                    <span className="text-sm">黑天鹅保护</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTvConfig({ ...tvConfig, blackSwanEnabled: !tvConfig.blackSwanEnabled })}
+                    title={tvConfig.blackSwanEnabled ? "关闭黑天鹅保护" : "开启黑天鹅保护"}
+                    className={cn(
+                      "w-10 h-6 rounded-full transition-colors relative",
+                      tvConfig.blackSwanEnabled ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                      tvConfig.blackSwanEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
+                </div>
+                {tvConfig.blackSwanEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#606070]">账户亏损达到</span>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={tvConfig.blackSwanTrigger}
+                          onChange={(e) => setTvConfig({ ...tvConfig, blackSwanTrigger: Number(e.target.value) })}
+                          className="w-16 bg-[#12121A] border-[#2A2A3A] text-center text-sm"
+                        />
+                        <span className="text-[#9090A0] text-sm">%</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {['5', '10', '15', '20'].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setTvConfig({ ...tvConfig, blackSwanTrigger: Number(val) })}
+                          className={cn(
+                            "flex-1 py-1.5 rounded text-xs transition-colors",
+                            tvConfig.blackSwanTrigger === Number(val)
+                              ? "bg-cyan-500/20 text-cyan-400"
+                              : "bg-[#1E1E2E] text-[#606070]"
+                          )}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#606070] mb-2">触发后执行</label>
+                      <div className="flex gap-2">
+                        {[
+                          { id: 'close', label: '平仓' },
+                          { id: 'pause', label: '暂停' },
+                          { id: 'notify', label: '通知' }
+                        ].map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => setTvConfig({ ...tvConfig, blackSwanAction: action.id as TVRiskConfig['blackSwanAction'] })}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg text-xs font-medium transition-colors",
+                              tvConfig.blackSwanAction === action.id
+                                ? "bg-cyan-500 text-white"
+                                : "bg-[#1E1E2E] text-[#9090A0]"
+                            )}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 高级设置 */}
@@ -534,6 +755,26 @@ class MyStrategy(BaseStrategy):
 
         {activeTab === 'visual' && (
           <div className="space-y-4">
+            {/* 策略名称 */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">策略信息</h3>
+                  <p className="text-xs text-[#606070]">为你的策略命名</p>
+                </div>
+              </div>
+              <Input
+                type="text"
+                value={visualConfig.strategyName}
+                onChange={(e) => setVisualConfig({ ...visualConfig, strategyName: e.target.value })}
+                placeholder="输入策略名称"
+                className="bg-[#0A0A0F] border-[#2A2A3A]"
+              />
+            </div>
+
             {/* 交易所和交易对选择 */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
@@ -948,6 +1189,212 @@ class MyStrategy(BaseStrategy):
                     )}
                   </div>
                 </div>
+
+                {/* 移动止损 */}
+                <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-yellow-400" />
+                    <span className="text-sm">移动止损</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setVisualConfig({ ...visualConfig, trailingStopEnabled: !visualConfig.trailingStopEnabled })}
+                      title={visualConfig.trailingStopEnabled ? "关闭移动止损" : "开启移动止损"}
+                      className={cn(
+                        "w-10 h-6 rounded-full transition-colors relative",
+                        visualConfig.trailingStopEnabled ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                        visualConfig.trailingStopEnabled ? "right-1" : "left-1"
+                      )} />
+                    </button>
+                    {visualConfig.trailingStopEnabled && (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={visualConfig.trailingStopPercent}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, trailingStopPercent: Number(e.target.value) })}
+                          className="w-16 bg-[#12121A] border-[#2A2A3A] text-center text-sm"
+                        />
+                        <span className="text-[#9090A0] text-sm">%</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {visualConfig.trailingStopEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#606070]">激活盈利</span>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={visualConfig.trailingActivation}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, trailingActivation: Number(e.target.value) })}
+                          className="w-16 bg-[#12121A] border-[#2A2A3A] text-center text-sm"
+                        />
+                        <span className="text-[#9090A0] text-sm">%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* DCA 补仓 */}
+                <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm">补仓 (DCA)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVisualConfig({ ...visualConfig, dcaEnabled: !visualConfig.dcaEnabled })}
+                    title={visualConfig.dcaEnabled ? "关闭DCA" : "开启DCA"}
+                    className={cn(
+                      "w-10 h-6 rounded-full transition-colors relative",
+                      visualConfig.dcaEnabled ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                      visualConfig.dcaEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
+                </div>
+                {visualConfig.dcaEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">次数</label>
+                        <Input
+                          type="number"
+                          value={visualConfig.dcaCount}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, dcaCount: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">跌幅触发 %</label>
+                        <Input
+                          type="number"
+                          value={visualConfig.dcaTrigger}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, dcaTrigger: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#606070] mb-1">倍率</label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={visualConfig.dcaMultiplier}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, dcaMultiplier: Number(e.target.value) })}
+                          className="bg-[#12121A] border-[#2A2A3A] text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                        <span className="text-xs">防瀑布保护</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setVisualConfig({ ...visualConfig, waterfallProtection: !visualConfig.waterfallProtection })}
+                        title={visualConfig.waterfallProtection ? "关闭防瀑布" : "开启防瀑布"}
+                        className={cn(
+                          "w-10 h-6 rounded-full transition-colors relative",
+                          visualConfig.waterfallProtection ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                          visualConfig.waterfallProtection ? "right-1" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 黑天鹅保护 */}
+                <div className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🦢</span>
+                    <span className="text-sm">黑天鹅保护</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVisualConfig({ ...visualConfig, blackSwanEnabled: !visualConfig.blackSwanEnabled })}
+                    title={visualConfig.blackSwanEnabled ? "关闭黑天鹅保护" : "开启黑天鹅保护"}
+                    className={cn(
+                      "w-10 h-6 rounded-full transition-colors relative",
+                      visualConfig.blackSwanEnabled ? "bg-cyan-500" : "bg-[#2A2A3A]"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                      visualConfig.blackSwanEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
+                </div>
+                {visualConfig.blackSwanEnabled && (
+                  <div className="p-3 bg-[#0A0A0F] rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#606070]">账户亏损达到</span>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={visualConfig.blackSwanTrigger}
+                          onChange={(e) => setVisualConfig({ ...visualConfig, blackSwanTrigger: Number(e.target.value) })}
+                          className="w-16 bg-[#12121A] border-[#2A2A3A] text-center text-sm"
+                        />
+                        <span className="text-[#9090A0] text-sm">%</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {['5', '10', '15', '20'].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setVisualConfig({ ...visualConfig, blackSwanTrigger: Number(val) })}
+                          className={cn(
+                            "flex-1 py-1.5 rounded text-xs transition-colors",
+                            visualConfig.blackSwanTrigger === Number(val)
+                              ? "bg-cyan-500/20 text-cyan-400"
+                              : "bg-[#1E1E2E] text-[#606070]"
+                          )}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#606070] mb-2">触发后执行</label>
+                      <div className="flex gap-2">
+                        {[
+                          { id: 'close', label: '平仓' },
+                          { id: 'pause', label: '暂停' },
+                          { id: 'notify', label: '通知' }
+                        ].map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => setVisualConfig({ ...visualConfig, blackSwanAction: action.id as VisualRiskConfig['blackSwanAction'] })}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg text-xs font-medium transition-colors",
+                              visualConfig.blackSwanAction === action.id
+                                ? "bg-cyan-500 text-white"
+                                : "bg-[#1E1E2E] text-[#9090A0]"
+                            )}
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 高级设置 */}

@@ -89,7 +89,7 @@ interface WalletPageV3Props {
 const defaultAssets: Asset[] = [
   {
     id: '1',
-    name: 'Tether USD',
+    name: 'USDT',
     symbol: 'USDT',
     balance: 10346.57,
     value: 10346.57,
@@ -97,20 +97,18 @@ const defaultAssets: Asset[] = [
   },
   {
     id: '2',
-    name: 'HOOT Token',
+    name: 'HOOT',
     symbol: 'HOOT',
     balance: 2500.75,
     value: 2500.75,
-    price: 1.00,
     icon: '/icons/hoot/token.png'
   },
   {
     id: '3',
-    name: 'HOOT (释放中)',
+    name: 'HOOT 释放中',
     symbol: 'HOOT',
     balance: 15000,
     value: 15000,
-    price: 1.00,
     icon: '/icons/hoot/token.png',
     isReleasing: true,
     releasedAmount: 3000,
@@ -371,6 +369,13 @@ export function WalletPageV3({
     }
   }
 
+  // 获取代币图标
+  const getAssetIcon = (asset: string) => {
+    if (asset.includes('USDT')) return '/icons/usdt.svg'
+    if (asset.includes('HOOT')) return '/icons/hoot/token.png'
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -422,10 +427,17 @@ export function WalletPageV3({
         {/* ===== 钱包 Tab 内容 ===== */}
         {pageTab === 'wallet' && (
           <>
-            {/* Balance Card - 资产卡片（含快捷操作按钮） */}
-            <div className="glow-card backdrop-blur-xl bg-[#12121A]/80 rounded-2xl p-6">
-              <p className="text-[#9090A0] text-sm mb-2">总资产 (USDT)</p>
-              <div className="flex items-baseline gap-4 mb-6">
+            {/* Balance Card - 资产卡片（含快捷操作按钮）- 呼吸光感效果 */}
+            <div className="glow-card relative overflow-hidden backdrop-blur-xl bg-gradient-to-br from-[#12121A]/80 to-[#1A1A24]/80 rounded-2xl p-6 border border-cyan-500/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+              {/* 顶部高光线 */}
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent" />
+              {/* 内发光效果 */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.06] via-transparent to-transparent pointer-events-none" />
+              {/* 呼吸光晕 */}
+              <div className="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
+              <div className="absolute -bottom-12 -left-12 w-36 h-36 bg-cyan-500/5 rounded-full blur-2xl animate-[pulse_2s_ease-in-out_infinite_1s]" />
+              <p className="relative z-10 text-[#9090A0] text-sm mb-2">总资产 (USDT)</p>
+              <div className="relative z-10 flex items-baseline gap-4 mb-6">
                 <span className="text-4xl font-bold">${totalBalance.toLocaleString()}</span>
                 <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${
                   isPositiveChange ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
@@ -437,7 +449,7 @@ export function WalletPageV3({
                 </div>
               </div>
               {/* Quick Actions - 卡片内按钮组 */}
-              <div className="flex gap-3 flex-wrap">
+              <div className="relative z-10 flex gap-3 flex-wrap">
                 <button
                   type="button"
                   onClick={onDeposit}
@@ -468,11 +480,7 @@ export function WalletPageV3({
             {/* Main Content - Assets & Transactions */}
             <div className="mt-6">
               <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-              {/* 顶部高光 */}
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-              {/* 内发光效果 */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-              {/* Tab Navigation - 卡片内顶部 */}
+              {/* 顶部高光 */}              {/* 内发光效果 */}              {/* Tab Navigation - 卡片内顶部 */}
               <div className="relative z-[2] flex border-b border-[#1E1E2E]">
                 <button
                   type="button"
@@ -514,17 +522,13 @@ export function WalletPageV3({
                         key={asset.id}
                         className={`flex items-center justify-between p-4 rounded-xl transition-colors ${
                           asset.isReleasing
-                            ? 'bg-[#F59E0B]/5 border border-[#F59E0B]/20'
+                            ? 'border border-[#F59E0B]/30'
                             : 'bg-[#1E1E2E]/30 hover:bg-[#1E1E2E]/50'
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center overflow-hidden relative ${
-                            asset.isReleasing ? 'bg-[#F59E0B]/20' : 'bg-[#2A2A3A]'
-                          }`}>
-                            {asset.isReleasing ? (
-                              <Clock className="w-5 h-5 text-[#F59E0B]" />
-                            ) : asset.icon && asset.icon.startsWith('/') ? (
+                          <div className="w-10 h-10 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+                            {asset.icon && asset.icon.startsWith('/') ? (
                               <Image
                                 src={asset.icon}
                                 alt={asset.name}
@@ -539,15 +543,11 @@ export function WalletPageV3({
                             <p className={`font-medium ${asset.isReleasing ? 'text-[#F59E0B]' : ''}`}>
                               {asset.name}
                             </p>
-                            <p className="text-[#9090A0] text-sm">
-                              {asset.isReleasing ? (
-                                <span className="text-xs text-[#F59E0B]/70">
-                                  空投锁仓 · 每日线性释放
-                                </span>
-                              ) : (
-                                asset.symbol
-                              )}
-                            </p>
+                            {asset.isReleasing && (
+                              <p className="text-xs text-[#F59E0B]/70">
+                                空投锁仓 · 每日释放
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
@@ -746,26 +746,43 @@ export function WalletPageV3({
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredTransactions.map((tx) => (
-                          <tr key={tx.id} className="border-b border-[#1E1E2E]/50 hover:bg-[#1E1E2E]/20">
-                            <td className="py-4">
-                              <span className="font-medium">{getTypeText(tx.type)}</span>
-                            </td>
-                            <td className="py-4">
-                              <span className="font-medium text-[#9090A0]">{tx.asset}</span>
-                            </td>
-                            <td className="py-4">
-                              <span className="font-medium">{tx.amount}</span>
-                            </td>
-                            <td className="py-4">
-                              <div className="flex items-center gap-2">
-                                {getStatusIcon(tx.status)}
-                                <span className="text-sm">{getStatusText(tx.status)}</span>
-                              </div>
-                            </td>
-                            <td className="py-4 text-[#9090A0] text-sm">{tx.time}</td>
-                          </tr>
-                        ))}
+                        {filteredTransactions.map((tx) => {
+                          const assetIcon = getAssetIcon(tx.asset)
+                          return (
+                            <tr key={tx.id} className="border-b border-[#1E1E2E]/50 hover:bg-[#1E1E2E]/20">
+                              <td className="py-4">
+                                <span className="font-medium">{getTypeText(tx.type)}</span>
+                              </td>
+                              <td className="py-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+                                    {assetIcon ? (
+                                      <Image
+                                        src={assetIcon}
+                                        alt={tx.asset}
+                                        fill
+                                        className="object-contain"
+                                      />
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-[#06B6D4]">{tx.asset.charAt(0)}</span>
+                                    )}
+                                  </div>
+                                  <span className="font-medium text-[#9090A0]">{tx.asset}</span>
+                                </div>
+                              </td>
+                              <td className="py-4">
+                                <span className="font-medium">{tx.amount}</span>
+                              </td>
+                              <td className="py-4">
+                                <div className="flex items-center gap-2">
+                                  {getStatusIcon(tx.status)}
+                                  <span className="text-sm">{getStatusText(tx.status)}</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-[#9090A0] text-sm">{tx.time}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -790,11 +807,7 @@ export function WalletPageV3({
         {/* ===== API Tab 内容 ===== */}
         {pageTab === 'api' && (
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-            {/* 顶部高光 */}
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-            {/* 内发光效果 */}
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-            {/* Header */}
+            {/* 顶部高光 */}            {/* 内发光效果 */}            {/* Header */}
             <div className="relative z-[2] flex items-center justify-between p-6 border-b border-[#1E1E2E]">
               <div>
                 <h2 className="text-lg font-bold">交易所 API 管理</h2>
@@ -820,86 +833,68 @@ export function WalletPageV3({
               ) : (
                 <div className="space-y-3">
                   {exchanges.map((exchange) => (
-                    <div key={exchange.id} className="p-4 rounded-xl bg-[#1E1E2E]/30 border border-[#2A2A3A] hover:bg-[#1E1E2E]/50 transition-colors">
+                    <div
+                      key={exchange.id}
+                      className={`p-4 rounded-xl border transition-colors ${
+                        exchange.status === 'error'
+                          ? 'bg-[#1E1E2E]/30 border-[#F43F5E]/30'
+                          : 'bg-[#1E1E2E]/30 border-[#2A2A3A] hover:bg-[#1E1E2E]/50'
+                      }`}
+                    >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          {/* Logo */}
-                          <div className="w-12 h-12 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                        {/* 左侧：图标 + 信息 */}
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
                             {exchange.icon?.startsWith('/') ? (
                               <Image src={exchange.icon} alt={exchange.name} fill className="object-contain" />
                             ) : (
-                              <span className="text-xl">{exchange.name.charAt(0)}</span>
+                              <span className="text-lg">{exchange.name.charAt(0)}</span>
                             )}
                           </div>
-                          {/* Info */}
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold">{exchange.name}</span>
+                              <span className="font-medium">{exchange.name}</span>
                               {exchange.status === 'active' ? (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#10B981]/20 text-[#10B981]">
-                                  <CheckCircle className="w-3 h-3" />
-                                  已连接
-                                </span>
+                                <CheckCircle className="w-4 h-4 text-[#10B981]" />
                               ) : (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F43F5E]/20 text-[#F43F5E]">
-                                  <AlertCircle className="w-3 h-3" />
-                                  连接失败
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 mt-1 text-sm">
-                              <span className="text-[#9090A0]">
-                                API: <span className="font-mono">{exchange.apiKey}</span>
-                              </span>
-                              {exchange.permissions && exchange.permissions.length > 0 && (
-                                <>
-                                  <span className="text-[#606070]">|</span>
-                                  <span className="text-[#F8F8FC]">权限: </span>
-                                  <span className="text-[#10B981]">{exchange.permissions.join(', ')}</span>
-                                </>
+                                <AlertCircle className="w-4 h-4 text-[#F43F5E]" />
                               )}
                             </div>
                             {exchange.error ? (
-                              <p className="text-[#F43F5E] text-xs mt-1">{exchange.error}</p>
-                            ) : exchange.createdAt && (
-                              <p className="text-[#9090A0] text-xs mt-1">绑定日期: {exchange.createdAt}</p>
+                              <p className="text-[#F43F5E] text-xs">{exchange.error}</p>
+                            ) : (
+                              <p className="text-[#9090A0] text-sm">
+                                ${exchange.balance?.toLocaleString() || '0'}
+                              </p>
                             )}
                           </div>
                         </div>
-                        {/* Balance & Actions */}
-                        <div className="flex items-center gap-6">
-                          <div className="text-right">
-                            <p className="text-[#9090A0] text-xs">总资产</p>
-                            <p className={`font-mono font-bold ${exchange.status === 'active' ? 'text-[#F8F8FC]' : 'text-[#606070]'}`}>
-                              {exchange.status === 'active' ? `$${exchange.balance?.toLocaleString()}` : '--'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(exchange)}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] rounded-lg transition-colors text-sm"
-                            >
-                              <Edit className="w-4 h-4" />
-                              编辑
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleVerify(exchange)}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-[#06B6D4]/10 hover:bg-[#06B6D4]/20 border border-[#06B6D4]/50 text-[#06B6D4] rounded-lg transition-colors text-sm"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                              验证
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDelete(exchange)}
-                              title="删除"
-                              className="p-2 bg-[#1E1E2E] hover:bg-[#F43F5E]/10 border border-[#F43F5E]/50 text-[#F43F5E] rounded-lg transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                        {/* 右侧：操作按钮 */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleVerify(exchange)}
+                            title="验证"
+                            className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+                          >
+                            <RefreshCw className="w-4 h-4 text-[#9090A0]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(exchange)}
+                            title="编辑"
+                            className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+                          >
+                            <Edit className="w-4 h-4 text-[#9090A0]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDelete(exchange)}
+                            title="删除"
+                            className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4 text-[#F43F5E]/70" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1115,12 +1110,30 @@ export function WalletPageV3({
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="text-sm text-[#9090A0] block mb-1">当前 API Key</label>
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0A0A0F] border border-[#1E1E2E]">
-                  <span className="font-mono text-[#606070]">{selectedApiKey.apiKey}</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-[#1E1E2E] text-[#9090A0]">已加密存储</span>
+              {/* 绑定信息卡片 */}
+              <div className="p-4 rounded-xl bg-[#0A0A0F] border border-[#1E1E2E] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-[#606070]">API Key</p>
+                    <p className="font-mono text-[#9090A0] text-sm mt-0.5">{selectedApiKey.apiKey}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-[#606070]">绑定时间</p>
+                    <p className="text-[#9090A0] text-sm mt-0.5">{selectedApiKey.createdAt || '-'}</p>
+                  </div>
                 </div>
+                {selectedApiKey.permissions && selectedApiKey.permissions.length > 0 && (
+                  <div className="pt-3 border-t border-[#1E1E2E]">
+                    <p className="text-xs text-[#606070] mb-2">已授权权限</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedApiKey.permissions.map((perm, i) => (
+                        <span key={i} className="px-2 py-1 text-xs rounded-md bg-[#1E1E2E] text-[#10B981]">
+                          {perm}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

@@ -10,7 +10,9 @@
     "test": "pnpm -r test",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "v0:generate": "tsx scripts/v0/generate.ts",
+    "v0:fetch": "tsx scripts/v0/fetch.ts"
   },
   "keywords": [
     "quantitative",

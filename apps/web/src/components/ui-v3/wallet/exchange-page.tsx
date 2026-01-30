@@ -6,10 +6,7 @@ import {
   ArrowDownUp,
   ChevronDown,
   Info,
-  Loader2,
-  CheckCircle,
-  Clock,
-  AlertCircle
+  Loader2
 } from 'lucide-react'
 // Sidebar is handled by parent layout
 
@@ -122,217 +119,199 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
     setShowToDropdown(false)
   }
 
+  const getIcon = (symbol: string) =>
+    symbol === 'USDT' ? '/icons/usdt.svg' :
+    symbol === 'HOOT' ? '/icons/hoot/token.png' : '/icons/gas-card.svg'
+
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] font-sans p-6">
-          <div className="max-w-2xl mx-auto">
-            {/* Header */}
-            <div className="mb-4">
-              <h1 className="text-2xl font-bold text-[#F8F8FC]">资产兑换</h1>
+    <div className="min-h-screen bg-[#0A0A0F] text-white p-6">
+      <div className="max-w-2xl mx-auto space-y-4">
+        {/* Header */}
+        <h1 className="text-xl font-bold">资产兑换</h1>
+
+        {/* 兑换卡片 */}
+        <div className="bg-[#12121A] rounded-xl p-5 space-y-4">
+          {/* 支付 */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[#94A3B8]">支付</span>
+              <span className="text-xs text-[#94A3B8]">可用 <span className="text-white">{fromAsset.balance.toLocaleString()}</span></span>
             </div>
-
-            {/* Exchange Card */}
-            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 mb-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-              {/* From */}
-              <div className="mb-2">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-[#9090A0]">支付</span>
-                  <span className="text-sm text-[#9090A0]">
-                    可用: <span className="text-[#F8F8FC]">{fromAsset.balance.toLocaleString()} {fromAsset.symbol}</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-4">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowFromDropdown(!showFromDropdown)}
-                      className="flex items-center gap-2 px-3 py-2 bg-[#1E1E2E] rounded-lg hover:bg-[#2A2A3A] transition-colors"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                        <Image src={fromAsset.icon} alt={fromAsset.symbol} width={20} height={20} />
-                      </div>
-                      <span className="font-medium">{fromAsset.symbol}</span>
-                      <ChevronDown className="w-4 h-4 text-[#9090A0]" />
-                    </button>
-                    {showFromDropdown && (
-                      <div className="absolute top-full left-0 mt-2 w-48 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-10 overflow-hidden">
-                        {getPayableAssets().map(asset => (
-                          <button
-                            key={asset.id}
-                            type="button"
-                            onClick={() => handleFromAssetSelect(asset)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1E1E2E] transition-colors ${
-                              fromAsset.id === asset.id ? 'bg-[#1E1E2E]' : ''
-                            }`}
-                          >
-                            <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                              <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
-                            </div>
-                            <div className="text-left">
-                              <div className="text-sm font-medium text-[#F8F8FC]">{asset.symbol}</div>
-                              <div className="text-xs text-[#9090A0]">{asset.name}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="flex-1 bg-transparent text-right text-2xl font-semibold text-[#F8F8FC] outline-none placeholder:text-[#404050]"
-                  />
-                </div>
-                <div className="flex gap-2 mt-2">
-                  {[25, 50, 75, 100].map(percent => (
-                    <button
-                      key={percent}
-                      type="button"
-                      onClick={() => setAmount((fromAsset.balance * percent / 100).toFixed(2))}
-                      className="px-3 py-1 text-xs bg-[#1E1E2E] rounded-lg text-[#9090A0] hover:text-[#F8F8FC] hover:bg-[#2A2A3A] transition-colors"
-                    >
-                      {percent}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Swap Button */}
-              <div className="flex justify-center my-4">
+            <div className="flex items-center gap-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg p-3">
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={handleSwap}
-                  disabled={!canSwap}
-                  title={canSwap ? "交换兑换方向" : "点卡不可作为支付方式"}
-                  className={`w-10 h-10 rounded-full bg-[#1E1E2E] border border-[#2A2A3A] flex items-center justify-center transition-all ${
-                    canSwap
-                      ? "hover:bg-[#2A2A3A] hover:border-cyan-500/50 cursor-pointer"
-                      : "opacity-50 cursor-not-allowed"
-                  }`}
+                  onClick={() => setShowFromDropdown(!showFromDropdown)}
+                  className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-3 py-2"
                 >
-                  <ArrowDownUp className={`w-5 h-5 ${canSwap ? "text-cyan-400" : "text-[#606070]"}`} />
+                  <div className="w-6 h-6 rounded-full overflow-hidden">
+                    <Image src={fromAsset.icon} alt={fromAsset.symbol} width={24} height={24} />
+                  </div>
+                  <span className="font-medium">{fromAsset.symbol}</span>
+                  <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
                 </button>
-              </div>
-
-              {/* To */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-[#9090A0]">获得</span>
-                  <span className="text-sm text-[#9090A0]">
-                    余额: <span className="text-[#F8F8FC]">{toAsset.balance.toLocaleString()} {toAsset.symbol}</span>
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-4">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowToDropdown(!showToDropdown)}
-                      className="flex items-center gap-2 px-3 py-2 bg-[#1E1E2E] rounded-lg hover:bg-[#2A2A3A] transition-colors"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                        <Image src={toAsset.icon} alt={toAsset.symbol} width={20} height={20} />
-                      </div>
-                      <span className="font-medium">{toAsset.symbol}</span>
-                      <ChevronDown className="w-4 h-4 text-[#9090A0]" />
-                    </button>
-                    {showToDropdown && (
-                      <div className="absolute top-full left-0 mt-2 w-48 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-10 overflow-hidden">
-                        {getReceivableAssets(fromAsset.id).map(asset => (
-                          <button
-                            key={asset.id}
-                            type="button"
-                            onClick={() => handleToAssetSelect(asset)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#1E1E2E] transition-colors ${
-                              toAsset.id === asset.id ? 'bg-[#1E1E2E]' : ''
-                            }`}
-                          >
-                            <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                              <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
-                            </div>
-                            <div className="text-left">
-                              <div className="text-sm font-medium text-[#F8F8FC]">{asset.symbol}</div>
-                              <div className="text-xs text-[#9090A0]">{asset.name}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                {showFromDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-20 min-w-[160px]">
+                    {getPayableAssets().map(asset => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => handleFromAssetSelect(asset)}
+                        className={`flex items-center gap-3 w-full px-4 py-3 hover:bg-[#12121A] ${fromAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
+                      >
+                        <div className="w-6 h-6 rounded-full overflow-hidden">
+                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} />
+                        </div>
+                        <span className="text-sm">{asset.symbol}</span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex-1 text-right text-2xl font-semibold text-[#F8F8FC]">
-                    {calculateReceive()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Rate Info */}
-              <div className="flex items-center justify-between text-sm text-[#9090A0] mb-6 px-2">
-                <div className="flex items-center gap-1">
-                  <Info className="w-4 h-4" />
-                  <span>兑换汇率</span>
-                </div>
-                <span>1 {fromAsset.symbol} = {((fromAsset.rate || 1) / (toAsset.rate || 1)).toFixed(4)} {toAsset.symbol}</span>
-              </div>
-
-              {/* Exchange Button */}
-              <button
-                type="button"
-                onClick={handleExchange}
-                disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > fromAsset.balance || isExchanging}
-                className="w-full py-4 bg-gradient-to-r from-cyan-500 to-cyan-400 text-black font-semibold rounded-xl hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isExchanging ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    兑换中...
-                  </>
-                ) : (
-                  '确认兑换'
                 )}
-              </button>
+              </div>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="flex-1 bg-transparent text-xl font-semibold outline-none text-right placeholder:text-[#64748B]"
+              />
             </div>
+            <div className="flex gap-2">
+              {[25, 50, 75, 100].map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmount((fromAsset.balance * p / 100).toFixed(2))}
+                  className="flex-1 py-2 text-xs bg-[#1A1A24] rounded-lg text-[#94A3B8] hover:text-white hover:bg-[#2A2A3A]"
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+          </div>
 
-            {/* Exchange Records */}
-            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-              <h3 className="text-lg font-semibold text-[#F8F8FC] mb-4">兑换记录</h3>
-              <div className="space-y-3">
-                {exchangeRecords.map(record => (
-                  <div key={record.id} className="flex items-center justify-between p-4 bg-[#0A0A0F] rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center">
-                        <span className="text-[#F8F8FC] font-medium">{record.fromAmount} {record.fromAsset}</span>
-                        <span className="mx-2 text-[#606070]">→</span>
-                        <span className="text-cyan-400 font-medium">{record.toAmount} {record.toAsset}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-xs text-[#606070]">{record.time}</span>
-                      <div className="flex items-center gap-1">
-                        {record.status === 'completed' && (
-                          <>
-                            <CheckCircle className="w-4 h-4 text-green-400" />
-                            <span className="text-xs text-green-400">已完成</span>
-                          </>
-                        )}
-                        {record.status === 'pending' && (
-                          <>
-                            <Clock className="w-4 h-4 text-yellow-400" />
-                            <span className="text-xs text-yellow-400">处理中</span>
-                          </>
-                        )}
-                        {record.status === 'failed' && (
-                          <>
-                            <AlertCircle className="w-4 h-4 text-red-400" />
-                            <span className="text-xs text-red-400">失败</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
+          {/* 交换按钮 */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleSwap}
+              disabled={!canSwap}
+              className={`w-10 h-10 rounded-full bg-[#1A1A24] border border-[#1E1E2E] flex items-center justify-center ${canSwap ? 'hover:border-[#06B6D4]' : 'opacity-50'}`}
+              aria-label="交换"
+            >
+              <ArrowDownUp className={`w-5 h-5 ${canSwap ? 'text-[#06B6D4]' : 'text-[#64748B]'}`} />
+            </button>
+          </div>
+
+          {/* 获得 */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[#94A3B8]">获得</span>
+              <span className="text-xs text-[#94A3B8]">余额 <span className="text-white">{toAsset.balance.toLocaleString()}</span></span>
+            </div>
+            <div className="flex items-center gap-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg p-3">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowToDropdown(!showToDropdown)}
+                  className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-3 py-2"
+                >
+                  <div className="w-6 h-6 rounded-full overflow-hidden">
+                    <Image src={toAsset.icon} alt={toAsset.symbol} width={24} height={24} />
                   </div>
-                ))}
+                  <span className="font-medium">{toAsset.symbol}</span>
+                  <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
+                </button>
+                {showToDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-20 min-w-[160px]">
+                    {getReceivableAssets(fromAsset.id).map(asset => (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => handleToAssetSelect(asset)}
+                        className={`flex items-center gap-3 w-full px-4 py-3 hover:bg-[#12121A] ${toAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
+                      >
+                        <div className="w-6 h-6 rounded-full overflow-hidden">
+                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} />
+                        </div>
+                        <span className="text-sm">{asset.symbol}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 text-xl font-semibold text-right text-[#06B6D4]">
+                {calculateReceive()}
               </div>
             </div>
           </div>
+
+          {/* 汇率 */}
+          <div className="flex items-center justify-center text-sm text-[#94A3B8] gap-1 pt-2">
+            <Info className="w-4 h-4" />
+            <span>1 {fromAsset.symbol} = {((fromAsset.rate || 1) / (toAsset.rate || 1)).toFixed(4)} {toAsset.symbol}</span>
+          </div>
+        </div>
+
+        {/* 确认按钮 */}
+        <button
+          type="button"
+          onClick={handleExchange}
+          disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > fromAsset.balance || isExchanging}
+          className={`w-full py-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
+            amount && parseFloat(amount) > 0 && parseFloat(amount) <= fromAsset.balance && !isExchanging
+              ? 'bg-[#06B6D4] hover:bg-[#0891B2] text-white'
+              : 'bg-[#1A1A24] text-[#64748B] cursor-not-allowed'
+          }`}
+        >
+          {isExchanging ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              兑换中...
+            </>
+          ) : (
+            '确认兑换'
+          )}
+        </button>
+
+        {/* 兑换记录 */}
+        {exchangeRecords.length > 0 && (
+          <div className="bg-[#12121A] rounded-xl p-5 space-y-3">
+            <span className="text-sm text-[#94A3B8]">最近记录</span>
+            <div className="space-y-2">
+              {exchangeRecords.map(record => (
+                <div key={record.id} className="flex items-center justify-between py-3 border-b border-[#1E1E2E] last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center">
+                      <div className="w-6 h-6 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                        <Image src={getIcon(record.fromAsset)} alt={record.fromAsset} fill className="object-contain p-1" />
+                      </div>
+                      <span className="text-xs text-[#64748B] mx-1">→</span>
+                      <div className="w-6 h-6 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                        <Image src={getIcon(record.toAsset)} alt={record.toAsset} fill className="object-contain p-1" />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium">{record.fromAmount} → {record.toAmount}</span>
+                      <p className="text-xs text-[#94A3B8]">{record.fromAsset} → {record.toAsset}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      record.status === 'completed' ? 'bg-[#22C55E]/10 text-[#22C55E]' :
+                      record.status === 'pending' ? 'bg-[#F59E0B]/10 text-[#F59E0B]' :
+                      'bg-[#EF4444]/10 text-[#EF4444]'
+                    }`}>
+                      {record.status === 'completed' ? '完成' : record.status === 'pending' ? '处理中' : '失败'}
+                    </span>
+                    <p className="text-xs text-[#94A3B8] mt-1">{record.time.split(' ')[0]}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
