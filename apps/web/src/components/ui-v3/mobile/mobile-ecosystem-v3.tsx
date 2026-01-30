@@ -245,6 +245,7 @@ export function MobileEcosystemV3({
           <>
             {/* Overview */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center">
@@ -287,6 +288,7 @@ export function MobileEcosystemV3({
             {/* Stake Form */}
             {stakingSubTab === 'stake' && (
               <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
 
                 <span className="text-sm font-medium">新建质押</span>
 

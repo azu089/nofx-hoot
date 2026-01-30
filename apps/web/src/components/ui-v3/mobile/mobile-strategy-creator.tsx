@@ -307,7 +307,7 @@ def on_bar(bar):
         {activeTab === 'tradingview' && (
           <div className="space-y-4 py-4">
             {/* TradingView Banner */}
-            <div className="bg-gradient-to-r from-[#131722] to-[#1E222D] border border-[#2A2F3E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-gradient-to-r from-[#131722]/30 to-[#1E222D]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center gap-3 mb-2">
                 <svg width="32" height="32" viewBox="0 0 36 28" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M14 22V6H18V22H14Z" fill="#2962FF"/>
@@ -327,7 +327,7 @@ def on_bar(bar):
             </div>
 
             {/* Webhook URL */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">Webhook URL</label>
               <div className="flex items-center gap-2">
                 <input
@@ -350,7 +350,7 @@ def on_bar(bar):
             </div>
 
             {/* Risk Control */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <h3 className="text-base font-semibold mb-4">风控配置</h3>
               
               {/* Exchange */}
@@ -547,7 +547,7 @@ def on_bar(bar):
             </div>
 
             {/* 风控保护 */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-base">🛡️</span>
                 <h3 className="text-sm font-semibold text-[#9090A0]">风控保护</h3>
@@ -675,7 +675,7 @@ def on_bar(bar):
         {activeTab === 'visual' && (
           <div className="space-y-4 py-4">
             {/* Strategy Name */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">策略名称</label>
               <input
                 type="text"
@@ -688,7 +688,7 @@ def on_bar(bar):
             </div>
 
             {/* Exchange Selection */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">交易所</label>
               <div className="flex gap-2">
                 {exchanges.map((ex) => (
@@ -710,7 +710,7 @@ def on_bar(bar):
             </div>
 
             {/* Trading Pairs */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">交易对</label>
               <div className="grid grid-cols-3 gap-2">
                 {symbols.map((symbol) => (
@@ -735,7 +735,7 @@ def on_bar(bar):
             </div>
 
             {/* Amount & Max Positions */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-[#94A3B8] mb-2">单笔金额 (USDT)</label>
@@ -761,7 +761,7 @@ def on_bar(bar):
             </div>
 
             {/* Leverage */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">杠杆倍数</label>
               <div className="grid grid-cols-6 gap-2">
                 {[1, 2, 3, 5, 10, 20].map((lev) => (
@@ -783,7 +783,7 @@ def on_bar(bar):
             </div>
 
             {/* Trigger Conditions */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold">触发条件</h3>
                 <button
@@ -870,7 +870,7 @@ def on_bar(bar):
             </div>
 
             {/* Execute Actions */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold">执行动作</h3>
                 <button
@@ -935,7 +935,7 @@ def on_bar(bar):
             </div>
 
             {/* 风控配置 - 与 TradingView tab 相同 */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <h3 className="text-base font-semibold mb-4">风控配置</h3>
 
               {/* 止损止盈 */}
@@ -1061,7 +1061,7 @@ def on_bar(bar):
             </div>
 
             {/* 风控保护 */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-base">🛡️</span>
                 <h3 className="text-sm font-semibold text-[#9090A0]">风控保护</h3>
@@ -1189,7 +1189,7 @@ def on_bar(bar):
         {activeTab === 'code' && (
           <div className="space-y-4 py-4">
             {/* Strategy Name */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">策略名称</label>
               <input
                 type="text"
@@ -1202,7 +1202,7 @@ def on_bar(bar):
             </div>
 
             {/* Exchange Selection */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">交易所</label>
               <div className="flex gap-2">
                 {exchanges.map((ex) => (
@@ -1224,7 +1224,7 @@ def on_bar(bar):
             </div>
 
             {/* Trading Pairs */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">交易对</label>
               <div className="grid grid-cols-3 gap-2">
                 {symbols.map((symbol) => (
@@ -1249,7 +1249,7 @@ def on_bar(bar):
             </div>
 
             {/* Code Templates */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-3">快速模板</label>
               <div className="grid grid-cols-3 gap-2">
                 {['均值回归', '动量', '网格'].map((template) => (
@@ -1267,7 +1267,7 @@ def on_bar(bar):
             </div>
 
             {/* Code Editor */}
-            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <label className="block text-sm text-[#94A3B8] mb-2">策略代码</label>
               <textarea
                 value={code}
