@@ -12,20 +12,43 @@ datasource db {
 
 // ========== MVP 必需表 ==========
 
-// 用户 (最小字段)
+// 用户
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
   nickname  String?
 
+  // 管理员标识
+  isAdmin Boolean @default(false) @map("is_admin")
+
+  // 余额 (平台内部余额，非交易所余额)
+  usdtBalance Decimal @default(0) @db.Decimal(18, 8) @map("usdt_balance")
+  hootBalance Decimal @default(0) @db.Decimal(18, 8) @map("hoot_balance")
+
+  // 邀请关系
+  inviteCode    String?  @unique @map("invite_code")
+  invitedBy     String?  @map("invited_by")
+  inviter       User?    @relation("Referral", fields: [invitedBy], references: [id])
+  invitees      User[]   @relation("Referral")
+
+  // Telegram 绑定
+  telegramId    String?  @unique @map("telegram_id")
+  telegramUsername String? @map("telegram_username")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关系
-  apiKeys       ApiKey[]
-  positions     Position[]
-  subscriptions StrategySubscription[]
+  apiKeys            ApiKey[]
+  positions          Position[]
+  subscriptions      StrategySubscription[]
+  transactions       Transaction[]
+  withdrawRequests   WithdrawRequest[]
+  depositAddresses   DepositAddress[]
+  referralRewards    ReferralReward[]
+  stakingRecords     StakingRecord[]
+  notifications      Notification[]
 
   @@map("users")
 }
@@ -99,10 +122,51 @@ model Signal {
 
   // 信号分发追踪
   distributedAt DateTime? @map("distributed_at")
+  subscriberCount Int @default(0) @map("subscriber_count")
+  executedCount   Int @default(0) @map("executed_count")
+  failedCount     Int @default(0) @map("failed_count")
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  executions SignalExecution[]
+
   @@map("signals")
+}
+
+// 信号执行记录（追踪每个用户的信号执行状态）
+model SignalExecution {
+  id       String @id @default(uuid())
+  signalId String @map("signal_id")
+  signal   Signal @relation(fields: [signalId], references: [id])
+  userId   String @map("user_id")
+
+  // 执行状态
+  status String @default("pending") // pending, queued, executing, success, failed, skipped
+
+  // 执行详情
+  exchange     String?
+  orderId      String? @map("order_id")
+  executedPrice Decimal? @db.Decimal(18, 8) @map("executed_price")
+  executedAmount Decimal? @db.Decimal(18, 8) @map("executed_amount")
+
+  // 失败信息
+  errorCode    String? @map("error_code")
+  errorMessage String? @map("error_message")
+
+  // 跳过原因
+  skipReason String? @map("skip_reason") // no_api_key, insufficient_balance, max_positions
+
+  // 时间追踪
+  queuedAt   DateTime? @map("queued_at")
+  startedAt  DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([signalId, userId])
+  @@index([signalId])
+  @@index([userId, status])
+  @@map("signal_executions")
 }
 
 // 持仓
@@ -132,4 +196,221 @@ model Position {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("positions")
+}
+
+// ========== Phase 4: 钱包与资金 ==========
+
+// 交易记录
+model Transaction {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  type   String // deposit, withdraw, fee, reward, referral
+  asset  String // USDT, HOOT
+  amount Decimal @db.Decimal(18, 8)
+
+  // 幂等性：唯一订单号
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  status    String  @default("pending") // pending, completed, failed
+  txHash    String? @map("tx_hash") // 链上交易哈希
+  remark    String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, type])
+  @@map("transactions")
+}
+
+// 充值地址
+model DepositAddress {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  chain   String // BSC, ETH, TRC20
+  asset   String // USDT, HOOT
+  address String
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, chain, asset])
+  @@map("deposit_addresses")
+}
+
+// 提现申请
+model WithdrawRequest {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  asset   String // USDT, HOOT
+  amount  Decimal @db.Decimal(18, 8)
+  fee     Decimal @db.Decimal(18, 8) @default(0)
+  chain   String // BSC, ETH, TRC20
+  address String // 提现目标地址
+
+  status    String  @default("pending") // pending, approved, rejected, completed
+  txHash    String? @map("tx_hash")
+  remark    String?
+
+  processedAt DateTime? @map("processed_at")
+  reviewedBy  String?   @map("reviewed_by")
+  reviewedAt  DateTime? @map("reviewed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@map("withdraw_requests")
+}
+
+// ========== Phase 5: 代理商系统 ==========
+
+// 返佣记录
+model ReferralReward {
+  id     String @id @default(uuid())
+  userId String @map("user_id") // 获得返佣的用户
+  user   User   @relation(fields: [userId], references: [id])
+
+  fromUserId String  @map("from_user_id") // 被邀请人
+  type       String // subscription, trading
+  amount     Decimal @db.Decimal(18, 8)
+  asset      String // USDT, HOOT
+
+  uniqueOrderId String @unique @map("unique_order_id") // 幂等性
+  status        String @default("pending") // pending, paid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("referral_rewards")
+}
+
+// ========== Phase 6: 质押系统 ==========
+
+// 质押记录
+model StakingRecord {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // A 类（空投）或 B 类（购买）
+  type   String // A, B
+  amount Decimal @db.Decimal(18, 8)
+
+  // 质押时间
+  stakedAt   DateTime  @default(now()) @map("staked_at")
+  unstakedAt DateTime? @map("unstaked_at")
+
+  // 锁定期（B 类可选锁定）
+  lockDays   Int @default(0) @map("lock_days")
+  lockUntil  DateTime? @map("lock_until")
+
+  // 状态
+  status String @default("active") // active, unstaked
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dividends DividendRecord[]
+
+  @@index([userId, status])
+  @@map("staking_records")
+}
+
+// 分红记录
+model DividendRecord {
+  id        String @id @default(uuid())
+  stakingId String @map("staking_id")
+  staking   StakingRecord @relation(fields: [stakingId], references: [id])
+
+  // 分红周期
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  // 快照数据
+  stakedAmount  Decimal @db.Decimal(18, 8) @map("staked_amount")
+  weightedAmount Decimal @db.Decimal(18, 8) @map("weighted_amount")
+  totalWeighted Decimal @db.Decimal(18, 8) @map("total_weighted")
+
+  // 分红金额
+  dividendAmount Decimal @db.Decimal(18, 8) @map("dividend_amount")
+  asset          String // USDT
+
+  status    String @default("pending") // pending, paid
+  paidAt    DateTime? @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([stakingId])
+  @@map("dividend_records")
+}
+
+// 分红池记录
+model DividendPool {
+  id String @id @default(uuid())
+
+  // 周期
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  // 池子金额
+  totalAmount    Decimal @db.Decimal(18, 8) @map("total_amount")
+  distributedAmount Decimal @default(0) @db.Decimal(18, 8) @map("distributed_amount")
+
+  // 全网质押数据
+  totalStaked   Decimal @db.Decimal(18, 8) @map("total_staked")
+  totalWeighted Decimal @db.Decimal(18, 8) @map("total_weighted")
+
+  status    String @default("pending") // pending, distributed
+  distributedAt DateTime? @map("distributed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([periodStart, periodEnd])
+  @@map("dividend_pools")
+}
+
+// ========== Phase 7: 计费与通知 ==========
+
+// 计费日志（幂等性保证）
+model BillingLog {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  type   String // GAS_FEE, SUBSCRIPTION, WITHDRAW_FEE
+  amount String // 使用字符串存储，避免精度问题
+
+  // 幂等性：唯一订单号
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, type])
+  @@map("billing_logs")
+}
+
+// 通知记录
+model Notification {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  type     String // signal_received, position_opened, etc.
+  title    String
+  message  String
+  channels String // 逗号分隔: in_app,telegram,email
+
+  read Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, read])
+  @@map("notifications")
 }

@@ -1,0 +1,285 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import Decimal from 'decimal.js';
+
+// 手续费配置
+export const FEE_CONFIG = {
+  // 基础手续费率（盈利的百分比）
+  BASE_GAS_FEE_RATE: new Decimal('0.20'), // 20%
+
+  // 质押用户折扣
+  STAKING_DISCOUNT: {
+    A: new Decimal('0'), // A 类无折扣
+    B: new Decimal('0.10'), // B 类 10% 折扣（实际 18%）
+  },
+
+  // VIP 折扣（按质押金额）
+  VIP_DISCOUNT_TIERS: [
+    { minStake: new Decimal('10000'), discount: new Decimal('0.05') }, // >= 10000 HOOT: 5% 折扣
+    { minStake: new Decimal('50000'), discount: new Decimal('0.10') }, // >= 50000 HOOT: 10% 折扣
+    { minStake: new Decimal('100000'), discount: new Decimal('0.15') }, // >= 100000 HOOT: 15% 折扣
+  ],
+
+  // 最小手续费
+  MIN_FEE: new Decimal('0.01'), // 0.01 USDT
+};
+
+export interface FeeCalculationResult {
+  profit: string; // 盈利金额
+  baseFeeRate: string; // 基础费率
+  stakingDiscount: string; // 质押折扣
+  vipDiscount: string; // VIP 折扣
+  finalFeeRate: string; // 最终费率
+  feeAmount: string; // 手续费金额
+  netProfit: string; // 净利润
+}
+
+export interface FeeRecord {
+  userId: string;
+  positionId: string;
+  profit: string;
+  feeRate: string;
+  feeAmount: string;
+  uniqueOrderId: string;
+}
+
+@Injectable()
+export class FeeService {
+  private readonly logger = new Logger(FeeService.name);
+
+  constructor(private prisma: PrismaService) {}
+
+  /**
+   * 计算交易手续费
+   * @param userId 用户 ID
+   * @param profit 盈利金额（USDT）
+   * @returns 手续费计算结果
+   */
+  async calculateFee(userId: string, profit: string): Promise<FeeCalculationResult> {
+    const profitDecimal = new Decimal(profit);
+
+    // 如果亏损，不收手续费
+    if (profitDecimal.lte(0)) {
+      return {
+        profit,
+        baseFeeRate: FEE_CONFIG.BASE_GAS_FEE_RATE.toString(),
+        stakingDiscount: '0',
+        vipDiscount: '0',
+        finalFeeRate: '0',
+        feeAmount: '0',
+        netProfit: profit,
+      };
+    }
+
+    // 获取用户质押信息
+    const stakingInfo = await this.getUserStakingInfo(userId);
+
+    // 计算质押折扣
+    let stakingDiscount = new Decimal(0);
+    if (stakingInfo.hasActiveStake) {
+      stakingDiscount = stakingInfo.stakeType === 'B'
+        ? FEE_CONFIG.STAKING_DISCOUNT.B
+        : FEE_CONFIG.STAKING_DISCOUNT.A;
+    }
+
+    // 计算 VIP 折扣
+    let vipDiscount = new Decimal(0);
+    for (const tier of FEE_CONFIG.VIP_DISCOUNT_TIERS) {
+      if (stakingInfo.totalStaked.gte(tier.minStake)) {
+        vipDiscount = tier.discount;
+      }
+    }
+
+    // 计算最终费率
+    const baseFeeRate = FEE_CONFIG.BASE_GAS_FEE_RATE;
+    const totalDiscount = stakingDiscount.plus(vipDiscount);
+    let finalFeeRate = baseFeeRate.minus(baseFeeRate.times(totalDiscount));
+
+    // 费率不能低于 0
+    if (finalFeeRate.lt(0)) {
+      finalFeeRate = new Decimal(0);
+    }
+
+    // 计算手续费金额
+    let feeAmount = profitDecimal.times(finalFeeRate);
+
+    // 应用最小手续费
+    if (feeAmount.gt(0) && feeAmount.lt(FEE_CONFIG.MIN_FEE)) {
+      feeAmount = FEE_CONFIG.MIN_FEE;
+    }
+
+    // 计算净利润
+    const netProfit = profitDecimal.minus(feeAmount);
+
+    return {
+      profit,
+      baseFeeRate: baseFeeRate.toString(),
+      stakingDiscount: stakingDiscount.toString(),
+      vipDiscount: vipDiscount.toString(),
+      finalFeeRate: finalFeeRate.toString(),
+      feeAmount: feeAmount.toFixed(8),
+      netProfit: netProfit.toFixed(8),
+    };
+  }
+
+  /**
+   * 扣除手续费（幂等性）
+   * @param feeRecord 手续费记录
+   */
+  async chargeFee(feeRecord: FeeRecord): Promise<boolean> {
+    const { userId, positionId, profit, feeRate, feeAmount, uniqueOrderId } = feeRecord;
+
+    // 检查是否已处理（幂等性）
+    const existingLog = await this.prisma.billingLog.findUnique({
+      where: { uniqueOrderId },
+    });
+
+    if (existingLog) {
+      this.logger.warn(`手续费已处理: ${uniqueOrderId}`);
+      return false;
+    }
+
+    const feeAmountDecimal = new Decimal(feeAmount);
+
+    // 如果手续费为 0，不扣费
+    if (feeAmountDecimal.lte(0)) {
+      return true;
+    }
+
+    // 使用事务扣费
+    await this.prisma.$transaction(async (tx) => {
+      // 获取用户余额
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { usdtBalance: true },
+      });
+
+      if (!user) {
+        throw new Error('用户不存在');
+      }
+
+      const currentBalance = new Decimal(user.usdtBalance.toString());
+
+      // 余额不足时从盈利中扣除（已经在净利润中扣除）
+      // 这里只记录扣费日志
+
+      // 创建扣费日志
+      await tx.billingLog.create({
+        data: {
+          userId,
+          type: 'GAS_FEE',
+          amount: feeAmountDecimal.toString(),
+          uniqueOrderId,
+          description: `持仓 ${positionId} 盈利 ${profit} 手续费 ${feeRate} = ${feeAmount}`,
+        },
+      });
+
+      this.logger.log(`手续费已扣除: 用户 ${userId} 金额 ${feeAmount} USDT`);
+    });
+
+    return true;
+  }
+
+  /**
+   * 获取用户质押信息
+   */
+  private async getUserStakingInfo(userId: string): Promise<{
+    hasActiveStake: boolean;
+    stakeType: string;
+    totalStaked: Decimal;
+  }> {
+    const stakingRecords = await this.prisma.stakingRecord.findMany({
+      where: {
+        userId,
+        status: 'active',
+      },
+    });
+
+    if (stakingRecords.length === 0) {
+      return {
+        hasActiveStake: false,
+        stakeType: 'A',
+        totalStaked: new Decimal(0),
+      };
+    }
+
+    // 计算总质押量
+    const totalStaked = stakingRecords.reduce(
+      (sum, record) => sum.plus(new Decimal(record.amount.toString())),
+      new Decimal(0),
+    );
+
+    // 取最高级别的质押类型（B > A）
+    const hasTypeB = stakingRecords.some((r) => r.type === 'B');
+
+    return {
+      hasActiveStake: true,
+      stakeType: hasTypeB ? 'B' : 'A',
+      totalStaked,
+    };
+  }
+
+  /**
+   * 生成幂等性订单 ID
+   * @param type 类型
+   * @param userId 用户 ID
+   * @param positionId 持仓 ID
+   */
+  generateUniqueOrderId(type: string, userId: string, positionId: string): string {
+    const timestamp = Date.now();
+    const nonce = Math.random().toString(36).substring(2, 10);
+    return `${type}_${userId}_${positionId}_${timestamp}_${nonce}`;
+  }
+
+  /**
+   * 获取用户手续费统计
+   */
+  async getUserFeeStats(userId: string): Promise<{
+    totalFeesPaid: string;
+    feeCount: number;
+    averageFeeRate: string;
+  }> {
+    const logs = await this.prisma.billingLog.findMany({
+      where: {
+        userId,
+        type: 'GAS_FEE',
+      },
+    });
+
+    if (logs.length === 0) {
+      return {
+        totalFeesPaid: '0',
+        feeCount: 0,
+        averageFeeRate: '0',
+      };
+    }
+
+    const totalFees = logs.reduce(
+      (sum, log) => sum.plus(new Decimal(log.amount)),
+      new Decimal(0),
+    );
+
+    // 从 description 中解析费率来计算平均费率
+    // description 格式: 持仓 xxx 盈利 xxx 手续费 xxx = xxx
+    let totalRate = new Decimal(0);
+    let rateCount = 0;
+
+    for (const log of logs) {
+      const match = log.description?.match(/手续费 ([\d.]+) =/);
+      if (match) {
+        totalRate = totalRate.plus(new Decimal(match[1]));
+        rateCount++;
+      }
+    }
+
+    const averageRate = rateCount > 0
+      ? totalRate.div(rateCount)
+      : new Decimal(0);
+
+    return {
+      totalFeesPaid: totalFees.toFixed(8),
+      feeCount: logs.length,
+      averageFeeRate: averageRate.toFixed(4),
+    };
+  }
+}

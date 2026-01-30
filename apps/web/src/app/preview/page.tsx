@@ -304,11 +304,6 @@ export default function PreviewPage() {
                         }}
                       />
                     )}
-                    {/* V0-generated components */}
-                    {currentPage === 'v0-strategy-creator' && <MobileStrategyCreatorV0 />}
-                    {currentPage === 'v0-visual-builder' && <MobileVisualBuilderV0 />}
-                    {currentPage === 'v0-strategy-config' && <MobileStrategyConfigV0 />}
-                    {currentPage === 'v0-wallet' && <MobileWalletPageV0 />}
                   </div>
                   {/* 移动端底部导航栏 - 嵌入手机框内 */}
                   <div className="absolute bottom-0 left-0 right-0 rounded-b-[40px] overflow-hidden">
