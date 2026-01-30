@@ -101,26 +101,31 @@ export function MobileEcosystemV3({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
-      {/* Tab */}
-      <div className="px-4 py-3 flex gap-2">
-        {[
-          { id: 'token', label: '代币' },
-          { id: 'staking', label: '质押' },
-          { id: 'leaderboard', label: '排行' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'bg-[#06B6D4] text-black'
-                : 'bg-[#12121A] text-[#94A3B8]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Sub Tab - 使用下划线样式区分主Tab */}
+      <div className="px-4 pt-2 pb-3">
+        <div className="flex border-b border-[#1E1E2E]">
+          {[
+            { id: 'token', label: '代币' },
+            { id: 'staking', label: '质押' },
+            { id: 'leaderboard', label: '排行' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              className={`flex-1 py-2.5 text-sm font-medium transition-colors relative ${
+                activeTab === tab.id
+                  ? 'text-[#06B6D4]'
+                  : 'text-[#94A3B8]'
+              }`}
+            >
+              {tab.label}
+              {activeTab === tab.id && (
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#06B6D4] rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="px-4 space-y-3">
@@ -129,20 +134,18 @@ export function MobileEcosystemV3({
           <>
             {/* Token Hero Card */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
-
               {/* Token Info with Image */}
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-11 h-11 rounded-xl overflow-hidden bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 p-0.5">
+                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
                   <Image
                     src="/icons/hoot/logo.png"
                     alt="HOOT"
-                    width={44}
-                    height={44}
-                    className="rounded-lg w-full h-full object-cover"
+                    width={48}
+                    height={48}
+                    className="w-full h-full object-cover"
                   />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <span className="text-xs text-[#94A3B8]">HOOT</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xl font-bold">${tokenPrice}</span>
@@ -178,8 +181,6 @@ export function MobileEcosystemV3({
 
             {/* Rewards Card */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
-
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -207,9 +208,21 @@ export function MobileEcosystemV3({
               </div>
             </div>
 
+            {/* 燃油费收入分红 Info Banner */}
+            <div className="p-3 bg-gradient-to-r from-cyan-500/10 to-cyan-400/5 border border-cyan-500/20 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-cyan-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <div className="font-semibold text-xs">燃油费收入分红</div>
+                  <div className="text-[10px] text-[#94A3B8]">燃油费收入的 40% 分配给质押用户，10% 用于代币回购销毁</div>
+                </div>
+              </div>
+            </div>
+
             {/* Benefits Grid - 4 Icon Cards */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
               <div className="grid grid-cols-4 gap-2">
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#22C55E]/10 flex items-center justify-center">
@@ -237,6 +250,60 @@ export function MobileEcosystemV3({
                 </div>
               </div>
             </div>
+
+            {/* 代币分配 Pie Chart */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
+              <h3 className="text-sm font-semibold mb-3">代币分配</h3>
+              <div className="flex items-center gap-4">
+                {/* Pie Chart */}
+                <div className="relative w-24 h-24 flex-shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#1E1E2E" strokeWidth="4" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#06B6D4" strokeWidth="4" strokeDasharray="40 60" strokeLinecap="round" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#22D3EE" strokeWidth="4" strokeDasharray="20 80" strokeDashoffset="-40" strokeLinecap="round" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#67E8F9" strokeWidth="4" strokeDasharray="25 75" strokeDashoffset="-60" strokeLinecap="round" />
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="#A5F3FC" strokeWidth="4" strokeDasharray="15 85" strokeDashoffset="-85" strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-xs font-bold">100M</div>
+                      <div className="text-[8px] text-[#94A3B8]">总量</div>
+                    </div>
+                  </div>
+                </div>
+                {/* Legend */}
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#06B6D4]" />
+                      <span className="text-[10px] text-[#94A3B8]">社区 40%</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400">40M</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#22D3EE]" />
+                      <span className="text-[10px] text-[#94A3B8]">团队 20%</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400">20M</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#67E8F9]" />
+                      <span className="text-[10px] text-[#94A3B8]">投资者 25%</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400">25M</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-[#A5F3FC]" />
+                      <span className="text-[10px] text-[#94A3B8]">国库 15%</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400">15M</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </>
         )}
 
@@ -245,8 +312,6 @@ export function MobileEcosystemV3({
           <>
             {/* Overview */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
-
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold">{userStaked.toLocaleString()}</div>
@@ -288,8 +353,6 @@ export function MobileEcosystemV3({
             {/* Stake Form */}
             {stakingSubTab === 'stake' && (
               <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none" />
-
                 <span className="text-sm font-medium">新建质押</span>
 
                 {/* Amount */}
@@ -476,7 +539,6 @@ export function MobileEcosystemV3({
           <>
             {/* My Rank */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs text-[#94A3B8]">我的排名</span>
@@ -491,7 +553,6 @@ export function MobileEcosystemV3({
 
             {/* Leaderboard */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
-
               <div className="flex items-center gap-2">
                 <Crown className="w-4 h-4 text-[#F59E0B]" />
                 <span className="text-sm font-medium">TOP 5</span>

@@ -189,7 +189,7 @@ export function MobileStrategiesV3({
                     onStrategyClick?.(strategy.id)
                     setShowSearch(false)
                   }}
-                  className="relative p-4 bg-[#12121A]/60 backdrop-blur-xl rounded-2xl active:scale-[0.98] transition-all"
+                  className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 active:scale-[0.98] transition-all"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2 text-xs text-[#606070]">
