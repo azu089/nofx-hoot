@@ -356,66 +356,67 @@ export function PositionsPageV3({
           <h1 className="text-2xl font-bold text-[#F8F8FC]">交易</h1>
         </div>
 
-        {/* Controls Row - Filters and Actions */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            {/* 全部/现货/合约切换 */}
-            <div className="flex bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg p-1 shadow-[0_4px_16px_rgba(0,0,0,0.3)]">
-              {(['all', 'spot', 'futures'] as const).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setAccountType(type)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    accountType === type
-                      ? 'bg-[#06B6D4] text-white'
-                      : 'text-[#9090A0] hover:text-[#F8F8FC]'
-                  }`}
-                >
-                  {type === 'all' ? '全部' : type === 'spot' ? '现货' : '合约'}
-                </button>
-              ))}
-            </div>
+        {/* Controls Row 1 - Account Selector + Type Filter (等宽) */}
+        <div className="flex items-center gap-4">
+          {/* Account Selector - flex-1 */}
+          <div className="flex-1 relative">
+            <button
+              type="button"
+              onClick={() => setShowAccountDropdown(!showAccountDropdown)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
+            >
+              <Wallet className="w-4 h-4 text-[#06B6D4]" />
+              <span className="text-sm text-[#F8F8FC]">{selectedAccount.name}</span>
+              <ChevronDown className="w-4 h-4 text-[#9090A0]" />
+            </button>
 
-            {/* Account Selector */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
-              >
-                <Wallet className="w-4 h-4 text-[#06B6D4]" />
-                <span className="text-sm text-[#F8F8FC]">{selectedAccount.name}</span>
-                <ChevronDown className="w-4 h-4 text-[#9090A0]" />
-              </button>
-
-              {showAccountDropdown && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
-                  {mockAccounts.map((account) => (
-                    <button
-                      key={account.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAccount(account)
-                        setShowAccountDropdown(false)
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-[#1E1E2E]/50 transition-colors"
-                    >
-                      <div className="text-sm text-[#F8F8FC]">{account.name}</div>
-                      <div className="text-xs text-[#9090A0]">${account.balance.toLocaleString()}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {showAccountDropdown && (
+              <div className="absolute top-full left-0 mt-2 w-64 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 overflow-hidden">
+                {mockAccounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAccount(account)
+                      setShowAccountDropdown(false)
+                    }}
+                    className="w-full px-4 py-3 text-left hover:bg-[#1E1E2E]/50 transition-colors"
+                  >
+                    <div className="text-sm text-[#F8F8FC]">{account.name}</div>
+                    <div className="text-xs text-[#9090A0]">${account.balance.toLocaleString()}</div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Date Picker */}
-          <div className="relative">
+          {/* 全部/现货/合约切换 - flex-1 */}
+          <div className="flex-1 flex bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg p-1 shadow-[0_4px_16px_rgba(0,0,0,0.3)]">
+            {(['all', 'spot', 'futures'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setAccountType(type)}
+                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  accountType === type
+                    ? 'bg-[#06B6D4] text-white'
+                    : 'text-[#9090A0] hover:text-[#F8F8FC]'
+                }`}
+              >
+                {type === 'all' ? '全部' : type === 'spot' ? '现货' : '合约'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Controls Row 2 - Date Picker + Emergency Close (等宽) */}
+        <div className="flex items-center gap-4">
+          {/* Date Picker - flex-1 */}
+          <div className="flex-1 relative">
             <button
               type="button"
               onClick={() => setShowDatePicker(!showDatePicker)}
-              className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg hover:border-cyan-500/15 transition-colors shadow-[0_4px_16px_rgba(0,0,0,0.3)]"
             >
               <Calendar className="w-4 h-4 text-[#06B6D4]" />
               <span className="text-sm text-[#F8F8FC]">{dateRange.start} ~ {dateRange.end}</span>
@@ -423,7 +424,7 @@ export function PositionsPageV3({
             </button>
 
             {showDatePicker && (
-              <div className="absolute top-full right-0 mt-2 w-80 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 p-4">
+              <div className="absolute top-full left-0 mt-2 w-80 bg-[#12121A]/80 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-50 p-4">
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="date-start" className="text-xs text-[#9090A0] mb-1 block">开始日期</label>
@@ -484,6 +485,16 @@ export function PositionsPageV3({
               </div>
             )}
           </div>
+
+          {/* Emergency Close - flex-1 */}
+          <button
+            type="button"
+            onClick={onEmergencyCloseAll}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            紧急平仓
+          </button>
         </div>
 
         {/* Stats Row - 超清悬浮玻璃卡片 */}
@@ -523,18 +534,6 @@ export function PositionsPageV3({
               <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
               </div>
-            </div>
-
-            {/* 紧急平仓 - 右侧 */}
-            <div className="ml-auto">
-              <button
-                type="button"
-                onClick={onEmergencyCloseAll}
-                className="px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/20 transition-colors flex items-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                紧急平仓
-              </button>
             </div>
           </div>
         </div>
