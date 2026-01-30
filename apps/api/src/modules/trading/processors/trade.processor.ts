@@ -3,6 +3,7 @@ import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TradingService } from '../trading.service';
+import { RiskControlService } from '../risk-control.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TradeJobData } from '../../signals/dto/signal.dto';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -14,6 +15,7 @@ export class TradeProcessor extends WorkerHost {
   constructor(
     private prisma: PrismaService,
     private tradingService: TradingService,
+    private riskControlService: RiskControlService,
     @Inject(forwardRef(() => NotificationsService))
     private notificationsService: NotificationsService,
   ) {
@@ -38,13 +40,27 @@ export class TradeProcessor extends WorkerHost {
     );
 
     try {
-      // 检查用户余额
-      const balance = await this.tradingService.fetchBalance(userId, apiKeyId);
       const requiredAmount = parseFloat(amountPerTrade);
 
-      if (balance < requiredAmount) {
+      // 执行全面风控检查
+      const riskCheck = await this.riskControlService.check(
+        userId,
+        apiKeyId,
+        symbol,
+        requiredAmount,
+      );
+
+      if (!riskCheck.allowed) {
         this.logger.warn(
-          `用户 ${userId} 余额不足: ${balance} < ${requiredAmount}`,
+          `用户 ${userId} 风控检查未通过: ${riskCheck.reason}`,
+        );
+
+        // 记录风控拒绝日志
+        await this.riskControlService.logRejection(
+          userId,
+          signalId,
+          riskCheck.reason || 'unknown',
+          riskCheck.details || {},
         );
 
         // 发送交易失败通知
@@ -52,12 +68,12 @@ export class TradeProcessor extends WorkerHost {
           userId,
           symbol,
           side,
-          `余额不足: ${balance.toFixed(2)} < ${requiredAmount.toFixed(2)} USDT`,
+          this.getRiskReasonMessage(riskCheck.reason, riskCheck.details),
         );
 
         return {
           success: false,
-          error: `余额不足: ${balance} < ${requiredAmount}`,
+          error: riskCheck.reason,
         };
       }
 
@@ -150,6 +166,26 @@ export class TradeProcessor extends WorkerHost {
       });
     } catch (error) {
       this.logger.error(`发送失败通知时出错: ${error.message}`);
+    }
+  }
+
+  // 获取风控拒绝原因的用户友好消息
+  private getRiskReasonMessage(reason?: string, details?: Record<string, any>): string {
+    switch (reason) {
+      case 'max_positions_reached':
+        return `已达最大持仓数限制 (${details?.current || '?'}/${details?.max || '?'})`;
+      case 'symbol_already_open':
+        return `${details?.symbol || '该币种'} 已有持仓，不允许重复开仓`;
+      case 'daily_limit_reached':
+        return `已达每日交易次数限制 (${details?.current || '?'}/${details?.max || '?'})`;
+      case 'insufficient_balance':
+        return `余额不足: ${(details?.balance || 0).toFixed(2)} < ${(details?.required || 0).toFixed(2)} USDT`;
+      case 'balance_below_minimum':
+        return `交易后余额将低于最小要求 ${details?.minRequired || 10} USDT`;
+      case 'balance_check_failed':
+        return `余额查询失败: ${details?.error || '未知错误'}`;
+      default:
+        return reason || '未知风控限制';
     }
   }
 }

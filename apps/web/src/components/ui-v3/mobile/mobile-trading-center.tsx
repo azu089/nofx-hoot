@@ -323,8 +323,26 @@ export function MobileTradingCenter({
 
       {/* 可滚动内容区 */}
       <div className="flex-1 overflow-auto pb-20">
-        {/* 筛选器行 - 账户选择 + 全部/现货/合约 */}
+        {/* 筛选器行 - 全部/现货/合约 + 账户选择 */}
         <div className="px-4 py-3 flex items-center gap-3">
+          {/* 全部/现货/合约切换 */}
+          <div className="flex-1 flex bg-[#12121A] border border-[#1E1E2E] rounded-lg p-0.5">
+            {(['all', 'spot', 'futures'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setAccountType(type)}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  accountType === type
+                    ? 'bg-[#06B6D4] text-white'
+                    : 'text-[#9090A0]'
+                }`}
+              >
+                {type === 'all' ? '全部' : type === 'spot' ? '现货' : '合约'}
+              </button>
+            ))}
+          </div>
+
           {/* 账户选择器 */}
           <div className="flex-1 relative">
             <button
@@ -355,24 +373,6 @@ export function MobileTradingCenter({
                 ))}
               </div>
             )}
-          </div>
-
-          {/* 全部/现货/合约切换 */}
-          <div className="flex-1 flex bg-[#12121A] border border-[#1E1E2E] rounded-lg p-0.5">
-            {(['all', 'spot', 'futures'] as const).map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setAccountType(type)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  accountType === type
-                    ? 'bg-[#06B6D4] text-white'
-                    : 'text-[#9090A0]'
-                }`}
-              >
-                {type === 'all' ? '全部' : type === 'spot' ? '现货' : '合约'}
-              </button>
-            ))}
           </div>
         </div>
 

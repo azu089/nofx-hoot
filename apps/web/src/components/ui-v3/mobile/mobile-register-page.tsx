@@ -136,13 +136,21 @@ export function MobileRegisterPage({
 
   return (
     <div className="min-h-screen w-full bg-[#0A0A0F] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* 背景装饰 - 青色模糊光晕 */}
-      <div className="absolute top-20 left-1/2 -translate-x-1/2 w-80 h-80 bg-[#06B6D4] rounded-full blur-[120px] opacity-20" />
-      <div className="absolute bottom-20 right-0 w-64 h-64 bg-[#06B6D4] rounded-full blur-[100px] opacity-15" />
+      {/* 背景装饰 - 与首页同步的动态光晕效果 */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-32 -right-32 w-80 h-80 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse" />
+        <div
+          className="absolute -bottom-32 -left-32 w-80 h-80 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse"
+          style={{ animationDelay: '1s' }}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[150px] opacity-5" />
+      </div>
 
       {/* 注册卡片 */}
-      <div className="relative w-full max-w-md">
-        <div className="bg-[#12121A]/80 backdrop-blur-xl rounded-2xl border border-[#1E1E2E] p-6 shadow-2xl">
+      <div className="relative w-full max-w-md z-10">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          {/* 顶部渐变高光线 */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
           {/* Logo 区域 */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#06B6D4] to-[#0891B2] mb-4">
@@ -156,8 +164,8 @@ export function MobileRegisterPage({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 邮箱输入框 */}
             <div>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
                 <input
                   type="email"
                   value={email}
@@ -166,7 +174,7 @@ export function MobileRegisterPage({
                     setErrors((prev) => ({ ...prev, email: undefined }))
                   }}
                   placeholder="邮箱地址"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                   aria-label="邮箱地址"
                   disabled={isLoading}
                 />
@@ -178,8 +186,8 @@ export function MobileRegisterPage({
 
             {/* 用户名输入框 */}
             <div>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
                 <input
                   type="text"
                   value={username}
@@ -188,7 +196,7 @@ export function MobileRegisterPage({
                     setErrors((prev) => ({ ...prev, username: undefined }))
                   }}
                   placeholder="用户名"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                   aria-label="用户名"
                   disabled={isLoading}
                 />
@@ -200,8 +208,8 @@ export function MobileRegisterPage({
 
             {/* 密码输入框 */}
             <div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -210,14 +218,14 @@ export function MobileRegisterPage({
                     setErrors((prev) => ({ ...prev, password: undefined }))
                   }}
                   placeholder="密码"
-                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                   aria-label="密码"
                   disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
                   aria-label={showPassword ? '隐藏密码' : '显示密码'}
                   disabled={isLoading}
                 >
@@ -235,8 +243,8 @@ export function MobileRegisterPage({
 
             {/* 确认密码输入框 */}
             <div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
@@ -245,14 +253,14 @@ export function MobileRegisterPage({
                     setErrors((prev) => ({ ...prev, confirmPassword: undefined }))
                   }}
                   placeholder="确认密码"
-                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                   aria-label="确认密码"
                   disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
                   aria-label={showConfirmPassword ? '隐藏确认密码' : '显示确认密码'}
                   disabled={isLoading}
                 >
@@ -270,14 +278,14 @@ export function MobileRegisterPage({
 
             {/* 邀请码输入框 */}
             <div>
-              <div className="relative">
-                <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
                 <input
                   type="text"
                   value={referralCode}
                   onChange={(e) => setReferralCode(e.target.value)}
                   placeholder="邀请码（可选）"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                   aria-label="邀请码"
                   disabled={isLoading}
                 />

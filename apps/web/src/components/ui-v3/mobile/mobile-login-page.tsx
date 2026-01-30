@@ -49,12 +49,20 @@ export function MobileLoginPage({
 
   return (
     <div className="min-h-screen w-full bg-[#0A0A0F] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* 背景装饰：青色模糊光晕效果 */}
-      <div className="absolute top-1/4 -left-20 w-64 h-64 bg-[#06B6D4] rounded-full opacity-20 blur-[100px]" />
-      <div className="absolute bottom-1/4 -right-20 w-64 h-64 bg-[#06B6D4] rounded-full opacity-20 blur-[100px]" />
+      {/* 背景装饰 - 与首页同步的动态光晕效果 */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-32 -right-32 w-80 h-80 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse" />
+        <div
+          className="absolute -bottom-32 -left-32 w-80 h-80 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse"
+          style={{ animationDelay: '1s' }}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[150px] opacity-5" />
+      </div>
 
       {/* 毛玻璃登录卡片 */}
-      <div className="w-full max-w-md bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-8 shadow-2xl relative z-10">
+      <div className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden z-10">
+        {/* 顶部渐变高光线 */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
         {/* Logo区域 */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#06B6D4] to-[#0891B2] flex items-center justify-center mb-4 shadow-lg shadow-[#06B6D4]/20">
@@ -70,8 +78,8 @@ export function MobileLoginPage({
             <label htmlFor="email" className="sr-only">
               邮箱地址
             </label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+            <div className="glass-border-glow relative rounded-xl overflow-hidden">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
               <input
                 id="email"
                 type="email"
@@ -79,7 +87,7 @@ export function MobileLoginPage({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 aria-label="邮箱地址"
-                className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                className="w-full bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                 required
               />
             </div>
@@ -90,8 +98,8 @@ export function MobileLoginPage({
             <label htmlFor="password" className="sr-only">
               密码
             </label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+            <div className="glass-border-glow relative rounded-xl overflow-hidden">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
@@ -99,7 +107,7 @@ export function MobileLoginPage({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 aria-label="密码"
-                className="w-full bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                className="w-full bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                 required
               />
               <button
@@ -107,7 +115,7 @@ export function MobileLoginPage({
                 onClick={() => setShowPassword(!showPassword)}
                 title={showPassword ? '隐藏密码' : '显示密码'}
                 aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
               >
                 {showPassword ? (
                   <EyeOff className="w-5 h-5" />

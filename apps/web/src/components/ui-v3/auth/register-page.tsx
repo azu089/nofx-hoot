@@ -128,16 +128,22 @@ export function RegisterPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center p-4">
-      {/* Background Effects */}
+    <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background Effects - 与首页同步 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-400/5 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse" />
+        <div
+          className="absolute -bottom-40 -left-40 w-96 h-96 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse"
+          style={{ animationDelay: '1s' }}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[200px] opacity-5" />
       </div>
 
       {/* Main Card */}
       <div className="relative w-full max-w-md">
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          {/* Top gradient highlight line */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
           {/* Logo and Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-cyan-500/20 to-cyan-400/20 rounded-2xl mb-4 border border-[#2A2A3A]">
@@ -155,15 +161,13 @@ export function RegisterPage({
               <label className="block text-sm font-medium text-[#9090A0] mb-2">
                 邮箱
               </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+              <div className={`glass-border-glow relative rounded-xl overflow-hidden ${errors.email ? 'ring-1 ring-red-500' : ''}`}>
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070] z-10" />
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 bg-[#0A0A0F] border rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all ${
-                    errors.email ? 'border-red-500' : 'border-[#2A2A3A]'
-                  }`}
+                  className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
                   placeholder="your@email.com"
                 />
               </div>
@@ -177,15 +181,13 @@ export function RegisterPage({
               <label className="block text-sm font-medium text-[#9090A0] mb-2">
                 用户名
               </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+              <div className={`glass-border-glow relative rounded-xl overflow-hidden ${errors.username ? 'ring-1 ring-red-500' : ''}`}>
+                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070] z-10" />
                 <input
                   type="text"
                   value={formData.username}
                   onChange={(e) => handleInputChange('username', e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 bg-[#0A0A0F] border rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all ${
-                    errors.username ? 'border-red-500' : 'border-[#2A2A3A]'
-                  }`}
+                  className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
                   placeholder="选择一个用户名"
                 />
               </div>
@@ -199,21 +201,19 @@ export function RegisterPage({
               <label className="block text-sm font-medium text-[#9090A0] mb-2">
                 密码
               </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+              <div className={`glass-border-glow relative rounded-xl overflow-hidden ${errors.password ? 'ring-1 ring-red-500' : ''}`}>
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070] z-10" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => handleInputChange('password', e.target.value)}
-                  className={`w-full pl-10 pr-12 py-3 bg-[#0A0A0F] border rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all ${
-                    errors.password ? 'border-red-500' : 'border-[#2A2A3A]'
-                  }`}
+                  className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors z-10"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -228,21 +228,19 @@ export function RegisterPage({
               <label className="block text-sm font-medium text-[#9090A0] mb-2">
                 确认密码
               </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+              <div className={`glass-border-glow relative rounded-xl overflow-hidden ${errors.confirmPassword ? 'ring-1 ring-red-500' : ''}`}>
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070] z-10" />
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={formData.confirmPassword}
                   onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                  className={`w-full pl-10 pr-12 py-3 bg-[#0A0A0F] border rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all ${
-                    errors.confirmPassword ? 'border-red-500' : 'border-[#2A2A3A]'
-                  }`}
+                  className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors z-10"
                 >
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -257,13 +255,13 @@ export function RegisterPage({
               <label className="block text-sm font-medium text-[#9090A0] mb-2">
                 邀请码 <span className="text-[#606070]">(可选)</span>
               </label>
-              <div className="relative">
-                <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070] z-10" />
                 <input
                   type="text"
                   value={formData.referralCode}
                   onChange={(e) => handleInputChange('referralCode', e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
                   placeholder="输入邀请码获得奖励"
                 />
               </div>

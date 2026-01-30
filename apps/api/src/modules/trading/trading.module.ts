@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TradingService } from './trading.service';
 import { PositionsService } from './positions.service';
 import { FeeService } from './fee.service';
+import { RiskControlService } from './risk-control.service';
 import { PositionsController } from './positions.controller';
 import { TradeProcessor } from './processors/trade.processor';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
@@ -15,7 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     forwardRef(() => NotificationsModule),
   ],
   controllers: [PositionsController],
-  providers: [TradingService, PositionsService, FeeService, TradeProcessor],
-  exports: [TradingService, PositionsService, FeeService],
+  providers: [TradingService, PositionsService, FeeService, RiskControlService, TradeProcessor],
+  exports: [TradingService, PositionsService, FeeService, RiskControlService],
 })
 export class TradingModule {}

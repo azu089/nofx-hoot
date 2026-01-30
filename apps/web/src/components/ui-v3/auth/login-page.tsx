@@ -33,16 +33,21 @@ export function LoginPage({
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#0A0A0F]">
-      {/* Background glow effects */}
+      {/* Background glow effects - 与首页同步 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full opacity-20 blur-3xl bg-[#06B6D4]" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full opacity-15 blur-3xl bg-[#06B6D4]" />
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full opacity-10 blur-3xl bg-[#06B6D4]" />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse" />
+        <div
+          className="absolute -bottom-40 -left-40 w-96 h-96 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse"
+          style={{ animationDelay: '1s' }}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[200px] opacity-5" />
       </div>
 
       {/* Glass morphism card */}
       <div className="relative w-full max-w-md">
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          {/* Top gradient highlight line */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
           {/* Logo and app name */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 bg-gradient-to-br from-cyan-400 to-cyan-600 shadow-lg shadow-cyan-500/25">
@@ -60,8 +65,8 @@ export function LoginPage({
               >
                 邮箱
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
                   <Mail className="h-5 w-5 text-[#606070]" />
                 </div>
                 <input
@@ -69,7 +74,7 @@ export function LoginPage({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                  className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
                   placeholder="your@email.com"
                   required
                 />
@@ -84,8 +89,8 @@ export function LoginPage({
               >
                 密码
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <div className="glass-border-glow relative rounded-xl overflow-hidden">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
                   <Lock className="h-5 w-5 text-[#606070]" />
                 </div>
                 <input
@@ -93,14 +98,14 @@ export function LoginPage({
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                  className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center z-10"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />

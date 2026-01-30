@@ -414,3 +414,18 @@ model Notification {
   @@index([userId, read])
   @@map("notifications")
 }
+
+// 风控拒绝日志
+model RiskLog {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  signalId String @map("signal_id")
+  reason   String // max_positions_reached, symbol_already_open, etc.
+  details  String // JSON 格式详情
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([signalId])
+  @@map("risk_logs")
+}
