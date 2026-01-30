@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils'
 interface MobileNavProps {
   activeTab: 'home' | 'strategies' | 'trading' | 'assets' | 'me'
   onTabChange?: (tab: 'home' | 'strategies' | 'trading' | 'assets' | 'me') => void
+  /** 是否嵌入容器内（非fixed定位） */
+  embedded?: boolean
+  className?: string
 }
 
 const tabs = [
@@ -16,9 +19,13 @@ const tabs = [
   { id: 'me', label: '我的', icon: User },
 ] as const
 
-export function MobileNav({ activeTab, onTabChange }: MobileNavProps) {
+export function MobileNav({ activeTab, onTabChange, embedded = false, className }: MobileNavProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2 z-50">
+    <nav className={cn(
+      "bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2",
+      embedded ? "" : "fixed bottom-0 left-0 right-0 z-50",
+      className
+    )}>
       <div className="flex justify-around items-center">
         {tabs.map((tab) => {
           const Icon = tab.icon

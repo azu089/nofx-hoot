@@ -40,12 +40,13 @@ const tradingPairs = [
 ]
 
 export function MobileStrategyEdit({
-  strategyId,
+  strategyId: _strategyId,
   strategyName = '量化交易策略',
   initialConfig,
   onSave,
   onBack,
 }: MobileStrategyEditProps) {
+  void _strategyId // 预留后续使用
   const [selectedExchange, setSelectedExchange] = useState(
     initialConfig?.exchange || 'binance'
   )

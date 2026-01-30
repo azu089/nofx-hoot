@@ -3,13 +3,10 @@
 import { useState } from 'react'
 import {
   History,
-  TrendingUp,
-  TrendingDown,
   Filter,
   Calendar,
   Download,
   Search,
-  ChevronDown,
   ArrowUpRight,
   ArrowDownRight,
   Clock,
@@ -152,8 +149,9 @@ export function TradingHistory({
   trades = defaultTrades,
   stats = defaultStats,
   onExport,
-  onFilter
+  onFilter: _onFilter
 }: TradingHistoryProps) {
+  void _onFilter
   const [activeFilter, setActiveFilter] = useState<'all' | 'buy' | 'sell'>('all')
   const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -281,6 +279,7 @@ export function TradingHistory({
               <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value)}
+                aria-label="选择日期范围"
                 className="bg-[#12121A]/80 border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] focus:outline-none focus:border-[#06B6D4]/50"
               >
                 <option value="1d">今天</option>

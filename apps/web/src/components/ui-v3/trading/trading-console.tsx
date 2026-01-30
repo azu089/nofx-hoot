@@ -6,7 +6,6 @@ import {
   Square,
   Play,
   TrendingUp,
-  TrendingDown,
   Activity,
   DollarSign,
   Clock,

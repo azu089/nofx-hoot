@@ -2,13 +2,10 @@
 
 import { useState } from 'react'
 import {
-  TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
   RefreshCcw,
-  X,
   ChevronDown,
   BarChart3,
   Wallet,
@@ -185,11 +182,13 @@ const mockExecutionLogs: ExecutionLog[] = [
   { id: 6, time: '5小时前', strategy: 'ETH 定投策略', action: '买入', symbol: 'ETH-USDT', status: 'success', message: '定投执行，已买入 1.2 ETH', marketType: 'spot' }
 ]
 
-const mockActiveStrategies: ActiveStrategy[] = [
+// 预留数据：活跃策略列表
+const _mockActiveStrategies: ActiveStrategy[] = [
   { id: 1, name: 'RSI 智能抄底', status: 'running', positions: 2, todayPnl: 1323.68 },
   { id: 2, name: 'MACD 趋势跟踪', status: 'running', positions: 1, todayPnl: -234.56 },
   { id: 3, name: 'BTC 网格策略', status: 'paused', positions: 0, todayPnl: 0 }
 ]
+void _mockActiveStrategies
 
 const mockMyStrategies: MyStrategy[] = [
   {
@@ -287,14 +286,16 @@ interface PositionsPageV3Props {
 // ============ Component ============
 export function PositionsPageV3({
   onClosePosition,
-  onPauseStrategy,
-  onResumeStrategy,
+  onPauseStrategy: _onPauseStrategy,
+  onResumeStrategy: _onResumeStrategy,
   onEmergencyCloseAll,
   onEditStrategy,
   onDeleteStrategy,
   onToggleStrategy,
   onViewMarket
 }: PositionsPageV3Props) {
+  void _onPauseStrategy
+  void _onResumeStrategy
   const [activeTab, setActiveTab] = useState('positions')
   const [selectedAccount, setSelectedAccount] = useState(mockAccounts[0])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
@@ -487,26 +488,18 @@ export function PositionsPageV3({
 
         {/* Stats Row - 超清悬浮玻璃卡片 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-5">
-          {/* 顶部高光 */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent pointer-events-none z-[1]" />
-          {/* 内发光效果 */}
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-          <div className="relative z-[2] flex flex-wrap items-center gap-x-8 gap-y-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
             {/* 总资产 */}
             <div>
               <div className="text-xs text-[#606070] mb-0.5">总资产</div>
               <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
             </div>
 
-            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
-
             {/* 可用余额 */}
             <div>
               <div className="text-xs text-[#606070] mb-0.5">可用余额</div>
               <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
             </div>
-
-            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
 
             {/* 未实现盈亏 */}
             <div>
@@ -516,8 +509,6 @@ export function PositionsPageV3({
               </div>
             </div>
 
-            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
-
             {/* 总盈亏 */}
             <div>
               <div className="text-xs text-[#606070] mb-0.5">总盈亏</div>
@@ -525,8 +516,6 @@ export function PositionsPageV3({
                 {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
               </div>
             </div>
-
-            <div className="hidden md:block w-px h-10 bg-[#1E1E2E]" />
 
             {/* 今日盈亏 */}
             <div>
@@ -833,21 +822,8 @@ export function PositionsPageV3({
                               </div>
                             </div>
 
-                            {/* Actions */}
+                            {/* Actions - 暂停/启动在右边 */}
                             <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
-                                className={cn(
-                                  "p-2.5 rounded-lg transition-colors",
-                                  strategy.status === 'running'
-                                    ? "bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
-                                    : "bg-green-400/10 text-green-400 hover:bg-green-400/20"
-                                )}
-                                title={strategy.status === 'running' ? '暂停' : '启动'}
-                              >
-                                {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                              </button>
                               <button
                                 type="button"
                                 onClick={() => onEditStrategy?.(strategy.id)}
@@ -863,6 +839,19 @@ export function PositionsPageV3({
                                 title="删除策略"
                               >
                                 <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
+                                className={cn(
+                                  "p-2.5 rounded-lg transition-colors",
+                                  strategy.status === 'running'
+                                    ? "bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                                    : "bg-green-400/10 text-green-400 hover:bg-green-400/20"
+                                )}
+                                title={strategy.status === 'running' ? '暂停' : '启动'}
+                              >
+                                {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                               </button>
                             </div>
                           </div>

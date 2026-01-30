@@ -9,7 +9,6 @@ import {
   QrCode,
   Trophy,
   Wallet,
-  TrendingUp,
   Check,
   ChevronRight,
   ChevronDown,

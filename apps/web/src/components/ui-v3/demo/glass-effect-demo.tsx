@@ -1,6 +1,6 @@
 'use client'
 
-import { TrendingUp, Wallet, Zap, Activity } from 'lucide-react'
+import { TrendingUp, Wallet, Activity } from 'lucide-react'
 
 export function GlassEffectDemo() {
   return (

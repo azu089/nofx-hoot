@@ -82,10 +82,11 @@ export function StrategySubscribeModal({
   onClose,
   onConfirm,
   strategyName,
-  strategyDescription,
+  strategyDescription: _strategyDescription,
   availableBalance = 10000,
   connectedExchanges = defaultExchanges,
 }: StrategySubscribeModalProps) {
+  void _strategyDescription
   // 核心配置状态
   const [selectedExchange, setSelectedExchange] = useState(connectedExchanges[0]?.id || '')
   const [amount, setAmount] = useState('')

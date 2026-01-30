@@ -8,7 +8,6 @@ import {
   AlertCircle,
   QrCode,
   ChevronDown,
-  Clock,
   ExternalLink,
   Shield,
   Wallet

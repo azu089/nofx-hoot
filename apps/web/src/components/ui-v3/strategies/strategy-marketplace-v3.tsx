@@ -6,7 +6,7 @@ import {
   Filter,
   TrendingUp,
   ChevronDown,
-  Settings,
+  Play,
   Plus,
   Eye,
   Users
@@ -146,13 +146,14 @@ const typeText: Record<string, string> = {
 export function StrategyMarketplaceV3({
   strategies = mockStrategies,
   onStrategyClick,
-  onSubscribe,
+  onSubscribe: _onSubscribe,
   onConfigureStrategy,
   onNavigate,
   onSearch,
   onFilterChange,
   onCreateStrategy
 }: StrategyMarketplaceV3Props) {
+  void _onSubscribe
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedFilter, setSelectedFilter] = useState('全部')
   const [selectedSort, setSelectedSort] = useState('热门')
@@ -360,8 +361,8 @@ export function StrategyMarketplaceV3({
                     }}
                     className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-cyan-400 text-black text-sm font-semibold rounded-lg hover:from-cyan-400 hover:to-cyan-300 hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all flex items-center gap-1.5"
                   >
-                    <Settings className="w-3.5 h-3.5" />
-                    配置
+                    <Play className="w-3.5 h-3.5" />
+                    立即使用
                   </button>
                 </div>
               </div>

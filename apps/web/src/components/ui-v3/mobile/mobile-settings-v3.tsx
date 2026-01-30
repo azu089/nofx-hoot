@@ -10,8 +10,6 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Smartphone,
-  HelpCircle,
   Home,
   BarChart3,
   Layers,

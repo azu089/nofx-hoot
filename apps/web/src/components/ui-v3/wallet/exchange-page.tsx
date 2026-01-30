@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import {
   ArrowDownUp,
   ChevronDown,
@@ -130,7 +131,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
             </div>
 
             {/* Exchange Card */}
-            <div className="bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-6 mb-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 mb-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               {/* From */}
               <div className="mb-2">
                 <div className="flex items-center justify-between mb-2">
@@ -147,7 +148,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                       className="flex items-center gap-2 px-3 py-2 bg-[#1E1E2E] rounded-lg hover:bg-[#2A2A3A] transition-colors"
                     >
                       <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                        <img src={fromAsset.icon} alt={fromAsset.symbol} className="w-5 h-5" />
+                        <Image src={fromAsset.icon} alt={fromAsset.symbol} width={20} height={20} />
                       </div>
                       <span className="font-medium">{fromAsset.symbol}</span>
                       <ChevronDown className="w-4 h-4 text-[#9090A0]" />
@@ -164,7 +165,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                             }`}
                           >
                             <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                              <img src={asset.icon} alt={asset.symbol} className="w-5 h-5" />
+                              <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
                             </div>
                             <div className="text-left">
                               <div className="text-sm font-medium text-[#F8F8FC]">{asset.symbol}</div>
@@ -230,7 +231,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                       className="flex items-center gap-2 px-3 py-2 bg-[#1E1E2E] rounded-lg hover:bg-[#2A2A3A] transition-colors"
                     >
                       <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                        <img src={toAsset.icon} alt={toAsset.symbol} className="w-5 h-5" />
+                        <Image src={toAsset.icon} alt={toAsset.symbol} width={20} height={20} />
                       </div>
                       <span className="font-medium">{toAsset.symbol}</span>
                       <ChevronDown className="w-4 h-4 text-[#9090A0]" />
@@ -247,7 +248,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                             }`}
                           >
                             <div className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                              <img src={asset.icon} alt={asset.symbol} className="w-5 h-5" />
+                              <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
                             </div>
                             <div className="text-left">
                               <div className="text-sm font-medium text-[#F8F8FC]">{asset.symbol}</div>
@@ -292,7 +293,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
             </div>
 
             {/* Exchange Records */}
-            <div className="bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-6">
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <h3 className="text-lg font-semibold text-[#F8F8FC] mb-4">兑换记录</h3>
               <div className="space-y-3">
                 {exchangeRecords.map(record => (

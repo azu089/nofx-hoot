@@ -11,7 +11,6 @@ import {
   Sun,
   Monitor,
   Lock,
-  Mail,
   Eye,
   EyeOff,
   X,

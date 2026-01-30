@@ -200,12 +200,17 @@ export function WalletPageV3({
   onDeposit,
   onWithdraw,
   onExchange,
-  onGoToEcosystem,
-  onAddExchange,
-  onEditExchange,
-  onDeleteExchange,
-  onActivateExchange
+  onGoToEcosystem: _onGoToEcosystem,
+  onAddExchange: _onAddExchange,
+  onEditExchange: _onEditExchange,
+  onDeleteExchange: _onDeleteExchange,
+  onActivateExchange: _onActivateExchange
 }: WalletPageV3Props) {
+  void _onGoToEcosystem
+  void _onAddExchange
+  void _onEditExchange
+  void _onDeleteExchange
+  void _onActivateExchange
   // 页面级 Tab 切换：资产 / API / 生态
   const [pageTab, setPageTab] = useState<'wallet' | 'api' | 'ecosystem'>('wallet')
   const [selectedTab, setSelectedTab] = useState<'assets' | 'transactions'>('assets')

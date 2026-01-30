@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import {
   Home,
   TrendingUp,
@@ -29,7 +30,7 @@ export function Sidebar({ activeItem = 'home' }: SidebarProps) {
     <div className="fixed left-0 top-0 h-full w-60 bg-[#12121A] border-r border-[#1E1E2E]">
       {/* Logo */}
       <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-        <img src="/icons/hoot/logo.png" alt="Hoot" className="w-8 h-8" />
+        <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} />
         <h1 className="text-2xl font-bold text-[#F8F8FC]">
           Hoot
         </h1>

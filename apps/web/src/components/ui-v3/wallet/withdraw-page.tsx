@@ -10,9 +10,7 @@ import {
   Shield,
   Wallet,
   Check,
-  Info,
-  Minus,
-  Plus
+  Info
 } from 'lucide-react'
 // Sidebar is handled by parent layout
 

@@ -282,21 +282,8 @@ export function MyStrategiesPage({
                     </div>
                   </div>
 
-                  {/* Actions */}
+                  {/* Actions - 暂停/启动在右边 */}
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
-                      className={cn(
-                        "p-2.5 rounded-lg transition-colors",
-                        strategy.status === 'running'
-                          ? "bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
-                          : "bg-green-400/10 text-green-400 hover:bg-green-400/20"
-                      )}
-                      title={strategy.status === 'running' ? '暂停' : '启动'}
-                    >
-                      {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    </button>
                     <button
                       type="button"
                       onClick={() => onEditStrategy?.(strategy.id)}
@@ -312,6 +299,19 @@ export function MyStrategiesPage({
                       title="删除策略"
                     >
                       <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
+                      className={cn(
+                        "p-2.5 rounded-lg transition-colors",
+                        strategy.status === 'running'
+                          ? "bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+                          : "bg-green-400/10 text-green-400 hover:bg-green-400/20"
+                      )}
+                      title={strategy.status === 'running' ? '暂停' : '启动'}
+                    >
+                      {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>

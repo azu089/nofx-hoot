@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, Play, Save, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { Plus, X, Play, Save, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -223,7 +223,7 @@ export function VisualStrategyBuilder({ onClose }: VisualStrategyBuilderProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <Card className="relative z-10 w-full max-w-2xl bg-[#12121A] border-[#1E1E2E] shadow-2xl max-h-[90vh] overflow-y-auto">
+      <Card className="glass-border-glow relative z-10 w-full max-w-2xl bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] max-h-[90vh] overflow-y-auto rounded-2xl">
         <CardContent className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">

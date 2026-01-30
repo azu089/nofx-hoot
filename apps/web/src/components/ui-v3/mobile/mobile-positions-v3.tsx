@@ -3,8 +3,6 @@
 import { useState } from 'react'
 import {
   Clock,
-  X,
-  ChevronDown,
   Home,
   BarChart3,
   Layers,

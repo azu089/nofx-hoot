@@ -65,11 +65,13 @@ export function MobileProfileV3({
     pro: '专业版'
   }
 
-  const gasFeeRate = {
+  // gasFeeRate 预留后续使用
+  const _gasFeeRate = {
     basic: '22%',
     premium: '18%',
     pro: '15%'
   }
+  void _gasFeeRate
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] max-w-md mx-auto pb-20">

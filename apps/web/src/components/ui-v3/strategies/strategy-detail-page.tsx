@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, Star, Users, TrendingUp, TrendingDown, Calendar, Shield, Clock, Play, Pause, Settings, ChevronRight, Info, Check, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Star, Users, Calendar, Shield, Clock, Play, Check, AlertCircle } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -69,8 +69,9 @@ interface StrategyDetailPageProps {
 
 export function StrategyDetailPage({
   onBack,
-  onUseStrategy
+  onUseStrategy: _onUseStrategy
 }: StrategyDetailPageProps) {
+  void _onUseStrategy
   const [activeTab, setActiveTab] = useState<'overview' | 'performance' | 'trades'>('overview')
 
   return (
@@ -124,44 +125,40 @@ export function StrategyDetailPage({
           <div className="grid grid-cols-3 gap-6">
             {/* Left Column - Main Content */}
             <div className="col-span-2 space-y-6">
-              {/* Quick Stats */}
-              <div className="grid grid-cols-4 gap-4">
-                <Card className="bg-[#12121A] border-[#1E1E2E]">
-                  <CardContent className="p-4 text-center">
-                    <p className={cn(
-                      "text-2xl font-mono font-bold",
-                      strategyData.performance.monthlyReturn >= 0 ? "text-[#10B981]" : "text-[#F43F5E]"
-                    )}>
-                      {strategyData.performance.monthlyReturn >= 0 ? '+' : ''}{strategyData.performance.monthlyReturn}%
-                    </p>
-                    <p className="text-[#9090A0] text-xs mt-1">月化收益</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#12121A] border-[#1E1E2E]">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-mono font-bold text-[#F43F5E]">
-                      {strategyData.performance.maxDrawdown}%
-                    </p>
-                    <p className="text-[#9090A0] text-xs mt-1">最大回撤</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#12121A] border-[#1E1E2E]">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-mono font-bold">
-                      {strategyData.performance.winRate}%
-                    </p>
-                    <p className="text-[#9090A0] text-xs mt-1">胜率</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#12121A] border-[#1E1E2E]">
-                  <CardContent className="p-4 text-center">
-                    <p className="text-2xl font-mono font-bold">
-                      {strategyData.performance.sharpeRatio}
-                    </p>
-                    <p className="text-[#9090A0] text-xs mt-1">夏普比率</p>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Quick Stats - 合并为1个卡片 */}
+              <Card className="bg-[#12121A] border-[#1E1E2E]">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <p className={cn(
+                        "text-2xl font-mono font-bold",
+                        strategyData.performance.monthlyReturn >= 0 ? "text-[#10B981]" : "text-[#F43F5E]"
+                      )}>
+                        {strategyData.performance.monthlyReturn >= 0 ? '+' : ''}{strategyData.performance.monthlyReturn}%
+                      </p>
+                      <p className="text-[#9090A0] text-xs mt-1">月化收益</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-mono font-bold text-[#F43F5E]">
+                        {strategyData.performance.maxDrawdown}%
+                      </p>
+                      <p className="text-[#9090A0] text-xs mt-1">最大回撤</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-mono font-bold">
+                        {strategyData.performance.winRate}%
+                      </p>
+                      <p className="text-[#9090A0] text-xs mt-1">胜率</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-mono font-bold">
+                        {strategyData.performance.sharpeRatio}
+                      </p>
+                      <p className="text-[#9090A0] text-xs mt-1">夏普比率</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Tabs */}
               <div className="flex gap-4 border-b border-[#1E1E2E]">

@@ -1,11 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Monitor, Smartphone, Home, TrendingUp, Briefcase, Wallet, Layers, User, Settings, Zap, BarChart3 } from 'lucide-react'
+import Image from 'next/image'
+import { Monitor, Smartphone, Home, TrendingUp, Wallet, User, BarChart3 } from 'lucide-react'
 // Desktop components
-import { StrategyEditPage } from '@/components/ui-v3/strategies/strategy-edit-page'
 import { SettingsPage } from '@/components/ui-v3/settings/settings-page'
-// TradingConsole and TradingHistory merged into PositionsPageV3 (交易中心)
 import { LandingPage } from '@/components/ui-v3/landing/landing-page'
 import { LoginPage } from '@/components/ui-v3/auth/login-page'
 import { RegisterPage } from '@/components/ui-v3/auth/register-page'
@@ -23,46 +22,41 @@ import { WithdrawPage } from '@/components/ui-v3/wallet/withdraw-page'
 import { ExchangePage } from '@/components/ui-v3/wallet/exchange-page'
 import { ReferralPageV3 } from '@/components/ui-v3/referral/referral-page-v3'
 // Strategy creation components
-import { CreateStrategyModal } from '@/components/ui-v3/strategies/create-strategy-modal'
-import { TradingViewWebhookConfig } from '@/components/ui-v3/strategies/tradingview-webhook-config'
 import { VisualStrategyBuilder } from '@/components/ui-v3/strategies/visual-strategy-builder'
-import { CodeEditor } from '@/components/ui-v3/strategies/code-editor'
 import { StrategyCreatorPage } from '@/components/ui-v3/strategies/strategy-creator-page'
 import { StrategyConfigPage } from '@/components/ui-v3/strategies/strategy-config-page'
 import { StrategySubscribeModal } from '@/components/ui-v3/strategies/strategy-subscribe-modal'
 // New pages
-import { NotificationsPage } from '@/components/ui-v3/notifications/notifications-page'
-import { HelpCenterPage } from '@/components/ui-v3/help/help-center-page'
 import { SubscriptionPage } from '@/components/ui-v3/subscription/subscription-page'
-import { AboutPage } from '@/components/ui-v3/about/about-page'
 // Mobile components
 import { MobileDashboardV3 } from '@/components/ui-v3/mobile/mobile-dashboard-v3'
 import { MobileStrategiesV3 } from '@/components/ui-v3/mobile/mobile-strategies-v3'
-import { MobilePositionsV3 } from '@/components/ui-v3/mobile/mobile-positions-v3'
+import { MobileTradingCenter } from '@/components/ui-v3/mobile/mobile-trading-center'
 import { MobileStrategyDetail } from '@/components/ui-v3/mobile/mobile-strategy-detail'
-import { MobileStrategyEdit } from '@/components/ui-v3/mobile/mobile-strategy-edit'
+import { MobileStrategyConfig } from '@/components/ui-v3/mobile/mobile-strategy-config'
 import { MobileEcosystemV3 } from '@/components/ui-v3/mobile/mobile-ecosystem-v3'
 import { MobileProfileV3 } from '@/components/ui-v3/mobile/mobile-profile-v3'
 import { MobileWalletV3 } from '@/components/ui-v3/mobile/mobile-wallet-v3'
 import { MobileReferralV3 } from '@/components/ui-v3/mobile/mobile-referral-v3'
 import { MobileSettingsV3 } from '@/components/ui-v3/mobile/mobile-settings-v3'
+import { MobileStrategyCreator } from '@/components/ui-v3/mobile/mobile-strategy-creator'
+import { MobileVisualBuilder } from '@/components/ui-v3/mobile/mobile-visual-builder'
+import { MobileNav } from '@/components/ui-v3/mobile/mobile-nav'
 
 // Sidebar navigation configuration - 5 tabs only
-// 注意：my-strategies 已合并到 trading 页面的"策略管理"Tab
 const sidebarNavItems = [
   { id: 'dashboard', label: '首页', icon: Home, pageIds: ['dashboard'] },
-  { id: 'strategy-market', label: '策略市场', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-edit', 'strategy-config', 'strategy-creator', 'tradingview-config', 'visual-builder', 'code-editor'] },
-  { id: 'trading', label: '交易', icon: BarChart3, pageIds: ['trading', 'my-strategies'] },
+  { id: 'strategy-market', label: '策略', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-config', 'strategy-creator', 'visual-builder'] },
+  { id: 'trading', label: '交易', icon: BarChart3, pageIds: ['trading'] },
   { id: 'wallet', label: '资产', icon: Wallet, pageIds: ['wallet', 'exchange', 'api-keys', 'deposit', 'withdraw'] },
-  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'notifications', 'help', 'subscription', 'about'] },
+  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'subscription'] },
 ]
 
 // Pages that need sidebar (user pages, not public pages)
 const pagesWithSidebar = [
-  'dashboard', 'strategy-market', 'strategy-detail', 'my-strategies', 'trading',
+  'dashboard', 'strategy-market', 'strategy-detail', 'trading',
   'ecosystem', 'profile', 'wallet', 'exchange', 'api-keys', 'deposit', 'withdraw',
-  'referral', 'strategy-edit', 'strategy-config', 'strategy-creator', 'settings', 'tradingview-config', 'visual-builder', 'code-editor',
-  'notifications', 'help', 'subscription', 'about'
+  'referral', 'strategy-config', 'strategy-creator', 'settings', 'visual-builder', 'subscription'
 ]
 
 type PreviewPage =
@@ -72,7 +66,6 @@ type PreviewPage =
   | 'dashboard'
   | 'strategy-market'
   | 'strategy-detail'
-  | 'my-strategies'
   | 'trading'
   | 'ecosystem'
   | 'profile'
@@ -82,54 +75,80 @@ type PreviewPage =
   | 'deposit'
   | 'withdraw'
   | 'referral'
-  | 'strategy-edit'
   | 'strategy-config'
   | 'strategy-creator'
   | 'settings'
-  | 'tradingview-config'
   | 'visual-builder'
-  | 'code-editor'
-  | 'notifications'
-  | 'help'
   | 'subscription'
-  | 'about'
+
+// 移动端 Tab 映射
+type MobileTab = 'home' | 'strategies' | 'trading' | 'assets' | 'me'
+
+const mobileTabToPage: Record<MobileTab, PreviewPage> = {
+  home: 'dashboard',
+  strategies: 'strategy-market',
+  trading: 'trading',
+  assets: 'wallet',
+  me: 'profile',
+}
+
+const pageToMobileTab: Partial<Record<PreviewPage, MobileTab>> = {
+  dashboard: 'home',
+  'strategy-market': 'strategies',
+  'strategy-detail': 'strategies',
+  'strategy-config': 'strategies',
+  'strategy-creator': 'strategies',
+  'visual-builder': 'strategies',
+  trading: 'trading',
+  wallet: 'assets',
+  profile: 'me',
+  referral: 'me',
+  settings: 'me',
+  ecosystem: 'me',
+}
 
 export default function PreviewPage() {
   const [currentPage, setCurrentPage] = useState<PreviewPage>('landing')
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [showSubscribeModal, setShowSubscribeModal] = useState(false)
 
+  // 移动端 Tab 切换处理
+  const handleMobileTabChange = (tab: MobileTab) => {
+    setCurrentPage(mobileTabToPage[tab])
+  }
+
+  // 获取当前移动端激活的 Tab
+  const currentMobileTab: MobileTab = pageToMobileTab[currentPage] || 'home'
+
   const pages: { id: PreviewPage; name: string; category: string; hasMobile?: boolean }[] = [
-    { id: 'landing', name: '首页', category: '公开页面' },
-    { id: 'login', name: '登录', category: '公开页面' },
-    { id: 'register', name: '注册', category: '公开页面' },
-    { id: 'dashboard', name: '仪表盘', category: '用户页面', hasMobile: true },
-    { id: 'strategy-market', name: '策略市场', category: '用户页面', hasMobile: true },
-    { id: 'strategy-detail', name: '策略详情', category: '用户页面', hasMobile: true },
-    { id: 'trading', name: '交易中心', category: '用户页面', hasMobile: true },
-    { id: 'my-strategies', name: '策略管理(合并)', category: '用户页面' },
-    { id: 'ecosystem', name: '生态', category: '用户页面', hasMobile: true },
-    { id: 'profile', name: '个人中心', category: '用户页面', hasMobile: true },
-    { id: 'wallet', name: '钱包', category: '钱包页面', hasMobile: true },
-    { id: 'exchange', name: '资产兑换', category: '钱包页面' },
-    { id: 'api-keys', name: 'API Keys', category: '钱包页面' },
-    { id: 'deposit', name: '充值', category: '钱包页面' },
-    { id: 'withdraw', name: '提现', category: '钱包页面' },
-    { id: 'referral', name: '邀请好友', category: '用户页面', hasMobile: true },
-    { id: 'strategy-creator', name: '创建策略', category: '策略创建' },
-    { id: 'strategy-config', name: '策略配置(新)', category: '策略创建' },
-    { id: 'strategy-edit', name: '策略配置(旧)', category: '策略创建', hasMobile: true },
-    { id: 'tradingview-config', name: 'TradingView', category: '策略创建' },
-    { id: 'visual-builder', name: '可视化搭建', category: '策略创建' },
-    { id: 'code-editor', name: '代码编辑器', category: '策略创建' },
-    { id: 'settings', name: '设置', category: '功能页面', hasMobile: true },
-    { id: 'notifications', name: '通知公告', category: '功能页面' },
-    { id: 'help', name: '帮助中心', category: '功能页面' },
-    { id: 'subscription', name: '会员订阅', category: '功能页面' },
-    { id: 'about', name: '关于', category: '功能页面' },
+    // 公开页面
+    { id: 'landing', name: 'Landing', category: '公开' },
+    { id: 'login', name: '登录', category: '公开' },
+    { id: 'register', name: '注册', category: '公开' },
+    // 核心页面 (5个底部Tab对应)
+    { id: 'dashboard', name: '首页', category: '核心', hasMobile: true },
+    { id: 'strategy-market', name: '策略', category: '核心', hasMobile: true },
+    { id: 'trading', name: '交易', category: '核心', hasMobile: true },
+    { id: 'wallet', name: '资产', category: '核心', hasMobile: true },
+    { id: 'profile', name: '我的', category: '核心', hasMobile: true },
+    // 策略相关
+    { id: 'strategy-detail', name: '策略详情', category: '策略', hasMobile: true },
+    { id: 'strategy-config', name: '策略配置', category: '策略', hasMobile: true },
+    { id: 'strategy-creator', name: '创建策略', category: '策略', hasMobile: true },
+    { id: 'visual-builder', name: '可视化', category: '策略', hasMobile: true },
+    // 资产相关
+    { id: 'exchange', name: '兑换', category: '资产' },
+    { id: 'api-keys', name: 'API Keys', category: '资产' },
+    { id: 'deposit', name: '充值', category: '资产' },
+    { id: 'withdraw', name: '提现', category: '资产' },
+    // 其他页面
+    { id: 'ecosystem', name: '生态', category: '更多', hasMobile: true },
+    { id: 'referral', name: '邀请', category: '更多', hasMobile: true },
+    { id: 'settings', name: '设置', category: '更多', hasMobile: true },
+    { id: 'subscription', name: '会员', category: '更多' },
   ]
 
-  const categories = ['公开页面', '用户页面', '钱包页面', '策略创建', '功能页面']
+  const categories = ['公开', '核心', '策略', '资产', '更多']
   const currentPageInfo = pages.find(p => p.id === currentPage)
 
   return (
@@ -206,58 +225,99 @@ export default function PreviewPage() {
                 {/* Notch */}
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 w-32 h-7 bg-black rounded-full z-10" />
                 {/* Screen */}
-                <div className="w-full h-full bg-[#0A0A0F] rounded-[40px] overflow-hidden overflow-y-auto">
-                  {currentPage === 'dashboard' && <MobileDashboardV3 />}
-                  {currentPage === 'strategy-market' && (
-                    <MobileStrategiesV3
-                      onStrategyClick={() => setCurrentPage('strategy-detail')}
-                      onUseStrategy={(id) => {
-                        console.log('配置策略:', id)
-                        setCurrentPage('strategy-edit')
-                      }}
+                <div className="w-full h-full bg-[#0A0A0F] rounded-[40px] overflow-hidden relative">
+                  {/* 内容区域 - 底部留出导航栏空间 */}
+                  <div className="h-[calc(100%-70px)] overflow-y-auto pb-2">
+                    {currentPage === 'dashboard' && <MobileDashboardV3 />}
+                    {currentPage === 'strategy-market' && (
+                      <MobileStrategiesV3
+                        onStrategyClick={() => setCurrentPage('strategy-detail')}
+                        onUseStrategy={(id) => {
+                          console.log('配置策略:', id)
+                          setCurrentPage('strategy-config')
+                        }}
+                        onCreateStrategy={() => setCurrentPage('strategy-creator')}
+                      />
+                    )}
+                    {currentPage === 'strategy-detail' && (
+                      <MobileStrategyDetail
+                        onBack={() => setCurrentPage('strategy-market')}
+                        onUseStrategy={(id) => {
+                          console.log('使用策略:', id)
+                          setCurrentPage('strategy-config')
+                        }}
+                      />
+                    )}
+                    {currentPage === 'trading' && <MobileTradingCenter />}
+                    {currentPage === 'ecosystem' && <MobileEcosystemV3 />}
+                    {currentPage === 'profile' && (
+                      <MobileProfileV3
+                        onNavigate={(path) => {
+                          if (path === '/subscription') setCurrentPage('subscription')
+                          else if (path === '/referral') setCurrentPage('referral')
+                          else if (path === '/settings') setCurrentPage('settings')
+                          else if (path === '/ecosystem') setCurrentPage('ecosystem')
+                          else if (path === '/wallet') setCurrentPage('wallet')
+                          else console.log('导航到:', path)
+                        }}
+                        onLogout={() => setCurrentPage('login')}
+                      />
+                    )}
+                    {currentPage === 'wallet' && (
+                      <MobileWalletV3
+                        onDeposit={() => console.log('充值')}
+                        onWithdraw={() => console.log('提现')}
+                      />
+                    )}
+                    {currentPage === 'referral' && <MobileReferralV3 />}
+                    {currentPage === 'strategy-config' && (
+                      <MobileStrategyConfig
+                        strategyName="MACD 趋势跟踪策略"
+                        onBack={() => setCurrentPage('strategy-market')}
+                        onSave={(config) => {
+                          console.log('保存配置:', config)
+                          setCurrentPage('trading')
+                        }}
+                        onCancel={() => setCurrentPage('strategy-market')}
+                      />
+                    )}
+                    {currentPage === 'settings' && (
+                      <MobileSettingsV3
+                        onLogout={() => setCurrentPage('login')}
+                      />
+                    )}
+                    {currentPage === 'strategy-creator' && (
+                      <MobileStrategyCreator
+                        onBack={() => setCurrentPage('strategy-market')}
+                        onSave={(data) => {
+                          console.log('保存策略:', data)
+                          setCurrentPage('strategy-market')
+                        }}
+                      />
+                    )}
+                    {currentPage === 'visual-builder' && (
+                      <MobileVisualBuilder
+                        onBack={() => setCurrentPage('strategy-creator')}
+                        onSave={(data) => {
+                          console.log('保存可视化策略:', data)
+                          setCurrentPage('strategy-market')
+                        }}
+                      />
+                    )}
+                    {/* V0-generated components */}
+                    {currentPage === 'v0-strategy-creator' && <MobileStrategyCreatorV0 />}
+                    {currentPage === 'v0-visual-builder' && <MobileVisualBuilderV0 />}
+                    {currentPage === 'v0-strategy-config' && <MobileStrategyConfigV0 />}
+                    {currentPage === 'v0-wallet' && <MobileWalletPageV0 />}
+                  </div>
+                  {/* 移动端底部导航栏 - 嵌入手机框内 */}
+                  <div className="absolute bottom-0 left-0 right-0 rounded-b-[40px] overflow-hidden">
+                    <MobileNav
+                      activeTab={currentMobileTab}
+                      onTabChange={handleMobileTabChange}
+                      embedded={true}
                     />
-                  )}
-                  {currentPage === 'strategy-detail' && (
-                    <MobileStrategyDetail
-                      onBack={() => setCurrentPage('strategy-market')}
-                      onUseStrategy={(id) => console.log('使用策略:', id)}
-                    />
-                  )}
-                  {currentPage === 'trading' && <MobilePositionsV3 />}
-                  {currentPage === 'ecosystem' && <MobileEcosystemV3 />}
-                  {currentPage === 'profile' && (
-                    <MobileProfileV3
-                      onNavigate={(path) => {
-                        if (path === '/subscription') setCurrentPage('subscription')
-                        else if (path === '/referral') setCurrentPage('referral')
-                        else if (path === '/notifications') setCurrentPage('notifications')
-                        else if (path === '/settings') setCurrentPage('settings')
-                        else if (path === '/help') setCurrentPage('help')
-                        else if (path === '/about') setCurrentPage('about')
-                        else console.log('导航到:', path)
-                      }}
-                      onLogout={() => setCurrentPage('login')}
-                    />
-                  )}
-                  {currentPage === 'wallet' && (
-                    <MobileWalletV3
-                      onDeposit={() => console.log('充值')}
-                      onWithdraw={() => console.log('提现')}
-                    />
-                  )}
-                  {currentPage === 'referral' && <MobileReferralV3 />}
-                  {currentPage === 'strategy-edit' && (
-                    <MobileStrategyEdit
-                      strategyName="量化交易策略 Pro"
-                      onSave={(config) => console.log('保存配置:', config)}
-                      onBack={() => console.log('返回')}
-                    />
-                  )}
-                  {currentPage === 'settings' && (
-                    <MobileSettingsV3
-                      onLogout={() => console.log('退出登录')}
-                    />
-                  )}
+                  </div>
                 </div>
               </div>
               {/* Home Indicator */}
@@ -272,7 +332,7 @@ export default function PreviewPage() {
               <div className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-60 bg-[#12121A] border-r border-[#1E1E2E] z-40">
                 {/* Logo */}
                 <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-                  <img src="/icons/hoot/logo.png" alt="Hoot" className="w-8 h-8" />
+                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} />
                   <h1 className="text-2xl font-bold text-[#F8F8FC]">Hoot</h1>
                 </div>
 
@@ -383,22 +443,6 @@ export default function PreviewPage() {
                   onUseStrategy={() => setShowSubscribeModal(true)}
                 />
               )}
-              {/* my-strategies 已合并到 trading 页面的"策略管理"Tab */}
-              {currentPage === 'my-strategies' && (
-                <PositionsPageV3
-                  onClosePosition={(id) => console.log('平仓:', id)}
-                  onPauseStrategy={(id) => console.log('暂停策略:', id)}
-                  onResumeStrategy={(id) => console.log('恢复策略:', id)}
-                  onEmergencyCloseAll={() => console.log('紧急全部平仓')}
-                  onEditStrategy={(id) => {
-                    console.log('编辑策略:', id)
-                    setCurrentPage('strategy-edit')
-                  }}
-                  onDeleteStrategy={(id) => console.log('删除策略:', id)}
-                  onToggleStrategy={(id, status) => console.log('切换策略状态:', id, status)}
-                  onViewMarket={() => setCurrentPage('strategy-market')}
-                />
-              )}
               {currentPage === 'trading' && (
                 <PositionsPageV3
                   onClosePosition={(id) => console.log('平仓:', id)}
@@ -407,7 +451,7 @@ export default function PreviewPage() {
                   onEmergencyCloseAll={() => console.log('紧急全部平仓')}
                   onEditStrategy={(id) => {
                     console.log('编辑策略:', id)
-                    setCurrentPage('strategy-edit')
+                    setCurrentPage('strategy-config')
                   }}
                   onDeleteStrategy={(id) => console.log('删除策略:', id)}
                   onToggleStrategy={(id, status) => console.log('切换策略状态:', id, status)}
@@ -426,10 +470,9 @@ export default function PreviewPage() {
                   onNavigate={(path) => {
                     if (path === '/subscription') setCurrentPage('subscription')
                     else if (path === '/referral') setCurrentPage('referral')
-                    else if (path === '/notifications') setCurrentPage('notifications')
                     else if (path === '/settings') setCurrentPage('settings')
-                    else if (path === '/help') setCurrentPage('help')
-                    else if (path === '/about') setCurrentPage('about')
+                    else if (path === '/ecosystem') setCurrentPage('ecosystem')
+                    else if (path === '/wallet') setCurrentPage('wallet')
                     else console.log('导航到:', path)
                   }}
                   onLogout={() => setCurrentPage('login')}
@@ -451,13 +494,6 @@ export default function PreviewPage() {
               {currentPage === 'referral' && (
                 <ReferralPageV3
                   onShare={(platform) => console.log('分享到:', platform)}
-                />
-              )}
-              {currentPage === 'strategy-edit' && (
-                <StrategyEditPage
-                  strategyName="量化交易策略 Pro"
-                  onSave={(config) => console.log('保存配置:', config)}
-                  onCancel={() => setCurrentPage('strategy-market')}
                 />
               )}
               {currentPage === 'strategy-config' && (
@@ -490,27 +526,9 @@ export default function PreviewPage() {
                 <SettingsPage
                   onNavigate={(path) => {
                     if (path === '/me') setCurrentPage('profile')
-                    else if (path === '/help') setCurrentPage('help')
-                    else if (path === '/about') setCurrentPage('about')
                     else console.log('导航到:', path)
                   }}
                   onSettingChange={(key, value) => console.log('设置变更:', key, value)}
-                />
-              )}
-              {currentPage === 'notifications' && (
-                <NotificationsPage
-                  onNavigate={(path) => {
-                    if (path === '/me') setCurrentPage('profile')
-                    else console.log('导航到:', path)
-                  }}
-                />
-              )}
-              {currentPage === 'help' && (
-                <HelpCenterPage
-                  onNavigate={(path) => {
-                    if (path === '/me') setCurrentPage('profile')
-                    else console.log('导航到:', path)
-                  }}
                 />
               )}
               {currentPage === 'subscription' && (
@@ -519,26 +537,8 @@ export default function PreviewPage() {
                   onCancel={() => setCurrentPage('profile')}
                 />
               )}
-              {currentPage === 'about' && (
-                <AboutPage
-                  onNavigate={(path) => {
-                    if (path === '/me') setCurrentPage('profile')
-                    else console.log('导航到:', path)
-                  }}
-                />
-              )}
-              {currentPage === 'tradingview-config' && (
-                <TradingViewWebhookConfig
-                  onClose={() => setCurrentPage('strategy-market')}
-                />
-              )}
               {currentPage === 'visual-builder' && (
                 <VisualStrategyBuilder
-                  onClose={() => setCurrentPage('strategy-market')}
-                />
-              )}
-              {currentPage === 'code-editor' && (
-                <CodeEditor
                   onClose={() => setCurrentPage('strategy-market')}
                 />
               )}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { Key, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, ExternalLink, Copy, Check, X, AlertTriangle, Edit } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -130,7 +131,7 @@ export function ApiKeysPage() {
             <h2 className="text-lg font-semibold mb-4">已绑定的交易所</h2>
 
             {boundApiKeys.length === 0 ? (
-              <Card className="bg-[#12121A] border-[#1E1E2E]">
+              <Card className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <CardContent className="p-8 text-center">
                   <Key className="w-12 h-12 text-[#606070] mx-auto mb-3" />
                   <p className="text-[#9090A0]">暂无绑定的 API Key</p>
@@ -140,13 +141,13 @@ export function ApiKeysPage() {
             ) : (
               <div className="space-y-3">
                 {boundApiKeys.map((key) => (
-                  <Card key={key.id} className="bg-[#12121A] border-[#1E1E2E]">
+                  <Card key={key.id} className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           {/* Exchange Logo */}
                           <div className="w-12 h-12 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
-                            <img src={key.logo} alt={key.name} className="w-8 h-8 object-contain" />
+                            <Image src={key.logo} alt={key.name} width={32} height={32} className="object-contain" />
                           </div>
 
                           {/* Info */}
@@ -222,7 +223,7 @@ export function ApiKeysPage() {
       {/* Add API Key Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-lg bg-[#12121A] border-[#1E1E2E]">
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <CardContent className="p-6">
               <h3 className="text-lg font-bold mb-4">
                 {selectedExchange
@@ -242,7 +243,7 @@ export function ApiKeysPage() {
                       className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
                     >
                       <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] flex items-center justify-center overflow-hidden">
-                        <img src={exchange.logo} alt={exchange.name} className="w-7 h-7 object-contain" />
+                        <Image src={exchange.logo} alt={exchange.name} width={28} height={28} className="object-contain" />
                       </div>
                       <span className="text-sm">{exchange.name}</span>
                     </button>
@@ -376,12 +377,12 @@ export function ApiKeysPage() {
       {/* Edit API Key Modal */}
       {showEditModal && selectedApiKey && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-lg bg-[#12121A] border-[#1E1E2E]">
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
-                    <img src={selectedApiKey.logo} alt={selectedApiKey.name} className="w-7 h-7 object-contain" />
+                    <Image src={selectedApiKey.logo} alt={selectedApiKey.name} width={28} height={28} className="object-contain" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold">编辑 {selectedApiKey.name} API</h3>
@@ -503,7 +504,7 @@ export function ApiKeysPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedApiKey && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md bg-[#12121A] border-[#1E1E2E]">
+          <Card className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <CardContent className="p-6">
               <div className="text-center">
                 {/* Warning Icon */}
@@ -519,7 +520,7 @@ export function ApiKeysPage() {
                 {/* API Key Info */}
                 <div className="flex items-center gap-3 p-4 mb-6 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
                   <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                    <img src={selectedApiKey.logo} alt={selectedApiKey.name} className="w-7 h-7 object-contain" />
+                    <Image src={selectedApiKey.logo} alt={selectedApiKey.name} width={28} height={28} className="object-contain" />
                   </div>
                   <div className="text-left">
                     <p className="font-semibold">{selectedApiKey.name}</p>
