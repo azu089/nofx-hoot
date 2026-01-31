@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -17,10 +18,15 @@ import { GatewaysModule } from './gateways/gateways.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { HealthModule } from './modules/health/health.module';
 import { BlockchainModule } from './modules/blockchain/blockchain.module';
+import { EmailModule } from './modules/email/email.module';
+import { MarketModule } from './modules/market/market.module';
+import { AirdropModule } from './modules/airdrop/airdrop.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
   imports: [
+    // 定时任务
+    ScheduleModule.forRoot(),
     // BullMQ 全局配置
     BullModule.forRoot({
       connection: {
@@ -42,6 +48,9 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     NotificationsModule,
     HealthModule,
     BlockchainModule,
+    EmailModule,
+    MarketModule,
+    AirdropModule,
   ],
   controllers: [AppController],
   providers: [

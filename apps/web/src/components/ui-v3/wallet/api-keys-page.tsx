@@ -10,12 +10,12 @@ import { cn } from '@/lib/utils'
 
 // 支持的交易所
 const supportedExchanges = [
-  { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.png', guideUrl: 'https://www.binance.com/api-management' },
-  { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.png', guideUrl: 'https://www.okx.com/account/my-api' },
-  { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.png', guideUrl: 'https://www.bybit.com/app/user/api-management' },
-  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.png', guideUrl: 'https://www.gate.io/myaccount/apikeys' },
-  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.png', guideUrl: 'https://www.bitget.com/api' },
-  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.png', guideUrl: 'https://www.coinbase.com/settings/api' },
+  { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
+  { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.webp', guideUrl: 'https://www.okx.com/account/my-api' },
+  { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.webp', guideUrl: 'https://www.bybit.com/app/user/api-management' },
+  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.webp', guideUrl: 'https://www.gate.io/myaccount/apikeys' },
+  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.webp', guideUrl: 'https://www.bitget.com/api' },
+  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp', guideUrl: 'https://www.coinbase.com/settings/api' },
 ]
 
 // 已绑定的 API Keys
@@ -24,7 +24,7 @@ const boundApiKeys = [
     id: 1,
     exchange: 'binance',
     name: 'Binance',
-    logo: '/icons/exchanges/币安.png',
+    logo: '/icons/exchanges/币安.webp',
     apiKey: 'vK8x...j2Qp',
     status: 'connected',
     permissions: ['现货交易', '合约交易'],
@@ -35,7 +35,7 @@ const boundApiKeys = [
     id: 2,
     exchange: 'okx',
     name: 'OKX',
-    logo: '/icons/exchanges/okx.png',
+    logo: '/icons/exchanges/okx.webp',
     apiKey: 'aB3c...9dEf',
     status: 'error',
     permissions: ['现货交易'],

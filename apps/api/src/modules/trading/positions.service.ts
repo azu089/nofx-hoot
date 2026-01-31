@@ -116,6 +116,86 @@ export class PositionsService {
     }));
   }
 
+  // 通过 Telegram ID 获取收益统计（TG Bot 使用）
+  async getEarningsByTelegramId(telegramId: string) {
+    // 先查找用户
+    const user = await this.prisma.user.findUnique({
+      where: { telegramId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      return {
+        todayPnl: '0',
+        weekPnl: '0',
+        monthPnl: '0',
+        totalPnl: '0',
+        tradeCount: 0,
+        winRate: '0',
+      };
+    }
+
+    // 获取所有已平仓的持仓
+    const closedPositions = await this.prisma.position.findMany({
+      where: {
+        userId: user.id,
+        status: 'closed',
+        pnl: { not: null },
+      },
+      select: {
+        pnl: true,
+        closedAt: true,
+      },
+    });
+
+    // 计算时间范围
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 7);
+    const monthStart = new Date(todayStart);
+    monthStart.setDate(monthStart.getDate() - 30);
+
+    let todayPnl = new Decimal(0);
+    let weekPnl = new Decimal(0);
+    let monthPnl = new Decimal(0);
+    let totalPnl = new Decimal(0);
+    let winCount = 0;
+
+    for (const pos of closedPositions) {
+      const pnl = new Decimal(pos.pnl!.toString());
+      totalPnl = totalPnl.plus(pnl);
+
+      if (pnl.gt(0)) {
+        winCount++;
+      }
+
+      if (pos.closedAt) {
+        if (pos.closedAt >= todayStart) {
+          todayPnl = todayPnl.plus(pnl);
+        }
+        if (pos.closedAt >= weekStart) {
+          weekPnl = weekPnl.plus(pnl);
+        }
+        if (pos.closedAt >= monthStart) {
+          monthPnl = monthPnl.plus(pnl);
+        }
+      }
+    }
+
+    const tradeCount = closedPositions.length;
+    const winRate = tradeCount > 0 ? ((winCount / tradeCount) * 100).toFixed(1) : '0';
+
+    return {
+      todayPnl: todayPnl.toFixed(2),
+      weekPnl: weekPnl.toFixed(2),
+      monthPnl: monthPnl.toFixed(2),
+      totalPnl: totalPnl.toFixed(2),
+      tradeCount,
+      winRate,
+    };
+  }
+
   // 手动平仓
   async closePosition(
     userId: string,

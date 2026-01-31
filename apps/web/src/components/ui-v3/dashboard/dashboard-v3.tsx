@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Target, BarChart3, Users, Play, Pause, Megaphone, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Target, BarChart3, Users, Play, Pause, Megaphone, ExternalLink, Loader2 } from 'lucide-react'
+import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement } from '@/hooks/useMarket'
 
 interface DashboardV3Props {
   onNavigate?: (path: string) => void
@@ -141,13 +142,18 @@ function Carousel() {
 }
 
 // 跑马灯公告栏
-function Marquee() {
-  const announcements = [
-    '📢 系统维护通知：1月30日凌晨2点进行例行维护',
+function Marquee({ announcements: announcementsData }: { announcements?: Announcement[] }) {
+  const defaultAnnouncements = [
+    '📢 系统维护通知：每周日凌晨2点进行例行维护',
     '🔥 新策略上线：趋势追踪Pro，回测收益超200%',
     '🎁 邀请返佣活动进行中，邀请好友最高得$100',
-    '📈 BTC突破10万美元，AI策略精准捕捉行情'
+    '📈 AI策略精准捕捉行情，让交易更简单'
   ]
+
+  // 将公告数据格式化为字符串
+  const announcements = announcementsData && announcementsData.length > 0
+    ? announcementsData.map(a => a.title)
+    : defaultAnnouncements
 
   return (
     <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-3">
@@ -226,48 +232,32 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
 }
 
 // 市场价格和新闻标签页
-function MarketTabs() {
+function MarketTabs({ prices, news, isLoading }: {
+  prices?: CoinPrice[]
+  news?: CryptoNews[]
+  isLoading?: boolean
+}) {
   const [activeTab, setActiveTab] = useState<'market' | 'news'>('market')
 
-  const marketData = [
-    { symbol: 'BTC', name: 'Bitcoin', price: '105,230', change: '+2.35', isUp: true },
-    { symbol: 'ETH', name: 'Ethereum', price: '3,850', change: '+1.82', isUp: true },
-    { symbol: 'BNB', name: 'BNB', price: '580', change: '-0.54', isUp: false },
-    { symbol: 'SOL', name: 'Solana', price: '178', change: '+3.21', isUp: true },
-    { symbol: 'XRP', name: 'XRP', price: '2.45', change: '+0.87', isUp: true },
-    { symbol: 'DOGE', name: 'Dogecoin', price: '0.32', change: '-1.23', isUp: false }
+  // 默认数据（当 API 未返回时使用）
+  const defaultMarketData = [
+    { symbol: 'BTC', name: 'Bitcoin', price: 105230, change24h: 2.35 },
+    { symbol: 'ETH', name: 'Ethereum', price: 3850, change24h: 1.82 },
+    { symbol: 'BNB', name: 'BNB', price: 580, change24h: -0.54 },
+    { symbol: 'SOL', name: 'Solana', price: 178, change24h: 3.21 },
+    { symbol: 'XRP', name: 'XRP', price: 2.45, change24h: 0.87 },
+    { symbol: 'DOGE', name: 'Dogecoin', price: 0.32, change24h: -1.23 }
   ]
 
-  const newsData = [
-    {
-      id: 1,
-      title: 'BTC突破10万美元大关，机构持续加仓',
-      source: 'CoinDesk',
-      time: '2小时前',
-      tag: '热门'
-    },
-    {
-      id: 2,
-      title: 'ETH升级完成，Gas费降低80%',
-      source: 'The Block',
-      time: '5小时前',
-      tag: '重要'
-    },
-    {
-      id: 3,
-      title: '美联储暗示2025年可能降息，加密市场反弹',
-      source: 'Bloomberg',
-      time: '8小时前',
-      tag: ''
-    },
-    {
-      id: 4,
-      title: 'Solana生态TVL创新高，DeFi项目活跃',
-      source: 'DeFi Llama',
-      time: '12小时前',
-      tag: ''
-    }
+  const defaultNewsData = [
+    { id: '1', title: 'BTC突破10万美元大关，机构持续加仓', source: 'CoinDesk', publishedAt: new Date().toISOString(), sentiment: 'positive' as const },
+    { id: '2', title: 'ETH升级完成，Gas费降低80%', source: 'The Block', publishedAt: new Date(Date.now() - 5*3600000).toISOString(), sentiment: 'positive' as const },
+    { id: '3', title: '美联储暗示2025年可能降息，加密市场反弹', source: 'Bloomberg', publishedAt: new Date(Date.now() - 8*3600000).toISOString(), sentiment: 'neutral' as const },
+    { id: '4', title: 'Solana生态TVL创新高，DeFi项目活跃', source: 'DeFi Llama', publishedAt: new Date(Date.now() - 12*3600000).toISOString(), sentiment: 'positive' as const }
   ]
+
+  const marketData = prices && prices.length > 0 ? prices : defaultMarketData
+  const newsData = news && news.length > 0 ? news : defaultNewsData
 
   return (
     <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
@@ -306,69 +296,79 @@ function MarketTabs() {
 
       {/* 标签页内容 */}
       <div className="p-4">
-        {activeTab === 'market' ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 text-[#06B6D4] animate-spin" />
+          </div>
+        ) : activeTab === 'market' ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {marketData.map((coin) => (
-              <div
-                key={coin.symbol}
-                className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl hover:border-[#2A2A3A] transition-colors"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-full bg-[#1E1E2E] flex items-center justify-center">
-                    <span className="text-sm font-bold text-[#06B6D4]">
-                      {coin.symbol.charAt(0)}
-                    </span>
+            {marketData.map((coin) => {
+              const isUp = coin.change24h >= 0
+              return (
+                <div
+                  key={coin.symbol}
+                  className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl hover:border-[#2A2A3A] transition-colors"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-full bg-[#1E1E2E] flex items-center justify-center">
+                      <span className="text-sm font-bold text-[#06B6D4]">
+                        {coin.symbol.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-[#F8F8FC] text-sm">{coin.symbol}</div>
+                      <div className="text-xs text-[#606070]">{coin.name}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-[#F8F8FC] text-sm">{coin.symbol}</div>
-                    <div className="text-xs text-[#606070]">{coin.name}</div>
+                  <div className="flex items-end justify-between">
+                    <div className="text-base font-bold text-[#F8F8FC]">
+                      ${formatPrice(coin.price)}
+                    </div>
+                    <div className={`text-sm font-medium flex items-center gap-1 ${
+                      isUp ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                      {formatChange(coin.change24h)}
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-end justify-between">
-                  <div className="text-base font-bold text-[#F8F8FC]">
-                    ${coin.price}
-                  </div>
-                  <div className={`text-sm font-medium flex items-center gap-1 ${
-                    coin.isUp ? 'text-emerald-400' : 'text-red-400'
-                  }`}>
-                    {coin.isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {coin.change}%
-                  </div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div className="space-y-3">
-            {newsData.map((news) => (
-              <div
-                key={news.id}
-                className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl hover:border-[#2A2A3A] transition-colors cursor-pointer group"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      {news.tag && (
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${
-                          news.tag === '热门'
-                            ? 'bg-red-500/20 text-red-400'
-                            : 'bg-orange-500/20 text-orange-400'
-                        }`}>
-                          {news.tag}
-                        </span>
-                      )}
-                      <span className="text-xs text-[#606070]">{news.source}</span>
-                      <span className="text-xs text-[#606070]">·</span>
-                      <span className="text-xs text-[#606070]">{news.time}</span>
+            {newsData.map((item) => {
+              const tag = item.sentiment === 'positive' ? '热门' : item.sentiment === 'negative' ? '警示' : ''
+              return (
+                <div
+                  key={item.id}
+                  className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl hover:border-[#2A2A3A] transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        {tag && (
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            tag === '热门'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-orange-500/20 text-orange-400'
+                          }`}>
+                            {tag}
+                          </span>
+                        )}
+                        <span className="text-xs text-[#606070]">{item.source}</span>
+                        <span className="text-xs text-[#606070]">·</span>
+                        <span className="text-xs text-[#606070]">{formatTimeAgo(item.publishedAt)}</span>
+                      </div>
+                      <h4 className="text-[#F8F8FC] text-sm group-hover:text-[#06B6D4] transition-colors">
+                        {item.title}
+                      </h4>
                     </div>
-                    <h4 className="text-[#F8F8FC] text-sm group-hover:text-[#06B6D4] transition-colors">
-                      {news.title}
-                    </h4>
+                    <ExternalLink className="w-4 h-4 text-[#606070] group-hover:text-[#06B6D4] transition-colors flex-shrink-0 mt-1" />
                   </div>
-                  <ExternalLink className="w-4 h-4 text-[#606070] group-hover:text-[#06B6D4] transition-colors flex-shrink-0 mt-1" />
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -378,6 +378,9 @@ function MarketTabs() {
 
 // 主仪表板组件
 export function DashboardV3({ onNavigate }: DashboardV3Props) {
+  // 获取首页数据（行情、新闻、公告）
+  const { data, isLoading } = useHomepageData()
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
@@ -385,13 +388,17 @@ export function DashboardV3({ onNavigate }: DashboardV3Props) {
         <Carousel />
 
         {/* 跑马灯公告 */}
-        <Marquee />
+        <Marquee announcements={data?.announcements} />
 
         {/* 快捷入口 */}
         <QuickAccessCards onNavigate={onNavigate} />
 
         {/* 市场行情/资讯 Tab */}
-        <MarketTabs />
+        <MarketTabs
+          prices={data?.prices}
+          news={data?.news}
+          isLoading={isLoading}
+        />
       </div>
 
     </div>

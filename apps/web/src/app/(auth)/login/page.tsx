@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { LoginPage as LoginPageUI } from '@/components/ui-v3/auth/login-page';
+import { WalletConnectModal } from '@/components/ui-v3/auth/wallet-connect-modal';
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, isLoading } = useAuth();
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   // 已登录跳转到仪表盘
   useEffect(() => {
@@ -26,6 +28,13 @@ export default function LoginPage() {
     }
   };
 
+  const handleWalletSuccess = (address: string) => {
+    // 钱包连接成功后，跳转到仪表盘
+    // TODO: 后续接入后端钱包登录 API
+    console.log('钱包连接成功:', address);
+    router.push('/dashboard');
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
@@ -39,17 +48,22 @@ export default function LoginPage() {
   }
 
   return (
-    <LoginPageUI
-      onLogin={handleLogin}
-      onWalletConnect={() => {
-        // TODO: 钱包连接登录
-        console.log('钱包连接');
-      }}
-      onRegister={() => router.push('/register')}
-      onForgotPassword={() => {
-        // TODO: 忘记密码
-        console.log('忘记密码');
-      }}
-    />
+    <>
+      <LoginPageUI
+        onLogin={handleLogin}
+        onWalletConnect={() => setShowWalletModal(true)}
+        onRegister={() => router.push('/register')}
+        onForgotPassword={() => {
+          // TODO: 忘记密码
+          console.log('忘记密码');
+        }}
+      />
+      <WalletConnectModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onSuccess={handleWalletSuccess}
+        mode="login"
+      />
+    </>
   );
 }

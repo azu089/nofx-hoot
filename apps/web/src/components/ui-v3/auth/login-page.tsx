@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Eye, EyeOff, Mail, Lock, Wallet, Zap } from 'lucide-react'
+import Image from 'next/image'
+import { Eye, EyeOff, Mail, Lock, Wallet } from 'lucide-react'
 
 interface LoginPageProps {
   onLogin?: (email: string, password: string) => void
@@ -46,14 +47,21 @@ export function LoginPage({
       {/* Glass morphism card */}
       <div className="relative w-full max-w-md">
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          {/* Top gradient highlight line */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
           {/* Logo and app name */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 bg-gradient-to-br from-cyan-400 to-cyan-600 shadow-lg shadow-cyan-500/25">
-              <Zap className="w-8 h-8 text-white" />
+            <div className="inline-block mb-4">
+              <div className="w-24 h-24">
+                <Image
+                  src="/icons/hoot/logo.png?v=2"
+                  alt="HOOT"
+                  width={96}
+                  height={96}
+                  className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                  unoptimized
+                />
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-[#F8F8FC]">Hoot</h1>
+            <h1 className="text-2xl font-bold text-[#F8F8FC]">HOOT</h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -65,19 +73,21 @@ export function LoginPage({
               >
                 邮箱
               </label>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                  <Mail className="h-5 w-5 text-[#606070]" />
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-[#606070]" />
+                  </div>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                    placeholder="your@email.com"
+                    required
+                  />
                 </div>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
-                  placeholder="your@email.com"
-                  required
-                />
               </div>
             </div>
 
@@ -89,30 +99,32 @@ export function LoginPage({
               >
                 密码
               </label>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                  <Lock className="h-5 w-5 text-[#606070]" />
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-[#606070]" />
+                  </div>
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
+                    ) : (
+                      <Eye className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
+                    )}
+                  </button>
                 </div>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center z-10"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
-                  )}
-                </button>
               </div>
             </div>
 
@@ -149,14 +161,16 @@ export function LoginPage({
             </div>
 
             {/* Wallet connect button */}
-            <button
-              type="button"
-              onClick={onWalletConnect}
-              className="w-full py-3.5 px-4 rounded-xl font-semibold border border-[#2A2A3A] bg-[#0A0A0F] hover:bg-[#1E1E2E] hover:border-[#3A3A4A] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-            >
-              <Wallet className="w-5 h-5" />
-              <span>钱包登录</span>
-            </button>
+            <div className="glass-border-glow rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={onWalletConnect}
+                className="w-full py-3.5 px-4 rounded-xl font-semibold border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                <Wallet className="w-5 h-5" />
+                <span>钱包登录</span>
+              </button>
+            </div>
           </form>
 
           {/* Register link */}

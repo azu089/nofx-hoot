@@ -129,7 +129,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-2.5 py-1.5"
                 >
                   <div className="w-5 h-5 rounded-full overflow-hidden">
-                    <Image src={fromAsset.icon} alt={fromAsset.symbol} width={20} height={20} />
+                    <Image src={fromAsset.icon} alt={fromAsset.symbol} width={20} height={20} className="object-contain" />
                   </div>
                   <span className="text-sm font-medium">{fromAsset.symbol}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
@@ -144,7 +144,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                         className={`flex items-center gap-2 w-full px-3 py-2.5 hover:bg-[#12121A] ${fromAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
                       >
                         <div className="w-5 h-5 rounded-full overflow-hidden">
-                          <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
+                          <Image src={asset.icon} alt={asset.symbol} width={20} height={20} className="object-contain" />
                         </div>
                         <span className="text-sm">{asset.symbol}</span>
                       </button>
@@ -201,7 +201,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-2.5 py-1.5"
                 >
                   <div className="w-5 h-5 rounded-full overflow-hidden">
-                    <Image src={toAsset.icon} alt={toAsset.symbol} width={20} height={20} />
+                    <Image src={toAsset.icon} alt={toAsset.symbol} width={20} height={20} className="object-contain" />
                   </div>
                   <span className="text-sm font-medium">{toAsset.symbol}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
@@ -216,7 +216,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                         className={`flex items-center gap-2 w-full px-3 py-2.5 hover:bg-[#12121A] ${toAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
                       >
                         <div className="w-5 h-5 rounded-full overflow-hidden">
-                          <Image src={asset.icon} alt={asset.symbol} width={20} height={20} />
+                          <Image src={asset.icon} alt={asset.symbol} width={20} height={20} className="object-contain" />
                         </div>
                         <span className="text-sm">{asset.symbol}</span>
                       </button>

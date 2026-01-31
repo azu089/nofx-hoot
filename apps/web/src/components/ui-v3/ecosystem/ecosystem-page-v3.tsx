@@ -115,13 +115,13 @@ export function EcosystemPageV3({
           {/* Hero Token Card */}
           <div className="lg:col-span-2 glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-4 mb-6">
-              <div className="relative w-16 h-16 bg-gradient-to-br from-cyan-500/20 to-cyan-400/10 rounded-2xl p-2 border border-cyan-500/20">
+              <div className="w-16 h-16">
                 <Image
                   src="/icons/hoot/token.png"
                   alt="HOOT Token"
-                  width={48}
-                  height={48}
-                  className="rounded-full"
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]"
                 />
               </div>
               <div>

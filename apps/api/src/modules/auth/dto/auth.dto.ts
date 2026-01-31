@@ -37,15 +37,18 @@ export class LoginResponse {
   accessToken: string;
   user: {
     id: string;
-    email: string;
-    nickname: string | null;
+    email?: string | null;
+    nickname?: string | null;
+    walletAddress?: string | null;
+    telegramId?: string | null;
   };
+  isNewUser?: boolean; // 新注册用户标识
 }
 
 // 用户信息响应
 export class UserResponse {
   id: string;
-  email: string;
-  nickname: string | null;
-  createdAt: Date;
+  email?: string | null;
+  nickname?: string | null;
+  createdAt?: Date;
 }

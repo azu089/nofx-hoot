@@ -74,7 +74,7 @@ const riskPresets = {
 
 // 默认交易所数据（实际使用时从props传入）
 const defaultExchanges: Exchange[] = [
-  { id: 'binance', name: 'Binance', icon: '/icons/exchanges/币安.png', balance: 5000, status: 'active' },
+  { id: 'binance', name: 'Binance', icon: '/icons/exchanges/币安.webp', balance: 5000, status: 'active' },
 ]
 
 export function StrategySubscribeModal({

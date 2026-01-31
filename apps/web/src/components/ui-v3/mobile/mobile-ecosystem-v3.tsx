@@ -142,7 +142,7 @@ export function MobileEcosystemV3({
                     alt="HOOT"
                     width={48}
                     height={48}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 </div>
                 <div className="flex-1 min-w-0">

@@ -1,0 +1,165 @@
+/**
+ * 全局样式重置
+ * 修复 Refine ThemedLayoutV2 布局问题
+ */
+
+/* 确保 html 和 body 正确填充视口 */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Refine 布局容器 */
+.ant-layout {
+  min-height: 100vh !important;
+  height: 100vh !important;
+}
+
+/* 修复主内容区域 - 关键修复 */
+.ant-layout-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: auto !important;
+}
+
+/* 侧边栏高度 */
+.ant-layout-sider {
+  min-height: 100vh !important;
+  height: 100vh !important;
+  overflow: auto !important;
+}
+
+/* Header 固定高度 */
+.ant-layout-header {
+  height: 64px !important;
+  line-height: 64px !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+/* 修复可能的滚动问题 */
+.ant-layout-has-sider {
+  height: 100vh !important;
+}
+
+/* 内层布局 */
+.ant-layout-has-sider > .ant-layout {
+  height: 100vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 确保内容区不会被 header 推下 */
+.ant-layout-has-sider > .ant-layout > .ant-layout-content {
+  flex: 1 !important;
+  overflow: auto !important;
+  margin-top: 0 !important;
+}
+
+/* 侧边栏菜单美化 */
+.ant-menu-dark,
+.ant-menu-dark .ant-menu-sub {
+  background: #141414 !important;
+}
+
+.ant-menu-dark .ant-menu-item {
+  margin: 4px 8px !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+  background: rgba(6, 182, 212, 0.1) !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%) !important;
+}
+
+.ant-menu-dark .ant-menu-submenu-title {
+  margin: 4px 8px !important;
+  border-radius: 8px !important;
+}
+
+.ant-menu-dark .ant-menu-submenu-title:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 卡片统一样式 */
+.ant-card {
+  background: #141414 !important;
+  border: 1px solid #303030 !important;
+  border-radius: 12px !important;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #303030 !important;
+}
+
+/* 表格美化 */
+.ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  background: #1a1a1a !important;
+  border-bottom: 1px solid #303030 !important;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #252525 !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: rgba(6, 182, 212, 0.05) !important;
+}
+
+/* 按钮美化 */
+.ant-btn-primary {
+  background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3) !important;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #22D3EE 0%, #06B6D4 100%) !important;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4) !important;
+}
+
+/* 统计卡片美化 */
+.ant-statistic-title {
+  color: #888 !important;
+  font-size: 13px !important;
+}
+
+.ant-statistic-content {
+  font-weight: 600 !important;
+}
+
+/* 标签美化 */
+.ant-tag {
+  border-radius: 6px !important;
+  border: none !important;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #505050;
+}

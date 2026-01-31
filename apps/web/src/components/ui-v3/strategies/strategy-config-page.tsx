@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { ArrowLeft, ChevronDown, Search, AlertTriangle, X, TrendingDown, Pause, LogOut } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { ArrowLeft, ChevronDown, Check, Search, X } from 'lucide-react'
+import { StrategyConfigData, exchanges, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
 
 interface StrategyConfigPageProps {
   strategyName?: string
@@ -10,705 +11,602 @@ interface StrategyConfigPageProps {
   onCancel?: () => void
 }
 
-interface StrategyConfigData {
-  riskTemplate: string
-  exchange: string
-  positionAmount: number
-  tradingPairs: string[]
-  direction: string
-  maxPositions: number
-  leverage: number
-  takeProfit: number
-  stopLoss: number
-  isTrailingStop: boolean
-  trailingActivation: number
-  trailingCallback: number
-  dcaEnabled: boolean
-  dcaCount: number
-  dcaTrigger: number
-  dcaMultiplier: number
-  waterfallProtection: boolean
-  blackSwanProtection: boolean
-  blackSwanType: string
-  blackSwanTrigger: number
-  blackSwanAction: string
-  dailyMaxLoss: boolean
-  dailyMaxLossPercent: number
-}
-
-// Toggle 组件
-function Toggle({ enabled, onChange }: {
-  enabled: boolean
-  onChange: (value: boolean) => void
-}) {
+// Toggle
+function Toggle({ enabled, onChange, label }: { enabled: boolean; onChange: (v: boolean) => void; label?: string }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!enabled)}
-      aria-label={enabled ? '关闭' : '开启'}
-      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-        enabled ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
-      }`}
+      aria-label={label || (enabled ? '关闭' : '开启')}
+      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${enabled ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
     >
-      <div
-        className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow ${
-          enabled ? 'translate-x-5' : 'translate-x-0.5'
-        }`}
-      />
+      <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
     </button>
   )
 }
 
-// 搜索的交易对
-const availablePairs = [
-  { symbol: 'BTC', name: 'Bitcoin', price: '$105,230' },
-  { symbol: 'ETH', name: 'Ethereum', price: '$3,850' },
-  { symbol: 'BNB', name: 'BNB', price: '$580' },
-  { symbol: 'SOL', name: 'Solana', price: '$178' },
-  { symbol: 'XRP', name: 'XRP', price: '$2.45' },
-  { symbol: 'DOGE', name: 'Dogecoin', price: '$0.32' },
-  { symbol: 'ADA', name: 'Cardano', price: '$0.85' },
-  { symbol: 'AVAX', name: 'Avalanche', price: '$38' },
-]
-
-// 风险模板预设值
-const riskPresets = {
-  conservative: { takeProfit: 8, stopLoss: 5, leverage: 2, maxPositions: 2, dcaCount: 2, trailingActivation: 5, trailingCallback: 2 },
-  balanced: { takeProfit: 15, stopLoss: 10, leverage: 5, maxPositions: 3, dcaCount: 3, trailingActivation: 8, trailingCallback: 3 },
-  aggressive: { takeProfit: 30, stopLoss: 15, leverage: 10, maxPositions: 5, dcaCount: 5, trailingActivation: 12, trailingCallback: 5 },
+// 输入框组件
+function Input({ value, onChange, suffix, min, max, step = 1, title, className = '' }: {
+  value: number | string
+  onChange: (v: string) => void
+  suffix?: string
+  min?: number
+  max?: number
+  step?: number
+  title: string
+  className?: string
+}) {
+  return (
+    <div className={`flex items-center gap-1 ${className}`}>
+      <input
+        type="number"
+        title={title}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        min={min}
+        max={max}
+        step={step}
+        className="w-16 px-2 py-1.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded text-sm text-center focus:border-[#06B6D4] focus:outline-none"
+      />
+      {suffix && <span className="text-[#606070] text-sm">{suffix}</span>}
+    </div>
+  )
 }
 
-export function StrategyConfigPage({
-  strategyName: _strategyName = 'MACD趋势跟踪策略',
-  onBack,
-  onSave,
-  onCancel
-}: StrategyConfigPageProps) {
-  void _strategyName // 策略名称，后续可显示在标题
+export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', onBack, onSave, onCancel }: StrategyConfigPageProps) {
   // 基础配置
-  const [selectedExchange, setSelectedExchange] = useState('Binance')
-  const [showExchangeDropdown, setShowExchangeDropdown] = useState(false)
-  const [positionAmount, setPositionAmount] = useState('100')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedPairs, setSelectedPairs] = useState<string[]>(['BTC', 'ETH'])
-  const [direction, setDirection] = useState<'long' | 'short' | 'both'>('both')
+  const [exchange, setExchange] = useState(defaultConfig.exchange)
+  const [tradingType, setTradingType] = useState<'spot' | 'futures'>(defaultConfig.tradingType)
+  const [tradingPairs, setTradingPairs] = useState<string[]>(defaultConfig.tradingPairs)
+  const [amount, setAmount] = useState(String(defaultConfig.positionAmount))
 
-  // 风险模版
-  const [selectedRisk, setSelectedRisk] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced')
+  // 交易参数
+  const [direction, setDirection] = useState<'long' | 'short' | 'both'>(defaultConfig.direction)
+  const [leverage, setLeverage] = useState(String(defaultConfig.leverage))
+  const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>(defaultConfig.marginMode)
+  const [maxPositions, setMaxPositions] = useState(String(defaultConfig.maxPositions))
+  const [takeProfit, setTakeProfit] = useState(String(defaultConfig.takeProfit))
+  const [stopLoss, setStopLoss] = useState(String(defaultConfig.stopLoss))
+  const [slippage, setSlippage] = useState(String(defaultConfig.slippage))
 
-  // 参数配置
-  const [maxPositions, setMaxPositions] = useState('3')
-  const [leverage, setLeverage] = useState('5')
-  const [takeProfit, setTakeProfit] = useState(15)
-  const [stopLoss, setStopLoss] = useState(10)
-  const [isTrailingStop, setIsTrailingStop] = useState(false)
-  const [trailingActivation, setTrailingActivation] = useState('8')
-  const [trailingCallback, setTrailingCallback] = useState('3')
+  // 移动止损
+  const [trailingEnabled, setTrailingEnabled] = useState(defaultConfig.trailingStopEnabled)
+  const [trailingActivation, setTrailingActivation] = useState(String(defaultConfig.trailingActivation))
+  const [trailingCallback, setTrailingCallback] = useState(String(defaultConfig.trailingCallback))
 
-  // 补仓设置
-  const [dcaEnabled, setDcaEnabled] = useState(true)
-  const [dcaCount, setDcaCount] = useState('3')
-  const [dcaTrigger, setDcaTrigger] = useState('5')
-  const [dcaMultiplier, setDcaMultiplier] = useState('1.5')
-  const [waterfallProtection, setWaterfallProtection] = useState(true)
-  const [waterfallTrigger] = useState('15')
+  // DCA
+  const [dcaEnabled, setDcaEnabled] = useState(defaultConfig.dcaEnabled)
+  const [dcaCount, setDcaCount] = useState(String(defaultConfig.dcaCount))
+  const [dcaTrigger, setDcaTrigger] = useState(String(defaultConfig.dcaTrigger))
+  const [dcaMultiplier, setDcaMultiplier] = useState(String(defaultConfig.dcaMultiplier))
+  const [waterfallProtection, setWaterfallProtection] = useState(defaultConfig.waterfallProtection)
+  const [waterfallTrigger, setWaterfallTrigger] = useState(String(defaultConfig.waterfallTrigger))
 
-  // 风控保护
-  const [blackSwanProtection, setBlackSwanProtection] = useState(false)
-  const [blackSwanType] = useState<'coin_drop' | 'account_loss'>('account_loss')
-  const [blackSwanTrigger, setBlackSwanTrigger] = useState('10')
-  const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>('close_all')
-  const [dailyMaxLoss, setDailyMaxLoss] = useState(false)
-  const [dailyMaxLossPercent, setDailyMaxLossPercent] = useState('20')
+  // 风控
+  const [blackSwanEnabled, setBlackSwanEnabled] = useState(defaultConfig.blackSwanEnabled)
+  const [blackSwanTrigger, setBlackSwanTrigger] = useState(String(defaultConfig.blackSwanTrigger))
+  const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.blackSwanAction)
+  const [dailyLossEnabled, setDailyLossEnabled] = useState(defaultConfig.dailyLossEnabled)
+  const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
 
-  // 风险模板变化时更新参数 - 使用回调函数而非 useEffect
-  const handleRiskChange = useCallback((risk: 'conservative' | 'balanced' | 'aggressive') => {
-    setSelectedRisk(risk)
-    const preset = riskPresets[risk]
-    setTakeProfit(preset.takeProfit)
-    setStopLoss(preset.stopLoss)
-    setLeverage(String(preset.leverage))
-    setMaxPositions(String(preset.maxPositions))
-    setDcaCount(String(preset.dcaCount))
-    setTrailingActivation(String(preset.trailingActivation))
-    setTrailingCallback(String(preset.trailingCallback))
-  }, [])
+  // UI
+  const [showExchangeDD, setShowExchangeDD] = useState(false)
+  const [expandedSection, setExpandedSection] = useState<string | null>(null)
+  const [pairSearch, setPairSearch] = useState('')
+  const [showPairPicker, setShowPairPicker] = useState(false)
 
-  const exchanges = [
-    { id: 'Binance', name: 'Binance', connected: true },
-    { id: 'OKX', name: 'OKX', connected: false },
-    { id: 'Bybit', name: 'Bybit', connected: false },
-  ]
+  // 动态加载的交易对
+  const [availablePairs, setAvailablePairs] = useState<string[]>([])
+  const [recentPairs, setRecentPairs] = useState<string[]>([])
+  const [loadingPairs, setLoadingPairs] = useState(false)
 
-  const quickAmounts = ['50', '100', '200', '500']
+  // 加载交易所支持的币种
+  useEffect(() => {
+    setLoadingPairs(true)
+    fetchExchangePairs(exchange).then(pairs => {
+      setAvailablePairs(pairs)
+      setLoadingPairs(false)
+    })
+    // 加载用户常用币种
+    setRecentPairs(getRecentPairs())
+  }, [exchange])
 
-  const blackSwanActions = [
-    { id: 'close_all', name: '全部平仓', icon: LogOut },
-    { id: 'close_half', name: '减仓50%', icon: TrendingDown },
-    { id: 'pause', name: '暂停开仓', icon: Pause },
-  ]
-
-  const removePair = (symbol: string) => {
-    setSelectedPairs(prev => prev.filter(p => p !== symbol))
-  }
-
-  const addPair = (symbol: string) => {
-    if (!selectedPairs.includes(symbol)) {
-      setSelectedPairs(prev => [...prev, symbol])
+  // 显示的币种：搜索时显示搜索结果，否则显示热门+常用
+  const displayPairs = useMemo(() => {
+    if (pairSearch) {
+      // 搜索模式：从所有可用币种中筛选
+      return availablePairs.filter(p => p.toLowerCase().includes(pairSearch.toLowerCase()))
     }
-    setSearchQuery('')
+    // 默认模式：热门 + 最近使用（去重）
+    const combined = [...hotPairs]
+    recentPairs.forEach(p => {
+      if (!combined.includes(p)) combined.push(p)
+    })
+    // 只显示当前交易所支持的
+    return combined.filter(p => availablePairs.includes(p))
+  }, [pairSearch, availablePairs, recentPairs])
+
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section)
   }
 
-  const filteredPairs = availablePairs.filter(
-    pair =>
-      pair.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pair.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const currentExchange = exchanges.find(e => e.id === exchange)
+  const amountNum = parseFloat(amount) || 0
+  const isValid = exchange && amountNum >= 5
+
+  const togglePair = (pair: string) => {
+    setTradingPairs(prev => {
+      if (prev.includes(pair)) {
+        return prev.filter(p => p !== pair)
+      } else {
+        // 添加到常用币种缓存
+        addRecentPair(pair)
+        setRecentPairs(getRecentPairs())
+        return [...prev, pair]
+      }
+    })
+  }
 
   const handleSave = () => {
-    const config: StrategyConfigData = {
-      riskTemplate: selectedRisk,
-      exchange: selectedExchange,
-      positionAmount: parseFloat(positionAmount),
-      tradingPairs: selectedPairs,
+    const data: StrategyConfigData = {
+      exchange,
+      tradingType,
+      tradingPairs,
+      positionAmount: amountNum,
       direction,
-      maxPositions: parseInt(maxPositions),
-      leverage: parseInt(leverage),
-      takeProfit,
-      stopLoss,
-      isTrailingStop,
-      trailingActivation: parseFloat(trailingActivation),
-      trailingCallback: parseFloat(trailingCallback),
+      leverage: tradingType === 'futures' ? parseFloat(leverage) || 1 : 1,
+      marginMode,
+      maxPositions: parseInt(maxPositions) || 3,
+      takeProfit: parseFloat(takeProfit) || 15,
+      stopLoss: parseFloat(stopLoss) || 10,
+      slippage: parseFloat(slippage) || 0.5,
+      trailingStopEnabled: trailingEnabled,
+      trailingActivation: parseFloat(trailingActivation) || 8,
+      trailingCallback: parseFloat(trailingCallback) || 3,
       dcaEnabled,
-      dcaCount: parseInt(dcaCount),
-      dcaTrigger: parseFloat(dcaTrigger),
-      dcaMultiplier: parseFloat(dcaMultiplier),
+      dcaCount: parseInt(dcaCount) || 3,
+      dcaTrigger: parseFloat(dcaTrigger) || 5,
+      dcaMultiplier: parseFloat(dcaMultiplier) || 1.5,
       waterfallProtection,
-      blackSwanProtection,
-      blackSwanType,
-      blackSwanTrigger: parseFloat(blackSwanTrigger),
+      waterfallTrigger: parseFloat(waterfallTrigger) || 15,
+      blackSwanEnabled,
+      blackSwanTrigger: parseFloat(blackSwanTrigger) || 10,
       blackSwanAction,
-      dailyMaxLoss,
-      dailyMaxLossPercent: parseFloat(dailyMaxLossPercent),
+      dailyLossEnabled,
+      dailyLossPercent: parseFloat(dailyLossPercent) || 20,
     }
-    onSave?.(config)
+    onSave?.(data)
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F8F8FC]">
-      {/* Header */}
-      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center gap-3 p-4 max-w-2xl mx-auto">
-          <button type="button" onClick={onBack} className="p-2 -ml-2 hover:bg-[#1E1E2E] rounded-lg transition-colors" aria-label="返回">
-            <ArrowLeft className="w-6 h-6" />
+    <div className="h-full flex flex-col bg-[#0A0A0F] text-white">
+      {/* 顶栏 */}
+      <div className="flex-shrink-0 border-b border-[#1E1E2E]">
+        <div className="flex items-center gap-4 px-6 py-4 max-w-4xl mx-auto">
+          <button type="button" onClick={onBack} aria-label="返回" className="p-2 -ml-2 rounded-lg hover:bg-[#1E1E2E]">
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-lg font-semibold">策略配置</h1>
+          <div>
+            <h1 className="text-lg font-semibold">订阅配置</h1>
+            <p className="text-sm text-[#606070]">{strategyName}</p>
+          </div>
         </div>
       </div>
 
-      {/* 可滚动内容区域 */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-4 max-w-2xl mx-auto pb-4">
-        {/* 主配置卡片 - 超清悬浮玻璃效果 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          {/* 顶部高光 */}          {/* 内发光效果 */}
+      {/* 内容区 */}
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-4xl mx-auto space-y-4">
+
           {/* === 基础配置 === */}
-          <div className="p-5">
-            <h2 className="text-base font-semibold text-[#9090A0] mb-4">基础配置</h2>
-
-            {/* 交易所 + 金额 - 一行 */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 space-y-5">
+            {/* 第一行：交易所 + 类型 + 方向 + 金额 */}
+            <div className="grid grid-cols-4 gap-4">
               {/* 交易所 */}
-              <div>
-                <label className="block text-xs text-[#606070] mb-1.5">交易所</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowExchangeDropdown(!showExchangeDropdown)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A] transition-colors text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                      <span>{selectedExchange}</span>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showExchangeDropdown ? 'rotate-180' : ''}`} />
-                  </button>
-                  {showExchangeDropdown && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-20 overflow-hidden">
-                      {exchanges.map((exchange) => (
-                        <button
-                          type="button"
-                          key={exchange.id}
-                          onClick={() => {
-                            setSelectedExchange(exchange.id)
-                            setShowExchangeDropdown(false)
-                          }}
-                          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-[#1E1E2E] transition-colors text-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className={`w-1.5 h-1.5 rounded-full ${exchange.connected ? 'bg-green-400' : 'bg-[#606070]'}`} />
-                            <span>{exchange.name}</span>
-                          </div>
-                          {!exchange.connected && <span className="text-xs text-[#606070]">未连接</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 开仓金额 */}
-              <div>
-                <label className="block text-xs text-[#606070] mb-1.5">开仓金额</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#606070] text-sm">$</span>
-                  <input
-                    type="text"
-                    value={positionAmount}
-                    onChange={(e) => setPositionAmount(e.target.value)}
-                    placeholder="输入金额"
-                    className="w-full pl-7 pr-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 快捷金额 */}
-            <div className="flex gap-2 mb-4">
-              {quickAmounts.map((amount) => (
+              <div className="relative">
+                <label className="block text-xs text-[#606070] mb-2">交易所</label>
                 <button
                   type="button"
-                  key={amount}
-                  onClick={() => setPositionAmount(amount)}
-                  className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                    positionAmount === amount
-                      ? 'bg-[#06B6D4]/20 text-[#06B6D4] border border-[#06B6D4]/30'
-                      : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
-                  }`}
+                  onClick={() => setShowExchangeDD(!showExchangeDD)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A]"
                 >
-                  ${amount}
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full" />
+                    <span>{exchange}</span>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showExchangeDD ? 'rotate-180' : ''}`} />
                 </button>
-              ))}
-            </div>
-
-            {/* 交易对 */}
-            <div className="mb-4">
-              <label className="block text-xs text-[#606070] mb-1.5">交易对</label>
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#606070]" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
-                  placeholder="搜索币种..."
-                />
-              </div>
-              {selectedPairs.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedPairs.map((symbol) => (
-                    <span
-                      key={symbol}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/10 text-[#06B6D4] rounded text-xs"
-                    >
-                      {symbol}
-                      <button type="button" onClick={() => removePair(symbol)} className="hover:text-white" aria-label={`移除${symbol}`}>
-                        <X className="w-3 h-3" />
+                {showExchangeDD && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden">
+                    {exchanges.map(ex => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => { setExchange(ex.id); setShowExchangeDD(false) }}
+                        disabled={!ex.connected}
+                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[#1E1E2E] disabled:opacity-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${ex.connected ? 'bg-green-400' : 'bg-[#606070]'}`} />
+                          <span>{ex.name}</span>
+                        </div>
+                        {ex.connected && exchange === ex.id && <Check className="w-4 h-4 text-[#06B6D4]" />}
+                        {!ex.connected && <span className="text-xs text-[#606070]">未连接</span>}
                       </button>
-                    </span>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 交易类型 */}
+              <div>
+                <label className="block text-xs text-[#606070] mb-2">类型</label>
+                <div className="flex bg-[#0A0A0F] rounded-lg p-0.5 border border-[#1E1E2E]">
+                  <button
+                    type="button"
+                    onClick={() => setTradingType('spot')}
+                    className={`flex-1 py-2.5 rounded-md text-sm font-medium ${tradingType === 'spot' ? 'bg-[#06B6D4] text-black' : 'text-[#9090A0]'}`}
+                  >
+                    现货
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTradingType('futures')}
+                    className={`flex-1 py-2.5 rounded-md text-sm font-medium ${tradingType === 'futures' ? 'bg-[#06B6D4] text-black' : 'text-[#9090A0]'}`}
+                  >
+                    合约
+                  </button>
                 </div>
-              )}
-              {searchQuery && (
-                <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                  {filteredPairs.map((pair) => (
+              </div>
+
+              {/* 方向 */}
+              <div>
+                <label className="block text-xs text-[#606070] mb-2">方向</label>
+                <div className="flex bg-[#0A0A0F] rounded-lg p-0.5 border border-[#1E1E2E]">
+                  {(['long', 'both', 'short'] as const).map(d => (
                     <button
+                      key={d}
                       type="button"
-                      key={pair.symbol}
-                      onClick={() => addPair(pair.symbol)}
-                      disabled={selectedPairs.includes(pair.symbol)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedPairs.includes(pair.symbol)
-                          ? 'opacity-40 cursor-not-allowed'
-                          : 'bg-[#0A0A0F] hover:bg-[#1E1E2E]'
-                      }`}
+                      onClick={() => setDirection(d)}
+                      className={`flex-1 py-2.5 rounded-md text-sm font-medium ${direction === d ? 'bg-[#06B6D4] text-black' : 'text-[#9090A0] hover:text-white'}`}
                     >
-                      <span>{pair.symbol} <span className="text-[#606070]">{pair.name}</span></span>
-                      <span className="text-[#606070]">{pair.price}</span>
+                      {d === 'long' ? '多' : d === 'short' ? '空' : '双向'}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-
-            {/* 策略方向 */}
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-[#606070]">策略方向</label>
-              <div className="flex bg-[#0A0A0F] rounded-lg p-0.5">
-                {[
-                  { id: 'long', name: '做多', icon: '📈' },
-                  { id: 'short', name: '做空', icon: '📉' },
-                  { id: 'both', name: '双向', icon: '↔️' },
-                ].map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    onClick={() => setDirection(item.id as typeof direction)}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      direction === item.id
-                        ? 'bg-[#06B6D4] text-black'
-                        : 'text-[#9090A0] hover:text-white'
-                    }`}
-                  >
-                    {item.name}
-                  </button>
-                ))}
               </div>
-            </div>
-          </div>
 
-          {/* 分割线 */}
-          <div className="h-px bg-[#1E1E2E]" />
-
-          {/* === 风险模板 === */}
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-[#606070]">风险偏好</label>
-              <div className="flex bg-[#0A0A0F] rounded-lg p-0.5">
-                {[
-                  { id: 'conservative', name: '保守' },
-                  { id: 'balanced', name: '稳健' },
-                  { id: 'aggressive', name: '进取' },
-                ].map((template) => (
-                  <button
-                    type="button"
-                    key={template.id}
-                    onClick={() => handleRiskChange(template.id as typeof selectedRisk)}
-                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                      selectedRisk === template.id
-                        ? 'bg-[#06B6D4] text-black'
-                        : 'text-[#9090A0] hover:text-white'
-                    }`}
-                  >
-                    {template.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 分割线 */}
-          <div className="h-px bg-[#1E1E2E]" />
-
-          {/* === 参数配置 === */}
-          <div className="p-5">
-            <h2 className="text-base font-semibold text-[#9090A0] mb-4">参数配置</h2>
-
-            {/* 仓位 + 杠杆 */}
-            <div className="grid grid-cols-2 gap-4 mb-5">
+              {/* 金额 */}
               <div>
-                <label className="block text-xs text-[#606070] mb-1.5">最大持仓</label>
+                <label className="block text-xs text-[#606070] mb-2">每笔金额</label>
                 <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#606070]">$</span>
                   <input
-                    type="text"
-                    value={maxPositions}
-                    onChange={(e) => setMaxPositions(e.target.value)}
-                    placeholder="3"
-                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
+                    type="number"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="100"
+                    title="每笔金额"
+                    min={5}
+                    max={100000}
+                    className="w-full pl-8 pr-4 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">仓</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-[#606070] mb-1.5">杠杆倍数</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={leverage}
-                    onChange={(e) => setLeverage(e.target.value)}
-                    placeholder="5"
-                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">x</span>
                 </div>
               </div>
             </div>
 
-            {/* 止盈止损 */}
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div>
-                <label className="block text-xs text-[#606070] mb-1.5">
-                  <span className="text-red-400">止损</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={stopLoss}
-                    onChange={(e) => setStopLoss(parseInt(e.target.value) || 0)}
-                    placeholder="10"
-                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-[#606070] mb-1.5">
-                  <span className="text-emerald-400">止盈</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={takeProfit}
-                    onChange={(e) => setTakeProfit(parseInt(e.target.value) || 0)}
-                    placeholder="15"
-                    className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg focus:border-[#06B6D4] focus:outline-none transition-colors text-sm"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 移动止损 */}
-            <div className="mb-5">
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm">移动止损</span>
-                <Toggle enabled={isTrailingStop} onChange={setIsTrailingStop} />
-              </div>
-              {isTrailingStop && (
-                <div className="grid grid-cols-2 gap-4 mt-3">
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-1.5">激活盈利</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={trailingActivation}
-                        onChange={(e) => setTrailingActivation(e.target.value)}
-                        placeholder="8"
-                        className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none transition-colors"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-1.5">回撤比例</label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={trailingCallback}
-                        onChange={(e) => setTrailingCallback(e.target.value)}
-                        placeholder="3"
-                        className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none transition-colors"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] text-xs">%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 补仓设置 */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm">补仓 (DCA)</span>
-                <Toggle enabled={dcaEnabled} onChange={setDcaEnabled} />
-              </div>
-              {dcaEnabled && (
-                <div className="grid grid-cols-3 gap-4 mt-3">
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-1.5">次数</label>
-                    <input
-                      type="text"
-                      value={dcaCount}
-                      onChange={(e) => setDcaCount(e.target.value)}
-                      placeholder="3"
-                      className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-1.5">跌幅%</label>
-                    <input
-                      type="text"
-                      value={dcaTrigger}
-                      onChange={(e) => setDcaTrigger(e.target.value)}
-                      placeholder="5"
-                      className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-1.5">倍率</label>
-                    <input
-                      type="text"
-                      value={dcaMultiplier}
-                      onChange={(e) => setDcaMultiplier(e.target.value)}
-                      placeholder="1.5"
-                      className="w-full px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 防瀑布 */}
-            {dcaEnabled && (
-              <div className="flex items-center justify-between py-2">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
-                  <span className="text-sm">防瀑布保护</span>
-                  {waterfallProtection && (
-                    <span className="text-xs text-[#606070]">跌幅&gt;{waterfallTrigger}%停止补仓</span>
-                  )}
-                </div>
-                <Toggle enabled={waterfallProtection} onChange={setWaterfallProtection} />
+            {/* 可用余额提示 */}
+            {currentExchange?.balance && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[#606070]">可用余额:</span>
+                <span className="text-[#06B6D4] font-medium">${currentExchange.balance.toLocaleString()}</span>
               </div>
             )}
-          </div>
 
-          {/* 分割线 */}
-          <div className="h-px bg-[#1E1E2E]" />
-
-          {/* === 风控保护 === */}
-          <div className="p-5">
-            <h2 className="text-base font-semibold text-[#9090A0] mb-4">风控保护</h2>
-
-            {/* 黑天鹅保护 */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">🦢</span>
-                  <span className="text-sm font-medium">黑天鹅保护</span>
-                </div>
-                <Toggle enabled={blackSwanProtection} onChange={setBlackSwanProtection} />
+            {/* 交易对 - 紧凑布局 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#606070]">交易对</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPairPicker(!showPairPicker)}
+                  className="text-xs text-[#06B6D4]"
+                >
+                  {showPairPicker ? '收起' : '选择更多'}
+                </button>
               </div>
-
-              {blackSwanProtection && (
-                <div className="p-4 bg-[#0A0A0F]/50 rounded-xl space-y-4">
-                  {/* 触发条件 - 直接用账户亏损，更直观 */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-xs text-[#606070]">当账户亏损达到</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          value={blackSwanTrigger}
-                          onChange={(e) => setBlackSwanTrigger(e.target.value)}
-                          placeholder="10"
-                          className="w-12 px-2 py-1 bg-[#12121A] border border-[#1E1E2E] rounded text-sm text-center focus:border-[#06B6D4] focus:outline-none"
-                        />
-                        <span className="text-sm text-[#9090A0]">%</span>
-                      </div>
-                    </div>
-
-                    {/* 杠杆换算提示 */}
-                    <div className="p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-3">
-                      <p className="text-[11px] text-yellow-400/80">
-                        💡 {leverage}x 杠杆下，币种跌 {(parseFloat(blackSwanTrigger) / parseFloat(leverage || '1')).toFixed(1)}% 即触发保护
-                      </p>
-                    </div>
-
-                    {/* 推荐阈值 */}
-                    <div className="flex gap-2 mb-3">
-                      {['5', '10', '15', '20'].map((val) => (
-                        <button
-                          type="button"
-                          key={val}
-                          onClick={() => setBlackSwanTrigger(val)}
-                          className={`flex-1 py-1.5 rounded text-xs transition-colors ${
-                            blackSwanTrigger === val
-                              ? 'bg-[#06B6D4]/20 text-[#06B6D4] border border-[#06B6D4]/30'
-                              : 'bg-[#1E1E2E] text-[#606070] hover:text-[#9090A0]'
-                          }`}
-                        >
-                          {val}%
-                        </button>
-                      ))}
-                    </div>
+              {/* 已选标签 */}
+              <div
+                className="flex flex-wrap items-center gap-2 p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg min-h-[48px] cursor-text"
+                onClick={() => setShowPairPicker(true)}
+              >
+                {tradingPairs.map(pair => (
+                  <span
+                    key={pair}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded-md text-sm"
+                  >
+                    {pair.replace('/USDT', '')}
+                    <X className="w-3.5 h-3.5 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); togglePair(pair) }} />
+                  </span>
+                ))}
+                {tradingPairs.length === 0 && (
+                  <span className="text-sm text-[#606070]">点击选择交易对...</span>
+                )}
+              </div>
+              {/* 展开选择器 */}
+              {showPairPicker && (
+                <div className="mt-3 space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#606070]" />
+                    <input
+                      type="text"
+                      value={pairSearch}
+                      onChange={e => setPairSearch(e.target.value)}
+                      placeholder="搜索更多币种..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-sm focus:border-[#06B6D4] focus:outline-none"
+                    />
                   </div>
-
-                  {/* 执行动作 */}
-                  <div>
-                    <label className="block text-xs text-[#606070] mb-2">触发后执行</label>
-                    <div className="flex gap-2">
-                      {blackSwanActions.map((action) => (
+                  {!pairSearch && recentPairs.length > 0 && (
+                    <div className="text-xs text-[#606070]">热门 & 常用</div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {loadingPairs ? (
+                      <span className="text-sm text-[#606070] py-2">加载中...</span>
+                    ) : displayPairs.length > 0 ? (
+                      displayPairs.map(pair => (
                         <button
+                          key={pair}
                           type="button"
-                          key={action.id}
-                          onClick={() => setBlackSwanAction(action.id as typeof blackSwanAction)}
-                          className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                            blackSwanAction === action.id
+                          onClick={() => { togglePair(pair); setPairSearch('') }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                            tradingPairs.includes(pair)
                               ? 'bg-[#06B6D4] text-black'
                               : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
                           }`}
                         >
-                          <action.icon className="w-3.5 h-3.5" />
-                          {action.name}
+                          {pair.replace('/USDT', '')}
                         </button>
-                      ))}
+                      ))
+                    ) : (
+                      <span className="text-sm text-[#606070] py-2">{pairSearch ? '未找到匹配的交易对' : '暂无数据'}</span>
+                    )}
+                  </div>
+                  {pairSearch && displayPairs.length > 0 && (
+                    <div className="text-xs text-[#606070]">共 {availablePairs.length} 个币种可选</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* === 交易参数 === */}
+          <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 space-y-4">
+            <div className="text-xs text-[#606070] font-medium">交易参数</div>
+
+            {/* 合约专属 + 通用参数 统一网格 */}
+            <div className={`grid gap-4 ${tradingType === 'futures' ? 'grid-cols-6' : 'grid-cols-4'}`}>
+              {/* 合约专属：杠杆 + 保证金 */}
+              {tradingType === 'futures' && (
+                <>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-2">杠杆</label>
+                    <div className="flex items-center gap-1 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg">
+                      <input
+                        type="number"
+                        title="杠杆倍数"
+                        value={leverage}
+                        onChange={e => setLeverage(e.target.value)}
+                        min={1}
+                        max={125}
+                        className="w-full bg-transparent text-sm focus:outline-none"
+                      />
+                      <span className="text-[#606070] text-sm">x</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#606070] mb-2">保证金</label>
+                    <div className="flex bg-[#0A0A0F] rounded-lg p-0.5 border border-[#1E1E2E]">
+                      <button
+                        type="button"
+                        onClick={() => setMarginMode('cross')}
+                        className={`flex-1 py-2.5 rounded-md text-sm font-medium ${marginMode === 'cross' ? 'bg-[#06B6D4] text-black' : 'text-[#9090A0]'}`}
+                      >
+                        全仓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMarginMode('isolated')}
+                        className={`flex-1 py-2.5 rounded-md text-sm font-medium ${marginMode === 'isolated' ? 'bg-[#06B6D4] text-black' : 'text-[#9090A0]'}`}
+                      >
+                        逐仓
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* 通用参数 */}
+              <div>
+                <label className="block text-xs text-[#606070] mb-2">最大持仓</label>
+                <div className="flex items-center gap-1 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg">
+                  <input
+                    type="number"
+                    title="最大持仓"
+                    value={maxPositions}
+                    onChange={e => setMaxPositions(e.target.value)}
+                    min={1}
+                    max={10}
+                    className="w-full bg-transparent text-sm focus:outline-none"
+                  />
+                  <span className="text-[#606070] text-sm">仓</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#606070] mb-2">滑点容忍</label>
+                <div className="flex items-center gap-1 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg">
+                  <input
+                    type="number"
+                    title="滑点容忍"
+                    value={slippage}
+                    onChange={e => setSlippage(e.target.value)}
+                    min={0.1}
+                    max={5}
+                    step={0.1}
+                    className="w-full bg-transparent text-sm focus:outline-none"
+                  />
+                  <span className="text-[#606070] text-sm">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#10B981] mb-2">止盈</label>
+                <div className="flex items-center gap-1 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg">
+                  <input
+                    type="number"
+                    title="止盈"
+                    value={takeProfit}
+                    onChange={e => setTakeProfit(e.target.value)}
+                    min={0.1}
+                    max={500}
+                    className="w-full bg-transparent text-sm focus:outline-none"
+                  />
+                  <span className="text-[#606070] text-sm">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#F43F5E] mb-2">止损</label>
+                <div className="flex items-center gap-1 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg">
+                  <input
+                    type="number"
+                    title="止损"
+                    value={stopLoss}
+                    onChange={e => setStopLoss(e.target.value)}
+                    min={0.1}
+                    max={50}
+                    className="w-full bg-transparent text-sm focus:outline-none"
+                  />
+                  <span className="text-[#606070] text-sm">%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* === 高级配置（合并卡片） === */}
+          <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 space-y-5">
+            {/* 移动止损 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">移动止损</span>
+                <Toggle enabled={trailingEnabled} onChange={setTrailingEnabled} label="移动止损" />
+              </div>
+              {trailingEnabled && (
+                <div className="pl-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#606070]">激活盈利</span>
+                      <Input value={trailingActivation} onChange={setTrailingActivation} suffix="%" min={1} max={100} title="激活盈利" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#606070]">回撤触发</span>
+                      <Input value={trailingCallback} onChange={setTrailingCallback} suffix="%" min={0.5} max={50} step={0.5} title="回撤" />
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* 单日最大亏损 */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">📉</span>
-                <span className="text-sm font-medium">单日最大亏损</span>
-                {dailyMaxLoss && (
-                  <span className="text-xs text-[#606070]">超过{dailyMaxLossPercent}%暂停</span>
-                )}
+            {/* 智能补仓 DCA */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">智能补仓 DCA</span>
+                <Toggle enabled={dcaEnabled} onChange={setDcaEnabled} label="DCA" />
               </div>
-              <div className="flex items-center gap-3">
-                {dailyMaxLoss && (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="text"
-                      value={dailyMaxLossPercent}
-                      onChange={(e) => setDailyMaxLossPercent(e.target.value)}
-                      placeholder="20"
-                      className="w-12 px-2 py-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded text-sm text-center focus:border-[#06B6D4] focus:outline-none"
-                    />
-                    <span className="text-xs text-[#606070]">%</span>
+              {dcaEnabled && (
+                <div className="pl-4 space-y-3">
+                  <div className="grid grid-cols-3 gap-6">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#606070]">最大次数</span>
+                      <Input value={dcaCount} onChange={setDcaCount} suffix="次" min={1} max={10} title="次数" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#606070]">触发跌幅</span>
+                      <Input value={dcaTrigger} onChange={setDcaTrigger} suffix="%" min={1} max={50} title="跌幅" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#606070]">补仓倍率</span>
+                      <Input value={dcaMultiplier} onChange={setDcaMultiplier} suffix="x" min={1} max={5} step={0.1} title="倍率" />
+                    </div>
                   </div>
-                )}
-                <Toggle enabled={dailyMaxLoss} onChange={setDailyMaxLoss} />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#606070]">防瀑布</span>
+                    <div className="flex items-center gap-3">
+                      {waterfallProtection && <Input value={waterfallTrigger} onChange={setWaterfallTrigger} suffix="%" min={5} max={50} title="瀑布触发" />}
+                      <Toggle enabled={waterfallProtection} onChange={setWaterfallProtection} label="防瀑布" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 风控保护 */}
+            <div className="space-y-3">
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => toggleSection('risk')}
+              >
+                <span className="text-sm">风控保护</span>
+                <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${expandedSection === 'risk' ? 'rotate-180' : ''}`} />
               </div>
+              {expandedSection === 'risk' && (
+                <div className="pl-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#606070]">黑天鹅保护</span>
+                    <Toggle enabled={blackSwanEnabled} onChange={setBlackSwanEnabled} label="黑天鹅" />
+                  </div>
+                  {blackSwanEnabled && (
+                    <div className="space-y-3 pl-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-[#606070]">触发阈值</span>
+                        <Input value={blackSwanTrigger} onChange={setBlackSwanTrigger} suffix="%" min={5} max={50} title="阈值" />
+                      </div>
+                      <div className="flex gap-3">
+                        {(['close_all', 'close_half', 'pause'] as const).map(action => (
+                          <button
+                            key={action}
+                            type="button"
+                            onClick={() => setBlackSwanAction(action)}
+                            className={`flex-1 py-2 rounded-lg text-sm ${blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070] hover:bg-[#2A2A3A]'}`}
+                          >
+                            {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#606070]">单日最大亏损</span>
+                    <div className="flex items-center gap-3">
+                      {dailyLossEnabled && <Input value={dailyLossPercent} onChange={setDailyLossPercent} suffix="%" min={5} max={100} title="单日亏损" />}
+                      <Toggle enabled={dailyLossEnabled} onChange={setDailyLossEnabled} label="单日亏损" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-        </div>
       </div>
 
-      {/* 底部固定栏 - 在容器内部 */}
-      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
-        <div className="max-w-2xl mx-auto">
-          {/* 摘要 */}
-          <div className="flex items-center justify-center gap-6 mb-3 text-xs">
-            <span className="text-[#606070]">
-              {selectedRisk === 'conservative' ? '🛡️ 保守' : selectedRisk === 'balanced' ? '🔥 稳健' : '🚀 进取'}
-            </span>
-            <span className="text-[#606070]">止盈 <span className="text-emerald-400">{takeProfit}%</span></span>
-            <span className="text-[#606070]">止损 <span className="text-red-400">{stopLoss}%</span></span>
-            <span className="text-[#606070]">杠杆 <span className="text-[#F8F8FC]">{leverage}x</span></span>
-          </div>
-
-          {/* 按钮 */}
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 py-3 border border-[#1E1E2E] rounded-xl font-medium text-[#9090A0] hover:bg-[#1E1E2E] transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex-1 py-3 bg-[#06B6D4] hover:bg-[#06B6D4]/80 rounded-xl font-medium text-black transition-colors"
-            >
-              保存配置
-            </button>
-          </div>
+      {/* 底部栏 */}
+      <div className="flex-shrink-0 border-t border-[#1E1E2E] p-4 bg-[#0A0A0F]">
+        <div className="max-w-4xl mx-auto flex gap-4">
+          <button type="button" onClick={onCancel} className="flex-1 py-3 border border-[#1E1E2E] rounded-xl text-[#9090A0] hover:bg-[#1E1E2E]">取消</button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isValid}
+            className={`flex-1 py-3 rounded-xl font-medium transition-all ${isValid ? 'bg-[#06B6D4] text-white hover:bg-[#06B6D4]/80' : 'bg-[#2A2A3A] text-[#606070] cursor-not-allowed'}`}
+          >
+            {amountNum < 5 ? '最低 $5' : '保存配置'}
+          </button>
         </div>
       </div>
     </div>

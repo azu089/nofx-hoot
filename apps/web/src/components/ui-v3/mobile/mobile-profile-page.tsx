@@ -164,18 +164,16 @@ export function MobileProfilePage({
       <div className="px-4 pt-2 pb-4">
         <div className="glass-border-glow relative overflow-hidden rounded-2xl border border-cyan-500/[0.08] bg-[#12121A]/30 backdrop-blur-[72px] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-4">
-            {/* 头像 - 与桌面端相同的渐变边框 */}
+            {/* 头像 */}
             <div className="relative flex-shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#06B6D4] to-[#0891B2] p-0.5 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                <div className="w-full h-full rounded-full bg-[#1A1A24] flex items-center justify-center overflow-hidden">
-                  <Image
-                    src="/icons/hoot/logo.png"
-                    alt="Avatar"
-                    width={56}
-                    height={56}
-                    className="rounded-full object-cover"
-                  />
-                </div>
+              <div className="w-16 h-16 rounded-full overflow-hidden">
+                <Image
+                  src="/icons/hoot/logo.png"
+                  alt="Avatar"
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-contain"
+                />
               </div>
             </div>
 

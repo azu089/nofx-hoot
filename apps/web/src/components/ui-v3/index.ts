@@ -9,6 +9,7 @@ export { LandingPage } from './landing/landing-page'
 // 认证组件
 export { LoginPage } from './auth/login-page'
 export { RegisterPage } from './auth/register-page'
+export { WalletConnectModal } from './auth/wallet-connect-modal'
 
 // ========== 用户页面 ==========
 
@@ -89,3 +90,8 @@ export { MobileProfileV3 } from './mobile/mobile-profile-v3'
 export { MobileWalletV3 } from './mobile/mobile-wallet-v3'
 export { MobileReferralV3 } from './mobile/mobile-referral-v3'
 export { MobileSettingsV3 } from './mobile/mobile-settings-v3'
+export { MobileWalletConnectModal } from './mobile/mobile-wallet-connect-modal'
+
+// 移动端认证页面
+export { MobileLoginPage } from './mobile/mobile-login-page'
+export { MobileRegisterPage } from './mobile/mobile-register-page'

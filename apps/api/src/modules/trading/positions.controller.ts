@@ -33,6 +33,13 @@ export class PositionsController {
     return this.positionsService.getPositionsByTelegramId(telegramId);
   }
 
+  // 通过 Telegram ID 获取收益统计 - 公开接口（TG Bot 调用）
+  @Public()
+  @Get('earnings/telegram/:telegramId')
+  async getEarningsByTelegramId(@Param('telegramId') telegramId: string) {
+    return this.positionsService.getEarningsByTelegramId(telegramId);
+  }
+
   // 手动平仓
   @Post(':id/close')
   async closePosition(

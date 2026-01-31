@@ -19,8 +19,10 @@ import {
   Mail,
   Lock,
   Award,
+  Loader2,
 } from 'lucide-react'
 import Image from 'next/image'
+import { useFeaturedStrategies, formatReturn, getRiskDisplay, type Strategy } from '@/hooks/useStrategies'
 
 interface LandingPageProps {
   onStartTrading?: () => void
@@ -62,28 +64,28 @@ const carouselSlides = [
   },
 ]
 
-// 策略亮点数据
-const featuredStrategies = [
+// 默认策略数据（当 API 未返回时使用）
+const defaultStrategies = [
   {
+    id: '1',
     name: 'AI趋势跟踪',
-    return30d: '+15.2%',
-    subscribers: 2847,
-    riskLevel: '中',
-    riskColor: 'text-yellow-400',
+    return30d: '15.2',
+    subscriberCount: 2847,
+    riskLevel: 'medium' as const,
   },
   {
+    id: '2',
     name: '稳健网格',
-    return30d: '+8.7%',
-    subscribers: 4521,
-    riskLevel: '低',
-    riskColor: 'text-green-400',
+    return30d: '8.7',
+    subscriberCount: 4521,
+    riskLevel: 'low' as const,
   },
   {
+    id: '3',
     name: '波段猎手',
-    return30d: '+22.4%',
-    subscribers: 1893,
-    riskLevel: '高',
-    riskColor: 'text-red-400',
+    return30d: '22.4',
+    subscriberCount: 1893,
+    riskLevel: 'high' as const,
   },
 ]
 
@@ -139,12 +141,14 @@ const faqs = [
   },
 ]
 
-// 支持的交易所
+// 支持的交易所 - 6个主流交易所
 const exchanges = [
-  { name: 'Binance', logo: '/icons/exchanges/币安.png' },
-  { name: 'OKX', logo: '/icons/exchanges/okx.png' },
-  { name: 'Bybit', logo: '/icons/exchanges/bybit.png' },
-  { name: 'Bitget', logo: '/icons/exchanges/bitget.png' },
+  { name: 'Binance', logo: '/icons/exchanges/币安.webp' },
+  { name: 'OKX', logo: '/icons/exchanges/okx.webp' },
+  { name: 'Bybit', logo: '/icons/exchanges/bybit.webp' },
+  { name: 'Bitget', logo: '/icons/exchanges/bitget.webp' },
+  { name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp' },
+  { name: 'Gate', logo: '/icons/exchanges/gate.webp' },
 ]
 
 export function LandingPage({
@@ -157,6 +161,10 @@ export function LandingPage({
   const [isVisible] = useState(true) // 直接初始化为 true
   const [currentSlide, setCurrentSlide] = useState(0)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
+
+  // 获取首页推荐策略
+  const { data: strategiesData, isLoading: strategiesLoading } = useFeaturedStrategies()
+  const featuredStrategies = strategiesData && strategiesData.length > 0 ? strategiesData : defaultStrategies
 
   // 轮播自动播放
   useEffect(() => {
@@ -234,20 +242,20 @@ export function LandingPage({
           </div>
 
           {/* Exchange Logos */}
-          <div className="flex items-center justify-center gap-6 flex-wrap">
+          <div className="flex items-center justify-center gap-4 flex-wrap">
             <span className="text-sm text-[#606070]">支持交易所:</span>
             {exchanges.map((exchange) => (
               <div
                 key={exchange.name}
-                className="w-8 h-8 rounded-lg bg-[#1E1E2E] p-1.5 flex items-center justify-center"
+                className="w-10 h-10 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
                 title={exchange.name}
               >
                 <Image
                   src={exchange.logo}
                   alt={exchange.name}
-                  width={20}
-                  height={20}
-                  className="opacity-60 hover:opacity-100 transition-opacity"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
                 />
               </div>
             ))}
@@ -399,31 +407,41 @@ export function LandingPage({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {featuredStrategies.map((strategy, index) => (
-              <div
-                key={index}
-                className="p-6 rounded-2xl bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] hover:border-[#06B6D4]/30 hover:shadow-[0_0_40px_rgba(6,182,212,0.1)] transition-all duration-300 group cursor-pointer"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-[#F8F8FC]">
-                    {strategy.name}
-                  </h3>
-                  <span className={`text-xs px-2 py-1 rounded-full bg-[#1E1E2E] ${strategy.riskColor}`}>
-                    {strategy.riskLevel}风险
-                  </span>
-                </div>
-                <div className="text-3xl font-bold text-emerald-400 mb-4">
-                  {strategy.return30d}
-                </div>
-                <div className="flex items-center justify-between text-sm text-[#9090A0]">
-                  <span>30天收益</span>
-                  <span className="flex items-center">
-                    <Users className="w-4 h-4 mr-1" />
-                    {strategy.subscribers.toLocaleString()} 订阅
-                  </span>
-                </div>
+            {strategiesLoading ? (
+              <div className="col-span-3 flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 text-[#06B6D4] animate-spin" />
               </div>
-            ))}
+            ) : (
+              featuredStrategies.map((strategy) => {
+                const risk = getRiskDisplay(strategy.riskLevel)
+                const returnValue = formatReturn(strategy.return30d)
+                return (
+                  <div
+                    key={strategy.id}
+                    className="p-6 rounded-2xl bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] hover:border-[#06B6D4]/30 hover:shadow-[0_0_40px_rgba(6,182,212,0.1)] transition-all duration-300 group cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-[#F8F8FC]">
+                        {strategy.name}
+                      </h3>
+                      <span className={`text-xs px-2 py-1 rounded-full bg-[#1E1E2E] ${risk.color}`}>
+                        {risk.label}风险
+                      </span>
+                    </div>
+                    <div className="text-3xl font-bold text-emerald-400 mb-4">
+                      {returnValue}
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-[#9090A0]">
+                      <span>30天收益</span>
+                      <span className="flex items-center">
+                        <Users className="w-4 h-4 mr-1" />
+                        {(strategy.subscriberCount || 0).toLocaleString()} 订阅
+                      </span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
 
           <div className="text-center">
@@ -451,22 +469,22 @@ export function LandingPage({
           </div>
 
           {/* Exchange Logos */}
-          <div className="flex items-center justify-center gap-8 flex-wrap mb-12">
+          <div className="flex items-center justify-center gap-6 flex-wrap mb-12">
             <span className="text-sm text-[#606070] w-full text-center mb-4">
               支持主流交易所
             </span>
             {exchanges.map((exchange) => (
               <div
                 key={exchange.name}
-                className="w-16 h-16 rounded-xl bg-[#1E1E2E] p-3 flex items-center justify-center hover:bg-[#2A2A3A] transition-colors"
+                className="w-14 h-14 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
                 title={exchange.name}
               >
                 <Image
                   src={exchange.logo}
                   alt={exchange.name}
-                  width={40}
-                  height={40}
-                  className="opacity-70 hover:opacity-100 transition-opacity"
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
                 />
               </div>
             ))}
@@ -701,7 +719,7 @@ export function LandingPage({
                 alt="Hoot"
                 width={32}
                 height={32}
-                className="mr-2"
+                className="mr-2 object-contain"
               />
               <span className="text-xl font-bold text-[#F8F8FC]">Hoot</span>
             </div>

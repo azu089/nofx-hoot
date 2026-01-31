@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SignalJobData, TradeJobData } from '../dto/signal.dto';
+import { SignalJobData, TradeJobData, TradingConfigData } from '../dto/signal.dto';
 
 @Processor('signal')
 export class SignalProcessor extends WorkerHost {
@@ -21,7 +21,7 @@ export class SignalProcessor extends WorkerHost {
 
     this.logger.log(`处理信号分发: ${signalId} ${side} ${symbol}`);
 
-    // 查找订阅该策略的所有活跃用户
+    // 查找订阅该策略的所有活跃用户（包含交易配置）
     const subscriptions = await this.prisma.strategySubscription.findMany({
       where: {
         strategyId,
@@ -49,6 +49,19 @@ export class SignalProcessor extends WorkerHost {
         continue;
       }
 
+      // 构建交易配置
+      const tradingConfig: TradingConfigData = {
+        tradingType: (sub as any).tradingType || 'spot',
+        leverage: (sub as any).leverage || 1,
+        marginMode: (sub as any).marginMode || 'cross',
+        slippageTolerance: parseFloat(((sub as any).slippageTolerance || 0.5).toString()),
+        autoClose: (sub as any).autoClose !== false, // 默认 true
+        stopLossPercent: (sub as any).stopLossPercent ? parseFloat((sub as any).stopLossPercent.toString()) : undefined,
+        takeProfitPercent: (sub as any).takeProfitPercent ? parseFloat((sub as any).takeProfitPercent.toString()) : undefined,
+        maxRetries: (sub as any).maxRetries || 3,
+        retryDelayMs: (sub as any).retryDelayMs || 1000,
+      };
+
       const tradeJob: TradeJobData = {
         signalId,
         userId: sub.userId,
@@ -59,17 +72,18 @@ export class SignalProcessor extends WorkerHost {
         side,
         price,
         amountPerTrade: sub.amountPerTrade.toString(),
+        tradingConfig,
       };
 
       await this.tradeQueue.add('execute', tradeJob, {
-        attempts: 3,
+        attempts: tradingConfig.maxRetries,
         backoff: {
           type: 'exponential',
-          delay: 2000,
+          delay: tradingConfig.retryDelayMs,
         },
       });
 
-      this.logger.log(`已为用户 ${sub.userId} 创建交易任务`);
+      this.logger.log(`已为用户 ${sub.userId} 创建交易任务 (${tradingConfig.tradingType})`);
     }
 
     // 更新信号分发时间

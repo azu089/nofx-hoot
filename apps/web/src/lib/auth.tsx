@@ -17,6 +17,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, nickname?: string) => Promise<void>;
   logout: () => void;
+  sendVerificationCode: (email: string) => Promise<void>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -76,8 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (email: string, password: string, nickname?: string) => {
     await api.post('/auth/register', { email, password, nickname });
-    // 注册成功后自动登录
-    await login(email, password);
+    // 注册后不自动登录，需要先验证邮箱
   };
 
   const logout = () => {
@@ -87,6 +88,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+  };
+
+  const sendVerificationCode = async (email: string) => {
+    await api.post('/auth/send-verification', { email });
+  };
+
+  const verifyEmail = async (email: string, code: string) => {
+    await api.post('/auth/verify-email', { email, code });
   };
 
   return (
@@ -99,6 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        sendVerificationCode,
+        verifyEmail,
       }}
     >
       {children}

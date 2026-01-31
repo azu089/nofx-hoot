@@ -86,10 +86,8 @@ export function MobileProfileV3({
           <div className="flex items-center gap-3 mb-3">
             {/* 使用项目 Logo 作为头像 */}
             <div className="relative">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#06B6D4] to-[#0891B2] p-0.5">
-                <div className="w-full h-full rounded-full bg-[#1A1A24] flex items-center justify-center overflow-hidden">
-                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} className="rounded-full" />
-                </div>
+              <div className="w-14 h-14 rounded-full overflow-hidden">
+                <Image src="/icons/hoot/logo.png" alt="Hoot" width={56} height={56} className="w-full h-full object-contain" />
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 bg-[#06B6D4] rounded-full flex items-center justify-center">
                 <Crown className="w-2.5 h-2.5 text-[#0A0A0F]" />

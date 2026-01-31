@@ -17,7 +17,7 @@ export class ApiKeysService {
 
   // 创建 API Key
   async create(userId: string, dto: CreateApiKeyDto): Promise<ApiKeyResponse> {
-    // 加密 API Key 和 Secret
+    // 加密 API Key 和 Secret（各自独立的 IV 和 authTag）
     const encryptedKey = encrypt(dto.apiKey);
     const encryptedSecret = encrypt(dto.apiSecret);
 
@@ -28,8 +28,10 @@ export class ApiKeysService {
         label: dto.label,
         encryptedKey: encryptedKey.encryptedData,
         encryptedSecret: encryptedSecret.encryptedData,
-        iv: encryptedKey.iv, // Key 和 Secret 使用相同的 IV 存储，但实际上各自有独立的 IV
+        iv: encryptedKey.iv,
         authTag: encryptedKey.authTag,
+        secretIv: encryptedSecret.iv,
+        secretAuthTag: encryptedSecret.authTag,
       },
     });
 
@@ -111,10 +113,11 @@ export class ApiKeysService {
       authTag: record.authTag,
     });
 
+    // Secret 使用独立的 IV 和 authTag（兼容旧数据）
     const apiSecret = decrypt({
       encryptedData: record.encryptedSecret,
-      iv: record.iv,
-      authTag: record.authTag,
+      iv: record.secretIv || record.iv,
+      authTag: record.secretAuthTag || record.authTag,
     });
 
     return {

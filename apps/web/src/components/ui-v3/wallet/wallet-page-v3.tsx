@@ -128,7 +128,7 @@ const defaultExchanges: Exchange[] = [
   {
     id: '1',
     name: 'Binance',
-    icon: '/icons/exchanges/币安.png',
+    icon: '/icons/exchanges/币安.webp',
     status: 'active',
     lastUsed: '2024-01-15 14:30',
     createdAt: '2026-01-10',
@@ -140,7 +140,7 @@ const defaultExchanges: Exchange[] = [
   {
     id: '2',
     name: 'OKX',
-    icon: '/icons/exchanges/okx.png',
+    icon: '/icons/exchanges/okx.webp',
     status: 'error',
     lastUsed: '2024-01-14 09:15',
     createdAt: '2025-12-20',
@@ -154,12 +154,12 @@ const defaultExchanges: Exchange[] = [
 
 // 支持的交易所
 const supportedExchanges = [
-  { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.png', guideUrl: 'https://www.binance.com/api-management' },
-  { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.png', guideUrl: 'https://www.okx.com/account/my-api' },
-  { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.png', guideUrl: 'https://www.bybit.com/app/user/api-management' },
-  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.png', guideUrl: 'https://www.gate.io/myaccount/apikeys' },
-  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.png', guideUrl: 'https://www.bitget.com/api' },
-  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.png', guideUrl: 'https://www.coinbase.com/settings/api' },
+  { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
+  { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.webp', guideUrl: 'https://www.okx.com/account/my-api' },
+  { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.webp', guideUrl: 'https://www.bybit.com/app/user/api-management' },
+  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.webp', guideUrl: 'https://www.gate.io/myaccount/apikeys' },
+  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.webp', guideUrl: 'https://www.bitget.com/api' },
+  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp', guideUrl: 'https://www.coinbase.com/settings/api' },
 ]
 
 const defaultTransactions: Transaction[] = [

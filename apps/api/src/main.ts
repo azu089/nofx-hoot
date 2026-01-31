@@ -11,9 +11,16 @@ async function bootstrap() {
   // 全局前缀
   app.setGlobalPrefix('api');
 
-  // CORS
+  // CORS - 开发环境允许所有 localhost 端口
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      // 允许所有 localhost 端口（开发环境）
+      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   });
 

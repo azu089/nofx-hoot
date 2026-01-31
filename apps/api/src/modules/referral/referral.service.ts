@@ -158,7 +158,7 @@ export class ReferralService {
       result.push({
         id: invitee.id,
         nickname: invitee.nickname || '未设置',
-        email: this.maskEmail(invitee.email),
+        email: invitee.email ? this.maskEmail(invitee.email) : 'TG用户',
         createdAt: invitee.createdAt,
         totalContribution: contribution._sum.amount?.toString() || '0',
       });

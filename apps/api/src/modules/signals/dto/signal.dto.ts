@@ -38,6 +38,19 @@ export interface SignalJobData {
   price: string;
 }
 
+// 交易配置（从订阅继承）
+export interface TradingConfigData {
+  tradingType: 'spot' | 'futures';
+  leverage: number;
+  marginMode: 'cross' | 'isolated';
+  slippageTolerance: number;
+  autoClose: boolean;
+  stopLossPercent?: number;
+  takeProfitPercent?: number;
+  maxRetries: number;
+  retryDelayMs: number;
+}
+
 // 交易任务数据
 export interface TradeJobData {
   signalId: string;
@@ -49,4 +62,6 @@ export interface TradeJobData {
   side: 'buy' | 'sell';
   price: string;
   amountPerTrade: string;
+  // 新增交易配置
+  tradingConfig: TradingConfigData;
 }

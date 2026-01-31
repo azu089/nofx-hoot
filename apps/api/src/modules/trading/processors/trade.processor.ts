@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { TradingService } from '../trading.service';
+import { TradingService, TradingConfig } from '../trading.service';
 import { RiskControlService } from '../risk-control.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TradeJobData } from '../../signals/dto/signal.dto';
@@ -33,97 +33,53 @@ export class TradeProcessor extends WorkerHost {
       side,
       price,
       amountPerTrade,
+      tradingConfig,
     } = job.data;
 
+    // 构建 TradingService 需要的配置
+    const config: TradingConfig = {
+      tradingType: tradingConfig?.tradingType || 'spot',
+      leverage: tradingConfig?.leverage || 1,
+      marginMode: tradingConfig?.marginMode || 'cross',
+      slippageTolerance: tradingConfig?.slippageTolerance || 0.5,
+      maxRetries: tradingConfig?.maxRetries || 3,
+      retryDelayMs: tradingConfig?.retryDelayMs || 1000,
+    };
+
     this.logger.log(
-      `执行交易任务: 用户 ${userId} ${side} ${symbol} @ ${price}`,
+      `执行交易任务: 用户 ${userId} ${side} ${symbol} @ ${price} (${config.tradingType})`,
     );
 
     try {
-      const requiredAmount = parseFloat(amountPerTrade);
-
-      // 执行全面风控检查
-      const riskCheck = await this.riskControlService.check(
-        userId,
-        apiKeyId,
-        symbol,
-        requiredAmount,
-      );
-
-      if (!riskCheck.allowed) {
-        this.logger.warn(
-          `用户 ${userId} 风控检查未通过: ${riskCheck.reason}`,
-        );
-
-        // 记录风控拒绝日志
-        await this.riskControlService.logRejection(
+      // 根据信号类型决定操作
+      if (side === 'sell') {
+        // 卖出信号 = 平仓
+        return await this.handleSellSignal(
           userId,
+          apiKeyId,
           signalId,
-          riskCheck.reason || 'unknown',
-          riskCheck.details || {},
-        );
-
-        // 发送交易失败通知
-        await this.sendTradeFailedNotification(
-          userId,
-          symbol,
-          side,
-          this.getRiskReasonMessage(riskCheck.reason, riskCheck.details),
-        );
-
-        return {
-          success: false,
-          error: riskCheck.reason,
-        };
-      }
-
-      // 执行交易
-      const result = await this.tradingService.executeOrder(
-        userId,
-        apiKeyId,
-        symbol,
-        side,
-        requiredAmount,
-      );
-
-      // 创建持仓记录
-      const position = await this.prisma.position.create({
-        data: {
-          userId,
           exchange,
           symbol,
-          side: side === 'buy' ? 'long' : 'short',
-          entryPrice: new Decimal(result.price),
-          amount: new Decimal(result.amount),
-          exchangeOrderId: result.orderId,
-          status: 'open',
+          config,
+          tradingConfig?.autoClose !== false,
+        );
+      } else {
+        // 买入信号 = 开仓
+        return await this.handleBuySignal(
+          userId,
+          apiKeyId,
           signalId,
-        },
-      });
-
-      this.logger.log(
-        `交易成功: 用户 ${userId} 持仓 ${position.id}`,
-      );
-
-      // 发送开仓成功通知
-      await this.notificationsService.notifyPositionOpened(
-        userId,
-        symbol,
-        side === 'buy' ? 'long' : 'short',
-        result.price.toString(),
-      );
-
-      return {
-        success: true,
-        positionId: position.id,
-      };
+          exchange,
+          symbol,
+          price,
+          parseFloat(amountPerTrade),
+          config,
+        );
+      }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : '未知错误';
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
 
-      this.logger.error(
-        `交易失败: 用户 ${userId} - ${errorMessage}`,
-      );
+      this.logger.error(`交易失败: 用户 ${userId} - ${errorMessage}`);
 
       // 记录失败的持仓
       await this.prisma.position.create({
@@ -147,6 +103,164 @@ export class TradeProcessor extends WorkerHost {
         error: errorMessage,
       };
     }
+  }
+
+  // 处理买入信号（开仓）
+  private async handleBuySignal(
+    userId: string,
+    apiKeyId: string,
+    signalId: string,
+    exchange: string,
+    symbol: string,
+    price: string,
+    requiredAmount: number,
+    config: TradingConfig,
+  ): Promise<{ success: boolean; positionId?: string; error?: string }> {
+    // 执行全面风控检查
+    const riskCheck = await this.riskControlService.check(
+      userId,
+      apiKeyId,
+      symbol,
+      requiredAmount,
+    );
+
+    if (!riskCheck.allowed) {
+      this.logger.warn(`用户 ${userId} 风控检查未通过: ${riskCheck.reason}`);
+
+      await this.riskControlService.logRejection(
+        userId,
+        signalId,
+        riskCheck.reason || 'unknown',
+        riskCheck.details || {},
+      );
+
+      await this.sendTradeFailedNotification(
+        userId,
+        symbol,
+        'buy',
+        this.getRiskReasonMessage(riskCheck.reason, riskCheck.details),
+      );
+
+      return { success: false, error: riskCheck.reason };
+    }
+
+    // 执行交易
+    const result = await this.tradingService.executeOrder(
+      userId,
+      apiKeyId,
+      symbol,
+      'buy',
+      requiredAmount,
+      config,
+    );
+
+    // 创建持仓记录
+    const position = await this.prisma.position.create({
+      data: {
+        userId,
+        exchange,
+        symbol,
+        side: 'long',
+        entryPrice: new Decimal(result.price),
+        amount: new Decimal(result.amount),
+        exchangeOrderId: result.orderId,
+        status: 'open',
+        signalId,
+      },
+    });
+
+    this.logger.log(`开仓成功: 用户 ${userId} 持仓 ${position.id}`);
+
+    await this.notificationsService.notifyPositionOpened(
+      userId,
+      symbol,
+      'long',
+      result.price.toString(),
+    );
+
+    return { success: true, positionId: position.id };
+  }
+
+  // 处理卖出信号（平仓）
+  private async handleSellSignal(
+    userId: string,
+    apiKeyId: string,
+    signalId: string,
+    exchange: string,
+    symbol: string,
+    config: TradingConfig,
+    autoClose: boolean,
+  ): Promise<{ success: boolean; positionId?: string; error?: string }> {
+    // 如果不启用自动平仓，跳过
+    if (!autoClose) {
+      this.logger.log(`用户 ${userId} 未启用自动平仓，跳过卖出信号`);
+      return { success: true, error: 'auto_close_disabled' };
+    }
+
+    // 查找该用户该币种的开放持仓
+    const openPosition = await this.prisma.position.findFirst({
+      where: {
+        userId,
+        symbol,
+        status: 'open',
+      },
+    });
+
+    if (!openPosition) {
+      this.logger.log(`用户 ${userId} 没有 ${symbol} 持仓，跳过平仓`);
+      return { success: true, error: 'no_position_to_close' };
+    }
+
+    this.logger.log(
+      `自动平仓: 用户 ${userId} 持仓 ${openPosition.id} ${symbol}`,
+    );
+
+    // 执行平仓
+    const result = await this.tradingService.closePosition(
+      userId,
+      apiKeyId,
+      symbol,
+      parseFloat(openPosition.amount.toString()),
+      openPosition.side as 'long' | 'short',
+      config,
+    );
+
+    // 计算盈亏
+    const entryPrice = new Decimal(openPosition.entryPrice.toString());
+    const closePrice = new Decimal(result.price);
+    const amount = new Decimal(openPosition.amount.toString());
+
+    let pnl: Decimal;
+    if (openPosition.side === 'long') {
+      pnl = closePrice.minus(entryPrice).times(amount);
+    } else {
+      pnl = entryPrice.minus(closePrice).times(amount);
+    }
+
+    // 更新持仓状态
+    await this.prisma.position.update({
+      where: { id: openPosition.id },
+      data: {
+        status: 'closed',
+        closedAt: new Date(),
+        closePrice: closePrice,
+        pnl: pnl,
+      },
+    });
+
+    this.logger.log(
+      `平仓成功: 持仓 ${openPosition.id} PnL: ${pnl.toString()}`,
+    );
+
+    // 发送平仓通知
+    await this.notificationsService.notifyPositionClosed(
+      userId,
+      symbol,
+      closePrice.toString(),
+      pnl.toString(),
+    );
+
+    return { success: true, positionId: openPosition.id };
   }
 
   // 发送交易失败通知

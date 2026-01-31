@@ -99,3 +99,134 @@ export class WithdrawListDto extends PaginationDto {
   @IsEnum(['pending', 'approved', 'rejected', 'completed'])
   status?: string;
 }
+
+// ==================== 交易配置管理 ====================
+
+import {
+  IsNumber,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
+
+// 更新平台配置
+export class UpdatePlatformConfigDto {
+  // 全局开关
+  @IsOptional()
+  @IsBoolean()
+  tradingEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  newOrdersEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  spotEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  futuresEnabled?: boolean;
+
+  // 全局限制
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxOrderAmountUsdt?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  minOrderAmountUsdt?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(125)
+  maxLeverage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  maxPositions?: number;
+
+  // 交易对限制
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  allowedSymbols?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  blockedSymbols?: string[];
+}
+
+// 更新市场状态配置
+export class UpdateMarketStatusConfigDto {
+  @IsOptional()
+  @IsNumber()
+  maxVolatility24h?: number;
+
+  @IsOptional()
+  @IsNumber()
+  priceDeviationThreshold?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  extremeMarketProtection?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  autoSuspendOnExtreme?: boolean;
+}
+
+// 更新熔断器配置
+export class UpdateCircuitBreakerConfigDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  errorThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1000)
+  windowMs?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1000)
+  cooldownMs?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  halfOpenRequests?: number;
+}
+
+// 手动暂停交易对
+export class SuspendTradingDto {
+  @IsString()
+  symbol: string;
+
+  @IsString()
+  exchange: string;
+
+  @IsString()
+  reason: string;
+}
+
+// 恢复交易对
+export class ResumeTradingDto {
+  @IsString()
+  symbol: string;
+
+  @IsString()
+  exchange: string;
+}

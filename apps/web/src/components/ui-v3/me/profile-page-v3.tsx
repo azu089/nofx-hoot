@@ -169,10 +169,8 @@ export function ProfilePageV3({
           <div className="flex items-center gap-4">
             {/* Avatar */}
             <div className="relative flex-shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#06B6D4] to-[#0891B2] p-0.5 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                <div className="w-full h-full rounded-full bg-[#1A1A24] flex items-center justify-center overflow-hidden">
-                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={56} height={56} className="rounded-full object-cover" />
-                </div>
+              <div className="w-16 h-16 rounded-full overflow-hidden">
+                <Image src="/icons/hoot/logo.png" alt="Hoot" width={64} height={64} className="w-full h-full object-contain" />
               </div>
             </div>
 

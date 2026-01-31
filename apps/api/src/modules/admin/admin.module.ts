@@ -1,14 +1,65 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit, Global } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
+import { AdminAuthController } from './admin-auth.controller';
 import { AdminService } from './admin.service';
+import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './guards/admin.guard';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { StakingModule } from '../staking/staking.module';
+import { TradingModule } from '../trading/trading.module';
 
+// 新增的管理服务
+import { AdminFinanceService } from './services/admin-finance.service';
+import { AdminStatsService } from './services/admin-stats.service';
+import { AdminAgentService } from './services/admin-agent.service';
+import { AdminStakingService } from './services/admin-staking.service';
+import { AdminTokenService } from './services/admin-token.service';
+import { AdminReferralService } from './services/admin-referral.service';
+
+@Global() // 设置为全局模块，其他模块可以直接使用 AdminGuard
 @Module({
-  imports: [PrismaModule, StakingModule],
-  controllers: [AdminController],
-  providers: [AdminService, AdminGuard],
-  exports: [AdminService],
+  imports: [
+    PrismaModule,
+    StakingModule,
+    TradingModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'hoot-admin-secret-key-2026',
+      signOptions: { expiresIn: '24h' } as const,
+    }),
+  ],
+  controllers: [AdminController, AdminAuthController],
+  providers: [
+    AdminService,
+    AdminAuthService,
+    AdminGuard,
+    // 新增服务
+    AdminFinanceService,
+    AdminStatsService,
+    AdminAgentService,
+    AdminStakingService,
+    AdminTokenService,
+    AdminReferralService,
+  ],
+  exports: [
+    AdminService,
+    AdminAuthService,
+    AdminGuard,
+    JwtModule,
+    // 导出新服务
+    AdminFinanceService,
+    AdminStatsService,
+    AdminAgentService,
+    AdminStakingService,
+    AdminTokenService,
+    AdminReferralService,
+  ],
 })
-export class AdminModule {}
+export class AdminModule implements OnModuleInit {
+  constructor(private adminAuthService: AdminAuthService) {}
+
+  async onModuleInit() {
+    // 启动时初始化默认管理员
+    await this.adminAuthService.initDefaultAdmin();
+  }
+}

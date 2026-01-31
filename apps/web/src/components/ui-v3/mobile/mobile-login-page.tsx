@@ -3,7 +3,8 @@
 import React from "react"
 
 import { useState } from 'react'
-import { Mail, Lock, Eye, EyeOff, Wallet, Zap } from 'lucide-react'
+import Image from 'next/image'
+import { Mail, Lock, Eye, EyeOff, Wallet } from 'lucide-react'
 
 interface MobileLoginPageProps {
   onLogin?: (email: string, password: string) => Promise<void> | void
@@ -61,14 +62,21 @@ export function MobileLoginPage({
 
       {/* 毛玻璃登录卡片 */}
       <div className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden z-10">
-        {/* 顶部渐变高光线 */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
         {/* Logo区域 */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#06B6D4] to-[#0891B2] flex items-center justify-center mb-4 shadow-lg shadow-[#06B6D4]/20">
-            <Zap className="w-8 h-8 text-[#0A0A0F]" />
+          <div className="mb-4">
+            <div className="w-24 h-24">
+              <Image
+                src="/icons/hoot/logo.png?v=2"
+                alt="HOOT"
+                width={96}
+                height={96}
+                className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                unoptimized
+              />
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">Hoot</h1>
+          <h1 className="text-3xl font-bold text-white">HOOT</h1>
         </div>
 
         {/* 登录表单 */}
@@ -78,18 +86,20 @@ export function MobileLoginPage({
             <label htmlFor="email" className="sr-only">
               邮箱地址
             </label>
-            <div className="glass-border-glow relative rounded-xl overflow-hidden">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                aria-label="邮箱地址"
-                className="w-full bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                required
-              />
+            <div className="glass-border-glow rounded-xl overflow-hidden">
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  aria-label="邮箱地址"
+                  className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  required
+                />
+              </div>
             </div>
           </div>
 
@@ -98,31 +108,33 @@ export function MobileLoginPage({
             <label htmlFor="password" className="sr-only">
               密码
             </label>
-            <div className="glass-border-glow relative rounded-xl overflow-hidden">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                aria-label="密码"
-                className="w-full bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                title={showPassword ? '隐藏密码' : '显示密码'}
-                aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
-              >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
+            <div className="glass-border-glow rounded-xl overflow-hidden">
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  aria-label="密码"
+                  className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? '隐藏密码' : '显示密码'}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -159,17 +171,19 @@ export function MobileLoginPage({
         </div>
 
         {/* 钱包登录按钮 */}
-        <button
-          type="button"
-          onClick={handleWalletConnect}
-          disabled={isWalletLoading}
-          title="钱包登录"
-          aria-label="钱包登录"
-          className="w-full border-2 border-[#1E1E2E] text-white font-semibold py-3.5 rounded-xl hover:border-[#06B6D4] hover:bg-[#06B6D4]/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Wallet className="w-5 h-5" />
-          {isWalletLoading ? '连接中...' : '钱包登录'}
-        </button>
+        <div className="glass-border-glow rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={handleWalletConnect}
+            disabled={isWalletLoading}
+            title="钱包登录"
+            aria-label="钱包登录"
+            className="w-full border border-cyan-500/20 bg-[#1A1A24] text-white font-semibold py-3.5 rounded-xl hover:bg-[#1E1E2E] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Wallet className="w-5 h-5" />
+            {isWalletLoading ? '连接中...' : '钱包登录'}
+          </button>
+        </div>
 
         {/* 底部注册链接 */}
         <div className="mt-6 text-center text-sm">

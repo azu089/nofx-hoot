@@ -1,0 +1,255 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import Image from 'next/image'
+import { X, Loader2, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react'
+import { useWallet, formatAddress } from '@/hooks/useWallet'
+
+interface WalletOption {
+  id: string
+  name: string
+  icon: string
+  description: string
+  popular?: boolean
+}
+
+const walletOptions: WalletOption[] = [
+  {
+    id: 'metamask',
+    name: 'MetaMask',
+    icon: '/icons/wallets/metamask.svg',
+    description: '最流行的浏览器钱包',
+    popular: true,
+  },
+  {
+    id: 'walletconnect',
+    name: 'WalletConnect',
+    icon: '/icons/wallets/walletconnect.svg',
+    description: '支持 100+ 手机钱包',
+    popular: true,
+  },
+  {
+    id: 'coinbase',
+    name: 'Coinbase Wallet',
+    icon: '/icons/wallets/coinbase.png',
+    description: 'Coinbase 官方钱包',
+  },
+  {
+    id: 'okx',
+    name: 'OKX Wallet',
+    icon: '/icons/wallets/okx.png',
+    description: 'OKX 官方 Web3 钱包',
+  },
+  {
+    id: 'trust',
+    name: 'Trust Wallet',
+    icon: '/icons/wallets/trust.svg',
+    description: '多链支持移动钱包',
+  },
+  {
+    id: 'bitget',
+    name: 'Bitget Wallet',
+    icon: '/icons/wallets/bitget.png',
+    description: 'Bitget 官方钱包',
+  },
+]
+
+interface WalletConnectModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onConnect?: (walletId: string) => Promise<void>
+  onSuccess?: (address: string) => void
+  mode?: 'login' | 'register'
+}
+
+export function WalletConnectModal({
+  isOpen,
+  onClose,
+  onConnect,
+  onSuccess,
+  mode = 'login',
+}: WalletConnectModalProps) {
+  const [connectingWallet, setConnectingWallet] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const { connectWallet, isConnected, address, error: walletError, isConnecting } = useWallet()
+
+  // 连接成功后回调
+  useEffect(() => {
+    if (isConnected && address && connectingWallet) {
+      onSuccess?.(address)
+      setConnectingWallet(null)
+      onClose()
+    }
+  }, [isConnected, address, connectingWallet, onSuccess, onClose])
+
+  if (!isOpen) return null
+
+  const error = localError || walletError
+
+  const handleConnect = async (walletId: string) => {
+    setConnectingWallet(walletId)
+    setLocalError(null)
+
+    try {
+      // 如果提供了外部 onConnect，使用它
+      if (onConnect) {
+        await onConnect(walletId)
+        onClose()
+      } else {
+        // 使用 wagmi 连接
+        await connectWallet(walletId)
+      }
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : '连接失败，请重试')
+      setConnectingWallet(null)
+    }
+  }
+
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose()
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={handleBackdropClick}
+    >
+      {/* Modal Container */}
+      <div className="relative w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+        {/* Glass Card */}
+        <div className="glass-border-glow relative bg-[#12121A]/80 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+          {/* Top gradient highlight line */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
+
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-[#1E1E2E]">
+            <div>
+              <h2 className="text-xl font-bold text-[#F8F8FC]">
+                {mode === 'login' ? '钱包登录' : '钱包注册'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-[#1A1A24] transition-colors"
+              title="关闭"
+              aria-label="关闭"
+            >
+              <X className="w-5 h-5 text-[#9090A0]" />
+            </button>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mx-6 mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
+          )}
+
+          {/* Wallet List */}
+          <div className="p-6 space-y-3 max-h-[400px] overflow-y-auto">
+            {/* Popular Wallets */}
+            <div className="text-xs text-[#606070] uppercase tracking-wider mb-3">
+              热门钱包
+            </div>
+            {walletOptions
+              .filter((w) => w.popular)
+              .map((wallet) => (
+                <WalletButton
+                  key={wallet.id}
+                  wallet={wallet}
+                  isConnecting={connectingWallet === wallet.id}
+                  disabled={connectingWallet !== null}
+                  onClick={() => handleConnect(wallet.id)}
+                />
+              ))}
+
+            {/* Other Wallets */}
+            <div className="text-xs text-[#606070] uppercase tracking-wider mb-3 mt-6">
+              更多钱包
+            </div>
+            {walletOptions
+              .filter((w) => !w.popular)
+              .map((wallet) => (
+                <WalletButton
+                  key={wallet.id}
+                  wallet={wallet}
+                  isConnecting={connectingWallet === wallet.id}
+                  disabled={connectingWallet !== null}
+                  onClick={() => handleConnect(wallet.id)}
+                />
+              ))}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 pb-6">
+            <p className="text-xs text-center text-[#606070]">
+              连接钱包即表示您同意我们的
+              <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                服务条款
+              </button>
+              和
+              <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                隐私政策
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface WalletButtonProps {
+  wallet: WalletOption
+  isConnecting: boolean
+  disabled: boolean
+  onClick: () => void
+}
+
+function WalletButton({
+  wallet,
+  isConnecting,
+  disabled,
+  onClick,
+}: WalletButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full p-4 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-cyan-500/[0.08] hover:border-cyan-500/20 rounded-xl transition-all duration-200 flex items-center gap-4 group disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {/* Wallet Icon */}
+      <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-[#12121A]">
+        <Image
+          src={wallet.icon}
+          alt={wallet.name}
+          width={48}
+          height={48}
+          className="w-full h-full object-contain"
+        />
+      </div>
+
+      {/* Wallet Info */}
+      <div className="flex-1 text-left">
+        <div className="font-semibold text-[#F8F8FC] group-hover:text-cyan-400 transition-colors">
+          {wallet.name}
+        </div>
+        <div className="text-sm text-[#9090A0]">{wallet.description}</div>
+      </div>
+
+      {/* Action */}
+      <div className="flex-shrink-0">
+        {isConnecting ? (
+          <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+        ) : (
+          <ChevronRight className="w-5 h-5 text-[#606070] group-hover:text-cyan-400 transition-colors" />
+        )}
+      </div>
+    </button>
+  )
+}

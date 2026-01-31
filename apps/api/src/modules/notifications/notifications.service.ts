@@ -143,9 +143,32 @@ export class NotificationsService {
       return;
     }
 
-    // TODO: 调用 Telegram Bot API 发送消息
-    // 这里可以通过 HTTP 调用 telegram-bot 服务，或使用消息队列
-    this.logger.log(`Telegram 推送给 ${user.telegramId}: ${title}`);
+    // 调用 TG Bot HTTP API 发送消息
+    const tgBotApiUrl = process.env.TG_BOT_API_URL || 'http://localhost:4002';
+
+    try {
+      const response = await fetch(`${tgBotApiUrl}/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          telegramId: user.telegramId,
+          title,
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'TG Bot API 调用失败');
+      }
+
+      this.logger.log(`Telegram 推送成功: ${user.telegramId} - ${title}`);
+    } catch (error) {
+      this.logger.error(`Telegram 推送失败: ${error.message}`);
+      // 不抛出异常，避免影响其他通知渠道
+    }
   }
 
   // 邮件推送
@@ -252,6 +275,30 @@ export class NotificationsService {
 
   // ==================== 便捷方法 ====================
 
+  // 通用发送通知（风控服务使用）
+  async sendNotification(
+    userId: string,
+    notification: {
+      type: string;
+      title: string;
+      body: string;
+      data?: Record<string, any>;
+    },
+  ): Promise<void> {
+    // 将 type 映射到 NotificationType 枚举，或使用系统公告类型
+    const notificationType = Object.values(NotificationType).includes(notification.type as NotificationType)
+      ? (notification.type as NotificationType)
+      : NotificationType.SYSTEM_ANNOUNCEMENT;
+
+    await this.send({
+      userId,
+      type: notificationType,
+      title: notification.title,
+      message: notification.body,
+      data: notification.data,
+    });
+  }
+
   // 发送信号通知
   async notifySignalReceived(
     userId: string,
@@ -289,14 +336,19 @@ export class NotificationsService {
   async notifyPositionClosed(
     userId: string,
     symbol: string,
+    closePrice: string,
     pnl: string,
   ): Promise<void> {
+    const pnlNum = parseFloat(pnl);
+    const pnlEmoji = pnlNum >= 0 ? '📈' : '📉';
+    const pnlSign = pnlNum >= 0 ? '+' : '';
+
     await this.send({
       userId,
       type: NotificationType.POSITION_CLOSED,
-      title: '📈 平仓完成',
+      title: `${pnlEmoji} 平仓完成`,
       message: '',
-      data: { symbol, pnl },
+      data: { symbol, closePrice, pnl: `${pnlSign}${pnl}` },
     });
   }
 

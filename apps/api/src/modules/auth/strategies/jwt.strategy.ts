@@ -5,7 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface JwtPayload {
   sub: string; // userId
-  email: string;
+  email?: string; // 可选：钱包/TG 登录用户可能无邮箱
 }
 
 @Injectable()

@@ -84,17 +84,15 @@ export function MobileAboutPage({ onBack }: MobileAboutPageProps) {
         {/* Logo 卡片 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-6">
           <div className="flex flex-col items-center text-center space-y-3">
-            {/* Logo with Glow */}
-            <div className="relative">
-              <div className="absolute inset-0 bg-cyan-500 rounded-2xl blur-xl opacity-30" />
-              <div className="relative w-20 h-20 rounded-2xl overflow-hidden">
-                <Image
-                  src="/icons/hoot/logo.png"
-                  alt="Hoot Logo"
-                  fill
-                  className="object-contain"
-                />
-              </div>
+            {/* Logo */}
+            <div className="w-20 h-20">
+              <Image
+                src="/icons/hoot/logo.png"
+                alt="Hoot Logo"
+                width={80}
+                height={80}
+                className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+              />
             </div>
 
             {/* App 名称和标语 */}

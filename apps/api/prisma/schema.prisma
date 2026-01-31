@@ -15,9 +15,14 @@ datasource db {
 // 用户
 model User {
   id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
+  email     String?  @unique  // 可选：邮箱登录用户必填，钱包/TG登录用户可选
+  password  String?           // 可选：邮箱登录用户必填，钱包/TG登录用户无需密码
   nickname  String?
+
+  // 邮箱验证
+  emailVerified Boolean @default(false) @map("email_verified")
+  verificationCode String? @map("verification_code")
+  verificationExpiry DateTime? @map("verification_expiry")
 
   // 管理员标识
   isAdmin Boolean @default(false) @map("is_admin")
@@ -25,6 +30,15 @@ model User {
   // 余额 (平台内部余额，非交易所余额)
   usdtBalance Decimal @default(0) @db.Decimal(18, 8) @map("usdt_balance")
   hootBalance Decimal @default(0) @db.Decimal(18, 8) @map("hoot_balance")
+  pointBalance Decimal @default(0) @db.Decimal(18, 8) @map("point_balance") // 点卡余额（1:1 USDT）
+
+  // 账户状态
+  status String @default("active") // active, frozen, banned
+
+  // HOOT 空投余额（Vesting 机制）
+  lockedBalance    Decimal @default(0) @db.Decimal(18, 8) @map("locked_balance")    // 锁定中（释放中）
+  availableBalance Decimal @default(0) @db.Decimal(18, 8) @map("available_balance") // 可用（可提取）
+  lastVestingAt    DateTime? @map("last_vesting_at")  // 上次释放时间
 
   // 邀请关系
   inviteCode    String?  @unique @map("invite_code")
@@ -36,8 +50,15 @@ model User {
   telegramId    String?  @unique @map("telegram_id")
   telegramUsername String? @map("telegram_username")
 
+  // 钱包绑定 (Web3 登录)
+  walletAddress String? @unique @map("wallet_address")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 代理商关联（如果用户是代理商的下级）
+  agentId String? @map("agent_id")
+  agent   Agent?  @relation("AgentUsers", fields: [agentId], references: [id])
 
   // 关系
   apiKeys            ApiKey[]
@@ -49,8 +70,83 @@ model User {
   referralRewards    ReferralReward[]
   stakingRecords     StakingRecord[]
   notifications      Notification[]
+  tradingConfig      UserTradingConfig?
+  airdrops           Airdrop[]
+  pointCardRecords   PointCardRecord[]
+  gasFeeRecords      GasFeeRecord[]
 
+  @@index([status])
+  @@index([agentId])
   @@map("users")
+}
+
+// ========== 空投系统 ==========
+
+// 空投记录（链下代币）
+model Airdrop {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+
+  // 空投类型: register, bind_tg, referral, trading_profit, checkin
+  type        String
+  amount      Decimal  @db.Decimal(18, 8)  // 空投数量
+  balance     Decimal  @db.Decimal(18, 8)  // 空投后总余额
+
+  // 来源信息
+  source      String?  // 来源说明（如：邀请人ID，交易ID等）
+  sourceId    String?  @map("source_id") // 关联记录ID
+
+  // Vesting 释放
+  vestingDays   Int      @default(30) @map("vesting_days")  // 释放天数
+  vestingStart  DateTime @default(now()) @map("vesting_start")  // 开始释放时间
+  releasedAmount Decimal @default(0) @db.Decimal(18, 8) @map("released_amount") // 已释放数量
+
+  // 状态: pending, confirmed, vesting, completed, cancelled
+  status      String   @default("pending")
+  txHash      String?  @map("tx_hash") // 上链后的交易哈希
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  confirmedAt DateTime? @map("confirmed_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([type])
+  @@map("airdrops")
+}
+
+// 账户绑定码（用于跨登录方式账户绑定）
+model BindingCode {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+
+  code      String   @unique  // 6位绑定码
+  type      String   // telegram, wallet, email
+  expiresAt DateTime @map("expires_at")  // 5分钟有效期
+  used      Boolean  @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([code, type])
+  @@map("binding_codes")
+}
+
+// 签到记录
+model CheckinRecord {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+
+  date        DateTime @db.Date  // 签到日期
+  streak      Int      @default(1) // 连续签到天数
+  reward      Decimal  @db.Decimal(18, 8)  // 获得的 HOOT 奖励
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@map("checkin_records")
 }
 
 // 交易所 API Key (核心)
@@ -67,6 +163,8 @@ model ApiKey {
   encryptedSecret String @map("encrypted_secret")
   iv              String
   authTag         String @map("auth_tag")
+  secretIv        String? @map("secret_iv")
+  secretAuthTag   String? @map("secret_auth_tag")
 
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
@@ -81,8 +179,26 @@ model Strategy {
   description String
   freqtradeId String  @unique @map("freqtrade_id") // 对应 Freqtrade 策略名
 
+  // 展示信息
+  imageUrl    String? @map("image_url")  // 策略图标
+  riskLevel   String  @default("medium") @map("risk_level") // low, medium, high
+  tags        String[] @default([])  // 标签：AI, 趋势, 网格等
+
+  // 收益统计（定期计算更新）
+  return7d    Decimal? @db.Decimal(10, 4) @map("return_7d")   // 7天收益率
+  return30d   Decimal? @db.Decimal(10, 4) @map("return_30d")  // 30天收益率
+  return90d   Decimal? @db.Decimal(10, 4) @map("return_90d")  // 90天收益率
+  maxDrawdown Decimal? @db.Decimal(10, 4) @map("max_drawdown") // 最大回撤
+  winRate     Decimal? @db.Decimal(5, 2) @map("win_rate")     // 胜率
+  totalTrades Int      @default(0) @map("total_trades")       // 总交易次数
+
+  // 是否在首页展示
+  isFeatured  Boolean @default(false) @map("is_featured")
+  sortOrder   Int     @default(0) @map("sort_order")  // 排序权重
+
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   subscriptions StrategySubscription[]
   signals       Signal[]
@@ -98,13 +214,60 @@ model StrategySubscription {
   strategyId String   @map("strategy_id")
   strategy   Strategy @relation(fields: [strategyId], references: [id])
 
-  // 用户配置
+  // === 基础配置 ===
   apiKeyId       String  @map("api_key_id") // 使用哪个 API Key
   amountPerTrade Decimal @db.Decimal(18, 8) @map("amount_per_trade") // 每单金额
   maxPositions   Int     @default(3) @map("max_positions")
 
+  // === 交易类型配置 ===
+  tradingType    String  @default("spot") @map("trading_type") // spot, futures
+  leverage       Int     @default(1) // 杠杆倍数（合约专用）
+  marginMode     String  @default("cross") @map("margin_mode") // cross, isolated（合约专用）
+  direction      String  @default("both") // long, short, both（策略方向）
+
+  // === 交易对配置 ===
+  tradingPairs   String[] @default([]) @map("trading_pairs") // 交易对列表，空=跟随策略
+
+  // === 基础风控 ===
+  slippageTolerance Decimal @default(0.5) @db.Decimal(5, 2) @map("slippage_tolerance") // 滑点容忍度(%)
+  autoClose         Boolean @default(true) @map("auto_close") // 收到卖出信号自动平仓
+  stopLossPercent   Decimal? @db.Decimal(5, 2) @map("stop_loss_percent") // 止损百分比
+  takeProfitPercent Decimal? @db.Decimal(5, 2) @map("take_profit_percent") // 止盈百分比
+
+  // === 移动止损 ===
+  trailingStopEnabled    Boolean @default(false) @map("trailing_stop_enabled")
+  trailingStopActivation Decimal? @db.Decimal(5, 2) @map("trailing_stop_activation") // 激活盈利(%)
+  trailingStopCallback   Decimal? @db.Decimal(5, 2) @map("trailing_stop_callback") // 回撤比例(%)
+
+  // === DCA 补仓配置 ===
+  dcaEnabled    Boolean @default(false) @map("dca_enabled")
+  dcaMaxCount   Int     @default(3) @map("dca_max_count") // 最大补仓次数
+  dcaTrigger    Decimal @default(5) @db.Decimal(5, 2) @map("dca_trigger") // 触发跌幅(%)
+  dcaMultiplier Decimal @default(1.5) @db.Decimal(5, 2) @map("dca_multiplier") // 补仓倍率
+
+  // === 防瀑布保护 ===
+  waterfallProtection       Boolean @default(true) @map("waterfall_protection")
+  waterfallTriggerPercent   Decimal @default(15) @db.Decimal(5, 2) @map("waterfall_trigger_percent") // 触发跌幅(%)
+
+  // === 黑天鹅保护 ===
+  blackSwanProtection Boolean @default(false) @map("black_swan_protection")
+  blackSwanType       String  @default("account_loss") @map("black_swan_type") // account_loss, coin_drop
+  blackSwanTrigger    Decimal @default(10) @db.Decimal(5, 2) @map("black_swan_trigger") // 触发阈值(%)
+  blackSwanAction     String  @default("close_all") @map("black_swan_action") // close_all, close_half, pause
+
+  // === 单日亏损限制 ===
+  dailyMaxLossEnabled Boolean @default(false) @map("daily_max_loss_enabled")
+  dailyMaxLossPercent Decimal @default(20) @db.Decimal(5, 2) @map("daily_max_loss_percent") // 单日最大亏损(%)
+
+  // === 重试配置 ===
+  maxRetries     Int @default(3) @map("max_retries") // 最大重试次数
+  retryDelayMs   Int @default(1000) @map("retry_delay_ms") // 重试间隔(ms)
+
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
+
+  // 关系
+  positions Position[]
 
   @@unique([userId, strategyId])
   @@map("strategy_subscriptions")
@@ -185,15 +348,28 @@ model Position {
   // 交易所返回的订单ID
   exchangeOrderId String? @map("exchange_order_id")
 
-  status     String    @default("open") // open, closed, failed
-  closedAt   DateTime? @map("closed_at")
-  closePrice Decimal?  @db.Decimal(18, 8) @map("close_price")
-  pnl        Decimal?  @db.Decimal(18, 8)
+  // 关联
+  apiKeyId       String? @map("api_key_id")
+  subscriptionId String? @map("subscription_id")
+  subscription   StrategySubscription? @relation(fields: [subscriptionId], references: [id])
+  signalId       String? @map("signal_id")
 
-  signalId String? @map("signal_id")
+  status      String    @default("open") // open, closed, failed
+  closedAt    DateTime? @map("closed_at")
+  exitPrice   Decimal?  @db.Decimal(18, 8) @map("exit_price")
+  closePrice  Decimal?  @db.Decimal(18, 8) @map("close_price")
+  closeReason String?   @map("close_reason") // stop_loss, take_profit, trailing_stop, signal, manual, black_swan, daily_loss_limit
+  pnl         Decimal?  @db.Decimal(18, 8)
+  realizedPnl Decimal?  @db.Decimal(18, 8) @map("realized_pnl")
+
+  // DCA 补仓
+  dcaCount   Int       @default(0) @map("dca_count")
+  lastDcaAt  DateTime? @map("last_dca_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  dcaLogs DcaLog[]
 
   @@map("positions")
 }
@@ -292,26 +468,31 @@ model ReferralReward {
 
 // ========== Phase 6: 质押系统 ==========
 
-// 质押记录
+// 质押记录（只支持 HOOT 单币质押）
 model StakingRecord {
   id     String @id @default(uuid())
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  // A 类（空投）或 B 类（购买）
-  type   String // A, B
+  // 质押金额
   amount Decimal @db.Decimal(18, 8)
 
   // 质押时间
   stakedAt   DateTime  @default(now()) @map("staked_at")
   unstakedAt DateTime? @map("unstaked_at")
 
-  // 锁定期（B 类可选锁定）
-  lockDays   Int @default(0) @map("lock_days")
+  // 锁定期配置
+  lockDays   Int @default(0) @map("lock_days") // 0=活期，>0=定期
   lockUntil  DateTime? @map("lock_until")
 
+  // 权重（根据锁定时间计算，活期1.0，定期最高3.0）
+  weight Decimal @default(1) @db.Decimal(5, 2)
+
+  // 累计获得分红
+  totalDividends Decimal @default(0) @db.Decimal(18, 8) @map("total_dividends")
+
   // 状态
-  status String @default("active") // active, unstaked
+  status String @default("active") // active, unstaked, locked
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -350,28 +531,42 @@ model DividendRecord {
   @@map("dividend_records")
 }
 
-// 分红池记录
+// 分红池记录（周分红，来源为燃油费）
 model DividendPool {
   id String @id @default(uuid())
 
-  // 周期
+  // 周期（每周一 00:00 ~ 周日 23:59）
   periodStart DateTime @map("period_start")
   periodEnd   DateTime @map("period_end")
+  weekNumber  Int      @map("week_number") // 年度周数
 
-  // 池子金额
+  // 燃油费来源
+  gasFeeTotal Decimal @db.Decimal(18, 8) @map("gas_fee_total") // 本周燃油费总额
+  gasFeeCount Int     @default(0) @map("gas_fee_count")        // 燃油费笔数
+
+  // 分红池金额（燃油费 * 分红比例）
+  dividendRate   Decimal @default(0.5) @db.Decimal(5, 2) @map("dividend_rate") // 分红比例（如50%进入分红池）
   totalAmount    Decimal @db.Decimal(18, 8) @map("total_amount")
   distributedAmount Decimal @default(0) @db.Decimal(18, 8) @map("distributed_amount")
+  remainingAmount   Decimal @default(0) @db.Decimal(18, 8) @map("remaining_amount")
 
-  // 全网质押数据
-  totalStaked   Decimal @db.Decimal(18, 8) @map("total_staked")
-  totalWeighted Decimal @db.Decimal(18, 8) @map("total_weighted")
+  // 全网质押数据快照
+  totalStaked   Decimal @db.Decimal(18, 8) @map("total_staked")   // 总质押量
+  totalWeighted Decimal @db.Decimal(18, 8) @map("total_weighted") // 加权质押量
+  stakerCount   Int     @default(0) @map("staker_count")          // 质押人数
 
-  status    String @default("pending") // pending, distributed
+  // 单位权重分红
+  dividendPerWeight Decimal? @db.Decimal(18, 12) @map("dividend_per_weight")
+
+  status    String @default("collecting") // collecting, pending, distributing, distributed
   distributedAt DateTime? @map("distributed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([periodStart, periodEnd])
+  @@index([weekNumber])
+  @@index([status])
   @@map("dividend_pools")
 }
 
@@ -419,8 +614,8 @@ model Notification {
 model RiskLog {
   id       String @id @default(uuid())
   userId   String @map("user_id")
-  signalId String @map("signal_id")
-  reason   String // max_positions_reached, symbol_already_open, etc.
+  signalId String? @map("signal_id") // 可选，黑天鹅/日亏损触发时无信号
+  reason   String // max_positions_reached, symbol_already_open, black_swan, daily_loss_limit, etc.
   details  String // JSON 格式详情
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -428,4 +623,715 @@ model RiskLog {
   @@index([userId])
   @@index([signalId])
   @@map("risk_logs")
+}
+
+// DCA 补仓日志
+model DcaLog {
+  id         String   @id @default(uuid())
+  positionId String   @map("position_id")
+  position   Position @relation(fields: [positionId], references: [id])
+  userId     String   @map("user_id")
+
+  dcaNumber    Int     // 第几次补仓
+  triggerPrice Decimal @db.Decimal(18, 8) @map("trigger_price") // 触发价格
+  dcaAmount    Decimal @db.Decimal(18, 8) @map("dca_amount")    // 补仓金额 USDT
+  newAvgPrice  Decimal @db.Decimal(18, 8) @map("new_avg_price") // 新均价
+  dropPercent  Decimal @db.Decimal(5, 2) @map("drop_percent")   // 触发时跌幅
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([positionId])
+  @@index([userId])
+  @@map("dca_logs")
+}
+
+// 每日结算记录
+model DailySettlement {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  date   DateTime @db.Date
+
+  // 余额快照
+  startBalance Decimal @db.Decimal(18, 8) @map("start_balance") // 当日起始余额
+  endBalance   Decimal @db.Decimal(18, 8) @map("end_balance")   // 当日结束余额
+
+  // 盈亏统计
+  realizedPnl   Decimal @db.Decimal(18, 8) @map("realized_pnl")   // 已实现盈亏
+  unrealizedPnl Decimal @db.Decimal(18, 8) @map("unrealized_pnl") // 未实现盈亏
+  totalPnl      Decimal @db.Decimal(18, 8) @map("total_pnl")      // 总盈亏
+  pnlPercent    Decimal @db.Decimal(5, 2) @map("pnl_percent")     // 盈亏百分比
+
+  // 风控状态
+  wasLocked Boolean @default(false) @map("was_locked") // 当日是否触发锁定
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@map("daily_settlements")
+}
+
+// ========== 配置管理系统 ==========
+
+// 平台全局配置
+model PlatformConfig {
+  id    String @id @default("default")
+  key   String @unique
+  value String @db.Text // JSON 格式
+
+  description String?
+  updatedBy   String? @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("platform_configs")
+}
+
+// 用户交易配置
+model UserTradingConfig {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // === 风控配置 (JSON) ===
+  riskConfig String @default("{}") @map("risk_config") @db.Text
+
+  // === 资金管理配置 (JSON) ===
+  fundConfig String @default("{}") @map("fund_config") @db.Text
+
+  // === 通知配置 (JSON) ===
+  notificationConfig String @default("{}") @map("notification_config") @db.Text
+
+  // === 交易时段配置 (JSON) ===
+  tradingHoursConfig String @default("{}") @map("trading_hours_config") @db.Text
+
+  // === 快速开关 ===
+  tradingEnabled Boolean @default(true) @map("trading_enabled")
+  newOrdersEnabled Boolean @default(true) @map("new_orders_enabled")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("user_trading_configs")
+}
+
+// 市场状态记录
+model MarketStatus {
+  id       String @id @default(uuid())
+  symbol   String
+  exchange String
+
+  // 波动率
+  volatility24h Decimal @db.Decimal(10, 4) @map("volatility_24h")
+  priceChange24h Decimal @db.Decimal(10, 4) @map("price_change_24h")
+
+  // 流动性
+  bidDepthUsdt Decimal? @db.Decimal(18, 2) @map("bid_depth_usdt")
+  askDepthUsdt Decimal? @db.Decimal(18, 2) @map("ask_depth_usdt")
+
+  // 状态
+  status String @default("normal") // normal, volatile, extreme, suspended
+  reason String?
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([symbol, exchange])
+  @@map("market_status")
+}
+
+// 熔断器状态
+model CircuitBreakerState {
+  id   String @id @default(uuid())
+  name String @unique // 标识符，如 "binance_trading"
+
+  state String @default("closed") // closed, open, half_open
+
+  // 统计
+  failureCount Int @default(0) @map("failure_count")
+  successCount Int @default(0) @map("success_count")
+  lastFailureAt DateTime? @map("last_failure_at")
+
+  // 熔断时间
+  openedAt DateTime? @map("opened_at")
+  closeScheduledAt DateTime? @map("close_scheduled_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("circuit_breaker_states")
+}
+
+// 用户每日统计（用于风控）
+model UserDailyStats {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  date   DateTime @db.Date
+
+  // 交易统计
+  tradeCount Int @default(0) @map("trade_count")
+  buyCount   Int @default(0) @map("buy_count")
+  sellCount  Int @default(0) @map("sell_count")
+
+  // 盈亏统计
+  totalPnlUsdt Decimal @default(0) @db.Decimal(18, 8) @map("total_pnl_usdt")
+  realizedPnlUsdt Decimal @default(0) @db.Decimal(18, 8) @map("realized_pnl_usdt")
+
+  // 交易量
+  totalVolumeUsdt Decimal @default(0) @db.Decimal(18, 8) @map("total_volume_usdt")
+
+  // 风控触发
+  riskEventsCount Int @default(0) @map("risk_events_count")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, date])
+  @@map("user_daily_stats")
+}
+
+// ========== 管理后台 ==========
+
+// 管理员账号
+model Admin {
+  id       String @id @default(uuid())
+  username String @unique
+  password String
+  email    String? @unique
+  nickname String?
+
+  // 角色
+  role     String @default("admin") // super_admin, admin, operator, finance, readonly
+
+  // 状态
+  isActive Boolean @default(true) @map("is_active")
+
+  // 登录信息
+  lastLoginAt DateTime? @map("last_login_at")
+  lastLoginIp String?   @map("last_login_ip")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  operationLogs AdminOperationLog[]
+
+  @@map("admins")
+}
+
+// 管理员操作日志
+model AdminOperationLog {
+  id      String @id @default(uuid())
+  adminId String @map("admin_id")
+  admin   Admin  @relation(fields: [adminId], references: [id])
+
+  // 操作信息
+  action     String // login, create, update, delete, approve, reject
+  module     String // user, strategy, withdraw, announcement, config
+  targetId   String? @map("target_id") // 操作目标ID
+  targetType String? @map("target_type") // 操作目标类型
+
+  // 详情
+  description String?
+  details     String? @db.Text // JSON 格式的详细变更
+  ipAddress   String? @map("ip_address")
+  userAgent   String? @map("user_agent")
+
+  // 结果
+  result String @default("success") // success, failed
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([adminId, createdAt])
+  @@index([module, action])
+  @@map("admin_operation_logs")
+}
+
+// 公告
+model Announcement {
+  id    String @id @default(uuid())
+  title String
+  content String @db.Text
+
+  // 类型和位置
+  type     String @default("system") // system, activity, maintenance, emergency
+  position String @default("all") // home, popup, marquee, all
+
+  // 媒体
+  coverImage String? @map("cover_image")
+  link       String?
+
+  // 发布设置
+  status      String @default("draft") // draft, published, offline
+  publishedAt DateTime? @map("published_at")
+  expiredAt   DateTime? @map("expired_at")
+  priority    Int @default(0) // 排序权重
+
+  // 推送
+  pushNotification Boolean @default(false) @map("push_notification")
+
+  createdBy String? @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, publishedAt])
+  @@map("announcements")
+}
+
+// 跑马灯
+model Marquee {
+  id      String @id @default(uuid())
+  content String
+  link    String?
+
+  // 样式
+  bgColor   String? @map("bg_color")
+  textColor String? @map("text_color")
+
+  // 排序和状态
+  sortOrder Int @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("marquees")
+}
+
+// Banner 广告
+model Banner {
+  id       String @id @default(uuid())
+  imageUrl String @map("image_url")
+  title    String?
+  link     String?
+
+  // 位置和排序
+  position  String @default("home") // home, strategy, wallet
+  sortOrder Int @default(0) @map("sort_order")
+
+  // 有效期
+  startAt DateTime? @map("start_at")
+  endAt   DateTime? @map("end_at")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([position, isActive])
+  @@map("banners")
+}
+
+// 交易执行日志（详细）
+model TradeExecutionLog {
+  id         String @id @default(uuid())
+  userId     String @map("user_id")
+  positionId String? @map("position_id")
+  signalId   String? @map("signal_id")
+
+  // 订单信息
+  exchange   String
+  symbol     String
+  side       String
+  orderType  String @map("order_type")
+
+  // 请求参数
+  requestedAmountUsdt Decimal @db.Decimal(18, 8) @map("requested_amount_usdt")
+  requestedPrice Decimal? @db.Decimal(18, 8) @map("requested_price")
+
+  // 执行结果
+  executedAmount Decimal? @db.Decimal(18, 8) @map("executed_amount")
+  executedPrice Decimal? @db.Decimal(18, 8) @map("executed_price")
+  executedVolumeUsdt Decimal? @db.Decimal(18, 8) @map("executed_volume_usdt")
+
+  // 滑点
+  slippagePercent Decimal? @db.Decimal(10, 4) @map("slippage_percent")
+
+  // 手续费
+  feeAmount Decimal? @db.Decimal(18, 8) @map("fee_amount")
+  feeAsset String? @map("fee_asset")
+
+  // 状态
+  status String // pending, executing, filled, partial, failed, cancelled
+  errorCode String? @map("error_code")
+  errorMessage String? @map("error_message")
+
+  // 重试信息
+  attemptNumber Int @default(1) @map("attempt_number")
+  totalAttempts Int @default(1) @map("total_attempts")
+
+  // 时间追踪
+  queuedAt DateTime? @map("queued_at")
+  startedAt DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  durationMs Int? @map("duration_ms")
+
+  // 配置快照
+  configSnapshot String? @map("config_snapshot") @db.Text // JSON
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([signalId])
+  @@index([status])
+  @@map("trade_execution_logs")
+}
+
+// ========== 点卡系统 ==========
+
+// 点卡充值/消费记录
+model PointCardRecord {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // 类型：recharge（充值）、consume（消费）、refund（退款）
+  type   String
+  amount Decimal @db.Decimal(18, 8) // 金额（1:1 USDT）
+
+  // 余额变动
+  balanceBefore Decimal @db.Decimal(18, 8) @map("balance_before")
+  balanceAfter  Decimal @db.Decimal(18, 8) @map("balance_after")
+
+  // 关联信息
+  relatedType String? @map("related_type") // subscription, gas_fee, withdraw
+  relatedId   String? @map("related_id")
+  remark      String?
+
+  // 幂等性
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, type])
+  @@index([userId, createdAt])
+  @@map("point_card_records")
+}
+
+// ========== 燃油费记录 ==========
+
+// 燃油费（每笔盈利交易收取20%）
+model GasFeeRecord {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // 关联持仓
+  positionId String @map("position_id")
+
+  // 交易信息
+  symbol     String
+  exchange   String
+  profitUsdt Decimal @db.Decimal(18, 8) @map("profit_usdt") // 盈利金额
+  feeRate    Decimal @db.Decimal(5, 4) @map("fee_rate")     // 费率（如 0.20 = 20%）
+  feeAmount  Decimal @db.Decimal(18, 8) @map("fee_amount")  // 燃油费金额
+
+  // 分成（进入分红池）
+  dividendPoolId String? @map("dividend_pool_id")
+
+  // 幂等性
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([dividendPoolId])
+  @@map("gas_fee_records")
+}
+
+// ========== 代理商系统 ==========
+
+// 代理商
+model Agent {
+  id       String @id @default(uuid())
+  userId   String? @unique @map("user_id") // 关联用户账号（可选）
+
+  // 代理商信息
+  name          String
+  email         String @unique
+  password      String
+  phone         String?
+  companyName   String? @map("company_name")
+
+  // 代理商等级：bronze, silver, gold, platinum
+  level String @default("bronze")
+
+  // 佣金配置
+  commissionRate  Decimal @default(0.10) @db.Decimal(5, 4) @map("commission_rate") // 默认10%
+  settlementType  String  @default("weekly") @map("settlement_type") // daily, weekly, monthly
+
+  // 结算账户
+  walletAddress String? @map("wallet_address")
+  bankAccount   String? @map("bank_account") @db.Text // 加密存储银行信息
+
+  // 状态
+  status String @default("pending") // pending, active, suspended, terminated
+  isActive Boolean @default(false) @map("is_active")
+
+  // 统计缓存
+  totalUsers     Int     @default(0) @map("total_users")
+  totalProfit    Decimal @default(0) @db.Decimal(18, 8) @map("total_profit") // 累计产生盈利
+  totalCommission Decimal @default(0) @db.Decimal(18, 8) @map("total_commission") // 累计佣金
+
+  // 登录信息
+  lastLoginAt DateTime? @map("last_login_at")
+  lastLoginIp String?   @map("last_login_ip")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  users       User[]            @relation("AgentUsers")
+  commissions AgentCommission[]
+
+  @@map("agents")
+}
+
+// 代理商佣金记录
+model AgentCommission {
+  id      String @id @default(uuid())
+  agentId String @map("agent_id")
+  agent   Agent  @relation(fields: [agentId], references: [id])
+
+  // 来源用户
+  userId String @map("user_id")
+
+  // 佣金类型：subscription（订阅分成）、gas_fee（燃油费分成）
+  type String
+
+  // 来源金额（用户产生的收入）
+  sourceAmount Decimal @db.Decimal(18, 8) @map("source_amount")
+  // 佣金比例
+  commissionRate Decimal @db.Decimal(5, 4) @map("commission_rate")
+  // 佣金金额
+  commissionAmount Decimal @db.Decimal(18, 8) @map("commission_amount")
+
+  // 结算状态
+  status     String @default("pending") // pending, settled, cancelled
+  settledAt  DateTime? @map("settled_at")
+  settlementId String? @map("settlement_id") // 结算批次ID
+
+  // 幂等性
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([agentId, status])
+  @@index([agentId, createdAt])
+  @@index([userId])
+  @@map("agent_commissions")
+}
+
+// 代理商结算批次
+model AgentSettlement {
+  id      String @id @default(uuid())
+  agentId String @map("agent_id")
+
+  // 结算周期
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  // 结算金额
+  totalAmount Decimal @db.Decimal(18, 8) @map("total_amount")
+  fee         Decimal @default(0) @db.Decimal(18, 8) // 手续费
+  netAmount   Decimal @db.Decimal(18, 8) @map("net_amount") // 实际到账
+
+  // 结算方式
+  settlementMethod String @map("settlement_method") // usdt, bank
+  settlementAccount String? @map("settlement_account")
+
+  // 状态
+  status String @default("pending") // pending, processing, completed, failed
+  txHash String? @map("tx_hash")
+  remark String?
+
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([agentId, status])
+  @@map("agent_settlements")
+}
+
+// ========== 订阅收入记录 ==========
+
+// 订阅收入（独立于 Transaction，便于财务统计）
+model SubscriptionRevenue {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  // 订阅信息
+  subscriptionId String @map("subscription_id")
+  strategyId     String @map("strategy_id")
+  strategyName   String @map("strategy_name")
+
+  // 收入类型：new（新订阅）、renewal（续费）
+  type   String
+  amount Decimal @db.Decimal(18, 8)
+  asset  String  @default("USDT") // USDT 或 POINT（点卡）
+
+  // 分成（如果有代理商）
+  agentId          String?  @map("agent_id")
+  agentCommission  Decimal? @db.Decimal(18, 8) @map("agent_commission")
+
+  // 周期
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+
+  // 幂等性
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([strategyId])
+  @@index([agentId])
+  @@map("subscription_revenues")
+}
+
+// ========== 代币流通记录 ==========
+
+// HOOT 代币流通记录
+model TokenCirculation {
+  id String @id @default(uuid())
+
+  // 类型：airdrop（空投发放）、stake（质押）、unstake（解押）、dividend（分红发放）、burn（销毁）、transfer（转账）
+  type String
+
+  // 金额
+  amount Decimal @db.Decimal(18, 8)
+
+  // 方向：in（流入）、out（流出）
+  direction String
+
+  // 关联用户（可选，系统操作无用户）
+  userId String? @map("user_id")
+
+  // 来源/去向
+  fromAddress String? @map("from_address")
+  toAddress   String? @map("to_address")
+
+  // 描述
+  description String?
+
+  // 关联记录
+  relatedType String? @map("related_type") // airdrop, staking, dividend
+  relatedId   String? @map("related_id")
+
+  // 链上信息（如果已上链）
+  txHash      String? @map("tx_hash")
+  blockNumber Int?    @map("block_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@index([userId])
+  @@map("token_circulations")
+}
+
+// ========== 策略回测数据 ==========
+
+// 策略回测结果
+model StrategyBacktest {
+  id         String @id @default(uuid())
+  strategyId String @map("strategy_id")
+
+  // 回测参数
+  startDate     DateTime @map("start_date")
+  endDate       DateTime @map("end_date")
+  initialCapital Decimal @db.Decimal(18, 8) @map("initial_capital")
+  tradingPairs  String[] @map("trading_pairs") // 交易对列表
+
+  // 回测结果
+  totalReturn     Decimal @db.Decimal(10, 4) @map("total_return")      // 总收益率 %
+  annualizedReturn Decimal @db.Decimal(10, 4) @map("annualized_return") // 年化收益率 %
+  maxDrawdown     Decimal @db.Decimal(10, 4) @map("max_drawdown")      // 最大回撤 %
+  sharpeRatio     Decimal? @db.Decimal(10, 4) @map("sharpe_ratio")     // 夏普比率
+  winRate         Decimal @db.Decimal(5, 2) @map("win_rate")           // 胜率 %
+  profitFactor    Decimal? @db.Decimal(10, 4) @map("profit_factor")    // 盈亏比
+
+  // 交易统计
+  totalTrades    Int @map("total_trades")
+  winTrades      Int @map("win_trades")
+  loseTrades     Int @map("lose_trades")
+  avgWinAmount   Decimal? @db.Decimal(18, 8) @map("avg_win_amount")
+  avgLoseAmount  Decimal? @db.Decimal(18, 8) @map("avg_lose_amount")
+  avgHoldingDays Decimal? @db.Decimal(10, 2) @map("avg_holding_days")
+
+  // 月度收益数据（JSON）
+  monthlyReturns String? @map("monthly_returns") @db.Text // [{month: "2024-01", return: 5.2}, ...]
+
+  // 状态
+  status String @default("completed") // running, completed, failed
+  error  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([strategyId, createdAt])
+  @@map("strategy_backtests")
+}
+
+// ========== 平台统计快照 ==========
+
+// 每日平台统计（便于看板查询）
+model PlatformDailyStats {
+  id   String   @id @default(uuid())
+  date DateTime @unique @db.Date
+
+  // 用户统计
+  totalUsers       Int @default(0) @map("total_users")
+  newUsers         Int @default(0) @map("new_users")
+  activeUsers      Int @default(0) @map("active_users") // 当日登录用户
+  tradingUsers     Int @default(0) @map("trading_users") // 当日有交易的用户
+
+  // 资金统计
+  totalDeposit     Decimal @default(0) @db.Decimal(18, 8) @map("total_deposit")  // 当日充值
+  totalWithdraw    Decimal @default(0) @db.Decimal(18, 8) @map("total_withdraw") // 当日提现
+  netInflow        Decimal @default(0) @db.Decimal(18, 8) @map("net_inflow")     // 净流入
+
+  // 收入统计
+  subscriptionRevenue Decimal @default(0) @db.Decimal(18, 8) @map("subscription_revenue") // 订阅收入
+  pointCardRevenue    Decimal @default(0) @db.Decimal(18, 8) @map("point_card_revenue")   // 点卡充值
+  gasFeeRevenue       Decimal @default(0) @db.Decimal(18, 8) @map("gas_fee_revenue")      // 燃油费收入
+  totalRevenue        Decimal @default(0) @db.Decimal(18, 8) @map("total_revenue")        // 总收入
+
+  // 交易统计
+  totalTrades      Int     @default(0) @map("total_trades")
+  totalVolumeUsdt  Decimal @default(0) @db.Decimal(18, 8) @map("total_volume_usdt")
+  totalProfitUsdt  Decimal @default(0) @db.Decimal(18, 8) @map("total_profit_usdt")
+
+  // 质押统计
+  totalStaked      Decimal @default(0) @db.Decimal(18, 8) @map("total_staked")
+  totalStakers     Int     @default(0) @map("total_stakers")
+
+  // HOOT 代币统计
+  hootCirculating  Decimal @default(0) @db.Decimal(18, 8) @map("hoot_circulating") // 流通量
+  hootStaked       Decimal @default(0) @db.Decimal(18, 8) @map("hoot_staked")      // 质押量
+  hootBurned       Decimal @default(0) @db.Decimal(18, 8) @map("hoot_burned")      // 销毁量
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_daily_stats")
+}
+
+// ========== 邀请返佣配置 ==========
+
+// 返佣层级配置
+model ReferralConfig {
+  id String @id @default("default")
+
+  // 返佣比例配置（百分比）
+  level1Rate Decimal @default(10) @db.Decimal(5, 2) @map("level1_rate") // 一级返佣 10%
+  level2Rate Decimal @default(5)  @db.Decimal(5, 2) @map("level2_rate") // 二级返佣 5%
+  level3Rate Decimal @default(2)  @db.Decimal(5, 2) @map("level3_rate") // 三级返佣 2%
+
+  // 返佣类型：subscription（订阅费返佣）、gas_fee（燃油费返佣）
+  enabledTypes String[] @default(["subscription"]) @map("enabled_types")
+
+  // 是否启用
+  isActive Boolean @default(true) @map("is_active")
+
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("referral_configs")
 }

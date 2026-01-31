@@ -34,6 +34,17 @@ export class StrategyResponse {
   isActive: boolean;
   createdAt: Date;
   subscriberCount?: number;
+  // 新增展示字段
+  imageUrl?: string;
+  riskLevel?: string;
+  tags?: string[];
+  return7d?: string;
+  return30d?: string;
+  return90d?: string;
+  maxDrawdown?: string;
+  winRate?: string;
+  totalTrades?: number;
+  isFeatured?: boolean;
 }
 
 // 策略详情响应（包含用户订阅状态）

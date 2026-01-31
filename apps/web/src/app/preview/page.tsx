@@ -8,6 +8,7 @@ import { SettingsPage } from '@/components/ui-v3/settings/settings-page'
 import { LandingPage } from '@/components/ui-v3/landing/landing-page'
 import { LoginPage } from '@/components/ui-v3/auth/login-page'
 import { RegisterPage } from '@/components/ui-v3/auth/register-page'
+import { WalletConnectModal } from '@/components/ui-v3/auth/wallet-connect-modal'
 import { DashboardV3 } from '@/components/ui-v3/dashboard/dashboard-v3'
 import { StrategyMarketplaceV3 } from '@/components/ui-v3/strategies/strategy-marketplace-v3'
 import { StrategyDetailPage } from '@/components/ui-v3/strategies/strategy-detail-page'
@@ -61,6 +62,8 @@ import { MobileSettingsPage } from '@/components/ui-v3/mobile/mobile-settings-pa
 import { MobileNotificationsPage } from '@/components/ui-v3/mobile/mobile-notifications-page'
 import { MobileAboutPage } from '@/components/ui-v3/mobile/mobile-about-page'
 import { MobileHelpPage } from '@/components/ui-v3/mobile/mobile-help-page'
+// Wallet connect modals
+import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-wallet-connect-modal'
 
 // Sidebar navigation configuration - 5 tabs only
 const sidebarNavItems = [
@@ -135,6 +138,8 @@ export default function PreviewPage() {
   const [currentPage, setCurrentPage] = useState<PreviewPage>('landing')
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [showSubscribeModal, setShowSubscribeModal] = useState(false)
+  const [showWalletModal, setShowWalletModal] = useState(false)
+  const [walletModalMode, setWalletModalMode] = useState<'login' | 'register'>('login')
 
   // 移动端 Tab 切换处理
   const handleMobileTabChange = (tab: MobileTab) => {
@@ -257,7 +262,10 @@ export default function PreviewPage() {
                     {currentPage === 'login' && (
                       <MobileLoginPage
                         onLogin={(email) => console.log('登录:', email)}
-                        onWalletConnect={() => console.log('钱包连接')}
+                        onWalletConnect={() => {
+                          setWalletModalMode('login')
+                          setShowWalletModal(true)
+                        }}
                         onRegister={() => setCurrentPage('register')}
                         onForgotPassword={() => console.log('忘记密码')}
                       />
@@ -265,7 +273,10 @@ export default function PreviewPage() {
                     {currentPage === 'register' && (
                       <MobileRegisterPage
                         onRegister={(data) => console.log('注册:', data)}
-                        onWalletConnect={() => console.log('钱包注册')}
+                        onWalletConnect={() => {
+                          setWalletModalMode('register')
+                          setShowWalletModal(true)
+                        }}
                         onLogin={() => setCurrentPage('login')}
                       />
                     )}
@@ -374,6 +385,21 @@ export default function PreviewPage() {
                       embedded={true}
                     />
                   </div>
+                  {/* 钱包连接弹窗 - 嵌入手机框内 */}
+                  {showWalletModal && (
+                    <MobileWalletConnectModal
+                      isOpen={showWalletModal}
+                      onClose={() => setShowWalletModal(false)}
+                      onConnect={async (walletId) => {
+                        console.log('连接钱包:', walletId)
+                        await new Promise(resolve => setTimeout(resolve, 1500))
+                        setShowWalletModal(false)
+                        setCurrentPage('dashboard')
+                      }}
+                      mode={walletModalMode}
+                      embedded={true}
+                    />
+                  )}
                 </div>
               </div>
               {/* Home Indicator */}
@@ -388,7 +414,7 @@ export default function PreviewPage() {
               <div className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-60 bg-[#12121A] border-r border-[#1E1E2E] z-40">
                 {/* Logo */}
                 <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} />
+                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} className="object-contain" />
                   <h1 className="text-2xl font-bold text-[#F8F8FC]">Hoot</h1>
                 </div>
 
@@ -453,7 +479,10 @@ export default function PreviewPage() {
               {currentPage === 'login' && (
                 <LoginPage
                   onLogin={(email, password) => console.log('登录:', email, password)}
-                  onWalletConnect={() => console.log('钱包连接')}
+                  onWalletConnect={() => {
+                    setWalletModalMode('login')
+                    setShowWalletModal(true)
+                  }}
                   onRegister={() => setCurrentPage('register')}
                   onForgotPassword={() => console.log('忘记密码')}
                 />
@@ -461,7 +490,10 @@ export default function PreviewPage() {
               {currentPage === 'register' && (
                 <RegisterPage
                   onRegister={(data) => console.log('注册:', data)}
-                  onWalletConnect={() => console.log('钱包注册')}
+                  onWalletConnect={() => {
+                    setWalletModalMode('register')
+                    setShowWalletModal(true)
+                  }}
                   onLogin={() => setCurrentPage('login')}
                 />
               )}
@@ -628,11 +660,28 @@ export default function PreviewPage() {
         }}
         strategyName="MACD 趋势跟踪策略"
         connectedExchanges={[
-          { id: 'binance', name: 'Binance', icon: '/icons/exchanges/币安.png', balance: 5234.56, status: 'active' },
-          { id: 'okx', name: 'OKX', icon: '/icons/exchanges/okx.png', balance: 1200.00, status: 'active' },
+          { id: 'binance', name: 'Binance', icon: '/icons/exchanges/币安.webp', balance: 5234.56, status: 'active' },
+          { id: 'okx', name: 'OKX', icon: '/icons/exchanges/okx.webp', balance: 1200.00, status: 'active' },
         ]}
         availableBalance={10000}
       />
+
+      {/* 钱包连接弹窗 - 桌面端 */}
+      {viewMode === 'desktop' && (
+        <WalletConnectModal
+          isOpen={showWalletModal}
+          onClose={() => setShowWalletModal(false)}
+          onConnect={async (walletId) => {
+            console.log('连接钱包:', walletId)
+            // 模拟连接延迟
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            setShowWalletModal(false)
+            setCurrentPage('dashboard')
+          }}
+          mode={walletModalMode}
+        />
+      )}
+
     </div>
   )
 }

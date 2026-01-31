@@ -48,4 +48,22 @@ export class ReferralController {
   async getRewardRecords(@CurrentUser() user: { id: string }) {
     return this.referralService.getRewardRecords(user.id);
   }
+
+  // 获取邀请综合信息（TG Bot 用）
+  @Get('info')
+  async getInviteInfo(@CurrentUser() user: { id: string }) {
+    const [inviteCode, stats] = await Promise.all([
+      this.referralService.getOrCreateInviteCode(user.id),
+      this.referralService.getStats(user.id),
+    ]);
+
+    const webUrl = process.env.WEB_URL || 'https://hoot.cool';
+
+    return {
+      inviteCode,
+      inviteLink: `${webUrl}/register?ref=${inviteCode}`,
+      inviteeCount: stats.totalInvites,
+      totalReward: stats.totalRewards,
+    };
+  }
 }

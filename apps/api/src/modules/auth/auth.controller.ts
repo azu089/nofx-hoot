@@ -1,7 +1,14 @@
 import { Controller, Post, Get, Body, Param, Delete } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
-import { BindTelegramDto } from './dto/telegram.dto';
+import {
+  BindTelegramDto,
+  TelegramLoginDto,
+  GetWalletNonceDto,
+  WalletLoginDto,
+  BindEmailDto,
+  BindWalletDto,
+} from './dto/telegram.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -27,6 +34,22 @@ export class AuthController {
   @Get('me')
   async getProfile(@CurrentUser() user: { id: string }) {
     return this.authService.getProfile(user.id);
+  }
+
+  // ===== 邮箱验证 =====
+
+  // 发送验证码 - 公开接口
+  @Public()
+  @Post('send-verification')
+  async sendVerification(@Body('email') email: string) {
+    return this.authService.sendVerificationCode(email);
+  }
+
+  // 验证邮箱 - 公开接口
+  @Public()
+  @Post('verify-email')
+  async verifyEmail(@Body() body: { email: string; code: string }) {
+    return this.authService.verifyEmail(body.email, body.code);
   }
 
   // ===== Telegram 相关 =====
@@ -56,5 +79,62 @@ export class AuthController {
   async unbindTelegram(@CurrentUser() user: { id: string }) {
     await this.authService.unbindTelegram(user.id);
     return { message: '已解绑 Telegram' };
+  }
+
+  // ===== Telegram 自动登录 =====
+
+  // TG 自动登录 - 公开接口（TG Bot 调用）
+  @Public()
+  @Post('telegram/login')
+  async loginByTelegram(@Body() dto: TelegramLoginDto) {
+    return this.authService.loginByTelegram(dto);
+  }
+
+  // ===== 钱包登录 =====
+
+  // 获取钱包登录 Nonce - 公开接口
+  @Public()
+  @Post('wallet/nonce')
+  async getWalletNonce(@Body() dto: GetWalletNonceDto) {
+    return this.authService.getWalletNonce(dto.address);
+  }
+
+  // 钱包登录 - 公开接口
+  @Public()
+  @Post('wallet/login')
+  async loginByWallet(@Body() dto: WalletLoginDto) {
+    return this.authService.loginByWallet(dto.address, dto.signature, dto.message);
+  }
+
+  // ===== 账户绑定 =====
+
+  // 绑定邮箱 - 需要认证
+  @Post('bind/email')
+  async bindEmail(
+    @CurrentUser() user: { id: string },
+    @Body() dto: BindEmailDto,
+  ) {
+    return this.authService.bindEmail(user.id, dto.email, dto.password);
+  }
+
+  // 绑定钱包 - 需要认证
+  @Post('bind/wallet')
+  async bindWallet(
+    @CurrentUser() user: { id: string },
+    @Body() dto: BindWalletDto,
+  ) {
+    return this.authService.bindWallet(user.id, dto.address, dto.signature, dto.message);
+  }
+
+  // 解绑钱包 - 需要认证
+  @Delete('wallet')
+  async unbindWallet(@CurrentUser() user: { id: string }) {
+    return this.authService.unbindWallet(user.id);
+  }
+
+  // 获取完整用户信息（包含绑定状态）
+  @Get('profile')
+  async getFullProfile(@CurrentUser() user: { id: string }) {
+    return this.authService.getFullProfile(user.id);
   }
 }

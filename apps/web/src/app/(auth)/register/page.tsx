@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { RegisterPage as RegisterPageUI } from '@/components/ui-v3/auth/register-page';
+import { WalletConnectModal } from '@/components/ui-v3/auth/wallet-connect-modal';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { register, isAuthenticated, isLoading } = useAuth();
+  const [showWalletModal, setShowWalletModal] = useState(false);
 
   // 已登录跳转到仪表盘
   useEffect(() => {
@@ -23,11 +25,20 @@ export default function RegisterPage() {
     inviteCode?: string;
   }) => {
     try {
+      // 注册（后端会自动发送验证码）
       await register(data.email, data.password, data.nickname);
-      router.push('/dashboard');
+      // 跳转到邮箱验证页面
+      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : '注册失败');
     }
+  };
+
+  const handleWalletSuccess = (address: string) => {
+    // 钱包连接成功后，跳转到仪表盘
+    // TODO: 后续接入后端钱包注册 API
+    console.log('钱包注册成功:', address);
+    router.push('/dashboard');
   };
 
   if (isLoading) {
@@ -43,13 +54,18 @@ export default function RegisterPage() {
   }
 
   return (
-    <RegisterPageUI
-      onRegister={handleRegister}
-      onWalletConnect={() => {
-        // TODO: 钱包连接注册
-        console.log('钱包注册');
-      }}
-      onLogin={() => router.push('/login')}
-    />
+    <>
+      <RegisterPageUI
+        onRegister={handleRegister}
+        onWalletConnect={() => setShowWalletModal(true)}
+        onLogin={() => router.push('/login')}
+      />
+      <WalletConnectModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onSuccess={handleWalletSuccess}
+        mode="register"
+      />
+    </>
   );
 }

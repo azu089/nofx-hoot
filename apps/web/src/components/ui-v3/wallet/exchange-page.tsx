@@ -145,7 +145,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-3 py-2"
                 >
                   <div className="w-6 h-6 rounded-full overflow-hidden">
-                    <Image src={fromAsset.icon} alt={fromAsset.symbol} width={24} height={24} />
+                    <Image src={fromAsset.icon} alt={fromAsset.symbol} width={24} height={24} className="object-contain" />
                   </div>
                   <span className="font-medium">{fromAsset.symbol}</span>
                   <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
@@ -160,7 +160,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                         className={`flex items-center gap-3 w-full px-4 py-3 hover:bg-[#12121A] ${fromAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
                       >
                         <div className="w-6 h-6 rounded-full overflow-hidden">
-                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} />
+                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} className="object-contain" />
                         </div>
                         <span className="text-sm">{asset.symbol}</span>
                       </button>
@@ -217,7 +217,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-3 py-2"
                 >
                   <div className="w-6 h-6 rounded-full overflow-hidden">
-                    <Image src={toAsset.icon} alt={toAsset.symbol} width={24} height={24} />
+                    <Image src={toAsset.icon} alt={toAsset.symbol} width={24} height={24} className="object-contain" />
                   </div>
                   <span className="font-medium">{toAsset.symbol}</span>
                   <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
@@ -232,7 +232,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                         className={`flex items-center gap-3 w-full px-4 py-3 hover:bg-[#12121A] ${toAsset.id === asset.id ? 'bg-[#12121A]' : ''}`}
                       >
                         <div className="w-6 h-6 rounded-full overflow-hidden">
-                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} />
+                          <Image src={asset.icon} alt={asset.symbol} width={24} height={24} className="object-contain" />
                         </div>
                         <span className="text-sm">{asset.symbol}</span>
                       </button>

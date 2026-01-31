@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import Image from 'next/image'
 import { Mail, User, Lock, Eye, EyeOff, Gift, Loader2, Wallet } from 'lucide-react'
 
 interface MobileRegisterPageProps {
@@ -149,14 +150,21 @@ export function MobileRegisterPage({
       {/* 注册卡片 */}
       <div className="relative w-full max-w-md z-10">
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-          {/* 顶部渐变高光线 */}
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent" />
           {/* Logo 区域 */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#06B6D4] to-[#0891B2] mb-4">
-              <span className="text-2xl font-bold text-white">H</span>
+            <div className="inline-block mb-4">
+              <div className="w-24 h-24">
+                <Image
+                  src="/icons/hoot/logo.png?v=2"
+                  alt="HOOT"
+                  width={96}
+                  height={96}
+                  className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                  unoptimized
+                />
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">Welcome to Hoot</h1>
+            <h1 className="text-2xl font-bold text-white mb-2">Welcome to HOOT</h1>
             <p className="text-[#94A3B8] text-sm">创建您的交易账户</p>
           </div>
 
@@ -164,20 +172,22 @@ export function MobileRegisterPage({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 邮箱输入框 */}
             <div>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    setErrors((prev) => ({ ...prev, email: undefined }))
-                  }}
-                  placeholder="邮箱地址"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  aria-label="邮箱地址"
-                  disabled={isLoading}
-                />
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      setErrors((prev) => ({ ...prev, email: undefined }))
+                    }}
+                    placeholder="邮箱地址"
+                    className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    aria-label="邮箱地址"
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
               {errors.email && (
                 <p className="mt-1.5 text-sm text-[#EF4444] pl-1">{errors.email}</p>
@@ -186,20 +196,22 @@ export function MobileRegisterPage({
 
             {/* 用户名输入框 */}
             <div>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value)
-                    setErrors((prev) => ({ ...prev, username: undefined }))
-                  }}
-                  placeholder="用户名"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  aria-label="用户名"
-                  disabled={isLoading}
-                />
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value)
+                      setErrors((prev) => ({ ...prev, username: undefined }))
+                    }}
+                    placeholder="用户名"
+                    className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    aria-label="用户名"
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
               {errors.username && (
                 <p className="mt-1.5 text-sm text-[#EF4444] pl-1">{errors.username}</p>
@@ -208,33 +220,35 @@ export function MobileRegisterPage({
 
             {/* 密码输入框 */}
             <div>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    setErrors((prev) => ({ ...prev, password: undefined }))
-                  }}
-                  placeholder="密码"
-                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  aria-label="密码"
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                  disabled={isLoading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      setErrors((prev) => ({ ...prev, password: undefined }))
+                    }}
+                    placeholder="密码"
+                    className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    aria-label="密码"
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                    aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                    disabled={isLoading}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
               </div>
               {errors.password && (
                 <p className="mt-1.5 text-sm text-[#EF4444] pl-1">{errors.password}</p>
@@ -243,33 +257,35 @@ export function MobileRegisterPage({
 
             {/* 确认密码输入框 */}
             <div>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    setErrors((prev) => ({ ...prev, confirmPassword: undefined }))
-                  }}
-                  placeholder="确认密码"
-                  className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  aria-label="确认密码"
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors z-10"
-                  aria-label={showConfirmPassword ? '隐藏确认密码' : '显示确认密码'}
-                  disabled={isLoading}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value)
+                      setErrors((prev) => ({ ...prev, confirmPassword: undefined }))
+                    }}
+                    placeholder="确认密码"
+                    className="w-full h-12 pl-11 pr-12 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    aria-label="确认密码"
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
+                    aria-label={showConfirmPassword ? '隐藏确认密码' : '显示确认密码'}
+                    disabled={isLoading}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
               </div>
               {errors.confirmPassword && (
                 <p className="mt-1.5 text-sm text-[#EF4444] pl-1">{errors.confirmPassword}</p>
@@ -278,17 +294,19 @@ export function MobileRegisterPage({
 
             {/* 邀请码输入框 */}
             <div>
-              <div className="glass-border-glow relative rounded-xl overflow-hidden">
-                <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8] z-10" />
-                <input
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => setReferralCode(e.target.value)}
-                  placeholder="邀请码（可选）"
-                  className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/[0.08] rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  aria-label="邀请码"
-                  disabled={isLoading}
-                />
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    type="text"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value)}
+                    placeholder="邀请码（可选）"
+                    className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    aria-label="邀请码"
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
             </div>
 
@@ -367,16 +385,18 @@ export function MobileRegisterPage({
           </div>
 
           {/* 钱包注册按钮 */}
-          <button
-            type="button"
-            onClick={handleWalletConnect}
-            disabled={isLoading}
-            className="w-full h-12 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-[#1E1E2E] text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            aria-label="使用钱包注册"
-          >
-            <Wallet className="w-5 h-5" />
-            <span>使用钱包注册</span>
-          </button>
+          <div className="glass-border-glow rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={handleWalletConnect}
+              disabled={isLoading}
+              className="w-full h-12 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-cyan-500/20 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              aria-label="使用钱包注册"
+            >
+              <Wallet className="w-5 h-5" />
+              <span>使用钱包注册</span>
+            </button>
+          </div>
 
           {/* 底部登录链接 */}
           <div className="mt-6 text-center">

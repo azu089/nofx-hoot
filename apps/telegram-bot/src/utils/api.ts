@@ -66,6 +66,16 @@ export interface UserInfo {
   nickname: string;
   usdtBalance: string;
   hootBalance: string;
+  points?: number;
+}
+
+export interface EarningsInfo {
+  todayPnl: string;
+  weekPnl: string;
+  monthPnl: string;
+  totalPnl: string;
+  tradeCount: number;
+  winRate: string;
 }
 
 export interface PositionInfo {
@@ -124,4 +134,116 @@ export interface TradeNotification {
   price: string;
   amount: string;
   pnl?: string;
+}
+
+// 获取用户收益统计
+export async function getEarningsByTelegramId(
+  telegramId: string,
+): Promise<EarningsInfo> {
+  try {
+    return await request<EarningsInfo>(`/positions/earnings/telegram/${telegramId}`);
+  } catch {
+    // 如果接口不存在，返回默认值
+    return {
+      todayPnl: '0',
+      weekPnl: '0',
+      monthPnl: '0',
+      totalPnl: '0',
+      tradeCount: 0,
+      winRate: '0',
+    };
+  }
+}
+
+// ===== 自动登录 API =====
+
+export interface TelegramLoginDto {
+  telegramId: string;
+  telegramUsername?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  user: UserInfo;
+  isNewUser?: boolean;
+}
+
+// TG 自动登录（如果用户不存在会自动注册）
+export async function telegramLogin(dto: TelegramLoginDto): Promise<LoginResponse> {
+  return request<LoginResponse>('/auth/telegram/login', {
+    method: 'POST',
+    body: JSON.stringify(dto),
+  });
+}
+
+// 获取完整用户信息（包含绑定状态）
+export async function getFullProfile(token: string) {
+  return authRequest<{
+    id: string;
+    email?: string;
+    emailVerified: boolean;
+    nickname?: string;
+    telegramId?: string;
+    telegramUsername?: string;
+    walletAddress?: string;
+    usdtBalance: string;
+    hootBalance: string;
+    lockedBalance: string;
+    availableBalance: string;
+    bindings: {
+      email: boolean;
+      emailVerified: boolean;
+      telegram: boolean;
+      wallet: boolean;
+    };
+  }>('/auth/profile', token);
+}
+
+// ===== 签到 API =====
+
+export interface CheckinResult {
+  success: boolean;
+  reward: number;
+  streak: number;
+  message: string;
+}
+
+export interface CheckinStatus {
+  checkedInToday: boolean;
+  streak: number;
+  todayReward: string | null;
+  nextReward: string;
+}
+
+// 每日签到（通过 TG ID）
+export async function checkinByTelegramId(telegramId: string): Promise<CheckinResult> {
+  // 先登录获取 token
+  const loginResult = await telegramLogin({ telegramId });
+  // 调用签到接口
+  return authRequest<CheckinResult>('/airdrop/checkin', loginResult.accessToken, {
+    method: 'POST',
+  });
+}
+
+// 获取签到状态
+export async function getCheckinStatus(telegramId: string): Promise<CheckinStatus> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<CheckinStatus>('/airdrop/checkin/status', loginResult.accessToken);
+}
+
+// ===== 邀请 API =====
+
+export interface InviteInfo {
+  inviteCode: string;
+  inviteLink: string;
+  inviteeCount: number;
+  totalReward: string;
+}
+
+// 获取邀请信息
+export async function getInviteInfo(telegramId: string): Promise<InviteInfo> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<InviteInfo>('/referral/info', loginResult.accessToken);
 }
