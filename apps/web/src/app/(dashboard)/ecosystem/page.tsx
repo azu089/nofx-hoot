@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { EcosystemPageV3 } from '@/components/ui-v3/ecosystem/ecosystem-page-v3';
+import { MobileEcosystemV3 } from '@/components/ui-v3/mobile/mobile-ecosystem-v3';
 
 export default function EcosystemPage() {
   const queryClient = useQueryClient();
@@ -86,13 +87,20 @@ export default function EcosystemPage() {
   void _isLoading;
 
   return (
-    <EcosystemPageV3
-      onStake={(amount, periodDays) => stakeMutation.mutate({ amount, lockDays: periodDays })}
-      onUnstake={(id) => unstakeMutation.mutate(id)}
-      onClaimRewards={() => claimRewardsMutation.mutate()}
-      // 传递真实数据
-      // stakingInfo={stakingInfo}
-      // isLoading={isLoading}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <EcosystemPageV3
+          onStake={(amount, periodDays) => stakeMutation.mutate({ amount, lockDays: periodDays })}
+          onUnstake={(id) => unstakeMutation.mutate(id)}
+          onClaimRewards={() => claimRewardsMutation.mutate()}
+        />
+      </div>
+
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileEcosystemV3 />
+      </div>
+    </>
   );
 }
