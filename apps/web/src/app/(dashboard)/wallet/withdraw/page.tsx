@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { WithdrawPage as WithdrawPageUI } from '@/components/ui-v3/wallet/withdraw-page';
+import { MobileWithdrawPage } from '@/components/ui-v3/mobile/mobile-withdraw-page';
 
 export default function WithdrawPage() {
   const router = useRouter();
@@ -81,11 +82,25 @@ export default function WithdrawPage() {
     time: new Date(w.createdAt).toLocaleString('zh-CN'),
   }));
 
+  const handleBack = () => {
+    router.push('/wallet');
+  };
+
   return (
-    <WithdrawPageUI
-      balance={parseFloat(balance?.usdt || '0')}
-      recentWithdrawals={recentWithdrawals}
-      onWithdraw={(data) => withdrawMutation.mutate(data)}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <WithdrawPageUI
+          balance={parseFloat(balance?.usdt || '0')}
+          recentWithdrawals={recentWithdrawals}
+          onWithdraw={(data) => withdrawMutation.mutate(data)}
+        />
+      </div>
+
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileWithdrawPage onBack={handleBack} />
+      </div>
+    </>
   );
 }

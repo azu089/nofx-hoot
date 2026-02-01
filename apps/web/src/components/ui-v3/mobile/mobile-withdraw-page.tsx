@@ -6,15 +6,16 @@ import { ArrowLeft, ChevronDown, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface NetworkInfo {
   name: string
+  icon: string
   fee: string
   time: string
 }
 
 const networks: NetworkInfo[] = [
-  { name: 'TRC20', fee: '1', time: '~2分钟' },
-  { name: 'ERC20', fee: '5', time: '~5分钟' },
-  { name: 'BEP20', fee: '0.8', time: '~3分钟' },
-  { name: 'Polygon', fee: '0.5', time: '~2分钟' },
+  { name: 'TRC20', icon: '/icons/networks/tron.svg', fee: '1', time: '~2分钟' },
+  { name: 'ERC20', icon: '/icons/networks/ethereum.svg', fee: '5', time: '~5分钟' },
+  { name: 'BEP20', icon: '/icons/networks/bsc.svg', fee: '0.8', time: '~3分钟' },
+  { name: 'Polygon', icon: '/icons/networks/polygon.svg', fee: '0.5', time: '~2分钟' },
 ]
 
 interface WithdrawRecord {
@@ -85,15 +86,17 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
 
       <div className="p-4 space-y-3">
         {/* 网络选择 - 独立层级避免裁剪 */}
-        <div className="relative z-20">
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
+        <div className="relative z-30">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
             <button
               type="button"
               onClick={() => setShowDropdown(!showDropdown)}
               className="w-full px-4 py-3 flex items-center justify-between"
             >
             <div className="flex items-center gap-3">
-              <span className="text-sm text-[#94A3B8]">网络</span>
+              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+                <Image src={selectedNetwork.icon} alt={selectedNetwork.name} width={32} height={32} className="object-contain" />
+              </div>
               <span className="font-medium">{selectedNetwork.name}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
@@ -104,7 +107,7 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
           </div>
 
           {showDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-[#0F0F14] border border-[#2A2A3A] rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
               {networks.map((network) => (
                 <button
                   key={network.name}
@@ -115,9 +118,14 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
                     setIsAddressValid(null)
                     setAddress('')
                   }}
-                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0"
                 >
-                  <span className={network.name === selectedNetwork.name ? 'text-[#06B6D4]' : ''}>{network.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">
+                      <Image src={network.icon} alt={network.name} width={32} height={32} className="object-contain" />
+                    </div>
+                    <span className={`font-medium ${network.name === selectedNetwork.name ? 'text-[#06B6D4]' : 'text-white'}`}>{network.name}</span>
+                  </div>
                   <div className="flex items-center gap-3 text-xs text-[#94A3B8]">
                     <span>{network.fee} USDT · {network.time}</span>
                     {network.name === selectedNetwork.name && <CheckCircle2 className="w-4 h-4 text-[#06B6D4]" />}

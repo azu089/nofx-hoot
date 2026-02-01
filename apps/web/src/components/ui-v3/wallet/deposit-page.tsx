@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import {
   ArrowDownToLine,
   Copy,
@@ -18,6 +19,7 @@ interface Network {
   id: string
   name: string
   symbol: string
+  icon: string
   confirmations: number
   estimatedTime: string
   minDeposit: number
@@ -39,10 +41,10 @@ interface DepositPageProps {
 }
 
 const defaultNetworks: Network[] = [
-  { id: 'trc20', name: 'TRC20', symbol: 'TRON', confirmations: 20, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
-  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', confirmations: 12, estimatedTime: '约 5 分钟', minDeposit: 10, fee: 0 },
-  { id: 'bep20', name: 'BEP20', symbol: 'BSC', confirmations: 15, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
-  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', confirmations: 128, estimatedTime: '约 3 分钟', minDeposit: 1, fee: 0 },
+  { id: 'trc20', name: 'TRC20', symbol: 'TRON', icon: '/icons/networks/tron.svg', confirmations: 20, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
+  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', icon: '/icons/networks/ethereum.svg', confirmations: 12, estimatedTime: '约 5 分钟', minDeposit: 10, fee: 0 },
+  { id: 'bep20', name: 'BEP20', symbol: 'BSC', icon: '/icons/networks/bsc.svg', confirmations: 15, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
+  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.svg', confirmations: 128, estimatedTime: '约 3 分钟', minDeposit: 1, fee: 0 },
 ]
 
 const defaultRecentDeposits = [
@@ -110,7 +112,7 @@ export function DepositPage({
             {/* Left: Deposit Form */}
             <div className="col-span-2 space-y-6">
               {/* Network Selector */}
-              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              <div className="glass-border-glow relative bg-[#12121A] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] z-30">
                 <h2 className="text-lg font-semibold mb-4">选择网络</h2>
 
                 <div className="relative">
@@ -120,19 +122,19 @@ export function DepositPage({
                     className="w-full px-4 py-4 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl text-left flex items-center justify-between hover:border-[#06B6D4]/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-[#1E1E2E] rounded-full flex items-center justify-center">
-                        <span className="text-[#06B6D4] font-bold text-sm">{selectedNetwork.symbol.charAt(0)}</span>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden">
+                        <Image src={selectedNetwork.icon} alt={selectedNetwork.name} width={40} height={40} className="object-contain" />
                       </div>
                       <div>
                         <div className="font-medium">{selectedNetwork.name}</div>
-                        <div className="text-sm text-[#606070]">{selectedNetwork.symbol} 网络</div>
+                        <div className="text-sm text-[#606070]">手续费: {selectedNetwork.fee} USDT</div>
                       </div>
                     </div>
                     <ChevronDown className={`w-5 h-5 text-[#606070] transition-transform ${showNetworkDropdown ? 'rotate-180' : ''}`} />
                   </button>
 
                   {showNetworkDropdown && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-[#12121A] border border-[#2A2A3A] rounded-xl overflow-hidden z-20 shadow-xl">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-[#0F0F14] border border-[#2A2A3A] rounded-xl overflow-hidden z-[100] shadow-[0_12px_48px_rgba(0,0,0,1)]">
                       {networks.map((network) => (
                         <button
                           key={network.id}
@@ -141,16 +143,16 @@ export function DepositPage({
                             setSelectedNetwork(network)
                             setShowNetworkDropdown(false)
                           }}
-                          className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-[#1E1E2E] transition-colors ${
-                            selectedNetwork.id === network.id ? 'bg-[#1E1E2E]' : ''
+                          className={`w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0 ${
+                            selectedNetwork.id === network.id ? 'bg-[#252530]' : ''
                           }`}
                         >
-                          <div className="w-8 h-8 bg-[#2A2A3A] rounded-full flex items-center justify-center">
-                            <span className="text-[#06B6D4] font-bold text-xs">{network.symbol.charAt(0)}</span>
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden">
+                            <Image src={network.icon} alt={network.name} width={40} height={40} className="object-contain" />
                           </div>
                           <div className="flex-1">
                             <div className="font-medium">{network.name}</div>
-                            <div className="text-xs text-[#606070]">{network.estimatedTime}</div>
+                            <div className="text-xs text-[#606070]">手续费: {network.fee} USDT · {network.estimatedTime}</div>
                           </div>
                           {selectedNetwork.id === network.id && (
                             <Check className="w-4 h-4 text-[#06B6D4]" />
@@ -160,28 +162,10 @@ export function DepositPage({
                     </div>
                   )}
                 </div>
-
-                {/* Network Info */}
-                <div className="mt-4 p-4 bg-[#0A0A0F]/50 rounded-xl">
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <div className="text-[#606070]">最小充值</div>
-                      <div className="font-medium">{selectedNetwork.minDeposit} USDT</div>
-                    </div>
-                    <div>
-                      <div className="text-[#606070]">确认数</div>
-                      <div className="font-medium">{selectedNetwork.confirmations} 次</div>
-                    </div>
-                    <div>
-                      <div className="text-[#606070]">预计到账</div>
-                      <div className="font-medium">{selectedNetwork.estimatedTime}</div>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Deposit Address */}
-              <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              <div className="glass-border-glow relative z-10 bg-[#12121A]/80 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <h2 className="text-lg font-semibold mb-4">充值地址</h2>
 
                 <div className="flex items-center gap-3 p-4 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl">
