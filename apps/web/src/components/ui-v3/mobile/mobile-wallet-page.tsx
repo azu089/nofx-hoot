@@ -332,12 +332,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pb-20">
-      {/* 顶部标题 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/80 backdrop-blur-lg border-b border-[#1E1E2E] px-4 py-4">
-        <h1 className="text-xl font-bold text-white">资产</h1>
-      </div>
-
-      {/* 主 Tab 切换 */}
+      {/* 主 Tab 切换 - 移除标题头部 */}
       <div className="px-4 pt-4">
         <div className="flex gap-2 p-1 bg-[#12121A] rounded-xl">
           <button

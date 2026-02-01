@@ -8,19 +8,20 @@ import {
   TrendingUp,
   Filter
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface Strategy {
   id: string
   name: string
-  type: string  // 定投/网格/AI信号/套利
-  marketType: '现货' | '合约'  // 现货或合约
+  type: string  // DCA/Grid/AI Signal/Arbitrage
+  marketType: 'spot' | 'futures'  // spot or futures
   creator: string
   winRate: number
   totalReturn: number
-  riskLevel: '低' | '中' | '高'
+  riskLevel: 'low' | 'medium' | 'high'
   subscribers: number
-  badges: ('热门' | '最新' | '专业版')[]
-  isFree: boolean
+  badges: ('hot' | 'new' | 'pro')[]
+  isHot?: boolean
 }
 
 interface MobileStrategiesV3Props {
@@ -29,104 +30,111 @@ interface MobileStrategiesV3Props {
   onUseStrategy?: (id: string) => void
   onNavigate?: (tab: string) => void
   onCreateStrategy?: () => void
+  onLoadMore?: () => void
+  hasMore?: boolean // 是否有更多数据
+  isLoadingMore?: boolean // 是否正在加载更多
 }
 
 const mockStrategies: Strategy[] = [
   {
     id: '1',
     name: 'DCA Bot Pro',
-    type: '定投',
-    marketType: '现货',
+    type: 'DCA',
+    marketType: 'spot',
     creator: 'CryptoMaster',
     winRate: 87.5,
     totalReturn: 156.8,
-    riskLevel: '低',
+    riskLevel: 'low',
     subscribers: 2847,
-    badges: ['热门', '专业版'],
-    isFree: true
+    badges: ['hot', 'pro'],
+    isHot: true
   },
   {
     id: '2',
     name: 'Grid Trading Master',
-    type: '网格',
-    marketType: '合约',
+    type: 'Grid',
+    marketType: 'futures',
     creator: 'GridKing',
     winRate: 73.2,
     totalReturn: 89.4,
-    riskLevel: '中',
+    riskLevel: 'medium',
     subscribers: 1523,
-    badges: ['专业版'],
-    isFree: true
+    badges: ['pro'],
+    isHot: false
   },
   {
     id: '3',
     name: 'AI Signal Hunter',
-    type: 'AI信号',
-    marketType: '合约',
+    type: 'AI Signal',
+    marketType: 'futures',
     creator: 'AITrader',
     winRate: 91.3,
     totalReturn: 234.7,
-    riskLevel: '高',
+    riskLevel: 'high',
     subscribers: 892,
-    badges: ['最新', '热门'],
-    isFree: true
+    badges: ['new', 'hot'],
+    isHot: true
   },
   {
     id: '4',
     name: 'Arbitrage Eagle',
-    type: '套利',
-    marketType: '现货',
+    type: 'Arbitrage',
+    marketType: 'spot',
     creator: 'ArbiMaster',
     winRate: 95.1,
     totalReturn: 67.3,
-    riskLevel: '低',
+    riskLevel: 'low',
     subscribers: 3241,
-    badges: ['专业版'],
-    isFree: true
+    badges: ['pro'],
+    isHot: false
   },
   {
     id: '5',
     name: 'Smart Grid Pro',
-    type: '网格',
-    marketType: '现货',
+    type: 'Grid',
+    marketType: 'spot',
     creator: 'GridExpert',
     winRate: 78.9,
     totalReturn: 112.5,
-    riskLevel: '中',
+    riskLevel: 'medium',
     subscribers: 1876,
-    badges: ['热门'],
-    isFree: true
+    badges: ['hot'],
+    isHot: true
   },
   {
     id: '6',
     name: 'DCA Steady Growth',
-    type: '定投',
-    marketType: '合约',
+    type: 'DCA',
+    marketType: 'futures',
     creator: 'SteadyTrader',
     winRate: 82.4,
     totalReturn: 98.7,
-    riskLevel: '低',
+    riskLevel: 'low',
     subscribers: 2156,
     badges: [],
-    isFree: true
+    isHot: false
   }
 ]
 
-const filterOptions = ['全部', '定投', '网格', 'AI信号', '套利']
-const marketTypeOptions = ['全部', '现货', '合约']
-const sortOptions = ['热门', '胜率', '收益', '最新']
+const filterOptions = ['all', 'DCA', 'Grid', 'AI Signal', 'Arbitrage']
+const marketTypeOptions = ['all', 'spot', 'futures']
+const sortOptions = ['hot', 'winRate', 'return', 'new']
 
 export function MobileStrategiesV3({
   strategies = mockStrategies,
   onStrategyClick,
   onUseStrategy,
   onNavigate: _onNavigate,
-  onCreateStrategy
+  onCreateStrategy,
+  onLoadMore,
+  hasMore = true,
+  isLoadingMore = false
 }: MobileStrategiesV3Props) {
   void _onNavigate
-  const [selectedFilter, setSelectedFilter] = useState('全部')
-  const [selectedMarketType, setSelectedMarketType] = useState('全部')
-  const [selectedSort, setSelectedSort] = useState('热门')
+  const t = useTranslations('strategies')
+  const [selectedFilter, setSelectedFilter] = useState('all')
+  const [selectedMarketType, setSelectedMarketType] = useState('all')
+  const [selectedSort, setSelectedSort] = useState('hot')
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
@@ -135,20 +143,66 @@ export function MobileStrategiesV3({
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case '低':
+      case 'low':
         return 'text-green-400'
-      case '中':
+      case 'medium':
         return 'text-yellow-400'
-      case '高':
+      case 'high':
         return 'text-red-400'
       default:
         return 'text-[#9090A0]'
     }
   }
 
+  const getRiskLabel = (risk: string) => {
+    switch (risk) {
+      case 'low':
+        return t('lowRisk')
+      case 'medium':
+        return t('mediumRisk')
+      case 'high':
+        return t('highRisk')
+      default:
+        return risk
+    }
+  }
+
+  const getFilterLabel = (key: string) => {
+    if (key === 'all') return t('all')
+    return key // DCA, Grid, etc. stay as-is
+  }
+
+  const getMarketTypeLabel = (key: string) => {
+    switch (key) {
+      case 'all': return t('all')
+      case 'spot': return t('spot')
+      case 'futures': return t('futures')
+      default: return key
+    }
+  }
+
+  const getSortLabel = (key: string) => {
+    switch (key) {
+      case 'hot': return t('hot')
+      case 'winRate': return t('winRate')
+      case 'return': return t('return')
+      case 'new': return t('new')
+      default: return key
+    }
+  }
+
+  const getBadgeLabel = (badge: string) => {
+    switch (badge) {
+      case 'hot': return t('hot')
+      case 'new': return t('new')
+      case 'pro': return t('pro')
+      default: return badge
+    }
+  }
+
   const filteredStrategies = strategies.filter(strategy => {
-    const matchesFilter = selectedFilter === '全部' || strategy.type === selectedFilter
-    const matchesMarketType = selectedMarketType === '全部' || strategy.marketType === selectedMarketType
+    const matchesFilter = selectedFilter === 'all' || strategy.type === selectedFilter
+    const matchesMarketType = selectedMarketType === 'all' || strategy.marketType === selectedMarketType
     const matchesSearch = strategy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          strategy.creator.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesFilter && matchesMarketType && matchesSearch
@@ -163,7 +217,7 @@ export function MobileStrategiesV3({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
             <input
               type="text"
-              placeholder="输入关键词搜索策略"
+              placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-[#12121A]/50 border border-[#1E1E2E] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-[#06B6D4]"
@@ -175,7 +229,7 @@ export function MobileStrategiesV3({
             onClick={() => setShowSearch(false)}
             className="text-[#06B6D4] font-medium"
           >
-            取消
+            {t('cancel')}
           </button>
         </div>
 
@@ -195,14 +249,14 @@ export function MobileStrategiesV3({
                     <div className="flex items-center gap-2 text-xs text-[#606070]">
                       <span>{strategy.type}</span>
                       <span>·</span>
-                      <span className={strategy.marketType === '现货' ? 'text-blue-400' : 'text-orange-400'}>
-                        {strategy.marketType}
+                      <span className={strategy.marketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
+                        {getMarketTypeLabel(strategy.marketType)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {strategy.badges.includes('热门') && <span className="w-2 h-2 rounded-full bg-red-500" />}
-                      {strategy.badges.includes('最新') && <span className="w-2 h-2 rounded-full bg-green-500" />}
-                      {strategy.badges.includes('专业版') && <span className="w-2 h-2 rounded-full bg-purple-500" />}
+                      {strategy.badges.includes('hot') && <span className="w-2 h-2 rounded-full bg-red-500" />}
+                      {strategy.badges.includes('new') && <span className="w-2 h-2 rounded-full bg-green-500" />}
+                      {strategy.badges.includes('pro') && <span className="w-2 h-2 rounded-full bg-purple-500" />}
                     </div>
                   </div>
                   <h3 className="text-[#F8F8FC] font-semibold mb-0.5">{strategy.name}</h3>
@@ -211,13 +265,13 @@ export function MobileStrategiesV3({
               ))}
               {filteredStrategies.length === 0 && (
                 <div className="text-center text-[#606070] py-8">
-                  未找到匹配的策略
+                  {t('noResults')}
                 </div>
               )}
             </div>
           ) : (
             <div className="text-center text-[#606070] py-12">
-              输入关键词搜索策略
+              {t('searchPlaceholder')}
             </div>
           )}
         </div>
@@ -227,28 +281,25 @@ export function MobileStrategiesV3({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0F]/90 border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between p-4">
-          <h1 className="text-lg font-bold text-[#F8F8FC]">策略</h1>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowSearch(true)}
-              className="p-2 rounded-xl bg-[#12121A]/50 border border-[#1E1E2E] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
-              aria-label="搜索"
-            >
-              <Search className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              onClick={onCreateStrategy}
-              className="flex items-center gap-2 px-4 py-2 bg-[#06B6D4] text-black font-medium rounded-xl hover:bg-[#06B6D4]/90 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              创建
-            </button>
-          </div>
+      {/* Sticky Header - 仅操作按钮 */}
+      <div className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0F]/90">
+        <div className="flex items-center justify-end gap-3 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => setShowSearch(true)}
+            className="p-2 rounded-xl bg-[#12121A]/50 border border-[#1E1E2E] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
+            aria-label={t('search')}
+          >
+            <Search className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onCreateStrategy}
+            className="flex items-center gap-2 px-3 py-2 bg-[#06B6D4] text-black font-medium rounded-xl hover:bg-[#06B6D4]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {t('create')}
+          </button>
         </div>
       </div>
 
@@ -268,8 +319,8 @@ export function MobileStrategiesV3({
             >
               <div className="flex items-center gap-1.5">
                 <Filter className="w-4 h-4 text-[#9090A0]" />
-                <span className={selectedFilter === '全部' ? 'text-[#9090A0]' : 'text-[#F8F8FC]'}>
-                  {selectedFilter}
+                <span className={selectedFilter === 'all' ? 'text-[#9090A0]' : 'text-[#F8F8FC]'}>
+                  {getFilterLabel(selectedFilter)}
                 </span>
               </div>
               <ChevronDown className={`w-4 h-4 text-[#9090A0] transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} />
@@ -291,7 +342,7 @@ export function MobileStrategiesV3({
                         : 'text-[#9090A0] hover:text-[#F8F8FC] hover:bg-[#1E1E2E]/50'
                     }`}
                   >
-                    {option}
+                    {getFilterLabel(option)}
                   </button>
                 ))}
               </div>
@@ -309,8 +360,8 @@ export function MobileStrategiesV3({
               }}
               className="flex items-center justify-between gap-1 w-full px-2.5 py-2.5 bg-[#12121A]/50 border border-[#1E1E2E] rounded-xl text-sm transition-colors"
             >
-              <span className={selectedMarketType === '全部' ? 'text-[#9090A0]' : selectedMarketType === '现货' ? 'text-blue-400' : 'text-orange-400'}>
-                {selectedMarketType === '全部' ? '市场' : selectedMarketType}
+              <span className={selectedMarketType === 'all' ? 'text-[#9090A0]' : selectedMarketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
+                {selectedMarketType === 'all' ? t('market') : getMarketTypeLabel(selectedMarketType)}
               </span>
               <ChevronDown className={`w-4 h-4 text-[#9090A0] transition-transform ${showMarketTypeDropdown ? 'rotate-180' : ''}`} />
             </button>
@@ -331,7 +382,7 @@ export function MobileStrategiesV3({
                         : 'text-[#9090A0] hover:text-[#F8F8FC] hover:bg-[#1E1E2E]/50'
                     }`}
                   >
-                    {option}
+                    {getMarketTypeLabel(option)}
                   </button>
                 ))}
               </div>
@@ -351,7 +402,7 @@ export function MobileStrategiesV3({
             >
               <div className="flex items-center gap-1.5">
                 <TrendingUp className="w-4 h-4 text-[#9090A0]" />
-                <span className="text-[#F8F8FC]">{selectedSort}</span>
+                <span className="text-[#F8F8FC]">{getSortLabel(selectedSort)}</span>
               </div>
               <ChevronDown className={`w-4 h-4 text-[#9090A0] transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
             </button>
@@ -372,7 +423,7 @@ export function MobileStrategiesV3({
                         : 'text-[#9090A0] hover:text-[#F8F8FC] hover:bg-[#1E1E2E]/50'
                     }`}
                   >
-                    {option}
+                    {getSortLabel(option)}
                   </button>
                 ))}
               </div>
@@ -393,19 +444,19 @@ export function MobileStrategiesV3({
               <div className="flex items-center gap-2 text-xs text-[#606070]">
                 <span>{strategy.type}</span>
                 <span>·</span>
-                <span className={strategy.marketType === '现货' ? 'text-blue-400' : 'text-orange-400'}>
-                  {strategy.marketType}
+                <span className={strategy.marketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
+                  {getMarketTypeLabel(strategy.marketType)}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                {strategy.badges.includes('热门') && (
-                  <span className="w-2 h-2 rounded-full bg-red-500" title="热门" />
+                {strategy.badges.includes('hot') && (
+                  <span className="w-2 h-2 rounded-full bg-red-500" title={t('hot')} />
                 )}
-                {strategy.badges.includes('最新') && (
-                  <span className="w-2 h-2 rounded-full bg-green-500" title="最新" />
+                {strategy.badges.includes('new') && (
+                  <span className="w-2 h-2 rounded-full bg-green-500" title={t('new')} />
                 )}
-                {strategy.badges.includes('专业版') && (
-                  <span className="w-2 h-2 rounded-full bg-purple-500" title="专业版" />
+                {strategy.badges.includes('pro') && (
+                  <span className="w-2 h-2 rounded-full bg-purple-500" title={t('pro')} />
                 )}
               </div>
             </div>
@@ -421,22 +472,22 @@ export function MobileStrategiesV3({
               {/* 收益率 - 突出显示 */}
               <div>
                 <div className="text-green-400 text-2xl font-bold">+{strategy.totalReturn}%</div>
-                <div className="text-[#606070] text-xs mt-0.5">总收益</div>
+                <div className="text-[#606070] text-xs mt-0.5">{t('totalReturnShort')}</div>
               </div>
 
               {/* 其他指标 */}
               <div className="flex items-center gap-4 text-right">
                 <div>
                   <div className="text-[#F8F8FC] font-medium">{strategy.winRate}%</div>
-                  <div className="text-[#606070] text-xs">胜率</div>
+                  <div className="text-[#606070] text-xs">{t('winRate')}</div>
                 </div>
                 <div>
-                  <div className={`font-medium ${getRiskColor(strategy.riskLevel)}`}>{strategy.riskLevel}</div>
-                  <div className="text-[#606070] text-xs">风险</div>
+                  <div className={`font-medium ${getRiskColor(strategy.riskLevel)}`}>{getRiskLabel(strategy.riskLevel)}</div>
+                  <div className="text-[#606070] text-xs">{t('risk')}</div>
                 </div>
                 <div>
                   <div className="text-[#F8F8FC] font-medium">{strategy.subscribers.toLocaleString()}</div>
-                  <div className="text-[#606070] text-xs">使用</div>
+                  <div className="text-[#606070] text-xs">{t('users')}</div>
                 </div>
               </div>
             </div>
@@ -451,7 +502,7 @@ export function MobileStrategiesV3({
                 }}
                 className="flex-1 py-2.5 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl text-[#94A3B8] text-sm font-medium transition-all"
               >
-                详情
+                {t('details')}
               </button>
               <button
                 type="button"
@@ -461,7 +512,7 @@ export function MobileStrategiesV3({
                 }}
                 className="flex-1 py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-cyan-400 text-sm font-medium transition-all"
               >
-                立即使用
+                {t('useNow')}
               </button>
             </div>
           </div>
@@ -469,18 +520,26 @@ export function MobileStrategiesV3({
 
         {filteredStrategies.length === 0 && (
           <div className="text-center text-[#606070] py-12">
-            暂无策略
+            {t('noStrategies')}
           </div>
         )}
 
-        {/* Load More Button */}
+        {/* Load More / All Loaded */}
         {filteredStrategies.length > 0 && (
-          <button
-            type="button"
-            className="w-full py-3 backdrop-blur-xl bg-[#12121A]/50 border border-[#1E1E2E] rounded-xl text-[#9090A0] text-sm font-medium hover:text-[#F8F8FC] transition-colors"
-          >
-            加载更多
-          </button>
+          <div className="text-center py-2">
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={isLoadingMore}
+                className="w-full py-3 backdrop-blur-xl bg-[#12121A]/50 border border-[#1E1E2E] rounded-xl text-[#9090A0] text-sm font-medium hover:text-[#F8F8FC] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoadingMore ? t('loading') : t('loadMore')}
+              </button>
+            ) : (
+              <p className="text-[#606070] text-sm py-3">{t('allLoaded')}</p>
+            )}
+          </div>
         )}
       </div>
     </div>

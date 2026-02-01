@@ -155,12 +155,7 @@ export function MobileProfilePage({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pb-24">
-      {/* 页面标题 */}
-      <div className="px-4 pt-6 pb-2">
-        <h1 className="text-2xl font-bold text-white">我的</h1>
-      </div>
-
-      {/* 用户信息卡片 - 与桌面端对齐 */}
+      {/* 用户信息卡片 - 移除标题头部 */}
       <div className="px-4 pt-2 pb-4">
         <div className="glass-border-glow relative overflow-hidden rounded-2xl border border-cyan-500/[0.08] bg-[#12121A]/30 backdrop-blur-[72px] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-4">

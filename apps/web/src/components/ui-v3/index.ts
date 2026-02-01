@@ -82,15 +82,17 @@ export { MobileNav } from './mobile/mobile-nav'
 // 移动端页面
 export { MobileDashboardV3 } from './mobile/mobile-dashboard-v3'
 export { MobileStrategiesV3 } from './mobile/mobile-strategies-v3'
-export { MobilePositionsV3 } from './mobile/mobile-positions-v3'
 export { MobileStrategyDetail } from './mobile/mobile-strategy-detail'
 export { MobileStrategyEdit } from './mobile/mobile-strategy-edit'
 export { MobileEcosystemV3 } from './mobile/mobile-ecosystem-v3'
-export { MobileProfileV3 } from './mobile/mobile-profile-v3'
-export { MobileWalletV3 } from './mobile/mobile-wallet-v3'
-export { MobileReferralV3 } from './mobile/mobile-referral-v3'
-export { MobileSettingsV3 } from './mobile/mobile-settings-v3'
 export { MobileWalletConnectModal } from './mobile/mobile-wallet-connect-modal'
+
+// V0 生成的新版移动端组件
+export { MobileProfilePage } from './mobile/mobile-profile-page'
+export { MobileWalletPage } from './mobile/mobile-wallet-page'
+export { MobileReferralPage } from './mobile/mobile-referral-page'
+export { MobileSettingsPage } from './mobile/mobile-settings-page'
+export { MobileTradingCenter } from './mobile/mobile-trading-center'
 
 // 移动端认证页面
 export { MobileLoginPage } from './mobile/mobile-login-page'

@@ -20,6 +20,7 @@ import {
   Search,
   RefreshCcw
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
@@ -227,11 +228,17 @@ const mockPendingOrders: PendingOrder[] = [
   { id: 3, symbol: 'SOL-USDT', side: 'buy', type: 'limit', price: 92.00, amount: 50, filled: 0, time: '2026-01-28 20:45', marketType: 'spot' }
 ]
 
-const strategyTypeLabels: Record<string, { label: string; color: string }> = {
-  system: { label: '系统', color: 'bg-cyan-400/10 text-cyan-400' },
-  external: { label: '外部', color: 'bg-purple-400/10 text-purple-400' },
-  visual: { label: '可视化', color: 'bg-blue-400/10 text-blue-400' },
-  code: { label: '代码', color: 'bg-orange-400/10 text-orange-400' }
+const strategyTypeColors: Record<string, string> = {
+  system: 'bg-cyan-400/10 text-cyan-400',
+  external: 'bg-purple-400/10 text-purple-400',
+  visual: 'bg-blue-400/10 text-blue-400',
+  code: 'bg-orange-400/10 text-orange-400'
+}
+
+// 策略类型映射函数 - 返回翻译后的标签
+const getStrategyTypeLabel = (type: string, t: (key: string) => string) => {
+  const typeKey = `strategyTypes.${type}` as const
+  return t(typeKey as any) || type
 }
 
 // ============ Props ============
@@ -253,6 +260,7 @@ export function MobileTradingCenter({
   onToggleStrategy,
   onViewMarket
 }: MobileTradingCenterProps) {
+  const t = useTranslations('trading')
   const [activeTab, setActiveTab] = useState('positions')
   const [selectedAccount, setSelectedAccount] = useState(mockAccounts[0])
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
@@ -305,24 +313,17 @@ export function MobileTradingCenter({
     : accountType === 'spot' ? 456.12 : 1067.33
 
   const tabs = [
-    { id: 'positions', label: '持仓', count: filteredPositions.length, icon: BarChart3 },
-    { id: 'history', label: '历史', count: filteredHistoryOrders.length, icon: RefreshCcw },
-    { id: 'orders', label: '挂单', count: filteredPendingOrders.length, icon: Clock },
-    { id: 'logs', label: '日志', count: filteredLogs.length, icon: Activity },
-    { id: 'strategies', label: '策略', count: strategiesForCount.length, icon: Zap }
+    { id: 'positions', labelKey: 'currentPositions', count: filteredPositions.length, icon: BarChart3 },
+    { id: 'history', labelKey: 'historyOrders', count: filteredHistoryOrders.length, icon: RefreshCcw },
+    { id: 'orders', labelKey: 'pendingOrders', count: filteredPendingOrders.length, icon: Clock },
+    { id: 'logs', labelKey: 'executionLogs', count: filteredLogs.length, icon: Activity },
+    { id: 'strategies', labelKey: 'strategy', count: strategiesForCount.length, icon: Zap }
   ]
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
-      {/* 固定头部 - 仅标题 */}
-      <div className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0F]/90 border-b border-[#1E1E2E]">
-        <div className="px-4 py-3">
-          <h1 className="text-lg font-bold">交易</h1>
-        </div>
-      </div>
-
-      {/* 可滚动内容区 */}
-      <div className="flex-1 overflow-auto pb-20">
+      {/* 可滚动内容区 - 移除标题头部 */}
+      <div className="flex-1 overflow-auto pb-20 pt-2">
         {/* 筛选器行 - 全部/现货/合约 + 账户选择 */}
         <div className="px-4 py-3 flex items-center gap-3">
           {/* 全部/现货/合约切换 */}
@@ -338,7 +339,7 @@ export function MobileTradingCenter({
                     : 'text-[#9090A0]'
                 }`}
               >
-                {type === 'all' ? '全部' : type === 'spot' ? '现货' : '合约'}
+                {type === 'all' ? t('all') : type === 'spot' ? t('spot') : t('futures')}
               </button>
             ))}
           </div>
@@ -435,7 +436,7 @@ export function MobileTradingCenter({
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium"
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>紧急清仓</span>
+            <span>{t('emergencyClose')}</span>
           </button>
         </div>
 
@@ -445,7 +446,7 @@ export function MobileTradingCenter({
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="m-date-start" className="text-xs text-[#9090A0] mb-1 block">开始</label>
+                  <label htmlFor="m-date-start" className="text-xs text-[#9090A0] mb-1 block">{t('startDate')}</label>
                   <input
                     id="m-date-start"
                     type="date"
@@ -455,7 +456,7 @@ export function MobileTradingCenter({
                   />
                 </div>
                 <div>
-                  <label htmlFor="m-date-end" className="text-xs text-[#9090A0] mb-1 block">结束</label>
+                  <label htmlFor="m-date-end" className="text-xs text-[#9090A0] mb-1 block">{t('endDate')}</label>
                   <input
                     id="m-date-end"
                     type="date"
@@ -466,16 +467,16 @@ export function MobileTradingCenter({
                 </div>
               </div>
               <div className="flex gap-2">
-                {['本周', '本月', '近3月'].map((preset) => (
+                {[{ key: 'thisWeek', label: t('thisWeek') }, { key: 'thisMonth', label: t('thisMonth') }, { key: 'last3Months', label: t('last3Months') }].map((preset) => (
                   <button
-                    key={preset}
+                    key={preset.key}
                     type="button"
                     onClick={() => {
                       const today = new Date()
                       let start = new Date()
-                      if (preset === '本周') {
+                      if (preset.key === 'thisWeek') {
                         start.setDate(today.getDate() - today.getDay())
-                      } else if (preset === '本月') {
+                      } else if (preset.key === 'thisMonth') {
                         start = new Date(today.getFullYear(), today.getMonth(), 1)
                       } else {
                         start.setMonth(today.getMonth() - 3)
@@ -487,7 +488,7 @@ export function MobileTradingCenter({
                     }}
                     className="flex-1 px-3 py-1.5 text-xs bg-[#1E1E2E] text-[#9090A0] rounded hover:bg-[#2A2A3A] transition-colors"
                   >
-                    {preset}
+                    {preset.label}
                   </button>
                 ))}
               </div>
@@ -496,7 +497,7 @@ export function MobileTradingCenter({
                 onClick={() => setShowDatePicker(false)}
                 className="w-full py-2 bg-[#06B6D4] text-white rounded-lg text-sm font-medium"
               >
-                确认
+                {t('confirm')}
               </button>
             </div>
           </div>
@@ -519,7 +520,7 @@ export function MobileTradingCenter({
                   >
                     <Icon className={`w-4 h-4 mb-1.5 ${isActive ? 'text-[#06B6D4]' : 'text-[#606070]'}`} />
                     <span className={`text-[10px] font-medium ${isActive ? 'text-[#06B6D4]' : 'text-[#9090A0]'}`}>
-                      {tab.label}
+                      {t(tab.labelKey as any)}
                     </span>
                     {/* 数字徽章 - 绝对定位不影响居中 */}
                     <span className={`absolute top-1 right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full text-[8px] font-medium ${
@@ -541,9 +542,9 @@ export function MobileTradingCenter({
             filteredPositions.length === 0 ? (
               <div className="text-center py-12">
                 <BarChart3 className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">暂无持仓</h3>
+                <h3 className="text-lg font-semibold mb-2">{t('noPositions')}</h3>
                 <p className="text-sm text-[#9090A0]">
-                  {accountType === 'all' ? '当前没有持仓' : `当前没有${accountType === 'spot' ? '现货' : '合约'}持仓`}
+                  {accountType === 'all' ? t('noPositionsDesc') : accountType === 'spot' ? t('noSpotPositions') : t('noFuturesPositions')}
                 </p>
               </div>
             ) : (
@@ -563,7 +564,7 @@ export function MobileTradingCenter({
                               ? 'bg-green-400/10 text-green-400'
                               : 'bg-red-400/10 text-red-400'
                           }`}>
-                            {position.direction === 'long' ? '多' : '空'}
+                            {position.direction === 'long' ? t('long') : t('short')}
                           </span>
                         </div>
                         <div className="flex items-center gap-1 text-[10px] text-[#9090A0] truncate">
@@ -585,31 +586,31 @@ export function MobileTradingCenter({
                   {/* 数据行 - 2行3列布局 */}
                   <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
                     <div>
-                      <p className="text-[#606070]">数量</p>
+                      <p className="text-[#606070]">{t('size')}</p>
                       <p className="font-medium">{position.size}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">入场</p>
+                      <p className="text-[#606070]">{t('entry')}</p>
                       <p className="font-medium">${(position.entryPrice / 1000).toFixed(1)}k</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">现价</p>
+                      <p className="text-[#606070]">{t('current')}</p>
                       <p className="font-medium">${(position.markPrice / 1000).toFixed(1)}k</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">止损</p>
+                      <p className="text-[#606070]">{t('stopLossLabel')}</p>
                       <p className="font-medium text-red-400">
                         {position.stopLoss > 0 ? `$${(position.stopLoss / 1000).toFixed(1)}k` : '-'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">止盈</p>
+                      <p className="text-[#606070]">{t('takeProfitLabel')}</p>
                       <p className="font-medium text-green-400">
                         {position.takeProfit > 0 ? `$${(position.takeProfit / 1000).toFixed(1)}k` : '-'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">强平</p>
+                      <p className="text-[#606070]">{t('liquidation')}</p>
                       <p className="font-medium text-yellow-400">
                         {position.liquidationPrice > 0 ? `$${(position.liquidationPrice / 1000).toFixed(1)}k` : '-'}
                       </p>
@@ -622,7 +623,7 @@ export function MobileTradingCenter({
                     onClick={() => onClosePosition?.(position.id)}
                     className="w-full py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium"
                   >
-                    平仓
+                    {t('closePosition')}
                   </button>
                 </div>
               ))
@@ -634,8 +635,8 @@ export function MobileTradingCenter({
             filteredHistoryOrders.length === 0 ? (
               <div className="text-center py-12">
                 <RefreshCcw className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">暂无历史订单</h3>
-                <p className="text-sm text-[#9090A0]">完成的交易将显示在这里</p>
+                <h3 className="text-lg font-semibold mb-2">{t('noHistoryOrders')}</h3>
+                <p className="text-sm text-[#9090A0]">{t('historyOrdersDesc')}</p>
               </div>
             ) : (
               filteredHistoryOrders.map((order) => (
@@ -649,7 +650,7 @@ export function MobileTradingCenter({
                           ? 'bg-green-400/10 text-green-400'
                           : 'bg-red-400/10 text-red-400'
                       }`}>
-                        {order.side === 'buy' ? '买入' : '卖出'}
+                        {order.side === 'buy' ? t('buy') : t('sell')}
                       </span>
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
                         {order.type}
@@ -660,36 +661,36 @@ export function MobileTradingCenter({
                         ? 'bg-green-400/10 text-green-400'
                         : 'bg-yellow-400/10 text-yellow-400'
                     }`}>
-                      {order.status === 'filled' ? '已成交' : '已取消'}
+                      {order.status === 'filled' ? t('filledStatus') : t('cancelledStatus')}
                     </span>
                   </div>
 
                   {/* 数据行 */}
                   <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
                     <div>
-                      <p className="text-[#606070]">价格</p>
+                      <p className="text-[#606070]">{t('price')}</p>
                       <p className="font-medium">${order.price.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">数量</p>
+                      <p className="text-[#606070]">{t('amount')}</p>
                       <p className="font-medium">{order.amount}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">成交</p>
+                      <p className="text-[#606070]">{t('filled')}</p>
                       <p className="font-medium">{order.filled}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">总额</p>
+                      <p className="text-[#606070]">{t('total')}</p>
                       <p className="font-medium">${order.total.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">盈亏</p>
+                      <p className="text-[#606070]">{t('pnl')}</p>
                       <p className={`font-medium ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {order.pnl >= 0 ? '+' : ''}${order.pnl.toFixed(2)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">手续费</p>
+                      <p className="text-[#606070]">{t('fee')}</p>
                       <p className="font-medium text-[#9090A0]">${order.fee.toFixed(2)}</p>
                     </div>
                   </div>
@@ -709,8 +710,8 @@ export function MobileTradingCenter({
             filteredPendingOrders.length === 0 ? (
               <div className="text-center py-12">
                 <Clock className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">暂无挂单</h3>
-                <p className="text-sm text-[#9090A0]">等待成交的订单将显示在这里</p>
+                <h3 className="text-lg font-semibold mb-2">{t('noPendingOrders')}</h3>
+                <p className="text-sm text-[#9090A0]">{t('pendingOrdersDesc')}</p>
               </div>
             ) : (
               filteredPendingOrders.map((order) => (
@@ -724,34 +725,34 @@ export function MobileTradingCenter({
                           ? 'bg-green-400/10 text-green-400'
                           : 'bg-red-400/10 text-red-400'
                       }`}>
-                        {order.side === 'buy' ? '买入' : '卖出'}
+                        {order.side === 'buy' ? t('buy') : t('sell')}
                       </span>
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
-                        {order.type === 'limit' ? '限价' : order.type === 'stop-limit' ? '止损' : '止盈'}
+                        {order.type === 'limit' ? t('limitOrder') : order.type === 'stop-limit' ? t('stopLimitOrder') : t('takeProfitOrder')}
                       </span>
                     </div>
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-400/10 text-cyan-400">
-                      等待成交
+                      {t('waitingFill')}
                     </span>
                   </div>
 
                   {/* 数据行 */}
                   <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
                     <div>
-                      <p className="text-[#606070]">委托价</p>
+                      <p className="text-[#606070]">{t('orderPrice')}</p>
                       <p className="font-medium">${order.price.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">数量</p>
+                      <p className="text-[#606070]">{t('amount')}</p>
                       <p className="font-medium">{order.amount}</p>
                     </div>
                     <div>
-                      <p className="text-[#606070]">已成交</p>
+                      <p className="text-[#606070]">{t('filled')}</p>
                       <p className="font-medium">{order.filled}</p>
                     </div>
                     {order.triggerPrice && (
                       <div className="col-span-3">
-                        <p className="text-[#606070]">触发价</p>
+                        <p className="text-[#606070]">{t('triggerPrice')}</p>
                         <p className="font-medium text-yellow-400">${order.triggerPrice.toLocaleString()}</p>
                       </div>
                     )}
@@ -767,7 +768,7 @@ export function MobileTradingCenter({
                       type="button"
                       className="px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-[10px] font-medium"
                     >
-                      撤单
+                      {t('cancelOrder')}
                     </button>
                   </div>
                 </div>
@@ -780,9 +781,9 @@ export function MobileTradingCenter({
             filteredLogs.length === 0 ? (
               <div className="text-center py-12">
                 <Activity className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">暂无执行日志</h3>
+                <h3 className="text-lg font-semibold mb-2">{t('noLogs')}</h3>
                 <p className="text-sm text-[#9090A0]">
-                  {accountType === 'all' ? '暂无执行日志' : `暂无${accountType === 'spot' ? '现货' : '合约'}执行日志`}
+                  {accountType === 'all' ? t('noLogs') : accountType === 'spot' ? t('noSpotLogs') : t('noFuturesLogs')}
                 </p>
               </div>
             ) : (
@@ -843,7 +844,7 @@ export function MobileTradingCenter({
                         strategyStatusFilter === 'all' ? 'bg-[#06B6D4] text-white' : 'text-[#9090A0]'
                       }`}
                     >
-                      全部
+                      {t('allStatus')}
                     </button>
                     <button
                       type="button"
@@ -852,7 +853,7 @@ export function MobileTradingCenter({
                         strategyStatusFilter === 'running' ? 'bg-[#06B6D4] text-white' : 'text-[#9090A0]'
                       }`}
                     >
-                      运行中 <span className={strategyStatusFilter === 'running' ? 'text-white/80' : 'text-green-400'}>{runningCount}</span>
+                      {t('runningStatus')} <span className={strategyStatusFilter === 'running' ? 'text-white/80' : 'text-green-400'}>{runningCount}</span>
                     </button>
                     <button
                       type="button"
@@ -861,15 +862,15 @@ export function MobileTradingCenter({
                         strategyStatusFilter === 'paused' ? 'bg-[#06B6D4] text-white' : 'text-[#9090A0]'
                       }`}
                     >
-                      已暂停 <span className={strategyStatusFilter === 'paused' ? 'text-white/80' : 'text-yellow-400'}>{pausedCount}</span>
+                      {t('pausedStatus')} <span className={strategyStatusFilter === 'paused' ? 'text-white/80' : 'text-yellow-400'}>{pausedCount}</span>
                     </button>
                   </div>
                   {/* 搜索图标按钮 */}
                   <button
                     type="button"
                     onClick={() => setShowSearchInput(!showSearchInput)}
-                    title="搜索策略"
-                    aria-label="搜索策略"
+                    title={t('searchStrategies')}
+                    aria-label={t('searchStrategies')}
                     className={`p-2 rounded-lg transition-colors ${
                       showSearchInput ? 'bg-[#06B6D4] text-white' : 'bg-[#1E1E2E] text-[#9090A0]'
                     }`}
@@ -885,7 +886,7 @@ export function MobileTradingCenter({
                       type="text"
                       value={strategySearchQuery}
                       onChange={(e) => setStrategySearchQuery(e.target.value)}
-                      placeholder="搜索策略..."
+                      placeholder={t('searchStrategies')}
                       autoFocus
                       className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-xl pl-10 pr-4 py-2.5 text-sm placeholder-[#606070] focus:border-cyan-500/50 focus:outline-none"
                     />
@@ -897,14 +898,14 @@ export function MobileTradingCenter({
               {filteredStrategies.length === 0 ? (
                 <div className="text-center py-12">
                   <Zap className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">暂无策略</h3>
-                  <p className="text-sm text-[#9090A0] mb-4">浏览策略并订阅，或创建自己的交易策略</p>
+                  <h3 className="text-lg font-semibold mb-2">{t('noStrategies')}</h3>
+                  <p className="text-sm text-[#9090A0] mb-4">{t('noStrategiesDesc')}</p>
                   <button
                     type="button"
                     onClick={onViewMarket}
                     className="px-6 py-2.5 bg-[#06B6D4] text-white rounded-xl text-sm font-medium"
                   >
-                    浏览策略
+                    {t('browseStrategies')}
                   </button>
                 </div>
               ) : (
@@ -923,10 +924,10 @@ export function MobileTradingCenter({
                               ? 'bg-green-400/10 text-green-400'
                               : 'bg-yellow-400/10 text-yellow-400'
                           }`}>
-                            {strategy.status === 'running' ? '运行中' : '已暂停'}
+                            {strategy.status === 'running' ? t('runningStatus') : t('pausedStatus')}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${strategyTypeLabels[strategy.type]?.color}`}>
-                            {strategyTypeLabels[strategy.type]?.label}
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${strategyTypeColors[strategy.type]}`}>
+                            {getStrategyTypeLabel(strategy.type, t)}
                           </span>
                         </div>
                         <p className="text-xs text-[#9090A0] line-clamp-1">{strategy.description}</p>
@@ -943,19 +944,19 @@ export function MobileTradingCenter({
                     {/* 参数 */}
                     <div className="grid grid-cols-4 gap-2 text-xs mb-3 p-2 bg-[#0A0A0F]/50 rounded-lg">
                       <div className="text-center">
-                        <p className="text-[#606070]">杠杆</p>
+                        <p className="text-[#606070]">{t('leverage')}</p>
                         <p className="font-medium">{strategy.config.leverage}x</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[#606070]">仓位</p>
+                        <p className="text-[#606070]">{t('positionSize')}</p>
                         <p className="font-medium">{strategy.config.positionSize}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[#606070]">止损</p>
+                        <p className="text-[#606070]">{t('stopLoss')}</p>
                         <p className="font-medium text-red-400">{strategy.config.stopLoss}%</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-[#606070]">止盈</p>
+                        <p className="text-[#606070]">{t('takeProfit')}</p>
                         <p className="font-medium text-green-400">{strategy.config.takeProfit}%</p>
                       </div>
                     </div>
@@ -966,7 +967,7 @@ export function MobileTradingCenter({
                         type="button"
                         onClick={() => onEditStrategy?.(strategy.id)}
                         className="p-2.5 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
-                        title="编辑"
+                        title={t('editStrategy')}
                       >
                         <Settings className="w-4 h-4" />
                       </button>
@@ -974,7 +975,7 @@ export function MobileTradingCenter({
                         type="button"
                         onClick={() => onDeleteStrategy?.(strategy.id)}
                         className="p-2.5 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-red-400 transition-colors"
-                        title="删除"
+                        title={t('deleteStrategy')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -988,7 +989,7 @@ export function MobileTradingCenter({
                         }`}
                       >
                         {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                        {strategy.status === 'running' ? '暂停' : '启动'}
+                        {strategy.status === 'running' ? t('pause') : t('start')}
                       </button>
                     </div>
                   </div>
