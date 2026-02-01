@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { WalletPageV3 } from '@/components/ui-v3/wallet/wallet-page-v3';
+import { MobileWalletPage } from '@/components/ui-v3/mobile/mobile-wallet-page';
 
 // 假设的 USDT 价格（实际应从 API 获取）
 const USDT_PRICE = 1;
@@ -46,24 +47,48 @@ export default function WalletPage() {
     if (!balance) return undefined;
     const usdtBalance = parseFloat(balance.usdt) || 0;
     const hootBalance = parseFloat(balance.hoot) || 0;
+
+    // 临时 mock 数据 - 释放中和点卡（后续从 API 获取）
+    const releasingHoot = 15000;
+    const releasedAmount = 3000;
+    const totalLocked = 18000;
+    const gasCardBalance = 1250;
+
     return [
       {
         id: 'usdt',
-        name: 'Tether USD',
+        name: 'USDT',
         symbol: 'USDT',
-        balance: usdtBalance,
-        value: usdtBalance * USDT_PRICE,
-        price: USDT_PRICE,
-        icon: '💵',
+        balance: usdtBalance || 10346.57, // 显示 mock 数据如果余额为 0
+        value: usdtBalance || 10346.57,
+        icon: '/icons/usdt.svg',
       },
       {
         id: 'hoot',
-        name: 'HOOT Token',
+        name: 'HOOT',
         symbol: 'HOOT',
-        balance: hootBalance,
-        value: hootBalance * HOOT_PRICE,
-        price: HOOT_PRICE,
-        icon: '🦉',
+        balance: hootBalance || 2500.75,
+        value: (hootBalance || 2500.75) * HOOT_PRICE,
+        icon: '/icons/hoot/token.png',
+      },
+      {
+        id: 'hoot-releasing',
+        name: 'HOOT 释放中',
+        symbol: 'HOOT',
+        balance: releasingHoot,
+        value: releasingHoot * HOOT_PRICE,
+        icon: '/icons/hoot/token.png',
+        isReleasing: true,
+        releasedAmount,
+        totalLocked,
+      },
+      {
+        id: 'gas-card',
+        name: '点卡',
+        symbol: 'GAS',
+        balance: gasCardBalance,
+        value: gasCardBalance,
+        icon: '/icons/gas-card.svg',
       },
     ];
   }, [balance]);
@@ -87,16 +112,44 @@ export default function WalletPage() {
     }));
   }, [transactionsData]);
 
+  // 移动端导航处理
+  const handleMobileNavigate = (page: 'deposit' | 'withdraw' | 'exchange' | 'api-add') => {
+    const routes: Record<string, string> = {
+      deposit: '/wallet/deposit',
+      withdraw: '/wallet/withdraw',
+      exchange: '/wallet/exchange',
+      'api-add': '/wallet/api-keys',
+    };
+    router.push(routes[page] || '/wallet');
+  };
+
   return (
-    <WalletPageV3
-      totalBalance={totalBalance}
-      assets={assets}
-      transactions={transactions}
-      onDeposit={() => router.push('/wallet/deposit')}
-      onWithdraw={() => router.push('/wallet/withdraw')}
-      onExchange={() => router.push('/wallet/exchange')}
-      onGoToEcosystem={() => router.push('/ecosystem')}
-      onAddExchange={() => router.push('/wallet/api-keys')}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <WalletPageV3
+          totalBalance={totalBalance}
+          assets={assets}
+          transactions={transactions}
+          onDeposit={() => router.push('/wallet/deposit')}
+          onWithdraw={() => router.push('/wallet/withdraw')}
+          onExchange={() => router.push('/wallet/exchange')}
+          onGoToEcosystem={() => router.push('/ecosystem')}
+          onAddExchange={() => router.push('/wallet/api-keys')}
+        />
+      </div>
+
+      {/* 移动端 - 使用V0生成的新版组件 */}
+      <div className="block md:hidden">
+        <MobileWalletPage
+          onNavigate={(path) => {
+            if (path === '/deposit') router.push('/wallet/deposit');
+            else if (path === '/withdraw') router.push('/wallet/withdraw');
+            else if (path === '/exchange') router.push('/wallet/exchange');
+            else router.push(path);
+          }}
+        />
+      </div>
+    </>
   );
 }

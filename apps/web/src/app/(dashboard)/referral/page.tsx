@@ -1,11 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { ReferralPageV3 } from '@/components/ui-v3/referral/referral-page-v3';
+import { MobileReferralPage } from '@/components/ui-v3/mobile/mobile-referral-page';
 
 export default function ReferralPage() {
+  const router = useRouter();
   // 获取邀请码
   const { data: inviteCodeData } = useQuery({
     queryKey: ['referral', 'invite-code'],
@@ -36,10 +39,10 @@ export default function ReferralPage() {
     queryFn: async () => {
       const response = await api.get<Array<{
         id: string;
+        nickname: string;
         email: string;
         createdAt: string;
-        totalRewards: string;
-        status: string;
+        totalContribution: string;
       }>>('/referral/invitees');
       return response.data;
     },
@@ -59,34 +62,52 @@ export default function ReferralPage() {
   const myReferrals = useMemo(() => {
     if (!inviteesData) return undefined;
     return inviteesData.map((r) => ({
-      username: r.email.split('@')[0].slice(0, 3) + '***' + r.email.split('@')[0].slice(-3),
+      id: r.id,
+      username: r.nickname || (r.email.includes('@')
+        ? r.email.split('@')[0].slice(0, 3) + '***' + r.email.split('@')[0].slice(-3)
+        : r.email),
       joinDate: new Date(r.createdAt).toLocaleDateString('zh-CN'),
-      earnings: parseFloat(r.totalRewards) || 0,
-      status: (r.status === 'active' ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
+      earnings: parseFloat(r.totalContribution) || 0,
+      status: 'Active' as 'Active' | 'Inactive', // 已注册即活跃
       level: 1 as const,
     }));
   }, [inviteesData]);
 
   return (
-    <ReferralPageV3
-      referralCode={inviteCodeData?.inviteCode}
-      earnings={earnings}
-      myReferrals={myReferrals}
-      onShare={(platform) => {
-        const link = inviteCodeData?.inviteCode
-          ? `${window.location.origin}/register?ref=${inviteCodeData.inviteCode}`
-          : window.location.origin;
-        const text = `加入 Hoot 量化交易平台，使用我的邀请链接注册！`;
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <ReferralPageV3
+          referralCode={inviteCodeData?.inviteCode}
+          earnings={earnings}
+          myReferrals={myReferrals}
+          onShare={(platform) => {
+            const link = inviteCodeData?.inviteCode
+              ? `${window.location.origin}/register?ref=${inviteCodeData.inviteCode}`
+              : window.location.origin;
+            const text = `加入 Hoot 量化交易平台，使用我的邀请链接注册！`;
 
-        if (platform === 'twitter') {
-          window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`);
-        } else if (platform === 'telegram') {
-          window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
-        } else {
-          navigator.clipboard.writeText(link);
-          alert('链接已复制');
-        }
-      }}
-    />
+            if (platform === 'twitter') {
+              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`);
+            } else if (platform === 'telegram') {
+              window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+            } else {
+              navigator.clipboard.writeText(link);
+              alert('链接已复制');
+            }
+          }}
+        />
+      </div>
+
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileReferralPage
+          onBack={() => router.push('/profile')}
+          referralCode={inviteCodeData?.inviteCode}
+          earnings={earnings}
+          myReferrals={myReferrals}
+        />
+      </div>
+    </>
   );
 }

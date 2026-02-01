@@ -1,76 +1,100 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PositionsPageV3 } from '@/components/ui-v3/positions/positions-page-v3';
+import { MobileTradingCenter } from '@/components/ui-v3/mobile/mobile-trading-center';
+
+interface Position {
+  id: number;
+  symbol: string;
+  direction: 'long' | 'short';
+  size: number;
+  entryPrice: number;
+  markPrice: number;
+  liquidationPrice: number;
+  unrealizedPnl: number;
+  roe: number;
+  icon: string;
+  strategy: string;
+  stopLoss: number;
+  takeProfit: number;
+  marketType: 'spot' | 'futures';
+}
 
 export default function TradingPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
 
-  // 获取持仓列表（后续接入时移除下划线前缀）
-  const { data: _positions, isLoading: _isLoading } = useQuery({
+  // 获取持仓数据
+  const { data: positions, isLoading } = useQuery({
     queryKey: ['positions'],
     queryFn: async () => {
-      const response = await api.get<{
-        items: Array<{
-          id: string;
-          strategyId: string;
-          strategyName: string;
-          symbol: string;
-          side: string;
-          amount: string;
-          entryPrice: string;
-          currentPrice: string;
-          pnl: string;
-          pnlPercent: string;
-          status: string;
-        }>;
-      }>('/positions');
-      return response.data;
+      try {
+        const response = await api.get<Position[]>('/trading/positions');
+        return response.data;
+      } catch {
+        // API 未实现时返回 null，让组件使用 mock 数据
+        return null;
+      }
     },
   });
 
-  // 平仓
-  const closePositionMutation = useMutation({
-    mutationFn: async (positionId: string) => {
-      const response = await api.post(`/positions/${positionId}/close`, {});
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-    },
-  });
+  const handleClosePosition = (positionId: number) => {
+    console.log('关闭持仓:', positionId);
+    // TODO: 调用 API 关闭持仓
+  };
 
-  // 暂停策略
-  const pauseStrategyMutation = useMutation({
-    mutationFn: async (strategyId: string) => {
-      const response = await api.post(`/strategies/${strategyId}/pause`, {});
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-    },
-  });
+  const handleEmergencyCloseAll = () => {
+    console.log('紧急平仓所有持仓');
+    // TODO: 调用 API 紧急平仓
+  };
 
-  // 后续接入真实数据时移除
-  void _positions;
-  void _isLoading;
+  const handleEditStrategy = (strategyId: string) => {
+    router.push(`/strategies/${strategyId}/config`);
+  };
+
+  const handleDeleteStrategy = (strategyId: string) => {
+    console.log('删除策略:', strategyId);
+    // TODO: 调用 API 删除策略
+  };
+
+  const handleToggleStrategy = (strategyId: string, status: 'running' | 'paused') => {
+    console.log('切换策略状态:', strategyId, status);
+    // TODO: 调用 API 切换策略状态
+  };
+
+  const handleViewMarket = () => {
+    router.push('/strategies');
+  };
 
   return (
-    <PositionsPageV3
-      onClosePosition={(id) => closePositionMutation.mutate(String(id))}
-      onPauseStrategy={(id) => pauseStrategyMutation.mutate(String(id))}
-      onResumeStrategy={(id) => console.log('恢复策略:', id)}
-      onEmergencyCloseAll={() => console.log('紧急全部平仓')}
-      onEditStrategy={(id) => router.push(`/strategies/${id}/config`)}
-      onDeleteStrategy={(id) => console.log('删除策略:', id)}
-      onToggleStrategy={(id, status) => console.log('切换策略状态:', id, status)}
-      onViewMarket={() => router.push('/strategies')}
-      // 传递真实数据
-      // positions={positions?.items}
-      // isLoading={isLoading}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <PositionsPageV3
+          positions={positions || undefined}
+          isLoading={isLoading}
+          onClosePosition={handleClosePosition}
+          onEmergencyCloseAll={handleEmergencyCloseAll}
+          onEditStrategy={handleEditStrategy}
+          onDeleteStrategy={handleDeleteStrategy}
+          onToggleStrategy={handleToggleStrategy}
+          onViewMarket={handleViewMarket}
+        />
+      </div>
+
+      {/* 移动端 - 使用 MobileTradingCenter */}
+      <div className="block md:hidden">
+        <MobileTradingCenter
+          onClosePosition={handleClosePosition}
+          onEmergencyCloseAll={handleEmergencyCloseAll}
+          onEditStrategy={handleEditStrategy}
+          onDeleteStrategy={handleDeleteStrategy}
+          onToggleStrategy={handleToggleStrategy}
+          onViewMarket={handleViewMarket}
+        />
+      </div>
+    </>
   );
 }

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { ProfilePageV3 } from '@/components/ui-v3/me/profile-page-v3';
+import { MobileProfilePage } from '@/components/ui-v3/mobile/mobile-profile-page';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -71,11 +72,26 @@ export default function ProfilePage() {
   };
 
   return (
-    <ProfilePageV3
-      user={userData}
-      referral={referral}
-      onNavigate={handleNavigate}
-      onLogout={handleLogout}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <ProfilePageV3
+          user={userData}
+          referral={referral}
+          onNavigate={handleNavigate}
+          onLogout={handleLogout}
+        />
+      </div>
+
+      {/* 移动端 - 使用V0生成的新版组件 */}
+      <div className="block md:hidden">
+        <MobileProfilePage
+          user={userData}
+          referral={referral}
+          onNavigate={handleNavigate}
+          onLogout={handleLogout}
+        />
+      </div>
+    </>
   );
 }
