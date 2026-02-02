@@ -1,59 +1,65 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+// import { useQuery } from '@tanstack/react-query';
+// import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { DashboardV3 } from '@/components/ui-v3/dashboard/dashboard-v3';
+import { MobileDashboardV3 } from '@/components/ui-v3/mobile/mobile-dashboard-v3';
 
-interface DashboardData {
-  totalAssets: string;
-  todayPnl: string;
-  todayPnlPercent: string;
-  activeStrategies: number;
-  totalTrades: number;
-  winRate: string;
-  usdtBalance: string;
-  hootBalance: string;
-}
+// TODO: 后端实现 /dashboard 接口后启用
+// interface DashboardData {
+//   totalAssets: string;
+//   todayPnl: string;
+//   todayPnlPercent: string;
+//   activeStrategies: number;
+//   totalTrades: number;
+//   winRate: string;
+//   usdtBalance: string;
+//   hootBalance: string;
+// }
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
 
-  // 获取仪表盘数据
-  const { data: _data, isLoading: _isLoading, error: _error } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: async () => {
-      const response = await api.get<DashboardData>('/dashboard');
-      return response.data;
-    },
-  });
+  // TODO: 后端实现 /dashboard 接口后启用
+  // const { data, isLoading, error } = useQuery({
+  //   queryKey: ['dashboard'],
+  //   queryFn: async () => {
+  //     const response = await api.get<DashboardData>('/dashboard');
+  //     return response.data;
+  //   },
+  //   enabled: isAuthenticated,
+  //   retry: false,
+  // });
 
-  // 获取余额
-  const { data: _balance } = useQuery({
-    queryKey: ['wallet', 'balance'],
-    queryFn: async () => {
-      const response = await api.get<{ usdt: string; hoot: string }>('/wallet/balance');
-      return response.data;
-    },
-  });
-
-  // 后续接入真实数据时移除下划线前缀
-  void _data;
-  void _isLoading;
-  void _error;
-  void _balance;
+  // TODO: 后端实现后启用
+  // const { data: balance } = useQuery({
+  //   queryKey: ['wallet', 'balance'],
+  //   queryFn: async () => {
+  //     const response = await api.get<{ usdt: string; hoot: string }>('/wallet/balance');
+  //     return response.data;
+  //   },
+  //   enabled: isAuthenticated,
+  //   retry: false,
+  // });
 
   const handleNavigate = (path: string) => {
     router.push(path);
   };
 
   return (
-    <DashboardV3
-      onNavigate={handleNavigate}
-      // 传递真实数据（如果后端有对应接口）
-      // data={data}
-      // balance={balance}
-      // isLoading={isLoading}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <DashboardV3 onNavigate={handleNavigate} />
+      </div>
+
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileDashboardV3 onNavigate={handleNavigate} />
+      </div>
+    </>
   );
 }

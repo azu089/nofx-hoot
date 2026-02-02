@@ -2,15 +2,17 @@
  * 管理后台 Header
  * 包含退出按钮
  */
-import { Button, Space, Typography, Dropdown, Avatar, message } from 'antd';
+import { Button, Space, Typography, Dropdown, Avatar } from 'antd';
 import { UserOutlined, LogoutOutlined, SettingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMessage } from '../hooks';
 import type { MenuProps } from 'antd';
 
 const { Text } = Typography;
 
 export const AdminHeader = () => {
+  const message = useMessage();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 

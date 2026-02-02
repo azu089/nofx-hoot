@@ -1,6 +1,6 @@
 /**
  * 持仓管理页面
- * 全平台持仓汇总
+ * 连接真实后端 API
  */
 import {
   Card,
@@ -17,7 +17,7 @@ import {
   Progress,
   Modal,
   Descriptions,
-  message,
+  Spin,
 } from 'antd';
 import {
   SearchOutlined,
@@ -25,11 +25,12 @@ import {
   EyeOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
-  DollarOutlined,
   StockOutlined,
-  UserOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { adminApi } from '../../lib/admin-api';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
@@ -37,214 +38,248 @@ interface IPosition {
   id: string;
   userId: string;
   username: string;
-  strategyId: string;
-  strategyName: string;
   exchange: string;
   symbol: string;
   side: 'long' | 'short';
-  size: string;
+  amount: string;
   entryPrice: string;
-  currentPrice: string;
-  unrealizedPnl: string;
-  unrealizedPnlPercent: string;
-  stopLoss?: string;
-  takeProfit?: string;
-  leverage: number;
-  margin: string;
-  liquidationPrice?: string;
-  openedAt: string;
-  status: 'open' | 'closing';
+  currentPrice?: string;
+  unrealizedPnl?: string;
+  unrealizedPnlPercent?: string;
+  pnl?: string;
+  realizedPnl?: string;
+  status: string;
+  closedAt?: string;
+  exitPrice?: string;
+  closeReason?: string;
+  subscriptionId?: string;
+  strategyName?: string;
+  dcaCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-// 模拟持仓数据
-const mockPositions: IPosition[] = [
-  {
-    id: 'POS001',
-    userId: 'U001',
-    username: '张三',
-    strategyId: 'S001',
-    strategyName: 'BTC 趋势追踪',
-    exchange: 'Binance',
-    symbol: 'BTC/USDT',
-    side: 'long',
-    size: '0.1',
-    entryPrice: '42000.00',
-    currentPrice: '42500.00',
-    unrealizedPnl: '+50.00',
-    unrealizedPnlPercent: '+1.19%',
-    stopLoss: '41000.00',
-    takeProfit: '45000.00',
-    leverage: 5,
-    margin: '840.00',
-    liquidationPrice: '38000.00',
-    openedAt: '2025-01-30 10:00:00',
-    status: 'open',
-  },
-  {
-    id: 'POS002',
-    userId: 'U002',
-    username: '李四',
-    strategyId: 'S001',
-    strategyName: 'BTC 趋势追踪',
-    exchange: 'OKX',
-    symbol: 'BTC/USDT',
-    side: 'long',
-    size: '0.05',
-    entryPrice: '42100.00',
-    currentPrice: '42500.00',
-    unrealizedPnl: '+20.00',
-    unrealizedPnlPercent: '+0.95%',
-    stopLoss: '41100.00',
-    takeProfit: '45000.00',
-    leverage: 3,
-    margin: '701.67',
-    openedAt: '2025-01-30 10:05:00',
-    status: 'open',
-  },
-  {
-    id: 'POS003',
-    userId: 'U003',
-    username: '王五',
-    strategyId: 'S002',
-    strategyName: 'ETH 网格策略',
-    exchange: 'Binance',
-    symbol: 'ETH/USDT',
-    side: 'long',
-    size: '2',
-    entryPrice: '2300.00',
-    currentPrice: '2280.00',
-    unrealizedPnl: '-40.00',
-    unrealizedPnlPercent: '-0.87%',
-    stopLoss: '2200.00',
-    takeProfit: '2500.00',
-    leverage: 2,
-    margin: '2300.00',
-    openedAt: '2025-01-30 08:00:00',
-    status: 'open',
-  },
-  {
-    id: 'POS004',
-    userId: 'U004',
-    username: '赵六',
-    strategyId: 'S003',
-    strategyName: 'SOL 波段策略',
-    exchange: 'Bybit',
-    symbol: 'SOL/USDT',
-    side: 'short',
-    size: '50',
-    entryPrice: '98.50',
-    currentPrice: '97.00',
-    unrealizedPnl: '+75.00',
-    unrealizedPnlPercent: '+1.52%',
-    stopLoss: '102.00',
-    takeProfit: '90.00',
-    leverage: 10,
-    margin: '492.50',
-    liquidationPrice: '108.00',
-    openedAt: '2025-01-30 12:00:00',
-    status: 'open',
-  },
-  {
-    id: 'POS005',
-    userId: 'U001',
-    username: '张三',
-    strategyId: 'S002',
-    strategyName: 'ETH 网格策略',
-    exchange: 'Binance',
-    symbol: 'ETH/USDT',
-    side: 'long',
-    size: '1',
-    entryPrice: '2250.00',
-    currentPrice: '2280.00',
-    unrealizedPnl: '+30.00',
-    unrealizedPnlPercent: '+1.33%',
-    leverage: 1,
-    margin: '2250.00',
-    openedAt: '2025-01-30 09:00:00',
-    status: 'open',
-  },
-];
+interface IStats {
+  totalPositions: number;
+  openPositions: number;
+  closedPositions: number;
+  totalPnl: string;
+  winRate: string;
+  avgPnl: string;
+}
 
 export const PositionsPage = () => {
-  const [positions] = useState(mockPositions);
+  const message = useMessage();
+  const [dataSource, setDataSource] = useState<IPosition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<IStats | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<IPosition | null>(null);
+
   const [filters, setFilters] = useState({
     search: '',
     exchange: '',
     symbol: '',
-    side: '',
+    status: '',
   });
 
+  // 加载持仓列表
+  const loadPositions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+      });
+      if (filters.status) params.append('status', filters.status);
+      if (filters.exchange) params.append('exchange', filters.exchange);
+      if (filters.symbol) params.append('symbol', filters.symbol);
+      if (filters.search) params.append('search', filters.search);
+
+      const response = await adminApi.get<{ items: IPosition[]; total: number }>(`/admin/positions?${params}`);
+      if (response.data.code === 0) {
+        const data = response.data.data as { items: IPosition[]; total: number };
+        setDataSource(data?.items || []);
+        setTotal(data?.total || 0);
+      } else {
+        message.error(response.data.message || '加载失败');
+      }
+    } catch (error: any) {
+      console.error('加载持仓列表失败:', error);
+      message.error(error.response?.data?.message || '加载持仓列表失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, filters]);
+
+  // 加载统计数据
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await adminApi.get<IStats>('/admin/positions/stats');
+      if (response.data.code === 0) {
+        setStats(response.data.data as IStats);
+      }
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPositions();
+    loadStats();
+  }, [loadPositions, loadStats]);
+
+  const handleSearch = () => {
+    setPage(1);
+    loadPositions();
+  };
+
+  const statusColors: Record<string, string> = {
+    open: 'processing',
+    closed: 'success',
+    failed: 'error',
+  };
+
+  const statusLabels: Record<string, string> = {
+    open: '持仓中',
+    closed: '已平仓',
+    failed: '失败',
+  };
+
+  const closeReasonLabels: Record<string, string> = {
+    stop_loss: '止损',
+    take_profit: '止盈',
+    trailing_stop: '追踪止损',
+    signal: '信号平仓',
+    manual: '手动平仓',
+    black_swan: '黑天鹅',
+    daily_loss_limit: '日亏损限制',
+  };
+
   const columns = [
-    { title: '持仓ID', dataIndex: 'id', key: 'id', width: 90 },
+    {
+      title: '持仓ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 100,
+      ellipsis: true,
+      render: (id: string) => (
+        <Text style={{ fontFamily: 'monospace' }}>{id.slice(0, 8)}...</Text>
+      ),
+    },
     {
       title: '用户',
       key: 'user',
       width: 120,
       render: (_: unknown, record: IPosition) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{record.username}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId}</Text>
+          <Text strong>{record.username || '-'}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {record.userId.slice(0, 8)}...
+          </Text>
         </Space>
       ),
     },
-    { title: '策略', dataIndex: 'strategyName', key: 'strategyName', width: 140 },
-    { title: '交易所', dataIndex: 'exchange', key: 'exchange', render: (e: string) => <Tag>{e}</Tag>, width: 90 },
-    { title: '交易对', dataIndex: 'symbol', key: 'symbol', width: 100 },
+    {
+      title: '交易所',
+      dataIndex: 'exchange',
+      key: 'exchange',
+      render: (e: string) => <Tag>{e}</Tag>,
+      width: 90,
+    },
+    {
+      title: '交易对',
+      dataIndex: 'symbol',
+      key: 'symbol',
+      width: 100,
+    },
     {
       title: '方向',
       dataIndex: 'side',
       key: 'side',
       width: 80,
       render: (side: string) => (
-        <Tag color={side === 'long' ? 'green' : 'red'} icon={side === 'long' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}>
+        <Tag
+          color={side === 'long' ? 'green' : 'red'}
+          icon={side === 'long' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+        >
           {side === 'long' ? '做多' : '做空'}
         </Tag>
       ),
     },
-    { title: '持仓量', dataIndex: 'size', key: 'size', width: 80 },
+    {
+      title: '持仓量',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 100,
+      render: (amount: string) => parseFloat(amount).toLocaleString(),
+    },
     {
       title: '开仓价',
       dataIndex: 'entryPrice',
       key: 'entryPrice',
       width: 100,
-      render: (price: string) => `$${price}`,
+      render: (price: string) => `$${parseFloat(price).toLocaleString()}`,
     },
     {
-      title: '当前价',
-      dataIndex: 'currentPrice',
-      key: 'currentPrice',
+      title: '平仓价',
+      dataIndex: 'exitPrice',
+      key: 'exitPrice',
       width: 100,
-      render: (price: string) => `$${price}`,
+      render: (price: string | null) =>
+        price ? `$${parseFloat(price).toLocaleString()}` : '-',
     },
     {
-      title: '未实现盈亏',
+      title: '盈亏',
       key: 'pnl',
-      width: 140,
+      width: 120,
       render: (_: unknown, record: IPosition) => {
-        const isProfit = record.unrealizedPnl.startsWith('+');
+        const pnl = record.realizedPnl || record.pnl;
+        if (!pnl) return '-';
+        const pnlValue = parseFloat(pnl);
+        const isProfit = pnlValue >= 0;
         return (
-          <Space direction="vertical" size={0}>
-            <Text type={isProfit ? 'success' : 'danger'} strong>
-              {record.unrealizedPnl} USDT
-            </Text>
-            <Text type={isProfit ? 'success' : 'danger'} style={{ fontSize: 12 }}>
-              {record.unrealizedPnlPercent}
-            </Text>
-          </Space>
+          <Text type={isProfit ? 'success' : 'danger'} strong>
+            {isProfit ? '+' : ''}
+            {pnlValue.toFixed(2)} USDT
+          </Text>
         );
       },
     },
     {
-      title: '杠杆',
-      dataIndex: 'leverage',
-      key: 'leverage',
-      width: 70,
-      render: (lev: number) => <Tag color={lev >= 10 ? 'red' : lev >= 5 ? 'orange' : 'default'}>{lev}x</Tag>,
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: string) => (
+        <Tag color={statusColors[status] || 'default'}>
+          {statusLabels[status] || status}
+        </Tag>
+      ),
     },
-    { title: '保证金', dataIndex: 'margin', key: 'margin', width: 100, render: (m: string) => `$${m}` },
-    { title: '开仓时间', dataIndex: 'openedAt', key: 'openedAt', width: 150 },
+    {
+      title: '平仓原因',
+      dataIndex: 'closeReason',
+      key: 'closeReason',
+      width: 100,
+      render: (reason: string | null) =>
+        reason ? (
+          <Tag>{closeReasonLabels[reason] || reason}</Tag>
+        ) : (
+          '-'
+        ),
+    },
+    {
+      title: '开仓时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 150,
+      render: (date: string) => new Date(date).toLocaleString(),
+    },
     {
       title: '操作',
       key: 'action',
@@ -264,45 +299,40 @@ export const PositionsPage = () => {
     },
   ];
 
-  // 过滤持仓
-  const filteredPositions = positions.filter(pos => {
-    if (filters.search && !pos.username.includes(filters.search) && !pos.id.includes(filters.search)) {
-      return false;
-    }
-    if (filters.exchange && pos.exchange !== filters.exchange) return false;
-    if (filters.symbol && pos.symbol !== filters.symbol) return false;
-    if (filters.side && pos.side !== filters.side) return false;
-    return true;
-  });
-
   // 统计数据
-  const totalPositions = positions.length;
-  const totalMargin = positions.reduce((sum, p) => sum + parseFloat(p.margin), 0);
-  const totalUnrealizedPnl = positions.reduce((sum, p) => sum + parseFloat(p.unrealizedPnl), 0);
-  const profitPositions = positions.filter(p => p.unrealizedPnl.startsWith('+')).length;
-  const winRate = (profitPositions / totalPositions * 100).toFixed(1);
+  const totalPositions = stats?.totalPositions || 0;
+  const openPositions = stats?.openPositions || 0;
+  const totalPnl = parseFloat(stats?.totalPnl || '0');
+  const winRate = parseFloat(stats?.winRate || '0');
 
   // 按交易对汇总
-  const symbolSummary = positions.reduce((acc, p) => {
-    if (!acc[p.symbol]) {
-      acc[p.symbol] = { count: 0, margin: 0, pnl: 0 };
-    }
-    acc[p.symbol].count++;
-    acc[p.symbol].margin += parseFloat(p.margin);
-    acc[p.symbol].pnl += parseFloat(p.unrealizedPnl);
-    return acc;
-  }, {} as Record<string, { count: number; margin: number; pnl: number }>);
+  const symbolSummary = dataSource.reduce(
+    (acc, p) => {
+      if (!acc[p.symbol]) {
+        acc[p.symbol] = { count: 0, pnl: 0 };
+      }
+      acc[p.symbol].count++;
+      const pnl = p.realizedPnl || p.pnl;
+      if (pnl) {
+        acc[p.symbol].pnl += parseFloat(pnl);
+      }
+      return acc;
+    },
+    {} as Record<string, { count: number; pnl: number }>
+  );
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={4} style={{ marginBottom: 24 }}>持仓管理</Title>
+      <Title level={4} style={{ marginBottom: 24 }}>
+        持仓管理
+      </Title>
 
       {/* 统计卡片 */}
       <Row gutter={16} style={{ marginTop: 24, marginBottom: 24 }}>
         <Col span={6}>
           <Card>
             <Statistic
-              title="持仓数量"
+              title="总持仓数"
               value={totalPositions}
               prefix={<StockOutlined />}
             />
@@ -311,9 +341,20 @@ export const PositionsPage = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="总保证金"
-              value={totalMargin.toFixed(2)}
-              prefix={<DollarOutlined />}
+              title="当前持仓"
+              value={openPositions}
+              valueStyle={{ color: '#1890ff' }}
+              suffix="个"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="累计盈亏"
+              value={totalPnl.toFixed(2)}
+              valueStyle={{ color: totalPnl >= 0 ? '#52c41a' : '#f5222d' }}
+              prefix={totalPnl >= 0 ? '+' : ''}
               suffix="USDT"
             />
           </Card>
@@ -321,26 +362,15 @@ export const PositionsPage = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="未实现盈亏"
-              value={totalUnrealizedPnl.toFixed(2)}
-              valueStyle={{ color: totalUnrealizedPnl >= 0 ? '#52c41a' : '#f5222d' }}
-              prefix={totalUnrealizedPnl >= 0 ? '+' : ''}
-              suffix="USDT"
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="盈利比例"
-              value={winRate}
+              title="胜率"
+              value={winRate.toFixed(1)}
               suffix="%"
-              valueStyle={{ color: parseFloat(winRate) >= 50 ? '#52c41a' : '#f5222d' }}
+              valueStyle={{ color: winRate >= 50 ? '#52c41a' : '#f5222d' }}
             />
             <Progress
-              percent={parseFloat(winRate)}
+              percent={winRate}
               showInfo={false}
-              strokeColor={parseFloat(winRate) >= 50 ? '#52c41a' : '#f5222d'}
+              strokeColor={winRate >= 50 ? '#52c41a' : '#f5222d'}
               size="small"
             />
           </Card>
@@ -348,23 +378,28 @@ export const PositionsPage = () => {
       </Row>
 
       {/* 按交易对汇总 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        {Object.entries(symbolSummary).map(([symbol, data]) => (
-          <Col span={6} key={symbol}>
-            <Card size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>{symbol}</Text>
-                <Space>
-                  <Tag icon={<UserOutlined />}>{data.count} 个持仓</Tag>
-                  <Text type={data.pnl >= 0 ? 'success' : 'danger'}>
-                    {data.pnl >= 0 ? '+' : ''}{data.pnl.toFixed(2)} USDT
-                  </Text>
-                </Space>
-              </Space>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+      {Object.keys(symbolSummary).length > 0 && (
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          {Object.entries(symbolSummary)
+            .slice(0, 4)
+            .map(([symbol, data]) => (
+              <Col span={6} key={symbol}>
+                <Card size="small">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>{symbol}</Text>
+                    <Space>
+                      <Tag>{data.count} 个持仓</Tag>
+                      <Text type={data.pnl >= 0 ? 'success' : 'danger'}>
+                        {data.pnl >= 0 ? '+' : ''}
+                        {data.pnl.toFixed(2)} USDT
+                      </Text>
+                    </Space>
+                  </Space>
+                </Card>
+              </Col>
+            ))}
+        </Row>
+      )}
 
       {/* 筛选栏 */}
       <Card style={{ marginBottom: 16 }}>
@@ -374,24 +409,25 @@ export const PositionsPage = () => {
             prefix={<SearchOutlined />}
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            onPressEnter={handleSearch}
             style={{ width: 200 }}
           />
           <Select
             placeholder="交易所"
             value={filters.exchange || undefined}
-            onChange={(value) => setFilters({ ...filters, exchange: value })}
+            onChange={(value) => setFilters({ ...filters, exchange: value || '' })}
             style={{ width: 120 }}
             allowClear
             options={[
-              { value: 'Binance', label: 'Binance' },
-              { value: 'OKX', label: 'OKX' },
-              { value: 'Bybit', label: 'Bybit' },
+              { value: 'binance', label: 'Binance' },
+              { value: 'okx', label: 'OKX' },
+              { value: 'bybit', label: 'Bybit' },
             ]}
           />
           <Select
             placeholder="交易对"
             value={filters.symbol || undefined}
-            onChange={(value) => setFilters({ ...filters, symbol: value })}
+            onChange={(value) => setFilters({ ...filters, symbol: value || '' })}
             style={{ width: 120 }}
             allowClear
             options={[
@@ -401,17 +437,33 @@ export const PositionsPage = () => {
             ]}
           />
           <Select
-            placeholder="方向"
-            value={filters.side || undefined}
-            onChange={(value) => setFilters({ ...filters, side: value })}
-            style={{ width: 100 }}
+            placeholder="状态"
+            value={filters.status || undefined}
+            onChange={(value) => setFilters({ ...filters, status: value || '' })}
+            style={{ width: 120 }}
             allowClear
             options={[
-              { value: 'long', label: '做多' },
-              { value: 'short', label: '做空' },
+              { value: 'open', label: '持仓中' },
+              { value: 'closed', label: '已平仓' },
+              { value: 'failed', label: '失败' },
             ]}
           />
-          <Button icon={<DownloadOutlined />} onClick={() => message.success('导出成功')}>
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+            搜索
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => {
+              loadPositions();
+              loadStats();
+            }}
+          >
+            刷新
+          </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() => message.success('导出成功')}
+          >
             导出
           </Button>
         </Space>
@@ -419,13 +471,25 @@ export const PositionsPage = () => {
 
       {/* 持仓列表 */}
       <Card>
-        <Table
-          dataSource={filteredPositions}
-          columns={columns}
-          rowKey="id"
-          pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
-          scroll={{ x: 1600 }}
-        />
+        <Spin spinning={loading}>
+          <Table
+            dataSource={dataSource}
+            columns={columns}
+            rowKey="id"
+            pagination={{
+              current: page,
+              pageSize: pageSize,
+              total: total,
+              showSizeChanger: true,
+              showTotal: (t) => `共 ${t} 条`,
+              onChange: (p, ps) => {
+                setPage(p);
+                setPageSize(ps);
+              },
+            }}
+            scroll={{ x: 1600 }}
+          />
+        </Spin>
       </Card>
 
       {/* 持仓详情弹窗 */}
@@ -441,41 +505,79 @@ export const PositionsPage = () => {
       >
         {selectedPosition && (
           <Descriptions bordered column={2}>
-            <Descriptions.Item label="持仓ID">{selectedPosition.id}</Descriptions.Item>
-            <Descriptions.Item label="状态">
-              <Tag color="success">持仓中</Tag>
+            <Descriptions.Item label="持仓ID">
+              {selectedPosition.id}
             </Descriptions.Item>
-            <Descriptions.Item label="用户">{selectedPosition.username} ({selectedPosition.userId})</Descriptions.Item>
-            <Descriptions.Item label="策略">{selectedPosition.strategyName}</Descriptions.Item>
-            <Descriptions.Item label="交易所">{selectedPosition.exchange}</Descriptions.Item>
-            <Descriptions.Item label="交易对">{selectedPosition.symbol}</Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Tag color={statusColors[selectedPosition.status] || 'default'}>
+                {statusLabels[selectedPosition.status] || selectedPosition.status}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="用户">
+              {selectedPosition.username || '-'} ({selectedPosition.userId.slice(0, 8)}
+              ...)
+            </Descriptions.Item>
+            <Descriptions.Item label="策略">
+              {selectedPosition.strategyName || '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="交易所">
+              {selectedPosition.exchange}
+            </Descriptions.Item>
+            <Descriptions.Item label="交易对">
+              {selectedPosition.symbol}
+            </Descriptions.Item>
             <Descriptions.Item label="方向">
               <Tag color={selectedPosition.side === 'long' ? 'green' : 'red'}>
                 {selectedPosition.side === 'long' ? '做多' : '做空'}
               </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="杠杆">{selectedPosition.leverage}x</Descriptions.Item>
-            <Descriptions.Item label="持仓量">{selectedPosition.size}</Descriptions.Item>
-            <Descriptions.Item label="保证金">${selectedPosition.margin}</Descriptions.Item>
-            <Descriptions.Item label="开仓价">${selectedPosition.entryPrice}</Descriptions.Item>
-            <Descriptions.Item label="当前价">${selectedPosition.currentPrice}</Descriptions.Item>
-            <Descriptions.Item label="未实现盈亏">
-              <Text type={selectedPosition.unrealizedPnl.startsWith('+') ? 'success' : 'danger'} strong>
-                {selectedPosition.unrealizedPnl} USDT ({selectedPosition.unrealizedPnlPercent})
-              </Text>
+            <Descriptions.Item label="持仓量">
+              {parseFloat(selectedPosition.amount).toLocaleString()}
             </Descriptions.Item>
-            {selectedPosition.liquidationPrice && (
-              <Descriptions.Item label="强平价">
-                <Text type="danger">${selectedPosition.liquidationPrice}</Text>
+            <Descriptions.Item label="开仓价">
+              ${parseFloat(selectedPosition.entryPrice).toLocaleString()}
+            </Descriptions.Item>
+            <Descriptions.Item label="平仓价">
+              {selectedPosition.exitPrice
+                ? `$${parseFloat(selectedPosition.exitPrice).toLocaleString()}`
+                : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="盈亏">
+              {(() => {
+                const pnl =
+                  selectedPosition.realizedPnl || selectedPosition.pnl;
+                if (!pnl) return '-';
+                const pnlValue = parseFloat(pnl);
+                return (
+                  <Text type={pnlValue >= 0 ? 'success' : 'danger'} strong>
+                    {pnlValue >= 0 ? '+' : ''}
+                    {pnlValue.toFixed(2)} USDT
+                  </Text>
+                );
+              })()}
+            </Descriptions.Item>
+            <Descriptions.Item label="平仓原因">
+              {selectedPosition.closeReason
+                ? closeReasonLabels[selectedPosition.closeReason] ||
+                  selectedPosition.closeReason
+                : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="DCA次数">
+              {selectedPosition.dcaCount}
+            </Descriptions.Item>
+            <Descriptions.Item label="订阅ID">
+              {selectedPosition.subscriptionId
+                ? selectedPosition.subscriptionId.slice(0, 8) + '...'
+                : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="开仓时间" span={2}>
+              {new Date(selectedPosition.createdAt).toLocaleString()}
+            </Descriptions.Item>
+            {selectedPosition.closedAt && (
+              <Descriptions.Item label="平仓时间" span={2}>
+                {new Date(selectedPosition.closedAt).toLocaleString()}
               </Descriptions.Item>
             )}
-            {selectedPosition.stopLoss && (
-              <Descriptions.Item label="止损价">${selectedPosition.stopLoss}</Descriptions.Item>
-            )}
-            {selectedPosition.takeProfit && (
-              <Descriptions.Item label="止盈价">${selectedPosition.takeProfit}</Descriptions.Item>
-            )}
-            <Descriptions.Item label="开仓时间" span={2}>{selectedPosition.openedAt}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

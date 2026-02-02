@@ -26,7 +26,7 @@ import { useTranslations } from '@/i18n/provider'
 type MarketType = 'spot' | 'futures'
 
 interface Position {
-  id: number
+  id: string | number
   symbol: string
   direction: 'long' | 'short'
   size: number
@@ -43,7 +43,7 @@ interface Position {
 }
 
 interface ExecutionLog {
-  id: number
+  id: string | number
   time: string
   strategy: string
   action: string
@@ -54,7 +54,7 @@ interface ExecutionLog {
 }
 
 interface HistoryOrder {
-  id: number
+  id: string | number
   symbol: string
   side: 'buy' | 'sell'
   type: string
@@ -69,18 +69,6 @@ interface HistoryOrder {
   marketType: MarketType
 }
 
-interface PendingOrder {
-  id: number
-  symbol: string
-  side: 'buy' | 'sell'
-  type: 'limit' | 'stop-limit' | 'take-profit'
-  price: number
-  amount: number
-  filled: number
-  triggerPrice?: number
-  time: string
-  marketType: MarketType
-}
 
 interface MyStrategy {
   id: string
@@ -102,132 +90,12 @@ interface MyStrategy {
 }
 
 interface Account {
-  id: number
+  id: string | number
   name: string
   balance: number
 }
 
-// ============ Mock Data ============
-const mockPositions: Position[] = [
-  {
-    id: 1,
-    symbol: 'BTC-USDT',
-    direction: 'long',
-    size: 0.5,
-    entryPrice: 43250.00,
-    markPrice: 43720.50,
-    liquidationPrice: 38500.00,
-    unrealizedPnl: 1234.56,
-    roe: 5.68,
-    icon: '₿',
-    strategy: 'RSI 智能抄底',
-    stopLoss: 41087.50,
-    takeProfit: 47575.00,
-    marketType: 'futures'
-  },
-  {
-    id: 2,
-    symbol: 'ETH-USDT',
-    direction: 'short',
-    size: 10.2,
-    entryPrice: 2650.00,
-    markPrice: 2673.20,
-    liquidationPrice: 3200.00,
-    unrealizedPnl: -234.56,
-    roe: -0.87,
-    icon: 'Ξ',
-    strategy: 'MACD 趋势跟踪',
-    stopLoss: 2782.50,
-    takeProfit: 2385.00,
-    marketType: 'futures'
-  },
-  {
-    id: 3,
-    symbol: 'BTC-USDT',
-    direction: 'long',
-    size: 0.2,
-    entryPrice: 42800.00,
-    markPrice: 43720.50,
-    liquidationPrice: 0,
-    unrealizedPnl: 184.10,
-    roe: 2.15,
-    icon: '₿',
-    strategy: 'BTC 定投策略',
-    stopLoss: 0,
-    takeProfit: 0,
-    marketType: 'spot'
-  }
-]
-
-const mockExecutionLogs: ExecutionLog[] = [
-  { id: 1, time: '2分钟前', strategy: 'RSI 智能抄底', action: '开多', symbol: 'BTC-USDT', status: 'success', message: '信号触发，已开仓 0.5 BTC', marketType: 'futures' },
-  { id: 2, time: '15分钟前', strategy: 'MACD 趋势跟踪', action: '开空', symbol: 'ETH-USDT', status: 'success', message: '信号触发，已开仓 10.2 ETH', marketType: 'futures' },
-  { id: 3, time: '1小时前', strategy: 'RSI 智能抄底', action: '止盈', symbol: 'DOGE-USDT', status: 'success', message: '止盈触发，盈利 +$156.78', marketType: 'futures' },
-  { id: 4, time: '2小时前', strategy: 'BTC 网格策略', action: '跳过', symbol: 'BTC-USDT', status: 'warning', message: '信号触发但余额不足，已跳过', marketType: 'futures' },
-  { id: 5, time: '3小时前', strategy: 'BTC 定投策略', action: '买入', symbol: 'BTC-USDT', status: 'success', message: '定投执行，已买入 0.05 BTC', marketType: 'spot' }
-]
-
-const mockMyStrategies: MyStrategy[] = [
-  {
-    id: '1',
-    name: 'RSI 智能抄底',
-    description: '基于 RSI 超卖信号的智能抄底策略',
-    status: 'running',
-    type: 'system',
-    marketType: 'futures',
-    exchange: 'Binance',
-    tradingPairs: ['BTC/USDT', 'ETH/USDT'],
-    createdAt: '2025-12-15',
-    lastModified: '2026-01-25',
-    config: { leverage: 3, positionSize: '10%', stopLoss: 5, takeProfit: 10 }
-  },
-  {
-    id: '2',
-    name: 'MACD 趋势跟踪',
-    description: '跟踪 MACD 金叉死叉信号的趋势策略',
-    status: 'paused',
-    type: 'external',
-    marketType: 'futures',
-    exchange: 'OKX',
-    tradingPairs: ['SOL/USDT'],
-    createdAt: '2025-11-20',
-    lastModified: '2026-01-20',
-    config: { leverage: 2, positionSize: '5%', stopLoss: 3, takeProfit: 8 }
-  },
-  {
-    id: '3',
-    name: 'BTC 定投策略',
-    description: '每日定时定额买入 BTC',
-    status: 'running',
-    type: 'system',
-    marketType: 'spot',
-    exchange: 'Binance',
-    tradingPairs: ['BTC/USDT'],
-    createdAt: '2025-09-01',
-    lastModified: '2026-01-29',
-    config: { leverage: 1, positionSize: '5%', stopLoss: 0, takeProfit: 0 }
-  }
-]
-
-const mockAccounts: Account[] = [
-  { id: 1, name: 'Binance 主账户', balance: 125430.50 },
-  { id: 2, name: 'OKX 交易账户', balance: 89234.20 }
-]
-
-const mockHistoryOrders: HistoryOrder[] = [
-  { id: 1, symbol: 'BTC-USDT', side: 'buy', type: '市价', price: 42150.00, amount: 0.5, filled: 0.5, total: 21075.00, pnl: 785.25, fee: 21.08, time: '2026-01-28 14:32', status: 'filled', marketType: 'futures' },
-  { id: 2, symbol: 'ETH-USDT', side: 'sell', type: '限价', price: 2680.00, amount: 5.0, filled: 5.0, total: 13400.00, pnl: -156.80, fee: 13.40, time: '2026-01-28 10:15', status: 'filled', marketType: 'futures' },
-  { id: 3, symbol: 'SOL-USDT', side: 'buy', type: '市价', price: 98.50, amount: 100, filled: 100, total: 9850.00, pnl: 245.00, fee: 9.85, time: '2026-01-27 16:45', status: 'filled', marketType: 'spot' },
-  { id: 4, symbol: 'BNB-USDT', side: 'buy', type: '限价', price: 315.00, amount: 20, filled: 0, total: 0, pnl: 0, fee: 0, time: '2026-01-27 09:20', status: 'cancelled', marketType: 'spot' },
-  { id: 5, symbol: 'DOGE-USDT', side: 'sell', type: '止盈', price: 0.0892, amount: 10000, filled: 10000, total: 892.00, pnl: 156.78, fee: 0.89, time: '2026-01-26 22:10', status: 'filled', marketType: 'futures' }
-]
-
-const mockPendingOrders: PendingOrder[] = [
-  { id: 1, symbol: 'BTC-USDT', side: 'buy', type: 'limit', price: 41500.00, amount: 0.3, filled: 0, time: '2026-01-29 08:30', marketType: 'futures' },
-  { id: 2, symbol: 'ETH-USDT', side: 'sell', type: 'take-profit', price: 2800.00, amount: 10.2, filled: 0, triggerPrice: 2750.00, time: '2026-01-29 07:15', marketType: 'futures' },
-  { id: 3, symbol: 'SOL-USDT', side: 'buy', type: 'limit', price: 92.00, amount: 50, filled: 0, time: '2026-01-28 20:45', marketType: 'spot' }
-]
-
+// 策略类型颜色映射
 const strategyTypeColors: Record<string, string> = {
   system: 'bg-cyan-400/10 text-cyan-400',
   external: 'bg-purple-400/10 text-purple-400',
@@ -241,9 +109,24 @@ const getStrategyTypeLabel = (type: string, t: (key: string) => string) => {
   return t(typeKey as any) || type
 }
 
+// 盈亏统计类型
+interface PnlStatsProps {
+  totalAssets: number
+  availableBalance: number
+  totalPnl: number
+  todayPnl: number
+  unrealizedPnl: number
+}
+
 // ============ Props ============
 interface MobileTradingCenterProps {
-  onClosePosition?: (positionId: number) => void
+  positions?: Position[]
+  historyOrders?: HistoryOrder[]
+  executionLogs?: ExecutionLog[]
+  myStrategies?: MyStrategy[]
+  accounts?: Account[]
+  pnlStats?: PnlStatsProps
+  onClosePosition?: (positionId: number | string) => void
   onEmergencyCloseAll?: () => void
   onEditStrategy?: (strategyId: string) => void
   onDeleteStrategy?: (strategyId: string) => void
@@ -253,6 +136,12 @@ interface MobileTradingCenterProps {
 
 // ============ Component ============
 export function MobileTradingCenter({
+  positions = [],
+  historyOrders = [],
+  executionLogs = [],
+  myStrategies = [],
+  accounts = [],
+  pnlStats,
   onClosePosition,
   onEmergencyCloseAll,
   onEditStrategy,
@@ -262,7 +151,7 @@ export function MobileTradingCenter({
 }: MobileTradingCenterProps) {
   const t = useTranslations('trading')
   const [activeTab, setActiveTab] = useState('positions')
-  const [selectedAccount, setSelectedAccount] = useState(mockAccounts[0])
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0] || { id: 0, name: t('noAccountsBound'), balance: 0 })
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [accountType, setAccountType] = useState<'all' | 'spot' | 'futures'>('all')
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -273,14 +162,14 @@ export function MobileTradingCenter({
 
   // ========== 数据过滤（基于 accountType） ==========
   const filteredPositions = accountType === 'all'
-    ? mockPositions
-    : mockPositions.filter(pos => pos.marketType === accountType)
+    ? positions
+    : positions.filter(pos => pos.marketType === accountType)
 
   const filteredLogs = accountType === 'all'
-    ? mockExecutionLogs
-    : mockExecutionLogs.filter(log => log.marketType === accountType)
+    ? executionLogs
+    : executionLogs.filter(log => log.marketType === accountType)
 
-  const filteredStrategies = mockMyStrategies.filter(strategy => {
+  const filteredStrategies = myStrategies.filter(strategy => {
     const matchesMarketType = accountType === 'all' || strategy.marketType === accountType
     const matchesSearch = strategy.name.toLowerCase().includes(strategySearchQuery.toLowerCase())
     const matchesStatus = strategyStatusFilter === 'all' || strategy.status === strategyStatusFilter
@@ -288,55 +177,54 @@ export function MobileTradingCenter({
   })
 
   const filteredHistoryOrders = accountType === 'all'
-    ? mockHistoryOrders
-    : mockHistoryOrders.filter(order => order.marketType === accountType)
-
-  const filteredPendingOrders = accountType === 'all'
-    ? mockPendingOrders
-    : mockPendingOrders.filter(order => order.marketType === accountType)
+    ? historyOrders
+    : historyOrders.filter(order => order.marketType === accountType)
 
   const strategiesForCount = accountType === 'all'
-    ? mockMyStrategies
-    : mockMyStrategies.filter(s => s.marketType === accountType)
+    ? myStrategies
+    : myStrategies.filter(s => s.marketType === accountType)
 
   const runningCount = strategiesForCount.filter(s => s.status === 'running').length
   const pausedCount = strategiesForCount.filter(s => s.status === 'paused').length
 
-  // ========== 统计数据计算 ==========
-  const totalAssets = 125847.32
-  const availableBalance = accountType === 'all' ? 15420.50
-    : accountType === 'spot' ? 8500.00 : 6920.50
-  const totalUnrealizedPnl = filteredPositions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0)
-  const totalPnl = accountType === 'all' ? 8945.67
-    : accountType === 'spot' ? 2156.78 : 6788.89
-  const todayPnl = accountType === 'all' ? 1523.45
-    : accountType === 'spot' ? 456.12 : 1067.33
+  // ========== 统计数据计算（使用 props 传入的数据） ==========
+  const totalAssets = pnlStats?.totalAssets ?? 0
+  const availableBalance = pnlStats?.availableBalance ?? 0
+  const totalPnl = pnlStats?.totalPnl ?? 0
+  const todayPnl = pnlStats?.todayPnl ?? 0
+  const totalUnrealizedPnl = pnlStats?.unrealizedPnl ?? filteredPositions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0)
 
   const tabs = [
     { id: 'positions', labelKey: 'currentPositions', count: filteredPositions.length, icon: BarChart3 },
     { id: 'history', labelKey: 'historyOrders', count: filteredHistoryOrders.length, icon: RefreshCcw },
-    { id: 'orders', labelKey: 'pendingOrders', count: filteredPendingOrders.length, icon: Clock },
     { id: 'logs', labelKey: 'executionLogs', count: filteredLogs.length, icon: Activity },
     { id: 'strategies', labelKey: 'strategy', count: strategiesForCount.length, icon: Zap }
   ]
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
-      {/* 可滚动内容区 - 移除标题头部 */}
-      <div className="flex-1 overflow-auto pb-20 pt-2">
+      {/* Header - 标题 */}
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-center px-4 h-14">
+          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
+        </div>
+      </div>
+
+      {/* 可滚动内容区 */}
+      <div className="flex-1 overflow-auto pb-20">
         {/* 筛选器行 - 全部/现货/合约 + 账户选择 */}
-        <div className="px-4 py-3 flex items-center gap-3">
+        <div className="px-4 pt-3 pb-3 flex items-center gap-3">
           {/* 全部/现货/合约切换 */}
-          <div className="flex-1 flex bg-[#12121A] border border-[#1E1E2E] rounded-lg p-0.5">
+          <div className="flex-1 flex gap-2 p-1 bg-[#12121A] rounded-xl">
             {(['all', 'spot', 'futures'] as const).map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setAccountType(type)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
                   accountType === type
-                    ? 'bg-[#06B6D4] text-white'
-                    : 'text-[#9090A0]'
+                    ? 'bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20'
+                    : 'text-[#94A3B8] hover:text-white'
                 }`}
               >
                 {type === 'all' ? t('all') : type === 'spot' ? t('spot') : t('futures')}
@@ -349,7 +237,7 @@ export function MobileTradingCenter({
             <button
               type="button"
               onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-              className="w-full flex items-center justify-center gap-2 py-1.5 bg-[#12121A] border border-[#1E1E2E] rounded-lg text-xs"
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-sm"
             >
               <Wallet className="w-3.5 h-3.5 text-[#06B6D4]" />
               <span className="truncate">{selectedAccount.name}</span>
@@ -358,7 +246,11 @@ export function MobileTradingCenter({
 
             {showAccountDropdown && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-xl shadow-xl z-50 overflow-hidden">
-                {mockAccounts.map((account) => (
+                {accounts.length === 0 ? (
+                  <div className="px-4 py-3 text-center text-sm text-[#9090A0]">
+                    {t('noAccountsBound')}
+                  </div>
+                ) : accounts.map((account) => (
                   <button
                     key={account.id}
                     type="button"
@@ -383,13 +275,13 @@ export function MobileTradingCenter({
             {/* 主要盈亏数据 - 突出显示 */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl">
-                <p className="text-xs text-[#9090A0] mb-1">总盈亏</p>
+                <p className="text-xs text-[#9090A0] mb-1">{t('totalPnl')}</p>
                 <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
                 </p>
               </div>
               <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl">
-                <p className="text-xs text-[#9090A0] mb-1">今日盈亏</p>
+                <p className="text-xs text-[#9090A0] mb-1">{t('todayPnl')}</p>
                 <p className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
                 </p>
@@ -398,15 +290,15 @@ export function MobileTradingCenter({
             {/* 次要数据 */}
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">总资产</p>
+                <p className="text-xs text-[#606070] mb-1">{t('totalAssets')}</p>
                 <p className="text-base font-semibold text-[#F8F8FC]">${totalAssets.toLocaleString()}</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">可用余额</p>
+                <p className="text-xs text-[#606070] mb-1">{t('availableBalance')}</p>
                 <p className="text-base font-semibold text-[#F8F8FC]">${availableBalance.toLocaleString()}</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">未实现</p>
+                <p className="text-xs text-[#606070] mb-1">{t('unrealized')}</p>
                 <p className={`text-base font-semibold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(0)}
                 </p>
@@ -507,7 +399,7 @@ export function MobileTradingCenter({
         <div className="px-4">
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
             {/* Tab 导航 */}
-            <div className="grid grid-cols-5 p-1.5 gap-1 border-b border-[#1E1E2E]">
+            <div className="grid grid-cols-4 p-1.5 gap-1 border-b border-[#1E1E2E]">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 const isActive = activeTab === tab.id
@@ -699,77 +591,6 @@ export function MobileTradingCenter({
                   <div className="flex items-center gap-1 text-[10px] text-[#606070]">
                     <Clock className="w-3 h-3" />
                     <span>{order.time}</span>
-                  </div>
-                </div>
-              ))
-            )
-          )}
-
-          {/* 挂单 Tab */}
-          {activeTab === 'orders' && (
-            filteredPendingOrders.length === 0 ? (
-              <div className="text-center py-12">
-                <Clock className="w-12 h-12 text-[#606070] mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">{t('noPendingOrders')}</h3>
-                <p className="text-sm text-[#9090A0]">{t('pendingOrdersDesc')}</p>
-              </div>
-            ) : (
-              filteredPendingOrders.map((order) => (
-                <div key={order.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
-                  {/* 头部 */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{order.symbol}</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        order.side === 'buy'
-                          ? 'bg-green-400/10 text-green-400'
-                          : 'bg-red-400/10 text-red-400'
-                      }`}>
-                        {order.side === 'buy' ? t('buy') : t('sell')}
-                      </span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
-                        {order.type === 'limit' ? t('limitOrder') : order.type === 'stop-limit' ? t('stopLimitOrder') : t('takeProfitOrder')}
-                      </span>
-                    </div>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-400/10 text-cyan-400">
-                      {t('waitingFill')}
-                    </span>
-                  </div>
-
-                  {/* 数据行 */}
-                  <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
-                    <div>
-                      <p className="text-[#606070]">{t('orderPrice')}</p>
-                      <p className="font-medium">${order.price.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('amount')}</p>
-                      <p className="font-medium">{order.amount}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('filled')}</p>
-                      <p className="font-medium">{order.filled}</p>
-                    </div>
-                    {order.triggerPrice && (
-                      <div className="col-span-3">
-                        <p className="text-[#606070]">{t('triggerPrice')}</p>
-                        <p className="font-medium text-yellow-400">${order.triggerPrice.toLocaleString()}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 底部 */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-[10px] text-[#606070]">
-                      <Clock className="w-3 h-3" />
-                      <span>{order.time}</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-[10px] font-medium"
-                    >
-                      {t('cancelOrder')}
-                    </button>
                   </div>
                 </div>
               ))

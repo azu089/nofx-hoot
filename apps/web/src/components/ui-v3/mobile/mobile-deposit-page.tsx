@@ -28,24 +28,34 @@ interface DepositRecord {
   status: 'completed' | 'pending' | 'failed'
 }
 
-const mockRecords: DepositRecord[] = [
-  { id: '1', amount: '100.00', network: 'TRC20', time: '01-20', status: 'completed' },
-  { id: '2', amount: '50.00', network: 'ERC20', time: '01-19', status: 'completed' },
-  { id: '3', amount: '200.00', network: 'BEP20', time: '01-18', status: 'pending' },
-]
-
 interface MobileDepositPageProps {
   onBack?: () => void
+  walletAddress?: string
+  recentDeposits?: DepositRecord[]
+  selectedNetwork?: NetworkType
+  onNetworkChange?: (network: NetworkType) => void
 }
 
-export function MobileDepositPage({ onBack }: MobileDepositPageProps) {
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkType>('TRC20')
+export function MobileDepositPage({
+  onBack,
+  walletAddress = '',
+  recentDeposits = [],
+  selectedNetwork: propSelectedNetwork,
+  onNetworkChange
+}: MobileDepositPageProps) {
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkType>(propSelectedNetwork || 'TRC20')
   const [showDropdown, setShowDropdown] = useState(false)
   const [showQR, setShowQR] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const currentNetwork = networks.find(n => n.name === selectedNetwork)!
-  const walletAddress = 'TXVzH4t5c2B3kNqZeVnWqYJfG8PmD1aKsT9W'
+
+  // 处理网络切换
+  const handleNetworkChange = (network: NetworkType) => {
+    setSelectedNetwork(network)
+    onNetworkChange?.(network)
+    setShowDropdown(false)
+  }
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(walletAddress)
@@ -56,12 +66,12 @@ export function MobileDepositPage({ onBack }: MobileDepositPageProps) {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
-          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="text-base font-medium">充值 USDT</span>
+          <h1 className="text-base font-semibold text-white">充值 USDT</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -94,10 +104,7 @@ export function MobileDepositPage({ onBack }: MobileDepositPageProps) {
                 <button
                   key={network.name}
                   type="button"
-                  onClick={() => {
-                    setSelectedNetwork(network.name)
-                    setShowDropdown(false)
-                  }}
+                  onClick={() => handleNetworkChange(network.name)}
                   className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0"
                 >
                   <div className="flex items-center gap-3">
@@ -156,11 +163,11 @@ export function MobileDepositPage({ onBack }: MobileDepositPageProps) {
         </div>
 
         {/* 充值记录 */}
-        {mockRecords.length > 0 && (
+        {recentDeposits.length > 0 && (
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
             <span className="text-sm text-[#94A3B8]">最近记录</span>
             <div className="space-y-2">
-              {mockRecords.map((record) => (
+              {recentDeposits.map((record) => (
                 <div key={record.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">

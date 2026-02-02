@@ -1,4 +1,9 @@
-import { IsString, IsOptional, MaxLength, IsEthereumAddress } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  MaxLength,
+  IsEthereumAddress,
+} from 'class-validator';
 
 // Telegram 绑定 DTO（已登录用户绑定 TG）
 export class BindTelegramDto {

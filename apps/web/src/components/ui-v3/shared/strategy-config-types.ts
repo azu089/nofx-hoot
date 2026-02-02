@@ -1,7 +1,18 @@
 'use client'
 
+// API Key 数据结构
+export interface ApiKeyData {
+  id: string
+  exchange: string
+  label: string
+  isActive: boolean
+  createdAt: string
+}
+
 // 统一的策略配置数据结构（移动端/桌面端共用）
 export interface StrategyConfigData {
+  // API Key（必选）
+  apiKeyId: string
   // 基础配置
   exchange: string
   tradingType: 'spot' | 'futures'
@@ -98,6 +109,7 @@ export function addRecentPair(pair: string): void {
 
 // 默认配置
 export const defaultConfig: StrategyConfigData = {
+  apiKeyId: '', // 必须由用户选择
   exchange: 'Binance',
   tradingType: 'futures',
   tradingPairs: ['BTC/USDT', 'ETH/USDT'],

@@ -22,7 +22,9 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { StrategyConfigSection, defaultConfig } from '@/components/ui-v3/shared/strategy-config-section'
 import { StrategyConfigData } from '@/components/ui-v3/shared/strategy-config-types'
-import { useStrategySubscription } from '@/hooks/use-strategy'
+import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
+import { useTranslations } from '@/i18n/provider'
+import { useEffect } from 'react'
 
 type TabType = 'external' | 'visual' | 'code'
 
@@ -41,10 +43,18 @@ interface StrategyCreatorPageProps {
   onNavigate?: (path: string) => void
 }
 
-const tabs: { id: TabType; label: string; icon: React.ReactNode; description: string; tag?: string }[] = [
-  { id: 'external', label: 'TradingView', icon: <div className="w-8 h-8 rounded-lg overflow-hidden"><img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover scale-150" /></div>, description: '连接你的 TradingView 账户，将 Alert 信号自动转化为实盘交易', tag: '推荐' },
-  { id: 'visual', label: '可视化搭建', icon: <Layers className="w-6 h-6" />, description: '无需编程，通过条件组合搭建自己的量化策略逻辑' },
-  { id: 'code', label: '代码开发', icon: <Code className="w-6 h-6" />, description: '使用 Python 编写完全自定义的策略，适合专业量化开发者', tag: '高级' }
+interface TabConfig {
+  id: TabType
+  labelKey: string
+  icon: React.ReactNode
+  descriptionKey: string
+  tagKey?: string
+}
+
+const tabConfigs: TabConfig[] = [
+  { id: 'external', labelKey: 'TradingView', icon: <div className="w-8 h-8 rounded-lg overflow-hidden"><img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" /></div>, descriptionKey: 'tradingviewDesc', tagKey: 'recommended' },
+  { id: 'visual', labelKey: 'visualBuilder', icon: <Layers className="w-6 h-6" />, descriptionKey: 'visualDesc' },
+  { id: 'code', labelKey: 'codeDevelopment', icon: <Code className="w-6 h-6" />, descriptionKey: 'codeDesc', tagKey: 'advanced' }
 ]
 
 // 可视化条件类型
@@ -69,6 +79,7 @@ export function StrategyCreatorPage({
   onSave,
   onNavigate
 }: StrategyCreatorPageProps) {
+  const t = useTranslations('strategies')
   const [activeTab, setActiveTab] = useState<TabType>('external')
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -81,6 +92,20 @@ export function StrategyCreatorPage({
 
   // API 集成
   const { loading: apiLoading, error: apiError, createSubscription } = useStrategySubscription('')
+  const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
+  const [showApiKeyDD, setShowApiKeyDD] = useState(false)
+
+  // 加载用户 API Keys
+  useEffect(() => {
+    fetchApiKeys()
+  }, [fetchApiKeys])
+
+  // Helper to get tab label
+  const getTabLabel = (key: string) => {
+    if (key === 'TradingView') return 'TradingView'
+    return t(key as any)
+  }
 
   // 可视化搭建状态
   const [visualConditions, setVisualConditions] = useState<VisualCondition[]>([
@@ -108,21 +133,30 @@ class MyStrategy(BaseStrategy):
 
   // 保存策略配置
   const handleSave = async () => {
+    if (!selectedApiKeyId) {
+      return // 没有选择 API Key
+    }
+
     setIsSaving(true)
     setSaveSuccess(false)
 
     try {
+      // 构建带 apiKeyId 的配置
+      const configWithApiKey: StrategyConfigData = {
+        ...config,
+        apiKeyId: selectedApiKeyId,
+      }
+
       const strategyData: StrategyData = {
         type: activeTab === 'external' ? 'tradingview' : activeTab,
         name: strategyName || `${activeTab}-strategy-${Date.now()}`,
-        config,
+        config: configWithApiKey,
         ...(activeTab === 'visual' && { conditions: visualConditions, actions: visualActions, logic: visualLogic }),
         ...(activeTab === 'code' && { code: codeContent }),
       }
 
       // 调用 API 创建订阅
-      const apiKeyId = config.exchange.toLowerCase()
-      await createSubscription(config, apiKeyId)
+      await createSubscription(configWithApiKey)
 
       // 调用父组件的 onSave
       await onSave?.(strategyData)
@@ -143,7 +177,7 @@ class MyStrategy(BaseStrategy):
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-2 px-6 py-3 bg-[#10B981] text-white rounded-xl shadow-lg">
             <Check className="w-5 h-5" />
-            <span className="font-medium">策略已保存到我的策略</span>
+            <span className="font-medium">{t('strategySaved')}</span>
           </div>
         </div>
       )}
@@ -165,13 +199,13 @@ class MyStrategy(BaseStrategy):
             <button
               type="button"
               onClick={() => onNavigate?.('/strategies')}
-              title="返回策略市场"
+              title={t('backToMarket')}
               className="p-2 rounded-lg hover:bg-[#1E1E2E] transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold">创建策略</h1>
+              <h1 className="text-xl font-bold">{t('createStrategy')}</h1>
             </div>
           </div>
         </div>
@@ -180,7 +214,7 @@ class MyStrategy(BaseStrategy):
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          {tabs.map((tab) => (
+          {tabConfigs.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -193,17 +227,17 @@ class MyStrategy(BaseStrategy):
               )}
             >
               {tab.icon}
-              <span className="font-medium">{tab.label}</span>
-              {tab.tag && (
+              <span className="font-medium">{getTabLabel(tab.labelKey)}</span>
+              {tab.tagKey && (
                 <span className={cn(
                   "px-1.5 py-0.5 rounded text-xs font-medium",
                   activeTab === tab.id
                     ? "bg-white/20 text-white"
-                    : tab.tag === '推荐'
+                    : tab.tagKey === 'recommended'
                     ? "bg-cyan-400/20 text-cyan-400"
                     : "bg-yellow-400/20 text-yellow-400"
                 )}>
-                  {tab.tag}
+                  {t(tab.tagKey as any)}
                 </span>
               )}
             </button>
@@ -213,18 +247,16 @@ class MyStrategy(BaseStrategy):
         {/* Tab Description */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-4 mb-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center">
+            <div className={activeTab === 'external' ? "w-12 h-12 rounded-lg overflow-hidden" : "w-12 h-12 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center"}>
               {activeTab === 'external' ? (
-                <div className="w-8 h-8 rounded-lg overflow-hidden">
-                  <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover scale-150" />
-                </div>
+                <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" />
               ) : (
-                tabs.find(t => t.id === activeTab)?.icon
+                tabConfigs.find(tc => tc.id === activeTab)?.icon
               )}
             </div>
             <div>
-              <h2 className="font-semibold">{tabs.find(t => t.id === activeTab)?.label}</h2>
-              <p className="text-sm text-[#9090A0]">{tabs.find(t => t.id === activeTab)?.description}</p>
+              <h2 className="font-semibold">{getTabLabel(tabConfigs.find(tc => tc.id === activeTab)?.labelKey || '')}</h2>
+              <p className="text-sm text-[#9090A0]">{t(tabConfigs.find(tc => tc.id === activeTab)?.descriptionKey as any)}</p>
             </div>
           </div>
         </div>
@@ -237,31 +269,31 @@ class MyStrategy(BaseStrategy):
               <>
                 {/* 策略名称 */}
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-                  <h3 className="text-lg font-semibold mb-4">策略名称</h3>
+                  <h3 className="text-lg font-semibold mb-4">{t('strategyName')}</h3>
                   <Input
                     type="text"
                     value={strategyName}
                     onChange={(e) => setStrategyName(e.target.value)}
-                    placeholder="输入策略名称"
+                    placeholder={t('namePlaceholder')}
                     className="bg-[#0A0A0F] border-[#2A2A3A]"
                   />
                 </div>
 
                 {/* Webhook 配置 */}
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-                  <h3 className="text-lg font-semibold mb-4">TradingView Webhook</h3>
-                  <p className="text-[#9090A0] mb-4">通过 TradingView Alert 接收交易信号</p>
+                  <h3 className="text-lg font-semibold mb-4">{t('webhookConfig')}</h3>
+                  <p className="text-[#9090A0] mb-4">{t('webhookDesc')}</p>
                   <div className="bg-[#0A0A0F] rounded-xl p-4 mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-[#606070]">Webhook URL</span>
-                      <button type="button" className="text-sm text-cyan-400 hover:text-cyan-300">复制</button>
+                      <span className="text-sm text-[#606070]">{t('webhookUrl')}</span>
+                      <button type="button" className="text-sm text-cyan-400 hover:text-cyan-300">{t('cancel')}</button>
                     </div>
                     <code className="text-sm text-[#F8F8FC] break-all">
                       https://api.hoot.ai/webhook/tv/your-unique-id
                     </code>
                   </div>
                   <Button variant="outline" className="w-full border-[#2A2A3A] text-[#9090A0] hover:text-[#F8F8FC] hover:border-cyan-500/50">
-                    生成新的 Webhook
+                    {t('generateWebhook')}
                   </Button>
                 </div>
 
@@ -269,13 +301,13 @@ class MyStrategy(BaseStrategy):
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                   <div className="flex items-center gap-2 mb-4">
                     <Info className="w-5 h-5 text-cyan-400" />
-                    <h3 className="font-semibold">使用说明</h3>
+                    <h3 className="font-semibold">{t('instructions')}</h3>
                   </div>
                   <ol className="space-y-2 text-sm text-[#9090A0]">
-                    <li>1. 在 TradingView 创建 Alert</li>
-                    <li>2. 设置 Webhook URL 为上方地址</li>
-                    <li>3. 配置 Alert 消息格式（JSON）</li>
-                    <li>4. 保存后系统将自动执行交易</li>
+                    <li>{t('instruction1')}</li>
+                    <li>{t('instruction2')}</li>
+                    <li>{t('instruction3')}</li>
+                    <li>{t('instruction4')}</li>
                   </ol>
                 </div>
               </>
@@ -290,15 +322,15 @@ class MyStrategy(BaseStrategy):
                       <Zap className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">策略信息</h3>
-                      <p className="text-xs text-[#606070]">为你的策略命名</p>
+                      <h3 className="font-semibold">{t('strategyInfo')}</h3>
+                      <p className="text-xs text-[#606070]">{t('nameYourStrategy')}</p>
                     </div>
                   </div>
                   <Input
                     type="text"
                     value={strategyName}
                     onChange={(e) => setStrategyName(e.target.value)}
-                    placeholder="输入策略名称"
+                    placeholder={t('namePlaceholder')}
                     className="bg-[#0A0A0F] border-[#2A2A3A]"
                   />
                 </div>
@@ -311,8 +343,8 @@ class MyStrategy(BaseStrategy):
                         <AlertTriangle className="w-4 h-4 text-yellow-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold">当满足以下条件时</h3>
-                        <p className="text-xs text-[#606070]">设置触发交易的条件</p>
+                        <h3 className="font-semibold">{t('whenConditionsMet')}</h3>
+                        <p className="text-xs text-[#606070]">{t('setTriggerConditions')}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -324,7 +356,7 @@ class MyStrategy(BaseStrategy):
                           visualLogic === 'and' ? "bg-cyan-500 text-white" : "bg-[#1E1E2E] text-[#9090A0]"
                         )}
                       >
-                        全部满足
+                        {t('allSatisfied')}
                       </button>
                       <button
                         type="button"
@@ -334,7 +366,7 @@ class MyStrategy(BaseStrategy):
                           visualLogic === 'or' ? "bg-cyan-500 text-white" : "bg-[#1E1E2E] text-[#9090A0]"
                         )}
                       >
-                        任一满足
+                        {t('anySatisfied')}
                       </button>
                     </div>
                   </div>
@@ -351,13 +383,13 @@ class MyStrategy(BaseStrategy):
                               newConditions[index] = { ...condition, type: e.target.value as VisualCondition['type'] }
                               setVisualConditions(newConditions)
                             }}
-                            title="选择条件类型"
+                            title={t('conditionType')}
                             className="bg-[#1E1E2E] border border-[#2A2A3A] rounded-lg px-3 py-2 text-sm text-[#F8F8FC]"
                           >
-                            <option value="indicator">技术指标</option>
-                            <option value="price">价格条件</option>
-                            <option value="volume">成交量</option>
-                            <option value="time">时间条件</option>
+                            <option value="indicator">{t('indicator')}</option>
+                            <option value="price">{t('priceCondition')}</option>
+                            <option value="volume">{t('volume')}</option>
+                            <option value="time">{t('timeCondition')}</option>
                           </select>
 
                           {condition.type === 'indicator' && (
@@ -368,14 +400,14 @@ class MyStrategy(BaseStrategy):
                                 newConditions[index] = { ...condition, indicator: e.target.value }
                                 setVisualConditions(newConditions)
                               }}
-                              title="选择指标"
+                              title={t('selectIndicator')}
                               className="bg-[#1E1E2E] border border-[#2A2A3A] rounded-lg px-3 py-2 text-sm text-[#F8F8FC]"
                             >
                               <option value="RSI">RSI</option>
                               <option value="MACD">MACD</option>
-                              <option value="MA">MA均线</option>
+                              <option value="MA">{t('maLine')}</option>
                               <option value="EMA">EMA</option>
-                              <option value="BOLL">布林带</option>
+                              <option value="BOLL">{t('bollinger')}</option>
                               <option value="KDJ">KDJ</option>
                             </select>
                           )}
@@ -387,14 +419,14 @@ class MyStrategy(BaseStrategy):
                               newConditions[index] = { ...condition, operator: e.target.value as VisualCondition['operator'] }
                               setVisualConditions(newConditions)
                             }}
-                            title="选择操作符"
+                            title={t('operator')}
                             className="bg-[#1E1E2E] border border-[#2A2A3A] rounded-lg px-3 py-2 text-sm text-[#F8F8FC]"
                           >
-                            <option value="above">大于</option>
-                            <option value="below">小于</option>
-                            <option value="cross_up">上穿</option>
-                            <option value="cross_down">下穿</option>
-                            <option value="between">区间内</option>
+                            <option value="above">{t('greaterThan')}</option>
+                            <option value="below">{t('lessThan')}</option>
+                            <option value="cross_up">{t('crossUp')}</option>
+                            <option value="cross_down">{t('crossDown')}</option>
+                            <option value="between">{t('inRange')}</option>
                           </select>
 
                           <Input
@@ -405,7 +437,7 @@ class MyStrategy(BaseStrategy):
                               newConditions[index] = { ...condition, value: e.target.value }
                               setVisualConditions(newConditions)
                             }}
-                            placeholder="数值"
+                            placeholder={t('value')}
                             className="bg-[#1E1E2E] border-[#2A2A3A]"
                           />
                         </div>
@@ -413,7 +445,7 @@ class MyStrategy(BaseStrategy):
                         <button
                           type="button"
                           onClick={() => setVisualConditions(visualConditions.filter(c => c.id !== condition.id))}
-                          title="删除条件"
+                          title={t('deleteCondition')}
                           className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors text-[#9090A0] hover:text-red-400"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -431,7 +463,7 @@ class MyStrategy(BaseStrategy):
                     className="w-full mt-3 p-3 border border-dashed border-[#2A2A3A] rounded-xl text-[#9090A0] hover:text-cyan-400 hover:border-cyan-500/50 transition-all flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
-                    添加条件
+                    {t('addCondition')}
                   </button>
                 </div>
 
@@ -442,8 +474,8 @@ class MyStrategy(BaseStrategy):
                       <Zap className="w-4 h-4 text-green-400" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">执行以下操作</h3>
-                      <p className="text-xs text-[#606070]">条件满足时自动执行</p>
+                      <h3 className="font-semibold">{t('executeActions')}</h3>
+                      <p className="text-xs text-[#606070]">{t('autoExecute')}</p>
                     </div>
                   </div>
 
@@ -458,13 +490,13 @@ class MyStrategy(BaseStrategy):
                               newActions[index] = { ...action, type: e.target.value as VisualAction['type'] }
                               setVisualActions(newActions)
                             }}
-                            title="选择动作类型"
+                            title={t('actionType')}
                             className="bg-[#1E1E2E] border border-[#2A2A3A] rounded-lg px-3 py-2 text-sm text-[#F8F8FC]"
                           >
-                            <option value="buy">买入开多</option>
-                            <option value="sell">卖出开空</option>
-                            <option value="close">平仓</option>
-                            <option value="alert">仅通知</option>
+                            <option value="buy">{t('buyLong')}</option>
+                            <option value="sell">{t('sellShort')}</option>
+                            <option value="close">{t('closePosition')}</option>
+                            <option value="alert">{t('alertOnly')}</option>
                           </select>
 
                           {action.type !== 'alert' && (
@@ -477,7 +509,7 @@ class MyStrategy(BaseStrategy):
                                   newActions[index] = { ...action, amount: e.target.value }
                                   setVisualActions(newActions)
                                 }}
-                                placeholder="金额"
+                                placeholder={t('amount')}
                                 className="bg-[#1E1E2E] border-[#2A2A3A]"
                               />
                               <select
@@ -487,11 +519,11 @@ class MyStrategy(BaseStrategy):
                                   newActions[index] = { ...action, amountType: e.target.value as VisualAction['amountType'] }
                                   setVisualActions(newActions)
                                 }}
-                                title="选择金额类型"
+                                title={t('amount')}
                                 className="bg-[#1E1E2E] border border-[#2A2A3A] rounded-lg px-3 py-2 text-sm text-[#F8F8FC]"
                               >
-                                <option value="percent">仓位百分比 %</option>
-                                <option value="fixed">固定金额 USDT</option>
+                                <option value="percent">{t('positionPercent')}</option>
+                                <option value="fixed">{t('fixedAmount')}</option>
                               </select>
                             </>
                           )}
@@ -500,7 +532,7 @@ class MyStrategy(BaseStrategy):
                         <button
                           type="button"
                           onClick={() => setVisualActions(visualActions.filter(a => a.id !== action.id))}
-                          title="删除动作"
+                          title={t('deleteAction')}
                           className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors text-[#9090A0] hover:text-red-400"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -518,7 +550,7 @@ class MyStrategy(BaseStrategy):
                     className="w-full mt-3 p-3 border border-dashed border-[#2A2A3A] rounded-xl text-[#9090A0] hover:text-cyan-400 hover:border-cyan-500/50 transition-all flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
-                    添加动作
+                    {t('addAction')}
                   </button>
                 </div>
 
@@ -526,24 +558,24 @@ class MyStrategy(BaseStrategy):
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                   <div className="flex items-center gap-2 mb-4">
                     <Info className="w-5 h-5 text-cyan-400" />
-                    <h3 className="font-semibold">策略逻辑预览</h3>
+                    <h3 className="font-semibold">{t('logicPreview')}</h3>
                   </div>
                   <div className="p-4 bg-[#0A0A0F] rounded-xl font-mono text-sm">
                     <p className="text-yellow-400 mb-2">
-                      当 {visualLogic === 'and' ? '以下条件全部满足' : '以下任一条件满足'}:
+                      {visualLogic === 'and' ? t('whenAllConditions') : t('whenAnyCondition')}:
                     </p>
                     {visualConditions.map((c, i) => (
                       <p key={c.id} className="text-[#9090A0] ml-4">
-                        {i > 0 && <span className="text-cyan-400">{visualLogic === 'and' ? '且 ' : '或 '}</span>}
+                        {i > 0 && <span className="text-cyan-400">{visualLogic === 'and' ? `${t('and')} ` : `${t('or')} `}</span>}
                         {c.type === 'indicator' && c.indicator} {' '}
-                        {c.operator === 'above' ? '>' : c.operator === 'below' ? '<' : c.operator === 'cross_up' ? '上穿' : c.operator === 'cross_down' ? '下穿' : '在'} {' '}
+                        {c.operator === 'above' ? '>' : c.operator === 'below' ? '<' : c.operator === 'cross_up' ? t('crossUp') : c.operator === 'cross_down' ? t('crossDown') : t('inRange')} {' '}
                         {c.value}
                       </p>
                     ))}
-                    <p className="text-green-400 mt-4 mb-2">则执行:</p>
+                    <p className="text-green-400 mt-4 mb-2">{t('thenExecute')}:</p>
                     {visualActions.map((a) => (
                       <p key={a.id} className="text-[#9090A0] ml-4">
-                        {a.type === 'buy' ? '买入开多' : a.type === 'sell' ? '卖出开空' : a.type === 'close' ? '平仓' : '发送通知'}
+                        {a.type === 'buy' ? t('buyLong') : a.type === 'sell' ? t('sellShort') : a.type === 'close' ? t('closePosition') : t('sendNotification')}
                         {a.type !== 'alert' && ` ${a.amount}${a.amountType === 'percent' ? '%' : ' USDT'}`}
                       </p>
                     ))}
@@ -556,12 +588,12 @@ class MyStrategy(BaseStrategy):
               <>
                 {/* 策略名称 */}
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-                  <h3 className="text-lg font-semibold mb-4">策略名称</h3>
+                  <h3 className="text-lg font-semibold mb-4">{t('strategyName')}</h3>
                   <Input
                     type="text"
                     value={strategyName}
                     onChange={(e) => setStrategyName(e.target.value)}
-                    placeholder="我的自定义策略"
+                    placeholder={t('customStrategy')}
                     className="bg-[#0A0A0F] border-[#2A2A3A]"
                   />
                 </div>
@@ -569,13 +601,13 @@ class MyStrategy(BaseStrategy):
                 {/* 代码编辑器 */}
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">Python 代码编辑器</h3>
+                    <h3 className="text-lg font-semibold">{t('codeEditor')}</h3>
                     <button
                       type="button"
                       onClick={() => setShowCodeEditor(!showCodeEditor)}
                       className="text-sm text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
                     >
-                      {showCodeEditor ? '收起编辑器' : '展开编辑器'}
+                      {showCodeEditor ? t('collapseEditor') : t('expandEditor')}
                       {showCodeEditor ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                   </div>
@@ -595,7 +627,7 @@ class MyStrategy(BaseStrategy):
                     <textarea
                       value={codeContent}
                       onChange={(e) => setCodeContent(e.target.value)}
-                      placeholder="在此编写 Python 策略代码..."
+                      placeholder={t('codePlaceholder')}
                       className="w-full h-[calc(100%-40px)] bg-transparent p-4 font-mono text-sm text-[#F8F8FC] resize-none focus:outline-none"
                       spellCheck={false}
                     />
@@ -608,33 +640,33 @@ class MyStrategy(BaseStrategy):
                       onClick={() => setShowCodeEditor(true)}
                     >
                       <Code className="w-4 h-4 mr-2" />
-                      全屏编辑
+                      {t('fullscreenEdit')}
                     </Button>
                     <Button variant="outline" className="border-[#2A2A3A]">
                       <Info className="w-4 h-4 mr-2" />
-                      API 文档
+                      {t('apiDocs')}
                     </Button>
                   </div>
                 </div>
 
                 {/* 策略模板 */}
                 <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-                  <h3 className="text-lg font-semibold mb-4">快速模板</h3>
+                  <h3 className="text-lg font-semibold mb-4">{t('quickTemplates')}</h3>
                   <div className="grid gap-3">
                     {[
-                      { name: '均值回归策略', desc: '基于价格偏离均值的反转策略', code: `# 均值回归策略\nclass MeanReversionStrategy(BaseStrategy):\n    def __init__(self):\n        self.ma_period = 20\n        self.threshold = 2.0\n\n    def on_tick(self, data):\n        ma = self.calculate_ma(data, self.ma_period)\n        std = self.calculate_std(data, self.ma_period)\n        price = data['close']\n        if price < ma - std * self.threshold:\n            self.buy(size=0.1)\n        elif price > ma + std * self.threshold:\n            self.sell(size=0.1)` },
-                      { name: '动量策略', desc: '追踪价格动量的趋势策略', code: `# 动量策略\nclass MomentumStrategy(BaseStrategy):\n    def __init__(self):\n        self.fast_period = 12\n        self.slow_period = 26\n\n    def on_tick(self, data):\n        fast_ma = self.calculate_ema(data, self.fast_period)\n        slow_ma = self.calculate_ema(data, self.slow_period)\n        if fast_ma > slow_ma:\n            self.buy(size=0.1)\n        elif fast_ma < slow_ma:\n            self.sell(size=0.1)` },
-                      { name: '网格策略', desc: '自动在网格区间内高抛低吸', code: `# 网格策略\nclass GridStrategy(BaseStrategy):\n    def __init__(self):\n        self.grid_upper = 50000\n        self.grid_lower = 40000\n        self.grid_count = 10\n\n    def on_tick(self, data):\n        price = data['close']\n        grid_size = (self.grid_upper - self.grid_lower) / self.grid_count\n        for i in range(self.grid_count):\n            level = self.grid_lower + i * grid_size\n            if abs(price - level) < grid_size * 0.1:\n                if price < level:\n                    self.buy(size=0.01)\n                else:\n                    self.sell(size=0.01)` }
+                      { nameKey: 'meanReversion', descKey: 'meanReversionDesc', code: `# Mean Reversion Strategy\nclass MeanReversionStrategy(BaseStrategy):\n    def __init__(self):\n        self.ma_period = 20\n        self.threshold = 2.0\n\n    def on_tick(self, data):\n        ma = self.calculate_ma(data, self.ma_period)\n        std = self.calculate_std(data, self.ma_period)\n        price = data['close']\n        if price < ma - std * self.threshold:\n            self.buy(size=0.1)\n        elif price > ma + std * self.threshold:\n            self.sell(size=0.1)` },
+                      { nameKey: 'momentum', descKey: 'momentumDesc', code: `# Momentum Strategy\nclass MomentumStrategy(BaseStrategy):\n    def __init__(self):\n        self.fast_period = 12\n        self.slow_period = 26\n\n    def on_tick(self, data):\n        fast_ma = self.calculate_ema(data, self.fast_period)\n        slow_ma = self.calculate_ema(data, self.slow_period)\n        if fast_ma > slow_ma:\n            self.buy(size=0.1)\n        elif fast_ma < slow_ma:\n            self.sell(size=0.1)` },
+                      { nameKey: 'grid', descKey: 'gridDesc', code: `# Grid Strategy\nclass GridStrategy(BaseStrategy):\n    def __init__(self):\n        self.grid_upper = 50000\n        self.grid_lower = 40000\n        self.grid_count = 10\n\n    def on_tick(self, data):\n        price = data['close']\n        grid_size = (self.grid_upper - self.grid_lower) / self.grid_count\n        for i in range(self.grid_count):\n            level = self.grid_lower + i * grid_size\n            if abs(price - level) < grid_size * 0.1:\n                if price < level:\n                    self.buy(size=0.01)\n                else:\n                    self.sell(size=0.01)` }
                     ].map((template) => (
                       <button
-                        key={template.name}
+                        key={template.nameKey}
                         type="button"
                         onClick={() => setCodeContent(template.code)}
                         className="flex items-center justify-between p-4 bg-[#0A0A0F] rounded-xl hover:bg-[#1E1E2E] transition-colors text-left"
                       >
                         <div>
-                          <div className="font-medium">{template.name}</div>
-                          <div className="text-sm text-[#606070]">{template.desc}</div>
+                          <div className="font-medium">{t(template.nameKey as any)}</div>
+                          <div className="text-sm text-[#606070]">{t(template.descKey as any)}</div>
                         </div>
                         <ChevronRight className="w-5 h-5 text-[#606070]" />
                       </button>
@@ -647,14 +679,85 @@ class MyStrategy(BaseStrategy):
 
           {/* 右栏：统一风控参数配置 */}
           <div className="space-y-4">
+            {/* API Key 选择器 */}
+            <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">{t('selectApiKey')}</h3>
+                  <p className="text-xs text-[#606070]">{t('apiKeyDesc')}</p>
+                </div>
+              </div>
+
+              {/* API Key 下拉选择 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all",
+                    selectedApiKeyId
+                      ? "bg-[#0A0A0F] border-cyan-500/30"
+                      : "bg-[#0A0A0F] border-[#2A2A3A] hover:border-cyan-500/30"
+                  )}
+                >
+                  <span className={selectedApiKeyId ? "text-[#F8F8FC]" : "text-[#606070]"}>
+                    {apiKeysLoading
+                      ? t('loading')
+                      : selectedApiKeyId
+                      ? apiKeys.find(k => k.id === selectedApiKeyId)?.label || t('unknownKey')
+                      : t('selectApiKeyPlaceholder')}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-[#606070] transition-transform", showApiKeyDD && "rotate-180")} />
+                </button>
+
+                {showApiKeyDD && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#12121A] border border-[#2A2A3A] rounded-xl shadow-xl z-20 overflow-hidden">
+                    {apiKeys.length === 0 ? (
+                      <div className="p-4 text-center text-[#606070] text-sm">
+                        {t('noApiKeys')}
+                      </div>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <button
+                          key={key.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedApiKeyId(key.id)
+                            setShowApiKeyDD(false)
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between px-4 py-3 hover:bg-[#1E1E2E] transition-colors text-left",
+                            selectedApiKeyId === key.id && "bg-cyan-500/10"
+                          )}
+                        >
+                          <div>
+                            <div className="font-medium text-[#F8F8FC]">{key.label}</div>
+                            <div className="text-xs text-[#606070]">{key.exchange}</div>
+                          </div>
+                          {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-cyan-400" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {!selectedApiKeyId && (
+                <p className="mt-2 text-xs text-yellow-500">{t('apiKeyRequired')}</p>
+              )}
+            </div>
+
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
                   <Settings className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold">交易参数配置</h3>
-                  <p className="text-xs text-[#606070]">设置交易所、止损止盈和风险控制</p>
+                  <h3 className="font-semibold">{t('tradingConfig')}</h3>
+                  <p className="text-xs text-[#606070]">{t('configDescription')}</p>
                 </div>
               </div>
 
@@ -669,7 +772,7 @@ class MyStrategy(BaseStrategy):
             {/* 保存按钮 */}
             <Button
               onClick={handleSave}
-              disabled={isSaving || apiLoading}
+              disabled={isSaving || apiLoading || !selectedApiKeyId}
               className="w-full bg-[#06B6D4] hover:bg-[#0891B2] py-6 disabled:opacity-50"
             >
               {(isSaving || apiLoading) ? (
@@ -677,7 +780,15 @@ class MyStrategy(BaseStrategy):
               ) : (
                 <Settings className="w-5 h-5 mr-2" />
               )}
-              {(isSaving || apiLoading) ? '保存中...' : `保存${activeTab === 'external' ? ' TradingView' : activeTab === 'visual' ? '可视化' : '代码'}策略`}
+              {(isSaving || apiLoading)
+                ? t('saving')
+                : !selectedApiKeyId
+                ? t('selectApiKeyFirst')
+                : activeTab === 'external'
+                ? t('saveTradingview')
+                : activeTab === 'visual'
+                ? t('saveVisual')
+                : t('saveCode')}
             </Button>
           </div>
         </div>

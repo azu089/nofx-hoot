@@ -1,7 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { firstValueFrom } from 'rxjs';
+import { PrismaService } from '../../prisma/prisma.service';
+import {
+  getLocalizedContent,
+  getValidLocale,
+  DEFAULT_LOCALE,
+  type I18nContent,
+} from '../../common/utils/i18n.util';
+import WebSocket from 'ws';
+import Redis from 'ioredis';
 
 // 币种价格数据
 export interface CoinPrice {
@@ -24,21 +38,50 @@ export interface CryptoNews {
   publishedAt: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
   tags?: string[];
+  image?: string; // 新闻配图
 }
 
-// 公告
-export interface Announcement {
+// 公告（返回给前端的格式）
+export interface AnnouncementResponse {
   id: string;
   title: string;
   content?: string;
-  type: 'info' | 'warning' | 'success' | 'promo';
+  type: string;
   link?: string;
+  coverImage?: string;
   createdAt: Date;
 }
 
+// 跑马灯（返回给前端的格式）
+export interface MarqueeResponse {
+  id: string;
+  content: string;
+  link?: string;
+  bgColor?: string;
+  textColor?: string;
+}
+
+// 跑马灯配置
+export interface MarqueeConfig {
+  scrollSpeed: number; // 滚动速度（像素/秒）
+  pauseOnHover: boolean; // 鼠标悬停时暂停
+  displayDuration: number; // 每条消息显示时长（秒）
+}
+
+const DEFAULT_MARQUEE_CONFIG: MarqueeConfig = {
+  scrollSpeed: 50,
+  pauseOnHover: true,
+  displayDuration: 5,
+};
+
+const MARQUEE_CONFIG_KEY = 'hoot:marquee:config';
+
 @Injectable()
-export class MarketService {
+export class MarketService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MarketService.name);
+
+  // Redis 连接（用于读取跑马灯配置）
+  private redis: Redis;
 
   // 缓存数据
   private priceCache: CoinPrice[] = [];
@@ -46,33 +89,219 @@ export class MarketService {
   private lastPriceUpdate: Date | null = null;
   private lastNewsUpdate: Date | null = null;
 
+  // Binance WebSocket
+  private binanceWs: WebSocket | null = null;
+  private binancePrices: Map<string, { price: number; change24h: number }> =
+    new Map();
+  private reconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 10;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+
   // 缓存时间（毫秒）
-  private readonly PRICE_CACHE_TTL = 30 * 1000; // 30秒
+  private readonly PRICE_CACHE_TTL = 5 * 1000; // 5秒（WebSocket 实时更新）
   private readonly NEWS_CACHE_TTL = 5 * 60 * 1000; // 5分钟
 
-  // 支持的币种（CoinGecko ID -> 显示符号）
-  private readonly SUPPORTED_COINS: Record<string, { symbol: string; name: string }> = {
-    bitcoin: { symbol: 'BTC', name: 'Bitcoin' },
-    ethereum: { symbol: 'ETH', name: 'Ethereum' },
-    binancecoin: { symbol: 'BNB', name: 'BNB' },
-    solana: { symbol: 'SOL', name: 'Solana' },
-    ripple: { symbol: 'XRP', name: 'XRP' },
-    dogecoin: { symbol: 'DOGE', name: 'Dogecoin' },
-    'the-open-network': { symbol: 'TON', name: 'Toncoin' },
-    cardano: { symbol: 'ADA', name: 'Cardano' },
+  // 支持的币种（Binance symbol -> 显示信息）
+  private readonly SUPPORTED_COINS: Record<
+    string,
+    { symbol: string; name: string; image: string }
+  > = {
+    BTCUSDT: {
+      symbol: 'BTC',
+      name: 'Bitcoin',
+      image:
+        'https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png',
+    },
+    ETHUSDT: {
+      symbol: 'ETH',
+      name: 'Ethereum',
+      image:
+        'https://coin-images.coingecko.com/coins/images/279/large/ethereum.png',
+    },
+    BNBUSDT: {
+      symbol: 'BNB',
+      name: 'BNB',
+      image:
+        'https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
+    },
+    SOLUSDT: {
+      symbol: 'SOL',
+      name: 'Solana',
+      image:
+        'https://coin-images.coingecko.com/coins/images/4128/large/solana.png',
+    },
+    XRPUSDT: {
+      symbol: 'XRP',
+      name: 'XRP',
+      image:
+        'https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png',
+    },
+    DOGEUSDT: {
+      symbol: 'DOGE',
+      name: 'Dogecoin',
+      image:
+        'https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png',
+    },
+    TONUSDT: {
+      symbol: 'TON',
+      name: 'Toncoin',
+      image:
+        'https://coin-images.coingecko.com/coins/images/17980/large/photo_2024-09-10_17.09.00.jpeg',
+    },
+    ADAUSDT: {
+      symbol: 'ADA',
+      name: 'Cardano',
+      image:
+        'https://coin-images.coingecko.com/coins/images/975/large/cardano.png',
+    },
   };
 
-  constructor(private httpService: HttpService) {
-    // 初始化时获取数据
-    this.refreshPrices();
+  constructor(
+    private httpService: HttpService,
+    private prisma: PrismaService,
+  ) {
+    // 初始化 Redis 连接
+    this.redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      lazyConnect: true,
+    });
+  }
+
+  onModuleInit() {
+    // 启动时连接 Binance WebSocket
+    this.connectBinanceWebSocket();
+    // 同时获取新闻数据
     this.refreshNews();
   }
 
+  onModuleDestroy() {
+    // 关闭 WebSocket 连接
+    this.disconnectBinanceWebSocket();
+  }
+
   /**
-   * 获取市场行情
+   * 连接 Binance WebSocket 获取实时行情
+   */
+  private connectBinanceWebSocket() {
+    const symbols = Object.keys(this.SUPPORTED_COINS).map((s) =>
+      s.toLowerCase(),
+    );
+    // 使用组合流获取多个币种的 24h ticker
+    const streams = symbols.map((s) => `${s}@ticker`).join('/');
+    const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+
+    this.logger.log('正在连接 Binance WebSocket...');
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      this.binanceWs = ws;
+
+      ws.on('open', () => {
+        this.logger.log('✅ Binance WebSocket 连接成功');
+        this.reconnectAttempts = 0;
+      });
+
+      ws.on('message', (data: WebSocket.Data) => {
+        try {
+          const message = JSON.parse(data.toString());
+          if (message.data) {
+            const ticker = message.data;
+            const symbol = ticker.s; // e.g., "BTCUSDT"
+            if (this.SUPPORTED_COINS[symbol]) {
+              this.binancePrices.set(symbol, {
+                price: parseFloat(ticker.c), // 最新价格
+                change24h: parseFloat(ticker.P), // 24h 涨跌幅百分比
+              });
+              this.lastPriceUpdate = new Date();
+            }
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      });
+
+      ws.on('error', (error: Error) => {
+        this.logger.error(`Binance WebSocket 错误: ${error.message}`);
+      });
+
+      ws.on('close', () => {
+        this.logger.warn('Binance WebSocket 连接关闭，尝试重连...');
+        this.scheduleReconnect();
+      });
+    } catch (error) {
+      this.logger.error(
+        `连接 Binance WebSocket 失败: ${(error as Error).message}`,
+      );
+      this.scheduleReconnect();
+    }
+  }
+
+  /**
+   * 计划重连
+   */
+  private scheduleReconnect() {
+    if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+      this.logger.error(
+        'Binance WebSocket 重连次数已达上限，回退到 CoinGecko API',
+      );
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // 指数退避，最大 30 秒
+    this.reconnectAttempts++;
+
+    this.logger.log(
+      `将在 ${delay / 1000} 秒后重连 (第 ${this.reconnectAttempts} 次)...`,
+    );
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.connectBinanceWebSocket();
+    }, delay);
+  }
+
+  /**
+   * 断开 WebSocket 连接
+   */
+  private disconnectBinanceWebSocket() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.binanceWs) {
+      this.binanceWs.close();
+      this.binanceWs = null;
+    }
+  }
+
+  /**
+   * 获取市场行情（优先使用 Binance WebSocket 数据）
    */
   async getPrices(): Promise<CoinPrice[]> {
-    // 检查缓存是否有效
+    // 如果有 Binance WebSocket 数据，直接使用
+    if (this.binancePrices.size > 0) {
+      const prices: CoinPrice[] = [];
+      for (const [binanceSymbol, info] of Object.entries(
+        this.SUPPORTED_COINS,
+      )) {
+        const priceData = this.binancePrices.get(binanceSymbol);
+        if (priceData) {
+          prices.push({
+            symbol: info.symbol,
+            name: info.name,
+            price: priceData.price,
+            change24h: priceData.change24h,
+            image: info.image,
+          });
+        }
+      }
+      if (prices.length > 0) {
+        this.priceCache = prices;
+        return prices;
+      }
+    }
+
+    // 回退到 CoinGecko API（如果 WebSocket 不可用）
     if (
       this.priceCache.length > 0 &&
       this.lastPriceUpdate &&
@@ -105,40 +334,143 @@ export class MarketService {
   }
 
   /**
-   * 获取平台公告
+   * 获取平台公告（支持多语言）
+   * @param locale - 语言代码（如 zh-CN, en, ja 等）
+   * @param position - 位置筛选（home, popup, marquee, all）
    */
-  async getAnnouncements(): Promise<Announcement[]> {
-    // 后续可以从数据库读取，目前返回硬编码数据
+  async getAnnouncements(
+    locale: string = DEFAULT_LOCALE,
+    position?: string,
+  ): Promise<AnnouncementResponse[]> {
+    const validLocale = getValidLocale(locale);
+
+    try {
+      // 从数据库获取公告
+      const announcements = await this.prisma.announcement.findMany({
+        where: {
+          status: 'published',
+          ...(position && position !== 'all' ? { position } : {}),
+          OR: [{ expiredAt: null }, { expiredAt: { gt: new Date() } }],
+        },
+        orderBy: [{ priority: 'desc' }, { publishedAt: 'desc' }],
+        take: 20,
+      });
+
+      // 转换为多语言响应
+      return announcements.map((a) => ({
+        id: a.id,
+        title: getLocalizedContent(
+          a.titleI18n as I18nContent,
+          validLocale,
+          a.title,
+        ),
+        content: getLocalizedContent(
+          a.contentI18n as I18nContent,
+          validLocale,
+          a.content,
+        ),
+        type: a.type,
+        link: a.link || undefined,
+        coverImage: a.coverImage || undefined,
+        createdAt: a.createdAt,
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `获取公告失败: ${(error as Error).message}，使用备用数据`,
+      );
+      // 数据库不可用时返回备用数据
+      return this.getBackupAnnouncements(validLocale);
+    }
+  }
+
+  /**
+   * 获取跑马灯（支持多语言）
+   */
+  async getMarquees(
+    locale: string = DEFAULT_LOCALE,
+  ): Promise<MarqueeResponse[]> {
+    const validLocale = getValidLocale(locale);
+
+    try {
+      const marquees = await this.prisma.marquee.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+      });
+
+      return marquees.map((m) => ({
+        id: m.id,
+        content: getLocalizedContent(
+          m.contentI18n as I18nContent,
+          validLocale,
+          m.content,
+        ),
+        link: m.link || undefined,
+        bgColor: m.bgColor || undefined,
+        textColor: m.textColor || undefined,
+      }));
+    } catch (error) {
+      this.logger.warn(`获取跑马灯失败: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 获取跑马灯配置（公开接口）
+   */
+  async getMarqueeConfig(): Promise<MarqueeConfig> {
+    try {
+      const configStr = await this.redis.get(MARQUEE_CONFIG_KEY);
+      if (configStr) {
+        return JSON.parse(configStr);
+      }
+    } catch (error) {
+      this.logger.warn(`获取跑马灯配置失败: ${(error as Error).message}`);
+    }
+    return DEFAULT_MARQUEE_CONFIG;
+  }
+
+  /**
+   * 备用公告数据（当数据库不可用时）
+   */
+  private getBackupAnnouncements(locale: string): AnnouncementResponse[] {
+    const isEnglish = locale === 'en';
     return [
       {
         id: '1',
-        title: '🎉 HOOT 平台正式上线，注册即送 $50 体验金',
-        type: 'promo',
+        title: isEnglish
+          ? '🎉 HOOT platform launched! Register to get $50 bonus'
+          : '🎉 HOOT 平台正式上线，注册即送 $50 体验金',
+        type: 'activity',
         createdAt: new Date(),
       },
       {
         id: '2',
-        title: '📢 系统维护通知：每周日凌晨2点进行例行维护',
-        type: 'info',
+        title: isEnglish
+          ? '📢 System maintenance every Sunday at 2 AM'
+          : '📢 系统维护通知：每周日凌晨2点进行例行维护',
+        type: 'system',
         createdAt: new Date(),
       },
       {
         id: '3',
-        title: '🔥 新策略上线：AI趋势追踪Pro，回测年化收益 180%',
-        type: 'success',
+        title: isEnglish
+          ? '🔥 New strategy: AI Trend Tracker Pro, 180% annualized backtest return'
+          : '🔥 新策略上线：AI趋势追踪Pro，回测年化收益 180%',
+        type: 'system',
         createdAt: new Date(),
       },
     ];
   }
 
   /**
-   * 刷新价格数据 (使用 CoinGecko API)
+   * 刷新价格数据 (使用 CoinGecko API - 带图标)
    */
   @Cron(CronExpression.EVERY_30_SECONDS)
   private async refreshPrices() {
     try {
       const coinIds = Object.keys(this.SUPPORTED_COINS).join(',');
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds}&vs_currencies=usd&include_24hr_change=true&include_7d_change=true&include_market_cap=true&include_24hr_vol=true`;
+      // 使用 /coins/markets API 获取完整数据包括图标
+      const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinIds}&order=market_cap_desc&per_page=20&page=1&sparkline=false&price_change_percentage=24h,7d`;
 
       const response = await firstValueFrom(
         this.httpService.get(url, {
@@ -151,17 +483,18 @@ export class MarketService {
       const data = response.data;
       const prices: CoinPrice[] = [];
 
-      for (const [coinId, info] of Object.entries(this.SUPPORTED_COINS)) {
-        const coinData = data[coinId];
-        if (coinData) {
+      for (const coin of data) {
+        const info = this.SUPPORTED_COINS[coin.id];
+        if (info) {
           prices.push({
             symbol: info.symbol,
             name: info.name,
-            price: coinData.usd || 0,
-            change24h: coinData.usd_24h_change || 0,
-            change7d: coinData.usd_7d_change,
-            marketCap: coinData.usd_market_cap,
-            volume24h: coinData.usd_24h_vol,
+            price: coin.current_price || 0,
+            change24h: coin.price_change_percentage_24h || 0,
+            change7d: coin.price_change_percentage_7d_in_currency,
+            marketCap: coin.market_cap,
+            volume24h: coin.total_volume,
+            image: coin.image, // 币种图标 URL
           });
         }
       }
@@ -176,18 +509,29 @@ export class MarketService {
   }
 
   /**
-   * 刷新新闻数据 (使用 CryptoPanic API 或备用方案)
+   * 刷新新闻数据 (优先 CryptoCompare，备选 CryptoPanic)
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   private async refreshNews() {
     try {
-      // 尝试使用 CryptoPanic 免费 API
-      // 如果没有 API Key，返回模拟数据
-      const news = await this.fetchNewsFromCryptoPanic();
+      // 优先使用 CryptoCompare API（更稳定）
+      let news = await this.fetchNewsFromCryptoCompare();
+
+      // 如果 CryptoCompare 失败，尝试 CryptoPanic
+      if (news.length === 0) {
+        this.logger.log('CryptoCompare 无数据，尝试 CryptoPanic...');
+        news = await this.fetchNewsFromCryptoPanic();
+      }
+
       if (news.length > 0) {
         this.newsCache = news;
         this.lastNewsUpdate = new Date();
-        this.logger.debug(`新闻数据已更新: ${news.length} 条`);
+        this.logger.log(`✅ 新闻数据已更新: ${news.length} 条`);
+      } else {
+        // 使用备用数据
+        this.newsCache = this.getBackupNews();
+        this.lastNewsUpdate = new Date();
+        this.logger.warn('使用备用新闻数据');
       }
     } catch (error) {
       this.logger.warn(`获取新闻数据失败: ${(error as Error).message}`);
@@ -203,31 +547,98 @@ export class MarketService {
   private async fetchNewsFromCryptoPanic(): Promise<CryptoNews[]> {
     const apiKey = process.env.CRYPTOPANIC_API_KEY;
 
-    // 如果没有 API Key，返回备用数据
     if (!apiKey) {
-      return this.getBackupNews();
+      this.logger.debug('未配置 CRYPTOPANIC_API_KEY');
+      return [];
     }
 
-    const url = `https://cryptopanic.com/api/v1/posts/?auth_token=${apiKey}&kind=news&filter=hot&public=true`;
+    try {
+      // 使用 rising 过滤器获取热门上升新闻，支持的币种
+      const url = `https://cryptopanic.com/api/v1/posts/?auth_token=${apiKey}&kind=news&filter=rising&currencies=BTC,ETH,BNB,SOL,XRP,DOGE,TON,ADA&public=true`;
 
-    const response = await firstValueFrom(
-      this.httpService.get(url, {
-        headers: {
-          Accept: 'application/json',
-        },
-      }),
-    );
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: { Accept: 'application/json' },
+          timeout: 10000,
+        }),
+      );
 
-    const data = response.data;
-    return (data.results || []).slice(0, 20).map((item: any) => ({
-      id: item.id?.toString() || Math.random().toString(),
-      title: item.title,
-      source: item.source?.title || 'Unknown',
-      url: item.url,
-      publishedAt: item.published_at,
-      sentiment: this.mapSentiment(item.votes),
-      tags: item.currencies?.map((c: any) => c.code) || [],
-    }));
+      const data = response.data;
+      const news = (data.results || []).slice(0, 15).map((item: any) => ({
+        id: `cp_${item.id}`,
+        title: item.title,
+        source: item.source?.title || item.source?.domain || 'CryptoPanic',
+        url: item.url,
+        publishedAt: item.published_at,
+        sentiment: this.mapSentiment(item.votes),
+        tags: item.currencies?.map((c: any) => c.code) || [],
+      }));
+
+      this.logger.debug(`CryptoPanic 返回 ${news.length} 条新闻`);
+      return news;
+    } catch (error) {
+      this.logger.warn(`CryptoPanic API 错误: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 从 CryptoCompare 获取新闻（备选方案）
+   */
+  private async fetchNewsFromCryptoCompare(): Promise<CryptoNews[]> {
+    const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
+
+    if (!apiKey) {
+      this.logger.debug('未配置 CRYPTOCOMPARE_API_KEY');
+      return [];
+    }
+
+    try {
+      // CryptoCompare 新闻 API
+      const url =
+        'https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular';
+
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            Accept: 'application/json',
+            authorization: `Apikey ${apiKey}`,
+          },
+          timeout: 10000,
+        }),
+      );
+
+      const data = response.data;
+      const news = (data.Data || []).slice(0, 25).map((item: any) => ({
+        id: `cc_${item.id}`,
+        title: item.title,
+        source: item.source_info?.name || item.source || 'CryptoCompare',
+        url: item.url,
+        publishedAt: new Date(item.published_on * 1000).toISOString(),
+        sentiment: this.mapCryptoCompareSentiment(item.sentiment),
+        tags: item.categories?.split('|').slice(0, 3) || [],
+        image: item.imageurl || null, // 新闻配图
+      }));
+
+      this.logger.debug(`CryptoCompare 返回 ${news.length} 条新闻`);
+      return news;
+    } catch (error) {
+      this.logger.warn(`CryptoCompare API 错误: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 映射 CryptoCompare 情绪
+   */
+  private mapCryptoCompareSentiment(
+    sentiment: string,
+  ): 'positive' | 'negative' | 'neutral' {
+    if (!sentiment) return 'neutral';
+    const lower = sentiment.toLowerCase();
+    if (lower === 'positive' || lower === 'bullish') return 'positive';
+    if (lower === 'negative' || lower === 'bearish') return 'negative';
+    return 'neutral';
   }
 
   /**

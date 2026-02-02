@@ -45,12 +45,11 @@ interface CreateSubscriptionDto {
 
 // 前端配置 -> 后端 DTO 转换
 function toSubscriptionDto(
-  config: StrategyConfigData,
-  apiKeyId: string
+  config: StrategyConfigData
 ): CreateSubscriptionDto {
   return {
     basic: {
-      apiKeyId,
+      apiKeyId: config.apiKeyId,
       amountPerTrade: config.positionAmount,
       tradingType: config.tradingType,
       direction: config.direction,
@@ -91,6 +90,7 @@ function toSubscriptionDto(
 function fromSubscriptionResponse(response: any): StrategyConfigData {
   const { basic, advanced } = response
   return {
+    apiKeyId: basic.apiKeyId || '', // 从响应获取
     exchange: 'Binance', // 需要从 apiKey 关联获取
     tradingType: basic.tradingType,
     tradingPairs: basic.tradingPairs || [],
@@ -126,11 +126,15 @@ export function useStrategySubscription(strategyId: string) {
 
   // 创建订阅
   const createSubscription = useCallback(
-    async (config: StrategyConfigData, apiKeyId: string) => {
+    async (config: StrategyConfigData) => {
+      if (!config.apiKeyId) {
+        setError('请选择交易所 API Key')
+        throw new Error('请选择交易所 API Key')
+      }
       setLoading(true)
       setError(null)
       try {
-        const dto = toSubscriptionDto(config, apiKeyId)
+        const dto = toSubscriptionDto(config)
         const response = await api.post(`/strategies/${strategyId}/subscription`, dto)
         return response.data
       } catch (err: any) {
@@ -145,11 +149,15 @@ export function useStrategySubscription(strategyId: string) {
 
   // 更新订阅配置
   const updateSubscription = useCallback(
-    async (subscriptionId: string, config: StrategyConfigData, apiKeyId: string) => {
+    async (subscriptionId: string, config: StrategyConfigData) => {
+      if (!config.apiKeyId) {
+        setError('请选择交易所 API Key')
+        throw new Error('请选择交易所 API Key')
+      }
       setLoading(true)
       setError(null)
       try {
-        const dto = toSubscriptionDto(config, apiKeyId)
+        const dto = toSubscriptionDto(config)
         const response = await api.put(
           `/strategies/subscription/${subscriptionId}/config`,
           dto
@@ -223,11 +231,15 @@ export function useApiKeys() {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.get<any[]>('/api-keys')
-      setApiKeys(response.data)
-      return response.data
+      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
+      // 确保返回的是数组 - API 返回 { items: [...], total: n }
+      const keys = Array.isArray(response.data?.items) ? response.data.items : []
+      setApiKeys(keys)
+      return keys
     } catch (err: any) {
       setError(err.message || '获取 API Keys 失败')
+      // 失败时保持空数组
+      setApiKeys([])
       throw err
     } finally {
       setLoading(false)

@@ -1,14 +1,19 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { ArrowLeft, ChevronDown, Check, Search, X } from 'lucide-react'
-import { StrategyConfigData, exchanges, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
+import { StrategyConfigData, ApiKeyData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
 
 interface StrategyConfigPageProps {
+  strategyId?: string
   strategyName?: string
+  subscriptionId?: string
   onBack?: () => void
   onSave?: (config: StrategyConfigData) => void
   onCancel?: () => void
+  onSuccess?: () => void
 }
 
 // Toggle
@@ -53,7 +58,30 @@ function Input({ value, onChange, suffix, min, max, step = 1, title, className =
   )
 }
 
-export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', onBack, onSave, onCancel }: StrategyConfigPageProps) {
+export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟踪策略', subscriptionId, onBack, onSave, onCancel, onSuccess }: StrategyConfigPageProps) {
+  // API Hooks
+  const { loading: apiLoading, error: apiError, createSubscription, updateSubscription } = useStrategySubscription(strategyId || '')
+  const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+
+  // 选中的 API Key
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
+  const [showApiKeyDD, setShowApiKeyDD] = useState(false)
+
+  // 加载用户的 API Keys
+  useEffect(() => {
+    fetchApiKeys().catch(() => {
+      // 加载失败时静默处理，用户可以手动重试
+    })
+  }, [fetchApiKeys])
+
+  // 当 API Keys 加载完成后，自动选择第一个
+  useEffect(() => {
+    if (apiKeys.length > 0 && !selectedApiKeyId) {
+      setSelectedApiKeyId(apiKeys[0].id)
+      setExchange(apiKeys[0].exchange)
+    }
+  }, [apiKeys, selectedApiKeyId])
+
   // 基础配置
   const [exchange, setExchange] = useState(defaultConfig.exchange)
   const [tradingType, setTradingType] = useState<'spot' | 'futures'>(defaultConfig.tradingType)
@@ -90,7 +118,6 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
   const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
 
   // UI
-  const [showExchangeDD, setShowExchangeDD] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [pairSearch, setPairSearch] = useState('')
   const [showPairPicker, setShowPairPicker] = useState(false)
@@ -130,9 +157,8 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
     setExpandedSection(expandedSection === section ? null : section)
   }
 
-  const currentExchange = exchanges.find(e => e.id === exchange)
   const amountNum = parseFloat(amount) || 0
-  const isValid = exchange && amountNum >= 5
+  const isValid = selectedApiKeyId && amountNum >= 5
 
   const togglePair = (pair: string) => {
     setTradingPairs(prev => {
@@ -147,8 +173,17 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
     })
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // 验证 API Key
+    if (!selectedApiKeyId) {
+      toast.error('请选择 API Key', {
+        description: '您需要先绑定交易所 API Key 才能订阅策略',
+      })
+      return
+    }
+
     const data: StrategyConfigData = {
+      apiKeyId: selectedApiKeyId,
       exchange,
       tradingType,
       tradingPairs,
@@ -175,8 +210,44 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
       dailyLossEnabled,
       dailyLossPercent: parseFloat(dailyLossPercent) || 20,
     }
+
+    // 如果有 strategyId，调用后端 API
+    if (strategyId) {
+      try {
+        if (subscriptionId) {
+          // 更新模式
+          await updateSubscription(subscriptionId, data)
+          toast.success('配置已更新', {
+            description: '策略配置已成功保存',
+          })
+        } else {
+          // 创建模式
+          await createSubscription(data)
+          toast.success('订阅成功', {
+            description: '已成功订阅策略',
+          })
+        }
+        onSuccess?.()
+      } catch (err) {
+        console.error('保存失败:', err)
+        toast.error('保存失败', {
+          description: err instanceof Error ? err.message : '请稍后重试',
+        })
+        return
+      }
+    } else {
+      // 本地预览模式
+      toast.success('配置已保存', {
+        description: `策略配置已成功保存`,
+      })
+    }
+
+    // 调用父组件回调
     onSave?.(data)
   }
+
+  // 当前选中的 API Key（防御性检查）
+  const selectedApiKey = Array.isArray(apiKeys) ? apiKeys.find(k => k.id === selectedApiKeyId) : undefined
 
   return (
     <div className="h-full flex flex-col bg-[#0A0A0F] text-white">
@@ -199,38 +270,65 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
 
           {/* === 基础配置 === */}
           <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 space-y-5">
-            {/* 第一行：交易所 + 类型 + 方向 + 金额 */}
+            {/* API Key 选择提示 */}
+            {apiKeys.length === 0 && !apiKeysLoading && (
+              <div className="flex items-center gap-3 p-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-[#F59E0B] flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm text-[#F59E0B]">您还没有绑定交易所 API Key</p>
+                  <p className="text-xs text-[#9090A0] mt-1">请先到「钱包 - API 管理」绑定交易所 API Key 后再订阅策略</p>
+                </div>
+              </div>
+            )}
+
+            {/* 第一行：API Key + 类型 + 方向 + 金额 */}
             <div className="grid grid-cols-4 gap-4">
-              {/* 交易所 */}
+              {/* API Key 选择器 */}
               <div className="relative">
-                <label className="block text-xs text-[#606070] mb-2">交易所</label>
+                <label className="block text-xs text-[#606070] mb-2">交易所 API</label>
                 <button
                   type="button"
-                  onClick={() => setShowExchangeDD(!showExchangeDD)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A]"
+                  onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+                  disabled={apiKeysLoading || apiKeys.length === 0}
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg hover:border-[#2A2A3A] disabled:opacity-50"
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-400 rounded-full" />
-                    <span>{exchange}</span>
-                  </div>
-                  <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showExchangeDD ? 'rotate-180' : ''}`} />
+                  {apiKeysLoading ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#606070]" />
+                      <span className="text-[#606070]">加载中...</span>
+                    </div>
+                  ) : selectedApiKey ? (
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${selectedApiKey.isActive ? 'bg-green-400' : 'bg-[#606070]'}`} />
+                      <span>{selectedApiKey.exchange}</span>
+                      <span className="text-xs text-[#606070]">({selectedApiKey.label})</span>
+                    </div>
+                  ) : (
+                    <span className="text-[#606070]">{apiKeys.length === 0 ? '请先绑定 API Key' : '选择 API Key'}</span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showApiKeyDD ? 'rotate-180' : ''}`} />
                 </button>
-                {showExchangeDD && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden">
-                    {exchanges.map(ex => (
+                {showApiKeyDD && apiKeys.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden max-h-60 overflow-y-auto">
+                    {apiKeys.map(key => (
                       <button
-                        key={ex.id}
+                        key={key.id}
                         type="button"
-                        onClick={() => { setExchange(ex.id); setShowExchangeDD(false) }}
-                        disabled={!ex.connected}
+                        onClick={() => {
+                          setSelectedApiKeyId(key.id)
+                          setExchange(key.exchange)
+                          setShowApiKeyDD(false)
+                        }}
+                        disabled={!key.isActive}
                         className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[#1E1E2E] disabled:opacity-50"
                       >
                         <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${ex.connected ? 'bg-green-400' : 'bg-[#606070]'}`} />
-                          <span>{ex.name}</span>
+                          <div className={`w-2 h-2 rounded-full ${key.isActive ? 'bg-green-400' : 'bg-[#606070]'}`} />
+                          <span>{key.exchange}</span>
+                          <span className="text-xs text-[#606070]">({key.label})</span>
                         </div>
-                        {ex.connected && exchange === ex.id && <Check className="w-4 h-4 text-[#06B6D4]" />}
-                        {!ex.connected && <span className="text-xs text-[#606070]">未连接</span>}
+                        {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-[#06B6D4]" />}
+                        {!key.isActive && <span className="text-xs text-[#606070]">已禁用</span>}
                       </button>
                     ))}
                   </div>
@@ -294,11 +392,11 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
               </div>
             </div>
 
-            {/* 可用余额提示 */}
-            {currentExchange?.balance && (
+            {/* 选中的 API Key 信息 */}
+            {selectedApiKey && (
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-[#606070]">可用余额:</span>
-                <span className="text-[#06B6D4] font-medium">${currentExchange.balance.toLocaleString()}</span>
+                <span className="text-[#606070]">已选择:</span>
+                <span className="text-[#06B6D4] font-medium">{selectedApiKey.exchange} - {selectedApiKey.label}</span>
               </div>
             )}
 
@@ -598,14 +696,27 @@ export function StrategyConfigPage({ strategyName = 'MACD趋势跟踪策略', on
       {/* 底部栏 */}
       <div className="flex-shrink-0 border-t border-[#1E1E2E] p-4 bg-[#0A0A0F]">
         <div className="max-w-4xl mx-auto flex gap-4">
-          <button type="button" onClick={onCancel} className="flex-1 py-3 border border-[#1E1E2E] rounded-xl text-[#9090A0] hover:bg-[#1E1E2E]">取消</button>
+          <button type="button" onClick={onCancel} disabled={apiLoading} className="flex-1 py-3 border border-[#1E1E2E] rounded-xl text-[#9090A0] hover:bg-[#1E1E2E] disabled:opacity-50">取消</button>
           <button
             type="button"
             onClick={handleSave}
-            disabled={!isValid}
-            className={`flex-1 py-3 rounded-xl font-medium transition-all ${isValid ? 'bg-[#06B6D4] text-white hover:bg-[#06B6D4]/80' : 'bg-[#2A2A3A] text-[#606070] cursor-not-allowed'}`}
+            disabled={!isValid || apiLoading}
+            className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${isValid && !apiLoading ? 'bg-[#06B6D4] text-white hover:bg-[#06B6D4]/80' : 'bg-[#2A2A3A] text-[#606070] cursor-not-allowed'}`}
           >
-            {amountNum < 5 ? '最低 $5' : '保存配置'}
+            {apiLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                保存中...
+              </>
+            ) : !selectedApiKeyId ? (
+              '请选择 API Key'
+            ) : amountNum < 5 ? (
+              '最低 $5'
+            ) : subscriptionId ? (
+              '更新配置'
+            ) : (
+              '订阅策略'
+            )}
           </button>
         </div>
       </div>

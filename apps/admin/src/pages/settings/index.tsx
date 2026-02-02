@@ -16,7 +16,6 @@ import {
   Input,
   Select,
   Switch,
-  message,
   Alert,
   Typography,
   Avatar,
@@ -34,6 +33,7 @@ import {
   ExclamationCircleOutlined,
   KeyOutlined,
 } from '@ant-design/icons';
+import { useMessage } from '../../hooks';
 
 const { Text } = Typography;
 
@@ -112,6 +112,7 @@ const rolePermissions = {
 };
 
 export const SettingsPage = () => {
+  const message = useMessage();
   const [admins, setAdmins] = useState<IAdmin[]>(mockAdmins);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<IAdmin | null>(null);

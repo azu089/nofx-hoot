@@ -11,7 +11,10 @@ import {
 } from 'lucide-react'
 import { StrategyConfigSection } from '../shared/strategy-config-section'
 import { StrategyConfigData, defaultConfig } from '../shared/strategy-config-types'
-import { useStrategySubscription } from '@/hooks/use-strategy'
+import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
+import { useTranslations } from '@/i18n/provider'
+import { useEffect } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 type TabType = 'tradingview' | 'visual' | 'code'
 
@@ -39,6 +42,8 @@ interface MobileStrategyCreatorProps {
 }
 
 export function MobileStrategyCreator({ onBack, onSave }: MobileStrategyCreatorProps) {
+  const t = useTranslations('strategies')
+  const tc = useTranslations('common')
   const [activeTab, setActiveTab] = useState<TabType>('tradingview')
   const [copied, setCopied] = useState(false)
 
@@ -50,6 +55,14 @@ export function MobileStrategyCreator({ onBack, onSave }: MobileStrategyCreatorP
 
   // API Hook
   const { loading: apiLoading, error: apiError, createSubscription } = useStrategySubscription('')
+  const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
+  const [showApiKeyDD, setShowApiKeyDD] = useState(false)
+
+  // 加载用户 API Keys
+  useEffect(() => {
+    fetchApiKeys()
+  }, [fetchApiKeys])
 
   // Visual Tab State
   const [conditions, setConditions] = useState<Condition[]>([
@@ -119,11 +132,21 @@ def on_bar(bar):
   }
 
   const handleSave = async () => {
+    if (!selectedApiKeyId) {
+      return // 没有选择 API Key
+    }
+
+    // 构建带 apiKeyId 的配置
+    const configWithApiKey: StrategyConfigData = {
+      ...config,
+      apiKeyId: selectedApiKeyId,
+    }
+
     // 构建策略数据
     const strategyData = {
       type: activeTab,
       name: strategyName || `${activeTab}-strategy-${Date.now()}`,
-      config,
+      config: configWithApiKey,
       // 可视化搭建的条件和动作
       ...(activeTab === 'visual' && { conditions, conditionLogic, actions }),
       // 代码开发的代码
@@ -132,8 +155,7 @@ def on_bar(bar):
 
     // 调用 API 创建订阅
     try {
-      const apiKeyId = config.exchange.toLowerCase()
-      await createSubscription(config, apiKeyId)
+      await createSubscription(configWithApiKey)
       onSave?.(strategyData)
     } catch (err) {
       console.error('创建策略失败:', err)
@@ -184,17 +206,17 @@ def on_bar(bar):
   return (
     <div className="h-screen flex flex-col bg-[#0A0A0F] text-white">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-4">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
-            aria-label="返回"
-            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
+            aria-label={tc('back')}
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-lg font-semibold text-white">创建策略</h1>
+          <h1 className="text-base font-semibold text-white">{t('createStrategy')}</h1>
           <div className="w-10" />
         </div>
 
@@ -209,7 +231,7 @@ def on_bar(bar):
                 activeTab === tab ? 'text-[#06B6D4]' : 'text-[#94A3B8] hover:text-white'
               }`}
             >
-              {tab === 'tradingview' ? 'TradingView' : tab === 'visual' ? '可视化搭建' : '代码开发'}
+              {tab === 'tradingview' ? 'TradingView' : tab === 'visual' ? t('visualTab') : t('codeTab')}
               {activeTab === tab && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
               )}
@@ -226,24 +248,26 @@ def on_bar(bar):
             {/* TradingView Banner */}
             <div className="bg-gradient-to-r from-[#131722]/50 to-[#1E222D]/50 border border-[#1E1E2E] rounded-xl p-4">
               <div className="flex items-center gap-3 mb-2">
-                <img
-                  src="/icons/tradingview.webp"
-                  alt="TradingView"
-                  className="w-14 h-14 rounded-xl"
-                />
+                <div className="w-14 h-14 rounded-xl overflow-hidden">
+                  <img
+                    src="/icons/tradingview.webp"
+                    alt="TradingView"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
                 <div>
-                  <h3 className="text-white font-semibold">TradingView 信号接入</h3>
-                  <p className="text-xs text-[#787B86]">连接你的 TradingView 警报</p>
+                  <h3 className="text-white font-semibold">{t('tradingviewSignalIntegration')}</h3>
+                  <p className="text-xs text-[#787B86]">{t('connectTradingViewAlerts')}</p>
                 </div>
               </div>
               <p className="text-sm text-[#94A3B8]">
-                将 TradingView 的 Alert 信号自动转化为实盘交易，支持 Pine Script 策略
+                {t('alertToTrade')}
               </p>
             </div>
 
             {/* Webhook URL */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
-              <label className="block text-sm text-[#94A3B8] mb-2">Webhook URL</label>
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('webhookUrl')}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -256,12 +280,66 @@ def on_bar(bar):
                   type="button"
                   onClick={handleCopy}
                   className="p-2.5 bg-[#06B6D4] hover:bg-[#0891B2] rounded-lg transition-colors"
-                  aria-label="复制 URL"
-                  title="复制"
+                  aria-label={t('copyUrl')}
+                  title={tc('copy')}
                 >
                   {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                 </button>
               </div>
+            </div>
+
+            {/* API Key 选择器 */}
+            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('selectApiKey')}</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+                  className={`w-full flex items-center justify-between bg-[#0A0A0F] border rounded-lg px-3 py-2.5 text-sm ${
+                    selectedApiKeyId ? 'border-cyan-500/30' : 'border-[#1E1E2E]'
+                  }`}
+                >
+                  <span className={selectedApiKeyId ? 'text-white' : 'text-[#94A3B8]'}>
+                    {apiKeysLoading
+                      ? t('loading')
+                      : selectedApiKeyId
+                      ? apiKeys.find(k => k.id === selectedApiKeyId)?.label || t('unknownKey')
+                      : t('selectApiKeyPlaceholder')}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-[#94A3B8] transition-transform ${showApiKeyDD ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showApiKeyDD && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto">
+                    {apiKeys.length === 0 ? (
+                      <div className="p-3 text-center text-[#94A3B8] text-sm">{t('noApiKeys')}</div>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <button
+                          key={key.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedApiKeyId(key.id)
+                            setShowApiKeyDD(false)
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-[#1E1E2E] transition-colors text-left ${
+                            selectedApiKeyId === key.id ? 'bg-cyan-500/10' : ''
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium text-white text-sm">{key.label}</div>
+                            <div className="text-xs text-[#94A3B8]">{key.exchange}</div>
+                          </div>
+                          {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-cyan-400" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {!selectedApiKeyId && (
+                <p className="mt-2 text-xs text-yellow-500">{t('apiKeyRequired')}</p>
+              )}
             </div>
 
             {/* 使用统一的策略配置组件 */}
@@ -274,29 +352,29 @@ def on_bar(bar):
           <div className="space-y-4 py-4">
             {/* Strategy Name */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
-              <label className="block text-sm text-[#94A3B8] mb-2">策略名称</label>
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('strategyName')}</label>
               <input
                 type="text"
                 value={strategyName}
                 onChange={(e) => setStrategyName(e.target.value)}
-                placeholder="输入策略名称"
+                placeholder={t('namePlaceholder')}
                 className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm"
-                aria-label="策略名称"
+                aria-label={t('strategyName')}
               />
             </div>
 
             {/* Trigger Conditions */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold">触发条件</h3>
+                <h3 className="text-base font-semibold">{t('triggerConditions')}</h3>
                 <button
                   type="button"
                   onClick={addCondition}
                   className="flex items-center gap-1 px-3 py-1.5 bg-[#06B6D4] hover:bg-[#0891B2] rounded-lg text-sm transition-colors"
-                  aria-label="添加条件"
+                  aria-label={t('addCondition')}
                 >
                   <Plus className="w-4 h-4" />
-                  <span>添加</span>
+                  <span>{t('add')}</span>
                 </button>
               </div>
 
@@ -323,14 +401,14 @@ def on_bar(bar):
                 {conditions.map((condition, index) => (
                   <div key={condition.id} className="bg-[#0A0A0F] rounded-lg p-3">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm text-[#94A3B8]">条件 {index + 1}</span>
+                      <span className="text-sm text-[#94A3B8]">{t('condition')} {index + 1}</span>
                       {conditions.length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeCondition(condition.id)}
                           className="p-1 hover:bg-[#1E1E2E] rounded transition-colors"
-                          aria-label="删除条件"
-                          title="删除"
+                          aria-label={t('deleteCondition')}
+                          title={tc('delete')}
                         >
                           <X className="w-4 h-4 text-[#EF4444]" />
                         </button>
@@ -341,7 +419,7 @@ def on_bar(bar):
                         value={condition.indicator}
                         onChange={(e) => updateCondition(condition.id, 'indicator', e.target.value)}
                         className="bg-[#12121A] border border-[#1E1E2E] rounded-lg px-2 py-2 text-sm"
-                        aria-label="选择指标"
+                        aria-label={t('selectIndicator')}
                       >
                         {indicators.map((ind) => (
                           <option key={ind} value={ind}>{ind}</option>
@@ -351,7 +429,7 @@ def on_bar(bar):
                         value={condition.operator}
                         onChange={(e) => updateCondition(condition.id, 'operator', e.target.value)}
                         className="bg-[#12121A] border border-[#1E1E2E] rounded-lg px-2 py-2 text-sm"
-                        aria-label="选择运算符"
+                        aria-label={t('selectOperator')}
                       >
                         {operators.map((op) => (
                           <option key={op} value={op}>{op}</option>
@@ -361,9 +439,9 @@ def on_bar(bar):
                         type="text"
                         value={condition.value}
                         onChange={(e) => updateCondition(condition.id, 'value', e.target.value)}
-                        placeholder="数值"
+                        placeholder={t('enterValue')}
                         className="bg-[#12121A] border border-[#1E1E2E] rounded-lg px-2 py-2 text-sm"
-                        aria-label="输入数值"
+                        aria-label={t('inputValue')}
                       />
                     </div>
                   </div>
@@ -374,15 +452,15 @@ def on_bar(bar):
             {/* Execute Actions */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold">执行动作</h3>
+                <h3 className="text-base font-semibold">{t('executeActionsTitle')}</h3>
                 <button
                   type="button"
                   onClick={addAction}
                   className="flex items-center gap-1 px-3 py-1.5 bg-[#06B6D4] hover:bg-[#0891B2] rounded-lg text-sm transition-colors"
-                  aria-label="添加动作"
+                  aria-label={t('addAction')}
                 >
                   <Plus className="w-4 h-4" />
-                  <span>添加</span>
+                  <span>{t('add')}</span>
                 </button>
               </div>
 
@@ -397,8 +475,8 @@ def on_bar(bar):
                           type="button"
                           onClick={() => removeAction(action.id)}
                           className="p-1 hover:bg-[#1E1E2E] rounded transition-colors"
-                          aria-label="删除动作"
-                          title="删除"
+                          aria-label={t('deleteAction')}
+                          title={tc('delete')}
                         >
                           <X className="w-4 h-4 text-[#EF4444]" />
                         </button>
@@ -409,7 +487,7 @@ def on_bar(bar):
                         value={action.type}
                         onChange={(e) => updateAction(action.id, 'type', e.target.value)}
                         className="bg-[#12121A] border border-[#1E1E2E] rounded-lg px-3 py-2 text-sm"
-                        aria-label="选择动作类型"
+                        aria-label={t('actionType')}
                       >
                         {actionTypes.map((type) => (
                           <option key={type} value={type}>
@@ -426,7 +504,7 @@ def on_bar(bar):
                           value={action.percentage}
                           onChange={(e) => updateAction(action.id, 'percentage', e.target.value)}
                           className="w-full bg-[#12121A] border border-[#1E1E2E] rounded-lg pl-3 pr-8 py-2 text-sm"
-                          aria-label="输入百分比"
+                          aria-label={t('positionPercent')}
                         />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#94A3B8]">%</span>
                       </div>
@@ -434,6 +512,60 @@ def on_bar(bar):
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* API Key 选择器 */}
+            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('selectApiKey')}</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+                  className={`w-full flex items-center justify-between bg-[#0A0A0F] border rounded-lg px-3 py-2.5 text-sm ${
+                    selectedApiKeyId ? 'border-cyan-500/30' : 'border-[#1E1E2E]'
+                  }`}
+                >
+                  <span className={selectedApiKeyId ? 'text-white' : 'text-[#94A3B8]'}>
+                    {apiKeysLoading
+                      ? t('loading')
+                      : selectedApiKeyId
+                      ? apiKeys.find(k => k.id === selectedApiKeyId)?.label || t('unknownKey')
+                      : t('selectApiKeyPlaceholder')}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-[#94A3B8] transition-transform ${showApiKeyDD ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showApiKeyDD && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto">
+                    {apiKeys.length === 0 ? (
+                      <div className="p-3 text-center text-[#94A3B8] text-sm">{t('noApiKeys')}</div>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <button
+                          key={key.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedApiKeyId(key.id)
+                            setShowApiKeyDD(false)
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-[#1E1E2E] transition-colors text-left ${
+                            selectedApiKeyId === key.id ? 'bg-cyan-500/10' : ''
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium text-white text-sm">{key.label}</div>
+                            <div className="text-xs text-[#94A3B8]">{key.exchange}</div>
+                          </div>
+                          {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-cyan-400" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {!selectedApiKeyId && (
+                <p className="mt-2 text-xs text-yellow-500">{t('apiKeyRequired')}</p>
+              )}
             </div>
 
             {/* 使用统一的策略配置组件 */}
@@ -446,30 +578,34 @@ def on_bar(bar):
           <div className="space-y-4 py-4">
             {/* Strategy Name */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
-              <label className="block text-sm text-[#94A3B8] mb-2">策略名称</label>
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('strategyName')}</label>
               <input
                 type="text"
                 value={strategyName}
                 onChange={(e) => setStrategyName(e.target.value)}
-                placeholder="输入策略名称"
+                placeholder={t('namePlaceholder')}
                 className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm"
-                aria-label="策略名称"
+                aria-label={t('strategyName')}
               />
             </div>
 
             {/* Code Templates */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
-              <label className="block text-sm text-[#94A3B8] mb-3">快速模板</label>
+              <label className="block text-sm text-[#94A3B8] mb-3">{t('quickTemplates')}</label>
               <div className="grid grid-cols-3 gap-2">
-                {['均值回归', '动量', '网格'].map((template) => (
+                {[
+                  { key: '均值回归', label: t('meanReversion') },
+                  { key: '动量', label: t('momentum') },
+                  { key: '网格', label: t('grid') }
+                ].map((template) => (
                   <button
                     type="button"
-                    key={template}
-                    onClick={() => loadTemplate(template)}
+                    key={template.key}
+                    onClick={() => loadTemplate(template.key)}
                     className="py-2.5 bg-[#0A0A0F] hover:bg-[#1E1E2E] rounded-lg text-sm font-medium transition-colors"
-                    aria-label={`加载${template}模板`}
+                    aria-label={template.label}
                   >
-                    {template}
+                    {template.label}
                   </button>
                 ))}
               </div>
@@ -477,14 +613,68 @@ def on_bar(bar):
 
             {/* Code Editor */}
             <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
-              <label className="block text-sm text-[#94A3B8] mb-2">策略代码</label>
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('codeEditor')}</label>
               <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 className="w-full h-60 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm font-mono resize-none"
                 spellCheck={false}
-                aria-label="策略代码"
+                aria-label={t('codeEditor')}
               />
+            </div>
+
+            {/* API Key 选择器 */}
+            <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4">
+              <label className="block text-sm text-[#94A3B8] mb-2">{t('selectApiKey')}</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+                  className={`w-full flex items-center justify-between bg-[#0A0A0F] border rounded-lg px-3 py-2.5 text-sm ${
+                    selectedApiKeyId ? 'border-cyan-500/30' : 'border-[#1E1E2E]'
+                  }`}
+                >
+                  <span className={selectedApiKeyId ? 'text-white' : 'text-[#94A3B8]'}>
+                    {apiKeysLoading
+                      ? t('loading')
+                      : selectedApiKeyId
+                      ? apiKeys.find(k => k.id === selectedApiKeyId)?.label || t('unknownKey')
+                      : t('selectApiKeyPlaceholder')}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-[#94A3B8] transition-transform ${showApiKeyDD ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showApiKeyDD && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto">
+                    {apiKeys.length === 0 ? (
+                      <div className="p-3 text-center text-[#94A3B8] text-sm">{t('noApiKeys')}</div>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <button
+                          key={key.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedApiKeyId(key.id)
+                            setShowApiKeyDD(false)
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-[#1E1E2E] transition-colors text-left ${
+                            selectedApiKeyId === key.id ? 'bg-cyan-500/10' : ''
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium text-white text-sm">{key.label}</div>
+                            <div className="text-xs text-[#94A3B8]">{key.exchange}</div>
+                          </div>
+                          {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-cyan-400" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {!selectedApiKeyId && (
+                <p className="mt-2 text-xs text-yellow-500">{t('apiKeyRequired')}</p>
+              )}
             </div>
 
             {/* 使用统一的策略配置组件 */}
@@ -504,12 +694,12 @@ def on_bar(bar):
         <button
           type="button"
           onClick={handleSave}
-          disabled={apiLoading}
+          disabled={apiLoading || !selectedApiKeyId}
           className="w-full py-3.5 bg-[#06B6D4] hover:bg-[#0891B2] disabled:opacity-50 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
-          aria-label="保存策略"
+          aria-label={tc('save')}
         >
           {apiLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-          {apiLoading ? '创建中...' : '保存策略'}
+          {apiLoading ? t('saving') : !selectedApiKeyId ? t('selectApiKeyFirst') : tc('save')}
         </button>
       </div>
     </div>

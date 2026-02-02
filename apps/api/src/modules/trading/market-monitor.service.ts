@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TradingService } from './trading.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -7,7 +12,7 @@ import Decimal from 'decimal.js';
 interface BlackSwanConfig {
   blackSwanProtection: boolean;
   blackSwanType: 'account_loss' | 'coin_drop';
-  blackSwanTrigger: number;  // 触发阈值 %
+  blackSwanTrigger: number; // 触发阈值 %
   blackSwanAction: 'close_all' | 'close_half' | 'pause';
 }
 
@@ -184,7 +189,9 @@ export class MarketMonitorService implements OnModuleInit, OnModuleDestroy {
           history.shift();
         }
       } catch (error) {
-        this.logger.warn(`获取 ${symbol} 价格失败: ${(error as Error).message}`);
+        this.logger.warn(
+          `获取 ${symbol} 价格失败: ${(error as Error).message}`,
+        );
       }
     }
   }
@@ -208,7 +215,10 @@ export class MarketMonitorService implements OnModuleInit, OnModuleDestroy {
       const { config } = monitor;
 
       // 检查是否触发
-      if (config.blackSwanType === 'coin_drop' && dropPercent >= config.blackSwanTrigger) {
+      if (
+        config.blackSwanType === 'coin_drop' &&
+        dropPercent >= config.blackSwanTrigger
+      ) {
         await this.triggerBlackSwanProtection(monitor, symbol, dropPercent);
       }
     }
@@ -223,7 +233,11 @@ export class MarketMonitorService implements OnModuleInit, OnModuleDestroy {
     if (config.blackSwanType !== 'account_loss') return;
 
     if (currentLossPercent >= config.blackSwanTrigger) {
-      await this.triggerBlackSwanProtection(monitor, 'ACCOUNT', currentLossPercent);
+      await this.triggerBlackSwanProtection(
+        monitor,
+        'ACCOUNT',
+        currentLossPercent,
+      );
     }
   }
 
@@ -312,7 +326,9 @@ export class MarketMonitorService implements OnModuleInit, OnModuleDestroy {
           },
         });
       } catch (error) {
-        this.logger.error(`平仓失败 ${pos.symbol}: ${(error as Error).message}`);
+        this.logger.error(
+          `平仓失败 ${pos.symbol}: ${(error as Error).message}`,
+        );
       }
     }
 
@@ -345,7 +361,9 @@ export class MarketMonitorService implements OnModuleInit, OnModuleDestroy {
           },
         });
       } catch (error) {
-        this.logger.error(`减仓失败 ${pos.symbol}: ${(error as Error).message}`);
+        this.logger.error(
+          `减仓失败 ${pos.symbol}: ${(error as Error).message}`,
+        );
       }
     }
 

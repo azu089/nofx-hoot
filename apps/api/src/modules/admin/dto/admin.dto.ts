@@ -1,5 +1,16 @@
-import { IsString, IsOptional, IsEnum, IsInt, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsBoolean,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 // 分页查询 DTO
 export class PaginationDto {
@@ -26,16 +37,67 @@ export class UserListDto extends PaginationDto {
   @IsOptional()
   @IsString()
   status?: string; // active, inactive
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === 'true' ? true : value === 'false' ? false : undefined,
+  )
+  @IsBoolean()
+  bindTelegram?: boolean; // true: 已绑定, false: 未绑定, undefined: 不筛选
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === 'true' ? true : value === 'false' ? false : undefined,
+  )
+  @IsBoolean()
+  bindWallet?: boolean; // true: 已绑定, false: 未绑定, undefined: 不筛选
 }
 
 // 更新用户状态
 export class UpdateUserStatusDto {
-  @IsEnum(['active', 'inactive', 'banned'])
+  @IsEnum(['active', 'frozen', 'banned'])
   status: string;
 
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+// 更新用户信息
+export class UpdateUserInfoDto {
+  @IsOptional()
+  @IsString()
+  nickname?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
+
+// 调整用户资产
+export class AdjustBalanceDto {
+  @IsEnum(['usdt', 'hoot'])
+  asset: 'usdt' | 'hoot';
+
+  @IsEnum(['add', 'subtract'])
+  action: 'add' | 'subtract';
+
+  @IsString()
+  amount: string;
+
+  @IsString()
+  reason: string;
+}
+
+// 重置密码
+export class ResetPasswordDto {
+  @IsOptional()
+  @IsString()
+  newPassword?: string; // 如果不提供，则生成随机密码
 }
 
 // 策略列表查询
@@ -76,7 +138,35 @@ export class UpdateStrategyDto {
   riskLevel?: string;
 
   @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  // 多语言支持
+  @IsOptional()
+  nameI18n?: Record<string, string>;
+
+  @IsOptional()
+  descriptionI18n?: Record<string, string>;
+
+  @IsOptional()
+  tagsI18n?: Record<string, string[]>;
 }
 
 // 提现审核操作
@@ -101,13 +191,6 @@ export class WithdrawListDto extends PaginationDto {
 }
 
 // ==================== 交易配置管理 ====================
-
-import {
-  IsNumber,
-  IsBoolean,
-  IsArray,
-  ValidateNested,
-} from 'class-validator';
 
 // 更新平台配置
 export class UpdatePlatformConfigDto {

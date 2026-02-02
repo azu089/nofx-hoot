@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   Crown,
   Gift,
@@ -49,6 +50,9 @@ export function MobileProfilePage({
   onNavigate,
   onLogout
 }: MobileProfilePageProps) {
+  const t = useTranslations('profile')
+  const tCommon = useTranslations('common')
+  const tAuth = useTranslations('auth')
   const [copied, setCopied] = useState(false)
 
   // 截断 UID 显示
@@ -64,16 +68,16 @@ export function MobileProfilePage({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('复制失败:', err)
+      console.error('Copy failed:', err)
     }
   }
 
   // 获取会员等级标签
   const getTierLabel = (tier: string) => {
     switch (tier) {
-      case 'pro': return '专业版'
-      case 'premium': return '高级版'
-      default: return '基础版'
+      case 'pro': return t('pro')
+      case 'premium': return t('premium')
+      default: return t('basic')
     }
   }
 
@@ -89,7 +93,7 @@ export function MobileProfilePage({
   const menuItems = [
     {
       icon: Crown,
-      label: '会员订阅',
+      label: t('subscription'),
       path: '/subscription',
       iconColor: 'text-[#F59E0B]',
       iconBg: 'bg-[#F59E0B]/10',
@@ -101,7 +105,7 @@ export function MobileProfilePage({
     },
     {
       icon: Gift,
-      label: '邀请返佣',
+      label: t('referral'),
       path: '/referral',
       iconColor: 'text-[#EC4899]',
       iconBg: 'bg-[#EC4899]/10',
@@ -117,7 +121,7 @@ export function MobileProfilePage({
     },
     {
       icon: Bell,
-      label: '通知公告',
+      label: t('notifications'),
       path: '/notifications',
       iconColor: 'text-[#06B6D4]',
       iconBg: 'bg-[#06B6D4]/10',
@@ -129,7 +133,7 @@ export function MobileProfilePage({
     },
     {
       icon: Settings,
-      label: '设置',
+      label: t('settings'),
       path: '/settings',
       iconColor: 'text-[#8B5CF6]',
       iconBg: 'bg-[#8B5CF6]/10',
@@ -137,7 +141,7 @@ export function MobileProfilePage({
     },
     {
       icon: HelpCircle,
-      label: '帮助中心',
+      label: t('helpCenter'),
       path: '/help',
       iconColor: 'text-[#10B981]',
       iconBg: 'bg-[#10B981]/10',
@@ -145,7 +149,7 @@ export function MobileProfilePage({
     },
     {
       icon: Info,
-      label: '关于 Hoot',
+      label: t('about'),
       path: '/about',
       iconColor: 'text-[#3B82F6]',
       iconBg: 'bg-[#3B82F6]/10',
@@ -155,8 +159,15 @@ export function MobileProfilePage({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pb-24">
-      {/* 用户信息卡片 - 移除标题头部 */}
-      <div className="px-4 pt-2 pb-4">
+      {/* Header - 标题 */}
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-center px-4 h-14">
+          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
+        </div>
+      </div>
+
+      {/* 用户信息卡片 */}
+      <div className="px-4 pt-4 pb-4">
         <div className="glass-border-glow relative overflow-hidden rounded-2xl border border-cyan-500/[0.08] bg-[#12121A]/30 backdrop-blur-[72px] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-4">
             {/* 头像 */}
@@ -186,13 +197,13 @@ export function MobileProfilePage({
                 type="button"
                 onClick={handleCopyId}
                 className="flex items-center gap-1.5 text-[#606070] text-xs mt-1 hover:text-[#9090A0] transition-colors active:scale-95"
-                aria-label="复制用户ID"
+                aria-label={tCommon('copy')}
               >
                 <span>ID: {truncateId(user.id)}</span>
                 {copied ? (
                   <>
                     <Check className="w-3 h-3 text-[#10B981]" />
-                    <span className="text-[#10B981]">已复制</span>
+                    <span className="text-[#10B981]">{tCommon('copied')}</span>
                   </>
                 ) : (
                   <Copy className="w-3 h-3" />
@@ -239,10 +250,10 @@ export function MobileProfilePage({
           type="button"
           onClick={onLogout}
           className="w-full flex items-center justify-center gap-2 py-4 backdrop-blur-xl bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/30 border border-red-500/30 rounded-2xl transition-all text-red-400 font-medium"
-          aria-label="退出登录"
+          aria-label={t('logout')}
         >
           <LogOut className="w-4 h-4" />
-          <span>退出登录</span>
+          <span>{t('logout')}</span>
         </button>
       </div>
     </div>

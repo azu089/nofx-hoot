@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { ChevronDown, Check, Search, X, AlertTriangle } from 'lucide-react'
 import {
   StrategyConfigData,
-  exchanges,
+  exchanges as defaultExchanges,
   defaultConfig,
   hotPairs,
   fetchExchangePairs,
@@ -12,10 +12,18 @@ import {
   addRecentPair
 } from './strategy-config-types'
 
+interface ExchangeOption {
+  id: string
+  name: string
+  connected?: boolean
+  balance?: number
+}
+
 interface StrategyConfigSectionProps {
   config: StrategyConfigData
   onChange: (config: StrategyConfigData) => void
   showExchangeSelect?: boolean // 是否显示交易所选择
+  exchanges?: ExchangeOption[] // 可选的交易所列表（从 API 获取）
   className?: string
 }
 
@@ -64,8 +72,12 @@ export function StrategyConfigSection({
   config,
   onChange,
   showExchangeSelect = true,
+  exchanges,
   className = ''
 }: StrategyConfigSectionProps) {
+  // 使用传入的 exchanges 或默认值
+  const exchangeList = exchanges || defaultExchanges
+
   // UI 状态
   const [showExchangeDD, setShowExchangeDD] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
@@ -101,7 +113,7 @@ export function StrategyConfigSection({
     setExpandedSection(expandedSection === section ? null : section)
   }
 
-  const currentExchange = exchanges.find(e => e.id === config.exchange)
+  const currentExchange = exchangeList.find(e => e.id === config.exchange)
 
   // 更新配置的辅助函数
   const updateConfig = (partial: Partial<StrategyConfigData>) => {
@@ -145,7 +157,7 @@ export function StrategyConfigSection({
             </button>
             {showExchangeDD && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden">
-                {exchanges.map(ex => (
+                {exchangeList.map(ex => (
                   <button
                     key={ex.id}
                     type="button"

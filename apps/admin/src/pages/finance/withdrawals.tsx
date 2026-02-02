@@ -14,7 +14,6 @@ import {
   Space,
   Button,
   Modal,
-  message,
   Card,
   Row,
   Col,
@@ -34,6 +33,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -65,6 +65,7 @@ interface WithdrawListResponse {
 }
 
 export const WithdrawalList = () => {
+  const message = useMessage();
   const [dataSource, setDataSource] = useState<IWithdrawal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -468,6 +469,7 @@ export const WithdrawalList = () => {
           dataSource={dataSource}
           columns={columns}
           rowKey="id"
+          scroll={{ x: 1200 }}
           rowSelection={rowSelection}
           pagination={{
             current: pagination.current,

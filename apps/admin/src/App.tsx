@@ -14,8 +14,18 @@ import '@refinedev/antd/dist/reset.css';
 import './styles/global.css';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { TranslateProvider } from './contexts/TranslateContext';
 import { AdminLayout } from './components/Layout';
 
+import {
+  AgentLogin,
+  AgentLayout,
+  AgentDashboard,
+  AgentUsers,
+  AgentCommissions,
+  AgentWithdrawals,
+  AgentTokenAssets,
+} from './pages/agent-portal';
 import {
   LoginPage,
   DashboardPage,
@@ -30,14 +40,20 @@ import {
   WithdrawalList,
   DepositsPage,
   FinanceReportsPage,
+  FinancePage,
+  UserStatsPage,
   AnnouncementList,
   MarqueeList,
   TextConfigList,
   SystemConfigPage,
   BannersPage,
+  HelpArticleList,
+  LegalDocumentList,
+  FaqList,
   StakingList,
   WeightsPage,
   DividendsPage,
+  AirdropList,
   EcosystemConfigPage,
   OrdersPage,
   PositionsPage,
@@ -49,6 +65,7 @@ import {
   RolesPage,
   SecuritySettingsPage,
   AgentsPage,
+  TokenManagementPage,
   SignalsPage,
   KillSwitchPage,
 } from './pages';
@@ -90,7 +107,19 @@ const AppContent = () => {
       }}
     >
       <Routes>
+        {/* 管理员后台登录 */}
         <Route path="/login" element={<LoginPage />} />
+
+        {/* ========== 代理商后台（独立入口）========== */}
+        <Route path="/agent/login" element={<AgentLogin />} />
+        <Route path="/agent" element={<AgentLayout />}>
+          <Route path="dashboard" element={<AgentDashboard />} />
+          <Route path="users" element={<AgentUsers />} />
+          <Route path="commissions" element={<AgentCommissions />} />
+          <Route path="token-assets" element={<AgentTokenAssets />} />
+          <Route path="withdrawals" element={<AgentWithdrawals />} />
+          <Route index element={<Navigate to="/agent/dashboard" replace />} />
+        </Route>
 
         <Route
           element={
@@ -124,10 +153,16 @@ const AppContent = () => {
 
           {/* 财务中心 */}
           <Route path="/finance">
+            <Route index element={<FinancePage />} />
             <Route path="bills" element={<BillList />} />
             <Route path="deposits" element={<DepositsPage />} />
             <Route path="withdrawals" element={<WithdrawalList />} />
             <Route path="reports" element={<FinanceReportsPage />} />
+          </Route>
+
+          {/* 用户统计 */}
+          <Route path="/stats">
+            <Route path="users" element={<UserStatsPage />} />
           </Route>
 
           {/* 生态中心 */}
@@ -135,6 +170,7 @@ const AppContent = () => {
             <Route path="staking" element={<StakingList />} />
             <Route path="weights" element={<WeightsPage />} />
             <Route path="dividends" element={<DividendsPage />} />
+            <Route path="airdrops" element={<AirdropList />} />
             <Route path="config" element={<EcosystemConfigPage />} />
           </Route>
 
@@ -145,6 +181,14 @@ const AppContent = () => {
             <Route path="banners" element={<BannersPage />} />
             <Route path="texts" element={<TextConfigList />} />
             <Route path="agents" element={<AgentsPage />} />
+            <Route path="agents/token" element={<TokenManagementPage />} />
+          </Route>
+
+          {/* 内容管理 */}
+          <Route path="/content">
+            <Route path="help-articles" element={<HelpArticleList />} />
+            <Route path="legal-docs" element={<LegalDocumentList />} />
+            <Route path="faq" element={<FaqList />} />
           </Route>
 
           {/* 系统管理 */}
@@ -166,7 +210,7 @@ const AppContent = () => {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ConfigProvider
         locale={zhCN}
         theme={{
@@ -182,7 +226,9 @@ function App() {
       >
         <AntdApp>
           <AuthProvider>
-            <AppContent />
+            <TranslateProvider>
+              <AppContent />
+            </TranslateProvider>
           </AuthProvider>
         </AntdApp>
       </ConfigProvider>

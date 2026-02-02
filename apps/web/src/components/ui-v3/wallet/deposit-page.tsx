@@ -37,6 +37,7 @@ interface DepositPageProps {
     txHash: string
     time: string
   }[]
+  balance?: number  // 账户余额
   onCopyAddress?: () => void
 }
 
@@ -56,6 +57,7 @@ export function DepositPage({
   walletAddress = 'TYDzsYUEpvnYmQk4zGP9sWWcTEd2MiAtW6',
   networks = defaultNetworks,
   recentDeposits = defaultRecentDeposits,
+  balance = 0,
   onCopyAddress
 }: DepositPageProps) {
   const [selectedNetwork, setSelectedNetwork] = useState(networks[0])
@@ -287,7 +289,7 @@ export function DepositPage({
                   <Wallet className="w-5 h-5 text-[#06B6D4]" />
                   <h3 className="font-semibold">账户余额</h3>
                 </div>
-                <div className="text-3xl font-bold">$12,847.32</div>
+                <div className="text-3xl font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 <div className="text-sm text-[#606070] mt-1">USDT 余额</div>
               </div>
 

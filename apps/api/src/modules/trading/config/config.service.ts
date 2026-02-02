@@ -30,10 +30,13 @@ export class TradingConfigService implements OnModuleInit {
   private readonly PLATFORM_CACHE_TTL = 60 * 1000; // 1 分钟
 
   // 用户配置缓存
-  private userConfigCache: Map<string, {
-    config: UserFullConfig;
-    timestamp: number;
-  }> = new Map();
+  private userConfigCache: Map<
+    string,
+    {
+      config: UserFullConfig;
+      timestamp: number;
+    }
+  > = new Map();
   private readonly USER_CACHE_TTL = 5 * 60 * 1000; // 5 分钟
 
   constructor(private prisma: PrismaService) {}
@@ -237,10 +240,7 @@ export class TradingConfigService implements OnModuleInit {
   /**
    * 切换用户交易开关
    */
-  async toggleUserTrading(
-    userId: string,
-    enabled: boolean,
-  ): Promise<void> {
+  async toggleUserTrading(userId: string, enabled: boolean): Promise<void> {
     await this.prisma.userTradingConfig.upsert({
       where: { userId },
       update: { tradingEnabled: enabled },
@@ -320,7 +320,9 @@ export class TradingConfigService implements OnModuleInit {
         marginMode: subscription.marginMode || 'cross',
         amountPerTrade: parseFloat(subscription.amountPerTrade.toString()),
         maxPositions: subscription.maxPositions || 3,
-        slippageTolerance: parseFloat((subscription.slippageTolerance || 0.5).toString()),
+        slippageTolerance: parseFloat(
+          (subscription.slippageTolerance || 0.5).toString(),
+        ),
         autoClose: subscription.autoClose !== false,
         maxRetries: subscription.maxRetries || 3,
         retryDelayMs: subscription.retryDelayMs || 1000,

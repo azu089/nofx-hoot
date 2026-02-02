@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   ArrowLeft,
   Wallet,
@@ -73,6 +74,8 @@ export function MobileReferralPage({
   myReferrals = defaultReferrals,
   leaderboard = defaultLeaderboard
 }: MobileReferralPageProps) {
+  const t = useTranslations('referral')
+  const tCommon = useTranslations('common')
   const [copied, setCopied] = useState(false)
   const [rulesExpanded, setRulesExpanded] = useState(false)
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false)
@@ -110,12 +113,12 @@ export function MobileReferralPage({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('复制失败:', err)
+      console.error(t('copyFailed') + ':', err)
     }
   }
 
   const handleShare = (platform: string) => {
-    const text = `加入 Hoot - AI驱动的量化交易平台！使用我的邀请码: ${referralCode}`
+    const text = t('shareText', { code: referralCode })
     const url = referralLink
 
     switch (platform) {
@@ -131,17 +134,17 @@ export function MobileReferralPage({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-8">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-4">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
-            aria-label="返回"
-            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
+            aria-label={t('back')}
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-lg font-semibold text-white">邀请返佣</h1>
+          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -155,7 +158,7 @@ export function MobileReferralPage({
             <div className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
                 <Wallet className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs text-[#94A3B8]">累计收益</span>
+                <span className="text-xs text-[#94A3B8]">{t('totalEarnings')}</span>
               </div>
               <div className="text-lg font-bold text-cyan-400">
                 ${earnings.total.toLocaleString()}
@@ -166,7 +169,7 @@ export function MobileReferralPage({
             <div className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
                 <Users className="w-4 h-4 text-[#10B981]" />
-                <span className="text-xs text-[#94A3B8]">邀请人数</span>
+                <span className="text-xs text-[#94A3B8]">{t('referralCount')}</span>
               </div>
               <div className="text-lg font-bold text-[#10B981]">
                 {earnings.activeReferrals}
@@ -177,7 +180,7 @@ export function MobileReferralPage({
             <div className="p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-2">
                 <TrendingUp className="w-4 h-4 text-[#F59E0B]" />
-                <span className="text-xs text-[#94A3B8]">本月收益</span>
+                <span className="text-xs text-[#94A3B8]">{t('monthlyEarnings')}</span>
               </div>
               <div className="text-lg font-bold text-[#F59E0B]">
                 ${earnings.thisMonth.toLocaleString()}
@@ -195,12 +198,12 @@ export function MobileReferralPage({
             <div className="flex items-start gap-4">
               {/* 左侧信息 */}
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#94A3B8] mb-1">邀请码</div>
+                <div className="text-xs text-[#94A3B8] mb-1">{t('inviteCode')}</div>
                 <div className="text-2xl font-mono font-bold text-cyan-400 tracking-wider mb-4">
                   {referralCode}
                 </div>
 
-                <div className="text-xs text-[#94A3B8] mb-1">邀请链接</div>
+                <div className="text-xs text-[#94A3B8] mb-1">{t('inviteLink')}</div>
                 <div className="text-xs font-mono text-[#94A3B8] break-all leading-relaxed">
                   {referralLink}
                 </div>
@@ -222,13 +225,13 @@ export function MobileReferralPage({
                 className="flex-1 flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white py-3 rounded-xl font-medium transition-colors"
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? '已复制' : '复制链接'}
+                {copied ? t('copied') : t('copyLink')}
               </button>
 
               <button
                 type="button"
                 onClick={() => handleShare('twitter')}
-                aria-label="分享到 Twitter"
+                aria-label={t('shareToTwitter')}
                 className="flex items-center justify-center w-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl hover:border-cyan-500/30 transition-colors"
               >
                 <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -239,7 +242,7 @@ export function MobileReferralPage({
               <button
                 type="button"
                 onClick={() => handleShare('telegram')}
-                aria-label="分享到 Telegram"
+                aria-label={t('shareToTelegram')}
                 className="flex items-center justify-center w-12 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl hover:border-cyan-500/30 transition-colors"
               >
                 <Send className="w-5 h-5 text-white" />
@@ -257,7 +260,7 @@ export function MobileReferralPage({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-cyan-400" />
-                <span className="font-semibold">我的邀请</span>
+                <span className="font-semibold">{t('myReferrals')}</span>
                 <span className="text-[#94A3B8] text-sm">
                   {filteredReferrals.length}
                   {hasActiveFilters && <span className="text-[#606070]"> / {myReferrals.length}</span>}
@@ -271,7 +274,7 @@ export function MobileReferralPage({
                     className="flex items-center gap-1 px-2 py-1 text-xs text-[#EF4444] hover:text-[#FCA5A5] transition-colors"
                   >
                     <X className="w-3 h-3" />
-                    清除
+                    {t('clear')}
                   </button>
                 )}
                 <button
@@ -284,7 +287,7 @@ export function MobileReferralPage({
                   }`}
                 >
                   <Filter className="w-3.5 h-3.5" />
-                  筛选
+                  {t('filter')}
                 </button>
               </div>
             </div>
@@ -294,12 +297,12 @@ export function MobileReferralPage({
               <div className="mt-3 pt-3 border-t border-[#1E1E2E]/50 space-y-3">
                 {/* 级别筛选 */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#94A3B8] w-12">级别</span>
+                  <span className="text-xs text-[#94A3B8] w-12">{t('level')}</span>
                   <div className="flex gap-2">
                     {[
-                      { value: 'all', label: '全部' },
-                      { value: '1', label: '一级' },
-                      { value: '2', label: '二级' }
+                      { value: 'all', label: t('all') },
+                      { value: '1', label: t('level1') },
+                      { value: '2', label: t('level2') }
                     ].map(opt => (
                       <button
                         key={opt.value}
@@ -319,12 +322,12 @@ export function MobileReferralPage({
 
                 {/* 状态筛选 */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#94A3B8] w-12">状态</span>
+                  <span className="text-xs text-[#94A3B8] w-12">{t('status')}</span>
                   <div className="flex gap-2">
                     {[
-                      { value: 'all', label: '全部' },
-                      { value: 'Active', label: '活跃' },
-                      { value: 'Inactive', label: '非活跃' }
+                      { value: 'all', label: t('all') },
+                      { value: 'Active', label: t('active') },
+                      { value: 'Inactive', label: t('inactive') }
                     ].map(opt => (
                       <button
                         key={opt.value}
@@ -350,17 +353,17 @@ export function MobileReferralPage({
               <Users className="w-10 h-10 text-[#94A3B8] mx-auto mb-2" />
               {hasActiveFilters ? (
                 <>
-                  <p className="text-[#94A3B8] text-sm">没有符合条件的记录</p>
+                  <p className="text-[#94A3B8] text-sm">{t('noMatchingRecords')}</p>
                   <button
                     type="button"
                     onClick={clearFilters}
                     className="text-cyan-400 text-sm mt-2 hover:underline"
                   >
-                    清除筛选条件
+                    {t('clearFilterConditions')}
                   </button>
                 </>
               ) : (
-                <p className="text-[#94A3B8] text-sm">暂无邀请记录</p>
+                <p className="text-[#94A3B8] text-sm">{t('noReferralRecords')}</p>
               )}
             </div>
           ) : (
@@ -376,7 +379,7 @@ export function MobileReferralPage({
                           ? 'bg-cyan-500/20 text-cyan-400'
                           : 'bg-purple-500/20 text-purple-400'
                       }`}>
-                        {referral.level === 1 ? '一级' : '二级'}
+                        {referral.level === 1 ? t('level1') : t('level2')}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -387,7 +390,7 @@ export function MobileReferralPage({
                         <span className={`w-1.5 h-1.5 rounded-full ${
                           referral.status === 'Active' ? 'bg-[#10B981]' : 'bg-[#94A3B8]'
                         }`} />
-                        {referral.status === 'Active' ? '活跃' : '非活跃'}
+                        {referral.status === 'Active' ? t('active') : t('inactive')}
                       </span>
                     </div>
                   </div>
@@ -415,8 +418,8 @@ export function MobileReferralPage({
           >
             <div className="flex items-center gap-2">
               <Trophy className="w-5 h-5 text-cyan-400" />
-              <span className="font-semibold">返佣规则</span>
-              <span className="text-[#94A3B8] text-xs">一级30% · 二级10%</span>
+              <span className="font-semibold">{t('commissionRules')}</span>
+              <span className="text-[#94A3B8] text-xs">{t('commissionRateDesc')}</span>
             </div>
             {rulesExpanded ? (
               <ChevronUp className="w-5 h-5 text-[#94A3B8]" />
@@ -432,14 +435,14 @@ export function MobileReferralPage({
                 <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">1</div>
-                    <span className="text-sm font-medium">一级返佣</span>
+                    <span className="text-sm font-medium">{t('level1Commission')}</span>
                   </div>
                   <div className="text-2xl font-bold text-cyan-400">30%</div>
                 </div>
                 <div className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-3">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">2</div>
-                    <span className="text-sm font-medium">二级返佣</span>
+                    <span className="text-sm font-medium">{t('level2Commission')}</span>
                   </div>
                   <div className="text-2xl font-bold text-purple-400">10%</div>
                 </div>
@@ -447,7 +450,7 @@ export function MobileReferralPage({
 
               {/* 规则说明 */}
               <div className="flex flex-wrap gap-2">
-                {['实时结算', '自动到账', '终身有效', '无上限'].map((item) => (
+                {[t('realTimeSettlement'), t('autoCredit'), t('lifetimeValid'), t('noLimit')].map((item) => (
                   <span key={item} className="px-2 py-1 bg-[#1A1A24] rounded text-xs text-[#94A3B8]">
                     {item}
                   </span>
@@ -468,8 +471,8 @@ export function MobileReferralPage({
           >
             <div className="flex items-center gap-2">
               <Crown className="w-5 h-5 text-[#F59E0B]" />
-              <span className="font-semibold">邀请排行榜</span>
-              <span className="text-[#94A3B8] text-xs">TOP 5</span>
+              <span className="font-semibold">{t('leaderboard')}</span>
+              <span className="text-[#94A3B8] text-xs">{t('topRanking', { count: 5 })}</span>
             </div>
             {leaderboardExpanded ? (
               <ChevronUp className="w-5 h-5 text-[#94A3B8]" />
@@ -500,7 +503,7 @@ export function MobileReferralPage({
                     </div>
                     <div>
                       <div className="font-medium text-sm">{user.username}</div>
-                      <div className="text-[#94A3B8] text-xs">{user.referrals} 邀请</div>
+                      <div className="text-[#94A3B8] text-xs">{user.referrals} {t('referrals')}</div>
                     </div>
                   </div>
                   <div className="font-mono font-semibold text-cyan-400">

@@ -83,6 +83,21 @@ export class AdminAgentService {
       this.prisma.agent.count({ where }),
     ]);
 
+    // 获取每个代理商的待结算佣金
+    const agentIds = agents.map((a) => a.id);
+    const pendingCommissions = await this.prisma.agentCommission.groupBy({
+      by: ['agentId'],
+      where: { agentId: { in: agentIds }, status: 'pending' },
+      _sum: { commissionAmount: true },
+    });
+
+    const pendingMap = new Map(
+      pendingCommissions.map((p) => [
+        p.agentId,
+        p._sum.commissionAmount?.toString() || '0',
+      ]),
+    );
+
     return {
       items: agents.map((a) => ({
         ...a,
@@ -90,8 +105,11 @@ export class AdminAgentService {
         commissionRate: a.commissionRate.toString(),
         totalProfit: a.totalProfit.toString(),
         totalCommission: a.totalCommission.toString(),
+        // 前端使用的字段名
+        teamMemberCount: a._count.users,
         userCount: a._count.users,
         commissionCount: a._count.commissions,
+        pendingCommission: pendingMap.get(a.id) || '0',
       })),
       total,
       page,
@@ -152,8 +170,10 @@ export class AdminAgentService {
       commissionRate: agent.commissionRate.toString(),
       totalProfit: agent.totalProfit.toString(),
       totalCommission: agent.totalCommission.toString(),
-      pendingCommission: pendingCommission._sum.commissionAmount?.toString() || '0',
-      monthlyCommission: monthlyCommission._sum.commissionAmount?.toString() || '0',
+      pendingCommission:
+        pendingCommission._sum.commissionAmount?.toString() || '0',
+      monthlyCommission:
+        monthlyCommission._sum.commissionAmount?.toString() || '0',
       users: agent.users.map((u) => ({
         ...u,
         usdtBalance: u.usdtBalance.toString(),
@@ -189,7 +209,7 @@ export class AdminAgentService {
         phone: dto.phone,
         companyName: dto.companyName,
         level: dto.level || 'bronze',
-        commissionRate: dto.commissionRate || 0.10,
+        commissionRate: dto.commissionRate || 0.1,
         settlementType: dto.settlementType || 'weekly',
         walletAddress: dto.walletAddress,
         status: 'pending',
@@ -222,9 +242,13 @@ export class AdminAgentService {
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.companyName !== undefined && { companyName: dto.companyName }),
         ...(dto.level && { level: dto.level }),
-        ...(dto.commissionRate !== undefined && { commissionRate: dto.commissionRate }),
+        ...(dto.commissionRate !== undefined && {
+          commissionRate: dto.commissionRate,
+        }),
         ...(dto.settlementType && { settlementType: dto.settlementType }),
-        ...(dto.walletAddress !== undefined && { walletAddress: dto.walletAddress }),
+        ...(dto.walletAddress !== undefined && {
+          walletAddress: dto.walletAddress,
+        }),
         ...(dto.status && { status: dto.status }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
@@ -239,7 +263,11 @@ export class AdminAgentService {
   }
 
   // 审核代理商
-  async reviewAgent(agentId: string, action: 'approve' | 'reject', reason?: string) {
+  async reviewAgent(
+    agentId: string,
+    action: 'approve' | 'reject',
+    reason?: string,
+  ) {
     const agent = await this.prisma.agent.findUnique({
       where: { id: agentId },
     });
@@ -311,8 +339,10 @@ export class AdminAgentService {
       activeAgents,
       pendingAgents,
       totalCommission: totalCommission._sum.commissionAmount?.toString() || '0',
-      pendingCommission: pendingCommission._sum.commissionAmount?.toString() || '0',
-      monthlyCommission: monthlyCommission._sum.commissionAmount?.toString() || '0',
+      pendingCommission:
+        pendingCommission._sum.commissionAmount?.toString() || '0',
+      monthlyCommission:
+        monthlyCommission._sum.commissionAmount?.toString() || '0',
     };
   }
 
@@ -394,7 +424,11 @@ export class AdminAgentService {
   }
 
   // 获取代理商佣金记录
-  async getAgentCommissions(agentId: string, page: number = 1, limit: number = 20) {
+  async getAgentCommissions(
+    agentId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
     const skip = (page - 1) * limit;
 
     const [commissions, total] = await Promise.all([
@@ -418,6 +452,360 @@ export class AdminAgentService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // ========== 代理商代币配额管理 ==========
+
+  // 私募配额配置表
+  private readonly quotaConfig: Record<
+    string,
+    { quota: number; price: number; vestingMonths: number }
+  > = {
+    bronze: { quota: 500000, price: 0.0007, vestingMonths: 6 }, // 50万 HOOT, 7折
+    silver: { quota: 2000000, price: 0.0005, vestingMonths: 6 }, // 200万 HOOT, 5折
+    gold: { quota: 5000000, price: 0.0003, vestingMonths: 9 }, // 500万 HOOT, 3折
+    platinum: { quota: 10000000, price: 0.0002, vestingMonths: 12 }, // 1000万 HOOT, 2折
+  };
+
+  // 获取代币配额列表
+  async getTokenQuotas(dto: {
+    page?: number;
+    limit?: number;
+    agentId?: string;
+    status?: string;
+  }) {
+    const { page = 1, limit = 20, agentId, status } = dto;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (agentId) where.agentId = agentId;
+    if (status) where.status = status;
+
+    const [quotas, total] = await Promise.all([
+      this.prisma.agentTokenQuota.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          agent: { select: { id: true, name: true, email: true, level: true } },
+        },
+      }),
+      this.prisma.agentTokenQuota.count({ where }),
+    ]);
+
+    return {
+      items: quotas.map((q) => ({
+        id: q.id,
+        agent: q.agent,
+        level: q.level,
+        quotaAmount: q.quotaAmount.toString(),
+        purchasePrice: q.purchasePrice.toString(),
+        purchaseAmount: q.purchaseAmount.toString(),
+        vestingMonths: q.vestingMonths,
+        vestingStart: q.vestingStart,
+        releasedAmount: q.releasedAmount.toString(),
+        pendingAmount: q.quotaAmount.minus(q.releasedAmount).toString(),
+        status: q.status,
+        approvedBy: q.approvedBy,
+        approvedAt: q.approvedAt,
+        createdAt: q.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // 创建代币配额
+  async createTokenQuota(dto: { agentId: string; level: string }) {
+    const agent = await this.prisma.agent.findUnique({
+      where: { id: dto.agentId },
+    });
+    if (!agent) throw new NotFoundException('代理商不存在');
+
+    const config = this.quotaConfig[dto.level];
+    if (!config) throw new BadRequestException('无效的配额等级');
+
+    // 检查是否已有配额
+    const existingQuota = await this.prisma.agentTokenQuota.findFirst({
+      where: {
+        agentId: dto.agentId,
+        status: { in: ['pending', 'paid', 'active'] },
+      },
+    });
+    if (existingQuota)
+      throw new BadRequestException('该代理商已有进行中的配额');
+
+    const quota = await this.prisma.agentTokenQuota.create({
+      data: {
+        agentId: dto.agentId,
+        level: dto.level,
+        quotaAmount: config.quota,
+        purchasePrice: config.price,
+        purchaseAmount: config.quota * config.price,
+        vestingMonths: config.vestingMonths,
+        status: 'pending',
+      },
+    });
+
+    this.logger.log(`创建代币配额: agent=${dto.agentId}, level=${dto.level}`);
+    return { message: '配额创建成功', quota };
+  }
+
+  // 审核代币配额
+  async reviewTokenQuota(
+    quotaId: string,
+    action: 'approve' | 'reject',
+    adminId: string,
+  ) {
+    const quota = await this.prisma.agentTokenQuota.findUnique({
+      where: { id: quotaId },
+    });
+    if (!quota) throw new NotFoundException('配额不存在');
+    if (quota.status !== 'paid')
+      throw new BadRequestException('只能审核已付款的配额');
+
+    if (action === 'approve') {
+      await this.prisma.agentTokenQuota.update({
+        where: { id: quotaId },
+        data: {
+          status: 'active',
+          vestingStart: new Date(),
+          approvedBy: adminId,
+          approvedAt: new Date(),
+        },
+      });
+      this.logger.log(`代币配额审核通过: ${quotaId}`);
+      return { message: '配额已审核通过，开始释放' };
+    } else {
+      await this.prisma.agentTokenQuota.update({
+        where: { id: quotaId },
+        data: {
+          status: 'revoked',
+          approvedBy: adminId,
+          approvedAt: new Date(),
+        },
+      });
+      this.logger.log(`代币配额审核拒绝: ${quotaId}`);
+      return { message: '配额已拒绝' };
+    }
+  }
+
+  // ========== 代理商分红池管理 ==========
+
+  // 获取分红池列表
+  async getDividendPools(dto: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }) {
+    const { page = 1, limit = 20, status } = dto;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (status) where.status = status;
+
+    const [pools, total] = await Promise.all([
+      this.prisma.agentDividendPool.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { periodStart: 'desc' },
+        include: { _count: { select: { dividendRecords: true } } },
+      }),
+      this.prisma.agentDividendPool.count({ where }),
+    ]);
+
+    return {
+      items: pools.map((p) => ({
+        id: p.id,
+        monthNumber: p.monthNumber,
+        periodStart: p.periodStart,
+        periodEnd: p.periodEnd,
+        gasFeeTotal: p.gasFeeTotal.toString(),
+        poolRate: p.poolRate.toString(),
+        poolAmount: p.poolAmount.toString(),
+        hootPrice: p.hootPrice?.toString() || null,
+        hootAmount: p.hootAmount?.toString() || null,
+        totalTradeVolume: p.totalTradeVolume.toString(),
+        distributedAmount: p.distributedAmount.toString(),
+        participantCount: p._count.dividendRecords,
+        status: p.status,
+        distributedAt: p.distributedAt,
+        createdAt: p.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // 创建分红池（月度）
+  async createDividendPool(dto: { monthNumber: string; poolRate?: number }) {
+    // 检查是否已存在
+    const existing = await this.prisma.agentDividendPool.findUnique({
+      where: { monthNumber: dto.monthNumber },
+    });
+    if (existing) throw new BadRequestException('该月分红池已存在');
+
+    // 解析月份，计算周期
+    const [year, month] = dto.monthNumber.split('-').map(Number);
+    const periodStart = new Date(year, month - 1, 1);
+    const periodEnd = new Date(year, month, 0, 23, 59, 59);
+
+    // 获取该月燃油费总额
+    const gasFees = await this.prisma.gasFeeRecord.aggregate({
+      where: { createdAt: { gte: periodStart, lte: periodEnd } },
+      _sum: { feeAmount: true },
+    });
+
+    const gasFeeTotal = gasFees._sum.feeAmount || new Decimal(0);
+    const poolRate = new Decimal(dto.poolRate || 0.1);
+    const poolAmount = gasFeeTotal.times(poolRate);
+
+    const pool = await this.prisma.agentDividendPool.create({
+      data: {
+        periodStart,
+        periodEnd,
+        monthNumber: dto.monthNumber,
+        gasFeeTotal,
+        poolRate,
+        poolAmount,
+        status: 'pending',
+      },
+    });
+
+    this.logger.log(`创建分红池: ${dto.monthNumber}, 金额: ${poolAmount}`);
+    return { message: '分红池创建成功', pool };
+  }
+
+  // 分配分红池
+  async distributeDividendPool(poolId: string, hootPrice: string) {
+    const pool = await this.prisma.agentDividendPool.findUnique({
+      where: { id: poolId },
+    });
+    if (!pool) throw new NotFoundException('分红池不存在');
+    if (pool.status !== 'pending')
+      throw new BadRequestException('只能分配待分配状态的分红池');
+
+    const hootPriceDecimal = new Decimal(hootPrice);
+    const hootAmount = pool.poolAmount.div(hootPriceDecimal);
+
+    // 获取所有活跃代理商的交易量贡献
+    const agentContributions = await this.prisma.$queryRaw<
+      { agentId: string; totalVolume: string }[]
+    >`
+      SELECT u.agent_id as "agentId", COALESCE(SUM(p.amount * p.entry_price), 0) as "totalVolume"
+      FROM users u
+      JOIN positions p ON p.user_id = u.id
+      WHERE u.agent_id IS NOT NULL
+        AND p.created_at >= ${pool.periodStart}
+        AND p.created_at <= ${pool.periodEnd}
+      GROUP BY u.agent_id
+    `;
+
+    const totalVolume = agentContributions.reduce(
+      (sum, c) => sum.plus(c.totalVolume || 0),
+      new Decimal(0),
+    );
+
+    if (totalVolume.isZero()) {
+      throw new BadRequestException('该周期没有符合条件的代理商贡献');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 创建分红记录
+      for (const contrib of agentContributions) {
+        const volume = new Decimal(contrib.totalVolume || 0);
+        if (volume.isZero()) continue;
+
+        const rate = volume.div(totalVolume);
+        const dividendUsdt = pool.poolAmount.times(rate);
+        const dividendHoot = hootAmount.times(rate);
+
+        await tx.agentDividendRecord.create({
+          data: {
+            poolId,
+            agentId: contrib.agentId,
+            userTradeVolume: volume,
+            contributionRate: rate,
+            dividendUsdt,
+            dividendHoot,
+            status: 'paid',
+            paidAt: new Date(),
+          },
+        });
+      }
+
+      // 更新分红池状态
+      await tx.agentDividendPool.update({
+        where: { id: poolId },
+        data: {
+          hootPrice: hootPriceDecimal,
+          hootAmount,
+          totalTradeVolume: totalVolume,
+          distributedAmount: pool.poolAmount,
+          participantCount: agentContributions.filter((c) =>
+            new Decimal(c.totalVolume || 0).gt(0),
+          ).length,
+          status: 'distributed',
+          distributedAt: new Date(),
+        },
+      });
+    });
+
+    this.logger.log(`分红池分配完成: ${poolId}, HOOT价格: ${hootPrice}`);
+    return {
+      message: '分红池分配完成',
+      distributedTo: agentContributions.length,
+    };
+  }
+
+  // 获取代币统计概览
+  async getTokenStats() {
+    const [quotaStats, poolStats] = await Promise.all([
+      // 配额统计
+      this.prisma.agentTokenQuota.aggregate({
+        _sum: { quotaAmount: true, releasedAmount: true, purchaseAmount: true },
+        _count: true,
+      }),
+      // 分红池统计
+      this.prisma.agentDividendPool.aggregate({
+        _sum: { poolAmount: true, distributedAmount: true },
+        _count: true,
+      }),
+    ]);
+
+    const activeQuotas = await this.prisma.agentTokenQuota.count({
+      where: { status: 'active' },
+    });
+    const pendingQuotas = await this.prisma.agentTokenQuota.count({
+      where: { status: 'paid' },
+    });
+    const distributedPools = await this.prisma.agentDividendPool.count({
+      where: { status: 'distributed' },
+    });
+
+    return {
+      quota: {
+        total: quotaStats._count,
+        active: activeQuotas,
+        pending: pendingQuotas,
+        totalQuotaAmount: quotaStats._sum.quotaAmount?.toString() || '0',
+        totalReleasedAmount: quotaStats._sum.releasedAmount?.toString() || '0',
+        totalPurchaseAmount: quotaStats._sum.purchaseAmount?.toString() || '0',
+      },
+      dividend: {
+        totalPools: poolStats._count,
+        distributedPools,
+        totalPoolAmount: poolStats._sum.poolAmount?.toString() || '0',
+        totalDistributedAmount:
+          poolStats._sum.distributedAmount?.toString() || '0',
+      },
     };
   }
 }

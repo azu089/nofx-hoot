@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body } from '@nestjs/common';
 import { ReferralService } from './referral.service';
 import { BindInviteCodeDto } from './dto/referral.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';

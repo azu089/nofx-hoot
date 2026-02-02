@@ -72,6 +72,7 @@ export function MobileLoginPage({
                 width={96}
                 height={96}
                 className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                priority
                 unoptimized
               />
             </div>

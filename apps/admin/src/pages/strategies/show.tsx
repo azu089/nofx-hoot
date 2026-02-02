@@ -1,6 +1,8 @@
 /**
  * 策略详情页面
- * 查看策略完整信息、订阅用户、交易记录
+ * 查看策略完整信息、订阅用户、信号记录
+ * 已对接真实 API:
+ * - GET /admin/strategies/:id
  */
 import { Show } from '@refinedev/antd';
 import {
@@ -14,8 +16,11 @@ import {
   Row,
   Col,
   Typography,
-  Timeline,
   Avatar,
+  Spin,
+  Alert,
+  Button,
+  Empty,
 } from 'antd';
 import {
   RiseOutlined,
@@ -23,140 +28,100 @@ import {
   UserOutlined,
   HistoryOutlined,
   LineChartOutlined,
-  DollarOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../../lib/api';
+
 const { Text } = Typography;
 
-// 模拟策略详情数据
-const mockStrategy = {
-  id: '1',
-  name: 'AI量化策略Alpha',
-  creator: 'official',
-  type: 'ai',
-  tradingPair: 'BTC/USDT',
-  status: 'active',
-  subscribers: 156,
-  totalReturn: '+245.6%',
-  monthReturn: '+12.5%',
-  weekReturn: '+3.2%',
-  maxDrawdown: '-8.2%',
-  winRate: '68.5%',
-  monthlyFee: '25',
-  description:
-    'AI 驱动的量化交易策略，基于深度学习模型分析市场趋势，自动执行买卖操作。适合追求稳健收益的投资者。',
-  riskLevel: 'medium',
-  minCapital: 500,
-  maxCapital: 50000,
-  createdAt: '2024-06-01',
-  updatedAt: '2025-01-30',
-  totalTrades: 1256,
-  avgHoldingTime: '4.2小时',
-  sharpeRatio: '2.35',
-  profitFactor: '1.85',
-};
+interface SubscriberInfo {
+  id: string;
+  userId: string;
+  username: string;
+  email: string;
+  subscribedAt: string;
+  capital: string;
+  isActive: boolean;
+}
 
-// 模拟订阅用户数据
-const mockSubscribers = [
-  {
-    id: '1',
-    username: 'trader_001',
-    email: 'user1@example.com',
-    subscribedAt: '2024-12-01',
-    capital: '5000 USDT',
-    pnl: '+650.00',
-    status: 'active',
-  },
-  {
-    id: '2',
-    username: 'crypto_whale',
-    email: 'user2@example.com',
-    subscribedAt: '2024-12-15',
-    capital: '20000 USDT',
-    pnl: '+2100.00',
-    status: 'active',
-  },
-  {
-    id: '3',
-    username: 'newbie_2024',
-    email: 'user3@example.com',
-    subscribedAt: '2025-01-10',
-    capital: '1000 USDT',
-    pnl: '+85.00',
-    status: 'active',
-  },
-];
+interface SignalInfo {
+  id: string;
+  type: string;
+  symbol: string;
+  side: string;
+  price: string | null;
+  createdAt: string;
+}
 
-// 模拟交易记录
-const mockTrades = [
-  {
-    id: '1',
-    time: '2025-01-30 14:32:15',
-    pair: 'BTC/USDT',
-    side: 'buy',
-    price: '42150.00',
-    amount: '0.05',
-    total: '2107.50',
-    status: 'filled',
-  },
-  {
-    id: '2',
-    time: '2025-01-30 10:15:42',
-    pair: 'BTC/USDT',
-    side: 'sell',
-    price: '42380.00',
-    amount: '0.05',
-    total: '2119.00',
-    pnl: '+11.50',
-    status: 'filled',
-  },
-  {
-    id: '3',
-    time: '2025-01-29 22:45:18',
-    pair: 'BTC/USDT',
-    side: 'buy',
-    price: '41950.00',
-    amount: '0.08',
-    total: '3356.00',
-    status: 'filled',
-  },
-];
-
-// 模拟操作日志
-const mockLogs = [
-  { time: '2025-01-30 14:32:15', action: '执行买入信号', detail: 'BTC/USDT 0.05 @ 42150' },
-  { time: '2025-01-30 10:15:42', action: '执行卖出信号', detail: 'BTC/USDT 0.05 @ 42380' },
-  { time: '2025-01-29 22:45:18', action: '执行买入信号', detail: 'BTC/USDT 0.08 @ 41950' },
-  { time: '2025-01-28 09:00:00', action: '策略参数更新', detail: '止损比例调整为 3%' },
-  { time: '2025-01-25 15:30:00', action: '新用户订阅', detail: 'newbie_2024 订阅策略' },
-];
+interface StrategyDetail {
+  id: string;
+  name: string;
+  description: string;
+  freqtradeId: string;
+  riskLevel: string;
+  isActive: boolean;
+  isFeatured: boolean;
+  sortOrder: number;
+  imageUrl: string | null;
+  tags: string[];
+  return7d: string | null;
+  return30d: string | null;
+  return90d: string | null;
+  maxDrawdown: string | null;
+  winRate: string | null;
+  totalTrades: number;
+  subscribersCount: number;
+  signalsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  subscribers: SubscriberInfo[];
+  recentSignals: SignalInfo[];
+}
 
 export const StrategyShow = () => {
-  const statusConfig = {
-    draft: { color: 'default', label: '草稿' },
-    pending: { color: 'processing', label: '审核中' },
-    active: { color: 'success', label: '运行中' },
-    paused: { color: 'warning', label: '已暂停' },
-    offline: { color: 'error', label: '已下架' },
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [strategy, setStrategy] = useState<StrategyDetail | null>(null);
+
+  useEffect(() => {
+    const fetchStrategy = async () => {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await api.get<StrategyDetail>(`/admin/strategies/${id}`);
+        setStrategy(data);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '获取策略信息失败';
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStrategy();
+  }, [id]);
+
+  const statusConfig: Record<string, { color: string; label: string }> = {
+    true: { color: 'success', label: '运行中' },
+    false: { color: 'default', label: '已停用' },
   };
 
-  const typeConfig = {
-    ai: { color: 'purple', label: 'AI策略' },
-    manual: { color: 'blue', label: '手动策略' },
-    quant: { color: 'cyan', label: '量化策略' },
-  };
-
-  const riskConfig = {
+  const riskConfig: Record<string, { color: string; label: string }> = {
     low: { color: 'green', label: '低风险' },
     medium: { color: 'orange', label: '中风险' },
     high: { color: 'red', label: '高风险' },
   };
 
   const subscriberColumns = [
-    { title: '用户ID', dataIndex: 'id', key: 'id', width: 80 },
+    { title: '订阅ID', dataIndex: 'id', key: 'id', width: 100, ellipsis: true },
     {
       title: '用户',
       key: 'user',
-      render: (_: unknown, record: (typeof mockSubscribers)[0]) => (
+      render: (_: unknown, record: SubscriberInfo) => (
         <Space>
           <Avatar size="small" icon={<UserOutlined />} />
           <div>
@@ -168,67 +133,81 @@ export const StrategyShow = () => {
         </Space>
       ),
     },
-    { title: '订阅时间', dataIndex: 'subscribedAt', key: 'subscribedAt' },
-    { title: '跟单资金', dataIndex: 'capital', key: 'capital' },
     {
-      title: '盈亏',
-      dataIndex: 'pnl',
-      key: 'pnl',
-      render: (value: string) => (
-        <span style={{ color: value.startsWith('+') ? '#52c41a' : '#f5222d' }}>
-          {value} USDT
-        </span>
-      ),
+      title: '订阅时间',
+      dataIndex: 'subscribedAt',
+      key: 'subscribedAt',
+      render: (v: string) => new Date(v).toLocaleDateString('zh-CN'),
+    },
+    {
+      title: '跟单资金',
+      dataIndex: 'capital',
+      key: 'capital',
+      render: (v: string) => `${parseFloat(v).toLocaleString()} USDT`,
     },
     {
       title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'active' ? 'green' : 'default'}>
-          {status === 'active' ? '跟单中' : '已停止'}
+      dataIndex: 'isActive',
+      key: 'isActive',
+      render: (isActive: boolean) => (
+        <Tag color={isActive ? 'green' : 'default'}>
+          {isActive ? '跟单中' : '已停止'}
         </Tag>
       ),
     },
   ];
 
-  const tradeColumns = [
-    { title: '时间', dataIndex: 'time', key: 'time', width: 180 },
-    { title: '交易对', dataIndex: 'pair', key: 'pair', width: 100 },
+  const signalColumns = [
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 180,
+      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+    },
+    { title: '交易对', dataIndex: 'symbol', key: 'symbol', width: 120 },
+    { title: '类型', dataIndex: 'type', key: 'type', width: 80 },
     {
       title: '方向',
       dataIndex: 'side',
       key: 'side',
       width: 80,
       render: (side: string) => (
-        <Tag color={side === 'buy' ? 'green' : 'red'}>
-          {side === 'buy' ? '买入' : '卖出'}
+        <Tag color={side === 'buy' || side === 'long' ? 'green' : 'red'}>
+          {side === 'buy' || side === 'long' ? '买入' : '卖出'}
         </Tag>
       ),
     },
-    { title: '价格', dataIndex: 'price', key: 'price' },
-    { title: '数量', dataIndex: 'amount', key: 'amount' },
-    { title: '金额', dataIndex: 'total', key: 'total' },
     {
-      title: '盈亏',
-      dataIndex: 'pnl',
-      key: 'pnl',
-      render: (value: string) =>
-        value ? (
-          <span style={{ color: value.startsWith('+') ? '#52c41a' : '#f5222d' }}>
-            {value}
-          </span>
-        ) : (
-          '-'
-        ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: () => <Tag color="green">已成交</Tag>,
+      title: '价格',
+      dataIndex: 'price',
+      key: 'price',
+      render: (v: string | null) => v ? parseFloat(v).toLocaleString() : '-',
     },
   ];
+
+  if (loading) {
+    return (
+      <Show>
+        <div style={{ textAlign: 'center', padding: 50 }}>
+          <Spin size="large" />
+        </div>
+      </Show>
+    );
+  }
+
+  if (error || !strategy) {
+    return (
+      <Show>
+        <Alert
+          message="加载失败"
+          description={error || '策略不存在'}
+          type="error"
+          action={<Button onClick={() => window.location.reload()}>重试</Button>}
+        />
+      </Show>
+    );
+  }
 
   const tabItems = [
     {
@@ -246,20 +225,24 @@ export const StrategyShow = () => {
             <Col span={6}>
               <Card>
                 <Statistic
-                  title="累计收益率"
-                  value={mockStrategy.totalReturn}
-                  valueStyle={{ color: '#52c41a' }}
-                  prefix={<RiseOutlined />}
+                  title="7天收益率"
+                  value={strategy.return7d ? parseFloat(strategy.return7d) : 0}
+                  precision={2}
+                  valueStyle={{ color: parseFloat(strategy.return7d || '0') >= 0 ? '#52c41a' : '#f5222d' }}
+                  prefix={parseFloat(strategy.return7d || '0') >= 0 ? <RiseOutlined /> : <FallOutlined />}
+                  suffix="%"
                 />
               </Card>
             </Col>
             <Col span={6}>
               <Card>
                 <Statistic
-                  title="本月收益率"
-                  value={mockStrategy.monthReturn}
-                  valueStyle={{ color: '#52c41a' }}
-                  prefix={<RiseOutlined />}
+                  title="30天收益率"
+                  value={strategy.return30d ? parseFloat(strategy.return30d) : 0}
+                  precision={2}
+                  valueStyle={{ color: parseFloat(strategy.return30d || '0') >= 0 ? '#52c41a' : '#f5222d' }}
+                  prefix={parseFloat(strategy.return30d || '0') >= 0 ? <RiseOutlined /> : <FallOutlined />}
+                  suffix="%"
                 />
               </Card>
             </Col>
@@ -267,15 +250,17 @@ export const StrategyShow = () => {
               <Card>
                 <Statistic
                   title="最大回撤"
-                  value={mockStrategy.maxDrawdown}
+                  value={strategy.maxDrawdown ? parseFloat(strategy.maxDrawdown) : 0}
+                  precision={2}
                   valueStyle={{ color: '#f5222d' }}
                   prefix={<FallOutlined />}
+                  suffix="%"
                 />
               </Card>
             </Col>
             <Col span={6}>
               <Card>
-                <Statistic title="订阅用户" value={mockStrategy.subscribers} suffix="人" />
+                <Statistic title="订阅用户" value={strategy.subscribersCount} suffix="人" />
               </Card>
             </Col>
           </Row>
@@ -283,32 +268,42 @@ export const StrategyShow = () => {
           {/* 详细信息 */}
           <Card title="策略信息">
             <Descriptions column={2}>
-              <Descriptions.Item label="策略ID">{mockStrategy.id}</Descriptions.Item>
-              <Descriptions.Item label="策略名称">{mockStrategy.name}</Descriptions.Item>
-              <Descriptions.Item label="创建者">{mockStrategy.creator}</Descriptions.Item>
-              <Descriptions.Item label="类型">
-                <Tag color={typeConfig[mockStrategy.type as keyof typeof typeConfig].color}>
-                  {typeConfig[mockStrategy.type as keyof typeof typeConfig].label}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="交易对">{mockStrategy.tradingPair}</Descriptions.Item>
+              <Descriptions.Item label="策略ID">{strategy.id}</Descriptions.Item>
+              <Descriptions.Item label="策略名称">{strategy.name}</Descriptions.Item>
+              <Descriptions.Item label="Freqtrade ID">{strategy.freqtradeId}</Descriptions.Item>
               <Descriptions.Item label="状态">
-                <Tag color={statusConfig[mockStrategy.status as keyof typeof statusConfig].color}>
-                  {statusConfig[mockStrategy.status as keyof typeof statusConfig].label}
+                <Tag color={statusConfig[String(strategy.isActive)]?.color || 'default'}>
+                  {statusConfig[String(strategy.isActive)]?.label || '未知'}
                 </Tag>
               </Descriptions.Item>
               <Descriptions.Item label="风险等级">
-                <Tag color={riskConfig[mockStrategy.riskLevel as keyof typeof riskConfig].color}>
-                  {riskConfig[mockStrategy.riskLevel as keyof typeof riskConfig].label}
+                <Tag color={riskConfig[strategy.riskLevel]?.color || 'default'}>
+                  {riskConfig[strategy.riskLevel]?.label || strategy.riskLevel}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="月费">{mockStrategy.monthlyFee} USDT</Descriptions.Item>
-              <Descriptions.Item label="最小资金">{mockStrategy.minCapital} USDT</Descriptions.Item>
-              <Descriptions.Item label="最大资金">{mockStrategy.maxCapital} USDT</Descriptions.Item>
-              <Descriptions.Item label="创建时间">{mockStrategy.createdAt}</Descriptions.Item>
-              <Descriptions.Item label="更新时间">{mockStrategy.updatedAt}</Descriptions.Item>
+              <Descriptions.Item label="首页推荐">
+                <Tag color={strategy.isFeatured ? 'blue' : 'default'}>
+                  {strategy.isFeatured ? '是' : '否'}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="标签">
+                {strategy.tags && strategy.tags.length > 0 ? (
+                  <Space>
+                    {strategy.tags.map((tag, idx) => (
+                      <Tag key={idx}>{tag}</Tag>
+                    ))}
+                  </Space>
+                ) : '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="排序权重">{strategy.sortOrder}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {new Date(strategy.createdAt).toLocaleString('zh-CN')}
+              </Descriptions.Item>
+              <Descriptions.Item label="更新时间">
+                {new Date(strategy.updatedAt).toLocaleString('zh-CN')}
+              </Descriptions.Item>
               <Descriptions.Item label="策略描述" span={2}>
-                {mockStrategy.description}
+                {strategy.description || '-'}
               </Descriptions.Item>
             </Descriptions>
           </Card>
@@ -317,16 +312,27 @@ export const StrategyShow = () => {
           <Card title="交易统计">
             <Row gutter={16}>
               <Col span={6}>
-                <Statistic title="总交易次数" value={mockStrategy.totalTrades} />
+                <Statistic title="总交易次数" value={strategy.totalTrades} />
               </Col>
               <Col span={6}>
-                <Statistic title="胜率" value={mockStrategy.winRate} />
+                <Statistic
+                  title="胜率"
+                  value={strategy.winRate ? parseFloat(strategy.winRate) : 0}
+                  suffix="%"
+                  precision={1}
+                />
               </Col>
               <Col span={6}>
-                <Statistic title="平均持仓时间" value={mockStrategy.avgHoldingTime} />
+                <Statistic title="信号数量" value={strategy.signalsCount} />
               </Col>
               <Col span={6}>
-                <Statistic title="夏普比率" value={mockStrategy.sharpeRatio} />
+                <Statistic
+                  title="90天收益率"
+                  value={strategy.return90d ? parseFloat(strategy.return90d) : 0}
+                  suffix="%"
+                  precision={2}
+                  valueStyle={{ color: parseFloat(strategy.return90d || '0') >= 0 ? '#52c41a' : '#f5222d' }}
+                />
               </Col>
             </Row>
           </Card>
@@ -338,67 +344,54 @@ export const StrategyShow = () => {
       label: (
         <span>
           <UserOutlined />
-          订阅用户 ({mockStrategy.subscribers})
+          订阅用户 ({strategy.subscribersCount})
         </span>
       ),
-      children: (
+      children: strategy.subscribers && strategy.subscribers.length > 0 ? (
         <Table
-          dataSource={mockSubscribers}
+          dataSource={strategy.subscribers}
           columns={subscriberColumns}
           rowKey="id"
           pagination={{ pageSize: 10 }}
         />
+      ) : (
+        <Empty description="暂无订阅用户" />
       ),
     },
     {
-      key: 'trades',
-      label: (
-        <span>
-          <DollarOutlined />
-          交易记录
-        </span>
-      ),
-      children: (
-        <Table
-          dataSource={mockTrades}
-          columns={tradeColumns}
-          rowKey="id"
-          pagination={{ pageSize: 20 }}
-        />
-      ),
-    },
-    {
-      key: 'logs',
+      key: 'signals',
       label: (
         <span>
           <HistoryOutlined />
-          操作日志
+          信号记录
         </span>
       ),
-      children: (
-        <Card>
-          <Timeline
-            items={mockLogs.map((log) => ({
-              children: (
-                <div>
-                  <Text strong>{log.action}</Text>
-                  <br />
-                  <Text type="secondary">{log.detail}</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {log.time}
-                  </Text>
-                </div>
-              ),
-            }))}
-          />
-        </Card>
+      children: strategy.recentSignals && strategy.recentSignals.length > 0 ? (
+        <Table
+          dataSource={strategy.recentSignals}
+          columns={signalColumns}
+          rowKey="id"
+          pagination={{ pageSize: 20 }}
+        />
+      ) : (
+        <Empty description="暂无信号记录" />
       ),
     },
   ];
 
   return (
-    <Show>
+    <Show
+      headerButtons={[
+        <Button
+          key="edit"
+          type="primary"
+          icon={<EditOutlined />}
+          onClick={() => navigate(`/strategies/${id}/edit`)}
+        >
+          编辑
+        </Button>,
+      ]}
+    >
       <Card>
         <Tabs items={tabItems} />
       </Card>

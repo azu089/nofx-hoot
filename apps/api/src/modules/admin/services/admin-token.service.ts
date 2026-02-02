@@ -47,15 +47,20 @@ export class AdminTokenService {
       }),
       // 用户持有统计
       this.prisma.user.aggregate({
-        _sum: { hootBalance: true, lockedBalance: true, availableBalance: true },
+        _sum: {
+          hootBalance: true,
+          lockedBalance: true,
+          availableBalance: true,
+        },
       }),
     ]);
 
     // 计算流通量（空投 - 销毁）
     const totalAirdrop = airdropStats._sum.amount || new Decimal(0);
     const totalBurned = burnStats._sum.amount || new Decimal(0);
-    const totalCirculating = new Decimal(totalAirdrop.toString())
-      .minus(totalBurned.toString());
+    const totalCirculating = new Decimal(totalAirdrop.toString()).minus(
+      totalBurned.toString(),
+    );
 
     return {
       overview: {
@@ -124,7 +129,11 @@ export class AdminTokenService {
   }
 
   // 获取空投记录
-  async getAirdropRecords(page: number = 1, limit: number = 50, status?: string) {
+  async getAirdropRecords(
+    page: number = 1,
+    limit: number = 50,
+    status?: string,
+  ) {
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -150,12 +159,21 @@ export class AdminTokenService {
     ]);
 
     return {
-      items: airdrops.map((a) => ({
-        ...a,
-        amount: a.amount.toString(),
-        balance: a.balance.toString(),
-        releasedAmount: a.releasedAmount.toString(),
-      })),
+      items: airdrops.map((a) => {
+        // 计算释放结束时间
+        const vestingEndAt = new Date(a.vestingStart);
+        vestingEndAt.setDate(vestingEndAt.getDate() + a.vestingDays);
+
+        return {
+          ...a,
+          amount: a.amount.toString(),
+          balance: a.balance.toString(),
+          releasedAmount: a.releasedAmount.toString(),
+          vestingStartAt: a.vestingStart,
+          vestingEndAt: vestingEndAt,
+          reason: a.type, // 空投类型作为原因
+        };
+      }),
       total,
       page,
       limit,
@@ -233,7 +251,9 @@ export class AdminTokenService {
       },
     });
 
-    this.logger.log(`代币流通记录: ${data.type} ${data.direction} ${data.amount}`);
+    this.logger.log(
+      `代币流通记录: ${data.type} ${data.direction} ${data.amount}`,
+    );
     return record;
   }
 
@@ -247,10 +267,7 @@ export class AdminTokenService {
           { availableBalance: { gt: 0 } },
         ],
       },
-      orderBy: [
-        { hootBalance: 'desc' },
-        { availableBalance: 'desc' },
-      ],
+      orderBy: [{ hootBalance: 'desc' }, { availableBalance: 'desc' }],
       take: limit,
       select: {
         id: true,

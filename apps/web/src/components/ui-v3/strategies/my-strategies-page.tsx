@@ -103,7 +103,7 @@ const strategyTypeLabels: Record<string, { label: string; color: string }> = {
 }
 
 export function MyStrategiesPage({
-  strategies = mockStrategies,
+  strategies = [],
   onEditStrategy,
   onDeleteStrategy,
   onToggleStrategy,

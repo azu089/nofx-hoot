@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useLocale } from '@/i18n/provider';
 
 // 币种价格类型
 export interface CoinPrice {
@@ -24,16 +25,48 @@ export interface CryptoNews {
   publishedAt: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
   tags?: string[];
+  image?: string; // 新闻配图
 }
 
-// 公告类型
+// 公告类型（API 返回已翻译的内容）
 export interface Announcement {
   id: string;
-  title: string;
-  content?: string;
-  type: 'info' | 'warning' | 'success' | 'promo';
+  title: string;           // 已翻译的标题
+  content?: string;        // 已翻译的内容
+  type: 'info' | 'warning' | 'success' | 'promo' | string;
   link?: string;
+  coverImage?: string;
   createdAt: string;
+}
+
+// 跑马灯类型（API 返回已翻译的内容）
+export interface MarqueeItem {
+  id: string;
+  content: string;         // 已翻译的内容
+  link?: string;
+  bgColor?: string;
+  textColor?: string;
+}
+
+// 跑马灯配置
+export interface MarqueeConfig {
+  scrollSpeed: number;      // 滚动速度（像素/秒）
+  pauseOnHover: boolean;    // 鼠标悬停时暂停
+  displayDuration: number;  // 每条消息显示时长（秒）
+}
+
+/**
+ * 获取公告标题（直接返回，API 已处理翻译）
+ */
+export function getAnnouncementTitle(announcement: Announcement, _locale?: string): string {
+  return announcement.title;
+}
+
+/**
+ * 获取公告内容（直接返回，API 已处理翻译）
+ */
+export function getAnnouncementContent(announcement: Announcement, _locale?: string): string | undefined {
+  return announcement.content;
 }
 
 // 首页聚合数据类型
@@ -41,6 +74,8 @@ export interface HomepageData {
   prices: CoinPrice[];
   news: CryptoNews[];
   announcements: Announcement[];
+  marquees: MarqueeItem[];
+  marqueeConfig: MarqueeConfig;
 }
 
 /**
@@ -74,11 +109,13 @@ export function useMarketNews(limit = 10) {
 }
 
 /**
- * 获取平台公告
+ * 获取平台公告（包含当前语言）
  */
 export function useAnnouncements() {
+  const { locale } = useLocale();
+
   return useQuery({
-    queryKey: ['market', 'announcements'],
+    queryKey: ['market', 'announcements', locale], // 包含 locale
     queryFn: async () => {
       const response = await api.get<Announcement[]>('/market/announcements');
       return response.data;
@@ -89,10 +126,13 @@ export function useAnnouncements() {
 
 /**
  * 获取首页聚合数据（一次请求获取所有数据）
+ * 包含当前语言，语言切换时自动重新获取
  */
 export function useHomepageData() {
+  const { locale } = useLocale();
+
   return useQuery({
-    queryKey: ['market', 'homepage'],
+    queryKey: ['market', 'homepage', locale], // 包含 locale，语言变化时重新获取
     queryFn: async () => {
       const response = await api.get<HomepageData>('/market/homepage');
       return response.data;

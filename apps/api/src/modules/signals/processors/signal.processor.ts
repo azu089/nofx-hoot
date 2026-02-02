@@ -3,7 +3,11 @@ import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SignalJobData, TradeJobData, TradingConfigData } from '../dto/signal.dto';
+import {
+  SignalJobData,
+  TradeJobData,
+  TradingConfigData,
+} from '../dto/signal.dto';
 
 @Processor('signal')
 export class SignalProcessor extends WorkerHost {
@@ -54,10 +58,16 @@ export class SignalProcessor extends WorkerHost {
         tradingType: (sub as any).tradingType || 'spot',
         leverage: (sub as any).leverage || 1,
         marginMode: (sub as any).marginMode || 'cross',
-        slippageTolerance: parseFloat(((sub as any).slippageTolerance || 0.5).toString()),
+        slippageTolerance: parseFloat(
+          ((sub as any).slippageTolerance || 0.5).toString(),
+        ),
         autoClose: (sub as any).autoClose !== false, // 默认 true
-        stopLossPercent: (sub as any).stopLossPercent ? parseFloat((sub as any).stopLossPercent.toString()) : undefined,
-        takeProfitPercent: (sub as any).takeProfitPercent ? parseFloat((sub as any).takeProfitPercent.toString()) : undefined,
+        stopLossPercent: (sub as any).stopLossPercent
+          ? parseFloat((sub as any).stopLossPercent.toString())
+          : undefined,
+        takeProfitPercent: (sub as any).takeProfitPercent
+          ? parseFloat((sub as any).takeProfitPercent.toString())
+          : undefined,
         maxRetries: (sub as any).maxRetries || 3,
         retryDelayMs: (sub as any).retryDelayMs || 1000,
       };
@@ -83,7 +93,9 @@ export class SignalProcessor extends WorkerHost {
         },
       });
 
-      this.logger.log(`已为用户 ${sub.userId} 创建交易任务 (${tradingConfig.tradingType})`);
+      this.logger.log(
+        `已为用户 ${sub.userId} 创建交易任务 (${tradingConfig.tradingType})`,
+      );
     }
 
     // 更新信号分发时间

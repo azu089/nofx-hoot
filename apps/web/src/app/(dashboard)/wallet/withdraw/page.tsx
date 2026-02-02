@@ -3,20 +3,27 @@
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { WithdrawPage as WithdrawPageUI } from '@/components/ui-v3/wallet/withdraw-page';
 import { MobileWithdrawPage } from '@/components/ui-v3/mobile/mobile-withdraw-page';
 
 export default function WithdrawPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   // 获取余额
   const { data: balance } = useQuery({
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
-      const response = await api.get<{ usdt: string; hoot: string }>('/wallet/balance');
+      const response = await api.get<{
+        usdtBalance: string;
+        hootBalance: string;
+        pointBalance: string;
+      }>('/wallet/balance');
       return response.data;
     },
+    enabled: isAuthenticated,
   });
 
   // 获取提现记录
@@ -37,6 +44,7 @@ export default function WithdrawPage() {
       }>('/wallet/withdraw-requests');
       return response.data;
     },
+    enabled: isAuthenticated,
   });
 
   // 提现请求
@@ -86,12 +94,14 @@ export default function WithdrawPage() {
     router.push('/wallet');
   };
 
+  const usdtBalance = parseFloat(balance?.usdtBalance || '0');
+
   return (
     <>
       {/* 桌面端 */}
       <div className="hidden md:block">
         <WithdrawPageUI
-          balance={parseFloat(balance?.usdt || '0')}
+          balance={usdtBalance}
           recentWithdrawals={recentWithdrawals}
           onWithdraw={(data) => withdrawMutation.mutate(data)}
         />
@@ -99,7 +109,12 @@ export default function WithdrawPage() {
 
       {/* 移动端 */}
       <div className="block md:hidden">
-        <MobileWithdrawPage onBack={handleBack} />
+        <MobileWithdrawPage
+          balance={usdtBalance}
+          recentWithdrawals={recentWithdrawals}
+          onBack={handleBack}
+          onWithdraw={(data) => withdrawMutation.mutate(data)}
+        />
       </div>
     </>
   );

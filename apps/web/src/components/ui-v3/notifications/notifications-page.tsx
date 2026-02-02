@@ -169,7 +169,7 @@ export function NotificationsPage({
             <div className="flex items-center gap-4">
               <button
                 type="button"
-                onClick={() => onNavigate?.('/me')}
+                onClick={() => onNavigate?.('/profile')}
                 className="p-2 hover:bg-[#12121A] rounded-lg transition-colors"
               >
                 <ArrowLeft className="w-5 h-5 text-[#9090A0]" />

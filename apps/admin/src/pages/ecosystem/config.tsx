@@ -1,6 +1,13 @@
 /**
  * 生态配置页面
  * 质押分红比例、邀请返佣配置
+ * 已对接真实 API:
+ * - GET /admin/ecosystem/staking/config
+ * - PUT /admin/ecosystem/staking/config
+ * - GET /admin/referral/config
+ * - PUT /admin/referral/config
+ * - GET /admin/ecosystem/stats
+ * - GET /admin/ecosystem/config-history
  */
 import {
   Card,
@@ -12,7 +19,6 @@ import {
   Divider,
   Alert,
   Modal,
-  message,
   Row,
   Col,
   Statistic,
@@ -20,6 +26,7 @@ import {
   Tag,
   Switch,
   Select,
+  Spin,
 } from 'antd';
 import {
   SaveOutlined,
@@ -28,8 +35,11 @@ import {
   TeamOutlined,
   GiftOutlined,
   DollarOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { Title } = Typography;
 
@@ -61,70 +71,105 @@ interface IStakingConfig {
 
 // 邀请返佣配置
 interface IReferralConfig {
-  enabled: boolean;
-
-  // 返佣比例
-  level1Ratio: number;          // 一级返佣 (直推) 10%
-  level2Ratio: number;          // 二级返佣 (间推) 5%
-
-  // 返佣来源
-  sourceType: 'gas_fee' | 'profit' | 'both';
-
-  // 返佣条件
-  minTradeAmount: number;       // 最小交易金额
-  minProfitAmount: number;      // 最小盈利金额
-
-  // 返佣上限
-  maxDailyCommission: number;   // 每日上限
-  maxTotalCommission: number;   // 总上限 (0=无上限)
+  isActive: boolean;
+  level1Rate: string;
+  level2Rate: string;
+  level3Rate: string;
+  enabledTypes: string[];
 }
 
-// 模拟当前配置
-const mockStakingConfig: IStakingConfig = {
-  dividendPoolRatio: 40,
-  buybackRatio: 10,
-  platformRatio: 50,
-  typeA: {
-    enabled: true,
-    minAmount: 1000,
-    baseMultiplier: 1.0,
-  },
-  typeB: {
-    enabled: true,
-    minAmount: 10000,
-    minLockDays: 30,
-    maxLockDays: 365,
-    maxMultiplier: 3.0,
-  },
-  dividendCycle: 'weekly',
-  minDividendAmount: 1,
-};
-
-const mockReferralConfig: IReferralConfig = {
-  enabled: true,
-  level1Ratio: 10,
-  level2Ratio: 5,
-  sourceType: 'gas_fee',
-  minTradeAmount: 100,
-  minProfitAmount: 10,
-  maxDailyCommission: 1000,
-  maxTotalCommission: 0,
-};
-
 // 统计数据
-const mockStats = {
-  totalDividendPaid: 2580000,
-  totalCommissionPaid: 156000,
-  avgDailyDividend: 12500,
-  avgDailyCommission: 2800,
-  activeStakers: 892,
-  activeReferrers: 156,
-};
+interface IEcosystemStats {
+  totalDividendPaid: string;
+  totalCommissionPaid: string;
+  avgDailyDividend: string;
+  avgDailyCommission: string;
+  activeStakers: number;
+  activeReferrers: number;
+}
+
+// 配置变更历史
+interface IConfigHistory {
+  id: string;
+  time: string;
+  type: string;
+  change: string;
+  operator: string;
+}
 
 export const EcosystemConfigPage = () => {
+  const message = useMessage();
   const [stakingForm] = Form.useForm();
   const [referralForm] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState<IEcosystemStats | null>(null);
+  const [configHistory, setConfigHistory] = useState<IConfigHistory[]>([]);
+
+  // 存储加载的配置数据
+  const [stakingConfig, setStakingConfig] = useState<IStakingConfig | null>(null);
+  const [referralConfig, setReferralConfig] = useState<{
+    enabled: boolean;
+    level1Ratio: number;
+    level2Ratio: number;
+    level3Ratio: number;
+    sourceType: string;
+  } | null>(null);
+
+  // 加载数据
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [stakingRes, referralRes, statsRes, historyRes] = await Promise.all([
+        api.get<{ code: number; data: IStakingConfig }>('/admin/ecosystem/staking/config'),
+        api.get<IReferralConfig>('/admin/referral/config'),
+        api.get<{ code: number; data: IEcosystemStats }>('/admin/ecosystem/stats'),
+        api.get<{ code: number; data: IConfigHistory[] }>('/admin/ecosystem/config-history'),
+      ]);
+
+      // 存储质押配置
+      const sConfig = stakingRes.data || stakingRes;
+      setStakingConfig(sConfig);
+
+      // 存储返佣配置
+      const rConfig = referralRes;
+      setReferralConfig({
+        enabled: rConfig.isActive,
+        level1Ratio: parseFloat(rConfig.level1Rate),
+        level2Ratio: parseFloat(rConfig.level2Rate),
+        level3Ratio: parseFloat(rConfig.level3Rate),
+        sourceType: rConfig.enabledTypes?.includes('gas_fee') ? 'gas_fee' : 'subscription',
+      });
+
+      // 设置统计数据
+      setStats(statsRes.data || statsRes);
+
+      // 设置配置变更历史
+      setConfigHistory(historyRes.data || historyRes || []);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '加载配置失败';
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // 表单渲染后设置值（避免 useForm not connected 警告）
+  useEffect(() => {
+    if (!loading && stakingConfig) {
+      stakingForm.setFieldsValue(stakingConfig);
+    }
+  }, [loading, stakingConfig, stakingForm]);
+
+  useEffect(() => {
+    if (!loading && referralConfig) {
+      referralForm.setFieldsValue(referralConfig);
+    }
+  }, [loading, referralConfig, referralForm]);
 
   // 验证分红比例总和
   const validateRatios = () => {
@@ -159,11 +204,19 @@ export const EcosystemConfigPage = () => {
         okText: '确认保存',
         cancelText: '取消',
         onOk: async () => {
-          setLoading(true);
-          // 模拟保存
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          setLoading(false);
-          message.success('质押分红配置已保存');
+          setSaving(true);
+          try {
+            const values = stakingForm.getFieldsValue();
+            await api.put('/admin/ecosystem/staking/config', values);
+            message.success('质押分红配置已保存');
+            // 刷新配置历史
+            fetchData();
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : '保存失败';
+            message.error(errorMessage);
+          } finally {
+            setSaving(false);
+          }
         },
       });
     } catch (error) {
@@ -192,10 +245,25 @@ export const EcosystemConfigPage = () => {
         okText: '确认保存',
         cancelText: '取消',
         onOk: async () => {
-          setLoading(true);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          setLoading(false);
-          message.success('邀请返佣配置已保存');
+          setSaving(true);
+          try {
+            const values = referralForm.getFieldsValue();
+            await api.put('/admin/referral/config', {
+              level1Rate: values.level1Ratio,
+              level2Rate: values.level2Ratio,
+              level3Rate: values.level3Ratio || 0,
+              enabledTypes: [values.sourceType],
+              isActive: values.enabled,
+            });
+            message.success('邀请返佣配置已保存');
+            // 刷新数据
+            fetchData();
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : '保存失败';
+            message.error(errorMessage);
+          } finally {
+            setSaving(false);
+          }
         },
       });
     } catch (error) {
@@ -203,9 +271,25 @@ export const EcosystemConfigPage = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 24 }}>
-      <Title level={4} style={{ marginBottom: 24 }}>生态配置</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>生态配置</Title>
+        <Button
+          icon={<ReloadOutlined spin={loading} />}
+          onClick={fetchData}
+        >
+          刷新
+        </Button>
+      </div>
 
       {/* 统计概览 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -213,7 +297,7 @@ export const EcosystemConfigPage = () => {
           <Card>
             <Statistic
               title="累计分红发放"
-              value={mockStats.totalDividendPaid}
+              value={parseFloat(stats?.totalDividendPaid || '0')}
               precision={2}
               prefix={<DollarOutlined />}
               suffix="USDT"
@@ -225,7 +309,7 @@ export const EcosystemConfigPage = () => {
           <Card>
             <Statistic
               title="累计返佣发放"
-              value={mockStats.totalCommissionPaid}
+              value={parseFloat(stats?.totalCommissionPaid || '0')}
               precision={2}
               prefix={<GiftOutlined />}
               suffix="USDT"
@@ -237,7 +321,7 @@ export const EcosystemConfigPage = () => {
           <Card>
             <Statistic
               title="活跃质押用户"
-              value={mockStats.activeStakers}
+              value={stats?.activeStakers || 0}
               prefix={<TeamOutlined />}
               suffix="人"
               valueStyle={{ color: '#722ed1' }}
@@ -248,7 +332,7 @@ export const EcosystemConfigPage = () => {
           <Card>
             <Statistic
               title="活跃邀请人"
-              value={mockStats.activeReferrers}
+              value={stats?.activeReferrers || 0}
               prefix={<TeamOutlined />}
               suffix="人"
               valueStyle={{ color: '#faad14' }}
@@ -257,6 +341,7 @@ export const EcosystemConfigPage = () => {
         </Col>
       </Row>
 
+      <Spin spinning={loading}>
       <Row gutter={24}>
         {/* 质押分红配置 */}
         <Col span={12}>
@@ -272,7 +357,7 @@ export const EcosystemConfigPage = () => {
                 type="primary"
                 icon={<SaveOutlined />}
                 onClick={handleSaveStaking}
-                loading={loading}
+                loading={saving}
               >
                 保存配置
               </Button>
@@ -281,7 +366,6 @@ export const EcosystemConfigPage = () => {
             <Form
               form={stakingForm}
               layout="vertical"
-              initialValues={mockStakingConfig}
             >
               <Title level={5}>收入分配比例</Title>
               <Alert
@@ -304,7 +388,7 @@ export const EcosystemConfigPage = () => {
                       max={100}
                       precision={0}
                       style={{ width: '100%' }}
-                      addonAfter="%"
+                      suffix="%"
                     />
                   </Form.Item>
                 </Col>
@@ -320,7 +404,7 @@ export const EcosystemConfigPage = () => {
                       max={100}
                       precision={0}
                       style={{ width: '100%' }}
-                      addonAfter="%"
+                      suffix="%"
                     />
                   </Form.Item>
                 </Col>
@@ -336,7 +420,7 @@ export const EcosystemConfigPage = () => {
                       max={100}
                       precision={0}
                       style={{ width: '100%' }}
-                      addonAfter="%"
+                      suffix="%"
                     />
                   </Form.Item>
                 </Col>
@@ -364,7 +448,7 @@ export const EcosystemConfigPage = () => {
                     <InputNumber
                       min={0}
                       style={{ width: '100%' }}
-                      addonAfter="HOOT"
+                      suffix="HOOT"
                     />
                   </Form.Item>
                 </Col>
@@ -376,7 +460,7 @@ export const EcosystemConfigPage = () => {
                     <InputNumber
                       disabled
                       style={{ width: '100%' }}
-                      addonAfter="x"
+                      suffix="x"
                     />
                   </Form.Item>
                 </Col>
@@ -402,7 +486,7 @@ export const EcosystemConfigPage = () => {
                     <InputNumber
                       min={0}
                       style={{ width: '100%' }}
-                      addonAfter="HOOT"
+                      suffix="HOOT"
                     />
                   </Form.Item>
                 </Col>
@@ -415,7 +499,7 @@ export const EcosystemConfigPage = () => {
                     <InputNumber
                       min={1}
                       style={{ width: '100%' }}
-                      addonAfter="天"
+                      suffix="天"
                     />
                   </Form.Item>
                 </Col>
@@ -430,7 +514,7 @@ export const EcosystemConfigPage = () => {
                       max={10}
                       precision={1}
                       style={{ width: '100%' }}
-                      addonAfter="x"
+                      suffix="x"
                     />
                   </Form.Item>
                 </Col>
@@ -466,7 +550,7 @@ export const EcosystemConfigPage = () => {
                       min={0}
                       precision={2}
                       style={{ width: '100%' }}
-                      addonAfter="USDT"
+                      suffix="USDT"
                     />
                   </Form.Item>
                 </Col>
@@ -489,7 +573,7 @@ export const EcosystemConfigPage = () => {
                 type="primary"
                 icon={<SaveOutlined />}
                 onClick={handleSaveReferral}
-                loading={loading}
+                loading={saving}
               >
                 保存配置
               </Button>
@@ -498,7 +582,6 @@ export const EcosystemConfigPage = () => {
             <Form
               form={referralForm}
               layout="vertical"
-              initialValues={mockReferralConfig}
             >
               <Form.Item
                 label="返佣功能"
@@ -519,7 +602,7 @@ export const EcosystemConfigPage = () => {
               />
 
               <Row gutter={16}>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
                     label="一级返佣（直推）"
                     name="level1Ratio"
@@ -531,11 +614,11 @@ export const EcosystemConfigPage = () => {
                       max={50}
                       precision={1}
                       style={{ width: '100%' }}
-                      addonAfter="%"
+                      suffix="%"
                     />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
                     label="二级返佣（间推）"
                     name="level2Ratio"
@@ -547,7 +630,22 @@ export const EcosystemConfigPage = () => {
                       max={30}
                       precision={1}
                       style={{ width: '100%' }}
-                      addonAfter="%"
+                      suffix="%"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    label="三级返佣"
+                    name="level3Ratio"
+                    extra="三级下线"
+                  >
+                    <InputNumber
+                      min={0}
+                      max={20}
+                      precision={1}
+                      style={{ width: '100%' }}
+                      suffix="%"
                     />
                   </Form.Item>
                 </Col>
@@ -564,116 +662,24 @@ export const EcosystemConfigPage = () => {
                 <Select
                   options={[
                     { label: '燃油费（Gas Fee）', value: 'gas_fee' },
-                    { label: '盈利分成', value: 'profit' },
-                    { label: '燃油费 + 盈利分成', value: 'both' },
+                    { label: '订阅费', value: 'subscription' },
                   ]}
                 />
               </Form.Item>
-
-              <Divider />
-
-              <Title level={5}>返佣条件</Title>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    label="最小交易金额"
-                    name="minTradeAmount"
-                    rules={[{ required: true, message: '请输入' }]}
-                    extra="交易金额需达到此值"
-                  >
-                    <InputNumber
-                      min={0}
-                      precision={2}
-                      style={{ width: '100%' }}
-                      addonAfter="USDT"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    label="最小盈利金额"
-                    name="minProfitAmount"
-                    rules={[{ required: true, message: '请输入' }]}
-                    extra="盈利需达到此值（仅盈利类型）"
-                  >
-                    <InputNumber
-                      min={0}
-                      precision={2}
-                      style={{ width: '100%' }}
-                      addonAfter="USDT"
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Divider />
-
-              <Title level={5}>返佣上限</Title>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    label="每日返佣上限"
-                    name="maxDailyCommission"
-                    rules={[{ required: true, message: '请输入' }]}
-                    extra="单人每日最多获得"
-                  >
-                    <InputNumber
-                      min={0}
-                      precision={2}
-                      style={{ width: '100%' }}
-                      addonAfter="USDT"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    label="总返佣上限"
-                    name="maxTotalCommission"
-                    rules={[{ required: true, message: '请输入' }]}
-                    extra="0 表示无上限"
-                  >
-                    <InputNumber
-                      min={0}
-                      precision={2}
-                      style={{ width: '100%' }}
-                      addonAfter="USDT"
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
             </Form>
           </Card>
         </Col>
       </Row>
+      </Spin>
 
       {/* 配置变更历史 */}
       <Card title="配置变更记录" style={{ marginTop: 24 }}>
         <Table
-          dataSource={[
-            {
-              id: '1',
-              time: '2025-01-30 10:00:00',
-              type: '质押分红',
-              change: '分红池比例: 35% → 40%',
-              operator: 'admin',
-            },
-            {
-              id: '2',
-              time: '2025-01-25 14:30:00',
-              type: '邀请返佣',
-              change: '一级返佣: 8% → 10%',
-              operator: 'super_admin',
-            },
-            {
-              id: '3',
-              time: '2025-01-20 09:00:00',
-              type: '质押分红',
-              change: '分红周期: daily → weekly',
-              operator: 'admin',
-            },
-          ]}
+          dataSource={configHistory}
           columns={[
-            { title: '时间', dataIndex: 'time', key: 'time', width: 180 },
+            { title: '时间', dataIndex: 'time', key: 'time', width: 180,
+              render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '-',
+            },
             {
               title: '类型',
               dataIndex: 'type',
@@ -689,6 +695,7 @@ export const EcosystemConfigPage = () => {
           rowKey="id"
           pagination={false}
           size="small"
+          locale={{ emptyText: '暂无配置变更记录' }}
         />
       </Card>
     </div>

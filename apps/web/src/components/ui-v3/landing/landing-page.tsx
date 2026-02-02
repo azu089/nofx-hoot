@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { useFeaturedStrategies, formatReturn, getRiskDisplay, type Strategy } from '@/hooks/useStrategies'
+import { useTranslations } from '@/i18n/provider'
 
 interface LandingPageProps {
   onStartTrading?: () => void
@@ -158,28 +159,85 @@ export function LandingPage({
   onRegister,
   onViewStrategies,
 }: LandingPageProps) {
+  const t = useTranslations('landing')
   const [isVisible] = useState(true) // 直接初始化为 true
   const [currentSlide, setCurrentSlide] = useState(0)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   // 获取首页推荐策略
   const { data: strategiesData, isLoading: strategiesLoading } = useFeaturedStrategies()
-  const featuredStrategies = strategiesData && strategiesData.length > 0 ? strategiesData : defaultStrategies
+
+  // 创建翻译后的默认策略
+  const translatedDefaultStrategies = [
+    { ...defaultStrategies[0], name: t('defaultStrategies.aiTrend') },
+    { ...defaultStrategies[1], name: t('defaultStrategies.stableGrid') },
+    { ...defaultStrategies[2], name: t('defaultStrategies.swingHunter') },
+  ]
+  const featuredStrategies = strategiesData && strategiesData.length > 0 ? strategiesData : translatedDefaultStrategies
+
+  // 翻译后的轮播数据
+  const carouselSlidesTranslated = [
+    {
+      type: 'profit',
+      title: t('carousel.profitTitle'),
+      subtitle: t('carousel.profitSubtitle'),
+      description: t('carousel.profitDesc'),
+      gradient: 'from-emerald-500/20 to-cyan-500/20',
+    },
+    {
+      type: 'security',
+      title: t('carousel.securityTitle'),
+      subtitle: t('carousel.securitySubtitle'),
+      description: t('carousel.securityDesc'),
+      gradient: 'from-blue-500/20 to-purple-500/20',
+    },
+    {
+      type: 'promo',
+      title: t('carousel.promoTitle'),
+      subtitle: t('carousel.promoSubtitle'),
+      description: t('carousel.promoDesc'),
+      gradient: 'from-orange-500/20 to-red-500/20',
+    },
+    {
+      type: 'feature',
+      title: t('carousel.featureTitle'),
+      subtitle: t('carousel.featureSubtitle'),
+      description: t('carousel.featureDesc'),
+      gradient: 'from-cyan-500/20 to-teal-500/20',
+    },
+  ]
+
+  // 翻译后的用户评价
+  const testimonialsTranslated = [
+    { avatar: '👨‍💼', name: t('testimonials.user1Name'), content: t('testimonials.user1Content'), rating: 5 },
+    { avatar: '👩‍💻', name: t('testimonials.user2Name'), content: t('testimonials.user2Content'), rating: 5 },
+    { avatar: '👨‍🎓', name: t('testimonials.user3Name'), content: t('testimonials.user3Content'), rating: 5 },
+    { avatar: '👩‍🔬', name: t('testimonials.user4Name'), content: t('testimonials.user4Content'), rating: 5 },
+  ]
+
+  // 翻译后的FAQ
+  const faqsTranslated = [
+    { q: t('faqItems.q1'), a: t('faqItems.a1') },
+    { q: t('faqItems.q2'), a: t('faqItems.a2') },
+    { q: t('faqItems.q3'), a: t('faqItems.a3') },
+    { q: t('faqItems.q4'), a: t('faqItems.a4') },
+    { q: t('faqItems.q5'), a: t('faqItems.a5') },
+  ]
 
   // 轮播自动播放
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % carouselSlides.length)
+      setCurrentSlide((prev) => (prev + 1) % carouselSlidesTranslated.length)
     }, 5000)
     return () => clearInterval(timer)
-  }, [])
+  }, [carouselSlidesTranslated.length])
 
   const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % carouselSlides.length)
+    setCurrentSlide((prev) => (prev + 1) % carouselSlidesTranslated.length)
   }
 
   const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + carouselSlides.length) % carouselSlides.length)
+    setCurrentSlide((prev) => (prev - 1 + carouselSlidesTranslated.length) % carouselSlidesTranslated.length)
   }
 
   return (
@@ -204,22 +262,22 @@ export function LandingPage({
           {/* Badge */}
           <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#06B6D4]/10 backdrop-blur-sm border border-[#06B6D4]/20 mb-8">
             <Bot className="w-4 h-4 text-[#06B6D4] mr-2" />
-            <span className="text-sm text-[#06B6D4]">AI 智能量化交易</span>
+            <span className="text-sm text-[#06B6D4]">{t('aiQuantTrading')}</span>
           </div>
 
           {/* Main Title */}
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
             <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-              用 AI 策略
+              {t('useAiStrategy')}
             </span>
-            <span className="block text-[#06B6D4] mt-2">让交易变简单</span>
+            <span className="block text-[#06B6D4] mt-2">{t('makeTradeSimple')}</span>
           </h1>
 
           {/* Subtitle */}
           <p className="text-lg sm:text-xl text-[#9090A0] mb-8 max-w-2xl mx-auto leading-relaxed">
-            连接你的交易所，选择专业策略
+            {t('heroSubtitle1')}
             <br />
-            7x24小时自动执行，告别盯盘
+            {t('heroSubtitle2')}
           </p>
 
           {/* CTA Buttons */}
@@ -229,7 +287,7 @@ export function LandingPage({
               onClick={onRegister || onStartTrading}
               className="group px-8 py-4 bg-gradient-to-r from-[#06B6D4] to-cyan-400 hover:from-cyan-400 hover:to-[#06B6D4] rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center text-black shadow-lg shadow-[#06B6D4]/25"
             >
-              免费开始
+              {t('startFree')}
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <button
@@ -237,13 +295,13 @@ export function LandingPage({
               onClick={onLogin || onWatchDemo}
               className="px-8 py-4 bg-[#F8F8FC]/5 hover:bg-[#F8F8FC]/10 backdrop-blur-sm border border-[#F8F8FC]/20 rounded-xl font-semibold transition-all duration-300"
             >
-              查看演示
+              {t('watchDemo')}
             </button>
           </div>
 
           {/* Exchange Logos */}
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            <span className="text-sm text-[#606070]">支持交易所:</span>
+            <span className="text-sm text-[#606070]">{t('supportedExchanges')}</span>
             {exchanges.map((exchange) => (
               <div
                 key={exchange.name}
@@ -273,7 +331,7 @@ export function LandingPage({
                 className="flex transition-transform duration-500 ease-out"
                 style={{ transform: `translateX(-${currentSlide * 100}%)` }}
               >
-                {carouselSlides.map((slide, index) => (
+                {carouselSlidesTranslated.map((slide, index) => (
                   <div key={index} className="w-full flex-shrink-0 px-2">
                     <div
                       className={`p-8 sm:p-12 rounded-2xl bg-gradient-to-br ${slide.gradient} backdrop-blur-xl border border-[#1E1E2E]`}
@@ -307,7 +365,7 @@ export function LandingPage({
             <button
               type="button"
               onClick={prevSlide}
-              aria-label="上一张"
+              aria-label={t('prevSlide')}
               className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 p-2 rounded-full bg-[#12121A] border border-[#1E1E2E] hover:border-[#06B6D4]/50 transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-[#9090A0]" />
@@ -315,7 +373,7 @@ export function LandingPage({
             <button
               type="button"
               onClick={nextSlide}
-              aria-label="下一张"
+              aria-label={t('nextSlide')}
               className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 p-2 rounded-full bg-[#12121A] border border-[#1E1E2E] hover:border-[#06B6D4]/50 transition-colors"
             >
               <ArrowRight className="w-5 h-5 text-[#9090A0]" />
@@ -323,12 +381,12 @@ export function LandingPage({
 
             {/* Dots */}
             <div className="flex justify-center gap-2 mt-6">
-              {carouselSlides.map((_, index) => (
+              {carouselSlidesTranslated.map((_, index) => (
                 <button
                   type="button"
                   key={index}
                   onClick={() => setCurrentSlide(index)}
-                  aria-label={`切换到第 ${index + 1} 张`}
+                  aria-label={t('switchToSlide', { n: index + 1 })}
                   className={`w-2 h-2 rounded-full transition-all ${
                     currentSlide === index
                       ? 'w-6 bg-[#06B6D4]'
@@ -347,10 +405,10 @@ export function LandingPage({
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-                三步开始赚钱
+                {t('threeSteps')}
               </span>
             </h2>
-            <p className="text-[#9090A0]">简单几步，即可开启自动化交易之旅</p>
+            <p className="text-[#9090A0]">{t('stepsSubtitle')}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -358,20 +416,20 @@ export function LandingPage({
               {
                 step: '01',
                 icon: Users,
-                title: '注册账号',
-                description: '邮箱注册，1分钟完成',
+                title: t('step1Title'),
+                description: t('step1Desc'),
               },
               {
                 step: '02',
                 icon: Link2,
-                title: '绑定交易所',
-                description: 'API安全连接，资金始终在你账户',
+                title: t('step2Title'),
+                description: t('step2Desc'),
               },
               {
                 step: '03',
                 icon: TrendingUp,
-                title: '选择策略',
-                description: '一键启动，自动执行，开始盈利',
+                title: t('step3Title'),
+                description: t('step3Desc'),
               },
             ].map((item, index) => (
               <div key={index} className="relative">
@@ -400,10 +458,10 @@ export function LandingPage({
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-                明星策略
+                {t('starStrategies')}
               </span>
             </h2>
-            <p className="text-[#9090A0]">精选优质策略，助你稳健盈利</p>
+            <p className="text-[#9090A0]">{t('selectQualityStrategies')}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -425,17 +483,17 @@ export function LandingPage({
                         {strategy.name}
                       </h3>
                       <span className={`text-xs px-2 py-1 rounded-full bg-[#1E1E2E] ${risk.color}`}>
-                        {risk.label}风险
+                        {risk.label}{t('riskSuffix')}
                       </span>
                     </div>
                     <div className="text-3xl font-bold text-emerald-400 mb-4">
                       {returnValue}
                     </div>
                     <div className="flex items-center justify-between text-sm text-[#9090A0]">
-                      <span>30天收益</span>
+                      <span>{t('return30d')}</span>
                       <span className="flex items-center">
                         <Users className="w-4 h-4 mr-1" />
-                        {(strategy.subscriberCount || 0).toLocaleString()} 订阅
+                        {(strategy.subscriberCount || 0).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -450,7 +508,7 @@ export function LandingPage({
               onClick={onViewStrategies}
               className="inline-flex items-center text-[#06B6D4] hover:text-cyan-300 transition-colors"
             >
-              查看更多策略
+              {t('viewMoreStrategies')}
               <ArrowRight className="w-4 h-4 ml-1" />
             </button>
           </div>
@@ -463,7 +521,7 @@ export function LandingPage({
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-                安全可信赖
+                {t('safeTrust')}
               </span>
             </h2>
           </div>
@@ -471,7 +529,7 @@ export function LandingPage({
           {/* Exchange Logos */}
           <div className="flex items-center justify-center gap-6 flex-wrap mb-12">
             <span className="text-sm text-[#606070] w-full text-center mb-4">
-              支持主流交易所
+              {t('supportMainExchanges')}
             </span>
             {exchanges.map((exchange) => (
               <div
@@ -495,18 +553,18 @@ export function LandingPage({
             {[
               {
                 icon: Lock,
-                title: 'API 无提款权限',
-                description: '仅授权交易权限，资金无法被转移',
+                title: t('apiNoWithdraw'),
+                description: t('apiNoWithdrawDesc'),
               },
               {
                 icon: Wallet,
-                title: '资金始终在你账户',
-                description: '我们不托管任何用户资金',
+                title: t('fundsInYourAccount'),
+                description: t('fundsInYourAccountDesc'),
               },
               {
                 icon: Shield,
-                title: '银行级加密',
-                description: 'AES-256加密传输，数据安全保障',
+                title: t('bankEncryption'),
+                description: t('bankEncryptionDesc'),
               },
             ].map((item, index) => (
               <div
@@ -530,14 +588,14 @@ export function LandingPage({
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-                用户评价
+                {t('userReviews')}
               </span>
             </h2>
-            <p className="text-[#9090A0]">听听他们怎么说</p>
+            <p className="text-[#9090A0]">{t('listenToThem')}</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {testimonials.map((item, index) => (
+            {testimonialsTranslated.map((item, index) => (
               <div
                 key={index}
                 className="p-6 rounded-2xl bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E]"
@@ -571,13 +629,13 @@ export function LandingPage({
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
-                常见问题
+                {t('faq')}
               </span>
             </h2>
           </div>
 
           <div className="space-y-4">
-            {faqs.map((faq, index) => (
+            {faqsTranslated.map((faq, index) => (
               <div
                 key={index}
                 className="rounded-xl bg-[#12121A]/80 border border-[#1E1E2E] overflow-hidden"
@@ -610,17 +668,17 @@ export function LandingPage({
         <div className="max-w-4xl mx-auto text-center">
           <div className="p-10 rounded-3xl bg-gradient-to-r from-[#06B6D4]/10 to-cyan-400/5 backdrop-blur-xl border border-[#06B6D4]/20">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-[#F8F8FC]">
-              准备好开始了吗？
+              {t('readyToStart')}
             </h2>
             <p className="text-lg text-[#9090A0] mb-8 max-w-2xl mx-auto">
-              加入数千名已经在使用 Hoot 进行自动化交易的用户
+              {t('joinThousands')}
             </p>
             <button
               type="button"
               onClick={onRegister}
               className="px-8 py-4 bg-gradient-to-r from-[#06B6D4] to-cyan-400 hover:from-cyan-400 hover:to-[#06B6D4] rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 text-black shadow-lg shadow-[#06B6D4]/25"
             >
-              立即免费注册
+              {t('registerNow')}
             </button>
           </div>
         </div>
@@ -631,16 +689,16 @@ export function LandingPage({
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
             <div>
-              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">产品</h4>
+              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">{t('product')}</h4>
               <ul className="space-y-2">
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    策略市场
+                    {t('strategyMarket')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    定价
+                    {t('pricing')}
                   </a>
                 </li>
                 <li>
@@ -651,61 +709,61 @@ export function LandingPage({
               </ul>
             </div>
             <div>
-              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">关于我们</h4>
+              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">{t('aboutUs')}</h4>
               <ul className="space-y-2">
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    团队
+                    {t('team')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    博客
+                    {t('blog')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    加入我们
+                    {t('joinUsLink')}
                   </a>
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">支持</h4>
+              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">{t('support')}</h4>
               <ul className="space-y-2">
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    帮助中心
+                    {t('helpCenter')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    联系我们
+                    {t('contactUs')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    服务状态
+                    {t('serviceStatus')}
                   </a>
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">法律</h4>
+              <h4 className="text-lg font-semibold text-[#F8F8FC] mb-4">{t('legal')}</h4>
               <ul className="space-y-2">
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    隐私政策
+                    {t('privacy')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    服务条款
+                    {t('terms')}
                   </a>
                 </li>
                 <li>
                   <a href="#" className="text-[#9090A0] hover:text-[#06B6D4] transition-colors">
-                    安全
+                    {t('security')}
                   </a>
                 </li>
               </ul>

@@ -34,6 +34,7 @@ model User {
 
   // 账户状态
   status String @default("active") // active, frozen, banned
+  signalEnabled Boolean @default(true) @map("signal_enabled") // 是否启用信号接收
 
   // HOOT 空投余额（Vesting 机制）
   lockedBalance    Decimal @default(0) @db.Decimal(18, 8) @map("locked_balance")    // 锁定中（释放中）
@@ -60,6 +61,10 @@ model User {
   agentId String? @map("agent_id")
   agent   Agent?  @relation("AgentUsers", fields: [agentId], references: [id])
 
+  // 会员状态
+  membershipStatus   String    @default("none") @map("membership_status") // none, active, expired
+  membershipExpireAt DateTime? @map("membership_expire_at") // 会员到期时间
+
   // 关系
   apiKeys            ApiKey[]
   positions          Position[]
@@ -74,8 +79,10 @@ model User {
   airdrops           Airdrop[]
   pointCardRecords   PointCardRecord[]
   gasFeeRecords      GasFeeRecord[]
+  membershipSubs     MembershipSubscription[]
 
   @@index([status])
+  @@index([membershipStatus])
   @@index([agentId])
   @@map("users")
 }
@@ -175,8 +182,15 @@ model ApiKey {
 // 策略
 model Strategy {
   id          String  @id @default(uuid())
-  name        String
-  description String
+
+  // 多语言内容 (JSONB)
+  nameI18n        Json @default("{}") @map("name_i18n")
+  descriptionI18n Json @default("{}") @map("description_i18n")
+  tagsI18n        Json @default("{}") @map("tags_i18n") // {"zh-CN": ["AI", "趋势"], "en": ["AI", "Trend"]}
+
+  // 兼容旧字段
+  name        String @default("")
+  description String @default("")
   freqtradeId String  @unique @map("freqtrade_id") // 对应 Freqtrade 策略名
 
   // 展示信息
@@ -579,6 +593,7 @@ model BillingLog {
 
   type   String // GAS_FEE, SUBSCRIPTION, WITHDRAW_FEE
   amount String // 使用字符串存储，避免精度问题
+  status String @default("completed") // pending, completed, failed
 
   // 幂等性：唯一订单号
   uniqueOrderId String @unique @map("unique_order_id")
@@ -588,6 +603,7 @@ model BillingLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId, type])
+  @@index([status])
   @@map("billing_logs")
 }
 
@@ -799,14 +815,25 @@ model Admin {
   nickname String?
 
   // 角色
-  role     String @default("admin") // super_admin, admin, operator, finance, readonly
+  role     String @default("admin") // super_admin, admin, operator, finance, readonly, agent
 
   // 状态
   isActive Boolean @default(true) @map("is_active")
 
+  // 2FA (Google Authenticator)
+  totpSecret  String?  @map("totp_secret")  // TOTP 密钥（加密存储）
+  totpEnabled Boolean  @default(false) @map("totp_enabled")
+
+  // 登录安全
+  loginAttempts Int       @default(0) @map("login_attempts")  // 连续失败次数
+  lockedUntil   DateTime? @map("locked_until")                // 锁定截止时间
+
   // 登录信息
   lastLoginAt DateTime? @map("last_login_at")
   lastLoginIp String?   @map("last_login_ip")
+
+  // 代理商关联（如果角色是 agent）
+  agentUserId String? @unique @map("agent_user_id")  // 关联的用户ID
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -845,11 +872,47 @@ model AdminOperationLog {
   @@map("admin_operation_logs")
 }
 
+// 审计日志（系统级操作追踪）
+model AuditLog {
+  id          String   @id @default(uuid())
+
+  // 操作者信息
+  actorId     String   @map("actor_id")
+  actorType   String   @map("actor_type") // admin, system, user
+
+  // 操作信息
+  action      String   // 操作类型
+  resourceType String  @map("resource_type") // 资源类型
+  resourceId  String?  @map("resource_id") // 资源ID
+
+  // 详情
+  details     String?  @db.Text
+  metadata    Json?    // 额外元数据
+
+  // IP 和设备信息
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
 // 公告
 model Announcement {
   id    String @id @default(uuid())
-  title String
-  content String @db.Text
+
+  // 多语言内容 (JSONB)
+  // 格式: {"zh-CN": "内容", "en": "Content", "zh-HK": "內容", "ja": "コンテンツ", ...}
+  titleI18n   Json @default("{}") @map("title_i18n")
+  contentI18n Json @default("{}") @map("content_i18n")
+
+  // 兼容旧字段（默认语言）
+  title   String @default("")
+  content String @default("") @db.Text
 
   // 类型和位置
   type     String @default("system") // system, activity, maintenance, emergency
@@ -878,8 +941,13 @@ model Announcement {
 
 // 跑马灯
 model Marquee {
-  id      String @id @default(uuid())
-  content String
+  id String @id @default(uuid())
+
+  // 多语言内容 (JSONB)
+  contentI18n Json @default("{}") @map("content_i18n")
+
+  // 兼容旧字段
+  content String @default("")
   link    String?
 
   // 样式
@@ -898,8 +966,14 @@ model Marquee {
 
 // Banner 广告
 model Banner {
-  id       String @id @default(uuid())
-  imageUrl String @map("image_url")
+  id String @id @default(uuid())
+
+  // 多语言内容 (JSONB)
+  titleI18n    Json @default("{}") @map("title_i18n")
+  imageUrlI18n Json @default("{}") @map("image_url_i18n") // 不同语言可用不同图片
+
+  // 兼容旧字段
+  imageUrl String @default("") @map("image_url")
   title    String?
   link     String?
 
@@ -1079,8 +1153,9 @@ model Agent {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // 关系
-  users       User[]            @relation("AgentUsers")
-  commissions AgentCommission[]
+  users        User[]            @relation("AgentUsers")
+  commissions  AgentCommission[]
+  tokenQuotas  AgentTokenQuota[]
 
   @@map("agents")
 }
@@ -1148,6 +1223,105 @@ model AgentSettlement {
 
   @@index([agentId, status])
   @@map("agent_settlements")
+}
+
+// ========== 代理商代币收益系统 ==========
+
+// 代理商私募配额
+model AgentTokenQuota {
+  id      String @id @default(uuid())
+  agentId String @map("agent_id")
+  agent   Agent  @relation(fields: [agentId], references: [id])
+
+  // 配额信息
+  level          String                    // bronze, silver, gold, platinum
+  quotaAmount    Decimal @db.Decimal(18, 8) @map("quota_amount")   // 配额数量
+  purchasePrice  Decimal @db.Decimal(18, 8) @map("purchase_price") // 购买单价
+  purchaseAmount Decimal @db.Decimal(18, 8) @map("purchase_amount") // 购买金额（已支付）
+
+  // 释放配置
+  vestingMonths   Int      @default(6) @map("vesting_months")   // 释放周期（月）
+  vestingStart    DateTime? @map("vesting_start")               // 开始释放时间
+  releasedAmount  Decimal  @default(0) @db.Decimal(18, 8) @map("released_amount") // 已释放数量
+  lastReleaseAt   DateTime? @map("last_release_at")             // 上次释放时间
+
+  // 状态: pending(待购买), paid(已付款待审核), active(释放中), completed(已完成), revoked(已撤销)
+  status String @default("pending")
+  remark String?
+
+  // 审核信息
+  approvedBy String?   @map("approved_by")
+  approvedAt DateTime? @map("approved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([agentId, status])
+  @@map("agent_token_quotas")
+}
+
+// 代理商分红池（月度）
+model AgentDividendPool {
+  id String @id @default(uuid())
+
+  // 周期
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  monthNumber String   @map("month_number") // 2026-02
+
+  // 燃油费来源
+  gasFeeTotal Decimal @db.Decimal(18, 8) @map("gas_fee_total") // 本月燃油费总额
+  poolRate    Decimal @default(0.10) @db.Decimal(5, 4) @map("pool_rate") // 进入池子比例（如 0.10 = 10%）
+  poolAmount  Decimal @db.Decimal(18, 8) @map("pool_amount") // 池子金额（USDT）
+
+  // 回购信息
+  hootPrice   Decimal? @db.Decimal(18, 8) @map("hoot_price")  // 回购均价
+  hootAmount  Decimal? @db.Decimal(18, 8) @map("hoot_amount") // 回购 HOOT 数量
+
+  // 分配
+  totalTradeVolume   Decimal @default(0) @db.Decimal(18, 8) @map("total_trade_volume") // 参与代理的总交易量
+  distributedAmount  Decimal @default(0) @db.Decimal(18, 8) @map("distributed_amount")
+  participantCount   Int     @default(0) @map("participant_count") // 参与代理数
+
+  // 状态: collecting(收集中), pending(待分配), distributing(分配中), distributed(已分配)
+  status        String    @default("collecting")
+  distributedAt DateTime? @map("distributed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  dividendRecords AgentDividendRecord[]
+
+  @@unique([monthNumber])
+  @@index([status])
+  @@map("agent_dividend_pools")
+}
+
+// 代理商分红记录
+model AgentDividendRecord {
+  id      String @id @default(uuid())
+  poolId  String @map("pool_id")
+  pool    AgentDividendPool @relation(fields: [poolId], references: [id])
+  agentId String @map("agent_id")
+
+  // 贡献数据
+  userTradeVolume  Decimal @db.Decimal(18, 8) @map("user_trade_volume")  // 下属用户交易量
+  contributionRate Decimal @db.Decimal(10, 8) @map("contribution_rate")  // 贡献比例
+
+  // 分红金额
+  dividendUsdt   Decimal @db.Decimal(18, 8) @map("dividend_usdt")   // 分红金额（USDT）
+  dividendHoot   Decimal @db.Decimal(18, 8) @map("dividend_hoot")   // 分红 HOOT 数量
+
+  // 状态
+  status String @default("pending") // pending, paid
+  paidAt DateTime? @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([poolId, agentId])
+  @@index([agentId, status])
+  @@map("agent_dividend_records")
 }
 
 // ========== 订阅收入记录 ==========
@@ -1334,4 +1508,183 @@ model ReferralConfig {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("referral_configs")
+}
+
+// ========== 会员订阅系统 ==========
+
+// 会员套餐定义
+model MembershipPlan {
+  id String @id @default(uuid())
+
+  // 套餐标识
+  code String @unique // monthly, quarterly, yearly
+
+  // 多语言名称
+  nameI18n Json @default("{}") @map("name_i18n")
+
+  // 兼容字段
+  name String @default("")
+
+  // 价格配置
+  price       Decimal @db.Decimal(18, 8) // 套餐价格（USDT）
+  durationDays Int    @map("duration_days") // 有效期天数
+
+  // 折扣信息（用于展示）
+  originalPrice   Decimal? @db.Decimal(18, 8) @map("original_price") // 原价（用于显示划线价）
+  discountPercent Int?     @map("discount_percent") // 折扣百分比
+
+  // 权益
+  maxStrategies Int @default(10) @map("max_strategies") // 最多订阅策略数
+
+  // 排序和状态
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关系
+  subscriptions MembershipSubscription[]
+
+  @@map("membership_plans")
+}
+
+// 会员订阅记录
+model MembershipSubscription {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id])
+
+  // 套餐信息
+  planId       String         @map("plan_id")
+  plan         MembershipPlan @relation(fields: [planId], references: [id])
+  planCode     String         @map("plan_code") // 冗余存储，便于查询
+  planName     String         @map("plan_name") // 冗余存储
+
+  // 支付信息
+  amount       Decimal @db.Decimal(18, 8) // 实际支付金额
+  paymentAsset String  @default("USDT") @map("payment_asset") // USDT 或 POINT
+
+  // 有效期
+  startAt   DateTime @map("start_at")
+  expireAt  DateTime @map("expire_at")
+
+  // 状态: pending(待支付), active(生效中), expired(已过期), cancelled(已取消)
+  status String @default("pending")
+
+  // 续费信息
+  isRenewal    Boolean @default(false) @map("is_renewal") // 是否续费
+  renewedFrom  String? @map("renewed_from") // 续费来源订阅ID
+  autoRenew    Boolean @default(false) @map("auto_renew") // 是否自动续费
+
+  // 幂等性
+  uniqueOrderId String @unique @map("unique_order_id")
+
+  // 支付时间
+  paidAt    DateTime? @map("paid_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@index([userId, expireAt])
+  @@map("membership_subscriptions")
+}
+
+// ========== 内容管理系统 ==========
+
+// 帮助文章
+model HelpArticle {
+  id    String @id @default(uuid())
+  slug  String @unique  // URL 标识符：getting-started, api-keys, etc.
+
+  // 多语言内容 (JSONB) - 支持 10 种语言
+  titleI18n   Json @default("{}") @map("title_i18n")
+  contentI18n Json @default("{}") @map("content_i18n")
+
+  // 兼容旧字段（默认语言）
+  titleZh   String @default("") @map("title_zh")
+  titleEn   String @default("") @map("title_en")
+  contentZh String @default("") @map("content_zh") @db.Text
+  contentEn String @default("") @map("content_en") @db.Text
+
+  // 分类：help（帮助中心）
+  category String @default("help")
+
+  // 图标
+  icon String?
+
+  // 排序和状态
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  // 审计
+  createdBy String? @map("created_by")
+  updatedBy String? @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category, isActive])
+  @@map("help_articles")
+}
+
+// 法律文档
+model LegalDocument {
+  id   String @id @default(uuid())
+  slug String @unique  // URL 标识符：terms, privacy, risk
+
+  // 多语言内容 (JSONB) - 支持 10 种语言
+  titleI18n   Json @default("{}") @map("title_i18n")
+  contentI18n Json @default("{}") @map("content_i18n")
+
+  // 兼容旧字段（默认语言）
+  titleZh   String @default("") @map("title_zh")
+  titleEn   String @default("") @map("title_en")
+  contentZh String @default("") @map("content_zh") @db.Text
+  contentEn String @default("") @map("content_en") @db.Text
+
+  // 版本控制
+  version     String @default("1.0")
+  effectiveAt DateTime @default(now()) @map("effective_at")
+
+  // 状态
+  isActive Boolean @default(true) @map("is_active")
+
+  // 审计
+  createdBy String? @map("created_by")
+  updatedBy String? @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("legal_documents")
+}
+
+// FAQ 条目
+model FaqItem {
+  id String @id @default(uuid())
+
+  // 多语言内容 (JSONB) - 支持 10 种语言
+  questionI18n Json @default("{}") @map("question_i18n")
+  answerI18n   Json @default("{}") @map("answer_i18n")
+
+  // 兼容旧字段（默认语言）
+  questionZh String @default("") @map("question_zh")
+  questionEn String @default("") @map("question_en")
+  answerZh   String @default("") @map("answer_zh") @db.Text
+  answerEn   String @default("") @map("answer_en") @db.Text
+
+  // 分类
+  category String @default("general")
+
+  // 排序和状态
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  // 审计
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category, isActive])
+  @@map("faq_items")
 }

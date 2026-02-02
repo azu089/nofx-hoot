@@ -1,69 +1,82 @@
 /**
- * 页面导出
+ * 管理后台页面统一导出
+ *
+ * 目录结构详见: /apps/admin/STRUCTURE.md
  */
 
-// Login
+// ==================== 认证 ====================
 export { LoginPage } from './login';
 
-// Dashboard
+// ==================== 数据看板 ====================
 export { DashboardPage } from './dashboard';
 
-// Users
+// ==================== 用户管理 ====================
 export { UserList } from './users/list';
 export { UserShow } from './users/show';
 export { UserEdit } from './users/edit';
 
-// Strategies
+// ==================== 策略管理 ====================
 export { StrategyList } from './strategies/list';
 export { StrategyShow } from './strategies/show';
 export { StrategyEdit } from './strategies/edit';
 export { StrategyCreate } from './strategies/create';
 
-// Finance
-export { BillList } from './finance/bills';
-export { WithdrawalList } from './finance/withdrawals';
-export { DepositsPage } from './finance/deposits';
-export { FinanceReportsPage } from './finance/reports';
-
-// Announcements
-export { AnnouncementList } from './announcements/list';
-export { MarqueeList } from './announcements/marquee';
-
-// Content
-export { TextConfigList } from './content/texts';
-export { SystemConfigPage } from './content/config';
-export { BannersPage } from './content/banners';
-
-// Ecosystem
-export { StakingList } from './ecosystem/staking';
-export { WeightsPage } from './ecosystem/weights';
-export { DividendsPage } from './ecosystem/dividends';
-export { EcosystemConfigPage } from './ecosystem/config';
-
-// Trading
+// ==================== 交易中心 ====================
 export { OrdersPage } from './trading/orders';
 export { PositionsPage } from './trading/positions';
 
-// Risk
+// ==================== 信号监控 ====================
+export { SignalsPage } from './signals';
+export { KillSwitchPage } from './signals/kill-switch';
+
+// ==================== 风控管理 ====================
 export { RiskManagementPage } from './risk';
 
-// Logs
-export { LogsPage } from './logs';
-export { OperationLogsPage } from './logs/operations';
-export { TradeLogsPage } from './logs/trades';
-export { LoginLogsPage } from './logs/logins';
-export { SystemLogsPage } from './logs/system';
+// ==================== 财务中心 ====================
+export { FinancePage } from './finance/index';
+export { BillList } from './finance/bills';
+export { DepositsPage } from './finance/deposits';
+export { WithdrawalList } from './finance/withdrawals';
+export { FinanceReportsPage } from './finance/reports';
 
-// Settings
+// ==================== 生态中心 ====================
+export { StakingList } from './ecosystem/staking';
+export { WeightsPage } from './ecosystem/weights';
+export { DividendsPage } from './ecosystem/dividends';
+export { AirdropList } from './ecosystem/airdrops';
+export { EcosystemConfigPage } from './ecosystem/config';
+
+// ==================== 运营管理 ====================
+// 公告
+export { AnnouncementList } from './announcements/list';
+export { MarqueeList } from './announcements/marquee';
+
+// 代理商
+export { AgentsPage } from './agents';
+export { TokenManagementPage } from './agents/token-management';
+
+// ==================== 内容管理 ====================
+export { BannersPage } from './content/banners';
+export { TextConfigList } from './content/texts';
+export { SystemConfigPage } from './content/config';
+export { HelpArticleList } from './content/help-articles';
+export { LegalDocumentList } from './content/legal-docs';
+export { FaqList } from './content/faq';
+
+// ==================== 用户统计 ====================
+export { UserStatsPage } from './stats/users';
+
+// ==================== 系统管理 ====================
+// 设置
 export { SettingsPage } from './settings';
 export { MonitorPage } from './settings/monitor';
 export { AdminsPage } from './settings/admins';
 export { RolesPage } from './settings/roles';
 export { SecuritySettingsPage } from './settings/security';
 
-// Agents
-export { AgentsPage } from './agents';
-
-// Signals
-export { SignalsPage } from './signals';
-export { KillSwitchPage } from './signals/kill-switch';
+// 日志
+export { LogsPage } from './logs';
+export { OperationLogsPage } from './logs/operations';
+export { TradeLogsPage } from './logs/trades';
+export { LoginLogsPage } from './logs/logins';
+export { SystemLogsPage } from './logs/system';

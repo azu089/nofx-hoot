@@ -8,18 +8,19 @@ import {
   ChevronDown,
   Plus
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface Strategy {
   id: string
   name: string
   type: 'DCA' | 'Grid' | 'Arbitrage' | 'AI Signal'
-  marketType: '现货' | '合约'  // 现货或合约
+  marketType: 'spot' | 'futures'  // spot or futures
   creator: string
   winRate: number
   totalReturn: number
   riskLevel: 'low' | 'medium' | 'high'
   subscribers: number
-  badges: ('热门' | '最新' | '专业版')[]
+  badges: ('hot' | 'new' | 'pro')[]
   isHot: boolean
 }
 
@@ -32,6 +33,9 @@ interface StrategyMarketplaceV3Props {
   onSearch?: (query: string) => void
   onFilterChange?: (filter: string) => void
   onCreateStrategy?: () => void
+  onLoadMore?: () => void
+  hasMore?: boolean // 是否有更多数据
+  isLoadingMore?: boolean // 是否正在加载更多
 }
 
 const mockStrategies: Strategy[] = [
@@ -39,72 +43,72 @@ const mockStrategies: Strategy[] = [
     id: '1',
     name: 'DCA Bot Pro',
     type: 'DCA',
-    marketType: '现货',
+    marketType: 'spot',
     creator: 'CryptoMaster',
     winRate: 87.5,
     totalReturn: 156.8,
     riskLevel: 'low',
     subscribers: 2847,
-    badges: ['热门', '专业版'],
+    badges: ['hot', 'pro'],
     isHot: true
   },
   {
     id: '2',
     name: 'Grid Trading Master',
     type: 'Grid',
-    marketType: '合约',
+    marketType: 'futures',
     creator: 'GridKing',
     winRate: 73.2,
     totalReturn: 89.4,
     riskLevel: 'medium',
     subscribers: 1523,
-    badges: ['专业版'],
+    badges: ['pro'],
     isHot: false
   },
   {
     id: '3',
     name: 'AI Signal Hunter',
     type: 'AI Signal',
-    marketType: '合约',
+    marketType: 'futures',
     creator: 'AITrader',
     winRate: 91.3,
     totalReturn: 234.7,
     riskLevel: 'high',
     subscribers: 892,
-    badges: ['最新', '热门'],
+    badges: ['new', 'hot'],
     isHot: true
   },
   {
     id: '4',
     name: 'Arbitrage Eagle',
     type: 'Arbitrage',
-    marketType: '现货',
+    marketType: 'spot',
     creator: 'ArbiMaster',
     winRate: 95.1,
     totalReturn: 67.3,
     riskLevel: 'low',
     subscribers: 3241,
-    badges: ['专业版'],
+    badges: ['pro'],
     isHot: false
   },
   {
     id: '5',
     name: 'Smart Grid Pro',
     type: 'Grid',
-    marketType: '现货',
+    marketType: 'spot',
     creator: 'GridExpert',
     winRate: 78.9,
     totalReturn: 112.5,
     riskLevel: 'medium',
     subscribers: 1876,
-    badges: ['热门'],
+    badges: ['hot'],
     isHot: true
   },
   {
     id: '6',
     name: 'DCA Steady Growth',
     type: 'DCA',
-    marketType: '合约',
+    marketType: 'futures',
     creator: 'SteadyTrader',
     winRate: 82.4,
     totalReturn: 98.7,
@@ -121,41 +125,65 @@ const riskLevelColors: Record<string, string> = {
   'high': 'text-red-400'
 }
 
-const riskLevelText: Record<string, string> = {
-  'low': '低',
-  'medium': '中',
-  'high': '高'
-}
-
-const typeText: Record<string, string> = {
-  'DCA': '定投',
-  'Grid': '网格',
-  'Arbitrage': '套利',
-  'AI Signal': 'AI信号'
-}
+const filterOptions = ['all', 'DCA', 'Grid', 'AI Signal', 'Arbitrage']
+const marketTypeOptions = ['all', 'spot', 'futures']
+const sortOptions = ['hot', 'winRate', 'return', 'new']
 
 export function StrategyMarketplaceV3({
-  strategies = mockStrategies,
+  strategies = [],
   onStrategyClick,
   onSubscribe: _onSubscribe,
   onConfigureStrategy,
   onNavigate,
   onSearch,
   onFilterChange,
-  onCreateStrategy
+  onCreateStrategy,
+  onLoadMore,
+  hasMore = true,
+  isLoadingMore = false
 }: StrategyMarketplaceV3Props) {
   void _onSubscribe
+  const t = useTranslations('strategies')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedFilter, setSelectedFilter] = useState('全部')
-  const [selectedMarketType, setSelectedMarketType] = useState('全部')
-  const [selectedSort, setSelectedSort] = useState('热门')
+  const [selectedFilter, setSelectedFilter] = useState('all')
+  const [selectedMarketType, setSelectedMarketType] = useState('all')
+  const [selectedSort, setSelectedSort] = useState('hot')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [showMarketTypeDropdown, setShowMarketTypeDropdown] = useState(false)
   const [showSortDropdown, setShowSortDropdown] = useState(false)
 
-  const filterOptions = ['全部', '定投', '网格', 'AI信号', '套利']
-  const marketTypeOptions = ['全部', '现货', '合约']
-  const sortOptions = ['热门', '胜率', '收益', '最新']
+  const getFilterLabel = (key: string) => {
+    if (key === 'all') return t('all')
+    return key // DCA, Grid, etc. stay as-is
+  }
+
+  const getMarketTypeLabel = (key: string) => {
+    switch (key) {
+      case 'all': return t('all')
+      case 'spot': return t('spot')
+      case 'futures': return t('futures')
+      default: return key
+    }
+  }
+
+  const getSortLabel = (key: string) => {
+    switch (key) {
+      case 'hot': return t('hot')
+      case 'winRate': return t('winRate')
+      case 'return': return t('return')
+      case 'new': return t('new')
+      default: return key
+    }
+  }
+
+  const getRiskLabel = (risk: string) => {
+    switch (risk) {
+      case 'low': return t('lowRisk')
+      case 'medium': return t('mediumRisk')
+      case 'high': return t('highRisk')
+      default: return risk
+    }
+  }
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value
@@ -183,8 +211,8 @@ export function StrategyMarketplaceV3({
   const filteredStrategies = strategies.filter(strategy => {
     const matchesSearch = strategy.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          strategy.creator.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = selectedFilter === '全部' || typeText[strategy.type] === selectedFilter
-    const matchesMarketType = selectedMarketType === '全部' || strategy.marketType === selectedMarketType
+    const matchesFilter = selectedFilter === 'all' || strategy.type === selectedFilter
+    const matchesMarketType = selectedMarketType === 'all' || strategy.marketType === selectedMarketType
     return matchesSearch && matchesFilter && matchesMarketType
   })
 
@@ -193,7 +221,7 @@ export function StrategyMarketplaceV3({
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-4">
-          <h1 className="text-2xl font-bold text-[#F8F8FC]">策略</h1>
+          <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('pageTitle')}</h1>
         </div>
 
         {/* Controls Row */}
@@ -205,7 +233,7 @@ export function StrategyMarketplaceV3({
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#606070] w-5 h-5" />
                 <input
                   type="text"
-                  placeholder="搜索策略..."
+                  placeholder={t('searchPlaceholder')}
                   value={searchQuery}
                   onChange={handleSearch}
                   className="w-full sm:w-64 pl-10 pr-4 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-[#06B6D4] focus:ring-1 focus:ring-cyan-500/20 transition-all text-sm"
@@ -224,7 +252,7 @@ export function StrategyMarketplaceV3({
                   className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm text-[#F8F8FC] hover:border-[#2A2A3A] transition-all"
                 >
                   <Filter className="w-4 h-4" />
-                  {selectedFilter}
+                  {getFilterLabel(selectedFilter)}
                   <ChevronDown className="w-4 h-4" />
                 </button>
                 {showFilterDropdown && (
@@ -238,7 +266,7 @@ export function StrategyMarketplaceV3({
                           selectedFilter === option ? 'bg-[#1E1E2E] text-cyan-400' : ''
                         }`}
                       >
-                        {option}
+                        {getFilterLabel(option)}
                       </button>
                     ))}
                   </div>
@@ -255,10 +283,10 @@ export function StrategyMarketplaceV3({
                     setShowSortDropdown(false)
                   }}
                   className={`flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm hover:border-[#2A2A3A] transition-all ${
-                    selectedMarketType === '现货' ? 'text-blue-400' : selectedMarketType === '合约' ? 'text-orange-400' : 'text-[#F8F8FC]'
+                    selectedMarketType === 'spot' ? 'text-blue-400' : selectedMarketType === 'futures' ? 'text-orange-400' : 'text-[#F8F8FC]'
                   }`}
                 >
-                  {selectedMarketType === '全部' ? '市场' : selectedMarketType}
+                  {selectedMarketType === 'all' ? t('market') : getMarketTypeLabel(selectedMarketType)}
                   <ChevronDown className="w-4 h-4" />
                 </button>
                 {showMarketTypeDropdown && (
@@ -272,7 +300,7 @@ export function StrategyMarketplaceV3({
                           selectedMarketType === option ? 'bg-[#1E1E2E] text-cyan-400' : ''
                         }`}
                       >
-                        {option}
+                        {getMarketTypeLabel(option)}
                       </button>
                     ))}
                   </div>
@@ -291,7 +319,7 @@ export function StrategyMarketplaceV3({
                   className="flex items-center gap-2 px-3 py-2 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-lg text-sm text-[#F8F8FC] hover:border-[#2A2A3A] transition-all"
                 >
                   <TrendingUp className="w-4 h-4" />
-                  {selectedSort}
+                  {getSortLabel(selectedSort)}
                   <ChevronDown className="w-4 h-4" />
                 </button>
                 {showSortDropdown && (
@@ -305,7 +333,7 @@ export function StrategyMarketplaceV3({
                           selectedSort === option ? 'bg-[#1E1E2E] text-cyan-400' : ''
                         }`}
                       >
-                        {option}
+                        {getSortLabel(option)}
                       </button>
                     ))}
                   </div>
@@ -319,7 +347,7 @@ export function StrategyMarketplaceV3({
                 className="flex items-center gap-2 px-4 py-2 bg-[#06B6D4] hover:bg-[#0891B2] rounded-lg text-sm text-white font-medium transition-all shadow-[0_0_20px_rgba(6,182,212,0.2)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)]"
               >
                 <Plus className="w-4 h-4" />
-                创建策略
+                {t('create')}
               </button>
             </div>
         </div>
@@ -335,21 +363,21 @@ export function StrategyMarketplaceV3({
               {/* 顶部：类型 + 徽章指示器 */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-xs text-[#606070]">
-                  <span>{typeText[strategy.type]}</span>
+                  <span>{strategy.type}</span>
                   <span>·</span>
-                  <span className={strategy.marketType === '现货' ? 'text-blue-400' : 'text-orange-400'}>
-                    {strategy.marketType}
+                  <span className={strategy.marketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
+                    {getMarketTypeLabel(strategy.marketType)}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {strategy.badges.includes('热门') && (
-                    <span className="w-2 h-2 rounded-full bg-red-500" title="热门" />
+                  {strategy.badges.includes('hot') && (
+                    <span className="w-2 h-2 rounded-full bg-red-500" title={t('hot')} />
                   )}
-                  {strategy.badges.includes('最新') && (
-                    <span className="w-2 h-2 rounded-full bg-green-500" title="最新" />
+                  {strategy.badges.includes('new') && (
+                    <span className="w-2 h-2 rounded-full bg-green-500" title={t('new')} />
                   )}
-                  {strategy.badges.includes('专业版') && (
-                    <span className="w-2 h-2 rounded-full bg-purple-500" title="专业版" />
+                  {strategy.badges.includes('pro') && (
+                    <span className="w-2 h-2 rounded-full bg-purple-500" title={t('pro')} />
                   )}
                 </div>
               </div>
@@ -367,52 +395,70 @@ export function StrategyMarketplaceV3({
                 {/* 收益率 - 突出显示 */}
                 <div>
                   <div className="text-green-400 text-3xl font-bold">+{strategy.totalReturn}%</div>
-                  <div className="text-[#606070] text-xs mt-1">总收益</div>
+                  <div className="text-[#606070] text-xs mt-1">{t('totalReturnShort')}</div>
                 </div>
 
                 {/* 其他指标 */}
                 <div className="flex items-center gap-5 text-right">
                   <div>
                     <div className="text-[#F8F8FC] font-semibold">{strategy.winRate}%</div>
-                    <div className="text-[#606070] text-xs">胜率</div>
+                    <div className="text-[#606070] text-xs">{t('winRate')}</div>
                   </div>
                   <div>
                     <div className={`font-semibold ${riskLevelColors[strategy.riskLevel]}`}>
-                      {riskLevelText[strategy.riskLevel]}
+                      {getRiskLabel(strategy.riskLevel)}
                     </div>
-                    <div className="text-[#606070] text-xs">风险</div>
+                    <div className="text-[#606070] text-xs">{t('risk')}</div>
                   </div>
                   <div>
                     <div className="text-[#F8F8FC] font-semibold">{strategy.subscribers.toLocaleString()}</div>
-                    <div className="text-[#606070] text-xs">使用</div>
+                    <div className="text-[#606070] text-xs">{t('users')}</div>
                   </div>
                 </div>
               </div>
 
               {/* 操作按钮 */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onNavigate?.(`/strategies/config?strategyId=${strategy.id}`)
-                  onConfigureStrategy?.(strategy.id)
-                }}
-                className="w-full py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-cyan-400 text-sm font-medium transition-all"
-              >
-                立即使用
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onStrategyClick?.(strategy.id)
+                  }}
+                  className="flex-1 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] rounded-xl text-[#F8F8FC] text-sm font-medium transition-all"
+                >
+                  {t('details')}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onNavigate?.(`/strategies/config?strategyId=${strategy.id}`)
+                    onConfigureStrategy?.(strategy.id)
+                  }}
+                  className="flex-1 py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-cyan-400 text-sm font-medium transition-all"
+                >
+                  {t('useNow')}
+                </button>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Load More Button */}
-        <div className="text-center">
-          <button
-            type="button"
-            className="px-8 py-3 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-xl text-[#F8F8FC] hover:border-[#06B6D4] hover:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-all"
-          >
-            加载更多
-          </button>
+        {/* Load More / All Loaded */}
+        <div className="text-center py-4">
+          {hasMore ? (
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="px-8 py-3 bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-xl text-[#F8F8FC] hover:border-[#06B6D4] hover:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingMore ? t('loading') : t('loadMore')}
+            </button>
+          ) : (
+            <p className="text-[#606070] text-sm">{t('allLoaded')}</p>
+          )}
         </div>
       </div>
     </div>

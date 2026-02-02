@@ -2,25 +2,32 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Eye, EyeOff, Mail, Lock, Wallet } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, Wallet, Send } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface LoginPageProps {
   onLogin?: (email: string, password: string) => void
   onWalletConnect?: () => void
+  onTelegramLogin?: () => void
   onRegister?: () => void
   onForgotPassword?: () => void
+  initialShowEmailForm?: boolean  // 初始是否显示邮箱表单
 }
 
 export function LoginPage({
   onLogin,
   onWalletConnect,
+  onTelegramLogin,
   onRegister,
   onForgotPassword,
+  initialShowEmailForm = false,
 }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showEmailForm, setShowEmailForm] = useState(initialShowEmailForm)
+  const t = useTranslations('auth')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,95 +64,23 @@ export function LoginPage({
                   width={96}
                   height={96}
                   className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                  priority
                   unoptimized
                 />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-[#F8F8FC]">HOOT</h1>
+            <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('welcomeBack')}</h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email input */}
-            <div className="space-y-2">
-              <label
-                htmlFor="email"
-                className="text-sm font-medium text-[#9090A0]"
-              >
-                邮箱
-              </label>
-              <div className="glass-border-glow rounded-xl overflow-hidden">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-[#606070]" />
-                  </div>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
-                    placeholder="your@email.com"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Password input */}
-            <div className="space-y-2">
-              <label
-                htmlFor="password"
-                className="text-sm font-medium text-[#9090A0]"
-              >
-                密码
-              </label>
-              <div className="glass-border-glow rounded-xl overflow-hidden">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-[#606070]" />
-                  </div>
-                  <input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Forgot password link */}
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={onForgotPassword}
-                className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
-              >
-                忘记密码？
-              </button>
-            </div>
-
-            {/* Login button */}
+          <div className="space-y-5">
+            {/* Telegram Login - 主推按钮 */}
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 px-4 rounded-xl font-semibold text-black bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={onTelegramLogin}
+              className="w-full py-4 px-4 rounded-xl font-semibold text-white bg-[#0088cc] hover:bg-[#0099dd] focus:outline-none focus:ring-2 focus:ring-[#0088cc]/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-[#0088cc]/25 flex items-center justify-center gap-3"
             >
-              {isLoading ? '登录中...' : '登录'}
+              <Send className="w-6 h-6" />
+              <span className="text-lg">{t('continueWithTelegram')}</span>
             </button>
 
             {/* Divider */}
@@ -155,34 +90,133 @@ export function LoginPage({
               </div>
               <div className="relative flex justify-center">
                 <span className="px-3 bg-[#12121A] text-sm text-[#606070]">
-                  或
+                  {t('or')}
                 </span>
               </div>
             </div>
 
-            {/* Wallet connect button */}
-            <div className="glass-border-glow rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={onWalletConnect}
-                className="w-full py-3.5 px-4 rounded-xl font-semibold border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <Wallet className="w-5 h-5" />
-                <span>钱包登录</span>
-              </button>
-            </div>
-          </form>
+            {/* Secondary options - 钱包 | 邮箱 */}
+            {!showEmailForm ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={onWalletConnect}
+                  className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Wallet className="w-5 h-5" />
+                  <span>{t('walletLogin')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(true)}
+                  className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>{t('emailLogin')}</span>
+                </button>
+              </div>
+            ) : (
+              /* Email login form */
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Back button */}
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(false)}
+                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors mb-2"
+                >
+                  ← {t('back', { ns: 'common' })}
+                </button>
+
+                {/* Email input */}
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium text-[#9090A0]">
+                    {t('email')}
+                  </label>
+                  <div className="glass-border-glow rounded-xl overflow-hidden">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Mail className="h-5 w-5 text-[#606070]" />
+                      </div>
+                      <input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                        placeholder="your@email.com"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Password input */}
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium text-[#9090A0]">
+                    {t('password')}
+                  </label>
+                  <div className="glass-border-glow rounded-xl overflow-hidden">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Lock className="h-5 w-5 text-[#606070]" />
+                      </div>
+                      <input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-200"
+                        placeholder="••••••••"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
+                        ) : (
+                          <Eye className="h-5 w-5 text-[#606070] hover:text-[#9090A0] transition-colors" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Forgot password link */}
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={onForgotPassword}
+                    className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    {t('forgotPassword')}
+                  </button>
+                </div>
+
+                {/* Login button */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3.5 px-4 rounded-xl font-semibold text-black bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? t('loggingIn') : t('login')}
+                </button>
+              </form>
+            )}
+          </div>
 
           {/* Register link */}
           <div className="mt-8 text-center">
             <p className="text-sm text-[#9090A0]">
-              还没有账户？{' '}
+              {t('noAccount')}{' '}
               <button
                 type="button"
                 onClick={onRegister}
                 className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
               >
-                立即注册
+                {t('registerNow')}
               </button>
             </p>
           </div>

@@ -1,7 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, useMemo } from "react"
+import { toast } from "sonner"
 import Image from "next/image"
+import { useTranslations } from "next-intl"
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import {
   TrendingUp,
   ArrowUpRight,
@@ -57,7 +62,8 @@ interface TransactionItem {
 
 interface APIKeyItem {
   id: string
-  name: string
+  name: string // 用户备注的名称 (label)
+  exchange: string // 交易所名称 (如 Binance, OKX)
   icon?: string
   status: 'active' | 'error'
   apiKey?: string
@@ -65,6 +71,7 @@ interface APIKeyItem {
   createdAt?: string
   balance?: number
   error?: string
+  isLoading?: boolean
 }
 
 // 支持的交易所
@@ -78,18 +85,79 @@ const supportedExchanges = [
 ]
 
 interface MobileWalletPageProps {
+  initialTab?: 'wallet' | 'api' | 'ecosystem'
   onNavigate?: (path: string) => void
 }
 
-export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
-  const [mainTab, setMainTab] = useState<MainTab>("wallet")
+export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWalletPageProps) {
+  const t = useTranslations('wallet')
+  const tCommon = useTranslations('common')
+  const queryClient = useQueryClient()
+  const { isAuthenticated } = useAuth()
+  const [mainTab, setMainTab] = useState<MainTab>(initialTab)
+
+  // 获取钱包余额
+  const { data: balanceData, isLoading: balanceLoading } = useQuery({
+    queryKey: ['wallet', 'balance'],
+    queryFn: async () => {
+      const response = await api.get<{ usdtBalance: string; hootBalance: string; pointBalance: string }>('/wallet/balance')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 获取空投余额（含锁仓信息）
+  const { data: airdropData } = useQuery({
+    queryKey: ['airdrop', 'balance'],
+    queryFn: async () => {
+      const response = await api.get<{
+        totalBalance: string
+        lockedBalance: string
+        availableBalance: string
+        vestingProgress: number
+      }>('/airdrop/balance')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 获取交易记录
+  const { data: transactionsData, isLoading: transactionsLoading } = useQuery({
+    queryKey: ['wallet', 'transactions'],
+    queryFn: async () => {
+      const response = await api.get<{
+        items: Array<{
+          id: string
+          type: string
+          asset: string
+          amount: string
+          status: string
+          createdAt: string
+        }>
+        total: number
+      }>('/wallet/transactions')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
   const [walletSubTab, setWalletSubTab] = useState<WalletSubTab>("assets")
 
   // 历史账单筛选状态
   const [showTypeFilter, setShowTypeFilter] = useState(false)
   const [showAssetFilter, setShowAssetFilter] = useState(false)
+  const [showDatePicker, setShowDatePicker] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'exchange'>('all')
-  const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT'>('all')
+  const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT' | 'GAS'>('all')
+  // 默认显示本月
+  const [dateRange, setDateRange] = useState(() => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    }
+  })
 
   // API 管理弹窗状态
   const [showAddModal, setShowAddModal] = useState(false)
@@ -112,20 +180,21 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
 
   // 筛选选项
   const typeFilterOptions = [
-    { value: 'all', label: '全部类型' },
-    { value: 'deposit', label: '充值' },
-    { value: 'withdraw', label: '提现' },
-    { value: 'exchange', label: '兑换' }
+    { value: 'all', label: t('allTypes') },
+    { value: 'deposit', label: t('deposit') },
+    { value: 'withdraw', label: t('withdraw') },
+    { value: 'exchange', label: t('exchange') }
   ]
 
   const assetFilterOptions = [
-    { value: 'all', label: '全部币种' },
+    { value: 'all', label: t('allAssets') },
     { value: 'USDT', label: 'USDT' },
-    { value: 'HOOT', label: 'HOOT' }
+    { value: 'HOOT', label: 'HOOT' },
+    { value: 'GAS', label: t('gasCard') }
   ]
 
-  const getTypeLabel = (value: string) => typeFilterOptions.find(o => o.value === value)?.label || '全部类型'
-  const getAssetLabel = (value: string) => assetFilterOptions.find(o => o.value === value)?.label || '全部币种'
+  const getTypeLabel = (value: string) => typeFilterOptions.find(o => o.value === value)?.label || t('allTypes')
+  const getAssetLabel = (value: string) => assetFilterOptions.find(o => o.value === value)?.label || t('allAssets')
 
   // API 管理处理函数
   const handleOpenAdd = () => {
@@ -151,39 +220,101 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
     setSelectedApiKey(null)
   }
 
+  // 更新 API Key mutation
+  const updateApiKeyMutation = useMutation({
+    mutationFn: async (data: { id: string; label?: string; apiKey?: string; apiSecret?: string }) => {
+      const response = await api.patch(`/api-keys/${data.id}`, {
+        label: data.label,
+        apiKey: data.apiKey || undefined,
+        apiSecret: data.apiSecret || undefined,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      toast.success(t('apiUpdateSuccess') || '更新成功')
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({ queryKey: ['api-key-balance'] })
+      setShowEditModal(false)
+      setSelectedApiKey(null)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('apiUpdateError') || '更新失败')
+    },
+  })
+
   const handleConfirmEdit = () => {
-    console.log('更新 API Key:', selectedApiKey?.id, editFormData)
-    setShowEditModal(false)
-    setSelectedApiKey(null)
+    if (!selectedApiKey) return
+
+    // 构建更新数据，只包含有值的字段
+    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string } = {
+      id: selectedApiKey.id,
+    }
+
+    // 只有当 label 有值时才包含
+    if (editFormData.label && editFormData.label.trim()) {
+      updateData.label = editFormData.label.trim()
+    }
+
+    // 只有当同时填写了新的 apiKey 和 secretKey 时才更新密钥
+    if (editFormData.apiKey && editFormData.secretKey) {
+      updateData.apiKey = editFormData.apiKey
+      updateData.apiSecret = editFormData.secretKey
+    }
+
+    updateApiKeyMutation.mutate(updateData)
   }
 
-  // 验证 API Key
-  const handleVerify = (api: APIKeyItem) => {
-    setSelectedApiKey(api)
+  // 验证 API Key - 调用真实 API
+  const handleVerify = async (apiItem: APIKeyItem) => {
+    setSelectedApiKey(apiItem)
     setVerifyStatus('loading')
     setVerifyResult(null)
     setShowVerifyModal(true)
 
-    // 模拟 API 验证请求
-    setTimeout(() => {
-      if (api.status === 'active') {
+    try {
+      const response = await api.get<{
+        valid: boolean
+        permissions: string[]
+        balances: { symbol: string; free: number; total: number; usdValue?: number }[]
+        totalUsdValue: number
+        error?: string
+      }>(`/api-keys/${apiItem.id}/verify`)
+
+      const data = response.data
+      if (data.valid) {
         setVerifyStatus('success')
         setVerifyResult({
-          permissions: api.permissions || ['现货交易'],
-          assets: [
-            { symbol: 'USDT', amount: '3,234.56', value: 3234.56 },
-            { symbol: 'BTC', amount: '0.05432', value: 1856.78 },
-            { symbol: 'ETH', amount: '0.8521', value: 143.22 }
-          ],
-          totalValue: api.balance || 5234.56
+          permissions: data.permissions,
+          // 使用后端返回的 usdValue，不再前端计算
+          assets: data.balances.map(b => ({
+            symbol: b.symbol,
+            amount: b.total.toFixed(
+              ['USDT', 'USD', 'BUSD', 'USDC'].includes(b.symbol) ? 2 : 8
+            ),
+            value: b.usdValue || 0
+          })),
+          totalValue: data.totalUsdValue
         })
+        // 更新 selectedApiKey 的权限，确保编辑弹窗显示一致的权限
+        setSelectedApiKey({
+          ...apiItem,
+          permissions: data.permissions,
+          balance: data.totalUsdValue
+        })
+        // 刷新 API Keys 列表缓存，确保卡片上显示最新数据
+        queryClient.invalidateQueries({ queryKey: ['api-key-balance', apiItem.id] })
       } else {
         setVerifyStatus('error')
         setVerifyResult({
-          error: api.error || 'API Key 验证失败，请检查密钥是否正确'
+          error: data.error || t('apiVerifyError')
         })
       }
-    }, 1500)
+    } catch (err: any) {
+      setVerifyStatus('error')
+      setVerifyResult({
+        error: err.message || t('apiVerifyError')
+      })
+    }
   }
 
   const handleCopy = (text: string) => {
@@ -192,94 +323,138 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // 资产数据 - 极简风格
-  const assets: AssetItem[] = [
-    {
+  // 创建 API Key mutation
+  const createApiKeyMutation = useMutation({
+    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
+      const response = await api.post('/api-keys', data)
+      return response.data
+    },
+    onSuccess: () => {
+      toast.success(t('apiAddSuccess'))
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      setShowAddModal(false)
+      setSelectedExchange(null)
+      setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('apiAddError'))
+    },
+  })
+
+  // 处理添加 API Key
+  const handleAddApiKey = async () => {
+    if (!selectedExchange || !formData.apiKey || !formData.secretKey) {
+      return
+    }
+    createApiKeyMutation.mutate({
+      exchange: selectedExchange.toLowerCase(),
+      label: formData.label || `${selectedExchange} ${t('account')}`,
+      apiKey: formData.apiKey,
+      apiSecret: formData.secretKey,
+    })
+  }
+
+  // 资产数据 - 从真实 API 获取
+  const assets = useMemo<AssetItem[]>(() => {
+    const result: AssetItem[] = []
+
+    // USDT
+    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
+    result.push({
       name: "USDT",
       symbol: "USDT",
-      amount: "10,346.57",
-      value: "10,346.57",
+      amount: usdtBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      value: usdtBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       icon: "/icons/usdt.svg",
-    },
-    {
+    })
+
+    // HOOT（可用）- 始终显示
+    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
+    const availableHoot = parseFloat(airdropData?.availableBalance || '0')
+    const displayHoot = availableHoot > 0 ? availableHoot : hootBalance
+    result.push({
       name: "HOOT",
       symbol: "HOOT",
-      amount: "2,500.75",
-      value: "2,500.75",
+      amount: displayHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      value: displayHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       icon: "/icons/hoot/token.png",
-    },
-    {
-      name: "HOOT 释放中",
-      symbol: "HOOT",
-      amount: "15,000",
-      value: "15,000",
-      locked: true,
-      releaseProgress: 17,
-      releaseInfo: "空投锁仓 · 每日释放",
-      icon: "/icons/hoot/token.png",
-    },
-    {
-      name: "点卡",
-      symbol: "GAS",
-      amount: "1,250",
-      value: "1,250",
-      icon: "/icons/gas-card.svg",
-    },
-  ]
+    })
 
-  // 交易历史数据
-  const transactions: TransactionItem[] = [
-    {
-      id: "1",
-      type: "deposit",
-      asset: "USDT",
-      amount: "+500.00",
-      status: "completed",
-      time: "2024-01-20 14:30",
-      trend: "up",
-    },
-    {
-      id: "2",
-      type: "withdraw",
-      asset: "HOOT",
-      amount: "-100.00",
-      status: "completed",
-      time: "2024-01-19 10:15",
-      trend: "down",
-    },
-    {
-      id: "3",
-      type: "exchange",
-      asset: "USDT → HOOT",
-      amount: "1000.00",
-      status: "completed",
-      time: "2024-01-18 16:45",
-      trend: "up",
-    },
-    {
-      id: "4",
-      type: "deposit",
-      asset: "USDT",
-      amount: "+1000.00",
-      status: "pending",
-      time: "2024-01-17 09:00",
-      trend: "up",
-    },
-  ]
+    // HOOT 锁仓释放中 - 始终显示
+    const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
+    result.push({
+      name: t('hootReleasing'),
+      symbol: "HOOT",
+      amount: lockedHoot.toLocaleString('en-US', { minimumFractionDigits: 0 }),
+      value: lockedHoot.toLocaleString('en-US', { minimumFractionDigits: 0 }),
+      locked: true,
+      releaseProgress: airdropData?.vestingProgress || 0,
+      releaseInfo: t('airdropLock'),
+      icon: "/icons/hoot/token.png",
+    })
+
+    // 点卡 - 始终显示
+    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
+    result.push({
+      name: t('gasCard'),
+      symbol: "GAS",
+      amount: pointBalance.toLocaleString('en-US', { minimumFractionDigits: 0 }),
+      value: pointBalance.toLocaleString('en-US', { minimumFractionDigits: 0 }),
+      icon: "/icons/gas-card.svg",
+    })
+
+    return result
+  }, [balanceData, airdropData, t])
+
+  // 交易历史数据 - 从真实 API 获取
+  const transactions = useMemo<TransactionItem[]>(() => {
+    if (!transactionsData?.items) return []
+    return transactionsData.items.map(tx => ({
+      id: tx.id,
+      type: tx.type as TransactionItem['type'],
+      asset: tx.asset,
+      amount: tx.type === 'withdraw' ? `-${parseFloat(tx.amount).toFixed(2)}` : `+${parseFloat(tx.amount).toFixed(2)}`,
+      status: tx.status as TransactionItem['status'],
+      time: new Date(tx.createdAt).toLocaleString('zh-CN'),
+      trend: tx.type === 'withdraw' ? 'down' as const : 'up' as const,
+    }))
+  }, [transactionsData])
+
+  // 计算总余额
+  const totalBalance = useMemo(() => {
+    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
+    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
+    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
+    const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
+    // 暂时假设 HOOT 价格为 1（后续可从行情 API 获取）
+    return usdtBalance + hootBalance + pointBalance + lockedHoot
+  }, [balanceData, airdropData])
 
   // 筛选交易记录
   const filteredTransactions = transactions.filter(tx => {
     const matchesType = txTypeFilter === 'all' || tx.type === txTypeFilter
     const matchesAsset = txAssetFilter === 'all' || tx.asset.includes(txAssetFilter)
-    return matchesType && matchesAsset
+
+    // 时间过滤
+    let matchesDate = true
+    if (tx.time && dateRange.start && dateRange.end) {
+      const txDateStr = tx.time.split(' ')[0].replace(/\//g, '-')
+      const txDate = new Date(txDateStr)
+      const startDate = new Date(dateRange.start)
+      const endDate = new Date(dateRange.end)
+      endDate.setHours(23, 59, 59, 999)
+      matchesDate = txDate >= startDate && txDate <= endDate
+    }
+
+    return matchesType && matchesAsset && matchesDate
   })
 
   // 获取类型文本
   const getTypeText = (type: string) => {
     switch (type) {
-      case 'deposit': return '充值'
-      case 'withdraw': return '提现'
-      case 'exchange': return '兑换'
+      case 'deposit': return t('deposit')
+      case 'withdraw': return t('withdraw')
+      case 'exchange': return t('exchange')
       default: return type
     }
   }
@@ -288,40 +463,77 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'completed':
-        return { icon: <CheckCircle className="w-3.5 h-3.5 text-[#22C55E]" />, text: '成功', color: 'text-[#22C55E]' }
+        return { icon: <CheckCircle className="w-3.5 h-3.5 text-[#22C55E]" />, text: t('completed'), color: 'text-[#22C55E]' }
       case 'pending':
-        return { icon: <Clock className="w-3.5 h-3.5 text-[#F59E0B]" />, text: '处理中', color: 'text-[#F59E0B]' }
+        return { icon: <Clock className="w-3.5 h-3.5 text-[#F59E0B]" />, text: t('pending'), color: 'text-[#F59E0B]' }
       case 'failed':
-        return { icon: <XCircle className="w-3.5 h-3.5 text-[#EF4444]" />, text: '失败', color: 'text-[#EF4444]' }
+        return { icon: <XCircle className="w-3.5 h-3.5 text-[#EF4444]" />, text: t('failed'), color: 'text-[#EF4444]' }
       default:
         return { icon: null, text: status, color: 'text-[#94A3B8]' }
     }
   }
 
-  // API Key 数据 - 与桌面端对齐
-  const apiKeys: APIKeyItem[] = [
-    {
-      id: "1",
-      name: "Binance",
-      icon: "/icons/exchanges/币安.webp",
-      status: "active",
-      apiKey: "vK8x ... j2Qp",
-      permissions: ["现货交易", "合约交易"],
-      createdAt: "2026-01-10",
-      balance: 5234.56,
+  // 从后端获取真实 API Key 列表
+  const { data: apiKeysData } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: async () => {
+      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
+      return response.data?.items || []
     },
-    {
-      id: "2",
-      name: "OKX",
-      icon: "/icons/exchanges/okx.webp",
-      status: "error",
-      apiKey: "aB3c ... 9dEf",
-      permissions: ["现货交易"],
-      createdAt: "2025-12-20",
-      balance: 0,
-      error: "API Key 已过期",
-    },
-  ]
+  })
+
+  // 交易所 logo 映射
+  const exchangeLogos: Record<string, string> = {
+    binance: '/icons/exchanges/币安.webp',
+    okx: '/icons/exchanges/okx.webp',
+    bybit: '/icons/exchanges/bybit.webp',
+  }
+
+  // 为每个 API Key 获取实时余额（30秒缓存）
+  const apiKeyBalanceQueries = useQueries({
+    queries: (apiKeysData || []).map((key: any) => ({
+      queryKey: ['api-key-balance', key.id],
+      queryFn: async () => {
+        try {
+          const response = await api.get<{
+            valid: boolean
+            totalUsdValue: number
+            spotValue: number
+            futuresValue: number
+            permissions: string[]
+            error?: string
+          }>(`/api-keys/${key.id}/verify`)
+          return response.data
+        } catch {
+          return { valid: false, totalUsdValue: 0, spotValue: 0, futuresValue: 0, permissions: [], error: '网络错误' }
+        }
+      },
+      enabled: !!key.id,
+      staleTime: 30 * 1000, // 30秒缓存
+      refetchOnWindowFocus: true,
+    })),
+  })
+
+  // 转换为组件需要的格式（使用 label 代替 exchange 名称）
+  const apiKeys: APIKeyItem[] = (apiKeysData || []).map((key: any, index: number) => {
+    const balanceQuery = apiKeyBalanceQueries[index]
+    const balanceData = balanceQuery?.data
+    const isVerifyFailed = balanceData && balanceData.valid === false
+
+    return {
+      id: key.id,
+      name: key.label || key.exchange, // 用户备注名称，如果没有则使用交易所名称
+      exchange: key.exchange, // 交易所名称
+      icon: exchangeLogos[key.exchange.toLowerCase()] || '/icons/exchanges/default.webp',
+      status: isVerifyFailed ? 'error' : (key.isActive ? 'active' : 'error'),
+      apiKey: key.maskedKey || '****',
+      permissions: balanceData?.permissions || [],
+      createdAt: new Date(key.createdAt).toLocaleDateString('zh-CN'),
+      balance: balanceData?.totalUsdValue || 0,
+      error: isVerifyFailed ? (balanceData?.error || '无法连接到交易所') : (key.isActive ? undefined : 'API Key 已禁用'),
+      isLoading: balanceQuery?.isLoading,
+    }
+  })
 
   // 获取代币图标
   const getAssetIcon = (asset: string) => {
@@ -332,7 +544,14 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] pb-20">
-      {/* 主 Tab 切换 - 移除标题头部 */}
+      {/* Header - 标题 */}
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-center px-4 h-14">
+          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
+        </div>
+      </div>
+
+      {/* 主 Tab 切换 */}
       <div className="px-4 pt-4">
         <div className="flex gap-2 p-1 bg-[#12121A] rounded-xl">
           <button
@@ -350,26 +569,26 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
           <button
             type="button"
             onClick={() => setMainTab("api")}
-            aria-label="API"
+            aria-label={t('api')}
             className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
               mainTab === "api"
                 ? "bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20"
                 : "text-[#94A3B8] hover:text-white"
             }`}
           >
-            API
+            {t('api')}
           </button>
           <button
             type="button"
             onClick={() => setMainTab("ecosystem")}
-            aria-label="生态"
+            aria-label={t('ecosystem')}
             className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${
               mainTab === "ecosystem"
                 ? "bg-[#06B6D4] text-white shadow-lg shadow-[#06B6D4]/20"
                 : "text-[#94A3B8] hover:text-white"
             }`}
           >
-            生态
+            {t('ecosystem')}
           </button>
         </div>
       </div>
@@ -387,43 +606,42 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
             <div className="absolute -top-20 -right-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
             <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl animate-[pulse_2s_ease-in-out_infinite_1s]" />
             <div className="relative z-10">
-              <p className="text-sm text-[#94A3B8] mb-1">总资产 (USDT)</p>
+              <p className="text-sm text-[#94A3B8] mb-1">{t('totalAssets')}</p>
               <div className="flex items-baseline gap-3 mb-4">
-                <h2 className="text-3xl font-bold text-white">$12,847.32</h2>
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#22C55E]/10 text-[#22C55E]">
-                  <TrendingUp className="w-3 h-3" />
-                  <span className="text-xs font-medium">+2.34% 24h</span>
-                </div>
+                <h2 className="text-3xl font-bold text-white">
+                  ${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </h2>
+                {/* 日变化率暂时隐藏，后续接入行情 API 后启用 */}
               </div>
 
-              {/* 快捷操作按钮 - 紧凑行内样式 */}
+              {/* 快捷操作按钮 - 标准移动端尺寸 */}
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => onNavigate?.('/deposit')}
-                  aria-label="充值"
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-lg text-xs font-medium transition-colors"
+                  onClick={() => onNavigate?.('/wallet/deposit')}
+                  aria-label={t('deposit')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl text-sm font-medium transition-colors"
                 >
-                  <ArrowUpRight className="w-3 h-3" />
-                  充值
+                  <ArrowUpRight className="w-4 h-4" />
+                  {t('deposit')}
                 </button>
                 <button
                   type="button"
-                  onClick={() => onNavigate?.('/withdraw')}
-                  aria-label="提现"
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-lg text-xs font-medium transition-colors"
+                  onClick={() => onNavigate?.('/wallet/withdraw')}
+                  aria-label={t('withdraw')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-xl text-sm font-medium transition-colors"
                 >
-                  <ArrowDownLeft className="w-3 h-3" />
-                  提现
+                  <ArrowDownLeft className="w-4 h-4" />
+                  {t('withdraw')}
                 </button>
                 <button
                   type="button"
-                  onClick={() => onNavigate?.('/exchange')}
-                  aria-label="兑换"
-                  className="flex items-center justify-center gap-1 px-3 py-1.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-lg text-xs font-medium transition-colors"
+                  onClick={() => onNavigate?.('/wallet/exchange')}
+                  aria-label={t('exchange')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-xl text-sm font-medium transition-colors"
                 >
-                  <ArrowLeftRight className="w-3 h-3" />
-                  兑换
+                  <ArrowLeftRight className="w-4 h-4" />
+                  {t('exchange')}
                 </button>
               </div>
             </div>
@@ -434,14 +652,14 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
             <button
               type="button"
               onClick={() => setWalletSubTab("assets")}
-              aria-label="资产明细"
+              aria-label={t('assetDetails')}
               className={`pb-3 text-sm font-medium transition-colors relative ${
                 walletSubTab === "assets"
                   ? "text-[#06B6D4]"
                   : "text-[#94A3B8] hover:text-white"
               }`}
             >
-              资产明细
+              {t('assetDetails')}
               {walletSubTab === "assets" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
               )}
@@ -449,14 +667,14 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
             <button
               type="button"
               onClick={() => setWalletSubTab("history")}
-              aria-label="历史账单"
+              aria-label={t('historyBills')}
               className={`pb-3 text-sm font-medium transition-colors relative ${
                 walletSubTab === "history"
                   ? "text-[#06B6D4]"
                   : "text-[#94A3B8] hover:text-white"
               }`}
             >
-              历史账单
+              {t('historyBills')}
               {walletSubTab === "history" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
               )}
@@ -484,6 +702,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                             src={asset.icon}
                             alt={asset.name}
                             fill
+                            sizes="40px"
                             className="object-contain"
                           />
                         ) : (
@@ -544,6 +763,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     onClick={() => {
                       setShowTypeFilter(!showTypeFilter)
                       setShowAssetFilter(false)
+                      setShowDatePicker(false)
                     }}
                     className={`flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border rounded-lg text-sm transition-colors ${
                       txTypeFilter !== 'all'
@@ -584,6 +804,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     onClick={() => {
                       setShowAssetFilter(!showAssetFilter)
                       setShowTypeFilter(false)
+                      setShowDatePicker(false)
                     }}
                     className={`flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border rounded-lg text-sm transition-colors ${
                       txAssetFilter !== 'all'
@@ -617,6 +838,91 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   )}
                 </div>
 
+                {/* 时间选择 */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDatePicker(!showDatePicker)
+                      setShowTypeFilter(false)
+                      setShowAssetFilter(false)
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-[#12121A] border border-[#06B6D4] rounded-lg text-sm text-[#06B6D4] transition-colors"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="text-xs">{dateRange.start.slice(5)} ~ {dateRange.end.slice(5)}</span>
+                  </button>
+                  {showDatePicker && (
+                    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+                      <div className="w-full max-w-md bg-[#12121A] rounded-t-2xl p-4 space-y-4 animate-in slide-in-from-bottom">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold text-white">{t('startDate')} ~ {t('endDate')}</h3>
+                          <button
+                            type="button"
+                            onClick={() => setShowDatePicker(false)}
+                            className="p-1 rounded-lg hover:bg-[#1E1E2E]"
+                          >
+                            <X className="w-5 h-5 text-[#94A3B8]" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label htmlFor="mobile-date-start" className="text-xs text-[#94A3B8] mb-1 block">{t('startDate')}</label>
+                            <input
+                              id="mobile-date-start"
+                              type="date"
+                              value={dateRange.start}
+                              onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                              className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500/50 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="mobile-date-end" className="text-xs text-[#94A3B8] mb-1 block">{t('endDate')}</label>
+                            <input
+                              id="mobile-date-end"
+                              type="date"
+                              value={dateRange.end}
+                              onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                              className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm text-white focus:border-cyan-500/50 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {[
+                            { label: t('thisWeek'), days: 7 },
+                            { label: t('thisMonth'), days: 30 },
+                            { label: t('last3Months'), days: 90 },
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => {
+                                const end = new Date()
+                                const start = new Date()
+                                start.setDate(start.getDate() - preset.days)
+                                setDateRange({
+                                  start: start.toISOString().split('T')[0],
+                                  end: end.toISOString().split('T')[0]
+                                })
+                              }}
+                              className="flex-1 py-2 text-xs bg-[#1E1E2E] hover:bg-[#2A2A3A] text-[#94A3B8] rounded-lg transition-colors"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowDatePicker(false)}
+                          className="w-full py-3 bg-[#06B6D4] text-white rounded-xl font-medium hover:bg-[#0891B2] transition-colors"
+                        >
+                          {t('confirm')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* 清除筛选 */}
                 {(txTypeFilter !== 'all' || txAssetFilter !== 'all') && (
                   <button
@@ -627,7 +933,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     }}
                     className="px-3 py-2 text-xs text-[#94A3B8] hover:text-white transition-colors"
                   >
-                    清除
+                    {tCommon('cancel')}
                   </button>
                 )}
               </div>
@@ -650,6 +956,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                               src={assetIcon}
                               alt={tx.asset}
                               fill
+                              sizes="40px"
                               className="object-contain"
                             />
                           ) : (
@@ -705,8 +1012,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   </div>
                   <p className="text-[#94A3B8]">
                     {txTypeFilter === 'all' && txAssetFilter === 'all'
-                      ? '暂无账单记录'
-                      : '没有符合筛选条件的记录'}
+                      ? t('noRecords')
+                      : t('noMatchingRecords')}
                   </p>
                 </div>
               )}
@@ -722,19 +1029,19 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
           <button
             type="button"
             onClick={handleOpenAdd}
-            aria-label="添加 API"
+            aria-label={t('addApi')}
             className="w-full flex items-center justify-center gap-2 py-3 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl font-medium transition-colors"
           >
             <Plus className="w-5 h-5" />
-            添加 API
+            {t('addApi')}
           </button>
 
           {/* API 列表 */}
           {apiKeys.length === 0 ? (
             <div className="p-8 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
               <Key className="w-12 h-12 text-[#94A3B8] mx-auto mb-3" />
-              <p className="text-[#94A3B8]">暂无绑定的 API Key</p>
-              <p className="text-[#94A3B8] text-sm mt-1">点击上方按钮添加您的第一个交易所</p>
+              <p className="text-[#94A3B8]">{t('noApiKey')}</p>
+              <p className="text-[#94A3B8] text-sm mt-1">{t('clickToAdd')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -748,9 +1055,11 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   <div className="flex items-center justify-between">
                     {/* 左侧：图标 + 信息 */}
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden relative ${
+                        api.status === 'error' ? 'bg-[#F43F5E]/10' : 'bg-[#1E1E2E]'
+                      }`}>
                         {api.icon ? (
-                          <Image src={api.icon} alt={api.name} fill className="object-contain" />
+                          <Image src={api.icon} alt={api.name} fill sizes="40px" className={`object-contain ${api.status === 'error' ? 'opacity-50' : ''}`} />
                         ) : (
                           <span className="text-lg text-white">{api.name.charAt(0)}</span>
                         )}
@@ -758,17 +1067,28 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-medium text-white">{api.name}</h3>
-                          {api.status === "active" ? (
-                            <CheckCircle className="w-4 h-4 text-[#10B981]" />
+                          {api.isLoading ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#3B82F6]/20 text-[#3B82F6]">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            </span>
+                          ) : api.status === 'error' ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F43F5E]/20 text-[#F43F5E]">
+                              <AlertTriangle className="w-3 h-3" />
+                            </span>
                           ) : (
-                            <AlertCircle className="w-4 h-4 text-[#F43F5E]" />
+                            <CheckCircle className="w-4 h-4 text-[#10B981]" />
                           )}
                         </div>
-                        {api.status === 'error' && api.error ? (
+                        {api.isLoading ? (
+                          <p className="text-sm text-[#94A3B8] flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {t('loadingBalance')}
+                          </p>
+                        ) : api.status === 'error' && api.error ? (
                           <p className="text-xs text-[#F43F5E]">{api.error}</p>
                         ) : (
-                          <p className="text-sm text-[#94A3B8]">
-                            ${api.balance?.toLocaleString() || '0'}
+                          <p className="text-lg font-bold text-[#10B981]">
+                            ${api.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
                           </p>
                         )}
                       </div>
@@ -779,7 +1099,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       <button
                         type="button"
                         onClick={() => handleVerify(api)}
-                        aria-label="验证"
+                        aria-label={t('verify')}
                         className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
                       >
                         <RefreshCw className="w-4 h-4 text-[#94A3B8]" />
@@ -787,7 +1107,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(api)}
-                        aria-label="编辑"
+                        aria-label={t('edit')}
                         className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
                       >
                         <Edit2 className="w-4 h-4 text-[#94A3B8]" />
@@ -795,7 +1115,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       <button
                         type="button"
                         onClick={() => handleOpenDelete(api)}
-                        aria-label="删除"
+                        aria-label={t('delete')}
                         className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-4 h-4 text-[#F43F5E]/70" />
@@ -811,8 +1131,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
 
       {/* 生态 Tab 内容 - 使用独立组件 */}
       {mainTab === "ecosystem" && (
-        <div className="-mx-4 -mt-4">
-          <MobileEcosystemV3 />
+        <div className="pt-2">
+          <MobileEcosystemV3 embedded />
         </div>
       )}
 
@@ -858,7 +1178,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
       {/* 添加 API Key 弹窗 - 底部抽屉式 */}
       {showAddModal && (
         <div
-          className="fixed inset-0 bg-black/70 z-50 mobile-overlay"
+          className="fixed inset-0 bg-black/70 z-[100] mobile-overlay"
           onClick={() => {
             setShowAddModal(false)
             setSelectedExchange(null)
@@ -878,13 +1198,13 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-white">
                   {selectedExchange
-                    ? `绑定 ${supportedExchanges.find(e => e.id === selectedExchange)?.name} API`
-                    : '选择交易所'
+                    ? t('bindApiTitle', { name: supportedExchanges.find(e => e.id === selectedExchange)?.name || '' })
+                    : t('selectExchange')
                   }
                 </h3>
                 <button
                   type="button"
-                  title="关闭"
+                  title={t('close')}
                   onClick={() => {
                     setShowAddModal(false)
                     setSelectedExchange(null)
@@ -921,7 +1241,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   className="flex items-center gap-2 text-[#06B6D4] text-sm hover:underline"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  如何获取 API Key？
+                  {t('howToGetApiKey')}
                 </a>
 
                 <div>
@@ -930,8 +1250,16 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     id="mobile-add-api-key"
                     type="text"
                     value={formData.apiKey}
-                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                    placeholder="请输入 API Key"
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setFormData(prev => ({ ...prev, apiKey: value }))
+                    }}
+                    onInput={(e) => {
+                      const value = (e.target as HTMLInputElement).value
+                      setFormData(prev => ({ ...prev, apiKey: value }))
+                    }}
+                    autoComplete="off"
+                    placeholder={t('enterApiKey')}
                     className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                   />
                 </div>
@@ -943,14 +1271,22 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       id="mobile-add-secret-key"
                       type={showSecret ? 'text' : 'password'}
                       value={formData.secretKey}
-                      onChange={(e) => setFormData({ ...formData, secretKey: e.target.value })}
-                      placeholder="请输入 Secret Key"
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setFormData(prev => ({ ...prev, secretKey: value }))
+                      }}
+                      onInput={(e) => {
+                        const value = (e.target as HTMLInputElement).value
+                        setFormData(prev => ({ ...prev, secretKey: value }))
+                      }}
+                      autoComplete="off"
+                      placeholder={t('enterSecretKey')}
                       className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowSecret(!showSecret)}
-                      title={showSecret ? '隐藏密钥' : '显示密钥'}
+                      title={showSecret ? t('hideSecret') : t('showSecret')}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8]"
                     >
                       {showSecret ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -965,21 +1301,37 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       id="mobile-add-passphrase"
                       type="password"
                       value={formData.passphrase}
-                      onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
-                      placeholder="请输入 Passphrase"
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setFormData(prev => ({ ...prev, passphrase: value }))
+                      }}
+                      onInput={(e) => {
+                        const value = (e.target as HTMLInputElement).value
+                        setFormData(prev => ({ ...prev, passphrase: value }))
+                      }}
+                      autoComplete="off"
+                      placeholder={t('enterPassphrase')}
                       className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                     />
                   </div>
                 )}
 
                 <div>
-                  <label htmlFor="mobile-add-label" className="text-sm text-[#94A3B8] block mb-1">备注名称（可选）</label>
+                  <label htmlFor="mobile-add-label" className="text-sm text-[#94A3B8] block mb-1">{t('labelOptional')}</label>
                   <input
                     id="mobile-add-label"
                     type="text"
                     value={formData.label}
-                    onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                    placeholder="如：主账户"
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setFormData(prev => ({ ...prev, label: value }))
+                    }}
+                    onInput={(e) => {
+                      const value = (e.target as HTMLInputElement).value
+                      setFormData(prev => ({ ...prev, label: value }))
+                    }}
+                    autoComplete="off"
+                    placeholder={t('labelPlaceholder')}
                     className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                   />
                 </div>
@@ -987,8 +1339,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                 <div className="p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-white">IP 白名单</p>
-                      <p className="text-[#94A3B8] text-xs">请将以下 IP 添加到交易所白名单</p>
+                      <p className="text-sm font-medium text-white">{t('ipWhitelist')}</p>
+                      <p className="text-[#94A3B8] text-xs">{t('ipWhitelistTip')}</p>
                     </div>
                     <button
                       type="button"
@@ -996,7 +1348,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                       className="flex items-center gap-1 text-[#06B6D4] text-sm"
                     >
                       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      {copied ? '已复制' : '复制'}
+                      {copied ? t('copied') : t('copy')}
                     </button>
                   </div>
                   <p className="font-mono text-sm mt-2 text-[#94A3B8]">47.89.192.xxx</p>
@@ -1007,8 +1359,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   <div className="flex items-start gap-2">
                     <Shield className="w-4 h-4 text-[#06B6D4] mt-0.5 flex-shrink-0" />
                     <ul className="text-[#94A3B8] text-xs space-y-1">
-                      <li>• 仅开启「交易」权限，禁止开启「提现」权限</li>
-                      <li>• 建议绑定 IP 白名单以增强安全性</li>
+                      <li>• {t('securityTip1')}</li>
+                      <li>• {t('securityTip2')}</li>
                     </ul>
                   </div>
                 </div>
@@ -1024,13 +1376,16 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     }}
                     className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
                   >
-                    取消
+                    {tCommon('cancel')}
                   </button>
                   <button
                     type="button"
-                    className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium"
+                    onClick={handleAddApiKey}
+                    disabled={createApiKeyMutation.isPending || !formData.apiKey || !formData.secretKey}
+                    className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    验证并绑定
+                    {createApiKeyMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {t('verifyAndBind')}
                   </button>
                 </div>
               </div>
@@ -1043,7 +1398,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
       {/* 编辑 API Key 弹窗 - 底部抽屉式 */}
       {showEditModal && selectedApiKey && (
         <div
-          className="fixed inset-0 bg-black/70 z-50 mobile-overlay"
+          className="fixed inset-0 bg-black/70 z-[100] mobile-overlay"
           onClick={() => {
             setShowEditModal(false)
             setSelectedApiKey(null)
@@ -1069,13 +1424,13 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     )}
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-white">编辑 {selectedApiKey.name} API</h3>
-                    <p className="text-[#94A3B8] text-xs">更新 API 密钥配置</p>
+                    <h3 className="text-lg font-bold text-white">{t('editApiTitle', { name: selectedApiKey.name })}</h3>
+                    <p className="text-[#94A3B8] text-xs">{t('updateApiConfig')}</p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  title="关闭"
+                  title={t('close')}
                   onClick={() => {
                     setShowEditModal(false)
                     setSelectedApiKey(null)
@@ -1095,13 +1450,13 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     <p className="font-mono text-[#94A3B8] text-sm mt-0.5">{selectedApiKey.apiKey}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-[#94A3B8]">绑定时间</p>
+                    <p className="text-xs text-[#94A3B8]">{t('bindTime')}</p>
                     <p className="text-[#94A3B8] text-sm mt-0.5">{selectedApiKey.createdAt || '-'}</p>
                   </div>
                 </div>
                 {selectedApiKey.permissions && selectedApiKey.permissions.length > 0 && (
                   <div className="pt-3 border-t border-[#1E1E2E]">
-                    <p className="text-xs text-[#94A3B8] mb-2">已授权权限</p>
+                    <p className="text-xs text-[#94A3B8] mb-2">{t('authorizedPermissions')}</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedApiKey.permissions.map((perm, i) => (
                         <span key={i} className="px-2 py-1 text-xs rounded-md bg-[#1E1E2E] text-[#10B981]">
@@ -1114,32 +1469,32 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
               </div>
 
               <div>
-                <label htmlFor="mobile-edit-api-key" className="text-sm text-[#94A3B8] block mb-1">新 API Key（留空则不更新）</label>
+                <label htmlFor="mobile-edit-api-key" className="text-sm text-[#94A3B8] block mb-1">{t('newApiKeyOptional')}</label>
                 <input
                   id="mobile-edit-api-key"
                   type="text"
                   value={editFormData.apiKey}
                   onChange={(e) => setEditFormData({ ...editFormData, apiKey: e.target.value })}
-                  placeholder="输入新的 API Key"
+                  placeholder={t('enterNewApiKey')}
                   className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                 />
               </div>
 
               <div>
-                <label htmlFor="mobile-edit-secret-key" className="text-sm text-[#94A3B8] block mb-1">新 Secret Key（留空则不更新）</label>
+                <label htmlFor="mobile-edit-secret-key" className="text-sm text-[#94A3B8] block mb-1">{t('newSecretKeyOptional')}</label>
                 <div className="relative">
                   <input
                     id="mobile-edit-secret-key"
                     type={showSecret ? 'text' : 'password'}
                     value={editFormData.secretKey}
                     onChange={(e) => setEditFormData({ ...editFormData, secretKey: e.target.value })}
-                    placeholder="输入新的 Secret Key"
+                    placeholder={t('enterNewSecretKey')}
                     className="w-full px-4 py-3 pr-12 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                   />
                   <button
                     type="button"
                     onClick={() => setShowSecret(!showSecret)}
-                    title={showSecret ? '隐藏密钥' : '显示密钥'}
+                    title={showSecret ? t('hideSecret') : t('showSecret')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8]"
                   >
                     {showSecret ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -1148,13 +1503,13 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
               </div>
 
               <div>
-                <label htmlFor="mobile-edit-label" className="text-sm text-[#94A3B8] block mb-1">备注名称</label>
+                <label htmlFor="mobile-edit-label" className="text-sm text-[#94A3B8] block mb-1">{t('labelName')}</label>
                 <input
                   id="mobile-edit-label"
                   type="text"
                   value={editFormData.label}
                   onChange={(e) => setEditFormData({ ...editFormData, label: e.target.value })}
-                  placeholder="如：主账户"
+                  placeholder={t('labelPlaceholder')}
                   className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
                 />
               </div>
@@ -1168,14 +1523,16 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   }}
                   className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
                 >
-                  取消
+                  {tCommon('cancel')}
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmEdit}
-                  className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium"
+                  disabled={updateApiKeyMutation.isPending}
+                  className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  保存更改
+                  {updateApiKeyMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {t('saveChanges')}
                 </button>
               </div>
               </div>
@@ -1187,7 +1544,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
       {/* 删除确认弹窗 - 居中对话框 */}
       {showDeleteModal && selectedApiKey && (
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-5 mobile-overlay"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-5 mobile-overlay"
           onClick={() => {
             setShowDeleteModal(false)
             setSelectedApiKey(null)
@@ -1202,9 +1559,9 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                 <AlertTriangle className="w-8 h-8 text-[#F43F5E]" />
               </div>
 
-              <h3 className="text-xl font-bold text-white mb-2">确认删除</h3>
+              <h3 className="text-xl font-bold text-white mb-2">{t('confirmDelete')}</h3>
               <p className="text-[#94A3B8] text-sm mb-5">
-                您确定要删除 <span className="text-white font-semibold">{selectedApiKey.name}</span> 的 API 密钥吗？
+                {t('deleteApiConfirm', { name: selectedApiKey.name })}
               </p>
 
               <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
@@ -1224,7 +1581,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
               <div className="p-3 mb-5 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left">
                 <p className="text-xs text-[#F43F5E] flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>删除后，使用此 API 的策略将无法继续执行交易。此操作不可撤销。</span>
+                  <span>{t('deleteWarning')}</span>
                 </p>
               </div>
 
@@ -1237,7 +1594,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   }}
                   className="flex-1 py-3.5 border border-[#2A2A3A] text-[#94A3B8] rounded-xl hover:bg-[#1E1E2E] transition-colors font-medium"
                 >
-                  取消
+                  {tCommon('cancel')}
                 </button>
                 <button
                   type="button"
@@ -1245,7 +1602,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   className="flex-1 py-3.5 bg-[#F43F5E] hover:bg-[#F43F5E]/90 text-white rounded-xl transition-colors font-medium flex items-center justify-center gap-2"
                 >
                   <Trash2 className="w-4 h-4" />
-                  删除
+                  {tCommon('delete')}
                 </button>
               </div>
             </div>
@@ -1256,7 +1613,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
       {/* 验证结果弹窗 - 居中对话框 */}
       {showVerifyModal && selectedApiKey && (
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-5 mobile-overlay"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-5 mobile-overlay"
           onClick={() => {
             setShowVerifyModal(false)
             setSelectedApiKey(null)
@@ -1274,8 +1631,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#06B6D4]/10 flex items-center justify-center">
                     <Loader2 className="w-8 h-8 text-[#06B6D4] animate-spin" />
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">正在验证</h3>
-                  <p className="text-[#94A3B8] text-sm">正在连接 {selectedApiKey.name} 验证 API 状态...</p>
+                  <h3 className="text-xl font-bold text-white mb-2">{t('verifying')}</h3>
+                  <p className="text-[#94A3B8] text-sm">{t('verifyingConnection', { name: selectedApiKey.name })}</p>
                 </>
               )}
 
@@ -1285,8 +1642,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
                     <CheckCircle className="w-8 h-8 text-[#10B981]" />
                   </div>
-                  <h3 className="text-xl font-bold text-[#10B981] mb-2">验证成功</h3>
-                  <p className="text-[#94A3B8] text-sm mb-5">API 连接正常，可正常使用</p>
+                  <h3 className="text-xl font-bold text-[#10B981] mb-2">{t('verifySuccess')}</h3>
+                  <p className="text-[#94A3B8] text-sm mb-5">{t('verifySuccessMessage')}</p>
 
                   {/* 验证详情 */}
                   <div className="space-y-3 text-left">
@@ -1294,20 +1651,20 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     <div className="flex items-center gap-3 p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
                       <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
                         {selectedApiKey.icon ? (
-                          <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
+                          <Image src={selectedApiKey.icon} alt={selectedApiKey.exchange} fill className="object-contain" />
                         ) : (
-                          <span className="text-lg text-white">{selectedApiKey.name.charAt(0)}</span>
+                          <span className="text-lg text-white">{selectedApiKey.exchange?.charAt(0) || 'E'}</span>
                         )}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold text-white text-sm">{selectedApiKey.name}</p>
-                        <p className="text-[#94A3B8] text-xs font-mono truncate">{selectedApiKey.apiKey}</p>
+                        <p className="text-[#94A3B8] text-xs">{selectedApiKey.exchange} · <span className="font-mono">{selectedApiKey.apiKey}</span></p>
                       </div>
                     </div>
 
                     {/* 权限列表 */}
                     <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      <p className="text-[#94A3B8] text-xs mb-2">API 权限</p>
+                      <p className="text-[#94A3B8] text-xs mb-2">{t('apiPermissions')}</p>
                       <div className="flex flex-wrap gap-2">
                         {verifyResult.permissions?.map((perm, index) => (
                           <span key={index} className="px-2.5 py-1 rounded-lg bg-[#10B981]/10 text-[#10B981] text-xs font-medium">
@@ -1321,19 +1678,16 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                     <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
                       {/* 总资产在上面 */}
                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
-                        <span className="text-[#94A3B8] text-sm">总资产</span>
+                        <span className="text-[#94A3B8] text-sm">{t('totalAssetValue')}</span>
                         <span className="text-xl font-bold font-mono text-[#10B981]">${verifyResult.totalValue?.toLocaleString()}</span>
                       </div>
                       {/* 币种明细 */}
-                      <p className="text-[#94A3B8] text-xs mb-2">资产明细</p>
+                      <p className="text-[#94A3B8] text-xs mb-2">{t('assetBreakdown')}</p>
                       <div className="space-y-2.5">
                         {verifyResult.assets?.map((asset, index) => (
                           <div key={index} className="flex justify-between items-center">
                             <span className="text-white font-medium text-sm">{asset.symbol}</span>
-                            <div className="text-right">
-                              <span className="text-white font-mono text-sm">{asset.amount}</span>
-                              <span className="text-[#94A3B8] text-xs ml-2">≈ ${asset.value.toLocaleString()}</span>
-                            </div>
+                            <span className="text-white font-mono text-sm">{asset.amount}</span>
                           </div>
                         ))}
                       </div>
@@ -1348,8 +1702,8 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
                     <XCircle className="w-8 h-8 text-[#F43F5E]" />
                   </div>
-                  <h3 className="text-xl font-bold text-[#F43F5E] mb-2">验证失败</h3>
-                  <p className="text-[#94A3B8] text-sm mb-5">无法连接到交易所，请检查 API 配置</p>
+                  <h3 className="text-xl font-bold text-[#F43F5E] mb-2">{t('verifyFailed')}</h3>
+                  <p className="text-[#94A3B8] text-sm mb-5">{t('verifyFailedMessage')}</p>
 
                   {/* 错误详情 */}
                   <div className="p-3 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left mb-4">
@@ -1361,12 +1715,12 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
 
                   {/* 可能的解决方案 */}
                   <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-left">
-                    <p className="text-[#94A3B8] text-xs mb-2">请检查以下事项：</p>
+                    <p className="text-[#94A3B8] text-xs mb-2">{t('checkFollowing')}</p>
                     <ul className="text-[#94A3B8] text-xs space-y-1.5">
-                      <li>• API Key 和 Secret Key 是否正确</li>
-                      <li>• API 是否已过期或被禁用</li>
-                      <li>• IP 白名单是否已添加服务器 IP</li>
-                      <li>• 是否开启了必要的交易权限</li>
+                      <li>• {t('checkApiKeySecret')}</li>
+                      <li>• {t('checkApiExpired')}</li>
+                      <li>• {t('checkIpWhitelist')}</li>
+                      <li>• {t('checkTradingPermission')}</li>
                     </ul>
                   </div>
                 </>
@@ -1382,7 +1736,7 @@ export function MobileWalletPage({ onNavigate }: MobileWalletPageProps) {
                 }}
                 className="w-full mt-5 py-3.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] text-white rounded-xl transition-colors font-medium"
               >
-                关闭
+                {t('close')}
               </button>
             </div>
           </div>

@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TradingService } from './trading.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -9,7 +14,7 @@ interface PositionMonitorConfig {
   takeProfitPercent?: number;
   trailingStopEnabled?: boolean;
   trailingStopActivation?: number; // 激活盈利 %
-  trailingStopCallback?: number;   // 回撤 %
+  trailingStopCallback?: number; // 回撤 %
 }
 
 interface TrackedPosition {
@@ -22,8 +27,8 @@ interface TrackedPosition {
   amount: number;
   config: PositionMonitorConfig;
   // 移动止损追踪
-  highestPrice?: number;  // 多头：最高价
-  lowestPrice?: number;   // 空头：最低价
+  highestPrice?: number; // 多头：最高价
+  lowestPrice?: number; // 空头：最低价
   trailingStopActivated?: boolean;
 }
 
@@ -149,14 +154,17 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.checkPosition(position);
       } catch (error) {
-        this.logger.error(`检查持仓失败 ${positionId}: ${(error as Error).message}`);
+        this.logger.error(
+          `检查持仓失败 ${positionId}: ${(error as Error).message}`,
+        );
       }
     }
   }
 
   // 检查单个持仓
   private async checkPosition(position: TrackedPosition) {
-    const { userId, apiKeyId, symbol, side, entryPrice, amount, config } = position;
+    const { userId, apiKeyId, symbol, side, entryPrice, amount, config } =
+      position;
 
     // 获取当前价格
     const currentPrice = await this.tradingService.getCurrentPrice(
@@ -190,7 +198,11 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
 
     // 检查移动止损
     if (config.trailingStopEnabled) {
-      const shouldClose = this.checkTrailingStop(position, currentPrice, pnlPercent);
+      const shouldClose = this.checkTrailingStop(
+        position,
+        currentPrice,
+        pnlPercent,
+      );
       if (shouldClose) {
         await this.triggerTrailingStop(position, currentPrice, pnlPercent);
         return;
@@ -234,7 +246,10 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
 
     // 检查是否达到激活条件
     if (!position.trailingStopActivated) {
-      if (config.trailingStopActivation && pnlPercent >= config.trailingStopActivation) {
+      if (
+        config.trailingStopActivation &&
+        pnlPercent >= config.trailingStopActivation
+      ) {
         position.trailingStopActivated = true;
         this.logger.log(
           `移动止损已激活: ${position.symbol} 盈利 ${pnlPercent.toFixed(2)}%`,
@@ -251,7 +266,8 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
     if (side === 'long') {
       // 多头：从最高价回撤
       callbackPercent =
-        ((position.highestPrice! - currentPrice) / position.highestPrice!) * 100;
+        ((position.highestPrice! - currentPrice) / position.highestPrice!) *
+        100;
     } else {
       // 空头：从最低价反弹
       callbackPercent =
@@ -271,7 +287,12 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
       `触发止损: ${position.symbol} 亏损 ${pnlPercent.toFixed(2)}%`,
     );
 
-    await this.closePositionAndNotify(position, 'stop_loss', currentPrice, pnlPercent);
+    await this.closePositionAndNotify(
+      position,
+      'stop_loss',
+      currentPrice,
+      pnlPercent,
+    );
   }
 
   // 触发止盈
@@ -284,7 +305,12 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
       `触发止盈: ${position.symbol} 盈利 ${pnlPercent.toFixed(2)}%`,
     );
 
-    await this.closePositionAndNotify(position, 'take_profit', currentPrice, pnlPercent);
+    await this.closePositionAndNotify(
+      position,
+      'take_profit',
+      currentPrice,
+      pnlPercent,
+    );
   }
 
   // 触发移动止损
@@ -297,7 +323,12 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
       `触发移动止损: ${position.symbol} 当前盈利 ${pnlPercent.toFixed(2)}%`,
     );
 
-    await this.closePositionAndNotify(position, 'trailing_stop', currentPrice, pnlPercent);
+    await this.closePositionAndNotify(
+      position,
+      'trailing_stop',
+      currentPrice,
+      pnlPercent,
+    );
   }
 
   // 平仓并发送通知

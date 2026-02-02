@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Target, BarChart3, Users, Play, Pause, Megaphone, ExternalLink, Loader2 } from 'lucide-react'
-import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement } from '@/hooks/useMarket'
+import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement, type MarqueeItem, type MarqueeConfig } from '@/hooks/useMarket'
+import { useTranslations } from '@/i18n/provider'
 
 interface DashboardV3Props {
   onNavigate?: (path: string) => void
@@ -12,39 +13,40 @@ interface DashboardV3Props {
 function Carousel() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
+  const t = useTranslations('dashboard')
 
   const slides = [
     {
-      title: '新功能上线',
-      subtitle: 'AI智能调仓',
-      description: '根据市场变化自动优化持仓比例',
+      titleKey: 'carousel.newFeature',
+      subtitleKey: 'carousel.aiRebalancing',
+      descriptionKey: 'carousel.aiRebalancingDesc',
       gradient: 'from-purple-500/20 to-cyan-500/20',
       iconBg: 'bg-purple-500/20',
-      cta: '立即体验'
+      ctaKey: 'carousel.tryNow'
     },
     {
-      title: '热门策略推荐',
-      subtitle: '网格交易Pro',
-      description: '本月收益 +18.5%，低风险稳健增长',
+      titleKey: 'carousel.hotStrategy',
+      subtitleKey: 'carousel.gridTradingPro',
+      descriptionKey: 'carousel.gridTradingDesc',
       gradient: 'from-emerald-500/20 to-cyan-500/20',
       iconBg: 'bg-emerald-500/20',
-      cta: '查看详情'
+      ctaKey: 'carousel.viewDetails'
     },
     {
-      title: '邀请好友',
-      subtitle: '得 $50 奖励',
-      description: '好友交易你赚佣金，永久返利',
+      titleKey: 'carousel.inviteFriends',
+      subtitleKey: 'carousel.earnReward',
+      descriptionKey: 'carousel.inviteDesc',
       gradient: 'from-orange-500/20 to-red-500/20',
       iconBg: 'bg-orange-500/20',
-      cta: '立即邀请'
+      ctaKey: 'carousel.inviteNow'
     },
     {
-      title: '24小时客服',
-      subtitle: '随时在线',
-      description: '专业团队为您解答任何问题',
+      titleKey: 'carousel.support24h',
+      subtitleKey: 'carousel.onlineAlways',
+      descriptionKey: 'carousel.supportDesc',
       gradient: 'from-blue-500/20 to-indigo-500/20',
       iconBg: 'bg-blue-500/20',
-      cta: '联系客服'
+      ctaKey: 'carousel.contactSupport'
     }
   ]
 
@@ -79,15 +81,15 @@ function Carousel() {
             <div className={`relative w-full h-full bg-gradient-to-br ${slide.gradient} backdrop-blur-xl border border-[#1E1E2E] rounded-2xl flex items-center`}>
               <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent rounded-2xl" />
               <div className="relative z-10 px-6 md:px-10">
-                <div className="text-sm text-[#9090A0] mb-1">{slide.title}</div>
+                <div className="text-sm text-[#9090A0] mb-1">{t(slide.titleKey)}</div>
                 <h2 className="text-2xl md:text-3xl font-bold text-[#F8F8FC] mb-2">
-                  {slide.subtitle}
+                  {t(slide.subtitleKey)}
                 </h2>
                 <p className="text-[#9090A0] text-sm mb-4 max-w-md">
-                  {slide.description}
+                  {t(slide.descriptionKey)}
                 </p>
                 <button type="button" className="bg-[#06B6D4] hover:bg-[#06B6D4]/80 text-black px-5 py-2 rounded-lg font-medium transition-colors text-sm">
-                  {slide.cta}
+                  {t(slide.ctaKey)}
                 </button>
               </div>
             </div>
@@ -99,7 +101,7 @@ function Carousel() {
       <button
         type="button"
         onClick={prevSlide}
-        aria-label="上一张"
+        aria-label={t('previousSlide')}
         className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white p-2 rounded-full transition-colors"
       >
         <ChevronLeft className="w-5 h-5" />
@@ -107,7 +109,7 @@ function Carousel() {
       <button
         type="button"
         onClick={nextSlide}
-        aria-label="下一张"
+        aria-label={t('nextSlide')}
         className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white p-2 rounded-full transition-colors"
       >
         <ChevronRight className="w-5 h-5" />
@@ -117,7 +119,7 @@ function Carousel() {
       <button
         type="button"
         onClick={() => setIsPlaying(!isPlaying)}
-        aria-label={isPlaying ? '暂停' : '播放'}
+        aria-label={isPlaying ? t('pause') : t('play')}
         className="absolute bottom-3 right-3 bg-black/30 hover:bg-black/50 text-white p-2 rounded-full transition-colors"
       >
         {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -130,7 +132,7 @@ function Carousel() {
             type="button"
             key={index}
             onClick={() => setCurrentSlide(index)}
-            aria-label={`切换到第 ${index + 1} 张`}
+            aria-label={t('switchToSlide', { n: index + 1 })}
             className={`w-2 h-2 rounded-full transition-all ${
               index === currentSlide ? 'w-6 bg-[#06B6D4]' : 'bg-white/30'
             }`}
@@ -142,33 +144,60 @@ function Carousel() {
 }
 
 // 跑马灯公告栏
-function Marquee({ announcements: announcementsData }: { announcements?: Announcement[] }) {
+function Marquee({
+  marquees,
+  config,
+  announcements: announcementsData
+}: {
+  marquees?: MarqueeItem[]
+  config?: MarqueeConfig
+  announcements?: Announcement[]
+}) {
+  const t = useTranslations('dashboard')
+
   const defaultAnnouncements = [
-    '📢 系统维护通知：每周日凌晨2点进行例行维护',
-    '🔥 新策略上线：趋势追踪Pro，回测收益超200%',
-    '🎁 邀请返佣活动进行中，邀请好友最高得$100',
-    '📈 AI策略精准捕捉行情，让交易更简单'
+    t('defaultAnnouncements.maintenance'),
+    t('defaultAnnouncements.newStrategy'),
+    t('defaultAnnouncements.referralEvent'),
+    t('defaultAnnouncements.aiStrategy')
   ]
 
-  // 将公告数据格式化为字符串
-  const announcements = announcementsData && announcementsData.length > 0
-    ? announcementsData.map(a => a.title)
-    : defaultAnnouncements
+  // 优先使用跑马灯数据，其次使用公告数据，最后使用默认数据
+  // API 已返回翻译后的内容，直接使用即可
+  const displayTexts = marquees && marquees.length > 0
+    ? marquees.map(m => m.content)
+    : announcementsData && announcementsData.length > 0
+      ? announcementsData.map(a => a.title)
+      : defaultAnnouncements
+
+  // 获取跑马灯样式（如果有跑马灯数据则使用其颜色）
+  const bgColor = marquees?.[0]?.bgColor || '#06B6D4'
+  const textColor = marquees?.[0]?.textColor || '#9090A0'
+
+  // 根据配置计算动画时长（速度越快，时长越短）
+  const scrollSpeed = config?.scrollSpeed || 50
+  const animationDuration = Math.max(10, 200 / scrollSpeed * 10) // 10-40秒范围
 
   return (
     <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-3">
       <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
       <div className="relative z-[2] flex items-center">
-        <div className="flex items-center gap-2 text-[#06B6D4] font-medium mr-4 whitespace-nowrap">
+        <div className="flex items-center gap-2 font-medium mr-4 whitespace-nowrap" style={{ color: bgColor }}>
           <Megaphone className="w-4 h-4" />
-          <span className="text-sm">公告</span>
+          <span className="text-sm">{t('announcement')}</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <div className="animate-marquee whitespace-nowrap text-[#9090A0] text-sm">
-            {announcements.map((text, index) => (
+          <div
+            className="whitespace-nowrap text-sm"
+            style={{
+              color: textColor,
+              animation: `marquee ${animationDuration}s linear infinite`,
+            }}
+          >
+            {displayTexts.map((text, index) => (
               <span key={index} className="mx-8">{text}</span>
             ))}
-            {announcements.map((text, index) => (
+            {displayTexts.map((text, index) => (
               <span key={`dup-${index}`} className="mx-8">{text}</span>
             ))}
           </div>
@@ -180,28 +209,30 @@ function Marquee({ announcements: announcementsData }: { announcements?: Announc
 
 // 快捷访问卡片 - 一个卡片内包含4个入口
 function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const t = useTranslations('dashboard')
+
   const cards = [
     {
       icon: Target,
-      title: '策略市场',
+      titleKey: 'quickAccess.strategyMarket',
       path: '/strategies',
       gradient: 'from-cyan-500 to-blue-500'
     },
     {
       icon: BarChart3,
-      title: '交易中心',
+      titleKey: 'quickAccess.tradingCenter',
       path: '/trading',
       gradient: 'from-emerald-500 to-teal-500'
     },
     {
       icon: Wallet,
-      title: '钱包资产',
+      titleKey: 'quickAccess.walletAssets',
       path: '/wallet',
       gradient: 'from-purple-500 to-pink-500'
     },
     {
       icon: Users,
-      title: '邀请好友',
+      titleKey: 'quickAccess.inviteFriends',
       path: '/referral',
       gradient: 'from-orange-500 to-red-500'
     }
@@ -222,7 +253,7 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
               <card.icon className="w-5 h-5 text-white" />
             </div>
             <span className="text-[#F8F8FC] font-medium text-sm group-hover:text-[#06B6D4] transition-colors">
-              {card.title}
+              {t(card.titleKey)}
             </span>
           </button>
         ))}
@@ -238,9 +269,10 @@ function MarketTabs({ prices, news, isLoading }: {
   isLoading?: boolean
 }) {
   const [activeTab, setActiveTab] = useState<'market' | 'news'>('market')
+  const t = useTranslations('dashboard')
 
   // 默认数据（当 API 未返回时使用）
-  const defaultMarketData = [
+  const defaultMarketData: CoinPrice[] = [
     { symbol: 'BTC', name: 'Bitcoin', price: 105230, change24h: 2.35 },
     { symbol: 'ETH', name: 'Ethereum', price: 3850, change24h: 1.82 },
     { symbol: 'BNB', name: 'BNB', price: 580, change24h: -0.54 },
@@ -273,7 +305,7 @@ function MarketTabs({ prices, news, isLoading }: {
               : 'text-[#9090A0] hover:text-[#F8F8FC]'
           }`}
         >
-          市场行情
+          {t('marketQuotes')}
           {activeTab === 'market' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
           )}
@@ -287,7 +319,7 @@ function MarketTabs({ prices, news, isLoading }: {
               : 'text-[#9090A0] hover:text-[#F8F8FC]'
           }`}
         >
-          行业资讯
+          {t('industryNews')}
           {activeTab === 'news' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#06B6D4]" />
           )}
@@ -310,10 +342,14 @@ function MarketTabs({ prices, news, isLoading }: {
                   className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl hover:border-[#2A2A3A] transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-full bg-[#1E1E2E] flex items-center justify-center">
-                      <span className="text-sm font-bold text-[#06B6D4]">
-                        {coin.symbol.charAt(0)}
-                      </span>
+                    <div className="w-9 h-9 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
+                      {coin.image ? (
+                        <img src={coin.image} alt={coin.symbol} className="w-7 h-7" />
+                      ) : (
+                        <span className="text-sm font-bold text-[#06B6D4]">
+                          {coin.symbol.charAt(0)}
+                        </span>
+                      )}
                     </div>
                     <div>
                       <div className="font-semibold text-[#F8F8FC] text-sm">{coin.symbol}</div>
@@ -338,7 +374,7 @@ function MarketTabs({ prices, news, isLoading }: {
         ) : (
           <div className="space-y-3">
             {newsData.map((item) => {
-              const tag = item.sentiment === 'positive' ? '热门' : item.sentiment === 'negative' ? '警示' : ''
+              const tag = item.sentiment === 'positive' ? t('hot') : item.sentiment === 'negative' ? t('warning') : ''
               return (
                 <div
                   key={item.id}
@@ -349,7 +385,7 @@ function MarketTabs({ prices, news, isLoading }: {
                       <div className="flex items-center gap-2 mb-2">
                         {tag && (
                           <span className={`px-2 py-0.5 text-xs rounded-full ${
-                            tag === '热门'
+                            item.sentiment === 'positive'
                               ? 'bg-red-500/20 text-red-400'
                               : 'bg-orange-500/20 text-orange-400'
                           }`}>
@@ -379,7 +415,10 @@ function MarketTabs({ prices, news, isLoading }: {
 // 主仪表板组件
 export function DashboardV3({ onNavigate }: DashboardV3Props) {
   // 获取首页数据（行情、新闻、公告）
-  const { data, isLoading } = useHomepageData()
+  const { data, isLoading, error } = useHomepageData()
+
+  // 调试日志
+  console.log('[Dashboard] API 状态:', { isLoading, hasData: !!data, error: error?.message, pricesCount: data?.prices?.length })
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">
@@ -388,7 +427,11 @@ export function DashboardV3({ onNavigate }: DashboardV3Props) {
         <Carousel />
 
         {/* 跑马灯公告 */}
-        <Marquee announcements={data?.announcements} />
+        <Marquee
+          marquees={data?.marquees}
+          config={data?.marqueeConfig}
+          announcements={data?.announcements}
+        />
 
         {/* 快捷入口 */}
         <QuickAccessCards onNavigate={onNavigate} />

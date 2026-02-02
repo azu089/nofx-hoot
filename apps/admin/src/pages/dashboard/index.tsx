@@ -5,10 +5,9 @@
  * 已对接真实 API: GET /admin/dashboard
  */
 import { useState, useEffect } from 'react';
-import { Card, Col, Row, Statistic, Typography, Table, Tag, Space, Badge, Alert, Spin, message } from 'antd';
+import { Card, Col, Row, Statistic, Typography, Tag, Space, Badge, Alert, Spin } from 'antd';
 import {
   UserOutlined,
-  DollarOutlined,
   RiseOutlined,
   ThunderboltOutlined,
   ClockCircleOutlined,
@@ -19,6 +18,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
@@ -61,13 +61,16 @@ const StatCard = ({
 );
 
 export const DashboardPage = () => {
+  const message = useMessage();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 获取仪表盘数据
-  const fetchDashboard = async () => {
-    setLoading(true);
+  // 获取仪表盘数据（showLoading: 是否显示加载状态，首次加载时显示，自动刷新时不显示）
+  const fetchDashboard = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await api.get<DashboardStats>('/admin/dashboard');
@@ -75,20 +78,28 @@ export const DashboardPage = () => {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '获取数据失败';
       setError(errorMessage);
-      message.error(errorMessage);
+      // 只在手动刷新时显示错误提示，自动刷新时静默失败
+      if (showLoading) {
+        message.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDashboard();
-    // 每 60 秒自动刷新
-    const interval = setInterval(fetchDashboard, 60000);
+    fetchDashboard(true); // 首次加载显示 loading
+    // 每 5 分钟自动刷新（静默刷新，不显示 loading）
+    const interval = setInterval(() => fetchDashboard(false), 300000);
     return () => clearInterval(interval);
   }, []);
 
   const totalPendingTasks = stats?.pendingWithdraws || 0;
+
+  // 处理刷新按钮点击
+  const handleRefresh = () => {
+    void fetchDashboard(true);
+  };
 
   return (
     <div style={{ padding: '24px' }}>
@@ -100,7 +111,7 @@ export const DashboardPage = () => {
             icon={<ReloadOutlined spin={loading} />}
             color="blue"
             style={{ cursor: 'pointer' }}
-            onClick={fetchDashboard}
+            onClick={handleRefresh}
           >
             刷新
           </Tag>
@@ -116,7 +127,7 @@ export const DashboardPage = () => {
           showIcon
           style={{ marginBottom: 24 }}
           action={
-            <Tag color="blue" style={{ cursor: 'pointer' }} onClick={fetchDashboard}>
+            <Tag color="blue" style={{ cursor: 'pointer' }} onClick={handleRefresh}>
               重试
             </Tag>
           }

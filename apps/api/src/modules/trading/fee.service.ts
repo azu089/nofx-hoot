@@ -55,7 +55,10 @@ export class FeeService {
    * @param profit 盈利金额（USDT）
    * @returns 手续费计算结果
    */
-  async calculateFee(userId: string, profit: string): Promise<FeeCalculationResult> {
+  async calculateFee(
+    userId: string,
+    profit: string,
+  ): Promise<FeeCalculationResult> {
     const profitDecimal = new Decimal(profit);
 
     // 如果亏损，不收手续费
@@ -77,9 +80,10 @@ export class FeeService {
     // 计算质押折扣
     let stakingDiscount = new Decimal(0);
     if (stakingInfo.hasActiveStake) {
-      stakingDiscount = stakingInfo.stakeType === 'B'
-        ? FEE_CONFIG.STAKING_DISCOUNT.B
-        : FEE_CONFIG.STAKING_DISCOUNT.A;
+      stakingDiscount =
+        stakingInfo.stakeType === 'B'
+          ? FEE_CONFIG.STAKING_DISCOUNT.B
+          : FEE_CONFIG.STAKING_DISCOUNT.A;
     }
 
     // 计算 VIP 折扣
@@ -127,7 +131,8 @@ export class FeeService {
    * @param feeRecord 手续费记录
    */
   async chargeFee(feeRecord: FeeRecord): Promise<boolean> {
-    const { userId, positionId, profit, feeRate, feeAmount, uniqueOrderId } = feeRecord;
+    const { userId, positionId, profit, feeRate, feeAmount, uniqueOrderId } =
+      feeRecord;
 
     // 检查是否已处理（幂等性）
     const existingLog = await this.prisma.billingLog.findUnique({
@@ -209,12 +214,12 @@ export class FeeService {
       new Decimal(0),
     );
 
-    // 取最高级别的质押类型（B > A）
-    const hasTypeB = stakingRecords.some((r) => r.type === 'B');
+    // 判断是否有定期质押（lockDays > 0）
+    const hasLocked = stakingRecords.some((r) => r.lockDays > 0);
 
     return {
       hasActiveStake: true,
-      stakeType: hasTypeB ? 'B' : 'A',
+      stakeType: hasLocked ? 'locked' : 'flexible',
       totalStaked,
     };
   }
@@ -225,7 +230,11 @@ export class FeeService {
    * @param userId 用户 ID
    * @param positionId 持仓 ID
    */
-  generateUniqueOrderId(type: string, userId: string, positionId: string): string {
+  generateUniqueOrderId(
+    type: string,
+    userId: string,
+    positionId: string,
+  ): string {
     const timestamp = Date.now();
     const nonce = Math.random().toString(36).substring(2, 10);
     return `${type}_${userId}_${positionId}_${timestamp}_${nonce}`;
@@ -272,9 +281,8 @@ export class FeeService {
       }
     }
 
-    const averageRate = rateCount > 0
-      ? totalRate.div(rateCount)
-      : new Decimal(0);
+    const averageRate =
+      rateCount > 0 ? totalRate.div(rateCount) : new Decimal(0);
 
     return {
       totalFeesPaid: totalFees.toFixed(8),

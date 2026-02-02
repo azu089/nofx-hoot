@@ -17,7 +17,6 @@ import {
   InputNumber,
   Select,
   Upload,
-  message,
   Typography,
 } from 'antd';
 import {
@@ -30,6 +29,7 @@ import {
   ArrowDownOutlined,
 } from '@ant-design/icons';
 import { useState } from 'react';
+import { useMessage, useModal } from '../../hooks';
 
 const { Text } = Typography;
 
@@ -47,12 +47,18 @@ interface IBanner {
   createdAt: string;
 }
 
+// 生成 SVG 占位图
+const createPlaceholderSvg = (color: string, text: string) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="300"><rect fill="${color}" width="100%" height="100%"/><text fill="#fff" font-family="Arial" font-size="32" x="50%" y="50%" text-anchor="middle" dy=".3em">${text}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+};
+
 // 模拟数据
 const mockBanners: IBanner[] = [
   {
     id: '1',
     title: '春节活动 - 新用户福利',
-    imageUrl: 'https://via.placeholder.com/800x300/1890ff/ffffff?text=Spring+Festival',
+    imageUrl: createPlaceholderSvg('#1890ff', 'Spring Festival'),
     linkUrl: '/activity/spring-2025',
     linkType: 'internal',
     position: 'home',
@@ -65,7 +71,7 @@ const mockBanners: IBanner[] = [
   {
     id: '2',
     title: 'HOOT 质押收益提升',
-    imageUrl: 'https://via.placeholder.com/800x300/722ed1/ffffff?text=HOOT+Staking',
+    imageUrl: createPlaceholderSvg('#722ed1', 'HOOT Staking'),
     linkUrl: '/staking',
     linkType: 'internal',
     position: 'home',
@@ -78,7 +84,7 @@ const mockBanners: IBanner[] = [
   {
     id: '3',
     title: '策略市场上新',
-    imageUrl: 'https://via.placeholder.com/800x300/52c41a/ffffff?text=New+Strategies',
+    imageUrl: createPlaceholderSvg('#52c41a', 'New Strategies'),
     linkUrl: '/strategies',
     linkType: 'internal',
     position: 'strategy',
@@ -91,7 +97,7 @@ const mockBanners: IBanner[] = [
   {
     id: '4',
     title: '已过期活动',
-    imageUrl: 'https://via.placeholder.com/800x300/999999/ffffff?text=Expired',
+    imageUrl: createPlaceholderSvg('#999999', 'Expired'),
     linkUrl: '/old-activity',
     linkType: 'internal',
     position: 'home',
@@ -104,6 +110,8 @@ const mockBanners: IBanner[] = [
 ];
 
 export const BannersPage = () => {
+  const message = useMessage();
+  const modal = useModal();
   const [dataSource, setDataSource] = useState<IBanner[]>(mockBanners);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBanner, setEditingBanner] = useState<IBanner | null>(null);
@@ -136,7 +144,7 @@ export const BannersPage = () => {
   };
 
   const handleDelete = (record: IBanner) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: `确定要删除 Banner "${record.title}" 吗？`,
       okText: '删除',
@@ -369,6 +377,7 @@ export const BannersPage = () => {
         dataSource={dataSource}
         columns={columns}
         rowKey="id"
+        scroll={{ x: 1100 }}
         pagination={{
           pageSize: 10,
           showTotal: (total) => `共 ${total} 条`,

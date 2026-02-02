@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  UseGuards,
+  Param,
+} from '@nestjs/common';
 import { BlockchainService } from './blockchain.service';
 import { WithdrawService } from './withdraw.service';
 import { AdminGuard } from '../admin/guards/admin.guard';
@@ -104,7 +112,9 @@ export class BlockchainController {
   @UseGuards(AdminGuard)
   @Post('withdraw/batch-execute')
   async executeBatchWithdraw(@Body() dto: BatchWithdrawDto) {
-    const result = await this.withdrawService.executeBatchWithdraw(dto.withdrawRequestIds);
+    const result = await this.withdrawService.executeBatchWithdraw(
+      dto.withdrawRequestIds,
+    );
     return result;
   }
 }

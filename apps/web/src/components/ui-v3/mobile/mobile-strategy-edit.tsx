@@ -92,18 +92,18 @@ export function MobileStrategyEdit({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/90 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-3">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
-            className="p-2 -ml-2 rounded-xl hover:bg-[#1E1E2E] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
             aria-label="返回"
           >
-            <ChevronLeft className="w-6 h-6 text-[#9090A0]" />
+            <ChevronLeft className="w-5 h-5 text-white" />
           </button>
           <div className="text-center">
-            <h1 className="text-base font-semibold text-[#F8F8FC]">编辑策略</h1>
+            <h1 className="text-base font-semibold text-white">编辑策略</h1>
             <p className="text-xs text-[#606070]">{strategyName}</p>
           </div>
           <button

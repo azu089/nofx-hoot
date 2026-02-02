@@ -22,29 +22,33 @@ interface WithdrawRecord {
   id: string
   network: string
   address: string
-  amount: string
-  status: 'completed' | 'pending' | 'failed'
+  amount: number
+  fee?: number
+  status: 'completed' | 'pending' | 'processing' | 'failed'
   time: string
+  txHash?: string
 }
-
-const mockRecords: WithdrawRecord[] = [
-  { id: '1', network: 'TRC20', address: 'TXqT...K8m9', amount: '500', status: 'completed', time: '01-30' },
-  { id: '2', network: 'ERC20', address: '0x742...d4F5', amount: '1000', status: 'pending', time: '01-30' },
-  { id: '3', network: 'TRC20', address: 'TXqT...K8m9', amount: '200', status: 'completed', time: '01-29' },
-]
 
 interface MobileWithdrawPageProps {
+  balance?: number
+  recentWithdrawals?: WithdrawRecord[]
   onBack?: () => void
+  onWithdraw?: (data: { amount: number; network: string; address: string }) => void
 }
 
-export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
+export function MobileWithdrawPage({
+  balance = 0,
+  recentWithdrawals = [],
+  onBack,
+  onWithdraw
+}: MobileWithdrawPageProps) {
   const [selectedNetwork, setSelectedNetwork] = useState(networks[0])
   const [showDropdown, setShowDropdown] = useState(false)
   const [address, setAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [isAddressValid, setIsAddressValid] = useState<boolean | null>(null)
 
-  const availableBalance = 5000
+  const availableBalance = balance
 
   const handleAddressChange = (value: string) => {
     setAddress(value)
@@ -74,12 +78,12 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
-          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="text-base font-medium">提现 USDT</span>
+          <h1 className="text-base font-semibold text-white">提现 USDT</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -221,11 +225,11 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
         </button>
 
         {/* 提现记录 */}
-        {mockRecords.length > 0 && (
+        {recentWithdrawals.length > 0 && (
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
             <span className="text-sm text-[#94A3B8]">最近记录</span>
             <div className="space-y-2">
-              {mockRecords.map((record) => (
+              {recentWithdrawals.map((record) => (
                 <div key={record.id} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
@@ -239,10 +243,10 @@ export function MobileWithdrawPage({ onBack }: MobileWithdrawPageProps) {
                   <div className="text-right">
                     <span className={`text-xs px-2 py-0.5 rounded ${
                       record.status === 'completed' ? 'bg-[#22C55E]/10 text-[#22C55E]' :
-                      record.status === 'pending' ? 'bg-[#F59E0B]/10 text-[#F59E0B]' :
+                      record.status === 'pending' || record.status === 'processing' ? 'bg-[#F59E0B]/10 text-[#F59E0B]' :
                       'bg-[#EF4444]/10 text-[#EF4444]'
                     }`}>
-                      {record.status === 'completed' ? '完成' : record.status === 'pending' ? '处理中' : '失败'}
+                      {record.status === 'completed' ? '完成' : (record.status === 'pending' || record.status === 'processing') ? '处理中' : '失败'}
                     </span>
                     <p className="text-xs text-[#94A3B8] mt-1">{record.time}</p>
                   </div>

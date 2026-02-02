@@ -10,13 +10,14 @@ import {
   User
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
-const navigationItems = [
-  { id: 'home', label: '首页', icon: Home, href: '/dashboard' },
-  { id: 'strategy', label: '策略', icon: TrendingUp, href: '/strategies' },
-  { id: 'trading', label: '交易', icon: Briefcase, href: '/trading' },
-  { id: 'assets', label: '资产', icon: Wallet, href: '/assets' },
-  { id: 'profile', label: '我的', icon: User, href: '/me' },
+const navigationItemsConfig = [
+  { id: 'home', labelKey: 'home', icon: Home, href: '/dashboard' },
+  { id: 'strategy', labelKey: 'strategies', icon: TrendingUp, href: '/strategies' },
+  { id: 'trading', labelKey: 'trading', icon: Briefcase, href: '/trading' },
+  { id: 'assets', labelKey: 'wallet', icon: Wallet, href: '/wallet' },
+  { id: 'profile', labelKey: 'profile', icon: User, href: '/profile' },
 ]
 
 interface SidebarProps {
@@ -24,7 +25,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeItem = 'home' }: SidebarProps) {
+  const t = useTranslations('nav')
   const [active, setActive] = useState(activeItem)
+
+  const navigationItems = navigationItemsConfig.map(item => ({
+    ...item,
+    label: t(item.labelKey as any)
+  }))
 
   return (
     <div className="fixed left-0 top-0 h-full w-60 bg-[#12121A] border-r border-[#1E1E2E]">

@@ -1,9 +1,10 @@
 /**
  * 角色权限页面
  */
-import { Card, Table, Tag, Space, Typography, Button, Modal, Form, Input, Checkbox, message, Popconfirm, Collapse, Row, Col } from 'antd';
+import { Card, Table, Tag, Space, Typography, Button, Modal, Form, Input, Checkbox, Popconfirm, Collapse, Row, Col } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useState } from 'react';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -69,6 +70,7 @@ const mockRoles: IRole[] = [
 ];
 
 export const RolesPage = () => {
+  const message = useMessage();
   const [roles, setRoles] = useState(mockRoles);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<IRole | null>(null);
@@ -76,14 +78,16 @@ export const RolesPage = () => {
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
 
   const columns = [
-    { title: '角色名称', dataIndex: 'name', key: 'name', render: (name: string, record: IRole) => <Space><Text strong>{name}</Text>{record.isSystem && <Tag>系统</Tag>}</Space> },
-    { title: '角色标识', dataIndex: 'key', key: 'key', render: (key: string) => <Text code>{key}</Text> },
-    { title: '描述', dataIndex: 'description', key: 'description' },
-    { title: '权限数', key: 'permCount', render: (_: unknown, record: IRole) => <Tag color="blue">{record.permissions.length} 项</Tag> },
-    { title: '用户数', dataIndex: 'userCount', key: 'userCount' },
+    { title: '角色名称', dataIndex: 'name', key: 'name', width: 140, render: (name: string, record: IRole) => <Space><Text strong>{name}</Text>{record.isSystem && <Tag>系统</Tag>}</Space> },
+    { title: '角色标识', dataIndex: 'key', key: 'key', width: 120, render: (key: string) => <Text code style={{ whiteSpace: 'nowrap' }}>{key}</Text> },
+    { title: '描述', dataIndex: 'description', key: 'description', width: 180 },
+    { title: '权限数', key: 'permCount', width: 90, render: (_: unknown, record: IRole) => <Tag color="blue">{record.permissions.length} 项</Tag> },
+    { title: '用户数', dataIndex: 'userCount', key: 'userCount', width: 80 },
     {
       title: '操作',
       key: 'action',
+      width: 140,
+      fixed: 'right' as const,
       render: (_: unknown, record: IRole) => (
         <Space>
           <Button type="link" icon={<EditOutlined />} onClick={() => { setEditingRole(record); form.setFieldsValue(record); setSelectedPermissions(record.permissions); setModalVisible(true); }}>编辑</Button>
@@ -131,7 +135,7 @@ export const RolesPage = () => {
       </div>
 
       <Card>
-        <Table dataSource={roles} columns={columns} rowKey="id" pagination={false} expandable={{
+        <Table dataSource={roles} columns={columns} rowKey="id" pagination={false} scroll={{ x: 750 }} expandable={{
           expandedRowRender: (record) => (
             <Space wrap>{record.permissions.map(p => <Tag key={p}>{permissionGroups.flatMap(g => g.permissions).find(pp => pp.key === p)?.label || p}</Tag>)}</Space>
           ),

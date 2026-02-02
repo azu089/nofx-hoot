@@ -84,16 +84,23 @@ export class TradingService {
     await exchange.loadMarkets();
 
     // 如果是合约交易，设置杠杆
-    if (config.tradingType === 'futures' && config.leverage && config.leverage > 1) {
+    if (
+      config.tradingType === 'futures' &&
+      config.leverage &&
+      config.leverage > 1
+    ) {
       this.logger.log(`设置杠杆: ${config.leverage}x`);
       // 注意：杠杆需要在具体交易对上设置，这里只是记录
     }
 
     // 缓存实例（5分钟后过期）
     this.exchangeInstances.set(cacheKey, exchange);
-    setTimeout(() => {
-      this.exchangeInstances.delete(cacheKey);
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        this.exchangeInstances.delete(cacheKey);
+      },
+      5 * 60 * 1000,
+    );
 
     return exchange;
   }
@@ -158,7 +165,13 @@ export class TradingService {
     config: TradingConfig = DEFAULT_CONFIG,
   ): Promise<OrderResult> {
     const exchange = await this.getExchange(userId, apiKeyId, config);
-    const { maxRetries, retryDelayMs, slippageTolerance, leverage, tradingType } = {
+    const {
+      maxRetries,
+      retryDelayMs,
+      slippageTolerance,
+      leverage,
+      tradingType,
+    } = {
       ...DEFAULT_CONFIG,
       ...config,
     };
@@ -192,13 +205,17 @@ export class TradingService {
         if (tradingType === 'futures' && leverage && leverage > 1) {
           // 杠杆交易，实际开仓金额 = 本金 * 杠杆
           // 但下单数量保持不变（保证金占用 = amountUsdt / leverage）
-          this.logger.log(`合约交易: 本金 ${amountUsdt} USDT, ${leverage}x 杠杆`);
+          this.logger.log(
+            `合约交易: 本金 ${amountUsdt} USDT, ${leverage}x 杠杆`,
+          );
 
           // 在币安等交易所，需要先设置杠杆
           try {
             await (exchange as any).setLeverage(leverage, symbol);
           } catch (e) {
-            this.logger.warn(`设置杠杆失败（可能已设置）: ${(e as Error).message}`);
+            this.logger.warn(
+              `设置杠杆失败（可能已设置）: ${(e as Error).message}`,
+            );
           }
         }
 
@@ -217,13 +234,18 @@ export class TradingService {
         let order;
         if (slippageTolerance && slippageTolerance > 0) {
           // 使用限价单模拟滑点保护
-          const slippageMultiplier = side === 'buy'
-            ? 1 + slippageTolerance / 100
-            : 1 - slippageTolerance / 100;
+          const slippageMultiplier =
+            side === 'buy'
+              ? 1 + slippageTolerance / 100
+              : 1 - slippageTolerance / 100;
           const limitPrice = currentPrice * slippageMultiplier;
-          const precisePrice = parseFloat(exchange.priceToPrecision(symbol, limitPrice));
+          const precisePrice = parseFloat(
+            exchange.priceToPrecision(symbol, limitPrice),
+          );
 
-          this.logger.log(`滑点保护: 限价 ${precisePrice} (容忍 ${slippageTolerance}%)`);
+          this.logger.log(
+            `滑点保护: 限价 ${precisePrice} (容忍 ${slippageTolerance}%)`,
+          );
 
           // 使用 IOC（Immediate or Cancel）限价单
           order = await exchange.createOrder(
@@ -278,8 +300,12 @@ export class TradingService {
     const exchange = await this.getExchange(userId, apiKeyId, config);
 
     try {
-      const positions = await (exchange as any).fetchPositions(symbol ? [symbol] : undefined);
-      return positions.filter((p: any) => parseFloat(p.contracts || p.info?.positionAmt || '0') !== 0);
+      const positions = await (exchange as any).fetchPositions(
+        symbol ? [symbol] : undefined,
+      );
+      return positions.filter(
+        (p: any) => parseFloat(p.contracts || p.info?.positionAmt || '0') !== 0,
+      );
     } catch (error) {
       this.logger.warn(`获取合约持仓失败: ${(error as Error).message}`);
       return [];
@@ -297,7 +323,10 @@ export class TradingService {
   ): Promise<OrderResult> {
     // 平仓 = 反向下单
     const closeSide = side === 'long' ? 'sell' : 'buy';
-    const { maxRetries, retryDelayMs, tradingType } = { ...DEFAULT_CONFIG, ...config };
+    const { maxRetries, retryDelayMs, tradingType } = {
+      ...DEFAULT_CONFIG,
+      ...config,
+    };
 
     const exchange = await this.getExchange(userId, apiKeyId, config);
 
@@ -324,7 +353,11 @@ export class TradingService {
           );
         } else {
           // 现货平仓，直接卖出
-          order = await exchange.createMarketOrder(symbol, closeSide, preciseAmount);
+          order = await exchange.createMarketOrder(
+            symbol,
+            closeSide,
+            preciseAmount,
+          );
         }
 
         this.logger.log(`平仓订单成功: ${order.id}`);
@@ -358,7 +391,14 @@ export class TradingService {
     this.logger.log(
       `部分平仓: ${symbol} 平仓比例 ${closeRatio * 100}%，数量 ${closeAmount}`,
     );
-    return this.closePosition(userId, apiKeyId, symbol, closeAmount, side, config);
+    return this.closePosition(
+      userId,
+      apiKeyId,
+      symbol,
+      closeAmount,
+      side,
+      config,
+    );
   }
 
   // 获取当前价格

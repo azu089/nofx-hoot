@@ -142,7 +142,11 @@ export class CircuitBreakerService {
     this.addToWindow(this.failureWindows, name, Date.now());
 
     // 清理过期记录
-    this.cleanWindow(this.failureWindows, name, cbConfig.failureWindowSeconds * 1000);
+    this.cleanWindow(
+      this.failureWindows,
+      name,
+      cbConfig.failureWindowSeconds * 1000,
+    );
 
     const state = await this.prisma.circuitBreakerState.findUnique({
       where: { name },
@@ -204,7 +208,10 @@ export class CircuitBreakerService {
   /**
    * 状态转换
    */
-  private async transitionTo(name: string, newState: CircuitState): Promise<void> {
+  private async transitionTo(
+    name: string,
+    newState: CircuitState,
+  ): Promise<void> {
     const config = await this.configService.getPlatformConfig();
     const now = new Date();
 

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { ArrowLeft, ChevronDown, Check, Search, X, Loader2 } from 'lucide-react'
-import { StrategyConfigData, exchanges, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
-import { useStrategySubscription } from '@/hooks/use-strategy'
+import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle } from 'lucide-react'
+import { toast } from 'sonner'
+import { StrategyConfigData, ApiKeyData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
 
 interface MobileStrategyConfigProps {
   strategyId?: string
@@ -65,8 +66,28 @@ export function MobileStrategyConfig({
   onCancel,
   onSuccess
 }: MobileStrategyConfigProps) {
-  // API Hook
+  // API Hooks
   const { loading: apiLoading, error: apiError, createSubscription, updateSubscription } = useStrategySubscription(strategyId || '')
+  const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+
+  // 选中的 API Key
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
+  const [showApiKeyDD, setShowApiKeyDD] = useState(false)
+
+  // 加载用户的 API Keys
+  useEffect(() => {
+    fetchApiKeys().catch(() => {
+      // 加载失败时静默处理
+    })
+  }, [fetchApiKeys])
+
+  // 当 API Keys 加载完成后，自动选择第一个
+  useEffect(() => {
+    if (apiKeys.length > 0 && !selectedApiKeyId) {
+      setSelectedApiKeyId(apiKeys[0].id)
+      setExchange(apiKeys[0].exchange)
+    }
+  }, [apiKeys, selectedApiKeyId])
 
   // 基础配置
   const [exchange, setExchange] = useState(defaultConfig.exchange)
@@ -104,7 +125,6 @@ export function MobileStrategyConfig({
   const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
 
   // UI
-  const [showExchangeDD, setShowExchangeDD] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [pairSearch, setPairSearch] = useState('')
   const [showPairPicker, setShowPairPicker] = useState(false)
@@ -144,9 +164,8 @@ export function MobileStrategyConfig({
     setExpandedSection(expandedSection === section ? null : section)
   }
 
-  const currentExchange = exchanges.find(e => e.id === exchange)
   const amountNum = parseFloat(amount) || 0
-  const isValid = exchange && amountNum >= 5
+  const isValid = selectedApiKeyId && amountNum >= 5
 
   const togglePair = (pair: string) => {
     setTradingPairs(prev => {
@@ -161,8 +180,20 @@ export function MobileStrategyConfig({
     })
   }
 
+  // 当前选中的 API Key
+  const selectedApiKey = apiKeys.find(k => k.id === selectedApiKeyId)
+
   const handleSave = async () => {
+    // 验证 API Key
+    if (!selectedApiKeyId) {
+      toast.error('请选择 API Key', {
+        description: '您需要先绑定交易所 API Key 才能订阅策略',
+      })
+      return
+    }
+
     const data: StrategyConfigData = {
+      apiKeyId: selectedApiKeyId,
       exchange,
       tradingType,
       tradingPairs,
@@ -193,40 +224,51 @@ export function MobileStrategyConfig({
     // 如果有 strategyId，调用后端 API
     if (strategyId) {
       try {
-        // 获取当前交易所对应的 apiKeyId（模拟，实际应从用户绑定的 API Key 中获取）
-        const apiKeyId = currentExchange?.id || 'default'
-
         if (subscriptionId) {
           // 更新模式
-          await updateSubscription(subscriptionId, data, apiKeyId)
+          await updateSubscription(subscriptionId, data)
+          toast.success('配置已更新', {
+            description: '策略配置已成功保存',
+          })
         } else {
           // 创建模式
-          await createSubscription(data, apiKeyId)
+          await createSubscription(data)
+          toast.success('订阅成功', {
+            description: '已成功订阅策略',
+          })
         }
         onSuccess?.()
       } catch (err) {
         console.error('保存失败:', err)
-        // 错误会通过 apiError 显示
+        toast.error('保存失败', {
+          description: err instanceof Error ? err.message : '请稍后重试',
+        })
+        return
       }
+    } else {
+      // 本地预览模式
+      toast.success('配置已保存', {
+        description: `策略配置已成功保存`,
+      })
     }
 
-    // 同时调用父组件回调（用于本地预览模式）
+    // 调用父组件回调
     onSave?.(data)
   }
 
   return (
     <div className="h-full flex flex-col bg-[#0A0A0F] text-white">
       {/* 顶栏 */}
-      <div className="flex-shrink-0 border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-3">
-          <button type="button" onClick={onBack} aria-label="返回" className="p-2 -ml-2 rounded-lg hover:bg-[#1E1E2E]">
+      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="text-center">
-            <h1 className="font-semibold">订阅配置</h1>
+            <h1 className="text-base font-semibold text-white">策略配置</h1>
             <p className="text-xs text-[#606070]">{strategyName}</p>
           </div>
-          <div className="w-9" />
+          <div className="w-10" />
         </div>
       </div>
 
@@ -235,39 +277,63 @@ export function MobileStrategyConfig({
 
         {/* === 基础配置 === */}
         <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-4 space-y-4">
-          {/* 交易所 + 余额 */}
+          {/* API Key 选择提示 */}
+          {apiKeys.length === 0 && !apiKeysLoading && (
+            <div className="flex items-start gap-2 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs text-[#F59E0B]">您还没有绑定交易所 API Key</p>
+                <p className="text-[10px] text-[#9090A0] mt-0.5">请先到「钱包 - API 管理」绑定 API Key</p>
+              </div>
+            </div>
+          )}
+
+          {/* API Key 选择器 */}
           <div className="relative">
-            <div className="text-[10px] text-[#606070] mb-1.5">交易所</div>
+            <div className="text-[10px] text-[#606070] mb-1.5">交易所 API</div>
             <button
               type="button"
-              onClick={() => setShowExchangeDD(!showExchangeDD)}
-              className="w-full flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg"
+              onClick={() => setShowApiKeyDD(!showApiKeyDD)}
+              disabled={apiKeysLoading || apiKeys.length === 0}
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg disabled:opacity-50"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full" />
-                <span className="font-medium">{exchange}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {currentExchange?.balance && <span className="text-[#06B6D4] text-sm font-medium">${currentExchange.balance.toLocaleString()}</span>}
-                <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showExchangeDD ? 'rotate-180' : ''}`} />
-              </div>
+              {apiKeysLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#606070]" />
+                  <span className="text-[#606070] text-sm">加载中...</span>
+                </div>
+              ) : selectedApiKey ? (
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${selectedApiKey.isActive ? 'bg-green-400' : 'bg-[#606070]'}`} />
+                  <span className="font-medium">{selectedApiKey.exchange}</span>
+                  <span className="text-xs text-[#606070]">({selectedApiKey.label})</span>
+                </div>
+              ) : (
+                <span className="text-[#606070] text-sm">{apiKeys.length === 0 ? '请先绑定 API Key' : '选择 API Key'}</span>
+              )}
+              <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showApiKeyDD ? 'rotate-180' : ''}`} />
             </button>
-            {showExchangeDD && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden">
-                {exchanges.map(ex => (
+            {showApiKeyDD && apiKeys.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-lg z-30 overflow-hidden max-h-48 overflow-y-auto">
+                {apiKeys.map(key => (
                   <button
-                    key={ex.id}
+                    key={key.id}
                     type="button"
-                    onClick={() => { setExchange(ex.id); setShowExchangeDD(false) }}
-                    disabled={!ex.connected}
+                    onClick={() => {
+                      setSelectedApiKeyId(key.id)
+                      setExchange(key.exchange)
+                      setShowApiKeyDD(false)
+                    }}
+                    disabled={!key.isActive}
                     className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-[#1E1E2E] disabled:opacity-50"
                   >
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${ex.connected ? 'bg-green-400' : 'bg-[#606070]'}`} />
-                      <span>{ex.name}</span>
+                      <div className={`w-2 h-2 rounded-full ${key.isActive ? 'bg-green-400' : 'bg-[#606070]'}`} />
+                      <span>{key.exchange}</span>
+                      <span className="text-xs text-[#606070]">({key.label})</span>
                     </div>
-                    {ex.connected && exchange === ex.id && <Check className="w-4 h-4 text-[#06B6D4]" />}
-                    {!ex.connected && <span className="text-xs text-[#606070]">未连接</span>}
+                    {selectedApiKeyId === key.id && <Check className="w-4 h-4 text-[#06B6D4]" />}
+                    {!key.isActive && <span className="text-xs text-[#606070]">已禁用</span>}
                   </button>
                 ))}
               </div>
@@ -639,8 +705,20 @@ export function MobileStrategyConfig({
             disabled={!isValid || apiLoading}
             className={`flex-1 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${isValid && !apiLoading ? 'bg-[#06B6D4] text-white' : 'bg-[#2A2A3A] text-[#606070] cursor-not-allowed'}`}
           >
-            {apiLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {apiLoading ? '提交中...' : amountNum < 5 ? '最低 $5' : subscriptionId ? '保存配置' : '确认订阅'}
+            {apiLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                保存中...
+              </>
+            ) : !selectedApiKeyId ? (
+              '请选择 API Key'
+            ) : amountNum < 5 ? (
+              '最低 $5'
+            ) : subscriptionId ? (
+              '更新配置'
+            ) : (
+              '订阅策略'
+            )}
           </button>
         </div>
       </div>

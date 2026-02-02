@@ -26,9 +26,9 @@ export class AirdropService {
     userId: string,
     type: AirdropType,
     options?: {
-      amount?: number;      // 自定义金额（如盈利交易）
-      source?: string;      // 来源说明
-      sourceId?: string;    // 关联ID
+      amount?: number; // 自定义金额（如盈利交易）
+      source?: string; // 来源说明
+      sourceId?: string; // 关联ID
       vestingDays?: number; // 释放天数
     },
   ): Promise<void> {
@@ -143,7 +143,10 @@ export class AirdropService {
   /**
    * 绑定钱包空投（已有账户额外绑定）
    */
-  async grantBindWalletAirdrop(userId: string, walletAddress: string): Promise<void> {
+  async grantBindWalletAirdrop(
+    userId: string,
+    walletAddress: string,
+  ): Promise<void> {
     const existing = await this.prisma.airdrop.findFirst({
       where: {
         userId,
@@ -186,13 +189,33 @@ export class AirdropService {
   }
 
   /**
-   * 邀请奖励空投
+   * 邀请奖励空投（含终身上限检查）
    */
   async grantReferralAirdrop(
     inviterId: string,
     inviteeId: string,
   ): Promise<void> {
-    // 检查今日邀请奖励是否已达上限
+    // 1. 检查终身上限
+    const totalReferralAirdrop = await this.prisma.airdrop.aggregate({
+      where: {
+        userId: inviterId,
+        type: AirdropType.REFERRAL,
+        status: { not: AirdropStatus.CANCELLED },
+      },
+      _sum: { amount: true },
+    });
+    const totalAmount = new Decimal(
+      totalReferralAirdrop._sum.amount?.toString() || '0',
+    );
+
+    if (totalAmount.gte(AIRDROP_CAPS.referralLifetimeCap)) {
+      this.logger.log(
+        `用户 ${inviterId} 邀请奖励已达终身上限 ${AIRDROP_CAPS.referralLifetimeCap} HOOT`,
+      );
+      return;
+    }
+
+    // 2. 检查今日上限
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -207,21 +230,38 @@ export class AirdropService {
       },
       _sum: { amount: true },
     });
-    const todayAmount = new Decimal(todayReferralAirdrop._sum.amount?.toString() || '0');
+    const todayAmount = new Decimal(
+      todayReferralAirdrop._sum.amount?.toString() || '0',
+    );
 
     if (todayAmount.gte(AIRDROP_CAPS.referralDailyCap)) {
-      this.logger.log(`用户 ${inviterId} 今日邀请奖励已达上限 ${AIRDROP_CAPS.referralDailyCap} HOOT`);
-      return; // 今日已达上限
+      this.logger.log(
+        `用户 ${inviterId} 今日邀请奖励已达上限 ${AIRDROP_CAPS.referralDailyCap} HOOT`,
+      );
+      return;
+    }
+
+    // 3. 计算实际发放金额（考虑终身上限）
+    let rewardAmount = AIRDROP_REWARDS[AirdropType.REFERRAL];
+    const lifetimeRemaining =
+      AIRDROP_CAPS.referralLifetimeCap - totalAmount.toNumber();
+    if (rewardAmount > lifetimeRemaining) {
+      rewardAmount = lifetimeRemaining;
+    }
+
+    if (rewardAmount <= 0) {
+      return;
     }
 
     await this.grantAirdrop(inviterId, AirdropType.REFERRAL, {
+      amount: rewardAmount,
       source: `邀请用户奖励`,
       sourceId: inviteeId,
     });
   }
 
   /**
-   * 盈利交易空投
+   * 盈利交易空投（含终身上限检查）
    * @param profitUsdt 盈利金额 USDT
    */
   async grantTradingProfitAirdrop(
@@ -233,7 +273,27 @@ export class AirdropService {
       return; // 只有盈利才发放
     }
 
-    // 检查今日交易盈利空投是否已达上限
+    // 1. 检查终身上限
+    const totalTradingAirdrop = await this.prisma.airdrop.aggregate({
+      where: {
+        userId,
+        type: AirdropType.TRADING_PROFIT,
+        status: { not: AirdropStatus.CANCELLED },
+      },
+      _sum: { amount: true },
+    });
+    const totalAmount = new Decimal(
+      totalTradingAirdrop._sum.amount?.toString() || '0',
+    );
+
+    if (totalAmount.gte(AIRDROP_CAPS.tradingProfitLifetimeCap)) {
+      this.logger.log(
+        `用户 ${userId} 交易盈利空投已达终身上限 ${AIRDROP_CAPS.tradingProfitLifetimeCap} HOOT`,
+      );
+      return;
+    }
+
+    // 2. 检查今日上限
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -248,20 +308,32 @@ export class AirdropService {
       },
       _sum: { amount: true },
     });
-    const todayAmount = new Decimal(todayTradingAirdrop._sum.amount?.toString() || '0');
+    const todayAmount = new Decimal(
+      todayTradingAirdrop._sum.amount?.toString() || '0',
+    );
 
     if (todayAmount.gte(AIRDROP_CAPS.tradingProfitDailyCap)) {
-      this.logger.log(`用户 ${userId} 今日交易盈利空投已达上限 ${AIRDROP_CAPS.tradingProfitDailyCap} HOOT`);
-      return; // 今日已达上限，不发放
+      this.logger.log(
+        `用户 ${userId} 今日交易盈利空投已达上限 ${AIRDROP_CAPS.tradingProfitDailyCap} HOOT`,
+      );
+      return;
     }
 
-    // 盈利 * 5 = HOOT 数量
-    let hootAmount = profitUsdt * (AIRDROP_REWARDS[AirdropType.TRADING_PROFIT] as number);
+    // 3. 计算 HOOT 数量（盈利 * 倍数）
+    let hootAmount = profitUsdt * AIRDROP_REWARDS[AirdropType.TRADING_PROFIT];
 
-    // 如果加上本次会超过每日上限，则只发放剩余额度
-    const remaining = AIRDROP_CAPS.tradingProfitDailyCap - todayAmount.toNumber();
-    if (hootAmount > remaining) {
-      hootAmount = remaining;
+    // 4. 考虑每日上限
+    const dailyRemaining =
+      AIRDROP_CAPS.tradingProfitDailyCap - todayAmount.toNumber();
+    if (hootAmount > dailyRemaining) {
+      hootAmount = dailyRemaining;
+    }
+
+    // 5. 考虑终身上限
+    const lifetimeRemaining =
+      AIRDROP_CAPS.tradingProfitLifetimeCap - totalAmount.toNumber();
+    if (hootAmount > lifetimeRemaining) {
+      hootAmount = lifetimeRemaining;
     }
 
     if (hootAmount <= 0) {
@@ -272,7 +344,7 @@ export class AirdropService {
       amount: hootAmount,
       source: `盈利交易奖励: ${profitUsdt} USDT`,
       sourceId: positionId,
-      vestingDays: 30, // 盈利空投 30 天释放
+      // 使用默认 90 天释放（VESTING_CONFIG.defaultDays）
     });
   }
 
@@ -318,7 +390,9 @@ export class AirdropService {
       },
       _sum: { amount: true },
     });
-    const totalCheckinAmount = new Decimal(totalCheckinAirdrop._sum.amount?.toString() || '0');
+    const totalCheckinAmount = new Decimal(
+      totalCheckinAirdrop._sum.amount?.toString() || '0',
+    );
 
     if (totalCheckinAmount.gte(AIRDROP_CAPS.checkinLifetimeCap)) {
       return {
@@ -354,7 +428,8 @@ export class AirdropService {
     let reward = Math.min(base + (streak - 1) * increment, max);
 
     // 如果加上本次奖励会超过终身上限，则只发放剩余额度
-    const remaining = AIRDROP_CAPS.checkinLifetimeCap - totalCheckinAmount.toNumber();
+    const remaining =
+      AIRDROP_CAPS.checkinLifetimeCap - totalCheckinAmount.toNumber();
     if (reward > remaining) {
       reward = remaining;
     }
@@ -514,48 +589,51 @@ export class AirdropService {
    * 获取用户空投余额
    */
   async getBalance(userId: string): Promise<AirdropBalanceDto> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        hootBalance: true,
-        lockedBalance: true,
-        availableBalance: true,
-      },
-    });
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          hootBalance: true,
+          lockedBalance: true,
+          availableBalance: true,
+        },
+      });
 
-    if (!user) {
-      throw new BadRequestException('用户不存在');
+      if (!user) {
+        throw new BadRequestException('用户不存在');
+      }
+
+      // 获取待确认空投总额
+      const pendingAirdrops = await this.prisma.airdrop.aggregate({
+        where: {
+          userId,
+          status: AirdropStatus.PENDING,
+        },
+        _sum: { amount: true },
+      });
+
+      const total = new Decimal(user.hootBalance?.toString() || '0');
+      const locked = new Decimal(user.lockedBalance?.toString() || '0');
+      const available = new Decimal(user.availableBalance?.toString() || '0');
+      const pending = new Decimal(pendingAirdrops._sum.amount?.toString() || '0');
+
+      // 计算释放进度
+      const vestingProgress =
+        total.gt(0) && locked.gt(0)
+          ? available.div(total).times(100).toNumber()
+          : 100;
+
+      return {
+        totalBalance: total.toString(),
+        lockedBalance: locked.toString(),
+        availableBalance: available.toString(),
+        pendingAmount: pending.toString(),
+        vestingProgress: Math.min(vestingProgress, 100),
+      };
+    } catch (error) {
+      this.logger.error(`获取空投余额失败: userId=${userId}, error=${error.message}`, error.stack);
+      throw error;
     }
-
-    // 获取待确认空投总额
-    const pendingAirdrops = await this.prisma.airdrop.aggregate({
-      where: {
-        userId,
-        status: AirdropStatus.PENDING,
-      },
-      _sum: { amount: true },
-    });
-
-    const total = new Decimal(user.hootBalance.toString());
-    const locked = new Decimal(user.lockedBalance.toString());
-    const available = new Decimal(user.availableBalance.toString());
-    const pending = new Decimal(
-      pendingAirdrops._sum.amount?.toString() || '0',
-    );
-
-    // 计算释放进度
-    const vestingProgress =
-      total.gt(0) && locked.gt(0)
-        ? available.div(total).times(100).toNumber()
-        : 100;
-
-    return {
-      totalBalance: total.toString(),
-      lockedBalance: locked.toString(),
-      availableBalance: available.toString(),
-      pendingAmount: pending.toString(),
-      vestingProgress: Math.min(vestingProgress, 100),
-    };
   }
 
   /**

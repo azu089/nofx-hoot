@@ -1,11 +1,13 @@
 /**
  * 管理后台登录页面
+ * 支持两步验证 (Google Authenticator)
  */
 import { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, Typography, message, Space, Checkbox, Divider } from 'antd';
-import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Typography, Space, Checkbox, Divider, Alert } from 'antd';
+import { UserOutlined, LockOutlined, SafetyOutlined, LockFilled } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
@@ -21,8 +23,10 @@ interface LoginFormData {
 const REMEMBER_KEY = 'admin_remember';
 
 export const LoginPage = () => {
+  const message = useMessage();
   const [loading, setLoading] = useState(false);
-  const [requireTotp, _setRequireTotp] = useState(false); // TODO: 启用 TOTP 后使用
+  const [requireTotp, setRequireTotp] = useState(false);
+  const [accountLocked, setAccountLocked] = useState<string | null>(null);
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -39,9 +43,9 @@ export const LoginPage = () => {
 
   const onFinish = async (values: LoginFormData) => {
     setLoading(true);
+    setAccountLocked(null);
 
     try {
-      // 调用真实登录 API
       const response = await fetch(`${API_URL}/admin/auth/login`, {
         method: 'POST',
         headers: {
@@ -50,17 +54,33 @@ export const LoginPage = () => {
         body: JSON.stringify({
           username: values.username,
           password: values.password,
+          totpCode: values.totpCode,
         }),
       });
 
       const result = await response.json();
 
+      // 处理账号锁定
+      if (response.status === 403) {
+        setAccountLocked(result.message || '账号已锁定');
+        return;
+      }
+
       if (!response.ok || result.code !== 0) {
         throw new Error(result.message || '登录失败');
       }
 
-      // 后端返回格式: { code, message, data: { token, admin } }
-      const { token, admin } = result.data;
+      const data = result.data;
+
+      // 检查是否需要两步验证
+      if (data.requireTotp) {
+        setRequireTotp(true);
+        message.info('请输入 Google Authenticator 验证码');
+        return;
+      }
+
+      // 登录成功
+      const { token, admin } = data;
 
       // 保存记住账号
       if (values.remember) {
@@ -69,11 +89,11 @@ export const LoginPage = () => {
         localStorage.removeItem(REMEMBER_KEY);
       }
 
-      // 登录成功
       const user = {
         username: admin.username,
         nickname: admin.nickname,
         role: admin.role,
+        totpEnabled: admin.totpEnabled,
         loginTime: new Date().toISOString(),
       };
 
@@ -85,6 +105,12 @@ export const LoginPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 重置两步验证状态
+  const handleBack = () => {
+    setRequireTotp(false);
+    form.setFieldValue('totpCode', undefined);
   };
 
   return (
@@ -99,7 +125,7 @@ export const LoginPage = () => {
     >
       <Card
         style={{
-          width: 400,
+          width: 420,
           background: '#141414',
           border: '1px solid #303030',
         }}
@@ -118,7 +144,25 @@ export const LoginPage = () => {
               HOOT Admin
             </Title>
           </Space>
+          {requireTotp && (
+            <div style={{ marginTop: 8 }}>
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                <LockFilled style={{ marginRight: 4 }} />
+                两步验证
+              </Text>
+            </div>
+          )}
         </div>
+
+        {accountLocked && (
+          <Alert
+            message="账号已锁定"
+            description={accountLocked}
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
         <Form
           form={form}
@@ -128,47 +172,68 @@ export const LoginPage = () => {
           size="large"
           layout="vertical"
         >
-          <Form.Item
-            name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
-          >
-            <Input
-              prefix={<UserOutlined style={{ color: '#666' }} />}
-              placeholder="用户名"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password
-              prefix={<LockOutlined style={{ color: '#666' }} />}
-              placeholder="密码"
-            />
-          </Form.Item>
-
-          {requireTotp && (
+          {!requireTotp ? (
             <>
-              <Divider style={{ margin: '16px 0', borderColor: '#303030' }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>动态令牌验证</Text>
-              </Divider>
+              {/* 第一步：用户名密码 */}
               <Form.Item
-                name="totpCode"
-                rules={[{ required: true, message: '请输入动态验证码' }]}
+                name="username"
+                rules={[{ required: true, message: '请输入用户名' }]}
               >
                 <Input
-                  prefix={<SafetyOutlined style={{ color: '#666' }} />}
-                  placeholder="6位动态验证码"
-                  maxLength={6}
+                  prefix={<UserOutlined style={{ color: '#666' }} />}
+                  placeholder="用户名"
                 />
               </Form.Item>
+
+              <Form.Item
+                name="password"
+                rules={[{ required: true, message: '请输入密码' }]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined style={{ color: '#666' }} />}
+                  placeholder="密码"
+                />
+              </Form.Item>
+
+              <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 16 }}>
+                <Checkbox>记住账号</Checkbox>
+              </Form.Item>
+            </>
+          ) : (
+            <>
+              {/* 第二步：两步验证 */}
+              <Alert
+                message="两步验证已启用"
+                description="请打开 Google Authenticator 应用，输入 6 位动态验证码"
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+
+              <Form.Item
+                name="totpCode"
+                rules={[
+                  { required: true, message: '请输入验证码' },
+                  { len: 6, message: '验证码必须是6位' },
+                  { pattern: /^\d+$/, message: '验证码只能是数字' },
+                ]}
+              >
+                <Input
+                  prefix={<SafetyOutlined style={{ color: '#06B6D4' }} />}
+                  placeholder="6 位动态验证码"
+                  maxLength={6}
+                  style={{ fontSize: 18, letterSpacing: 8, textAlign: 'center' }}
+                  autoFocus
+                />
+              </Form.Item>
+
+              <div style={{ marginBottom: 16 }}>
+                <Button type="link" onClick={handleBack} style={{ padding: 0 }}>
+                  ← 返回重新登录
+                </Button>
+              </div>
             </>
           )}
-
-          <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 16 }}>
-            <Checkbox>记住账号</Checkbox>
-          </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>
             <Button
@@ -182,16 +247,21 @@ export const LoginPage = () => {
                 height: 48,
               }}
             >
-              登录
+              {requireTotp ? '验证并登录' : '登录'}
             </Button>
           </Form.Item>
         </Form>
 
-        <div style={{ textAlign: 'center' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            默认账户: admin / admin123
-          </Text>
-        </div>
+        {!requireTotp && (
+          <>
+            <Divider style={{ margin: '16px 0', borderColor: '#303030' }} />
+            <div style={{ textAlign: 'center' }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                首次使用请立即修改密码并启用两步验证
+              </Text>
+            </div>
+          </>
+        )}
       </Card>
     </div>
   );

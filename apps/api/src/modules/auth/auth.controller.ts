@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Param, Delete } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import {
@@ -16,15 +17,17 @@ import { CurrentUser } from './decorators/current-user.decorator';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  // 注册 - 公开接口
+  // 注册 - 公开接口（严格限流：每分钟最多 5 次）
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
-  // 登录 - 公开接口
+  // 登录 - 公开接口（严格限流：每分钟最多 10 次，防止暴力破解）
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
@@ -38,8 +41,9 @@ export class AuthController {
 
   // ===== 邮箱验证 =====
 
-  // 发送验证码 - 公开接口
+  // 发送验证码 - 公开接口（严格限流：每分钟最多 3 次，防止邮件轰炸）
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('send-verification')
   async sendVerification(@Body('email') email: string) {
     return this.authService.sendVerificationCode(email);
@@ -103,7 +107,11 @@ export class AuthController {
   @Public()
   @Post('wallet/login')
   async loginByWallet(@Body() dto: WalletLoginDto) {
-    return this.authService.loginByWallet(dto.address, dto.signature, dto.message);
+    return this.authService.loginByWallet(
+      dto.address,
+      dto.signature,
+      dto.message,
+    );
   }
 
   // ===== 账户绑定 =====
@@ -123,7 +131,12 @@ export class AuthController {
     @CurrentUser() user: { id: string },
     @Body() dto: BindWalletDto,
   ) {
-    return this.authService.bindWallet(user.id, dto.address, dto.signature, dto.message);
+    return this.authService.bindWallet(
+      user.id,
+      dto.address,
+      dto.signature,
+      dto.message,
+    );
   }
 
   // 解绑钱包 - 需要认证

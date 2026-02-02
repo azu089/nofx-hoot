@@ -12,7 +12,7 @@ import {
   Megaphone,
   Loader2
 } from 'lucide-react'
-import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice } from '@/hooks/useMarket'
+import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
 
 interface MobileDashboardV3Props {
@@ -40,11 +40,11 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
     { symbol: 'DOGE', name: 'Dogecoin', price: 0.32, change24h: -1.23 }
   ]
 
-  const defaultNewsData = [
-    { id: '1', title: 'BTC突破10万美元大关，机构持续加仓', source: 'CoinDesk', publishedAt: new Date().toISOString(), sentiment: 'positive' as const },
-    { id: '2', title: 'ETH升级完成，Gas费降低80%', source: 'The Block', publishedAt: new Date(Date.now() - 5*3600000).toISOString(), sentiment: 'positive' as const },
-    { id: '3', title: '美联储暗示2025年可能降息，加密市场反弹', source: 'Bloomberg', publishedAt: new Date(Date.now() - 8*3600000).toISOString(), sentiment: 'neutral' as const },
-    { id: '4', title: 'Solana生态TVL创新高，DeFi项目活跃', source: 'DeFi Llama', publishedAt: new Date(Date.now() - 12*3600000).toISOString(), sentiment: 'positive' as const }
+  const defaultNewsData: CryptoNews[] = [
+    { id: '1', title: 'BTC突破10万美元大关，机构持续加仓', source: 'CoinDesk', url: '#', publishedAt: new Date().toISOString(), sentiment: 'positive' },
+    { id: '2', title: 'ETH升级完成，Gas费降低80%', source: 'The Block', url: '#', publishedAt: new Date(Date.now() - 5*3600000).toISOString(), sentiment: 'positive' },
+    { id: '3', title: '美联储暗示2025年可能降息，加密市场反弹', source: 'Bloomberg', url: '#', publishedAt: new Date(Date.now() - 8*3600000).toISOString(), sentiment: 'neutral' },
+    { id: '4', title: 'Solana生态TVL创新高，DeFi项目活跃', source: 'DeFi Llama', url: '#', publishedAt: new Date(Date.now() - 12*3600000).toISOString(), sentiment: 'positive' }
   ]
 
   const marketData = data?.prices && data.prices.length > 0 ? data.prices : defaultMarketData
@@ -88,12 +88,18 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
     { titleKey: 'quickAccess.inviteFriends', icon: Users, path: '/referral', gradient: 'from-orange-500 to-red-500' }
   ]
 
-  const announcements = [
+  // 公告数据：优先使用 API 数据，根据系统语言选择对应内容
+  const defaultAnnouncements = [
     t('defaultAnnouncements.maintenance'),
     t('defaultAnnouncements.newStrategy'),
     t('defaultAnnouncements.referralEvent'),
     t('defaultAnnouncements.aiStrategy')
   ]
+
+  // API 已返回翻译后的内容，直接使用即可
+  const announcements = data?.announcements && data.announcements.length > 0
+    ? data.announcements.map(a => a.title)
+    : defaultAnnouncements
 
   // Touch handlers for carousel
   const onTouchStart = (e: TouchEvent) => {
@@ -130,10 +136,12 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
-      {/* Header - 仅通知图标 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg">
-        <div className="flex items-center justify-end px-4 py-2">
-          <button type="button" className="relative p-2" aria-label={t('announcement')}>
+      {/* Header - 标题 + 通知 */}
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="w-10" />
+          <h1 className="text-base font-semibold text-white">{tNav('home')}</h1>
+          <button type="button" className="relative w-10 h-10 flex items-center justify-center" aria-label={t('announcement')}>
             <Bell className="w-5 h-5 text-[#9090A0]" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#06B6D4] rounded-full" />
           </button>
@@ -311,32 +319,53 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                 })}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-[#2A2A3A] scrollbar-track-transparent">
                 {newsData.map((news) => {
                   const tag = news.sentiment === 'positive' ? t('hot') : news.sentiment === 'negative' ? t('warning') : ''
                   return (
-                    <div
+                    <a
                       key={news.id}
-                      className="p-3 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-lg"
+                      href={news.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-3 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-lg hover:border-[#06B6D4]/30 transition-colors"
                     >
-                      <div className="flex items-center gap-2 mb-1.5">
-                        {tag && (
-                          <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
-                            news.sentiment === 'positive'
-                              ? 'bg-red-500/20 text-red-400'
-                              : 'bg-orange-500/20 text-orange-400'
-                          }`}>
-                            {tag}
-                          </span>
+                      <div className="flex gap-3">
+                        {/* 新闻配图 */}
+                        {news.image && (
+                          <div className="flex-shrink-0 w-20 h-14 rounded-lg overflow-hidden bg-[#1E1E2E]">
+                            <img
+                              src={news.image}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                // 图片加载失败时隐藏
+                                (e.target as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          </div>
                         )}
-                        <span className="text-[10px] text-[#606070]">{news.source}</span>
-                        <span className="text-[10px] text-[#606070]">·</span>
-                        <span className="text-[10px] text-[#606070]">{formatTimeAgo(news.publishedAt)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {tag && (
+                              <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
+                                news.sentiment === 'positive'
+                                  ? 'bg-red-500/20 text-red-400'
+                                  : 'bg-orange-500/20 text-orange-400'
+                              }`}>
+                                {tag}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-[#606070]">{news.source}</span>
+                            <span className="text-[10px] text-[#606070]">·</span>
+                            <span className="text-[10px] text-[#606070]">{formatTimeAgo(news.publishedAt)}</span>
+                          </div>
+                          <h4 className="text-[#F8F8FC] text-xs line-clamp-2">
+                            {news.title}
+                          </h4>
+                        </div>
                       </div>
-                      <h4 className="text-[#F8F8FC] text-xs">
-                        {news.title}
-                      </h4>
-                    </div>
+                    </a>
                   )
                 })}
               </div>

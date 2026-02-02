@@ -7,9 +7,9 @@ import Decimal from 'decimal.js';
 
 interface DcaConfig {
   dcaEnabled: boolean;
-  dcaMaxCount: number;       // 最大补仓次数
-  dcaTrigger: number;        // 触发跌幅 %
-  dcaMultiplier: number;     // 补仓倍率
+  dcaMaxCount: number; // 最大补仓次数
+  dcaTrigger: number; // 触发跌幅 %
+  dcaMultiplier: number; // 补仓倍率
   waterfallProtection: boolean;
   waterfallTriggerPercent: number; // 防瀑布触发 %
 }
@@ -22,9 +22,9 @@ interface DcaPosition {
   side: 'long' | 'short';
   entryPrice: number;
   amount: number;
-  baseAmount: number;        // 初始金额（USDT）
-  dcaCount: number;          // 已补仓次数
-  lastDcaPrice: number;      // 上次补仓价格
+  baseAmount: number; // 初始金额（USDT）
+  dcaCount: number; // 已补仓次数
+  lastDcaPrice: number; // 上次补仓价格
   config: DcaConfig;
 }
 
@@ -49,7 +49,9 @@ export class DcaService {
       dcaCount: 0,
       lastDcaPrice: position.entryPrice,
     });
-    this.logger.log(`DCA 监控: ${position.symbol} 最大 ${position.config.dcaMaxCount} 次`);
+    this.logger.log(
+      `DCA 监控: ${position.symbol} 最大 ${position.config.dcaMaxCount} 次`,
+    );
   }
 
   // 移除监控
@@ -97,7 +99,10 @@ export class DcaService {
   }
 
   // 计算总跌幅
-  private calculateTotalDrop(position: DcaPosition, currentPrice: number): number {
+  private calculateTotalDrop(
+    position: DcaPosition,
+    currentPrice: number,
+  ): number {
     const { side, entryPrice } = position;
     if (side === 'long') {
       return ((entryPrice - currentPrice) / entryPrice) * 100;
@@ -112,7 +117,16 @@ export class DcaService {
     currentPrice: number,
     dropPercent: number,
   ): Promise<void> {
-    const { positionId, userId, apiKeyId, symbol, side, baseAmount, dcaCount, config } = position;
+    const {
+      positionId,
+      userId,
+      apiKeyId,
+      symbol,
+      side,
+      baseAmount,
+      dcaCount,
+      config,
+    } = position;
 
     // 计算补仓金额（倍率递增）
     const dcaAmount = new Decimal(baseAmount)
@@ -196,7 +210,9 @@ export class DcaService {
         },
       });
 
-      this.logger.log(`补仓成功: ${symbol} 新均价 ${position.entryPrice.toFixed(4)}`);
+      this.logger.log(
+        `补仓成功: ${symbol} 新均价 ${position.entryPrice.toFixed(4)}`,
+      );
     } catch (error) {
       this.logger.error(`补仓失败: ${(error as Error).message}`);
       await this.notifyDcaFailed(position, (error as Error).message);
@@ -204,7 +220,10 @@ export class DcaService {
   }
 
   // 通知：防瀑布触发
-  private async notifyWaterfallTriggered(position: DcaPosition, dropPercent: number) {
+  private async notifyWaterfallTriggered(
+    position: DcaPosition,
+    dropPercent: number,
+  ) {
     await this.notificationsService.sendNotification(position.userId, {
       type: 'waterfall_triggered',
       title: '防瀑布保护触发',

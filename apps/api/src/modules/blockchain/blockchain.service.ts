@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ethers, Contract, EventLog } from 'ethers';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -34,7 +39,9 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     if (process.env.ENABLE_BLOCKCHAIN_LISTENER !== 'true') {
-      this.logger.log('区块链监听器已禁用（设置 ENABLE_BLOCKCHAIN_LISTENER=true 启用）');
+      this.logger.log(
+        '区块链监听器已禁用（设置 ENABLE_BLOCKCHAIN_LISTENER=true 启用）',
+      );
       return;
     }
 
@@ -51,12 +58,15 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
    * 初始化 RPC Provider
    */
   private async initializeProvider(): Promise<void> {
-    const rpcUrl = process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
+    const rpcUrl =
+      process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
 
     try {
       this.provider = new ethers.JsonRpcProvider(rpcUrl);
       const network = await this.provider.getNetwork();
-      this.logger.log(`已连接到区块链网络: ${network.name} (chainId: ${network.chainId})`);
+      this.logger.log(
+        `已连接到区块链网络: ${network.name} (chainId: ${network.chainId})`,
+      );
     } catch (error) {
       this.logger.error(`连接区块链失败: ${error.message}`);
       throw error;
@@ -68,7 +78,9 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
    */
   private async loadTokenConfigs(): Promise<void> {
     // BSC 主网 USDT
-    const usdtAddress = process.env.USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955';
+    const usdtAddress =
+      process.env.USDT_CONTRACT_ADDRESS ||
+      '0x55d398326f99059fF775485246999027B3197955';
     // HOOT 代币地址（需要部署后配置）
     const hootAddress = process.env.HOOT_CONTRACT_ADDRESS;
 
@@ -129,9 +141,12 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     this.contracts.set(config.address, contract);
 
     // 监听 Transfer 事件
-    contract.on('Transfer', async (from: string, to: string, value: bigint, event: EventLog) => {
-      await this.handleTransferEvent(config, from, to, value, event);
-    });
+    contract.on(
+      'Transfer',
+      async (from: string, to: string, value: bigint, event: EventLog) => {
+        await this.handleTransferEvent(config, from, to, value, event);
+      },
+    );
 
     this.logger.log(`监听 ${config.symbol} Transfer 事件: ${config.address}`);
   }
@@ -149,7 +164,9 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     const txHash = event.transactionHash;
     const amount = ethers.formatUnits(value, config.decimals);
 
-    this.logger.debug(`检测到 ${config.symbol} 转账: ${from} -> ${to}, 金额: ${amount}`);
+    this.logger.debug(
+      `检测到 ${config.symbol} 转账: ${from} -> ${to}, 金额: ${amount}`,
+    );
 
     try {
       // 查找是否是平台充值地址
@@ -165,7 +182,9 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      this.logger.log(`检测到用户 ${depositAddress.userId} 充值: ${amount} ${config.symbol}`);
+      this.logger.log(
+        `检测到用户 ${depositAddress.userId} 充值: ${amount} ${config.symbol}`,
+      );
 
       // 调用钱包服务处理充值
       await this.walletService.increaseBalance(
@@ -227,7 +246,11 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         for (const event of events) {
           if (!(event instanceof EventLog)) continue;
 
-          const [from, to, value] = event.args as unknown as [string, string, bigint];
+          const [from, to, value] = event.args as unknown as [
+            string,
+            string,
+            bigint,
+          ];
           const toAddress = to.toLowerCase();
 
           // 检查是否是充值到平台地址

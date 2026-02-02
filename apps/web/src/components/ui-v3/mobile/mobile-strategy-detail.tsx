@@ -13,7 +13,8 @@ import {
   Play,
   Calendar,
   Check,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react'
 
 interface TradeRecord {
@@ -30,23 +31,33 @@ interface MonthlyReturn {
   return: number
 }
 
+// API 返回的策略数据类型（与桌面端共用）
+export interface MobileStrategyApiData {
+  id: string
+  name: string
+  description: string
+  freqtradeId?: string
+  isActive: boolean
+  createdAt: string
+  subscriberCount: number
+  isSubscribed: boolean
+  riskLevel?: string
+}
+
 interface MobileStrategyDetailProps {
+  strategy?: MobileStrategyApiData
+  isLoading?: boolean
   onBack?: () => void
   onUseStrategy?: (id: string) => void
 }
 
-// 策略详情数据
-const strategyData = {
-  id: '1',
-  name: 'RSI 智能抄底策略',
+// 默认模拟数据（后端暂未提供的字段）
+const defaultMockData = {
   author: 'Hoot Labs',
   authorVerified: true,
-  description: '基于 RSI 超卖信号的智能抄底策略，结合多时间周期确认和动态止损，适合震荡市和回调买入。',
-  tags: ['低风险', '现货', '抄底'],
+  tags: ['量化', '现货'],
   rating: 4.8,
   reviewCount: 256,
-  subscribers: 1234,
-  createdAt: '2025-06-01',
 
   // 性能指标
   performance: {
@@ -94,10 +105,33 @@ const strategyData = {
 }
 
 export function MobileStrategyDetail({
+  strategy,
+  isLoading,
   onBack,
   onUseStrategy
 }: MobileStrategyDetailProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'performance' | 'trades'>('overview')
+
+  // 加载状态（包括数据未加载完成的情况）
+  if (isLoading || !strategy) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+      </div>
+    )
+  }
+
+  // 合并真实数据和默认数据
+  const strategyData = {
+    id: strategy.id,
+    name: strategy.name,
+    description: strategy?.description || '',
+    subscribers: strategy?.subscriberCount || 0,
+    createdAt: strategy?.createdAt ? new Date(strategy.createdAt).toLocaleDateString('zh-CN') : '-',
+    isSubscribed: strategy?.isSubscribed || false,
+    riskLevel: strategy?.riskLevel || 'medium',
+    ...defaultMockData,
+  }
 
   const maxReturn = Math.max(...strategyData.monthlyReturns.map(m => Math.abs(m.return)))
 
@@ -176,8 +210,13 @@ export function MobileStrategyDetail({
               <Shield className="w-4 h-4" />
               风险等级
             </span>
-            <span className="px-2 py-0.5 rounded text-xs bg-[#10B981]/20 text-[#10B981]">
-              低风险
+            <span className={`px-2 py-0.5 rounded text-xs ${
+              strategyData.riskLevel === 'low' ? 'bg-[#10B981]/20 text-[#10B981]' :
+              strategyData.riskLevel === 'high' ? 'bg-[#F43F5E]/20 text-[#F43F5E]' :
+              'bg-[#F59E0B]/20 text-[#F59E0B]'
+            }`}>
+              {strategyData.riskLevel === 'low' ? '低风险' :
+               strategyData.riskLevel === 'high' ? '高风险' : '中风险'}
             </span>
           </div>
         </div>
@@ -320,17 +359,17 @@ export function MobileStrategyDetail({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex flex-col">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-4">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-lg font-semibold text-white">策略详情</h1>
+          <h1 className="text-base font-semibold text-white">策略详情</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -439,7 +478,7 @@ export function MobileStrategyDetail({
           className="w-full py-3 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(6,182,212,0.3)]"
         >
           <Play className="w-5 h-5" />
-          立即使用
+          {strategyData.isSubscribed ? '已订阅' : '立即使用'}
         </button>
       </div>
     </div>

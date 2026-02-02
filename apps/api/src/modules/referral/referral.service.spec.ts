@@ -106,9 +106,9 @@ describe('ReferralService', () => {
         invitedBy: 'other-user',
       });
 
-      await expect(service.bindInviteCode('user-123', 'ABC123')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.bindInviteCode('user-123', 'ABC123'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     // 异常路径 - 无效邀请码
@@ -117,9 +117,9 @@ describe('ReferralService', () => {
         .mockResolvedValueOnce({ ...mockUser, invitedBy: null })
         .mockResolvedValueOnce(null);
 
-      await expect(service.bindInviteCode('user-123', 'INVALID')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.bindInviteCode('user-123', 'INVALID'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     // 异常路径 - 自己邀请自己
@@ -128,9 +128,9 @@ describe('ReferralService', () => {
         .mockResolvedValueOnce({ ...mockUser, invitedBy: null })
         .mockResolvedValueOnce(mockUser); // Same user
 
-      await expect(service.bindInviteCode('user-123', 'ABC123')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.bindInviteCode('user-123', 'ABC123'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -174,7 +174,9 @@ describe('ReferralService', () => {
   describe('getRewardRecords', () => {
     // 正常路径
     it('should return reward records', async () => {
-      (prisma.referralReward.findMany as jest.Mock).mockResolvedValue([mockReward]);
+      (prisma.referralReward.findMany as jest.Mock).mockResolvedValue([
+        mockReward,
+      ]);
 
       const result = await service.getRewardRecords('user-123');
 

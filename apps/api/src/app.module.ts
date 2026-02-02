@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -21,12 +22,32 @@ import { BlockchainModule } from './modules/blockchain/blockchain.module';
 import { EmailModule } from './modules/email/email.module';
 import { MarketModule } from './modules/market/market.module';
 import { AirdropModule } from './modules/airdrop/airdrop.module';
+import { AgentModule } from './modules/agent/agent.module';
+import { MembershipModule } from './modules/membership/membership.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
   imports: [
     // 定时任务
     ScheduleModule.forRoot(),
+    // 全局请求频率限制（防止暴力破解和 DDoS）
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000, // 1 秒
+        limit: 10, // 每秒最多 10 次请求
+      },
+      {
+        name: 'medium',
+        ttl: 10000, // 10 秒
+        limit: 50, // 每 10 秒最多 50 次请求
+      },
+      {
+        name: 'long',
+        ttl: 60000, // 1 分钟
+        limit: 200, // 每分钟最多 200 次请求
+      },
+    ]),
     // BullMQ 全局配置
     BullModule.forRoot({
       connection: {
@@ -51,10 +72,17 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     EmailModule,
     MarketModule,
     AirdropModule,
+    AgentModule,
+    MembershipModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // 全局启用请求频率限制
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     // 全局启用 JWT 认证
     {
       provide: APP_GUARD,

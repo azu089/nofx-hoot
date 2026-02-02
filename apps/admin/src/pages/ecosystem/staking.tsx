@@ -1,8 +1,9 @@
 /**
- * 质押记录页面
- * 生态中心 - 用户质押列表
+ * 质押管理页面
+ * 生态中心 - 用户质押记录
+ * 接入真实后端 API
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { List, ExportButton } from '@refinedev/antd';
 import {
   Table,
@@ -16,100 +17,90 @@ import {
   Select,
   Input,
   Progress,
+  Spin,
+  Empty,
 } from 'antd';
 import {
   LockOutlined,
   UnlockOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
+import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { RangePicker } = DatePicker;
 
-interface IStaking {
-  id: string;
-  userId: string;
-  username: string;
-  type: 'A' | 'B';
-  amount: string;
-  lockDays: number;
-  startTime: string;
-  unlockTime: string;
-  weight: string;
-  status: 'staking' | 'unlocked' | 'cancelled';
+// 质押概览类型
+interface StakingOverview {
+  totalStaked: string;
+  totalWeighted: string;
+  totalStakers: number;
+  activeStakers: number;
+  lockedStakers: number;
+  averageWeight: string;
+  byLockPeriod: {
+    flexible: { count: number; amount: string };
+    locked: { count: number; amount: string };
+  };
 }
 
-// 模拟数据
-const mockStakings: IStaking[] = [
-  {
-    id: '1',
-    userId: '1',
-    username: 'trader_001',
-    type: 'B',
-    amount: '50000',
-    lockDays: 180,
-    startTime: '2024-08-01',
-    unlockTime: '2025-01-28',
-    weight: '2.0x',
-    status: 'staking',
-  },
-  {
-    id: '2',
-    userId: '2',
-    username: 'crypto_whale',
-    type: 'A',
-    amount: '100000',
-    lockDays: 0,
-    startTime: '2025-01-15',
-    unlockTime: '-',
-    weight: '1.0x',
-    status: 'staking',
-  },
-  {
-    id: '3',
-    userId: '3',
-    username: 'newbie_2024',
-    type: 'B',
-    amount: '10000',
-    lockDays: 90,
-    startTime: '2024-11-01',
-    unlockTime: '2025-01-30',
-    weight: '1.5x',
-    status: 'unlocked',
-  },
-  {
-    id: '4',
-    userId: '1',
-    username: 'trader_001',
-    type: 'B',
-    amount: '20000',
-    lockDays: 365,
-    startTime: '2024-06-01',
-    unlockTime: '2025-06-01',
-    weight: '3.0x',
-    status: 'staking',
-  },
-];
+// 质押记录类型
+interface StakingRecord {
+  id: string;
+  user: {
+    id: string;
+    email: string;
+    nickname: string;
+  };
+  amount: string;
+  weight: string;
+  weightedAmount: string;
+  lockDays: number;
+  stakedAt: string;
+  lockUntil: string | null;
+  status: 'active' | 'locked' | 'unstaked';
+  totalDividends: string;
+}
 
 export const StakingList = () => {
-  const [dataSource] = useState<IStaking[]>(mockStakings);
+  const message = useMessage();
+  const [overview, setOverview] = useState<StakingOverview | null>(null);
+  const [records, setRecords] = useState<StakingRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
 
-  // 统计数据
-  const totalStaked = mockStakings
-    .filter((s) => s.status === 'staking')
-    .reduce((sum, s) => sum + parseFloat(s.amount), 0);
-  const typeATotal = mockStakings
-    .filter((s) => s.type === 'A' && s.status === 'staking')
-    .reduce((sum, s) => sum + parseFloat(s.amount), 0);
-  const typeBTotal = mockStakings
-    .filter((s) => s.type === 'B' && s.status === 'staking')
-    .reduce((sum, s) => sum + parseFloat(s.amount), 0);
-  const stakingUsers = new Set(
-    mockStakings.filter((s) => s.status === 'staking').map((s) => s.userId)
-  ).size;
+  // 获取质押数据
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [overviewData, recordsData] = await Promise.all([
+        api.get<StakingOverview>('/admin/ecosystem/staking/overview'),
+        api.get<{ records: StakingRecord[]; total: number }>(
+          `/admin/ecosystem/staking/records?page=${page}&pageSize=${pageSize}${statusFilter ? `&status=${statusFilter}` : ''}`
+        ),
+      ]);
+      setOverview(overviewData);
+      setRecords(recordsData.records || []);
+      setTotal(recordsData.total || 0);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '获取数据失败';
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const statusConfig = {
-    staking: { color: 'success', label: '质押中', icon: <LockOutlined /> },
-    unlocked: { color: 'default', label: '已解锁', icon: <UnlockOutlined /> },
-    cancelled: { color: 'error', label: '已取消', icon: <UnlockOutlined /> },
+  useEffect(() => {
+    fetchData();
+  }, [page, pageSize, statusFilter]);
+
+  const statusConfig: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
+    active: { color: 'success', label: '活期', icon: <UnlockOutlined /> },
+    locked: { color: 'warning', label: '锁定中', icon: <LockOutlined /> },
+    unstaked: { color: 'default', label: '已解除', icon: <UnlockOutlined /> },
   };
 
   const columns = [
@@ -117,33 +108,18 @@ export const StakingList = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 60,
+      width: 80,
+      render: (id: string) => id.slice(0, 8) + '...',
     },
     {
       title: '用户',
       key: 'user',
-      render: (_: unknown, record: IStaking) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{record.username}</div>
-          <div style={{ fontSize: 12, color: '#888' }}>ID: {record.userId}</div>
-        </div>
+      render: (_: unknown, record: StakingRecord) => (
+        <Space direction="vertical" size={0}>
+          <span style={{ fontWeight: 500 }}>{record.user?.nickname || record.user?.email || '-'}</span>
+          <span style={{ fontSize: 12, color: '#888' }}>ID: {record.user?.id?.slice(0, 8)}...</span>
+        </Space>
       ),
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 80,
-      render: (type: string) => (
-        <Tag color={type === 'A' ? 'blue' : 'purple'}>
-          {type}类
-        </Tag>
-      ),
-      filters: [
-        { text: 'A类', value: 'A' },
-        { text: 'B类', value: 'B' },
-      ],
-      onFilter: (value: unknown, record: IStaking) => record.type === value,
     },
     {
       title: '质押数量',
@@ -155,20 +131,20 @@ export const StakingList = () => {
           {parseFloat(amount).toLocaleString()} HOOT
         </span>
       ),
-      sorter: (a: IStaking, b: IStaking) => parseFloat(a.amount) - parseFloat(b.amount),
+      sorter: (a: StakingRecord, b: StakingRecord) => parseFloat(a.amount) - parseFloat(b.amount),
     },
     {
-      title: '锁定天数',
+      title: '锁定期',
       dataIndex: 'lockDays',
       key: 'lockDays',
       width: 100,
-      render: (days: number) => (days === 0 ? '随时可取' : `${days} 天`),
+      render: (days: number) => (days === 0 ? <Tag color="green">活期</Tag> : <Tag color="blue">{days} 天</Tag>),
     },
     {
       title: '权重',
       dataIndex: 'weight',
       key: 'weight',
-      width: 100,
+      width: 120,
       render: (weight: string) => {
         const value = parseFloat(weight);
         return (
@@ -180,131 +156,186 @@ export const StakingList = () => {
               style={{ width: 60 }}
             />
             <span style={{ color: value >= 2 ? '#52c41a' : '#888' }}>
-              {weight}
+              {value.toFixed(2)}x
             </span>
           </Space>
         );
       },
     },
     {
-      title: '开始时间',
-      dataIndex: 'startTime',
-      key: 'startTime',
-      width: 120,
+      title: '加权数量',
+      dataIndex: 'weightedAmount',
+      key: 'weightedAmount',
+      width: 140,
+      render: (val: string) => (
+        <span style={{ color: '#722ed1' }}>
+          {parseFloat(val).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      title: '质押时间',
+      dataIndex: 'stakedAt',
+      key: 'stakedAt',
+      width: 160,
+      render: (val: string) => new Date(val).toLocaleString('zh-CN'),
     },
     {
       title: '解锁时间',
-      dataIndex: 'unlockTime',
-      key: 'unlockTime',
+      dataIndex: 'lockUntil',
+      key: 'lockUntil',
+      width: 160,
+      render: (val: string | null) => val ? new Date(val).toLocaleString('zh-CN') : '随时可取',
+    },
+    {
+      title: '累计分红',
+      dataIndex: 'totalDividends',
+      key: 'totalDividends',
       width: 120,
+      render: (val: string) => (
+        <span style={{ color: '#52c41a' }}>
+          ${parseFloat(val).toFixed(2)}
+        </span>
+      ),
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: keyof typeof statusConfig) => (
-        <Tag
-          color={statusConfig[status].color}
-          icon={statusConfig[status].icon}
-        >
-          {statusConfig[status].label}
-        </Tag>
-      ),
-      filters: [
-        { text: '质押中', value: 'staking' },
-        { text: '已解锁', value: 'unlocked' },
-        { text: '已取消', value: 'cancelled' },
-      ],
-      onFilter: (value: unknown, record: IStaking) => record.status === value,
+      render: (status: string) => {
+        const config = statusConfig[status] || statusConfig['active'];
+        return (
+          <Tag color={config.color} icon={config.icon}>
+            {config.label}
+          </Tag>
+        );
+      },
     },
   ];
 
   return (
-    <List headerButtons={<ExportButton>导出</ExportButton>}>
-      {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="总质押量"
-              value={totalStaked}
-              suffix="HOOT"
-              valueStyle={{ color: '#06B6D4' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="A类质押"
-              value={typeATotal}
-              suffix="HOOT"
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="B类质押"
-              value={typeBTotal}
-              suffix="HOOT"
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="质押用户数"
-              value={stakingUsers}
-              suffix="人"
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 筛选条件 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input.Search
-            placeholder="搜索用户ID/用户名"
-            style={{ width: 200 }}
-            allowClear
-          />
-          <Select
-            placeholder="质押类型"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: 'A类', value: 'A' },
-              { label: 'B类', value: 'B' },
-            ]}
-          />
-          <Select
-            placeholder="状态"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '质押中', value: 'staking' },
-              { label: '已解锁', value: 'unlocked' },
-            ]}
-          />
-          <RangePicker placeholder={['开始日期', '结束日期']} />
+    <List
+      headerButtons={
+        <Space>
+          <Tag
+            icon={<ReloadOutlined spin={loading} />}
+            color="blue"
+            style={{ cursor: 'pointer' }}
+            onClick={fetchData}
+          >
+            刷新
+          </Tag>
+          <ExportButton>导出</ExportButton>
         </Space>
-      </Card>
+      }
+    >
+      <Spin spinning={loading}>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={5}>
+            <Card size="small">
+              <Statistic
+                title="总质押量"
+                value={parseFloat(overview?.totalStaked || '0')}
+                suffix="HOOT"
+                valueStyle={{ color: '#06B6D4' }}
+                precision={0}
+              />
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card size="small">
+              <Statistic
+                title="加权总量"
+                value={parseFloat(overview?.totalWeighted || '0')}
+                valueStyle={{ color: '#722ed1' }}
+                precision={0}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card size="small">
+              <Statistic
+                title="质押用户"
+                value={overview?.totalStakers || 0}
+                suffix="人"
+              />
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card size="small">
+              <Statistic
+                title="活期质押"
+                value={parseFloat(overview?.byLockPeriod?.flexible?.amount || '0')}
+                suffix="HOOT"
+                valueStyle={{ color: '#52c41a' }}
+                precision={0}
+              />
+              <span style={{ fontSize: 12, color: '#888' }}>
+                {overview?.byLockPeriod?.flexible?.count || 0} 笔
+              </span>
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card size="small">
+              <Statistic
+                title="定期质押"
+                value={parseFloat(overview?.byLockPeriod?.locked?.amount || '0')}
+                suffix="HOOT"
+                valueStyle={{ color: '#1890ff' }}
+                precision={0}
+              />
+              <span style={{ fontSize: 12, color: '#888' }}>
+                {overview?.byLockPeriod?.locked?.count || 0} 笔
+              </span>
+            </Card>
+          </Col>
+        </Row>
 
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+        {/* 筛选条件 */}
+        <Card style={{ marginBottom: 16 }} size="small">
+          <Space wrap>
+            <Input.Search
+              placeholder="搜索用户ID/邮箱"
+              style={{ width: 200 }}
+              allowClear
+            />
+            <Select
+              placeholder="状态"
+              style={{ width: 120 }}
+              allowClear
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { label: '活期', value: 'active' },
+                { label: '锁定中', value: 'locked' },
+                { label: '已解除', value: 'unstaked' },
+              ]}
+            />
+            <RangePicker placeholder={['开始日期', '结束日期']} />
+          </Space>
+        </Card>
+
+        <Table
+          dataSource={records}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 1000 }}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+          locale={{ emptyText: <Empty description="暂无质押记录" /> }}
+        />
+      </Spin>
     </List>
   );
 };

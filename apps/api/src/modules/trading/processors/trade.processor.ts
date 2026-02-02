@@ -22,7 +22,9 @@ export class TradeProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<TradeJobData>): Promise<{ success: boolean; positionId?: string; error?: string }> {
+  async process(
+    job: Job<TradeJobData>,
+  ): Promise<{ success: boolean; positionId?: string; error?: string }> {
     const {
       signalId,
       userId,
@@ -96,7 +98,12 @@ export class TradeProcessor extends WorkerHost {
       });
 
       // 发送交易失败通知
-      await this.sendTradeFailedNotification(userId, symbol, side, errorMessage);
+      await this.sendTradeFailedNotification(
+        userId,
+        symbol,
+        side,
+        errorMessage,
+      );
 
       return {
         success: false,
@@ -248,9 +255,7 @@ export class TradeProcessor extends WorkerHost {
       },
     });
 
-    this.logger.log(
-      `平仓成功: 持仓 ${openPosition.id} PnL: ${pnl.toString()}`,
-    );
+    this.logger.log(`平仓成功: 持仓 ${openPosition.id} PnL: ${pnl.toString()}`);
 
     // 发送平仓通知
     await this.notificationsService.notifyPositionClosed(
@@ -284,7 +289,10 @@ export class TradeProcessor extends WorkerHost {
   }
 
   // 获取风控拒绝原因的用户友好消息
-  private getRiskReasonMessage(reason?: string, details?: Record<string, any>): string {
+  private getRiskReasonMessage(
+    reason?: string,
+    details?: Record<string, any>,
+  ): string {
     switch (reason) {
       case 'max_positions_reached':
         return `已达最大持仓数限制 (${details?.current || '?'}/${details?.max || '?'})`;

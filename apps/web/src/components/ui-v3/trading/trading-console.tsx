@@ -15,6 +15,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
 interface Position {
   id: string
@@ -129,6 +130,7 @@ export function TradingConsole({
   onClosePosition,
   onEmergencyCloseAll,
 }: TradingConsoleProps) {
+  const t = useTranslations('trading')
   const [botStatus, setBotStatus] = useState(initialBotStatus)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -162,8 +164,8 @@ export function TradingConsole({
   const formatTime = (date: Date) => {
     const now = new Date()
     const diff = Math.floor((now.getTime() - date.getTime()) / 1000 / 60)
-    if (diff < 1) return '刚刚'
-    if (diff < 60) return `${diff}分钟前`
+    if (diff < 1) return t('justNow')
+    if (diff < 60) return t('minutesAgo', { n: diff })
     return date.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
       minute: '2-digit',
@@ -176,8 +178,8 @@ export function TradingConsole({
       <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#0A0A0F]/80 border-b border-[#1E1E2E]">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#F8F8FC]">交易</h1>
-            <p className="text-[#9090A0] text-sm mt-1">实时监控交易状态</p>
+            <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('title')}</h1>
+            <p className="text-[#9090A0] text-sm mt-1">{t('realTimeMonitor')}</p>
           </div>
 
           {/* Quick Actions */}
@@ -192,7 +194,7 @@ export function TradingConsole({
               <RefreshCw
                 className={cn('w-4 h-4 mr-2', isRefreshing && 'animate-spin')}
               />
-              刷新
+              {t('refresh')}
             </Button>
 
             {/* 紧急清仓按钮 - 与移动端对齐 */}
@@ -203,7 +205,7 @@ export function TradingConsole({
               className="border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
               <AlertTriangle className="w-4 h-4 mr-2" />
-              紧急清仓
+              {t('emergencyClose')}
             </Button>
 
             {botStatus === 'running' ? (
@@ -214,7 +216,7 @@ export function TradingConsole({
                 className="border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
               >
                 <Square className="w-4 h-4 mr-2" />
-                全部停止
+                {t('stopAll')}
               </Button>
             ) : (
               <Button
@@ -223,7 +225,7 @@ export function TradingConsole({
                 className="bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
               >
                 <Play className="w-4 h-4 mr-2" />
-                启动机器人
+                {t('startBot')}
               </Button>
             )}
           </div>
@@ -242,13 +244,13 @@ export function TradingConsole({
                   <DollarSign className="w-5 h-5 text-cyan-400" />
                 </div>
                 <h2 className="text-base font-semibold text-[#F8F8FC]">
-                  账户概览
+                  {t('accountOverview')}
                 </h2>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-[#9090A0] text-sm mb-1">可用余额</p>
+                  <p className="text-[#9090A0] text-sm mb-1">{t('availableBalance')}</p>
                   <p className="text-2xl font-bold text-[#F8F8FC]">
                     {formatCurrency(accountBalance)}
                   </p>
@@ -256,7 +258,7 @@ export function TradingConsole({
                 </div>
 
                 <div>
-                  <p className="text-[#9090A0] text-sm mb-1">未实现盈亏</p>
+                  <p className="text-[#9090A0] text-sm mb-1">{t('unrealizedPnl')}</p>
                   <p
                     className={cn(
                       'text-2xl font-bold',
@@ -272,7 +274,7 @@ export function TradingConsole({
                 </div>
 
                 <div>
-                  <p className="text-[#9090A0] text-sm mb-1">总权益</p>
+                  <p className="text-[#9090A0] text-sm mb-1">{t('totalEquity')}</p>
                   <p className="text-2xl font-bold text-[#F8F8FC]">
                     {formatCurrency(accountBalance + totalUnrealizedPnL)}
                   </p>
@@ -290,7 +292,7 @@ export function TradingConsole({
                   <Activity className="w-5 h-5 text-cyan-400" />
                 </div>
                 <h2 className="text-base font-semibold text-[#F8F8FC]">
-                  机器人状态
+                  {t('botStatus')}
                 </h2>
               </div>
 
@@ -311,17 +313,17 @@ export function TradingConsole({
                         : 'bg-red-400'
                     )}
                   />
-                  {botStatus === 'running' ? '运行中' : '已停止'}
+                  {botStatus === 'running' ? t('running') : t('stopped')}
                 </div>
 
                 <div className="mt-4 space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-[#9090A0]">活跃仓位</span>
+                    <span className="text-[#9090A0]">{t('activePositions')}</span>
                     <span className="text-[#F8F8FC]">{positions.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#9090A0]">运行时长</span>
-                    <span className="text-[#F8F8FC]">2小时34分</span>
+                    <span className="text-[#9090A0]">{t('runTime')}</span>
+                    <span className="text-[#F8F8FC]">2h 34m</span>
                   </div>
                 </div>
               </div>
@@ -337,17 +339,17 @@ export function TradingConsole({
                 <TrendingUp className="w-5 h-5 text-cyan-400" />
               </div>
               <h2 className="text-base font-semibold text-[#F8F8FC]">
-                活跃仓位
+                {t('activePositions')}
               </h2>
               <span className="ml-auto text-sm text-[#9090A0]">
-                {positions.length} 个持仓
+                {positions.length} {t('positions')}
               </span>
             </div>
 
             {positions.length === 0 ? (
               <div className="text-center py-8 text-[#606070]">
                 <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>暂无活跃仓位</p>
+                <p>{t('noPositions')}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -355,25 +357,25 @@ export function TradingConsole({
                   <thead>
                     <tr className="border-b border-[#2A2A3A]">
                       <th className="text-left py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        交易对
+                        {t('pair')}
                       </th>
                       <th className="text-left py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        方向
+                        {t('direction')}
                       </th>
                       <th className="text-right py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        数量
+                        {t('quantity')}
                       </th>
                       <th className="text-right py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        开仓价
+                        {t('entryPrice')}
                       </th>
                       <th className="text-right py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        现价
+                        {t('currentPrice')}
                       </th>
                       <th className="text-right py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        盈亏
+                        {t('pnl')}
                       </th>
                       <th className="text-center py-3 px-2 text-[#9090A0] font-medium text-sm">
-                        操作
+                        {t('operation')}
                       </th>
                     </tr>
                   </thead>
@@ -397,7 +399,7 @@ export function TradingConsole({
                                 : 'bg-red-500/20 text-red-400'
                             )}
                           >
-                            {position.side === 'LONG' ? '做多' : '做空'}
+                            {position.side === 'LONG' ? t('long') : t('short')}
                           </span>
                         </td>
                         <td className="py-3 px-2 text-right text-[#F8F8FC]">
@@ -435,7 +437,7 @@ export function TradingConsole({
                             className="border-red-500/30 text-red-400 hover:bg-red-500/10 px-3 py-1 text-xs"
                           >
                             <XCircle className="w-3 h-3 mr-1" />
-                            平仓
+                            {t('closePosition')}
                           </Button>
                         </td>
                       </tr>
@@ -455,7 +457,7 @@ export function TradingConsole({
                 <Clock className="w-5 h-5 text-cyan-400" />
               </div>
               <h2 className="text-base font-semibold text-[#F8F8FC]">
-                最近成交
+                {t('recentTrades')}
               </h2>
             </div>
 
@@ -485,7 +487,7 @@ export function TradingConsole({
                               : 'text-red-400'
                           )}
                         >
-                          {trade.side === 'BUY' ? '买入' : '卖出'}
+                          {trade.side === 'BUY' ? t('buy') : t('sell')}
                         </span>
                       </div>
                       <div className="text-sm text-[#606070]">

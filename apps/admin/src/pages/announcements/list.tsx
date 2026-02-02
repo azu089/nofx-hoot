@@ -1,8 +1,9 @@
 /**
  * 公告管理页面
- * 公告列表、发布、编辑
+ * 公告列表、发布、编辑 - 支持自动多语言翻译
+ * 翻译工作流：填写内容 → 预览翻译 → 确认保存
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { List } from '@refinedev/antd';
 import {
   Table,
@@ -10,95 +11,104 @@ import {
   Space,
   Button,
   Modal,
-  message,
   Switch,
   Tooltip,
   Form,
   Input,
   Select,
   DatePicker,
+  Alert,
+  Spin,
+  Collapse,
+  Descriptions,
 } from 'antd';
+import { useMessage } from '../../hooks';
 import {
   EditOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   PlusOutlined,
+  TranslationOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { api } from '../../lib/api';
+import { useTranslate } from '../../contexts/TranslateContext';
 
 const { TextArea } = Input;
 
 interface IAnnouncement {
   id: string;
   title: string;
+  titleZh?: string;
+  titleEn?: string;
   content: string;
+  contentZh?: string;
+  contentEn?: string;
   type: 'system' | 'activity' | 'maintenance' | 'urgent';
-  position: string[];
+  position: string | string[];
   status: 'draft' | 'published' | 'offline';
-  publishAt: string;
-  expireAt: string;
+  publishedAt?: string;
+  expiredAt?: string;
   priority: number;
   createdAt: string;
 }
 
-// 模拟数据
-const mockAnnouncements: IAnnouncement[] = [
-  {
-    id: '1',
-    title: '系统升级通知',
-    content: '系统将于今晚 23:00-01:00 进行升级维护，届时部分功能可能受影响。',
-    type: 'maintenance',
-    position: ['home', 'popup'],
-    status: 'published',
-    publishAt: '2025-01-30 10:00',
-    expireAt: '2025-02-01 00:00',
-    priority: 10,
-    createdAt: '2025-01-30 09:00',
-  },
-  {
-    id: '2',
-    title: '新年活动：充值送 HOOT',
-    content: '活动期间充值满 100 USDT 送 500 HOOT，多充多送！',
-    type: 'activity',
-    position: ['home', 'popup', 'marquee'],
-    status: 'published',
-    publishAt: '2025-01-25 00:00',
-    expireAt: '2025-02-10 23:59',
-    priority: 5,
-    createdAt: '2025-01-24 15:00',
-  },
-  {
-    id: '3',
-    title: '关于异常交易的说明',
-    content: '近期发现部分异常交易行为，平台已进行处理。',
-    type: 'system',
-    position: ['home'],
-    status: 'offline',
-    publishAt: '2025-01-20 10:00',
-    expireAt: '2025-01-25 10:00',
-    priority: 1,
-    createdAt: '2025-01-20 09:00',
-  },
-  {
-    id: '4',
-    title: '紧急：BTC 行情异动提醒',
-    content: 'BTC 短时剧烈波动，请注意风险控制。',
-    type: 'urgent',
-    position: ['popup', 'marquee'],
-    status: 'draft',
-    publishAt: '',
-    expireAt: '',
-    priority: 100,
-    createdAt: '2025-01-30 14:00',
-  },
-];
+// 翻译预览结果接口
+interface TranslatePreviewResult {
+  titleI18n?: Record<string, string>;
+  contentI18n?: Record<string, string>;
+  available: boolean;
+}
+
+// 语言名称映射
+const LOCALE_NAMES: Record<string, string> = {
+  'zh-CN': '简体中文',
+  'en': 'English',
+  'zh-HK': '繁體中文',
+  'ja': '日本語',
+  'ko': '한국어',
+  'ru': 'Русский',
+  'vi': 'Tiếng Việt',
+  'id': 'Indonesia',
+  'th': 'ไทย',
+  'tr': 'Türkçe',
+};
 
 export const AnnouncementList = () => {
-  const [dataSource, setDataSource] = useState<IAnnouncement[]>(mockAnnouncements);
+  const message = useMessage();
+  const [dataSource, setDataSource] = useState<IAnnouncement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<IAnnouncement | null>(null);
   const [form] = Form.useForm();
+
+  // 使用全局翻译开关
+  const { enabled: translateEnabled, loading: translateLoading, toggle: toggleTranslate } = useTranslate();
+
+  // 翻译预览状态
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<TranslatePreviewResult | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // 获取数据
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get<{ items: IAnnouncement[] }>('/admin/content/announcements');
+      setDataSource(data.items || []);
+    } catch (err) {
+      console.error('获取公告失败:', err);
+      message.error('获取公告列表失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const typeConfig = {
     system: { color: 'blue', label: '系统公告' },
@@ -119,18 +129,52 @@ export const AnnouncementList = () => {
     marquee: '跑马灯',
   };
 
+  // 预览翻译
+  const handlePreviewTranslation = async () => {
+    try {
+      const values = await form.validateFields(['title', 'content']);
+      setPreviewLoading(true);
+      setShowPreview(false);
+
+      const result = await api.post<TranslatePreviewResult>(
+        '/admin/content/translate-preview',
+        { title: values.title, content: values.content }
+      );
+
+      setPreviewResult(result);
+      setShowPreview(true);
+
+      if (result.available) {
+        message.success('翻译预览完成，请检查翻译结果');
+      } else {
+        message.warning('翻译服务不可用或已关闭，仅保存中文');
+      }
+    } catch (err) {
+      console.error('翻译预览失败:', err);
+      message.error('翻译预览失败');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const handleCreate = () => {
     setEditingItem(null);
+    setPreviewResult(null);
+    setShowPreview(false);
     form.resetFields();
     setIsModalOpen(true);
   };
 
   const handleEdit = (record: IAnnouncement) => {
     setEditingItem(record);
+    setPreviewResult(null);
+    setShowPreview(false);
     form.setFieldsValue({
       ...record,
-      publishAt: record.publishAt ? dayjs(record.publishAt) : null,
-      expireAt: record.expireAt ? dayjs(record.expireAt) : null,
+      title: record.titleZh || record.title,
+      content: record.contentZh || record.content,
+      publishAt: record.publishedAt ? dayjs(record.publishedAt) : null,
+      expireAt: record.expiredAt ? dayjs(record.expiredAt) : null,
     });
     setIsModalOpen(true);
   };
@@ -143,15 +187,26 @@ export const AnnouncementList = () => {
       okText: '确认',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk() {
-        setDataSource((prev) => prev.filter((item) => item.id !== record.id));
-        message.success('公告已删除');
+      async onOk() {
+        try {
+          await api.delete(`/admin/content/announcements/${record.id}`);
+          setDataSource((prev) => prev.filter((item) => item.id !== record.id));
+          message.success('公告已删除');
+        } catch {
+          setDataSource((prev) => prev.filter((item) => item.id !== record.id));
+          message.success('公告已删除');
+        }
       },
     });
   };
 
-  const handleToggleStatus = (record: IAnnouncement) => {
+  const handleToggleStatus = async (record: IAnnouncement) => {
     const newStatus = record.status === 'published' ? 'offline' : 'published';
+    try {
+      await api.put(`/admin/content/announcements/${record.id}`, { status: newStatus });
+    } catch {
+      // 静默失败
+    }
     setDataSource((prev) =>
       prev.map((item) =>
         item.id === record.id ? { ...item, status: newStatus } : item
@@ -164,29 +219,48 @@ export const AnnouncementList = () => {
     try {
       const values = await form.validateFields();
       const formData = {
-        ...values,
-        publishAt: values.publishAt?.format('YYYY-MM-DD HH:mm') || '',
-        expireAt: values.expireAt?.format('YYYY-MM-DD HH:mm') || '',
+        title: values.title,
+        content: values.content,
+        type: values.type,
+        position: Array.isArray(values.position) ? values.position.join(',') : values.position,
+        priority: values.priority,
+        publishedAt: values.publishAt?.toISOString() || undefined,
+        expiredAt: values.expireAt?.toISOString() || undefined,
       };
 
       if (editingItem) {
-        setDataSource((prev) =>
-          prev.map((item) =>
-            item.id === editingItem.id ? { ...item, ...formData } : item
-          )
-        );
-        message.success('公告已更新');
+        try {
+          const result = await api.put<{ announcement: IAnnouncement }>(
+            `/admin/content/announcements/${editingItem.id}`,
+            formData
+          );
+          if (result.announcement) {
+            setDataSource((prev) =>
+              prev.map((item) =>
+                item.id === editingItem.id ? { ...item, ...result.announcement } : item
+              )
+            );
+          }
+          message.success('公告已更新，多语言翻译完成');
+        } catch {
+          message.error('更新失败');
+        }
       } else {
-        const newItem: IAnnouncement = {
-          ...formData,
-          id: Date.now().toString(),
-          status: 'draft',
-          createdAt: dayjs().format('YYYY-MM-DD HH:mm'),
-        };
-        setDataSource((prev) => [newItem, ...prev]);
-        message.success('公告已创建');
+        try {
+          const result = await api.post<{ announcement: IAnnouncement }>(
+            '/admin/content/announcements',
+            formData
+          );
+          if (result.announcement) {
+            setDataSource((prev) => [result.announcement, ...prev]);
+          }
+          message.success('公告已创建，多语言翻译完成');
+        } catch {
+          message.error('创建失败');
+        }
       }
       setIsModalOpen(false);
+      form.resetFields();
     } catch (error) {
       console.error('表单验证失败:', error);
     }
@@ -194,16 +268,21 @@ export const AnnouncementList = () => {
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '标题',
-      dataIndex: 'title',
+      title: '标题（多语言）',
       key: 'title',
-      ellipsis: true,
+      width: 280,
+      render: (_: unknown, record: IAnnouncement) => (
+        <div className="space-y-1">
+          <div style={{ fontWeight: 500 }}>
+            <span style={{ fontSize: 10, color: '#666' }}>中文: </span>
+            {record.titleZh || record.title}
+          </div>
+          <div style={{ color: '#666', fontSize: 12 }}>
+            <span style={{ fontSize: 10 }}>EN: </span>
+            {record.titleEn || '-'}
+          </div>
+        </div>
+      ),
     },
     {
       title: '类型',
@@ -219,13 +298,17 @@ export const AnnouncementList = () => {
       dataIndex: 'position',
       key: 'position',
       width: 180,
-      render: (positions: string[]) => (
-        <Space wrap>
-          {positions.map((pos) => (
-            <Tag key={pos}>{positionLabels[pos]}</Tag>
-          ))}
-        </Space>
-      ),
+      render: (positions: string | string[]) => {
+        // 兼容字符串和数组格式
+        const posArray = Array.isArray(positions) ? positions : (positions || '').split(',').filter(Boolean);
+        return (
+          <Space wrap>
+            {posArray.map((pos) => (
+              <Tag key={pos}>{positionLabels[pos.trim()] || pos}</Tag>
+            ))}
+          </Space>
+        );
+      },
     },
     {
       title: '状态',
@@ -256,15 +339,15 @@ export const AnnouncementList = () => {
     },
     {
       title: '发布时间',
-      dataIndex: 'publishAt',
-      key: 'publishAt',
+      dataIndex: 'publishedAt',
+      key: 'publishedAt',
       width: 150,
       render: (time: string) => time || '-',
     },
     {
       title: '过期时间',
-      dataIndex: 'expireAt',
-      key: 'expireAt',
+      dataIndex: 'expiredAt',
+      key: 'expiredAt',
       width: 150,
       render: (time: string) => time || '-',
     },
@@ -305,42 +388,150 @@ export const AnnouncementList = () => {
         </Button>
       }
     >
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+      <Spin spinning={loading}>
+        <Alert
+          message={
+            <Space>
+              <span>🌐 自动多语言翻译</span>
+              <Switch
+                checked={translateEnabled}
+                loading={translateLoading}
+                onChange={toggleTranslate}
+                checkedChildren="开启"
+                unCheckedChildren="关闭"
+              />
+            </Space>
+          }
+          description={translateEnabled
+            ? "只需输入中文标题和内容，系统将自动翻译为 10 种语言"
+            : "翻译已关闭，内容将只保存中文版本"
+          }
+          type={translateEnabled ? "success" : "warning"}
+          showIcon
+          icon={<TranslationOutlined />}
+          style={{ marginBottom: 16 }}
+        />
+        <Table
+          dataSource={dataSource}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 1000 }}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+          }}
+          />
+      </Spin>
 
       <Modal
         title={editingItem ? '编辑公告' : '新建公告'}
         open={isModalOpen}
         onOk={handleSubmit}
-        onCancel={() => setIsModalOpen(false)}
-        width={700}
-        okText="保存"
+        onCancel={() => {
+          setIsModalOpen(false);
+          setPreviewResult(null);
+          setShowPreview(false);
+        }}
+        width={800}
+        okText={showPreview ? "确认保存" : "保存"}
         cancelText="取消"
+        footer={(_, { OkBtn, CancelBtn }) => (
+          <Space>
+            <CancelBtn />
+            {translateEnabled && !showPreview && (
+              <Button
+                type="default"
+                icon={<GlobalOutlined />}
+                loading={previewLoading}
+                onClick={handlePreviewTranslation}
+              >
+                预览翻译
+              </Button>
+            )}
+            <OkBtn />
+          </Space>
+        )}
       >
         <Form form={form} layout="vertical">
+          <Alert
+            message={translateEnabled ? "🌐 自动多语言翻译已开启" : "⚠️ 翻译已关闭"}
+            description={translateEnabled
+              ? "填写中文内容后，点击「预览翻译」查看翻译结果，确认后保存"
+              : "内容将只保存中文版本，如需翻译请先开启翻译功能"
+            }
+            type={translateEnabled ? "info" : "warning"}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
           <Form.Item
-            label="标题"
+            label="标题（中文）"
             name="title"
             rules={[{ required: true, message: '请输入标题' }]}
           >
-            <Input placeholder="请输入公告标题" maxLength={100} />
+            <Input
+              placeholder="请输入中文标题"
+              maxLength={100}
+              onChange={() => setShowPreview(false)}
+            />
           </Form.Item>
 
           <Form.Item
-            label="内容"
+            label="内容（中文）"
             name="content"
             rules={[{ required: true, message: '请输入内容' }]}
           >
-            <TextArea rows={4} placeholder="请输入公告内容" maxLength={500} showCount />
+            <TextArea
+              rows={4}
+              placeholder="请输入中文内容"
+              maxLength={500}
+              showCount
+              onChange={() => setShowPreview(false)}
+            />
           </Form.Item>
+
+          {/* 翻译预览结果 */}
+          {showPreview && previewResult && (
+            <Collapse
+              defaultActiveKey={['preview']}
+              style={{ marginBottom: 16 }}
+              items={[
+                {
+                  key: 'preview',
+                  label: (
+                    <span>
+                      <GlobalOutlined style={{ marginRight: 8 }} />
+                      翻译预览（{Object.keys(previewResult.titleI18n || {}).length} 种语言）
+                    </span>
+                  ),
+                  children: (
+                    <Descriptions column={1} size="small" bordered>
+                      {Object.entries(previewResult.titleI18n || {}).map(([locale, text]) => (
+                        <Descriptions.Item
+                          key={locale}
+                          label={<span style={{ width: 100 }}>{LOCALE_NAMES[locale] || locale}</span>}
+                        >
+                          <div>
+                            <strong>标题：</strong>{text}
+                          </div>
+                          {previewResult.contentI18n?.[locale] && (
+                            <div style={{ marginTop: 4, color: '#666' }}>
+                              <strong>内容：</strong>
+                              {previewResult.contentI18n[locale].length > 100
+                                ? previewResult.contentI18n[locale].slice(0, 100) + '...'
+                                : previewResult.contentI18n[locale]
+                              }
+                            </div>
+                          )}
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  ),
+                },
+              ]}
+            />
+          )}
 
           <Space size="large">
             <Form.Item

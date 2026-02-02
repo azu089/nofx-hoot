@@ -17,18 +17,19 @@ import {
   ExternalLink,
   FileText
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface QuickLink {
   id: string
-  title: string
-  description: string
+  titleKey: string
+  descKey: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 interface FAQItem {
   id: string
-  question: string
-  answer: string
+  questionKey: string
+  answerKey: string
 }
 
 interface HelpCenterPageProps {
@@ -37,86 +38,54 @@ interface HelpCenterPageProps {
   onContactSupport?: (method: 'email' | 'chat') => void
 }
 
-const quickLinks: QuickLink[] = [
+const quickLinksConfig: QuickLink[] = [
   {
     id: 'getting-started',
-    title: '新手入门',
-    description: '了解 Hoot 平台的基础操作',
+    titleKey: 'quickLinksData.gettingStarted',
+    descKey: 'quickLinksData.gettingStartedDesc',
     icon: BookOpen
   },
   {
     id: 'api-keys',
-    title: 'API 密钥',
-    description: '管理您的交易所 API 连接',
+    titleKey: 'quickLinksData.apiKeys',
+    descKey: 'quickLinksData.apiKeysDesc',
     icon: Key
   },
   {
     id: 'strategies',
-    title: '策略使用',
-    description: '探索和配置交易策略',
+    titleKey: 'quickLinksData.strategies',
+    descKey: 'quickLinksData.strategiesDesc',
     icon: TrendingUp
   },
   {
     id: 'deposits-withdrawals',
-    title: '充值提现',
-    description: '资金充值和提现操作指南',
+    titleKey: 'quickLinksData.depositsWithdrawals',
+    descKey: 'quickLinksData.depositsWithdrawalsDesc',
     icon: CreditCard
   },
   {
     id: 'security',
-    title: '安全设置',
-    description: '保护您的账户安全',
+    titleKey: 'quickLinksData.security',
+    descKey: 'quickLinksData.securityDesc',
     icon: Shield
   },
   {
     id: 'billing',
-    title: '订阅计费',
-    description: '管理会员订阅和账单',
+    titleKey: 'quickLinksData.billing',
+    descKey: 'quickLinksData.billingDesc',
     icon: Receipt
   }
 ]
 
-const faqItems: FAQItem[] = [
-  {
-    id: '1',
-    question: '如何开始使用 Hoot？',
-    answer: '要开始使用 Hoot，只需创建账户、完成身份验证，然后连接您的交易所 API。我们的新手入门指南会引导您完成每个步骤。您可以在"钱包"页面添加交易所 API Key 来连接您的交易账户。'
-  },
-  {
-    id: '2',
-    question: 'Hoot 支持哪些交易所？',
-    answer: 'Hoot 支持主流加密货币交易所，包括币安 (Binance)、OKX、Bybit、Gate.io、Coinbase 等。我们持续扩展支持的交易所列表。您可以在"钱包 > 交易所"页面查看完整的支持列表。'
-  },
-  {
-    id: '3',
-    question: '如何设置交易所 API Key？',
-    answer: '前往您的交易所账户设置，创建一个新的 API Key。确保只启用"交易"和"读取"权限，不要启用"提现"权限以保证资金安全。然后在 Hoot 的"钱包 > 交易所"页面添加您的 API Key。'
-  },
-  {
-    id: '4',
-    question: 'Hoot 的交易费用是多少？',
-    answer: 'Hoot 采用按盈利分成的计费模式。基础版 Gas Fee 为盈利的 22%，高级版为 18%，专业版为 15%。只有在策略盈利时才会收取费用，亏损时不收取任何费用。'
-  },
-  {
-    id: '5',
-    question: '如何确保我的资金安全？',
-    answer: '您的资金始终保存在您自己的交易所账户中，Hoot 不托管任何用户资金。我们只通过 API 执行交易指令。建议您启用双重身份验证 (2FA)，并且 API Key 不要开启提现权限。'
-  },
-  {
-    id: '6',
-    question: '策略信号是如何执行的？',
-    answer: '当策略产生交易信号时，系统会通过您绑定的交易所 API 自动执行交易。您可以在策略配置中设置每笔交易的金额上限和风控参数，确保交易符合您的风险偏好。'
-  },
-  {
-    id: '7',
-    question: '如何订阅会员服务？',
-    answer: '前往"我的 > 会员订阅"页面，选择适合您的会员等级。您可以使用 USDT 或 HOOT 代币支付订阅费用。使用 HOOT 代币支付可享受额外折扣。'
-  },
-  {
-    id: '8',
-    question: '遇到问题如何获取帮助？',
-    answer: '您可以通过页面下方的"联系客服"发送邮件或在线客服获取帮助。我们的客服团队会在 24 小时内回复您的问题。紧急问题建议使用在线客服获得即时帮助。'
-  }
+const faqItemsConfig: FAQItem[] = [
+  { id: '1', questionKey: 'faqItems.q1', answerKey: 'faqItems.a1' },
+  { id: '2', questionKey: 'faqItems.q2', answerKey: 'faqItems.a2' },
+  { id: '3', questionKey: 'faqItems.q3', answerKey: 'faqItems.a3' },
+  { id: '4', questionKey: 'faqItems.q4', answerKey: 'faqItems.a4' },
+  { id: '5', questionKey: 'faqItems.q5', answerKey: 'faqItems.a5' },
+  { id: '6', questionKey: 'faqItems.q6', answerKey: 'faqItems.a6' },
+  { id: '7', questionKey: 'faqItems.q7', answerKey: 'faqItems.a7' },
+  { id: '8', questionKey: 'faqItems.q8', answerKey: 'faqItems.a8' }
 ]
 
 export function HelpCenterPage({
@@ -124,6 +93,7 @@ export function HelpCenterPage({
   onNavigate,
   onContactSupport
 }: HelpCenterPageProps) {
+  const t = useTranslations('help')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedFAQ, setExpandedFAQ] = useState<string | null>(null)
 
@@ -131,7 +101,14 @@ export function HelpCenterPage({
     setExpandedFAQ(expandedFAQ === id ? null : id)
   }
 
-  const filteredFAQs = faqItems.filter(
+  // Build translated FAQ items for search
+  const faqItemsWithText = faqItemsConfig.map(item => ({
+    ...item,
+    question: t(item.questionKey as any),
+    answer: t(item.answerKey as any)
+  }))
+
+  const filteredFAQs = faqItemsWithText.filter(
     item =>
       item.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.answer.toLowerCase().includes(searchQuery.toLowerCase())
@@ -145,12 +122,12 @@ export function HelpCenterPage({
           <div className="flex items-center gap-4 mb-4">
             <button
               type="button"
-              onClick={() => onNavigate?.('/me')}
+              onClick={() => onNavigate?.('/profile')}
               className="p-2 hover:bg-[#12121A] rounded-lg transition-colors"
             >
               <ArrowLeft className="w-5 h-5 text-[#9090A0]" />
             </button>
-            <h1 className="text-2xl font-bold">帮助中心</h1>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
           </div>
 
           {/* Search Bar */}
@@ -158,7 +135,7 @@ export function HelpCenterPage({
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
             <input
               type="text"
-              placeholder="搜索帮助文章、常见问题..."
+              placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4]/50 transition-colors"
@@ -170,9 +147,9 @@ export function HelpCenterPage({
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
         {/* Quick Links Section */}
         <section>
-          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">快速入口</h2>
+          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">{t('quickLinks')}</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {quickLinks.map((link) => {
+            {quickLinksConfig.map((link) => {
               const IconComponent = link.icon
               return (
                 <button
@@ -184,8 +161,8 @@ export function HelpCenterPage({
                   <div className="w-10 h-10 rounded-xl bg-[#06B6D4]/10 flex items-center justify-center mb-3 group-hover:bg-[#06B6D4]/20 transition-colors">
                     <IconComponent className="w-5 h-5 text-[#06B6D4]" />
                   </div>
-                  <h3 className="font-medium text-[#F8F8FC] mb-1">{link.title}</h3>
-                  <p className="text-xs text-[#9090A0]">{link.description}</p>
+                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t(link.titleKey as any)}</h3>
+                  <p className="text-xs text-[#9090A0]">{t(link.descKey as any)}</p>
                 </button>
               )
             })}
@@ -194,12 +171,12 @@ export function HelpCenterPage({
 
         {/* FAQ Section */}
         <section>
-          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">常见问题</h2>
+          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">{t('faq')}</h2>
           <div className="space-y-3">
             {filteredFAQs.length === 0 ? (
               <div className="text-center py-12">
                 <FileText className="w-12 h-12 mx-auto mb-4 text-[#606070]" />
-                <p className="text-[#9090A0]">未找到相关问题</p>
+                <p className="text-[#9090A0]">{t('noResults')}</p>
               </div>
             ) : (
               filteredFAQs.map((faq) => (
@@ -234,7 +211,7 @@ export function HelpCenterPage({
 
         {/* Contact Support Section */}
         <section>
-          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">联系客服</h2>
+          <h2 className="text-lg font-semibold mb-4 text-[#F8F8FC]">{t('contactSupport')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
@@ -246,8 +223,8 @@ export function HelpCenterPage({
                   <Mail className="w-6 h-6 text-[#06B6D4]" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium text-[#F8F8FC] mb-1">邮件支持</h3>
-                  <p className="text-sm text-[#9090A0] mb-2">24 小时内回复</p>
+                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t('emailSupport')}</h3>
+                  <p className="text-sm text-[#9090A0] mb-2">{t('emailResponseTime')}</p>
                   <div className="flex items-center gap-1 text-[#06B6D4] text-sm">
                     <span>support@hoot.ai</span>
                     <ExternalLink className="w-3 h-3" />
@@ -266,11 +243,11 @@ export function HelpCenterPage({
                   <MessageCircle className="w-6 h-6 text-[#06B6D4]" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium text-[#F8F8FC] mb-1">在线客服</h3>
-                  <p className="text-sm text-[#9090A0] mb-2">即时响应</p>
+                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t('liveChat')}</h3>
+                  <p className="text-sm text-[#9090A0] mb-2">{t('instantResponse')}</p>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                    <span className="text-sm text-green-400">在线</span>
+                    <span className="text-sm text-green-400">{t('online')}</span>
                   </div>
                 </div>
               </div>
@@ -282,7 +259,7 @@ export function HelpCenterPage({
         <section>
           <button
             type="button"
-            onClick={() => onNavigate?.('/help/user-guide')}
+            onClick={() => onNavigate?.('/help')}
             className="w-full p-5 rounded-xl bg-gradient-to-r from-[#06B6D4]/10 to-[#8B5CF6]/10 border border-[#06B6D4]/20 hover:border-[#06B6D4]/40 transition-all text-left group"
           >
             <div className="flex items-center justify-between">
@@ -291,8 +268,8 @@ export function HelpCenterPage({
                   <BookOpen className="w-6 h-6 text-[#06B6D4]" />
                 </div>
                 <div>
-                  <h3 className="font-medium text-[#F8F8FC] mb-1">完整使用指南</h3>
-                  <p className="text-sm text-[#9090A0]">详细了解 Hoot 的所有功能</p>
+                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t('fullGuide')}</h3>
+                  <p className="text-sm text-[#9090A0]">{t('learnAllFeatures')}</p>
                 </div>
               </div>
               <ExternalLink className="w-5 h-5 text-[#606070] group-hover:text-[#06B6D4] transition-colors" />

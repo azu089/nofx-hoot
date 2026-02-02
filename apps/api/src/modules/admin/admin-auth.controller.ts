@@ -1,5 +1,6 @@
 /**
- * 管理员认证控制器
+ * 管理员认证控制器（增强版）
+ * 支持两步验证、安全状态管理
  */
 import {
   Controller,
@@ -9,10 +10,18 @@ import {
   UseGuards,
   Req,
   Put,
+  ForbiddenException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AdminAuthService } from './admin-auth.service';
-import { AdminLoginDto, ChangePasswordDto, CreateAdminDto } from './dto/auth.dto';
+import {
+  AdminLoginDto,
+  ChangePasswordDto,
+  CreateAdminDto,
+  EnableTotpDto,
+  DisableTotpDto,
+} from './dto/auth.dto';
 import { AdminGuard } from './guards/admin.guard';
 import { Admin } from './decorators/admin.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -24,8 +33,10 @@ export class AdminAuthController {
   /**
    * 管理员登录
    * POST /admin/auth/login
+   * 严格限流：每分钟最多 5 次，防止暴力破解
    */
   @Public() // 登录接口不需要认证
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('login')
   async login(@Body() dto: AdminLoginDto, @Req() req: Request) {
     const ip = req.ip || req.socket.remoteAddress;
@@ -59,8 +70,64 @@ export class AdminAuthController {
       admin.id,
       dto.oldPassword,
       dto.newPassword,
+      dto.totpCode,
     );
   }
+
+  // ==================== TOTP 两步验证 ====================
+
+  /**
+   * 生成 TOTP 密钥和二维码
+   * POST /admin/auth/totp/generate
+   */
+  @Public()
+  @UseGuards(AdminGuard)
+  @Post('totp/generate')
+  async generateTotpSecret(@Admin() admin: { id: string }) {
+    return this.adminAuthService.generateTotpSecret(admin.id);
+  }
+
+  /**
+   * 启用两步验证
+   * POST /admin/auth/totp/enable
+   */
+  @Public()
+  @UseGuards(AdminGuard)
+  @Post('totp/enable')
+  async enableTotp(@Admin() admin: { id: string }, @Body() dto: EnableTotpDto) {
+    return this.adminAuthService.enableTotp(admin.id, dto.totpCode);
+  }
+
+  /**
+   * 禁用两步验证
+   * POST /admin/auth/totp/disable
+   */
+  @Public()
+  @UseGuards(AdminGuard)
+  @Post('totp/disable')
+  async disableTotp(
+    @Admin() admin: { id: string },
+    @Body() dto: DisableTotpDto,
+  ) {
+    return this.adminAuthService.disableTotp(
+      admin.id,
+      dto.password,
+      dto.totpCode,
+    );
+  }
+
+  /**
+   * 获取安全状态
+   * GET /admin/auth/security
+   */
+  @Public()
+  @UseGuards(AdminGuard)
+  @Get('security')
+  async getSecurityStatus(@Admin() admin: { id: string }) {
+    return this.adminAuthService.getSecurityStatus(admin.id);
+  }
+
+  // ==================== 管理员管理 ====================
 
   /**
    * 创建管理员（仅超级管理员）
@@ -75,7 +142,7 @@ export class AdminAuthController {
   ) {
     // 仅超级管理员可创建
     if (admin.role !== 'super_admin') {
-      throw new Error('权限不足');
+      throw new ForbiddenException('权限不足');
     }
     return this.adminAuthService.createAdmin(dto, admin.id);
   }
@@ -90,7 +157,7 @@ export class AdminAuthController {
   async getAdmins(@Admin() admin: { role: string }) {
     // 仅超级管理员可查看
     if (admin.role !== 'super_admin') {
-      throw new Error('权限不足');
+      throw new ForbiddenException('权限不足');
     }
     return this.adminAuthService.getAdmins();
   }

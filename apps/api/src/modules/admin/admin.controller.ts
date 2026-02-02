@@ -20,6 +20,9 @@ import { Public } from '../auth/decorators/public.decorator';
 import {
   UserListDto,
   UpdateUserStatusDto,
+  UpdateUserInfoDto,
+  AdjustBalanceDto,
+  ResetPasswordDto,
   StrategyListDto,
   CreateStrategyDto,
   UpdateStrategyDto,
@@ -37,6 +40,7 @@ import { AdminAgentService } from './services/admin-agent.service';
 import { AdminStakingService } from './services/admin-staking.service';
 import { AdminTokenService } from './services/admin-token.service';
 import { AdminReferralService } from './services/admin-referral.service';
+import { AdminSignalService } from './services/admin-signal.service';
 
 @Controller('admin')
 @Public() // 跳过全局 JwtAuthGuard，使用 AdminGuard 验证
@@ -55,6 +59,7 @@ export class AdminController {
     private adminStakingService: AdminStakingService,
     private tokenService: AdminTokenService,
     private referralService: AdminReferralService,
+    private signalService: AdminSignalService,
   ) {}
 
   // ==================== 仪表盘 ====================
@@ -88,12 +93,59 @@ export class AdminController {
     return this.adminService.updateUserStatus(id, dto);
   }
 
+  // 更新用户信息
+  @Put('users/:id')
+  async updateUserInfo(
+    @Param('id') id: string,
+    @Body() dto: UpdateUserInfoDto,
+  ) {
+    return this.adminService.updateUserInfo(id, dto);
+  }
+
+  // 调整用户资产
+  @Post('users/:id/adjust-balance')
+  async adjustUserBalance(
+    @Param('id') id: string,
+    @Body() dto: AdjustBalanceDto,
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    return this.adminService.adjustUserBalance(id, dto, adminId);
+  }
+
+  // 重置用户密码
+  @Post('users/:id/reset-password')
+  async resetUserPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+  ) {
+    return this.adminService.resetUserPassword(id, dto);
+  }
+
+  // 解绑用户 Telegram
+  @Delete('users/:id/unbind-telegram')
+  async unbindUserTelegram(@Param('id') id: string) {
+    return this.adminService.unbindUserTelegram(id);
+  }
+
+  // 解绑用户钱包
+  @Delete('users/:id/unbind-wallet')
+  async unbindUserWallet(@Param('id') id: string) {
+    return this.adminService.unbindUserWallet(id);
+  }
+
   // ==================== 策略管理 ====================
 
   // 获取策略列表
   @Get('strategies')
   async getStrategies(@Query() dto: StrategyListDto) {
     return this.adminService.getStrategies(dto);
+  }
+
+  // 获取单个策略详情
+  @Get('strategies/:id')
+  async getStrategy(@Param('id') id: string) {
+    return this.adminService.getStrategyById(id);
   }
 
   // 创建策略
@@ -308,6 +360,50 @@ export class AdminController {
     return this.adminStakingService.getStakingOverview();
   }
 
+  // 获取质押配置
+  @Get('ecosystem/staking/config')
+  async getStakingConfig() {
+    const config = await this.adminStakingService.getStakingConfig();
+    return { code: 0, message: 'success', data: config };
+  }
+
+  // 更新质押配置
+  @Put('ecosystem/staking/config')
+  async updateStakingConfig(@Body() dto: any, @Req() req: any) {
+    const adminId = req.admin?.id || 'system';
+    const config = await this.adminStakingService.updateStakingConfig(
+      dto,
+      adminId,
+    );
+    return { code: 0, message: '质押配置已保存', data: config };
+  }
+
+  // 获取生态配置统计数据
+  @Get('ecosystem/stats')
+  async getEcosystemStats() {
+    const stats = await this.adminStakingService.getEcosystemStats();
+    return { code: 0, message: 'success', data: stats };
+  }
+
+  // 获取配置变更历史
+  @Get('ecosystem/config-history')
+  async getConfigHistory(
+    @Query('type') type?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const history = await this.adminStakingService.getConfigChangeHistory(
+      type,
+      limit ? parseInt(limit, 10) : 20,
+    );
+    return { code: 0, message: 'success', data: history };
+  }
+
+  // 获取分红概览（分红管理页面使用）
+  @Get('ecosystem/dividend/overview')
+  async getDividendOverview() {
+    return this.adminStakingService.getDividendOverview();
+  }
+
   // 获取分红池列表
   @Get('ecosystem/dividend-pools')
   async getDividendPools(
@@ -395,7 +491,9 @@ export class AdminController {
   // 获取流通趋势
   @Get('ecosystem/token/trend')
   async getCirculationTrend(@Query('days') days?: string) {
-    return this.tokenService.getCirculationTrend(days ? parseInt(days, 10) : 30);
+    return this.tokenService.getCirculationTrend(
+      days ? parseInt(days, 10) : 30,
+    );
   }
 
   // 获取 HOOT 持有者排行
@@ -477,6 +575,78 @@ export class AdminController {
     );
   }
 
+  // ==================== 代理商代币管理 ====================
+
+  // 获取代币统计
+  @Get('agents/token/stats')
+  async getAgentTokenStats() {
+    return this.agentService.getTokenStats();
+  }
+
+  // 获取代币配额列表
+  @Get('agents/token/quotas')
+  async getTokenQuotas(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('agentId') agentId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.agentService.getTokenQuotas({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      agentId,
+      status,
+    });
+  }
+
+  // 创建代币配额
+  @Post('agents/token/quotas')
+  async createTokenQuota(@Body() dto: { agentId: string; level: string }) {
+    return this.agentService.createTokenQuota(dto);
+  }
+
+  // 审核代币配额
+  @Post('agents/token/quotas/:id/review')
+  async reviewTokenQuota(
+    @Param('id') id: string,
+    @Body() dto: { action: 'approve' | 'reject' },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    return this.agentService.reviewTokenQuota(id, dto.action, adminId);
+  }
+
+  // 获取代理商分红池列表
+  @Get('agents/token/dividend-pools')
+  async getAgentDividendPools(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.agentService.getDividendPools({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+    });
+  }
+
+  // 创建代理商分红池
+  @Post('agents/token/dividend-pools')
+  async createAgentDividendPool(
+    @Body() dto: { monthNumber: string; poolRate?: number },
+  ) {
+    return this.agentService.createDividendPool(dto);
+  }
+
+  // 分配分红池
+  @Post('agents/token/dividend-pools/:id/distribute')
+  async distributeDividendPool(
+    @Param('id') id: string,
+    @Body() dto: { hootPrice: string },
+  ) {
+    return this.agentService.distributeDividendPool(id, dto.hootPrice);
+  }
+
   // ==================== 返佣邀请系统 ====================
 
   // 获取返佣概览
@@ -554,5 +724,368 @@ export class AdminController {
   @Post('referral/process-pending')
   async processPendingRewards() {
     return this.referralService.processPendingRewards();
+  }
+
+  // ==================== 信号急停开关 ====================
+
+  // 获取急停开关概览
+  @Get('signals/kill-switch')
+  async getKillSwitchOverview() {
+    const data = await this.signalService.getKillSwitchOverview();
+    return { code: 0, message: 'success', data };
+  }
+
+  // 设置全局信号开关
+  @Post('signals/kill-switch/global')
+  async setGlobalSignalSwitch(
+    @Body() dto: { enabled: boolean; reason: string },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    const data = await this.signalService.setGlobalSignalSwitch(
+      dto.enabled,
+      adminId,
+      dto.reason,
+    );
+    return {
+      code: 0,
+      message: dto.enabled ? '全局信号已开启' : '全局信号已关闭',
+      data,
+    };
+  }
+
+  // 设置策略信号开关
+  @Post('signals/kill-switch/strategy/:id')
+  async setStrategySignalSwitch(
+    @Param('id') strategyId: string,
+    @Body() dto: { enabled: boolean; reason: string },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    const data = await this.signalService.setStrategySignalStatus(
+      strategyId,
+      dto.enabled,
+      adminId,
+      dto.reason,
+    );
+    return {
+      code: 0,
+      message: dto.enabled ? '策略信号已恢复' : '策略信号已停止',
+      data,
+    };
+  }
+
+  // 批量设置策略信号开关
+  @Post('signals/kill-switch/strategies/batch')
+  async batchSetStrategySignalSwitch(
+    @Body() dto: { enabled: boolean; reason: string },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    const data = await this.signalService.batchSetStrategySignalStatus(
+      dto.enabled,
+      adminId,
+      dto.reason,
+    );
+    return { code: 0, message: data.message, data };
+  }
+
+  // 设置用户信号开关
+  @Post('signals/kill-switch/user/:id')
+  async setUserSignalSwitch(
+    @Param('id') userId: string,
+    @Body() dto: { enabled: boolean; reason: string },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    const data = await this.signalService.setUserSignalStatus(
+      userId,
+      dto.enabled,
+      adminId,
+      dto.reason,
+    );
+    return {
+      code: 0,
+      message: dto.enabled ? '用户信号已恢复' : '用户信号已停止',
+      data,
+    };
+  }
+
+  // 搜索用户（用于用户级控制）
+  @Get('signals/kill-switch/users/search')
+  async searchUsersForKillSwitch(@Query('keyword') keyword: string) {
+    const data = await this.signalService.searchUsers(keyword);
+    return { code: 0, message: 'success', data };
+  }
+
+  // 获取急停开关操作日志
+  @Get('signals/kill-switch/logs')
+  async getKillSwitchLogs(@Query('limit') limit?: string) {
+    const data = await this.signalService.getKillSwitchLogs(
+      limit ? parseInt(limit, 10) : 50,
+    );
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 交易记录管理 ====================
+
+  /**
+   * 获取交易记录列表（充值/提现）
+   * GET /admin/transactions?page=1&limit=20&type=deposit&status=completed
+   */
+  @Get('transactions')
+  async getTransactions(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('userId') userId?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.adminService.getTransactions({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      type,
+      status,
+      userId,
+      search,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取交易记录统计
+   * GET /admin/transactions/stats
+   */
+  @Get('transactions/stats')
+  async getTransactionStats() {
+    const data = await this.adminService.getTransactionStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 持仓管理 ====================
+
+  /**
+   * 获取持仓列表
+   * GET /admin/positions?page=1&limit=20&status=open
+   */
+  @Get('positions')
+  async getPositions(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('userId') userId?: string,
+    @Query('exchange') exchange?: string,
+    @Query('symbol') symbol?: string,
+  ) {
+    const data = await this.adminService.getPositions({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+      userId,
+      exchange,
+      symbol,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取持仓统计
+   * GET /admin/positions/stats
+   */
+  @Get('positions/stats')
+  async getPositionStats() {
+    const data = await this.adminService.getPositionStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 订单管理 ====================
+
+  /**
+   * 获取订单列表（信号执行记录）
+   * GET /admin/orders?page=1&limit=20&status=success
+   */
+  @Get('orders')
+  async getOrders(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('userId') userId?: string,
+    @Query('exchange') exchange?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.adminService.getOrders({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      status,
+      userId,
+      exchange,
+      search,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取订单统计
+   * GET /admin/orders/stats
+   */
+  @Get('orders/stats')
+  async getOrderStats() {
+    const data = await this.adminService.getOrderStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 信号监控 ====================
+
+  /**
+   * 获取信号列表
+   * GET /admin/signals?page=1&limit=20&strategyId=xxx
+   */
+  @Get('signals')
+  async getSignals(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('strategyId') strategyId?: string,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.adminService.getSignals({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      strategyId,
+      status,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取信号监控统计
+   * GET /admin/signals/stats
+   */
+  @Get('signals/stats')
+  async getSignalStats() {
+    const data = await this.adminService.getSignalStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取策略运行状态
+   * GET /admin/signals/strategy-status
+   */
+  @Get('signals/strategy-status')
+  async getStrategyRunStatus() {
+    const data = await this.adminService.getStrategyRunStatus();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 风控管理 ====================
+
+  /**
+   * 获取风控概览
+   * GET /admin/risk/overview
+   */
+  @Get('risk/overview')
+  async getRiskOverview() {
+    const data = await this.adminService.getRiskOverview();
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取风控事件列表
+   * GET /admin/risk/events?page=1&limit=20
+   */
+  @Get('risk/events')
+  async getRiskEvents(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.adminService.getRiskEvents({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 账单管理 ====================
+
+  /**
+   * 获取账单列表
+   * GET /admin/billing?page=1&limit=20&type=subscription
+   */
+  @Get('billing')
+  async getBillingLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('type') type?: string,
+    @Query('userId') userId?: string,
+  ) {
+    const data = await this.adminService.getBillingLogs({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      type,
+      userId,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取账单统计
+   * GET /admin/billing/stats
+   */
+  @Get('billing/stats')
+  async getBillingStats() {
+    const data = await this.adminService.getBillingStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 权重配置 ====================
+
+  /**
+   * 获取生态权重配置
+   * GET /admin/ecosystem/weights
+   */
+  @Get('ecosystem/weights')
+  async getEcosystemWeights() {
+    const data = await this.adminService.getEcosystemWeights();
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 更新生态权重配置
+   * PUT /admin/ecosystem/weights
+   */
+  @Put('ecosystem/weights')
+  async updateEcosystemWeights(@Body() weights: any) {
+    const data = await this.adminService.updateEcosystemWeights(weights);
+    return { code: 0, message: '权重配置已更新', data };
+  }
+
+  // ==================== 管理员管理 ====================
+
+  /**
+   * 获取管理员列表
+   * GET /admin/admins?page=1&limit=20
+   */
+  @Get('admins')
+  async getAdminList(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const data = await this.adminService.getAdminList({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 系统监控 ====================
+
+  /**
+   * 获取系统监控数据
+   * GET /admin/monitor
+   */
+  @Get('monitor')
+  async getSystemMonitor() {
+    const data = await this.adminService.getSystemMonitor();
+    return { code: 0, message: 'success', data };
   }
 }

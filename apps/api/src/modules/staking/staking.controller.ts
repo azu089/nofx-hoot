@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { StakingService } from './staking.service';
 import { CreateStakingDto } from './dto/staking.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -55,5 +49,18 @@ export class StakingController {
   @Get('global-stats')
   async getGlobalStats() {
     return this.stakingService.getGlobalStats();
+  }
+
+  // 获取质押排行榜（公开）
+  @Public()
+  @Get('leaderboard')
+  async getLeaderboard() {
+    return this.stakingService.getLeaderboard();
+  }
+
+  // 领取奖励（检查是否有可领取的分红）
+  @Post('claim')
+  async claimRewards(@CurrentUser() user: { id: string }) {
+    return this.stakingService.claimRewards(user.id);
   }
 }

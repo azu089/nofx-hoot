@@ -6,7 +6,13 @@ export { TradingConfigService } from './config.service';
 export type { UserFullConfig, MergedExecutionConfig } from './config.service';
 
 export { MarketStatusService } from './market-status.service';
-export type { MarketStatusResult, MarketStatusLevel } from './market-status.service';
+export type {
+  MarketStatusResult,
+  MarketStatusLevel,
+} from './market-status.service';
 
 export { CircuitBreakerService } from './circuit-breaker.service';
-export type { CircuitBreakerInfo, CircuitState } from './circuit-breaker.service';
+export type {
+  CircuitBreakerInfo,
+  CircuitState,
+} from './circuit-breaker.service';

@@ -71,7 +71,7 @@ export function MobileSubscriptionPage({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
@@ -81,7 +81,7 @@ export function MobileSubscriptionPage({
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-base font-medium text-white">会员订阅</h1>
+          <h1 className="text-base font-semibold text-white">会员订阅</h1>
           <div className="w-10" />
         </div>
       </div>

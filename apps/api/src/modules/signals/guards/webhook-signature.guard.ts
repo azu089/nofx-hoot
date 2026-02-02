@@ -24,7 +24,9 @@ export class WebhookSignatureGuard implements CanActivate {
   constructor() {
     this.webhookSecret = process.env.WEBHOOK_SECRET || '';
     if (!this.webhookSecret) {
-      this.logger.warn('WEBHOOK_SECRET 未配置，Webhook 签名验证将被跳过（仅限开发环境）');
+      this.logger.warn(
+        'WEBHOOK_SECRET 未配置，Webhook 签名验证将被跳过（仅限开发环境）',
+      );
     }
   }
 

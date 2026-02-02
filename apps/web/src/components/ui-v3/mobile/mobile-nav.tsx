@@ -2,6 +2,7 @@
 
 import { Home, TrendingUp, Briefcase, Wallet, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
 interface MobileNavProps {
   activeTab: 'home' | 'strategies' | 'trading' | 'assets' | 'me'
@@ -11,15 +12,16 @@ interface MobileNavProps {
   className?: string
 }
 
-const tabs = [
-  { id: 'home', label: '首页', icon: Home },
-  { id: 'strategies', label: '策略', icon: TrendingUp },
-  { id: 'trading', label: '交易', icon: Briefcase },
-  { id: 'assets', label: '资产', icon: Wallet },
-  { id: 'me', label: '我的', icon: User },
+const tabConfig = [
+  { id: 'home', labelKey: 'home', icon: Home },
+  { id: 'strategies', labelKey: 'strategies', icon: TrendingUp },
+  { id: 'trading', labelKey: 'trading', icon: Briefcase },
+  { id: 'assets', labelKey: 'wallet', icon: Wallet },
+  { id: 'me', labelKey: 'profile', icon: User },
 ] as const
 
 export function MobileNav({ activeTab, onTabChange, embedded = false, className }: MobileNavProps) {
+  const t = useTranslations('nav')
   return (
     <nav className={cn(
       "bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2",
@@ -27,12 +29,13 @@ export function MobileNav({ activeTab, onTabChange, embedded = false, className 
       className
     )}>
       <div className="flex justify-around items-center">
-        {tabs.map((tab) => {
+        {tabConfig.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.id
 
           return (
             <button
+              type="button"
               key={tab.id}
               onClick={() => onTabChange?.(tab.id)}
               className={cn(
@@ -58,7 +61,7 @@ export function MobileNav({ activeTab, onTabChange, embedded = false, className 
                     : "text-[#606070]"
                 )}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </span>
             </button>
           )

@@ -14,24 +14,25 @@ import {
 
 interface MobileAboutPageProps {
   onBack?: () => void
+  onNavigate?: (path: string) => void
 }
 
-export function MobileAboutPage({ onBack }: MobileAboutPageProps) {
+export function MobileAboutPage({ onBack, onNavigate }: MobileAboutPageProps) {
   const legalItems = [
     {
       icon: FileText,
       title: "用户协议",
-      href: "/terms",
+      href: "/legal/terms",
     },
     {
       icon: Shield,
       title: "隐私政策",
-      href: "/privacy",
+      href: "/legal/privacy",
     },
     {
       icon: AlertTriangle,
       title: "风险提示",
-      href: "/risk",
+      href: "/legal/risk",
     },
   ];
 
@@ -65,17 +66,17 @@ export function MobileAboutPage({ onBack }: MobileAboutPageProps) {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-8">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
-        <div className="flex items-center justify-between px-4 py-4">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-[#12121A] transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-white" />
           </button>
-          <h1 className="text-lg font-semibold text-white">关于 Hoot</h1>
+          <h1 className="text-base font-semibold text-white">关于 Hoot</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -116,6 +117,7 @@ export function MobileAboutPage({ onBack }: MobileAboutPageProps) {
                   key={item.title}
                   type="button"
                   aria-label={item.title}
+                  onClick={() => onNavigate?.(item.href)}
                   className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition-colors"
                 >
                   <div className="w-9 h-9 bg-cyan-500/10 rounded-xl flex items-center justify-center">

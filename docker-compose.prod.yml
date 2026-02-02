@@ -1,5 +1,14 @@
+# ==============================================
 # HOOT 生产环境 Docker Compose 配置
-# 使用方式：docker compose -f docker-compose.prod.yml up -d
+# 域名: hoot.cool
+# ==============================================
+# 使用方式：
+#   1. 复制 .env.production.example 为 .env
+#   2. 填入所有必要的环境变量
+#   3. docker compose -f docker-compose.prod.yml up -d
+#
+# 启用 Nginx: docker compose -f docker-compose.prod.yml --profile with-nginx up -d
+# ==============================================
 
 services:
   # === API 服务 (NestJS) ===
@@ -13,16 +22,28 @@ services:
       - "4001:4001"
     environment:
       - NODE_ENV=production
-      - PORT=4001
+      - API_PORT=4001
       - DATABASE_URL=postgresql://hoot:${DB_PASSWORD}@postgres:5432/hoot
-      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # 安全密钥
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRES_IN=7d
-      # 链上监听配置（可选）
-      - ENABLE_BLOCKCHAIN_LISTENER=${ENABLE_BLOCKCHAIN_LISTENER:-false}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      # 邮件服务
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - EMAIL_FROM=noreply@hoot.cool
+      # 链上配置
       - BSC_RPC_URL=${BSC_RPC_URL:-https://bsc-dataseed1.binance.org}
       - USDT_CONTRACT_ADDRESS=${USDT_CONTRACT_ADDRESS:-0x55d398326f99059fF775485246999027B3197955}
-      - HOOT_CONTRACT_ADDRESS=${HOOT_CONTRACT_ADDRESS:-}
+      - WITHDRAW_WALLET_PRIVATE_KEY=${WITHDRAW_WALLET_PRIVATE_KEY:-}
+      - DEPOSIT_WALLET_ADDRESS=${DEPOSIT_WALLET_ADDRESS:-}
+      # Freqtrade
+      - FREQTRADE_API_URL=${FREQTRADE_API_URL:-}
+      - FREQTRADE_JWT_SECRET=${FREQTRADE_JWT_SECRET:-}
+      # Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TG_BOT_API_URL=${TG_BOT_API_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,7 +75,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - NEXT_PUBLIC_API_URL=http://api:4001
+      # 生产环境使用 HTTPS 域名
+      - NEXT_PUBLIC_API_URL=https://api.hoot.cool
+      - NEXT_PUBLIC_SITE_URL=https://hoot.cool
     depends_on:
       api:
         condition: service_healthy

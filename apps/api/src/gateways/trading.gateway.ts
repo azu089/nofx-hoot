@@ -48,7 +48,9 @@ export interface TradeExecutionEvent {
     credentials: true,
   },
 })
-export class TradingGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class TradingGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -61,7 +63,8 @@ export class TradingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   async handleConnection(client: Socket) {
     try {
       // 从 handshake 获取 token
-      const token = client.handshake.auth?.token || client.handshake.query?.token;
+      const token =
+        client.handshake.auth?.token || client.handshake.query?.token;
 
       if (!token) {
         this.logger.warn(`客户端 ${client.id} 未提供 token`);
@@ -136,13 +139,17 @@ export class TradingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   // 广播信号给订阅者
   broadcastSignal(strategyId: string, signal: SignalEvent) {
     this.server.to(`strategy:${strategyId}`).emit('signal', signal);
-    this.logger.log(`广播信号: 策略 ${strategyId}, ${signal.side} ${signal.symbol}`);
+    this.logger.log(
+      `广播信号: 策略 ${strategyId}, ${signal.side} ${signal.symbol}`,
+    );
   }
 
   // 推送持仓更新给指定用户
   sendPositionUpdate(userId: string, position: PositionEvent) {
     this.server.to(`user:${userId}`).emit('position', position);
-    this.logger.log(`推送持仓更新给用户 ${userId}: ${position.action} ${position.symbol}`);
+    this.logger.log(
+      `推送持仓更新给用户 ${userId}: ${position.action} ${position.symbol}`,
+    );
   }
 
   // 推送交易执行结果给指定用户
@@ -152,12 +159,15 @@ export class TradingGateway implements OnGatewayConnection, OnGatewayDisconnect 
   }
 
   // 推送通知给指定用户
-  sendNotification(userId: string, notification: {
-    type: string;
-    title: string;
-    message: string;
-    data?: any;
-  }) {
+  sendNotification(
+    userId: string,
+    notification: {
+      type: string;
+      title: string;
+      message: string;
+      data?: any;
+    },
+  ) {
     this.server.to(`user:${userId}`).emit('notification', notification);
   }
 
@@ -173,7 +183,9 @@ export class TradingGateway implements OnGatewayConnection, OnGatewayDisconnect 
 
   // 检查用户是否在线
   isUserOnline(userId: string): boolean {
-    return this.userSockets.has(userId) && this.userSockets.get(userId)!.size > 0;
+    return (
+      this.userSockets.has(userId) && this.userSockets.get(userId)!.size > 0
+    );
   }
 
   // 获取在线用户数

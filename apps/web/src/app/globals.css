@@ -126,7 +126,7 @@
   }
 }
 
-/* Hoot Dark Theme - 强制深色 */
+/* Hoot 主题变量 */
 :root {
   --hoot-bg-deep: #0A0A0F;
   --hoot-bg-card: #12121A;
@@ -141,6 +141,115 @@
   --hoot-success: #10B981;
   --hoot-danger: #F43F5E;
   --hoot-warning: #F59E0B;
+}
+
+/* Hoot 浅色主题 */
+.light {
+  --background: #FFFFFF;
+  --foreground: #0A0A0F;
+  --card: #F5F5F7;
+  --card-foreground: #0A0A0F;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0A0F;
+  --primary: #0891B2;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E5E5E5;
+  --secondary-foreground: #0A0A0F;
+  --muted: #F0F0F2;
+  --muted-foreground: #606070;
+  --accent: #F0F0F2;
+  --accent-foreground: #0A0A0F;
+  --destructive: #EF4444;
+  --border: #E0E0E5;
+  --input: #E0E0E5;
+  --ring: #0891B2;
+  --sidebar: #FAFAFA;
+  --sidebar-foreground: #0A0A0F;
+  --sidebar-primary: #0891B2;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0F0F2;
+  --sidebar-accent-foreground: #0A0A0F;
+  --sidebar-border: #E0E0E5;
+  --sidebar-ring: #0891B2;
+
+  /* Hoot 浅色主题变量 */
+  --hoot-bg-deep: #FFFFFF;
+  --hoot-bg-card: #F5F5F7;
+  --hoot-border: #E0E0E5;
+  --hoot-divider: #D0D0D5;
+  --hoot-text-primary: #0A0A0F;
+  --hoot-text-secondary: #606070;
+  --hoot-text-muted: #9090A0;
+}
+
+/* 浅色主题下覆盖硬编码深色背景 */
+.light [class*="bg-[#0A0A0F]"] {
+  background-color: #FFFFFF !important;
+}
+
+.light [class*="bg-[#12121A]"] {
+  background-color: #F5F5F7 !important;
+}
+
+.light [class*="bg-[#1E1E2E]"] {
+  background-color: #E8E8EC !important;
+}
+
+.light [class*="bg-[#1A1A24]"] {
+  background-color: #ECECF0 !important;
+}
+
+.light [class*="border-[#1E1E2E]"] {
+  border-color: #E0E0E5 !important;
+}
+
+.light [class*="border-[#2A2A3A]"] {
+  border-color: #D0D0D5 !important;
+}
+
+.light [class*="text-white"] {
+  color: #0A0A0F !important;
+}
+
+.light [class*="text-[#F8F8FC]"] {
+  color: #0A0A0F !important;
+}
+
+.light [class*="text-[#9090A0]"] {
+  color: #606070 !important;
+}
+
+.light [class*="text-[#94A3B8]"] {
+  color: #64748B !important;
+}
+
+.light [class*="text-[#606070]"] {
+  color: #9090A0 !important;
+}
+
+/* 浅色主题玻璃效果 */
+.light .glass-border-glow {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(8, 145, 178, 0.15) !important;
+}
+
+.light .glass-border-glow::before {
+  background: rgba(8, 145, 178, 0.08) !important;
+}
+
+.light .glass-border-glow::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 10%,
+    rgba(8, 145, 178, 0.05) 20%,
+    rgba(6, 182, 212, 0.12) 30%,
+    rgba(6, 182, 212, 0.18) 50%,
+    rgba(6, 182, 212, 0.12) 70%,
+    rgba(8, 145, 178, 0.05) 80%,
+    transparent 90%,
+    transparent 100%
+  ) !important;
 }
 
 /* 呼吸动画 keyframes */

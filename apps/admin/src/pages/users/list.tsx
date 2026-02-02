@@ -15,7 +15,6 @@ import {
   Avatar,
   Tooltip,
   Modal,
-  message,
   Card,
   Typography,
   Input,
@@ -24,11 +23,11 @@ import {
   Statistic,
   Spin,
   Alert,
+  Select,
 } from 'antd';
 import {
   UserOutlined,
   LockOutlined,
-  UnlockOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   SearchOutlined,
@@ -36,9 +35,12 @@ import {
   DownloadOutlined,
   TeamOutlined,
   DollarOutlined,
+  WalletOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
@@ -48,6 +50,8 @@ interface IUser {
   nickname: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
+  walletAddress: string | null;
+  emailVerified: boolean;
   usdtBalance: string;
   hootBalance: string;
   createdAt: string;
@@ -66,17 +70,25 @@ interface UserListResponse {
 }
 
 export const UserList = () => {
+  const message = useMessage();
   const navigate = useNavigate();
   const [dataSource, setDataSource] = useState<IUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
-  // 搜索状态
+  // 搜索和筛选状态
   const [searchText, setSearchText] = useState('');
+  const [bindTelegramFilter, setBindTelegramFilter] = useState<string>('');
+  const [bindWalletFilter, setBindWalletFilter] = useState<string>('');
 
   // 获取用户列表
-  const fetchUsers = useCallback(async (page = 1, search = '') => {
+  const fetchUsers = useCallback(async (
+    page = 1,
+    search = '',
+    bindTelegram?: string,
+    bindWallet?: string
+  ) => {
     setLoading(true);
     setError(null);
     try {
@@ -86,6 +98,12 @@ export const UserList = () => {
       });
       if (search) {
         params.set('search', search);
+      }
+      if (bindTelegram) {
+        params.set('bindTelegram', bindTelegram);
+      }
+      if (bindWallet) {
+        params.set('bindWallet', bindWallet);
       }
       const data = await api.get<UserListResponse>(`/admin/users?${params.toString()}`);
       setDataSource(data.items);
@@ -109,18 +127,26 @@ export const UserList = () => {
 
   // 搜索处理
   const handleSearch = () => {
-    fetchUsers(1, searchText);
+    fetchUsers(1, searchText, bindTelegramFilter, bindWalletFilter);
   };
 
   // 重置筛选
   const handleReset = () => {
     setSearchText('');
-    fetchUsers(1, '');
+    setBindTelegramFilter('');
+    setBindWalletFilter('');
+    fetchUsers(1, '', '', '');
   };
 
   // 分页变化
   const handleTableChange = (paginationConfig: { current?: number; pageSize?: number }) => {
-    fetchUsers(paginationConfig.current || 1, searchText);
+    fetchUsers(paginationConfig.current || 1, searchText, bindTelegramFilter, bindWalletFilter);
+  };
+
+  // 格式化钱包地址
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   // 冻结/解冻用户
@@ -186,7 +212,27 @@ export const UserList = () => {
       width: 140,
       render: (_: unknown, record: IUser) => (
         record.telegramUsername ? (
-          <Tag color="blue">@{record.telegramUsername}</Tag>
+          <Tooltip title={`ID: ${record.telegramId}`}>
+            <Tag color="blue" icon={<SendOutlined />}>@{record.telegramUsername}</Tag>
+          </Tooltip>
+        ) : (
+          <Text type="secondary">未绑定</Text>
+        )
+      ),
+    },
+    {
+      title: '钱包地址',
+      key: 'wallet',
+      width: 150,
+      render: (_: unknown, record: IUser) => (
+        record.walletAddress ? (
+          <Tooltip title={record.walletAddress}>
+            <Tag color="cyan" icon={<WalletOutlined />}>
+              <Text copyable={{ text: record.walletAddress }}>
+                {formatAddress(record.walletAddress)}
+              </Text>
+            </Tag>
+          </Tooltip>
         ) : (
           <Text type="secondary">未绑定</Text>
         )
@@ -349,18 +395,42 @@ export const UserList = () => {
         </Col>
       </Row>
 
-      {/* 搜索 */}
+      {/* 搜索和筛选 */}
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={16} align="middle">
-          <Col flex="300px">
+          <Col flex="280px">
             <Input
-              placeholder="搜索邮箱或昵称"
+              placeholder="搜索邮箱/昵称/TG/钱包"
               prefix={<SearchOutlined />}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               onPressEnter={handleSearch}
               allowClear
             />
+          </Col>
+          <Col>
+            <Space>
+              <Select
+                placeholder="Telegram"
+                value={bindTelegramFilter || undefined}
+                onChange={(v) => setBindTelegramFilter(v || '')}
+                allowClear
+                style={{ width: 120 }}
+              >
+                <Select.Option value="true">已绑定</Select.Option>
+                <Select.Option value="false">未绑定</Select.Option>
+              </Select>
+              <Select
+                placeholder="钱包"
+                value={bindWalletFilter || undefined}
+                onChange={(v) => setBindWalletFilter(v || '')}
+                allowClear
+                style={{ width: 120 }}
+              >
+                <Select.Option value="true">已绑定</Select.Option>
+                <Select.Option value="false">未绑定</Select.Option>
+              </Select>
+            </Space>
           </Col>
           <Col>
             <Space>
@@ -387,6 +457,7 @@ export const UserList = () => {
             dataSource={dataSource}
             columns={columns}
             rowKey="id"
+            scroll={{ x: 1000 }}
             pagination={{
               current: pagination.current,
               pageSize: pagination.pageSize,

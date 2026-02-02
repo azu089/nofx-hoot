@@ -24,9 +24,9 @@ export enum NotificationType {
 
 // 通知渠道
 export enum NotificationChannel {
-  IN_APP = 'in_app',       // WebSocket 推送
-  TELEGRAM = 'telegram',   // Telegram Bot
-  EMAIL = 'email',         // 邮件
+  IN_APP = 'in_app', // WebSocket 推送
+  TELEGRAM = 'telegram', // Telegram Bot
+  EMAIL = 'email', // 邮件
 }
 
 // 发送通知 DTO

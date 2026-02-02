@@ -13,12 +13,12 @@ interface DailyLossConfig {
 interface UserDailyPnl {
   userId: string;
   apiKeyId: string;
-  startBalance: number;     // 当日起始余额
-  currentBalance: number;   // 当前余额
-  realizedPnl: number;      // 已实现盈亏
-  unrealizedPnl: number;    // 未实现盈亏
+  startBalance: number; // 当日起始余额
+  currentBalance: number; // 当前余额
+  realizedPnl: number; // 已实现盈亏
+  unrealizedPnl: number; // 未实现盈亏
   config: DailyLossConfig;
-  isLocked: boolean;        // 是否已锁定
+  isLocked: boolean; // 是否已锁定
 }
 
 @Injectable()
@@ -129,14 +129,19 @@ export class DailyPnlService implements OnModuleInit {
     if (!data) return;
 
     data.realizedPnl += pnlUsdt;
-    this.logger.log(`用户 ${userId} 记录盈亏: ${pnlUsdt} USDT, 累计: ${data.realizedPnl}`);
+    this.logger.log(
+      `用户 ${userId} 记录盈亏: ${pnlUsdt} USDT, 累计: ${data.realizedPnl}`,
+    );
 
     // 检查日亏损限制
     await this.checkDailyLossLimit(userId);
   }
 
   // 更新未实现盈亏（定期调用）
-  async updateUnrealizedPnl(userId: string, unrealizedPnl: number): Promise<void> {
+  async updateUnrealizedPnl(
+    userId: string,
+    unrealizedPnl: number,
+  ): Promise<void> {
     const data = this.userDailyPnl.get(userId);
     if (!data) return;
 
@@ -155,9 +160,10 @@ export class DailyPnlService implements OnModuleInit {
 
     // 计算当日总亏损
     const totalPnl = data.realizedPnl + data.unrealizedPnl;
-    const lossPercent = data.startBalance > 0
-      ? (Math.abs(Math.min(0, totalPnl)) / data.startBalance) * 100
-      : 0;
+    const lossPercent =
+      data.startBalance > 0
+        ? (Math.abs(Math.min(0, totalPnl)) / data.startBalance) * 100
+        : 0;
 
     if (lossPercent >= data.config.dailyMaxLossPercent) {
       await this.triggerDailyLossLimit(data, lossPercent);
@@ -202,7 +208,9 @@ export class DailyPnlService implements OnModuleInit {
           },
         });
       } catch (error) {
-        this.logger.error(`平仓失败 ${pos.symbol}: ${(error as Error).message}`);
+        this.logger.error(
+          `平仓失败 ${pos.symbol}: ${(error as Error).message}`,
+        );
       }
     }
 
@@ -252,9 +260,8 @@ export class DailyPnlService implements OnModuleInit {
     if (!data) return null;
 
     const totalPnl = data.realizedPnl + data.unrealizedPnl;
-    const pnlPercent = data.startBalance > 0
-      ? (totalPnl / data.startBalance) * 100
-      : 0;
+    const pnlPercent =
+      data.startBalance > 0 ? (totalPnl / data.startBalance) * 100 : 0;
 
     return {
       realizedPnl: data.realizedPnl,
@@ -268,9 +275,8 @@ export class DailyPnlService implements OnModuleInit {
   // 保存日结算记录
   private async saveDailySettlement(userId: string, data: UserDailyPnl) {
     const totalPnl = data.realizedPnl + data.unrealizedPnl;
-    const pnlPercent = data.startBalance > 0
-      ? (totalPnl / data.startBalance) * 100
-      : 0;
+    const pnlPercent =
+      data.startBalance > 0 ? (totalPnl / data.startBalance) * 100 : 0;
 
     await this.prisma.dailySettlement.create({
       data: {

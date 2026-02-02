@@ -34,7 +34,8 @@ export class WithdrawService {
       return;
     }
 
-    const rpcUrl = process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
+    const rpcUrl =
+      process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org';
 
     try {
       this.provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -75,14 +76,20 @@ export class WithdrawService {
     }
 
     try {
-      const contract = new Contract(tokenAddress, ERC20_TRANSFER_ABI, this.wallet);
+      const contract = new Contract(
+        tokenAddress,
+        ERC20_TRANSFER_ABI,
+        this.wallet,
+      );
 
       // 检查提现钱包余额
       const balance = await contract.balanceOf(this.wallet.address);
       const amountWei = ethers.parseUnits(amount.toString(), 18);
 
       if (balance < amountWei) {
-        this.logger.error(`提现钱包余额不足: ${ethers.formatUnits(balance, 18)} < ${amount}`);
+        this.logger.error(
+          `提现钱包余额不足: ${ethers.formatUnits(balance, 18)} < ${amount}`,
+        );
         return { success: false, error: '提现钱包余额不足' };
       }
 
@@ -184,12 +191,20 @@ export class WithdrawService {
     const hootAddress = this.getTokenAddress('HOOT');
 
     if (usdtAddress) {
-      const contract = new Contract(usdtAddress, ERC20_TRANSFER_ABI, this.provider);
+      const contract = new Contract(
+        usdtAddress,
+        ERC20_TRANSFER_ABI,
+        this.provider,
+      );
       usdtBalance = await contract.balanceOf(this.wallet.address);
     }
 
     if (hootAddress) {
-      const contract = new Contract(hootAddress, ERC20_TRANSFER_ABI, this.provider);
+      const contract = new Contract(
+        hootAddress,
+        ERC20_TRANSFER_ABI,
+        this.provider,
+      );
       hootBalance = await contract.balanceOf(this.wallet.address);
     }
 
@@ -207,7 +222,10 @@ export class WithdrawService {
   private getTokenAddress(asset: string): string | null {
     switch (asset) {
       case 'USDT':
-        return process.env.USDT_CONTRACT_ADDRESS || '0x55d398326f99059fF775485246999027B3197955';
+        return (
+          process.env.USDT_CONTRACT_ADDRESS ||
+          '0x55d398326f99059fF775485246999027B3197955'
+        );
       case 'HOOT':
         return process.env.HOOT_CONTRACT_ADDRESS || null;
       default:

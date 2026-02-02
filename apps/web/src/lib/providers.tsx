@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { useState, ReactNode } from 'react';
 import { AuthProvider } from './auth';
+import { ThemeProvider } from './theme';
 import { config } from './wagmi';
+import { LocaleProvider } from '@/i18n/provider';
+import { Toaster } from '@/components/ui/sonner';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -26,9 +29,14 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <LocaleProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              {children}
+              <Toaster position="top-center" richColors closeButton />
+            </AuthProvider>
+          </ThemeProvider>
+        </LocaleProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

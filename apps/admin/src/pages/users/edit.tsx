@@ -1,6 +1,11 @@
 /**
  * 用户编辑页面
  * 修改用户信息、调整资产
+ * 已对接真实 API:
+ * - GET /admin/users/:id
+ * - PUT /admin/users/:id
+ * - POST /admin/users/:id/adjust-balance
+ * - POST /admin/users/:id/reset-password
  */
 import { Edit } from '@refinedev/antd';
 import {
@@ -15,48 +20,101 @@ import {
   Radio,
   Typography,
   Alert,
-  message,
   Modal,
+  Spin,
 } from 'antd';
+import { useMessage } from '../../hooks';
 import {
   SaveOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../../lib/api';
 
 const { Text } = Typography;
 const { TextArea } = Input;
 
-// 模拟用户数据
-const mockUser = {
-  id: '1',
-  email: 'user1@example.com',
-  username: 'trader_001',
-  phone: '+86 138****8888',
-  status: 'active',
-  usdtBalance: '12500.00',
-  usdtFrozen: '500.00',
-  hootBalance: '50000',
-  hootFrozen: '10000',
-  pointCards: 15,
-};
+interface UserDetail {
+  id: string;
+  email: string;
+  nickname: string | null;
+  phone: string | null;
+  status: string;
+  usdtBalance: string;
+  hootBalance: string;
+}
 
 export const UserEdit = () => {
+  const message = useMessage();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [form] = Form.useForm();
   const [assetForm] = Form.useForm();
-  const [assetType, setAssetType] = useState<'usdt' | 'hoot' | 'pointCards'>('usdt');
+  const [assetType, setAssetType] = useState<'usdt' | 'hoot'>('usdt');
   const [adjustType, setAdjustType] = useState<'add' | 'subtract'>('add');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [user, setUser] = useState<UserDetail | null>(null);
 
-  const handleSaveInfo = (values: Record<string, unknown>) => {
-    console.log('保存用户信息:', values);
-    message.success('用户信息已保存');
+  // 获取用户详情
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!id) return;
+      setLoading(true);
+      try {
+        const data = await api.get<UserDetail>(`/admin/users/${id}`);
+        setUser(data);
+        form.setFieldsValue({
+          email: data.email,
+          nickname: data.nickname || '',
+          phone: data.phone || '',
+          status: data.status || 'active',
+        });
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '获取用户信息失败';
+        message.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, [id, form]);
+
+  // 保存用户信息
+  const handleSaveInfo = async (values: Record<string, unknown>) => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      await api.put(`/admin/users/${id}`, {
+        nickname: values.nickname,
+        email: values.email,
+        phone: values.phone,
+      });
+      // 如果状态有变化，单独更新
+      if (values.status !== user?.status) {
+        await api.put(`/admin/users/${id}/status`, {
+          status: values.status,
+          reason: '管理员修改',
+        });
+      }
+      message.success('用户信息已保存');
+      // 刷新数据
+      const data = await api.get<UserDetail>(`/admin/users/${id}`);
+      setUser(data);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '保存失败';
+      message.error(errorMessage);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAdjustAsset = (values: Record<string, unknown>) => {
+  // 调整资产
+  const handleAdjustAsset = async (values: Record<string, unknown>) => {
+    if (!id || !user) return;
     const { amount, reason } = values;
-    const assetLabels = { usdt: 'USDT', hoot: 'HOOT', pointCards: '点卡' };
+    const assetLabels = { usdt: 'USDT', hoot: 'HOOT' };
     const assetLabel = assetLabels[assetType];
     const actionLabel = adjustType === 'add' ? '增加' : '减少';
 
@@ -66,7 +124,7 @@ export const UserEdit = () => {
       content: (
         <div>
           <p>
-            确定要为用户 <strong>{mockUser.username}</strong> {actionLabel}{' '}
+            确定要为用户 <strong>{user.nickname || user.email}</strong> {actionLabel}{' '}
             <strong>
               {String(amount)} {assetLabel}
             </strong>{' '}
@@ -80,33 +138,104 @@ export const UserEdit = () => {
       okText: '确认调整',
       cancelText: '取消',
       okButtonProps: { danger: adjustType === 'subtract' },
-      onOk() {
-        console.log('资产调整:', {
-          userId: id,
-          assetType,
-          adjustType,
-          amount,
-          reason,
-        });
-        message.success('资产调整成功');
-        assetForm.resetFields();
+      async onOk() {
+        try {
+          const result = await api.post<{ message: string; newBalance: string }>(
+            `/admin/users/${id}/adjust-balance`,
+            {
+              asset: assetType,
+              action: adjustType,
+              amount: String(amount),
+              reason: String(reason),
+            }
+          );
+          message.success(result.message);
+          assetForm.resetFields();
+          // 刷新用户数据
+          const data = await api.get<UserDetail>(`/admin/users/${id}`);
+          setUser(data);
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '调整失败';
+          message.error(errorMessage);
+        }
       },
     });
   };
 
+  // 重置密码
+  const handleResetPassword = () => {
+    if (!id || !user) return;
+    Modal.confirm({
+      title: '确认重置密码',
+      icon: <ExclamationCircleOutlined />,
+      content: `确定要重置用户 ${user.nickname || user.email} 的密码吗？新密码将显示一次。`,
+      okText: '确认重置',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      async onOk() {
+        try {
+          const result = await api.post<{ message: string; newPassword?: string }>(
+            `/admin/users/${id}/reset-password`,
+            {}
+          );
+          if (result.newPassword) {
+            Modal.success({
+              title: '密码已重置',
+              content: (
+                <div>
+                  <p>新密码：<Text copyable strong>{result.newPassword}</Text></p>
+                  <p style={{ color: '#ff4d4f' }}>请立即复制保存，此密码只显示一次！</p>
+                </div>
+              ),
+            });
+          } else {
+            message.success(result.message);
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '重置失败';
+          message.error(errorMessage);
+        }
+      },
+    });
+  };
+
+  if (loading) {
+    return (
+      <Edit saveButtonProps={{ style: { display: 'none' } }}>
+        <div style={{ textAlign: 'center', padding: 50 }}>
+          <Spin size="large" />
+        </div>
+      </Edit>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Edit saveButtonProps={{ style: { display: 'none' } }}>
+        <Alert message="用户不存在" type="error" />
+      </Edit>
+    );
+  }
+
   return (
-    <Edit saveButtonProps={{ style: { display: 'none' } }}>
+    <Edit
+      saveButtonProps={{ style: { display: 'none' } }}
+      headerButtons={[
+        <Button key="back" onClick={() => navigate(`/users/${id}`)}>
+          返回详情
+        </Button>,
+      ]}
+    >
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         {/* 基本信息编辑 */}
         <Card title="基本信息">
           <Form
             form={form}
             layout="vertical"
-            initialValues={mockUser}
             onFinish={handleSaveInfo}
           >
             <Form.Item label="用户ID">
-              <Input value={mockUser.id} disabled />
+              <Input value={user.id} disabled />
             </Form.Item>
 
             <Form.Item
@@ -121,11 +250,10 @@ export const UserEdit = () => {
             </Form.Item>
 
             <Form.Item
-              label="用户名"
-              name="username"
-              rules={[{ required: true, message: '请输入用户名' }]}
+              label="昵称"
+              name="nickname"
             >
-              <Input placeholder="请输入用户名" />
+              <Input placeholder="请输入昵称" />
             </Form.Item>
 
             <Form.Item label="手机号" name="phone">
@@ -147,7 +275,7 @@ export const UserEdit = () => {
             </Form.Item>
 
             <Form.Item>
-              <Button type="primary" htmlType="submit" icon={<SaveOutlined />}>
+              <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
                 保存信息
               </Button>
             </Form.Item>
@@ -157,27 +285,12 @@ export const UserEdit = () => {
         {/* 重置密码 */}
         <Card title="安全设置">
           <Alert
-            message="重置密码后，用户将收到一封包含新密码的邮件"
+            message="重置密码后，将生成一个新的随机密码"
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
           />
-          <Button
-            danger
-            onClick={() => {
-              Modal.confirm({
-                title: '确认重置密码',
-                icon: <ExclamationCircleOutlined />,
-                content: `确定要重置用户 ${mockUser.username} 的密码吗？新密码将发送到用户邮箱。`,
-                okText: '确认重置',
-                cancelText: '取消',
-                okButtonProps: { danger: true },
-                onOk() {
-                  message.success('密码已重置，新密码已发送至用户邮箱');
-                },
-              });
-            }}
-          >
+          <Button danger onClick={handleResetPassword}>
             重置密码
           </Button>
         </Card>
@@ -204,19 +317,10 @@ export const UserEdit = () => {
             <Text strong>当前余额：</Text>
             <Space size="large" style={{ marginLeft: 16 }}>
               <span>
-                USDT 可用: <Text strong style={{ color: '#52c41a' }}>${mockUser.usdtBalance}</Text>
+                USDT: <Text strong style={{ color: '#52c41a' }}>${parseFloat(user.usdtBalance || '0').toLocaleString()}</Text>
               </span>
               <span>
-                USDT 冻结: <Text strong style={{ color: '#faad14' }}>${mockUser.usdtFrozen}</Text>
-              </span>
-              <span>
-                HOOT 可用: <Text strong style={{ color: '#1890ff' }}>{mockUser.hootBalance}</Text>
-              </span>
-              <span>
-                HOOT 冻结: <Text strong style={{ color: '#faad14' }}>{mockUser.hootFrozen}</Text>
-              </span>
-              <span>
-                点卡: <Text strong style={{ color: '#d4b106' }}>{mockUser.pointCards} 张</Text>
+                HOOT: <Text strong style={{ color: '#1890ff' }}>{parseFloat(user.hootBalance || '0').toLocaleString()}</Text>
               </span>
             </Space>
           </div>
@@ -235,7 +339,6 @@ export const UserEdit = () => {
               >
                 <Radio.Button value="usdt">USDT</Radio.Button>
                 <Radio.Button value="hoot">HOOT</Radio.Button>
-                <Radio.Button value="pointCards">点卡</Radio.Button>
               </Radio.Group>
             </Form.Item>
 
@@ -254,22 +357,22 @@ export const UserEdit = () => {
             </Form.Item>
 
             <Form.Item
-              label={assetType === 'pointCards' ? '调整数量' : '调整金额'}
+              label="调整金额"
               name="amount"
               rules={[
-                { required: true, message: assetType === 'pointCards' ? '请输入调整数量' : '请输入调整金额' },
+                { required: true, message: '请输入调整金额' },
                 {
                   type: 'number',
-                  min: assetType === 'pointCards' ? 1 : 0.01,
-                  message: assetType === 'pointCards' ? '数量必须大于0' : '金额必须大于0',
+                  min: 0.01,
+                  message: '金额必须大于0',
                 },
               ]}
             >
               <InputNumber
                 style={{ width: 200 }}
-                placeholder={assetType === 'pointCards' ? '请输入数量' : '请输入金额'}
+                placeholder="请输入金额"
                 precision={assetType === 'usdt' ? 2 : 0}
-                addonAfter={assetType === 'pointCards' ? '张' : assetType.toUpperCase()}
+                suffix={assetType.toUpperCase()}
               />
             </Form.Item>
 

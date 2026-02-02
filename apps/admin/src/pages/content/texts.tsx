@@ -10,7 +10,6 @@ import {
   Space,
   Button,
   Modal,
-  message,
   Form,
   Input,
   Tabs,
@@ -22,6 +21,7 @@ import {
   SaveOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
+import { useMessage } from '../../hooks';
 
 const { Text } = Typography;
 
@@ -145,6 +145,7 @@ const groupLabels: Record<string, string> = {
 };
 
 export const TextConfigList = () => {
+  const message = useMessage();
   const [dataSource, setDataSource] = useState<ITextConfig[]>(mockTextConfigs);
   const [editingKey, setEditingKey] = useState<string>('');
   const [form] = Form.useForm();

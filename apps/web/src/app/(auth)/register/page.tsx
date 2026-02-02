@@ -15,6 +15,7 @@ export default function RegisterPage() {
   const [mounted, setMounted] = useState(false);
 
   // 确保客户端 hydration 完成后再根据状态渲染
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration 检测是合理的一次性副作用
   useEffect(() => {
     setMounted(true);
   }, []);

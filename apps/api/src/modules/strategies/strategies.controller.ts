@@ -7,6 +7,8 @@ import {
   Delete,
   Param,
   Body,
+  Query,
+  Headers,
 } from '@nestjs/common';
 import { StrategiesService } from './strategies.service';
 import { SubscribeStrategyDto } from './dto/strategy.dto';
@@ -16,38 +18,69 @@ import {
 } from './dto/subscription-config.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
+import { DEFAULT_LOCALE } from '../../common/utils/i18n.util';
 
 @Controller('strategies')
 export class StrategiesController {
   constructor(private strategiesService: StrategiesService) {}
 
-  // 获取策略列表 - 公开接口
+  // 获取策略列表 - 公开接口（支持多语言）
   @Public()
   @Get()
-  async findAll() {
-    return this.strategiesService.findAll();
+  async findAll(
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    return this.strategiesService.findAll(locale);
   }
 
-  // 获取首页推荐策略 - 公开接口
+  // 获取首页推荐策略 - 公开接口（支持多语言）
   @Public()
   @Get('featured')
-  async getFeatured() {
-    return this.strategiesService.getFeatured(3);
+  async getFeatured(
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    return this.strategiesService.getFeatured(3, locale);
   }
 
   // 获取我的订阅 - 必须放在 :id 之前，否则 'my' 会被当作 id
   @Get('my/subscriptions')
-  async getMySubscriptions(@CurrentUser() user: { id: string }) {
-    return this.strategiesService.getMySubscriptions(user.id);
+  async getMySubscriptions(
+    @CurrentUser() user: { id: string },
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    return this.strategiesService.getMySubscriptions(user.id, locale);
   }
 
-  // 获取策略详情
+  // 获取策略详情 - 公开接口（可选登录查看订阅状态，支持多语言）
+  @Public()
   @Get(':id')
   async findOne(
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string } | null,
     @Param('id') id: string,
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
   ) {
-    return this.strategiesService.findOne(user.id, id);
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    return this.strategiesService.findOne(user?.id || null, id, locale);
+  }
+
+  /**
+   * 解析 Accept-Language header
+   */
+  private parseAcceptLanguage(header?: string): string | null {
+    if (!header) return null;
+    const firstLang = header.split(',')[0]?.split(';')[0]?.trim();
+    return firstLang || null;
   }
 
   // 订阅策略
@@ -88,7 +121,10 @@ export class StrategiesController {
     @CurrentUser() user: { id: string },
     @Param('subscriptionId') subscriptionId: string,
   ) {
-    return this.strategiesService.getSubscriptionConfig(user.id, subscriptionId);
+    return this.strategiesService.getSubscriptionConfig(
+      user.id,
+      subscriptionId,
+    );
   }
 
   // 更新订阅配置

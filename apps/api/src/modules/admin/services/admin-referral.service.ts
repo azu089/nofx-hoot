@@ -71,23 +71,19 @@ export class AdminReferralService {
 
   // 获取返佣配置
   async getReferralConfig() {
-    let config = await this.prisma.referralConfig.findUnique({
+    // 使用 upsert 避免并发创建时的唯一约束冲突
+    const config = await this.prisma.referralConfig.upsert({
       where: { id: 'default' },
+      create: {
+        id: 'default',
+        level1Rate: 10,
+        level2Rate: 5,
+        level3Rate: 2,
+        enabledTypes: ['subscription'],
+        isActive: true,
+      },
+      update: {}, // 已存在则不更新
     });
-
-    // 如果不存在，创建默认配置
-    if (!config) {
-      config = await this.prisma.referralConfig.create({
-        data: {
-          id: 'default',
-          level1Rate: 10,
-          level2Rate: 5,
-          level3Rate: 2,
-          enabledTypes: ['subscription'],
-          isActive: true,
-        },
-      });
-    }
 
     return {
       level1Rate: config.level1Rate.toString(),
@@ -99,13 +95,16 @@ export class AdminReferralService {
   }
 
   // 更新返佣配置
-  async updateReferralConfig(data: {
-    level1Rate?: number;
-    level2Rate?: number;
-    level3Rate?: number;
-    enabledTypes?: string[];
-    isActive?: boolean;
-  }, adminId: string) {
+  async updateReferralConfig(
+    data: {
+      level1Rate?: number;
+      level2Rate?: number;
+      level3Rate?: number;
+      enabledTypes?: string[];
+      isActive?: boolean;
+    },
+    adminId: string,
+  ) {
     const config = await this.prisma.referralConfig.upsert({
       where: { id: 'default' },
       create: {
@@ -139,7 +138,11 @@ export class AdminReferralService {
   }
 
   // 获取邀请关系列表
-  async getReferralRelations(page: number = 1, limit: number = 20, search?: string) {
+  async getReferralRelations(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -415,7 +418,9 @@ export class AdminReferralService {
       }
     });
 
-    this.logger.log(`返佣发放完成: ${processedCount} 笔, 总金额: ${totalAmount.toString()}`);
+    this.logger.log(
+      `返佣发放完成: ${processedCount} 笔, 总金额: ${totalAmount.toString()}`,
+    );
 
     return {
       message: '返佣发放成功',

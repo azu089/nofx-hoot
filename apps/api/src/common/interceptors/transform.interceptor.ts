@@ -11,9 +11,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { ApiResponse } from '../dto/api-response.dto';
 
 @Injectable()
-export class TransformInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T>>
-{
+export class TransformInterceptor<T> implements NestInterceptor<
+  T,
+  ApiResponse<T>
+> {
   intercept(
     context: ExecutionContext,
     next: CallHandler,

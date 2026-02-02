@@ -1,7 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Image from 'next/image'
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import {
   Wallet,
   ArrowDownToLine,
@@ -33,6 +37,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { EcosystemPageV3 } from '../ecosystem/ecosystem-page-v3'
+import { ApiKeysPage } from './api-keys-page'
 
 interface Asset {
   id: string
@@ -59,6 +64,7 @@ interface Exchange {
   apiKey?: string // API Key（脱敏显示）
   permissions?: string[] // 权限列表
   error?: string // 错误信息
+  isLoading?: boolean // 余额加载中
 }
 
 interface Transaction {
@@ -71,11 +77,7 @@ interface Transaction {
 }
 
 interface WalletPageV3Props {
-  totalBalance?: number
-  dailyChange?: number
-  assets?: Asset[]
-  exchanges?: Exchange[]
-  transactions?: Transaction[]
+  initialTab?: 'wallet' | 'api' | 'ecosystem'
   onDeposit?: () => void
   onWithdraw?: () => void
   onExchange?: () => void
@@ -86,73 +88,7 @@ interface WalletPageV3Props {
   onActivateExchange?: (id: string) => void
 }
 
-const defaultAssets: Asset[] = [
-  {
-    id: '1',
-    name: 'USDT',
-    symbol: 'USDT',
-    balance: 10346.57,
-    value: 10346.57,
-    icon: '/icons/usdt.svg'
-  },
-  {
-    id: '2',
-    name: 'HOOT',
-    symbol: 'HOOT',
-    balance: 2500.75,
-    value: 2500.75,
-    icon: '/icons/hoot/token.png'
-  },
-  {
-    id: '3',
-    name: 'HOOT 释放中',
-    symbol: 'HOOT',
-    balance: 15000,
-    value: 15000,
-    icon: '/icons/hoot/token.png',
-    isReleasing: true,
-    releasedAmount: 3000,
-    totalLocked: 18000
-  },
-  {
-    id: '4',
-    name: '点卡',
-    symbol: 'GAS',
-    balance: 1250,
-    value: 1250,
-    icon: '/icons/gas-card.svg'
-  }
-]
-
-const defaultExchanges: Exchange[] = [
-  {
-    id: '1',
-    name: 'Binance',
-    icon: '/icons/exchanges/币安.webp',
-    status: 'active',
-    lastUsed: '2024-01-15 14:30',
-    createdAt: '2026-01-10',
-    balance: 5234.56,
-    totalAssets: 8945.23,
-    apiKey: 'vK8x ... j2Qp',
-    permissions: ['现货交易', '合约交易']
-  },
-  {
-    id: '2',
-    name: 'OKX',
-    icon: '/icons/exchanges/okx.webp',
-    status: 'error',
-    lastUsed: '2024-01-14 09:15',
-    createdAt: '2025-12-20',
-    balance: 0,
-    totalAssets: 0,
-    apiKey: 'aB3c ... 9dEf',
-    permissions: ['现货交易'],
-    error: 'API Key 已过期'
-  }
-]
-
-// 支持的交易所
+// 支持的交易所（静态配置）
 const supportedExchanges = [
   { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
   { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.webp', guideUrl: 'https://www.okx.com/account/my-api' },
@@ -162,39 +98,18 @@ const supportedExchanges = [
   { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp', guideUrl: 'https://www.coinbase.com/settings/api' },
 ]
 
-const defaultTransactions: Transaction[] = [
-  {
-    id: '1',
-    type: 'deposit',
-    amount: 1000,
-    asset: 'USDT',
-    status: 'completed',
-    time: '2024-01-15 14:30'
-  },
-  {
-    id: '2',
-    type: 'withdraw',
-    amount: 500,
-    asset: 'USDT',
-    status: 'pending',
-    time: '2024-01-15 12:15'
-  },
-  {
-    id: '3',
-    type: 'exchange',
-    amount: 250,
-    asset: 'USDT → HOOT',
-    status: 'completed',
-    time: '2024-01-14 18:20'
-  }
-]
+// 交易所 logo 映射
+const exchangeLogos: Record<string, string> = {
+  binance: '/icons/exchanges/币安.webp',
+  okx: '/icons/exchanges/okx.webp',
+  bybit: '/icons/exchanges/bybit.webp',
+  gate: '/icons/exchanges/gate.webp',
+  bitget: '/icons/exchanges/bitget.webp',
+  coinbase: '/icons/exchanges/coinbase.webp',
+}
 
 export function WalletPageV3({
-  totalBalance = 12847.32,
-  dailyChange = 2.34,
-  assets = defaultAssets,
-  exchanges = defaultExchanges,
-  transactions = defaultTransactions,
+  initialTab = 'wallet',
   onDeposit,
   onWithdraw,
   onExchange,
@@ -209,8 +124,270 @@ export function WalletPageV3({
   void _onEditExchange
   void _onDeleteExchange
   void _onActivateExchange
+
+  const { isAuthenticated } = useAuth()
+  const queryClient = useQueryClient()
+
+  // 获取钱包余额
+  const { data: balanceData, isLoading: balanceLoading } = useQuery({
+    queryKey: ['wallet', 'balance'],
+    queryFn: async () => {
+      const response = await api.get<{ usdtBalance: string; hootBalance: string; pointBalance: string }>('/wallet/balance')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 获取空投余额（含锁仓信息）
+  const { data: airdropData } = useQuery({
+    queryKey: ['airdrop', 'balance'],
+    queryFn: async () => {
+      const response = await api.get<{
+        totalBalance: string
+        lockedBalance: string
+        availableBalance: string
+        vestingProgress: number
+      }>('/airdrop/balance')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 获取交易记录
+  const { data: transactionsData, isLoading: transactionsLoading } = useQuery({
+    queryKey: ['wallet', 'transactions'],
+    queryFn: async () => {
+      const response = await api.get<{
+        items: Array<{
+          id: string
+          type: string
+          asset: string
+          amount: string
+          status: string
+          createdAt: string
+        }>
+        total: number
+      }>('/wallet/transactions')
+      return response.data
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 获取 API Key 列表
+  const { data: apiKeysData, isLoading: apiKeysLoading, refetch: refetchApiKeys } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: async () => {
+      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
+      return response.data?.items || []
+    },
+    enabled: isAuthenticated,
+  })
+
+  // 自动为每个 API Key 获取余额
+  const apiKeyBalanceQueries = useQueries({
+    queries: (apiKeysData || []).map((key: any) => ({
+      queryKey: ['api-key-balance', key.id],
+      queryFn: async () => {
+        try {
+          const response = await api.get<{
+            valid: boolean
+            totalUsdValue: number
+            permissions: string[]
+          }>(`/api-keys/${key.id}/verify`)
+          return response.data
+        } catch {
+          return { valid: false, totalUsdValue: 0, permissions: [] }
+        }
+      },
+      enabled: isAuthenticated && !!key.id,
+      staleTime: 5 * 60 * 1000, // 5分钟缓存
+      refetchOnWindowFocus: false,
+    })),
+  })
+
+  // 删除 API Key
+  const deleteApiKeyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.delete(`/api-keys/${id}`)
+      return response
+    },
+    onSuccess: (_data, deletedId) => {
+      // 立即从缓存中移除，不等待 refetch
+      queryClient.setQueryData(['api-keys'], (oldData: any[] | undefined) => {
+        if (!oldData) return []
+        return oldData.filter((key: any) => key.id !== deletedId)
+      })
+      // 同时移除对应的余额缓存
+      queryClient.removeQueries({ queryKey: ['api-key-balance', deletedId] })
+      // 然后重新获取确保数据同步
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      toast.success('API Key 已删除')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'API Key 删除失败')
+    },
+  })
+
+  // 更新 API Key
+  const updateApiKeyMutation = useMutation({
+    mutationFn: async (data: { id: string; label?: string; apiKey?: string; apiSecret?: string }) => {
+      const { id, ...updateData } = data
+      const response = await api.patch(`/api-keys/${id}`, updateData)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      toast.success('API Key 更新成功')
+      setShowEditModal(false)
+      setSelectedApiKey(null)
+      setEditFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'API Key 更新失败')
+    },
+  })
+
+  // 创建 API Key
+  const createApiKeyMutation = useMutation({
+    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
+      const response = await api.post('/api-keys', data)
+      return response.data
+    },
+    onSuccess: () => {
+      toast.success('API Key 绑定成功')
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      setShowAddModal(false)
+      setSelectedExchange(null)
+      setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'API Key 绑定失败')
+    },
+  })
+
+  // 处理添加 API Key
+  const handleAddApiKey = () => {
+    if (!selectedExchange || !formData.apiKey || !formData.secretKey) {
+      return
+    }
+    createApiKeyMutation.mutate({
+      exchange: selectedExchange.toLowerCase(),
+      label: formData.label || `${selectedExchange} 账户`,
+      apiKey: formData.apiKey,
+      apiSecret: formData.secretKey,
+    })
+  }
+
+  // 转换余额数据为资产列表 - 始终显示所有资产类型
+  const assets = useMemo<Asset[]>(() => {
+    const result: Asset[] = []
+
+    // USDT - 始终显示
+    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
+    result.push({
+      id: 'usdt',
+      name: 'USDT',
+      symbol: 'USDT',
+      balance: usdtBalance,
+      value: usdtBalance,
+      icon: '/icons/usdt.svg'
+    })
+
+    // HOOT（可用）- 始终显示
+    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
+    const availableHoot = parseFloat(airdropData?.availableBalance || '0')
+    const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
+    const displayHoot = availableHoot > 0 ? availableHoot : hootBalance
+
+    result.push({
+      id: 'hoot',
+      name: 'HOOT',
+      symbol: 'HOOT',
+      balance: displayHoot,
+      value: displayHoot,
+      icon: '/icons/hoot/token.png'
+    })
+
+    // HOOT 锁仓释放中 - 始终显示
+    const totalHoot = parseFloat(airdropData?.totalBalance || '0')
+    result.push({
+      id: 'hoot-locked',
+      name: 'HOOT 释放中',
+      symbol: 'HOOT',
+      balance: lockedHoot,
+      value: lockedHoot,
+      icon: '/icons/hoot/token.png',
+      isReleasing: true,
+      releasedAmount: totalHoot - lockedHoot,
+      totalLocked: totalHoot
+    })
+
+    // 点卡 - 始终显示
+    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
+    result.push({
+      id: 'point',
+      name: '点卡',
+      symbol: 'GAS',
+      balance: pointBalance,
+      value: pointBalance,
+      icon: '/icons/gas-card.svg'
+    })
+
+    return result
+  }, [balanceData, airdropData])
+
+  // 计算总余额
+  const totalBalance = useMemo(() => {
+    return assets.reduce((sum, asset) => sum + asset.value, 0)
+  }, [assets])
+
+  // 转换交易记录
+  const transactions = useMemo<Transaction[]>(() => {
+    if (!transactionsData?.items) return []
+    return transactionsData.items.map(tx => ({
+      id: tx.id,
+      type: tx.type as Transaction['type'],
+      amount: parseFloat(tx.amount),
+      asset: tx.asset,
+      status: tx.status as Transaction['status'],
+      time: new Date(tx.createdAt).toLocaleString('zh-CN')
+    }))
+  }, [transactionsData])
+
+  // 转换 API Keys 为交易所列表（包含真实余额）
+  const displayExchanges = useMemo<Exchange[]>(() => {
+    if (!apiKeysData || apiKeysData.length === 0) return []
+    return apiKeysData.map((key: any, index: number) => {
+      // 获取对应的余额查询结果
+      const balanceQuery = apiKeyBalanceQueries[index]
+      const balanceData = balanceQuery?.data
+      const totalValue = balanceData?.totalUsdValue || 0
+      const permissions = balanceData?.permissions || []
+      const isVerifyFailed = balanceData && balanceData.valid === false
+
+      return {
+        id: key.id,
+        name: key.label, // 使用用户备注的名称
+        icon: exchangeLogos[key.exchange.toLowerCase()] || '/icons/exchanges/default.webp',
+        status: isVerifyFailed ? 'error' as const : (key.isActive ? 'active' as const : 'error' as const),
+        lastUsed: '-',
+        createdAt: new Date(key.createdAt).toLocaleDateString('zh-CN'),
+        balance: totalValue,
+        totalAssets: totalValue,
+        apiKey: key.maskedKey || '****',
+        permissions,
+        error: isVerifyFailed ? '无法连接到交易所' : (key.isActive ? undefined : 'API Key 已禁用'),
+        isLoading: balanceQuery?.isLoading,
+      }
+    })
+  }, [apiKeysData, apiKeyBalanceQueries])
+
+  // 日变化（暂时固定，后续可接入行情 API）
+  const dailyChange = 0
+  const isPositiveChange = dailyChange > 0
+
   // 页面级 Tab 切换：资产 / API / 生态
-  const [pageTab, setPageTab] = useState<'wallet' | 'api' | 'ecosystem'>('wallet')
+  const [pageTab, setPageTab] = useState<'wallet' | 'api' | 'ecosystem'>(initialTab)
   const [selectedTab, setSelectedTab] = useState<'assets' | 'transactions'>('assets')
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showTypeFilter, setShowTypeFilter] = useState(false)
@@ -218,7 +395,6 @@ export function WalletPageV3({
   const [dateRange, setDateRange] = useState({ start: '2026-01-01', end: '2026-01-29' })
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'exchange'>('all')
   const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT'>('all')
-  const isPositiveChange = dailyChange > 0
 
   // API 管理相关状态
   const [showAddModal, setShowAddModal] = useState(false)
@@ -251,46 +427,76 @@ export function WalletPageV3({
     setShowDeleteModal(true)
   }
 
-  const handleConfirmDelete = () => {
-    console.log('删除 API Key:', selectedApiKey?.id)
+  const handleConfirmDelete = async () => {
+    if (selectedApiKey?.id) {
+      await deleteApiKeyMutation.mutateAsync(selectedApiKey.id)
+    }
     setShowDeleteModal(false)
     setSelectedApiKey(null)
   }
 
   const handleConfirmEdit = () => {
-    console.log('更新 API Key:', selectedApiKey?.id, editFormData)
-    setShowEditModal(false)
-    setSelectedApiKey(null)
+    if (!selectedApiKey?.id) return
+
+    // 构建更新数据
+    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string } = {
+      id: selectedApiKey.id,
+    }
+
+    // 只有填写了才更新
+    if (editFormData.label) {
+      updateData.label = editFormData.label
+    }
+
+    // 如果填写了新的 API Key 和 Secret，才更新密钥
+    if (editFormData.apiKey && editFormData.secretKey) {
+      updateData.apiKey = editFormData.apiKey
+      updateData.apiSecret = editFormData.secretKey
+    }
+
+    updateApiKeyMutation.mutate(updateData)
   }
 
-  // 验证 API Key
-  const handleVerify = (exchange: Exchange) => {
+  // 验证 API Key - 调用真实 API
+  const handleVerify = async (exchange: Exchange) => {
     setSelectedApiKey(exchange)
     setVerifyStatus('loading')
     setVerifyResult(null)
     setShowVerifyModal(true)
 
-    // 模拟 API 验证请求
-    setTimeout(() => {
-      // 模拟验证结果：status 为 active 时成功，否则失败
-      if (exchange.status === 'active') {
+    try {
+      const response = await api.get<{
+        valid: boolean
+        permissions: string[]
+        balances: { symbol: string; free: number; total: number }[]
+        totalUsdValue: number
+        error?: string
+      }>(`/api-keys/${exchange.id}/verify`)
+
+      const data = response.data
+      if (data.valid) {
         setVerifyStatus('success')
         setVerifyResult({
-          permissions: exchange.permissions || ['现货交易'],
-          assets: [
-            { symbol: 'USDT', amount: '3,234.56', value: 3234.56 },
-            { symbol: 'BTC', amount: '0.05432', value: 1856.78 },
-            { symbol: 'ETH', amount: '0.8521', value: 143.22 }
-          ],
-          totalValue: exchange.balance || 5234.56
+          permissions: data.permissions,
+          assets: data.balances.map(b => ({
+            symbol: b.symbol,
+            amount: b.total.toFixed(b.symbol === 'USDT' ? 2 : 8),
+            value: b.symbol === 'USDT' ? b.total : 0
+          })),
+          totalValue: data.totalUsdValue
         })
       } else {
         setVerifyStatus('error')
         setVerifyResult({
-          error: exchange.error || 'API Key 验证失败，请检查密钥是否正确'
+          error: data.error || 'API Key 验证失败，请检查密钥是否正确'
         })
       }
-    }, 1500)
+    } catch (err: any) {
+      setVerifyStatus('error')
+      setVerifyResult({
+        error: err.message || 'API Key 验证失败，请检查网络连接'
+      })
+    }
   }
 
   const handleCopy = (text: string) => {
@@ -325,7 +531,21 @@ export function WalletPageV3({
   const filteredTransactions = transactions.filter(tx => {
     const matchesType = txTypeFilter === 'all' || tx.type === txTypeFilter
     const matchesAsset = txAssetFilter === 'all' || tx.asset.includes(txAssetFilter)
-    return matchesType && matchesAsset
+
+    // 时间过滤
+    let matchesDate = true
+    if (tx.time && dateRange.start && dateRange.end) {
+      // 从时间字符串提取日期部分（支持 "2026-01-15 14:30" 或 "2026/01/15" 等格式）
+      const txDateStr = tx.time.split(' ')[0].replace(/\//g, '-')
+      const txDate = new Date(txDateStr)
+      const startDate = new Date(dateRange.start)
+      const endDate = new Date(dateRange.end)
+      // 设置结束日期为当天的最后一刻
+      endDate.setHours(23, 59, 59, 999)
+      matchesDate = txDate >= startDate && txDate <= endDate
+    }
+
+    return matchesType && matchesAsset && matchesDate
   })
 
   const getStatusIcon = (status: string) => {
@@ -533,6 +753,7 @@ export function WalletPageV3({
                                 src={asset.icon}
                                 alt={asset.name}
                                 fill
+                                sizes="40px"
                                 className="object-contain"
                               />
                             ) : (
@@ -761,6 +982,7 @@ export function WalletPageV3({
                                         src={assetIcon}
                                         alt={tx.asset}
                                         fill
+                                        sizes="24px"
                                         className="object-contain"
                                       />
                                     ) : (
@@ -804,105 +1026,9 @@ export function WalletPageV3({
           </>
         )}
 
-        {/* ===== API Tab 内容 ===== */}
+        {/* ===== API Tab 内容 - 使用统一的 ApiKeysPage 组件 ===== */}
         {pageTab === 'api' && (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
-            {/* 顶部高光 */}            {/* 内发光效果 */}            {/* Header */}
-            <div className="relative z-[2] flex items-center justify-between p-6 border-b border-[#1E1E2E]">
-              <div>
-                <h2 className="text-lg font-bold">交易所 API 管理</h2>
-              </div>
-              <button
-                type="button"
-                onClick={handleOpenAdd}
-                className="flex items-center gap-2 px-4 py-2 bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-xl font-medium transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                添加 API
-              </button>
-            </div>
-
-            {/* API List */}
-            <div className="relative z-[2] p-6">
-              {exchanges.length === 0 ? (
-                <div className="p-8 rounded-xl bg-[#1E1E2E]/30 border border-[#2A2A3A] text-center">
-                  <Key className="w-12 h-12 text-[#606070] mx-auto mb-3" />
-                  <p className="text-[#9090A0]">暂无绑定的 API Key</p>
-                  <p className="text-[#606070] text-sm mt-1">点击上方按钮添加您的第一个交易所</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {exchanges.map((exchange) => (
-                    <div
-                      key={exchange.id}
-                      className={`p-4 rounded-xl border transition-colors ${
-                        exchange.status === 'error'
-                          ? 'bg-[#1E1E2E]/30 border-[#F43F5E]/30'
-                          : 'bg-[#1E1E2E]/30 border-[#2A2A3A] hover:bg-[#1E1E2E]/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        {/* 左侧：图标 + 信息 */}
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
-                            {exchange.icon?.startsWith('/') ? (
-                              <Image src={exchange.icon} alt={exchange.name} fill className="object-contain" />
-                            ) : (
-                              <span className="text-lg">{exchange.name.charAt(0)}</span>
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{exchange.name}</span>
-                              {exchange.status === 'active' ? (
-                                <CheckCircle className="w-4 h-4 text-[#10B981]" />
-                              ) : (
-                                <AlertCircle className="w-4 h-4 text-[#F43F5E]" />
-                              )}
-                            </div>
-                            {exchange.error ? (
-                              <p className="text-[#F43F5E] text-xs">{exchange.error}</p>
-                            ) : (
-                              <p className="text-[#9090A0] text-sm">
-                                ${exchange.balance?.toLocaleString() || '0'}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        {/* 右侧：操作按钮 */}
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleVerify(exchange)}
-                            title="验证"
-                            className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
-                          >
-                            <RefreshCw className="w-4 h-4 text-[#9090A0]" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(exchange)}
-                            title="编辑"
-                            className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
-                          >
-                            <Edit className="w-4 h-4 text-[#9090A0]" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDelete(exchange)}
-                            title="删除"
-                            className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-[#F43F5E]/70" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <ApiKeysPage />
         )}
 
         {/* ===== 生态 Tab 内容 ===== */}
@@ -910,487 +1036,6 @@ export function WalletPageV3({
           <EcosystemPageV3 />
         )}
       </div>
-
-      {/* 添加 API Key 弹窗 */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="w-full max-w-lg bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">
-                {selectedExchange
-                  ? `绑定 ${supportedExchanges.find(e => e.id === selectedExchange)?.name} API`
-                  : '选择交易所'
-                }
-              </h3>
-              <button
-                type="button"
-                title="关闭"
-                onClick={() => {
-                  setShowAddModal(false)
-                  setSelectedExchange(null)
-                  setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-                }}
-                className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-[#9090A0]" />
-              </button>
-            </div>
-
-            {!selectedExchange ? (
-              <div className="grid grid-cols-3 gap-3">
-                {supportedExchanges.map((exchange) => (
-                  <button
-                    key={exchange.id}
-                    type="button"
-                    onClick={() => setSelectedExchange(exchange.id)}
-                    className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
-                  >
-                    <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] flex items-center justify-center overflow-hidden relative">
-                      <Image src={exchange.logo} alt={exchange.name} fill className="object-contain" />
-                    </div>
-                    <span className="text-sm">{exchange.name}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <a
-                  href={supportedExchanges.find(e => e.id === selectedExchange)?.guideUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-cyan-400 text-sm hover:underline"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  如何获取 API Key？
-                </a>
-
-                <div>
-                  <label htmlFor="add-api-key" className="text-sm text-[#9090A0] block mb-1">API Key *</label>
-                  <input
-                    id="add-api-key"
-                    type="text"
-                    value={formData.apiKey}
-                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                    placeholder="请输入 API Key"
-                    className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="add-secret-key" className="text-sm text-[#9090A0] block mb-1">Secret Key *</label>
-                  <div className="relative">
-                    <input
-                      id="add-secret-key"
-                      type={showSecret ? 'text' : 'password'}
-                      value={formData.secretKey}
-                      onChange={(e) => setFormData({ ...formData, secretKey: e.target.value })}
-                      placeholder="请输入 Secret Key"
-                      className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowSecret(!showSecret)}
-                      title={showSecret ? '隐藏密钥' : '显示密钥'}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]"
-                    >
-                      {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {selectedExchange === 'okx' && (
-                  <div>
-                    <label htmlFor="add-passphrase" className="text-sm text-[#9090A0] block mb-1">Passphrase *</label>
-                    <input
-                      id="add-passphrase"
-                      type="password"
-                      value={formData.passphrase}
-                      onChange={(e) => setFormData({ ...formData, passphrase: e.target.value })}
-                      placeholder="请输入 Passphrase"
-                      className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label htmlFor="add-label" className="text-sm text-[#9090A0] block mb-1">备注名称（可选）</label>
-                  <input
-                    id="add-label"
-                    type="text"
-                    value={formData.label}
-                    onChange={(e) => setFormData({ ...formData, label: e.target.value })}
-                    placeholder="如：主账户"
-                    className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div className="p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">IP 白名单</p>
-                      <p className="text-[#606070] text-xs">请将以下 IP 添加到交易所白名单</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy('47.89.192.xxx')}
-                      className="flex items-center gap-1 text-cyan-400 text-sm"
-                    >
-                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      {copied ? '已复制' : '复制'}
-                    </button>
-                  </div>
-                  <p className="font-mono text-sm mt-2 text-[#9090A0]">47.89.192.xxx</p>
-                </div>
-
-                {/* 安全提示 */}
-                <div className="p-3 rounded-lg bg-[#12121A] border-l-4 border-l-cyan-500 border border-[#1E1E2E]">
-                  <div className="flex items-start gap-2">
-                    <Shield className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
-                    <ul className="text-[#9090A0] text-xs space-y-1">
-                      <li>• 仅开启「交易」权限，禁止开启「提现」权限</li>
-                      <li>• 建议绑定 IP 白名单以增强安全性</li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddModal(false)
-                      setSelectedExchange(null)
-                      setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-                    }}
-                    className="flex-1 py-2.5 border border-[#2A2A3A] text-[#9090A0] rounded-lg hover:bg-[#1E1E2E] transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 py-2.5 bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-lg transition-colors font-medium"
-                  >
-                    验证并绑定
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 编辑 API Key 弹窗 */}
-      {showEditModal && selectedApiKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="w-full max-w-lg bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
-                  {selectedApiKey.icon?.startsWith('/') ? (
-                    <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
-                  ) : (
-                    <span className="text-lg">{selectedApiKey.name.charAt(0)}</span>
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold">编辑 {selectedApiKey.name} API</h3>
-                  <p className="text-[#9090A0] text-xs">更新 API 密钥配置</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                title="关闭"
-                onClick={() => {
-                  setShowEditModal(false)
-                  setSelectedApiKey(null)
-                }}
-                className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-[#9090A0]" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* 绑定信息卡片 */}
-              <div className="p-4 rounded-xl bg-[#0A0A0F] border border-[#1E1E2E] space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-[#606070]">API Key</p>
-                    <p className="font-mono text-[#9090A0] text-sm mt-0.5">{selectedApiKey.apiKey}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-[#606070]">绑定时间</p>
-                    <p className="text-[#9090A0] text-sm mt-0.5">{selectedApiKey.createdAt || '-'}</p>
-                  </div>
-                </div>
-                {selectedApiKey.permissions && selectedApiKey.permissions.length > 0 && (
-                  <div className="pt-3 border-t border-[#1E1E2E]">
-                    <p className="text-xs text-[#606070] mb-2">已授权权限</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedApiKey.permissions.map((perm, i) => (
-                        <span key={i} className="px-2 py-1 text-xs rounded-md bg-[#1E1E2E] text-[#10B981]">
-                          {perm}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="edit-api-key" className="text-sm text-[#9090A0] block mb-1">新 API Key（留空则不更新）</label>
-                <input
-                  id="edit-api-key"
-                  type="text"
-                  value={editFormData.apiKey}
-                  onChange={(e) => setEditFormData({ ...editFormData, apiKey: e.target.value })}
-                  placeholder="输入新的 API Key"
-                  className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="edit-secret-key" className="text-sm text-[#9090A0] block mb-1">新 Secret Key（留空则不更新）</label>
-                <div className="relative">
-                  <input
-                    id="edit-secret-key"
-                    type={showSecret ? 'text' : 'password'}
-                    value={editFormData.secretKey}
-                    onChange={(e) => setEditFormData({ ...editFormData, secretKey: e.target.value })}
-                    placeholder="输入新的 Secret Key"
-                    className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSecret(!showSecret)}
-                    title={showSecret ? '隐藏密钥' : '显示密钥'}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]"
-                  >
-                    {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="edit-label" className="text-sm text-[#9090A0] block mb-1">备注名称</label>
-                <input
-                  id="edit-label"
-                  type="text"
-                  value={editFormData.label}
-                  onChange={(e) => setEditFormData({ ...editFormData, label: e.target.value })}
-                  placeholder="如：主账户"
-                  className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditModal(false)
-                    setSelectedApiKey(null)
-                  }}
-                  className="flex-1 py-2.5 border border-[#2A2A3A] text-[#9090A0] rounded-lg hover:bg-[#1E1E2E] transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmEdit}
-                  className="flex-1 py-2.5 bg-[#06B6D4] hover:bg-[#0891B2] text-white rounded-lg transition-colors font-medium"
-                >
-                  保存更改
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 删除确认弹窗 */}
-      {showDeleteModal && selectedApiKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="w-full max-w-md bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
-                <AlertTriangle className="w-8 h-8 text-[#F43F5E]" />
-              </div>
-
-              <h3 className="text-xl font-bold mb-2">确认删除</h3>
-              <p className="text-[#9090A0] mb-6">
-                您确定要删除 <span className="text-[#F8F8FC] font-semibold">{selectedApiKey.name}</span> 的 API 密钥吗？
-              </p>
-
-              <div className="flex items-center gap-3 p-4 mb-6 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
-                <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
-                  {selectedApiKey.icon?.startsWith('/') ? (
-                    <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
-                  ) : (
-                    <span className="text-lg">{selectedApiKey.name.charAt(0)}</span>
-                  )}
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold">{selectedApiKey.name}</p>
-                  <p className="text-[#9090A0] text-sm font-mono">{selectedApiKey.apiKey}</p>
-                </div>
-              </div>
-
-              <div className="p-3 mb-6 rounded-lg bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left">
-                <p className="text-sm text-[#F43F5E]">
-                  <AlertCircle className="w-4 h-4 inline mr-1" />
-                  删除后，使用此 API 的策略将无法继续执行交易。此操作不可撤销。
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeleteModal(false)
-                    setSelectedApiKey(null)
-                  }}
-                  className="flex-1 py-2.5 border border-[#2A2A3A] text-[#9090A0] rounded-lg hover:bg-[#1E1E2E] transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  className="flex-1 py-2.5 bg-[#F43F5E] hover:bg-[#E11D48] text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  确认删除
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 验证结果弹窗 */}
-      {showVerifyModal && selectedApiKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="w-full max-w-md bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6">
-            <div className="text-center">
-              {/* Loading 状态 */}
-              {verifyStatus === 'loading' && (
-                <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#06B6D4]/10 flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 text-[#06B6D4] animate-spin" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">正在验证</h3>
-                  <p className="text-[#9090A0]">正在连接 {selectedApiKey.name} 验证 API 状态...</p>
-                </>
-              )}
-
-              {/* 成功状态 */}
-              {verifyStatus === 'success' && verifyResult && (
-                <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-[#10B981]" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2 text-[#10B981]">验证成功</h3>
-                  <p className="text-[#9090A0] mb-6">API 连接正常，可正常使用</p>
-
-                  {/* 验证详情 */}
-                  <div className="space-y-3 text-left">
-                    {/* 交易所信息 */}
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
-                        {selectedApiKey.icon?.startsWith('/') ? (
-                          <Image src={selectedApiKey.icon} alt={selectedApiKey.name} fill className="object-contain" />
-                        ) : (
-                          <span className="text-lg">{selectedApiKey.name.charAt(0)}</span>
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-semibold">{selectedApiKey.name}</p>
-                        <p className="text-[#9090A0] text-sm font-mono">{selectedApiKey.apiKey}</p>
-                      </div>
-                    </div>
-
-                    {/* 权限列表 */}
-                    <div className="p-4 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      <p className="text-[#9090A0] text-xs mb-2">API 权限</p>
-                      <div className="flex flex-wrap gap-2">
-                        {verifyResult.permissions?.map((perm, index) => (
-                          <span key={index} className="px-2 py-1 rounded-md bg-[#10B981]/10 text-[#10B981] text-xs">
-                            {perm}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 资产列表 */}
-                    <div className="p-4 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      {/* 总资产在上面 */}
-                      <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
-                        <span className="text-[#9090A0] text-sm">总资产</span>
-                        <span className="text-xl font-bold font-mono text-[#10B981]">${verifyResult.totalValue?.toLocaleString()}</span>
-                      </div>
-                      {/* 币种明细 */}
-                      <p className="text-[#9090A0] text-xs mb-2">资产明细</p>
-                      <div className="space-y-2">
-                        {verifyResult.assets?.map((asset, index) => (
-                          <div key={index} className="flex justify-between items-center">
-                            <span className="text-[#F8F8FC] font-medium">{asset.symbol}</span>
-                            <div className="text-right">
-                              <span className="text-[#F8F8FC] font-mono">{asset.amount}</span>
-                              <span className="text-[#9090A0] text-xs ml-2">≈ ${asset.value.toLocaleString()}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* 失败状态 */}
-              {verifyStatus === 'error' && verifyResult && (
-                <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
-                    <XCircle className="w-8 h-8 text-[#F43F5E]" />
-                  </div>
-                  <h3 className="text-xl font-bold mb-2 text-[#F43F5E]">验证失败</h3>
-                  <p className="text-[#9090A0] mb-6">无法连接到交易所，请检查 API 配置</p>
-
-                  {/* 错误详情 */}
-                  <div className="p-4 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left mb-4">
-                    <p className="text-sm text-[#F43F5E] flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      {verifyResult.error}
-                    </p>
-                  </div>
-
-                  {/* 可能的解决方案 */}
-                  <div className="p-4 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-left">
-                    <p className="text-[#9090A0] text-xs mb-2">请检查以下事项：</p>
-                    <ul className="text-[#9090A0] text-sm space-y-1">
-                      <li>• API Key 和 Secret Key 是否正确</li>
-                      <li>• API 是否已过期或被禁用</li>
-                      <li>• IP 白名单是否已添加服务器 IP</li>
-                      <li>• 是否开启了必要的交易权限</li>
-                    </ul>
-                  </div>
-                </>
-              )}
-
-              {/* 关闭按钮 */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowVerifyModal(false)
-                  setSelectedApiKey(null)
-                  setVerifyResult(null)
-                }}
-                className="w-full mt-6 py-2.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] text-[#F8F8FC] rounded-lg transition-colors font-medium"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

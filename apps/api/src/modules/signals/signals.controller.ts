@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Query, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { SignalsService } from './signals.service';
 import { WebhookSignalDto } from './dto/signal.dto';
 import { Public } from '../auth/decorators/public.decorator';
@@ -49,8 +57,6 @@ export class SignalsController {
   @Public()
   @Get('stats')
   async getSignalStats(@Query('hours') hours?: string) {
-    return this.signalsService.getSignalStats(
-      hours ? parseInt(hours, 10) : 24,
-    );
+    return this.signalsService.getSignalStats(hours ? parseInt(hours, 10) : 24);
   }
 }

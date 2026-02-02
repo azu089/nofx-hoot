@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
 interface StrategyConfigModalProps {
   strategyName: string
@@ -37,6 +38,7 @@ export function StrategyConfigModal({
   onClose,
   onConfirm,
 }: StrategyConfigModalProps) {
+  const t = useTranslations('modals')
   const [selectedExchange, setSelectedExchange] = useState('binance')
   const [amount, setAmount] = useState('100')
   const [selectedCoins, setSelectedCoins] = useState<string[]>(['BTC', 'ETH'])
@@ -80,10 +82,11 @@ export function StrategyConfigModal({
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-[#F8F8FC]">
-              订阅 {strategyName}
+              {t('subscribe', { name: strategyName })}
             </h2>
             <button
               onClick={onClose}
+              title={t('close')}
               className="text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
             >
               <X className="w-5 h-5" />
@@ -98,7 +101,7 @@ export function StrategyConfigModal({
               <span className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center text-[#F8F8FC] text-xs">
                 1
               </span>
-              选择交易所
+              {t('selectExchange')}
             </label>
             <div className="relative">
               <select
@@ -122,7 +125,7 @@ export function StrategyConfigModal({
               <span className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center text-[#F8F8FC] text-xs">
                 2
               </span>
-              设置每笔金额
+              {t('setAmountPerTrade')}
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9090A0]">
@@ -137,7 +140,7 @@ export function StrategyConfigModal({
               />
             </div>
             <p className="text-[#606070] text-xs mt-2">
-              建议 $50-500，根据你的资金量调整
+              {t('amountSuggestion')}
             </p>
           </div>
 
@@ -147,7 +150,7 @@ export function StrategyConfigModal({
               <span className="w-6 h-6 rounded-full bg-[#2A2A3A] flex items-center justify-center text-[#F8F8FC] text-xs">
                 3
               </span>
-              选择交易对
+              {t('selectTradingPairs')}
             </label>
             <div className="flex flex-wrap gap-2">
               {supportedCoins.map((coin) => (
@@ -174,10 +177,10 @@ export function StrategyConfigModal({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center justify-between w-full px-4 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-lg text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
             >
-              <span className="text-sm">高级设置</span>
+              <span className="text-sm">{t('advancedSettings')}</span>
               <div className="flex items-center gap-2">
                 <span className="text-xs">
-                  止损 {stopLoss}% · 止盈 {takeProfit}% · 最多 {maxPositions} 仓
+                  {t('stopLoss')} {stopLoss}% · {t('takeProfit')} {takeProfit}% · {t('maxPositions', { count: maxPositions })}
                 </span>
                 {showAdvanced ? (
                   <ChevronUp className="w-4 h-4" />
@@ -190,7 +193,7 @@ export function StrategyConfigModal({
             {showAdvanced && (
               <div className="mt-3 p-4 bg-[#0A0A0F] border border-[#2A2A3A] rounded-lg space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">止损比例</span>
+                  <span className="text-sm text-[#9090A0]">{t('stopLossRatio')}</span>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
@@ -202,7 +205,7 @@ export function StrategyConfigModal({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">止盈比例</span>
+                  <span className="text-sm text-[#9090A0]">{t('takeProfitRatio')}</span>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
@@ -214,7 +217,7 @@ export function StrategyConfigModal({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">最大持仓数</span>
+                  <span className="text-sm text-[#9090A0]">{t('maxPositionCount')}</span>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
@@ -222,7 +225,7 @@ export function StrategyConfigModal({
                       onChange={(e) => setMaxPositions(parseInt(e.target.value) || 0)}
                       className="w-20 bg-[#12121A] border-[#2A2A3A] text-[#F8F8FC] text-center"
                     />
-                    <span className="text-[#9090A0]">仓</span>
+                    <span className="text-[#9090A0]">{t('positions')}</span>
                   </div>
                 </div>
               </div>
@@ -234,7 +237,7 @@ export function StrategyConfigModal({
           {/* Incentive Text */}
           <div className="mb-6 flex items-center gap-2 text-sm text-[#9090A0]">
             <span className="text-lg">✨</span>
-            <span>订阅即可获得交易挖矿奖励</span>
+            <span>{t('subscribeReward')}</span>
           </div>
 
           {/* Confirm Button */}
@@ -242,7 +245,7 @@ export function StrategyConfigModal({
             onClick={handleConfirm}
             className="w-full bg-[#1E1E2E] hover:bg-[#2A2A3A] text-[#F8F8FC] border border-[#2A2A3A] py-6 text-base font-medium"
           >
-            确认订阅
+            {t('confirmSubscribe')}
           </Button>
         </CardContent>
       </Card>

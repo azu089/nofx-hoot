@@ -1,7 +1,8 @@
 /**
  * 风控管理页面
- * 风控规则配置、异常检测、黑名单管理
+ * 连接真实后端 API
  */
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -19,9 +20,11 @@ import {
   Tabs,
   Statistic,
   Alert,
-  message,
   Popconfirm,
+  Spin,
+  Empty,
 } from 'antd';
+import { useMessage } from '../../hooks';
 import {
   SafetyOutlined,
   WarningOutlined,
@@ -30,14 +33,39 @@ import {
   EditOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { adminApi } from '../../lib/admin-api';
 
 const { Title, Text } = Typography;
 
-// 风控规则接口
+// 风控概览接口
+interface IRiskOverview {
+  openPositions: number;
+  todayClosedPositions: number;
+  totalExposure: string;
+  lossPositions: number;
+  stopLossCount: number;
+  blackSwanCount: number;
+}
+
+// 风险事件接口
+interface IRiskEvent {
+  id: string;
+  userId: string;
+  username: string;
+  exchange: string;
+  symbol: string;
+  side: string;
+  entryPrice: string;
+  exitPrice: string;
+  amount: string;
+  pnl: string;
+  closeReason: string;
+  closedAt: string;
+}
+
+// 风控规则接口（本地管理，后续可扩展到数据库）
 interface IRiskRule {
   id: string;
   name: string;
@@ -49,19 +77,7 @@ interface IRiskRule {
   lastTriggered?: string;
 }
 
-// 异常记录接口
-interface IAnomalyRecord {
-  id: string;
-  userId: string;
-  username: string;
-  type: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-  status: 'pending' | 'resolved' | 'ignored';
-  time: string;
-}
-
-// 黑名单接口
+// 黑名单接口（本地管理，后续可扩展到数据库）
 interface IBlacklistItem {
   id: string;
   type: 'ip' | 'device' | 'user' | 'wallet';
@@ -72,39 +88,60 @@ interface IBlacklistItem {
   expiresAt?: string;
 }
 
-// 模拟风控规则
-const mockRules: IRiskRule[] = [
-  { id: 'R001', name: '最大持仓数限制', type: 'position', condition: '持仓数量 > 10', action: 'block', enabled: true, triggerCount: 156 },
-  { id: 'R002', name: '单日交易次数限制', type: 'frequency', condition: '日交易次数 > 50', action: 'warn', enabled: true, triggerCount: 89, lastTriggered: '2025-01-30 14:20:00' },
-  { id: 'R003', name: '单笔交易金额限制', type: 'amount', condition: '单笔金额 > 10000 USDT', action: 'block', enabled: true, triggerCount: 23 },
-  { id: 'R004', name: '连续亏损限制', type: 'trade', condition: '连续亏损 > 5 次', action: 'notify', enabled: true, triggerCount: 45 },
-  { id: 'R005', name: '日亏损限制', type: 'amount', condition: '日亏损 > 500 USDT', action: 'block', enabled: false, triggerCount: 12 },
-];
-
-// 模拟异常记录
-const mockAnomalies: IAnomalyRecord[] = [
-  { id: 'A001', userId: 'U001', username: '张三', type: '频繁交易', description: '1小时内交易30次', severity: 'medium', status: 'pending', time: '2025-01-30 14:25:00' },
-  { id: 'A002', userId: 'U002', username: '李四', type: '大额提现', description: '单笔提现 5000 USDT', severity: 'high', status: 'pending', time: '2025-01-30 14:20:00' },
-  { id: 'A003', userId: 'U003', username: '王五', type: '异地登录', description: '检测到异地登录', severity: 'low', status: 'resolved', time: '2025-01-30 12:00:00' },
-  { id: 'A004', userId: 'U004', username: '赵六', type: '连续亏损', description: '连续亏损8次', severity: 'medium', status: 'ignored', time: '2025-01-30 10:00:00' },
-];
-
-// 模拟黑名单
-const mockBlacklist: IBlacklistItem[] = [
-  { id: 'B001', type: 'ip', value: '192.168.1.100', reason: '恶意刷单', addedBy: 'admin', addedAt: '2025-01-29 10:00:00' },
-  { id: 'B002', type: 'device', value: 'DEV-ABC123', reason: '多账号注册', addedBy: 'system', addedAt: '2025-01-28 15:00:00' },
-  { id: 'B003', type: 'wallet', value: '0x1234...5678', reason: '可疑资金来源', addedBy: 'admin', addedAt: '2025-01-27 09:00:00', expiresAt: '2025-02-27 09:00:00' },
-];
-
 export const RiskManagementPage = () => {
-  const [rules, setRules] = useState(mockRules);
-  const [anomalies, setAnomalies] = useState(mockAnomalies);
-  const [blacklist, setBlacklist] = useState(mockBlacklist);
+  const message = useMessage();
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState<IRiskOverview | null>(null);
+  const [riskEvents, setRiskEvents] = useState<IRiskEvent[]>([]);
+  const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsPageSize] = useState(10);
+
+  // 本地管理的规则和黑名单（后续可扩展到数据库）
+  const [rules, setRules] = useState<IRiskRule[]>([]);
+  const [blacklist, setBlacklist] = useState<IBlacklistItem[]>([]);
   const [ruleModalVisible, setRuleModalVisible] = useState(false);
   const [blacklistModalVisible, setBlacklistModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<IRiskRule | null>(null);
   const [ruleForm] = Form.useForm();
   const [blacklistForm] = Form.useForm();
+
+  // 加载风控概览
+  const loadOverview = useCallback(async () => {
+    try {
+      const response = await adminApi.get('/admin/risk/overview');
+      if (response.data.code === 0) {
+        setOverview(response.data.data as IRiskOverview);
+      }
+    } catch (error) {
+      console.error('加载风控概览失败:', error);
+    }
+  }, []);
+
+  // 加载风险事件
+  const loadRiskEvents = useCallback(async () => {
+    try {
+      const response = await adminApi.get(`/admin/risk/events?page=${eventsPage}&limit=${eventsPageSize}`);
+      if (response.data.code === 0) {
+        const data = response.data.data as { items: IRiskEvent[]; total: number };
+        setRiskEvents(data.items || []);
+        setEventsTotal(data.total || 0);
+      }
+    } catch (error) {
+      console.error('加载风险事件失败:', error);
+    }
+  }, [eventsPage, eventsPageSize]);
+
+  // 刷新所有数据
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadOverview(), loadRiskEvents()]);
+    setLoading(false);
+  }, [loadOverview, loadRiskEvents]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
 
   // 规则类型映射
   const ruleTypeMap: Record<string, string> = {
@@ -121,18 +158,13 @@ export const RiskManagementPage = () => {
     notify: { color: 'blue', text: '通知' },
   };
 
-  // 严重程度映射
-  const severityMap: Record<string, { color: string; text: string }> = {
-    low: { color: 'green', text: '低' },
-    medium: { color: 'orange', text: '中' },
-    high: { color: 'red', text: '高' },
-  };
-
-  // 状态映射
-  const statusMap: Record<string, { color: string; text: string }> = {
-    pending: { color: 'orange', text: '待处理' },
-    resolved: { color: 'green', text: '已处理' },
-    ignored: { color: 'default', text: '已忽略' },
+  // 风险事件类型映射
+  const closeReasonMap: Record<string, { color: string; text: string }> = {
+    stop_loss: { color: 'orange', text: '止损触发' },
+    black_swan: { color: 'red', text: '黑天鹅' },
+    daily_loss_limit: { color: 'volcano', text: '日亏损限制' },
+    take_profit: { color: 'green', text: '止盈' },
+    manual: { color: 'blue', text: '手动平仓' },
   };
 
   // 规则表格列
@@ -192,53 +224,82 @@ export const RiskManagementPage = () => {
     },
   ];
 
-  // 异常记录表格列
-  const anomalyColumns = [
-    { title: '用户', dataIndex: 'username', key: 'username' },
-    { title: '异常类型', dataIndex: 'type', key: 'type' },
-    { title: '描述', dataIndex: 'description', key: 'description' },
+  // 风险事件表格列
+  const riskEventColumns = [
     {
-      title: '严重程度',
-      dataIndex: 'severity',
-      key: 'severity',
-      render: (severity: string) => <Tag color={severityMap[severity].color}>{severityMap[severity].text}</Tag>,
+      title: '时间',
+      dataIndex: 'closedAt',
+      key: 'closedAt',
+      width: 160,
+      render: (date: string) => date ? new Date(date).toLocaleString() : '-',
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => <Tag color={statusMap[status].color}>{statusMap[status].text}</Tag>,
+      title: '用户',
+      dataIndex: 'username',
+      key: 'username',
+      width: 100,
     },
-    { title: '时间', dataIndex: 'time', key: 'time' },
     {
-      title: '操作',
-      key: 'action',
-      render: (_: unknown, record: IAnomalyRecord) => (
-        record.status === 'pending' && (
-          <Space>
-            <Button
-              type="link"
-              icon={<CheckCircleOutlined />}
-              onClick={() => {
-                setAnomalies(anomalies.map(a => a.id === record.id ? { ...a, status: 'resolved' } : a));
-                message.success('已标记为已处理');
-              }}
-            >
-              处理
-            </Button>
-            <Button
-              type="link"
-              icon={<CloseCircleOutlined />}
-              onClick={() => {
-                setAnomalies(anomalies.map(a => a.id === record.id ? { ...a, status: 'ignored' } : a));
-                message.success('已忽略');
-              }}
-            >
-              忽略
-            </Button>
-          </Space>
-        )
+      title: '交易所',
+      dataIndex: 'exchange',
+      key: 'exchange',
+      width: 100,
+      render: (exchange: string) => <Tag>{exchange?.toUpperCase()}</Tag>,
+    },
+    {
+      title: '交易对',
+      dataIndex: 'symbol',
+      key: 'symbol',
+      width: 100,
+    },
+    {
+      title: '方向',
+      dataIndex: 'side',
+      key: 'side',
+      width: 80,
+      render: (side: string) => (
+        <Tag color={side === 'long' ? 'green' : 'red'}>
+          {side === 'long' ? '多' : '空'}
+        </Tag>
       ),
+    },
+    {
+      title: '开仓价',
+      dataIndex: 'entryPrice',
+      key: 'entryPrice',
+      width: 100,
+      render: (price: string) => `$${parseFloat(price || '0').toLocaleString()}`,
+    },
+    {
+      title: '平仓价',
+      dataIndex: 'exitPrice',
+      key: 'exitPrice',
+      width: 100,
+      render: (price: string) => `$${parseFloat(price || '0').toLocaleString()}`,
+    },
+    {
+      title: '盈亏',
+      dataIndex: 'pnl',
+      key: 'pnl',
+      width: 100,
+      render: (pnl: string) => {
+        const value = parseFloat(pnl || '0');
+        return (
+          <span style={{ color: value >= 0 ? '#52c41a' : '#f5222d', fontWeight: 600 }}>
+            {value >= 0 ? '+' : ''}{value.toFixed(2)}
+          </span>
+        );
+      },
+    },
+    {
+      title: '触发原因',
+      dataIndex: 'closeReason',
+      key: 'closeReason',
+      width: 120,
+      render: (reason: string) => {
+        const config = closeReasonMap[reason] || { color: 'default', text: reason };
+        return <Tag color={config.color}>{config.text}</Tag>;
+      },
     },
   ];
 
@@ -305,10 +366,34 @@ export const RiskManagementPage = () => {
     });
   };
 
-  const pendingAnomalies = anomalies.filter(a => a.status === 'pending').length;
-  const highSeverityAnomalies = anomalies.filter(a => a.severity === 'high' && a.status === 'pending').length;
-
   const tabItems = [
+    {
+      key: 'events',
+      label: (
+        <span>
+          <WarningOutlined />
+          风险事件
+          {eventsTotal > 0 && <Tag color="red" style={{ marginLeft: 8 }}>{eventsTotal}</Tag>}
+        </span>
+      ),
+      children: (
+        <Card>
+          <Table
+            dataSource={riskEvents}
+            columns={riskEventColumns}
+            rowKey="id"
+            pagination={{
+              current: eventsPage,
+              pageSize: eventsPageSize,
+              total: eventsTotal,
+              showTotal: (t) => `共 ${t} 条`,
+              onChange: (p) => setEventsPage(p),
+            }}
+            locale={{ emptyText: <Empty description="暂无风险事件" /> }}
+          />
+        </Card>
+      ),
+    },
     {
       key: 'rules',
       label: (
@@ -333,39 +418,19 @@ export const RiskManagementPage = () => {
             </Button>
           }
         >
+          <Alert
+            message="风控规则功能"
+            description="规则配置将在后续版本中支持持久化存储，当前为本地管理。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
           <Table
             dataSource={rules}
             columns={ruleColumns}
             rowKey="id"
             pagination={false}
-          />
-        </Card>
-      ),
-    },
-    {
-      key: 'anomalies',
-      label: (
-        <span>
-          <WarningOutlined />
-          异常检测
-          {pendingAnomalies > 0 && <Tag color="red" style={{ marginLeft: 8 }}>{pendingAnomalies}</Tag>}
-        </span>
-      ),
-      children: (
-        <Card>
-          {highSeverityAnomalies > 0 && (
-            <Alert
-              message={`有 ${highSeverityAnomalies} 条高风险异常待处理`}
-              type="error"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-          )}
-          <Table
-            dataSource={anomalies}
-            columns={anomalyColumns}
-            rowKey="id"
-            pagination={{ pageSize: 10 }}
+            locale={{ emptyText: <Empty description="暂无风控规则，点击「新增规则」添加" /> }}
           />
         </Card>
       ),
@@ -393,11 +458,19 @@ export const RiskManagementPage = () => {
             </Button>
           }
         >
+          <Alert
+            message="黑名单功能"
+            description="黑名单管理将在后续版本中支持持久化存储，当前为本地管理。"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
           <Table
             dataSource={blacklist}
             columns={blacklistColumns}
             rowKey="id"
             pagination={{ pageSize: 10 }}
+            locale={{ emptyText: <Empty description="暂无黑名单记录" /> }}
           />
         </Card>
       ),
@@ -406,52 +479,78 @@ export const RiskManagementPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={4} style={{ marginBottom: 24 }}>风控管理</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>风控管理</Title>
+        <Button icon={<ReloadOutlined />} onClick={refreshAll} loading={loading}>
+          刷新
+        </Button>
+      </div>
 
-      {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginTop: 24, marginBottom: 24 }}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="启用规则数"
-              value={rules.filter(r => r.enabled).length}
-              suffix={`/ ${rules.length}`}
-              prefix={<SafetyOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="今日触发次数"
-              value={rules.reduce((sum, r) => sum + r.triggerCount, 0)}
-              prefix={<ExclamationCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="待处理异常"
-              value={pendingAnomalies}
-              valueStyle={{ color: pendingAnomalies > 0 ? '#faad14' : '#52c41a' }}
-              prefix={<WarningOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="黑名单数量"
-              value={blacklist.length}
-              prefix={<StopOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <Spin spinning={loading}>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="当前开仓"
+                value={overview?.openPositions || 0}
+                prefix={<SafetyOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="今日平仓"
+                value={overview?.todayClosedPositions || 0}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="风险敞口"
+                value={parseFloat(overview?.totalExposure || '0')}
+                precision={2}
+                prefix="$"
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="亏损仓位"
+                value={overview?.lossPositions || 0}
+                valueStyle={{ color: (overview?.lossPositions || 0) > 0 ? '#f5222d' : '#52c41a' }}
+                prefix={<WarningOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="止损触发"
+                value={overview?.stopLossCount || 0}
+                valueStyle={{ color: (overview?.stopLossCount || 0) > 0 ? '#faad14' : '#52c41a' }}
+                prefix={<ExclamationCircleOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="黑天鹅"
+                value={overview?.blackSwanCount || 0}
+                valueStyle={{ color: (overview?.blackSwanCount || 0) > 0 ? '#f5222d' : '#52c41a' }}
+                prefix={<StopOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
 
-      {/* 标签页 */}
-      <Tabs items={tabItems} />
+        {/* 标签页 */}
+        <Tabs items={tabItems} />
+      </Spin>
 
       {/* 规则编辑弹窗 */}
       <Modal

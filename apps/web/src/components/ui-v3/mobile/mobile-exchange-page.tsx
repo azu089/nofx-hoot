@@ -39,8 +39,14 @@ const exchangeRecords: ExchangeRecord[] = [
 ]
 
 interface MobileExchangePageProps {
+  balance?: {
+    usdt: number
+    hoot: number
+    point: number
+  }
   onBack?: () => void
   onExchange?: (from: string, to: string, amount: number) => void
+  isLoading?: boolean
 }
 
 export function MobileExchangePage({ onBack, onExchange }: MobileExchangePageProps) {
@@ -102,12 +108,12 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0F]/95 backdrop-blur-xl border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
-          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center">
+          <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="text-base font-medium">资产兑换</span>
+          <h1 className="text-base font-semibold text-white">资产兑换</h1>
           <div className="w-10" />
         </div>
       </div>
@@ -122,7 +128,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
               <span className="text-xs text-[#94A3B8]">可用 <span className="text-white">{fromAsset.balance.toLocaleString()}</span></span>
             </div>
             <div className="flex items-center gap-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg p-3">
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowFromDropdown(!showFromDropdown)}
@@ -135,7 +141,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
                 </button>
                 {showFromDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-30 min-w-[140px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[140px]">
                     {payableAssets.map((asset) => (
                       <button
                         key={asset.id}
@@ -157,7 +163,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="flex-1 bg-transparent text-lg font-semibold outline-none text-right placeholder:text-[#94A3B8]"
+                className="flex-1 min-w-0 bg-transparent text-lg font-semibold outline-none text-right placeholder:text-[#94A3B8]"
               />
             </div>
             <div className="flex gap-2">
@@ -207,7 +213,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
                 </button>
                 {showToDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-30 min-w-[140px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[140px]">
                     {getReceivableAssets(fromAsset.id).map((asset) => (
                       <button
                         key={asset.id}

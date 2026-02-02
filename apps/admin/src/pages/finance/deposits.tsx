@@ -1,6 +1,6 @@
 /**
  * 充值记录页面
- * 查看用户充值记录、审核充值
+ * 连接真实后端 API
  */
 import { List } from '@refinedev/antd';
 import {
@@ -10,7 +10,6 @@ import {
   Button,
   Input,
   Select,
-  DatePicker,
   Card,
   Row,
   Col,
@@ -18,116 +17,114 @@ import {
   Typography,
   Tooltip,
   Modal,
-  message,
+  Spin,
 } from 'antd';
 import {
   SearchOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  ExclamationCircleOutlined,
   CopyOutlined,
   EyeOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { adminApi } from '../../lib/admin-api';
+import { useMessage } from '../../hooks';
 
-const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
-interface IDeposit {
+interface ITransaction {
   id: string;
   userId: string;
   username: string;
+  type: string;
+  asset: string;
   amount: string;
-  currency: 'USDT' | 'HOOT';
-  txHash: string;
-  fromAddress: string;
-  toAddress: string;
-  status: 'pending' | 'confirmed' | 'failed';
-  confirmations: number;
+  status: string;
+  txHash: string | null;
+  uniqueOrderId: string;
+  remark: string | null;
   createdAt: string;
-  confirmedAt: string | null;
+  updatedAt: string;
 }
 
-// 模拟数据
-const mockDeposits: IDeposit[] = [
-  {
-    id: '1',
-    userId: 'u1',
-    username: 'trader_001',
-    amount: '5000.00',
-    currency: 'USDT',
-    txHash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
-    fromAddress: '0xabc...def1',
-    toAddress: '0x123...4567',
-    status: 'confirmed',
-    confirmations: 12,
-    createdAt: '2025-01-30 10:30:00',
-    confirmedAt: '2025-01-30 10:35:00',
-  },
-  {
-    id: '2',
-    userId: 'u2',
-    username: 'crypto_whale',
-    amount: '25000.00',
-    currency: 'USDT',
-    txHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
-    fromAddress: '0xdef...abc2',
-    toAddress: '0x123...4567',
-    status: 'pending',
-    confirmations: 3,
-    createdAt: '2025-01-30 11:00:00',
-    confirmedAt: null,
-  },
-  {
-    id: '3',
-    userId: 'u3',
-    username: 'newbie_2024',
-    amount: '100000',
-    currency: 'HOOT',
-    txHash: '0x567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234',
-    fromAddress: '0x111...2223',
-    toAddress: '0x456...7890',
-    status: 'confirmed',
-    confirmations: 15,
-    createdAt: '2025-01-29 15:20:00',
-    confirmedAt: '2025-01-29 15:25:00',
-  },
-  {
-    id: '4',
-    userId: 'u4',
-    username: 'failed_tx',
-    amount: '1000.00',
-    currency: 'USDT',
-    txHash: '0x999999999999999999999999999999999999999999999999999999999999999',
-    fromAddress: '0x999...8888',
-    toAddress: '0x123...4567',
-    status: 'failed',
-    confirmations: 0,
-    createdAt: '2025-01-28 09:00:00',
-    confirmedAt: null,
-  },
-];
-
-// 统计数据
-const mockStats = {
-  todayDeposits: 35000,
-  todayCount: 12,
-  pendingCount: 3,
-  weekDeposits: 256000,
-};
+interface IStats {
+  totalDeposits: { amount: string; count: number };
+  todayDeposits: { amount: string; count: number };
+  pendingDeposits: number;
+  totalWithdrawals: { amount: string; count: number };
+  pendingWithdrawals: number;
+}
 
 export const DepositsPage = () => {
-  const [dataSource] = useState<IDeposit[]>(mockDeposits);
+  const message = useMessage();
+  const [dataSource, setDataSource] = useState<ITransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<IStats | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [assetFilter, setAssetFilter] = useState<string | undefined>();
 
-  const statusColors = {
+  // 加载充值记录
+  const loadDeposits = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+        type: 'deposit',
+      });
+      if (statusFilter) params.append('status', statusFilter);
+      if (searchKeyword) params.append('search', searchKeyword);
+
+      const response = await adminApi.get<{ items: ITransaction[]; total: number }>(`/admin/transactions?${params}`);
+      if (response.data.code === 0) {
+        const data = response.data.data as { items: ITransaction[]; total: number };
+        let items = data?.items || [];
+        // 前端过滤币种
+        if (assetFilter) {
+          items = items.filter((item: ITransaction) => item.asset === assetFilter);
+        }
+        setDataSource(items);
+        setTotal(data?.total || 0);
+      } else {
+        message.error(response.data.message || '加载失败');
+      }
+    } catch (error: any) {
+      console.error('加载充值记录失败:', error);
+      message.error(error.response?.data?.message || '加载充值记录失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, statusFilter, searchKeyword, assetFilter]);
+
+  // 加载统计数据
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await adminApi.get<IStats>('/admin/transactions/stats');
+      if (response.data.code === 0) {
+        setStats(response.data.data as IStats);
+      }
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDeposits();
+    loadStats();
+  }, [loadDeposits, loadStats]);
+
+  const statusColors: Record<string, string> = {
     pending: 'processing',
-    confirmed: 'success',
+    completed: 'success',
     failed: 'error',
   };
 
-  const statusLabels = {
-    pending: '确认中',
-    confirmed: '已到账',
+  const statusLabels: Record<string, string> = {
+    pending: '处理中',
+    completed: '已完成',
     failed: '失败',
   };
 
@@ -136,60 +133,55 @@ export const DepositsPage = () => {
     message.success('已复制到剪贴板');
   };
 
-  const showTxDetail = (record: IDeposit) => {
+  const showTxDetail = (record: ITransaction) => {
     Modal.info({
       title: '交易详情',
       width: 600,
       content: (
         <div style={{ marginTop: 16 }}>
-          <p><strong>交易哈希:</strong></p>
-          <p style={{ wordBreak: 'break-all', color: '#1890ff' }}>{record.txHash}</p>
-          <p><strong>发送地址:</strong> {record.fromAddress}</p>
-          <p><strong>接收地址:</strong> {record.toAddress}</p>
-          <p><strong>金额:</strong> {record.amount} {record.currency}</p>
-          <p><strong>确认数:</strong> {record.confirmations}</p>
-          <p><strong>创建时间:</strong> {record.createdAt}</p>
-          <p><strong>确认时间:</strong> {record.confirmedAt || '-'}</p>
+          <p><strong>订单ID:</strong> {record.uniqueOrderId}</p>
+          {record.txHash && (
+            <>
+              <p><strong>交易哈希:</strong></p>
+              <p style={{ wordBreak: 'break-all', color: '#1890ff' }}>{record.txHash}</p>
+            </>
+          )}
+          <p><strong>用户:</strong> {record.username} ({record.userId})</p>
+          <p><strong>金额:</strong> {record.amount} {record.asset}</p>
+          <p><strong>状态:</strong> {statusLabels[record.status] || record.status}</p>
+          <p><strong>创建时间:</strong> {new Date(record.createdAt).toLocaleString()}</p>
+          {record.remark && <p><strong>备注:</strong> {record.remark}</p>}
         </div>
       ),
     });
   };
 
-  const handleManualConfirm = (record: IDeposit) => {
-    Modal.confirm({
-      title: '手动确认充值',
-      icon: <ExclamationCircleOutlined />,
-      content: (
-        <div>
-          <p>确定要手动确认这笔充值吗？</p>
-          <p>用户: <strong>{record.username}</strong></p>
-          <p>金额: <strong>{record.amount} {record.currency}</strong></p>
-          <p style={{ color: '#faad14' }}>请确保已在区块链上验证此交易！</p>
-        </div>
-      ),
-      okText: '确认到账',
-      cancelText: '取消',
-      onOk() {
-        message.success('充值已手动确认');
-      },
-    });
+  const handleSearch = () => {
+    setPage(1);
+    loadDeposits();
   };
 
   const columns = [
     {
       title: '订单ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 80,
+      dataIndex: 'uniqueOrderId',
+      key: 'uniqueOrderId',
+      width: 180,
+      ellipsis: true,
+      render: (id: string) => (
+        <Tooltip title={id}>
+          <Text style={{ fontFamily: 'monospace' }}>{id.slice(0, 16)}...</Text>
+        </Tooltip>
+      ),
     },
     {
       title: '用户',
       key: 'user',
       width: 140,
-      render: (_: unknown, record: IDeposit) => (
+      render: (_: unknown, record: ITransaction) => (
         <div>
           <div style={{ fontWeight: 500 }}>{record.username}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId.slice(0, 8)}...</Text>
         </div>
       ),
     },
@@ -197,12 +189,12 @@ export const DepositsPage = () => {
       title: '金额',
       key: 'amount',
       width: 160,
-      render: (_: unknown, record: IDeposit) => (
+      render: (_: unknown, record: ITransaction) => (
         <span style={{
           fontWeight: 600,
-          color: record.currency === 'USDT' ? '#52c41a' : '#1890ff'
+          color: record.asset === 'USDT' ? '#52c41a' : '#1890ff'
         }}>
-          {record.currency === 'USDT' ? '$' : ''}{parseFloat(record.amount).toLocaleString()} {record.currency}
+          {record.asset === 'USDT' ? '$' : ''}{parseFloat(record.amount).toLocaleString()} {record.asset}
         </span>
       ),
     },
@@ -211,7 +203,7 @@ export const DepositsPage = () => {
       dataIndex: 'txHash',
       key: 'txHash',
       width: 180,
-      render: (hash: string) => (
+      render: (hash: string | null) => hash ? (
         <Space>
           <Text style={{ fontFamily: 'monospace' }}>
             {hash.slice(0, 8)}...{hash.slice(-6)}
@@ -225,85 +217,38 @@ export const DepositsPage = () => {
             />
           </Tooltip>
         </Space>
-      ),
-    },
-    {
-      title: '确认数',
-      dataIndex: 'confirmations',
-      key: 'confirmations',
-      width: 100,
-      render: (confirmations: number) => (
-        <Tag color={confirmations >= 12 ? 'green' : confirmations > 0 ? 'orange' : 'red'}>
-          {confirmations}/12
-        </Tag>
-      ),
+      ) : '-',
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: keyof typeof statusColors) => (
-        <Tag color={statusColors[status]}>{statusLabels[status]}</Tag>
+      render: (status: string) => (
+        <Tag color={statusColors[status] || 'default'}>
+          {statusLabels[status] || status}
+        </Tag>
       ),
-      filters: [
-        { text: '确认中', value: 'pending' },
-        { text: '已到账', value: 'confirmed' },
-        { text: '失败', value: 'failed' },
-      ],
-      onFilter: (value: unknown, record: IDeposit) => record.status === value,
     },
     {
       title: '时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
+      render: (date: string) => new Date(date).toLocaleString(),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 140,
-      render: (_: unknown, record: IDeposit) => (
-        <Space>
-          <Tooltip title="查看详情">
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => showTxDetail(record)}
-            />
-          </Tooltip>
-          {record.status === 'pending' && (
-            <>
-              <Tooltip title="手动确认">
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<CheckCircleOutlined />}
-                  onClick={() => handleManualConfirm(record)}
-                />
-              </Tooltip>
-              <Tooltip title="标记失败">
-                <Button
-                  size="small"
-                  danger
-                  icon={<CloseCircleOutlined />}
-                  onClick={() => {
-                    Modal.confirm({
-                      title: '标记为失败',
-                      content: '确定要将此充值标记为失败吗？',
-                      okText: '确定',
-                      cancelText: '取消',
-                      okButtonProps: { danger: true },
-                      onOk() {
-                        message.success('已标记为失败');
-                      },
-                    });
-                  }}
-                />
-              </Tooltip>
-            </>
-          )}
-        </Space>
+      width: 80,
+      render: (_: unknown, record: ITransaction) => (
+        <Tooltip title="查看详情">
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => showTxDetail(record)}
+          />
+        </Tooltip>
       ),
     },
   ];
@@ -316,7 +261,7 @@ export const DepositsPage = () => {
           <Card>
             <Statistic
               title="今日充值额"
-              value={mockStats.todayDeposits}
+              value={parseFloat(stats?.todayDeposits?.amount || '0')}
               precision={2}
               prefix="$"
               valueStyle={{ color: '#52c41a' }}
@@ -327,7 +272,7 @@ export const DepositsPage = () => {
           <Card>
             <Statistic
               title="今日充值笔数"
-              value={mockStats.todayCount}
+              value={stats?.todayDeposits?.count || 0}
               suffix="笔"
               valueStyle={{ color: '#1890ff' }}
             />
@@ -336,8 +281,8 @@ export const DepositsPage = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="待确认"
-              value={mockStats.pendingCount}
+              title="待处理"
+              value={stats?.pendingDeposits || 0}
               suffix="笔"
               valueStyle={{ color: '#faad14' }}
             />
@@ -346,8 +291,8 @@ export const DepositsPage = () => {
         <Col span={6}>
           <Card>
             <Statistic
-              title="本周充值总额"
-              value={mockStats.weekDeposits}
+              title="累计充值总额"
+              value={parseFloat(stats?.totalDeposits?.amount || '0')}
               precision={2}
               prefix="$"
               valueStyle={{ color: '#722ed1' }}
@@ -363,11 +308,16 @@ export const DepositsPage = () => {
             placeholder="搜索用户/交易哈希"
             prefix={<SearchOutlined />}
             style={{ width: 200 }}
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            onPressEnter={handleSearch}
           />
           <Select
             placeholder="币种"
             style={{ width: 120 }}
             allowClear
+            value={assetFilter}
+            onChange={setAssetFilter}
             options={[
               { label: 'USDT', value: 'USDT' },
               { label: 'HOOT', value: 'HOOT' },
@@ -377,30 +327,43 @@ export const DepositsPage = () => {
             placeholder="状态"
             style={{ width: 120 }}
             allowClear
+            value={statusFilter}
+            onChange={setStatusFilter}
             options={[
-              { label: '确认中', value: 'pending' },
-              { label: '已到账', value: 'confirmed' },
+              { label: '处理中', value: 'pending' },
+              { label: '已完成', value: 'completed' },
               { label: '失败', value: 'failed' },
             ]}
           />
-          <RangePicker placeholder={['开始日期', '结束日期']} />
-          <Button type="primary" icon={<SearchOutlined />}>
+          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
             搜索
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { loadDeposits(); loadStats(); }}>
+            刷新
           </Button>
         </Space>
       </Card>
 
       {/* 数据表格 */}
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+      <Spin spinning={loading}>
+        <Table
+          dataSource={dataSource}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 1000 }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </Spin>
     </List>
   );
 };

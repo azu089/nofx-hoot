@@ -18,16 +18,27 @@ import {
   SubscriptionConfigResponse,
 } from './dto/subscription-config.dto';
 import { TradingConfigService } from '../trading/config/config.service';
+import { MembershipService } from '../membership/membership.service';
+import {
+  getLocalizedContent,
+  getLocalizedArrayContent,
+  getValidLocale,
+  DEFAULT_LOCALE,
+  type I18nContent,
+  type I18nArrayContent,
+} from '../../common/utils/i18n.util';
 
 @Injectable()
 export class StrategiesService {
   constructor(
     private prisma: PrismaService,
     private configService: TradingConfigService,
+    private membershipService: MembershipService,
   ) {}
 
-  // 获取策略列表
-  async findAll(): Promise<StrategyResponse[]> {
+  // 获取策略列表（支持多语言）
+  async findAll(locale: string = DEFAULT_LOCALE): Promise<StrategyResponse[]> {
+    const validLocale = getValidLocale(locale);
     const strategies = await this.prisma.strategy.findMany({
       where: { isActive: true },
       include: {
@@ -38,11 +49,15 @@ export class StrategiesService {
       orderBy: [{ sortOrder: 'desc' }, { createdAt: 'desc' }],
     });
 
-    return strategies.map((s) => this.formatStrategyResponse(s));
+    return strategies.map((s) => this.formatStrategyResponse(s, validLocale));
   }
 
-  // 获取首页推荐策略
-  async getFeatured(limit = 3): Promise<StrategyResponse[]> {
+  // 获取首页推荐策略（支持多语言）
+  async getFeatured(
+    limit: number = 3,
+    locale: string = DEFAULT_LOCALE,
+  ): Promise<StrategyResponse[]> {
+    const validLocale = getValidLocale(locale);
     const strategies = await this.prisma.strategy.findMany({
       where: {
         isActive: true,
@@ -69,25 +84,35 @@ export class StrategiesService {
         orderBy: { subscriptions: { _count: 'desc' } },
         take: limit,
       });
-      return fallback.map((s) => this.formatStrategyResponse(s));
+      return fallback.map((s) => this.formatStrategyResponse(s, validLocale));
     }
 
-    return strategies.map((s) => this.formatStrategyResponse(s));
+    return strategies.map((s) => this.formatStrategyResponse(s, validLocale));
   }
 
-  // 格式化策略响应
-  private formatStrategyResponse(s: any): StrategyResponse {
+  // 格式化策略响应（支持多语言）
+  private formatStrategyResponse(s: any, locale: string): StrategyResponse {
     return {
       id: s.id,
-      name: s.name,
-      description: s.description,
+      // 多语言字段：优先使用 i18n 字段，兼容旧的单语言字段
+      name: getLocalizedContent(s.nameI18n as I18nContent, locale, s.name),
+      description: getLocalizedContent(
+        s.descriptionI18n as I18nContent,
+        locale,
+        s.description,
+      ),
       freqtradeId: s.freqtradeId,
       isActive: s.isActive,
       createdAt: s.createdAt,
       subscriberCount: s._count?.subscriptions || 0,
       imageUrl: s.imageUrl,
       riskLevel: s.riskLevel,
-      tags: s.tags || [],
+      // tags 也支持多语言
+      tags: getLocalizedArrayContent(
+        s.tagsI18n as I18nArrayContent,
+        locale,
+        s.tags || [],
+      ),
       return7d: s.return7d?.toString(),
       return30d: s.return30d?.toString(),
       return90d: s.return90d?.toString(),
@@ -98,18 +123,28 @@ export class StrategiesService {
     };
   }
 
-  // 获取策略详情
-  async findOne(userId: string, id: string): Promise<StrategyDetailResponse> {
+  // 获取策略详情（公开接口，userId 可选，支持多语言）
+  async findOne(
+    userId: string | null,
+    id: string,
+    locale: string = DEFAULT_LOCALE,
+  ): Promise<StrategyDetailResponse> {
+    const validLocale = getValidLocale(locale);
     const strategy = await this.prisma.strategy.findUnique({
       where: { id },
       include: {
         _count: {
           select: { subscriptions: true },
         },
-        subscriptions: {
-          where: { userId },
-          take: 1,
-        },
+        // 只有登录用户才查询订阅状态
+        ...(userId
+          ? {
+              subscriptions: {
+                where: { userId },
+                take: 1,
+              },
+            }
+          : {}),
       },
     });
 
@@ -117,16 +152,26 @@ export class StrategiesService {
       throw new NotFoundException('策略不存在');
     }
 
-    const subscription = strategy.subscriptions[0];
+    const subscription = (strategy as any).subscriptions?.[0];
 
     return {
       id: strategy.id,
-      name: strategy.name,
-      description: strategy.description,
+      // 多语言字段
+      name: getLocalizedContent(
+        (strategy as any).nameI18n as I18nContent,
+        validLocale,
+        strategy.name,
+      ),
+      description: getLocalizedContent(
+        (strategy as any).descriptionI18n as I18nContent,
+        validLocale,
+        strategy.description,
+      ),
       freqtradeId: strategy.freqtradeId,
       isActive: strategy.isActive,
       createdAt: strategy.createdAt,
       subscriberCount: strategy._count.subscriptions,
+      riskLevel: strategy.riskLevel || 'medium',
       isSubscribed: !!subscription,
       subscription: subscription
         ? {
@@ -146,6 +191,9 @@ export class StrategiesService {
     strategyId: string,
     dto: SubscribeStrategyDto,
   ): Promise<MySubscriptionResponse> {
+    // 验证会员资格
+    await this.membershipService.validateMembership(userId);
+
     // 检查策略是否存在
     const strategy = await this.prisma.strategy.findUnique({
       where: { id: strategyId },
@@ -234,8 +282,12 @@ export class StrategiesService {
     });
   }
 
-  // 获取我的订阅
-  async getMySubscriptions(userId: string): Promise<MySubscriptionResponse[]> {
+  // 获取我的订阅（支持多语言）
+  async getMySubscriptions(
+    userId: string,
+    locale: string = DEFAULT_LOCALE,
+  ): Promise<MySubscriptionResponse[]> {
+    const validLocale = getValidLocale(locale);
     const subscriptions = await this.prisma.strategySubscription.findMany({
       where: { userId },
       include: {
@@ -246,10 +298,20 @@ export class StrategiesService {
 
     return subscriptions.map((s) => ({
       id: s.id,
+      strategyId: s.strategyId,
       strategy: {
         id: s.strategy.id,
-        name: s.strategy.name,
-        description: s.strategy.description,
+        // 多语言字段
+        name: getLocalizedContent(
+          (s.strategy as any).nameI18n as I18nContent,
+          validLocale,
+          s.strategy.name,
+        ),
+        description: getLocalizedContent(
+          (s.strategy as any).descriptionI18n as I18nContent,
+          validLocale,
+          s.strategy.description,
+        ),
         freqtradeId: s.strategy.freqtradeId,
         isActive: s.strategy.isActive,
         createdAt: s.strategy.createdAt,
@@ -257,6 +319,11 @@ export class StrategiesService {
       apiKeyId: s.apiKeyId,
       amountPerTrade: s.amountPerTrade.toString(),
       maxPositions: s.maxPositions,
+      leverage: s.leverage,
+      tradingType: s.tradingType,
+      tradingPairs: s.tradingPairs,
+      stopLossPercent: s.stopLossPercent?.toString(),
+      takeProfitPercent: s.takeProfitPercent?.toString(),
       isActive: s.isActive,
       createdAt: s.createdAt,
     }));
@@ -272,6 +339,9 @@ export class StrategiesService {
     strategyId: string,
     dto: CreateSubscriptionDto,
   ): Promise<SubscriptionConfigResponse> {
+    // 验证会员资格
+    await this.membershipService.validateMembership(userId);
+
     // 检查策略是否存在
     const strategy = await this.prisma.strategy.findUnique({
       where: { id: strategyId },
@@ -343,7 +413,9 @@ export class StrategiesService {
         dcaMultiplier: new Decimal(dto.advanced?.dcaMultiplier ?? 1.5),
         // === 防瀑布保护 ===
         waterfallProtection: dto.advanced?.waterfallProtection ?? true,
-        waterfallTriggerPercent: new Decimal(dto.advanced?.waterfallTriggerPercent ?? 15),
+        waterfallTriggerPercent: new Decimal(
+          dto.advanced?.waterfallTriggerPercent ?? 15,
+        ),
         // === 黑天鹅保护 ===
         blackSwanProtection: dto.advanced?.blackSwanProtection ?? false,
         blackSwanType: dto.advanced?.blackSwanType ?? 'account_loss',
@@ -351,7 +423,9 @@ export class StrategiesService {
         blackSwanAction: dto.advanced?.blackSwanAction ?? 'close_all',
         // === 单日亏损限制 ===
         dailyMaxLossEnabled: dto.advanced?.dailyMaxLossEnabled ?? false,
-        dailyMaxLossPercent: new Decimal(dto.advanced?.dailyMaxLossPercent ?? 20),
+        dailyMaxLossPercent: new Decimal(
+          dto.advanced?.dailyMaxLossPercent ?? 20,
+        ),
         // === 执行配置 ===
         maxRetries: dto.advanced?.maxRetries ?? 3,
         retryDelayMs: dto.advanced?.retryDelayMs ?? 1000,
@@ -359,7 +433,11 @@ export class StrategiesService {
       include: { strategy: true },
     });
 
-    return this.formatSubscriptionResponse(subscription, apiKey.label, platformConfig);
+    return this.formatSubscriptionResponse(
+      subscription,
+      apiKey.label,
+      platformConfig,
+    );
   }
 
   /**
@@ -475,8 +553,12 @@ export class StrategiesService {
         }),
         ...(dto.basic?.tradingType && { tradingType: dto.basic.tradingType }),
         ...(dto.basic?.direction && { direction: dto.basic.direction }),
-        ...(dto.basic?.tradingPairs && { tradingPairs: dto.basic.tradingPairs }),
-        ...(dto.basic?.autoClose !== undefined && { autoClose: dto.basic.autoClose }),
+        ...(dto.basic?.tradingPairs && {
+          tradingPairs: dto.basic.tradingPairs,
+        }),
+        ...(dto.basic?.autoClose !== undefined && {
+          autoClose: dto.basic.autoClose,
+        }),
         ...(dto.basic?.stopLossPercent !== undefined && {
           stopLossPercent: dto.basic.stopLossPercent
             ? new Decimal(dto.basic.stopLossPercent)
@@ -488,8 +570,12 @@ export class StrategiesService {
             : null,
         }),
         // === 高级配置 - 合约 ===
-        ...(dto.advanced?.leverage !== undefined && { leverage: dto.advanced.leverage }),
-        ...(dto.advanced?.marginMode && { marginMode: dto.advanced.marginMode }),
+        ...(dto.advanced?.leverage !== undefined && {
+          leverage: dto.advanced.leverage,
+        }),
+        ...(dto.advanced?.marginMode && {
+          marginMode: dto.advanced.marginMode,
+        }),
         ...(dto.advanced?.slippageTolerance !== undefined && {
           slippageTolerance: new Decimal(dto.advanced.slippageTolerance),
         }),
@@ -511,8 +597,12 @@ export class StrategiesService {
             : null,
         }),
         // === DCA 补仓 ===
-        ...(dto.advanced?.dcaEnabled !== undefined && { dcaEnabled: dto.advanced.dcaEnabled }),
-        ...(dto.advanced?.dcaMaxCount !== undefined && { dcaMaxCount: dto.advanced.dcaMaxCount }),
+        ...(dto.advanced?.dcaEnabled !== undefined && {
+          dcaEnabled: dto.advanced.dcaEnabled,
+        }),
+        ...(dto.advanced?.dcaMaxCount !== undefined && {
+          dcaMaxCount: dto.advanced.dcaMaxCount,
+        }),
         ...(dto.advanced?.dcaTrigger !== undefined && {
           dcaTrigger: new Decimal(dto.advanced.dcaTrigger),
         }),
@@ -524,17 +614,23 @@ export class StrategiesService {
           waterfallProtection: dto.advanced.waterfallProtection,
         }),
         ...(dto.advanced?.waterfallTriggerPercent !== undefined && {
-          waterfallTriggerPercent: new Decimal(dto.advanced.waterfallTriggerPercent),
+          waterfallTriggerPercent: new Decimal(
+            dto.advanced.waterfallTriggerPercent,
+          ),
         }),
         // === 黑天鹅保护 ===
         ...(dto.advanced?.blackSwanProtection !== undefined && {
           blackSwanProtection: dto.advanced.blackSwanProtection,
         }),
-        ...(dto.advanced?.blackSwanType && { blackSwanType: dto.advanced.blackSwanType }),
+        ...(dto.advanced?.blackSwanType && {
+          blackSwanType: dto.advanced.blackSwanType,
+        }),
         ...(dto.advanced?.blackSwanTrigger !== undefined && {
           blackSwanTrigger: new Decimal(dto.advanced.blackSwanTrigger),
         }),
-        ...(dto.advanced?.blackSwanAction && { blackSwanAction: dto.advanced.blackSwanAction }),
+        ...(dto.advanced?.blackSwanAction && {
+          blackSwanAction: dto.advanced.blackSwanAction,
+        }),
         // === 单日亏损限制 ===
         ...(dto.advanced?.dailyMaxLossEnabled !== undefined && {
           dailyMaxLossEnabled: dto.advanced.dailyMaxLossEnabled,
@@ -557,7 +653,11 @@ export class StrategiesService {
       where: { id: updated.apiKeyId },
     });
 
-    return this.formatSubscriptionResponse(updated, apiKey?.label || '未知', platformConfig);
+    return this.formatSubscriptionResponse(
+      updated,
+      apiKey?.label || '未知',
+      platformConfig,
+    );
   }
 
   /**
@@ -597,14 +697,10 @@ export class StrategiesService {
 
     // 验证交易金额
     if (dto.basic.amountPerTrade < platformConfig.minOrderAmountUsdt) {
-      errors.push(
-        `每单金额不能低于 ${platformConfig.minOrderAmountUsdt} USDT`,
-      );
+      errors.push(`每单金额不能低于 ${platformConfig.minOrderAmountUsdt} USDT`);
     }
     if (dto.basic.amountPerTrade > platformConfig.maxOrderAmountUsdt) {
-      errors.push(
-        `每单金额不能超过 ${platformConfig.maxOrderAmountUsdt} USDT`,
-      );
+      errors.push(`每单金额不能超过 ${platformConfig.maxOrderAmountUsdt} USDT`);
     }
 
     // 验证杠杆
@@ -634,17 +730,23 @@ export class StrategiesService {
   }
 
   /**
-   * 格式化订阅配置响应
+   * 格式化订阅配置响应（支持多语言）
    */
   private formatSubscriptionResponse(
     subscription: any,
     apiKeyLabel: string,
     platformConfig: any,
+    locale = DEFAULT_LOCALE,
   ): SubscriptionConfigResponse {
+    const validLocale = getValidLocale(locale);
     return {
       id: subscription.id,
       strategyId: subscription.strategyId,
-      strategyName: subscription.strategy.name,
+      strategyName: getLocalizedContent(
+        subscription.strategy.nameI18n as I18nContent,
+        validLocale,
+        subscription.strategy.name,
+      ),
       isActive: subscription.isActive,
       basic: {
         apiKeyId: subscription.apiKeyId,
@@ -673,7 +775,8 @@ export class StrategiesService {
         dcaMultiplier: subscription.dcaMultiplier.toString(),
         // 防瀑布
         waterfallProtection: subscription.waterfallProtection,
-        waterfallTriggerPercent: subscription.waterfallTriggerPercent.toString(),
+        waterfallTriggerPercent:
+          subscription.waterfallTriggerPercent.toString(),
         // 黑天鹅
         blackSwanProtection: subscription.blackSwanProtection,
         blackSwanType: subscription.blackSwanType,

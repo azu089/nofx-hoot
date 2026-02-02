@@ -45,7 +45,10 @@ export class RiskControlService {
     const config = await this.getUserRiskConfig(userId);
 
     // 1. 检查最大持仓数
-    const positionCheck = await this.checkMaxPositions(userId, config.maxPositions);
+    const positionCheck = await this.checkMaxPositions(
+      userId,
+      config.maxPositions,
+    );
     if (!positionCheck.allowed) {
       return positionCheck;
     }
@@ -59,7 +62,10 @@ export class RiskControlService {
     }
 
     // 3. 检查每日交易次数
-    const dailyCheck = await this.checkDailyTradeLimit(userId, config.maxDailyTrades);
+    const dailyCheck = await this.checkDailyTradeLimit(
+      userId,
+      config.maxDailyTrades,
+    );
     if (!dailyCheck.allowed) {
       return dailyCheck;
     }
@@ -93,7 +99,9 @@ export class RiskControlService {
     });
 
     if (openPositions >= maxPositions) {
-      this.logger.warn(`用户 ${userId} 已达最大持仓数: ${openPositions}/${maxPositions}`);
+      this.logger.warn(
+        `用户 ${userId} 已达最大持仓数: ${openPositions}/${maxPositions}`,
+      );
       return {
         allowed: false,
         reason: 'max_positions_reached',
@@ -149,7 +157,9 @@ export class RiskControlService {
     });
 
     if (todayTrades >= maxDailyTrades) {
-      this.logger.warn(`用户 ${userId} 已达每日交易限制: ${todayTrades}/${maxDailyTrades}`);
+      this.logger.warn(
+        `用户 ${userId} 已达每日交易限制: ${todayTrades}/${maxDailyTrades}`,
+      );
       return {
         allowed: false,
         reason: 'daily_limit_reached',
@@ -174,7 +184,9 @@ export class RiskControlService {
 
       // 检查是否满足本次交易
       if (balance < requiredAmount) {
-        this.logger.warn(`用户 ${userId} 余额不足: ${balance} < ${requiredAmount}`);
+        this.logger.warn(
+          `用户 ${userId} 余额不足: ${balance} < ${requiredAmount}`,
+        );
         return {
           allowed: false,
           reason: 'insufficient_balance',
@@ -185,7 +197,9 @@ export class RiskControlService {
       // 检查交易后是否满足最小余额
       const afterTradeBalance = balance - requiredAmount;
       if (afterTradeBalance < minBalance) {
-        this.logger.warn(`用户 ${userId} 交易后余额低于最小要求: ${afterTradeBalance} < ${minBalance}`);
+        this.logger.warn(
+          `用户 ${userId} 交易后余额低于最小要求: ${afterTradeBalance} < ${minBalance}`,
+        );
         return {
           allowed: false,
           reason: 'balance_below_minimum',
@@ -217,7 +231,8 @@ export class RiskControlService {
 
     return {
       ...DEFAULT_RISK_CONFIG,
-      maxPositions: subscription?.maxPositions || DEFAULT_RISK_CONFIG.maxPositions,
+      maxPositions:
+        subscription?.maxPositions || DEFAULT_RISK_CONFIG.maxPositions,
     };
   }
 

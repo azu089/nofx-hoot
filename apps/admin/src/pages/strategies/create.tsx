@@ -14,7 +14,6 @@ import {
   Steps,
   Typography,
   Alert,
-  message,
   Row,
   Col,
   Switch,
@@ -35,11 +34,13 @@ import {
 } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMessage } from '../../hooks';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 export const StrategyCreate = () => {
+  const message = useMessage();
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -421,7 +422,7 @@ class MyStrategy(IStrategy):
               max={50}
               precision={1}
               style={{ width: '100%' }}
-              addonAfter="%"
+              suffix="%"
             />
           </Form.Item>
         </Col>
@@ -438,7 +439,7 @@ class MyStrategy(IStrategy):
               max={100}
               precision={1}
               style={{ width: '100%' }}
-              addonAfter="%"
+              suffix="%"
             />
           </Form.Item>
         </Col>
@@ -491,7 +492,7 @@ class MyStrategy(IStrategy):
               min={10}
               precision={2}
               style={{ width: '100%' }}
-              addonAfter="USDT"
+              suffix="USDT"
             />
           </Form.Item>
         </Col>
@@ -506,7 +507,7 @@ class MyStrategy(IStrategy):
               min={100}
               precision={2}
               style={{ width: '100%' }}
-              addonAfter="USDT"
+              suffix="USDT"
             />
           </Form.Item>
         </Col>
@@ -527,7 +528,7 @@ class MyStrategy(IStrategy):
           min={0}
           precision={2}
           style={{ width: 200 }}
-          addonAfter="USDT/月"
+          suffix="USDT/月"
         />
       </Form.Item>
 

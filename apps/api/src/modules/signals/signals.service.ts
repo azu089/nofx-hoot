@@ -89,7 +89,10 @@ export class SignalsService {
   }
 
   // 标记信号已分发
-  async markDistributed(signalId: string, subscriberCount: number): Promise<void> {
+  async markDistributed(
+    signalId: string,
+    subscriberCount: number,
+  ): Promise<void> {
     await this.prisma.signal.update({
       where: { id: signalId },
       data: {
@@ -138,7 +141,11 @@ export class SignalsService {
   }
 
   // 更新执行状态为执行中
-  async markExecutionStarted(signalId: string, userId: string, exchange: string): Promise<void> {
+  async markExecutionStarted(
+    signalId: string,
+    userId: string,
+    exchange: string,
+  ): Promise<void> {
     await this.prisma.signalExecution.update({
       where: {
         signalId_userId: { signalId, userId },
@@ -328,10 +335,13 @@ export class SignalsService {
       }),
     ]);
 
-    const statusCounts = executions.reduce((acc, e) => {
-      acc[e.status] = e._count;
-      return acc;
-    }, {} as Record<string, number>);
+    const statusCounts = executions.reduce(
+      (acc, e) => {
+        acc[e.status] = e._count;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       period: `${hours}h`,
@@ -340,9 +350,16 @@ export class SignalsService {
       successCount: statusCounts.success || 0,
       failedCount: statusCounts.failed || 0,
       skippedCount: statusCounts.skipped || 0,
-      pendingCount: (statusCounts.pending || 0) + (statusCounts.queued || 0) + (statusCounts.executing || 0),
+      pendingCount:
+        (statusCounts.pending || 0) +
+        (statusCounts.queued || 0) +
+        (statusCounts.executing || 0),
       successRate: statusCounts.success
-        ? ((statusCounts.success / (statusCounts.success + (statusCounts.failed || 0))) * 100).toFixed(2) + '%'
+        ? (
+            (statusCounts.success /
+              (statusCounts.success + (statusCounts.failed || 0))) *
+            100
+          ).toFixed(2) + '%'
         : '0%',
     };
   }

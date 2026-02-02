@@ -1,0 +1,296 @@
+/**
+ * 代理商后台深色主题样式
+ */
+
+/* 全局文字颜色 */
+.agent-portal {
+  color: #fff;
+}
+
+.agent-portal .ant-typography {
+  color: #fff;
+}
+
+.agent-portal .ant-typography.ant-typography-secondary {
+  color: #94a3b8 !important;
+}
+
+/* 卡片样式 */
+.agent-portal .ant-card {
+  background: #12121a;
+  border: 1px solid #1e1e2e;
+  border-radius: 8px;
+}
+
+.agent-portal .ant-card-head {
+  background: #12121a;
+  border-bottom: 1px solid #1e1e2e;
+  color: #fff;
+}
+
+.agent-portal .ant-card-head-title {
+  color: #fff;
+}
+
+.agent-portal .ant-card-body {
+  color: #fff;
+}
+
+/* 统计组件 */
+.agent-portal .ant-statistic-title {
+  color: #94a3b8;
+}
+
+.agent-portal .ant-statistic-content {
+  color: #fff;
+}
+
+.agent-portal .ant-statistic-content-value {
+  color: inherit;
+}
+
+.agent-portal .ant-statistic-content-suffix {
+  color: #94a3b8;
+}
+
+/* 表格样式 */
+.agent-portal .ant-table {
+  background: transparent;
+}
+
+.agent-portal .ant-table-thead > tr > th {
+  background: #1a1a24 !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid #1e1e2e !important;
+}
+
+.agent-portal .ant-table-tbody > tr > td {
+  background: #12121a !important;
+  color: #fff !important;
+  border-bottom: 1px solid #1e1e2e !important;
+}
+
+.agent-portal .ant-table-tbody > tr:hover > td {
+  background: #1a1a24 !important;
+}
+
+.agent-portal .ant-table-cell {
+  color: #fff;
+}
+
+.agent-portal .ant-table-placeholder .ant-table-cell {
+  background: #12121a !important;
+}
+
+.agent-portal .ant-empty-description {
+  color: #64748b;
+}
+
+/* 分页器 */
+.agent-portal .ant-pagination-item {
+  background: #1a1a24;
+  border-color: #1e1e2e;
+}
+
+.agent-portal .ant-pagination-item a {
+  color: #fff;
+}
+
+.agent-portal .ant-pagination-item-active {
+  background: #06b6d4;
+  border-color: #06b6d4;
+}
+
+.agent-portal .ant-pagination-item-active a {
+  color: #fff;
+}
+
+.agent-portal .ant-pagination-prev .ant-pagination-item-link,
+.agent-portal .ant-pagination-next .ant-pagination-item-link {
+  background: #1a1a24;
+  border-color: #1e1e2e;
+  color: #fff;
+}
+
+.agent-portal .ant-pagination-disabled .ant-pagination-item-link {
+  color: #64748b;
+}
+
+.agent-portal .ant-pagination-options .ant-select-selector {
+  background: #1a1a24 !important;
+  border-color: #1e1e2e !important;
+  color: #fff !important;
+}
+
+/* 输入框 */
+.agent-portal .ant-input,
+.agent-portal .ant-input-affix-wrapper,
+.agent-portal .ant-input-number,
+.agent-portal .ant-select-selector {
+  background: #1a1a24 !important;
+  border-color: #1e1e2e !important;
+  color: #fff !important;
+}
+
+.agent-portal .ant-input::placeholder,
+.agent-portal .ant-input-number-input::placeholder {
+  color: #64748b;
+}
+
+.agent-portal .ant-select-arrow {
+  color: #94a3b8;
+}
+
+.agent-portal .ant-select-selection-placeholder {
+  color: #64748b !important;
+}
+
+/* 下拉菜单 */
+.agent-portal .ant-select-dropdown {
+  background: #1a1a24;
+  border: 1px solid #1e1e2e;
+}
+
+.agent-portal .ant-select-item {
+  color: #fff;
+}
+
+.agent-portal .ant-select-item-option-active {
+  background: #2a2a34 !important;
+}
+
+.agent-portal .ant-select-item-option-selected {
+  background: #06b6d4 !important;
+}
+
+/* 按钮 */
+.agent-portal .ant-btn-default {
+  background: #1a1a24;
+  border-color: #1e1e2e;
+  color: #fff;
+}
+
+.agent-portal .ant-btn-default:hover {
+  background: #2a2a34;
+  border-color: #06b6d4;
+  color: #06b6d4;
+}
+
+/* Alert */
+.agent-portal .ant-alert {
+  background: #1a1a24;
+  border: 1px solid #1e1e2e;
+}
+
+.agent-portal .ant-alert-info {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.agent-portal .ant-alert-warning {
+  background: rgba(250, 173, 20, 0.1);
+  border-color: rgba(250, 173, 20, 0.3);
+}
+
+.agent-portal .ant-alert-message {
+  color: #fff;
+}
+
+.agent-portal .ant-alert-description {
+  color: #94a3b8;
+}
+
+/* 标签 */
+.agent-portal .ant-tag {
+  border: none;
+}
+
+/* 弹窗 */
+.ant-modal-content {
+  background: #12121a !important;
+  border: 1px solid #1e1e2e;
+}
+
+.ant-modal-header {
+  background: #12121a !important;
+  border-bottom: 1px solid #1e1e2e !important;
+}
+
+.ant-modal-title {
+  color: #fff !important;
+}
+
+.ant-modal-close {
+  color: #94a3b8;
+}
+
+.ant-modal-body {
+  color: #fff;
+}
+
+.ant-form-item-label > label {
+  color: #fff !important;
+}
+
+/* Spin 加载 */
+.agent-portal .ant-spin-text {
+  color: #fff;
+}
+
+/* 侧边栏样式 */
+.agent-layout .ant-layout-sider {
+  background: #0a0a0f !important;
+}
+
+.agent-layout .ant-layout-sider-dark {
+  background: #0a0a0f !important;
+}
+
+.agent-layout .ant-layout-sider-trigger {
+  background: #1a1a24 !important;
+  border-top: 1px solid #1e1e2e;
+}
+
+.agent-layout .ant-menu-dark,
+.agent-layout .ant-menu-dark .ant-menu-sub {
+  background: #12121a !important;
+}
+
+.agent-layout .ant-menu-dark .ant-menu-item {
+  color: #94a3b8 !important;
+}
+
+.agent-layout .ant-menu-dark .ant-menu-item:hover {
+  background: #1a1a24 !important;
+  color: #fff !important;
+}
+
+.agent-layout .ant-menu-dark .ant-menu-item-selected {
+  background: #06b6d4 !important;
+  color: #fff !important;
+}
+
+/* 更强的 Menu 选择器 */
+.agent-menu.ant-menu-dark {
+  background: #0a0a0f !important;
+}
+
+.agent-menu.ant-menu-dark .ant-menu-item {
+  color: #94a3b8 !important;
+  margin: 4px 8px !important;
+  border-radius: 6px !important;
+}
+
+.agent-menu.ant-menu-dark .ant-menu-item:hover {
+  background: #1a1a24 !important;
+  color: #fff !important;
+}
+
+.agent-menu.ant-menu-dark .ant-menu-item-selected {
+  background: #06b6d4 !important;
+  color: #fff !important;
+}
+
+.agent-menu.ant-menu-dark .ant-menu-item-selected:hover {
+  background: #06b6d4 !important;
+}

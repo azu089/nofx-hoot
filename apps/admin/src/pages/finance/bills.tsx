@@ -1,9 +1,9 @@
 /**
  * 账单记录页面
- * 财务中心 - 所有交易记录
+ * 连接真实后端 API
  */
-import { useState } from 'react';
-import { List, ExportButton } from '@refinedev/antd';
+import { useState, useEffect, useCallback } from 'react';
+import { List } from '@refinedev/antd';
 import {
   Table,
   Tag,
@@ -15,155 +15,143 @@ import {
   Col,
   Statistic,
   Input,
+  Button,
+  Spin,
 } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   SwapOutlined,
+  SearchOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
+import { adminApi } from '../../lib/admin-api';
+import { useMessage } from '../../hooks';
 
 const { RangePicker } = DatePicker;
 
 interface IBill {
   id: string;
+  uniqueOrderId: string;
   userId: string;
   username: string;
-  type: 'deposit' | 'withdraw' | 'subscription' | 'profit_share' | 'gas_fee' | 'adjustment';
+  type: string;
   amount: string;
-  currency: 'USDT' | 'HOOT';
-  status: 'success' | 'failed' | 'processing';
+  currency: string;
+  status: string;
   createdAt: string;
   remark: string;
 }
 
-// 模拟数据
-const mockBills: IBill[] = [
-  {
-    id: 'B001',
-    userId: '1',
-    username: 'trader_001',
-    type: 'deposit',
-    amount: '+1000.00',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-30 14:30:00',
-    remark: '链上充值',
-  },
-  {
-    id: 'B002',
-    userId: '2',
-    username: 'crypto_whale',
-    type: 'withdraw',
-    amount: '-500.00',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-30 12:15:00',
-    remark: '提现到 0x1234...5678',
-  },
-  {
-    id: 'B003',
-    userId: '1',
-    username: 'trader_001',
-    type: 'subscription',
-    amount: '-25.00',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-30 10:00:00',
-    remark: '订阅 AI量化策略Alpha',
-  },
-  {
-    id: 'B004',
-    userId: '3',
-    username: 'newbie_2024',
-    type: 'profit_share',
-    amount: '-12.50',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-29 18:00:00',
-    remark: '策略盈利分成 (20%)',
-  },
-  {
-    id: 'B005',
-    userId: '2',
-    username: 'crypto_whale',
-    type: 'gas_fee',
-    amount: '-5.00',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-29 15:30:00',
-    remark: '交易燃油费',
-  },
-  {
-    id: 'B006',
-    userId: '1',
-    username: 'trader_001',
-    type: 'adjustment',
-    amount: '+100.00',
-    currency: 'USDT',
-    status: 'success',
-    createdAt: '2025-01-28 10:00:00',
-    remark: '活动奖励 - 管理员调整',
-  },
-  {
-    id: 'B007',
-    userId: '4',
-    username: 'test_user',
-    type: 'withdraw',
-    amount: '-200.00',
-    currency: 'USDT',
-    status: 'processing',
-    createdAt: '2025-01-30 16:00:00',
-    remark: '提现处理中',
-  },
-];
+interface IStats {
+  todayRevenue: string;
+  todaySubscription: string;
+  todayProfitShare: string;
+  todayGasFee: string;
+  totalRevenue: string;
+}
 
 export const BillList = () => {
-  const [dataSource] = useState<IBill[]>(mockBills);
+  const message = useMessage();
+  const [dataSource, setDataSource] = useState<IBill[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<IStats | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [typeFilter, setTypeFilter] = useState<string | undefined>();
+  const [searchKeyword, setSearchKeyword] = useState('');
 
-  const typeConfig = {
+  // 加载账单列表
+  const loadBills = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+      });
+      if (typeFilter) params.append('type', typeFilter);
+      if (searchKeyword) params.append('userId', searchKeyword);
+
+      const response = await adminApi.get(`/admin/billing?${params}`);
+      if (response.data.code === 0) {
+        const data = response.data.data as { items: IBill[]; total: number };
+        setDataSource(data.items || []);
+        setTotal(data.total || 0);
+      } else {
+        message.error(response.data.message || '加载失败');
+      }
+    } catch (error: any) {
+      console.error('加载账单失败:', error);
+      message.error(error.response?.data?.message || '加载账单失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, typeFilter, searchKeyword]);
+
+  // 加载统计数据
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await adminApi.get('/admin/billing/stats');
+      if (response.data.code === 0) {
+        setStats(response.data.data as IStats);
+      }
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBills();
+    loadStats();
+  }, [loadBills, loadStats]);
+
+  const typeConfig: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
     deposit: { color: 'green', label: '充值', icon: <ArrowDownOutlined /> },
     withdraw: { color: 'red', label: '提现', icon: <ArrowUpOutlined /> },
     subscription: { color: 'blue', label: '订阅', icon: <SwapOutlined /> },
     profit_share: { color: 'purple', label: '分成', icon: <SwapOutlined /> },
     gas_fee: { color: 'orange', label: '燃油费', icon: <SwapOutlined /> },
     adjustment: { color: 'cyan', label: '调整', icon: <SwapOutlined /> },
+    referral: { color: 'gold', label: '推荐奖励', icon: <SwapOutlined /> },
+    staking_reward: { color: 'lime', label: '质押奖励', icon: <SwapOutlined /> },
+    dividend: { color: 'magenta', label: '分红', icon: <SwapOutlined /> },
   };
 
-  const statusConfig = {
+  const statusConfig: Record<string, { color: string; label: string }> = {
     success: { color: 'success', label: '成功' },
+    completed: { color: 'success', label: '成功' },
     failed: { color: 'error', label: '失败' },
+    pending: { color: 'processing', label: '处理中' },
     processing: { color: 'processing', label: '处理中' },
   };
 
-  // 统计数据
-  const todayDeposit = mockBills
-    .filter((b) => b.type === 'deposit' && b.status === 'success')
-    .reduce((sum, b) => sum + parseFloat(b.amount), 0);
-  const todayWithdraw = mockBills
-    .filter((b) => b.type === 'withdraw' && b.status === 'success')
-    .reduce((sum, b) => sum + Math.abs(parseFloat(b.amount)), 0);
-  const todayFee = mockBills
-    .filter(
-      (b) =>
-        ['subscription', 'profit_share', 'gas_fee'].includes(b.type) &&
-        b.status === 'success'
-    )
-    .reduce((sum, b) => sum + Math.abs(parseFloat(b.amount)), 0);
+  const handleSearch = () => {
+    setPage(1);
+    loadBills();
+  };
 
   const columns = [
     {
       title: '账单ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 100,
+      dataIndex: 'uniqueOrderId',
+      key: 'uniqueOrderId',
+      width: 180,
+      ellipsis: true,
+      render: (id: string) => (
+        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {id?.slice(0, 16)}...
+        </span>
+      ),
     },
     {
       title: '用户',
       key: 'user',
+      width: 140,
       render: (_: unknown, record: IBill) => (
         <div>
-          <div style={{ fontWeight: 500 }}>{record.username}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>ID: {record.userId}</div>
+          <div style={{ fontWeight: 500 }}>{record.username || '-'}</div>
+          <div style={{ fontSize: 12, color: '#999' }}>{record.userId?.slice(0, 8)}...</div>
         </div>
       ),
     },
@@ -172,9 +160,10 @@ export const BillList = () => {
       dataIndex: 'type',
       key: 'type',
       width: 100,
-      render: (type: keyof typeof typeConfig) => (
-        <Tag color={typeConfig[type].color}>{typeConfig[type].label}</Tag>
-      ),
+      render: (type: string) => {
+        const config = typeConfig[type] || { color: 'default', label: type };
+        return <Tag color={config.color}>{config.label}</Tag>;
+      },
     },
     {
       title: '金额',
@@ -182,15 +171,11 @@ export const BillList = () => {
       key: 'amount',
       width: 140,
       render: (amount: string, record: IBill) => {
-        const isPositive = amount.startsWith('+');
+        const value = parseFloat(amount || '0');
+        const isPositive = value >= 0;
         return (
-          <span
-            style={{
-              color: isPositive ? '#52c41a' : '#f5222d',
-              fontWeight: 500,
-            }}
-          >
-            {amount} {record.currency}
+          <span style={{ color: isPositive ? '#52c41a' : '#f5222d', fontWeight: 500 }}>
+            {isPositive ? '+' : ''}{value.toFixed(2)} {record.currency || 'USDT'}
           </span>
         );
       },
@@ -200,114 +185,135 @@ export const BillList = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: keyof typeof statusConfig) => (
-        <Tag color={statusConfig[status].color}>
-          {statusConfig[status].label}
-        </Tag>
-      ),
+      render: (status: string) => {
+        const config = statusConfig[status] || { color: 'default', label: status };
+        return <Tag color={config.color}>{config.label}</Tag>;
+      },
     },
     {
       title: '时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
+      render: (date: string) => date ? new Date(date).toLocaleString() : '-',
     },
     {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: true,
+      render: (remark: string) => remark || '-',
     },
   ];
 
   return (
-    <List
-      headerButtons={
-        <ExportButton>导出</ExportButton>
-      }
-    >
-      {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="今日充值"
-              value={todayDeposit}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="今日提现"
-              value={todayWithdraw}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#f5222d' }}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              title="今日收入 (订阅+分成+燃油费)"
-              value={todayFee}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-      </Row>
+    <List>
+      <Spin spinning={loading}>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="今日收入"
+                value={parseFloat(stats?.todayRevenue || '0')}
+                precision={2}
+                prefix="$"
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="订阅收入"
+                value={parseFloat(stats?.todaySubscription || '0')}
+                precision={2}
+                prefix="$"
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="分成收入"
+                value={parseFloat(stats?.todayProfitShare || '0')}
+                precision={2}
+                prefix="$"
+                valueStyle={{ color: '#722ed1' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="燃油费收入"
+                value={parseFloat(stats?.todayGasFee || '0')}
+                precision={2}
+                prefix="$"
+                valueStyle={{ color: '#fa8c16' }}
+              />
+            </Card>
+          </Col>
+        </Row>
 
-      {/* 筛选条件 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input.Search
-            placeholder="搜索用户ID/用户名"
-            style={{ width: 200 }}
-            allowClear
-          />
-          <Select
-            placeholder="账单类型"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '充值', value: 'deposit' },
-              { label: '提现', value: 'withdraw' },
-              { label: '订阅', value: 'subscription' },
-              { label: '分成', value: 'profit_share' },
-              { label: '燃油费', value: 'gas_fee' },
-              { label: '调整', value: 'adjustment' },
-            ]}
-          />
-          <Select
-            placeholder="状态"
-            style={{ width: 100 }}
-            allowClear
-            options={[
-              { label: '成功', value: 'success' },
-              { label: '失败', value: 'failed' },
-              { label: '处理中', value: 'processing' },
-            ]}
-          />
-          <RangePicker placeholder={['开始日期', '结束日期']} />
-        </Space>
-      </Card>
+        {/* 筛选条件 */}
+        <Card style={{ marginBottom: 16 }}>
+          <Space wrap>
+            <Input
+              placeholder="搜索用户ID"
+              style={{ width: 200 }}
+              allowClear
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              onPressEnter={handleSearch}
+            />
+            <Select
+              placeholder="账单类型"
+              style={{ width: 120 }}
+              allowClear
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={[
+                { label: '充值', value: 'deposit' },
+                { label: '提现', value: 'withdraw' },
+                { label: '订阅', value: 'subscription' },
+                { label: '分成', value: 'profit_share' },
+                { label: '燃油费', value: 'gas_fee' },
+                { label: '推荐奖励', value: 'referral' },
+                { label: '质押奖励', value: 'staking_reward' },
+                { label: '分红', value: 'dividend' },
+                { label: '调整', value: 'adjustment' },
+              ]}
+            />
+            <RangePicker placeholder={['开始日期', '结束日期']} />
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              搜索
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => { loadBills(); loadStats(); }}>
+              刷新
+            </Button>
+          </Space>
+        </Card>
 
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+        <Table
+          dataSource={dataSource}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 900 }}
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </Spin>
     </List>
   );
 };

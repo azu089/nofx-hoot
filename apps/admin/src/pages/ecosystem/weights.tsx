@@ -1,7 +1,8 @@
 /**
  * 权重明细页面
- * HOOT 生态权重查看
+ * 连接真实后端 API
  */
+import { useState, useEffect, useCallback } from 'react';
 import { List } from '@refinedev/antd';
 import {
   Table,
@@ -14,124 +15,136 @@ import {
   Progress,
   Input,
   Select,
-  DatePicker,
   Button,
   Typography,
   Tooltip,
+  Spin,
 } from 'antd';
+import { useMessage } from '../../hooks';
 import {
   SearchOutlined,
   InfoCircleOutlined,
   RiseOutlined,
   FallOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { adminApi } from '../../lib/admin-api';
 
-const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
 interface IWeightRecord {
   id: string;
   userId: string;
   username: string;
-  stakeType: 'A' | 'B';
-  stakeAmount: string;
-  baseWeight: number;
-  timeMultiplier: number;
-  totalWeight: number;
-  weightShare: string;
+  type: string;
+  amount: string;
+  weight: string;
+  totalDividends: string;
   lockDays: number;
-  startDate: string;
-  endDate: string;
-  status: 'active' | 'released' | 'pending';
+  status: string;
+  createdAt: string;
+  unlocksAt: string | null;
 }
 
-// 模拟数据
-const mockWeights: IWeightRecord[] = [
-  {
-    id: '1',
-    userId: 'u1',
-    username: 'crypto_whale',
-    stakeType: 'B',
-    stakeAmount: '1000000',
-    baseWeight: 1000000,
-    timeMultiplier: 2.5,
-    totalWeight: 2500000,
-    weightShare: '8.33',
-    lockDays: 180,
-    startDate: '2024-07-15',
-    endDate: '2025-01-12',
-    status: 'active',
-  },
-  {
-    id: '2',
-    userId: 'u2',
-    username: 'trader_001',
-    stakeType: 'A',
-    stakeAmount: '500000',
-    baseWeight: 500000,
-    timeMultiplier: 1.0,
-    totalWeight: 500000,
-    weightShare: '1.67',
-    lockDays: 0,
-    startDate: '2025-01-01',
-    endDate: '-',
-    status: 'active',
-  },
-  {
-    id: '3',
-    userId: 'u3',
-    username: 'diamond_hands',
-    stakeType: 'B',
-    stakeAmount: '2000000',
-    baseWeight: 2000000,
-    timeMultiplier: 3.0,
-    totalWeight: 6000000,
-    weightShare: '20.00',
-    lockDays: 365,
-    startDate: '2024-01-30',
-    endDate: '2025-01-30',
-    status: 'pending',
-  },
-  {
-    id: '4',
-    userId: 'u4',
-    username: 'early_investor',
-    stakeType: 'B',
-    stakeAmount: '800000',
-    baseWeight: 800000,
-    timeMultiplier: 2.0,
-    totalWeight: 1600000,
-    weightShare: '5.33',
-    lockDays: 90,
-    startDate: '2024-10-01',
-    endDate: '2024-12-31',
-    status: 'released',
-  },
-];
-
-// 统计数据
-const mockStats = {
-  totalWeight: 30000000,
-  totalStakers: 892,
-  avgMultiplier: 1.85,
-  typeAShare: 35,
-  typeBShare: 65,
-};
+interface IStats {
+  totalStaked: string;
+  totalStakers: number;
+  weightedStaking: string;
+  typeAAmount: string;
+  typeBAmount: string;
+}
 
 export const WeightsPage = () => {
-  const [dataSource] = useState<IWeightRecord[]>(mockWeights);
+  const message = useMessage();
+  const [dataSource, setDataSource] = useState<IWeightRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<IStats | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [searchKeyword, setSearchKeyword] = useState('');
 
-  const statusColors = {
+  // 加载质押记录
+  const loadRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+      });
+      if (statusFilter) params.append('status', statusFilter);
+
+      const response = await adminApi.get(`/admin/ecosystem/staking/records?${params}`);
+      if (response.data.code === 0) {
+        const data = response.data.data as { items: any[]; total: number };
+        // 映射数据
+        const items: IWeightRecord[] = (data.items || []).map((r: any) => ({
+          id: r.id,
+          userId: r.userId,
+          username: r.user?.nickname || r.user?.email || '-',
+          type: r.type,
+          amount: r.amount,
+          weight: r.weight,
+          totalDividends: r.totalDividends,
+          lockDays: r.lockDays || 0,
+          status: r.status,
+          createdAt: r.createdAt,
+          unlocksAt: r.unlocksAt,
+        }));
+        setDataSource(items);
+        setTotal(data.total || 0);
+      } else {
+        message.error(response.data.message || '加载失败');
+      }
+    } catch (error: any) {
+      console.error('加载质押记录失败:', error);
+      message.error(error.response?.data?.message || '加载质押记录失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, statusFilter]);
+
+  // 加载统计数据
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await adminApi.get('/admin/ecosystem/stats');
+      if (response.data.code === 0) {
+        setStats(response.data.data as IStats);
+      }
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecords();
+    loadStats();
+  }, [loadRecords, loadStats]);
+
+  // 计算总权重和权重占比
+  const totalWeight = dataSource.reduce((sum, r) => {
+    const weightedAmount = parseFloat(r.amount || '0') * parseFloat(r.weight || '1');
+    return sum + weightedAmount;
+  }, 0);
+
+  const statusColors: Record<string, string> = {
     active: 'green',
-    released: 'default',
+    unlocked: 'default',
     pending: 'orange',
+    unstaking: 'orange',
   };
 
-  const statusLabels = {
+  const statusLabels: Record<string, string> = {
     active: '生效中',
-    released: '已释放',
-    pending: '待释放',
+    unlocked: '已释放',
+    pending: '待生效',
+    unstaking: '解锁中',
+  };
+
+  const handleSearch = () => {
+    setPage(1);
+    loadRecords();
   };
 
   const columns = [
@@ -142,14 +155,14 @@ export const WeightsPage = () => {
       render: (_: unknown, record: IWeightRecord) => (
         <div>
           <div style={{ fontWeight: 500 }}>{record.username}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId?.slice(0, 8)}...</Text>
         </div>
       ),
     },
     {
       title: '质押类型',
-      dataIndex: 'stakeType',
-      key: 'stakeType',
+      dataIndex: 'type',
+      key: 'type',
       width: 100,
       render: (type: string) => (
         <Tag color={type === 'A' ? 'blue' : 'purple'}>
@@ -160,82 +173,76 @@ export const WeightsPage = () => {
         { text: '活期 (A)', value: 'A' },
         { text: '定期 (B)', value: 'B' },
       ],
-      onFilter: (value: unknown, record: IWeightRecord) => record.stakeType === value,
+      onFilter: (value: unknown, record: IWeightRecord) => record.type === value,
     },
     {
       title: '质押数量',
-      dataIndex: 'stakeAmount',
-      key: 'stakeAmount',
+      dataIndex: 'amount',
+      key: 'amount',
       width: 140,
       render: (amount: string) => (
         <span style={{ fontWeight: 500, color: '#1890ff' }}>
-          {parseFloat(amount).toLocaleString()} HOOT
+          {parseFloat(amount || '0').toLocaleString()} HOOT
         </span>
       ),
-      sorter: (a: IWeightRecord, b: IWeightRecord) => parseFloat(a.stakeAmount) - parseFloat(b.stakeAmount),
+      sorter: (a: IWeightRecord, b: IWeightRecord) => parseFloat(a.amount) - parseFloat(b.amount),
     },
     {
       title: (
         <Space>
-          基础权重
-          <Tooltip title="基础权重 = 质押数量">
-            <InfoCircleOutlined style={{ color: '#999' }} />
-          </Tooltip>
-        </Space>
-      ),
-      dataIndex: 'baseWeight',
-      key: 'baseWeight',
-      width: 120,
-      render: (weight: number) => weight.toLocaleString(),
-    },
-    {
-      title: (
-        <Space>
-          时间乘数
+          权重乘数
           <Tooltip title="A类固定1.0x，B类随锁定时间增加（最高3.0x）">
             <InfoCircleOutlined style={{ color: '#999' }} />
           </Tooltip>
         </Space>
       ),
-      dataIndex: 'timeMultiplier',
-      key: 'timeMultiplier',
+      dataIndex: 'weight',
+      key: 'weight',
       width: 100,
-      render: (multiplier: number) => (
-        <Tag color={multiplier >= 2 ? 'gold' : multiplier > 1 ? 'green' : 'default'}>
-          {multiplier.toFixed(1)}x
-        </Tag>
-      ),
+      render: (weight: string) => {
+        const w = parseFloat(weight || '1');
+        return (
+          <Tag color={w >= 2 ? 'gold' : w > 1 ? 'green' : 'default'}>
+            {w.toFixed(2)}x
+          </Tag>
+        );
+      },
     },
     {
-      title: '总权重',
-      dataIndex: 'totalWeight',
-      key: 'totalWeight',
+      title: '加权权重',
+      key: 'weightedAmount',
       width: 140,
-      render: (weight: number) => (
-        <span style={{ fontWeight: 600, color: '#52c41a' }}>
-          {weight.toLocaleString()}
-        </span>
-      ),
-      sorter: (a: IWeightRecord, b: IWeightRecord) => a.totalWeight - b.totalWeight,
+      render: (_: unknown, record: IWeightRecord) => {
+        const weighted = parseFloat(record.amount || '0') * parseFloat(record.weight || '1');
+        return (
+          <span style={{ fontWeight: 600, color: '#52c41a' }}>
+            {weighted.toLocaleString()}
+          </span>
+        );
+      },
     },
     {
       title: '权重占比',
-      dataIndex: 'weightShare',
       key: 'weightShare',
       width: 140,
-      render: (share: string) => (
-        <Space>
-          <Progress
-            percent={parseFloat(share)}
-            size="small"
-            style={{ width: 60 }}
-            showInfo={false}
-            strokeColor="#722ed1"
-          />
-          <span>{share}%</span>
-        </Space>
-      ),
-      sorter: (a: IWeightRecord, b: IWeightRecord) => parseFloat(a.weightShare) - parseFloat(b.weightShare),
+      render: (_: unknown, record: IWeightRecord) => {
+        const weighted = parseFloat(record.amount || '0') * parseFloat(record.weight || '1');
+        const share = totalWeight > 0
+          ? ((weighted / totalWeight) * 100).toFixed(2)
+          : '0.00';
+        return (
+          <Space>
+            <Progress
+              percent={parseFloat(share)}
+              size="small"
+              style={{ width: 60 }}
+              showInfo={false}
+              strokeColor="#722ed1"
+            />
+            <span>{share}%</span>
+          </Space>
+        );
+      },
     },
     {
       title: '锁定天数',
@@ -247,155 +254,170 @@ export const WeightsPage = () => {
       ),
     },
     {
-      title: '质押期限',
-      key: 'period',
-      width: 160,
-      render: (_: unknown, record: IWeightRecord) => (
-        <div style={{ fontSize: 12 }}>
-          <div>{record.startDate}</div>
-          <div>至 {record.endDate}</div>
-        </div>
+      title: '累计分红',
+      dataIndex: 'totalDividends',
+      key: 'totalDividends',
+      width: 120,
+      render: (amount: string) => (
+        <span style={{ color: '#52c41a' }}>
+          {parseFloat(amount || '0').toFixed(2)} HOOT
+        </span>
       ),
+    },
+    {
+      title: '质押时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 120,
+      render: (date: string) => date ? new Date(date).toLocaleDateString() : '-',
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: keyof typeof statusColors) => (
-        <Tag color={statusColors[status]}>{statusLabels[status]}</Tag>
+      render: (status: string) => (
+        <Tag color={statusColors[status] || 'default'}>
+          {statusLabels[status] || status}
+        </Tag>
       ),
-      filters: [
-        { text: '生效中', value: 'active' },
-        { text: '已释放', value: 'released' },
-        { text: '待释放', value: 'pending' },
-      ],
-      onFilter: (value: unknown, record: IWeightRecord) => record.status === value,
     },
   ];
 
+  // 统计计算
+  const totalStaked = parseFloat(stats?.totalStaked || '0');
+  const typeAAmount = parseFloat(stats?.typeAAmount || '0');
+  const typeBAmount = parseFloat(stats?.typeBAmount || '0');
+  const typeAShare = totalStaked > 0 ? ((typeAAmount / totalStaked) * 100).toFixed(1) : '0';
+  const typeBShare = totalStaked > 0 ? ((typeBAmount / totalStaked) * 100).toFixed(1) : '0';
+
   return (
     <List>
-      {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={5}>
-          <Card>
-            <Statistic
-              title="总权重池"
-              value={mockStats.totalWeight}
-              valueStyle={{ color: '#722ed1' }}
-              suffix="W"
-              formatter={(value) => `${(Number(value) / 10000).toFixed(0)}`}
-            />
-          </Card>
-        </Col>
-        <Col span={5}>
-          <Card>
-            <Statistic
-              title="质押用户数"
-              value={mockStats.totalStakers}
-              valueStyle={{ color: '#1890ff' }}
-              suffix="人"
-            />
-          </Card>
-        </Col>
-        <Col span={5}>
-          <Card>
-            <Statistic
-              title="平均乘数"
-              value={mockStats.avgMultiplier}
-              precision={2}
-              valueStyle={{ color: '#52c41a' }}
-              suffix="x"
-            />
-          </Card>
-        </Col>
-        <Col span={4}>
-          <Card>
-            <Statistic
-              title="A类占比"
-              value={mockStats.typeAShare}
-              valueStyle={{ color: '#1890ff' }}
-              suffix="%"
-              prefix={<FallOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={5}>
-          <Card>
-            <Statistic
-              title="B类占比"
-              value={mockStats.typeBShare}
-              valueStyle={{ color: '#722ed1' }}
-              suffix="%"
-              prefix={<RiseOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+      <Spin spinning={loading}>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={5}>
+            <Card>
+              <Statistic
+                title="加权总权重"
+                value={parseFloat(stats?.weightedStaking || '0')}
+                valueStyle={{ color: '#722ed1' }}
+                formatter={(value) => `${(Number(value) / 10000).toFixed(2)}万`}
+              />
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card>
+              <Statistic
+                title="质押总量"
+                value={totalStaked}
+                valueStyle={{ color: '#1890ff' }}
+                formatter={(value) => `${(Number(value) / 10000).toFixed(2)}万`}
+                suffix="HOOT"
+              />
+            </Card>
+          </Col>
+          <Col span={4}>
+            <Card>
+              <Statistic
+                title="质押用户数"
+                value={stats?.totalStakers || 0}
+                valueStyle={{ color: '#52c41a' }}
+                suffix="人"
+              />
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card>
+              <Statistic
+                title="A类占比"
+                value={typeAShare}
+                valueStyle={{ color: '#1890ff' }}
+                suffix="%"
+                prefix={<FallOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={5}>
+            <Card>
+              <Statistic
+                title="B类占比"
+                value={typeBShare}
+                valueStyle={{ color: '#722ed1' }}
+                suffix="%"
+                prefix={<RiseOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
 
-      {/* 权重说明 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space direction="vertical" size={4}>
-          <Text strong>权重计算规则：</Text>
-          <Text type="secondary">
-            • A类（活期）：权重 = 质押数量 × 1.0，无锁定期，随时可赎回
-          </Text>
-          <Text type="secondary">
-            • B类（定期）：权重 = 质押数量 × 时间乘数（1.0x ~ 3.0x），乘数随锁定时间递增
-          </Text>
-          <Text type="secondary">
-            • 时间乘数公式：min(1 + 锁定天数 / 180, 3.0)
-          </Text>
-        </Space>
-      </Card>
+        {/* 权重说明 */}
+        <Card style={{ marginBottom: 16 }}>
+          <Space direction="vertical" size={4}>
+            <Text strong>权重计算规则：</Text>
+            <Text type="secondary">
+              • A类（活期）：权重 = 质押数量 × 1.0，无锁定期，随时可赎回
+            </Text>
+            <Text type="secondary">
+              • B类（定期）：权重 = 质押数量 × 时间乘数（1.0x ~ 3.0x），乘数随锁定时间递增
+            </Text>
+            <Text type="secondary">
+              • 时间乘数公式：min(1 + 锁定天数 / 180, 3.0)
+            </Text>
+          </Space>
+        </Card>
 
-      {/* 筛选区域 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input
-            placeholder="搜索用户名/ID"
-            prefix={<SearchOutlined />}
-            style={{ width: 200 }}
-          />
-          <Select
-            placeholder="质押类型"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '活期 (A)', value: 'A' },
-              { label: '定期 (B)', value: 'B' },
-            ]}
-          />
-          <Select
-            placeholder="状态"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '生效中', value: 'active' },
-              { label: '已释放', value: 'released' },
-              { label: '待释放', value: 'pending' },
-            ]}
-          />
-          <RangePicker placeholder={['开始日期', '结束日期']} />
-          <Button type="primary" icon={<SearchOutlined />}>
-            搜索
-          </Button>
-        </Space>
-      </Card>
+        {/* 筛选区域 */}
+        <Card style={{ marginBottom: 16 }}>
+          <Space wrap>
+            <Input
+              placeholder="搜索用户名/ID"
+              prefix={<SearchOutlined />}
+              style={{ width: 200 }}
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              onPressEnter={handleSearch}
+            />
+            <Select
+              placeholder="状态"
+              style={{ width: 120 }}
+              allowClear
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { label: '生效中', value: 'active' },
+                { label: '已释放', value: 'unlocked' },
+                { label: '解锁中', value: 'unstaking' },
+              ]}
+            />
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              搜索
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => { loadRecords(); loadStats(); }}>
+              刷新
+            </Button>
+          </Space>
+        </Card>
 
-      {/* 数据表格 */}
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-        scroll={{ x: 1400 }}
-      />
+        {/* 数据表格 */}
+        <Table
+          dataSource={dataSource}
+          columns={columns}
+          rowKey="id"
+          pagination={{
+            current: page,
+            pageSize: pageSize,
+            total: total,
+            showSizeChanger: true,
+            showTotal: (t) => `共 ${t} 条`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+          scroll={{ x: 1400 }}
+        />
+      </Spin>
     </List>
   );
 };

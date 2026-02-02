@@ -1,6 +1,14 @@
 /**
  * 紧急开关页面
  * 全局/策略/用户级别的信号控制
+ * 已对接真实 API:
+ * - GET /admin/signals/kill-switch
+ * - POST /admin/signals/kill-switch/global
+ * - POST /admin/signals/kill-switch/strategy/:id
+ * - POST /admin/signals/kill-switch/strategies/batch
+ * - POST /admin/signals/kill-switch/user/:id
+ * - GET /admin/signals/kill-switch/users/search
+ * - GET /admin/signals/kill-switch/logs
  */
 import {
   Card,
@@ -16,10 +24,10 @@ import {
   Modal,
   Input,
   Select,
-  message,
   Divider,
   Timeline,
   Statistic,
+  Spin,
 } from 'antd';
 import {
   StopOutlined,
@@ -30,8 +38,11 @@ import {
   RocketOutlined,
   ThunderboltOutlined,
   WarningOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -40,9 +51,9 @@ const { confirm } = Modal;
 interface IStrategySwitch {
   id: string;
   name: string;
-  status: 'running' | 'stopped';
-  subscribers: number;
-  lastSignal: string;
+  isActive: boolean;
+  subscriberCount: number;
+  lastSignal: string | null;
   stoppedAt?: string;
   stoppedBy?: string;
   reason?: string;
@@ -60,7 +71,7 @@ interface IUserSwitch {
 
 interface ISwitchLog {
   id: string;
-  type: 'global' | 'strategy' | 'user';
+  type: 'global' | 'strategy' | 'user' | 'batch_strategy';
   target: string;
   action: 'stop' | 'resume';
   operator: string;
@@ -68,33 +79,51 @@ interface ISwitchLog {
   time: string;
 }
 
-// 模拟数据
-const mockStrategies: IStrategySwitch[] = [
-  { id: 'S001', name: 'BTC 趋势追踪', status: 'running', subscribers: 156, lastSignal: '2025-01-30 14:25:00' },
-  { id: 'S002', name: 'ETH 网格策略', status: 'running', subscribers: 89, lastSignal: '2025-01-30 14:20:00' },
-  { id: 'S003', name: 'SOL 波段策略', status: 'stopped', subscribers: 45, lastSignal: '2025-01-30 10:00:00', stoppedAt: '2025-01-30 10:30:00', stoppedBy: 'admin', reason: '策略异常，紧急停止' },
-  { id: 'S004', name: 'DOGE 高频策略', status: 'running', subscribers: 234, lastSignal: '2025-01-30 14:28:00' },
-];
-
-const mockUsers: IUserSwitch[] = [
-  { userId: 'U001', email: 'user1@example.com', username: '张三', status: 'active' },
-  { userId: 'U002', email: 'user2@example.com', username: '李四', status: 'stopped', stoppedAt: '2025-01-30 12:00:00', stoppedBy: 'admin', reason: '账户异常' },
-];
-
-const mockLogs: ISwitchLog[] = [
-  { id: '1', type: 'strategy', target: 'SOL 波段策略', action: 'stop', operator: 'admin', reason: '策略异常，紧急停止', time: '2025-01-30 10:30:00' },
-  { id: '2', type: 'user', target: 'user2@example.com', action: 'stop', operator: 'admin', reason: '账户异常', time: '2025-01-30 12:00:00' },
-  { id: '3', type: 'global', target: '全局', action: 'stop', operator: 'admin', reason: '系统维护', time: '2025-01-29 22:00:00' },
-  { id: '4', type: 'global', target: '全局', action: 'resume', operator: 'admin', reason: '维护完成', time: '2025-01-30 02:00:00' },
-];
+interface IKillSwitchOverview {
+  global: {
+    enabled: boolean;
+    lastUpdated: string;
+    updatedBy: string | null;
+  };
+  stats: {
+    totalStrategies: number;
+    runningStrategies: number;
+    stoppedStrategies: number;
+    stoppedUsers: number;
+    affectedUsers: number;
+  };
+  strategies: IStrategySwitch[];
+  stoppedUsers: IUserSwitch[];
+  recentLogs: ISwitchLog[];
+}
 
 export const KillSwitchPage = () => {
-  const [globalEnabled, setGlobalEnabled] = useState(true);
-  const [strategies, setStrategies] = useState(mockStrategies);
-  const [users, setUsers] = useState(mockUsers);
+  const message = useMessage();
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState<IKillSwitchOverview | null>(null);
   const [stopModalVisible, setStopModalVisible] = useState(false);
   const [stopTarget, setStopTarget] = useState<{ type: string; id: string; name: string } | null>(null);
   const [stopReason, setStopReason] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<IUserSwitch[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // 加载数据
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get<{ code: number; data: IKillSwitchOverview }>('/admin/signals/kill-switch');
+      setOverview(res.data || res);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '加载数据失败';
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // 全局开关切换
   const handleGlobalSwitch = (checked: boolean) => {
@@ -108,16 +137,25 @@ export const KillSwitchPage = () => {
       okText: '确认',
       cancelText: '取消',
       okButtonProps: { danger: !checked },
-      onOk() {
-        setGlobalEnabled(checked);
-        message.success(`全局信号已${action}`);
+      async onOk() {
+        try {
+          await api.post('/admin/signals/kill-switch/global', {
+            enabled: checked,
+            reason: checked ? '管理员恢复全局信号' : '管理员停止全局信号',
+          });
+          message.success(`全局信号已${action}`);
+          fetchData();
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '操作失败';
+          message.error(errorMessage);
+        }
       },
     });
   };
 
   // 策略开关切换
   const handleStrategySwitch = (strategy: IStrategySwitch) => {
-    if (strategy.status === 'running') {
+    if (strategy.isActive) {
       setStopTarget({ type: 'strategy', id: strategy.id, name: strategy.name });
       setStopModalVisible(true);
     } else {
@@ -127,11 +165,18 @@ export const KillSwitchPage = () => {
         content: '恢复后该策略将继续发送信号',
         okText: '确认恢复',
         cancelText: '取消',
-        onOk() {
-          setStrategies(strategies.map(s =>
-            s.id === strategy.id ? { ...s, status: 'running', stoppedAt: undefined, stoppedBy: undefined, reason: undefined } : s
-          ));
-          message.success(`策略 "${strategy.name}" 已恢复`);
+        async onOk() {
+          try {
+            await api.post(`/admin/signals/kill-switch/strategy/${strategy.id}`, {
+              enabled: true,
+              reason: '管理员恢复策略',
+            });
+            message.success(`策略 "${strategy.name}" 已恢复`);
+            fetchData();
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : '操作失败';
+            message.error(errorMessage);
+          }
         },
       });
     }
@@ -149,41 +194,52 @@ export const KillSwitchPage = () => {
         content: '恢复后该用户将继续接收交易信号',
         okText: '确认恢复',
         cancelText: '取消',
-        onOk() {
-          setUsers(users.map(u =>
-            u.userId === user.userId ? { ...u, status: 'active', stoppedAt: undefined, stoppedBy: undefined, reason: undefined } : u
-          ));
-          message.success(`用户 "${user.username}" 已恢复`);
+        async onOk() {
+          try {
+            await api.post(`/admin/signals/kill-switch/user/${user.userId}`, {
+              enabled: true,
+              reason: '管理员恢复用户信号',
+            });
+            message.success(`用户 "${user.username}" 已恢复`);
+            fetchData();
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : '操作失败';
+            message.error(errorMessage);
+          }
         },
       });
     }
   };
 
   // 确认停止
-  const handleConfirmStop = () => {
+  const handleConfirmStop = async () => {
     if (!stopTarget || !stopReason.trim()) {
       message.error('请填写停止原因');
       return;
     }
 
-    if (stopTarget.type === 'strategy') {
-      setStrategies(strategies.map(s =>
-        s.id === stopTarget.id
-          ? { ...s, status: 'stopped', stoppedAt: new Date().toLocaleString(), stoppedBy: 'admin', reason: stopReason }
-          : s
-      ));
-    } else if (stopTarget.type === 'user') {
-      setUsers(users.map(u =>
-        u.userId === stopTarget.id
-          ? { ...u, status: 'stopped', stoppedAt: new Date().toLocaleString(), stoppedBy: 'admin', reason: stopReason }
-          : u
-      ));
-    }
+    try {
+      if (stopTarget.type === 'strategy') {
+        await api.post(`/admin/signals/kill-switch/strategy/${stopTarget.id}`, {
+          enabled: false,
+          reason: stopReason,
+        });
+      } else if (stopTarget.type === 'user') {
+        await api.post(`/admin/signals/kill-switch/user/${stopTarget.id}`, {
+          enabled: false,
+          reason: stopReason,
+        });
+      }
 
-    message.success(`已停止: ${stopTarget.name}`);
-    setStopModalVisible(false);
-    setStopTarget(null);
-    setStopReason('');
+      message.success(`已停止: ${stopTarget.name}`);
+      setStopModalVisible(false);
+      setStopTarget(null);
+      setStopReason('');
+      fetchData();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '操作失败';
+      message.error(errorMessage);
+    }
   };
 
   // 一键停止所有策略
@@ -195,36 +251,81 @@ export const KillSwitchPage = () => {
       okText: '确认停止',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk() {
-        setStrategies(strategies.map(s => ({
-          ...s,
-          status: 'stopped',
-          stoppedAt: new Date().toLocaleString(),
-          stoppedBy: 'admin',
-          reason: '一键停止所有策略',
-        })));
-        message.success('已停止所有策略');
+      async onOk() {
+        try {
+          await api.post('/admin/signals/kill-switch/strategies/batch', {
+            enabled: false,
+            reason: '一键停止所有策略',
+          });
+          message.success('已停止所有策略');
+          fetchData();
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '操作失败';
+          message.error(errorMessage);
+        }
       },
     });
   };
 
+  // 一键恢复所有策略
+  const handleResumeAll = () => {
+    confirm({
+      title: '确认恢复所有策略？',
+      icon: <PlayCircleOutlined style={{ color: '#52c41a' }} />,
+      content: '这将恢复所有已停止策略的信号发送',
+      okText: '确认恢复',
+      cancelText: '取消',
+      async onOk() {
+        try {
+          await api.post('/admin/signals/kill-switch/strategies/batch', {
+            enabled: true,
+            reason: '一键恢复所有策略',
+          });
+          message.success('已恢复所有策略');
+          fetchData();
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '操作失败';
+          message.error(errorMessage);
+        }
+      },
+    });
+  };
+
+  // 搜索用户
+  const handleSearchUser = async (keyword: string) => {
+    if (!keyword || keyword.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const res = await api.get<{ code: number; data: IUserSwitch[] }>(
+        `/admin/signals/kill-switch/users/search?keyword=${encodeURIComponent(keyword)}`
+      );
+      setUserSearchResults(res.data || res || []);
+    } catch {
+      setUserSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   const strategyColumns = [
-    { title: '策略ID', dataIndex: 'id', key: 'id' },
+    { title: '策略ID', dataIndex: 'id', key: 'id', width: 100, render: (id: string) => <Text copyable={{ text: id }}>{id.slice(0, 8)}...</Text> },
     { title: '策略名称', dataIndex: 'name', key: 'name', render: (name: string) => <Text strong>{name}</Text> },
-    { title: '订阅人数', dataIndex: 'subscribers', key: 'subscribers' },
-    { title: '最后信号', dataIndex: 'lastSignal', key: 'lastSignal', render: (t: string) => <Text type="secondary">{t}</Text> },
+    { title: '订阅人数', dataIndex: 'subscriberCount', key: 'subscriberCount' },
+    { title: '最后信号', dataIndex: 'lastSignal', key: 'lastSignal', render: (t: string | null) => t ? <Text type="secondary">{new Date(t).toLocaleString('zh-CN')}</Text> : '-' },
     {
       title: '状态',
-      dataIndex: 'status',
       key: 'status',
-      render: (status: string, record: IStrategySwitch) => (
+      render: (_: unknown, record: IStrategySwitch) => (
         <Space direction="vertical" size={0}>
-          <Tag color={status === 'running' ? 'success' : 'error'}>
-            {status === 'running' ? '运行中' : '已停止'}
+          <Tag color={record.isActive ? 'success' : 'error'}>
+            {record.isActive ? '运行中' : '已停止'}
           </Tag>
-          {record.stoppedAt && (
+          {!record.isActive && record.stoppedAt && (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.stoppedBy} 于 {record.stoppedAt}
+              {record.stoppedBy} 于 {new Date(record.stoppedAt).toLocaleString('zh-CN')}
             </Text>
           )}
         </Space>
@@ -235,7 +336,7 @@ export const KillSwitchPage = () => {
       key: 'action',
       render: (_: unknown, record: IStrategySwitch) => (
         <Switch
-          checked={record.status === 'running'}
+          checked={record.isActive}
           onChange={() => handleStrategySwitch(record)}
           checkedChildren="运行"
           unCheckedChildren="停止"
@@ -245,19 +346,18 @@ export const KillSwitchPage = () => {
   ];
 
   const userColumns = [
-    { title: '用户ID', dataIndex: 'userId', key: 'userId' },
+    { title: '用户ID', dataIndex: 'userId', key: 'userId', width: 100, render: (id: string) => <Text copyable={{ text: id }}>{id.slice(0, 8)}...</Text> },
     { title: '邮箱', dataIndex: 'email', key: 'email' },
     { title: '用户名', dataIndex: 'username', key: 'username' },
     {
       title: '状态',
-      dataIndex: 'status',
       key: 'status',
-      render: (status: string, record: IUserSwitch) => (
+      render: (_: unknown, record: IUserSwitch) => (
         <Space direction="vertical" size={0}>
-          <Tag color={status === 'active' ? 'success' : 'error'}>
-            {status === 'active' ? '正常' : '已停止'}
+          <Tag color={record.status === 'active' ? 'success' : 'error'}>
+            {record.status === 'active' ? '正常' : '已停止'}
           </Tag>
-          {record.stoppedAt && (
+          {record.status === 'stopped' && record.reason && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               原因: {record.reason}
             </Text>
@@ -279,15 +379,25 @@ export const KillSwitchPage = () => {
     },
   ];
 
-  const runningStrategies = strategies.filter(s => s.status === 'running').length;
-  const stoppedStrategies = strategies.filter(s => s.status === 'stopped').length;
+  if (loading || !overview) {
+    return (
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  const { global, stats, strategies, stoppedUsers, recentLogs } = overview;
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={4} style={{ marginBottom: 24 }}>紧急开关</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>紧急开关</Title>
+        <Button icon={<ReloadOutlined spin={loading} />} onClick={fetchData}>刷新</Button>
+      </div>
 
       {/* 全局状态警告 */}
-      {!globalEnabled && (
+      {!global.enabled && (
         <Alert
           message="全局信号已停止"
           description="所有策略的信号发送已被暂停，用户无法收到任何交易信号"
@@ -309,13 +419,13 @@ export const KillSwitchPage = () => {
           <Card>
             <Statistic
               title="全局开关"
-              value={globalEnabled ? '开启' : '关闭'}
-              valueStyle={{ color: globalEnabled ? '#52c41a' : '#f5222d' }}
-              prefix={globalEnabled ? <ThunderboltOutlined /> : <StopOutlined />}
+              value={global.enabled ? '开启' : '关闭'}
+              valueStyle={{ color: global.enabled ? '#52c41a' : '#f5222d' }}
+              prefix={global.enabled ? <ThunderboltOutlined /> : <StopOutlined />}
             />
             <div style={{ marginTop: 16 }}>
               <Switch
-                checked={globalEnabled}
+                checked={global.enabled}
                 onChange={handleGlobalSwitch}
                 checkedChildren="开启"
                 unCheckedChildren="关闭"
@@ -328,8 +438,8 @@ export const KillSwitchPage = () => {
           <Card>
             <Statistic
               title="运行中策略"
-              value={runningStrategies}
-              suffix={`/ ${strategies.length}`}
+              value={stats.runningStrategies}
+              suffix={`/ ${stats.totalStrategies}`}
               valueStyle={{ color: '#52c41a' }}
               prefix={<RocketOutlined />}
             />
@@ -339,8 +449,8 @@ export const KillSwitchPage = () => {
           <Card>
             <Statistic
               title="已停止策略"
-              value={stoppedStrategies}
-              valueStyle={{ color: stoppedStrategies > 0 ? '#faad14' : '#52c41a' }}
+              value={stats.stoppedStrategies}
+              valueStyle={{ color: stats.stoppedStrategies > 0 ? '#faad14' : '#52c41a' }}
               prefix={<WarningOutlined />}
             />
           </Card>
@@ -349,7 +459,7 @@ export const KillSwitchPage = () => {
           <Card>
             <Statistic
               title="受影响用户"
-              value={strategies.filter(s => s.status === 'stopped').reduce((sum, s) => sum + s.subscribers, 0)}
+              value={stats.affectedUsers}
               prefix={<UserOutlined />}
             />
           </Card>
@@ -363,17 +473,14 @@ export const KillSwitchPage = () => {
             danger
             icon={<StopOutlined />}
             onClick={handleStopAll}
-            disabled={runningStrategies === 0}
+            disabled={stats.runningStrategies === 0}
           >
             一键停止所有策略
           </Button>
           <Button
             icon={<PlayCircleOutlined />}
-            onClick={() => {
-              setStrategies(strategies.map(s => ({ ...s, status: 'running', stoppedAt: undefined, stoppedBy: undefined, reason: undefined })));
-              message.success('已恢复所有策略');
-            }}
-            disabled={stoppedStrategies === 0}
+            onClick={handleResumeAll}
+            disabled={stats.stoppedStrategies === 0}
           >
             一键恢复所有策略
           </Button>
@@ -395,6 +502,7 @@ export const KillSwitchPage = () => {
           columns={strategyColumns}
           rowKey="id"
           pagination={false}
+          locale={{ emptyText: '暂无策略' }}
         />
       </Card>
 
@@ -410,20 +518,31 @@ export const KillSwitchPage = () => {
           <Select
             placeholder="搜索用户"
             showSearch
-            style={{ width: 200 }}
-            filterOption={(input, option) =>
-              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-            }
-            options={users.map(u => ({ value: u.userId, label: u.email }))}
+            style={{ width: 250 }}
+            loading={searchLoading}
+            onSearch={handleSearchUser}
+            filterOption={false}
+            notFoundContent={searchLoading ? <Spin size="small" /> : '无匹配用户'}
+            options={userSearchResults.map(u => ({
+              value: u.userId,
+              label: `${u.email} (${u.username})`,
+              user: u,
+            }))}
+            onSelect={(_, option: any) => {
+              if (option.user) {
+                handleUserSwitch(option.user);
+              }
+            }}
           />
         }
         style={{ marginBottom: 24 }}
       >
         <Table
-          dataSource={users}
+          dataSource={stoppedUsers}
           columns={userColumns}
           rowKey="userId"
           pagination={{ pageSize: 10 }}
+          locale={{ emptyText: '暂无被停止的用户' }}
         />
       </Card>
 
@@ -436,25 +555,32 @@ export const KillSwitchPage = () => {
           </Space>
         }
       >
-        <Timeline
-          items={mockLogs.map(log => ({
-            color: log.action === 'stop' ? 'red' : 'green',
-            children: (
-              <div>
-                <Text strong>
-                  {log.action === 'stop' ? '停止' : '恢复'}
-                  {log.type === 'global' ? ' 全局信号' : log.type === 'strategy' ? ` 策略: ${log.target}` : ` 用户: ${log.target}`}
-                </Text>
-                <br />
-                <Text type="secondary">原因: {log.reason}</Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  操作人: {log.operator} | {log.time}
-                </Text>
-              </div>
-            ),
-          }))}
-        />
+        {recentLogs.length > 0 ? (
+          <Timeline
+            items={recentLogs.map(log => ({
+              color: log.action === 'stop' ? 'red' : 'green',
+              children: (
+                <div>
+                  <Text strong>
+                    {log.action === 'stop' ? '停止' : '恢复'}
+                    {log.type === 'global' ? ' 全局信号' :
+                     log.type === 'batch_strategy' ? ` ${log.target}` :
+                     log.type === 'strategy' ? ` 策略: ${log.target}` :
+                     ` 用户: ${log.target}`}
+                  </Text>
+                  <br />
+                  <Text type="secondary">原因: {log.reason}</Text>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    操作人: {log.operator} | {new Date(log.time).toLocaleString('zh-CN')}
+                  </Text>
+                </div>
+              ),
+            }))}
+          />
+        ) : (
+          <Text type="secondary">暂无操作日志</Text>
+        )}
       </Card>
 
       {/* 停止确认弹窗 */}

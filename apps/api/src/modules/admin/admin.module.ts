@@ -2,6 +2,7 @@ import { Module, OnModuleInit, Global } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
 import { AdminAuthController } from './admin-auth.controller';
+import { AdminContentController } from './admin-content.controller';
 import { AdminService } from './admin.service';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './guards/admin.guard';
@@ -16,6 +17,9 @@ import { AdminAgentService } from './services/admin-agent.service';
 import { AdminStakingService } from './services/admin-staking.service';
 import { AdminTokenService } from './services/admin-token.service';
 import { AdminReferralService } from './services/admin-referral.service';
+import { AdminContentService } from './services/admin-content.service';
+import { AdminSignalService } from './services/admin-signal.service';
+import { TranslateService } from '../../common/services/translate.service';
 
 @Global() // 设置为全局模块，其他模块可以直接使用 AdminGuard
 @Module({
@@ -28,7 +32,7 @@ import { AdminReferralService } from './services/admin-referral.service';
       signOptions: { expiresIn: '24h' } as const,
     }),
   ],
-  controllers: [AdminController, AdminAuthController],
+  controllers: [AdminController, AdminAuthController, AdminContentController],
   providers: [
     AdminService,
     AdminAuthService,
@@ -40,6 +44,9 @@ import { AdminReferralService } from './services/admin-referral.service';
     AdminStakingService,
     AdminTokenService,
     AdminReferralService,
+    AdminContentService,
+    AdminSignalService,
+    TranslateService,
   ],
   exports: [
     AdminService,

@@ -1,9 +1,10 @@
 /**
  * 财务报表页面
  */
-import { Card, Row, Col, Statistic, Typography, DatePicker, Select, Space, Table, Tag, Button, message } from 'antd';
+import { Card, Row, Col, Statistic, Typography, DatePicker, Select, Space, Table, Tag, Button } from 'antd';
 import { DollarOutlined, ArrowUpOutlined, ArrowDownOutlined, DownloadOutlined, RiseOutlined, SwapOutlined } from '@ant-design/icons';
 import { useState } from 'react';
+import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -43,6 +44,7 @@ const mockIncomeBreakdown: IIncomeBreakdown[] = [
 ];
 
 export const FinanceReportsPage = () => {
+  const message = useMessage();
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day');
 
   // 汇总数据

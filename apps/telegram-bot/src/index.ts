@@ -693,10 +693,79 @@ app.listen(HTTP_PORT, () => {
   console.log(`   - GET /health - 健康检查`);
 });
 
+// 设置 Bot 命令菜单和 WebApp 按钮
+async function setupBotMenu() {
+  try {
+    // 设置命令菜单（双语）
+    // 中文命令
+    await bot.api.setMyCommands(
+      [
+        { command: 'start', description: '开始使用 / 主菜单' },
+        { command: 'checkin', description: '每日签到领取 HOOT' },
+        { command: 'invite', description: '邀请好友赚取奖励' },
+        { command: 'balance', description: '查看 HOOT 余额' },
+        { command: 'status', description: '查看账户状态' },
+        { command: 'positions', description: '查看当前持仓' },
+        { command: 'earnings', description: '查看收益统计' },
+        { command: 'strategies', description: '浏览策略市场' },
+        { command: 'lang', description: '切换语言 / Switch Language' },
+        { command: 'help', description: '帮助与命令列表' },
+      ],
+      { language_code: 'zh' }
+    );
+
+    // 英文命令
+    await bot.api.setMyCommands(
+      [
+        { command: 'start', description: 'Start / Main Menu' },
+        { command: 'checkin', description: 'Daily check-in for HOOT' },
+        { command: 'invite', description: 'Invite friends for rewards' },
+        { command: 'balance', description: 'Check HOOT balance' },
+        { command: 'status', description: 'View account status' },
+        { command: 'positions', description: 'View current positions' },
+        { command: 'earnings', description: 'View earnings statistics' },
+        { command: 'strategies', description: 'Browse strategy market' },
+        { command: 'lang', description: 'Switch Language / 切换语言' },
+        { command: 'help', description: 'Help & command list' },
+      ],
+      { language_code: 'en' }
+    );
+
+    // 默认命令（无语言代码）
+    await bot.api.setMyCommands([
+      { command: 'start', description: 'Start / 开始' },
+      { command: 'checkin', description: 'Daily Check-in / 每日签到' },
+      { command: 'invite', description: 'Invite Friends / 邀请好友' },
+      { command: 'balance', description: 'HOOT Balance / 余额查询' },
+      { command: 'status', description: 'Account Status / 账户状态' },
+      { command: 'positions', description: 'Positions / 持仓' },
+      { command: 'earnings', description: 'Earnings / 收益' },
+      { command: 'strategies', description: 'Strategies / 策略市场' },
+      { command: 'lang', description: 'Language / 语言' },
+      { command: 'help', description: 'Help / 帮助' },
+    ]);
+
+    // 设置左下角菜单按钮为 WebApp
+    await bot.api.setChatMenuButton({
+      menu_button: {
+        type: 'web_app',
+        text: '🦉 HOOT',
+        web_app: { url: WEB_APP_URL },
+      },
+    });
+
+    console.log('✅ Bot 菜单和命令已设置');
+  } catch (error) {
+    console.error('设置 Bot 菜单失败:', error);
+  }
+}
+
 // 启动 Bot
 console.log('🤖 HOOT Telegram Bot 启动中...');
 bot.start({
-  onStart: (botInfo) => {
+  onStart: async (botInfo) => {
     console.log(`✅ Bot 已启动: @${botInfo.username}`);
+    // Bot 启动后设置菜单
+    await setupBotMenu();
   },
 });

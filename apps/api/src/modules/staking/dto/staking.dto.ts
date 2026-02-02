@@ -1,27 +1,29 @@
-import { IsString, IsNumber, IsOptional, IsEnum, Min, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  Min,
+  IsInt,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
-// 质押类型
-export enum StakingType {
-  A = 'A', // 空投获得，权重固定 1.0x
-  B = 'B', // 购买获得，权重随时间增长 1.0x -> 3.0x
-}
-
 // 创建质押
+// 只支持单币 HOOT 质押，权重基于锁定天数
+// 活期（lockDays=0）：权重 1.0x
+// 定期（lockDays>0）：权重随锁定时间增长 1.0x -> 3.0x（最长365天）
 export class CreateStakingDto {
   @IsNumber()
   @Min(1)
   @Type(() => Number)
   amount: number;
 
-  @IsEnum(StakingType)
-  type: StakingType;
-
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(365)
   @Type(() => Number)
-  lockDays?: number; // 锁定天数（0-365）
+  lockDays?: number; // 锁定天数（0-365），0=活期
 }
 
 // 解除质押
@@ -33,14 +35,13 @@ export class UnstakeDto {
 // 质押响应
 export class StakingResponse {
   id: string;
-  type: string;
   amount: string;
   weight: string;
   weightedAmount: string;
   stakedAt: Date;
   lockDays: number;
   lockUntil: Date | null;
-  status: string;
+  status: string; // active, locked, unstaked
 }
 
 // 质押统计

@@ -1,7 +1,14 @@
-import { IsString, IsNotEmpty, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsIn, MaxLength, IsOptional } from 'class-validator';
 
 // 支持的交易所
-export const SUPPORTED_EXCHANGES = ['binance', 'okx', 'bybit'] as const;
+export const SUPPORTED_EXCHANGES = [
+  'binance',
+  'okx',
+  'bybit',
+  'gate',
+  'bitget',
+  'coinbase',
+] as const;
 export type SupportedExchange = (typeof SUPPORTED_EXCHANGES)[number];
 
 // 创建 API Key DTO
@@ -37,4 +44,20 @@ export class ApiKeyResponse {
 export class ApiKeyListResponse {
   items: ApiKeyResponse[];
   total: number;
+}
+
+// 更新 API Key DTO
+export class UpdateApiKeyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  apiKey?: string; // 可选，留空不更新
+
+  @IsOptional()
+  @IsString()
+  apiSecret?: string; // 可选，留空不更新
 }

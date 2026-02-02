@@ -121,7 +121,7 @@ const marketTypeOptions = ['all', 'spot', 'futures']
 const sortOptions = ['hot', 'winRate', 'return', 'new']
 
 export function MobileStrategiesV3({
-  strategies = mockStrategies,
+  strategies = [],
   onStrategyClick,
   onUseStrategy,
   onNavigate: _onNavigate,
@@ -281,31 +281,34 @@ export function MobileStrategiesV3({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
-      {/* Sticky Header - 仅操作按钮 */}
-      <div className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0F]/90">
-        <div className="flex items-center justify-end gap-3 px-4 py-2">
-          <button
-            type="button"
-            onClick={() => setShowSearch(true)}
-            className="p-2 rounded-xl bg-[#12121A]/50 border border-[#1E1E2E] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
-            aria-label={t('search')}
-          >
-            <Search className="w-5 h-5" />
-          </button>
+      {/* Header - 标题 + 创建按钮 */}
+      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="w-10" />
+          <h1 className="text-base font-semibold text-white">{t('title')}</h1>
           <button
             type="button"
             onClick={onCreateStrategy}
-            className="flex items-center gap-2 px-3 py-2 bg-[#06B6D4] text-black font-medium rounded-xl hover:bg-[#06B6D4]/90 transition-colors"
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#06B6D4] text-black"
+            aria-label={t('create')}
           >
-            <Plus className="w-4 h-4" />
-            {t('create')}
+            <Plus className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* Filter + Market Type + Sort Dropdowns */}
-      <div className="p-4 border-b border-[#1E1E2E]">
+      {/* Filter + Market Type + Sort + Search Dropdowns */}
+      <div className="px-4 py-4 border-b border-[#1E1E2E]">
         <div className="flex items-center gap-2">
+          {/* Search Button */}
+          <button
+            type="button"
+            onClick={() => setShowSearch(true)}
+            className="p-2.5 rounded-xl bg-[#12121A]/50 border border-[#1E1E2E] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
+            aria-label={t('search')}
+          >
+            <Search className="w-5 h-5" />
+          </button>
           {/* Filter Dropdown - 策略类型 */}
           <div className="relative flex-1">
             <button

@@ -15,7 +15,6 @@ import {
   Tag,
   Button,
   Modal,
-  message,
   Tooltip,
   Avatar,
   Input,
@@ -32,6 +31,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 interface IStrategy {
   id: string;
@@ -54,6 +54,7 @@ interface StrategyListResponse {
 }
 
 export const StrategyList = () => {
+  const message = useMessage();
   const [dataSource, setDataSource] = useState<IStrategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,38 +142,6 @@ export const StrategyList = () => {
           fetchStrategies(pagination.current, searchText, statusFilter);
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : `${actionText}失败`;
-          message.error(errorMessage);
-        }
-      },
-    });
-  };
-
-  // 删除策略
-  const handleDelete = async (strategy: IStrategy) => {
-    if (strategy.subscribersCount > 0) {
-      message.warning('该策略有活跃订阅，无法删除');
-      return;
-    }
-
-    Modal.confirm({
-      title: '确认删除策略',
-      icon: <ExclamationCircleOutlined />,
-      content: (
-        <div>
-          <p>确定要删除策略 <strong>{strategy.name}</strong> 吗？</p>
-          <p style={{ color: '#f5222d' }}>此操作不可恢复！</p>
-        </div>
-      ),
-      okText: '确认删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      async onOk() {
-        try {
-          await api.delete(`/admin/strategies/${strategy.id}`);
-          message.success('策略已删除');
-          fetchStrategies(pagination.current, searchText, statusFilter);
-        } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : '删除失败';
           message.error(errorMessage);
         }
       },
@@ -342,6 +311,7 @@ export const StrategyList = () => {
           dataSource={dataSource}
           columns={columns}
           rowKey="id"
+          scroll={{ x: 1100 }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,

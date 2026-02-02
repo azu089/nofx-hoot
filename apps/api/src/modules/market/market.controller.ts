@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Headers } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MarketService } from './market.service';
+import { DEFAULT_LOCALE } from '../../common/utils/i18n.util';
 
 @Controller('market')
 export class MarketController {
@@ -39,13 +40,24 @@ export class MarketController {
   }
 
   /**
-   * 获取平台公告（公开接口）
-   * GET /market/announcements
+   * 获取平台公告（公开接口，支持多语言）
+   * GET /market/announcements?locale=en&position=home
+   * 也可通过 Accept-Language header 传递语言
    */
   @Public()
   @Get('announcements')
-  async getAnnouncements() {
-    const announcements = await this.marketService.getAnnouncements();
+  async getAnnouncements(
+    @Query('locale') queryLocale?: string,
+    @Query('position') position?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    // 优先使用 query 参数，其次 header，最后默认值
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    const announcements = await this.marketService.getAnnouncements(
+      locale,
+      position,
+    );
     return {
       code: 0,
       message: 'success',
@@ -54,17 +66,60 @@ export class MarketController {
   }
 
   /**
-   * 获取首页数据（聚合接口）
-   * GET /market/homepage
+   * 获取跑马灯（公开接口，支持多语言）
+   * GET /market/marquees?locale=en
+   */
+  @Public()
+  @Get('marquees')
+  async getMarquees(
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    const marquees = await this.marketService.getMarquees(locale);
+    return {
+      code: 0,
+      message: 'success',
+      data: marquees,
+    };
+  }
+
+  /**
+   * 获取跑马灯配置（公开接口）
+   * GET /market/marquees/config
+   */
+  @Public()
+  @Get('marquees/config')
+  async getMarqueeConfig() {
+    const config = await this.marketService.getMarqueeConfig();
+    return {
+      code: 0,
+      message: 'success',
+      data: config,
+    };
+  }
+
+  /**
+   * 获取首页数据（聚合接口，支持多语言）
+   * GET /market/homepage?locale=en
    */
   @Public()
   @Get('homepage')
-  async getHomepageData() {
-    const [prices, news, announcements] = await Promise.all([
-      this.marketService.getPrices(),
-      this.marketService.getNews(5),
-      this.marketService.getAnnouncements(),
-    ]);
+  async getHomepageData(
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    const [prices, news, announcements, marquees, marqueeConfig] =
+      await Promise.all([
+        this.marketService.getPrices(),
+        this.marketService.getNews(15),
+        this.marketService.getAnnouncements(locale),
+        this.marketService.getMarquees(locale),
+        this.marketService.getMarqueeConfig(),
+      ]);
 
     return {
       code: 0,
@@ -73,7 +128,20 @@ export class MarketController {
         prices,
         news,
         announcements,
+        marquees,
+        marqueeConfig,
       },
     };
+  }
+
+  /**
+   * 解析 Accept-Language header，提取首选语言
+   * 示例: "zh-CN,zh;q=0.9,en;q=0.8" -> "zh-CN"
+   */
+  private parseAcceptLanguage(header?: string): string | null {
+    if (!header) return null;
+    // 取第一个语言（最高优先级）
+    const firstLang = header.split(',')[0]?.split(';')[0]?.trim();
+    return firstLang || null;
   }
 }

@@ -12,7 +12,6 @@ import {
   Button,
   Divider,
   Upload,
-  message,
   Row,
   Col,
   Typography,
@@ -24,6 +23,7 @@ import {
   UploadOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
+import { useMessage } from '../../hooks';
 
 const { Text } = Typography;
 
@@ -73,6 +73,7 @@ const defaultConfig: ISystemConfig = {
 };
 
 export const SystemConfigPage = () => {
+  const message = useMessage();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -192,7 +193,7 @@ export const SystemConfigPage = () => {
                   min={0}
                   precision={2}
                   style={{ width: '100%' }}
-                  addonAfter="USDT"
+                  suffix="USDT"
                 />
               </Form.Item>
 
@@ -205,7 +206,7 @@ export const SystemConfigPage = () => {
                   min={0}
                   precision={2}
                   style={{ width: '100%' }}
-                  addonAfter="USDT"
+                  suffix="USDT"
                 />
               </Form.Item>
 
@@ -219,7 +220,7 @@ export const SystemConfigPage = () => {
                   max={100}
                   precision={2}
                   style={{ width: '100%' }}
-                  addonAfter="%"
+                  suffix="%"
                 />
               </Form.Item>
 
@@ -232,7 +233,7 @@ export const SystemConfigPage = () => {
                   min={0}
                   precision={2}
                   style={{ width: '100%' }}
-                  addonAfter="USDT"
+                  suffix="USDT"
                 />
               </Form.Item>
 

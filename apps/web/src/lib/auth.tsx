@@ -1,12 +1,16 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api } from './api';
 
 interface User {
   id: string;
   email: string;
   nickname: string;
+  telegramId?: string;
+  telegramUsername?: string;
+  walletAddress?: string;
+  emailVerified?: boolean;
 }
 
 interface AuthContextType {
@@ -26,39 +30,33 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'hoot_token';
 const USER_KEY = 'hoot_user';
 
-// 从 localStorage 获取初始值的辅助函数
-function getInitialToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-function getInitialUser(): User | null {
-  if (typeof window === 'undefined') return null;
-  const storedUser = localStorage.getItem(USER_KEY);
-  if (storedUser) {
-    try {
-      return JSON.parse(storedUser);
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-// 初始化函数 - 设置 api token 并返回 loading 状态
-function initializeAuth(): boolean {
-  if (typeof window === 'undefined') return true;
-  const storedToken = localStorage.getItem(TOKEN_KEY);
-  if (storedToken) {
-    api.setToken(storedToken);
-  }
-  return false; // 初始化完成，不再 loading
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(getInitialUser);
-  const [token, setToken] = useState<string | null>(getInitialToken);
-  const [isLoading] = useState(initializeAuth);
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 在客户端挂载后从 localStorage 读取认证状态
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
+  useEffect(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedUser = localStorage.getItem(USER_KEY);
+
+    if (storedToken) {
+      setToken(storedToken);
+      api.setToken(storedToken);
+    }
+
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        // 忽略解析错误
+      }
+    }
+
+    // 标记加载完成
+    setIsLoading(false);
+  }, []);
 
   const login = async (email: string, password: string) => {
     const response = await api.post<{

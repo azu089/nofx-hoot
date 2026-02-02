@@ -201,7 +201,11 @@ describe('FeeService', () => {
       mockPrismaService.billingLog.findUnique.mockResolvedValue(null);
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         return callback({
-          user: { findUnique: jest.fn().mockResolvedValue({ usdtBalance: { toString: () => '100' } }) },
+          user: {
+            findUnique: jest
+              .fn()
+              .mockResolvedValue({ usdtBalance: { toString: () => '100' } }),
+          },
           billingLog: { create: jest.fn() },
         });
       });
@@ -263,7 +267,11 @@ describe('FeeService', () => {
     // 边界路径 - 不同类型
     it('不同类型应有不同前缀', () => {
       const gasId = service.generateUniqueOrderId('GAS_FEE', 'user-1', 'pos-1');
-      const subId = service.generateUniqueOrderId('SUBSCRIPTION', 'user-1', 'pos-1');
+      const subId = service.generateUniqueOrderId(
+        'SUBSCRIPTION',
+        'user-1',
+        'pos-1',
+      );
 
       expect(gasId.startsWith('GAS_FEE_')).toBe(true);
       expect(subId.startsWith('SUBSCRIPTION_')).toBe(true);
@@ -321,9 +329,15 @@ describe('FeeService', () => {
 
     it('VIP 折扣阶梯正确', () => {
       expect(FEE_CONFIG.VIP_DISCOUNT_TIERS.length).toBe(3);
-      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[0].minStake.toString()).toBe('10000');
-      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[1].minStake.toString()).toBe('50000');
-      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[2].minStake.toString()).toBe('100000');
+      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[0].minStake.toString()).toBe(
+        '10000',
+      );
+      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[1].minStake.toString()).toBe(
+        '50000',
+      );
+      expect(FEE_CONFIG.VIP_DISCOUNT_TIERS[2].minStake.toString()).toBe(
+        '100000',
+      );
     });
 
     it('最小手续费应为 0.01 USDT', () => {

@@ -82,7 +82,7 @@ export function AboutPage({
         <div className="flex items-center gap-3 mb-2">
           <button
             type="button"
-            onClick={() => onNavigate?.('/me')}
+            onClick={() => onNavigate?.('/profile')}
             className="p-2 -ml-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
           >
             <ChevronLeft className="w-5 h-5 text-[#9090A0]" />

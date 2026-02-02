@@ -65,9 +65,16 @@ export class AdminStatsService {
     ]);
 
     // 计算增长率
-    const registrationGrowth = yesterdayRegistrations > 0
-      ? ((todayRegistrations - yesterdayRegistrations) / yesterdayRegistrations * 100).toFixed(1)
-      : todayRegistrations > 0 ? '100' : '0';
+    const registrationGrowth =
+      yesterdayRegistrations > 0
+        ? (
+            ((todayRegistrations - yesterdayRegistrations) /
+              yesterdayRegistrations) *
+            100
+          ).toFixed(1)
+        : todayRegistrations > 0
+          ? '100'
+          : '0';
 
     return {
       overview: {
@@ -286,7 +293,11 @@ export class AdminStatsService {
         where: { status: 'open' },
       }),
       this.prisma.transaction.aggregate({
-        where: { createdAt: { gte: today }, type: 'deposit', status: 'completed' },
+        where: {
+          createdAt: { gte: today },
+          type: 'deposit',
+          status: 'completed',
+        },
         _sum: { amount: true },
       }),
       this.prisma.withdrawRequest.aggregate({
@@ -334,11 +345,15 @@ export class AdminStatsService {
         tradingUsers: tradingUsersData.length,
         totalDeposit,
         totalWithdraw,
-        netInflow: new Decimal(totalDeposit.toString()).minus(totalWithdraw.toString()),
+        netInflow: new Decimal(totalDeposit.toString()).minus(
+          totalWithdraw.toString(),
+        ),
         subscriptionRevenue: subscriptionRevenue._sum.amount || 0,
         pointCardRevenue: pointCardRevenue._sum.amount || 0,
         gasFeeRevenue: gasFeeRevenue._sum.feeAmount || 0,
-        totalRevenue: new Decimal(subscriptionRevenue._sum.amount?.toString() || '0')
+        totalRevenue: new Decimal(
+          subscriptionRevenue._sum.amount?.toString() || '0',
+        )
           .plus(pointCardRevenue._sum.amount?.toString() || '0')
           .plus(gasFeeRevenue._sum.feeAmount?.toString() || '0'),
         totalTrades: tradeStats._count,
@@ -357,11 +372,15 @@ export class AdminStatsService {
         tradingUsers: tradingUsersData.length,
         totalDeposit,
         totalWithdraw,
-        netInflow: new Decimal(totalDeposit.toString()).minus(totalWithdraw.toString()),
+        netInflow: new Decimal(totalDeposit.toString()).minus(
+          totalWithdraw.toString(),
+        ),
         subscriptionRevenue: subscriptionRevenue._sum.amount || 0,
         pointCardRevenue: pointCardRevenue._sum.amount || 0,
         gasFeeRevenue: gasFeeRevenue._sum.feeAmount || 0,
-        totalRevenue: new Decimal(subscriptionRevenue._sum.amount?.toString() || '0')
+        totalRevenue: new Decimal(
+          subscriptionRevenue._sum.amount?.toString() || '0',
+        )
           .plus(pointCardRevenue._sum.amount?.toString() || '0')
           .plus(gasFeeRevenue._sum.feeAmount?.toString() || '0'),
         totalTrades: tradeStats._count,

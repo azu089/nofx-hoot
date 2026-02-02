@@ -11,8 +11,10 @@ import {
   Wallet,
   Gift,
   Check,
-  Loader2
+  Loader2,
+  Send
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface RegisterData {
   email: string
@@ -24,6 +26,7 @@ interface RegisterData {
 interface RegisterPageProps {
   onRegister?: (data: RegisterData) => void
   onWalletConnect?: () => void
+  onTelegramLogin?: () => void
   onLogin?: () => void
   defaultReferralCode?: string
 }
@@ -39,9 +42,11 @@ interface FormErrors {
 export function RegisterPage({
   onRegister,
   onWalletConnect,
+  onTelegramLogin,
   onLogin,
   defaultReferralCode = ''
 }: RegisterPageProps) {
+  const [showEmailForm, setShowEmailForm] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -55,45 +60,47 @@ export function RegisterPage({
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const t = useTranslations('auth')
+  const tErrors = useTranslations('errors')
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}
 
     // Email validation
     if (!formData.email) {
-      newErrors.email = '邮箱不能为空'
+      newErrors.email = tErrors('emailRequired')
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = '请输入有效的邮箱地址'
+      newErrors.email = tErrors('invalidEmail')
     }
 
     // Username validation
     if (!formData.username) {
-      newErrors.username = '用户名不能为空'
+      newErrors.username = tErrors('usernameRequired')
     } else if (formData.username.length < 3) {
-      newErrors.username = '用户名至少需要3个字符'
+      newErrors.username = tErrors('usernameTooShort')
     } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      newErrors.username = '用户名只能包含字母、数字和下划线'
+      newErrors.username = tErrors('usernameInvalid')
     }
 
     // Password validation
     if (!formData.password) {
-      newErrors.password = '密码不能为空'
+      newErrors.password = tErrors('passwordRequired')
     } else if (formData.password.length < 8) {
-      newErrors.password = '密码至少需要8个字符'
+      newErrors.password = tErrors('invalidPassword')
     } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-      newErrors.password = '密码必须包含大小写字母和数字'
+      newErrors.password = tErrors('passwordTooWeak')
     }
 
     // Confirm password validation
     if (!formData.confirmPassword) {
-      newErrors.confirmPassword = '请确认密码'
+      newErrors.confirmPassword = t('confirmPassword')
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = '两次输入的密码不一致'
+      newErrors.confirmPassword = tErrors('passwordMismatch')
     }
 
     // Terms validation
     if (!formData.acceptTerms) {
-      newErrors.terms = '请同意服务条款'
+      newErrors.terms = tErrors('termsRequired')
     }
 
     setErrors(newErrors)
@@ -152,190 +159,25 @@ export function RegisterPage({
                   width={96}
                   height={96}
                   className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                  priority
                   unoptimized
                 />
               </div>
             </div>
             <h1 className="text-2xl font-bold text-[#F8F8FC]">
-              Welcome to HOOT
+              {t('joinHoot')}
             </h1>
           </div>
 
-          {/* Registration Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email Field */}
-            <div>
-              <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                邮箱
-              </label>
-              <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.email ? 'ring-1 ring-red-500' : ''}`}>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
-                    placeholder="your@email.com"
-                  />
-                </div>
-              </div>
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-400">{errors.email}</p>
-              )}
-            </div>
-
-            {/* Username Field */}
-            <div>
-              <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                用户名
-              </label>
-              <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.username ? 'ring-1 ring-red-500' : ''}`}>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
-                    placeholder="选择一个用户名"
-                  />
-                </div>
-              </div>
-              {errors.username && (
-                <p className="mt-1 text-sm text-red-400">{errors.username}</p>
-              )}
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                密码
-              </label>
-              <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.password ? 'ring-1 ring-red-500' : ''}`}>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-400">{errors.password}</p>
-              )}
-            </div>
-
-            {/* Confirm Password Field */}
-            <div>
-              <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                确认密码
-              </label>
-              <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.confirmPassword ? 'ring-1 ring-red-500' : ''}`}>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-              {errors.confirmPassword && (
-                <p className="mt-1 text-sm text-red-400">{errors.confirmPassword}</p>
-              )}
-            </div>
-
-            {/* Referral Code Field */}
-            <div>
-              <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                邀请码 <span className="text-[#606070]">(可选)</span>
-              </label>
-              <div className="glass-border-glow rounded-xl overflow-hidden">
-                <div className="relative">
-                  <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
-                  <input
-                    type="text"
-                    value={formData.referralCode}
-                    onChange={(e) => handleInputChange('referralCode', e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
-                    placeholder="输入邀请码获得奖励"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Terms Checkbox */}
-            <div>
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <div className="relative mt-0.5">
-                  <input
-                    type="checkbox"
-                    checked={formData.acceptTerms}
-                    onChange={(e) => handleInputChange('acceptTerms', e.target.checked)}
-                    className="sr-only"
-                  />
-                  <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
-                    formData.acceptTerms
-                      ? 'bg-cyan-500 border-cyan-500'
-                      : errors.terms
-                        ? 'border-red-500'
-                        : 'border-[#2A2A3A]'
-                  }`}>
-                    {formData.acceptTerms && (
-                      <Check className="w-3 h-3 text-white" />
-                    )}
-                  </div>
-                </div>
-                <span className="text-sm text-[#9090A0] leading-5">
-                  我已阅读并同意
-                  <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
-                    服务条款
-                  </button>
-                  和
-                  <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
-                    隐私政策
-                  </button>
-                </span>
-              </label>
-              {errors.terms && (
-                <p className="mt-1 text-sm text-red-400">{errors.terms}</p>
-              )}
-            </div>
-
-            {/* Submit Button */}
+          <div className="space-y-5">
+            {/* Telegram Register - 主推按钮 */}
             <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 px-4 rounded-xl font-semibold text-black bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              type="button"
+              onClick={onTelegramLogin}
+              className="w-full py-4 px-4 rounded-xl font-semibold text-white bg-[#0088cc] hover:bg-[#0099dd] focus:outline-none focus:ring-2 focus:ring-[#0088cc]/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-[#0088cc]/25 flex items-center justify-center gap-3"
             >
-              {isLoading ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>创建账户中...</span>
-                </div>
-              ) : (
-                '创建账户'
-              )}
+              <Send className="w-6 h-6" />
+              <span className="text-lg">{t('continueWithTelegram')}</span>
             </button>
 
             {/* Divider */}
@@ -345,34 +187,231 @@ export function RegisterPage({
               </div>
               <div className="relative flex justify-center">
                 <span className="px-3 bg-[#12121A] text-sm text-[#606070]">
-                  或
+                  {t('or')}
                 </span>
               </div>
             </div>
 
-            {/* Wallet Connect Button */}
-            <div className="glass-border-glow rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={onWalletConnect}
-                className="w-full py-3.5 px-4 rounded-xl font-semibold border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <Wallet className="w-5 h-5" />
-                <span>钱包注册</span>
-              </button>
-            </div>
-          </form>
+            {/* Secondary options - 钱包 | 邮箱 */}
+            {!showEmailForm ? (
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={onWalletConnect}
+                  className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Wallet className="w-5 h-5" />
+                  <span>{t('walletRegister')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(true)}
+                  className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-[#F8F8FC] focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Mail className="w-5 h-5" />
+                  <span>{t('emailRegister')}</span>
+                </button>
+              </div>
+            ) : (
+              /* Email Registration Form */
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Back button */}
+                <button
+                  type="button"
+                  onClick={() => setShowEmailForm(false)}
+                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors mb-2"
+                >
+                  ← {t('back', { ns: 'common' })}
+                </button>
+
+                {/* Email Field */}
+                <div>
+                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
+                    {t('email')}
+                  </label>
+                  <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.email ? 'ring-1 ring-red-500' : ''}`}>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                        placeholder="your@email.com"
+                      />
+                    </div>
+                  </div>
+                  {errors.email && (
+                    <p className="mt-1 text-sm text-red-400">{errors.email}</p>
+                  )}
+                </div>
+
+                {/* Username Field */}
+                <div>
+                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
+                    {t('username')}
+                  </label>
+                  <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.username ? 'ring-1 ring-red-500' : ''}`}>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+                      <input
+                        type="text"
+                        value={formData.username}
+                        onChange={(e) => handleInputChange('username', e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                        placeholder={t('usernamePlaceholder')}
+                      />
+                    </div>
+                  </div>
+                  {errors.username && (
+                    <p className="mt-1 text-sm text-red-400">{errors.username}</p>
+                  )}
+                </div>
+
+                {/* Password Field */}
+                <div>
+                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
+                    {t('password')}
+                  </label>
+                  <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.password ? 'ring-1 ring-red-500' : ''}`}>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={formData.password}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  {errors.password && (
+                    <p className="mt-1 text-sm text-red-400">{errors.password}</p>
+                  )}
+                </div>
+
+                {/* Confirm Password Field */}
+                <div>
+                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
+                    {t('confirmPassword')}
+                  </label>
+                  <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.confirmPassword ? 'ring-1 ring-red-500' : ''}`}>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={formData.confirmPassword}
+                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                        className="w-full pl-10 pr-12 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#606070] hover:text-[#9090A0] transition-colors"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  {errors.confirmPassword && (
+                    <p className="mt-1 text-sm text-red-400">{errors.confirmPassword}</p>
+                  )}
+                </div>
+
+                {/* Referral Code Field */}
+                <div>
+                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
+                    {t('inviteCode')} <span className="text-[#606070]">({t('inviteCodeOptional')})</span>
+                  </label>
+                  <div className="glass-border-glow rounded-xl overflow-hidden">
+                    <div className="relative">
+                      <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
+                      <input
+                        type="text"
+                        value={formData.referralCode}
+                        onChange={(e) => handleInputChange('referralCode', e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:ring-1 focus:ring-cyan-500/20 focus:border-cyan-500/50 transition-all"
+                        placeholder={t('inviteCodePlaceholder')}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Terms Checkbox */}
+                <div>
+                  <label className="flex items-start space-x-3 cursor-pointer">
+                    <div className="relative mt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={formData.acceptTerms}
+                        onChange={(e) => handleInputChange('acceptTerms', e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                        formData.acceptTerms
+                          ? 'bg-cyan-500 border-cyan-500'
+                          : errors.terms
+                            ? 'border-red-500'
+                            : 'border-[#2A2A3A]'
+                      }`}>
+                        {formData.acceptTerms && (
+                          <Check className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-sm text-[#9090A0] leading-5">
+                      {t('agreeTerms')}
+                      <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                        {t('termsOfService')}
+                      </button>
+                      {t('and')}
+                      <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                        {t('privacyPolicy')}
+                      </button>
+                    </span>
+                  </label>
+                  {errors.terms && (
+                    <p className="mt-1 text-sm text-red-400">{errors.terms}</p>
+                  )}
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3.5 px-4 rounded-xl font-semibold text-black bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>{t('registering')}</span>
+                    </div>
+                  ) : (
+                    t('createAccount')
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
 
           {/* Login Link */}
           <div className="mt-8 text-center">
             <p className="text-sm text-[#9090A0]">
-              已有账户？{' '}
+              {t('hasAccount')}{' '}
               <button
                 type="button"
                 onClick={onLogin}
                 className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
               >
-                立即登录
+                {t('loginNow')}
               </button>
             </p>
           </div>

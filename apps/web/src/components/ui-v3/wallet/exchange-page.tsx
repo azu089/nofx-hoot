@@ -30,7 +30,13 @@ interface ExchangeRecord {
 }
 
 interface ExchangePageProps {
+  balance?: {
+    usdt: number
+    hoot: number
+    point: number
+  }
   onExchange?: (from: string, to: string, amount: number) => void
+  isLoading?: boolean
 }
 
 // 所有资产
@@ -151,7 +157,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                   <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
                 </button>
                 {showFromDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-20 min-w-[160px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[160px]">
                     {getPayableAssets().map(asset => (
                       <button
                         key={asset.id}
@@ -223,7 +229,7 @@ export function ExchangePage({ onExchange }: ExchangePageProps) {
                   <ChevronDown className="w-4 h-4 text-[#94A3B8]" />
                 </button>
                 {showToDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-20 min-w-[160px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[160px]">
                     {getReceivableAssets(fromAsset.id).map(asset => (
                       <button
                         key={asset.id}

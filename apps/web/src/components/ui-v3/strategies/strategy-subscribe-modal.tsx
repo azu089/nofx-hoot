@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import { X, Shield, Zap, Flame, ChevronDown, ChevronUp, Info, TrendingUp, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import { useTranslations } from '@/i18n/provider'
 
 interface StrategySubscribeModalProps {
   isOpen: boolean
@@ -36,12 +37,10 @@ interface SubscribeConfig {
 }
 
 // 风险等级预设配置
-const riskPresets = {
+const riskPresetsConfig = {
   conservative: {
-    label: '保守',
     icon: Shield,
     color: 'cyan',
-    description: '低风险低收益，适合新手',
     expectedReturn: '5-15%',
     stopLoss: 5,
     takeProfit: 10,
@@ -49,10 +48,8 @@ const riskPresets = {
     maxPositions: 2,
   },
   balanced: {
-    label: '稳健',
     icon: Zap,
     color: 'yellow',
-    description: '均衡风险收益，推荐选择',
     expectedReturn: '15-30%',
     stopLoss: 10,
     takeProfit: 20,
@@ -60,10 +57,8 @@ const riskPresets = {
     maxPositions: 3,
   },
   aggressive: {
-    label: '进取',
     icon: Flame,
     color: 'orange',
-    description: '高风险高收益，仅限专业用户',
     expectedReturn: '30-50%',
     stopLoss: 15,
     takeProfit: 35,
@@ -87,6 +82,27 @@ export function StrategySubscribeModal({
   connectedExchanges = defaultExchanges,
 }: StrategySubscribeModalProps) {
   void _strategyDescription
+  const t = useTranslations('modals')
+
+  // Risk presets with translations
+  const riskPresets = {
+    conservative: {
+      ...riskPresetsConfig.conservative,
+      label: t('conservative'),
+      description: t('conservativeDesc'),
+    },
+    balanced: {
+      ...riskPresetsConfig.balanced,
+      label: t('balanced'),
+      description: t('balancedDesc'),
+    },
+    aggressive: {
+      ...riskPresetsConfig.aggressive,
+      label: t('aggressive'),
+      description: t('aggressiveDesc'),
+    },
+  }
+
   // 核心配置状态
   const [selectedExchange, setSelectedExchange] = useState(connectedExchanges[0]?.id || '')
   const [amount, setAmount] = useState('')
@@ -175,7 +191,7 @@ export function StrategySubscribeModal({
         <div className="p-6 border-b border-[#1E1E2E]">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-lg font-bold text-[#F8F8FC]">订阅策略</h2>
+              <h2 className="text-lg font-bold text-[#F8F8FC]">{t('subscribeStrategy')}</h2>
               <p className="text-sm text-[#9090A0] mt-1">{strategyName}</p>
             </div>
             <button
@@ -193,7 +209,7 @@ export function StrategySubscribeModal({
           {/* Step 1: 选择交易所 */}
           <div>
             <label className="block text-sm font-medium text-[#9090A0] mb-2">
-              选择交易所
+              {t('selectExchange')}
             </label>
             <div className="relative">
               <button
@@ -213,12 +229,12 @@ export function StrategySubscribeModal({
                     <div className="text-left">
                       <div className="font-medium text-[#F8F8FC]">{currentExchange.name}</div>
                       <div className="text-xs text-[#9090A0]">
-                        可用: ${currentExchange.balance?.toLocaleString() || '0'}
+                        {t('available')} ${currentExchange.balance?.toLocaleString() || '0'}
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <span className="text-[#606070]">请选择交易所</span>
+                  <span className="text-[#606070]">{t('pleaseSelectExchange')}</span>
                 )}
                 <ChevronDown className={cn(
                   "w-5 h-5 text-[#9090A0] transition-transform",
@@ -230,7 +246,7 @@ export function StrategySubscribeModal({
                 <div className="absolute top-full left-0 right-0 mt-2 bg-[#12121A] border border-[#2A2A3A] rounded-xl shadow-xl z-20 overflow-hidden">
                   {connectedExchanges.length === 0 ? (
                     <div className="p-4 text-center text-[#9090A0] text-sm">
-                      暂无已连接的交易所
+                      {t('noConnectedExchanges')}
                     </div>
                   ) : (
                     connectedExchanges.map((exchange) => (
@@ -271,7 +287,7 @@ export function StrategySubscribeModal({
           {/* Step 2: 投入金额 */}
           <div>
             <label className="block text-sm font-medium text-[#9090A0] mb-2">
-              投入金额
+              {t('investAmount')}
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#606070] font-medium">$</span>
@@ -279,7 +295,7 @@ export function StrategySubscribeModal({
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="最低 50 USDT"
+                placeholder={t('minAmount')}
                 className="w-full pl-8 pr-4 py-3 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4] focus:outline-none transition-colors"
               />
             </div>
@@ -292,7 +308,7 @@ export function StrategySubscribeModal({
                   onClick={() => handleQuickAmount(val as number | 'MAX')}
                   className="flex-1 py-1.5 text-xs font-medium text-[#9090A0] bg-[#1E1E2E] hover:bg-[#2A2A3A] rounded-lg transition-colors"
                 >
-                  {val === 'MAX' ? '全部' : `$${val}`}
+                  {val === 'MAX' ? t('all') : `$${val}`}
                 </button>
               ))}
             </div>
@@ -301,7 +317,7 @@ export function StrategySubscribeModal({
           {/* Step 3: 风险偏好 */}
           <div>
             <label className="block text-sm font-medium text-[#9090A0] mb-2">
-              风险偏好
+              {t('riskPreference')}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(Object.entries(riskPresets) as [keyof typeof riskPresets, typeof riskPresets.conservative][]).map(([key, preset]) => {
@@ -349,11 +365,11 @@ export function StrategySubscribeModal({
                           : 'text-orange-400'
                         : 'text-[#606070]'
                     )}>
-                      {preset.expectedReturn}/月
+                      {preset.expectedReturn}{t('perMonth')}
                     </div>
                     {key === 'balanced' && (
                       <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[10px] font-medium bg-[#06B6D4] text-white rounded">
-                        推荐
+                        {t('recommended')}
                       </span>
                     )}
                   </button>
@@ -375,7 +391,7 @@ export function StrategySubscribeModal({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-[#10B981]" />
-                  <span className="text-sm text-[#9090A0]">预估月收益</span>
+                  <span className="text-sm text-[#9090A0]">{t('estimatedMonthlyReturn')}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-lg font-bold text-[#10B981]">
@@ -384,7 +400,7 @@ export function StrategySubscribeModal({
                 </div>
               </div>
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#2A2A3A]">
-                <span className="text-xs text-[#606070]">止损保护</span>
+                <span className="text-xs text-[#606070]">{t('stopLossProtection')}</span>
                 <span className="text-xs text-[#F43F5E]">-{currentConfig.stopLoss}%</span>
               </div>
             </div>
@@ -398,14 +414,14 @@ export function StrategySubscribeModal({
               className="flex items-center gap-2 text-sm text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
             >
               {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              高级参数
-              <span className="text-xs text-[#606070]">（可选）</span>
+              {t('advancedParams')}
+              <span className="text-xs text-[#606070]">{t('optional')}</span>
             </button>
 
             {showAdvanced && (
               <div className="mt-3 p-4 bg-[#0A0A0F] border border-[#2A2A3A] rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">止损比例</span>
+                  <span className="text-sm text-[#9090A0]">{t('stopLossRatio')}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -417,7 +433,7 @@ export function StrategySubscribeModal({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">止盈比例</span>
+                  <span className="text-sm text-[#9090A0]">{t('takeProfitRatio')}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -429,7 +445,7 @@ export function StrategySubscribeModal({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">杠杆倍数</span>
+                  <span className="text-sm text-[#9090A0]">{t('leverageMultiplier')}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -441,7 +457,7 @@ export function StrategySubscribeModal({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">最大持仓</span>
+                  <span className="text-sm text-[#9090A0]">{t('maxPosition')}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -449,7 +465,7 @@ export function StrategySubscribeModal({
                       onChange={(e) => setCustomMaxPositions(parseInt(e.target.value) || null)}
                       className="w-16 px-2 py-1 bg-[#1E1E2E] border border-[#2A2A3A] rounded text-center text-[#F8F8FC] text-sm focus:border-[#06B6D4] focus:outline-none"
                     />
-                    <span className="text-[#606070] text-sm">仓</span>
+                    <span className="text-[#606070] text-sm">{t('positions')}</span>
                   </div>
                 </div>
               </div>
@@ -463,7 +479,7 @@ export function StrategySubscribeModal({
           <div className="flex items-start gap-2 mb-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-lg">
             <AlertTriangle className="w-4 h-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
             <span className="text-xs text-[#F59E0B]">
-              策略交易存在风险，预估收益仅供参考，实际收益可能因市场波动而不同。
+              {t('riskWarning')}
             </span>
           </div>
 
@@ -479,12 +495,12 @@ export function StrategySubscribeModal({
             )}
           >
             {!selectedExchange
-              ? '请选择交易所'
+              ? t('pleaseSelectExchange')
               : amountNum < 50
-              ? '最低投入 $50'
+              ? t('minInvestAmount')
               : amountNum > (currentExchange?.balance || availableBalance)
-              ? '余额不足'
-              : '确认订阅'
+              ? t('insufficientBalance')
+              : t('confirmSubscribe')
             }
           </button>
         </div>

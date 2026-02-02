@@ -20,6 +20,20 @@ export type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
 export class BalanceResponse {
   usdt: string;
   hoot: string;
+  point: string; // 点卡余额
+}
+
+// 兑换 DTO
+export class ExchangeDto {
+  @IsIn(['USDT', 'HOOT', 'POINT'], { message: '不支持的来源资产' })
+  fromAsset: 'USDT' | 'HOOT' | 'POINT';
+
+  @IsIn(['USDT', 'HOOT', 'POINT'], { message: '不支持的目标资产' })
+  toAsset: 'USDT' | 'HOOT' | 'POINT';
+
+  @IsNumber()
+  @IsPositive({ message: '兑换金额必须大于0' })
+  amount: number;
 }
 
 // 交易记录响应
@@ -96,4 +110,8 @@ export class TransactionQueryDto {
   @IsOptional()
   @IsNumber()
   pageSize?: number = 20;
+
+  @IsOptional()
+  @IsString()
+  locale?: string; // 前端自动传递的语言参数，后端可忽略
 }

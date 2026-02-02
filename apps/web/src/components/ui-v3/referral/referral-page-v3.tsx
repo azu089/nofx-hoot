@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useTranslations } from '@/i18n/provider'
 import {
   Gift,
   Users,
@@ -128,6 +129,7 @@ export function ReferralPageV3({
   myReferrals = defaultReferrals,
   onShare
 }: ReferralPageV3Props) {
+  const t = useTranslations('referral')
   const [copied, setCopied] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [showRules, setShowRules] = useState(false)
@@ -142,22 +144,22 @@ export function ReferralPageV3({
 
   // 筛选选项
   const levelOptions = [
-    { value: 'all', label: '全部级别' },
-    { value: '1', label: '一级' },
-    { value: '2', label: '二级' }
+    { value: 'all', label: t('allLevels') },
+    { value: '1', label: t('level1') },
+    { value: '2', label: t('level2') }
   ]
 
   const statusOptions = [
-    { value: 'all', label: '全部状态' },
-    { value: 'Active', label: '活跃' },
-    { value: 'Inactive', label: '非活跃' }
+    { value: 'all', label: t('allStatus') },
+    { value: 'Active', label: t('active') },
+    { value: 'Inactive', label: t('inactive') }
   ]
 
   const dateOptions = [
-    { value: 'all', label: '全部时间' },
-    { value: '7days', label: '最近7天' },
-    { value: '30days', label: '最近30天' },
-    { value: '90days', label: '最近90天' }
+    { value: 'all', label: t('allTime') },
+    { value: '7days', label: t('last7Days') },
+    { value: '30days', label: t('last30Days') },
+    { value: '90days', label: t('last90Days') }
   ]
 
   // 筛选后的数据
@@ -209,7 +211,7 @@ export function ReferralPageV3({
   }
 
   const handleShare = (platform: string) => {
-    const text = `加入 Hoot - 最好的加密货币交易平台！使用我的邀请码: ${referralCode}`
+    const text = t('shareText', { code: referralCode })
     const url = referralLink
 
     if (onShare) {
@@ -233,7 +235,7 @@ export function ReferralPageV3({
 
         {/* Header */}
         <div className="mb-4">
-          <h1 className="text-2xl font-bold text-[#F8F8FC]">邀请返佣</h1>
+          <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('title')}</h1>
         </div>
 
         {/* ========== 核心区域：数据 + 邀请码 ========== */}
@@ -243,7 +245,7 @@ export function ReferralPageV3({
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <Wallet className="w-4 h-4 text-[#06B6D4]" />
-              <span className="text-[#9090A0] text-sm">累计收益</span>
+              <span className="text-[#9090A0] text-sm">{t('totalEarnings')}</span>
             </div>
             <div className="text-2xl font-bold text-[#06B6D4]">
               ${earnings.total.toLocaleString()}
@@ -253,7 +255,7 @@ export function ReferralPageV3({
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-4 h-4 text-[#10B981]" />
-              <span className="text-[#9090A0] text-sm">邀请人数</span>
+              <span className="text-[#9090A0] text-sm">{t('referralCount')}</span>
             </div>
             <div className="text-2xl font-bold text-[#10B981]">
               {earnings.activeReferrals}
@@ -263,7 +265,7 @@ export function ReferralPageV3({
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp className="w-4 h-4 text-[#F59E0B]" />
-              <span className="text-[#9090A0] text-sm">本月收益</span>
+              <span className="text-[#9090A0] text-sm">{t('monthlyEarnings')}</span>
             </div>
             <div className="text-2xl font-bold text-[#F59E0B]">
               ${earnings.thisMonth.toLocaleString()}
@@ -277,7 +279,7 @@ export function ReferralPageV3({
           <div className="p-5 border-b border-[#1E1E2E]">
             <div className="flex items-center gap-2">
               <Gift className="w-5 h-5 text-[#06B6D4]" />
-              <h2 className="text-lg font-bold">我的邀请码</h2>
+              <h2 className="text-lg font-bold">{t('myInviteCode')}</h2>
             </div>
           </div>
 
@@ -289,7 +291,7 @@ export function ReferralPageV3({
               <div className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-5">
                 {/* 邀请码 */}
                 <div className="mb-4">
-                  <div className="text-[#606070] text-xs mb-1">邀请码</div>
+                  <div className="text-[#606070] text-xs mb-1">{t('inviteCode')}</div>
                   <div className="text-2xl font-mono font-bold text-[#06B6D4] tracking-wider">
                     {referralCode}
                   </div>
@@ -300,7 +302,7 @@ export function ReferralPageV3({
 
                 {/* 邀请链接 */}
                 <div>
-                  <div className="text-[#606070] text-xs mb-1">邀请链接</div>
+                  <div className="text-[#606070] text-xs mb-1">{t('inviteLink')}</div>
                   <div className="text-sm font-mono text-[#9090A0] break-all">
                     {referralLink}
                   </div>
@@ -313,7 +315,7 @@ export function ReferralPageV3({
                   <div className="bg-white rounded-xl p-3 inline-block">
                     <QrCode className="w-[100px] h-[100px] text-[#0A0A0F]" />
                   </div>
-                  <div className="text-[#606070] text-xs mt-2">扫码邀请</div>
+                  <div className="text-[#606070] text-xs mt-2">{t('scanToInvite')}</div>
                 </div>
               </div>
             </div>
@@ -326,7 +328,7 @@ export function ReferralPageV3({
                 className="flex items-center gap-2 bg-[#06B6D4] hover:bg-[#0891B2] text-white px-5 py-2.5 rounded-xl font-medium transition-colors"
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? '已复制' : '复制链接'}
+                {copied ? t('copied') : t('copyLink')}
               </button>
 
               <button
@@ -357,11 +359,11 @@ export function ReferralPageV3({
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Users className="w-5 h-5 text-[#06B6D4]" />
-                我的邀请
+                {t('myReferrals')}
                 <span className="text-[#9090A0] text-sm font-normal ml-2">
-                  共 {filteredReferrals.length} 人
+                  {t('totalCount', { count: filteredReferrals.length })}
                   {hasActiveFilters && (
-                    <span className="text-[#606070]"> / 总 {myReferrals.length} 人</span>
+                    <span className="text-[#606070]"> {t('filteredCount', { total: myReferrals.length })}</span>
                   )}
                 </span>
               </h2>
@@ -374,7 +376,7 @@ export function ReferralPageV3({
                   className="flex items-center gap-1 px-2 py-1 text-sm text-[#F87171] hover:text-[#FCA5A5] transition-colors"
                 >
                   <X className="w-4 h-4" />
-                  清除筛选
+                  {t('clearFilters')}
                 </button>
               )}
             </div>
@@ -385,19 +387,19 @@ export function ReferralPageV3({
               <Users className="w-12 h-12 text-[#606070] mx-auto mb-3" />
               {hasActiveFilters ? (
                 <>
-                  <p className="text-[#9090A0]">没有符合条件的邀请记录</p>
+                  <p className="text-[#9090A0]">{t('noMatchingRecords')}</p>
                   <button
                     type="button"
                     onClick={clearFilters}
                     className="text-[#06B6D4] text-sm mt-2 hover:underline"
                   >
-                    清除筛选条件
+                    {t('clearFilterConditions')}
                   </button>
                 </>
               ) : (
                 <>
-                  <p className="text-[#9090A0]">还没有邀请记录</p>
-                  <p className="text-[#606070] text-sm mt-1">分享您的邀请码，开始赚取奖励</p>
+                  <p className="text-[#9090A0]">{t('noRecords')}</p>
+                  <p className="text-[#606070] text-sm mt-1">{t('shareToEarn')}</p>
                 </>
               )}
             </div>
@@ -407,10 +409,10 @@ export function ReferralPageV3({
                 <table className="w-full">
                   <thead>
                     <tr className="bg-[#0A0A0F]/50">
-                      <th className="text-left py-3 px-5 text-[#9090A0] text-sm font-medium">用户</th>
+                      <th className="text-left py-3 px-5 text-[#9090A0] text-sm font-medium">{t('user')}</th>
                       <th className="text-left py-3 px-5">
                         <TableHeaderFilter
-                          label="级别"
+                          label={t('level')}
                           value={levelFilter}
                           options={levelOptions}
                           onChange={setLevelFilter}
@@ -418,7 +420,7 @@ export function ReferralPageV3({
                       </th>
                       <th className="text-left py-3 px-5">
                         <TableHeaderFilter
-                          label="注册时间"
+                          label={t('registerTime')}
                           value={dateFilter}
                           options={dateOptions}
                           onChange={setDateFilter}
@@ -426,13 +428,13 @@ export function ReferralPageV3({
                       </th>
                       <th className="text-left py-3 px-5">
                         <TableHeaderFilter
-                          label="状态"
+                          label={t('status')}
                           value={statusFilter}
                           options={statusOptions}
                           onChange={setStatusFilter}
                         />
                       </th>
-                      <th className="text-right py-3 px-5 text-[#9090A0] text-sm font-medium">贡献收益</th>
+                      <th className="text-right py-3 px-5 text-[#9090A0] text-sm font-medium">{t('contributedEarnings')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -445,7 +447,7 @@ export function ReferralPageV3({
                               ? 'bg-[#06B6D4]/20 text-[#06B6D4]'
                               : 'bg-[#8B5CF6]/20 text-[#8B5CF6]'
                           }`}>
-                            {referral.level === 1 ? '一级' : '二级'}
+                            {referral.level === 1 ? t('level1') : t('level2')}
                           </span>
                         </td>
                         <td className="py-4 px-5 text-[#9090A0] text-sm">{referral.joinDate}</td>
@@ -458,7 +460,7 @@ export function ReferralPageV3({
                             <span className={`w-1.5 h-1.5 rounded-full ${
                               referral.status === 'Active' ? 'bg-[#10B981]' : 'bg-[#606070]'
                             }`} />
-                            {referral.status === 'Active' ? '活跃' : '非活跃'}
+                            {referral.status === 'Active' ? t('active') : t('inactive')}
                           </span>
                         </td>
                         <td className="py-4 px-5 text-right font-mono font-semibold text-[#06B6D4]">
@@ -478,17 +480,17 @@ export function ReferralPageV3({
                     disabled={currentPage === 1}
                     className="px-3 py-1.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    上一页
+                    {t('prevPage')}
                   </button>
                   <span className="px-4 py-1.5 text-[#9090A0] text-sm">
-                    第 {currentPage} 页
+                    {t('pageNumber', { page: currentPage })}
                   </span>
                   <button
                     type="button"
                     onClick={() => setCurrentPage(currentPage + 1)}
                     className="px-3 py-1.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-sm"
                   >
-                    下一页
+                    {t('nextPage')}
                   </button>
                 </div>
               </div>
@@ -507,8 +509,8 @@ export function ReferralPageV3({
           >
             <div className="flex items-center gap-3">
               <Trophy className="w-5 h-5 text-[#06B6D4]" />
-              <span className="font-bold">返佣规则</span>
-              <span className="text-[#9090A0] text-sm">一级 30% · 二级 10%</span>
+              <span className="font-bold">{t('commissionRules')}</span>
+              <span className="text-[#9090A0] text-sm">{t('level1')} 30% · {t('level2')} 10%</span>
             </div>
             {showRules ? (
               <ChevronUp className="w-5 h-5 text-[#9090A0]" />
@@ -526,10 +528,10 @@ export function ReferralPageV3({
                     <div className="w-7 h-7 bg-[#06B6D4] rounded-full flex items-center justify-center text-white text-sm font-bold">
                       1
                     </div>
-                    <span className="font-semibold">一级返佣</span>
+                    <span className="font-semibold">{t('level1Commission')}</span>
                     <span className="text-2xl font-bold text-[#06B6D4] ml-auto">30%</span>
                   </div>
-                  <p className="text-[#9090A0] text-sm">直接邀请用户的 Gas 手续费返佣</p>
+                  <p className="text-[#9090A0] text-sm">{t('level1CommissionDesc')}</p>
                 </div>
 
                 {/* 二级返佣 */}
@@ -538,10 +540,10 @@ export function ReferralPageV3({
                     <div className="w-7 h-7 bg-[#8B5CF6] rounded-full flex items-center justify-center text-white text-sm font-bold">
                       2
                     </div>
-                    <span className="font-semibold">二级返佣</span>
+                    <span className="font-semibold">{t('level2Commission')}</span>
                     <span className="text-2xl font-bold text-[#8B5CF6] ml-auto">10%</span>
                   </div>
-                  <p className="text-[#9090A0] text-sm">二级邀请用户的 Gas 手续费返佣</p>
+                  <p className="text-[#9090A0] text-sm">{t('level2CommissionDesc')}</p>
                 </div>
               </div>
 
@@ -550,19 +552,19 @@ export function ReferralPageV3({
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <ChevronRight className="w-4 h-4 text-[#06B6D4]" />
-                    <span className="text-[#9090A0]">实时结算</span>
+                    <span className="text-[#9090A0]">{t('realTimeSettlement')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <ChevronRight className="w-4 h-4 text-[#06B6D4]" />
-                    <span className="text-[#9090A0]">自动到账</span>
+                    <span className="text-[#9090A0]">{t('autoCredit')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <ChevronRight className="w-4 h-4 text-[#06B6D4]" />
-                    <span className="text-[#9090A0]">终身有效</span>
+                    <span className="text-[#9090A0]">{t('lifetimeValid')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <ChevronRight className="w-4 h-4 text-[#06B6D4]" />
-                    <span className="text-[#9090A0]">无上限</span>
+                    <span className="text-[#9090A0]">{t('noLimit')}</span>
                   </div>
                 </div>
               </div>
@@ -579,7 +581,7 @@ export function ReferralPageV3({
           >
             <div className="flex items-center gap-3">
               <Crown className="w-5 h-5 text-[#F59E0B]" />
-              <span className="font-bold">邀请排行榜</span>
+              <span className="font-bold">{t('leaderboard')}</span>
               <span className="text-[#9090A0] text-sm">TOP 5</span>
             </div>
             {showLeaderboard ? (
@@ -612,7 +614,7 @@ export function ReferralPageV3({
                       </div>
                       <div>
                         <div className="font-medium text-sm">{user.username}</div>
-                        <div className="text-[#9090A0] text-xs">{user.referrals} 邀请</div>
+                        <div className="text-[#9090A0] text-xs">{user.referrals} {t('referrals')}</div>
                       </div>
                     </div>
                     <div className="text-right">

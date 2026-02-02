@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { X, Loader2, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react'
 import { useWallet, formatAddress } from '@/hooks/useWallet'
+import { useTranslations } from '@/i18n/provider'
 
 interface WalletOption {
   id: string
@@ -13,44 +14,52 @@ interface WalletOption {
   popular?: boolean
 }
 
-const walletOptions: WalletOption[] = [
+interface WalletOptionConfig {
+  id: string
+  name: string
+  icon: string
+  descKey: keyof typeof import('@/i18n/messages/zh-CN.json')['modals']
+  popular?: boolean
+}
+
+const walletOptionsConfig: WalletOptionConfig[] = [
   {
     id: 'metamask',
     name: 'MetaMask',
     icon: '/icons/wallets/metamask.svg',
-    description: '最流行的浏览器钱包',
+    descKey: 'metamaskDesc',
     popular: true,
   },
   {
     id: 'walletconnect',
     name: 'WalletConnect',
     icon: '/icons/wallets/walletconnect.svg',
-    description: '支持 100+ 手机钱包',
+    descKey: 'walletconnectDesc',
     popular: true,
   },
   {
     id: 'coinbase',
     name: 'Coinbase Wallet',
     icon: '/icons/wallets/coinbase.png',
-    description: 'Coinbase 官方钱包',
+    descKey: 'coinbaseDesc',
   },
   {
     id: 'okx',
     name: 'OKX Wallet',
     icon: '/icons/wallets/okx.png',
-    description: 'OKX 官方 Web3 钱包',
+    descKey: 'okxDesc',
   },
   {
     id: 'trust',
     name: 'Trust Wallet',
     icon: '/icons/wallets/trust.svg',
-    description: '多链支持移动钱包',
+    descKey: 'trustDesc',
   },
   {
     id: 'bitget',
     name: 'Bitget Wallet',
     icon: '/icons/wallets/bitget.png',
-    description: 'Bitget 官方钱包',
+    descKey: 'bitgetDesc',
   },
 ]
 
@@ -69,11 +78,19 @@ export function WalletConnectModal({
   onSuccess,
   mode = 'login',
 }: WalletConnectModalProps) {
+  const t = useTranslations('modals')
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const { connectWallet, isConnected, address, error: walletError, isConnecting } = useWallet()
 
+  // 创建翻译后的钱包选项
+  const walletOptions: WalletOption[] = walletOptionsConfig.map((wallet) => ({
+    ...wallet,
+    description: t(wallet.descKey as any),
+  }))
+
   // 连接成功后回调
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 钱包连接成功后清理状态是合理的副作用
   useEffect(() => {
     if (isConnected && address && connectingWallet) {
       onSuccess?.(address)
@@ -100,7 +117,7 @@ export function WalletConnectModal({
         await connectWallet(walletId)
       }
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : '连接失败，请重试')
+      setLocalError(err instanceof Error ? err.message : t('connectFailed'))
       setConnectingWallet(null)
     }
   }
@@ -127,15 +144,15 @@ export function WalletConnectModal({
           <div className="flex items-center justify-between p-6 border-b border-[#1E1E2E]">
             <div>
               <h2 className="text-xl font-bold text-[#F8F8FC]">
-                {mode === 'login' ? '钱包登录' : '钱包注册'}
+                {mode === 'login' ? t('walletLogin') : t('walletRegister')}
               </h2>
             </div>
             <button
               type="button"
               onClick={onClose}
               className="p-2 rounded-lg hover:bg-[#1A1A24] transition-colors"
-              title="关闭"
-              aria-label="关闭"
+              title={t('close')}
+              aria-label={t('close')}
             >
               <X className="w-5 h-5 text-[#9090A0]" />
             </button>
@@ -153,7 +170,7 @@ export function WalletConnectModal({
           <div className="p-6 space-y-3 max-h-[400px] overflow-y-auto">
             {/* Popular Wallets */}
             <div className="text-xs text-[#606070] uppercase tracking-wider mb-3">
-              热门钱包
+              {t('popularWallets')}
             </div>
             {walletOptions
               .filter((w) => w.popular)
@@ -169,7 +186,7 @@ export function WalletConnectModal({
 
             {/* Other Wallets */}
             <div className="text-xs text-[#606070] uppercase tracking-wider mb-3 mt-6">
-              更多钱包
+              {t('moreWallets')}
             </div>
             {walletOptions
               .filter((w) => !w.popular)
@@ -187,13 +204,13 @@ export function WalletConnectModal({
           {/* Footer */}
           <div className="px-6 pb-6">
             <p className="text-xs text-center text-[#606070]">
-              连接钱包即表示您同意我们的
+              {t('connectTerms')}
               <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
-                服务条款
+                {t('termsOfService')}
               </button>
-              和
+              {t('and')}
               <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
-                隐私政策
+                {t('privacyPolicy')}
               </button>
             </p>
           </div>

@@ -1,19 +1,14 @@
-import {
-  Injectable,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { v4 as uuidv4 } from 'uuid';
 import {
   BalanceResponse,
-  TransactionResponse,
   TransactionListResponse,
   CreateWithdrawDto,
   WithdrawRequestResponse,
-  DepositAddressResponse,
   TransactionQueryDto,
+  DepositAddressResponse,
 } from './dto/wallet.dto';
 
 @Injectable()
@@ -36,12 +31,14 @@ export class WalletService {
       select: {
         usdtBalance: true,
         hootBalance: true,
+        pointBalance: true,
       },
     });
 
     return {
       usdt: user?.usdtBalance.toString() || '0',
       hoot: user?.hootBalance.toString() || '0',
+      point: user?.pointBalance.toString() || '0',
     };
   }
 
@@ -133,9 +130,7 @@ export class WalletService {
     // 检查最小提现金额
     const minAmount = this.MIN_WITHDRAW_AMOUNT[asset];
     if (amount < minAmount) {
-      throw new BadRequestException(
-        `${asset} 最小提现金额为 ${minAmount}`,
-      );
+      throw new BadRequestException(`${asset} 最小提现金额为 ${minAmount}`);
     }
 
     // 计算手续费
@@ -151,8 +146,7 @@ export class WalletService {
       },
     });
 
-    const balance =
-      asset === 'USDT' ? user!.usdtBalance : user!.hootBalance;
+    const balance = asset === 'USDT' ? user!.usdtBalance : user!.hootBalance;
 
     if (new Decimal(balance).lessThan(totalAmount)) {
       throw new BadRequestException('余额不足');
@@ -161,8 +155,7 @@ export class WalletService {
     // 使用事务创建提现申请并冻结余额
     const result = await this.prisma.$transaction(async (tx) => {
       // 扣减余额
-      const balanceField =
-        asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
+      const balanceField = asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
 
       await tx.user.update({
         where: { id: userId },
@@ -261,8 +254,7 @@ export class WalletService {
 
     await this.prisma.$transaction(async (tx) => {
       // 增加余额
-      const balanceField =
-        asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
+      const balanceField = asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
 
       await tx.user.update({
         where: { id: userId },
@@ -288,5 +280,161 @@ export class WalletService {
     });
 
     this.logger.log(`用户 ${userId} 充值成功: ${amount} ${asset}`);
+  }
+
+  // 兑换接口
+  // 支持: USDT <-> POINT (1:1), USDT <-> HOOT (按市场价)
+  async exchange(
+    userId: string,
+    fromAsset: 'USDT' | 'HOOT' | 'POINT',
+    toAsset: 'USDT' | 'HOOT' | 'POINT',
+    amount: number,
+  ): Promise<{ fromAmount: string; toAmount: string; rate: string }> {
+    if (fromAsset === toAsset) {
+      throw new BadRequestException('来源和目标资产不能相同');
+    }
+
+    // 获取用户当前余额
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        usdtBalance: true,
+        hootBalance: true,
+        pointBalance: true,
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('用户不存在');
+    }
+
+    // 检查来源余额
+    const fromBalance = this.getBalanceByAsset(user, fromAsset);
+    const fromAmount = new Decimal(amount);
+
+    if (fromBalance.lessThan(fromAmount)) {
+      throw new BadRequestException(`${fromAsset} 余额不足`);
+    }
+
+    // 计算兑换汇率和目标金额
+    const rate = this.getExchangeRate(fromAsset, toAsset);
+    const toAmount = fromAmount.times(rate);
+
+    // 执行兑换（事务）
+    await this.prisma.$transaction(async (tx) => {
+      // 扣除来源资产
+      await this.updateBalance(tx, userId, fromAsset, fromAmount.negated());
+
+      // 增加目标资产
+      await this.updateBalance(tx, userId, toAsset, toAmount);
+
+      // 记录交易
+      const uniqueOrderId = `exchange_${userId}_${Date.now()}_${uuidv4().slice(0, 8)}`;
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'exchange',
+          asset: fromAsset,
+          amount: fromAmount.negated(),
+          uniqueOrderId,
+          status: 'completed',
+          remark: `兑换 ${fromAmount} ${fromAsset} -> ${toAmount.toFixed(8)} ${toAsset}`,
+        },
+      });
+    });
+
+    this.logger.log(
+      `用户 ${userId} 兑换: ${amount} ${fromAsset} -> ${toAmount.toFixed(8)} ${toAsset} (汇率: ${rate})`,
+    );
+
+    return {
+      fromAmount: fromAmount.toString(),
+      toAmount: toAmount.toFixed(8),
+      rate: rate.toString(),
+    };
+  }
+
+  // 获取指定资产的余额
+  private getBalanceByAsset(
+    user: { usdtBalance: Decimal; hootBalance: Decimal; pointBalance: Decimal },
+    asset: 'USDT' | 'HOOT' | 'POINT',
+  ): Decimal {
+    switch (asset) {
+      case 'USDT':
+        return new Decimal(user.usdtBalance.toString());
+      case 'HOOT':
+        return new Decimal(user.hootBalance.toString());
+      case 'POINT':
+        return new Decimal(user.pointBalance.toString());
+    }
+  }
+
+  // 获取兑换汇率
+  // USDT <-> POINT: 1:1
+  // USDT <-> HOOT: 假设 1 HOOT = 0.15 USDT（实际应从市场获取）
+  private getExchangeRate(
+    fromAsset: 'USDT' | 'HOOT' | 'POINT',
+    toAsset: 'USDT' | 'HOOT' | 'POINT',
+  ): Decimal {
+    const HOOT_PRICE_IN_USDT = new Decimal('0.15');
+
+    // USDT <-> POINT (1:1)
+    if (
+      (fromAsset === 'USDT' && toAsset === 'POINT') ||
+      (fromAsset === 'POINT' && toAsset === 'USDT')
+    ) {
+      return new Decimal(1);
+    }
+
+    // USDT -> HOOT
+    if (fromAsset === 'USDT' && toAsset === 'HOOT') {
+      return new Decimal(1).div(HOOT_PRICE_IN_USDT);
+    }
+
+    // HOOT -> USDT
+    if (fromAsset === 'HOOT' && toAsset === 'USDT') {
+      return HOOT_PRICE_IN_USDT;
+    }
+
+    // POINT -> HOOT (先换成 USDT 再换成 HOOT)
+    if (fromAsset === 'POINT' && toAsset === 'HOOT') {
+      return new Decimal(1).div(HOOT_PRICE_IN_USDT);
+    }
+
+    // HOOT -> POINT (先换成 USDT 再换成 POINT)
+    if (fromAsset === 'HOOT' && toAsset === 'POINT') {
+      return HOOT_PRICE_IN_USDT;
+    }
+
+    throw new BadRequestException('不支持的兑换路径');
+  }
+
+  // 更新用户余额
+  private async updateBalance(
+    tx: any,
+    userId: string,
+    asset: 'USDT' | 'HOOT' | 'POINT',
+    amount: Decimal,
+  ): Promise<void> {
+    const fieldMap = {
+      USDT: 'usdtBalance',
+      HOOT: 'hootBalance',
+      POINT: 'pointBalance',
+    };
+
+    const field = fieldMap[asset];
+
+    if (amount.greaterThan(0)) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { [field]: { increment: amount } },
+      });
+    } else {
+      await tx.user.update({
+        where: { id: userId },
+        data: { [field]: { decrement: amount.abs() } },
+      });
+    }
   }
 }

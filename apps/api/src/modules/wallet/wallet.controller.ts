@@ -1,14 +1,9 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import {
   CreateWithdrawDto,
   TransactionQueryDto,
+  ExchangeDto,
 } from './dto/wallet.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -54,5 +49,19 @@ export class WalletController {
   @Get('withdraw-requests')
   async getWithdrawRequests(@CurrentUser() user: { id: string }) {
     return this.walletService.getWithdrawRequests(user.id);
+  }
+
+  // 兑换
+  @Post('exchange')
+  async exchange(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ExchangeDto,
+  ) {
+    return this.walletService.exchange(
+      user.id,
+      dto.fromAsset,
+      dto.toAsset,
+      dto.amount,
+    );
   }
 }

@@ -14,6 +14,7 @@ import {
   Zap,
   History
 } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface StakeRecord {
   id: string
@@ -33,11 +34,20 @@ interface DividendRecord {
   source: string
 }
 
-const stakingPeriods = [
-  { id: '30', days: 30, label: '30天', weight: 1.0, apr: '8%' },
-  { id: '90', days: 90, label: '90天', weight: 1.5, apr: '12%' },
-  { id: '180', days: 180, label: '180天', weight: 2.0, apr: '18%' },
-  { id: '365', days: 365, label: '365天', weight: 3.0, apr: '25%' },
+interface LeaderboardEntry {
+  rank: number
+  address: string
+  staked: string
+  weight?: string
+  rewards: string
+}
+
+// Staking periods config - labels will be generated dynamically using translations
+const stakingPeriodsConfig = [
+  { id: '30', days: 30, weight: 1.0, apr: '8%' },
+  { id: '90', days: 90, weight: 1.5, apr: '12%' },
+  { id: '180', days: 180, weight: 2.0, apr: '18%' },
+  { id: '365', days: 365, weight: 3.0, apr: '25%' },
 ]
 
 interface MobileEcosystemV3Props {
@@ -52,12 +62,14 @@ interface MobileEcosystemV3Props {
   nextDistribution?: string
   stakeRecords?: StakeRecord[]
   dividendRecords?: DividendRecord[]
+  leaderboardData?: LeaderboardEntry[]
   onStake?: (amount: number, periodDays: number) => void
   onUnstake?: (recordId: string) => void
   onClaimRewards?: () => void
+  embedded?: boolean // 嵌入模式，移除 min-h-screen
 }
 
-const leaderboardData = [
+const defaultLeaderboardData: LeaderboardEntry[] = [
   { rank: 1, address: '0x1234...5678', staked: '2.5M', weight: '3.0x', rewards: '$1,234' },
   { rank: 2, address: '0x2345...6789', staked: '1.8M', weight: '2.8x', rewards: '$890' },
   { rank: 3, address: '0x3456...7890', staked: '1.2M', weight: '2.5x', rewards: '$543' },
@@ -89,25 +101,36 @@ export function MobileEcosystemV3({
     { id: '5', amount: 4000, lockPeriod: 90, stakeDate: '2025-03-15', unlockDate: '2025-06-15', weight: 1.5, rewards: 89.12, status: 'history' as const },
   ],
   dividendRecords = defaultDividendRecords,
+  leaderboardData = defaultLeaderboardData,
   onStake,
   onUnstake: _onUnstake,
-  onClaimRewards
+  onClaimRewards,
+  embedded = false
 }: MobileEcosystemV3Props) {
   void _onUnstake // 后续实现解押功能时使用
+  const t = useTranslations('ecosystem')
+  const tCommon = useTranslations('common')
+
+  // Generate staking periods with translated labels
+  const stakingPeriods = stakingPeriodsConfig.map(p => ({
+    ...p,
+    label: t('days', { count: p.days })
+  }))
+
   const [activeTab, setActiveTab] = useState<'token' | 'staking' | 'leaderboard'>('token')
   const [stakingSubTab, setStakingSubTab] = useState<'stake' | 'staking' | 'history' | 'dividends'>('stake')
   const [selectedPeriod, setSelectedPeriod] = useState(stakingPeriods[1])
   const [stakeAmount, setStakeAmount] = useState('')
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
+    <div className={`${embedded ? '' : 'min-h-screen'} bg-[#0A0A0F] text-white ${embedded ? 'pb-4' : 'pb-20'}`}>
       {/* Sub Tab - 使用下划线样式区分主Tab */}
       <div className="px-4 pt-2 pb-3">
         <div className="flex border-b border-[#1E1E2E]">
           {[
-            { id: 'token', label: '代币' },
-            { id: 'staking', label: '质押' },
-            { id: 'leaderboard', label: '排行' },
+            { id: 'token', labelKey: 'token' },
+            { id: 'staking', labelKey: 'stakingTab' },
+            { id: 'leaderboard', labelKey: 'leaderboard' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -119,7 +142,7 @@ export function MobileEcosystemV3({
                   : 'text-[#94A3B8]'
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey as any)}
               {activeTab === tab.id && (
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#06B6D4] rounded-full" />
               )}
@@ -162,19 +185,19 @@ export function MobileEcosystemV3({
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="text-sm font-semibold">${marketCap}</div>
-                  <div className="text-[10px] text-[#94A3B8]">市值</div>
+                  <div className="text-[10px] text-[#94A3B8]">{t('marketCap')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="text-sm font-semibold">{circulatingSupply}</div>
-                  <div className="text-[10px] text-[#94A3B8]">流通量</div>
+                  <div className="text-[10px] text-[#94A3B8]">{t('circulatingSupply')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="text-sm font-semibold">{totalSupply}</div>
-                  <div className="text-[10px] text-[#94A3B8]">总供应量</div>
+                  <div className="text-[10px] text-[#94A3B8]">{t('totalSupply')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="text-sm font-semibold">{totalStaked}</div>
-                  <div className="text-[10px] text-[#94A3B8]">总质押</div>
+                  <div className="text-[10px] text-[#94A3B8]">{t('totalStaked')}</div>
                 </div>
               </div>
             </div>
@@ -185,12 +208,12 @@ export function MobileEcosystemV3({
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <Gift className="w-4 h-4 text-[#22C55E]" />
-                    <span className="text-sm text-[#94A3B8]">待领取分红</span>
+                    <span className="text-sm text-[#94A3B8]">{t('pendingRewardsLabel')}</span>
                   </div>
                   <div className="text-2xl font-bold text-[#22C55E]">${pendingRewards.toFixed(2)}</div>
                   <div className="flex items-center gap-1 mt-1 text-xs text-[#94A3B8]">
                     <Clock className="w-3 h-3" />
-                    <span>下次 {nextDistribution}</span>
+                    <span>{t('next')} {nextDistribution}</span>
                   </div>
                 </div>
                 <button
@@ -203,7 +226,7 @@ export function MobileEcosystemV3({
                       : 'bg-[#1A1A24] text-[#94A3B8]'
                   }`}
                 >
-                  领取
+                  {t('claim')}
                 </button>
               </div>
             </div>
@@ -215,8 +238,8 @@ export function MobileEcosystemV3({
                   <TrendingUp className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div>
-                  <div className="font-semibold text-xs">燃油费收入分红</div>
-                  <div className="text-[10px] text-[#94A3B8]">燃油费收入的 40% 分配给质押用户，10% 用于代币回购销毁</div>
+                  <div className="font-semibold text-xs">{t('gasFeeDistribution')}</div>
+                  <div className="text-[10px] text-[#94A3B8]">{t('gasFeeDescription')}</div>
                 </div>
               </div>
             </div>
@@ -228,32 +251,32 @@ export function MobileEcosystemV3({
                   <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#22C55E]/10 flex items-center justify-center">
                     <Percent className="w-4 h-4 text-[#22C55E]" />
                   </div>
-                  <div className="text-[10px] text-white">40% 分红</div>
+                  <div className="text-[10px] text-white">{t('dividendBenefit')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center">
                     <TrendingUp className="w-4 h-4 text-[#06B6D4]" />
                   </div>
-                  <div className="text-[10px] text-white">订阅折扣</div>
+                  <div className="text-[10px] text-white">{t('subscriptionDiscount')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#8B5CF6]/10 flex items-center justify-center">
                     <Vote className="w-4 h-4 text-[#8B5CF6]" />
                   </div>
-                  <div className="text-[10px] text-white">治理投票</div>
+                  <div className="text-[10px] text-white">{t('governance')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-2.5 text-center">
                   <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
                     <Zap className="w-4 h-4 text-[#F59E0B]" />
                   </div>
-                  <div className="text-[10px] text-white">优先参与</div>
+                  <div className="text-[10px] text-white">{t('earlyAccess')}</div>
                 </div>
               </div>
             </div>
 
             {/* 代币分配 Pie Chart */}
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-              <h3 className="text-sm font-semibold mb-3">代币分配</h3>
+              <h3 className="text-sm font-semibold mb-3">{t('tokenDistribution')}</h3>
               <div className="flex items-center gap-4">
                 {/* Pie Chart */}
                 <div className="relative w-24 h-24 flex-shrink-0">
@@ -267,7 +290,7 @@ export function MobileEcosystemV3({
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
                       <div className="text-xs font-bold">100M</div>
-                      <div className="text-[8px] text-[#94A3B8]">总量</div>
+                      <div className="text-[8px] text-[#94A3B8]">{t('total')}</div>
                     </div>
                   </div>
                 </div>
@@ -276,28 +299,28 @@ export function MobileEcosystemV3({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-[#06B6D4]" />
-                      <span className="text-[10px] text-[#94A3B8]">社区 40%</span>
+                      <span className="text-[10px] text-[#94A3B8]">{t('community')} 40%</span>
                     </div>
                     <span className="text-[10px] text-cyan-400">40M</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-[#22D3EE]" />
-                      <span className="text-[10px] text-[#94A3B8]">团队 20%</span>
+                      <span className="text-[10px] text-[#94A3B8]">{t('team')} 20%</span>
                     </div>
                     <span className="text-[10px] text-cyan-400">20M</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-[#67E8F9]" />
-                      <span className="text-[10px] text-[#94A3B8]">投资者 25%</span>
+                      <span className="text-[10px] text-[#94A3B8]">{t('investors')} 25%</span>
                     </div>
                     <span className="text-[10px] text-cyan-400">25M</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-[#A5F3FC]" />
-                      <span className="text-[10px] text-[#94A3B8]">国库 15%</span>
+                      <span className="text-[10px] text-[#94A3B8]">{t('treasury')} 15%</span>
                     </div>
                     <span className="text-[10px] text-cyan-400">15M</span>
                   </div>
@@ -315,11 +338,11 @@ export function MobileEcosystemV3({
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center">
                   <div className="text-lg font-bold">{userStaked.toLocaleString()}</div>
-                  <div className="text-xs text-[#94A3B8]">我的质押</div>
+                  <div className="text-xs text-[#94A3B8]">{t('myStake')}</div>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-lg p-3 text-center border border-[#22C55E]/20">
                   <div className="text-lg font-bold text-[#22C55E]">${pendingRewards.toFixed(2)}</div>
-                  <div className="text-xs text-[#94A3B8]">待领取</div>
+                  <div className="text-xs text-[#94A3B8]">{t('pendingClaim')}</div>
                 </div>
               </div>
             </div>
@@ -327,10 +350,10 @@ export function MobileEcosystemV3({
             {/* Staking Sub-tabs - 4 Tabs */}
             <div className="flex gap-1 bg-[#12121A]/50 rounded-lg p-1">
               {[
-                { id: 'stake', label: '质押' },
-                { id: 'staking', label: '质押中', count: stakeRecords.filter(r => r.status === 'staking' || r.status === 'unlocked').length },
-                { id: 'history', label: '历史质押', count: stakeRecords.filter(r => r.status === 'history').length },
-                { id: 'dividends', label: '分红记录' },
+                { id: 'stake', labelKey: 'stake' },
+                { id: 'staking', labelKey: 'staking', count: stakeRecords.filter(r => r.status === 'staking' || r.status === 'unlocked').length },
+                { id: 'history', labelKey: 'stakingHistory', count: stakeRecords.filter(r => r.status === 'history').length },
+                { id: 'dividends', labelKey: 'dividendRecords' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -342,7 +365,7 @@ export function MobileEcosystemV3({
                       : 'text-[#94A3B8]'
                   }`}
                 >
-                  {tab.label}
+                  {t(tab.labelKey as any)}
                   {'count' in tab && tab.count !== undefined && (
                     <span className="ml-0.5">({tab.count})</span>
                   )}
@@ -353,7 +376,7 @@ export function MobileEcosystemV3({
             {/* Stake Form */}
             {stakingSubTab === 'stake' && (
               <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
-                <span className="text-sm font-medium">新建质押</span>
+                <span className="text-sm font-medium">{t('newStake')}</span>
 
                 {/* Amount */}
                 <div className="relative">
@@ -361,11 +384,11 @@ export function MobileEcosystemV3({
                     type="number"
                     value={stakeAmount}
                     onChange={(e) => setStakeAmount(e.target.value)}
-                    placeholder="输入数量"
+                    placeholder={t('enterAmount')}
                     className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg px-3 py-2.5 text-sm placeholder:text-[#94A3B8] focus:outline-none focus:border-[#06B6D4]"
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-cyan-400">
-                    最大
+                    {t('max')}
                   </button>
                 </div>
 
@@ -389,7 +412,7 @@ export function MobileEcosystemV3({
 
                 {/* Weight Rules */}
                 <div className="bg-[#0A0A0F]/30 rounded-lg p-2.5 space-y-1">
-                  <span className="text-[10px] text-[#94A3B8]">权重规则</span>
+                  <span className="text-[10px] text-[#94A3B8]">{t('weightRules')}</span>
                   <div className="grid grid-cols-4 gap-1.5 text-[10px]">
                     {stakingPeriods.map((p) => (
                       <div key={p.id} className={`text-center ${selectedPeriod.id === p.id ? 'text-cyan-400' : 'text-[#606070]'}`}>
@@ -402,8 +425,8 @@ export function MobileEcosystemV3({
 
                 {/* Info */}
                 <div className="flex items-center justify-between text-xs text-[#94A3B8] px-1">
-                  <span>权重 {selectedPeriod.weight}x</span>
-                  <span>年化 {selectedPeriod.apr}</span>
+                  <span>{t('weightLabel')} {selectedPeriod.weight}x</span>
+                  <span>{t('annualized')} {selectedPeriod.apr}</span>
                 </div>
 
                 <button
@@ -416,7 +439,7 @@ export function MobileEcosystemV3({
                       : 'bg-[#1A1A24] text-[#94A3B8]'
                   }`}
                 >
-                  确认质押
+                  {t('confirmStake')}
                 </button>
               </div>
             )}
@@ -438,29 +461,29 @@ export function MobileEcosystemV3({
                             </div>
                             <div>
                               <span className="text-sm font-bold">{record.amount.toLocaleString()} HOOT</span>
-                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x 权重</span>
+                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x {t('weightUnit')}</span>
                             </div>
                           </div>
                           <div className="text-right">
                             <span className={`text-xs px-2 py-0.5 rounded ${
                               record.status === 'staking' ? 'bg-[#06B6D4]/10 text-[#06B6D4]' : 'bg-[#22C55E]/10 text-[#22C55E]'
                             }`}>
-                              {record.status === 'staking' ? '质押中' : '已解押'}
+                              {record.status === 'staking' ? t('stakingStatus') : t('unstakedStatus')}
                             </span>
                           </div>
                         </div>
                         <div className="text-[10px] text-[#606070] mb-2">
-                          质押于 {record.stakeDate} · 解押于 {record.unlockDate} · {record.lockPeriod}天锁定期
+                          {t('stakedOn')} {record.stakeDate} · {t('unlocksOn')} {record.unlockDate} · {t('days', { count: record.lockPeriod })}{t('lockPeriod')}
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#94A3B8]">累计收益</span>
+                          <span className="text-xs text-[#94A3B8]">{t('cumulativeRewards')}</span>
                           <span className="text-sm font-bold text-[#22C55E]">${record.rewards.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无质押中记录</div>
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">{t('noStakingRecords')}</div>
                 )}
               </div>
             )}
@@ -480,27 +503,27 @@ export function MobileEcosystemV3({
                             </div>
                             <div>
                               <span className="text-sm font-bold">{record.amount.toLocaleString()} HOOT</span>
-                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x 权重</span>
+                              <span className="text-xs text-cyan-400 ml-2">{record.weight}x {t('weightUnit')}</span>
                             </div>
                           </div>
                           <div className="text-right">
                             <span className="text-xs px-2 py-0.5 rounded bg-[#94A3B8]/10 text-[#94A3B8]">
-                              已解押
+                              {t('unstakedStatus')}
                             </span>
                           </div>
                         </div>
                         <div className="text-[10px] text-[#606070] mb-2">
-                          质押于 {record.stakeDate} · 解押于 {record.unlockDate} · {record.lockPeriod}天锁定期
+                          {t('stakedOn')} {record.stakeDate} · {t('unlocksOn')} {record.unlockDate} · {t('days', { count: record.lockPeriod })}{t('lockPeriod')}
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-[#94A3B8]">累计收益</span>
+                          <span className="text-xs text-[#94A3B8]">{t('cumulativeRewards')}</span>
                           <span className="text-sm font-bold text-[#22C55E]">${record.rewards.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无历史质押记录</div>
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">{t('noHistoryRecords')}</div>
                 )}
               </div>
             )}
@@ -527,7 +550,7 @@ export function MobileEcosystemV3({
                     ))}
                   </div>
                 ) : (
-                  <div className="py-6 text-center text-sm text-[#94A3B8]">暂无分红记录</div>
+                  <div className="py-6 text-center text-sm text-[#94A3B8]">{t('noDividendRecords')}</div>
                 )}
               </div>
             )}
@@ -541,11 +564,11 @@ export function MobileEcosystemV3({
             <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-[#94A3B8]">我的排名</span>
+                  <span className="text-xs text-[#94A3B8]">{t('myRank')}</span>
                   <div className="text-2xl font-bold">#128</div>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs text-[#94A3B8]">我的质押</span>
+                  <span className="text-xs text-[#94A3B8]">{t('myStakeLabel')}</span>
                   <div className="text-lg font-bold text-cyan-400">{userStaked.toLocaleString()}</div>
                 </div>
               </div>
@@ -584,7 +607,7 @@ export function MobileEcosystemV3({
               </div>
 
               <button type="button" className="w-full py-2 text-sm text-[#94A3B8] flex items-center justify-center gap-1">
-                查看全部 <ChevronRight className="w-4 h-4" />
+                {tCommon('viewAll')} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </>

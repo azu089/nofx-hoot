@@ -2,51 +2,61 @@
 
 import { X, Webhook, Wand2, Code } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { useTranslations } from '@/i18n/provider'
 
 interface CreateStrategyModalProps {
   onClose: () => void
   onSelectType: (type: 'tradingview' | 'visual' | 'code') => void
 }
 
-const strategyTypes = [
+const strategyTypesConfig = [
   {
     id: 'tradingview' as const,
     icon: Webhook,
-    name: 'TradingView 接入',
-    description: '连接 TradingView Alert 信号，自动执行实盘交易',
-    tag: '推荐',
+    nameKey: 'tradingviewIntegration',
+    descKey: 'tradingviewDesc',
+    tagKey: 'recommended',
     tagStyle: 'bg-gradient-to-r from-cyan-500 to-cyan-400',
   },
   {
     id: 'visual' as const,
     icon: Wand2,
-    name: '可视化搭建',
-    description: '无需编程，通过条件组合搭建量化策略',
-    tag: '入门',
+    nameKey: 'visualBuilder',
+    descKey: 'visualBuilderDesc',
+    tagKey: 'beginner',
     tagStyle: 'bg-[#10B981]',
   },
   {
     id: 'code' as const,
     icon: Code,
-    name: '代码开发',
-    description: '使用 Python 编写完全自定义的量化策略',
-    tag: '高级',
+    nameKey: 'codeDevelopment',
+    descKey: 'codeDevelopmentDesc',
+    tagKey: 'advanced',
     tagStyle: 'bg-[#F59E0B]',
   },
 ]
 
 export function CreateStrategyModal({ onClose, onSelectType }: CreateStrategyModalProps) {
+  const t = useTranslations('modals')
+
+  const strategyTypes = strategyTypesConfig.map(type => ({
+    ...type,
+    name: t(type.nameKey as any),
+    description: t(type.descKey as any),
+    tag: t(type.tagKey as any),
+  }))
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <Card className="relative z-10 w-full max-w-md bg-[#12121A] border-[#1E1E2E] shadow-2xl">
         <CardContent className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-[#F8F8FC]">创建策略</h2>
+            <h2 className="text-xl font-semibold text-[#F8F8FC]">{t('createStrategy')}</h2>
             <button
               type="button"
               onClick={onClose}
-              title="关闭"
+              title={t('close')}
               className="text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
             >
               <X className="w-5 h-5" />
@@ -54,7 +64,7 @@ export function CreateStrategyModal({ onClose, onSelectType }: CreateStrategyMod
           </div>
 
           <p className="text-[#9090A0] text-sm mb-6">
-            选择一种方式来创建你的交易策略
+            {t('selectStrategyType')}
           </p>
 
           {/* Strategy Type Options */}

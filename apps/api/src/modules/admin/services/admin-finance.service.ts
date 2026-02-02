@@ -17,17 +17,13 @@ export class AdminFinanceService {
     const dateFilter = this.buildDateFilter(startDate, endDate);
 
     // 并行查询各项收入
-    const [
-      subscriptionStats,
-      pointCardStats,
-      gasFeeStats,
-      withdrawStats,
-    ] = await Promise.all([
-      this.getSubscriptionRevenue(dateFilter),
-      this.getPointCardRevenue(dateFilter),
-      this.getGasFeeRevenue(dateFilter),
-      this.getWithdrawStats(dateFilter),
-    ]);
+    const [subscriptionStats, pointCardStats, gasFeeStats, withdrawStats] =
+      await Promise.all([
+        this.getSubscriptionRevenue(dateFilter),
+        this.getPointCardRevenue(dateFilter),
+        this.getGasFeeRevenue(dateFilter),
+        this.getWithdrawStats(dateFilter),
+      ]);
 
     // 计算总收入
     const totalRevenue = new Decimal(subscriptionStats.total)
@@ -185,9 +181,10 @@ export class AdminFinanceService {
       total,
       totalProfit,
       count: gasFees.length,
-      averageFeeRate: gasFees.length > 0
-        ? new Decimal(total).div(totalProfit).mul(100).toFixed(2) + '%'
-        : '0%',
+      averageFeeRate:
+        gasFees.length > 0
+          ? new Decimal(total).div(totalProfit).mul(100).toFixed(2) + '%'
+          : '0%',
       byExchange: byExchange.map((e) => ({
         exchange: e.exchange,
         feeAmount: e._sum.feeAmount?.toString() || '0',

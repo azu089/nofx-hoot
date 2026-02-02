@@ -162,7 +162,10 @@ export class AuthService {
     });
 
     // 发送欢迎邮件
-    await this.emailService.sendWelcomeEmail(email, user.nickname || email.split('@')[0]);
+    await this.emailService.sendWelcomeEmail(
+      email,
+      user.nickname || email.split('@')[0],
+    );
 
     // 判断是首次注册还是绑定邮箱
     const isBindEmail = !!(user.telegramId || user.walletAddress);
@@ -245,7 +248,9 @@ export class AuthService {
   // ===== Telegram 相关 =====
 
   // 生成 Telegram 绑定码
-  async generateBindCode(userId: string): Promise<{ bindCode: string; expiresAt: Date }> {
+  async generateBindCode(
+    userId: string,
+  ): Promise<{ bindCode: string; expiresAt: Date }> {
     // 生成 6 位绑定码
     const bindCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟过期
@@ -254,9 +259,12 @@ export class AuthService {
     bindCodeCache.set(bindCode, { userId, expiresAt });
 
     // 5分钟后自动清理
-    setTimeout(() => {
-      bindCodeCache.delete(bindCode);
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        bindCodeCache.delete(bindCode);
+      },
+      5 * 60 * 1000,
+    );
 
     return { bindCode, expiresAt };
   }
@@ -322,7 +330,8 @@ export class AuthService {
       email: user.email,
       nickname: user.nickname,
       usdtBalance: user.usdtBalance.toString(),
-      hootBalance: updatedUser?.hootBalance.toString() || user.hootBalance.toString(),
+      hootBalance:
+        updatedUser?.hootBalance.toString() || user.hootBalance.toString(),
     };
   }
 
@@ -399,7 +408,9 @@ export class AuthService {
         await this.airdropService.grantRegisterAirdrop(user.id);
         this.logger.log(`TG 用户注册空投: ${dto.telegramId} +100 HOOT`);
       } catch (error) {
-        this.logger.error(`TG 注册空投失败: ${dto.telegramId}, ${error.message}`);
+        this.logger.error(
+          `TG 注册空投失败: ${dto.telegramId}, ${error.message}`,
+        );
       }
     }
 
@@ -425,23 +436,33 @@ export class AuthService {
   // ===== 钱包登录 (SIWE) =====
 
   // 获取登录 Nonce
-  async getWalletNonce(address: string): Promise<{ nonce: string; expiresAt: Date }> {
-    const nonce = Math.random().toString(36).substring(2, 15) +
-                  Math.random().toString(36).substring(2, 15);
+  async getWalletNonce(
+    address: string,
+  ): Promise<{ nonce: string; expiresAt: Date }> {
+    const nonce =
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟有效
 
     nonceCache.set(address.toLowerCase(), { nonce, expiresAt });
 
     // 5分钟后自动清理
-    setTimeout(() => {
-      nonceCache.delete(address.toLowerCase());
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        nonceCache.delete(address.toLowerCase());
+      },
+      5 * 60 * 1000,
+    );
 
     return { nonce, expiresAt };
   }
 
   // 钱包登录
-  async loginByWallet(address: string, signature: string, message: string): Promise<LoginResponse> {
+  async loginByWallet(
+    address: string,
+    signature: string,
+    message: string,
+  ): Promise<LoginResponse> {
     const normalizedAddress = address.toLowerCase();
 
     // 验证 Nonce
@@ -512,7 +533,11 @@ export class AuthService {
   // ===== 账户绑定 =====
 
   // 绑定邮箱（已登录用户）
-  async bindEmail(userId: string, email: string, password: string): Promise<{ message: string }> {
+  async bindEmail(
+    userId: string,
+    email: string,
+    password: string,
+  ): Promise<{ message: string }> {
     // 检查邮箱是否已被使用
     const existing = await this.prisma.user.findUnique({
       where: { email },
@@ -540,7 +565,12 @@ export class AuthService {
   }
 
   // 绑定钱包（已登录用户）
-  async bindWallet(userId: string, address: string, signature: string, message: string): Promise<{ message: string }> {
+  async bindWallet(
+    userId: string,
+    address: string,
+    signature: string,
+    message: string,
+  ): Promise<{ message: string }> {
     const normalizedAddress = address.toLowerCase();
 
     // 验证 Nonce
@@ -572,7 +602,10 @@ export class AuthService {
 
     // 发放绑定钱包空投 (+20 HOOT)
     try {
-      await this.airdropService.grantBindWalletAirdrop(userId, normalizedAddress);
+      await this.airdropService.grantBindWalletAirdrop(
+        userId,
+        normalizedAddress,
+      );
       this.logger.log(`钱包绑定空投: ${userId} +20 HOOT`);
     } catch (error) {
       this.logger.error(`钱包绑定空投失败: ${error.message}`);

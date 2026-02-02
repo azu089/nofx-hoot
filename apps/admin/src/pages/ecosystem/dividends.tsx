@@ -1,6 +1,7 @@
 /**
- * 分红记录页面
- * HOOT 生态分红发放记录
+ * 分红池管理页面
+ * 基于燃油费的周度分红
+ * 接入真实后端 API
  */
 import { List } from '@refinedev/antd';
 import {
@@ -17,217 +18,225 @@ import {
   Typography,
   Modal,
   Descriptions,
+  Spin,
+  Empty,
+  Popconfirm,
 } from 'antd';
 import {
-  SearchOutlined,
   DollarOutlined,
   EyeOutlined,
-  DownloadOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   SyncOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../../lib/api';
+import { useMessage } from '../../hooks';
 
 const { RangePicker } = DatePicker;
 const { Text, Title } = Typography;
 
-interface IDividendRecord {
+// 分红池类型
+interface DividendPool {
   id: string;
-  period: string;
-  periodType: 'daily' | 'weekly' | 'monthly';
-  totalPool: string;
-  totalWeight: number;
-  participantCount: number;
+  weekNumber: number;
+  periodStart: string;
+  periodEnd: string;
+  gasFeeTotal: string;
+  gasFeeCount: number;
+  totalAmount: string;
+  dividendRate: string;
+  totalWeight: string;
+  stakerCount: number;
   perWeightAmount: string;
-  status: 'pending' | 'processing' | 'completed';
+  distributedAmount: string;
+  remainingAmount: string;
+  status: 'collecting' | 'pending' | 'distributing' | 'completed';
+  distributedAt: string | null;
   createdAt: string;
-  completedAt: string | null;
 }
 
-interface IUserDividend {
+// 分红记录类型
+interface DividendRecord {
   id: string;
-  dividendId: string;
-  userId: string;
-  username: string;
-  weight: number;
-  weightShare: string;
-  amount: string;
-  status: 'pending' | 'credited';
-  creditedAt: string | null;
+  user: {
+    id: string;
+    email: string;
+    nickname: string;
+  };
+  stakedAmount: string;
+  weightedAmount: string;
+  dividendAmount: string;
+  status: string;
+  paidAt: string | null;
 }
 
-// 模拟分红期数据
-const mockDividends: IDividendRecord[] = [
-  {
-    id: 'd1',
-    period: '2025-01-30',
-    periodType: 'daily',
-    totalPool: '15000.00',
-    totalWeight: 30000000,
-    participantCount: 892,
-    perWeightAmount: '0.0005',
-    status: 'completed',
-    createdAt: '2025-01-30 00:00:00',
-    completedAt: '2025-01-30 00:15:00',
-  },
-  {
-    id: 'd2',
-    period: '2025-01-29',
-    periodType: 'daily',
-    totalPool: '12500.00',
-    totalWeight: 29500000,
-    participantCount: 885,
-    perWeightAmount: '0.00042',
-    status: 'completed',
-    createdAt: '2025-01-29 00:00:00',
-    completedAt: '2025-01-29 00:12:00',
-  },
-  {
-    id: 'd3',
-    period: '2025-W04',
-    periodType: 'weekly',
-    totalPool: '85000.00',
-    totalWeight: 30000000,
-    participantCount: 892,
-    perWeightAmount: '0.00283',
-    status: 'completed',
-    createdAt: '2025-01-27 00:00:00',
-    completedAt: '2025-01-27 00:30:00',
-  },
-  {
-    id: 'd4',
-    period: '2025-01-31',
-    periodType: 'daily',
-    totalPool: '18000.00',
-    totalWeight: 30500000,
-    participantCount: 900,
-    perWeightAmount: '0.00059',
-    status: 'processing',
-    createdAt: '2025-01-31 00:00:00',
-    completedAt: null,
-  },
-];
-
-// 模拟用户分红明细
-const mockUserDividends: IUserDividend[] = [
-  {
-    id: 'ud1',
-    dividendId: 'd1',
-    userId: 'u1',
-    username: 'crypto_whale',
-    weight: 2500000,
-    weightShare: '8.33',
-    amount: '1250.00',
-    status: 'credited',
-    creditedAt: '2025-01-30 00:15:00',
-  },
-  {
-    id: 'ud2',
-    dividendId: 'd1',
-    userId: 'u2',
-    username: 'diamond_hands',
-    weight: 6000000,
-    weightShare: '20.00',
-    amount: '3000.00',
-    status: 'credited',
-    creditedAt: '2025-01-30 00:15:00',
-  },
-  {
-    id: 'ud3',
-    dividendId: 'd1',
-    userId: 'u3',
-    username: 'trader_001',
-    weight: 500000,
-    weightShare: '1.67',
-    amount: '250.00',
-    status: 'credited',
-    creditedAt: '2025-01-30 00:15:00',
-  },
-];
-
-// 统计数据
-const mockStats = {
-  totalDistributed: 2580000,
-  monthDistributed: 450000,
-  todayDistributed: 15000,
-  avgDaily: 14500,
-};
+// 分红概览类型
+interface DividendOverview {
+  totalDistributed: string;
+  currentPoolAmount: string;
+  currentPoolStakers: number;
+  nextDistributionDate: string | null;
+  recentPools: DividendPool[];
+}
 
 export const DividendsPage = () => {
-  const [dataSource] = useState<IDividendRecord[]>(mockDividends);
+  const message = useMessage();
+  const [overview, setOverview] = useState<DividendOverview | null>(null);
+  const [pools, setPools] = useState<DividendPool[]>([]);
+  const [loading, setLoading] = useState(true);
   const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedDividend, setSelectedDividend] = useState<IDividendRecord | null>(null);
+  const [selectedPool, setSelectedPool] = useState<DividendPool | null>(null);
+  const [poolRecords, setPoolRecords] = useState<DividendRecord[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
 
-  const statusColors = {
-    pending: 'default',
-    processing: 'processing',
+  // 获取分红数据
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [overviewData, poolsData] = await Promise.all([
+        api.get<DividendOverview>('/admin/ecosystem/dividend/overview'),
+        api.get<{ pools: DividendPool[] }>('/admin/ecosystem/dividend-pools'),
+      ]);
+      setOverview(overviewData);
+      setPools(poolsData.pools || []);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '获取数据失败';
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // 创建分红池
+  const handleCreatePool = async () => {
+    try {
+      await api.post('/admin/ecosystem/dividend-pools');
+      message.success('分红池创建成功');
+      fetchData();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '创建失败';
+      message.error(errorMessage);
+    }
+  };
+
+  // 执行分红
+  const handleDistribute = async (poolId: string) => {
+    try {
+      await api.post(`/admin/ecosystem/dividend-pools/${poolId}/distribute`);
+      message.success('分红发放成功');
+      fetchData();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '分红发放失败';
+      message.error(errorMessage);
+    }
+  };
+
+  // 查看分红明细
+  const showDetail = async (pool: DividendPool) => {
+    setSelectedPool(pool);
+    setDetailVisible(true);
+    setRecordsLoading(true);
+    try {
+      const data = await api.get<{ records: DividendRecord[] }>(
+        `/admin/ecosystem/dividend-pools/${pool.id}/records`
+      );
+      setPoolRecords(data.records || []);
+    } catch (err: unknown) {
+      message.error('获取分红明细失败');
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  const statusColors: Record<string, string> = {
+    collecting: 'processing',
+    pending: 'warning',
+    distributing: 'processing',
     completed: 'success',
   };
 
-  const statusLabels = {
+  const statusLabels: Record<string, string> = {
+    collecting: '收集中',
     pending: '待发放',
-    processing: '发放中',
+    distributing: '发放中',
     completed: '已完成',
   };
 
-  const statusIcons = {
+  const statusIcons: Record<string, React.ReactNode> = {
+    collecting: <SyncOutlined spin />,
     pending: <ClockCircleOutlined />,
-    processing: <SyncOutlined spin />,
+    distributing: <SyncOutlined spin />,
     completed: <CheckCircleOutlined />,
-  };
-
-  const periodTypeLabels = {
-    daily: '日分红',
-    weekly: '周分红',
-    monthly: '月分红',
-  };
-
-  const showDetail = (record: IDividendRecord) => {
-    setSelectedDividend(record);
-    setDetailVisible(true);
   };
 
   const columns = [
     {
-      title: '分红期',
-      dataIndex: 'period',
+      title: '周期',
       key: 'period',
-      width: 140,
-      render: (period: string, record: IDividendRecord) => (
+      width: 180,
+      render: (_: unknown, record: DividendPool) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{period}</Text>
-          <Tag color="blue">{periodTypeLabels[record.periodType]}</Tag>
+          <Text strong>第 {record.weekNumber} 周</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {new Date(record.periodStart).toLocaleDateString()} - {new Date(record.periodEnd).toLocaleDateString()}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '燃油费收入',
+      key: 'gasFee',
+      width: 140,
+      render: (_: unknown, record: DividendPool) => (
+        <Space direction="vertical" size={0}>
+          <Text style={{ color: '#f5222d' }}>${parseFloat(record.gasFeeTotal).toFixed(2)}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.gasFeeCount} 笔</Text>
         </Space>
       ),
     },
     {
       title: '分红池',
-      dataIndex: 'totalPool',
-      key: 'totalPool',
+      dataIndex: 'totalAmount',
+      key: 'totalAmount',
       width: 140,
       render: (amount: string) => (
         <span style={{ fontWeight: 600, color: '#52c41a' }}>
-          ${parseFloat(amount).toLocaleString()} USDT
+          ${parseFloat(amount).toFixed(2)}
         </span>
       ),
-      sorter: (a: IDividendRecord, b: IDividendRecord) => parseFloat(a.totalPool) - parseFloat(b.totalPool),
+    },
+    {
+      title: '分红比例',
+      dataIndex: 'dividendRate',
+      key: 'dividendRate',
+      width: 100,
+      render: (rate: string) => (
+        <Tag color="blue">{(parseFloat(rate) * 100).toFixed(0)}%</Tag>
+      ),
     },
     {
       title: '总权重',
       dataIndex: 'totalWeight',
       key: 'totalWeight',
-      width: 140,
-      render: (weight: number) => (
+      width: 120,
+      render: (weight: string) => (
         <span style={{ color: '#722ed1' }}>
-          {(weight / 10000).toLocaleString()} 万
+          {parseFloat(weight).toLocaleString()}
         </span>
       ),
     },
     {
       title: '参与人数',
-      dataIndex: 'participantCount',
-      key: 'participantCount',
+      dataIndex: 'stakerCount',
+      key: 'stakerCount',
       width: 100,
       render: (count: number) => `${count} 人`,
     },
@@ -235,9 +244,9 @@ export const DividendsPage = () => {
       title: '每权重收益',
       dataIndex: 'perWeightAmount',
       key: 'perWeightAmount',
-      width: 140,
+      width: 120,
       render: (amount: string) => (
-        <Text type="secondary">${amount} USDT</Text>
+        <Text type="secondary">${parseFloat(amount).toFixed(8)}</Text>
       ),
     },
     {
@@ -245,36 +254,17 @@ export const DividendsPage = () => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (status: keyof typeof statusColors) => (
+      render: (status: string) => (
         <Tag icon={statusIcons[status]} color={statusColors[status]}>
           {statusLabels[status]}
         </Tag>
       ),
-      filters: [
-        { text: '待发放', value: 'pending' },
-        { text: '发放中', value: 'processing' },
-        { text: '已完成', value: 'completed' },
-      ],
-      onFilter: (value: unknown, record: IDividendRecord) => record.status === value,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 160,
-    },
-    {
-      title: '完成时间',
-      dataIndex: 'completedAt',
-      key: 'completedAt',
-      width: 160,
-      render: (time: string | null) => time || '-',
     },
     {
       title: '操作',
       key: 'actions',
-      width: 120,
-      render: (_: unknown, record: IDividendRecord) => (
+      width: 160,
+      render: (_: unknown, record: DividendPool) => (
         <Space>
           <Button
             size="small"
@@ -283,41 +273,54 @@ export const DividendsPage = () => {
           >
             明细
           </Button>
+          {record.status === 'pending' && (
+            <Popconfirm
+              title="确认发放分红？"
+              description="发放后将向所有质押用户分配分红"
+              onConfirm={() => handleDistribute(record.id)}
+              okText="确认"
+              cancelText="取消"
+            >
+              <Button size="small" type="primary" icon={<PlayCircleOutlined />}>
+                发放
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
 
-  const userDividendColumns = [
+  const recordColumns = [
     {
       title: '用户',
       key: 'user',
-      render: (_: unknown, record: IUserDividend) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{record.username}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.userId}</Text>
-        </div>
+      render: (_: unknown, record: DividendRecord) => (
+        <Space direction="vertical" size={0}>
+          <Text>{record.user?.nickname || record.user?.email || '-'}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{record.user?.id?.slice(0, 8)}...</Text>
+        </Space>
       ),
     },
     {
-      title: '权重',
-      dataIndex: 'weight',
-      key: 'weight',
-      render: (weight: number) => weight.toLocaleString(),
+      title: '质押数量',
+      dataIndex: 'stakedAmount',
+      key: 'stakedAmount',
+      render: (val: string) => `${parseFloat(val).toLocaleString()} HOOT`,
     },
     {
-      title: '占比',
-      dataIndex: 'weightShare',
-      key: 'weightShare',
-      render: (share: string) => `${share}%`,
+      title: '加权数量',
+      dataIndex: 'weightedAmount',
+      key: 'weightedAmount',
+      render: (val: string) => parseFloat(val).toLocaleString(),
     },
     {
       title: '分红金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      dataIndex: 'dividendAmount',
+      key: 'dividendAmount',
       render: (amount: string) => (
         <span style={{ fontWeight: 600, color: '#52c41a' }}>
-          ${amount} USDT
+          ${parseFloat(amount).toFixed(2)}
         </span>
       ),
     },
@@ -326,145 +329,163 @@ export const DividendsPage = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'credited' ? 'success' : 'default'}>
-          {status === 'credited' ? '已到账' : '待发放'}
+        <Tag color={status === 'paid' ? 'success' : 'default'}>
+          {status === 'paid' ? '已到账' : '待发放'}
         </Tag>
       ),
     },
   ];
 
   return (
-    <List>
-      {/* 统计卡片 */}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="累计分红"
-              value={mockStats.totalDistributed}
-              precision={2}
-              prefix={<DollarOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-              suffix="USDT"
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="本月分红"
-              value={mockStats.monthDistributed}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="今日分红"
-              value={mockStats.todayDistributed}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="日均分红"
-              value={mockStats.avgDaily}
-              precision={2}
-              prefix="$"
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 筛选区域 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Select
-            placeholder="分红类型"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '日分红', value: 'daily' },
-              { label: '周分红', value: 'weekly' },
-              { label: '月分红', value: 'monthly' },
-            ]}
-          />
-          <Select
-            placeholder="状态"
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '待发放', value: 'pending' },
-              { label: '发放中', value: 'processing' },
-              { label: '已完成', value: 'completed' },
-            ]}
-          />
-          <RangePicker placeholder={['开始日期', '结束日期']} />
-          <Button type="primary" icon={<SearchOutlined />}>
-            搜索
-          </Button>
-          <Button icon={<DownloadOutlined />}>
-            导出报表
+    <List
+      headerButtons={
+        <Space>
+          <Tag
+            icon={<ReloadOutlined spin={loading} />}
+            color="blue"
+            style={{ cursor: 'pointer' }}
+            onClick={fetchData}
+          >
+            刷新
+          </Tag>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreatePool}>
+            创建分红池
           </Button>
         </Space>
-      </Card>
+      }
+    >
+      <Spin spinning={loading}>
+        {/* 统计卡片 */}
+        <Row gutter={16} style={{ marginBottom: 24 }}>
+          <Col span={6}>
+            <Card size="small">
+              <Statistic
+                title="累计分红"
+                value={parseFloat(overview?.totalDistributed || '0')}
+                precision={2}
+                prefix={<DollarOutlined />}
+                valueStyle={{ color: '#52c41a' }}
+                suffix="USDT"
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card size="small">
+              <Statistic
+                title="当前分红池"
+                value={parseFloat(overview?.currentPoolAmount || '0')}
+                precision={2}
+                prefix="$"
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card size="small">
+              <Statistic
+                title="参与质押用户"
+                value={overview?.currentPoolStakers || 0}
+                suffix="人"
+                valueStyle={{ color: '#722ed1' }}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card size="small">
+              <Statistic
+                title="下次发放时间"
+                value={overview?.nextDistributionDate ? new Date(overview.nextDistributionDate).toLocaleDateString() : '待定'}
+                valueStyle={{ color: '#faad14', fontSize: 20 }}
+              />
+            </Card>
+          </Col>
+        </Row>
 
-      {/* 数据表格 */}
-      <Table
-        dataSource={dataSource}
-        columns={columns}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
-        }}
-      />
+        {/* 筛选区域 */}
+        <Card style={{ marginBottom: 16 }} size="small">
+          <Space wrap>
+            <Select
+              placeholder="状态"
+              style={{ width: 120 }}
+              allowClear
+              options={[
+                { label: '收集中', value: 'collecting' },
+                { label: '待发放', value: 'pending' },
+                { label: '已完成', value: 'completed' },
+              ]}
+            />
+            <RangePicker placeholder={['开始日期', '结束日期']} />
+          </Space>
+        </Card>
+
+        {/* 数据表格 */}
+        <Table
+          dataSource={pools}
+          columns={columns}
+          rowKey="id"
+          scroll={{ x: 900 }}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+          }}
+          locale={{ emptyText: <Empty description="暂无分红记录" /> }}
+        />
+      </Spin>
 
       {/* 分红明细 Modal */}
       <Modal
-        title={`分红明细 - ${selectedDividend?.period || ''}`}
+        title={`分红明细 - 第 ${selectedPool?.weekNumber || ''} 周`}
         open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
+        onCancel={() => {
+          setDetailVisible(false);
+          setSelectedPool(null);
+          setPoolRecords([]);
+        }}
         footer={null}
-        width={800}
+        width={900}
       >
-        {selectedDividend && (
+        {selectedPool && (
           <>
             <Descriptions bordered column={2} style={{ marginBottom: 24 }}>
-              <Descriptions.Item label="分红期">{selectedDividend.period}</Descriptions.Item>
-              <Descriptions.Item label="类型">
-                <Tag color="blue">{periodTypeLabels[selectedDividend.periodType]}</Tag>
+              <Descriptions.Item label="周期">
+                {new Date(selectedPool.periodStart).toLocaleDateString()} - {new Date(selectedPool.periodEnd).toLocaleDateString()}
               </Descriptions.Item>
-              <Descriptions.Item label="分红池">
-                ${selectedDividend.totalPool} USDT
+              <Descriptions.Item label="状态">
+                <Tag icon={statusIcons[selectedPool.status]} color={statusColors[selectedPool.status]}>
+                  {statusLabels[selectedPool.status]}
+                </Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="燃油费收入">
+                ${parseFloat(selectedPool.gasFeeTotal).toFixed(2)} ({selectedPool.gasFeeCount} 笔)
+              </Descriptions.Item>
+              <Descriptions.Item label="分红池总额">
+                ${parseFloat(selectedPool.totalAmount).toFixed(2)}
               </Descriptions.Item>
               <Descriptions.Item label="总权重">
-                {selectedDividend.totalWeight.toLocaleString()}
+                {parseFloat(selectedPool.totalWeight).toLocaleString()}
               </Descriptions.Item>
               <Descriptions.Item label="参与人数">
-                {selectedDividend.participantCount} 人
+                {selectedPool.stakerCount} 人
               </Descriptions.Item>
               <Descriptions.Item label="每权重收益">
-                ${selectedDividend.perWeightAmount} USDT
+                ${parseFloat(selectedPool.perWeightAmount).toFixed(8)}
+              </Descriptions.Item>
+              <Descriptions.Item label="已发放金额">
+                ${parseFloat(selectedPool.distributedAmount).toFixed(2)}
               </Descriptions.Item>
             </Descriptions>
 
             <Title level={5}>用户分红明细</Title>
             <Table
-              dataSource={mockUserDividends.filter(u => u.dividendId === selectedDividend.id)}
-              columns={userDividendColumns}
+              dataSource={poolRecords}
+              columns={recordColumns}
               rowKey="id"
-              pagination={false}
+              loading={recordsLoading}
+              scroll={{ x: 600 }}
+              pagination={{ pageSize: 10 }}
               size="small"
+              locale={{ emptyText: <Empty description="暂无分红明细" /> }}
             />
           </>
         )}

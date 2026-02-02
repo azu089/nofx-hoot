@@ -1,8 +1,9 @@
 /**
  * 自定义管理后台布局
+ * 支持移动端响应式：<768px 使用抽屉导航
  */
-import { useState } from 'react';
-import { Layout, Menu } from 'antd';
+import { useState, useEffect } from 'react';
+import { Layout, Menu, Drawer } from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -14,9 +15,30 @@ import {
   TeamOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  FileTextOutlined,
+  GoldOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { AdminHeader } from './Header';
+
+// 移动端断点
+const MOBILE_BREAKPOINT = 768;
+
+// 检测是否移动端
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < MOBILE_BREAKPOINT);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return isMobile;
+};
 
 const { Sider, Content, Header } = Layout;
 
@@ -55,6 +77,7 @@ const menuItems = [
       { key: '/ecosystem/staking', label: '质押管理' },
       { key: '/ecosystem/weights', label: '权重明细' },
       { key: '/ecosystem/dividends', label: '分红管理' },
+      { key: '/ecosystem/airdrops', label: '空投管理' },
       { key: '/ecosystem/config', label: '生态配置' },
     ],
   },
@@ -68,6 +91,17 @@ const menuItems = [
       { key: '/operation/banners', label: 'Banner' },
       { key: '/operation/texts', label: '文案配置' },
       { key: '/operation/agents', label: '代理商' },
+      { key: '/operation/agents/token', icon: <GoldOutlined />, label: '代币管理' },
+    ],
+  },
+  {
+    key: 'content',
+    icon: <FileTextOutlined />,
+    label: '内容管理',
+    children: [
+      { key: '/content/help-articles', label: '帮助文章' },
+      { key: '/content/legal-docs', label: '法律文档' },
+      { key: '/content/faq', label: 'FAQ 问答' },
     ],
   },
   {
@@ -88,42 +122,35 @@ const menuItems = [
 
 export const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key);
+    // 移动端点击菜单后关闭抽屉
+    if (isMobile) {
+      setDrawerOpen(false);
+    }
   };
 
-  const siderWidth = collapsed ? 80 : 220;
+  const siderWidth = isMobile ? 0 : (collapsed ? 80 : 220);
 
-  return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        width={220}
-        collapsedWidth={80}
-        collapsed={collapsed}
+  // 菜单内容
+  const menuContent = (
+    <>
+      <div
         style={{
-          background: '#141414',
-          borderRight: '1px solid #303030',
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isMobile ? 'space-between' : (collapsed ? 'center' : 'flex-start'),
+          padding: isMobile ? '0 16px' : (collapsed ? 0 : '0 16px'),
+          borderBottom: '1px solid #303030',
         }}
       >
-        <div
-          style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? 0 : '0 16px',
-            borderBottom: '1px solid #303030',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <img
             src="/logo.png"
             alt="HOOT"
@@ -132,24 +159,73 @@ export const AdminLayout = () => {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
-          {!collapsed && (
+          {(!collapsed || isMobile) && (
             <span style={{ marginLeft: 12, fontWeight: 'bold', fontSize: 18, color: '#fff' }}>
               HOOT
             </span>
           )}
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={collapsed ? [] : ['trading', 'finance', 'ecosystem', 'operation', 'system']}
-          items={menuItems}
-          onClick={handleMenuClick}
+        {isMobile && (
+          <CloseOutlined
+            onClick={() => setDrawerOpen(false)}
+            style={{ fontSize: 18, color: '#999', cursor: 'pointer' }}
+          />
+        )}
+      </div>
+      <Menu
+        mode="inline"
+        selectedKeys={[location.pathname]}
+        defaultOpenKeys={collapsed && !isMobile ? [] : ['trading', 'finance', 'ecosystem', 'operation', 'content', 'system']}
+        items={menuItems}
+        onClick={handleMenuClick}
+        style={{
+          background: '#141414',
+          borderRight: 'none',
+        }}
+      />
+    </>
+  );
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      {/* 桌面端：固定侧边栏 */}
+      {!isMobile && (
+        <Sider
+          width={220}
+          collapsedWidth={80}
+          collapsed={collapsed}
           style={{
             background: '#141414',
-            borderRight: 'none',
+            borderRight: '1px solid #303030',
+            overflow: 'auto',
+            height: '100vh',
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
           }}
-        />
-      </Sider>
+        >
+          {menuContent}
+        </Sider>
+      )}
+
+      {/* 移动端：抽屉导航 */}
+      {isMobile && (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={280}
+          closable={false}
+          styles={{
+            body: { padding: 0, background: '#141414' },
+            header: { display: 'none' },
+          }}
+        >
+          {menuContent}
+        </Drawer>
+      )}
+
       <Layout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s' }}>
         <Header
           style={{
@@ -167,10 +243,10 @@ export const AdminLayout = () => {
           }}
         >
           <div
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => isMobile ? setDrawerOpen(!drawerOpen) : setCollapsed(!collapsed)}
             style={{ cursor: 'pointer', fontSize: 18, color: '#999' }}
           >
-            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            {isMobile ? <MenuUnfoldOutlined /> : (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />)}
           </div>
           <AdminHeader />
         </Header>
