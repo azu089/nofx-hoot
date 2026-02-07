@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
   Search,
   Plus,
@@ -34,87 +34,6 @@ interface MobileStrategiesV3Props {
   hasMore?: boolean // 是否有更多数据
   isLoadingMore?: boolean // 是否正在加载更多
 }
-
-const mockStrategies: Strategy[] = [
-  {
-    id: '1',
-    name: 'DCA Bot Pro',
-    type: 'DCA',
-    marketType: 'spot',
-    creator: 'CryptoMaster',
-    winRate: 87.5,
-    totalReturn: 156.8,
-    riskLevel: 'low',
-    subscribers: 2847,
-    badges: ['hot', 'pro'],
-    isHot: true
-  },
-  {
-    id: '2',
-    name: 'Grid Trading Master',
-    type: 'Grid',
-    marketType: 'futures',
-    creator: 'GridKing',
-    winRate: 73.2,
-    totalReturn: 89.4,
-    riskLevel: 'medium',
-    subscribers: 1523,
-    badges: ['pro'],
-    isHot: false
-  },
-  {
-    id: '3',
-    name: 'AI Signal Hunter',
-    type: 'AI Signal',
-    marketType: 'futures',
-    creator: 'AITrader',
-    winRate: 91.3,
-    totalReturn: 234.7,
-    riskLevel: 'high',
-    subscribers: 892,
-    badges: ['new', 'hot'],
-    isHot: true
-  },
-  {
-    id: '4',
-    name: 'Arbitrage Eagle',
-    type: 'Arbitrage',
-    marketType: 'spot',
-    creator: 'ArbiMaster',
-    winRate: 95.1,
-    totalReturn: 67.3,
-    riskLevel: 'low',
-    subscribers: 3241,
-    badges: ['pro'],
-    isHot: false
-  },
-  {
-    id: '5',
-    name: 'Smart Grid Pro',
-    type: 'Grid',
-    marketType: 'spot',
-    creator: 'GridExpert',
-    winRate: 78.9,
-    totalReturn: 112.5,
-    riskLevel: 'medium',
-    subscribers: 1876,
-    badges: ['hot'],
-    isHot: true
-  },
-  {
-    id: '6',
-    name: 'DCA Steady Growth',
-    type: 'DCA',
-    marketType: 'futures',
-    creator: 'SteadyTrader',
-    winRate: 82.4,
-    totalReturn: 98.7,
-    riskLevel: 'low',
-    subscribers: 2156,
-    badges: [],
-    isHot: false
-  }
-]
 
 const filterOptions = ['all', 'DCA', 'Grid', 'AI Signal', 'Arbitrage']
 const marketTypeOptions = ['all', 'spot', 'futures']
@@ -191,15 +110,6 @@ export function MobileStrategiesV3({
     }
   }
 
-  const getBadgeLabel = (badge: string) => {
-    switch (badge) {
-      case 'hot': return t('hot')
-      case 'new': return t('new')
-      case 'pro': return t('pro')
-      default: return badge
-    }
-  }
-
   const filteredStrategies = strategies.filter(strategy => {
     const matchesFilter = selectedFilter === 'all' || strategy.type === selectedFilter
     const matchesMarketType = selectedMarketType === 'all' || strategy.marketType === selectedMarketType
@@ -237,31 +147,23 @@ export function MobileStrategiesV3({
           {searchQuery ? (
             <div className="space-y-3">
               {filteredStrategies.map((strategy) => (
-                <div
+                <button
                   key={strategy.id}
+                  type="button"
                   onClick={() => {
                     onStrategyClick?.(strategy.id)
                     setShowSearch(false)
                   }}
-                  className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 active:scale-[0.98] transition-all"
+                  className="w-full flex items-center justify-between p-4 glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] active:bg-[#1E1E2E]/50 transition-colors text-left"
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2 text-xs text-[#606070]">
-                      <span>{strategy.type}</span>
-                      <span>·</span>
-                      <span className={strategy.marketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
-                        {getMarketTypeLabel(strategy.marketType)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {strategy.badges.includes('hot') && <span className="w-2 h-2 rounded-full bg-red-500" />}
-                      {strategy.badges.includes('new') && <span className="w-2 h-2 rounded-full bg-green-500" />}
-                      {strategy.badges.includes('pro') && <span className="w-2 h-2 rounded-full bg-purple-500" />}
-                    </div>
+                  <div>
+                    <div className="text-[#F8F8FC] font-medium">{strategy.name}</div>
+                    <div className="text-[#606070] text-xs mt-0.5">{strategy.type} · {getMarketTypeLabel(strategy.marketType)}</div>
                   </div>
-                  <h3 className="text-[#F8F8FC] font-semibold mb-0.5">{strategy.name}</h3>
-                  <p className="text-[#606070] text-xs">by {strategy.creator}</p>
-                </div>
+                  <span className={`text-sm font-semibold ${strategy.totalReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {strategy.totalReturn >= 0 ? '+' : ''}{strategy.totalReturn}%
+                  </span>
+                </button>
               ))}
               {filteredStrategies.length === 0 && (
                 <div className="text-center text-[#606070] py-8">
@@ -435,88 +337,56 @@ export function MobileStrategiesV3({
         </div>
       </div>
 
-      {/* Strategy Cards - 极简流畅风格 */}
+      {/* Strategy Cards */}
       <div className="p-4 space-y-3 pb-24">
         {filteredStrategies.map((strategy) => (
           <div
             key={strategy.id}
-            className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4"
+            onClick={() => onStrategyClick?.(strategy.id)}
+            className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-4 py-3.5 active:scale-[0.98] transition-all"
           >
-            {/* 顶部：类型标签 + 徽章指示器 */}
+            {/* 第一行：策略名称 */}
+            <h3 className="text-[15px] font-semibold text-white mb-2">{strategy.name}</h3>
+
+            {/* 第二行：类型标签 + 收益率 + 使用按钮 */}
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-xs text-[#606070]">
+              <div className="flex items-center gap-1.5 text-xs text-[#606070]">
                 <span>{strategy.type}</span>
                 <span>·</span>
                 <span className={strategy.marketType === 'spot' ? 'text-blue-400' : 'text-orange-400'}>
                   {getMarketTypeLabel(strategy.marketType)}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                {strategy.badges.includes('hot') && (
-                  <span className="w-2 h-2 rounded-full bg-red-500" title={t('hot')} />
-                )}
-                {strategy.badges.includes('new') && (
-                  <span className="w-2 h-2 rounded-full bg-green-500" title={t('new')} />
-                )}
-                {strategy.badges.includes('pro') && (
-                  <span className="w-2 h-2 rounded-full bg-purple-500" title={t('pro')} />
-                )}
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className={`text-lg font-bold ${strategy.totalReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {strategy.totalReturn >= 0 ? '+' : ''}{strategy.totalReturn}%
+                  </span>
+                  <span className="text-[10px] text-[#606070] ml-1">{t('totalReturnShort')}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUseStrategy?.(strategy.id)
+                  }}
+                  className="px-3 py-1.5 bg-[#06B6D4]/10 border border-[#06B6D4]/20 rounded-lg text-[#06B6D4] text-xs font-medium active:bg-[#06B6D4]/20 transition-colors whitespace-nowrap"
+                >
+                  {t('useNow')} →
+                </button>
               </div>
             </div>
 
-            {/* 策略名称 */}
-            <h3 className="text-[#F8F8FC] font-semibold text-base mb-1">{strategy.name}</h3>
-
-            {/* 作者 */}
-            <p className="text-[#606070] text-xs mb-4">by {strategy.creator}</p>
-
-            {/* 核心数据 - 横向排列 */}
-            <div className="flex items-end justify-between">
-              {/* 收益率 - 突出显示 */}
-              <div>
-                <div className="text-green-400 text-2xl font-bold">+{strategy.totalReturn}%</div>
-                <div className="text-[#606070] text-xs mt-0.5">{t('totalReturnShort')}</div>
-              </div>
-
-              {/* 其他指标 */}
-              <div className="flex items-center gap-4 text-right">
-                <div>
-                  <div className="text-[#F8F8FC] font-medium">{strategy.winRate}%</div>
-                  <div className="text-[#606070] text-xs">{t('winRate')}</div>
-                </div>
-                <div>
-                  <div className={`font-medium ${getRiskColor(strategy.riskLevel)}`}>{getRiskLabel(strategy.riskLevel)}</div>
-                  <div className="text-[#606070] text-xs">{t('risk')}</div>
-                </div>
-                <div>
-                  <div className="text-[#F8F8FC] font-medium">{strategy.subscribers.toLocaleString()}</div>
-                  <div className="text-[#606070] text-xs">{t('users')}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* 操作按钮 */}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onStrategyClick?.(strategy.id)
-                }}
-                className="flex-1 py-2.5 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl text-[#94A3B8] text-sm font-medium transition-all"
-              >
-                {t('details')}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onUseStrategy?.(strategy.id)
-                }}
-                className="flex-1 py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-xl text-cyan-400 text-sm font-medium transition-all"
-              >
-                {t('useNow')}
-              </button>
+            {/* 第三行：胜率 + 风险等级 */}
+            <div className="flex items-center gap-3 text-xs text-[#606070]">
+              <span>{t('winRate')} <span className="text-[#F8F8FC] font-medium">{strategy.winRate}%</span></span>
+              <span>·</span>
+              <span className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  strategy.riskLevel === 'low' ? 'bg-emerald-400' : strategy.riskLevel === 'medium' ? 'bg-amber-400' : 'bg-rose-400'
+                }`} />
+                <span className={getRiskColor(strategy.riskLevel)}>{getRiskLabel(strategy.riskLevel)}</span>
+              </span>
             </div>
           </div>
         ))}

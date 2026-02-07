@@ -93,13 +93,24 @@ class ApiClient {
       url.searchParams.set('locale', this.getBackendLocale());
     }
 
-    const response = await fetch(url.toString(), {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), {
+        ...options,
+        headers,
+      });
+    } catch {
+      // 网络错误（后端未启动、断网等）
+      throw new Error('无法连接到服务器，请检查网络连接');
+    }
 
     if (!response.ok) {
-      const error = await response.json();
+      let error: { message?: string } = {};
+      try {
+        error = await response.json();
+      } catch {
+        // 响应体非 JSON
+      }
       throw new Error(error.message || 'API 请求失败');
     }
 

@@ -44,6 +44,10 @@ interface Position {
   stopLoss: number
   takeProfit: number
   marketType: MarketType
+  // 新增字段
+  leverage?: number
+  margin?: number
+  marginMode?: string
 }
 
 interface ExecutionLog {
@@ -74,6 +78,7 @@ interface MyStrategy {
     positionSize: string
     stopLoss: number
     takeProfit: number
+    amountPerTrade?: number
   }
 }
 
@@ -95,17 +100,24 @@ const strategyTypeColors: Record<string, string> = {
 interface HistoryOrder {
   id: string | number
   symbol: string
-  side: 'buy' | 'sell'
+  side: 'long' | 'short'
   type: string
   price: number
+  entryPrice?: number
+  closePrice?: number
   amount: number
   filled: number
   total: number
   pnl: number
+  pnlPercent?: number
   fee: number
   time: string
   status: 'filled' | 'cancelled'
   marketType: MarketType
+  leverage?: number
+  margin?: number
+  closeReason?: string
+  strategyName?: string
 }
 
 interface PnlStatsProps {
@@ -153,10 +165,11 @@ export function PositionsPageV3({
   onDeleteStrategy,
   onToggleStrategy,
   onViewMarket,
-  onCancelOrder
+  onCancelOrder: _onCancelOrder
 }: PositionsPageV3Props) {
   void _onPauseStrategy
   void _onResumeStrategy
+  void _onCancelOrder
   const t = useTranslations('trading')
   const [activeTab, setActiveTab] = useState('positions')
   const [selectedAccount, setSelectedAccount] = useState(accounts[0] || { id: 0, name: '未绑定账户', balance: 0 })
@@ -290,25 +303,9 @@ export function PositionsPageV3({
           </div>
         </div>
 
-        {/* Stats Row - 超清悬浮玻璃卡片（顺序与移动端对齐） */}
+        {/* Stats Row - 顺序：总资产 | 可用余额 | 今日盈亏 | 未实现 | 总盈亏 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-6">
           <div className="grid grid-cols-5 gap-4 text-center">
-            {/* 总盈亏 */}
-            <div className="py-2">
-              <div className="text-sm text-[#606070] mb-1">{t('totalPnl')}</div>
-              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
-              </div>
-            </div>
-
-            {/* 今日盈亏 */}
-            <div className="py-2">
-              <div className="text-sm text-[#606070] mb-1">{t('todayPnl')}</div>
-              <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
-              </div>
-            </div>
-
             {/* 总资产 */}
             <div className="py-2">
               <div className="text-sm text-[#606070] mb-1">{t('totalAssets')}</div>
@@ -321,11 +318,27 @@ export function PositionsPageV3({
               <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
             </div>
 
+            {/* 今日盈亏 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">{t('todayPnl')}</div>
+              <div className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
+              </div>
+            </div>
+
             {/* 未实现 */}
             <div className="py-2">
               <div className="text-sm text-[#606070] mb-1">{t('unrealized')}</div>
               <div className={`text-2xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(2)}
+              </div>
+            </div>
+
+            {/* 总盈亏 */}
+            <div className="py-2">
+              <div className="text-sm text-[#606070] mb-1">{t('totalPnl')}</div>
+              <div className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
               </div>
             </div>
           </div>
@@ -474,6 +487,7 @@ export function PositionsPageV3({
                           <th className="pb-3 font-medium">{t('tradingPair')}</th>
                           <th className="pb-3 font-medium">{t('strategy')}</th>
                           <th className="pb-3 font-medium">{t('direction')}</th>
+                          <th className="pb-3 font-medium">{t('leverageMargin')}</th>
                           <th className="pb-3 font-medium">{t('quantity')}</th>
                           <th className="pb-3 font-medium">{t('entryPrice')}</th>
                           <th className="pb-3 font-medium">{t('markPrice')}</th>
@@ -490,7 +504,7 @@ export function PositionsPageV3({
                                 <div className="w-8 h-8 bg-cyan-500/10 rounded-full flex items-center justify-center text-cyan-400 font-bold">
                                   {position.icon}
                                 </div>
-                                <span className="font-medium text-[#F8F8FC]">{position.symbol}</span>
+                                <span className="font-medium text-[#F8F8FC]">{position.symbol.replace(/:USDT$/, '')}</span>
                               </div>
                             </td>
                             <td className="py-4">
@@ -512,6 +526,12 @@ export function PositionsPageV3({
                                   <ArrowDownRight className="w-3 h-3" />
                                 )}
                               </span>
+                            </td>
+                            <td className="py-4">
+                              <div className="text-xs">
+                                <div className="text-cyan-400 font-medium">{position.leverage || 1}x</div>
+                                <div className="text-[#9090A0]">${(position.margin || 0).toFixed(2)}</div>
+                              </div>
                             </td>
                             <td className="py-4 text-[#F8F8FC]">{position.size}</td>
                             <td className="py-4 text-[#F8F8FC]">${position.entryPrice.toLocaleString()}</td>
@@ -570,48 +590,63 @@ export function PositionsPageV3({
                           <tr className="text-left text-sm text-[#9090A0] border-b border-[#1E1E2E]">
                             <th className="pb-3 font-medium">{t('tradingPair')}</th>
                             <th className="pb-3 font-medium">{t('direction')}</th>
-                            <th className="pb-3 font-medium">{t('orderType')}</th>
-                            <th className="pb-3 font-medium">{t('price')}</th>
-                            <th className="pb-3 font-medium">{t('amount')}</th>
-                            <th className="pb-3 font-medium">{t('total')}</th>
-                            <th className="pb-3 font-medium">{t('pnl')}</th>
-                            <th className="pb-3 font-medium">{t('fee')}</th>
-                            <th className="pb-3 font-medium">{t('time')}</th>
-                            <th className="pb-3 font-medium">{t('status')}</th>
+                            <th className="pb-3 font-medium">{t('leverageMargin')}</th>
+                            <th className="pb-3 font-medium">{t('entryPrice')}</th>
+                            <th className="pb-3 font-medium">{t('closePrice')}</th>
+                            <th className="pb-3 font-medium">{t('quantity')}</th>
+                            <th className="pb-3 font-medium">{t('closedPnl')}</th>
+                            <th className="pb-3 font-medium">{t('closeTime')}</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredHistoryOrders.map((order) => (
                             <tr key={order.id} className="border-b border-[#1E1E2E]/50 hover:bg-[#1E1E2E]/20 transition-colors">
-                              <td className="py-4 font-medium text-[#F8F8FC]">{order.symbol}</td>
                               <td className="py-4">
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                  order.side === 'buy'
-                                    ? 'bg-green-400/10 text-green-400 border border-green-400/20'
-                                    : 'bg-red-400/10 text-red-400 border border-red-400/20'
-                                }`}>
-                                  {order.side === 'buy' ? t('buy') : t('sell')}
-                                </span>
+                                <div className="font-medium text-[#F8F8FC]">{order.symbol.replace(/:USDT$/, '')}</div>
+                                {order.strategyName && (
+                                  <div className="text-xs text-[#606070]">{order.strategyName}</div>
+                                )}
                               </td>
-                              <td className="py-4 text-[#9090A0]">{order.type}</td>
-                              <td className="py-4 text-[#F8F8FC]">${order.price.toLocaleString()}</td>
-                              <td className="py-4 text-[#F8F8FC]">{order.amount}</td>
-                              <td className="py-4 text-[#F8F8FC]">${order.total.toLocaleString()}</td>
                               <td className="py-4">
-                                <span className={`font-medium ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                  {order.pnl >= 0 ? '+' : ''}${order.pnl.toFixed(2)}
-                                </span>
-                              </td>
-                              <td className="py-4 text-[#9090A0]">${order.fee.toFixed(2)}</td>
-                              <td className="py-4 text-[#9090A0] text-sm">{order.time}</td>
-                              <td className="py-4">
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                  order.status === 'filled'
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                                  order.side === 'long'
                                     ? 'bg-green-400/10 text-green-400'
-                                    : 'bg-yellow-400/10 text-yellow-400'
+                                    : 'bg-red-400/10 text-red-400'
                                 }`}>
-                                  {order.status === 'filled' ? t('filled') : t('cancelled')}
+                                  {order.side === 'long' ? t('long') : t('short')}
+                                  {order.side === 'long' ? (
+                                    <ArrowUpRight className="w-3 h-3" />
+                                  ) : (
+                                    <ArrowDownRight className="w-3 h-3" />
+                                  )}
                                 </span>
+                              </td>
+                              <td className="py-4">
+                                <div className="text-xs">
+                                  <div className="text-cyan-400 font-medium">{order.leverage || 1}x</div>
+                                  <div className="text-[#9090A0]">${(order.margin || 0).toFixed(2)}</div>
+                                </div>
+                              </td>
+                              <td className="py-4 text-[#F8F8FC]">${(order.entryPrice || order.price).toLocaleString()}</td>
+                              <td className="py-4 text-[#F8F8FC]">${(order.closePrice || order.price).toLocaleString()}</td>
+                              <td className="py-4 text-[#F8F8FC]">{order.amount}</td>
+                              <td className="py-4">
+                                <div className={`font-medium ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {order.pnl >= 0 ? '+' : ''}{order.pnl.toFixed(4)} USDT
+                                </div>
+                                {order.pnlPercent !== undefined && order.pnlPercent !== 0 && (
+                                  <div className={`text-xs ${order.pnl >= 0 ? 'text-green-400/70' : 'text-red-400/70'}`}>
+                                    {order.pnl >= 0 ? '+' : ''}{order.pnlPercent.toFixed(2)}%
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-4 text-[#9090A0] text-sm">
+                                {order.time ? new Date(order.time).toLocaleString('zh-CN', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                }) : '-'}
                               </td>
                             </tr>
                           ))}
@@ -732,6 +767,12 @@ export function PositionsPageV3({
                             {/* Config Summary */}
                             <div className="flex flex-wrap gap-4 text-sm">
                               <div className="flex items-center gap-2">
+                                <span className="text-[#606070]">{t('amountPerTradeLabel')}</span>
+                                <span className="font-medium text-cyan-400">
+                                  {strategy.config.amountPerTrade ? `$${strategy.config.amountPerTrade}` : '-'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
                                 <span className="text-[#606070]">{t('leverage')}</span>
                                 <span className="font-medium">{strategy.config.leverage}x</span>
                               </div>
@@ -826,12 +867,12 @@ export function PositionsPageV3({
                             }`}>
                               {log.action}
                             </span>
-                            <span className="text-xs text-[#606070]">{log.symbol}</span>
+                            <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
                           </div>
                           <p className="text-sm text-[#9090A0] mb-2">{log.message}</p>
                           <div className="flex items-center gap-2">
                             <Clock className="w-3 h-3 text-[#606070]" />
-                            <span className="text-xs text-[#606070]">{log.time}</span>
+                            <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                           </div>
                         </div>
                       </div>

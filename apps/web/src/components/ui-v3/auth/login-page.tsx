@@ -124,7 +124,7 @@ export function LoginPage({
                   onClick={() => setShowEmailForm(false)}
                   className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors mb-2"
                 >
-                  ← {t('back', { ns: 'common' })}
+                  ← {t('back')}
                 </button>
 
                 {/* Email input */}

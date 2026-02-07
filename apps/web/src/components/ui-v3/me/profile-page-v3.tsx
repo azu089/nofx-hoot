@@ -179,10 +179,9 @@ export function ProfilePageV3({
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold text-[#F8F8FC] truncate">{user.username}</h2>
                 {user.subscriptionTier !== 'basic' && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r ${getTierColor(user.subscriptionTier)} text-white`}>
-                    <Crown className="w-3 h-3" />
-                    {getTierLabel(user.subscriptionTier)}
-                  </span>
+                  <div className={`flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-r ${getTierColor(user.subscriptionTier)} flex items-center justify-center`}>
+                    <Crown className="w-3 h-3 text-white" />
+                  </div>
                 )}
               </div>
               <p className="text-[#9090A0] text-sm">{user.email}</p>

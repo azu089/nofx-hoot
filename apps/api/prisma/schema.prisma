@@ -272,6 +272,7 @@ model StrategySubscription {
   // === 单日亏损限制 ===
   dailyMaxLossEnabled Boolean @default(false) @map("daily_max_loss_enabled")
   dailyMaxLossPercent Decimal @default(20) @db.Decimal(5, 2) @map("daily_max_loss_percent") // 单日最大亏损(%)
+  dailyMaxLossAction  String  @default("close_all") @map("daily_max_loss_action") // close_all, close_half, pause
 
   // === 重试配置 ===
   maxRetries     Int @default(3) @map("max_retries") // 最大重试次数
@@ -358,6 +359,19 @@ model Position {
 
   entryPrice Decimal @db.Decimal(18, 8) @map("entry_price")
   amount     Decimal @db.Decimal(18, 8)
+
+  // 交易配置（开仓时记录）
+  tradingType String  @default("spot") @map("trading_type") // spot, futures
+  leverage    Int     @default(1)                           // 杠杆倍数
+  margin      Decimal @default(0) @db.Decimal(18, 8)        // 保证金/本金 (USDT)
+  marginMode  String  @default("cross") @map("margin_mode") // cross, isolated
+
+  // 实时数据（同步更新）
+  markPrice       Decimal?  @db.Decimal(18, 8) @map("mark_price")        // 标记价格
+  liquidationPrice Decimal? @db.Decimal(18, 8) @map("liquidation_price") // 强平价格
+  unrealizedPnl   Decimal?  @db.Decimal(18, 8) @map("unrealized_pnl")    // 未实现盈亏
+  marginRatio     Decimal?  @db.Decimal(10, 4) @map("margin_ratio")      // 保证金比率
+  lastSyncAt      DateTime? @map("last_sync_at")                         // 最后同步时间
 
   // 交易所返回的订单ID
   exchangeOrderId String? @map("exchange_order_id")
@@ -1687,4 +1701,24 @@ model FaqItem {
 
   @@index([category, isActive])
   @@map("faq_items")
+}
+
+// ========== 交易所推荐 ==========
+
+model Exchange {
+  id           String   @id @default(uuid())
+  slug         String   @unique           // binance, okx, bybit...
+  name         String
+  logo         String                     // 图标 URL
+  description  String   @default("")
+  features     String[] @default([])      // 特性标签：["现货交易", "合约交易"]
+  affiliateUrl String   @default("") @map("affiliate_url")
+  status       String   @default("supported") // supported | coming_soon
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("exchanges")
 }

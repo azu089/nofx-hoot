@@ -60,6 +60,21 @@ export class StrategiesController {
     return this.strategiesService.getMySubscriptions(user.id, locale);
   }
 
+  /**
+   * 获取订阅汇总 - 用于多策略风险提示
+   * 返回用户所有活跃订阅的总敞口信息
+   */
+  @Get('subscriptions/summary')
+  async getSubscriptionSummary(
+    @CurrentUser() user: { id: string },
+    @Query('locale') queryLocale?: string,
+    @Headers('accept-language') acceptLanguage?: string,
+  ) {
+    const locale =
+      queryLocale || this.parseAcceptLanguage(acceptLanguage) || DEFAULT_LOCALE;
+    return this.strategiesService.getSubscriptionSummary(user.id, locale);
+  }
+
   // 获取策略详情 - 公开接口（可选登录查看订阅状态，支持多语言）
   @Public()
   @Get(':id')

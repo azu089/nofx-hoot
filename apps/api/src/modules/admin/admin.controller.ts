@@ -41,6 +41,9 @@ import { AdminStakingService } from './services/admin-staking.service';
 import { AdminTokenService } from './services/admin-token.service';
 import { AdminReferralService } from './services/admin-referral.service';
 import { AdminSignalService } from './services/admin-signal.service';
+import { AdminExchangeService } from './services/admin-exchange.service';
+import { AdminConfigService } from './services/admin-config.service';
+import { CreateExchangeDto, UpdateExchangeDto } from './dto/exchange.dto';
 
 @Controller('admin')
 @Public() // 跳过全局 JwtAuthGuard，使用 AdminGuard 验证
@@ -60,6 +63,8 @@ export class AdminController {
     private tokenService: AdminTokenService,
     private referralService: AdminReferralService,
     private signalService: AdminSignalService,
+    private exchangeService: AdminExchangeService,
+    private configService: AdminConfigService,
   ) {}
 
   // ==================== 仪表盘 ====================
@@ -1086,6 +1091,119 @@ export class AdminController {
   @Get('monitor')
   async getSystemMonitor() {
     const data = await this.adminService.getSystemMonitor();
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 交易所推荐管理 ====================
+
+  /**
+   * 获取交易所列表
+   * GET /admin/exchanges
+   */
+  @Get('exchanges')
+  async getExchanges(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const data = await this.exchangeService.getExchanges({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      search: search || undefined,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取交易所统计
+   * GET /admin/exchanges/stats
+   */
+  @Get('exchanges/stats')
+  async getExchangeStats() {
+    const data = await this.exchangeService.getExchangeStats();
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取单个交易所
+   * GET /admin/exchanges/:id
+   */
+  @Get('exchanges/:id')
+  async getExchange(@Param('id') id: string) {
+    const data = await this.exchangeService.getExchangeById(id);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 创建交易所
+   * POST /admin/exchanges
+   */
+  @Post('exchanges')
+  async createExchange(@Body() dto: CreateExchangeDto) {
+    const data = await this.exchangeService.createExchange(dto);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 更新交易所
+   * PUT /admin/exchanges/:id
+   */
+  @Put('exchanges/:id')
+  async updateExchange(
+    @Param('id') id: string,
+    @Body() dto: UpdateExchangeDto,
+  ) {
+    const data = await this.exchangeService.updateExchange(id, dto);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 删除交易所
+   * DELETE /admin/exchanges/:id
+   */
+  @Delete('exchanges/:id')
+  async deleteExchange(@Param('id') id: string) {
+    const data = await this.exchangeService.deleteExchange(id);
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 系统配置管理 ====================
+
+  /**
+   * 获取配置变更历史
+   * GET /admin/config-history
+   * 注意：此路由必须在 /admin/config/:key 之前定义
+   */
+  @Get('config-history')
+  async getSystemConfigHistory(@Query('limit') limit?: string) {
+    const data = await this.configService.getConfigHistory(
+      limit ? parseInt(limit, 10) : 20,
+    );
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取配置
+   * GET /admin/config/:key
+   */
+  @Get('config/:key')
+  async getConfig(@Param('key') key: string) {
+    const data = await this.configService.getConfig(key);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 更新配置
+   * PUT /admin/config/:key
+   */
+  @Put('config/:key')
+  async updateConfig(
+    @Param('key') key: string,
+    @Body() body: { value: unknown },
+    @Req() req: any,
+  ) {
+    const adminId = req.admin?.id || 'system';
+    const data = await this.configService.updateConfig(key, body.value, adminId);
     return { code: 0, message: 'success', data };
   }
 }

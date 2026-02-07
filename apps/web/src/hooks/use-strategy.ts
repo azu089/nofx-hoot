@@ -27,19 +27,21 @@ interface CreateSubscriptionDto {
     trailingStopCallback?: number
     // DCA
     dcaEnabled: boolean
-    dcaMaxCount: number
-    dcaTrigger: number
-    dcaMultiplier: number
+    dcaMaxCount?: number
+    dcaTrigger?: number
+    dcaMultiplier?: number
     // 防瀑布
     waterfallProtection: boolean
-    waterfallTriggerPercent: number
+    waterfallTriggerPercent?: number
     // 黑天鹅
     blackSwanProtection: boolean
-    blackSwanTrigger: number
-    blackSwanAction: 'close_all' | 'close_half' | 'pause'
+    blackSwanType?: 'coin_drop' | 'account_loss'
+    blackSwanTrigger?: number
+    blackSwanAction?: 'close_all' | 'close_half' | 'pause'
     // 单日亏损
     dailyMaxLossEnabled: boolean
-    dailyMaxLossPercent: number
+    dailyMaxLossPercent?: number
+    dailyMaxLossAction?: 'close_all' | 'close_half' | 'pause'
   }
 }
 
@@ -63,25 +65,37 @@ function toSubscriptionDto(
       marginMode: config.marginMode,
       slippageTolerance: config.slippage,
       maxPositions: config.maxPositions,
-      // 移动止损
+      // 移动止损：未启用时不发送可选字段，避免触发后端 @Min 校验
       trailingStopEnabled: config.trailingStopEnabled,
-      trailingStopActivation: config.trailingActivation,
-      trailingStopCallback: config.trailingCallback,
-      // DCA
+      ...(config.trailingStopEnabled ? {
+        trailingStopActivation: Math.max(1, config.trailingActivation),
+        trailingStopCallback: Math.max(0.5, config.trailingCallback),
+      } : {}),
+      // DCA：未启用时不发送可选字段
       dcaEnabled: config.dcaEnabled,
-      dcaMaxCount: config.dcaCount,
-      dcaTrigger: config.dcaTrigger,
-      dcaMultiplier: config.dcaMultiplier,
+      ...(config.dcaEnabled ? {
+        dcaMaxCount: config.dcaCount,
+        dcaTrigger: Math.max(1, config.dcaTrigger),
+        dcaMultiplier: Math.max(1, config.dcaMultiplier),
+      } : {}),
       // 防瀑布
       waterfallProtection: config.waterfallProtection,
-      waterfallTriggerPercent: config.waterfallTrigger,
-      // 黑天鹅
+      ...(config.waterfallProtection ? {
+        waterfallTriggerPercent: Math.max(5, config.waterfallTrigger),
+      } : {}),
+      // 黑天鹅（coin_drop = 监控主流币暴跌）
       blackSwanProtection: config.blackSwanEnabled,
-      blackSwanTrigger: config.blackSwanTrigger,
-      blackSwanAction: config.blackSwanAction,
+      ...(config.blackSwanEnabled ? {
+        blackSwanType: 'coin_drop' as const,
+        blackSwanTrigger: Math.max(5, config.blackSwanTrigger),
+        blackSwanAction: config.blackSwanAction,
+      } : {}),
       // 单日亏损
       dailyMaxLossEnabled: config.dailyLossEnabled,
-      dailyMaxLossPercent: config.dailyLossPercent,
+      ...(config.dailyLossEnabled ? {
+        dailyMaxLossPercent: Math.max(5, config.dailyLossPercent),
+        dailyMaxLossAction: config.dailyLossAction,
+      } : {}),
     },
   }
 }
@@ -116,6 +130,7 @@ function fromSubscriptionResponse(response: any): StrategyConfigData {
     blackSwanAction: advanced.blackSwanAction,
     dailyLossEnabled: advanced.dailyMaxLossEnabled,
     dailyLossPercent: parseFloat(advanced.dailyMaxLossPercent) || 20,
+    dailyLossAction: advanced.dailyMaxLossAction || 'close_all',
   }
 }
 
@@ -269,4 +284,50 @@ export function useExchangeBalance(apiKeyId: string) {
   }, [apiKeyId])
 
   return { loading, balance, fetchBalance }
+}
+
+// 订阅汇总类型
+export interface SubscriptionSummaryDetail {
+  subscriptionId: string
+  strategyId: string
+  strategyName: string
+  apiKeyId: string
+  apiKeyLabel: string
+  amountPerTrade: number
+  maxPositions: number
+  maxExposure: number
+  isActive: boolean
+}
+
+export interface SubscriptionSummary {
+  activeCount: number
+  totalMaxExposure: number
+  subscriptions: SubscriptionSummaryDetail[]
+  riskLevel: 'safe' | 'warning' | 'danger'
+  riskMessage?: string
+}
+
+// 获取订阅汇总 Hook - 用于多策略风险提示
+export function useSubscriptionSummary() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<SubscriptionSummary | null>(null)
+
+  const fetchSummary = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await api.get<SubscriptionSummary>('/strategies/subscriptions/summary')
+      setSummary(response.data)
+      return response.data
+    } catch (err: any) {
+      setError(err.message || '获取订阅汇总失败')
+      setSummary(null)
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { loading, error, summary, fetchSummary }
 }

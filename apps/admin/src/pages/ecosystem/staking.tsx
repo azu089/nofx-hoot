@@ -98,7 +98,7 @@ export const StakingList = () => {
   }, [page, pageSize, statusFilter]);
 
   const statusConfig: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
-    active: { color: 'success', label: '活期', icon: <UnlockOutlined /> },
+    active: { color: 'success', label: '生效中', icon: <UnlockOutlined /> },
     locked: { color: 'warning', label: '锁定中', icon: <LockOutlined /> },
     unstaked: { color: 'default', label: '已解除', icon: <UnlockOutlined /> },
   };
@@ -266,7 +266,7 @@ export const StakingList = () => {
           <Col span={5}>
             <Card size="small">
               <Statistic
-                title="活期质押"
+                title="已解锁质押"
                 value={parseFloat(overview?.byLockPeriod?.flexible?.amount || '0')}
                 suffix="HOOT"
                 valueStyle={{ color: '#52c41a' }}
@@ -280,7 +280,7 @@ export const StakingList = () => {
           <Col span={5}>
             <Card size="small">
               <Statistic
-                title="定期质押"
+                title="锁定中质押"
                 value={parseFloat(overview?.byLockPeriod?.locked?.amount || '0')}
                 suffix="HOOT"
                 valueStyle={{ color: '#1890ff' }}
@@ -308,7 +308,7 @@ export const StakingList = () => {
               value={statusFilter}
               onChange={setStatusFilter}
               options={[
-                { label: '活期', value: 'active' },
+                { label: '生效中', value: 'active' },
                 { label: '锁定中', value: 'locked' },
                 { label: '已解除', value: 'unstaked' },
               ]}

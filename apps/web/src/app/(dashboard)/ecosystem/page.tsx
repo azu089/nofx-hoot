@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { Rocket } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { EcosystemPageV3 } from '@/components/ui-v3/ecosystem/ecosystem-page-v3';
@@ -56,6 +58,17 @@ interface LeaderboardEntry {
 export default function EcosystemPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  // 获取生态中心页面开关配置
+  const { data: ecosystemConfig, isLoading: configLoading } = useQuery({
+    queryKey: ['config', 'ecosystem'],
+    queryFn: async () => {
+      const response = await api.get<{ enabled: boolean }>('/config/ecosystem');
+      return response.data;
+    },
+    staleTime: 60 * 1000, // 1 分钟缓存
+  });
 
   // 获取我的质押列表
   const { data: myStakings } = useQuery({
@@ -240,6 +253,36 @@ export default function EcosystemPage() {
 
   // 计算预计分红
   const pendingRewardsUsdt = parseFloat(myStats?.estimatedWeeklyDividend || '0');
+
+  // 加载配置中
+  if (configLoading) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // 页面关闭 → 展示「敬请期待」占位页
+  if (!ecosystemConfig?.enabled) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center px-6">
+        <div className="text-center max-w-sm">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-[#12121A] border border-[#1E1E2E] flex items-center justify-center">
+            <Rocket className="w-10 h-10 text-cyan-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">生态中心</h1>
+          <p className="text-[#94A3B8] mb-8">敬请期待，即将上线</p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            返回首页
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

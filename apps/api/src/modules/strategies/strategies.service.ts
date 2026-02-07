@@ -11,6 +11,8 @@ import {
   StrategyResponse,
   StrategyDetailResponse,
   MySubscriptionResponse,
+  SubscriptionSummaryResponse,
+  SubscriptionSummaryDetail,
 } from './dto/strategy.dto';
 import {
   CreateSubscriptionDto,
@@ -329,6 +331,89 @@ export class StrategiesService {
     }));
   }
 
+  /**
+   * 获取订阅汇总 - 用于多策略风险提示
+   * 计算用户所有活跃订阅的总最大敞口
+   */
+  async getSubscriptionSummary(
+    userId: string,
+    locale: string = DEFAULT_LOCALE,
+  ): Promise<SubscriptionSummaryResponse> {
+    const validLocale = getValidLocale(locale);
+
+    // 获取所有活跃订阅
+    const subscriptions = await this.prisma.strategySubscription.findMany({
+      where: {
+        userId,
+        isActive: true,
+      },
+      include: {
+        strategy: {
+          select: {
+            id: true,
+            name: true,
+            nameI18n: true,
+          },
+        },
+      },
+    });
+
+    // 获取用户的 API Keys（用于显示标签）
+    const apiKeyIds = [...new Set(subscriptions.map((s) => s.apiKeyId))];
+    const apiKeys = await this.prisma.apiKey.findMany({
+      where: { id: { in: apiKeyIds } },
+      select: { id: true, label: true },
+    });
+    const apiKeyMap = new Map(apiKeys.map((k) => [k.id, k.label]));
+
+    // 计算每个订阅的最大敞口
+    let totalMaxExposure = 0;
+    const details: SubscriptionSummaryDetail[] = subscriptions.map((sub) => {
+      const amountPerTrade = parseFloat(sub.amountPerTrade.toString());
+      const maxExposure = amountPerTrade * sub.maxPositions;
+      totalMaxExposure += maxExposure;
+
+      return {
+        subscriptionId: sub.id,
+        strategyId: sub.strategyId,
+        strategyName: getLocalizedContent(
+          (sub.strategy as any).nameI18n as I18nContent,
+          validLocale,
+          sub.strategy.name,
+        ),
+        apiKeyId: sub.apiKeyId,
+        apiKeyLabel: apiKeyMap.get(sub.apiKeyId) || '未知',
+        amountPerTrade,
+        maxPositions: sub.maxPositions,
+        maxExposure,
+        isActive: sub.isActive,
+      };
+    });
+
+    // 风险等级判断（前端会对比交易所余额）
+    // 这里仅做基础判断，实际风险需要前端结合余额计算
+    let riskLevel: 'safe' | 'warning' | 'danger' = 'safe';
+    let riskMessage: string | undefined;
+
+    if (subscriptions.length >= 5) {
+      riskLevel = 'warning';
+      riskMessage = `您已启用 ${subscriptions.length} 个策略，建议关注总敞口与余额比例`;
+    }
+
+    if (subscriptions.length >= 10) {
+      riskLevel = 'danger';
+      riskMessage = `您已启用 ${subscriptions.length} 个策略，请确保交易所余额充足`;
+    }
+
+    return {
+      activeCount: subscriptions.length,
+      totalMaxExposure,
+      subscriptions: details,
+      riskLevel,
+      riskMessage,
+    };
+  }
+
   // ==================== 订阅配置管理 ====================
 
   /**
@@ -426,6 +511,7 @@ export class StrategiesService {
         dailyMaxLossPercent: new Decimal(
           dto.advanced?.dailyMaxLossPercent ?? 20,
         ),
+        dailyMaxLossAction: dto.advanced?.dailyMaxLossAction ?? 'close_all',
         // === 执行配置 ===
         maxRetries: dto.advanced?.maxRetries ?? 3,
         retryDelayMs: dto.advanced?.retryDelayMs ?? 1000,
@@ -638,6 +724,9 @@ export class StrategiesService {
         ...(dto.advanced?.dailyMaxLossPercent !== undefined && {
           dailyMaxLossPercent: new Decimal(dto.advanced.dailyMaxLossPercent),
         }),
+        ...(dto.advanced?.dailyMaxLossAction !== undefined && {
+          dailyMaxLossAction: dto.advanced.dailyMaxLossAction,
+        }),
         // === 执行配置 ===
         ...(dto.advanced?.maxRetries !== undefined && {
           maxRetries: dto.advanced.maxRetries,
@@ -785,6 +874,7 @@ export class StrategiesService {
         // 单日亏损
         dailyMaxLossEnabled: subscription.dailyMaxLossEnabled,
         dailyMaxLossPercent: subscription.dailyMaxLossPercent.toString(),
+        dailyMaxLossAction: subscription.dailyMaxLossAction,
         // 执行配置
         maxRetries: subscription.maxRetries,
         retryDelayMs: subscription.retryDelayMs,

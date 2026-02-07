@@ -56,4 +56,14 @@ export class AirdropController {
   async getCheckinStatus(@CurrentUser('id') userId: string) {
     return this.airdropService.getCheckinStatus(userId);
   }
+
+  /**
+   * 获取任务列表
+   * GET /airdrop/tasks
+   */
+  @Get('tasks')
+  async getTaskList(@CurrentUser('id') userId: string) {
+    return this.airdropService.getTaskList(userId);
+  }
+
 }

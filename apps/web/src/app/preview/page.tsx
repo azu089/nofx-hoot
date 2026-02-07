@@ -353,8 +353,7 @@ export default function PreviewPage() {
                     )}
                     {currentPage === 'subscription' && (
                       <MobileSubscriptionPage
-                        currentTier="basic"
-                        onSubscribe={(tierId) => console.log('订阅:', tierId)}
+                        onSubscribe={(planCode) => console.log('订阅:', planCode)}
                         onBack={() => setCurrentPage('profile')}
                       />
                     )}
@@ -621,8 +620,7 @@ export default function PreviewPage() {
               )}
               {currentPage === 'subscription' && (
                 <SubscriptionPage
-                  onSubscribe={(tierId) => console.log('订阅:', tierId)}
-                  onCancel={() => setCurrentPage('profile')}
+                  onSubscribe={(planCode) => console.log('订阅:', planCode)}
                 />
               )}
               {currentPage === 'help' && (

@@ -24,6 +24,8 @@ export default function WithdrawPage() {
       return response.data;
     },
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // 获取提现记录

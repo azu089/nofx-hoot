@@ -8,6 +8,7 @@ import Decimal from 'decimal.js';
 interface DailyLossConfig {
   dailyMaxLossEnabled: boolean;
   dailyMaxLossPercent: number;
+  dailyMaxLossAction: 'close_all' | 'close_half' | 'pause';
 }
 
 interface UserDailyPnl {
@@ -78,6 +79,7 @@ export class DailyPnlService implements OnModuleInit {
         apiKeyId: true,
         dailyMaxLossEnabled: true,
         dailyMaxLossPercent: true,
+        dailyMaxLossAction: true,
       },
     });
 
@@ -94,6 +96,7 @@ export class DailyPnlService implements OnModuleInit {
           dailyMaxLossPercent: sub.dailyMaxLossPercent
             ? new Decimal(sub.dailyMaxLossPercent).toNumber()
             : 20,
+          dailyMaxLossAction: (sub.dailyMaxLossAction as 'close_all' | 'close_half' | 'pause') || 'close_all',
         },
         isLocked: false,
       });
@@ -176,52 +179,94 @@ export class DailyPnlService implements OnModuleInit {
   // 触发日亏损限制
   private async triggerDailyLossLimit(data: UserDailyPnl, lossPercent: number) {
     const { userId, apiKeyId, config } = data;
+    const action = config.dailyMaxLossAction;
 
     this.logger.warn(
-      `日亏损触发: 用户 ${userId} 亏损 ${lossPercent.toFixed(2)}% (限制 ${config.dailyMaxLossPercent}%)`,
+      `日亏损触发: 用户 ${userId} 亏损 ${lossPercent.toFixed(2)}% (限制 ${config.dailyMaxLossPercent}%), 动作: ${action}`,
     );
 
     // 锁定交易
     data.isLocked = true;
 
-    // 平仓所有持仓
+    // 根据动作执行
     const positions = await this.prisma.position.findMany({
       where: { userId, status: 'open' },
     });
 
-    for (const pos of positions) {
-      try {
-        await this.tradingService.closePosition(
-          userId,
-          apiKeyId,
-          pos.symbol,
-          new Decimal(pos.amount).toNumber(),
-          pos.side as 'long' | 'short',
-        );
+    switch (action) {
+      case 'close_all':
+        // 全部平仓
+        for (const pos of positions) {
+          try {
+            await this.tradingService.closePosition(
+              userId,
+              apiKeyId,
+              pos.symbol,
+              new Decimal(pos.amount).toNumber(),
+              pos.side as 'long' | 'short',
+            );
+            await this.prisma.position.update({
+              where: { id: pos.id },
+              data: {
+                status: 'closed',
+                closedAt: new Date(),
+                closeReason: 'daily_loss_limit',
+              },
+            });
+          } catch (error) {
+            this.logger.error(
+              `平仓失败 ${pos.symbol}: ${(error as Error).message}`,
+            );
+          }
+        }
+        break;
 
-        await this.prisma.position.update({
-          where: { id: pos.id },
-          data: {
-            status: 'closed',
-            closedAt: new Date(),
-            closeReason: 'daily_loss_limit',
-          },
-        });
-      } catch (error) {
-        this.logger.error(
-          `平仓失败 ${pos.symbol}: ${(error as Error).message}`,
-        );
-      }
+      case 'close_half':
+        // 平仓 50%
+        for (const pos of positions) {
+          try {
+            const halfAmount = new Decimal(pos.amount).div(2).toNumber();
+            await this.tradingService.closePosition(
+              userId,
+              apiKeyId,
+              pos.symbol,
+              halfAmount,
+              pos.side as 'long' | 'short',
+            );
+            await this.prisma.position.update({
+              where: { id: pos.id },
+              data: {
+                amount: new Decimal(pos.amount).div(2),
+              },
+            });
+          } catch (error) {
+            this.logger.error(
+              `减仓失败 ${pos.symbol}: ${(error as Error).message}`,
+            );
+          }
+        }
+        break;
+
+      case 'pause':
+        // 仅暂停，不平仓
+        break;
     }
 
     // 发送通知
+    const actionText = {
+      close_all: '已全部平仓',
+      close_half: '已平仓50%',
+      pause: '已暂停交易',
+    }[action];
+
     await this.notificationsService.sendNotification(userId, {
       type: 'daily_loss_limit',
       title: '单日亏损限制触发',
-      body: `当日亏损 ${lossPercent.toFixed(2)}% 已达到限制 ${config.dailyMaxLossPercent}%，已自动平仓并暂停交易`,
+      body: `当日亏损 ${lossPercent.toFixed(2)}% 已达到限制 ${config.dailyMaxLossPercent}%，${actionText}`,
       data: {
         lossPercent,
         limitPercent: config.dailyMaxLossPercent,
+        action,
         realizedPnl: data.realizedPnl,
         unrealizedPnl: data.unrealizedPnl,
       },
@@ -235,6 +280,7 @@ export class DailyPnlService implements OnModuleInit {
         details: JSON.stringify({
           lossPercent,
           limitPercent: config.dailyMaxLossPercent,
+          action,
           realizedPnl: data.realizedPnl,
           unrealizedPnl: data.unrealizedPnl,
           startBalance: data.startBalance,

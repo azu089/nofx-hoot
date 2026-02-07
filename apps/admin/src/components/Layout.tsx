@@ -79,6 +79,7 @@ const menuItems = [
       { key: '/ecosystem/dividends', label: '分红管理' },
       { key: '/ecosystem/airdrops', label: '空投管理' },
       { key: '/ecosystem/config', label: '生态配置' },
+      { key: '/ecosystem/airdrop-config', label: '签到配置' },
     ],
   },
   {
@@ -92,6 +93,8 @@ const menuItems = [
       { key: '/operation/texts', label: '文案配置' },
       { key: '/operation/agents', label: '代理商' },
       { key: '/operation/agents/token', icon: <GoldOutlined />, label: '代币管理' },
+      { key: '/operation/exchanges', label: '交易所推荐' },
+      { key: '/operation/app-install', label: '安装应用' },
     ],
   },
   {

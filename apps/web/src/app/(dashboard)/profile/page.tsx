@@ -22,6 +22,12 @@ export default function ProfilePage() {
         nickname: string;
         vipLevel: number;
         subscriptionTier: string;
+        membershipStatus: string;
+        membershipExpireAt: string | null;
+        telegramId: string | null;
+        telegramUsername: string | null;
+        walletAddress: string | null;
+        emailVerified: boolean;
         createdAt: string;
       }>('/auth/me');
       return response.data;
@@ -50,6 +56,17 @@ export default function ProfilePage() {
       memberSince: new Date(profile.createdAt).toLocaleDateString('zh-CN'),
       vipLevel: profile.vipLevel || 0,
       subscriptionTier: (profile.subscriptionTier || 'basic') as 'basic' | 'premium' | 'pro',
+      // 会员状态
+      membershipStatus: profile.membershipStatus || 'none',
+      membershipExpireAt: profile.membershipExpireAt
+        ? new Date(profile.membershipExpireAt).toLocaleDateString('zh-CN')
+        : null,
+      // 绑定状态
+      telegramBound: !!profile.telegramId,
+      telegramUsername: profile.telegramUsername,
+      walletBound: !!profile.walletAddress,
+      walletAddress: profile.walletAddress,
+      emailVerified: profile.emailVerified,
     };
   }, [profile]);
 

@@ -134,6 +134,32 @@ services:
     networks:
       - hoot-network
 
+  # === Telegram Bot 服务 ===
+  telegram-bot:
+    build:
+      context: ./apps/telegram-bot
+      dockerfile: Dockerfile
+    container_name: hoot-telegram-bot
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - API_URL=http://api:4001
+      - API_INTERNAL_SECRET=${WEBHOOK_SECRET}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - hoot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # === Nginx 反向代理（可选） ===
   nginx:
     image: nginx:alpine

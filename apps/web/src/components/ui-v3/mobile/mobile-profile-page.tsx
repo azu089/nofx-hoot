@@ -52,7 +52,6 @@ export function MobileProfilePage({
 }: MobileProfilePageProps) {
   const t = useTranslations('profile')
   const tCommon = useTranslations('common')
-  const tAuth = useTranslations('auth')
   const [copied, setCopied] = useState(false)
 
   // 截断 UID 显示
@@ -185,14 +184,15 @@ export function MobileProfilePage({
 
             {/* 用户信息 */}
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-white truncate mb-0.5">{user.username}</h2>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <h2 className="text-lg font-bold text-white truncate">{user.username}</h2>
+                {user.subscriptionTier !== 'basic' && (
+                  <div className={`flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-r ${getTierColor(user.subscriptionTier)} flex items-center justify-center`}>
+                    <Crown className="w-3 h-3 text-white" />
+                  </div>
+                )}
+              </div>
               <p className="text-[#9090A0] text-sm truncate mb-1">{user.email}</p>
-              {user.subscriptionTier !== 'basic' && (
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gradient-to-r ${getTierColor(user.subscriptionTier)} text-white`}>
-                  <Crown className="w-2.5 h-2.5" />
-                  {getTierLabel(user.subscriptionTier)}
-                </span>
-              )}
               <button
                 type="button"
                 onClick={handleCopyId}

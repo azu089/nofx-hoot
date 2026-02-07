@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { TradingService } from './trading.service';
+import { TradingService, TradingConfig } from './trading.service';
 
 export interface RiskCheckResult {
   allowed: boolean;
@@ -15,11 +15,17 @@ export interface RiskConfig {
   allowSameSymbol: boolean; // 是否允许同币种重复开仓
 }
 
+// 风控检查选项
+export interface RiskCheckOptions {
+  tradingConfig?: TradingConfig; // 交易配置（用于正确查询余额）
+  side?: 'long' | 'short'; // 开仓方向（用于同币种多空共存检查）
+}
+
 // 默认风控配置
 const DEFAULT_RISK_CONFIG: RiskConfig = {
   maxPositions: 5,
   maxDailyTrades: 20,
-  minBalance: 10, // 最少 10 USDT
+  minBalance: 0, // 测试阶段暂时设为 0，生产环境建议 10 USDT
   allowSameSymbol: false,
 };
 
@@ -40,6 +46,7 @@ export class RiskControlService {
     apiKeyId: string,
     symbol: string,
     amountUsdt: number,
+    options?: RiskCheckOptions,
   ): Promise<RiskCheckResult> {
     // 获取用户风控配置（如果有自定义配置）
     const config = await this.getUserRiskConfig(userId);
@@ -53,9 +60,9 @@ export class RiskControlService {
       return positionCheck;
     }
 
-    // 2. 检查同币种重复持仓
+    // 2. 检查同币种重复持仓（合约模式下允许同币种多空共存，但同方向不允许重复）
     if (!config.allowSameSymbol) {
-      const symbolCheck = await this.checkSameSymbol(userId, symbol);
+      const symbolCheck = await this.checkSameSymbol(userId, symbol, options?.side);
       if (!symbolCheck.allowed) {
         return symbolCheck;
       }
@@ -70,12 +77,13 @@ export class RiskControlService {
       return dailyCheck;
     }
 
-    // 4. 检查交易所余额
+    // 4. 检查交易所余额（传入交易配置以查询正确的账户类型）
     const balanceCheck = await this.checkBalance(
       userId,
       apiKeyId,
       amountUsdt,
       config.minBalance,
+      options?.tradingConfig,
     );
     if (!balanceCheck.allowed) {
       return balanceCheck;
@@ -114,25 +122,29 @@ export class RiskControlService {
 
   /**
    * 检查同币种重复持仓
+   * 当指定 side 时，只检查同方向持仓（允许同币种多空共存）
    */
   private async checkSameSymbol(
     userId: string,
     symbol: string,
+    side?: 'long' | 'short',
   ): Promise<RiskCheckResult> {
     const existingPosition = await this.prisma.position.findFirst({
       where: {
         userId,
         symbol,
         status: 'open',
+        ...(side ? { side } : {}),
       },
     });
 
     if (existingPosition) {
-      this.logger.warn(`用户 ${userId} 已有 ${symbol} 持仓`);
+      const sideLabel = side ? `${side} ` : '';
+      this.logger.warn(`用户 ${userId} 已有 ${symbol} ${sideLabel}持仓`);
       return {
         allowed: false,
         reason: 'symbol_already_open',
-        details: { symbol, positionId: existingPosition.id },
+        details: { symbol, side: existingPosition.side, positionId: existingPosition.id },
       };
     }
 
@@ -178,9 +190,14 @@ export class RiskControlService {
     apiKeyId: string,
     requiredAmount: number,
     minBalance: number,
+    tradingConfig?: TradingConfig,
   ): Promise<RiskCheckResult> {
     try {
-      const balance = await this.tradingService.fetchBalance(userId, apiKeyId);
+      const balance = await this.tradingService.fetchBalance(
+        userId,
+        apiKeyId,
+        tradingConfig,
+      );
 
       // 检查是否满足本次交易
       if (balance < requiredAmount) {

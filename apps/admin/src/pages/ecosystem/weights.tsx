@@ -50,8 +50,8 @@ interface IStats {
   totalStaked: string;
   totalStakers: number;
   weightedStaking: string;
-  typeAAmount: string;
-  typeBAmount: string;
+  flexibleAmount: string;   // 活期（lockDays=0）
+  lockedAmount: string;     // 定期（lockDays>0）
 }
 
 export const WeightsPage = () => {
@@ -160,20 +160,15 @@ export const WeightsPage = () => {
       ),
     },
     {
-      title: '质押类型',
-      dataIndex: 'type',
-      key: 'type',
+      title: '锁定期',
+      dataIndex: 'lockDays',
+      key: 'lockDays',
       width: 100,
-      render: (type: string) => (
-        <Tag color={type === 'A' ? 'blue' : 'purple'}>
-          {type === 'A' ? '活期 (A)' : '定期 (B)'}
-        </Tag>
+      render: (days: number) => (
+        days === 0
+          ? <Tag color="green">活期</Tag>
+          : <Tag color="blue">{days} 天</Tag>
       ),
-      filters: [
-        { text: '活期 (A)', value: 'A' },
-        { text: '定期 (B)', value: 'B' },
-      ],
-      onFilter: (value: unknown, record: IWeightRecord) => record.type === value,
     },
     {
       title: '质押数量',
@@ -191,7 +186,7 @@ export const WeightsPage = () => {
       title: (
         <Space>
           权重乘数
-          <Tooltip title="A类固定1.0x，B类随锁定时间增加（最高3.0x）">
+          <Tooltip title="无锁定期固定1.0x，有锁定期随时间增加（最高3.0x）">
             <InfoCircleOutlined style={{ color: '#999' }} />
           </Tooltip>
         </Space>
@@ -286,10 +281,12 @@ export const WeightsPage = () => {
 
   // 统计计算
   const totalStaked = parseFloat(stats?.totalStaked || '0');
-  const typeAAmount = parseFloat(stats?.typeAAmount || '0');
-  const typeBAmount = parseFloat(stats?.typeBAmount || '0');
-  const typeAShare = totalStaked > 0 ? ((typeAAmount / totalStaked) * 100).toFixed(1) : '0';
-  const typeBShare = totalStaked > 0 ? ((typeBAmount / totalStaked) * 100).toFixed(1) : '0';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawStats = stats as any;
+  const flexibleAmount = parseFloat(rawStats?.flexibleAmount || rawStats?.typeAAmount || '0');
+  const lockedAmount = parseFloat(rawStats?.lockedAmount || rawStats?.typeBAmount || '0');
+  const flexibleShare = totalStaked > 0 ? ((flexibleAmount / totalStaked) * 100).toFixed(1) : '0';
+  const lockedShare = totalStaked > 0 ? ((lockedAmount / totalStaked) * 100).toFixed(1) : '0';
 
   return (
     <List>
@@ -330,8 +327,8 @@ export const WeightsPage = () => {
           <Col span={5}>
             <Card>
               <Statistic
-                title="A类占比"
-                value={typeAShare}
+                title="活期占比"
+                value={flexibleShare}
                 valueStyle={{ color: '#1890ff' }}
                 suffix="%"
                 prefix={<FallOutlined />}
@@ -341,8 +338,8 @@ export const WeightsPage = () => {
           <Col span={5}>
             <Card>
               <Statistic
-                title="B类占比"
-                value={typeBShare}
+                title="定期占比"
+                value={lockedShare}
                 valueStyle={{ color: '#722ed1' }}
                 suffix="%"
                 prefix={<RiseOutlined />}
@@ -356,10 +353,10 @@ export const WeightsPage = () => {
           <Space direction="vertical" size={4}>
             <Text strong>权重计算规则：</Text>
             <Text type="secondary">
-              • A类（活期）：权重 = 质押数量 × 1.0，无锁定期，随时可赎回
+              • 无锁定期（活期）：权重 = 质押数量 × 1.0，随时可赎回
             </Text>
             <Text type="secondary">
-              • B类（定期）：权重 = 质押数量 × 时间乘数（1.0x ~ 3.0x），乘数随锁定时间递增
+              • 有锁定期（定期）：权重 = 质押数量 × 时间乘数（1.0x ~ 3.0x），乘数随锁定时间递增
             </Text>
             <Text type="secondary">
               • 时间乘数公式：min(1 + 锁定天数 / 180, 3.0)

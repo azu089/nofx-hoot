@@ -37,7 +37,6 @@ export { CodeEditor } from './strategies/code-editor'
 export { PositionsPageV3 } from './positions/positions-page-v3'
 
 // 交易相关
-export { TradingConsole } from './trading/trading-console'
 export { TradingHistory } from './trading/trading-history'
 
 // 生态页面

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, Target, BarChart3, Users, Play, Pause, Megaphone, ExternalLink, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Users, Play, Pause, Megaphone, ExternalLink, Loader2, Building2, Download, Gift } from 'lucide-react'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement, type MarqueeItem, type MarqueeConfig } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
 
@@ -17,6 +17,14 @@ function Carousel() {
 
   const slides = [
     {
+      titleKey: 'carousel.autoTradeTitle',
+      subtitleKey: 'carousel.autoTradeSubtitle',
+      descriptionKey: 'carousel.autoTradeDesc',
+      gradient: 'from-teal-500/20 to-violet-500/20',
+      iconBg: 'bg-teal-500/20',
+      ctaKey: 'carousel.autoTradeCta'
+    },
+    {
       titleKey: 'carousel.newFeature',
       subtitleKey: 'carousel.aiRebalancing',
       descriptionKey: 'carousel.aiRebalancingDesc',
@@ -25,6 +33,7 @@ function Carousel() {
       ctaKey: 'carousel.tryNow'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.hotStrategy',
       subtitleKey: 'carousel.gridTradingPro',
       descriptionKey: 'carousel.gridTradingDesc',
@@ -33,6 +42,7 @@ function Carousel() {
       ctaKey: 'carousel.viewDetails'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.inviteFriends',
       subtitleKey: 'carousel.earnReward',
       descriptionKey: 'carousel.inviteDesc',
@@ -41,6 +51,7 @@ function Carousel() {
       ctaKey: 'carousel.inviteNow'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.support24h',
       subtitleKey: 'carousel.onlineAlways',
       descriptionKey: 'carousel.supportDesc',
@@ -55,7 +66,7 @@ function Carousel() {
 
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length)
-    }, 5000)
+    }, 8000)
 
     return () => clearInterval(interval)
   }, [isPlaying, slides.length])
@@ -79,20 +90,20 @@ function Carousel() {
             }`}
           >
             <div className={`relative w-full h-full bg-gradient-to-br ${slide.gradient} backdrop-blur-xl border border-[#1E1E2E] rounded-2xl flex items-center`}>
-              <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent rounded-2xl" />
-              <div className="relative z-10 px-6 md:px-10">
-                <div className="text-sm text-[#9090A0] mb-1">{t(slide.titleKey)}</div>
-                <h2 className="text-2xl md:text-3xl font-bold text-[#F8F8FC] mb-2">
-                  {t(slide.subtitleKey)}
-                </h2>
-                <p className="text-[#9090A0] text-sm mb-4 max-w-md">
-                  {t(slide.descriptionKey)}
-                </p>
-                <button type="button" className="bg-[#06B6D4] hover:bg-[#06B6D4]/80 text-black px-5 py-2 rounded-lg font-medium transition-colors text-sm">
-                  {t(slide.ctaKey)}
-                </button>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent rounded-2xl" />
+                <div className="relative z-10 px-6 md:px-10">
+                  <div className="text-sm text-[#9090A0] mb-1">{t(slide.titleKey)}</div>
+                  <h2 className="text-2xl md:text-3xl font-bold text-[#F8F8FC] mb-2">
+                    {t(slide.subtitleKey)}
+                  </h2>
+                  <p className="text-[#9090A0] text-sm mb-4 max-w-md">
+                    {t(slide.descriptionKey)}
+                  </p>
+                  <button type="button" className="bg-[#06B6D4] hover:bg-[#06B6D4]/80 text-black px-5 py-2 rounded-lg font-medium transition-colors text-sm">
+                    {t(slide.ctaKey)}
+                  </button>
+                </div>
               </div>
-            </div>
           </div>
         ))}
       </div>
@@ -213,21 +224,21 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
 
   const cards = [
     {
-      icon: Target,
-      titleKey: 'quickAccess.strategyMarket',
-      path: '/strategies',
+      icon: Building2,
+      titleKey: 'quickAccess.exchanges',
+      path: '/exchanges',
       gradient: 'from-cyan-500 to-blue-500'
     },
     {
-      icon: BarChart3,
-      titleKey: 'quickAccess.tradingCenter',
-      path: '/trading',
+      icon: Download,
+      titleKey: 'quickAccess.installApp',
+      path: 'pwa-install',
       gradient: 'from-emerald-500 to-teal-500'
     },
     {
-      icon: Wallet,
-      titleKey: 'quickAccess.walletAssets',
-      path: '/wallet',
+      icon: Gift,
+      titleKey: 'quickAccess.checkin',
+      path: '/airdrop',
       gradient: 'from-purple-500 to-pink-500'
     },
     {
@@ -246,7 +257,21 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
           <button
             type="button"
             key={card.path}
-            onClick={() => onNavigate?.(card.path)}
+            onClick={() => {
+              if (card.path === 'pwa-install') {
+                const deferredPrompt = (window as PwaWindow).__pwaInstallPrompt
+                if (deferredPrompt) {
+                  deferredPrompt.prompt()
+                  deferredPrompt.userChoice.then(() => {
+                    ;(window as PwaWindow).__pwaInstallPrompt = null
+                  })
+                } else {
+                  alert('请使用浏览器菜单中的「添加到主屏幕」安装应用')
+                }
+                return
+              }
+              onNavigate?.(card.path)
+            }}
             className="flex flex-col items-center justify-center py-5 px-4 hover:bg-[#1E1E2E]/30 transition-all group"
           >
             <div className={`w-11 h-11 rounded-xl bg-gradient-to-r ${card.gradient} flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform shadow-lg`}>
@@ -415,10 +440,7 @@ function MarketTabs({ prices, news, isLoading }: {
 // 主仪表板组件
 export function DashboardV3({ onNavigate }: DashboardV3Props) {
   // 获取首页数据（行情、新闻、公告）
-  const { data, isLoading, error } = useHomepageData()
-
-  // 调试日志
-  console.log('[Dashboard] API 状态:', { isLoading, hasData: !!data, error: error?.message, pricesCount: data?.prices?.length })
+  const { data, isLoading } = useHomepageData()
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">

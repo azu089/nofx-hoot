@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -7,6 +8,29 @@ import { useAuth } from '@/lib/auth';
 import { PositionsPageV3 } from '@/components/ui-v3/positions/positions-page-v3';
 import { MobileTradingCenter } from '@/components/ui-v3/mobile/mobile-trading-center';
 import { toast } from 'sonner';
+
+// 同步后的持仓数据类型
+interface SyncedPosition {
+  id: string;
+  symbol: string;
+  side: string;
+  entryPrice: string;
+  markPrice: string;
+  liquidationPrice: string;
+  amount: string;
+  notionalValue: string;
+  margin: string;
+  leverage: number;
+  marginMode: string;
+  unrealizedPnl: string;
+  roe: string;
+  status: string;
+  tradingType: string;
+  strategyName?: string;
+  createdAt: string;
+  syncedAt: string;
+  syncSource: 'exchange' | 'database';
+}
 
 // 持仓数据类型
 interface Position {
@@ -20,6 +44,11 @@ interface Position {
   exchange: string;
   strategyName?: string;
   createdAt: string;
+  // 交易配置（新增）
+  tradingType?: string;
+  leverage?: number;
+  margin?: string;
+  marginMode?: string;
 }
 
 // 交易历史类型
@@ -29,13 +58,23 @@ interface TradeHistory {
   side: string;
   type: string;
   price: string;
+  entryPrice?: string;
+  closePrice?: string;
   amount: string;
   total: string;
   pnl: string;
+  pnlPercent?: string;
   fee: string;
   status: string;
   closedAt: string;
   createdAt: string;
+  // 交易配置
+  tradingType?: string;
+  leverage?: number;
+  margin?: string;
+  marginMode?: string;
+  closeReason?: string;
+  strategyName?: string;
 }
 
 // 执行日志类型
@@ -80,7 +119,10 @@ export default function TradingPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
 
-  // 获取持仓数据
+  // 当前选中的API Key ID
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
+
+  // 获取持仓数据（基础数据）
   const { data: positionsData, isLoading: positionsLoading } = useQuery({
     queryKey: ['positions'],
     queryFn: async () => {
@@ -92,6 +134,21 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated,
+    retry: false,
+  });
+
+  // 同步持仓数据（从交易所获取实时数据）
+  const { data: syncedPositions, refetch: refetchSyncedPositions } = useQuery({
+    queryKey: ['synced-positions', selectedApiKeyId],
+    queryFn: async () => {
+      if (!selectedApiKeyId) return null;
+      const response = await api.get<SyncedPosition[]>(
+        `/trading/positions/synced?apiKeyId=${selectedApiKeyId}`
+      );
+      return response.data;
+    },
+    enabled: isAuthenticated && !!selectedApiKeyId,
+    refetchInterval: 30000, // 每30秒自动刷新
     retry: false,
   });
 
@@ -133,13 +190,15 @@ export default function TradingPage() {
 
   // 获取钱包余额
   const { data: walletBalance } = useQuery({
-    queryKey: ['wallet-balance'],
+    queryKey: ['wallet', 'balance'],
     queryFn: async () => {
       const response = await api.get<WalletBalance>('/wallet/balance');
       return response.data;
     },
     enabled: isAuthenticated,
     retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // 获取API Keys
@@ -153,20 +212,25 @@ export default function TradingPage() {
     retry: false,
   });
 
+  // API Key 余额数据类型（包含现货/合约分开的余额）
+  interface ApiKeyBalanceData {
+    valid: boolean;
+    totalUsdValue: number;
+    spotValue: number;
+    futuresValue: number;
+    error?: string;
+  }
+
   // 获取每个 API Key 的余额（复用 API 页面的缓存数据）
   const apiKeyBalanceQueries = useQueries({
     queries: (apiKeys || []).map((key) => ({
       queryKey: ['api-key-balance', key.id],
-      queryFn: async () => {
+      queryFn: async (): Promise<ApiKeyBalanceData> => {
         try {
-          const response = await api.get<{
-            valid: boolean;
-            totalUsdValue: number;
-            error?: string;
-          }>(`/api-keys/${key.id}/verify`);
+          const response = await api.get<ApiKeyBalanceData>(`/api-keys/${key.id}/verify`);
           return response.data;
         } catch (e) {
-          return { valid: false, totalUsdValue: 0 };
+          return { valid: false, totalUsdValue: 0, spotValue: 0, futuresValue: 0 };
         }
       },
       enabled: isAuthenticated && !!key.id,
@@ -174,6 +238,19 @@ export default function TradingPage() {
       retry: false,
     })),
   });
+
+  // 当前选中的账户索引
+  const [selectedAccountIndex, setSelectedAccountIndex] = useState(0);
+  // 账户类型筛选：全部/现货/合约
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'spot' | 'futures'>('all');
+
+  // 当 API Keys 加载完成后，自动选择第一个活跃的 API Key 用于同步
+  useEffect(() => {
+    if (apiKeys && apiKeys.length > 0 && !selectedApiKeyId) {
+      const activeKey = apiKeys.find(k => k.isActive) || apiKeys[0];
+      setSelectedApiKeyId(activeKey.id);
+    }
+  }, [apiKeys, selectedApiKeyId]);
 
   // 订阅策略类型
   interface SubscribedStrategy {
@@ -323,39 +400,83 @@ export default function TradingPage() {
     router.push('/strategies');
   };
 
-  // 转换持仓数据格式
-  const transformedPositions = positionsData?.items?.map(p => ({
-    id: p.id,
-    symbol: p.symbol,
-    direction: p.side as 'long' | 'short',
-    size: parseFloat(p.amount),
-    entryPrice: parseFloat(p.entryPrice),
-    markPrice: parseFloat(p.entryPrice), // 需要实时价格
-    liquidationPrice: 0,
-    unrealizedPnl: parseFloat(p.pnl || '0'),
-    roe: 0,
-    icon: p.symbol.startsWith('BTC') ? '₿' : p.symbol.startsWith('ETH') ? 'Ξ' : '◎',
-    strategy: p.strategyName || '手动交易',
-    stopLoss: 0,
-    takeProfit: 0,
-    marketType: 'futures' as const,
-  }));
+  // 标准化交易对名称：去掉 :USDT 后缀，保持 SOL/USDT 格式
+  const normalizeSymbol = (symbol: string): string => {
+    // 去掉 :USDT 后缀
+    return symbol.replace(':USDT', '').replace(':USDC', '');
+  };
+
+  // 转换持仓数据格式（优先使用同步数据）
+  const transformedPositions = (syncedPositions && syncedPositions.length > 0)
+    ? syncedPositions.map(p => {
+        const symbol = normalizeSymbol(p.symbol);
+        return {
+          id: p.id,
+          symbol,
+          direction: p.side as 'long' | 'short',
+          size: parseFloat(p.amount),
+          entryPrice: parseFloat(p.entryPrice),
+          markPrice: parseFloat(p.markPrice), // 使用实时标记价格
+          liquidationPrice: parseFloat(p.liquidationPrice), // 强平价格
+          unrealizedPnl: parseFloat(p.unrealizedPnl),
+          roe: parseFloat(p.roe), // 收益率
+          icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
+          strategy: p.strategyName || '手动交易',
+          stopLoss: 0, // TODO: 从订阅配置获取
+          takeProfit: 0,
+          marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
+          leverage: p.leverage || 1,
+          margin: parseFloat(p.margin || '0'),
+          marginMode: p.marginMode || 'cross',
+          syncSource: p.syncSource, // 标记数据来源
+        };
+      })
+    : positionsData?.items?.map(p => {
+        const symbol = normalizeSymbol(p.symbol);
+        return {
+          id: p.id,
+          symbol,
+          direction: p.side as 'long' | 'short',
+          size: parseFloat(p.amount),
+          entryPrice: parseFloat(p.entryPrice),
+          markPrice: parseFloat(p.entryPrice), // 没有同步时使用入场价
+          liquidationPrice: 0,
+          unrealizedPnl: parseFloat(p.pnl || '0'),
+          roe: 0,
+          icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
+          strategy: p.strategyName || '手动交易',
+          stopLoss: 0,
+          takeProfit: 0,
+          marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
+          leverage: p.leverage || 1,
+          margin: parseFloat(p.margin || '0'),
+          marginMode: p.marginMode || 'cross',
+        };
+      });
 
   // 转换交易历史数据格式
   const transformedHistory = historyData?.items?.map(h => ({
     id: h.id,
-    symbol: h.symbol,
-    side: h.side as 'buy' | 'sell',
+    symbol: normalizeSymbol(h.symbol),
+    side: h.side as 'long' | 'short',
     type: h.type,
-    price: parseFloat(h.price),
+    price: parseFloat(h.closePrice || h.price),
+    entryPrice: parseFloat(h.entryPrice || h.price),
+    closePrice: parseFloat(h.closePrice || h.price),
     amount: parseFloat(h.amount),
     filled: parseFloat(h.amount),
     total: parseFloat(h.total),
     pnl: parseFloat(h.pnl),
+    pnlPercent: parseFloat(h.pnlPercent || '0'),
     fee: parseFloat(h.fee),
     time: h.closedAt,
     status: h.status as 'filled' | 'cancelled',
-    marketType: 'futures' as const,
+    marketType: (h.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
+    leverage: h.leverage || 1,
+    margin: parseFloat(h.margin || '0'),
+    closeReason: h.closeReason,
+    strategyName: h.strategyName,
+    openTime: h.createdAt,
   }));
 
   // 转换执行日志数据格式
@@ -389,22 +510,42 @@ export default function TradingPage() {
       positionSize: `${s.amountPerTrade || 0}`,
       stopLoss: parseFloat(s.stopLossPercent || '0'),
       takeProfit: parseFloat(s.takeProfitPercent || '0'),
+      amountPerTrade: parseFloat(s.amountPerTrade || '0'),
     },
   }));
 
-  // 构建API Keys账户列表（使用真实余额）
+  // 构建API Keys账户列表（使用真实余额，包含现货/合约分开的数据）
   const accounts = apiKeys?.map((k, index) => {
-    const balanceData = apiKeyBalanceQueries[index]?.data;
+    const balanceData = apiKeyBalanceQueries[index]?.data as ApiKeyBalanceData | undefined;
     return {
       id: k.id,
       name: `${k.exchange} - ${k.label}`,
       balance: balanceData?.totalUsdValue || 0,
+      spotValue: balanceData?.spotValue || 0,
+      futuresValue: balanceData?.futuresValue || 0,
     };
   }) || [];
 
-  // 计算资产统计
-  const totalAssets = parseFloat(walletBalance?.usdtBalance || '0');
-  const availableBalance = totalAssets;
+  // 获取当前选中账户的余额数据
+  const selectedAccount = accounts[selectedAccountIndex] || { balance: 0, spotValue: 0, futuresValue: 0 };
+
+  // 根据账户类型筛选计算资产
+  // accountTypeFilter: 'all' | 'spot' | 'futures'
+  const getFilteredAssets = () => {
+    switch (accountTypeFilter) {
+      case 'spot':
+        return selectedAccount.spotValue;
+      case 'futures':
+        return selectedAccount.futuresValue;
+      case 'all':
+      default:
+        return selectedAccount.balance;
+    }
+  };
+
+  // 计算资产统计（使用选中交易所账户的余额）
+  const totalAssets = getFilteredAssets();
+  const availableBalance = totalAssets; // 可用余额暂时等于总资产
   const totalPnl = parseFloat(pnlStats?.totalPnl || '0');
   const todayPnl = parseFloat(pnlStats?.todayPnl || '0');
   const unrealizedPnl = parseFloat(pnlStats?.unrealizedPnl || '0');

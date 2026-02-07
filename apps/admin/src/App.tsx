@@ -68,6 +68,9 @@ import {
   TokenManagementPage,
   SignalsPage,
   KillSwitchPage,
+  ExchangeListPage,
+  AirdropConfigPage,
+  AppInstallPage,
 } from './pages';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
@@ -172,6 +175,7 @@ const AppContent = () => {
             <Route path="dividends" element={<DividendsPage />} />
             <Route path="airdrops" element={<AirdropList />} />
             <Route path="config" element={<EcosystemConfigPage />} />
+            <Route path="airdrop-config" element={<AirdropConfigPage />} />
           </Route>
 
           {/* 运营管理 */}
@@ -182,6 +186,8 @@ const AppContent = () => {
             <Route path="texts" element={<TextConfigList />} />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="agents/token" element={<TokenManagementPage />} />
+            <Route path="exchanges" element={<ExchangeListPage />} />
+            <Route path="app-install" element={<AppInstallPage />} />
           </Route>
 
           {/* 内容管理 */}

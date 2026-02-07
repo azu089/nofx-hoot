@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AirdropModule } from '../airdrop/airdrop.module';
+import { ReferralModule } from '../referral/referral.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AirdropModule } from '../airdrop/airdrop.module';
       signOptions: { expiresIn: '7d' },
     }),
     forwardRef(() => AirdropModule),
+    forwardRef(() => ReferralModule),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

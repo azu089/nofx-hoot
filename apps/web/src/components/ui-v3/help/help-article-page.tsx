@@ -14,7 +14,7 @@ import {
   Info,
   Lightbulb
 } from 'lucide-react'
-import { helpArticles, type HelpArticle } from '@/lib/help-content'
+import { helpArticles } from '@/lib/help-content'
 import { useLocale } from '@/i18n/provider'
 import { useTranslations } from 'next-intl'
 
@@ -244,9 +244,6 @@ export function HelpArticlePage({ slug, onBack, onNavigate }: HelpArticlePagePro
   // 优先使用新的 helpArticles，fallback 到 defaultArticles
   const article = helpArticles[slug] || defaultArticles[slug]
 
-  // 获取图标
-  const IconComponent = iconMap[slug] || BookOpen
-
   // 解析内联 Markdown
   const parseInlineMarkdown = (text: string): React.ReactNode => {
     const parts: React.ReactNode[] = []
@@ -402,9 +399,6 @@ export function HelpArticlePage({ slug, onBack, onNavigate }: HelpArticlePagePro
   }
 
   const title = locale === 'zh' ? article.titleZh : article.titleEn
-  const description = 'descriptionZh' in article
-    ? (locale === 'zh' ? (article as HelpArticle).descriptionZh : (article as HelpArticle).descriptionEn)
-    : undefined
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">

@@ -2,6 +2,9 @@
  * HOOT Telegram Bot
  * 基于 grammY 框架 + Express HTTP API
  * 支持多语言 (中文/English)
+ *
+ * 7 核心命令: /start, /wallet, /trade, /checkin, /invite, /closeall, /help
+ * 2 工具命令: /bind, /lang
  */
 import { Bot, Context, session, SessionFlavor, InlineKeyboard } from 'grammy';
 import express, { Request, Response } from 'express';
@@ -19,16 +22,22 @@ import {
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://hoot.cool';
 const GROUP_URL = process.env.GROUP_URL || 'https://t.me/hoot_community';
 const CHANNEL_URL = process.env.CHANNEL_URL || 'https://t.me/hoot_ann';
+
 import {
   getUserByTelegramId,
   bindTelegram,
   getPositionsByTelegramId,
-  getStrategies,
   getEarningsByTelegramId,
   telegramLogin,
   checkinByTelegramId,
-  getCheckinStatus,
   getInviteInfo,
+  getMySubscriptions,
+  toggleSubscription,
+  closeAllPositions,
+  getApiKeys,
+  getApiKeyBalance,
+  getTradeHistory,
+  getTradeLogs,
 } from './utils/api';
 
 // 空投奖励配置（与后端保持一致）
@@ -52,11 +61,9 @@ type MyContext = Context & SessionFlavor<SessionData>;
 
 // 获取用户语言设置
 function getUserLang(ctx: MyContext): Language {
-  // 优先使用 session 中保存的语言
   if (ctx.session?.language) {
     return ctx.session.language;
   }
-  // 其次根据 Telegram 语言自动检测
   return getLanguageFromCode(ctx.from?.language_code);
 }
 
@@ -86,28 +93,171 @@ bot.use(
   })
 );
 
-// ==================== Bot 命令 ====================
+// ==================== 主菜单 ====================
 
-// 主菜单按钮
+// 主菜单按钮面板 (5行)
 function getMainMenu(lang: Language) {
   const msg = getLocale(lang);
   return new InlineKeyboard()
-    .webApp(msg.menu.openApp, WEB_APP_URL)
+    .text(msg.menu.wallet, 'menu_wallet')
+    .text(msg.menu.trade, 'menu_trade')
     .row()
-    .text(msg.menu.checkin, 'checkin')
-    .text(msg.menu.invite, 'invite')
+    .text(msg.menu.checkin, 'menu_checkin')
+    .text(msg.menu.invite, 'menu_invite')
+    .row()
+    .text(msg.menu.closeAll, 'menu_closeall')
+    .text(msg.menu.help, 'menu_help')
     .row()
     .url(msg.menu.joinGroup, GROUP_URL)
-    .url(msg.menu.channel, CHANNEL_URL);
+    .url(msg.menu.channel, CHANNEL_URL)
+    .row()
+    .text(msg.menu.switchLang, 'menu_lang');
 }
 
-// /start 命令 - 自动登录/注册
+// ==================== 功能面板构建 ====================
+
+// 钱包面板消息
+async function buildWalletMessage(telegramId: string, username: string | undefined, msg: LocaleMessages) {
+  const result = await telegramLogin({ telegramId, telegramUsername: username });
+  const user = result.user;
+
+  const usdt = parseFloat(user.usdtBalance || '0').toFixed(2);
+  const hoot = parseFloat(user.hootBalance || '0').toFixed(0);
+  const point = parseFloat(user.pointBalance || '0').toFixed(2);
+
+  let message =
+    `${msg.wallet.title}\n` +
+    `${msg.wallet.platformSection}\n` +
+    `${t(msg.wallet.usdt, { amount: usdt })}\n` +
+    `${t(msg.wallet.hoot, { amount: hoot })}\n` +
+    `${t(msg.wallet.point, { amount: point })}\n` +
+    `${msg.wallet.hootNotice}\n`;
+
+  // 交易所余额
+  try {
+    const apiKeysResult = await getApiKeys(telegramId);
+
+    if (!apiKeysResult.items || apiKeysResult.items.length === 0) {
+      message += `${msg.wallet.exchangeSection}\n${msg.wallet.noApiKey}`;
+    } else {
+      message += `${msg.wallet.exchangeSection}\n`;
+      for (const key of apiKeysResult.items) {
+        try {
+          const balance = await getApiKeyBalance(telegramId, key.id);
+          message +=
+            `\n💱 <b>${key.exchange.toUpperCase()}</b> (${key.label})\n` +
+            `${t(msg.wallet.total, { amount: balance.balance.toFixed(2) })}\n` +
+            `${t(msg.wallet.spot, { amount: balance.spotBalance.toFixed(2) })}\n` +
+            `${t(msg.wallet.futures, { amount: balance.futuresBalance.toFixed(2) })}\n`;
+        } catch {
+          message += `${t(msg.wallet.queryFailed, { label: `${key.exchange.toUpperCase()} (${key.label})` })}\n`;
+        }
+      }
+    }
+  } catch {
+    message += `${msg.wallet.exchangeSection}\n${msg.wallet.noApiKey}`;
+  }
+
+  return message;
+}
+
+// 交易面板消息
+async function buildTradeMessage(telegramId: string, username: string | undefined, msg: LocaleMessages) {
+  await telegramLogin({ telegramId, telegramUsername: username });
+
+  let message = `${msg.trade.title}\n`;
+
+  // 持仓区
+  try {
+    const positions = await getPositionsByTelegramId(telegramId);
+    message += `${t(msg.trade.positionsSection, { count: positions.length })}\n`;
+
+    if (positions.length === 0) {
+      message += `${msg.trade.noPositions}\n`;
+    } else {
+      for (const pos of positions) {
+        const pnlDisplay = pos.pnl
+          ? (parseFloat(pos.pnl) >= 0 ? '📈 +' : '📉 ') + pos.pnl
+          : '';
+        message +=
+          `  ${pos.symbol} ${pos.side.toUpperCase()}` +
+          `  ${t(msg.trade.positionEntry, { price: pos.entryPrice })}` +
+          `${pnlDisplay ? ` | ${pnlDisplay}` : ''}\n`;
+      }
+    }
+  } catch {
+    message += `${msg.trade.noPositions}\n`;
+  }
+
+  // 收益区
+  try {
+    const earnings = await getEarningsByTelegramId(telegramId);
+    const todayPnl = parseFloat(earnings.todayPnl || '0');
+    const totalPnl = parseFloat(earnings.totalPnl || '0');
+
+    const formatPnl = (pnl: number) => {
+      const sign = pnl >= 0 ? '+' : '';
+      const emoji = pnl >= 0 ? '📈' : '📉';
+      return `${emoji} ${sign}${pnl.toFixed(2)} USDT`;
+    };
+
+    message +=
+      `${msg.trade.earningsSection}\n` +
+      `${t(msg.trade.today, { pnl: formatPnl(todayPnl) })}\n` +
+      `${t(msg.trade.total, { pnl: formatPnl(totalPnl) })}\n` +
+      `${t(msg.trade.trades, { count: earnings.tradeCount || 0 })} | ${t(msg.trade.winRate, { rate: earnings.winRate || '0' })}\n`;
+  } catch {
+    // 收益查询失败，跳过
+  }
+
+  // 策略区
+  try {
+    const subscriptions = await getMySubscriptions(telegramId);
+    message += `${msg.trade.strategiesSection}\n`;
+
+    if (!subscriptions || subscriptions.length === 0) {
+      message += `${msg.trade.noStrategies}\n`;
+    } else {
+      for (const sub of subscriptions) {
+        const status = sub.isActive ? msg.trade.active : msg.trade.paused;
+        message += `  ${status} ${sub.strategy.name} | ${t(msg.trade.strategyAmount, { amount: sub.amountPerTrade })}\n`;
+      }
+    }
+  } catch {
+    message += `${msg.trade.noStrategies}\n`;
+  }
+
+  return message;
+}
+
+// 交易面板子按钮
+function getTradeKeyboard(msg: LocaleMessages) {
+  return new InlineKeyboard()
+    .text(msg.trade.btnHistory, 'trade_history')
+    .text(msg.trade.btnLogs, 'trade_logs')
+    .row()
+    .text(msg.trade.btnManage, 'trade_strategies')
+    .text(msg.trade.btnCloseAll, 'trade_closeall');
+}
+
+// ==================== Bot 命令 ====================
+
+// /start 命令 - 自动登录/注册 + 主菜单
 bot.command('start', async (ctx) => {
   const telegramId = ctx.from?.id.toString();
   const username = ctx.from?.username;
   const firstName = ctx.from?.first_name;
   const lastName = ctx.from?.last_name;
   if (!telegramId) return;
+
+  // 解析深度链接参数: /start ref_XXXXXXXX
+  const args = ctx.message?.text?.split(' ').slice(1);
+  const startParam = args?.[0];
+  let referralCode: string | undefined;
+  if (startParam?.startsWith('ref_')) {
+    referralCode = startParam.replace('ref_', '');
+    console.log(`[TG Bot] 检测到邀请码: ${referralCode}`);
+  }
 
   // 自动检测并设置语言
   if (!ctx.session.language || ctx.session.language === 'en') {
@@ -117,12 +267,12 @@ bot.command('start', async (ctx) => {
   const msg = getMsg(ctx);
 
   try {
-    // 调用自动登录 API（不存在会自动注册）
     const result = await telegramLogin({
       telegramId,
       telegramUsername: username,
       firstName,
       lastName,
+      referralCode,
     });
 
     ctx.session.isLoggedIn = true;
@@ -131,7 +281,6 @@ bot.command('start', async (ctx) => {
     const nickname = result.user.nickname || username || (lang === 'zh' ? '用户' : 'User');
 
     if (result.isNewUser) {
-      // 新用户欢迎
       await ctx.reply(
         t(msg.start.welcomeNew, {
           nickname,
@@ -143,12 +292,12 @@ bot.command('start', async (ctx) => {
         }
       );
     } else {
-      // 老用户欢迎
       const usdt = parseFloat(result.user.usdtBalance || '0').toFixed(2);
       const hoot = parseFloat(result.user.hootBalance || '0').toFixed(0);
+      const point = parseFloat(result.user.pointBalance || '0').toFixed(2);
 
       await ctx.reply(
-        t(msg.start.welcomeBack, { nickname, usdt, hoot }),
+        t(msg.start.welcomeBack, { nickname, usdt, hoot, point }),
         {
           parse_mode: 'HTML',
           reply_markup: getMainMenu(lang),
@@ -161,241 +310,38 @@ bot.command('start', async (ctx) => {
   }
 });
 
-// /help 命令
-bot.command('help', async (ctx) => {
+// /wallet 命令 - 钱包总览（平台余额 + 交易所余额）
+bot.command('wallet', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
   const msg = getMsg(ctx);
-  const lang = getUserLang(ctx);
 
-  const helpKeyboard = new InlineKeyboard()
-    .webApp(msg.menu.openApp, WEB_APP_URL)
-    .url(msg.menu.joinGroup, GROUP_URL);
+  try {
+    const message = await buildWalletMessage(telegramId, ctx.from?.username, msg);
+    await ctx.reply(message, { parse_mode: 'HTML' });
+  } catch (error) {
+    console.error('钱包查询失败:', error);
+    await ctx.reply(msg.wallet.failed);
+  }
+});
 
-  await ctx.reply(
-    `${msg.help.title}\n` +
-      `${msg.help.account}\n` +
-      `${msg.help.trading}\n` +
-      `${msg.help.other}\n\n` +
-      `${msg.help.notifications}`,
-    {
+// /trade 命令 - 交易面板（持仓 + 收益 + 策略 + 子按钮）
+bot.command('trade', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+
+  try {
+    const message = await buildTradeMessage(telegramId, ctx.from?.username, msg);
+    await ctx.reply(message, {
       parse_mode: 'HTML',
-      reply_markup: helpKeyboard,
-    }
-  );
-});
-
-// /bind 命令 - 绑定邮箱（合并已有邮箱账户）
-bot.command('bind', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  const username = ctx.from?.username;
-  if (!telegramId) return;
-
-  const msg = getMsg(ctx);
-
-  // 检查是否已绑定
-  const existingUser = await getUserByTelegramId(telegramId);
-
-  if (existingUser?.email) {
-    await ctx.reply(t(msg.bind.alreadyBound, { email: existingUser.email }));
-    return;
-  }
-
-  // 获取绑定码（用于合并已有邮箱账户）
-  const args = ctx.message?.text?.split(' ').slice(1);
-  const bindCode = args?.[0];
-
-  if (!bindCode) {
-    await ctx.reply(
-      `${msg.bind.howTo}\n\n` +
-        `${msg.bind.steps}\n\n` +
-        `${msg.bind.newUserHint}`
-    );
-    return;
-  }
-
-  try {
-    const user = await bindTelegram({
-      telegramId,
-      telegramUsername: username,
-      bindCode,
+      reply_markup: getTradeKeyboard(msg),
     });
-
-    ctx.session.isLoggedIn = true;
-    ctx.session.userId = user.id;
-
-    const lang = getUserLang(ctx);
-    const nickname = user.nickname || (lang === 'zh' ? '未设置' : 'Not set');
-
-    await ctx.reply(
-      `${msg.bind.success}\n\n` +
-        `${t(msg.status.email, { email: user.email })}\n` +
-        `${t(msg.status.nickname, { name: nickname })}\n\n` +
-        `${msg.bind.nowCanUse}`
-    );
   } catch (error) {
-    await ctx.reply(t(msg.bind.failed, { error: error instanceof Error ? error.message : 'Unknown error' }));
-  }
-});
-
-// /status 命令 - 账户状态
-bot.command('status', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  const username = ctx.from?.username;
-  if (!telegramId) return;
-
-  const msg = getMsg(ctx);
-
-  // 自动登录获取用户信息
-  try {
-    const result = await telegramLogin({
-      telegramId,
-      telegramUsername: username,
-    });
-
-    const user = result.user;
-
-    await ctx.reply(
-      `${msg.status.title}\n` +
-        `${t(msg.status.nickname, { name: user.nickname || username || msg.status.notBound })}\n` +
-        `${t(msg.status.email, { email: user.email || msg.status.notBound })}\n\n` +
-        `${t(msg.status.assets, { usdt: user.usdtBalance || '0', hoot: user.hootBalance || '0' })}`
-    );
-  } catch (error) {
-    await ctx.reply(msg.status.failed);
-  }
-});
-
-// /positions 命令 - 查看持仓
-bot.command('positions', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  if (!telegramId) return;
-
-  const msg = getMsg(ctx);
-
-  try {
-    // 确保用户已登录
-    await telegramLogin({ telegramId, telegramUsername: ctx.from?.username });
-
-    const positions = await getPositionsByTelegramId(telegramId);
-
-    if (positions.length === 0) {
-      await ctx.reply(msg.positions.noPosition);
-      return;
-    }
-
-    let message = `${t(msg.positions.title, { count: positions.length })}\n\n`;
-
-    for (const pos of positions) {
-      const pnlDisplay = pos.pnl
-        ? (parseFloat(pos.pnl) >= 0 ? '📈 +' : '📉 ') + pos.pnl
-        : '';
-
-      message +=
-        `${pos.symbol} ${pos.side.toUpperCase()}\n` +
-        `${t(msg.positions.entry, { price: pos.entryPrice })}\n` +
-        `${t(msg.positions.amount, { amount: pos.amount })}\n` +
-        `${pnlDisplay ? `• PnL: ${pnlDisplay}\n` : ''}` +
-        `\n`;
-    }
-
-    await ctx.reply(message);
-  } catch (error) {
-    await ctx.reply(msg.positions.failed);
-  }
-});
-
-// /strategies 命令 - 策略列表
-bot.command('strategies', async (ctx) => {
-  const msg = getMsg(ctx);
-
-  try {
-    const strategies = await getStrategies();
-
-    if (strategies.length === 0) {
-      await ctx.reply(msg.strategies.empty);
-      return;
-    }
-
-    let message = `${msg.strategies.title}\n\n`;
-
-    for (const strategy of strategies) {
-      message += `🎯 ${strategy.name}\n${strategy.description}\n\n`;
-    }
-
-    message += msg.strategies.visitWeb;
-
-    await ctx.reply(message);
-  } catch (error) {
-    await ctx.reply(msg.strategies.failed);
-  }
-});
-
-// /earnings 命令 - 收益统计
-bot.command('earnings', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  if (!telegramId) return;
-
-  const msg = getMsg(ctx);
-
-  try {
-    // 确保用户已登录
-    await telegramLogin({ telegramId, telegramUsername: ctx.from?.username });
-
-    const earnings = await getEarningsByTelegramId(telegramId);
-
-    const todayPnl = parseFloat(earnings.todayPnl || '0');
-    const weekPnl = parseFloat(earnings.weekPnl || '0');
-    const monthPnl = parseFloat(earnings.monthPnl || '0');
-    const totalPnl = parseFloat(earnings.totalPnl || '0');
-
-    const formatPnl = (pnl: number) => {
-      const sign = pnl >= 0 ? '+' : '';
-      const emoji = pnl >= 0 ? '📈' : '📉';
-      return `${emoji} ${sign}${pnl.toFixed(2)} USDT`;
-    };
-
-    await ctx.reply(
-      `${msg.earnings.title}\n\n` +
-        `${t(msg.earnings.today, { pnl: formatPnl(todayPnl) })}\n` +
-        `${t(msg.earnings.week, { pnl: formatPnl(weekPnl) })}\n` +
-        `${t(msg.earnings.month, { pnl: formatPnl(monthPnl) })}\n` +
-        `${t(msg.earnings.total, { pnl: formatPnl(totalPnl) })}\n\n` +
-        `${t(msg.earnings.trades, { count: earnings.tradeCount || 0 })}\n` +
-        `${t(msg.earnings.winRate, { rate: earnings.winRate || '0' })}`
-    );
-  } catch (error) {
-    await ctx.reply(msg.earnings.failed);
-  }
-});
-
-// /balance 命令 - HOOT 余额查询
-bot.command('balance', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  if (!telegramId) return;
-
-  const msg = getMsg(ctx);
-
-  try {
-    const result = await telegramLogin({
-      telegramId,
-      telegramUsername: ctx.from?.username,
-    });
-
-    const hoot = parseFloat(result.user.hootBalance || '0').toFixed(0);
-
-    await ctx.reply(
-      `${msg.balance.title}\n` +
-        `${t(msg.balance.current, { amount: hoot })}\n` +
-        `━━━━━━━━━━━━━━━━\n\n` +
-        `${msg.balance.chainNotice}\n\n` +
-        `${msg.balance.howToGet}\n` +
-        `${t(msg.balance.register, { amount: AIRDROP_REWARDS.register })}\n` +
-        `${t(msg.balance.invite, { amount: AIRDROP_REWARDS.invite })}\n` +
-        `${t(msg.balance.trading, { multiplier: AIRDROP_REWARDS.tradingMultiplier })}\n` +
-        `${t(msg.balance.checkin, { min: AIRDROP_REWARDS.checkinMin, max: AIRDROP_REWARDS.checkinMax })}`,
-      { parse_mode: 'HTML' }
-    );
-  } catch (error) {
-    await ctx.reply(msg.balance.failed);
+    console.error('交易面板查询失败:', error);
+    await ctx.reply(msg.trade.failed);
   }
 });
 
@@ -403,7 +349,6 @@ bot.command('balance', async (ctx) => {
 bot.command('checkin', async (ctx) => {
   const telegramId = ctx.from?.id.toString();
   if (!telegramId) return;
-
   await handleCheckin(ctx, telegramId);
 });
 
@@ -436,19 +381,27 @@ async function handleCheckin(ctx: MyContext, telegramId: string) {
 bot.command('invite', async (ctx) => {
   const telegramId = ctx.from?.id.toString();
   if (!telegramId) return;
-
   await handleInvite(ctx, telegramId);
 });
 
 // 邀请处理函数
 async function handleInvite(ctx: MyContext, telegramId: string) {
   const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
 
   try {
     const info = await getInviteInfo(telegramId);
 
+    const botUsername = ctx.me?.username || 'HootBot';
+    const botDeepLink = `https://t.me/${botUsername}?start=ref_${info.inviteCode}`;
+    const botShareText = lang === 'zh'
+      ? `🦉 加入 HOOT，通过 Bot 自动交易赚取收益！\n${botDeepLink}`
+      : `🦉 Join HOOT and earn with automated trading!\n${botDeepLink}`;
+
     const inviteKeyboard = new InlineKeyboard()
       .url(msg.invite.share, `https://t.me/share/url?url=${encodeURIComponent(info.inviteLink)}&text=${encodeURIComponent(msg.invite.shareText)}`)
+      .row()
+      .url(msg.invite.shareBot, `https://t.me/share/url?url=${encodeURIComponent(botDeepLink)}&text=${encodeURIComponent(botShareText)}`)
       .row()
       .text(msg.invite.copyCode, `copy_invite_${info.inviteCode}`);
 
@@ -458,7 +411,7 @@ async function handleInvite(ctx: MyContext, telegramId: string) {
         `${t(msg.invite.invited, { count: info.inviteeCount })}\n` +
         `${t(msg.invite.totalReward, { amount: info.totalReward })}\n` +
         `━━━━━━━━━━━━━━━━\n\n` +
-        `<b>${getUserLang(ctx) === 'zh' ? '邀请奖励:' : 'Rewards:'}</b>\n` +
+        `<b>${lang === 'zh' ? '邀请奖励:' : 'Rewards:'}</b>\n` +
         `${t(msg.invite.perInvite, { amount: AIRDROP_REWARDS.invite })}\n` +
         `${t(msg.invite.inviteeGet, { amount: AIRDROP_REWARDS.register })}\n\n` +
         `${t(msg.invite.link, { link: info.inviteLink })}`,
@@ -473,75 +426,137 @@ async function handleInvite(ctx: MyContext, telegramId: string) {
   }
 }
 
-// /app 命令 - 打开应用
-bot.command('app', async (ctx) => {
+// /closeall 命令 - 紧急全部平仓
+bot.command('closeall', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await handleCloseAll(ctx, telegramId);
+});
+
+// 紧急平仓处理函数
+async function handleCloseAll(ctx: MyContext, telegramId: string) {
   const msg = getMsg(ctx);
 
-  const keyboard = new InlineKeyboard()
-    .webApp(msg.menu.openApp, WEB_APP_URL);
+  try {
+    const apiKeysResult = await getApiKeys(telegramId);
+
+    if (!apiKeysResult.items || apiKeysResult.items.length === 0) {
+      await ctx.reply(msg.closeAll.noApiKey);
+      return;
+    }
+
+    if (apiKeysResult.items.length === 1) {
+      const key = apiKeysResult.items[0];
+      const keyboard = new InlineKeyboard()
+        .text(msg.closeAll.btnConfirm, `closeall_confirm_${key.id}`)
+        .text(msg.closeAll.btnCancel, 'closeall_cancel');
+
+      await ctx.reply(
+        `${msg.closeAll.title}\n\n` +
+        `${msg.closeAll.confirm}\n` +
+        `${msg.closeAll.warning}\n\n` +
+        `💱 ${key.exchange.toUpperCase()} (${key.label})`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        }
+      );
+    } else {
+      const keyboard = new InlineKeyboard();
+      for (const key of apiKeysResult.items) {
+        keyboard
+          .text(`${key.exchange.toUpperCase()} - ${key.label}`, `closeall_select_${key.id}`)
+          .row();
+      }
+      keyboard.text(msg.closeAll.btnCancel, 'closeall_cancel');
+
+      await ctx.reply(
+        `${msg.closeAll.title}\n\n` +
+        `${msg.closeAll.selectKey}`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        }
+      );
+    }
+  } catch (error) {
+    console.error('平仓命令失败:', error);
+    await ctx.reply(msg.closeAll.failed);
+  }
+}
+
+// /help 命令
+bot.command('help', async (ctx) => {
+  const msg = getMsg(ctx);
 
   await ctx.reply(
-    `${msg.app.title}\n\n` +
-      `${msg.app.features}\n\n` +
-      `${msg.app.clickBelow}`,
-    {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-    }
+    `${msg.help.title}\n` +
+      `${msg.help.commands}\n\n` +
+      `${msg.help.notifications}`,
+    { parse_mode: 'HTML' }
   );
 });
 
-// /group 命令 - 加入社群
-bot.command('group', async (ctx) => {
+// /bind 命令 - 绑定邮箱（合并已有邮箱账户）
+bot.command('bind', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  const username = ctx.from?.username;
+  if (!telegramId) return;
+
   const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
 
-  const keyboard = new InlineKeyboard()
-    .url(msg.menu.joinGroup, GROUP_URL)
-    .url(msg.menu.channel, CHANNEL_URL);
+  const existingUser = await getUserByTelegramId(telegramId);
 
-  await ctx.reply(
-    `${msg.group.title}\n\n` +
-      `${msg.group.community}\n` +
-      `${msg.group.channel}\n\n` +
-      `${msg.group.clickBelow}`,
-    {
-      parse_mode: 'HTML',
-      reply_markup: keyboard,
-    }
-  );
-});
+  if (existingUser?.email) {
+    await ctx.reply(t(msg.bind.alreadyBound, { email: existingUser.email }));
+    return;
+  }
 
-// ===== 回调按钮处理 =====
+  const args = ctx.message?.text?.split(' ').slice(1);
+  const bindCode = args?.[0];
 
-// 签到按钮回调
-bot.callbackQuery('checkin', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  if (!telegramId) return;
+  if (!bindCode) {
+    await ctx.reply(
+      `${msg.bind.howTo}\n\n` +
+        `${msg.bind.steps}\n\n` +
+        `${msg.bind.newUserHint}`
+    );
+    return;
+  }
 
-  await ctx.answerCallbackQuery();
-  await handleCheckin(ctx, telegramId);
-});
+  try {
+    const user = await bindTelegram({
+      telegramId,
+      telegramUsername: username,
+      bindCode,
+    });
 
-// 邀请按钮回调
-bot.callbackQuery('invite', async (ctx) => {
-  const telegramId = ctx.from?.id.toString();
-  if (!telegramId) return;
+    ctx.session.isLoggedIn = true;
+    ctx.session.userId = user.id;
 
-  await ctx.answerCallbackQuery();
-  await handleInvite(ctx, telegramId);
-});
+    const nickname = user.nickname || (lang === 'zh' ? '未设置' : 'Not set');
+    const emailLabel = lang === 'zh' ? '📧 邮箱' : '📧 Email';
+    const nicknameLabel = lang === 'zh' ? '👤 昵称' : '👤 Nickname';
 
-// 复制邀请码回调
-bot.callbackQuery(/^copy_invite_/, async (ctx) => {
-  const inviteCode = ctx.callbackQuery.data.replace('copy_invite_', '');
-  await ctx.answerCallbackQuery({
-    text: `邀请码: ${inviteCode} (点击上方消息复制)`,
-    show_alert: true,
-  });
+    await ctx.reply(
+      `${msg.bind.success}\n\n` +
+        `${emailLabel}: ${user.email}\n` +
+        `${nicknameLabel}: ${nickname}\n\n` +
+        `${msg.bind.nowCanUse}`
+    );
+  } catch (error) {
+    await ctx.reply(t(msg.bind.failed, { error: error instanceof Error ? error.message : 'Unknown error' }));
+  }
 });
 
 // /lang 命令 - 切换语言
 bot.command('lang', async (ctx) => {
+  await handleLangSwitch(ctx);
+});
+
+// 语言切换处理函数
+async function handleLangSwitch(ctx: MyContext) {
   const msg = getMsg(ctx);
   const currentLang = getUserLang(ctx);
 
@@ -557,6 +572,384 @@ bot.command('lang', async (ctx) => {
       reply_markup: langKeyboard,
     }
   );
+}
+
+// ==================== 主菜单按钮回调 ====================
+
+// 钱包按钮
+bot.callbackQuery('menu_wallet', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  try {
+    const message = await buildWalletMessage(telegramId, ctx.from?.username, msg);
+    await ctx.reply(message, { parse_mode: 'HTML' });
+  } catch (error) {
+    console.error('钱包查询失败:', error);
+    await ctx.reply(msg.wallet.failed);
+  }
+});
+
+// 交易按钮
+bot.callbackQuery('menu_trade', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  try {
+    const message = await buildTradeMessage(telegramId, ctx.from?.username, msg);
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: getTradeKeyboard(msg),
+    });
+  } catch (error) {
+    console.error('交易面板查询失败:', error);
+    await ctx.reply(msg.trade.failed);
+  }
+});
+
+// 签到按钮
+bot.callbackQuery('menu_checkin', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleCheckin(ctx, telegramId);
+});
+
+// 邀请按钮
+bot.callbackQuery('menu_invite', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleInvite(ctx, telegramId);
+});
+
+// 语言按钮
+bot.callbackQuery('menu_lang', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await handleLangSwitch(ctx);
+});
+
+// 紧急平仓按钮
+bot.callbackQuery('menu_closeall', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleCloseAll(ctx, telegramId);
+});
+
+// 帮助按钮
+bot.callbackQuery('menu_help', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  await ctx.reply(
+    `${msg.help.title}\n` +
+      `${msg.help.commands}\n\n` +
+      `${msg.help.notifications}`,
+    { parse_mode: 'HTML' }
+  );
+});
+
+// ==================== 交易子面板回调 ====================
+
+// 交易记录子面板
+bot.callbackQuery('trade_history', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  try {
+    const trades = await getTradeHistory(telegramId, 10);
+
+    if (!trades || trades.length === 0) {
+      const keyboard = new InlineKeyboard()
+        .text(msg.history.btnBack, 'back_trade');
+      await ctx.reply(msg.history.empty, { reply_markup: keyboard });
+      return;
+    }
+
+    let message = `${msg.history.title}\n`;
+
+    for (const trade of trades) {
+      const pnl = parseFloat(trade.pnl || '0');
+      const pnlEmoji = pnl >= 0 ? '📈' : '📉';
+      const pnlSign = pnl >= 0 ? '+' : '';
+
+      const reasonMap: Record<string, string> = lang === 'zh'
+        ? { signal: '信号', stop_loss: '止损', take_profit: '止盈', manual: '手动' }
+        : { signal: 'Signal', stop_loss: 'Stop Loss', take_profit: 'Take Profit', manual: 'Manual' };
+
+      message +=
+        `\n${pnlEmoji} <b>${trade.symbol}</b> ${trade.side.toUpperCase()}\n` +
+        `${t(msg.history.entry, { price: trade.entryPrice })}\n` +
+        `${t(msg.history.close, { price: trade.closePrice })}\n` +
+        `${t(msg.history.pnl, { pnl: `${pnlSign}${pnl.toFixed(2)} USDT` })}\n` +
+        (trade.closeReason ? `${t(msg.history.reason, { reason: reasonMap[trade.closeReason] || trade.closeReason })}\n` : '');
+    }
+
+    const keyboard = new InlineKeyboard()
+      .text(msg.history.btnBack, 'back_trade');
+
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
+  } catch (error) {
+    console.error('获取交易记录失败:', error);
+    await ctx.reply(msg.history.failed);
+  }
+});
+
+// 执行日志子面板
+bot.callbackQuery('trade_logs', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  try {
+    const logs = await getTradeLogs(telegramId, 15);
+
+    if (!logs || logs.length === 0) {
+      const keyboard = new InlineKeyboard()
+        .text(msg.logs.btnBack, 'back_trade');
+      await ctx.reply(msg.logs.empty, { reply_markup: keyboard });
+      return;
+    }
+
+    let message = `${msg.logs.title}\n`;
+
+    const statusEmoji: Record<string, string> = {
+      success: '✅',
+      warning: '⚠️',
+      error: '❌',
+    };
+
+    for (const log of logs) {
+      const time = new Date(log.time);
+      const timeStr = `${(time.getMonth() + 1).toString().padStart(2, '0')}-${time.getDate().toString().padStart(2, '0')} ${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+      const emoji = statusEmoji[log.status] || '📝';
+
+      message +=
+        `\n${emoji} <code>${timeStr}</code> ${log.symbol || ''}\n` +
+        `   ${log.strategy} | ${log.action}\n` +
+        `   ${log.message}\n`;
+    }
+
+    const keyboard = new InlineKeyboard()
+      .text(msg.logs.btnBack, 'back_trade');
+
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
+  } catch (error) {
+    console.error('获取执行日志失败:', error);
+    await ctx.reply(msg.logs.failed);
+  }
+});
+
+// 管理策略子面板
+bot.callbackQuery('trade_strategies', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  try {
+    const subscriptions = await getMySubscriptions(telegramId);
+
+    if (!subscriptions || subscriptions.length === 0) {
+      const keyboard = new InlineKeyboard()
+        .text(msg.logs.btnBack, 'back_trade');
+      await ctx.reply(msg.trade.noStrategies, { reply_markup: keyboard });
+      return;
+    }
+
+    let message = `${msg.trade.strategiesSection}\n`;
+
+    const keyboard = new InlineKeyboard();
+
+    for (const sub of subscriptions) {
+      const status = sub.isActive ? msg.trade.active : msg.trade.paused;
+      message +=
+        `\n${status} <b>${sub.strategy.name}</b>\n` +
+        `${t(msg.trade.strategyAmount, { amount: sub.amountPerTrade })}\n`;
+
+      const btnText = sub.isActive
+        ? `${msg.trade.toggleOff} ${sub.strategy.name}`
+        : `${msg.trade.toggleOn} ${sub.strategy.name}`;
+      const callbackData = `toggle_sub_${sub.id}_${sub.isActive ? '0' : '1'}`;
+      keyboard.text(btnText, callbackData).row();
+    }
+
+    keyboard.text(msg.logs.btnBack, 'back_trade');
+
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
+  } catch (error) {
+    console.error('获取订阅列表失败:', error);
+    await ctx.reply(msg.trade.failed);
+  }
+});
+
+// 紧急平仓子面板（从交易面板触发）
+bot.callbackQuery('trade_closeall', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleCloseAll(ctx, telegramId);
+});
+
+// 返回交易面板
+bot.callbackQuery('back_trade', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+
+  try {
+    const message = await buildTradeMessage(telegramId, ctx.from?.username, msg);
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: getTradeKeyboard(msg),
+    });
+  } catch (error) {
+    console.error('返回交易面板失败:', error);
+    await ctx.reply(msg.trade.failed);
+  }
+});
+
+// ==================== 其他回调处理 ====================
+
+// 复制邀请码回调
+bot.callbackQuery(/^copy_invite_/, async (ctx) => {
+  const inviteCode = ctx.callbackQuery.data.replace('copy_invite_', '');
+  const lang = getUserLang(ctx);
+  const text = lang === 'zh'
+    ? `邀请码: ${inviteCode} (点击上方消息复制)`
+    : `Invite code: ${inviteCode} (Copy from message above)`;
+  await ctx.answerCallbackQuery({
+    text,
+    show_alert: true,
+  });
+});
+
+// 策略启停回调
+bot.callbackQuery(/^toggle_sub_/, async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  // 解析 toggle_sub_{subscriptionId}_{0|1}
+  const data = ctx.callbackQuery.data;
+  const lastUnderscoreIdx = data.lastIndexOf('_');
+  const newState = data.substring(lastUnderscoreIdx + 1) === '1';
+  const subscriptionId = data.substring('toggle_sub_'.length, lastUnderscoreIdx);
+
+  try {
+    await ctx.answerCallbackQuery();
+    await toggleSubscription(telegramId, subscriptionId, newState);
+
+    // 获取策略名
+    let strategyName = subscriptionId;
+    try {
+      const subs = await getMySubscriptions(telegramId);
+      const sub = subs.find(s => s.id === subscriptionId);
+      if (sub) strategyName = sub.strategy.name;
+    } catch { /* 获取失败时使用 ID */ }
+
+    const actionText = newState
+      ? (lang === 'zh' ? '启动' : 'started')
+      : (lang === 'zh' ? '暂停' : 'paused');
+
+    await ctx.reply(
+      t(msg.trade.toggleSuccess, { action: actionText, name: strategyName }),
+      { parse_mode: 'HTML' }
+    );
+  } catch (error) {
+    console.error('切换策略状态失败:', error);
+    await ctx.answerCallbackQuery({ text: msg.trade.toggleFailed, show_alert: true });
+  }
+});
+
+// 平仓选择交易所回调（多 API Key 时）
+bot.callbackQuery(/^closeall_select_/, async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const apiKeyId = ctx.callbackQuery.data.replace('closeall_select_', '');
+
+  await ctx.answerCallbackQuery();
+
+  const keyboard = new InlineKeyboard()
+    .text(msg.closeAll.btnConfirm, `closeall_confirm_${apiKeyId}`)
+    .text(msg.closeAll.btnCancel, 'closeall_cancel');
+
+  await ctx.editMessageText(
+    `${msg.closeAll.title}\n\n` +
+    `${msg.closeAll.confirm}\n` +
+    `${msg.closeAll.warning}`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    }
+  );
+});
+
+// 平仓确认回调
+bot.callbackQuery(/^closeall_confirm_/, async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const apiKeyId = ctx.callbackQuery.data.replace('closeall_confirm_', '');
+
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(msg.closeAll.executing, { parse_mode: 'HTML' });
+
+  try {
+    const result = await closeAllPositions(telegramId, apiKeyId);
+    await ctx.editMessageText(
+      t(msg.closeAll.success, {
+        count: result.closedCount || 0,
+        profit: result.totalProfit || '0',
+      }),
+      { parse_mode: 'HTML' }
+    );
+  } catch (error) {
+    console.error('紧急平仓失败:', error);
+    const errorMsg = error instanceof Error ? error.message : '';
+    if (errorMsg.includes('无持仓') || errorMsg.includes('no position')) {
+      await ctx.editMessageText(msg.closeAll.noPositions, { parse_mode: 'HTML' });
+    } else {
+      await ctx.editMessageText(msg.closeAll.failed, { parse_mode: 'HTML' });
+    }
+  }
+});
+
+// 平仓取消回调
+bot.callbackQuery('closeall_cancel', async (ctx) => {
+  const msg = getMsg(ctx);
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(msg.closeAll.cancelled, { parse_mode: 'HTML' });
 });
 
 // 语言切换回调
@@ -579,15 +972,19 @@ bot.callbackQuery(/^lang_/, async (ctx) => {
   );
 });
 
-// /unbind 命令 - 已废弃，给出说明
-bot.command('unbind', async (ctx) => {
-  const msg = getMsg(ctx);
-  await ctx.reply(
-    `${msg.unbind.info}\n\n` +
-      `${msg.unbind.noNeed}\n\n` +
-      `${msg.unbind.goWeb}`,
-    { parse_mode: 'HTML' }
-  );
+// 旧版按钮兼容（用户可能点击历史消息中的旧按钮）
+bot.callbackQuery('checkin', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleCheckin(ctx, telegramId);
+});
+
+bot.callbackQuery('invite', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+  await ctx.answerCallbackQuery();
+  await handleInvite(ctx, telegramId);
 });
 
 // 处理未知命令
@@ -623,7 +1020,6 @@ app.post('/send-message', async (req: Request, res: Response) => {
       return res.status(400).json({ error: '缺少必要参数: telegramId, message' });
     }
 
-    // 格式化消息
     let formattedMessage = '';
     if (title) {
       formattedMessage = `${title}\n\n${message}`;
@@ -631,7 +1027,6 @@ app.post('/send-message', async (req: Request, res: Response) => {
       formattedMessage = message;
     }
 
-    // 发送消息
     await bot.api.sendMessage(telegramId, formattedMessage, {
       parse_mode: 'HTML',
     });
@@ -643,6 +1038,52 @@ app.post('/send-message', async (req: Request, res: Response) => {
     res.status(500).json({
       error: '发送失败',
       message: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 交易通知端点 - 供后端 trade.processor 调用
+app.post('/notify-trade', async (req: Request, res: Response) => {
+  try {
+    const { telegramId, type, symbol, side, price, amount, pnl, strategyName, language } = req.body;
+
+    if (!telegramId || !type || !symbol) {
+      return res.status(400).json({ error: '缺少必要参数: telegramId, type, symbol' });
+    }
+
+    const lang = (language === 'zh' ? 'zh' : 'en') as Language;
+    const msg = getLocale(lang);
+
+    let message = '';
+    if (type === 'open') {
+      message =
+        `${msg.tradeNotify.openTitle}\n\n` +
+        `${t(msg.tradeNotify.symbol, { symbol })}\n` +
+        `${t(msg.tradeNotify.side, { side: side?.toUpperCase() || '' })}\n` +
+        `${t(msg.tradeNotify.price, { price: price || '' })}\n` +
+        `${t(msg.tradeNotify.amount, { amount: amount || '' })}` +
+        (strategyName ? `\n${t(msg.tradeNotify.strategy, { name: strategyName })}` : '');
+    } else if (type === 'close') {
+      message =
+        `${msg.tradeNotify.closeTitle}\n\n` +
+        `${t(msg.tradeNotify.symbol, { symbol })}\n` +
+        `${t(msg.tradeNotify.side, { side: side?.toUpperCase() || '' })}\n` +
+        `${t(msg.tradeNotify.price, { price: price || '' })}\n` +
+        `${t(msg.tradeNotify.amount, { amount: amount || '' })}` +
+        (pnl ? `\n${t(msg.tradeNotify.pnl, { pnl })}` : '') +
+        (strategyName ? `\n${t(msg.tradeNotify.strategy, { name: strategyName })}` : '');
+    } else {
+      return res.status(400).json({ error: '无效的 type，必须是 open 或 close' });
+    }
+
+    await bot.api.sendMessage(telegramId, message, { parse_mode: 'HTML' });
+    console.log(`✅ 交易通知已推送: ${telegramId} ${type} ${symbol}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('推送交易通知失败:', error);
+    res.status(500).json({
+      error: '推送失败',
+      message: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -689,26 +1130,23 @@ app.post('/send-bulk', async (req: Request, res: Response) => {
 app.listen(HTTP_PORT, () => {
   console.log(`🌐 HTTP API 服务已启动: http://localhost:${HTTP_PORT}`);
   console.log(`   - POST /send-message - 发送单条消息`);
+  console.log(`   - POST /notify-trade - 交易通知推送`);
   console.log(`   - POST /send-bulk - 批量发送消息`);
   console.log(`   - GET /health - 健康检查`);
 });
 
-// 设置 Bot 命令菜单和 WebApp 按钮
+// 设置 Bot 命令菜单
 async function setupBotMenu() {
   try {
-    // 设置命令菜单（双语）
-    // 中文命令
+    // 中文命令（7 核心 + 2 工具）
     await bot.api.setMyCommands(
       [
         { command: 'start', description: '开始使用 / 主菜单' },
+        { command: 'wallet', description: '钱包总览' },
+        { command: 'trade', description: '交易面板' },
         { command: 'checkin', description: '每日签到领取 HOOT' },
         { command: 'invite', description: '邀请好友赚取奖励' },
-        { command: 'balance', description: '查看 HOOT 余额' },
-        { command: 'status', description: '查看账户状态' },
-        { command: 'positions', description: '查看当前持仓' },
-        { command: 'earnings', description: '查看收益统计' },
-        { command: 'strategies', description: '浏览策略市场' },
-        { command: 'lang', description: '切换语言 / Switch Language' },
+        { command: 'closeall', description: '紧急全部平仓' },
         { command: 'help', description: '帮助与命令列表' },
       ],
       { language_code: 'zh' }
@@ -718,30 +1156,24 @@ async function setupBotMenu() {
     await bot.api.setMyCommands(
       [
         { command: 'start', description: 'Start / Main Menu' },
+        { command: 'wallet', description: 'Wallet overview' },
+        { command: 'trade', description: 'Trading panel' },
         { command: 'checkin', description: 'Daily check-in for HOOT' },
         { command: 'invite', description: 'Invite friends for rewards' },
-        { command: 'balance', description: 'Check HOOT balance' },
-        { command: 'status', description: 'View account status' },
-        { command: 'positions', description: 'View current positions' },
-        { command: 'earnings', description: 'View earnings statistics' },
-        { command: 'strategies', description: 'Browse strategy market' },
-        { command: 'lang', description: 'Switch Language / 切换语言' },
+        { command: 'closeall', description: 'Emergency close all' },
         { command: 'help', description: 'Help & command list' },
       ],
       { language_code: 'en' }
     );
 
-    // 默认命令（无语言代码）
+    // 默认命令
     await bot.api.setMyCommands([
       { command: 'start', description: 'Start / 开始' },
-      { command: 'checkin', description: 'Daily Check-in / 每日签到' },
-      { command: 'invite', description: 'Invite Friends / 邀请好友' },
-      { command: 'balance', description: 'HOOT Balance / 余额查询' },
-      { command: 'status', description: 'Account Status / 账户状态' },
-      { command: 'positions', description: 'Positions / 持仓' },
-      { command: 'earnings', description: 'Earnings / 收益' },
-      { command: 'strategies', description: 'Strategies / 策略市场' },
-      { command: 'lang', description: 'Language / 语言' },
+      { command: 'wallet', description: 'Wallet / 钱包' },
+      { command: 'trade', description: 'Trade / 交易' },
+      { command: 'checkin', description: 'Check-in / 签到' },
+      { command: 'invite', description: 'Invite / 邀请' },
+      { command: 'closeall', description: 'Close All / 紧急平仓' },
       { command: 'help', description: 'Help / 帮助' },
     ]);
 
@@ -765,7 +1197,6 @@ console.log('🤖 HOOT Telegram Bot 启动中...');
 bot.start({
   onStart: async (botInfo) => {
     console.log(`✅ Bot 已启动: @${botInfo.username}`);
-    // Bot 启动后设置菜单
     await setupBotMenu();
   },
 });

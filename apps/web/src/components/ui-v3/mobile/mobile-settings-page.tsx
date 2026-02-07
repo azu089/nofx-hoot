@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { CustomSwitch } from "@/components/custom-switch";
 import { useLocale, useTranslations } from "@/i18n/provider";
-import { localeNames, type Locale } from "@/i18n/config";
+import { localeNames } from "@/i18n/config";
 import { useTheme } from "@/lib/theme";
 
 // 绑定奖励配置
@@ -85,7 +85,7 @@ export function MobileSettingsPage({
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("修改密码");
+    // TODO: 调用修改密码 API
     setIsPasswordModalOpen(false);
     setOldPassword("");
     setNewPassword("");

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { ArrowLeft, Bell, Megaphone, Calendar, AlertCircle, CheckCheck, ChevronDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, Bell, Megaphone, Calendar, AlertCircle, CheckCheck, ChevronDown } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -47,7 +47,7 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
   const [showFilter, setShowFilter] = useState(false)
 
   // 获取通知列表
-  const { data: notificationsData, isLoading } = useQuery({
+  const { data: notificationsData } = useQuery({
     queryKey: ['notifications'],
     queryFn: async () => {
       const response = await api.get<{
@@ -90,8 +90,8 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
         id: n.id,
         type: (n.type || 'system') as NotificationType,
         title: n.title,
-        summary: n.content.substring(0, 30) + (n.content.length > 30 ? '...' : ''),
-        content: n.content,
+        summary: (n.content || '').substring(0, 30) + ((n.content || '').length > 30 ? '...' : ''),
+        content: n.content || '',
         time: timeStr,
         isRead: n.read,
       }
@@ -225,7 +225,7 @@ export function MobileNotificationsPage({ onBack }: MobileNotificationsPageProps
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
             <div className="divide-y divide-[#1E1E2E]/50">
               {filteredNotifications.map((notification) => {
-                const config = typeConfig[notification.type]
+                const config = typeConfig[notification.type] || typeConfig.system
                 const Icon = config.icon
                 const isExpanded = expandedId === notification.id
 

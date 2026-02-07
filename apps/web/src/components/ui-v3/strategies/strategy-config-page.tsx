@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { toast } from 'sonner'
-import { StrategyConfigData, ApiKeyData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
-import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
+import { StrategyConfigData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { useStrategySubscription, useApiKeys, useSubscriptionSummary, useExchangeBalance } from '@/hooks/use-strategy'
+import type { SubscriptionSummary } from '@/hooks/use-strategy'
 
 interface StrategyConfigPageProps {
   strategyId?: string
@@ -58,29 +59,188 @@ function Input({ value, onChange, suffix, min, max, step = 1, title, className =
   )
 }
 
+// 多策略风险提示 Banner
+function RiskWarningBanner({
+  summary,
+  exchangeBalance,
+  currentAmount,
+  currentMaxPositions
+}: {
+  summary: SubscriptionSummary | null
+  exchangeBalance: number | null
+  currentAmount: number
+  currentMaxPositions: number
+}) {
+  if (!summary) return null
+
+  // 计算当前配置的敞口（新订阅或更新订阅）
+  const currentExposure = currentAmount * currentMaxPositions
+
+  // 总敞口 = 现有订阅总敞口 + 当前配置敞口
+  const totalExposure = summary.totalMaxExposure + currentExposure
+
+  // 如果有余额数据，计算占比
+  const ratio = exchangeBalance ? totalExposure / exchangeBalance : null
+
+  // 无活跃订阅且当前配置敞口较小时，显示简化提示
+  if (summary.activeCount === 0 && currentAmount < 100) {
+    return null
+  }
+
+  // 判断风险等级
+  let level: 'info' | 'warning' | 'danger' = 'info'
+  if (ratio && ratio >= 1) {
+    level = 'danger'
+  } else if (ratio && ratio >= 0.8) {
+    level = 'warning'
+  } else if (summary.activeCount >= 3) {
+    level = 'warning'
+  }
+
+  const bgColor = {
+    info: 'bg-[#06B6D4]/10 border-[#06B6D4]/30',
+    warning: 'bg-[#F59E0B]/10 border-[#F59E0B]/30',
+    danger: 'bg-[#EF4444]/10 border-[#EF4444]/30',
+  }[level]
+
+  const textColor = {
+    info: 'text-[#06B6D4]',
+    warning: 'text-[#F59E0B]',
+    danger: 'text-[#EF4444]',
+  }[level]
+
+  const Icon = level === 'info' ? Info : AlertTriangle
+
+  return (
+    <div className={`flex items-start gap-3 p-4 ${bgColor} border rounded-xl mb-4`}>
+      <Icon className={`w-5 h-5 ${textColor} flex-shrink-0 mt-0.5`} />
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium ${textColor}`}>
+          {level === 'danger' ? '风险提示' : level === 'warning' ? '多策略配置提醒' : '订阅汇总'}
+        </p>
+        <div className="text-sm text-[#9090A0] mt-1 space-y-1">
+          <p>
+            已启用 <span className="text-white font-medium">{summary.activeCount}</span> 个策略，
+            总最大敞口 <span className="text-white font-medium">${summary.totalMaxExposure.toFixed(2)}</span>
+            {currentExposure > 0 && (
+              <span className="text-[#606070]"> (+ 当前 ${currentExposure.toFixed(2)})</span>
+            )}
+          </p>
+          {exchangeBalance && (
+            <p>
+              交易所余额 <span className="text-white font-medium">${exchangeBalance.toFixed(2)}</span>
+              {ratio && (
+                <span className={ratio >= 0.8 ? textColor : 'text-[#9090A0]'}>
+                  {' '}（占比 {(ratio * 100).toFixed(0)}%）
+                </span>
+              )}
+            </p>
+          )}
+          {level !== 'info' && (
+            <p className="text-xs text-[#606070] mt-2">
+              并发信号触发时可能导致余额不足，建议降低单笔金额或减少同时运行的策略数量
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟踪策略', subscriptionId, onBack, onSave, onCancel, onSuccess }: StrategyConfigPageProps) {
   // API Hooks
-  const { loading: apiLoading, error: apiError, createSubscription, updateSubscription } = useStrategySubscription(strategyId || '')
+  const { loading: apiLoading, createSubscription, updateSubscription, getSubscriptionConfig } = useStrategySubscription(strategyId || '')
   const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+  const { summary, fetchSummary } = useSubscriptionSummary()
+
+  // 是否已加载现有配置
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const configLoadingRef = useRef(false)
 
   // 选中的 API Key
   const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
   const [showApiKeyDD, setShowApiKeyDD] = useState(false)
 
-  // 加载用户的 API Keys
+  // 交易所余额
+  const { balance: exchangeBalance, fetchBalance } = useExchangeBalance(selectedApiKeyId)
+
+  // 加载用户的 API Keys 和订阅汇总
   useEffect(() => {
     fetchApiKeys().catch(() => {
       // 加载失败时静默处理，用户可以手动重试
     })
-  }, [fetchApiKeys])
+    fetchSummary().catch(() => {
+      // 加载失败时静默处理
+    })
+  }, [fetchApiKeys, fetchSummary])
 
-  // 当 API Keys 加载完成后，自动选择第一个
+  // 当选择 API Key 后，获取余额
   useEffect(() => {
-    if (apiKeys.length > 0 && !selectedApiKeyId) {
+    if (selectedApiKeyId) {
+      fetchBalance().catch(() => {
+        // 静默处理
+      })
+    }
+  }, [selectedApiKeyId, fetchBalance])
+
+  // 编辑模式：加载现有订阅配置（需要等 apiKeys 加载完成）
+  useEffect(() => {
+    if (subscriptionId && !configLoaded && !configLoadingRef.current && apiKeys.length > 0) {
+      configLoadingRef.current = true
+      getSubscriptionConfig(subscriptionId)
+        .then((config) => {
+          // 设置基础配置
+          setSelectedApiKeyId(config.apiKeyId)
+          // 从 apiKeys 列表找到对应的交易所
+          const matchedApiKey = apiKeys.find(k => k.id === config.apiKeyId)
+          if (matchedApiKey) {
+            setExchange(matchedApiKey.exchange)
+          }
+          setTradingType(config.tradingType)
+          setTradingPairs(config.tradingPairs)
+          setAmount(String(config.positionAmount))
+          setDirection(config.direction)
+          // 设置交易参数
+          setLeverage(String(config.leverage))
+          setMarginMode(config.marginMode)
+          setMaxPositions(String(config.maxPositions))
+          setTakeProfit(String(config.takeProfit))
+          setStopLoss(String(config.stopLoss))
+          setSlippage(String(config.slippage))
+          // 设置移动止损
+          setTrailingEnabled(config.trailingStopEnabled)
+          setTrailingActivation(String(config.trailingActivation))
+          setTrailingCallback(String(config.trailingCallback))
+          // 设置 DCA
+          setDcaEnabled(config.dcaEnabled)
+          setDcaCount(String(config.dcaCount))
+          setDcaTrigger(String(config.dcaTrigger))
+          setDcaMultiplier(String(config.dcaMultiplier))
+          setWaterfallProtection(config.waterfallProtection)
+          setWaterfallTrigger(String(config.waterfallTrigger))
+          // 设置风控
+          setBlackSwanEnabled(config.blackSwanEnabled)
+          setBlackSwanTrigger(String(config.blackSwanTrigger))
+          setBlackSwanAction(config.blackSwanAction)
+          setDailyLossEnabled(config.dailyLossEnabled)
+          setDailyLossPercent(String(config.dailyLossPercent))
+          setDailyLossAction(config.dailyLossAction)
+          setConfigLoaded(true)
+        })
+        .catch(() => {
+          // 加载失败时使用默认配置
+          setConfigLoaded(true)
+        })
+    }
+  }, [subscriptionId, configLoaded, apiKeys, getSubscriptionConfig])
+
+  // 当 API Keys 加载完成后，自动选择第一个（仅新建模式）
+  useEffect(() => {
+    if (apiKeys.length > 0 && !selectedApiKeyId && !subscriptionId) {
       setSelectedApiKeyId(apiKeys[0].id)
       setExchange(apiKeys[0].exchange)
     }
-  }, [apiKeys, selectedApiKeyId])
+  }, [apiKeys, selectedApiKeyId, subscriptionId])
 
   // 基础配置
   const [exchange, setExchange] = useState(defaultConfig.exchange)
@@ -116,6 +276,7 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
   const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.blackSwanAction)
   const [dailyLossEnabled, setDailyLossEnabled] = useState(defaultConfig.dailyLossEnabled)
   const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
+  const [dailyLossAction, setDailyLossAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.dailyLossAction)
 
   // UI
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
@@ -209,6 +370,7 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
       blackSwanAction,
       dailyLossEnabled,
       dailyLossPercent: parseFloat(dailyLossPercent) || 20,
+      dailyLossAction,
     }
 
     // 如果有 strategyId，调用后端 API
@@ -267,6 +429,14 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
       {/* 内容区 */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-4">
+
+          {/* 多策略风险提示 Banner */}
+          <RiskWarningBanner
+            summary={summary}
+            exchangeBalance={exchangeBalance}
+            currentAmount={amountNum}
+            currentMaxPositions={parseInt(maxPositions) || 3}
+          />
 
           {/* === 基础配置 === */}
           <div className="bg-[#12121A] border border-[#1E1E2E] rounded-xl p-6 space-y-5">
@@ -657,28 +827,11 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
                 <div className="pl-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-[#606070]">黑天鹅保护</span>
-                    <Toggle enabled={blackSwanEnabled} onChange={setBlackSwanEnabled} label="黑天鹅" />
-                  </div>
-                  {blackSwanEnabled && (
-                    <div className="space-y-3 pl-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-[#606070]">触发阈值</span>
-                        <Input value={blackSwanTrigger} onChange={setBlackSwanTrigger} suffix="%" min={5} max={50} title="阈值" />
-                      </div>
-                      <div className="flex gap-3">
-                        {(['close_all', 'close_half', 'pause'] as const).map(action => (
-                          <button
-                            key={action}
-                            type="button"
-                            onClick={() => setBlackSwanAction(action)}
-                            className={`flex-1 py-2 rounded-lg text-sm ${blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070] hover:bg-[#2A2A3A]'}`}
-                          >
-                            {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex items-center gap-3">
+                      {blackSwanEnabled && <Input value={blackSwanTrigger} onChange={setBlackSwanTrigger} suffix="%" min={5} max={50} title="阈值" />}
+                      <Toggle enabled={blackSwanEnabled} onChange={setBlackSwanEnabled} label="黑天鹅" />
                     </div>
-                  )}
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-[#606070]">单日最大亏损</span>
                     <div className="flex items-center gap-3">
@@ -686,6 +839,20 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
                       <Toggle enabled={dailyLossEnabled} onChange={setDailyLossEnabled} label="单日亏损" />
                     </div>
                   </div>
+                  {(blackSwanEnabled || dailyLossEnabled) && (
+                    <div className="flex gap-3">
+                      {(['close_all', 'close_half', 'pause'] as const).map(action => (
+                        <button
+                          key={action}
+                          type="button"
+                          onClick={() => { setBlackSwanAction(action); setDailyLossAction(action); }}
+                          className={`flex-1 py-2 rounded-lg text-sm ${blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070] hover:bg-[#2A2A3A]'}`}
+                        >
+                          {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

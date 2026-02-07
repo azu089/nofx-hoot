@@ -4,11 +4,12 @@ import React from "react"
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Mail, Lock, Eye, EyeOff, Wallet } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, Wallet, Send } from 'lucide-react'
 
 interface MobileLoginPageProps {
   onLogin?: (email: string, password: string) => Promise<void> | void
   onWalletConnect?: () => Promise<void> | void
+  onTelegramLogin?: () => void
   onRegister?: () => void
   onForgotPassword?: () => void
 }
@@ -16,12 +17,14 @@ interface MobileLoginPageProps {
 export function MobileLoginPage({
   onLogin,
   onWalletConnect,
+  onTelegramLogin,
   onRegister,
   onForgotPassword,
 }: MobileLoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showEmailForm, setShowEmailForm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
 
@@ -80,110 +83,128 @@ export function MobileLoginPage({
           <h1 className="text-3xl font-bold text-white">HOOT</h1>
         </div>
 
-        {/* 登录表单 */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* 邮箱输入框 */}
-          <div>
-            <label htmlFor="email" className="sr-only">
-              邮箱地址
-            </label>
-            <div className="glass-border-glow rounded-xl overflow-hidden">
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  aria-label="邮箱地址"
-                  className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 密码输入框 */}
-          <div>
-            <label htmlFor="password" className="sr-only">
-              密码
-            </label>
-            <div className="glass-border-glow rounded-xl overflow-hidden">
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  aria-label="密码"
-                  className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  title={showPassword ? '隐藏密码' : '显示密码'}
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#94A3B8] transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 忘记密码链接 */}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onForgotPassword}
-              title="忘记密码"
-              aria-label="忘记密码"
-              className="text-sm text-[#06B6D4] hover:text-[#0891B2] transition-colors"
-            >
-              忘记密码？
-            </button>
-          </div>
-
-          {/* 登录按钮 */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            title="登录"
-            aria-label="登录"
-            className="w-full bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-[#0A0A0F] font-semibold py-3.5 rounded-xl hover:shadow-lg hover:shadow-[#06B6D4]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? '登录中...' : '登录'}
-          </button>
-        </form>
-
-        {/* 分隔线 */}
-        <div className="flex items-center my-6">
-          <div className="flex-1 h-px bg-[#1E1E2E]" />
-          <span className="px-4 text-sm text-[#94A3B8]">或</span>
-          <div className="flex-1 h-px bg-[#1E1E2E]" />
-        </div>
-
-        {/* 钱包登录按钮 */}
-        <div className="glass-border-glow rounded-xl overflow-hidden">
+        <div className="space-y-5">
+          {/* Telegram 登录 - 主推按钮 */}
           <button
             type="button"
-            onClick={handleWalletConnect}
-            disabled={isWalletLoading}
-            title="钱包登录"
-            aria-label="钱包登录"
-            className="w-full border border-cyan-500/20 bg-[#1A1A24] text-white font-semibold py-3.5 rounded-xl hover:bg-[#1E1E2E] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onTelegramLogin}
+            title="Telegram 登录"
+            aria-label="Telegram 登录"
+            className="w-full py-4 px-4 rounded-xl font-semibold text-white bg-[#0088cc] hover:bg-[#0099dd] active:scale-[0.98] transition-all shadow-lg shadow-[#0088cc]/25 flex items-center justify-center gap-3"
           >
-            <Wallet className="w-5 h-5" />
-            {isWalletLoading ? '连接中...' : '钱包登录'}
+            <Send className="w-6 h-6" />
+            <span className="text-lg">Telegram 登录</span>
           </button>
+
+          {/* 分隔线 */}
+          <div className="flex items-center">
+            <div className="flex-1 h-px bg-[#1E1E2E]" />
+            <span className="px-4 text-sm text-[#94A3B8]">或</span>
+            <div className="flex-1 h-px bg-[#1E1E2E]" />
+          </div>
+
+          {/* 钱包 | 邮箱 备选按钮 */}
+          {!showEmailForm ? (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleWalletConnect}
+                disabled={isWalletLoading}
+                title="钱包登录"
+                aria-label="钱包登录"
+                className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Wallet className="w-5 h-5" />
+                {isWalletLoading ? '连接中...' : '钱包登录'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEmailForm(true)}
+                title="邮箱登录"
+                aria-label="邮箱登录"
+                className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <Mail className="w-5 h-5" />
+                邮箱登录
+              </button>
+            </div>
+          ) : (
+            /* 邮箱登录表单 */
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <button
+                type="button"
+                onClick={() => setShowEmailForm(false)}
+                className="text-sm text-[#06B6D4] hover:text-[#0891B2] transition-colors"
+              >
+                ← 返回
+              </button>
+
+              {/* 邮箱输入框 */}
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    aria-label="邮箱地址"
+                    className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* 密码输入框 */}
+              <div className="glass-border-glow rounded-xl overflow-hidden">
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    aria-label="密码"
+                    className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? '隐藏密码' : '显示密码'}
+                    aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 忘记密码 */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  className="text-sm text-[#06B6D4] hover:text-[#0891B2] transition-colors"
+                >
+                  忘记密码？
+                </button>
+              </div>
+
+              {/* 登录按钮 */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                title="登录"
+                aria-label="登录"
+                className="w-full bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-[#0A0A0F] font-semibold py-3.5 rounded-xl hover:shadow-lg hover:shadow-[#06B6D4]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? '登录中...' : '登录'}
+              </button>
+            </form>
+          )}
         </div>
 
         {/* 底部注册链接 */}

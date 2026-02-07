@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { StrategyConfigData, ApiKeyData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { StrategyConfigData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair, getTopPairs } from '../shared/strategy-config-types'
 import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
 
 interface MobileStrategyConfigProps {
@@ -67,8 +67,12 @@ export function MobileStrategyConfig({
   onSuccess
 }: MobileStrategyConfigProps) {
   // API Hooks
-  const { loading: apiLoading, error: apiError, createSubscription, updateSubscription } = useStrategySubscription(strategyId || '')
+  const { loading: apiLoading, error: apiError, createSubscription, updateSubscription, getSubscriptionConfig } = useStrategySubscription(strategyId || '')
   const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
+
+  // 是否已加载现有配置
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const configLoadingRef = useRef(false)
 
   // 选中的 API Key
   const [selectedApiKeyId, setSelectedApiKeyId] = useState('')
@@ -81,13 +85,64 @@ export function MobileStrategyConfig({
     })
   }, [fetchApiKeys])
 
-  // 当 API Keys 加载完成后，自动选择第一个
+  // 编辑模式：加载现有订阅配置（需要等 apiKeys 加载完成）
   useEffect(() => {
-    if (apiKeys.length > 0 && !selectedApiKeyId) {
+    if (subscriptionId && !configLoaded && !configLoadingRef.current && apiKeys.length > 0) {
+      configLoadingRef.current = true
+      getSubscriptionConfig(subscriptionId)
+        .then((config) => {
+          // 设置基础配置
+          setSelectedApiKeyId(config.apiKeyId)
+          // 从 apiKeys 列表找到对应的交易所
+          const matchedApiKey = apiKeys.find(k => k.id === config.apiKeyId)
+          if (matchedApiKey) {
+            setExchange(matchedApiKey.exchange)
+          }
+          setTradingType(config.tradingType)
+          setTradingPairs(config.tradingPairs)
+          setAmount(String(config.positionAmount))
+          setDirection(config.direction)
+          // 设置交易参数
+          setLeverage(String(config.leverage))
+          setMarginMode(config.marginMode)
+          setMaxPositions(String(config.maxPositions))
+          setTakeProfit(String(config.takeProfit))
+          setStopLoss(String(config.stopLoss))
+          setSlippage(String(config.slippage))
+          // 设置移动止损
+          setTrailingEnabled(config.trailingStopEnabled)
+          setTrailingActivation(String(config.trailingActivation))
+          setTrailingCallback(String(config.trailingCallback))
+          // 设置 DCA
+          setDcaEnabled(config.dcaEnabled)
+          setDcaCount(String(config.dcaCount))
+          setDcaTrigger(String(config.dcaTrigger))
+          setDcaMultiplier(String(config.dcaMultiplier))
+          setWaterfallProtection(config.waterfallProtection)
+          setWaterfallTrigger(String(config.waterfallTrigger))
+          // 设置风控
+          setBlackSwanEnabled(config.blackSwanEnabled)
+          setBlackSwanTrigger(String(config.blackSwanTrigger))
+          setBlackSwanAction(config.blackSwanAction)
+          setDailyLossEnabled(config.dailyLossEnabled)
+          setDailyLossPercent(String(config.dailyLossPercent))
+          setDailyLossAction(config.dailyLossAction)
+          setConfigLoaded(true)
+        })
+        .catch(() => {
+          // 加载失败时使用默认配置
+          setConfigLoaded(true)
+        })
+    }
+  }, [subscriptionId, configLoaded, apiKeys, getSubscriptionConfig])
+
+  // 当 API Keys 加载完成后，自动选择第一个（仅新建模式）
+  useEffect(() => {
+    if (apiKeys.length > 0 && !selectedApiKeyId && !subscriptionId) {
       setSelectedApiKeyId(apiKeys[0].id)
       setExchange(apiKeys[0].exchange)
     }
-  }, [apiKeys, selectedApiKeyId])
+  }, [apiKeys, selectedApiKeyId, subscriptionId])
 
   // 基础配置
   const [exchange, setExchange] = useState(defaultConfig.exchange)
@@ -123,6 +178,7 @@ export function MobileStrategyConfig({
   const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.blackSwanAction)
   const [dailyLossEnabled, setDailyLossEnabled] = useState(defaultConfig.dailyLossEnabled)
   const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
+  const [dailyLossAction, setDailyLossAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.dailyLossAction)
 
   // UI
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
@@ -219,6 +275,7 @@ export function MobileStrategyConfig({
       blackSwanAction,
       dailyLossEnabled,
       dailyLossPercent: parseFloat(dailyLossPercent) || 20,
+      dailyLossAction,
     }
 
     // 如果有 strategyId，调用后端 API
@@ -429,6 +486,30 @@ export function MobileStrategyConfig({
             {/* 展开选择器 */}
             {showPairPicker && (
               <div className="mt-2 space-y-2">
+                {/* 一键选择 Top N */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[#606070]">快速选择:</span>
+                  {([10, 20, 30, 50] as const).map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => {
+                        const topPairs = getTopPairs(count, availablePairs)
+                        setTradingPairs(topPairs)
+                      }}
+                      className="px-2 py-1 bg-[#1E1E2E] hover:bg-[#06B6D4]/20 text-[#9090A0] hover:text-[#06B6D4] rounded text-[10px] transition-colors"
+                    >
+                      Top {count}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setTradingPairs([])}
+                    className="px-2 py-1 bg-[#1E1E2E] hover:bg-red-500/20 text-[#9090A0] hover:text-red-400 rounded text-[10px] transition-colors"
+                  >
+                    清空
+                  </button>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#606070]" />
                   <input
@@ -654,28 +735,11 @@ export function MobileStrategyConfig({
               <div className="pl-2 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#606070]">黑天鹅保护</span>
-                  <Toggle enabled={blackSwanEnabled} onChange={setBlackSwanEnabled} label="黑天鹅" />
-                </div>
-                {blackSwanEnabled && (
-                  <div className="space-y-2 pl-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[#606070]">触发阈值</span>
-                      <Input value={blackSwanTrigger} onChange={setBlackSwanTrigger} suffix="%" min={5} max={50} title="触发阈值" />
-                    </div>
-                    <div className="flex gap-2">
-                      {(['close_all', 'close_half', 'pause'] as const).map(action => (
-                        <button
-                          key={action}
-                          type="button"
-                          onClick={() => setBlackSwanAction(action)}
-                          className={`flex-1 py-1.5 rounded text-xs ${blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070]'}`}
-                        >
-                          {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="flex items-center gap-2">
+                    {blackSwanEnabled && <Input value={blackSwanTrigger} onChange={setBlackSwanTrigger} suffix="%" min={5} max={50} title="触发阈值" />}
+                    <Toggle enabled={blackSwanEnabled} onChange={setBlackSwanEnabled} label="黑天鹅" />
                   </div>
-                )}
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#606070]">单日最大亏损</span>
                   <div className="flex items-center gap-2">
@@ -683,6 +747,20 @@ export function MobileStrategyConfig({
                     <Toggle enabled={dailyLossEnabled} onChange={setDailyLossEnabled} label="单日亏损" />
                   </div>
                 </div>
+                {(blackSwanEnabled || dailyLossEnabled) && (
+                  <div className="flex gap-2">
+                    {(['close_all', 'close_half', 'pause'] as const).map(action => (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => { setBlackSwanAction(action); setDailyLossAction(action); }}
+                        className={`flex-1 py-1.5 rounded text-xs ${blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070]'}`}
+                      >
+                        {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

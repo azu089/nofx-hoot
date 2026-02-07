@@ -36,6 +36,11 @@ export class TelegramLoginDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  referralCode?: string; // 深度链接邀请码 (start=ref_XXX)
 }
 
 // 生成绑定码响应

@@ -24,6 +24,9 @@ import { MarketModule } from './modules/market/market.module';
 import { AirdropModule } from './modules/airdrop/airdrop.module';
 import { AgentModule } from './modules/agent/agent.module';
 import { MembershipModule } from './modules/membership/membership.module';
+import { RedisLockModule } from './common/redis/redis-lock.module';
+import { ExchangesModule } from './modules/exchanges/exchanges.module';
+import { PublicConfigModule } from './modules/config/public-config.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -53,6 +56,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        password: process.env.REDIS_PASSWORD || undefined,
       },
     }),
     PrismaModule,
@@ -74,6 +78,9 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     AirdropModule,
     AgentModule,
     MembershipModule,
+    RedisLockModule,
+    ExchangesModule,
+    PublicConfigModule,
   ],
   controllers: [AppController],
   providers: [

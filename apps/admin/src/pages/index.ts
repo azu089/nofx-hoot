@@ -45,6 +45,7 @@ export { WeightsPage } from './ecosystem/weights';
 export { DividendsPage } from './ecosystem/dividends';
 export { AirdropList } from './ecosystem/airdrops';
 export { EcosystemConfigPage } from './ecosystem/config';
+export { AirdropConfigPage } from './ecosystem/airdrop-config';
 
 // ==================== 运营管理 ====================
 // 公告
@@ -54,6 +55,10 @@ export { MarqueeList } from './announcements/marquee';
 // 代理商
 export { AgentsPage } from './agents';
 export { TokenManagementPage } from './agents/token-management';
+
+// 交易所 & 安装应用
+export { ExchangeListPage } from './operation/exchanges';
+export { AppInstallPage } from './operation/app-install';
 
 // ==================== 内容管理 ====================
 export { BannersPage } from './content/banners';

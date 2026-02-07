@@ -24,7 +24,6 @@ export function TelegramBindModal({
   botUsername = 'HootQuantBot',
 }: TelegramBindModalProps) {
   const t = useTranslations('settings')
-  const tc = useTranslations('common')
   const [copied, setCopied] = useState(false)
   const [countdown, setCountdown] = useState(0)
 

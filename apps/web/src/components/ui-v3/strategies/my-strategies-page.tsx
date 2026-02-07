@@ -41,60 +41,6 @@ interface MyStrategiesPageProps {
   onViewMarket?: () => void
 }
 
-const mockStrategies: MyStrategy[] = [
-  {
-    id: '1',
-    name: 'RSI 智能抄底',
-    description: '基于 RSI 超卖信号的智能抄底策略',
-    status: 'running',
-    type: 'system',
-    exchange: 'Binance',
-    tradingPairs: ['BTC/USDT', 'ETH/USDT'],
-    createdAt: '2025-12-15',
-    lastModified: '2026-01-25',
-    config: {
-      leverage: 3,
-      positionSize: '10%',
-      stopLoss: 5,
-      takeProfit: 10
-    }
-  },
-  {
-    id: '2',
-    name: 'MACD 趋势跟踪',
-    description: '跟踪 MACD 金叉死叉信号的趋势策略',
-    status: 'paused',
-    type: 'external',
-    exchange: 'OKX',
-    tradingPairs: ['SOL/USDT'],
-    createdAt: '2025-11-20',
-    lastModified: '2026-01-20',
-    config: {
-      leverage: 2,
-      positionSize: '5%',
-      stopLoss: 3,
-      takeProfit: 8
-    }
-  },
-  {
-    id: '3',
-    name: 'BTC 网格策略',
-    description: '在震荡区间内自动高抛低吸',
-    status: 'running',
-    type: 'visual',
-    exchange: 'Binance',
-    tradingPairs: ['BTC/USDT'],
-    createdAt: '2025-10-01',
-    lastModified: '2026-01-28',
-    config: {
-      leverage: 1,
-      positionSize: '20%',
-      stopLoss: 10,
-      takeProfit: 15
-    }
-  }
-]
-
 const strategyTypeLabels: Record<string, { label: string; color: string }> = {
   system: { label: '系统策略', color: 'bg-cyan-400/10 text-cyan-400' },
   external: { label: '外部接入', color: 'bg-purple-400/10 text-purple-400' },

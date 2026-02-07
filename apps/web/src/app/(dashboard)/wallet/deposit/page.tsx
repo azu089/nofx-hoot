@@ -59,6 +59,8 @@ export default function DepositPage() {
       return response.data;
     },
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // 获取充值历史

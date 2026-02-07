@@ -2,18 +2,14 @@
 
 import { useState, useMemo } from 'react'
 import Image from 'next/image'
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import {
   Wallet,
   ArrowDownToLine,
   ArrowUpFromLine,
-  Plus,
   Key,
-  Trash2,
-  Edit,
   CheckCircle,
   Clock,
   XCircle,
@@ -23,18 +19,7 @@ import {
   Calendar,
   ChevronDown,
   FileText,
-  Sparkles,
-  Shield,
-  AlertCircle,
-  AlertTriangle,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
-  X,
-  RefreshCw,
-  Loader2
+  Sparkles
 } from 'lucide-react'
 import { EcosystemPageV3 } from '../ecosystem/ecosystem-page-v3'
 import { ApiKeysPage } from './api-keys-page'
@@ -50,21 +35,6 @@ interface Asset {
   isReleasing?: boolean // 是否是释放中的资产
   releasedAmount?: number // 已释放数量
   totalLocked?: number // 总锁定数量
-}
-
-interface Exchange {
-  id: string
-  name: string
-  icon?: string
-  status: 'active' | 'inactive' | 'error'
-  lastUsed: string
-  createdAt?: string // 绑定日期
-  balance?: number // 交易所USDT余额
-  totalAssets?: number // 交易所总资产
-  apiKey?: string // API Key（脱敏显示）
-  permissions?: string[] // 权限列表
-  error?: string // 错误信息
-  isLoading?: boolean // 余额加载中
 }
 
 interface Transaction {
@@ -88,26 +58,6 @@ interface WalletPageV3Props {
   onActivateExchange?: (id: string) => void
 }
 
-// 支持的交易所（静态配置）
-const supportedExchanges = [
-  { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
-  { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.webp', guideUrl: 'https://www.okx.com/account/my-api' },
-  { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.webp', guideUrl: 'https://www.bybit.com/app/user/api-management' },
-  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.webp', guideUrl: 'https://www.gate.io/myaccount/apikeys' },
-  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.webp', guideUrl: 'https://www.bitget.com/api' },
-  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp', guideUrl: 'https://www.coinbase.com/settings/api' },
-]
-
-// 交易所 logo 映射
-const exchangeLogos: Record<string, string> = {
-  binance: '/icons/exchanges/币安.webp',
-  okx: '/icons/exchanges/okx.webp',
-  bybit: '/icons/exchanges/bybit.webp',
-  gate: '/icons/exchanges/gate.webp',
-  bitget: '/icons/exchanges/bitget.webp',
-  coinbase: '/icons/exchanges/coinbase.webp',
-}
-
 export function WalletPageV3({
   initialTab = 'wallet',
   onDeposit,
@@ -126,16 +76,17 @@ export function WalletPageV3({
   void _onActivateExchange
 
   const { isAuthenticated } = useAuth()
-  const queryClient = useQueryClient()
 
   // 获取钱包余额
-  const { data: balanceData, isLoading: balanceLoading } = useQuery({
+  const { data: balanceData } = useQuery({
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
       const response = await api.get<{ usdtBalance: string; hootBalance: string; pointBalance: string }>('/wallet/balance')
       return response.data
     },
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   })
 
   // 获取空投余额（含锁仓信息）
@@ -154,7 +105,7 @@ export function WalletPageV3({
   })
 
   // 获取交易记录
-  const { data: transactionsData, isLoading: transactionsLoading } = useQuery({
+  const { data: transactionsData } = useQuery({
     queryKey: ['wallet', 'transactions'],
     queryFn: async () => {
       const response = await api.get<{
@@ -173,111 +124,6 @@ export function WalletPageV3({
     enabled: isAuthenticated,
   })
 
-  // 获取 API Key 列表
-  const { data: apiKeysData, isLoading: apiKeysLoading, refetch: refetchApiKeys } = useQuery({
-    queryKey: ['api-keys'],
-    queryFn: async () => {
-      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
-      return response.data?.items || []
-    },
-    enabled: isAuthenticated,
-  })
-
-  // 自动为每个 API Key 获取余额
-  const apiKeyBalanceQueries = useQueries({
-    queries: (apiKeysData || []).map((key: any) => ({
-      queryKey: ['api-key-balance', key.id],
-      queryFn: async () => {
-        try {
-          const response = await api.get<{
-            valid: boolean
-            totalUsdValue: number
-            permissions: string[]
-          }>(`/api-keys/${key.id}/verify`)
-          return response.data
-        } catch {
-          return { valid: false, totalUsdValue: 0, permissions: [] }
-        }
-      },
-      enabled: isAuthenticated && !!key.id,
-      staleTime: 5 * 60 * 1000, // 5分钟缓存
-      refetchOnWindowFocus: false,
-    })),
-  })
-
-  // 删除 API Key
-  const deleteApiKeyMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const response = await api.delete(`/api-keys/${id}`)
-      return response
-    },
-    onSuccess: (_data, deletedId) => {
-      // 立即从缓存中移除，不等待 refetch
-      queryClient.setQueryData(['api-keys'], (oldData: any[] | undefined) => {
-        if (!oldData) return []
-        return oldData.filter((key: any) => key.id !== deletedId)
-      })
-      // 同时移除对应的余额缓存
-      queryClient.removeQueries({ queryKey: ['api-key-balance', deletedId] })
-      // 然后重新获取确保数据同步
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
-      toast.success('API Key 已删除')
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'API Key 删除失败')
-    },
-  })
-
-  // 更新 API Key
-  const updateApiKeyMutation = useMutation({
-    mutationFn: async (data: { id: string; label?: string; apiKey?: string; apiSecret?: string }) => {
-      const { id, ...updateData } = data
-      const response = await api.patch(`/api-keys/${id}`, updateData)
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
-      toast.success('API Key 更新成功')
-      setShowEditModal(false)
-      setSelectedApiKey(null)
-      setEditFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'API Key 更新失败')
-    },
-  })
-
-  // 创建 API Key
-  const createApiKeyMutation = useMutation({
-    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
-      const response = await api.post('/api-keys', data)
-      return response.data
-    },
-    onSuccess: () => {
-      toast.success('API Key 绑定成功')
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
-      setShowAddModal(false)
-      setSelectedExchange(null)
-      setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'API Key 绑定失败')
-    },
-  })
-
-  // 处理添加 API Key
-  const handleAddApiKey = () => {
-    if (!selectedExchange || !formData.apiKey || !formData.secretKey) {
-      return
-    }
-    createApiKeyMutation.mutate({
-      exchange: selectedExchange.toLowerCase(),
-      label: formData.label || `${selectedExchange} 账户`,
-      apiKey: formData.apiKey,
-      apiSecret: formData.secretKey,
-    })
-  }
-
   // 转换余额数据为资产列表 - 始终显示所有资产类型
   const assets = useMemo<Asset[]>(() => {
     const result: Asset[] = []
@@ -293,18 +139,17 @@ export function WalletPageV3({
       icon: '/icons/usdt.svg'
     })
 
-    // HOOT（可用）- 始终显示
+    // HOOT（可用）= 总额 - 锁定，涵盖所有来源（兑换/充值/已释放空投）
     const hootBalance = parseFloat(balanceData?.hootBalance || '0')
-    const availableHoot = parseFloat(airdropData?.availableBalance || '0')
     const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
-    const displayHoot = availableHoot > 0 ? availableHoot : hootBalance
+    const usableHoot = Math.max(0, hootBalance - lockedHoot)
 
     result.push({
       id: 'hoot',
       name: 'HOOT',
       symbol: 'HOOT',
-      balance: displayHoot,
-      value: displayHoot,
+      balance: usableHoot,
+      value: usableHoot,
       icon: '/icons/hoot/token.png'
     })
 
@@ -354,34 +199,6 @@ export function WalletPageV3({
     }))
   }, [transactionsData])
 
-  // 转换 API Keys 为交易所列表（包含真实余额）
-  const displayExchanges = useMemo<Exchange[]>(() => {
-    if (!apiKeysData || apiKeysData.length === 0) return []
-    return apiKeysData.map((key: any, index: number) => {
-      // 获取对应的余额查询结果
-      const balanceQuery = apiKeyBalanceQueries[index]
-      const balanceData = balanceQuery?.data
-      const totalValue = balanceData?.totalUsdValue || 0
-      const permissions = balanceData?.permissions || []
-      const isVerifyFailed = balanceData && balanceData.valid === false
-
-      return {
-        id: key.id,
-        name: key.label, // 使用用户备注的名称
-        icon: exchangeLogos[key.exchange.toLowerCase()] || '/icons/exchanges/default.webp',
-        status: isVerifyFailed ? 'error' as const : (key.isActive ? 'active' as const : 'error' as const),
-        lastUsed: '-',
-        createdAt: new Date(key.createdAt).toLocaleDateString('zh-CN'),
-        balance: totalValue,
-        totalAssets: totalValue,
-        apiKey: key.maskedKey || '****',
-        permissions,
-        error: isVerifyFailed ? '无法连接到交易所' : (key.isActive ? undefined : 'API Key 已禁用'),
-        isLoading: balanceQuery?.isLoading,
-      }
-    })
-  }, [apiKeysData, apiKeyBalanceQueries])
-
   // 日变化（暂时固定，后续可接入行情 API）
   const dailyChange = 0
   const isPositiveChange = dailyChange > 0
@@ -395,121 +212,6 @@ export function WalletPageV3({
   const [dateRange, setDateRange] = useState({ start: '2026-01-01', end: '2026-01-29' })
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'exchange'>('all')
   const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT'>('all')
-
-  // API 管理相关状态
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [showVerifyModal, setShowVerifyModal] = useState(false)
-  const [verifyStatus, setVerifyStatus] = useState<'loading' | 'success' | 'error'>('loading')
-  const [verifyResult, setVerifyResult] = useState<{
-    permissions?: string[]
-    assets?: { symbol: string; amount: string; value: number }[]
-    totalValue?: number
-    error?: string
-  } | null>(null)
-  const [selectedExchange, setSelectedExchange] = useState<string | null>(null)
-  const [selectedApiKey, setSelectedApiKey] = useState<Exchange | null>(null)
-  const [showSecret, setShowSecret] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [formData, setFormData] = useState({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-  const [editFormData, setEditFormData] = useState({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-
-  // API 管理处理函数
-  const handleOpenEdit = (exchange: Exchange) => {
-    setSelectedApiKey(exchange)
-    setEditFormData({ apiKey: exchange.apiKey || '', secretKey: '', passphrase: '', label: exchange.name })
-    setShowEditModal(true)
-  }
-
-  const handleOpenDelete = (exchange: Exchange) => {
-    setSelectedApiKey(exchange)
-    setShowDeleteModal(true)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (selectedApiKey?.id) {
-      await deleteApiKeyMutation.mutateAsync(selectedApiKey.id)
-    }
-    setShowDeleteModal(false)
-    setSelectedApiKey(null)
-  }
-
-  const handleConfirmEdit = () => {
-    if (!selectedApiKey?.id) return
-
-    // 构建更新数据
-    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string } = {
-      id: selectedApiKey.id,
-    }
-
-    // 只有填写了才更新
-    if (editFormData.label) {
-      updateData.label = editFormData.label
-    }
-
-    // 如果填写了新的 API Key 和 Secret，才更新密钥
-    if (editFormData.apiKey && editFormData.secretKey) {
-      updateData.apiKey = editFormData.apiKey
-      updateData.apiSecret = editFormData.secretKey
-    }
-
-    updateApiKeyMutation.mutate(updateData)
-  }
-
-  // 验证 API Key - 调用真实 API
-  const handleVerify = async (exchange: Exchange) => {
-    setSelectedApiKey(exchange)
-    setVerifyStatus('loading')
-    setVerifyResult(null)
-    setShowVerifyModal(true)
-
-    try {
-      const response = await api.get<{
-        valid: boolean
-        permissions: string[]
-        balances: { symbol: string; free: number; total: number }[]
-        totalUsdValue: number
-        error?: string
-      }>(`/api-keys/${exchange.id}/verify`)
-
-      const data = response.data
-      if (data.valid) {
-        setVerifyStatus('success')
-        setVerifyResult({
-          permissions: data.permissions,
-          assets: data.balances.map(b => ({
-            symbol: b.symbol,
-            amount: b.total.toFixed(b.symbol === 'USDT' ? 2 : 8),
-            value: b.symbol === 'USDT' ? b.total : 0
-          })),
-          totalValue: data.totalUsdValue
-        })
-      } else {
-        setVerifyStatus('error')
-        setVerifyResult({
-          error: data.error || 'API Key 验证失败，请检查密钥是否正确'
-        })
-      }
-    } catch (err: any) {
-      setVerifyStatus('error')
-      setVerifyResult({
-        error: err.message || 'API Key 验证失败，请检查网络连接'
-      })
-    }
-  }
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleOpenAdd = () => {
-    setSelectedExchange(null)
-    setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
-    setShowAddModal(true)
-  }
 
   const typeFilterOptions = [
     { value: 'all', label: '全部类型' },

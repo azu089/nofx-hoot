@@ -49,6 +49,7 @@
     "termsOfService": "Điều khoản dịch vụ",
     "privacyPolicy": "Chính sách bảo mật",
     "and": "và",
+    "back": "Quay lại",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "Chọn tên người dùng",
@@ -124,12 +125,17 @@
       "support24h": "Hỗ trợ 24/7",
       "onlineAlways": "Luôn trực tuyến",
       "supportDesc": "Đội ngũ chuyên nghiệp sẵn sàng giải đáp",
-      "contactSupport": "Liên hệ"
+      "contactSupport": "Liên hệ",
+      "flowTitle": "Giao dịch tự động",
+      "flowCta": "Bắt đầu",
+      "flowStep1": "Kết nối API",
+      "flowStep2": "AI chiến lược",
+      "flowStep3": "24/7 tự động"
     },
     "quickAccess": {
-      "strategyMarket": "Chiến lược",
-      "tradingCenter": "Giao dịch",
-      "walletAssets": "Ví",
+      "exchanges": "Sàn giao dịch",
+      "installApp": "Cài đặt",
+      "checkin": "Điểm danh",
       "inviteFriends": "Mời"
     },
     "defaultAnnouncements": {

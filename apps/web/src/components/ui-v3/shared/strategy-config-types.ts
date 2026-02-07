@@ -43,18 +43,19 @@ export interface StrategyConfigData {
   blackSwanAction: 'close_all' | 'close_half' | 'pause'
   dailyLossEnabled: boolean
   dailyLossPercent: number   // 单日最大亏损 %
+  dailyLossAction: 'close_all' | 'close_half' | 'pause'
 }
 
-// 交易所数据
+// 交易所数据（ID 使用小写，与后端 API 一致）
 export const exchanges = [
-  { id: 'Binance', name: 'Binance', connected: true, balance: 5000 },
-  { id: 'OKX', name: 'OKX', connected: false },
-  { id: 'Bybit', name: 'Bybit', connected: false },
+  { id: 'binance', name: 'Binance', connected: true, balance: 5000 },
+  { id: 'okx', name: 'OKX', connected: false },
+  { id: 'bybit', name: 'Bybit', connected: false },
 ]
 
-// 交易所支持的全部交易对（模拟后端数据）
+// 交易所支持的全部交易对（模拟后端数据，key 使用小写与后端一致）
 export const exchangePairs: Record<string, string[]> = {
-  Binance: [
+  binance: [
     'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT',
     'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'TRX/USDT', 'LINK/USDT',
     'DOT/USDT', 'MATIC/USDT', 'SHIB/USDT', 'LTC/USDT', 'BCH/USDT',
@@ -65,13 +66,13 @@ export const exchangePairs: Record<string, string[]> = {
     'FET/USDT', 'RNDR/USDT', 'AGIX/USDT', 'WLD/USDT',
     'STRK/USDT', 'MANTA/USDT',
   ],
-  OKX: [
+  okx: [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT',
     'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT',
     'LTC/USDT', 'UNI/USDT', 'APT/USDT', 'ARB/USDT', 'OP/USDT',
     'PEPE/USDT', 'WIF/USDT', 'FET/USDT', 'WLD/USDT',
   ],
-  Bybit: [
+  bybit: [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT',
     'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT',
     'LTC/USDT', 'ARB/USDT', 'OP/USDT', 'PEPE/USDT', 'WIF/USDT',
@@ -80,6 +81,20 @@ export const exchangePairs: Record<string, string[]> = {
 
 // 默认热门币种（显示在选择器中）
 export const hotPairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'PEPE/USDT']
+
+// Top N 币种预设（按市值/交易量排序）
+export const topPairsPresets = {
+  10: ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'TRX/USDT', 'LINK/USDT'],
+  20: ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'TRX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT', 'SHIB/USDT', 'LTC/USDT', 'BCH/USDT', 'NEAR/USDT', 'UNI/USDT', 'APT/USDT', 'ICP/USDT', 'ETC/USDT'],
+  30: ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'TRX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT', 'SHIB/USDT', 'LTC/USDT', 'BCH/USDT', 'NEAR/USDT', 'UNI/USDT', 'APT/USDT', 'ICP/USDT', 'ETC/USDT', 'FIL/USDT', 'ARB/USDT', 'OP/USDT', 'ATOM/USDT', 'IMX/USDT', 'INJ/USDT', 'HBAR/USDT', 'VET/USDT', 'MKR/USDT', 'GRT/USDT'],
+  50: ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'TRX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT', 'SHIB/USDT', 'LTC/USDT', 'BCH/USDT', 'NEAR/USDT', 'UNI/USDT', 'APT/USDT', 'ICP/USDT', 'ETC/USDT', 'FIL/USDT', 'ARB/USDT', 'OP/USDT', 'ATOM/USDT', 'IMX/USDT', 'INJ/USDT', 'HBAR/USDT', 'VET/USDT', 'MKR/USDT', 'GRT/USDT', 'PEPE/USDT', 'WIF/USDT', 'FLOKI/USDT', 'BONK/USDT', 'FET/USDT', 'RNDR/USDT', 'AGIX/USDT', 'WLD/USDT', 'STRK/USDT', 'MANTA/USDT', 'SEI/USDT', 'SUI/USDT', 'TIA/USDT', 'JUP/USDT', 'PYTH/USDT', 'ORDI/USDT', 'STX/USDT', 'RUNE/USDT', 'AAVE/USDT', 'SNX/USDT'],
+}
+
+// 获取 Top N 币种（只返回交易所支持的）
+export function getTopPairs(count: 10 | 20 | 30 | 50, availablePairs: string[]): string[] {
+  const preset = topPairsPresets[count] || topPairsPresets[10]
+  return preset.filter(pair => availablePairs.includes(pair))
+}
 
 // 获取交易所支持的币种（模拟 API 调用）
 export async function fetchExchangePairs(exchangeId: string): Promise<string[]> {
@@ -110,13 +125,13 @@ export function addRecentPair(pair: string): void {
 // 默认配置
 export const defaultConfig: StrategyConfigData = {
   apiKeyId: '', // 必须由用户选择
-  exchange: 'Binance',
+  exchange: 'binance',
   tradingType: 'futures',
   tradingPairs: ['BTC/USDT', 'ETH/USDT'],
   positionAmount: 100,
   direction: 'both',
   leverage: 5,
-  marginMode: 'cross',
+  marginMode: 'isolated',
   maxPositions: 3,
   takeProfit: 15,
   stopLoss: 10,
@@ -135,4 +150,5 @@ export const defaultConfig: StrategyConfigData = {
   blackSwanAction: 'close_all',
   dailyLossEnabled: false,
   dailyLossPercent: 20,
+  dailyLossAction: 'close_all',
 }

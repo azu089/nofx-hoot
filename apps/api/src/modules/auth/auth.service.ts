@@ -13,6 +13,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { AirdropService } from '../airdrop/airdrop.service';
+import { ReferralService } from '../referral/referral.service';
 import {
   RegisterDto,
   LoginDto,
@@ -38,6 +39,8 @@ export class AuthService {
     private emailService: EmailService,
     @Inject(forwardRef(() => AirdropService))
     private airdropService: AirdropService,
+    @Inject(forwardRef(() => ReferralService))
+    private referralService: ReferralService,
   ) {}
 
   // 注册
@@ -235,6 +238,16 @@ export class AuthService {
         email: true,
         nickname: true,
         createdAt: true,
+        // 会员信息
+        membershipStatus: true,
+        membershipExpireAt: true,
+        // Telegram 绑定状态
+        telegramId: true,
+        telegramUsername: true,
+        // 钱包绑定状态
+        walletAddress: true,
+        // 邮箱验证状态
+        emailVerified: true,
       },
     });
 
@@ -242,7 +255,21 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
 
-    return user;
+    // 计算会员等级（根据 membershipStatus 和到期时间）
+    let subscriptionTier = 'basic';
+    if (
+      user.membershipStatus === 'active' &&
+      user.membershipExpireAt &&
+      new Date(user.membershipExpireAt) > new Date()
+    ) {
+      subscriptionTier = 'premium';
+    }
+
+    return {
+      ...user,
+      subscriptionTier,
+      vipLevel: subscriptionTier === 'premium' ? 1 : 0,
+    };
   }
 
   // ===== Telegram 相关 =====
@@ -412,6 +439,21 @@ export class AuthService {
           `TG 注册空投失败: ${dto.telegramId}, ${error.message}`,
         );
       }
+
+      // 如果有邀请码，自动绑定邀请关系（TG Bot 深度链接）
+      if (dto.referralCode) {
+        try {
+          await this.referralService.bindInviteCode(user.id, dto.referralCode);
+          this.logger.log(
+            `TG 用户通过深度链接绑定邀请人: ${dto.telegramId} -> ${dto.referralCode}`,
+          );
+        } catch (error) {
+          // 绑定失败不影响注册流程
+          this.logger.warn(
+            `TG 邀请码绑定失败: ${dto.telegramId}, ${error.message}`,
+          );
+        }
+      }
     }
 
     // 生成 JWT
@@ -422,12 +464,28 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload);
 
+    // 重新查询包含余额的用户信息（注册后余额可能已变）
+    const freshUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        usdtBalance: true,
+        hootBalance: true,
+        pointBalance: true,
+      },
+    });
+
     return {
       accessToken,
       user: {
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
+        id: freshUser.id,
+        email: freshUser.email,
+        nickname: freshUser.nickname,
+        usdtBalance: freshUser.usdtBalance.toString(),
+        hootBalance: freshUser.hootBalance.toString(),
+        pointBalance: freshUser.pointBalance.toString(),
       },
       isNewUser,
     };
@@ -648,6 +706,7 @@ export class AuthService {
         walletAddress: true,
         usdtBalance: true,
         hootBalance: true,
+        pointBalance: true,
         lockedBalance: true,
         availableBalance: true,
         inviteCode: true,
@@ -663,6 +722,7 @@ export class AuthService {
       ...user,
       usdtBalance: user.usdtBalance.toString(),
       hootBalance: user.hootBalance.toString(),
+      pointBalance: user.pointBalance.toString(),
       lockedBalance: user.lockedBalance.toString(),
       availableBalance: user.availableBalance.toString(),
       bindings: {

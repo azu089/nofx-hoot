@@ -9,6 +9,7 @@ import { PositionsController } from './positions.controller';
 import { TradeProcessor } from './processors/trade.processor';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SignalsModule } from '../signals/signals.module';
 
 // 配置管理服务
 import { TradingConfigService } from './config/config.service';
@@ -21,12 +22,16 @@ import { DcaService } from './dca.service';
 import { MarketMonitorService } from './market-monitor.service';
 import { DailyPnlService } from './daily-pnl.service';
 
+// 持仓同步服务
+import { PositionSyncService } from './position-sync.service';
+
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'trade' }),
     ScheduleModule.forRoot(),
     ApiKeysModule,
     forwardRef(() => NotificationsModule),
+    forwardRef(() => SignalsModule),
   ],
   controllers: [PositionsController],
   providers: [
@@ -45,6 +50,8 @@ import { DailyPnlService } from './daily-pnl.service';
     DcaService,
     MarketMonitorService,
     DailyPnlService,
+    // 持仓同步服务
+    PositionSyncService,
   ],
   exports: [
     TradingService,
@@ -59,6 +66,8 @@ import { DailyPnlService } from './daily-pnl.service';
     DcaService,
     MarketMonitorService,
     DailyPnlService,
+    // 持仓同步服务
+    PositionSyncService,
   ],
 })
 export class TradingModule {}

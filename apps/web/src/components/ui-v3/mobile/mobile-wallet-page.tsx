@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { toast } from "sonner"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
@@ -8,7 +8,6 @@ import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/rea
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import {
-  TrendingUp,
   ArrowUpRight,
   ArrowDownLeft,
   ArrowLeftRight,
@@ -74,6 +73,15 @@ interface APIKeyItem {
   isLoading?: boolean
 }
 
+interface ApiKeyData {
+  id: string
+  exchange: string
+  label: string
+  maskedKey: string
+  isActive: boolean
+  createdAt: string
+}
+
 // 支持的交易所
 const supportedExchanges = [
   { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
@@ -97,13 +105,15 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   const [mainTab, setMainTab] = useState<MainTab>(initialTab)
 
   // 获取钱包余额
-  const { data: balanceData, isLoading: balanceLoading } = useQuery({
+  const { data: balanceData } = useQuery({
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
-      const response = await api.get<{ usdtBalance: string; hootBalance: string; pointBalance: string }>('/wallet/balance')
+      const response = await api.get<{ usdt: string; hoot: string; point: string }>('/wallet/balance')
       return response.data
     },
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   })
 
   // 获取空投余额（含锁仓信息）
@@ -122,7 +132,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   })
 
   // 获取交易记录
-  const { data: transactionsData, isLoading: transactionsLoading } = useQuery({
+  const { data: transactionsData } = useQuery({
     queryKey: ['wallet', 'transactions'],
     queryFn: async () => {
       const response = await api.get<{
@@ -214,10 +224,26 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     setShowDeleteModal(true)
   }
 
+  // 删除 API Key mutation
+  const deleteApiKeyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/api-keys/${id}`)
+    },
+    onSuccess: () => {
+      toast.success(t('apiDeleteSuccess') || '删除成功')
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      queryClient.invalidateQueries({ queryKey: ['api-key-balance'] })
+      setShowDeleteModal(false)
+      setSelectedApiKey(null)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('apiDeleteError') || '删除失败')
+    },
+  })
+
   const handleConfirmDelete = () => {
-    console.log('删除 API Key:', selectedApiKey?.id)
-    setShowDeleteModal(false)
-    setSelectedApiKey(null)
+    if (!selectedApiKey) return
+    deleteApiKeyMutation.mutate(selectedApiKey.id)
   }
 
   // 更新 API Key mutation
@@ -309,10 +335,10 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           error: data.error || t('apiVerifyError')
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setVerifyStatus('error')
       setVerifyResult({
-        error: err.message || t('apiVerifyError')
+        error: err instanceof Error ? err.message : t('apiVerifyError')
       })
     }
   }
@@ -359,7 +385,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     const result: AssetItem[] = []
 
     // USDT
-    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
+    const usdtBalance = parseFloat(balanceData?.usdt || '0')
     result.push({
       name: "USDT",
       symbol: "USDT",
@@ -368,15 +394,15 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       icon: "/icons/usdt.svg",
     })
 
-    // HOOT（可用）- 始终显示
-    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
-    const availableHoot = parseFloat(airdropData?.availableBalance || '0')
-    const displayHoot = availableHoot > 0 ? availableHoot : hootBalance
+    // HOOT（可用）= 总额 - 锁定，涵盖所有来源（兑换/充值/已释放空投）
+    const hootBalance = parseFloat(balanceData?.hoot || '0')
+    const lockedHootForCalc = parseFloat(airdropData?.lockedBalance || '0')
+    const usableHoot = Math.max(0, hootBalance - lockedHootForCalc)
     result.push({
       name: "HOOT",
       symbol: "HOOT",
-      amount: displayHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      value: displayHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      amount: usableHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      value: usableHoot.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       icon: "/icons/hoot/token.png",
     })
 
@@ -394,7 +420,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     })
 
     // 点卡 - 始终显示
-    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
+    const pointBalance = parseFloat(balanceData?.point || '0')
     result.push({
       name: t('gasCard'),
       symbol: "GAS",
@@ -421,14 +447,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   }, [transactionsData])
 
   // 计算总余额
+  // hootBalance = availableBalance + lockedBalance，已包含锁定部分，不需要再加
   const totalBalance = useMemo(() => {
-    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
-    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
-    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
-    const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
+    const usdtBalance = parseFloat(balanceData?.usdt || '0')
+    const hootBalance = parseFloat(balanceData?.hoot || '0')
+    const pointBalance = parseFloat(balanceData?.point || '0')
     // 暂时假设 HOOT 价格为 1（后续可从行情 API 获取）
-    return usdtBalance + hootBalance + pointBalance + lockedHoot
-  }, [balanceData, airdropData])
+    return usdtBalance + hootBalance + pointBalance
+  }, [balanceData])
 
   // 筛选交易记录
   const filteredTransactions = transactions.filter(tx => {
@@ -477,7 +503,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   const { data: apiKeysData } = useQuery({
     queryKey: ['api-keys'],
     queryFn: async () => {
-      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
+      const response = await api.get<{ items: ApiKeyData[]; total: number }>('/api-keys')
       return response.data?.items || []
     },
   })
@@ -491,7 +517,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
   // 为每个 API Key 获取实时余额（30秒缓存）
   const apiKeyBalanceQueries = useQueries({
-    queries: (apiKeysData || []).map((key: any) => ({
+    queries: (apiKeysData || []).map((key: ApiKeyData) => ({
       queryKey: ['api-key-balance', key.id],
       queryFn: async () => {
         try {
@@ -515,7 +541,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   })
 
   // 转换为组件需要的格式（使用 label 代替 exchange 名称）
-  const apiKeys: APIKeyItem[] = (apiKeysData || []).map((key: any, index: number) => {
+  const apiKeys: APIKeyItem[] = (apiKeysData || []).map((key: ApiKeyData, index: number) => {
     const balanceQuery = apiKeyBalanceQueries[index]
     const balanceData = balanceQuery?.data
     const isVerifyFailed = balanceData && balanceData.valid === false

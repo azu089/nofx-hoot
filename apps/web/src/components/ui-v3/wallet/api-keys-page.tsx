@@ -292,10 +292,7 @@ export function ApiKeysPage() {
                   const balanceQuery = apiKeyBalanceQueries[index]
                   const balanceData = balanceQuery?.data
                   const totalValue = balanceData?.totalUsdValue || 0
-                  const spotValue = balanceData?.spotValue || 0
-                  const futuresValue = balanceData?.futuresValue || 0
                   const isLoadingBalance = balanceQuery?.isLoading
-                  const permissions = balanceData?.permissions || []
                   const isVerifyFailed = balanceData && balanceData.valid === false
                   const verifyError = balanceData?.error
 

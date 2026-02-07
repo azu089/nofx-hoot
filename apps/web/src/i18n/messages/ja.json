@@ -49,6 +49,7 @@
     "termsOfService": "利用規約",
     "privacyPolicy": "プライバシーポリシー",
     "and": "と",
+    "back": "戻る",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "ユーザー名を選択",
@@ -124,12 +125,17 @@
       "support24h": "24時間サポート",
       "onlineAlways": "いつでも対応",
       "supportDesc": "専門チームがあらゆる質問にお答えします",
-      "contactSupport": "サポートに連絡"
+      "contactSupport": "サポートに連絡",
+      "flowTitle": "クオンツ取引 今すぐ起動",
+      "flowCta": "今すぐ開始",
+      "flowStep1": "API 接続",
+      "flowStep2": "AI 戦略配置",
+      "flowStep3": "24時間自動執行"
     },
     "quickAccess": {
-      "strategyMarket": "ストラテジー",
-      "tradingCenter": "取引",
-      "walletAssets": "ウォレット",
+      "exchanges": "取引所",
+      "installApp": "インストール",
+      "checkin": "チェックイン",
       "inviteFriends": "招待"
     },
     "defaultAnnouncements": {

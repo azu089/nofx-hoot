@@ -40,7 +40,7 @@ export function MobileWithdrawPage({
   balance = 0,
   recentWithdrawals = [],
   onBack,
-  onWithdraw
+  onWithdraw: _onWithdraw
 }: MobileWithdrawPageProps) {
   const [selectedNetwork, setSelectedNetwork] = useState(networks[0])
   const [showDropdown, setShowDropdown] = useState(false)

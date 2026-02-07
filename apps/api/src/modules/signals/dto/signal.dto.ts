@@ -1,6 +1,11 @@
-import { IsString, IsNotEmpty, IsNumber, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsIn, IsOptional } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+
+// 交易动作类型
+export type TradeAction = 'entry_long' | 'exit_long' | 'entry_short' | 'exit_short';
 
 // Freqtrade Webhook 信号 DTO
+// 兼容 Freqtrade JSON webhook 格式（price 可能是字符串）
 export class WebhookSignalDto {
   @IsString()
   @IsNotEmpty()
@@ -13,8 +18,16 @@ export class WebhookSignalDto {
   @IsIn(['buy', 'sell'])
   side: 'buy' | 'sell';
 
+  // Freqtrade JSON webhook 发送的 price 是字符串，需要自动转换
+  @Transform(({ value }) => typeof value === 'string' ? parseFloat(value) : value)
   @IsNumber()
   price: number;
+
+  // 交易动作: entry_long / exit_long / entry_short / exit_short
+  // 若不传则从 side 推断: buy → entry_long, sell → exit_long（向后兼容）
+  @IsOptional()
+  @IsIn(['entry_long', 'exit_long', 'entry_short', 'exit_short'])
+  action?: TradeAction;
 }
 
 // 信号响应
@@ -35,6 +48,7 @@ export interface SignalJobData {
   strategyId: string;
   symbol: string;
   side: 'buy' | 'sell';
+  action: TradeAction;
   price: string;
 }
 
@@ -60,6 +74,7 @@ export interface TradeJobData {
   exchange: string;
   symbol: string;
   side: 'buy' | 'sell';
+  action: TradeAction;
   price: string;
   amountPerTrade: string;
   // 新增交易配置

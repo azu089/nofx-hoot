@@ -318,12 +318,18 @@ export class ApiKeysService {
       });
 
       // 创建合约交易所实例
-      // 注意：Binance 需要使用独立的 binanceusdm 类来访问 USDT-M 合约
-      // 其他交易所使用 defaultType 设置即可
+      // 注意：不同交易所有不同的合约配置方式
       const exchangeLower = exchange.toLowerCase();
-      let futuresEx: ccxt.Exchange;
+      let futuresEx: ccxt.Exchange | null = null;
 
-      if (exchangeLower === 'binance') {
+      // 不支持合约的交易所
+      const spotOnlyExchanges = ['coinbase', 'kraken'];
+
+      if (spotOnlyExchanges.includes(exchangeLower)) {
+        // 这些交易所不支持合约，跳过合约配置
+        futuresEx = null;
+        console.log(`${exchange} 不支持合约交易`);
+      } else if (exchangeLower === 'binance') {
         // Binance USDT-M 合约使用独立的交易所类
         // 这会自动使用 fapi.binance.com 端点
         futuresEx = new ccxt.binanceusdm({
@@ -332,15 +338,39 @@ export class ApiKeysService {
           enableRateLimit: true,
         });
       } else if (exchangeLower === 'bybit') {
-        // Bybit 使用 linear 类型
+        // Bybit 使用 linear 类型 (USDT 永续)
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
           enableRateLimit: true,
           options: { defaultType: 'linear' },
         });
+      } else if (exchangeLower === 'okx') {
+        // OKX 使用 swap 类型
+        futuresEx = new exchangeClass({
+          apiKey,
+          secret: apiSecret,
+          enableRateLimit: true,
+          options: { defaultType: 'swap' },
+        });
+      } else if (exchangeLower === 'gate') {
+        // Gate.io 使用 swap 类型
+        futuresEx = new exchangeClass({
+          apiKey,
+          secret: apiSecret,
+          enableRateLimit: true,
+          options: { defaultType: 'swap' },
+        });
+      } else if (exchangeLower === 'bitget') {
+        // Bitget 使用 swap 类型
+        futuresEx = new exchangeClass({
+          apiKey,
+          secret: apiSecret,
+          enableRateLimit: true,
+          options: { defaultType: 'swap' },
+        });
       } else {
-        // 其他交易所使用 swap 类型
+        // 其他交易所默认使用 swap 类型
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
@@ -350,17 +380,22 @@ export class ApiKeysService {
       }
 
       // ===== 第一步：并行获取余额和价格 =====
+      // 构建并行请求数组
+      const fetchPromises: Promise<any>[] = [
+        // 现货余额
+        spotEx.fetchBalance(),
+        // 合约余额（如果支持）
+        futuresEx
+          ? futuresEx.loadMarkets().then(() => futuresEx!.fetchBalance())
+          : Promise.resolve(null),
+        // BTC 价格
+        spotEx.fetchTicker('BTC/USDT'),
+        // ETH 价格
+        spotEx.fetchTicker('ETH/USDT'),
+      ];
+
       const [spotResult, futuresResult, btcTickerResult, ethTickerResult] =
-        await Promise.allSettled([
-          // 现货余额
-          spotEx.fetchBalance(),
-          // 合约余额（需要先加载市场）
-          futuresEx.loadMarkets().then(() => futuresEx.fetchBalance()),
-          // BTC 价格
-          spotEx.fetchTicker('BTC/USDT'),
-          // ETH 价格
-          spotEx.fetchTicker('ETH/USDT'),
-        ]);
+        await Promise.allSettled(fetchPromises);
 
       // 解析价格
       const btcPrice =
@@ -399,8 +434,8 @@ export class ApiKeysService {
         console.log('获取现货余额失败:', spotResult.reason?.message);
       }
 
-      // 处理合约余额
-      if (futuresResult.status === 'fulfilled') {
+      // 处理合约余额（仅当交易所支持合约时）
+      if (futuresEx && futuresResult.status === 'fulfilled' && futuresResult.value) {
         const futuresBalance = futuresResult.value;
         for (const [symbol, total] of Object.entries(futuresBalance.total)) {
           if ((total as number) > 0) {
@@ -418,7 +453,7 @@ export class ApiKeysService {
             });
           }
         }
-      } else {
+      } else if (futuresEx && futuresResult.status === 'rejected') {
         console.log('获取合约余额失败:', futuresResult.reason?.message);
       }
 
@@ -427,23 +462,26 @@ export class ApiKeysService {
       // 余额获取失败可能是因为：账户余额为0、网络问题、限流等
       // 这些不影响我们检测 API Key 是否有交易权限
 
-      const [spotPermResult, futuresPermResult] = await Promise.allSettled([
+      // 构建权限检测请求
+      const permissionPromises: Promise<boolean>[] = [
         // 检查现货交易权限
         this.checkSpotTradePermission(spotEx),
-        // 检查合约交易权限 - 始终尝试检测
-        this.checkFuturesTradePermission(futuresEx),
-      ]);
+      ];
 
-      if (
-        spotPermResult.status === 'fulfilled' &&
-        spotPermResult.value === true
-      ) {
+      // 只有支持合约的交易所才检测合约权限
+      if (futuresEx) {
+        permissionPromises.push(this.checkFuturesTradePermission(futuresEx));
+      }
+
+      const permResults = await Promise.allSettled(permissionPromises);
+
+      // 处理现货权限
+      if (permResults[0].status === 'fulfilled' && permResults[0].value === true) {
         permissions.push('现货交易');
       }
-      if (
-        futuresPermResult.status === 'fulfilled' &&
-        futuresPermResult.value === true
-      ) {
+
+      // 处理合约权限（仅当交易所支持合约时）
+      if (futuresEx && permResults[1]?.status === 'fulfilled' && permResults[1].value === true) {
         permissions.push('合约交易');
       }
 

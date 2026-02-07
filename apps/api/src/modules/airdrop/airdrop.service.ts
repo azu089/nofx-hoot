@@ -9,6 +9,8 @@ import {
   VESTING_CONFIG,
   AirdropBalanceDto,
   QueryAirdropDto,
+  TaskStatus,
+  TaskItemDto,
 } from './dto/airdrop.dto';
 
 @Injectable()
@@ -16,6 +18,50 @@ export class AirdropService {
   private readonly logger = new Logger(AirdropService.name);
 
   constructor(private prisma: PrismaService) {}
+
+  // ==================== 动态配置读取（DB 优先，硬编码兜底） ====================
+
+  private async getRewardsConfig(): Promise<typeof AIRDROP_REWARDS> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'airdrop_rewards' },
+      });
+      if (config) {
+        return JSON.parse(config.value);
+      }
+    } catch {
+      this.logger.warn('读取 airdrop_rewards 配置失败，使用默认值');
+    }
+    return AIRDROP_REWARDS;
+  }
+
+  private async getCapsConfig(): Promise<typeof AIRDROP_CAPS> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'airdrop_caps' },
+      });
+      if (config) {
+        return JSON.parse(config.value);
+      }
+    } catch {
+      this.logger.warn('读取 airdrop_caps 配置失败，使用默认值');
+    }
+    return AIRDROP_CAPS;
+  }
+
+  private async getVestingCfg(): Promise<typeof VESTING_CONFIG> {
+    try {
+      const config = await this.prisma.platformConfig.findUnique({
+        where: { key: 'vesting_config' },
+      });
+      if (config) {
+        return JSON.parse(config.value);
+      }
+    } catch {
+      this.logger.warn('读取 vesting_config 配置失败，使用默认值');
+    }
+    return VESTING_CONFIG;
+  }
 
   // ==================== 空投发放 ====================
 
@@ -32,6 +78,10 @@ export class AirdropService {
       vestingDays?: number; // 释放天数
     },
   ): Promise<void> {
+    // 从 DB 读取动态配置（兜底硬编码）
+    const rewards = await this.getRewardsConfig();
+    const vestingCfg = await this.getVestingCfg();
+
     // 计算空投金额
     let amount: number;
     if (options?.amount) {
@@ -39,10 +89,10 @@ export class AirdropService {
     } else if (type === AirdropType.TRADING_PROFIT) {
       throw new BadRequestException('盈利交易空投必须指定金额');
     } else {
-      amount = AIRDROP_REWARDS[type] as number;
+      amount = rewards[type] as number;
     }
 
-    const vestingDays = options?.vestingDays || VESTING_CONFIG.defaultDays;
+    const vestingDays = options?.vestingDays || vestingCfg.defaultDays;
 
     // 使用事务
     await this.prisma.$transaction(async (tx) => {
@@ -195,6 +245,9 @@ export class AirdropService {
     inviterId: string,
     inviteeId: string,
   ): Promise<void> {
+    const caps = await this.getCapsConfig();
+    const rewards = await this.getRewardsConfig();
+
     // 1. 检查终身上限
     const totalReferralAirdrop = await this.prisma.airdrop.aggregate({
       where: {
@@ -208,9 +261,9 @@ export class AirdropService {
       totalReferralAirdrop._sum.amount?.toString() || '0',
     );
 
-    if (totalAmount.gte(AIRDROP_CAPS.referralLifetimeCap)) {
+    if (totalAmount.gte(caps.referralLifetimeCap)) {
       this.logger.log(
-        `用户 ${inviterId} 邀请奖励已达终身上限 ${AIRDROP_CAPS.referralLifetimeCap} HOOT`,
+        `用户 ${inviterId} 邀请奖励已达终身上限 ${caps.referralLifetimeCap} HOOT`,
       );
       return;
     }
@@ -234,17 +287,17 @@ export class AirdropService {
       todayReferralAirdrop._sum.amount?.toString() || '0',
     );
 
-    if (todayAmount.gte(AIRDROP_CAPS.referralDailyCap)) {
+    if (todayAmount.gte(caps.referralDailyCap)) {
       this.logger.log(
-        `用户 ${inviterId} 今日邀请奖励已达上限 ${AIRDROP_CAPS.referralDailyCap} HOOT`,
+        `用户 ${inviterId} 今日邀请奖励已达上限 ${caps.referralDailyCap} HOOT`,
       );
       return;
     }
 
     // 3. 计算实际发放金额（考虑终身上限）
-    let rewardAmount = AIRDROP_REWARDS[AirdropType.REFERRAL];
+    let rewardAmount = rewards[AirdropType.REFERRAL] as number;
     const lifetimeRemaining =
-      AIRDROP_CAPS.referralLifetimeCap - totalAmount.toNumber();
+      caps.referralLifetimeCap - totalAmount.toNumber();
     if (rewardAmount > lifetimeRemaining) {
       rewardAmount = lifetimeRemaining;
     }
@@ -273,6 +326,9 @@ export class AirdropService {
       return; // 只有盈利才发放
     }
 
+    const caps = await this.getCapsConfig();
+    const rewards = await this.getRewardsConfig();
+
     // 1. 检查终身上限
     const totalTradingAirdrop = await this.prisma.airdrop.aggregate({
       where: {
@@ -286,9 +342,9 @@ export class AirdropService {
       totalTradingAirdrop._sum.amount?.toString() || '0',
     );
 
-    if (totalAmount.gte(AIRDROP_CAPS.tradingProfitLifetimeCap)) {
+    if (totalAmount.gte(caps.tradingProfitLifetimeCap)) {
       this.logger.log(
-        `用户 ${userId} 交易盈利空投已达终身上限 ${AIRDROP_CAPS.tradingProfitLifetimeCap} HOOT`,
+        `用户 ${userId} 交易盈利空投已达终身上限 ${caps.tradingProfitLifetimeCap} HOOT`,
       );
       return;
     }
@@ -312,26 +368,26 @@ export class AirdropService {
       todayTradingAirdrop._sum.amount?.toString() || '0',
     );
 
-    if (todayAmount.gte(AIRDROP_CAPS.tradingProfitDailyCap)) {
+    if (todayAmount.gte(caps.tradingProfitDailyCap)) {
       this.logger.log(
-        `用户 ${userId} 今日交易盈利空投已达上限 ${AIRDROP_CAPS.tradingProfitDailyCap} HOOT`,
+        `用户 ${userId} 今日交易盈利空投已达上限 ${caps.tradingProfitDailyCap} HOOT`,
       );
       return;
     }
 
     // 3. 计算 HOOT 数量（盈利 * 倍数）
-    let hootAmount = profitUsdt * AIRDROP_REWARDS[AirdropType.TRADING_PROFIT];
+    let hootAmount = profitUsdt * (rewards[AirdropType.TRADING_PROFIT] as number);
 
     // 4. 考虑每日上限
     const dailyRemaining =
-      AIRDROP_CAPS.tradingProfitDailyCap - todayAmount.toNumber();
+      caps.tradingProfitDailyCap - todayAmount.toNumber();
     if (hootAmount > dailyRemaining) {
       hootAmount = dailyRemaining;
     }
 
     // 5. 考虑终身上限
     const lifetimeRemaining =
-      AIRDROP_CAPS.tradingProfitLifetimeCap - totalAmount.toNumber();
+      caps.tradingProfitLifetimeCap - totalAmount.toNumber();
     if (hootAmount > lifetimeRemaining) {
       hootAmount = lifetimeRemaining;
     }
@@ -381,6 +437,10 @@ export class AirdropService {
       };
     }
 
+    const caps = await this.getCapsConfig();
+    const rewards = await this.getRewardsConfig();
+    const vestingCfg = await this.getVestingCfg();
+
     // 检查签到终身上限
     const totalCheckinAirdrop = await this.prisma.airdrop.aggregate({
       where: {
@@ -394,12 +454,12 @@ export class AirdropService {
       totalCheckinAirdrop._sum.amount?.toString() || '0',
     );
 
-    if (totalCheckinAmount.gte(AIRDROP_CAPS.checkinLifetimeCap)) {
+    if (totalCheckinAmount.gte(caps.checkinLifetimeCap)) {
       return {
         success: false,
         reward: 0,
         streak: 0,
-        message: `签到奖励已达终身上限 ${AIRDROP_CAPS.checkinLifetimeCap} HOOT`,
+        message: `签到奖励已达终身上限 ${caps.checkinLifetimeCap} HOOT`,
       };
     }
 
@@ -420,7 +480,7 @@ export class AirdropService {
     const streak = yesterdayCheckin ? yesterdayCheckin.streak + 1 : 1;
 
     // 计算奖励（连续签到递增）
-    const { base, max, increment } = AIRDROP_REWARDS[AirdropType.CHECKIN] as {
+    const { base, max, increment } = rewards[AirdropType.CHECKIN] as {
       base: number;
       max: number;
       increment: number;
@@ -429,7 +489,7 @@ export class AirdropService {
 
     // 如果加上本次奖励会超过终身上限，则只发放剩余额度
     const remaining =
-      AIRDROP_CAPS.checkinLifetimeCap - totalCheckinAmount.toNumber();
+      caps.checkinLifetimeCap - totalCheckinAmount.toNumber();
     if (reward > remaining) {
       reward = remaining;
     }
@@ -466,7 +526,7 @@ export class AirdropService {
           amount: airdropAmount.toString(),
           balance: newBalance.toString(),
           source: `每日签到第 ${streak} 天`,
-          vestingDays: VESTING_CONFIG.minDays,
+          vestingDays: vestingCfg.minDays,
           vestingStart: new Date(),
           status: AirdropStatus.CONFIRMED,
           confirmedAt: new Date(),
@@ -700,7 +760,8 @@ export class AirdropService {
     });
 
     const streak = latestCheckin?.streak || 0;
-    const { base, max, increment } = AIRDROP_REWARDS[AirdropType.CHECKIN] as {
+    const rewards = await this.getRewardsConfig();
+    const { base, max, increment } = rewards[AirdropType.CHECKIN] as {
       base: number;
       max: number;
       increment: number;
@@ -713,6 +774,148 @@ export class AirdropService {
       todayReward: todayCheckin ? todayCheckin.reward.toString() : null,
       nextReward: nextReward.toString(),
     };
+  }
+
+  // ==================== 任务系统 ====================
+
+  /**
+   * 获取任务列表
+   * 查询用户绑定状态和空投发放记录，动态计算每个任务的状态
+   */
+  async getTaskList(userId: string): Promise<TaskItemDto[]> {
+    // 1. 获取用户信息（判断任务是否完成）
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        telegramId: true,
+        walletAddress: true,
+        email: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('用户不存在');
+    }
+
+    // 2. 查询已发放的一次性空投记录（按 type 分组）
+    const claimedAirdrops = await this.prisma.airdrop.findMany({
+      where: {
+        userId,
+        type: {
+          in: [
+            AirdropType.REGISTER,
+            AirdropType.BIND_TG,
+            AirdropType.BIND_WALLET,
+            AirdropType.BIND_EMAIL,
+          ],
+        },
+        status: { not: AirdropStatus.CANCELLED },
+      },
+      select: { type: true, amount: true },
+    });
+
+    const claimedTypes = new Set(claimedAirdrops.map((a) => a.type));
+
+    // 3. 查询可重复任务的累计数据
+    const [referralStats, tradingStats] = await Promise.all([
+      this.prisma.airdrop.aggregate({
+        where: {
+          userId,
+          type: AirdropType.REFERRAL,
+          status: { not: AirdropStatus.CANCELLED },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.airdrop.aggregate({
+        where: {
+          userId,
+          type: AirdropType.TRADING_PROFIT,
+          status: { not: AirdropStatus.CANCELLED },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ]);
+
+    // 4. 读取动态奖励配置
+    const rewards = await this.getRewardsConfig();
+    const registerReward = rewards[AirdropType.REGISTER] as number;
+    const bindTgReward = rewards[AirdropType.BIND_TG] as number;
+    const bindWalletReward = rewards[AirdropType.BIND_WALLET] as number;
+    const bindEmailReward = rewards[AirdropType.BIND_EMAIL] as number;
+    const referralReward = rewards[AirdropType.REFERRAL] as number;
+    const tradingMultiplier = rewards[AirdropType.TRADING_PROFIT] as number;
+
+    // 5. 构建任务列表（状态基于用户是否已完成操作，奖励自动到账）
+    const tasks: TaskItemDto[] = [
+      // 注册奖励 — 注册用户必定已完成
+      {
+        id: 'register',
+        label: '注册奖励',
+        description: '注册即送',
+        reward: `${registerReward} HOOT`,
+        rewardAmount: registerReward,
+        status: TaskStatus.COMPLETED,
+      },
+      // 绑定 Telegram
+      {
+        id: 'bind_tg',
+        label: '绑定 Telegram',
+        description: '绑定 TG 账号',
+        reward: `${bindTgReward} HOOT`,
+        rewardAmount: bindTgReward,
+        status: user.telegramId ? TaskStatus.COMPLETED : TaskStatus.INCOMPLETE,
+        actionUrl: user.telegramId ? undefined : '/profile',
+      },
+      // 绑定钱包
+      {
+        id: 'bind_wallet',
+        label: '绑定钱包',
+        description: '绑定 Web3 钱包',
+        reward: `${bindWalletReward} HOOT`,
+        rewardAmount: bindWalletReward,
+        status: user.walletAddress ? TaskStatus.COMPLETED : TaskStatus.INCOMPLETE,
+        actionUrl: user.walletAddress ? undefined : '/profile',
+      },
+      // 绑定邮箱
+      {
+        id: 'bind_email',
+        label: '绑定邮箱',
+        description: '绑定并验证邮箱',
+        reward: `${bindEmailReward} HOOT`,
+        rewardAmount: bindEmailReward,
+        status: user.email && user.emailVerified ? TaskStatus.COMPLETED : TaskStatus.INCOMPLETE,
+        actionUrl: user.email && user.emailVerified ? undefined : '/profile',
+      },
+      // 邀请好友（可重复）
+      {
+        id: 'referral',
+        label: '邀请好友',
+        description: '邀请越多赚越多',
+        reward: `${referralReward} HOOT/人`,
+        rewardAmount: referralReward,
+        status: TaskStatus.REPEATABLE,
+        claimedAmount: referralStats._sum.amount?.toString() || '0',
+        claimedCount: referralStats._count || 0,
+        actionUrl: '/referral',
+      },
+      // 盈利交易（可重复）
+      {
+        id: 'trading_profit',
+        label: '盈利交易',
+        description: `盈利交易额的${tradingMultiplier}倍HOOT`,
+        reward: `${tradingMultiplier}x 倍数`,
+        rewardAmount: tradingMultiplier,
+        status: TaskStatus.REPEATABLE,
+        claimedAmount: tradingStats._sum.amount?.toString() || '0',
+        claimedCount: tradingStats._count || 0,
+        actionUrl: '/trading',
+      },
+    ];
+
+    return tasks;
   }
 
   // ==================== 辅助方法 ====================

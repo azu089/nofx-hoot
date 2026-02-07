@@ -40,16 +40,32 @@ export class ApiKeysController {
     return this.apiKeysService.update(user.id, id, dto);
   }
 
-  // 删除 API Key
-  @Delete(':id')
-  async delete(@CurrentUser() user: { id: string }, @Param('id') id: string) {
-    await this.apiKeysService.delete(user.id, id);
-    return { message: 'API Key 已删除' };
+  // 获取 API Key 关联的交易所余额（简化版，用于策略配置页面）
+  // 注意：必须放在 :id 动态路由之前，避免被捕获
+  @Get(':id/balance')
+  async getBalance(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    const result = await this.apiKeysService.verifyApiKey(user.id, id);
+    return {
+      balance: result.totalUsdValue || 0,
+      spotBalance: result.spotValue || 0,
+      futuresBalance: result.futuresValue || 0,
+      valid: result.valid,
+    };
   }
 
   // 验证 API Key 并获取余额
   @Get(':id/verify')
   async verify(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.apiKeysService.verifyApiKey(user.id, id);
+  }
+
+  // 删除 API Key
+  @Delete(':id')
+  async delete(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    await this.apiKeysService.delete(user.id, id);
+    return { message: 'API Key 已删除' };
   }
 }

@@ -8,7 +8,6 @@ import {
   Shield,
   BarChart3,
   Clock,
-  Target,
   Activity,
   Play,
   Calendar,
@@ -70,9 +69,6 @@ const defaultMockData = {
     avgHoldingDays: 3.2,
     totalTrades: 486,
   },
-
-  // 支持的交易对
-  supportedPairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'],
 
   // 策略特性
   features: [
@@ -144,7 +140,7 @@ export function MobileStrategyDetail({
   const renderOverviewTab = () => (
     <div className="space-y-4">
       {/* 策略说明 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F8F8FC] font-semibold mb-3 flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-[#06B6D4]" />
           策略说明
@@ -154,26 +150,8 @@ export function MobileStrategyDetail({
         </p>
       </div>
 
-      {/* 支持的交易对 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
-        <h3 className="text-[#F8F8FC] font-semibold mb-3 flex items-center gap-2">
-          <Target className="w-4 h-4 text-[#06B6D4]" />
-          支持的交易对
-        </h3>
-        <div className="flex flex-wrap gap-2">
-          {strategyData.supportedPairs.map((pair) => (
-            <span
-              key={pair}
-              className="px-3 py-1 bg-[#06B6D4]/10 border border-[#06B6D4]/20 rounded-lg text-[#06B6D4] text-xs font-mono"
-            >
-              {pair}
-            </span>
-          ))}
-        </div>
-      </div>
-
       {/* 策略特性 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F8F8FC] font-semibold mb-3 flex items-center gap-2">
           <Check className="w-4 h-4 text-[#10B981]" />
           策略特性
@@ -189,7 +167,7 @@ export function MobileStrategyDetail({
       </div>
 
       {/* 快速信息 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[#9090A0] text-sm flex items-center gap-2">
@@ -223,7 +201,7 @@ export function MobileStrategyDetail({
       </div>
 
       {/* 风险提示 */}
-      <div className="bg-[#F59E0B]/5 border border-[#F59E0B]/20 rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-[#F59E0B]/20 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F59E0B] font-semibold mb-3 flex items-center gap-2">
           <AlertCircle className="w-4 h-4" />
           风险提示
@@ -239,7 +217,7 @@ export function MobileStrategyDetail({
   const renderPerformanceTab = () => (
     <div className="space-y-4">
       {/* 月度收益图表 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F8F8FC] font-semibold mb-4">月度收益率 (%)</h3>
         <div className="space-y-3">
           {strategyData.monthlyReturns.map((item) => (
@@ -272,7 +250,7 @@ export function MobileStrategyDetail({
       </div>
 
       {/* 详细数据 */}
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F8F8FC] font-semibold mb-4">详细数据</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
@@ -306,7 +284,7 @@ export function MobileStrategyDetail({
 
   const renderTradesTab = () => (
     <div className="space-y-4">
-      <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
         <h3 className="text-[#F8F8FC] font-semibold mb-4 flex items-center gap-2">
           <Activity className="w-4 h-4 text-[#06B6D4]" />
           最近交易记录
@@ -414,7 +392,7 @@ export function MobileStrategyDetail({
           </div>
 
           {/* 快速数据卡片 - 合并为1个卡片 */}
-          <div className="bg-[#12121A]/80 backdrop-blur-sm border border-[#1E1E2E] rounded-xl p-4">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
                 <p className={`text-xl font-mono font-bold ${

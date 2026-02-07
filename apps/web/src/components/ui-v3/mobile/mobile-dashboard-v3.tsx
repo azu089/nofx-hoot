@@ -4,13 +4,13 @@ import { useState, useEffect, TouchEvent } from 'react'
 import {
   TrendingUp,
   TrendingDown,
-  Wallet,
   Users,
-  BarChart3,
   Bell,
-  Target,
   Megaphone,
-  Loader2
+  Loader2,
+  Building2,
+  Download,
+  Gift,
 } from 'lucide-react'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
@@ -26,6 +26,16 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
   const t = useTranslations('dashboard')
   const tNav = useTranslations('nav')
+
+  // 监听 PWA 安装事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault()
+      ;(window as PwaWindow).__pwaInstallPrompt = e as BeforeInstallPromptEvent
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
 
   // 获取真实数据
   const { data, isLoading } = useHomepageData()
@@ -52,6 +62,13 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
   const carouselSlides = [
     {
+      titleKey: 'carousel.autoTradeTitle',
+      subtitleKey: 'carousel.autoTradeSubtitle',
+      descriptionKey: 'carousel.autoTradeDesc',
+      gradient: 'from-teal-500/20 to-violet-500/20',
+      ctaKey: 'carousel.autoTradeCta'
+    },
+    {
       titleKey: 'carousel.newFeature',
       subtitleKey: 'carousel.aiRebalancing',
       descriptionKey: 'carousel.aiRebalancingDesc',
@@ -59,6 +76,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       ctaKey: 'carousel.tryNow'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.hotStrategy',
       subtitleKey: 'carousel.gridTradingPro',
       descriptionKey: 'carousel.gridTradingDesc',
@@ -66,6 +84,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       ctaKey: 'carousel.viewDetails'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.inviteFriends',
       subtitleKey: 'carousel.earnReward',
       descriptionKey: 'carousel.inviteDesc',
@@ -73,6 +92,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       ctaKey: 'carousel.inviteNow'
     },
     {
+      type: 'standard',
       titleKey: 'carousel.support24h',
       subtitleKey: 'carousel.onlineAlways',
       descriptionKey: 'carousel.supportDesc',
@@ -82,9 +102,9 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   ]
 
   const quickAccessItems = [
-    { titleKey: 'quickAccess.strategyMarket', icon: Target, path: '/strategies', gradient: 'from-cyan-500 to-blue-500' },
-    { titleKey: 'quickAccess.tradingCenter', icon: BarChart3, path: '/trading', gradient: 'from-emerald-500 to-teal-500' },
-    { titleKey: 'quickAccess.walletAssets', icon: Wallet, path: '/wallet', gradient: 'from-purple-500 to-pink-500' },
+    { titleKey: 'quickAccess.exchanges', icon: Building2, path: '/exchanges', gradient: 'from-cyan-500 to-blue-500' },
+    { titleKey: 'quickAccess.installApp', icon: Download, path: 'pwa-install', gradient: 'from-emerald-500 to-teal-500' },
+    { titleKey: 'quickAccess.checkin', icon: Gift, path: '/airdrop', gradient: 'from-purple-500 to-pink-500' },
     { titleKey: 'quickAccess.inviteFriends', icon: Users, path: '/referral', gradient: 'from-orange-500 to-red-500' }
   ]
 
@@ -97,9 +117,18 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   ]
 
   // API 已返回翻译后的内容，直接使用即可
-  const announcements = data?.announcements && data.announcements.length > 0
-    ? data.announcements.map(a => a.title)
+  // 跑马灯使用 marquees 数据，不是 announcements
+  const marqueeTexts = data?.marquees && data.marquees.length > 0
+    ? data.marquees.map(m => m.content)
     : defaultAnnouncements
+
+  // 跑马灯配置
+  const marqueeConfig = data?.marqueeConfig || { scrollSpeed: 50, pauseOnHover: true, displayDuration: 5 }
+  // 根据速度计算动画时长（速度越快时长越短）
+  // scrollSpeed 单位是 px/s，假设内容宽度约 1500px
+  // 时长 = 宽度 / 速度
+  // 例：80px/s → 1500/80 ≈ 19秒，150px/s → 10秒
+  const marqueeDuration = Math.max(8, 1500 / marqueeConfig.scrollSpeed)
 
   // Touch handlers for carousel
   const onTouchStart = (e: TouchEvent) => {
@@ -130,7 +159,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % carouselSlides.length)
-    }, 5000)
+    }, 8000)
     return () => clearInterval(timer)
   }, [carouselSlides.length])
 
@@ -165,20 +194,20 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
               {carouselSlides.map((slide, index) => (
                 <div key={index} className="w-full flex-shrink-0">
                   <div className={`relative bg-gradient-to-br ${slide.gradient} backdrop-blur-xl border border-[#1E1E2E] rounded-xl h-36 flex items-center overflow-hidden`}>
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent rounded-xl" />
-                    <div className="relative z-10 px-4">
-                      <div className="text-xs text-[#9090A0] mb-0.5">{t(slide.titleKey)}</div>
-                      <h2 className="text-xl font-bold text-[#F8F8FC] mb-1">
-                        {t(slide.subtitleKey)}
-                      </h2>
-                      <p className="text-[#9090A0] text-xs mb-3">
-                        {t(slide.descriptionKey)}
-                      </p>
-                      <button type="button" className="bg-[#06B6D4] text-black px-4 py-1.5 rounded-lg font-medium text-xs">
-                        {t(slide.ctaKey)}
-                      </button>
+                      <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent rounded-xl" />
+                      <div className="relative z-10 px-4">
+                        <div className="text-xs text-[#9090A0] mb-0.5">{t(slide.titleKey)}</div>
+                        <h2 className="text-xl font-bold text-[#F8F8FC] mb-1">
+                          {t(slide.subtitleKey)}
+                        </h2>
+                        <p className="text-[#9090A0] text-xs mb-3">
+                          {t(slide.descriptionKey)}
+                        </p>
+                        <button type="button" className="bg-[#06B6D4] text-black px-4 py-1.5 rounded-lg font-medium text-xs">
+                          {t(slide.ctaKey)}
+                        </button>
+                      </div>
                     </div>
-                  </div>
                 </div>
               ))}
             </div>
@@ -205,11 +234,16 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
           <div className="flex items-center">
             <Megaphone className="w-3.5 h-3.5 text-[#06B6D4] mr-2 flex-shrink-0" />
             <div className="flex-1 overflow-hidden">
-              <div className="animate-marquee whitespace-nowrap text-[#9090A0] text-xs">
-                {announcements.map((text, index) => (
+              <div
+                className="whitespace-nowrap text-[#9090A0] text-xs"
+                style={{
+                  animation: `marquee ${marqueeDuration}s linear infinite`,
+                }}
+              >
+                {marqueeTexts.map((text, index) => (
                   <span key={index} className="mx-6">{text}</span>
                 ))}
-                {announcements.map((text, index) => (
+                {marqueeTexts.map((text, index) => (
                   <span key={`dup-${index}`} className="mx-6">{text}</span>
                 ))}
               </div>
@@ -224,7 +258,23 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
               <button
                 key={item.path}
                 type="button"
-                onClick={() => onNavigate?.(item.path)}
+                onClick={() => {
+                  if (item.path === 'pwa-install') {
+                    // PWA 安装逻辑
+                    const deferredPrompt = (window as PwaWindow).__pwaInstallPrompt
+                    if (deferredPrompt) {
+                      deferredPrompt.prompt()
+                      deferredPrompt.userChoice.then(() => {
+                        ;(window as PwaWindow).__pwaInstallPrompt = null
+                      })
+                    } else {
+                      // 已安装或不支持，跳转到提示页
+                      alert('请使用浏览器菜单中的「添加到主屏幕」安装应用')
+                    }
+                    return
+                  }
+                  onNavigate?.(item.path)
+                }}
                 className="flex flex-col items-center py-2 active:scale-95 transition-transform"
               >
                 <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${item.gradient} flex items-center justify-center mb-1.5 shadow-lg`}>

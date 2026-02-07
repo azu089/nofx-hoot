@@ -66,6 +66,7 @@ export interface UserInfo {
   nickname: string;
   usdtBalance: string;
   hootBalance: string;
+  pointBalance: string;
   points?: number;
 }
 
@@ -117,7 +118,7 @@ export async function getUserByTelegramId(
 export async function getPositionsByTelegramId(
   telegramId: string,
 ): Promise<PositionInfo[]> {
-  return request<PositionInfo[]>(`/positions/telegram/${telegramId}`);
+  return request<PositionInfo[]>(`/trading/positions/telegram/${telegramId}`);
 }
 
 // 获取策略列表
@@ -141,7 +142,7 @@ export async function getEarningsByTelegramId(
   telegramId: string,
 ): Promise<EarningsInfo> {
   try {
-    return await request<EarningsInfo>(`/positions/earnings/telegram/${telegramId}`);
+    return await request<EarningsInfo>(`/trading/positions/earnings/telegram/${telegramId}`);
   } catch {
     // 如果接口不存在，返回默认值
     return {
@@ -162,6 +163,7 @@ export interface TelegramLoginDto {
   telegramUsername?: string;
   firstName?: string;
   lastName?: string;
+  referralCode?: string; // 深度链接邀请码 (start=ref_XXX)
 }
 
 export interface LoginResponse {
@@ -246,4 +248,144 @@ export interface InviteInfo {
 export async function getInviteInfo(telegramId: string): Promise<InviteInfo> {
   const loginResult = await telegramLogin({ telegramId });
   return authRequest<InviteInfo>('/referral/info', loginResult.accessToken);
+}
+
+// ===== 我的订阅 API =====
+
+export interface MySubscription {
+  id: string;
+  strategy: {
+    id: string;
+    name: string;
+    description: string;
+  };
+  apiKeyId: string;
+  amountPerTrade: string;
+  maxPositions: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+// 获取我的订阅列表
+export async function getMySubscriptions(telegramId: string): Promise<MySubscription[]> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<MySubscription[]>('/strategies/my/subscriptions', loginResult.accessToken);
+}
+
+// 切换订阅状态（启用/停用）
+export async function toggleSubscription(
+  telegramId: string,
+  subscriptionId: string,
+  isActive: boolean,
+): Promise<{ id: string; isActive: boolean }> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<{ id: string; isActive: boolean }>(
+    `/strategies/subscription/${subscriptionId}/toggle`,
+    loginResult.accessToken,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    },
+  );
+}
+
+// ===== 紧急平仓 API =====
+
+// 关闭所有持仓
+export async function closeAllPositions(
+  telegramId: string,
+  apiKeyId: string,
+): Promise<{ closedCount: number; totalProfit?: string }> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<{ closedCount: number; totalProfit?: string }>(
+    '/trading/positions/close-all',
+    loginResult.accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({ apiKeyId }),
+    },
+  );
+}
+
+// ===== 交易所余额 API =====
+
+export interface ApiKeyInfo {
+  id: string;
+  exchange: string;
+  label: string;
+  maskedKey: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ExchangeBalance {
+  balance: number;
+  spotBalance: number;
+  futuresBalance: number;
+  valid: boolean;
+}
+
+// 获取用户 API Keys 列表
+export async function getApiKeys(telegramId: string): Promise<{ items: ApiKeyInfo[]; total: number }> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<{ items: ApiKeyInfo[]; total: number }>('/api-keys', loginResult.accessToken);
+}
+
+// 获取某个 API Key 的交易所余额
+export async function getApiKeyBalance(telegramId: string, apiKeyId: string): Promise<ExchangeBalance> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<ExchangeBalance>(`/api-keys/${apiKeyId}/balance`, loginResult.accessToken);
+}
+
+// ===== 交易历史 API =====
+
+export interface TradeHistory {
+  id: string;
+  symbol: string;
+  side: string;
+  entryPrice: string;
+  closePrice: string;
+  amount: string;
+  pnl: string;
+  pnlPercent?: string;
+  status: string;
+  closedAt: string;
+  strategyName?: string;
+  closeReason?: string;
+}
+
+// 获取交易历史
+export async function getTradeHistory(
+  telegramId: string,
+  limit: number = 10,
+): Promise<TradeHistory[]> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<TradeHistory[]>(
+    `/trading/positions/history?limit=${limit}`,
+    loginResult.accessToken,
+  );
+}
+
+// ===== 执行日志 API =====
+
+export interface TradeLog {
+  id: string;
+  time: string;
+  strategy: string;
+  action: string;
+  symbol: string;
+  status: 'success' | 'warning' | 'error';
+  message: string;
+}
+
+// 获取执行日志
+export async function getTradeLogs(
+  telegramId: string,
+  limit: number = 20,
+): Promise<TradeLog[]> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<TradeLog[]>(
+    `/trading/positions/logs?limit=${limit}`,
+    loginResult.accessToken,
+  );
 }

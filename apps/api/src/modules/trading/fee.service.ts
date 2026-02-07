@@ -153,33 +153,56 @@ export class FeeService {
 
     // 使用事务扣费
     await this.prisma.$transaction(async (tx) => {
-      // 获取用户余额
+      // 获取用户余额（点卡余额）
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { usdtBalance: true },
+        select: { pointBalance: true },
       });
 
       if (!user) {
         throw new Error('用户不存在');
       }
 
-      const currentBalance = new Decimal(user.usdtBalance.toString());
+      const currentPointBalance = new Decimal(user.pointBalance.toString());
 
-      // 余额不足时从盈利中扣除（已经在净利润中扣除）
-      // 这里只记录扣费日志
+      // 检查点卡余额是否足够
+      if (currentPointBalance.lt(feeAmountDecimal)) {
+        this.logger.warn(
+          `用户 ${userId} 点卡余额不足: ${currentPointBalance} < ${feeAmountDecimal}`,
+        );
+        // 点卡不足时，扣除全部点卡余额，剩余部分记录欠费
+        // 暂时只扣除可用部分
+      }
+
+      // 计算实际扣除金额（不能超过当前余额）
+      const actualDeduction = Decimal.min(currentPointBalance, feeAmountDecimal);
+
+      // 扣除点卡余额
+      if (actualDeduction.gt(0)) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            pointBalance: {
+              decrement: actualDeduction.toNumber(),
+            },
+          },
+        });
+      }
 
       // 创建扣费日志
       await tx.billingLog.create({
         data: {
           userId,
           type: 'GAS_FEE',
-          amount: feeAmountDecimal.toString(),
+          amount: actualDeduction.toString(),
           uniqueOrderId,
-          description: `持仓 ${positionId} 盈利 ${profit} 手续费 ${feeRate} = ${feeAmount}`,
+          description: `持仓 ${positionId} 盈利 ${profit} 手续费率 ${feeRate} 应扣 ${feeAmount} 实扣 ${actualDeduction}`,
         },
       });
 
-      this.logger.log(`手续费已扣除: 用户 ${userId} 金额 ${feeAmount} USDT`);
+      this.logger.log(
+        `燃油费已扣除: 用户 ${userId} 点卡扣除 ${actualDeduction} USDT`,
+      );
     });
 
     return true;

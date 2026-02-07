@@ -20,8 +20,7 @@ import {
   Wallet,
   Mail,
   Gift,
-  CheckCircle2,
-  AlertCircle
+  CheckCircle2
 } from 'lucide-react'
 import { useLocale, useTranslations } from '@/i18n/provider'
 import { localeNames, type Locale } from '@/i18n/config'
@@ -171,8 +170,7 @@ export function SettingsPage({
         return prev - 1
       })
     }, 1000)
-    // 实际调用发送验证码 API
-    console.log('发送密码修改验证码到:', userEmail)
+    // TODO: 实际调用发送验证码 API
   }
 
   // 发送邮箱更换验证码
@@ -189,8 +187,7 @@ export function SettingsPage({
         return prev - 1
       })
     }, 1000)
-    // 实际调用发送验证码 API
-    console.log('发送邮箱更换验证码到:', emailForm.email)
+    // TODO: 实际调用发送验证码 API
   }
 
   const handlePasswordSubmit = () => {
@@ -234,7 +231,7 @@ export function SettingsPage({
         return prev - 1
       })
     }, 1000)
-    console.log('发送绑定邮箱验证码到:', bindEmailForm.email)
+    // TODO: 实际调用发送验证码 API
   }
 
   const handleBindEmailSubmit = () => {

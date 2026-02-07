@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { ArrowDownUp, ChevronDown, ArrowLeft, Info, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 
@@ -24,38 +24,46 @@ interface ExchangeRecord {
   time: string
 }
 
-const assets: Asset[] = [
-  { id: 'usdt', name: 'USDT', symbol: 'USDT', balance: 10346.57, icon: '/icons/usdt.svg', rate: 1, canBePay: true },
-  { id: 'gas', name: '点卡', symbol: 'GAS', balance: 1250, icon: '/icons/gas-card.svg', rate: 1, canBePay: false },
-  { id: 'hoot', name: 'HOOT', symbol: 'HOOT', balance: 2500.75, icon: '/icons/hoot/token.png', rate: 0.85, canBePay: true },
-]
-
-const payableAssets = assets.filter(a => a.canBePay)
-
-const exchangeRecords: ExchangeRecord[] = [
-  { id: '1', fromAsset: 'USDT', toAsset: 'GAS', fromAmount: 100, toAmount: 100, status: 'completed', time: '01-29' },
-  { id: '2', fromAsset: 'USDT', toAsset: 'HOOT', fromAmount: 500, toAmount: 588.24, status: 'completed', time: '01-28' },
-  { id: '3', fromAsset: 'HOOT', toAsset: 'USDT', fromAmount: 200, toAmount: 170, status: 'processing', time: '01-28' },
-]
-
 interface MobileExchangePageProps {
   balance?: {
     usdt: number
     hoot: number
     point: number
   }
+  exchangeRecords?: ExchangeRecord[]
   onBack?: () => void
   onExchange?: (from: string, to: string, amount: number) => void
   isLoading?: boolean
 }
 
-export function MobileExchangePage({ onBack, onExchange }: MobileExchangePageProps) {
-  const [fromAsset, setFromAsset] = useState(payableAssets[0])
-  const [toAsset, setToAsset] = useState(assets[1])
+export function MobileExchangePage({ balance, exchangeRecords = [], onBack, onExchange, isLoading: externalLoading }: MobileExchangePageProps) {
+  // 根据真实余额构建资产列表
+  const assets: Asset[] = useMemo(() => [
+    { id: 'usdt', name: 'USDT', symbol: 'USDT', balance: balance?.usdt ?? 0, icon: '/icons/usdt.svg', rate: 1, canBePay: true },
+    { id: 'gas', name: '点卡', symbol: 'GAS', balance: balance?.point ?? 0, icon: '/icons/gas-card.svg', rate: 1, canBePay: false },
+    { id: 'hoot', name: 'HOOT', symbol: 'HOOT', balance: balance?.hoot ?? 0, icon: '/icons/hoot/token.png', rate: 0.85, canBePay: true },
+  ], [balance])
+
+  const payableAssets = useMemo(() => assets.filter(a => a.canBePay), [assets])
+
+  const [fromAssetId, setFromAssetId] = useState('usdt')
+  const [toAssetId, setToAssetId] = useState('gas')
   const [amount, setAmount] = useState('')
   const [showFromDropdown, setShowFromDropdown] = useState(false)
   const [showToDropdown, setShowToDropdown] = useState(false)
   const [isExchanging, setIsExchanging] = useState(false)
+
+  // 从 assets 中查找当前选中的资产（余额会随 balance prop 实时更新）
+  const fromAsset = useMemo(() => assets.find(a => a.id === fromAssetId) || assets[0], [assets, fromAssetId])
+  const toAsset = useMemo(() => assets.find(a => a.id === toAssetId) || assets[1], [assets, toAssetId])
+
+  // 外部 loading 同步
+  useEffect(() => {
+    if (!externalLoading && isExchanging) {
+      setIsExchanging(false)
+      setAmount('')
+    }
+  }, [externalLoading, isExchanging])
 
   const calculateReceive = () => {
     if (!amount || isNaN(parseFloat(amount))) return '0.00'
@@ -64,9 +72,8 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
 
   const handleSwap = () => {
     if (toAsset.id === 'gas') return
-    const temp = fromAsset
-    setFromAsset(toAsset)
-    setToAsset(temp)
+    setFromAssetId(toAssetId)
+    setToAssetId(fromAssetId)
     setAmount('')
   }
 
@@ -75,35 +82,34 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
   const handleExchange = async () => {
     if (!amount || parseFloat(amount) <= 0) return
     setIsExchanging(true)
-    await new Promise(resolve => setTimeout(resolve, 1500))
     onExchange?.(fromAsset.symbol, toAsset.symbol, parseFloat(amount))
-    setIsExchanging(false)
-    setAmount('')
   }
 
   const getReceivableAssets = (excludeId: string) => assets.filter(a => a.id !== excludeId)
 
   const handleFromAssetSelect = (asset: Asset) => {
-    if (asset.id === toAsset.id) {
+    if (asset.id === toAssetId) {
       const newToAsset = assets.find(a => a.id === 'gas') || assets.find(a => a.id !== asset.id)
-      if (newToAsset) setToAsset(newToAsset)
+      if (newToAsset) setToAssetId(newToAsset.id)
     }
-    setFromAsset(asset)
+    setFromAssetId(asset.id)
     setShowFromDropdown(false)
   }
 
   const handleToAssetSelect = (asset: Asset) => {
-    if (asset.id === fromAsset.id) {
+    if (asset.id === fromAssetId) {
       const newFromAsset = payableAssets.find(a => a.id !== asset.id)
-      if (newFromAsset) setFromAsset(newFromAsset)
+      if (newFromAsset) setFromAssetId(newFromAsset.id)
     }
-    setToAsset(asset)
+    setToAssetId(asset.id)
     setShowToDropdown(false)
   }
 
   const getIcon = (symbol: string) =>
     symbol === 'USDT' ? '/icons/usdt.svg' :
     symbol === 'HOOT' ? '/icons/hoot/token.png' : '/icons/gas-card.svg'
+
+  const isProcessing = isExchanging || externalLoading
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white pb-20">
@@ -119,8 +125,8 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
       </div>
 
       <div className="p-4 space-y-3">
-        {/* 兑换卡片 */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+        {/* 兑换卡片 - 移除 overflow-hidden 以允许下拉菜单溢出 */}
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4 space-y-3">
           {/* 支付 */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -131,7 +137,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
               <div className="relative flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowFromDropdown(!showFromDropdown)}
+                  onClick={() => { setShowFromDropdown(!showFromDropdown); setShowToDropdown(false) }}
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-2.5 py-1.5"
                 >
                   <div className="w-5 h-5 rounded-full overflow-hidden">
@@ -141,7 +147,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
                 </button>
                 {showFromDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[140px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl shadow-xl z-[100] min-w-[140px]">
                     {payableAssets.map((asset) => (
                       <button
                         key={asset.id}
@@ -203,7 +209,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setShowToDropdown(!showToDropdown)}
+                  onClick={() => { setShowToDropdown(!showToDropdown); setShowFromDropdown(false) }}
                   className="flex items-center gap-2 bg-[#1A1A24] rounded-lg px-2.5 py-1.5"
                 >
                   <div className="w-5 h-5 rounded-full overflow-hidden">
@@ -213,7 +219,7 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                   <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
                 </button>
                 {showToDropdown && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl overflow-hidden shadow-xl z-[100] min-w-[140px]">
+                  <div className="absolute top-full left-0 mt-1 bg-[#1A1A24] border border-[#1E1E2E] rounded-xl shadow-xl z-[100] min-w-[140px]">
                     {getReceivableAssets(fromAsset.id).map((asset) => (
                       <button
                         key={asset.id}
@@ -247,14 +253,14 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
         <button
           type="button"
           onClick={handleExchange}
-          disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > fromAsset.balance || isExchanging}
+          disabled={!amount || parseFloat(amount) <= 0 || parseFloat(amount) > fromAsset.balance || isProcessing}
           className={`w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${
-            amount && parseFloat(amount) > 0 && parseFloat(amount) <= fromAsset.balance && !isExchanging
+            amount && parseFloat(amount) > 0 && parseFloat(amount) <= fromAsset.balance && !isProcessing
               ? 'bg-[#06B6D4] hover:bg-[#0891B2] text-white'
               : 'bg-[#1A1A24] text-[#94A3B8] cursor-not-allowed'
           }`}
         >
-          {isExchanging ? (
+          {isProcessing ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
               兑换中...
@@ -265,9 +271,9 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
         </button>
 
         {/* 兑换记录 */}
-        {exchangeRecords.length > 0 && (
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
-            <span className="text-sm text-[#94A3B8]">最近记录</span>
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
+          <span className="text-sm text-[#94A3B8]">最近记录</span>
+          {exchangeRecords.length > 0 ? (
             <div className="space-y-2">
               {exchangeRecords.map((record) => (
                 <div key={record.id} className="flex items-center justify-between py-2">
@@ -299,8 +305,12 @@ export function MobileExchangePage({ onBack, onExchange }: MobileExchangePagePro
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-center py-6 text-[#64748B] text-sm">
+              暂无兑换记录
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

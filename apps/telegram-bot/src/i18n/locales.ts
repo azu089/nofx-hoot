@@ -13,29 +13,30 @@ export interface LocaleMessages {
   success: string;
   failed: string;
 
-  // 主菜单
+  // 主菜单按钮
   menu: {
-    openApp: string;
+    wallet: string;
+    trade: string;
     checkin: string;
     invite: string;
+    closeAll: string;
     joinGroup: string;
     channel: string;
+    switchLang: string;
+    help: string;
   };
 
   // /start 命令
   start: {
     welcomeNew: string;
     welcomeBack: string;
-    quickStart: string;
     loginFailed: string;
   };
 
   // /help 命令
   help: {
     title: string;
-    account: string;
-    trading: string;
-    other: string;
+    commands: string;
     notifications: string;
   };
 
@@ -46,7 +47,6 @@ export interface LocaleMessages {
     streak7: string;
     streakTip: string;
     failed: string;
-    capReached: string;
   };
 
   // /invite 命令
@@ -59,77 +59,96 @@ export interface LocaleMessages {
     inviteeGet: string;
     link: string;
     share: string;
+    shareBot: string;
     copyCode: string;
     shareText: string;
     failed: string;
   };
 
-  // /balance 命令
-  balance: {
+  // /wallet 命令（合并 status + balance + exchange）
+  wallet: {
     title: string;
-    current: string;
-    chainNotice: string;
-    howToGet: string;
-    register: string;
-    invite: string;
-    trading: string;
-    checkin: string;
+    platformSection: string;
+    usdt: string;
+    hoot: string;
+    point: string;
+    hootNotice: string;
+    exchangeSection: string;
+    total: string;
+    spot: string;
+    futures: string;
+    noApiKey: string;
+    queryFailed: string;
     failed: string;
   };
 
-  // /status 命令
-  status: {
+  // /trade 命令（合并 positions + earnings + mystrategies）
+  trade: {
     title: string;
-    nickname: string;
-    email: string;
-    notBound: string;
-    assets: string;
-    failed: string;
-  };
-
-  // /positions 命令
-  positions: {
-    title: string;
-    noPosition: string;
-    subscribeHint: string;
-    entry: string;
-    amount: string;
-    failed: string;
-  };
-
-  // /strategies 命令
-  strategies: {
-    title: string;
-    empty: string;
-    visitWeb: string;
-    failed: string;
-  };
-
-  // /earnings 命令
-  earnings: {
-    title: string;
+    // 持仓区
+    positionsSection: string;
+    noPositions: string;
+    positionEntry: string;
+    positionAmount: string;
+    // 收益区
+    earningsSection: string;
     today: string;
-    week: string;
-    month: string;
     total: string;
     trades: string;
     winRate: string;
+    // 策略区
+    strategiesSection: string;
+    noStrategies: string;
+    active: string;
+    paused: string;
+    strategyAmount: string;
+    // 子面板按钮
+    btnHistory: string;
+    btnLogs: string;
+    btnManage: string;
+    btnCloseAll: string;
+    // 启停
+    toggleOn: string;
+    toggleOff: string;
+    toggleSuccess: string;
+    toggleFailed: string;
     failed: string;
   };
 
-  // /app 命令
-  app: {
+  // 交易记录（/trade 子面板）
+  history: {
     title: string;
-    features: string;
-    clickBelow: string;
+    empty: string;
+    entry: string;
+    close: string;
+    pnl: string;
+    reason: string;
+    failed: string;
+    btnBack: string;
   };
 
-  // /group 命令
-  group: {
+  // 执行日志（/trade 子面板）
+  logs: {
     title: string;
-    community: string;
-    channel: string;
-    clickBelow: string;
+    empty: string;
+    failed: string;
+    btnBack: string;
+  };
+
+  // /closeall 命令
+  closeAll: {
+    title: string;
+    confirm: string;
+    warning: string;
+    selectKey: string;
+    noApiKey: string;
+    executing: string;
+    success: string;
+    noPositions: string;
+    cancelled: string;
+    failed: string;
+    btnConfirm: string;
+    btnCancel: string;
   };
 
   // /bind 命令
@@ -152,18 +171,23 @@ export interface LocaleMessages {
     english: string;
   };
 
-  // /unbind 命令
-  unbind: {
-    info: string;
-    noNeed: string;
-    goWeb: string;
+  // 交易通知（HTTP 推送）
+  tradeNotify: {
+    openTitle: string;
+    closeTitle: string;
+    symbol: string;
+    side: string;
+    price: string;
+    amount: string;
+    pnl: string;
+    strategy: string;
   };
 
   // 未知命令
   unknownCommand: string;
 }
 
-// 中文语言包
+// ==================== 中文语言包 ====================
 export const zh: LocaleMessages = {
   error: '❌ 发生错误',
   retry: '请稍后重试',
@@ -171,11 +195,15 @@ export const zh: LocaleMessages = {
   failed: '失败',
 
   menu: {
-    openApp: '📱 打开应用',
-    checkin: '✅ 每日签到',
-    invite: '🎁 邀请好友',
-    joinGroup: '💬 加入社群',
-    channel: '📢 官方频道',
+    wallet: '💰 钱包',
+    trade: '📊 交易',
+    checkin: '✅ 签到',
+    invite: '🎁 邀请',
+    closeAll: '🚨 紧急平仓',
+    joinGroup: '💬 社群',
+    channel: '📢 频道',
+    switchLang: '🌐 语言',
+    help: '❓ 帮助',
   },
 
   start: {
@@ -188,40 +216,35 @@ export const zh: LocaleMessages = {
       `• 每日签到领 HOOT\n` +
       `• 邀请好友赚更多\n` +
       `• 订阅策略自动交易\n\n` +
-      `点击下方按钮开始使用 👇`,
+      `点击下方按钮开始 👇`,
     welcomeBack:
       `👋 <b>欢迎回来，{nickname}!</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `💰 USDT: <b>{usdt}</b>\n` +
+      `💵 USDT: <b>{usdt}</b>\n` +
       `🪙 HOOT: <b>{hoot}</b>\n` +
+      `⛽ 点卡: <b>{point}</b>\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
-      `点击下方按钮继续 👇`,
-    quickStart: '快速开始',
+      `点击下方按钮操作 👇`,
     loginFailed: `❌ <b>登录失败</b>\n\n请稍后重试，或联系客服`,
   },
 
   help: {
     title: `📖 <b>HOOT 机器人帮助</b>\n\n━━━━━━━━━━━━━━━━`,
-    account:
-      `<b>💰 账户相关</b>\n` +
-      `/status - 账户状态\n` +
-      `/balance - HOOT 余额\n` +
+    commands:
+      `<b>📌 快捷命令</b>\n` +
+      `/start - 主菜单\n` +
+      `/wallet - 钱包总览\n` +
+      `/trade - 交易面板\n` +
       `/checkin - 每日签到\n` +
-      `/invite - 邀请好友\n`,
-    trading:
-      `<b>📊 交易相关</b>\n` +
-      `/positions - 当前持仓\n` +
-      `/strategies - 策略列表\n` +
-      `/earnings - 收益统计\n`,
-    other:
+      `/invite - 邀请好友\n` +
+      `/closeall - 紧急平仓\n` +
+      `/help - 帮助\n\n` +
       `<b>🔧 其他</b>\n` +
-      `/app - 打开应用\n` +
-      `/group - 加入社群\n` +
       `/bind - 绑定邮箱\n` +
       `/lang - 切换语言\n` +
       `━━━━━━━━━━━━━━━━`,
     notifications:
-      `🔔 <b>通知会自动推送:</b>\n` +
+      `🔔 <b>自动推送通知:</b>\n` +
       `• 开仓/平仓通知\n` +
       `• 空投到账通知`,
   },
@@ -238,7 +261,6 @@ export const zh: LocaleMessages = {
     streak7: '🏆 连续签到 7 天以上，奖励加成中!',
     streakTip: '💡 连续签到天数越多，奖励越高哦~',
     failed: '❌ 签到失败，请稍后重试',
-    capReached: '已达签到奖励上限',
   },
 
   invite: {
@@ -249,76 +271,87 @@ export const zh: LocaleMessages = {
     perInvite: `• 每邀请 1 人: +{amount} HOOT`,
     inviteeGet: `• 被邀请人也得: +{amount} HOOT`,
     link: `🔗 邀请链接:\n<code>{link}</code>`,
-    share: '📤 分享邀请链接',
+    share: '📤 分享链接',
+    shareBot: '🤖 分享 Bot',
     copyCode: '📋 复制邀请码',
     shareText: '加入 HOOT，一起赚 HOOT 代币！',
     failed: '❌ 获取邀请信息失败，请稍后重试',
   },
 
-  balance: {
-    title: `🪙 <b>HOOT 代币余额</b>\n\n━━━━━━━━━━━━━━━━`,
-    current: `当前余额: <b>{amount} HOOT</b>`,
-    chainNotice: `📢 代币将在 3 个月后上链\n届时可提取到您的钱包`,
-    howToGet: `<b>获取 HOOT 的方式:</b>`,
-    register: `• 注册奖励: +{amount} HOOT`,
-    invite: `• 邀请好友: +{amount} HOOT`,
-    trading: `• 盈利交易: 盈利×{multiplier} HOOT`,
-    checkin: `• 每日签到: +{min}~{max} HOOT`,
-    failed: '❌ 获取余额失败，请稍后重试',
+  wallet: {
+    title: `💰 <b>钱包总览</b>\n\n━━━━━━━━━━━━━━━━`,
+    platformSection: `<b>📦 平台账户</b>`,
+    usdt: `💵 USDT: <b>{amount}</b>`,
+    hoot: `🪙 HOOT: <b>{amount}</b>`,
+    point: `⛽ 点卡: <b>{amount}</b>`,
+    hootNotice: `📢 代币上链计划进行中，请关注官方公告`,
+    exchangeSection: `\n<b>💱 交易所</b>`,
+    total: `💰 总资产: <b>{amount} USD</b>`,
+    spot: `  • 现货: {amount} USD`,
+    futures: `  • 合约: {amount} USD`,
+    noApiKey: `未绑定交易所，请在 HOOT 网站绑定`,
+    queryFailed: `⚠️ {label}: 查询失败`,
+    failed: '❌ 获取钱包信息失败，请稍后重试',
   },
 
-  status: {
-    title: `📊 账户状态\n`,
-    nickname: `👤 昵称: {name}`,
-    email: `📧 邮箱: {email}`,
-    notBound: '未绑定',
-    assets: `💰 资产:\n• USDT: {usdt}\n• HOOT: {hoot}`,
-    failed: '❌ 获取状态失败，请稍后重试',
-  },
-
-  positions: {
-    title: `📊 当前持仓 ({count})`,
-    noPosition: '📊 当前无持仓\n\n订阅策略后会自动开仓',
-    subscribeHint: '订阅策略后会自动开仓',
-    entry: '• 入场: {price}',
-    amount: '• 数量: {amount}',
-    failed: '❌ 获取持仓失败，请稍后重试',
-  },
-
-  strategies: {
-    title: `📋 策略列表`,
-    empty: '📋 暂无可用策略',
-    visitWeb: '访问 HOOT 网站订阅策略',
-    failed: '❌ 获取策略失败，请稍后重试',
-  },
-
-  earnings: {
-    title: `📊 收益统计`,
-    today: `今日收益: {pnl}`,
-    week: `本周收益: {pnl}`,
-    month: `本月收益: {pnl}`,
-    total: `累计收益: {pnl}`,
-    trades: `交易次数: {count}`,
+  trade: {
+    title: `📊 <b>交易面板</b>\n\n━━━━━━━━━━━━━━━━`,
+    positionsSection: `<b>📈 当前持仓</b> ({count})`,
+    noPositions: `暂无持仓`,
+    positionEntry: `开仓: {price}`,
+    positionAmount: `数量: {amount}`,
+    earningsSection: `\n<b>💹 今日收益</b>`,
+    today: `{pnl}`,
+    total: `累计: {pnl}`,
+    trades: `交易: {count} 次`,
     winRate: `胜率: {rate}%`,
-    failed: '❌ 获取收益失败，请稍后重试',
+    strategiesSection: `\n<b>🎯 运行中策略</b>`,
+    noStrategies: `暂无订阅策略`,
+    active: '🟢',
+    paused: '⏸️',
+    strategyAmount: `单笔 {amount} USDT`,
+    btnHistory: '📜 交易记录',
+    btnLogs: '📝 执行日志',
+    btnManage: '⚙️ 管理策略',
+    btnCloseAll: '🚨 紧急平仓',
+    toggleOn: '▶️ 启动',
+    toggleOff: '⏸ 暂停',
+    toggleSuccess: '✅ 策略已{action}: {name}',
+    toggleFailed: '❌ 操作失败，请稍后重试',
+    failed: '❌ 获取交易信息失败，请稍后重试',
   },
 
-  app: {
-    title: `📱 <b>打开 HOOT 应用</b>`,
-    features:
-      `在应用中您可以:\n` +
-      `• 查看完整资产信息\n` +
-      `• 订阅交易策略\n` +
-      `• 管理 API Key\n` +
-      `• 绑定邮箱/钱包`,
-    clickBelow: `点击下方按钮打开 👇`,
+  history: {
+    title: `📜 <b>最近交易记录</b>\n\n━━━━━━━━━━━━━━━━`,
+    empty: '📜 暂无交易记录',
+    entry: '开仓: {price}',
+    close: '平仓: {price}',
+    pnl: '盈亏: {pnl}',
+    reason: '原因: {reason}',
+    failed: '❌ 获取交易记录失败，请稍后重试',
+    btnBack: '⬅️ 返回交易面板',
   },
 
-  group: {
-    title: `🌐 <b>加入 HOOT 社区</b>`,
-    community: `• 💬 社群: 交流讨论、获取帮助`,
-    channel: `• 📢 频道: 官方公告、最新动态`,
-    clickBelow: `点击下方按钮加入 👇`,
+  logs: {
+    title: `📝 <b>执行日志</b>\n\n━━━━━━━━━━━━━━━━`,
+    empty: '📝 暂无执行日志',
+    failed: '❌ 获取日志失败，请稍后重试',
+    btnBack: '⬅️ 返回交易面板',
+  },
+
+  closeAll: {
+    title: `🚨 <b>紧急全部平仓</b>`,
+    confirm: `确定要平掉所有持仓吗？`,
+    warning: `⚠️ 此操作不可撤销，将按市价平仓所有持仓`,
+    selectKey: '请选择要平仓的交易所账户:',
+    noApiKey: '❌ 未绑定交易所 API Key\n\n请先在 HOOT 网站绑定交易所',
+    executing: '⏳ 正在执行平仓...',
+    success: '✅ 平仓完成\n\n• 已平仓: {count} 个\n• 总盈亏: {profit} USDT',
+    noPositions: '📊 当前无持仓，无需平仓',
+    cancelled: '✅ 已取消平仓操作',
+    failed: '❌ 平仓失败，请稍后重试',
+    btnConfirm: '⚠️ 确认平仓',
+    btnCancel: '❌ 取消',
   },
 
   bind: {
@@ -343,16 +376,21 @@ export const zh: LocaleMessages = {
     english: '🇬🇧 English',
   },
 
-  unbind: {
-    info: `ℹ️ <b>关于账户解绑</b>`,
-    noNeed: `TG 账户无需解绑，您的账户已自动关联`,
-    goWeb: `如果需要解绑邮箱：\n请在 HOOT 网站的设置页面操作`,
+  tradeNotify: {
+    openTitle: '🟢 <b>开仓通知</b>',
+    closeTitle: '🔴 <b>平仓通知</b>',
+    symbol: '交易对: {symbol}',
+    side: '方向: {side}',
+    price: '价格: {price}',
+    amount: '数量: {amount}',
+    pnl: '盈亏: {pnl} USDT',
+    strategy: '策略: {name}',
   },
 
   unknownCommand: '❌ 未知命令，请使用 /help 查看可用命令',
 };
 
-// 英文语言包
+// ==================== 英文语言包 ====================
 export const en: LocaleMessages = {
   error: '❌ An error occurred',
   retry: 'Please try again later',
@@ -360,11 +398,15 @@ export const en: LocaleMessages = {
   failed: 'Failed',
 
   menu: {
-    openApp: '📱 Open App',
-    checkin: '✅ Daily Check-in',
-    invite: '🎁 Invite Friends',
-    joinGroup: '💬 Join Community',
-    channel: '📢 Official Channel',
+    wallet: '💰 Wallet',
+    trade: '📊 Trade',
+    checkin: '✅ Check-in',
+    invite: '🎁 Invite',
+    closeAll: '🚨 Close All',
+    joinGroup: '💬 Community',
+    channel: '📢 Channel',
+    switchLang: '🌐 Language',
+    help: '❓ Help',
   },
 
   start: {
@@ -381,31 +423,26 @@ export const en: LocaleMessages = {
     welcomeBack:
       `👋 <b>Welcome back, {nickname}!</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `💰 USDT: <b>{usdt}</b>\n` +
+      `💵 USDT: <b>{usdt}</b>\n` +
       `🪙 HOOT: <b>{hoot}</b>\n` +
+      `⛽ Credits: <b>{point}</b>\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
-      `Click buttons below to continue 👇`,
-    quickStart: 'Quick Start',
+      `Click buttons below 👇`,
     loginFailed: `❌ <b>Login failed</b>\n\nPlease try again later or contact support`,
   },
 
   help: {
     title: `📖 <b>HOOT Bot Help</b>\n\n━━━━━━━━━━━━━━━━`,
-    account:
-      `<b>💰 Account</b>\n` +
-      `/status - Account status\n` +
-      `/balance - HOOT balance\n` +
+    commands:
+      `<b>📌 Commands</b>\n` +
+      `/start - Main menu\n` +
+      `/wallet - Wallet overview\n` +
+      `/trade - Trading panel\n` +
       `/checkin - Daily check-in\n` +
-      `/invite - Invite friends\n`,
-    trading:
-      `<b>📊 Trading</b>\n` +
-      `/positions - Current positions\n` +
-      `/strategies - Strategy list\n` +
-      `/earnings - Earnings stats\n`,
-    other:
+      `/invite - Invite friends\n` +
+      `/closeall - Emergency close\n` +
+      `/help - Help\n\n` +
       `<b>🔧 Other</b>\n` +
-      `/app - Open app\n` +
-      `/group - Join community\n` +
       `/bind - Bind email\n` +
       `/lang - Switch language\n` +
       `━━━━━━━━━━━━━━━━`,
@@ -427,7 +464,6 @@ export const en: LocaleMessages = {
     streak7: '🏆 7+ day streak bonus active!',
     streakTip: '💡 Longer streak = more rewards~',
     failed: '❌ Check-in failed, please try again later',
-    capReached: 'Check-in reward cap reached',
   },
 
   invite: {
@@ -438,76 +474,87 @@ export const en: LocaleMessages = {
     perInvite: `• Per invite: +{amount} HOOT`,
     inviteeGet: `• Invitee also gets: +{amount} HOOT`,
     link: `🔗 Invite Link:\n<code>{link}</code>`,
-    share: '📤 Share Invite Link',
-    copyCode: '📋 Copy Invite Code',
+    share: '📤 Share Link',
+    shareBot: '🤖 Share Bot',
+    copyCode: '📋 Copy Code',
     shareText: 'Join HOOT and earn HOOT tokens together!',
     failed: '❌ Failed to get invite info, please try again later',
   },
 
-  balance: {
-    title: `🪙 <b>HOOT Token Balance</b>\n\n━━━━━━━━━━━━━━━━`,
-    current: `Current Balance: <b>{amount} HOOT</b>`,
-    chainNotice: `📢 Tokens will be on-chain in 3 months\nWithdraw to your wallet then`,
-    howToGet: `<b>How to get HOOT:</b>`,
-    register: `• Signup bonus: +{amount} HOOT`,
-    invite: `• Invite friend: +{amount} HOOT`,
-    trading: `• Profitable trade: profit×{multiplier} HOOT`,
-    checkin: `• Daily check-in: +{min}~{max} HOOT`,
-    failed: '❌ Failed to get balance, please try again later',
+  wallet: {
+    title: `💰 <b>Wallet Overview</b>\n\n━━━━━━━━━━━━━━━━`,
+    platformSection: `<b>📦 Platform Account</b>`,
+    usdt: `💵 USDT: <b>{amount}</b>`,
+    hoot: `🪙 HOOT: <b>{amount}</b>`,
+    point: `⛽ Credits: <b>{amount}</b>`,
+    hootNotice: `📢 Token on-chain plan in progress, stay tuned!`,
+    exchangeSection: `\n<b>💱 Exchange</b>`,
+    total: `💰 Total: <b>{amount} USD</b>`,
+    spot: `  • Spot: {amount} USD`,
+    futures: `  • Futures: {amount} USD`,
+    noApiKey: `No exchange bound, please bind on HOOT website`,
+    queryFailed: `⚠️ {label}: Query failed`,
+    failed: '❌ Failed to get wallet info, please try again later',
   },
 
-  status: {
-    title: `📊 Account Status\n`,
-    nickname: `👤 Nickname: {name}`,
-    email: `📧 Email: {email}`,
-    notBound: 'Not bound',
-    assets: `💰 Assets:\n• USDT: {usdt}\n• HOOT: {hoot}`,
-    failed: '❌ Failed to get status, please try again later',
-  },
-
-  positions: {
-    title: `📊 Current Positions ({count})`,
-    noPosition: '📊 No positions\n\nSubscribe to a strategy to start trading',
-    subscribeHint: 'Subscribe to a strategy to start trading',
-    entry: '• Entry: {price}',
-    amount: '• Amount: {amount}',
-    failed: '❌ Failed to get positions, please try again later',
-  },
-
-  strategies: {
-    title: `📋 Strategy List`,
-    empty: '📋 No strategies available',
-    visitWeb: 'Visit HOOT website to subscribe',
-    failed: '❌ Failed to get strategies, please try again later',
-  },
-
-  earnings: {
-    title: `📊 Earnings Stats`,
-    today: `Today: {pnl}`,
-    week: `This Week: {pnl}`,
-    month: `This Month: {pnl}`,
+  trade: {
+    title: `📊 <b>Trading Panel</b>\n\n━━━━━━━━━━━━━━━━`,
+    positionsSection: `<b>📈 Positions</b> ({count})`,
+    noPositions: `No open positions`,
+    positionEntry: `Entry: {price}`,
+    positionAmount: `Amount: {amount}`,
+    earningsSection: `\n<b>💹 Today's PnL</b>`,
+    today: `{pnl}`,
     total: `Total: {pnl}`,
     trades: `Trades: {count}`,
     winRate: `Win Rate: {rate}%`,
-    failed: '❌ Failed to get earnings, please try again later',
+    strategiesSection: `\n<b>🎯 Active Strategies</b>`,
+    noStrategies: `No subscribed strategies`,
+    active: '🟢',
+    paused: '⏸️',
+    strategyAmount: `{amount} USDT per trade`,
+    btnHistory: '📜 History',
+    btnLogs: '📝 Logs',
+    btnManage: '⚙️ Strategies',
+    btnCloseAll: '🚨 Close All',
+    toggleOn: '▶️ Start',
+    toggleOff: '⏸ Pause',
+    toggleSuccess: '✅ Strategy {action}: {name}',
+    toggleFailed: '❌ Operation failed, please try again later',
+    failed: '❌ Failed to get trading info, please try again later',
   },
 
-  app: {
-    title: `📱 <b>Open HOOT App</b>`,
-    features:
-      `In the app you can:\n` +
-      `• View complete asset info\n` +
-      `• Subscribe to strategies\n` +
-      `• Manage API Keys\n` +
-      `• Bind email/wallet`,
-    clickBelow: `Click button below to open 👇`,
+  history: {
+    title: `📜 <b>Recent Trades</b>\n\n━━━━━━━━━━━━━━━━`,
+    empty: '📜 No trade history',
+    entry: 'Entry: {price}',
+    close: 'Close: {price}',
+    pnl: 'PnL: {pnl}',
+    reason: 'Reason: {reason}',
+    failed: '❌ Failed to get trade history, please try again later',
+    btnBack: '⬅️ Back to Trading',
   },
 
-  group: {
-    title: `🌐 <b>Join HOOT Community</b>`,
-    community: `• 💬 Group: Chat, discuss, get help`,
-    channel: `• 📢 Channel: Official announcements`,
-    clickBelow: `Click buttons below to join 👇`,
+  logs: {
+    title: `📝 <b>Execution Logs</b>\n\n━━━━━━━━━━━━━━━━`,
+    empty: '📝 No execution logs',
+    failed: '❌ Failed to get logs, please try again later',
+    btnBack: '⬅️ Back to Trading',
+  },
+
+  closeAll: {
+    title: `🚨 <b>Emergency Close All</b>`,
+    confirm: `Are you sure you want to close all positions?`,
+    warning: `⚠️ This action is irreversible. All positions will be closed at market price`,
+    selectKey: 'Select exchange account to close:',
+    noApiKey: '❌ No exchange API Key bound\n\nPlease bind one on HOOT website first',
+    executing: '⏳ Executing close all...',
+    success: '✅ Close all completed\n\n• Closed: {count} positions\n• Total PnL: {profit} USDT',
+    noPositions: '📊 No open positions to close',
+    cancelled: '✅ Close all cancelled',
+    failed: '❌ Close all failed, please try again later',
+    btnConfirm: '⚠️ Confirm Close All',
+    btnCancel: '❌ Cancel',
   },
 
   bind: {
@@ -532,10 +579,15 @@ export const en: LocaleMessages = {
     english: '🇬🇧 English',
   },
 
-  unbind: {
-    info: `ℹ️ <b>About Unbinding</b>`,
-    noNeed: `TG account doesn't need unbinding, already linked`,
-    goWeb: `To unbind email:\nPlease do it in HOOT website settings`,
+  tradeNotify: {
+    openTitle: '🟢 <b>Position Opened</b>',
+    closeTitle: '🔴 <b>Position Closed</b>',
+    symbol: 'Pair: {symbol}',
+    side: 'Side: {side}',
+    price: 'Price: {price}',
+    amount: 'Amount: {amount}',
+    pnl: 'PnL: {pnl} USDT',
+    strategy: 'Strategy: {name}',
   },
 
   unknownCommand: '❌ Unknown command, use /help to see available commands',
@@ -550,9 +602,7 @@ export const locales: Record<Language, LocaleMessages> = {
 // 根据 Telegram language_code 获取语言
 export function getLanguageFromCode(languageCode?: string): Language {
   if (!languageCode) return 'en';
-  // 中文：zh, zh-hans, zh-hant, zh-cn, zh-tw, etc.
   if (languageCode.startsWith('zh')) return 'zh';
-  // 其他默认英文
   return 'en';
 }
 

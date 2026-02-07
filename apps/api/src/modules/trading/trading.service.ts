@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as ccxt from 'ccxt';
 import { ApiKeysService } from '../api-keys/api-keys.service';
+import { toFuturesSymbol, toSpotSymbol } from '../../common/utils/symbol.util';
 
 export interface OrderResult {
   orderId: string;
@@ -69,29 +70,14 @@ export class TradingService {
       secret: credentials.apiSecret,
       enableRateLimit: true,
       options: {
-        defaultType: config.tradingType === 'futures' ? 'future' : 'spot',
+        defaultType: config.tradingType === 'futures' ? 'swap' : 'spot',
       },
     };
-
-    // 合约交易额外配置
-    if (config.tradingType === 'futures') {
-      exchangeOptions.options.defaultMarginMode = config.marginMode || 'cross';
-    }
 
     const exchange = new (ExchangeClass as any)(exchangeOptions);
 
     // 加载市场信息
     await exchange.loadMarkets();
-
-    // 如果是合约交易，设置杠杆
-    if (
-      config.tradingType === 'futures' &&
-      config.leverage &&
-      config.leverage > 1
-    ) {
-      this.logger.log(`设置杠杆: ${config.leverage}x`);
-      // 注意：杠杆需要在具体交易对上设置，这里只是记录
-    }
 
     // 缓存实例（5分钟后过期）
     this.exchangeInstances.set(cacheKey, exchange);
@@ -176,47 +162,70 @@ export class TradingService {
       ...config,
     };
 
+    // 根据交易类型标准化 symbol 格式
+    const tradingSymbol =
+      tradingType === 'futures' ? toFuturesSymbol(symbol) : toSpotSymbol(symbol);
+
     this.logger.log(
-      `执行交易: ${side} ${symbol} 金额 ${amountUsdt} USDT (${tradingType}${tradingType === 'futures' ? ` ${leverage}x` : ''})`,
+      `执行交易: ${side} ${tradingSymbol} 金额 ${amountUsdt} USDT (${tradingType}${tradingType === 'futures' ? ` ${leverage}x` : ''})`,
     );
 
     // 检查交易对是否存在
-    if (!exchange.markets[symbol]) {
-      throw new Error(`交易对不存在: ${symbol}`);
+    if (!exchange.markets[tradingSymbol]) {
+      throw new Error(`交易对不存在: ${tradingSymbol}`);
     }
 
-    const market = exchange.markets[symbol];
+    const market = exchange.markets[tradingSymbol];
 
     // 带重试的执行
     return this.executeWithRetry(
       async () => {
         // 获取当前价格
-        const ticker = await exchange.fetchTicker(symbol);
+        const ticker = await exchange.fetchTicker(tradingSymbol);
         const currentPrice = ticker.last || ticker.close;
 
         if (!currentPrice) {
           throw new Error('无法获取当前价格');
         }
 
-        // 计算下单数量（USDT 金额 / 当前价格）
-        let amount = amountUsdt / currentPrice;
+        // 计算下单数量
+        let amount: number;
+        let notionalValue: number;
 
         // 合约交易考虑杠杆
         if (tradingType === 'futures' && leverage && leverage > 1) {
-          // 杠杆交易，实际开仓金额 = 本金 * 杠杆
-          // 但下单数量保持不变（保证金占用 = amountUsdt / leverage）
+          // 杠杆交易: 保证金 * 杠杆 = 名义价值（仓位大小）
+          notionalValue = amountUsdt * leverage;
+          amount = notionalValue / currentPrice;
+
           this.logger.log(
-            `合约交易: 本金 ${amountUsdt} USDT, ${leverage}x 杠杆`,
+            `合约交易: 保证金 ${amountUsdt} USDT * ${leverage}x = 名义价值 ${notionalValue} USDT, 数量 ${amount}`,
           );
 
-          // 在币安等交易所，需要先设置杠杆
+          // 设置保证金模式（isolated/cross）
+          const marginMode = config.marginMode || 'cross';
           try {
-            await (exchange as any).setLeverage(leverage, symbol);
+            await (exchange as any).setMarginMode(marginMode, tradingSymbol);
+            this.logger.log(`设置保证金模式: ${marginMode}`);
+          } catch (e) {
+            this.logger.warn(
+              `设置保证金模式失败（可能已设置）: ${(e as Error).message}`,
+            );
+          }
+
+          // 设置杠杆
+          try {
+            await (exchange as any).setLeverage(leverage, tradingSymbol);
+            this.logger.log(`设置杠杆: ${leverage}x`);
           } catch (e) {
             this.logger.warn(
               `设置杠杆失败（可能已设置）: ${(e as Error).message}`,
             );
           }
+        } else {
+          // 现货交易：金额 / 价格 = 数量
+          amount = amountUsdt / currentPrice;
+          notionalValue = amountUsdt;
         }
 
         // 检查最小下单量
@@ -226,30 +235,33 @@ export class TradingService {
         }
 
         // 精度处理（使用 CCXT 内置方法）
-        amount = parseFloat(exchange.amountToPrecision(symbol, amount));
+        amount = parseFloat(exchange.amountToPrecision(tradingSymbol, amount));
 
         this.logger.log(`计算下单: 价格 ${currentPrice}, 数量 ${amount}`);
 
         // 创建市价订单（可选滑点保护）
         let order;
-        if (slippageTolerance && slippageTolerance > 0) {
-          // 使用限价单模拟滑点保护
+        if (
+          tradingType === 'spot' &&
+          slippageTolerance &&
+          slippageTolerance > 0
+        ) {
+          // 现货：使用 IOC 限价单模拟滑点保护
           const slippageMultiplier =
             side === 'buy'
               ? 1 + slippageTolerance / 100
               : 1 - slippageTolerance / 100;
           const limitPrice = currentPrice * slippageMultiplier;
           const precisePrice = parseFloat(
-            exchange.priceToPrecision(symbol, limitPrice),
+            exchange.priceToPrecision(tradingSymbol, limitPrice),
           );
 
           this.logger.log(
             `滑点保护: 限价 ${precisePrice} (容忍 ${slippageTolerance}%)`,
           );
 
-          // 使用 IOC（Immediate or Cancel）限价单
           order = await exchange.createOrder(
-            symbol,
+            tradingSymbol,
             'limit',
             side,
             amount,
@@ -257,8 +269,8 @@ export class TradingService {
             { timeInForce: 'IOC' },
           );
         } else {
-          // 普通市价单
-          order = await exchange.createMarketOrder(symbol, side, amount);
+          // 合约或无滑点保护：使用市价单
+          order = await exchange.createMarketOrder(tradingSymbol, side, amount);
         }
 
         this.logger.log(`订单创建成功: ${order.id}`);
@@ -287,7 +299,31 @@ export class TradingService {
     const exchange = await this.getExchange(userId, apiKeyId, config);
     const balance = await exchange.fetchBalance();
 
-    return balance.free?.USDT || 0;
+    // 处理不同交易类型的余额结构
+    let usdtBalance = 0;
+
+    if (config.tradingType === 'futures') {
+      // 合约交易 - 查询 USDT 可用余额
+      // CCXT 统一格式: balance['USDT'] 或 balance.USDT
+      usdtBalance = balance['USDT']?.free || balance.free?.USDT || 0;
+
+      // Binance futures 可能在 info 中包含更详细信息
+      if (usdtBalance === 0 && balance.info?.availableBalance) {
+        usdtBalance = parseFloat(balance.info.availableBalance);
+      }
+
+      this.logger.log(
+        `查询合约余额: 用户 ${userId} USDT 可用: ${usdtBalance}`,
+      );
+    } else {
+      // 现货交易
+      usdtBalance = balance.free?.USDT || balance['USDT']?.free || 0;
+      this.logger.log(
+        `查询现货余额: 用户 ${userId} USDT 可用: ${usdtBalance}`,
+      );
+    }
+
+    return usdtBalance;
   }
 
   // 查询合约持仓
@@ -330,22 +366,26 @@ export class TradingService {
 
     const exchange = await this.getExchange(userId, apiKeyId, config);
 
+    // 根据交易类型标准化 symbol 格式
+    const tradingSymbol =
+      tradingType === 'futures' ? toFuturesSymbol(symbol) : toSpotSymbol(symbol);
+
     return this.executeWithRetry(
       async () => {
         // 精度处理
         const preciseAmount = parseFloat(
-          exchange.amountToPrecision(symbol, amount),
+          exchange.amountToPrecision(tradingSymbol, amount),
         );
 
         this.logger.log(
-          `平仓: ${closeSide} ${symbol} 数量 ${preciseAmount} (${tradingType})`,
+          `平仓: ${closeSide} ${tradingSymbol} 数量 ${preciseAmount} (${tradingType})`,
         );
 
         let order;
         if (tradingType === 'futures') {
           // 合约平仓，使用 reduceOnly
           order = await exchange.createMarketOrder(
-            symbol,
+            tradingSymbol,
             closeSide,
             preciseAmount,
             undefined,
@@ -354,7 +394,7 @@ export class TradingService {
         } else {
           // 现货平仓，直接卖出
           order = await exchange.createMarketOrder(
-            symbol,
+            tradingSymbol,
             closeSide,
             preciseAmount,
           );

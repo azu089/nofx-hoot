@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body } from '@nestjs/common';
 import { ReferralService } from './referral.service';
 import { BindInviteCodeDto } from './dto/referral.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('referral')
 export class ReferralController {
@@ -42,6 +43,13 @@ export class ReferralController {
   @Get('rewards')
   async getRewardRecords(@CurrentUser() user: { id: string }) {
     return this.referralService.getRewardRecords(user.id);
+  }
+
+  // 获取推荐排行榜（公开接口）
+  @Public()
+  @Get('leaderboard')
+  async getLeaderboard() {
+    return this.referralService.getLeaderboard();
   }
 
   // 获取邀请综合信息（TG Bot 用）

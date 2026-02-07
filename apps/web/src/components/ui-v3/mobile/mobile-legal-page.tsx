@@ -3,23 +3,13 @@
 import { useState } from 'react'
 import {
   ArrowLeft,
-  FileText,
-  Shield,
   AlertTriangle,
-  Calendar,
 } from 'lucide-react'
 import { legalDocuments, type LegalDocumentContent } from '@/lib/legal-content'
 
 interface MobileLegalPageProps {
   slug: 'terms' | 'privacy' | 'risk'
   onBack?: () => void
-}
-
-// 文档图标映射
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  terms: FileText,
-  privacy: Shield,
-  risk: AlertTriangle
 }
 
 export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
@@ -44,7 +34,6 @@ export function MobileLegalPage({ slug, onBack }: MobileLegalPageProps) {
     )
   }
 
-  const IconComponent = iconMap[slug] || FileText
   const title = locale === 'zh' ? document.titleZh : document.titleEn
   const content = locale === 'zh' ? document.contentZh : document.contentEn
 

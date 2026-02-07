@@ -97,6 +97,7 @@ export default function LoginPage() {
         <MobileLoginPage
           onLogin={handleLogin}
           onWalletConnect={() => setShowWalletModal(true)}
+          onTelegramLogin={handleTelegramLogin}
           onRegister={() => router.push('/register')}
           onForgotPassword={() => console.log('忘记密码')}
         />

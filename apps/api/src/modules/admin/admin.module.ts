@@ -19,6 +19,8 @@ import { AdminTokenService } from './services/admin-token.service';
 import { AdminReferralService } from './services/admin-referral.service';
 import { AdminContentService } from './services/admin-content.service';
 import { AdminSignalService } from './services/admin-signal.service';
+import { AdminExchangeService } from './services/admin-exchange.service';
+import { AdminConfigService } from './services/admin-config.service';
 import { TranslateService } from '../../common/services/translate.service';
 
 @Global() // 设置为全局模块，其他模块可以直接使用 AdminGuard
@@ -46,6 +48,8 @@ import { TranslateService } from '../../common/services/translate.service';
     AdminReferralService,
     AdminContentService,
     AdminSignalService,
+    AdminExchangeService,
+    AdminConfigService,
     TranslateService,
   ],
   exports: [

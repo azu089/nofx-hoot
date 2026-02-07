@@ -364,8 +364,8 @@ export class AdminSignalService {
 
     return users.map((u) => ({
       userId: u.id,
-      email: u.email,
-      username: u.nickname || u.email.split('@')[0],
+      email: u.email ?? '',
+      username: u.nickname || (u.email ? u.email.split('@')[0] : 'unknown'),
       status: u.signalEnabled ? 'active' : 'stopped',
     }));
   }

@@ -49,6 +49,7 @@
     "termsOfService": "Условиями использования",
     "privacyPolicy": "Политикой конфиденциальности",
     "and": "и",
+    "back": "Назад",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "Выберите имя пользователя",
@@ -124,12 +125,17 @@
       "support24h": "Поддержка 24/7",
       "onlineAlways": "Всегда онлайн",
       "supportDesc": "Команда готова ответить на любые вопросы",
-      "contactSupport": "Связаться"
+      "contactSupport": "Связаться",
+      "flowTitle": "Алго-трейдинг, старт",
+      "flowCta": "Начать",
+      "flowStep1": "API подключение",
+      "flowStep2": "AI стратегия",
+      "flowStep3": "24/7 авто-торговля"
     },
     "quickAccess": {
-      "strategyMarket": "Стратегии",
-      "tradingCenter": "Торговля",
-      "walletAssets": "Кошелек",
+      "exchanges": "Биржи",
+      "installApp": "Установить",
+      "checkin": "Отметка",
       "inviteFriends": "Пригласить"
     },
     "defaultAnnouncements": {

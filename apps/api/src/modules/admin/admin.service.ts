@@ -1480,10 +1480,10 @@ export class AdminService {
     });
 
     const defaultWeights = {
-      stakeTypeA: { weight: 1.0, description: '活期质押' },
-      stakeTypeB: { weight: 1.5, description: '30天锁定' },
-      stakeTypeC: { weight: 2.0, description: '90天锁定' },
-      stakeTypeD: { weight: 3.0, description: '180天锁定' },
+      stakeLock30: { weight: 1.0, description: '30天锁定' },
+      stakeLock90: { weight: 1.5, description: '90天锁定' },
+      stakeLock180: { weight: 2.0, description: '180天锁定' },
+      stakeLock365: { weight: 3.0, description: '365天锁定' },
       tradingVolume: { multiplier: 0.001, description: '交易量加成' },
       referralBonus: { multiplier: 0.1, description: '推荐奖励' },
     };
@@ -1504,7 +1504,7 @@ export class AdminService {
   async updateEcosystemWeights(weights: any) {
     await this.prisma.platformConfig.upsert({
       where: { key: 'ecosystem_weights' },
-      create: { key: 'ecosystem_weights', value: JSON.stringify(weights) },
+      create: { id: 'ecosystem_weights', key: 'ecosystem_weights', value: JSON.stringify(weights) },
       update: { value: JSON.stringify(weights) },
     });
     return weights;

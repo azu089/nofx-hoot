@@ -51,4 +51,14 @@ export class UserResponse {
   email?: string | null;
   nickname?: string | null;
   createdAt?: Date;
+  // 会员信息
+  membershipStatus?: string;
+  membershipExpireAt?: Date | null;
+  subscriptionTier?: string; // basic, premium, pro
+  vipLevel?: number;
+  // 绑定状态
+  telegramId?: string | null;
+  telegramUsername?: string | null;
+  walletAddress?: string | null;
+  emailVerified?: boolean;
 }

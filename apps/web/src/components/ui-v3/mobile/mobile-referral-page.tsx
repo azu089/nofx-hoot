@@ -75,7 +75,6 @@ export function MobileReferralPage({
   leaderboard = defaultLeaderboard
 }: MobileReferralPageProps) {
   const t = useTranslations('referral')
-  const tCommon = useTranslations('common')
   const [copied, setCopied] = useState(false)
   const [rulesExpanded, setRulesExpanded] = useState(false)
   const [leaderboardExpanded, setLeaderboardExpanded] = useState(false)

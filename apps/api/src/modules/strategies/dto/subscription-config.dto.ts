@@ -142,7 +142,7 @@ export class AdvancedSubscriptionConfigDto {
 
   @IsIn(['account_loss', 'coin_drop'])
   @IsOptional()
-  blackSwanType?: 'account_loss' | 'coin_drop' = 'account_loss';
+  blackSwanType?: 'account_loss' | 'coin_drop' = 'coin_drop';
 
   @IsNumber()
   @Min(5)
@@ -164,6 +164,10 @@ export class AdvancedSubscriptionConfigDto {
   @Max(100)
   @IsOptional()
   dailyMaxLossPercent?: number = 20; // 单日最大亏损(%)
+
+  @IsIn(['close_all', 'close_half', 'pause'])
+  @IsOptional()
+  dailyMaxLossAction?: 'close_all' | 'close_half' | 'pause' = 'close_all';
 
   // === 执行配置 ===
   @IsNumber()
@@ -292,6 +296,7 @@ export class SubscriptionConfigResponse {
     // 单日亏损
     dailyMaxLossEnabled: boolean;
     dailyMaxLossPercent: string;
+    dailyMaxLossAction: string;
     // 执行配置
     maxRetries: number;
     retryDelayMs: number;

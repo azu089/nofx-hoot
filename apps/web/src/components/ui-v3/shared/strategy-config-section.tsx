@@ -549,16 +549,8 @@ export function StrategyConfigSection({
               {/* 黑天鹅保护 */}
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[#606070]">黑天鹅保护</span>
-                <Toggle
-                  enabled={config.blackSwanEnabled}
-                  onChange={v => updateConfig({ blackSwanEnabled: v })}
-                  label="黑天鹅"
-                />
-              </div>
-              {config.blackSwanEnabled && (
-                <div className="space-y-2 pl-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-[#606070]">触发阈值</span>
+                <div className="flex items-center gap-2">
+                  {config.blackSwanEnabled && (
                     <Input
                       value={config.blackSwanTrigger}
                       onChange={v => updateConfig({ blackSwanTrigger: parseFloat(v) || 0 })}
@@ -567,21 +559,14 @@ export function StrategyConfigSection({
                       max={50}
                       title="触发阈值"
                     />
-                  </div>
-                  <div className="flex gap-2">
-                    {(['close_all', 'close_half', 'pause'] as const).map(action => (
-                      <button
-                        key={action}
-                        type="button"
-                        onClick={() => updateConfig({ blackSwanAction: action })}
-                        className={`flex-1 py-1.5 rounded text-xs ${config.blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070]'}`}
-                      >
-                        {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
-                      </button>
-                    ))}
-                  </div>
+                  )}
+                  <Toggle
+                    enabled={config.blackSwanEnabled}
+                    onChange={v => updateConfig({ blackSwanEnabled: v })}
+                    label="黑天鹅"
+                  />
                 </div>
-              )}
+              </div>
 
               {/* 单日最大亏损 */}
               <div className="flex items-center justify-between">
@@ -604,6 +589,22 @@ export function StrategyConfigSection({
                   />
                 </div>
               </div>
+
+              {/* 共用动作按钮 */}
+              {(config.blackSwanEnabled || config.dailyLossEnabled) && (
+                <div className="flex gap-2">
+                  {(['close_all', 'close_half', 'pause'] as const).map(action => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => updateConfig({ blackSwanAction: action, dailyLossAction: action })}
+                      className={`flex-1 py-1.5 rounded text-xs ${config.blackSwanAction === action ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#606070]'}`}
+                    >
+                      {action === 'close_all' ? '全平' : action === 'close_half' ? '减半' : '暂停'}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

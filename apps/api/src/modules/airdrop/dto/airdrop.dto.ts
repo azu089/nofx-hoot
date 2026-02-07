@@ -113,6 +113,30 @@ export const VESTING_CONFIG = {
   withdrawFeePercent: 5, // 提现手续费 5%（销毁机制）
 };
 
+// ============================================================
+// 任务系统 DTO
+// ============================================================
+
+// 任务状态
+export enum TaskStatus {
+  INCOMPLETE = 'incomplete', // 任务未完成（如未绑定 TG）
+  COMPLETED = 'completed', // 已完成（奖励自动到账）
+  REPEATABLE = 'repeatable', // 可重复任务（邀请、盈利交易）
+}
+
+// 任务项
+export interface TaskItemDto {
+  id: string; // 任务ID（register/bind_tg/bind_wallet/bind_email/referral/trading_profit）
+  label: string; // 任务名称
+  description: string; // 任务描述
+  reward: string; // 奖励描述（如 "50 HOOT"、"25 HOOT/人"）
+  rewardAmount: number; // 奖励数值
+  status: TaskStatus; // 任务状态
+  claimedAmount?: string; // 已领取金额（repeatable 类型）
+  claimedCount?: number; // 已领取次数（repeatable 类型）
+  actionUrl?: string; // 跳转链接（incomplete 状态时使用）
+}
+
 // 查询空投历史 DTO
 export class QueryAirdropDto {
   @IsOptional()

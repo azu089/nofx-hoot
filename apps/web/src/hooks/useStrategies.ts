@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useLocale } from '@/i18n/provider';
 
 // 策略类型
 export interface Strategy {
@@ -28,8 +29,9 @@ export interface Strategy {
  * 获取所有策略
  */
 export function useStrategies() {
+  const { locale } = useLocale();
   return useQuery({
-    queryKey: ['strategies'],
+    queryKey: ['strategies', locale],
     queryFn: async () => {
       const response = await api.get<Strategy[]>('/strategies');
       return response.data;
@@ -42,8 +44,9 @@ export function useStrategies() {
  * 获取首页推荐策略
  */
 export function useFeaturedStrategies() {
+  const { locale } = useLocale();
   return useQuery({
-    queryKey: ['strategies', 'featured'],
+    queryKey: ['strategies', 'featured', locale],
     queryFn: async () => {
       const response = await api.get<Strategy[]>('/strategies/featured');
       return response.data;
@@ -56,8 +59,9 @@ export function useFeaturedStrategies() {
  * 获取策略详情
  */
 export function useStrategy(id: string) {
+  const { locale } = useLocale();
   return useQuery({
-    queryKey: ['strategies', id],
+    queryKey: ['strategies', id, locale],
     queryFn: async () => {
       const response = await api.get<Strategy>(`/strategies/${id}`);
       return response.data;

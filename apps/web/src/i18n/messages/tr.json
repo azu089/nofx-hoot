@@ -49,6 +49,7 @@
     "termsOfService": "Kullanım Şartları",
     "privacyPolicy": "Gizlilik Politikası",
     "and": "ve",
+    "back": "Geri",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "Kullanıcı adı seç",
@@ -124,12 +125,17 @@
       "support24h": "7/24 Destek",
       "onlineAlways": "Her Zaman Çevrimiçi",
       "supportDesc": "Profesyonel ekip sorularınızı yanıtlamaya hazır",
-      "contactSupport": "Destek"
+      "contactSupport": "Destek",
+      "flowTitle": "Algo Trading Başlat",
+      "flowCta": "Başla",
+      "flowStep1": "API Bağlantı",
+      "flowStep2": "AI Strateji",
+      "flowStep3": "7/24 Oto İşlem"
     },
     "quickAccess": {
-      "strategyMarket": "Stratejiler",
-      "tradingCenter": "İşlem",
-      "walletAssets": "Cüzdan",
+      "exchanges": "Borsalar",
+      "installApp": "Yükle",
+      "checkin": "Giriş",
       "inviteFriends": "Davet"
     },
     "defaultAnnouncements": {

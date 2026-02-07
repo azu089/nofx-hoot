@@ -3,7 +3,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { WebhookSignalDto, SignalJobData } from './dto/signal.dto';
+import { WebhookSignalDto, SignalJobData, TradeAction } from './dto/signal.dto';
+import { toFuturesSymbol } from '../../common/utils/symbol.util';
 
 @Injectable()
 export class SignalsService {
@@ -16,8 +17,14 @@ export class SignalsService {
 
   // 接收 Freqtrade Webhook 信号
   async receiveWebhook(dto: WebhookSignalDto): Promise<{ signalId: string }> {
+    // 统一标准化为合约格式: ETH/USDT → ETH/USDT:USDT
+    const symbol = toFuturesSymbol(dto.symbol);
+
+    // 解析 action: 若有 action 字段则使用，否则从 side 推断（向后兼容）
+    const action: TradeAction = dto.action || (dto.side === 'buy' ? 'entry_long' : 'exit_long');
+
     this.logger.log(
-      `收到信号: ${dto.strategy} ${dto.side} ${dto.symbol} @ ${dto.price}`,
+      `收到信号: ${dto.strategy} ${action} ${symbol} @ ${dto.price}`,
     );
 
     // 查找对应的策略
@@ -33,7 +40,7 @@ export class SignalsService {
     const signal = await this.prisma.signal.create({
       data: {
         strategyId: strategy.id,
-        symbol: dto.symbol,
+        symbol,
         side: dto.side,
         price: new Decimal(dto.price),
       },
@@ -43,8 +50,9 @@ export class SignalsService {
     const jobData: SignalJobData = {
       signalId: signal.id,
       strategyId: strategy.id,
-      symbol: dto.symbol,
+      symbol,
       side: dto.side,
+      action,
       price: dto.price.toString(),
     };
 

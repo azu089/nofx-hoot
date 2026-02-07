@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { X, Loader2, ChevronRight, AlertCircle, CheckCircle } from 'lucide-react'
-import { useWallet, formatAddress } from '@/hooks/useWallet'
+import { X, Loader2, ChevronRight, AlertCircle } from 'lucide-react'
+import { useWallet } from '@/hooks/useWallet'
 import { useTranslations } from '@/i18n/provider'
 
 interface WalletOption {
@@ -81,7 +81,7 @@ export function WalletConnectModal({
   const t = useTranslations('modals')
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
-  const { connectWallet, isConnected, address, error: walletError, isConnecting } = useWallet()
+  const { connectWallet, isConnected, address, error: walletError } = useWallet()
 
   // 创建翻译后的钱包选项
   const walletOptions: WalletOption[] = walletOptionsConfig.map((wallet) => ({

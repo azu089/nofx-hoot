@@ -239,4 +239,55 @@ export class ReferralService {
     }
     return `${name[0]}***${name[name.length - 1]}@${domain}`;
   }
+
+  // 获取推荐排行榜（Top 10）
+  async getLeaderboard(): Promise<
+    Array<{ rank: number; username: string; referrals: number; earnings: number }>
+  > {
+    // 查询所有有邀请人的用户，按邀请人分组统计
+    const inviterStats = await this.prisma.user.groupBy({
+      by: ['invitedBy'],
+      where: { invitedBy: { not: null } },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 10,
+    });
+
+    if (inviterStats.length === 0) return [];
+
+    // 获取邀请人详情
+    const inviterIds = inviterStats.map((s) => s.invitedBy!);
+    const inviters = await this.prisma.user.findMany({
+      where: { id: { in: inviterIds } },
+      select: { id: true, nickname: true, email: true },
+    });
+
+    // 获取每个邀请人的返佣总额
+    const rewards = await this.prisma.referralReward.groupBy({
+      by: ['userId'],
+      where: { userId: { in: inviterIds } },
+      _sum: { amount: true },
+    });
+
+    const inviterMap = new Map(inviters.map((u) => [u.id, u]));
+    const rewardMap = new Map(
+      rewards.map((r) => [
+        r.userId,
+        parseFloat(r._sum.amount?.toString() || '0'),
+      ]),
+    );
+
+    return inviterStats.map((stat, index) => {
+      const inviter = inviterMap.get(stat.invitedBy!);
+      const displayName =
+        inviter?.nickname ||
+        (inviter?.email ? this.maskEmail(inviter.email) : '***');
+      return {
+        rank: index + 1,
+        username: displayName,
+        referrals: stat._count.id,
+        earnings: rewardMap.get(stat.invitedBy!) || 0,
+      };
+    });
+  }
 }

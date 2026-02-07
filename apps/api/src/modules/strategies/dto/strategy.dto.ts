@@ -69,3 +69,29 @@ export class MySubscriptionResponse {
   isActive: boolean;
   createdAt: Date;
 }
+
+// 订阅汇总 - 单个订阅详情
+export class SubscriptionSummaryDetail {
+  subscriptionId: string;
+  strategyId: string;
+  strategyName: string;
+  apiKeyId: string;
+  apiKeyLabel: string;
+  amountPerTrade: number;
+  maxPositions: number;
+  maxExposure: number; // amountPerTrade * maxPositions
+  isActive: boolean;
+}
+
+// 订阅汇总响应 - 用于多策略风险提示
+export class SubscriptionSummaryResponse {
+  // 活跃订阅数量
+  activeCount: number;
+  // 总最大敞口（所有订阅的 maxExposure 之和）
+  totalMaxExposure: number;
+  // 各订阅详情
+  subscriptions: SubscriptionSummaryDetail[];
+  // 风险提示（当 totalMaxExposure / exchangeBalance > 0.8 时前端显示警告）
+  riskLevel: 'safe' | 'warning' | 'danger';
+  riskMessage?: string;
+}

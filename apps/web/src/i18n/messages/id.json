@@ -49,6 +49,7 @@
     "termsOfService": "Ketentuan Layanan",
     "privacyPolicy": "Kebijakan Privasi",
     "and": "dan",
+    "back": "Kembali",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "Pilih nama pengguna",
@@ -124,12 +125,17 @@
       "support24h": "Dukungan 24/7",
       "onlineAlways": "Selalu Online",
       "supportDesc": "Tim profesional siap menjawab pertanyaan Anda",
-      "contactSupport": "Hubungi"
+      "contactSupport": "Hubungi",
+      "flowTitle": "Trading Otomatis",
+      "flowCta": "Mulai",
+      "flowStep1": "Koneksi API",
+      "flowStep2": "Strategi AI",
+      "flowStep3": "24/7 Otomatis"
     },
     "quickAccess": {
-      "strategyMarket": "Strategi",
-      "tradingCenter": "Trading",
-      "walletAssets": "Dompet",
+      "exchanges": "Bursa",
+      "installApp": "Install",
+      "checkin": "Absen",
       "inviteFriends": "Undang"
     },
     "defaultAnnouncements": {

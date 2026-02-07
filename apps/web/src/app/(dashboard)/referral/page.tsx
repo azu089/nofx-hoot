@@ -48,6 +48,21 @@ export default function ReferralPage() {
     },
   });
 
+  // 获取推荐排行榜
+  const { data: leaderboardData } = useQuery({
+    queryKey: ['referral', 'leaderboard'],
+    queryFn: async () => {
+      const response = await api.get<Array<{
+        rank: number;
+        username: string;
+        referrals: number;
+        earnings: number;
+      }>>('/referral/leaderboard');
+      return response.data;
+    },
+    staleTime: 60000, // 1分钟缓存
+  });
+
   // 转换收益数据
   const earnings = useMemo(() => {
     if (!statsData) return undefined;
@@ -81,6 +96,7 @@ export default function ReferralPage() {
           referralCode={inviteCodeData?.inviteCode}
           earnings={earnings}
           myReferrals={myReferrals}
+          leaderboard={leaderboardData}
           onShare={(platform) => {
             const link = inviteCodeData?.inviteCode
               ? `${window.location.origin}/register?ref=${inviteCodeData.inviteCode}`
@@ -106,6 +122,7 @@ export default function ReferralPage() {
           referralCode={inviteCodeData?.inviteCode}
           earnings={earnings}
           myReferrals={myReferrals}
+          leaderboard={leaderboardData}
         />
       </div>
     </>

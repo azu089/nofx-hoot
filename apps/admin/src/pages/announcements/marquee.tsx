@@ -275,14 +275,16 @@ export const MarqueeList = () => {
       const values = await configForm.validateFields();
       try {
         await api.put('/admin/content/marquees/config', values);
-      } catch {
-        // 静默失败
+        setConfig(values);
+        message.success('配置已保存');
+        setIsConfigModalOpen(false);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '保存失败';
+        message.error(`保存配置失败: ${errorMessage}`);
+        console.error('配置保存失败:', err);
       }
-      setConfig(values);
-      message.success('配置已保存');
-      setIsConfigModalOpen(false);
     } catch (error) {
-      console.error('配置保存失败:', error);
+      console.error('表单验证失败:', error);
     }
   };
 

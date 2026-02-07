@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   AlertTriangle,
   ChevronDown,
@@ -40,6 +40,10 @@ interface Position {
   stopLoss: number
   takeProfit: number
   marketType: MarketType
+  // 新增字段
+  leverage?: number
+  margin?: number
+  marginMode?: string
 }
 
 interface ExecutionLog {
@@ -56,17 +60,25 @@ interface ExecutionLog {
 interface HistoryOrder {
   id: string | number
   symbol: string
-  side: 'buy' | 'sell'
+  side: 'long' | 'short'
   type: string
   price: number
+  entryPrice: number
+  closePrice: number
   amount: number
   filled: number
   total: number
   pnl: number
+  pnlPercent: number
   fee: number
   time: string
+  openTime?: string
   status: 'filled' | 'cancelled'
   marketType: MarketType
+  leverage: number
+  margin: number
+  closeReason?: string
+  strategyName?: string
 }
 
 
@@ -86,6 +98,7 @@ interface MyStrategy {
     positionSize: string
     stopLoss: number
     takeProfit: number
+    amountPerTrade?: number
   }
 }
 
@@ -93,6 +106,8 @@ interface Account {
   id: string | number
   name: string
   balance: number
+  spotValue?: number    // 现货余额
+  futuresValue?: number // 合约余额
 }
 
 // 策略类型颜色映射
@@ -160,6 +175,24 @@ export function MobileTradingCenter({
   const [strategyStatusFilter, setStrategyStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
   const [showSearchInput, setShowSearchInput] = useState(false)
 
+  // ========== 当 accounts 加载后更新 selectedAccount ==========
+  useEffect(() => {
+    if (accounts.length > 0 && selectedAccount.id === 0) {
+      // 初始状态时选择第一个账户
+      setSelectedAccount(accounts[0])
+    } else if (accounts.length > 0) {
+      // 如果当前选中的账户数据更新了，同步更新
+      const updatedAccount = accounts.find(a => a.id === selectedAccount.id)
+      if (updatedAccount && (
+        updatedAccount.balance !== selectedAccount.balance ||
+        updatedAccount.spotValue !== selectedAccount.spotValue ||
+        updatedAccount.futuresValue !== selectedAccount.futuresValue
+      )) {
+        setSelectedAccount(updatedAccount)
+      }
+    }
+  }, [accounts, selectedAccount.id, selectedAccount.balance, selectedAccount.spotValue, selectedAccount.futuresValue])
+
   // ========== 数据过滤（基于 accountType） ==========
   const filteredPositions = accountType === 'all'
     ? positions
@@ -187,9 +220,21 @@ export function MobileTradingCenter({
   const runningCount = strategiesForCount.filter(s => s.status === 'running').length
   const pausedCount = strategiesForCount.filter(s => s.status === 'paused').length
 
-  // ========== 统计数据计算（使用 props 传入的数据） ==========
-  const totalAssets = pnlStats?.totalAssets ?? 0
-  const availableBalance = pnlStats?.availableBalance ?? 0
+  // ========== 统计数据计算（根据选中账户和类型计算资产） ==========
+  // 根据 accountType 计算当前显示的资产
+  const getAccountAssets = () => {
+    switch (accountType) {
+      case 'spot':
+        return selectedAccount.spotValue ?? 0
+      case 'futures':
+        return selectedAccount.futuresValue ?? 0
+      case 'all':
+      default:
+        return selectedAccount.balance ?? 0
+    }
+  }
+  const totalAssets = getAccountAssets()
+  const availableBalance = totalAssets // 可用余额暂时等于总资产
   const totalPnl = pnlStats?.totalPnl ?? 0
   const todayPnl = pnlStats?.todayPnl ?? 0
   const totalUnrealizedPnl = pnlStats?.unrealizedPnl ?? filteredPositions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0)
@@ -269,38 +314,40 @@ export function MobileTradingCenter({
           </div>
         </div>
 
-        {/* 资产统计卡片 */}
+        {/* 资产统计卡片 - 2行布局 */}
         <div className="px-4 pb-3">
-          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4">
-            {/* 主要盈亏数据 - 突出显示 */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl">
-                <p className="text-xs text-[#9090A0] mb-1">{t('totalPnl')}</p>
-                <p className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-3">
+            {/* 第一行：总资产 + 可用余额 */}
+            <div className="grid grid-cols-2 gap-4 mb-2">
+              <div className="text-center">
+                <p className="text-xs text-[#606070] mb-0.5">{t('totalAssets')}</p>
+                <p className="text-xl font-bold text-[#F8F8FC]">
+                  ${totalAssets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-              <div className="text-center p-3 bg-[#0A0A0F]/50 rounded-xl">
-                <p className="text-xs text-[#9090A0] mb-1">{t('todayPnl')}</p>
-                <p className={`text-2xl font-bold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <div className="text-center">
+                <p className="text-xs text-[#606070] mb-0.5">{t('availableBalance')}</p>
+                <p className="text-xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</p>
+              </div>
+            </div>
+            {/* 第二行：今日盈亏 + 未实现 + 总盈亏 */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="text-center">
+                <p className="text-xs text-[#606070] mb-0.5">{t('todayPnl')}</p>
+                <p className={`text-sm font-semibold ${todayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {todayPnl >= 0 ? '+' : ''}${todayPnl.toLocaleString()}
                 </p>
               </div>
-            </div>
-            {/* 次要数据 */}
-            <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">{t('totalAssets')}</p>
-                <p className="text-base font-semibold text-[#F8F8FC]">${totalAssets.toLocaleString()}</p>
+                <p className="text-xs text-[#606070] mb-0.5">{t('unrealized')}</p>
+                <p className={`text-sm font-semibold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(2)}
+                </p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">{t('availableBalance')}</p>
-                <p className="text-base font-semibold text-[#F8F8FC]">${availableBalance.toLocaleString()}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-[#606070] mb-1">{t('unrealized')}</p>
-                <p className={`text-base font-semibold ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {totalUnrealizedPnl >= 0 ? '+' : ''}${totalUnrealizedPnl.toFixed(0)}
+                <p className="text-xs text-[#606070] mb-0.5">{t('totalPnl')}</p>
+                <p className={`text-sm font-semibold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -442,70 +489,88 @@ export function MobileTradingCenter({
             ) : (
               filteredPositions.map((position) => (
                 <div key={position.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
-                  {/* 头部 - 紧凑布局 */}
+                  {/* 头部 - 交易对 + 方向/保证金模式/杠杆 标签组 */}
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 bg-cyan-500/10 rounded-full flex items-center justify-center text-cyan-400 font-bold text-xs flex-shrink-0">
-                        {position.icon}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-sm">{position.symbol}</span>
-                          <span className={`px-1 py-0.5 rounded text-[10px] font-medium ${
-                            position.direction === 'long'
-                              ? 'bg-green-400/10 text-green-400'
-                              : 'bg-red-400/10 text-red-400'
-                          }`}>
-                            {position.direction === 'long' ? t('long') : t('short')}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-[#9090A0] truncate">
-                          <Zap className="w-2.5 h-2.5 text-[#06B6D4] flex-shrink-0" />
-                          <span className="truncate">{position.strategy}</span>
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm text-white">{position.symbol.replace(/:USDT$/, '')}</span>
+                      {/* 方向：做多/做空 */}
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        position.direction === 'long'
+                          ? 'bg-green-400/10 text-green-400'
+                          : 'bg-red-400/10 text-red-400'
+                      }`}>
+                        {position.direction === 'long' ? t('long') : t('short')}
+                      </span>
+                      {/* 保证金模式 */}
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#1E1E2E] text-[#9090A0]">
+                        {position.marginMode === 'isolated' ? t('isolated') : t('cross')}
+                      </span>
+                      {/* 杠杆 */}
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-400/10 text-yellow-400">
+                        {position.leverage || 1}X
+                      </span>
                     </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <p className={`font-semibold text-sm ${position.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {position.unrealizedPnl >= 0 ? '+' : ''}${position.unrealizedPnl.toFixed(0)}
+                  </div>
+
+                  {/* 策略来源 */}
+                  <div className="flex items-center gap-1 text-[10px] text-[#606070] mb-3">
+                    <Zap className="w-2.5 h-2.5 text-[#06B6D4]" />
+                    <span>{position.strategy}</span>
+                  </div>
+
+                  {/* 盈亏区域 - 突出显示 */}
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-0.5">{t('unrealizedPnlLabel')}</p>
+                      <p className={`text-lg font-bold ${position.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {position.unrealizedPnl >= 0 ? '+' : ''}{position.unrealizedPnl.toFixed(2)}
                       </p>
-                      <p className={`text-[10px] ${position.roe >= 0 ? 'text-green-400/70' : 'text-red-400/70'}`}>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-[#606070] mb-0.5">{t('investmentReturn')}</p>
+                      <p className={`text-lg font-bold ${position.roe >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {position.roe >= 0 ? '+' : ''}{position.roe.toFixed(2)}%
                       </p>
                     </div>
                   </div>
 
-                  {/* 数据行 - 2行3列布局 */}
-                  <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
-                    <div>
-                      <p className="text-[#606070]">{t('size')}</p>
-                      <p className="font-medium">{position.size}</p>
+                  {/* 数据行 */}
+                  <div className="space-y-2 text-[11px] mb-3 bg-[#0A0A0F]/50 rounded-lg p-2">
+                    {/* 第一行：持仓数量 | 保证金 | 保证金比率 */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <p className="text-[#606070]">{t('positionAmount')}</p>
+                        <p className="font-medium">{position.size}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070]">{t('marginAmount')}</p>
+                        <p className="font-medium">{position.margin && position.margin > 0 ? position.margin.toFixed(2) : '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070]">{t('marginRatio')}</p>
+                        <p className="font-medium text-cyan-400">
+                          {position.margin && position.margin > 0 && position.markPrice > 0
+                            ? ((position.margin / (position.size * position.markPrice)) * 100).toFixed(2) + '%'
+                            : '-'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[#606070]">{t('entry')}</p>
-                      <p className="font-medium">${(position.entryPrice / 1000).toFixed(1)}k</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('current')}</p>
-                      <p className="font-medium">${(position.markPrice / 1000).toFixed(1)}k</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('stopLossLabel')}</p>
-                      <p className="font-medium text-red-400">
-                        {position.stopLoss > 0 ? `$${(position.stopLoss / 1000).toFixed(1)}k` : '-'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('takeProfitLabel')}</p>
-                      <p className="font-medium text-green-400">
-                        {position.takeProfit > 0 ? `$${(position.takeProfit / 1000).toFixed(1)}k` : '-'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('liquidation')}</p>
-                      <p className="font-medium text-yellow-400">
-                        {position.liquidationPrice > 0 ? `$${(position.liquidationPrice / 1000).toFixed(1)}k` : '-'}
-                      </p>
+                    {/* 第二行：开仓价格 | 标记价格 | 强平价格 */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <p className="text-[#606070]">{t('entryPriceLabel')}</p>
+                        <p className="font-medium">{position.entryPrice.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070]">{t('markPriceLabel')}</p>
+                        <p className="font-medium">{position.markPrice.toFixed(4)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070]">{t('liquidationPriceLabel')}</p>
+                        <p className="font-medium text-yellow-400">
+                          {position.liquidationPrice > 0 ? position.liquidationPrice.toFixed(4) : '-'}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -513,7 +578,7 @@ export function MobileTradingCenter({
                   <button
                     type="button"
                     onClick={() => onClosePosition?.(position.id)}
-                    className="w-full py-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium"
+                    className="w-full py-2.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium"
                   >
                     {t('closePosition')}
                   </button>
@@ -533,64 +598,86 @@ export function MobileTradingCenter({
             ) : (
               filteredHistoryOrders.map((order) => (
                 <div key={order.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
-                  {/* 头部 */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{order.symbol}</span>
+                  {/* 头部：币对 + 方向 + 杠杆 + 平仓原因 + 盈亏 */}
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-sm">{order.symbol.replace(/:USDT$/, '')}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                        order.side === 'buy'
+                        order.side === 'long'
                           ? 'bg-green-400/10 text-green-400'
                           : 'bg-red-400/10 text-red-400'
                       }`}>
-                        {order.side === 'buy' ? t('buy') : t('sell')}
+                        {order.side === 'long' ? '做多' : '做空'}
                       </span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
-                        {order.type}
-                      </span>
+                      {order.leverage > 1 && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-400/10 text-yellow-400 font-medium">
+                          {order.leverage}x
+                        </span>
+                      )}
+                      {order.closeReason && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
+                          {order.closeReason === 'signal' ? '信号平仓' :
+                           order.closeReason === 'stop_loss' ? '止损' :
+                           order.closeReason === 'take_profit' ? '止盈' :
+                           order.closeReason === 'trailing_stop' ? '移动止损' :
+                           order.closeReason === 'manual' ? '手动平仓' :
+                           order.closeReason === 'manual_cleanup' ? '手动清仓' :
+                           order.closeReason === 'black_swan' ? '黑天鹅保护' :
+                           order.closeReason === 'daily_loss_limit' ? '日亏损限额' :
+                           order.closeReason}
+                        </span>
+                      )}
                     </div>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      order.status === 'filled'
-                        ? 'bg-green-400/10 text-green-400'
-                        : 'bg-yellow-400/10 text-yellow-400'
-                    }`}>
-                      {order.status === 'filled' ? t('filledStatus') : t('cancelledStatus')}
-                    </span>
-                  </div>
-
-                  {/* 数据行 */}
-                  <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] mb-2 bg-[#0A0A0F]/50 rounded-lg p-2">
-                    <div>
-                      <p className="text-[#606070]">{t('price')}</p>
-                      <p className="font-medium">${order.price.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('amount')}</p>
-                      <p className="font-medium">{order.amount}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('filled')}</p>
-                      <p className="font-medium">{order.filled}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('total')}</p>
-                      <p className="font-medium">${order.total.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('pnl')}</p>
-                      <p className={`font-medium ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {order.pnl >= 0 ? '+' : ''}${order.pnl.toFixed(2)}
+                    <div className="text-right">
+                      <p className={`text-sm font-semibold ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {order.pnl >= 0 ? '+' : ''}{order.pnl.toFixed(2)} USDT
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-[#606070]">{t('fee')}</p>
-                      <p className="font-medium text-[#9090A0]">${order.fee.toFixed(2)}</p>
+                      {order.pnlPercent !== 0 && (
+                        <p className={`text-[10px] ${order.pnl >= 0 ? 'text-green-400/70' : 'text-red-400/70'}`}>
+                          {order.pnlPercent >= 0 ? '+' : ''}{order.pnlPercent.toFixed(2)}%
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  {/* 时间 */}
-                  <div className="flex items-center gap-1 text-[10px] text-[#606070]">
-                    <Clock className="w-3 h-3" />
-                    <span>{order.time}</span>
+                  {/* 数据行：标签在上，数值在下 */}
+                  <div className="text-[11px] bg-[#0A0A0F]/50 rounded-lg px-2.5 py-2 space-y-2">
+                    {/* 第一行：4列 */}
+                    <div className="grid grid-cols-4 gap-1">
+                      <div>
+                        <p className="text-[#606070] mb-0.5">开仓价格</p>
+                        <p className="font-medium">{order.entryPrice.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070] mb-0.5">平仓均价</p>
+                        <p className="font-medium">{order.closePrice.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#606070] mb-0.5">持仓量</p>
+                        <p className="font-medium">{order.amount}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[#606070] mb-0.5">保证金</p>
+                        <p className="font-medium">{order.margin > 0 ? `${order.margin.toFixed(2)}` : '-'}</p>
+                      </div>
+                    </div>
+                    {/* 第二行：时间 左右各占一半 */}
+                    <div className="flex">
+                      <div className="flex-1">
+                        <p className="text-[#606070] mb-0.5">开仓时间</p>
+                        <p className="text-[#9090A0]">{order.openTime ? new Date(order.openTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</p>
+                      </div>
+                      <div className="flex-1 text-right">
+                        <p className="text-[#606070] mb-0.5">全部平仓时间</p>
+                        <p className="text-[#9090A0]">{order.time ? new Date(order.time).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</p>
+                      </div>
+                    </div>
+                    {/* 策略名 右对齐 */}
+                    {order.strategyName && (
+                      <div className="text-right">
+                        <span className="text-cyan-400 text-[10px]">{order.strategyName}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -635,12 +722,12 @@ export function MobileTradingCenter({
                         }`}>
                           {log.action}
                         </span>
-                        <span className="text-xs text-[#606070]">{log.symbol}</span>
+                        <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
                       </div>
                       <p className="text-xs text-[#9090A0] mb-1">{log.message}</p>
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-[#606070]" />
-                        <span className="text-xs text-[#606070]">{log.time}</span>
+                        <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
                       </div>
                     </div>
                   </div>
@@ -731,63 +818,66 @@ export function MobileTradingCenter({
                 </div>
               ) : (
                 filteredStrategies.map((strategy) => (
-                  <div key={strategy.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-4">
-                    {/* 头部 */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <div className={`w-2 h-2 rounded-full ${
-                            strategy.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'
-                          }`} />
-                          <h3 className="font-medium">{strategy.name}</h3>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            strategy.status === 'running'
-                              ? 'bg-green-400/10 text-green-400'
-                              : 'bg-yellow-400/10 text-yellow-400'
-                          }`}>
-                            {strategy.status === 'running' ? t('runningStatus') : t('pausedStatus')}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${strategyTypeColors[strategy.type]}`}>
-                            {getStrategyTypeLabel(strategy.type, t)}
-                          </span>
+                  <div key={strategy.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
+                    {/* 头部：策略名 + 状态标签 */}
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        strategy.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'
+                      }`} />
+                      <h3 className="font-medium text-sm truncate">{strategy.name}</h3>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${
+                        strategy.status === 'running'
+                          ? 'bg-green-400/10 text-green-400'
+                          : 'bg-yellow-400/10 text-yellow-400'
+                      }`}>
+                        {strategy.status === 'running' ? t('runningStatus') : t('pausedStatus')}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${strategyTypeColors[strategy.type]}`}>
+                        {getStrategyTypeLabel(strategy.type, t)}
+                      </span>
+                    </div>
+
+                    {/* 参数 - 两行三列 */}
+                    <div className="space-y-1.5 text-xs mb-2.5">
+                      {/* 第一行：交易所 + 单笔金额 + 杠杆 */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{strategy.exchange}</p>
                         </div>
-                        <p className="text-xs text-[#9090A0] line-clamp-1">{strategy.description}</p>
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{t('amountPerTradeLabel')}</p>
+                          <p className="font-medium text-cyan-400">
+                            {strategy.config.amountPerTrade ? `$${strategy.config.amountPerTrade}` : '-'}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{t('leverage')}</p>
+                          <p className="font-medium">{strategy.config.leverage}x</p>
+                        </div>
+                      </div>
+                      {/* 第二行：持仓 + 止损 + 止盈 */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{t('positionSize')}</p>
+                          <p className="font-medium">{strategy.config.positionSize}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{t('stopLoss')}</p>
+                          <p className="font-medium text-red-400">{strategy.config.stopLoss}%</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[#606070] text-[10px]">{t('takeProfit')}</p>
+                          <p className="font-medium text-green-400">{strategy.config.takeProfit}%</p>
+                        </div>
                       </div>
                     </div>
 
-                    {/* 配置信息 */}
-                    <div className="flex items-center gap-3 text-xs text-[#606070] mb-3">
-                      <span>{strategy.exchange}</span>
-                      <span>·</span>
-                      <span>{strategy.tradingPairs.join(', ')}</span>
-                    </div>
-
-                    {/* 参数 */}
-                    <div className="grid grid-cols-4 gap-2 text-xs mb-3 p-2 bg-[#0A0A0F]/50 rounded-lg">
-                      <div className="text-center">
-                        <p className="text-[#606070]">{t('leverage')}</p>
-                        <p className="font-medium">{strategy.config.leverage}x</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[#606070]">{t('positionSize')}</p>
-                        <p className="font-medium">{strategy.config.positionSize}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[#606070]">{t('stopLoss')}</p>
-                        <p className="font-medium text-red-400">{strategy.config.stopLoss}%</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-[#606070]">{t('takeProfit')}</p>
-                        <p className="font-medium text-green-400">{strategy.config.takeProfit}%</p>
-                      </div>
-                    </div>
-
-                    {/* 操作按钮 - 统一尺寸，暂停在右边 */}
+                    {/* 操作按钮 */}
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => onEditStrategy?.(strategy.id)}
-                        className="p-2.5 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
+                        className="p-2 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-[#F8F8FC] transition-colors"
                         title={t('editStrategy')}
                       >
                         <Settings className="w-4 h-4" />
@@ -795,7 +885,7 @@ export function MobileTradingCenter({
                       <button
                         type="button"
                         onClick={() => onDeleteStrategy?.(strategy.id)}
-                        className="p-2.5 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-red-400 transition-colors"
+                        className="p-2 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#9090A0] hover:text-red-400 transition-colors"
                         title={t('deleteStrategy')}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -803,7 +893,7 @@ export function MobileTradingCenter({
                       <button
                         type="button"
                         onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 ${
                           strategy.status === 'running'
                             ? 'bg-yellow-400/10 border border-yellow-400/20 text-yellow-400'
                             : 'bg-green-400/10 border border-green-400/20 text-green-400'

@@ -50,18 +50,13 @@ interface IStakingConfig {
   buybackRatio: number;         // 回购销毁比例 (10%)
   platformRatio: number;        // 平台比例 (50%)
 
-  // 质押类型配置
-  typeA: {
+  // 质押配置（单一模式，通过锁定期区分权重）
+  staking: {
     enabled: boolean;
     minAmount: number;          // 最小质押量
-    baseMultiplier: number;     // 基础乘数 (固定 1.0x)
-  };
-  typeB: {
-    enabled: boolean;
-    minAmount: number;
-    minLockDays: number;        // 最小锁定天数
+    minLockDays: number;        // 最小锁定天数（0=可随时赎回）
     maxLockDays: number;        // 最大锁定天数
-    maxMultiplier: number;      // 最大乘数 (3.0x)
+    maxMultiplier: number;      // 最大权重乘数 (3.0x)
   };
 
   // 分红执行
@@ -107,6 +102,8 @@ export const EcosystemConfigPage = () => {
   const [configHistory, setConfigHistory] = useState<IConfigHistory[]>([]);
 
   // 存储加载的配置数据
+  const [ecosystemPageEnabled, setEcosystemPageEnabled] = useState(false);
+  const [ecosystemToggleLoading, setEcosystemToggleLoading] = useState(false);
   const [stakingConfig, setStakingConfig] = useState<IStakingConfig | null>(null);
   const [referralConfig, setReferralConfig] = useState<{
     enabled: boolean;
@@ -120,15 +117,34 @@ export const EcosystemConfigPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [stakingRes, referralRes, statsRes, historyRes] = await Promise.all([
+      const [stakingRes, referralRes, statsRes, historyRes, ecosystemToggleRes] = await Promise.all([
         api.get<{ code: number; data: IStakingConfig }>('/admin/ecosystem/staking/config'),
         api.get<IReferralConfig>('/admin/referral/config'),
         api.get<{ code: number; data: IEcosystemStats }>('/admin/ecosystem/stats'),
         api.get<{ code: number; data: IConfigHistory[] }>('/admin/ecosystem/config-history'),
+        api.get<boolean>('/admin/config/ecosystem_page_enabled').catch(() => false),
       ]);
 
-      // 存储质押配置
-      const sConfig = stakingRes.data || stakingRes;
+      // 设置生态页面开关状态
+      setEcosystemPageEnabled(ecosystemToggleRes === true || String(ecosystemToggleRes) === 'true');
+
+      // 存储质押配置（兼容旧版 typeA/typeB 格式）
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawConfig: any = stakingRes.data || stakingRes;
+      const sConfig: IStakingConfig = {
+        dividendPoolRatio: rawConfig.dividendPoolRatio,
+        buybackRatio: rawConfig.buybackRatio,
+        platformRatio: rawConfig.platformRatio,
+        staking: rawConfig.staking || {
+          enabled: rawConfig.typeA?.enabled ?? rawConfig.typeB?.enabled ?? true,
+          minAmount: rawConfig.typeA?.minAmount ?? rawConfig.typeB?.minAmount ?? 100,
+          minLockDays: rawConfig.typeB?.minLockDays ?? 0,
+          maxLockDays: rawConfig.typeB?.maxLockDays ?? 365,
+          maxMultiplier: rawConfig.typeB?.maxMultiplier ?? 3.0,
+        },
+        dividendCycle: rawConfig.dividendCycle,
+        minDividendAmount: rawConfig.minDividendAmount,
+      };
       setStakingConfig(sConfig);
 
       // 存储返佣配置
@@ -291,6 +307,37 @@ export const EcosystemConfigPage = () => {
         </Button>
       </div>
 
+      {/* 页面显示控制 */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <Typography.Text strong>生态中心页面</Typography.Text>
+            <br />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              关闭后用户端将显示「敬请期待」占位页
+            </Typography.Text>
+          </div>
+          <Switch
+            checked={ecosystemPageEnabled}
+            loading={ecosystemToggleLoading}
+            checkedChildren="已开启"
+            unCheckedChildren="已关闭"
+            onChange={async (checked) => {
+              setEcosystemToggleLoading(true);
+              try {
+                await api.put('/admin/config/ecosystem_page_enabled', { value: checked });
+                setEcosystemPageEnabled(checked);
+                message.success(checked ? '生态中心页面已开启' : '生态中心页面已关闭');
+              } catch {
+                message.error('切换失败');
+              } finally {
+                setEcosystemToggleLoading(false);
+              }
+            }}
+          />
+        </div>
+      </Card>
+
       {/* 统计概览 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
@@ -428,12 +475,18 @@ export const EcosystemConfigPage = () => {
 
               <Divider />
 
-              <Title level={5}>A类质押（活期）</Title>
+              <Title level={5}>HOOT 质押配置</Title>
+              <Alert
+                message="质押权重规则：权重 = min(1 + 锁定天数 / 180, 最大乘数)，锁定天数为 0 时权重固定 1.0x"
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
               <Row gutter={16}>
                 <Col span={8}>
                   <Form.Item
                     label="启用状态"
-                    name={['typeA', 'enabled']}
+                    name={['staking', 'enabled']}
                     valuePropName="checked"
                   >
                     <Switch checkedChildren="启用" unCheckedChildren="禁用" />
@@ -442,7 +495,7 @@ export const EcosystemConfigPage = () => {
                 <Col span={8}>
                   <Form.Item
                     label="最小质押量"
-                    name={['typeA', 'minAmount']}
+                    name={['staking', 'minAmount']}
                     rules={[{ required: true, message: '请输入' }]}
                   >
                     <InputNumber
@@ -454,60 +507,10 @@ export const EcosystemConfigPage = () => {
                 </Col>
                 <Col span={8}>
                   <Form.Item
-                    label="基础乘数"
-                    name={['typeA', 'baseMultiplier']}
-                  >
-                    <InputNumber
-                      disabled
-                      style={{ width: '100%' }}
-                      suffix="x"
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Title level={5}>B类质押（定期）</Title>
-              <Row gutter={16}>
-                <Col span={6}>
-                  <Form.Item
-                    label="启用状态"
-                    name={['typeB', 'enabled']}
-                    valuePropName="checked"
-                  >
-                    <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-                  </Form.Item>
-                </Col>
-                <Col span={6}>
-                  <Form.Item
-                    label="最小质押量"
-                    name={['typeB', 'minAmount']}
+                    label="最大权重乘数"
+                    name={['staking', 'maxMultiplier']}
                     rules={[{ required: true, message: '请输入' }]}
-                  >
-                    <InputNumber
-                      min={0}
-                      style={{ width: '100%' }}
-                      suffix="HOOT"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={6}>
-                  <Form.Item
-                    label="最小锁定天数"
-                    name={['typeB', 'minLockDays']}
-                    rules={[{ required: true, message: '请输入' }]}
-                  >
-                    <InputNumber
-                      min={1}
-                      style={{ width: '100%' }}
-                      suffix="天"
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={6}>
-                  <Form.Item
-                    label="最大乘数"
-                    name={['typeB', 'maxMultiplier']}
-                    rules={[{ required: true, message: '请输入' }]}
+                    extra="锁定时间越长乘数越高"
                   >
                     <InputNumber
                       min={1}
@@ -515,6 +518,35 @@ export const EcosystemConfigPage = () => {
                       precision={1}
                       style={{ width: '100%' }}
                       suffix="x"
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    label="最小锁定天数"
+                    name={['staking', 'minLockDays']}
+                    rules={[{ required: true, message: '请输入' }]}
+                    extra="设为 0 表示可随时赎回"
+                  >
+                    <InputNumber
+                      min={0}
+                      style={{ width: '100%' }}
+                      suffix="天"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    label="最大锁定天数"
+                    name={['staking', 'maxLockDays']}
+                    rules={[{ required: true, message: '请输入' }]}
+                  >
+                    <InputNumber
+                      min={1}
+                      style={{ width: '100%' }}
+                      suffix="天"
                     />
                   </Form.Item>
                 </Col>

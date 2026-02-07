@@ -4,7 +4,6 @@ import { useState } from 'react'
 import {
   Check,
   Crown,
-  Zap,
   Shield,
   TrendingUp,
   Users,
@@ -20,89 +19,54 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+interface MembershipPlan {
+  id: string
+  code: string  // 'monthly' | 'quarterly' | 'yearly'
+  name: string  // '月度会员' | '季度会员' | '年度会员'
+  price: string  // '15' | '36' | '99'
+  durationDays: number  // 30 | 90 | 365
+  originalPrice?: string  // 原价
+  discountPercent?: number | null  // 折扣百分比
+  monthlyPrice: string  // 折合月费
+  maxStrategies: number
+}
+
 interface SubscriptionPageProps {
-  currentTier?: 'basic' | 'premium' | 'pro'
-  currentPeriodEnd?: string
-  onSubscribe?: (tierId: string) => void
-  onCancel?: () => void
+  plans?: MembershipPlan[]
+  currentPlanCode?: string  // 当前套餐code
+  currentPeriodEnd?: string  // 到期日期
+  isMember?: boolean
+  daysRemaining?: number
+  usdtBalance?: string
+  onSubscribe?: (planCode: string) => void  // 改为传planCode
+  isProcessing?: boolean  // 外部控制加载状态
+  isSuccess?: boolean  // 外部控制成功状态
 }
 
 export function SubscriptionPage({
-  currentTier = 'basic',
-  currentPeriodEnd = '2026-02-28',
+  plans = [],
+  currentPlanCode,
+  currentPeriodEnd,
+  isMember = false,
+  daysRemaining = 0,
+  usdtBalance = '0',
   onSubscribe,
-  onCancel
+  isProcessing = false,
+  isSuccess = false
 }: SubscriptionPageProps) {
-  const [isYearly, setIsYearly] = useState(false)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
-  const [selectedPlan, setSelectedPlan] = useState<'basic' | 'premium' | 'pro' | null>(null)
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string | null>(null)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentSuccess, setPaymentSuccess] = useState(false)
 
-  const plans = [
-    {
-      id: 'basic' as const,
-      name: '基础版',
-      nameEn: 'Basic',
-      icon: Shield,
-      gasFee: '22%',
-      price: 0,
-      yearlyPrice: 0,
-      iconBg: 'bg-[#9090A0]/20',
-      iconColor: 'text-[#9090A0]',
-      features: [
-        '基础交易功能',
-        '标准客户支持',
-        '基础市场数据',
-        '社区访问权限',
-        '最多 1 个交易所'
-      ],
-      popular: false
-    },
-    {
-      id: 'premium' as const,
-      name: '高级版',
-      nameEn: 'Premium',
-      icon: Crown,
-      gasFee: '18%',
-      price: 29,
-      yearlyPrice: 24,
-      iconBg: 'bg-[#06B6D4]/20',
-      iconColor: 'text-[#06B6D4]',
-      features: [
-        '降低 Gas 费用 4%',
-        '优先信号推送',
-        '高级图表工具',
-        '优先客户支持',
-        '高级市场分析',
-        '最多 3 个交易所',
-        '自动交易策略'
-      ],
-      popular: true
-    },
-    {
-      id: 'pro' as const,
-      name: '专业版',
-      nameEn: 'Pro',
-      icon: Zap,
-      gasFee: '15%',
-      price: 99,
-      yearlyPrice: 82,
-      iconBg: 'bg-[#F59E0B]/20',
-      iconColor: 'text-[#F59E0B]',
-      features: [
-        '最低 Gas 费用',
-        '实时 VIP 信号',
-        '专属客户经理',
-        '提前功能体验',
-        '无限制 API 调用',
-        '无限交易所连接',
-        '定制交易策略',
-        '机构级数据'
-      ],
-      popular: false
-    }
+  // 会员权益列表（所有套餐功能相同）
+  const memberFeatures = [
+    '10 个策略',
+    '无限交易对',
+    '20 个持仓',
+    'Gas费率 15%',
+    'TradingView 信号接入',
+    'AI 无限解读',
+    '优先客户支持'
   ]
 
   const benefits = [
@@ -142,8 +106,8 @@ export function SubscriptionPage({
       answer: '您可以随时在此页面升级您的订阅计划。升级后，新的费率和功能将立即生效。差价将按剩余天数折算。'
     },
     {
-      question: '年度订阅真的能节省 17% 吗？',
-      answer: '是的，选择年度付费可以享受约 17% 的折扣。例如，高级版年付仅需 $288，相比月付 ($348) 节省 $60。'
+      question: '季度订阅真的能节省吗？',
+      answer: '是的，选择季度或年度付费可以享受折扣。例如，季度会员折合月费更低，年度会员优惠力度最大。'
     },
     {
       question: '可以随时取消订阅吗？',
@@ -151,7 +115,7 @@ export function SubscriptionPage({
     },
     {
       question: 'Gas 费用是如何计算的？',
-      answer: 'Gas 费用是从您的交易盈利中收取的服务费。例如，如果您盈利 $100，18% Gas Fee 意味着平台收取 $18，您获得 $82。'
+      answer: 'Gas 费用是从您的交易盈利中收取的服务费。例如，如果您盈利 $100，15% Gas Fee 意味着平台收取 $15，您获得 $85。'
     },
     {
       question: '支持哪些支付方式？',
@@ -159,52 +123,59 @@ export function SubscriptionPage({
     }
   ]
 
-  const getCurrentPlan = () => plans.find(p => p.id === currentTier)
+  const getCurrentPlan = () => plans.find(p => p.code === currentPlanCode)
 
-  const getButtonText = (planId: string) => {
-    if (planId === currentTier) return '当前计划'
-    const currentIndex = plans.findIndex(p => p.id === currentTier)
-    const planIndex = plans.findIndex(p => p.id === planId)
-    return planIndex > currentIndex ? '立即升级' : '降级'
-  }
-
-  const getPrice = (plan: typeof plans[0]) => {
-    if (plan.price === 0) return '免费'
-    const price = isYearly ? plan.yearlyPrice * 12 : plan.price
-    return `$${price}`
-  }
-
-  const getPriceLabel = (plan: typeof plans[0]) => {
-    if (plan.price === 0) return '永久免费'
-    return isYearly ? '/年' : '/月'
-  }
-
-  const handlePlanSelect = (planId: 'basic' | 'premium' | 'pro') => {
-    if (planId === currentTier) return
-    setSelectedPlan(planId)
+  const handlePlanSelect = (planCode: string) => {
+    if (planCode === currentPlanCode) return
+    setSelectedPlanCode(planCode)
   }
 
   const handleSubscribe = () => {
-    if (!selectedPlan || selectedPlan === currentTier) return
+    if (!selectedPlanCode || selectedPlanCode === currentPlanCode) return
     setShowConfirmModal(true)
   }
 
-  const handleConfirmPayment = async () => {
-    setIsProcessing(true)
-    // 模拟支付处理
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setIsProcessing(false)
-    setPaymentSuccess(true)
-    // 2秒后关闭弹窗
-    setTimeout(() => {
-      setShowConfirmModal(false)
-      setPaymentSuccess(false)
-      onSubscribe?.(selectedPlan!)
-      setSelectedPlan(null)
-    }, 2000)
+  const handleConfirmPayment = () => {
+    if (selectedPlanCode && onSubscribe) {
+      onSubscribe(selectedPlanCode)
+    }
   }
 
-  const getSelectedPlanDetails = () => plans.find(p => p.id === selectedPlan)
+  const getSelectedPlanDetails = () => plans.find(p => p.code === selectedPlanCode)
+
+  // 根据套餐类型返回图标和样式
+  const getPlanStyle = (code: string) => {
+    switch (code) {
+      case 'monthly':
+        return {
+          icon: Shield,
+          iconBg: 'bg-[#9090A0]/20',
+          iconColor: 'text-[#9090A0]',
+          popular: false
+        }
+      case 'quarterly':
+        return {
+          icon: TrendingUp,
+          iconBg: 'bg-[#06B6D4]/20',
+          iconColor: 'text-[#06B6D4]',
+          popular: true
+        }
+      case 'yearly':
+        return {
+          icon: Crown,
+          iconBg: 'bg-[#8B5CF6]/20',
+          iconColor: 'text-[#8B5CF6]',
+          popular: false
+        }
+      default:
+        return {
+          icon: Shield,
+          iconBg: 'bg-[#9090A0]/20',
+          iconColor: 'text-[#9090A0]',
+          popular: false
+        }
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
@@ -234,221 +205,193 @@ export function SubscriptionPage({
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
             <div className="relative z-[2] flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                {(() => {
-                  const plan = getCurrentPlan()
-                  const IconComponent = plan?.icon
-                  return (
-                    <div className={cn(
-                      "w-14 h-14 rounded-xl flex items-center justify-center",
-                      plan?.iconBg
-                    )}>
-                      {IconComponent && (
-                        <IconComponent className={cn("w-7 h-7", plan?.iconColor)} />
-                      )}
+                {isMember && currentPlanCode ? (
+                  (() => {
+                    const plan = getCurrentPlan()
+                    const style = getPlanStyle(currentPlanCode)
+                    const IconComponent = style.icon
+                    return (
+                      <>
+                        <div className={cn(
+                          "w-14 h-14 rounded-xl flex items-center justify-center",
+                          style.iconBg
+                        )}>
+                          <IconComponent className={cn("w-7 h-7", style.iconColor)} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <h3 className="text-xl font-bold">{plan?.name}</h3>
+                            <span className="px-3 py-1 bg-[#06B6D4]/10 border border-[#06B6D4]/30 text-[#06B6D4] text-xs font-medium rounded-full">
+                              当前方案
+                            </span>
+                          </div>
+                          <p className="text-[#9090A0] text-sm mt-1">
+                            有效期至 {currentPeriodEnd} • 剩余 {daysRemaining} 天
+                          </p>
+                        </div>
+                      </>
+                    )
+                  })()
+                ) : (
+                  <>
+                    <div className="w-14 h-14 rounded-xl flex items-center justify-center bg-[#1E1E2E]">
+                      <Shield className="w-7 h-7 text-[#606070]" />
                     </div>
-                  )
-                })()}
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-xl font-bold">{getCurrentPlan()?.name}</h3>
-                    <span className="px-3 py-1 bg-[#06B6D4]/10 border border-[#06B6D4]/30 text-[#06B6D4] text-xs font-medium rounded-full">
-                      当前方案
-                    </span>
-                  </div>
-                  <p className="text-[#9090A0] text-sm mt-1">
-                    {currentTier === 'basic' ? '永不过期' : `有效期至 ${currentPeriodEnd}`}
-                  </p>
-                </div>
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-bold">未订阅</h3>
+                      </div>
+                      <p className="text-[#9090A0] text-sm mt-1">
+                        选择套餐开始您的量化交易之旅
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <div className="text-3xl font-bold text-[#06B6D4]">
-                    {getCurrentPlan()?.gasFee}
+                    {isMember ? '15%' : '22%'}
                   </div>
                   <p className="text-sm text-[#9090A0]">Gas 费率</p>
                 </div>
-                {currentTier !== 'basic' && (
-                  <button
-                    type="button"
-                    onClick={onCancel}
-                    className="text-sm text-[#9090A0] hover:text-red-400 transition-colors underline underline-offset-4"
-                  >
-                    取消订阅
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Billing Toggle */}
-        <div className="flex justify-center mb-10">
-          <div className="inline-flex bg-[#12121A]/80 backdrop-blur-xl border border-[#1E1E2E] rounded-2xl p-1.5">
-            <button
-              type="button"
-              onClick={() => setIsYearly(false)}
-              className={cn(
-                "px-8 py-3 rounded-xl font-medium transition-all",
-                !isYearly
-                  ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white shadow-lg shadow-[#06B6D4]/20'
-                  : 'text-[#9090A0] hover:text-[#F8F8FC]'
-              )}
-            >
-              按月付费
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsYearly(true)}
-              className={cn(
-                "relative px-8 py-3 rounded-xl font-medium transition-all",
-                isYearly
-                  ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white shadow-lg shadow-[#06B6D4]/20'
-                  : 'text-[#9090A0] hover:text-[#F8F8FC]'
-              )}
-            >
-              按年付费
-              <span className="absolute -top-2 -right-2 px-2 py-0.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-medium rounded-full">
-                省17%
-              </span>
-            </button>
-          </div>
-        </div>
-
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 mb-6">
-          {plans.map((plan) => {
-            const Icon = plan.icon
-            const isCurrentPlan = plan.id === currentTier
-            const isSelected = selectedPlan === plan.id
-            const currentIndex = plans.findIndex(p => p.id === currentTier)
-            const planIndex = plans.findIndex(p => p.id === plan.id)
-            const isUpgrade = planIndex > currentIndex
+        {plans.length > 0 && (
+          <div className="grid md:grid-cols-3 gap-6 mb-6">
+            {plans.map((plan) => {
+              const style = getPlanStyle(plan.code)
+              const Icon = style.icon
+              const isCurrentPlan = plan.code === currentPlanCode
+              const isSelected = selectedPlanCode === plan.code
 
-            return (
-              <button
-                key={plan.id}
-                type="button"
-                onClick={() => handlePlanSelect(plan.id)}
-                disabled={isCurrentPlan}
-                className={cn(
-                  "relative backdrop-blur-xl border rounded-2xl p-8 transition-all duration-300 text-left",
-                  plan.popular
-                    ? 'bg-gradient-to-b from-[#06B6D4]/10 to-[#12121A]/80 border-[#06B6D4]/50 shadow-[0_0_60px_rgba(6,182,212,0.15)] scale-[1.02]'
-                    : 'bg-[#12121A]/80 border-[#1E1E2E] hover:border-[#2A2A3A]',
-                  isCurrentPlan && 'ring-2 ring-[#06B6D4]/30 cursor-default',
-                  isSelected && !isCurrentPlan && 'ring-2 ring-[#10B981] border-[#10B981]',
-                  !isCurrentPlan && 'cursor-pointer hover:scale-[1.01]'
-                )}
-              >
-                {/* Popular Badge */}
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <div className="px-4 py-1.5 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white text-sm font-medium rounded-full shadow-lg">
-                      ✨ 推荐选择
-                    </div>
-                  </div>
-                )}
-
-                {/* Plan Header */}
-                <div className="text-center mb-8">
-                  <div className={cn(
-                    "w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center",
-                    plan.popular
-                      ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2]'
-                      : plan.iconBg
-                  )}>
-                    <Icon className={cn(
-                      "w-8 h-8",
-                      plan.popular ? 'text-white' : plan.iconColor
-                    )} />
-                  </div>
-
-                  <h3 className="text-2xl font-bold mb-1">{plan.name}</h3>
-                  <p className="text-sm text-[#606070] mb-4">{plan.nameEn}</p>
-
-                  {/* Gas Fee */}
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1E1E2E] rounded-lg mb-4">
-                    <span className="text-[#9090A0] text-sm">Gas Fee</span>
-                    <span className={cn(
-                      "text-xl font-bold",
-                      plan.id === 'pro' ? 'text-[#F59E0B]' : plan.id === 'premium' ? 'text-[#06B6D4]' : 'text-[#9090A0]'
-                    )}>
-                      {plan.gasFee}
-                    </span>
-                  </div>
-
-                  {/* Price */}
-                  <div>
-                    <span className="text-4xl font-bold">{getPrice(plan)}</span>
-                    <span className="text-[#9090A0] ml-1">{getPriceLabel(plan)}</span>
-                    {isYearly && plan.price > 0 && (
-                      <div className="text-sm text-green-400 mt-2">
-                        每月仅 ${plan.yearlyPrice}，节省 ${(plan.price - plan.yearlyPrice) * 12}/年
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Features */}
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-3">
-                      <Check className={cn(
-                        "w-5 h-5 flex-shrink-0 mt-0.5",
-                        plan.popular ? 'text-[#06B6D4]' : 'text-[#606070]'
-                      )} />
-                      <span className="text-[#F8F8FC] text-sm">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* Status Display */}
-                <div
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => handlePlanSelect(plan.code)}
+                  disabled={isCurrentPlan}
                   className={cn(
-                    "w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2",
-                    isCurrentPlan
-                      ? 'bg-[#1E1E2E] text-[#606070]'
-                      : isSelected
-                        ? 'bg-gradient-to-r from-[#10B981] to-[#059669] text-white'
-                        : plan.popular || isUpgrade
-                          ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white'
-                          : 'bg-[#1E1E2E] text-[#F8F8FC]'
+                    "relative backdrop-blur-xl border rounded-2xl p-8 transition-all duration-300 text-left",
+                    style.popular
+                      ? 'bg-gradient-to-b from-[#06B6D4]/10 to-[#12121A]/80 border-[#06B6D4]/50 shadow-[0_0_60px_rgba(6,182,212,0.15)] scale-[1.02]'
+                      : 'bg-[#12121A]/80 border-[#1E1E2E] hover:border-[#2A2A3A]',
+                    isCurrentPlan && 'ring-2 ring-[#06B6D4]/30 cursor-default',
+                    isSelected && !isCurrentPlan && 'ring-2 ring-[#10B981] border-[#10B981]',
+                    !isCurrentPlan && 'cursor-pointer hover:scale-[1.01]'
                   )}
                 >
-                  {isSelected && !isCurrentPlan && <Check className="w-4 h-4" />}
-                  {isUpgrade && !isCurrentPlan && !isSelected && <Sparkles className="w-4 h-4" />}
-                  {isSelected ? '已选择' : getButtonText(plan.id)}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+                  {/* Popular Badge */}
+                  {style.popular && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                      <div className="px-4 py-1.5 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white text-sm font-medium rounded-full shadow-lg">
+                        ✨ 推荐选择
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Plan Header */}
+                  <div className="text-center mb-8">
+                    <div className={cn(
+                      "w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center",
+                      style.popular
+                        ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2]'
+                        : style.iconBg
+                    )}>
+                      <Icon className={cn(
+                        "w-8 h-8",
+                        style.popular ? 'text-white' : style.iconColor
+                      )} />
+                    </div>
+
+                    <h3 className="text-2xl font-bold mb-1">{plan.name}</h3>
+                    <p className="text-sm text-[#606070] mb-4">{plan.durationDays} 天</p>
+
+                    {/* Price */}
+                    <div>
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-4xl font-bold">${plan.price}</span>
+                        {plan.originalPrice && plan.originalPrice !== plan.price && (
+                          <span className="text-[#606070] line-through text-lg">
+                            ${plan.originalPrice}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-[#9090A0] mt-2">
+                        折合月费 ${plan.monthlyPrice}
+                      </div>
+                      {plan.discountPercent != null && plan.discountPercent > 0 && (
+                        <div className="inline-block mt-2 px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-400 text-xs font-medium rounded-full">
+                          省 {plan.discountPercent}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Features */}
+                  <ul className="space-y-3 mb-8">
+                    {memberFeatures.map((feature, idx) => (
+                      <li key={idx} className="flex items-start gap-3">
+                        <Check className={cn(
+                          "w-5 h-5 flex-shrink-0 mt-0.5",
+                          style.popular ? 'text-[#06B6D4]' : 'text-[#606070]'
+                        )} />
+                        <span className="text-[#F8F8FC] text-sm">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Status Display */}
+                  <div
+                    className={cn(
+                      "w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2",
+                      isCurrentPlan
+                        ? 'bg-[#1E1E2E] text-[#606070]'
+                        : isSelected
+                          ? 'bg-gradient-to-r from-[#10B981] to-[#059669] text-white'
+                          : style.popular
+                            ? 'bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white'
+                            : 'bg-[#1E1E2E] text-[#F8F8FC]'
+                    )}
+                  >
+                    {isSelected && !isCurrentPlan && <Check className="w-4 h-4" />}
+                    {!isCurrentPlan && !isSelected && style.popular && <Sparkles className="w-4 h-4" />}
+                    {isCurrentPlan ? '当前计划' : isSelected ? '已选择' : '选择此方案'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* Confirm Subscribe Button */}
-        {selectedPlan && selectedPlan !== currentTier && (
+        {selectedPlanCode && selectedPlanCode !== currentPlanCode && (
           <div className="mb-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="backdrop-blur-xl bg-[#12121A]/80 border border-[#10B981]/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
               <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   {(() => {
                     const plan = getSelectedPlanDetails()
-                    const IconComponent = plan?.icon
+                    const style = getPlanStyle(plan?.code || '')
+                    const IconComponent = style.icon
                     return (
                       <>
                         <div className={cn(
                           "w-12 h-12 rounded-xl flex items-center justify-center",
-                          plan?.iconBg
+                          style.iconBg
                         )}>
-                          {IconComponent && (
-                            <IconComponent className={cn("w-6 h-6", plan?.iconColor)} />
-                          )}
+                          <IconComponent className={cn("w-6 h-6", style.iconColor)} />
                         </div>
                         <div>
                           <p className="text-[#9090A0] text-sm">已选择方案</p>
                           <div className="flex items-center gap-2">
                             <span className="text-lg font-bold">{plan?.name}</span>
                             <span className="text-[#10B981] font-semibold">
-                              {plan?.price === 0 ? '免费' : `$${isYearly ? plan!.yearlyPrice * 12 : plan?.price}${isYearly ? '/年' : '/月'}`}
+                              ${plan?.price}
                             </span>
                           </div>
                         </div>
@@ -459,7 +402,7 @@ export function SubscriptionPage({
                 <div className="flex items-center gap-3 w-full md:w-auto">
                   <button
                     type="button"
-                    onClick={() => setSelectedPlan(null)}
+                    onClick={() => setSelectedPlanCode(null)}
                     className="flex-1 md:flex-none px-6 py-3 rounded-xl font-medium bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-all"
                   >
                     取消
@@ -546,13 +489,13 @@ export function SubscriptionPage({
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => !isProcessing && !paymentSuccess && setShowConfirmModal(false)}
+            onClick={() => !isProcessing && !isSuccess && setShowConfirmModal(false)}
           />
 
           {/* Modal Content */}
           <div className="relative w-full max-w-md backdrop-blur-xl bg-[#12121A] border border-[#1E1E2E] rounded-2xl shadow-[0_0_60px_rgba(6,182,212,0.15)] animate-in fade-in zoom-in-95 duration-200">
             {/* Close Button */}
-            {!isProcessing && !paymentSuccess && (
+            {!isProcessing && !isSuccess && (
               <button
                 type="button"
                 title="关闭"
@@ -566,14 +509,14 @@ export function SubscriptionPage({
 
             <div className="p-8">
               {/* Success State */}
-              {paymentSuccess ? (
+              {isSuccess ? (
                 <div className="text-center py-8">
                   <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-[#10B981]/20 flex items-center justify-center animate-in zoom-in duration-300">
                     <Check className="w-10 h-10 text-[#10B981]" />
                   </div>
                   <h3 className="text-2xl font-bold mb-2">订阅成功!</h3>
                   <p className="text-[#9090A0]">
-                    您已成功升级到 {getSelectedPlanDetails()?.name}
+                    您已成功订阅 {getSelectedPlanDetails()?.name}
                   </p>
                 </div>
               ) : isProcessing ? (
@@ -601,7 +544,6 @@ export function SubscriptionPage({
                   <div className="bg-[#0A0A0F] rounded-xl p-5 mb-6 space-y-4">
                     {(() => {
                       const plan = getSelectedPlanDetails()
-                      const price = plan?.price === 0 ? 0 : (isYearly ? plan!.yearlyPrice * 12 : plan?.price)
                       return (
                         <>
                           <div className="flex items-center justify-between">
@@ -609,17 +551,21 @@ export function SubscriptionPage({
                             <span className="font-semibold">{plan?.name}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-[#9090A0]">计费周期</span>
-                            <span className="font-semibold">{isYearly ? '按年付费' : '按月付费'}</span>
+                            <span className="text-[#9090A0]">时长</span>
+                            <span className="font-semibold">{plan?.durationDays} 天</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-[#9090A0]">Gas 费率</span>
-                            <span className="font-semibold text-[#06B6D4]">{plan?.gasFee}</span>
+                            <span className="text-[#9090A0]">折合月费</span>
+                            <span className="font-semibold">${plan?.monthlyPrice}/月</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#9090A0]">当前余额</span>
+                            <span className="font-semibold text-[#06B6D4]">${usdtBalance} USDT</span>
                           </div>
                           <div className="border-t border-[#1E1E2E] pt-4 flex items-center justify-between">
                             <span className="text-[#9090A0]">支付金额</span>
                             <span className="text-2xl font-bold text-[#10B981]">
-                              {price === 0 ? '免费' : `$${price}`}
+                              ${plan?.price}
                             </span>
                           </div>
                         </>

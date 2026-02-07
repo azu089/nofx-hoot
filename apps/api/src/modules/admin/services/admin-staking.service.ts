@@ -492,25 +492,19 @@ export class AdminStakingService {
 
   // ==================== 质押配置管理 ====================
 
-  // 默认质押配置
+  // 默认质押配置（单一质押模式，通过锁定期区分权重）
   private readonly defaultStakingConfig = {
     // 收入分配比例
     dividendPoolRatio: 40,
     buybackRatio: 10,
     platformRatio: 50,
-    // A类质押（活期）
-    typeA: {
+    // 质押配置
+    staking: {
       enabled: true,
       minAmount: 1000,
-      baseMultiplier: 1.0,
-    },
-    // B类质押（定期）
-    typeB: {
-      enabled: true,
-      minAmount: 10000,
-      minLockDays: 30,
-      maxLockDays: 365,
-      maxMultiplier: 3.0,
+      minLockDays: 30,       // 最小锁定天数（客户端最低 30 天）
+      maxLockDays: 365,      // 最大锁定天数
+      maxMultiplier: 3.0,    // 最大权重乘数
     },
     // 分红执行
     dividendCycle: 'weekly',
@@ -529,7 +523,21 @@ export class AdminStakingService {
     }
 
     try {
-      return JSON.parse(config.value);
+      const parsed = JSON.parse(config.value);
+      // 兼容旧版 typeA/typeB 格式，自动迁移为新的 staking 格式
+      if (!parsed.staking && (parsed.typeA || parsed.typeB)) {
+        parsed.staking = {
+          enabled: parsed.typeA?.enabled ?? parsed.typeB?.enabled ?? true,
+          minAmount: parsed.typeA?.minAmount ?? parsed.typeB?.minAmount ?? 1000,
+          minLockDays: parsed.typeB?.minLockDays ?? 30,
+          maxLockDays: parsed.typeB?.maxLockDays ?? 365,
+          maxMultiplier: parsed.typeB?.maxMultiplier ?? 3.0,
+        };
+        // 清理旧字段
+        delete parsed.typeA;
+        delete parsed.typeB;
+      }
+      return parsed;
     } catch {
       return this.defaultStakingConfig;
     }
@@ -539,6 +547,9 @@ export class AdminStakingService {
   async updateStakingConfig(data: any, adminId: string) {
     const currentConfig = await this.getStakingConfig();
     const newConfig = { ...currentConfig, ...data };
+    // 清理旧版 typeA/typeB 字段
+    delete newConfig.typeA;
+    delete newConfig.typeB;
 
     // 验证比例总和
     const ratioSum =
@@ -552,6 +563,7 @@ export class AdminStakingService {
     await this.prisma.platformConfig.upsert({
       where: { key: 'staking_config' },
       create: {
+        id: 'staking_config',
         key: 'staking_config',
         value: JSON.stringify(newConfig),
         description: '质押分红配置',

@@ -22,7 +22,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import Image from 'next/image'
-import { useFeaturedStrategies, formatReturn, getRiskDisplay, type Strategy } from '@/hooks/useStrategies'
+import { useFeaturedStrategies, formatReturn, getRiskDisplay } from '@/hooks/useStrategies'
 import { useTranslations } from '@/i18n/provider'
 
 interface LandingPageProps {
@@ -32,38 +32,6 @@ interface LandingPageProps {
   onRegister?: () => void
   onViewStrategies?: () => void
 }
-
-// 轮播图数据
-const carouselSlides = [
-  {
-    type: 'profit',
-    title: '本月收益 +28.5%',
-    subtitle: 'AI趋势策略',
-    description: '连续6个月正收益，最大回撤仅8%',
-    gradient: 'from-emerald-500/20 to-cyan-500/20',
-  },
-  {
-    type: 'security',
-    title: '资金安全有保障',
-    subtitle: '资金存储在你自己的交易所账户',
-    description: 'API无提款权限，银行级加密传输',
-    gradient: 'from-blue-500/20 to-purple-500/20',
-  },
-  {
-    type: 'promo',
-    title: '新用户专属福利',
-    subtitle: '注册即送 $50 体验金',
-    description: '零门槛体验AI量化交易',
-    gradient: 'from-orange-500/20 to-red-500/20',
-  },
-  {
-    type: 'feature',
-    title: '智能交易，自动执行',
-    subtitle: '7x24小时不间断运行',
-    description: '告别盯盘，让AI帮你赚钱',
-    gradient: 'from-cyan-500/20 to-teal-500/20',
-  },
-]
 
 // 默认策略数据（当 API 未返回时使用）
 const defaultStrategies = [
@@ -87,58 +55,6 @@ const defaultStrategies = [
     return30d: '22.4',
     subscriberCount: 1893,
     riskLevel: 'high' as const,
-  },
-]
-
-// 用户评价数据
-const testimonials = [
-  {
-    avatar: '👨‍💼',
-    name: '张**',
-    content: '小白也能用，3个月收益翻倍，终于不用天天盯盘了！',
-    rating: 5,
-  },
-  {
-    avatar: '👩‍💻',
-    name: '李**',
-    content: '策略很稳，回撤控制得好，比自己瞎操作强多了。',
-    rating: 5,
-  },
-  {
-    avatar: '👨‍🎓',
-    name: '王**',
-    content: '客服响应很快，遇到问题都能及时解决，推荐！',
-    rating: 5,
-  },
-  {
-    avatar: '👩‍🔬',
-    name: '陈**',
-    content: '用了半年了，整体收益很满意，打算长期使用。',
-    rating: 5,
-  },
-]
-
-// FAQ数据
-const faqs = [
-  {
-    q: '资金安全吗？',
-    a: '绝对安全。您的资金始终存储在您自己的交易所账户中，我们只通过API进行交易操作，无法提取您的资金。API权限仅限于交易，不包含提款权限。',
-  },
-  {
-    q: '需要编程知识吗？',
-    a: '完全不需要！我们的平台专为非技术用户设计，只需简单几步：注册账号、绑定交易所、选择策略，即可开始自动交易。',
-  },
-  {
-    q: '最低多少钱可以开始？',
-    a: '建议最低 $100 起步，以确保策略有足够的资金进行合理的仓位管理。部分策略可能有更高的最低要求，请查看具体策略说明。',
-  },
-  {
-    q: '收益有保障吗？',
-    a: '投资有风险，我们无法保证收益。但我们的AI策略基于大量历史数据回测，并有严格的风控机制。建议使用闲置资金，分散投资。',
-  },
-  {
-    q: '支持哪些交易所？',
-    a: '目前支持币安(Binance)、OKX、Bybit、Bitget等主流交易所，更多交易所正在接入中。',
   },
 ]
 

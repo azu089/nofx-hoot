@@ -40,9 +40,6 @@ const defaultMockData = {
     totalTrades: 486,
   },
 
-  // 支持的交易对
-  supportedPairs: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'],
-
   // 月度收益
   monthlyReturns: [
     { month: '2025-07', return: 12.5 },
@@ -154,7 +151,7 @@ export function StrategyDetailPage({
             {/* Left Column - Main Content */}
             <div className="col-span-2 space-y-6">
               {/* Quick Stats - 合并为1个卡片 */}
-              <Card className="bg-[#12121A] border-[#1E1E2E]">
+              <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                 <CardContent className="p-4">
                   <div className="grid grid-cols-4 gap-4">
                     <div className="text-center">
@@ -214,7 +211,7 @@ export function StrategyDetailPage({
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   {/* Description */}
-                  <Card className="bg-[#12121A] border-[#1E1E2E]">
+                  <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                     <CardContent className="p-4">
                       <h3 className="font-semibold mb-2">{t('strategyDescription')}</h3>
                       <p className="text-[#9090A0] text-sm leading-relaxed">
@@ -223,22 +220,8 @@ export function StrategyDetailPage({
                     </CardContent>
                   </Card>
 
-                  {/* Supported Pairs */}
-                  <Card className="bg-[#12121A] border-[#1E1E2E]">
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold mb-3">{t('supportedPairs')}</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {strategyData.supportedPairs.map((pair) => (
-                          <span key={pair} className="px-3 py-1.5 rounded-lg bg-[#1E1E2E] text-sm font-mono">
-                            {pair}
-                          </span>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
                   {/* Risk Warning */}
-                  <Card className="bg-[#12121A] border-[#1E1E2E] border-l-4 border-l-[#F59E0B]">
+                  <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] border-l-4 border-l-[#F59E0B]">
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
@@ -257,7 +240,7 @@ export function StrategyDetailPage({
               {activeTab === 'performance' && (
                 <div className="space-y-6">
                   {/* Monthly Returns Chart Placeholder */}
-                  <Card className="bg-[#12121A] border-[#1E1E2E]">
+                  <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                     <CardContent className="p-4">
                       <h3 className="font-semibold mb-4">{t('monthlyReturns')}</h3>
                       <div className="flex items-end gap-2 h-48">
@@ -281,7 +264,7 @@ export function StrategyDetailPage({
                   </Card>
 
                   {/* Detailed Stats */}
-                  <Card className="bg-[#12121A] border-[#1E1E2E]">
+                  <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                     <CardContent className="p-4">
                       <h3 className="font-semibold mb-4">{t('detailedStats')}</h3>
                       <div className="grid grid-cols-2 gap-4">
@@ -316,7 +299,7 @@ export function StrategyDetailPage({
               )}
 
               {activeTab === 'trades' && (
-                <Card className="bg-[#12121A] border-[#1E1E2E]">
+                <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                   <CardContent className="p-0">
                     <table className="w-full">
                       <thead>
@@ -364,7 +347,7 @@ export function StrategyDetailPage({
             {/* Right Column - Use Strategy */}
             <div className="space-y-4">
               {/* Free Badge & Features */}
-              <Card className="bg-[#12121A] border-[#1E1E2E]">
+              <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3 mb-4">
                     <span className="px-3 py-1.5 rounded-full text-sm font-medium bg-[#06B6D4]/20 text-[#06B6D4] border border-[#06B6D4]/30">
@@ -403,7 +386,7 @@ export function StrategyDetailPage({
               </Card>
 
               {/* Quick Info */}
-              <Card className="bg-[#12121A] border-[#1E1E2E]">
+              <Card className="glass-border-glow bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">

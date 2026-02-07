@@ -25,10 +25,10 @@ export class PositionsService {
     private tradingService: TradingService,
   ) {}
 
-  // 获取用户持仓列表
+  // 获取用户持仓列表（仅开仓状态）
   async findAll(userId: string): Promise<PositionListResponse> {
     const positions = await this.prisma.position.findMany({
-      where: { userId },
+      where: { userId, status: 'open' },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -52,6 +52,17 @@ export class PositionsService {
         status: p.status,
         exchangeOrderId: p.exchangeOrderId || undefined,
         createdAt: p.createdAt,
+        // 交易配置
+        tradingType: p.tradingType || 'spot',
+        leverage: p.leverage || 1,
+        margin: p.margin?.toString() || '0',
+        marginMode: p.marginMode || 'cross',
+        // 实时数据（同步自交易所）
+        markPrice: p.markPrice?.toString() || undefined,
+        liquidationPrice: p.liquidationPrice?.toString() || undefined,
+        unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
+        marginRatio: p.marginRatio?.toString() || undefined,
+        lastSyncAt: p.lastSyncAt || undefined,
       };
     });
 
@@ -82,6 +93,17 @@ export class PositionsService {
       status: p.status,
       exchangeOrderId: p.exchangeOrderId || undefined,
       createdAt: p.createdAt,
+      // 交易配置
+      tradingType: p.tradingType || 'spot',
+      leverage: p.leverage || 1,
+      margin: p.margin?.toString() || '0',
+      marginMode: p.marginMode || 'cross',
+      // 实时数据（同步自交易所）
+      markPrice: p.markPrice?.toString() || undefined,
+      liquidationPrice: p.liquidationPrice?.toString() || undefined,
+      unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
+      marginRatio: p.marginRatio?.toString() || undefined,
+      lastSyncAt: p.lastSyncAt || undefined,
     }));
   }
 
@@ -374,22 +396,47 @@ export class PositionsService {
 
     const items: TradeHistoryResponse[] = positions.map((p) => {
       const entryPrice = new Decimal(p.entryPrice.toString());
+      const closePrice = p.closePrice
+        ? new Decimal(p.closePrice.toString())
+        : entryPrice;
       const amount = new Decimal(p.amount.toString());
-      const total = entryPrice.times(amount);
+      const pnl = p.pnl ? new Decimal(p.pnl.toString()) : new Decimal(0);
+
+      // 计算名义价值
+      const margin = p.margin
+        ? new Decimal(p.margin.toString())
+        : new Decimal(0);
+      const leverage = p.leverage || 1;
+      const notional = margin.times(leverage);
+
+      // 计算收益率：PnL / 保证金 * 100%
+      const pnlPercent = margin.gt(0)
+        ? pnl.div(margin).times(100).toFixed(2)
+        : '0';
 
       return {
         id: p.id,
         symbol: p.symbol,
         side: p.side,
         type: 'market', // 目前都是市价单
-        price: p.closePrice?.toString() || p.entryPrice.toString(),
-        amount: p.amount.toString(),
-        total: total.toFixed(2),
-        pnl: p.pnl?.toString() || '0',
+        price: closePrice.toString(), // 保持兼容
+        entryPrice: entryPrice.toString(),
+        closePrice: closePrice.toString(),
+        amount: amount.toString(),
+        total: notional.toFixed(2),
+        pnl: pnl.toString(),
+        pnlPercent,
         fee: '0', // 手续费需要从其他表获取
         status: 'filled',
         closedAt: p.closedAt || p.updatedAt,
         createdAt: p.createdAt,
+        // 交易配置
+        tradingType: p.tradingType || 'futures',
+        leverage: leverage,
+        margin: margin.toString(),
+        marginMode: p.marginMode || 'cross',
+        closeReason: p.closeReason || undefined,
+        strategyName: p.subscription?.strategy?.name || undefined,
       };
     });
 
@@ -422,8 +469,10 @@ export class PositionsService {
 
       if (exec.status === 'success') {
         status = 'success';
-        action = exec.signal.side === 'buy' ? '开多' : '开空';
-        message = `信号触发，已${action} ${exec.executedAmount || '?'} ${exec.signal.symbol}`;
+        action = exec.signal.side === 'buy' ? '开多' : '平仓';
+        message = exec.signal.side === 'buy'
+          ? `信号触发，已开多 ${exec.executedAmount || '?'} ${exec.signal.symbol}`
+          : `信号触发，已平仓 ${exec.executedAmount || '?'} ${exec.signal.symbol}`;
       } else if (exec.status === 'skipped') {
         status = 'warning';
         action = '跳过';
@@ -431,7 +480,7 @@ export class PositionsService {
       } else if (exec.status === 'failed') {
         status = 'error';
         action = '失败';
-        message = exec.errorMessage || '执行失败';
+        message = this.translateExchangeError(exec.errorMessage) || '执行失败';
       } else {
         status = 'warning';
         action = '等待';
@@ -450,6 +499,66 @@ export class PositionsService {
     });
   }
 
+  // 将交易所英文错误消息翻译为中文
+  private translateExchangeError(errorMessage: string | null): string {
+    if (!errorMessage) return '执行失败';
+
+    const msg = errorMessage.toLowerCase();
+
+    // 常见交易所错误翻译映射
+    if (msg.includes('insufficient balance') || msg.includes('insufficient fund')) {
+      return '交易所账户余额不足';
+    }
+    if (msg.includes('not all sent parameters were read')) {
+      return '交易所接口参数错误（已修复）';
+    }
+    if (msg.includes('invalid symbol') || msg.includes('symbol not found')) {
+      return '无效的交易对';
+    }
+    if (msg.includes('order would immediately trigger')) {
+      return '订单会立即触发（价格超出范围）';
+    }
+    if (msg.includes('market is closed') || msg.includes('trading is not active')) {
+      return '市场已关闭，暂停交易';
+    }
+    if (msg.includes('too many request') || msg.includes('rate limit')) {
+      return '请求频率过高，已被限流';
+    }
+    if (msg.includes('api key') || msg.includes('apikey') || msg.includes('invalid key')) {
+      return 'API Key 无效或已过期';
+    }
+    if (msg.includes('signature') || msg.includes('authentication')) {
+      return 'API 签名验证失败';
+    }
+    if (msg.includes('permission') || msg.includes('unauthorized')) {
+      return 'API Key 权限不足';
+    }
+    if (msg.includes('minimum') || msg.includes('min notional') || msg.includes('lot size')) {
+      return '下单数量低于最小限额';
+    }
+    if (msg.includes('maximum') || msg.includes('max')) {
+      return '下单数量超过最大限额';
+    }
+    if (msg.includes('position side does not match')) {
+      return '持仓方向不匹配';
+    }
+    if (msg.includes('reduce only')) {
+      return '仅限减仓操作';
+    }
+    if (msg.includes('leverage') && msg.includes('not valid')) {
+      return '杠杆倍数设置无效';
+    }
+    if (msg.includes('network') || msg.includes('timeout') || msg.includes('econnreset')) {
+      return '网络连接超时，请重试';
+    }
+    if (msg.includes('no position') || msg.includes('position not found')) {
+      return '未找到持仓';
+    }
+
+    // 未匹配的保留原文
+    return errorMessage;
+  }
+
   // 获取盈亏统计
   async getPnlStats(userId: string): Promise<PnlStatsResponse> {
     // 获取所有已平仓的持仓
@@ -465,7 +574,7 @@ export class PositionsService {
       },
     });
 
-    // 获取所有活跃持仓计算未实现盈亏
+    // 获取所有活跃持仓计算未实现盈亏（优先用 unrealizedPnl，兜底用 pnl）
     const openPositions = await this.prisma.position.findMany({
       where: {
         userId,
@@ -473,6 +582,7 @@ export class PositionsService {
       },
       select: {
         pnl: true,
+        unrealizedPnl: true,
       },
     });
 
@@ -515,11 +625,12 @@ export class PositionsService {
       }
     }
 
-    // 计算未实现盈亏
+    // 计算未实现盈亏（优先使用同步的 unrealizedPnl）
     let unrealizedPnl = new Decimal(0);
     for (const pos of openPositions) {
-      if (pos.pnl) {
-        unrealizedPnl = unrealizedPnl.plus(new Decimal(pos.pnl.toString()));
+      const upnl = pos.unrealizedPnl || pos.pnl;
+      if (upnl) {
+        unrealizedPnl = unrealizedPnl.plus(new Decimal(upnl.toString()));
       }
     }
 

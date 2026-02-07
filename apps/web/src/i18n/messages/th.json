@@ -49,6 +49,7 @@
     "termsOfService": "ข้อกำหนดการใช้งาน",
     "privacyPolicy": "นโยบายความเป็นส่วนตัว",
     "and": "และ",
+    "back": "กลับ",
     "emailPlaceholder": "your@email.com",
     "passwordPlaceholder": "••••••••",
     "usernamePlaceholder": "เลือกชื่อผู้ใช้",
@@ -124,12 +125,17 @@
       "support24h": "ซัพพอร์ต 24/7",
       "onlineAlways": "ออนไลน์ตลอด",
       "supportDesc": "ทีมงานมืออาชีพพร้อมตอบทุกคำถาม",
-      "contactSupport": "ติดต่อ"
+      "contactSupport": "ติดต่อ",
+      "flowTitle": "เทรดอัตโนมัติ เริ่มเลย",
+      "flowCta": "เริ่มต้น",
+      "flowStep1": "เชื่อมต่อ API",
+      "flowStep2": "AI กลยุทธ์",
+      "flowStep3": "24 ชม. อัตโนมัติ"
     },
     "quickAccess": {
-      "strategyMarket": "กลยุทธ์",
-      "tradingCenter": "เทรด",
-      "walletAssets": "กระเป๋าเงิน",
+      "exchanges": "ตลาด",
+      "installApp": "ติดตั้ง",
+      "checkin": "เช็คอิน",
       "inviteFriends": "ชวน"
     },
     "defaultAnnouncements": {

@@ -21,6 +21,8 @@ export default function WalletExchangePage() {
       return response.data;
     },
     enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   // 兑换 mutation

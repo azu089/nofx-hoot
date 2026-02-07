@@ -117,18 +117,25 @@ export const StrategyCreate = () => {
       </Form.Item>
 
       <Form.Item
-        label="交易对"
-        name="tradingPair"
-        rules={[{ required: true, message: '请选择交易对' }]}
+        label="支持的交易对"
+        name="tradingPairs"
+        extra="可选。留空则由 Freqtrade 策略配置决定，用户订阅时可从支持的交易对中选择"
       >
         <Select
-          placeholder="选择交易对"
+          mode="multiple"
+          placeholder="留空则继承 Freqtrade 配置（推荐）"
+          allowClear
           options={[
             { label: 'BTC/USDT - 比特币', value: 'BTC/USDT' },
             { label: 'ETH/USDT - 以太坊', value: 'ETH/USDT' },
             { label: 'SOL/USDT - Solana', value: 'SOL/USDT' },
             { label: 'BNB/USDT - 币安币', value: 'BNB/USDT' },
             { label: 'XRP/USDT - 瑞波币', value: 'XRP/USDT' },
+            { label: 'DOGE/USDT - 狗狗币', value: 'DOGE/USDT' },
+            { label: 'ADA/USDT - 艾达币', value: 'ADA/USDT' },
+            { label: 'AVAX/USDT - 雪崩', value: 'AVAX/USDT' },
+            { label: 'LINK/USDT - Chainlink', value: 'LINK/USDT' },
+            { label: 'DOT/USDT - 波卡', value: 'DOT/USDT' },
           ]}
         />
       </Form.Item>
