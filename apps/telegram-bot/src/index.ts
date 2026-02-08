@@ -40,13 +40,13 @@ import {
   getTradeLogs,
 } from './utils/api';
 
-// 空投奖励配置（与后端保持一致）
+// 空投奖励配置 v4（与后端 airdrop.dto.ts 保持一致）
 const AIRDROP_REWARDS = {
-  register: 50,
-  invite: 50,
-  tradingMultiplier: 5,
-  checkinMin: 5,
-  checkinMax: 30,
+  register: 20,       // 注册 +20 HOOT
+  invite: 15,         // 邀请 +15 HOOT（需被邀请人首次订阅策略后才发放）
+  tradingMultiplier: 2, // 盈利 × 2 HOOT
+  checkinMin: 2,      // 签到基础 2 HOOT
+  checkinMax: 8,      // 签到最大 8 HOOT
 };
 
 // Session 类型
@@ -99,6 +99,8 @@ bot.use(
 function getMainMenu(lang: Language) {
   const msg = getLocale(lang);
   return new InlineKeyboard()
+    .webApp(lang === 'zh' ? '🌐 打开 HOOT App' : '🌐 Open HOOT App', WEB_APP_URL + '/dashboard')
+    .row()
     .text(msg.menu.wallet, 'menu_wallet')
     .text(msg.menu.trade, 'menu_trade')
     .row()
@@ -296,8 +298,32 @@ bot.command('start', async (ctx) => {
       const hoot = parseFloat(result.user.hootBalance || '0').toFixed(0);
       const point = parseFloat(result.user.pointBalance || '0').toFixed(2);
 
+      // 并行获取交易状态数据（不阻塞主流程）
+      const [posResult, earningsResult, subsResult] = await Promise.allSettled([
+        getPositionsByTelegramId(telegramId),
+        getEarningsByTelegramId(telegramId),
+        getMySubscriptions(telegramId),
+      ]);
+
+      const positions = posResult.status === 'fulfilled' ? posResult.value : [];
+      const earnings = earningsResult.status === 'fulfilled' ? earningsResult.value : null;
+      const subscriptions = subsResult.status === 'fulfilled' ? subsResult.value : [];
+
+      const posCount = positions.length;
+      const activeCount = subscriptions.filter(s => s.isActive).length;
+      const todayPnl = parseFloat(earnings?.todayPnl || '0');
+      const pnlSign = todayPnl >= 0 ? '+' : '';
+      const pnlEmoji = todayPnl >= 0 ? '📈' : '📉';
+      const pnlLabel = lang === 'zh' ? '今日盈亏' : "Today's PnL";
+      const todayPnlStr = `${pnlEmoji} ${pnlLabel}: <b>${pnlSign}${todayPnl.toFixed(2)} USDT</b>`;
+
       await ctx.reply(
-        t(msg.start.welcomeBack, { nickname, usdt, hoot, point }),
+        t(msg.start.welcomeBack, {
+          nickname, usdt, hoot, point,
+          todayPnl: todayPnlStr,
+          strategies: activeCount,
+          positions: posCount,
+        }),
         {
           parse_mode: 'HTML',
           reply_markup: getMainMenu(lang),
@@ -586,7 +612,10 @@ bot.callbackQuery('menu_wallet', async (ctx) => {
 
   try {
     const message = await buildWalletMessage(telegramId, ctx.from?.username, msg);
-    await ctx.reply(message, { parse_mode: 'HTML' });
+    const lang = getUserLang(ctx);
+    const walletAppBtn = new InlineKeyboard()
+      .webApp(lang === 'zh' ? '💰 充值/提现' : '💰 Deposit/Withdraw', WEB_APP_URL + '/wallet');
+    await ctx.reply(message, { parse_mode: 'HTML', reply_markup: walletAppBtn });
   } catch (error) {
     console.error('钱包查询失败:', error);
     await ctx.reply(msg.wallet.failed);

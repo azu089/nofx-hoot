@@ -12,8 +12,8 @@ import {
 export const SUPPORTED_ASSETS = ['USDT', 'HOOT'] as const;
 export type SupportedAsset = (typeof SUPPORTED_ASSETS)[number];
 
-// 支持的链
-export const SUPPORTED_CHAINS = ['BSC', 'ETH', 'TRC20'] as const;
+// 支持的链（BSC/ETH/POLYGON 为 EVM 链，TRON 为非 EVM 链）
+export const SUPPORTED_CHAINS = ['BSC', 'ETH', 'POLYGON', 'TRON'] as const;
 export type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
 
 // 余额响应
@@ -84,6 +84,19 @@ export class WithdrawRequestResponse {
   status: string;
   txHash?: string;
   createdAt: Date;
+}
+
+// 充值地址请求 DTO
+export class GetDepositAddressDto {
+  @IsIn(SUPPORTED_CHAINS, { message: '不支持的链' })
+  chain: SupportedChain;
+
+  @IsIn(SUPPORTED_ASSETS, { message: '不支持的资产类型' })
+  asset: SupportedAsset;
+
+  @IsOptional()
+  @IsString()
+  refresh?: string;
 }
 
 // 充值地址响应

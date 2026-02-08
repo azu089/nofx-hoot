@@ -40,6 +40,21 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   // 获取真实数据
   const { data, isLoading } = useHomepageData()
 
+  // 新闻来源图标颜色映射
+  const getSourceColor = (source: string): string => {
+    const colorMap: Record<string, string> = {
+      'CoinDesk': '#F7931A',
+      'The Block': '#6366F1',
+      'Bloomberg': '#2563EB',
+      'Reuters': '#FF6600',
+      'Decrypt': '#8B5CF6',
+      'DeFi Llama': '#22C55E',
+      'CoinTelegraph': '#06B6D4',
+      'Messari': '#3B82F6',
+    }
+    return colorMap[source] || '#' + Math.abs(source.split('').reduce((a, c) => a + c.charCodeAt(0) * 37, 0) % 0xFFFFFF).toString(16).padStart(6, '0')
+  }
+
   // 默认数据（当 API 未返回时使用）
   const defaultMarketData: CoinPrice[] = [
     { symbol: 'BTC', name: 'Bitcoin', price: 105230, change24h: 2.35 },
@@ -406,6 +421,12 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                                 {tag}
                               </span>
                             )}
+                            <span
+                              className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                              style={{ backgroundColor: getSourceColor(news.source) }}
+                            >
+                              {news.source.charAt(0)}
+                            </span>
                             <span className="text-[10px] text-[#606070]">{news.source}</span>
                             <span className="text-[10px] text-[#606070]">·</span>
                             <span className="text-[10px] text-[#606070]">{formatTimeAgo(news.publishedAt)}</span>

@@ -107,12 +107,12 @@ export interface TaskItem {
 
 // 静态备用任务列表（API 不可用时显示）
 const FALLBACK_TASKS: TaskItem[] = [
-  { id: 'register', label: '注册奖励', description: '注册即送', reward: '50 HOOT', rewardAmount: 50, status: 'completed' },
+  { id: 'register', label: '注册奖励', description: '注册即送', reward: '20 HOOT', rewardAmount: 20, status: 'completed' },
   { id: 'bind_tg', label: '绑定 Telegram', description: '绑定 TG 账号', reward: '10 HOOT', rewardAmount: 10, status: 'incomplete', actionUrl: '/profile' },
   { id: 'bind_wallet', label: '绑定钱包', description: '绑定 Web3 钱包', reward: '10 HOOT', rewardAmount: 10, status: 'incomplete', actionUrl: '/profile' },
-  { id: 'bind_email', label: '绑定邮箱', description: '绑定并验证邮箱', reward: '15 HOOT', rewardAmount: 15, status: 'incomplete', actionUrl: '/profile' },
-  { id: 'referral', label: '邀请好友', description: '邀请越多赚越多', reward: '25 HOOT/人', rewardAmount: 25, status: 'repeatable', claimedAmount: '0', claimedCount: 0, actionUrl: '/referral' },
-  { id: 'trading_profit', label: '盈利交易', description: '盈利交易额的3倍HOOT', reward: '3x 倍数', rewardAmount: 3, status: 'repeatable', claimedAmount: '0', claimedCount: 0, actionUrl: '/trading' },
+  { id: 'bind_email', label: '绑定邮箱', description: '绑定并验证邮箱', reward: '10 HOOT', rewardAmount: 10, status: 'incomplete', actionUrl: '/profile' },
+  { id: 'referral', label: '邀请好友', description: '首次交易后发放', reward: '15 HOOT/人', rewardAmount: 15, status: 'repeatable', claimedAmount: '0', claimedCount: 0, actionUrl: '/referral' },
+  { id: 'trading_profit', label: '盈利交易', description: '盈利交易额的2倍HOOT', reward: '2x 倍数', rewardAmount: 2, status: 'repeatable', claimedAmount: '0', claimedCount: 0, actionUrl: '/trading' },
 ]
 
 // 获取任务列表

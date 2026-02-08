@@ -47,21 +47,9 @@ interface MobileReferralPageProps {
   leaderboard?: LeaderboardUser[]
 }
 
-const defaultReferrals: Referral[] = [
-  { id: '1', username: 'alice***123', joinDate: '2024-01-15', status: 'Active', earnings: 45.67, level: 1 },
-  { id: '2', username: 'bob***456', joinDate: '2024-01-12', status: 'Active', earnings: 32.10, level: 1 },
-  { id: '3', username: 'charlie***789', joinDate: '2024-01-08', status: 'Inactive', earnings: 18.45, level: 2 },
-  { id: '4', username: 'david***012', joinDate: '2024-01-05', status: 'Active', earnings: 67.89, level: 1 },
-  { id: '5', username: 'eve***345', joinDate: '2024-01-02', status: 'Active', earnings: 23.45, level: 2 }
-]
+const defaultReferrals: Referral[] = []
 
-const defaultLeaderboard: LeaderboardUser[] = [
-  { rank: 1, username: 'user***123', referrals: 156, earnings: 5432.10 },
-  { rank: 2, username: 'crypto***456', referrals: 134, earnings: 4321.87 },
-  { rank: 3, username: 'trader***789', referrals: 98, earnings: 3210.65 },
-  { rank: 4, username: 'moon***012', referrals: 87, earnings: 2987.43 },
-  { rank: 5, username: 'hodl***345', referrals: 76, earnings: 2654.21 }
-]
+const defaultLeaderboard: LeaderboardUser[] = []
 
 export function MobileReferralPage({
   onBack,
@@ -84,7 +72,7 @@ export function MobileReferralPage({
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
-  const referralLink = `https://hoot.trade/invite/${referralCode}`
+  const referralLink = typeof window !== 'undefined' ? `${window.location.origin}/register?ref=${referralCode}` : `https://hoot.trade/register?ref=${referralCode}`
 
   // 筛选后的数据
   const filteredReferrals = useMemo(() => {

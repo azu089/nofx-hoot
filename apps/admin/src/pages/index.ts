@@ -71,6 +71,10 @@ export { FaqList } from './content/faq';
 // ==================== 用户统计 ====================
 export { UserStatsPage } from './stats/users';
 
+// ==================== 区块链管理 ====================
+export { BlockchainStatusPage } from './blockchain/status';
+export { SweepPage } from './blockchain/sweep';
+
 // ==================== 系统管理 ====================
 // 设置
 export { SettingsPage } from './settings';

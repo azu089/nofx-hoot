@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { useState, ReactNode } from 'react';
 import { AuthProvider } from './auth';
+import { TelegramProvider } from './telegram-provider';
 import { ThemeProvider } from './theme';
 import { config } from './wagmi';
 import { LocaleProvider } from '@/i18n/provider';
@@ -32,8 +33,10 @@ export function Providers({ children }: { children: ReactNode }) {
         <LocaleProvider>
           <ThemeProvider>
             <AuthProvider>
-              {children}
-              <Toaster position="top-center" richColors closeButton />
+              <TelegramProvider>
+                {children}
+                <Toaster position="top-center" richColors closeButton />
+              </TelegramProvider>
             </AuthProvider>
           </ThemeProvider>
         </LocaleProvider>

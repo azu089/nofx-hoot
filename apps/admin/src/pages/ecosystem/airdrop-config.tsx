@@ -87,28 +87,29 @@ interface IConfigHistory {
 }
 
 // 默认配置
+// v4 反薅羊毛参数（与后端 airdrop.dto.ts 一致）
 const DEFAULT_REWARDS: IAirdropRewards = {
-  register: 50,
+  register: 20,
   bind_tg: 10,
   bind_wallet: 10,
-  bind_email: 15,
-  referral: 25,
-  trading_profit: 3,
-  checkin: { base: 5, max: 20, increment: 1 },
+  bind_email: 10,
+  referral: 15,
+  trading_profit: 2,
+  checkin: { base: 2, max: 8, increment: 2 },
 };
 
 const DEFAULT_CAPS: IAirdropCaps = {
-  checkinDailyCap: 20,
-  checkinLifetimeCap: 5000,
-  tradingProfitDailyCap: 1000,
-  tradingProfitLifetimeCap: 100000,
-  referralDailyCap: 500,
-  referralLifetimeCap: 50000,
+  checkinDailyCap: 8,
+  checkinLifetimeCap: 200,
+  tradingProfitDailyCap: 30,
+  tradingProfitLifetimeCap: 500,
+  referralDailyCap: 150,
+  referralLifetimeCap: 1000,
 };
 
 const DEFAULT_VESTING: IVestingConfig = {
   defaultDays: 90,
-  minDays: 30,
+  minDays: 90,
   minWithdrawAmount: 100,
   withdrawFeeRate: 0.05,
 };

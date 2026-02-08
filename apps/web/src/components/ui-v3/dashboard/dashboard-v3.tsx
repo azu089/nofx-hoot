@@ -316,6 +316,21 @@ function MarketTabs({ prices, news, isLoading }: {
   const marketData = prices && prices.length > 0 ? prices : defaultMarketData
   const newsData = news && news.length > 0 ? news : defaultNewsData
 
+  // 新闻来源图标颜色映射
+  const getSourceColor = (source: string): string => {
+    const colorMap: Record<string, string> = {
+      'CoinDesk': '#F7931A',
+      'The Block': '#6366F1',
+      'Bloomberg': '#2563EB',
+      'Reuters': '#FF6600',
+      'Decrypt': '#8B5CF6',
+      'DeFi Llama': '#22C55E',
+      'CoinTelegraph': '#06B6D4',
+      'Messari': '#3B82F6',
+    }
+    return colorMap[source] || '#' + Math.abs(source.split('').reduce((a, c) => a + c.charCodeAt(0) * 37, 0) % 0xFFFFFF).toString(16).padStart(6, '0')
+  }
+
   return (
     <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
       <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
@@ -417,6 +432,12 @@ function MarketTabs({ prices, news, isLoading }: {
                             {tag}
                           </span>
                         )}
+                        <span
+                          className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                          style={{ backgroundColor: getSourceColor(item.source) }}
+                        >
+                          {item.source.charAt(0)}
+                        </span>
                         <span className="text-xs text-[#606070]">{item.source}</span>
                         <span className="text-xs text-[#606070]">·</span>
                         <span className="text-xs text-[#606070]">{formatTimeAgo(item.publishedAt)}</span>

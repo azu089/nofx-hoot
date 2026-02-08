@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { LegalPage } from '@/components/ui-v3/legal/legal-page';
 import { MobileLegalPage } from '@/components/ui-v3/mobile/mobile-legal-page';
 
@@ -12,16 +11,6 @@ export default function LegalPageRoute() {
   const router = useRouter();
   const params = useParams();
   const slug = params.slug as string;
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   const handleBack = () => {
     router.back();
@@ -46,12 +35,22 @@ export default function LegalPageRoute() {
     );
   }
 
-  const PageComponent = isMobile ? MobileLegalPage : LegalPage;
-
   return (
-    <PageComponent
-      slug={slug as 'terms' | 'privacy' | 'risk'}
-      onBack={handleBack}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <LegalPage
+          slug={slug as 'terms' | 'privacy' | 'risk'}
+          onBack={handleBack}
+        />
+      </div>
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileLegalPage
+          slug={slug as 'terms' | 'privacy' | 'risk'}
+          onBack={handleBack}
+        />
+      </div>
+    </>
   );
 }

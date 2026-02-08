@@ -11,7 +11,13 @@ import { ReferralModule } from '../referral/referral.module';
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-jwt-secret-key',
+      secret: (() => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret && process.env.NODE_ENV === 'production') {
+          throw new Error('JWT_SECRET 环境变量未设置，生产环境不允许使用默认值');
+        }
+        return secret || 'dev-only-jwt-secret-do-not-use-in-production';
+      })(),
       signOptions: { expiresIn: '7d' },
     }),
     forwardRef(() => AirdropModule),

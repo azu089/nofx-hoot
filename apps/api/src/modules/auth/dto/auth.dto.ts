@@ -41,6 +41,9 @@ export class LoginResponse {
     nickname?: string | null;
     walletAddress?: string | null;
     telegramId?: string | null;
+    usdtBalance?: string;
+    hootBalance?: string;
+    pointBalance?: string;
   };
   isNewUser?: boolean; // 新注册用户标识
 }

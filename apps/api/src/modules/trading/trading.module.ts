@@ -10,6 +10,8 @@ import { TradeProcessor } from './processors/trade.processor';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SignalsModule } from '../signals/signals.module';
+import { ReferralModule } from '../referral/referral.module';
+import { AirdropModule } from '../airdrop/airdrop.module';
 
 // 配置管理服务
 import { TradingConfigService } from './config/config.service';
@@ -32,6 +34,8 @@ import { PositionSyncService } from './position-sync.service';
     ApiKeysModule,
     forwardRef(() => NotificationsModule),
     forwardRef(() => SignalsModule),
+    ReferralModule,
+    AirdropModule,
   ],
   controllers: [PositionsController],
   providers: [

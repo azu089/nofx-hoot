@@ -399,6 +399,10 @@ model Position {
 
   dcaLogs DcaLog[]
 
+  @@index([userId, status])
+  @@index([userId, symbol, status])
+  @@index([subscriptionId, status])
+  @@index([signalId])
   @@map("positions")
 }
 
@@ -412,6 +416,7 @@ model Transaction {
 
   type   String // deposit, withdraw, fee, reward, referral
   asset  String // USDT, HOOT
+  chain  String? // BSC, ETH, POLYGON, TRON（充值/提现记录的链标识）
   amount Decimal @db.Decimal(18, 8)
 
   // 幂等性：唯一订单号
@@ -428,20 +433,23 @@ model Transaction {
   @@map("transactions")
 }
 
-// 充值地址
+// 充值地址（HD 钱包派生，每次充值生成新地址）
 model DepositAddress {
   id     String @id @default(uuid())
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  chain   String // BSC, ETH, TRC20
-  asset   String // USDT, HOOT
-  address String
+  chain           String // BSC, ETH, TRC20
+  asset           String // USDT, HOOT
+  address         String @unique // 每个派生地址全局唯一
+  derivationIndex Int    @default(-1) @map("derivation_index") // HD 派生索引，-1 表示旧数据/模拟地址
 
   isActive  Boolean  @default(true) @map("is_active")
+  isCurrent Boolean  @default(true) @map("is_current") // 是否为当前展示地址
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@unique([userId, chain, asset])
+  @@index([userId, chain, asset])
+  @@index([address])
   @@map("deposit_addresses")
 }
 
@@ -458,8 +466,13 @@ model WithdrawRequest {
   address String // 提现目标地址
 
   status    String  @default("pending") // pending, approved, rejected, completed
-  txHash    String? @map("tx_hash")
+  txHash    String? @map("tx_hash")     // 最终到用户的交易 hash（中继→用户）
   remark    String?
+
+  // 中继钱包（隐藏热钱包地址）
+  relayAddress String? @map("relay_address") // 中继地址
+  relayIndex   Int?    @map("relay_index")   // HD 派生索引 (account=1 路径)
+  fundingTxHash String? @map("funding_tx_hash") // 热钱包→中继的资金 hash
 
   processedAt DateTime? @map("processed_at")
   reviewedBy  String?   @map("reviewed_by")
@@ -468,6 +481,7 @@ model WithdrawRequest {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([relayIndex], map: "withdraw_requests_relay_index_unique") // 防止并发分配相同中继地址
   @@index([userId, status])
   @@map("withdraw_requests")
 }
@@ -605,8 +619,8 @@ model BillingLog {
   id     String @id @default(uuid())
   userId String @map("user_id")
 
-  type   String // GAS_FEE, SUBSCRIPTION, WITHDRAW_FEE
-  amount String // 使用字符串存储，避免精度问题
+  type   String // GAS_FEE, SUBSCRIPTION, WITHDRAW_FEE, MEMBERSHIP
+  amount Decimal @db.Decimal(18, 8) // 计费金额
   status String @default("completed") // pending, completed, failed
 
   // 幂等性：唯一订单号

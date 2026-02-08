@@ -1,10 +1,12 @@
-import { Controller, Post, Get, Body, Param, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Delete, Req, UseGuards } from '@nestjs/common';
+import { TelegramBotGuard } from '../../common/guards/telegram-bot.guard';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import {
   BindTelegramDto,
   TelegramLoginDto,
+  TelegramWebAppLoginDto,
   GetWalletNonceDto,
   WalletLoginDto,
   BindEmailDto,
@@ -29,8 +31,8 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Req() req: any) {
+    return this.authService.login(dto, req.ip);
   }
 
   // 获取当前用户信息 - 需要认证
@@ -64,15 +66,17 @@ export class AuthController {
     return this.authService.generateBindCode(user.id);
   }
 
-  // 绑定 Telegram - 公开接口（TG Bot 调用）
+  // 绑定 Telegram - TG Bot 专用（需验证 Bot 密钥）
   @Public()
+  @UseGuards(TelegramBotGuard)
   @Post('bind-telegram')
   async bindTelegram(@Body() dto: BindTelegramDto) {
     return this.authService.bindTelegram(dto);
   }
 
-  // 通过 Telegram ID 获取用户 - 公开接口（TG Bot 调用）
+  // 通过 Telegram ID 获取用户 - TG Bot 专用（需验证 Bot 密钥）
   @Public()
+  @UseGuards(TelegramBotGuard)
   @Get('telegram/:telegramId')
   async getUserByTelegramId(@Param('telegramId') telegramId: string) {
     return this.authService.getUserByTelegramId(telegramId);
@@ -87,11 +91,20 @@ export class AuthController {
 
   // ===== Telegram 自动登录 =====
 
-  // TG 自动登录 - 公开接口（TG Bot 调用）
+  // TG 自动登录 - TG Bot 专用（需验证 Bot 密钥）
   @Public()
+  @UseGuards(TelegramBotGuard)
   @Post('telegram/login')
   async loginByTelegram(@Body() dto: TelegramLoginDto) {
     return this.authService.loginByTelegram(dto);
+  }
+
+  // TG WebApp 登录 - Mini App 前端调用（通过 initData 验签，无需 Bot 密钥）
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('telegram/webapp-login')
+  async loginByWebApp(@Body() dto: TelegramWebAppLoginDto) {
+    return this.authService.loginByWebApp(dto.initData);
   }
 
   // ===== 钱包登录 =====

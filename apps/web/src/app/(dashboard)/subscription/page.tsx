@@ -127,6 +127,7 @@ export default function SubscriptionPageRoute() {
         <MobileSubscriptionPage
           plans={plans}
           currentPlanCode={currentPlanCode}
+          currentPeriodEnd={currentPeriodEnd}
           isMember={membershipStatus?.isMember || false}
           daysRemaining={membershipStatus?.currentPlan?.daysRemaining}
           usdtBalance={walletBalance?.usdtBalance}

@@ -30,7 +30,13 @@ import { TranslateService } from '../../common/services/translate.service';
     StakingModule,
     TradingModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'hoot-admin-secret-key-2026',
+      secret: (() => {
+        const secret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
+        if (!secret && process.env.NODE_ENV === 'production') {
+          throw new Error('ADMIN_JWT_SECRET 环境变量未设置');
+        }
+        return secret || 'dev-only-admin-jwt-secret-do-not-use-in-production';
+      })(),
       signOptions: { expiresIn: '24h' } as const,
     }),
   ],

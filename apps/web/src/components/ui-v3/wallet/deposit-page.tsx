@@ -13,6 +13,7 @@ import {
   Shield,
   Wallet
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 // Sidebar is handled by parent layout
 
 interface Network {
@@ -29,6 +30,7 @@ interface Network {
 interface DepositPageProps {
   walletAddress?: string
   networks?: Network[]
+  selectedNetworkName?: string  // 外部控制当前选中网络（如 'BEP20'）
   recentDeposits?: {
     id: string
     amount: number
@@ -39,6 +41,7 @@ interface DepositPageProps {
   }[]
   balance?: number  // 账户余额
   onCopyAddress?: () => void
+  onNetworkChange?: (networkName: string) => void
 }
 
 const defaultNetworks: Network[] = [
@@ -56,11 +59,17 @@ const defaultRecentDeposits = [
 export function DepositPage({
   walletAddress = 'TYDzsYUEpvnYmQk4zGP9sWWcTEd2MiAtW6',
   networks = defaultNetworks,
+  selectedNetworkName,
   recentDeposits = defaultRecentDeposits,
   balance = 0,
-  onCopyAddress
+  onCopyAddress,
+  onNetworkChange
 }: DepositPageProps) {
-  const [selectedNetwork, setSelectedNetwork] = useState(networks[0])
+  // 如果外部传入 selectedNetworkName，同步内部状态
+  const initialNetwork = selectedNetworkName
+    ? networks.find(n => n.name === selectedNetworkName) || networks[0]
+    : networks[0]
+  const [selectedNetwork, setSelectedNetwork] = useState(initialNetwork)
   const [showNetworkDropdown, setShowNetworkDropdown] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
@@ -144,6 +153,7 @@ export function DepositPage({
                           onClick={() => {
                             setSelectedNetwork(network)
                             setShowNetworkDropdown(false)
+                            onNetworkChange?.(network.name)
                           }}
                           className={`w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0 ${
                             selectedNetwork.id === network.id ? 'bg-[#252530]' : ''
@@ -192,11 +202,15 @@ export function DepositPage({
                   </button>
                 </div>
 
-                {showQR && (
+                {showQR && walletAddress && (
                   <div className="mt-4 flex justify-center p-6 bg-white rounded-xl">
-                    <div className="w-48 h-48 bg-[#f0f0f0] rounded-lg flex items-center justify-center">
-                      <QrCode className="w-32 h-32 text-gray-400" />
-                    </div>
+                    <QRCodeSVG
+                      value={walletAddress}
+                      size={192}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                      level="M"
+                    />
                   </div>
                 )}
 

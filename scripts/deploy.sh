@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 check_env() {
     echo "📋 检查环境变量..."
 
-    required_vars=("DB_PASSWORD" "JWT_SECRET" "ENCRYPTION_KEY" "WEBHOOK_SECRET")
+    required_vars=("DB_PASSWORD" "JWT_SECRET" "ENCRYPTION_KEY" "WEBHOOK_SECRET" "REDIS_PASSWORD" "FT_API_PASSWORD" "FT_JWT_SECRET" "FT_JWT_SECRET_OWL")
     missing_vars=()
 
     for var in "${required_vars[@]}"; do
@@ -125,14 +125,18 @@ show_status() {
     docker compose -f docker-compose.prod.yml ps
     echo ""
     echo "🔗 访问地址:"
-    echo "  - Web: http://localhost:3001"
-    echo "  - API: http://localhost:4001/api"
-    echo "  - 健康检查: http://localhost:4001/api/health"
+    echo "  - Web: https://hoot.cool"
+    echo "  - API: https://api.hoot.cool"
+    echo "  - 健康检查: https://api.hoot.cool/api/health"
+    echo "  - 内部 Web: http://localhost:3001"
+    echo "  - 内部 API: http://localhost:4001/api"
     echo ""
     echo "📝 查看日志:"
     echo "  - API: docker logs -f hoot-api"
     echo "  - Web: docker logs -f hoot-web"
     echo "  - Bot: docker logs -f hoot-telegram-bot"
+    echo "  - Freqtrade Test: docker logs -f hoot-freqtrade-test"
+    echo "  - Freqtrade Owl: docker logs -f hoot-freqtrade-owl"
 }
 
 # 配置定时任务

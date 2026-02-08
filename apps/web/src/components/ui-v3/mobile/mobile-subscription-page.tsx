@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Shield, Crown, TrendingUp, Check, ArrowLeft, Loader2, Wallet, X } from 'lucide-react'
+import { Shield, Crown, TrendingUp, Check, ArrowLeft, Loader2, Wallet, X, Star, Users, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface MembershipPlan {
   id: string
@@ -18,6 +18,7 @@ interface MembershipPlan {
 interface MobileSubscriptionPageProps {
   plans?: MembershipPlan[]
   currentPlanCode?: string
+  currentPeriodEnd?: string
   isMember?: boolean
   daysRemaining?: number
   usdtBalance?: string
@@ -67,7 +68,7 @@ const memberBenefits = [
   '10 个策略',
   '无限交易对',
   '20 个持仓',
-  'Gas费率 15%',
+  'Gas费率 20%',
   'TradingView 信号接入',
   'AI 无限解读',
   '优先客户支持',
@@ -93,9 +94,27 @@ const planConfig: Record<string, { icon: typeof Shield; iconColor: string; bgCol
   },
 }
 
+// 订阅优势
+const benefits = [
+  { icon: TrendingUp, title: '降低 Gas 费用', desc: '享受更低的交易手续费，最高可节省 7%', color: 'bg-cyan-500/20', iconColor: 'text-cyan-400' },
+  { icon: Star, title: '优先信号推送', desc: '获得实时市场信号和交易机会', color: 'bg-purple-500/20', iconColor: 'text-purple-400' },
+  { icon: Users, title: 'VIP 专属支持', desc: '24/7 专属客服支持', color: 'bg-emerald-500/20', iconColor: 'text-emerald-400' },
+  { icon: Clock, title: '提前功能体验', desc: '抢先体验最新功能和工具', color: 'bg-amber-500/20', iconColor: 'text-amber-400' },
+]
+
+// 常见问题
+const faqs = [
+  { question: '如何升级我的订阅计划？', answer: '您可以随时在此页面升级您的订阅计划。升级后，新的费率和功能将立即生效。差价将按剩余天数折算。' },
+  { question: '季度订阅真的能节省吗？', answer: '是的，选择季度或年度付费可以享受折扣。例如，季度会员折合月费更低，年度会员优惠力度最大。' },
+  { question: '可以随时取消订阅吗？', answer: '当然可以。您可以随时取消订阅，取消后将在当前计费周期结束时生效，期间您仍可继续享受会员权益。' },
+  { question: 'Gas 费用是如何计算的？', answer: 'Gas 费用是从您的交易盈利中收取的服务费。例如，如果您盈利 $100，20% Gas Fee 意味着平台收取 $20，您获得 $80。' },
+  { question: '支持哪些支付方式？', answer: '目前支持 USDT 支付。您可以使用钱包余额直接支付订阅费用，安全便捷。' },
+]
+
 export function MobileSubscriptionPage({
   plans = defaultPlans,
   currentPlanCode,
+  currentPeriodEnd,
   isMember = false,
   daysRemaining = 0,
   usdtBalance = '0',
@@ -106,6 +125,7 @@ export function MobileSubscriptionPage({
 }: MobileSubscriptionPageProps) {
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null)
   const [showConfirmSheet, setShowConfirmSheet] = useState(false)
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   const handleSubscribeClick = (plan: MembershipPlan) => {
     setSelectedPlan(plan)
@@ -154,16 +174,22 @@ export function MobileSubscriptionPage({
                   <div className="text-base font-semibold text-white">
                     {plans.find(p => p.code === currentPlanCode)?.name || '会员'}
                   </div>
-                  <div className="text-xs text-cyan-400 mt-1">
-                    剩余 {daysRemaining} 天
+                  <div className="text-xs text-[#94A3B8] mt-1">
+                    {currentPeriodEnd && <>有效期至 {currentPeriodEnd} · </>}剩余 {daysRemaining} 天
                   </div>
                 </>
               ) : (
-                <div className="text-base font-semibold text-[#94A3B8]">未订阅</div>
+                <>
+                  <div className="text-base font-semibold text-[#94A3B8]">未订阅</div>
+                  <div className="text-xs text-[#64748B] mt-1">选择套餐开始您的量化交易之旅</div>
+                </>
               )}
             </div>
-            <div className={`w-12 h-12 rounded-xl ${isMember ? 'bg-cyan-500/20' : 'bg-[#1A1A24]'} flex items-center justify-center`}>
-              <Crown className={`w-6 h-6 ${isMember ? 'text-cyan-400' : 'text-gray-400'}`} />
+            <div className="text-right">
+              <div className={`text-xl font-bold ${isMember ? 'text-cyan-400' : 'text-[#94A3B8]'}`}>
+                {isMember ? '20%' : '20%'}
+              </div>
+              <div className="text-[10px] text-[#64748B]">Gas 费率</div>
             </div>
           </div>
         </div>
@@ -243,6 +269,52 @@ export function MobileSubscriptionPage({
             </div>
           )
         })}
+
+        {/* 订阅优势 */}
+        <div className="pt-2">
+          <h2 className="text-base font-semibold text-white mb-3">订阅优势</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {benefits.map((b, i) => {
+              const Icon = b.icon
+              return (
+                <div key={i} className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-3 overflow-hidden">
+                  <div className={`w-9 h-9 rounded-lg ${b.color} flex items-center justify-center mb-2`}>
+                    <Icon className={`w-4.5 h-4.5 ${b.iconColor}`} />
+                  </div>
+                  <div className="text-sm font-medium text-white mb-1">{b.title}</div>
+                  <div className="text-[11px] text-[#94A3B8] leading-relaxed">{b.desc}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 常见问题 */}
+        <div className="pt-2">
+          <h2 className="text-base font-semibold text-white mb-3">常见问题</h2>
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl overflow-hidden">
+            {faqs.map((faq, index) => (
+              <div key={index} className={index < faqs.length - 1 ? 'border-b border-[#1E1E2E]' : ''}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
+                  className="w-full flex items-center justify-between p-4 text-left"
+                >
+                  <span className="text-sm font-medium text-white pr-4">{faq.question}</span>
+                  {expandedFaq === index
+                    ? <ChevronUp className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-[#64748B] flex-shrink-0" />
+                  }
+                </button>
+                {expandedFaq === index && (
+                  <div className="px-4 pb-4 -mt-1">
+                    <p className="text-xs text-[#94A3B8] leading-relaxed">{faq.answer}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 确认订阅弹窗 (Bottom Sheet) */}

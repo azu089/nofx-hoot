@@ -71,6 +71,8 @@ import {
   ExchangeListPage,
   AirdropConfigPage,
   AppInstallPage,
+  BlockchainStatusPage,
+  SweepPage,
 } from './pages';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
@@ -195,6 +197,12 @@ const AppContent = () => {
             <Route path="help-articles" element={<HelpArticleList />} />
             <Route path="legal-docs" element={<LegalDocumentList />} />
             <Route path="faq" element={<FaqList />} />
+          </Route>
+
+          {/* 区块链管理 */}
+          <Route path="/blockchain">
+            <Route path="status" element={<BlockchainStatusPage />} />
+            <Route path="sweep" element={<SweepPage />} />
           </Route>
 
           {/* 系统管理 */}

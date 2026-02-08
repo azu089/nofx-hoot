@@ -90,6 +90,14 @@ export default function DepositPage() {
     setSelectedNetwork(network);
   };
 
+  // 桌面端网络切换（从组件内部 network.name 映射到 NetworkType）
+  const handleDesktopNetworkChange = (networkName: string) => {
+    const name = networkName as NetworkType;
+    if (['TRC20', 'ERC20', 'BEP20', 'Polygon'].includes(name)) {
+      setSelectedNetwork(name);
+    }
+  };
+
   // 转换充值历史格式 - 桌面端
   const recentDepositsDesktop = depositHistory?.items?.map(d => ({
     id: d.id,
@@ -117,9 +125,11 @@ export default function DepositPage() {
       <div className="hidden md:block">
         <DepositPageUI
           walletAddress={depositAddress?.address}
+          selectedNetworkName={selectedNetwork}
           recentDeposits={recentDepositsDesktop}
           balance={balance}
           onCopyAddress={handleCopyAddress}
+          onNetworkChange={handleDesktopNetworkChange}
         />
       </div>
 
@@ -131,6 +141,7 @@ export default function DepositPage() {
           recentDeposits={recentDepositsMobile}
           selectedNetwork={selectedNetwork}
           onNetworkChange={handleNetworkChange}
+          balance={balance}
         />
       </div>
     </>

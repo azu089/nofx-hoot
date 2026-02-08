@@ -1,4 +1,10 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +16,8 @@ import {
   TransactionQueryDto,
   DepositAddressResponse,
 } from './dto/wallet.dto';
+import { HdWalletService } from '../blockchain/hd-wallet.service';
+import { WithdrawService } from '../blockchain/withdraw.service';
 
 @Injectable()
 export class WalletService {
@@ -22,7 +30,13 @@ export class WalletService {
     HOOT: 100,
   };
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => HdWalletService))
+    private hdWalletService: HdWalletService,
+    @Inject(forwardRef(() => WithdrawService))
+    private withdrawService: WithdrawService,
+  ) {}
 
   // 获取用户余额
   async getBalance(userId: string): Promise<BalanceResponse> {
@@ -80,44 +94,111 @@ export class WalletService {
     };
   }
 
-  // 获取充值地址
+  // 获取充值历史（最近 50 条）
+  async getDeposits(userId: string) {
+    const items = await this.prisma.transaction.findMany({
+      where: { userId, type: 'deposit' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return {
+      items: items.map((t) => ({
+        id: t.id,
+        amount: t.amount.toString(),
+        chain: t.chain || 'BSC', // 优先使用记录的链名，兼容旧数据默认 BSC
+        txHash: t.txHash || '',
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+      total: items.length,
+    };
+  }
+
+  /**
+   * 获取充值地址
+   *
+   * 策略：
+   * - EVM 链（BSC/ETH/Polygon）共用同一个地址（0x...格式在所有 EVM 链通用）
+   * - TRON 使用独立地址（T...格式）
+   * - 返回当前展示地址；如果没有或 refresh=true，生成新地址
+   * - 所有旧地址仍然有效（用户转到旧地址也能自动到账）
+   */
   async getDepositAddress(
     userId: string,
     chain: string,
     asset: string,
+    refresh = false,
   ): Promise<DepositAddressResponse> {
-    // 查找现有地址
-    let depositAddress = await this.prisma.depositAddress.findUnique({
-      where: {
-        userId_chain_asset: {
-          userId,
+    const EVM_CHAINS = ['BSC', 'ETH', 'POLYGON'];
+    const isEvmChain = EVM_CHAINS.includes(chain);
+
+    // 如果不是刷新，先查找当前地址
+    if (!refresh) {
+      let currentAddress;
+
+      if (isEvmChain) {
+        // EVM 链共用地址：查找任意 EVM 链的当前地址
+        currentAddress = await this.prisma.depositAddress.findFirst({
+          where: {
+            userId,
+            chain: { in: EVM_CHAINS },
+            asset,
+            isCurrent: true,
+          },
+        });
+      } else {
+        // 非 EVM 链（TRON）：精确匹配
+        currentAddress = await this.prisma.depositAddress.findFirst({
+          where: { userId, chain, asset, isCurrent: true },
+        });
+      }
+
+      if (currentAddress) {
+        return {
           chain,
-          asset,
-        },
+          asset: currentAddress.asset,
+          address: currentAddress.address,
+        };
+      }
+    }
+
+    // 生成新的 HD 派生地址
+    if (this.hdWalletService.getIsInitialized()) {
+      // 对 EVM 链，用 BSC 作为存储链标识（实际地址通用）
+      const storageChain = isEvmChain ? 'BSC' : chain;
+      const { address } = await this.hdWalletService.generateDepositAddress(
+        userId,
+        storageChain,
+        asset,
+      );
+
+      return { chain, asset, address };
+    }
+
+    // 兜底：HD 钱包未配置时使用模拟地址（仅开发环境）
+    this.logger.warn('HD 钱包未配置，生成模拟地址（仅用于开发测试）');
+    const mockAddress = chain === 'TRON'
+      ? `T${uuidv4().replace(/-/g, '').slice(0, 33)}`
+      : `0x${uuidv4().replace(/-/g, '').slice(0, 40)}`;
+
+    await this.prisma.depositAddress.updateMany({
+      where: { userId, chain, asset, isCurrent: true },
+      data: { isCurrent: false },
+    });
+
+    await this.prisma.depositAddress.create({
+      data: {
+        userId,
+        chain,
+        asset,
+        address: mockAddress,
+        derivationIndex: -1, // 标记为模拟地址
+        isCurrent: true,
       },
     });
 
-    // 如果没有，生成新地址
-    if (!depositAddress) {
-      // TODO: 实际项目中应该调用钱包服务生成真实地址
-      // 这里暂时生成一个模拟地址
-      const mockAddress = `0x${uuidv4().replace(/-/g, '').slice(0, 40)}`;
-
-      depositAddress = await this.prisma.depositAddress.create({
-        data: {
-          userId,
-          chain,
-          asset,
-          address: mockAddress,
-        },
-      });
-    }
-
-    return {
-      chain: depositAddress.chain,
-      asset: depositAddress.asset,
-      address: depositAddress.address,
-    };
+    return { chain, asset, address: mockAddress };
   }
 
   // 创建提现申请
@@ -185,6 +266,7 @@ export class WalletService {
           userId,
           type: 'withdraw',
           asset,
+          chain,
           amount: new Decimal(amount).negated(), // 负数表示支出
           uniqueOrderId: `withdraw_${withdrawRequest.id}`,
           status: 'pending',
@@ -198,6 +280,20 @@ export class WalletService {
     this.logger.log(
       `用户 ${userId} 提现申请: ${amount} ${asset} -> ${address}`,
     );
+
+    // 异步触发分级提现处理（不阻塞用户请求）
+    this.withdrawService
+      .processNewWithdraw(result.id)
+      .then((processResult) => {
+        if (processResult.action === 'auto_executed') {
+          this.logger.log(`提现 ${result.id} 已自动执行`);
+        } else {
+          this.logger.log(`提现 ${result.id} 等待人工审核`);
+        }
+      })
+      .catch((err) => {
+        this.logger.error(`提现处理异常: ${err.message}`);
+      });
 
     return {
       id: result.id,
@@ -239,6 +335,7 @@ export class WalletService {
     asset: 'USDT' | 'HOOT',
     amount: string,
     txHash: string,
+    chain?: string,
   ): Promise<void> {
     const uniqueOrderId = `deposit_${txHash}`;
 
@@ -271,6 +368,7 @@ export class WalletService {
           userId,
           type: 'deposit',
           asset,
+          chain: chain || null,
           amount: new Decimal(amount),
           uniqueOrderId,
           status: 'completed',
@@ -279,7 +377,7 @@ export class WalletService {
       });
     });
 
-    this.logger.log(`用户 ${userId} 充值成功: ${amount} ${asset}`);
+    this.logger.log(`用户 ${userId} 充值成功: ${amount} ${asset} (${chain || 'unknown'})`);
   }
 
   // 兑换接口

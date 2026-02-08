@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import {
   CreateWithdrawDto,
+  GetDepositAddressDto,
   TransactionQueryDto,
   ExchangeDto,
 } from './dto/wallet.dto';
@@ -26,14 +27,24 @@ export class WalletController {
     return this.walletService.getTransactions(user.id, query);
   }
 
-  // 获取充值地址
+  // 获取充值历史
+  @Get('deposits')
+  async getDeposits(@CurrentUser() user: { id: string }) {
+    return this.walletService.getDeposits(user.id);
+  }
+
+  // 获取充值地址（?chain=BSC&asset=USDT&refresh=true）
   @Get('deposit-address')
   async getDepositAddress(
     @CurrentUser() user: { id: string },
-    @Query('chain') chain: string,
-    @Query('asset') asset: string,
+    @Query() query: GetDepositAddressDto,
   ) {
-    return this.walletService.getDepositAddress(user.id, chain, asset);
+    return this.walletService.getDepositAddress(
+      user.id,
+      query.chain,
+      query.asset,
+      query.refresh === 'true',
+    );
   }
 
   // 创建提现申请

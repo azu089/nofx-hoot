@@ -140,7 +140,7 @@ export function ReferralPageV3({
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
 
-  const referralLink = `https://hoot.trade/invite/${referralCode}`
+  const referralLink = typeof window !== 'undefined' ? `${window.location.origin}/register?ref=${referralCode}` : `https://hoot.trade/register?ref=${referralCode}`
 
   // 筛选选项
   const levelOptions = [

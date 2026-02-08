@@ -63,7 +63,7 @@ export function SubscriptionPage({
     '10 个策略',
     '无限交易对',
     '20 个持仓',
-    'Gas费率 15%',
+    'Gas费率 20%',
     'TradingView 信号接入',
     'AI 无限解读',
     '优先客户支持'
@@ -115,7 +115,7 @@ export function SubscriptionPage({
     },
     {
       question: 'Gas 费用是如何计算的？',
-      answer: 'Gas 费用是从您的交易盈利中收取的服务费。例如，如果您盈利 $100，15% Gas Fee 意味着平台收取 $15，您获得 $85。'
+      answer: 'Gas 费用是从您的交易盈利中收取的服务费。例如，如果您盈利 $100，20% Gas Fee 意味着平台收取 $20，您获得 $80。'
     },
     {
       question: '支持哪些支付方式？',
@@ -251,7 +251,7 @@ export function SubscriptionPage({
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <div className="text-3xl font-bold text-[#06B6D4]">
-                    {isMember ? '15%' : '22%'}
+                    {isMember ? '20%' : '20%'}
                   </div>
                   <p className="text-sm text-[#9090A0]">Gas 费率</p>
                 </div>
@@ -573,13 +573,28 @@ export function SubscriptionPage({
                     })()}
                   </div>
 
-                  {/* Warning */}
-                  <div className="flex items-start gap-3 p-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl mb-6">
-                    <AlertCircle className="w-5 h-5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-[#F59E0B]">
-                      订阅费用将从您的 USDT 余额中扣除。请确保余额充足。
-                    </p>
-                  </div>
+                  {/* Warning / Insufficient Balance */}
+                  {(() => {
+                    const plan = getSelectedPlanDetails()
+                    const balance = parseFloat(usdtBalance)
+                    const price = parseFloat(plan?.price || '0')
+                    const insufficient = balance < price
+                    return insufficient ? (
+                      <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-6">
+                        <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-red-400">
+                          余额不足，请先充值至少 ${(price - balance).toFixed(2)} USDT
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3 p-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl mb-6">
+                        <AlertCircle className="w-5 h-5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-[#F59E0B]">
+                          订阅费用将从您的 USDT 余额中扣除。订阅后立即生效，不支持退款。
+                        </p>
+                      </div>
+                    )
+                  })()}
 
                   {/* Actions */}
                   <div className="flex gap-3">
@@ -593,10 +608,11 @@ export function SubscriptionPage({
                     <button
                       type="button"
                       onClick={handleConfirmPayment}
-                      className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-[#10B981] to-[#059669] text-white hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
+                      disabled={parseFloat(usdtBalance) < parseFloat(getSelectedPlanDetails()?.price || '0')}
+                      className="flex-1 py-3 rounded-xl font-semibold bg-gradient-to-r from-[#10B981] to-[#059669] text-white hover:shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none"
                     >
                       <Check className="w-4 h-4" />
-                      确认支付
+                      {parseFloat(usdtBalance) < parseFloat(getSelectedPlanDetails()?.price || '0') ? '余额不足' : '确认支付'}
                     </button>
                   </div>
                 </>

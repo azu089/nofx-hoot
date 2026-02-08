@@ -9,8 +9,50 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  // 安全中间件 - 设置安全的 HTTP 头（XSS 防护、Content-Type 防护等）
-  app.use(helmet());
+  // 信任反向代理（nginx），确保 req.ip 获取真实客户端 IP
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', 1);
+
+  // 安全中间件 - 强化 HTTP 安全头
+  app.use(
+    helmet({
+      // Content Security Policy - 限制资源加载来源
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+      // 禁止 iframe 嵌入（防止点击劫持）
+      frameguard: { action: 'deny' },
+      // 隐藏 X-Powered-By 头
+      hidePoweredBy: true,
+      // HSTS - 强制 HTTPS（1年）
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      // 禁止 MIME 类型嗅探
+      noSniff: true,
+      // XSS 过滤
+      xssFilter: true,
+      // 禁止 DNS 预取（防止信息泄露）
+      dnsPrefetchControl: { allow: false },
+      // Referrer 策略
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      // 权限策略 - 禁用不需要的浏览器功能
+      permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    }),
+  );
 
   // 全局前缀
   app.setGlobalPrefix('api');

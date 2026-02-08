@@ -7,9 +7,13 @@ import {
   Logger,
   Inject,
   forwardRef,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { ethers } from 'ethers';
+import { createHmac } from 'crypto';
+import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { AirdropService } from '../airdrop/airdrop.service';
@@ -23,15 +27,17 @@ import {
 import { BindTelegramDto, TelegramLoginDto } from './dto/telegram.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
-// 绑定码缓存（实际项目应该用 Redis）
-const bindCodeCache = new Map<string, { userId: string; expiresAt: Date }>();
-
-// Nonce 缓存（钱包登录用）
-const nonceCache = new Map<string, { nonce: string; expiresAt: Date }>();
+// 安全常量
+const BIND_CODE_TTL = 5 * 60; // 5分钟
+const NONCE_TTL = 5 * 60; // 5分钟
+const LOGIN_ATTEMPT_TTL = 15 * 60; // 15分钟窗口
+const MAX_LOGIN_ATTEMPTS = 5; // 最大登录尝试次数
+const ACCOUNT_LOCK_TTL = 30 * 60; // 锁定30分钟
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
+  private readonly redis: Redis;
 
   constructor(
     private prisma: PrismaService,
@@ -41,7 +47,95 @@ export class AuthService {
     private airdropService: AirdropService,
     @Inject(forwardRef(() => ReferralService))
     private referralService: ReferralService,
-  ) {}
+  ) {
+    // 创建 Redis 连接（用于认证缓存）
+    this.redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      password: process.env.REDIS_PASSWORD || undefined,
+      keyPrefix: 'auth:',
+    });
+
+    this.redis.on('error', (err) => {
+      this.logger.error('认证 Redis 连接错误:', err.message);
+    });
+  }
+
+  onModuleDestroy() {
+    this.redis.disconnect();
+  }
+
+  // ===== 防暴力破解 =====
+
+  // 检查登录是否被锁定
+  private async isLoginLocked(identifier: string): Promise<boolean> {
+    const lockKey = `lock:${identifier}`;
+    const locked = await this.redis.get(lockKey);
+    return locked === '1';
+  }
+
+  // 记录登录失败
+  private async recordLoginFailure(email: string, ip: string): Promise<void> {
+    const emailKey = `attempts:email:${email}`;
+    const ipKey = `attempts:ip:${ip}`;
+
+    // 递增失败计数
+    const emailAttempts = await this.redis.incr(emailKey);
+    const ipAttempts = await this.redis.incr(ipKey);
+
+    // 设置过期时间（只在首次设置）
+    if (emailAttempts === 1) await this.redis.expire(emailKey, LOGIN_ATTEMPT_TTL);
+    if (ipAttempts === 1) await this.redis.expire(ipKey, LOGIN_ATTEMPT_TTL);
+
+    // 超过阈值则锁定
+    if (emailAttempts >= MAX_LOGIN_ATTEMPTS) {
+      await this.redis.set(`lock:email:${email}`, '1', 'EX', ACCOUNT_LOCK_TTL);
+      this.logger.warn(`账户因多次失败已锁定: ${email}，锁定 ${ACCOUNT_LOCK_TTL / 60} 分钟`);
+    }
+
+    if (ipAttempts >= MAX_LOGIN_ATTEMPTS * 3) {
+      await this.redis.set(`lock:ip:${ip}`, '1', 'EX', ACCOUNT_LOCK_TTL);
+      this.logger.warn(`IP 因多次失败已锁定: ${ip}，锁定 ${ACCOUNT_LOCK_TTL / 60} 分钟`);
+    }
+  }
+
+  // 登录成功后清除失败记录
+  private async clearLoginFailures(email: string): Promise<void> {
+    await this.redis.del(`attempts:email:${email}`);
+    await this.redis.del(`lock:email:${email}`);
+  }
+
+  // ===== 审计日志 =====
+
+  // 记录审计日志
+  private async logAudit(
+    actorId: string,
+    actorType: string,
+    action: string,
+    resourceType: string,
+    resourceId?: string,
+    details?: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId,
+          actorType,
+          action,
+          resourceType,
+          resourceId,
+          details,
+          ipAddress: ip,
+          userAgent,
+        },
+      });
+    } catch (error) {
+      // 审计日志写入失败不应影响业务流程
+      this.logger.error(`审计日志写入失败: ${error.message}`);
+    }
+  }
 
   // 注册
   async register(dto: RegisterDto): Promise<UserResponse> {
@@ -71,6 +165,9 @@ export class AuthService {
         createdAt: true,
       },
     });
+
+    // 审计日志
+    await this.logAudit(user.id, 'user', 'register', 'user', user.id, `邮箱注册: ${dto.email}`);
 
     // 发送验证码（邮箱注册必定有 email）
     if (user.email) {
@@ -175,13 +272,13 @@ export class AuthService {
 
     try {
       if (isBindEmail) {
-        // 已有账户绑定邮箱 (+30 HOOT)
+        // 已有账户绑定邮箱 (+10 HOOT)
         await this.airdropService.grantBindEmailAirdrop(user.id, email);
-        this.logger.log(`绑定邮箱空投已发放: ${email} +30 HOOT`);
+        this.logger.log(`绑定邮箱空投已发放: ${email} +10 HOOT`);
       } else {
-        // 首次注册 (+100 HOOT)
+        // 首次注册 (+20 HOOT)
         await this.airdropService.grantRegisterAirdrop(user.id);
-        this.logger.log(`注册空投已发放: ${email} +100 HOOT`);
+        this.logger.log(`注册空投已发放: ${email} +20 HOOT`);
       }
     } catch (error) {
       this.logger.error(`空投发放失败: ${email}, ${error.message}`);
@@ -189,18 +286,30 @@ export class AuthService {
 
     this.logger.log(`邮箱验证成功: ${email}`);
 
-    const reward = isBindEmail ? 30 : 100;
+    const reward = isBindEmail ? 10 : 20;
     return { message: `邮箱验证成功，获得 ${reward} HOOT 空投奖励！` };
   }
 
-  // 登录
-  async login(dto: LoginDto): Promise<LoginResponse> {
+  // 登录（含防暴力破解）
+  async login(dto: LoginDto, ip?: string): Promise<LoginResponse> {
+    // 检查账户是否被锁定
+    if (await this.isLoginLocked(`email:${dto.email}`)) {
+      throw new UnauthorizedException('账户因多次登录失败已被临时锁定，请 30 分钟后重试');
+    }
+
+    // 检查 IP 是否被锁定
+    if (ip && await this.isLoginLocked(`ip:${ip}`)) {
+      throw new UnauthorizedException('此 IP 因频繁失败已被临时锁定，请稍后重试');
+    }
+
     // 查找用户
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
     if (!user || !user.password) {
+      // 防止邮箱枚举：无论用户是否存在，都返回相同的错误信息和延迟
+      if (ip) await this.recordLoginFailure(dto.email, ip);
       throw new UnauthorizedException('邮箱或密码错误');
     }
 
@@ -208,8 +317,15 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
 
     if (!isPasswordValid) {
+      if (ip) await this.recordLoginFailure(dto.email, ip);
       throw new UnauthorizedException('邮箱或密码错误');
     }
+
+    // 登录成功，清除失败记录
+    await this.clearLoginFailures(dto.email);
+
+    // 审计日志
+    await this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip);
 
     // 生成 JWT
     const payload: JwtPayload = {
@@ -274,23 +390,20 @@ export class AuthService {
 
   // ===== Telegram 相关 =====
 
-  // 生成 Telegram 绑定码
+  // 生成 Telegram 绑定码（使用 Redis 存储）
   async generateBindCode(
     userId: string,
   ): Promise<{ bindCode: string; expiresAt: Date }> {
     // 生成 6 位绑定码
     const bindCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟过期
+    const expiresAt = new Date(Date.now() + BIND_CODE_TTL * 1000);
 
-    // 缓存绑定码
-    bindCodeCache.set(bindCode, { userId, expiresAt });
-
-    // 5分钟后自动清理
-    setTimeout(
-      () => {
-        bindCodeCache.delete(bindCode);
-      },
-      5 * 60 * 1000,
+    // 存入 Redis，自动过期
+    await this.redis.set(
+      `bindcode:${bindCode}`,
+      JSON.stringify({ userId, expiresAt: expiresAt.toISOString() }),
+      'EX',
+      BIND_CODE_TTL,
     );
 
     return { bindCode, expiresAt };
@@ -298,15 +411,17 @@ export class AuthService {
 
   // 绑定 Telegram
   async bindTelegram(dto: BindTelegramDto) {
-    // 验证绑定码
-    const cached = bindCodeCache.get(dto.bindCode);
+    // 从 Redis 获取绑定码
+    const cachedStr = await this.redis.get(`bindcode:${dto.bindCode}`);
 
-    if (!cached) {
+    if (!cachedStr) {
       throw new BadRequestException('绑定码无效或已过期');
     }
 
-    if (new Date() > cached.expiresAt) {
-      bindCodeCache.delete(dto.bindCode);
+    const cached = JSON.parse(cachedStr);
+
+    if (new Date() > new Date(cached.expiresAt)) {
+      await this.redis.del(`bindcode:${dto.bindCode}`);
       throw new BadRequestException('绑定码已过期');
     }
 
@@ -336,12 +451,15 @@ export class AuthService {
     });
 
     // 删除已使用的绑定码
-    bindCodeCache.delete(dto.bindCode);
+    await this.redis.del(`bindcode:${dto.bindCode}`);
 
-    // 发放绑定 Telegram 空投 (+50 HOOT)
+    // 审计日志
+    await this.logAudit(user.id, 'user', 'bind_telegram', 'user', user.id, `绑定 TG: ${dto.telegramId}`);
+
+    // 发放绑定 Telegram 空投 (+10 HOOT)
     try {
       await this.airdropService.grantBindTgAirdrop(user.id, dto.telegramId);
-      this.logger.log(`TG 绑定空投已发放: ${user.email} +50 HOOT`);
+      this.logger.log(`TG 绑定空投已发放: ${user.email} +10 HOOT`);
     } catch (error) {
       this.logger.error(`TG 绑定空投发放失败: ${user.email}, ${error.message}`);
     }
@@ -407,6 +525,9 @@ export class AuthService {
         telegramUsername: null,
       },
     });
+
+    // 审计日志
+    await this.logAudit(userId, 'user', 'unbind_telegram', 'user', userId);
   }
 
   // ===== Telegram 自动登录（新） =====
@@ -430,10 +551,13 @@ export class AuthService {
       });
       isNewUser = true;
 
-      // 发放注册空投 (+100 HOOT) - 与邮箱/钱包注册一致
+      // 审计日志
+      await this.logAudit(user.id, 'user', 'register', 'user', user.id, `TG 注册: ${dto.telegramId}`);
+
+      // 发放注册空投 (+20 HOOT) - 与邮箱/钱包注册一致
       try {
         await this.airdropService.grantRegisterAirdrop(user.id);
-        this.logger.log(`TG 用户注册空投: ${dto.telegramId} +100 HOOT`);
+        this.logger.log(`TG 用户注册空投: ${dto.telegramId} +20 HOOT`);
       } catch (error) {
         this.logger.error(
           `TG 注册空投失败: ${dto.telegramId}, ${error.message}`,
@@ -441,6 +565,7 @@ export class AuthService {
       }
 
       // 如果有邀请码，自动绑定邀请关系（TG Bot 深度链接）
+      // 注意：邀请奖励不在注册时发放，改为被邀请人首次订阅策略后发放（防刷）
       if (dto.referralCode) {
         try {
           await this.referralService.bindInviteCode(user.id, dto.referralCode);
@@ -455,6 +580,9 @@ export class AuthService {
         }
       }
     }
+
+    // 审计日志
+    await this.logAudit(user.id, 'user', 'login', 'user', user.id, `TG 登录: ${dto.telegramId}`);
 
     // 生成 JWT
     const payload: JwtPayload = {
@@ -477,45 +605,122 @@ export class AuthService {
       },
     });
 
+    // freshUser 理论上不会为 null（刚创建/查到的用户），但 TS 要求 null check
+    const u = freshUser || user;
+
     return {
       accessToken,
       user: {
-        id: freshUser.id,
-        email: freshUser.email,
-        nickname: freshUser.nickname,
-        usdtBalance: freshUser.usdtBalance.toString(),
-        hootBalance: freshUser.hootBalance.toString(),
-        pointBalance: freshUser.pointBalance.toString(),
+        id: u.id,
+        email: u.email,
+        nickname: u.nickname,
+        usdtBalance: freshUser?.usdtBalance?.toString() || '0',
+        hootBalance: freshUser?.hootBalance?.toString() || '0',
+        pointBalance: freshUser?.pointBalance?.toString() || '0',
       },
       isNewUser,
     };
   }
 
+  // ===== Telegram WebApp 登录（Mini App 专用）=====
+
+  /**
+   * 验证 TG WebApp initData 签名
+   * @see https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+   */
+  private validateTelegramInitData(initData: string): { user: { id: number; username?: string; first_name?: string }; authDate: number } {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      throw new UnauthorizedException('Telegram Bot Token 未配置');
+    }
+
+    // 解析 initData（URL 参数格式）
+    const params = new URLSearchParams(initData);
+    const hash = params.get('hash');
+    if (!hash) {
+      throw new UnauthorizedException('initData 缺少 hash');
+    }
+
+    // 按字母序排列参数（排除 hash），用 \n 连接
+    params.delete('hash');
+    const dataCheckString = Array.from(params.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+
+    // HMAC-SHA256 验签
+    const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
+    const computedHash = createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+
+    if (computedHash !== hash) {
+      throw new UnauthorizedException('initData 签名验证失败');
+    }
+
+    // 检查 auth_date 时效（5 分钟内有效）
+    const authDate = parseInt(params.get('auth_date') || '0', 10);
+    const now = Math.floor(Date.now() / 1000);
+    if (now - authDate > 300) {
+      throw new UnauthorizedException('initData 已过期');
+    }
+
+    // 解析用户信息
+    const userStr = params.get('user');
+    if (!userStr) {
+      throw new UnauthorizedException('initData 缺少用户信息');
+    }
+
+    try {
+      const user = JSON.parse(userStr);
+      return { user, authDate };
+    } catch {
+      throw new UnauthorizedException('initData 用户信息解析失败');
+    }
+  }
+
+  /**
+   * TG WebApp 登录（Mini App 前端调用）
+   * 通过 initData 验签实现免密登录
+   */
+  async loginByWebApp(initData: string): Promise<LoginResponse> {
+    // 验证 initData 签名
+    const { user: tgUser } = this.validateTelegramInitData(initData);
+
+    const telegramId = String(tgUser.id);
+    const telegramUsername = tgUser.username || null;
+
+    // 复用 TG 登录逻辑（查找/创建用户 + 发放空投 + JWT）
+    return this.loginByTelegram({
+      telegramId,
+      telegramUsername: telegramUsername || undefined,
+      firstName: tgUser.first_name,
+    });
+  }
+
   // ===== 钱包登录 (SIWE) =====
 
-  // 获取登录 Nonce
+  // 获取登录 Nonce（使用 Redis 存储）
   async getWalletNonce(
     address: string,
   ): Promise<{ nonce: string; expiresAt: Date }> {
     const nonce =
       Math.random().toString(36).substring(2, 15) +
       Math.random().toString(36).substring(2, 15);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5分钟有效
+    const expiresAt = new Date(Date.now() + NONCE_TTL * 1000);
 
-    nonceCache.set(address.toLowerCase(), { nonce, expiresAt });
-
-    // 5分钟后自动清理
-    setTimeout(
-      () => {
-        nonceCache.delete(address.toLowerCase());
-      },
-      5 * 60 * 1000,
+    // 存入 Redis，自动过期
+    await this.redis.set(
+      `nonce:${address.toLowerCase()}`,
+      JSON.stringify({ nonce, expiresAt: expiresAt.toISOString() }),
+      'EX',
+      NONCE_TTL,
     );
 
     return { nonce, expiresAt };
   }
 
-  // 钱包登录
+  // 钱包登录（使用 ethers.js 密码学签名验证）
   async loginByWallet(
     address: string,
     signature: string,
@@ -523,25 +728,38 @@ export class AuthService {
   ): Promise<LoginResponse> {
     const normalizedAddress = address.toLowerCase();
 
-    // 验证 Nonce
-    const cached = nonceCache.get(normalizedAddress);
-    if (!cached) {
+    // 从 Redis 获取 Nonce
+    const cachedStr = await this.redis.get(`nonce:${normalizedAddress}`);
+    if (!cachedStr) {
       throw new BadRequestException('请先获取 Nonce');
     }
 
-    if (new Date() > cached.expiresAt) {
-      nonceCache.delete(normalizedAddress);
+    const cached = JSON.parse(cachedStr);
+
+    if (new Date() > new Date(cached.expiresAt)) {
+      await this.redis.del(`nonce:${normalizedAddress}`);
       throw new BadRequestException('Nonce 已过期');
     }
 
-    // 验证签名（简化验证，实际应使用 ethers.verifyMessage）
-    // TODO: 使用 ethers.js 验证签名
+    // 验证消息中包含 Nonce
     if (!message.includes(cached.nonce)) {
-      throw new UnauthorizedException('签名验证失败');
+      throw new UnauthorizedException('签名验证失败：消息不包含有效 Nonce');
+    }
+
+    // 使用 ethers.js 密码学验证签名
+    try {
+      const recoveredAddress = ethers.verifyMessage(message, signature);
+      if (recoveredAddress.toLowerCase() !== normalizedAddress) {
+        throw new UnauthorizedException('签名验证失败：签名者地址不匹配');
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      this.logger.warn(`钱包签名验证异常: ${error.message}`);
+      throw new UnauthorizedException('签名验证失败：无效的签名格式');
     }
 
     // 删除已使用的 Nonce
-    nonceCache.delete(normalizedAddress);
+    await this.redis.del(`nonce:${normalizedAddress}`);
 
     // 查找或创建用户
     let user = await this.prisma.user.findUnique({
@@ -559,6 +777,9 @@ export class AuthService {
       });
       isNewUser = true;
 
+      // 审计日志
+      await this.logAudit(user.id, 'user', 'register', 'user', user.id, `钱包注册: ${address}`);
+
       // 发放钱包注册空投 (+100 HOOT)
       try {
         await this.airdropService.grantRegisterAirdrop(user.id);
@@ -567,6 +788,9 @@ export class AuthService {
         this.logger.error(`钱包注册空投失败: ${address}, ${error.message}`);
       }
     }
+
+    // 审计日志
+    await this.logAudit(user.id, 'user', 'login', 'user', user.id, `钱包登录: ${address}`);
 
     // 生成 JWT
     const payload: JwtPayload = {
@@ -616,13 +840,16 @@ export class AuthService {
       },
     });
 
+    // 审计日志
+    await this.logAudit(userId, 'user', 'bind_email', 'user', userId, `绑定邮箱: ${email}`);
+
     // 发送验证码
     await this.sendVerificationCode(email);
 
     return { message: '邮箱绑定成功，请验证邮箱' };
   }
 
-  // 绑定钱包（已登录用户）
+  // 绑定钱包（已登录用户，含 ethers.js 签名验证）
   async bindWallet(
     userId: string,
     address: string,
@@ -631,17 +858,30 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const normalizedAddress = address.toLowerCase();
 
-    // 验证 Nonce
-    const cached = nonceCache.get(normalizedAddress);
-    if (!cached) {
+    // 从 Redis 获取 Nonce
+    const cachedStr = await this.redis.get(`nonce:${normalizedAddress}`);
+    if (!cachedStr) {
       throw new BadRequestException('请先获取 Nonce');
     }
+
+    const cached = JSON.parse(cachedStr);
 
     if (!message.includes(cached.nonce)) {
       throw new UnauthorizedException('签名验证失败');
     }
 
-    nonceCache.delete(normalizedAddress);
+    // 使用 ethers.js 密码学验证签名
+    try {
+      const recoveredAddress = ethers.verifyMessage(message, signature);
+      if (recoveredAddress.toLowerCase() !== normalizedAddress) {
+        throw new UnauthorizedException('签名验证失败：签名者地址不匹配');
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('签名验证失败：无效的签名');
+    }
+
+    await this.redis.del(`nonce:${normalizedAddress}`);
 
     // 检查钱包是否已被使用
     const existing = await this.prisma.user.findUnique({
@@ -658,18 +898,21 @@ export class AuthService {
       data: { walletAddress: normalizedAddress },
     });
 
-    // 发放绑定钱包空投 (+20 HOOT)
+    // 审计日志
+    await this.logAudit(userId, 'user', 'bind_wallet', 'user', userId, `绑定钱包: ${normalizedAddress}`);
+
+    // 发放绑定钱包空投 (+10 HOOT)
     try {
       await this.airdropService.grantBindWalletAirdrop(
         userId,
         normalizedAddress,
       );
-      this.logger.log(`钱包绑定空投: ${userId} +20 HOOT`);
+      this.logger.log(`钱包绑定空投: ${userId} +10 HOOT`);
     } catch (error) {
       this.logger.error(`钱包绑定空投失败: ${error.message}`);
     }
 
-    return { message: '钱包绑定成功，获得 20 HOOT 奖励！' };
+    return { message: '钱包绑定成功，获得 10 HOOT 奖励！' };
   }
 
   // 解绑钱包
@@ -688,6 +931,9 @@ export class AuthService {
       where: { id: userId },
       data: { walletAddress: null },
     });
+
+    // 审计日志
+    await this.logAudit(userId, 'user', 'unbind_wallet', 'user', userId);
 
     return { message: '钱包已解绑' };
   }

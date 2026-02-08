@@ -220,9 +220,10 @@ export const zh: LocaleMessages = {
     welcomeBack:
       `👋 <b>欢迎回来，{nickname}!</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `💵 USDT: <b>{usdt}</b>\n` +
-      `🪙 HOOT: <b>{hoot}</b>\n` +
-      `⛽ 点卡: <b>{point}</b>\n` +
+      `💵 <b>{usdt}</b> USDT | 🪙 <b>{hoot}</b> HOOT\n` +
+      `⛽ <b>{point}</b> 点卡\n\n` +
+      `{todayPnl}\n` +
+      `🎯 策略: <b>{strategies}</b> | 📊 持仓: <b>{positions}</b>\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
       `点击下方按钮操作 👇`,
     loginFailed: `❌ <b>登录失败</b>\n\n请稍后重试，或联系客服`,
@@ -423,9 +424,10 @@ export const en: LocaleMessages = {
     welcomeBack:
       `👋 <b>Welcome back, {nickname}!</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n` +
-      `💵 USDT: <b>{usdt}</b>\n` +
-      `🪙 HOOT: <b>{hoot}</b>\n` +
-      `⛽ Credits: <b>{point}</b>\n` +
+      `💵 <b>{usdt}</b> USDT | 🪙 <b>{hoot}</b> HOOT\n` +
+      `⛽ <b>{point}</b> Credits\n\n` +
+      `{todayPnl}\n` +
+      `🎯 Strategies: <b>{strategies}</b> | 📊 Positions: <b>{positions}</b>\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
       `Click buttons below 👇`,
     loginFailed: `❌ <b>Login failed</b>\n\nPlease try again later or contact support`,

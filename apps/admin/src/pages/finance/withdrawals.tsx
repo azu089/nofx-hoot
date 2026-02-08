@@ -31,6 +31,8 @@ import {
   ExclamationCircleOutlined,
   CopyOutlined,
   ReloadOutlined,
+  SendOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
 import { useMessage } from '../../hooks';
@@ -130,6 +132,7 @@ export const WithdrawalList = () => {
   const pendingItems = dataSource.filter((w) => w.status === 'pending');
   const pendingCount = pendingItems.length;
   const pendingAmount = pendingItems.reduce((sum, w) => sum + parseFloat(w.amount), 0);
+  const approvedCount = dataSource.filter((w) => w.status === 'approved').length;
   const todayCompleted = dataSource.filter((w) => w.status === 'completed').length;
 
   // 审核通过
@@ -212,6 +215,90 @@ export const WithdrawalList = () => {
           fetchWithdrawals(pagination.current, statusFilter);
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : '操作失败';
+          message.error(errorMessage);
+        }
+      },
+    });
+  };
+
+  // 执行提现（上链）
+  const handleExecute = (withdrawal: IWithdrawal) => {
+    Modal.confirm({
+      title: '确认执行提现上链',
+      icon: <ExclamationCircleOutlined />,
+      content: (
+        <div>
+          <p>用户: {withdrawal.user?.nickname || withdrawal.user?.email}</p>
+          <p>金额: {withdrawal.amount} {withdrawal.asset}</p>
+          <p>网络: {withdrawal.network || 'BSC'}</p>
+          <p>目标地址: {withdrawal.address}</p>
+          <Alert
+            type="warning"
+            message="此操作将从热钱包发起链上转账，执行后不可撤回"
+            style={{ marginTop: 8 }}
+          />
+        </div>
+      ),
+      okText: '确认执行',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const result = await api.post<{ success: boolean; txHash?: string; error?: string }>(
+            `/blockchain/withdraw/${withdrawal.id}/execute`,
+          );
+          if (result.success) {
+            message.success(`提现已执行，txHash: ${result.txHash?.slice(0, 16)}...`);
+          } else {
+            message.error(`执行失败: ${result.error}`);
+          }
+          fetchWithdrawals(pagination.current, statusFilter);
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '执行失败';
+          message.error(errorMessage);
+        }
+      },
+    });
+  };
+
+  // 批量执行提现
+  const handleBatchExecute = () => {
+    const approvedRows = dataSource.filter((r) => r.status === 'approved');
+    if (approvedRows.length === 0) {
+      message.warning('没有已审批待执行的提现');
+      return;
+    }
+
+    Modal.confirm({
+      title: '批量执行提现',
+      icon: <ThunderboltOutlined />,
+      content: (
+        <div>
+          <p>将批量执行 <strong>{approvedRows.length}</strong> 条已审批的提现。</p>
+          <Alert
+            type="warning"
+            message="批量执行将逐条上链转账，执行后不可撤回"
+            style={{ marginTop: 8 }}
+          />
+        </div>
+      ),
+      okText: '确认批量执行',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      async onOk() {
+        try {
+          const result = await api.post<{ successCount: number; failCount: number }>(
+            '/blockchain/withdraw/batch-execute',
+            { withdrawRequestIds: approvedRows.map((r) => r.id) },
+          );
+          if (result.failCount === 0) {
+            message.success(`批量执行完成，成功 ${result.successCount} 笔`);
+          } else {
+            message.warning(`批量执行部分完成：成功 ${result.successCount}，失败 ${result.failCount}`);
+          }
+          fetchWithdrawals(pagination.current, statusFilter);
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '批量执行失败';
           message.error(errorMessage);
         }
       },
@@ -356,10 +443,31 @@ export const WithdrawalList = () => {
               </Button>
             </>
           )}
+          {record.status === 'approved' && (
+            <Button
+              type="primary"
+              size="small"
+              icon={<SendOutlined />}
+              onClick={() => handleExecute(record)}
+            >
+              执行上链
+            </Button>
+          )}
           {record.status === 'completed' && record.txHash && (
             <Tooltip title="查看交易">
               <Button size="small" type="link">
                 {record.txHash.slice(0, 10)}...
+              </Button>
+            </Tooltip>
+          )}
+          {record.status === 'failed' && (
+            <Tooltip title="重新执行">
+              <Button
+                size="small"
+                icon={<SendOutlined />}
+                onClick={() => handleExecute(record)}
+              >
+                重试
               </Button>
             </Tooltip>
           )}
@@ -391,9 +499,11 @@ export const WithdrawalList = () => {
             style={{ width: 120 }}
             options={[
               { value: 'pending', label: '待审核' },
-              { value: 'approved', label: '已通过' },
+              { value: 'approved', label: '待执行' },
+              { value: 'processing', label: '处理中' },
               { value: 'rejected', label: '已拒绝' },
               { value: 'completed', label: '已完成' },
+              { value: 'failed', label: '失败' },
             ]}
           />
           <Button
@@ -408,6 +518,14 @@ export const WithdrawalList = () => {
             disabled={selectedRows.length === 0}
           >
             批量通过 ({selectedRows.length})
+          </Button>
+          <Button
+            danger
+            icon={<ThunderboltOutlined />}
+            onClick={handleBatchExecute}
+            disabled={!dataSource.some((r) => r.status === 'approved')}
+          >
+            批量执行
           </Button>
         </Space>
       }
@@ -428,10 +546,10 @@ export const WithdrawalList = () => {
 
       {/* 统计卡片 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+        <Col span={6}>
           <Card>
             <Statistic
-              title="待审核数量"
+              title="待审核"
               value={pendingCount}
               valueStyle={{ color: '#faad14' }}
               suffix="笔"
@@ -439,7 +557,7 @@ export const WithdrawalList = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card>
             <Statistic
               title="待审核金额"
@@ -451,7 +569,18 @@ export const WithdrawalList = () => {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="待执行"
+              value={approvedCount}
+              valueStyle={{ color: '#1890ff' }}
+              suffix="笔"
+              loading={loading}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
           <Card>
             <Statistic
               title="本页已完成"

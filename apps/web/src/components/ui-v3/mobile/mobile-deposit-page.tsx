@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { ChevronDown, Copy, QrCode, CheckCircle2, ArrowLeft } from 'lucide-react'
+import { ChevronDown, Copy, QrCode, CheckCircle2, ArrowLeft, AlertCircle, Shield, Check } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 
 type NetworkType = 'TRC20' | 'ERC20' | 'BEP20' | 'Polygon'
 
@@ -14,10 +15,10 @@ interface NetworkInfo {
 }
 
 const networks: NetworkInfo[] = [
-  { name: 'TRC20', icon: '/icons/networks/tron.svg', fee: '1', time: '~2分钟' },
-  { name: 'ERC20', icon: '/icons/networks/ethereum.svg', fee: '5', time: '~5分钟' },
-  { name: 'BEP20', icon: '/icons/networks/bsc.svg', fee: '0.8', time: '~3分钟' },
-  { name: 'Polygon', icon: '/icons/networks/polygon.svg', fee: '0.5', time: '~2分钟' },
+  { name: 'TRC20', icon: '/icons/networks/tron.svg', fee: '0', time: '约 1 分钟' },
+  { name: 'ERC20', icon: '/icons/networks/ethereum.svg', fee: '0', time: '约 5 分钟' },
+  { name: 'BEP20', icon: '/icons/networks/bsc.svg', fee: '0', time: '约 1 分钟' },
+  { name: 'Polygon', icon: '/icons/networks/polygon.svg', fee: '0', time: '约 3 分钟' },
 ]
 
 interface DepositRecord {
@@ -34,6 +35,7 @@ interface MobileDepositPageProps {
   recentDeposits?: DepositRecord[]
   selectedNetwork?: NetworkType
   onNetworkChange?: (network: NetworkType) => void
+  balance?: number
 }
 
 export function MobileDepositPage({
@@ -41,7 +43,8 @@ export function MobileDepositPage({
   walletAddress = '',
   recentDeposits = [],
   selectedNetwork: propSelectedNetwork,
-  onNetworkChange
+  onNetworkChange,
+  balance = 0
 }: MobileDepositPageProps) {
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkType>(propSelectedNetwork || 'TRC20')
   const [showDropdown, setShowDropdown] = useState(false)
@@ -153,13 +156,57 @@ export function MobileDepositPage({
             </button>
           </div>
 
-          {showQR && (
+          {showQR && walletAddress && (
             <div className="pt-3 border-t border-[#1E1E2E]">
               <div className="bg-white rounded-lg p-3 w-40 h-40 mx-auto flex items-center justify-center">
-                <QrCode className="w-28 h-28 text-[#0A0A0F]" />
+                <QRCodeSVG
+                  value={walletAddress}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  level="M"
+                />
               </div>
             </div>
           )}
+        </div>
+
+        {/* 注意事项 */}
+        <div className="flex items-start gap-3 p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-xl">
+          <AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+          <div className="text-xs">
+            <p className="text-yellow-400 font-medium mb-1">请注意</p>
+            <ul className="text-[#9090A0] space-y-0.5">
+              <li>请确保选择的网络与您发送 USDT 的网络一致</li>
+              <li>最小充值金额为 {currentNetwork.name === 'ERC20' ? '10' : '1'} USDT</li>
+              <li>充值将在区块确认后到账（{currentNetwork.time}）</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* 账户余额 + 安全提示 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-3">
+            <div className="text-xs text-[#94A3B8] mb-1">账户余额</div>
+            <div className="text-lg font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="text-xs text-[#606070]">USDT</div>
+          </div>
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl p-3">
+            <div className="flex items-center gap-1 mb-1">
+              <Shield className="w-3.5 h-3.5 text-[#06B6D4]" />
+              <span className="text-xs text-[#94A3B8]">安全提示</span>
+            </div>
+            <ul className="text-xs text-[#9090A0] space-y-0.5">
+              <li className="flex items-start gap-1">
+                <Check className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
+                <span>仅支持 USDT</span>
+              </li>
+              <li className="flex items-start gap-1">
+                <Check className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" />
+                <span>核对网络类型</span>
+              </li>
+            </ul>
+          </div>
         </div>
 
         {/* 充值记录 */}

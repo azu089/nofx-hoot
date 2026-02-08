@@ -4,6 +4,7 @@
  */
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:4001/api';
+const BOT_API_SECRET = process.env.TELEGRAM_BOT_API_SECRET || '';
 
 interface ApiResponse<T> {
   code: number;
@@ -12,7 +13,7 @@ interface ApiResponse<T> {
   requestId: string;
 }
 
-// 通用请求方法
+// 通用请求方法（自动携带 Bot 密钥）
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -23,6 +24,7 @@ async function request<T>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(BOT_API_SECRET ? { 'X-Telegram-Bot-Secret': BOT_API_SECRET } : {}),
       ...options.headers,
     },
   });

@@ -2,16 +2,32 @@ import * as crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
-const AUTH_TAG_LENGTH = 16;
+// 盐的长度（字节）
+const SALT_LENGTH = 16;
 
-// 获取加密密钥（从环境变量）
+// 缓存已派生的密钥（避免每次调用都做 scrypt）
+let cachedKey: Buffer | null = null;
+let cachedSalt: string | null = null;
+
+// 获取加密密钥（从环境变量 + 固定盐派生）
+// 注意：使用 ENCRYPTION_SALT 环境变量作为盐，比硬编码 'salt' 安全
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
     throw new Error('ENCRYPTION_KEY 环境变量未设置');
   }
-  // 确保密钥是 32 字节（256 位）
-  return crypto.scryptSync(key, 'salt', 32);
+
+  // 盐从环境变量读取，向后兼容：如果没设 ENCRYPTION_SALT 则使用旧盐 'salt'
+  const salt = process.env.ENCRYPTION_SALT || 'salt';
+
+  // 缓存机制：相同密钥+盐不重复计算
+  if (cachedKey && cachedSalt === `${key}:${salt}`) {
+    return cachedKey;
+  }
+
+  cachedKey = crypto.scryptSync(key, salt, 32);
+  cachedSalt = `${key}:${salt}`;
+  return cachedKey;
 }
 
 export interface EncryptedData {
@@ -60,4 +76,9 @@ export function maskApiKey(key: string): string {
     return '****';
   }
   return `${key.slice(0, 4)}****${key.slice(-4)}`;
+}
+
+// 生成安全的随机字符串（用于密钥、盐等）
+export function generateSecureRandom(length: number = 32): string {
+  return crypto.randomBytes(length).toString('hex');
 }

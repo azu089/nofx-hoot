@@ -2,6 +2,7 @@
 
 import { useRouter, useParams } from 'next/navigation';
 import { HelpArticlePage } from '@/components/ui-v3/help/help-article-page';
+import { MobileHelpArticlePage } from '@/components/ui-v3/mobile/mobile-help-article-page';
 
 // 有效的帮助文章 slug 列表
 const validSlugs = [
@@ -45,10 +46,23 @@ export default function HelpArticlePageRoute() {
   }
 
   return (
-    <HelpArticlePage
-      slug={slug}
-      onBack={handleBack}
-      onNavigate={handleNavigate}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <HelpArticlePage
+          slug={slug}
+          onBack={handleBack}
+          onNavigate={handleNavigate}
+        />
+      </div>
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileHelpArticlePage
+          slug={slug}
+          onBack={handleBack}
+          onNavigate={handleNavigate}
+        />
+      </div>
+    </>
   );
 }

@@ -18,6 +18,7 @@ import {
   FileTextOutlined,
   GoldOutlined,
   CloseOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { AdminHeader } from './Header';
@@ -105,6 +106,15 @@ const menuItems = [
       { key: '/content/help-articles', label: '帮助文章' },
       { key: '/content/legal-docs', label: '法律文档' },
       { key: '/content/faq', label: 'FAQ 问答' },
+    ],
+  },
+  {
+    key: 'blockchain',
+    icon: <LinkOutlined />,
+    label: '区块链',
+    children: [
+      { key: '/blockchain/status', label: '链上监控' },
+      { key: '/blockchain/sweep', label: '资金归集' },
     ],
   },
   {

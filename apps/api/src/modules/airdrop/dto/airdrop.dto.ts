@@ -21,26 +21,28 @@ export enum AirdropStatus {
 }
 
 // ============================================================
-// 空投奖励配置 v3 - 基于行业标准研究
+// 空投奖励配置 v4 - 防刷优化版
 // ============================================================
-// 参考来源:
-// - Binance SIGN: 单用户上限 4% 总分配
-// - 主流交易所注册奖励: $20-100 等值
-// - 行业释放周期: 6-12 个月（空投用户）
-// - 推荐机制: 5%-20% 终身佣金制
+// v4 变更说明（2026-02-08）:
+// - 注册: 50 → 20 HOOT（降低批量注册收益）
+// - 绑定邮箱: 15 → 10 HOOT（邮箱可批量注册）
+// - 邀请: 25 → 15 HOOT（需被邀请人首次订阅策略后才发放）
+// - 盈利: ×3 → ×2（适当收紧）
+// - 签到: 3-15 → 2-8 HOOT（降低自动化刷取收益）
+// 参考: Binance/OKX/Jupiter 等行业标准
 // ============================================================
 
 export const AIRDROP_REWARDS = {
-  [AirdropType.REGISTER]: 50, // 注册 +50 HOOT（首次注册，需完成验证）
+  [AirdropType.REGISTER]: 20, // 注册 +20 HOOT（首次注册，需完成验证）
   [AirdropType.BIND_TG]: 10, // 绑定 TG +10 HOOT
   [AirdropType.BIND_WALLET]: 10, // 绑定钱包 +10 HOOT
-  [AirdropType.BIND_EMAIL]: 15, // 绑定邮箱 +15 HOOT（需邮箱验证）
-  [AirdropType.REFERRAL]: 25, // 邀请 +25 HOOT（降低避免滥用）
-  [AirdropType.TRADING_PROFIT]: 3, // 盈利 * 3 HOOT（保守倍数）
+  [AirdropType.BIND_EMAIL]: 10, // 绑定邮箱 +10 HOOT（需邮箱验证）
+  [AirdropType.REFERRAL]: 15, // 邀请 +15 HOOT（需被邀请人首次订阅策略后才发放）
+  [AirdropType.TRADING_PROFIT]: 2, // 盈利 * 2 HOOT（保守倍数）
   [AirdropType.CHECKIN]: {
     // 签到奖励（渐进式）
-    base: 3, // 基础奖励 3 HOOT
-    max: 15, // 最大奖励 15 HOOT（连续 7 天达到）
+    base: 2, // 基础奖励 2 HOOT
+    max: 8, // 最大奖励 8 HOOT（连续 4 天达到）
     increment: 2, // 连续签到每天 +2 HOOT
   },
 };
@@ -56,35 +58,35 @@ export const AIRDROP_REWARDS = {
 
 export const AIRDROP_CAPS = {
   // 签到上限
-  checkinDailyCap: 15, // 每日最多 15 HOOT（连续签到上限）
-  checkinLifetimeCap: 500, // 终身最多 500 HOOT
+  checkinDailyCap: 8, // 每日最多 8 HOOT（连续签到上限）
+  checkinLifetimeCap: 200, // 终身最多 200 HOOT
 
   // 交易盈利上限
-  tradingProfitDailyCap: 50, // 每日最多 50 HOOT
-  tradingProfitLifetimeCap: 1000, // 终身最多 1000 HOOT（新增）
+  tradingProfitDailyCap: 30, // 每日最多 30 HOOT
+  tradingProfitLifetimeCap: 500, // 终身最多 500 HOOT
 
   // 邀请上限
-  referralDailyCap: 250, // 每日最多 250 HOOT（10 人 * 25）
-  referralLifetimeCap: 2000, // 终身最多 2000 HOOT（新增，80 人上限）
+  referralDailyCap: 150, // 每日最多 150 HOOT（10 人 * 15）
+  referralLifetimeCap: 1000, // 终身最多 1000 HOOT（约 66 人上限）
 };
 
 // ============================================================
-// 单用户最大 HOOT 计算 (v3)
+// 单用户最大 HOOT 计算 (v4)
 // ============================================================
 // 一次性奖励:
-//   - 注册: 50 HOOT
+//   - 注册: 20 HOOT
 //   - 绑定 TG: 10 HOOT
 //   - 绑定钱包: 10 HOOT
-//   - 绑定邮箱: 15 HOOT
-//   小计: 85 HOOT
+//   - 绑定邮箱: 10 HOOT
+//   小计: 50 HOOT
 //
 // 可重复奖励（有终身上限）:
-//   - 签到: 500 HOOT (终身上限)
-//   - 推荐: 2000 HOOT (终身上限，约 80 人)
-//   - 交易盈利: 1000 HOOT (终身上限)
-//   小计: 3500 HOOT
+//   - 签到: 200 HOOT (终身上限)
+//   - 推荐: 1000 HOOT (终身上限，约 66 人，需被邀请人订阅策略)
+//   - 交易盈利: 500 HOOT (终身上限)
+//   小计: 1700 HOOT
 //
-// 单用户终身最大: 3585 HOOT
+// 单用户终身最大: 1750 HOOT（v3 的 49%，降低通胀风险）
 // ============================================================
 
 // ============================================================

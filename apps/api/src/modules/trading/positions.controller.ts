@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { PositionsService } from './positions.service';
 import { PositionSyncService, SyncedPosition } from './position-sync.service';
 import {
@@ -8,6 +8,7 @@ import {
 } from './dto/position.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
+import { TelegramBotGuard } from '../../common/guards/telegram-bot.guard';
 
 @Controller('trading/positions')
 export class PositionsController {
@@ -98,15 +99,17 @@ export class PositionsController {
     );
   }
 
-  // 通过 Telegram ID 获取持仓 - 公开接口（TG Bot 调用）
+  // 通过 Telegram ID 获取持仓 - TG Bot 专用（需验证 Bot 密钥）
   @Public()
+  @UseGuards(TelegramBotGuard)
   @Get('telegram/:telegramId')
   async getPositionsByTelegramId(@Param('telegramId') telegramId: string) {
     return this.positionsService.getPositionsByTelegramId(telegramId);
   }
 
-  // 通过 Telegram ID 获取收益统计 - 公开接口（TG Bot 调用）
+  // 通过 Telegram ID 获取收益统计 - TG Bot 专用（需验证 Bot 密钥）
   @Public()
+  @UseGuards(TelegramBotGuard)
   @Get('earnings/telegram/:telegramId')
   async getEarningsByTelegramId(@Param('telegramId') telegramId: string) {
     return this.positionsService.getEarningsByTelegramId(telegramId);

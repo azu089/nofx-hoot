@@ -24,7 +24,7 @@ export function MobileNav({ activeTab, onTabChange, embedded = false, className 
   const t = useTranslations('nav')
   return (
     <nav className={cn(
-      "bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2",
+      "bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
       embedded ? "" : "fixed bottom-0 left-0 right-0 z-50",
       className
     )}>

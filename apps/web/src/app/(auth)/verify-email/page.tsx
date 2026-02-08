@@ -4,6 +4,7 @@ import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { VerifyEmailPage as VerifyEmailPageUI } from '@/components/ui-v3/auth/verify-email-page';
+import { MobileVerifyEmailPage } from '@/components/ui-v3/mobile/mobile-verify-email-page';
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -57,13 +58,28 @@ function VerifyEmailContent() {
   }
 
   return (
-    <VerifyEmailPageUI
-      email={email}
-      onVerify={handleVerify}
-      onResend={handleResend}
-      onBack={handleBack}
-      onSuccess={handleSuccess}
-    />
+    <>
+      {/* 桌面端 */}
+      <div className="hidden md:block">
+        <VerifyEmailPageUI
+          email={email}
+          onVerify={handleVerify}
+          onResend={handleResend}
+          onBack={handleBack}
+          onSuccess={handleSuccess}
+        />
+      </div>
+      {/* 移动端 */}
+      <div className="block md:hidden">
+        <MobileVerifyEmailPage
+          email={email}
+          onVerify={handleVerify}
+          onResend={handleResend}
+          onBack={handleBack}
+          onSuccess={handleSuccess}
+        />
+      </div>
+    </>
   );
 }
 
