@@ -254,6 +254,26 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(
           `移动止损已激活: ${position.symbol} 盈利 ${pnlPercent.toFixed(2)}%`,
         );
+        // 记录激活事件
+        this.prisma.tradeExecutionLog.create({
+          data: {
+            userId: position.userId,
+            positionId: position.positionId,
+            exchange: '',
+            symbol: position.symbol,
+            side: position.side,
+            orderType: 'trailing_stop_activate',
+            requestedAmountUsdt: new Decimal(0),
+            status: 'filled',
+            completedAt: new Date(),
+            configSnapshot: JSON.stringify({
+              activationPercent: config.trailingStopActivation,
+              currentPnlPercent: pnlPercent,
+              currentPrice,
+              entryPrice: position.entryPrice,
+            }),
+          },
+        }).catch((e: Error) => this.logger.warn(`记录移动止损激活失败: ${e.message}`));
       } else {
         return false; // 未激活
       }
@@ -361,6 +381,40 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
           realizedPnl: new Decimal(pnlPercent).toString(),
         },
       });
+
+      // ===== 写入 TradeExecutionLog =====
+      try {
+        await this.prisma.tradeExecutionLog.create({
+          data: {
+            userId,
+            positionId,
+            exchange: result.exchange,
+            symbol,
+            side: side === 'long' ? 'sell' : 'buy',
+            orderType: reason,
+            requestedAmountUsdt: new Decimal(amount * currentPrice),
+            executedAmount: new Decimal(result.amount),
+            executedPrice: new Decimal(result.price),
+            executedVolumeUsdt: new Decimal(result.amount * result.price),
+            status: 'filled',
+            completedAt: new Date(),
+            configSnapshot: JSON.stringify({
+              reason,
+              triggerPrice: currentPrice,
+              pnlPercent,
+              entryPrice: position.entryPrice,
+              stopLossPercent: position.config.stopLossPercent,
+              takeProfitPercent: position.config.takeProfitPercent,
+              trailingStopActivation: position.config.trailingStopActivation,
+              trailingStopCallback: position.config.trailingStopCallback,
+              highestPrice: position.highestPrice,
+              lowestPrice: position.lowestPrice,
+            }),
+          },
+        });
+      } catch (logErr) {
+        this.logger.warn(`写入 TradeExecutionLog 失败: ${(logErr as Error).message}`);
+      }
 
       // 移除监控
       this.untrackPosition(positionId);

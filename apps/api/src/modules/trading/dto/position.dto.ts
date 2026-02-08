@@ -121,6 +121,14 @@ export class ExecutionLogResponse {
   symbol: string;
   status: 'success' | 'warning' | 'error';
   message: string;
+  // 执行详情
+  orderId?: string;       // 交易所订单ID
+  executedPrice?: string; // 成交价格
+  executedAmount?: string;// 成交数量
+  slippage?: string;      // 滑点百分比
+  durationMs?: number;    // 执行耗时(ms)
+  errorCode?: string;     // 错误码
+  skipReason?: string;    // 跳过原因
 }
 
 // 盈亏统计响应

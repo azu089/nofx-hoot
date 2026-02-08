@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SignalsService } from './signals.service';
+import { FreqtradeHealthService } from './freqtrade-health.service';
 import { WebhookSignalDto } from './dto/signal.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -15,7 +16,10 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 
 @Controller('signals')
 export class SignalsController {
-  constructor(private signalsService: SignalsService) {}
+  constructor(
+    private signalsService: SignalsService,
+    private freqtradeHealthService: FreqtradeHealthService,
+  ) {}
 
   // Freqtrade Webhook 接口 - 公开接口，使用 HMAC-SHA256 签名验证
   @Public()
@@ -58,5 +62,12 @@ export class SignalsController {
   @Get('stats')
   async getSignalStats(@Query('hours') hours?: string) {
     return this.signalsService.getSignalStats(hours ? parseInt(hours, 10) : 24);
+  }
+
+  // 获取策略健康状态
+  @Get('strategy-health')
+  async getStrategyHealth() {
+    const strategies = await this.freqtradeHealthService.getAllHealth();
+    return { strategies };
   }
 }

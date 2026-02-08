@@ -14,6 +14,8 @@ import { TradeJobData, TradeAction } from '../../signals/dto/signal.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { DailyPnlService } from '../daily-pnl.service';
 import { MarketMonitorService } from '../market-monitor.service';
+import { ReferralService } from '../../referral/referral.service';
+import { AirdropService } from '../../airdrop/airdrop.service';
 import { isSameSymbol } from '../../../common/utils/symbol.util';
 
 @Processor('trade')
@@ -34,6 +36,8 @@ export class TradeProcessor extends WorkerHost {
     private signalsService: SignalsService,
     private dailyPnlService: DailyPnlService,
     private marketMonitorService: MarketMonitorService,
+    private referralService: ReferralService,
+    private airdropService: AirdropService,
   ) {
     super();
   }
@@ -70,6 +74,8 @@ export class TradeProcessor extends WorkerHost {
     this.logger.log(
       `执行交易任务: 用户 ${userId} ${action} ${symbol} @ ${price} (${config.tradingType})`,
     );
+
+    const processStart = Date.now();
 
     try {
       // ===== 日亏损限制检查 =====
@@ -150,8 +156,26 @@ export class TradeProcessor extends WorkerHost {
         this.logger.warn(`更新执行状态失败: ${e.message}`);
       }
 
-      // 记录失败的持仓（根据 action 判断方向）
-      const failedSide = (action === 'entry_long' || action === 'exit_short') ? 'long' : 'short';
+      // ===== 写入失败的 TradeExecutionLog =====
+      await this.writeExecutionLog({
+        userId,
+        signalId,
+        exchange,
+        symbol,
+        side: (action === 'entry_long' || action === 'exit_short') ? 'buy' : 'sell',
+        orderType: action,
+        requestedAmountUsdt: parseFloat(amountPerTrade || '0'),
+        requestedPrice: parseFloat(price),
+        status: 'failed',
+        errorCode,
+        errorMessage,
+        startedAt: new Date(processStart),
+        durationMs: Date.now() - processStart,
+        configSnapshot: config,
+      });
+
+      // 记录失败的持仓（根据 action 判断方向：entry/exit_long 对应 long，entry/exit_short 对应 short）
+      const failedSide = (action === 'entry_long' || action === 'exit_long') ? 'long' : 'short';
       await this.prisma.position.create({
         data: {
           userId,
@@ -162,6 +186,7 @@ export class TradeProcessor extends WorkerHost {
           amount: new Decimal(0),
           status: 'failed',
           signalId,
+          subscriptionId,
         },
       });
 
@@ -237,7 +262,7 @@ export class TradeProcessor extends WorkerHost {
       await this.sendTradeFailedNotification(
         userId,
         symbol,
-        'buy',
+        'entry_long',
         this.getRiskReasonMessage(riskCheck.reason, riskCheck.details),
       );
 
@@ -245,6 +270,7 @@ export class TradeProcessor extends WorkerHost {
     }
 
     // 执行交易
+    const executionStart = Date.now();
     const result = await this.tradingService.executeOrder(
       userId,
       apiKeyId,
@@ -312,6 +338,25 @@ export class TradeProcessor extends WorkerHost {
     });
 
     this.logger.log(`开仓成功: 用户 ${userId} 持仓 ${position.id}`);
+
+    // ===== 写入 TradeExecutionLog =====
+    await this.writeExecutionLog({
+      userId,
+      positionId: position.id,
+      signalId,
+      exchange,
+      symbol,
+      side: 'buy',
+      orderType: 'market',
+      requestedAmountUsdt: requiredAmount,
+      requestedPrice: parseFloat(price),
+      executedAmount: result.amount,
+      executedPrice: result.price,
+      status: 'filled',
+      startedAt: new Date(executionStart),
+      durationMs: Date.now() - executionStart,
+      configSnapshot: config,
+    });
 
     // ===== 合约交易：从交易所获取实际杠杆和标记价格 =====
     if (config.tradingType === 'futures') {
@@ -441,6 +486,9 @@ export class TradeProcessor extends WorkerHost {
       result.price.toString(),
     );
 
+    // 首次成功交易 → 触发邀请人的 HOOT 代币奖励
+    await this.tryGrantReferralAirdrop(userId);
+
     return { success: true, positionId: position.id };
   }
 
@@ -497,6 +545,7 @@ export class TradeProcessor extends WorkerHost {
     }
 
     // 执行交易（合约模式下 sell = 开空）
+    const executionStart = Date.now();
     const result = await this.tradingService.executeOrder(
       userId,
       apiKeyId,
@@ -563,6 +612,25 @@ export class TradeProcessor extends WorkerHost {
     });
 
     this.logger.log(`开空成功: 用户 ${userId} 持仓 ${position.id}`);
+
+    // ===== 写入 TradeExecutionLog =====
+    await this.writeExecutionLog({
+      userId,
+      positionId: position.id,
+      signalId,
+      exchange,
+      symbol,
+      side: 'sell',
+      orderType: 'market',
+      requestedAmountUsdt: requiredAmount,
+      requestedPrice: parseFloat(price),
+      executedAmount: result.amount,
+      executedPrice: result.price,
+      status: 'filled',
+      startedAt: new Date(executionStart),
+      durationMs: Date.now() - executionStart,
+      configSnapshot: config,
+    });
 
     // ===== 合约交易：从交易所获取实际杠杆和标记价格 =====
     if (config.tradingType === 'futures') {
@@ -692,6 +760,9 @@ export class TradeProcessor extends WorkerHost {
       result.price.toString(),
     );
 
+    // 首次成功交易 → 触发邀请人的 HOOT 代币奖励
+    await this.tryGrantReferralAirdrop(userId);
+
     return { success: true, positionId: position.id };
   }
 
@@ -734,6 +805,7 @@ export class TradeProcessor extends WorkerHost {
     );
 
     // 执行平仓
+    const executionStart = Date.now();
     const result = await this.tradingService.closePosition(
       userId,
       apiKeyId,
@@ -772,6 +844,25 @@ export class TradeProcessor extends WorkerHost {
     this.dcaService.untrackPosition(openPosition.id);
 
     this.logger.log(`平仓成功: 持仓 ${openPosition.id} PnL: ${pnl.toString()}`);
+
+    // ===== 写入 TradeExecutionLog =====
+    await this.writeExecutionLog({
+      userId,
+      positionId: openPosition.id,
+      signalId,
+      exchange,
+      symbol,
+      side: openPosition.side === 'long' ? 'sell' : 'buy',
+      orderType: 'close_position',
+      requestedAmountUsdt: parseFloat(openPosition.amount.toString()) * result.price,
+      requestedPrice: parseFloat(openPosition.entryPrice.toString()),
+      executedAmount: result.amount,
+      executedPrice: result.price,
+      status: 'filled',
+      startedAt: new Date(executionStart),
+      durationMs: Date.now() - executionStart,
+      configSnapshot: { ...config, closeReason: 'signal', pnl: pnl.toString() },
+    });
 
     // ===== 记录已实现盈亏到日亏损监控 =====
     try {
@@ -826,6 +917,13 @@ export class TradeProcessor extends WorkerHost {
           });
 
           this.logger.log(`燃油费已扣除: ${feeCalc.feeAmount} USDT`);
+
+          // ===== 推荐返佣（基于燃油费金额，多级分佣） =====
+          await this.processReferralCommission(
+            userId,
+            openPosition.id,
+            feeCalc.feeAmount,
+          );
         }
       } catch (error) {
         this.logger.error(`燃油费扣除失败: ${error.message}`);
@@ -842,6 +940,88 @@ export class TradeProcessor extends WorkerHost {
     );
 
     return { success: true, positionId: openPosition.id };
+  }
+
+  /**
+   * 处理推荐返佣（二级分佣）
+   * 返佣基数：燃油费金额
+   * 一级返佣：燃油费 × level1Rate%（默认10%）
+   * 二级返佣：燃油费 × level2Rate%（默认5%）
+   */
+  private async processReferralCommission(
+    userId: string,
+    positionId: string,
+    feeAmount: string,
+  ): Promise<void> {
+    try {
+      const fee = new Decimal(feeAmount);
+      if (fee.lte(0)) return;
+
+      // 获取返佣配置
+      const config = await this.prisma.referralConfig.findUnique({
+        where: { id: 'default' },
+      });
+
+      // 未配置或未启用，跳过
+      if (!config || !config.isActive) return;
+
+      // 检查是否启用了 trading 类型返佣
+      const enabledTypes = config.enabledTypes as string[];
+      if (!enabledTypes.includes('trading')) {
+        this.logger.debug('交易类型返佣未启用，跳过');
+        return;
+      }
+
+      // 查找邀请链：当前用户 → 一级邀请人 → 二级邀请人 → 三级邀请人
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { invitedBy: true },
+      });
+
+      if (!user?.invitedBy) return; // 没有邀请人，跳过
+
+      const levels = [
+        { inviterId: user.invitedBy, rate: new Decimal(config.level1Rate.toString()).div(100), level: 1 },
+      ];
+
+      // 查找二级邀请人
+      const level1User = await this.prisma.user.findUnique({
+        where: { id: user.invitedBy },
+        select: { invitedBy: true },
+      });
+
+      if (level1User?.invitedBy) {
+        levels.push({
+          inviterId: level1User.invitedBy,
+          rate: new Decimal(config.level2Rate.toString()).div(100),
+          level: 2,
+        });
+      }
+
+      // 为每一级创建返佣记录
+      for (const { inviterId, rate, level } of levels) {
+        const commission = fee.times(rate);
+        if (commission.lte(0)) continue;
+
+        const uniqueOrderId = `ref_${inviterId}_gas_${positionId}_L${level}_${Date.now()}`;
+
+        await this.referralService.createReward(
+          inviterId,
+          userId,
+          'trading',
+          commission.toFixed(8),
+          'USDT',
+          uniqueOrderId,
+        );
+
+        this.logger.log(
+          `推荐返佣 L${level}: ${inviterId} 从 ${userId} 获得 ${commission.toFixed(8)} USDT（费用 ${feeAmount} × ${rate.times(100)}%）`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(`推荐返佣处理失败: ${error.message}`);
+      // 返佣失败不影响交易结果
+    }
   }
 
   // 发送交易失败通知
@@ -888,6 +1068,30 @@ export class TradeProcessor extends WorkerHost {
   }
 
   // 从错误中提取错误码
+  /**
+   * 首次成功交易时，给邀请人发放 HOOT 代币奖励
+   * 条件：被邀请人有 invitedBy 且之前未发放过该奖励
+   * grantReferralAirdrop 内部有幂等检查（不会重复发放）
+   */
+  private async tryGrantReferralAirdrop(userId: string): Promise<void> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { invitedBy: true },
+      });
+
+      if (!user?.invitedBy) return;
+
+      await this.airdropService.grantReferralAirdrop(user.invitedBy, userId);
+      this.logger.log(
+        `邀请奖励已发放: 邀请人 ${user.invitedBy} ← 被邀请人 ${userId} 首次成功交易`,
+      );
+    } catch (error) {
+      // 奖励失败不影响交易
+      this.logger.warn(`邀请奖励发放失败: ${error.message}`);
+    }
+  }
+
   private extractErrorCode(error: unknown): string {
     if (error instanceof Error) {
       const message = error.message;
@@ -903,5 +1107,68 @@ export class TradeProcessor extends WorkerHost {
       if (message.includes('ExchangeError')) return 'EXCHANGE_ERROR';
     }
     return 'UNKNOWN_ERROR';
+  }
+
+  /**
+   * 写入 TradeExecutionLog — 记录每次交易的完整执行信息
+   * 包含：请求价格、成交价格、滑点、耗时、配置快照等
+   */
+  private async writeExecutionLog(params: {
+    userId: string;
+    positionId?: string;
+    signalId?: string;
+    exchange: string;
+    symbol: string;
+    side: string;
+    orderType: string;
+    requestedAmountUsdt: number;
+    requestedPrice?: number;
+    executedAmount?: number;
+    executedPrice?: number;
+    status: string;
+    errorCode?: string;
+    errorMessage?: string;
+    startedAt?: Date;
+    durationMs?: number;
+    configSnapshot?: any;
+  }): Promise<void> {
+    try {
+      const slippagePercent =
+        params.requestedPrice && params.executedPrice && params.requestedPrice > 0
+          ? ((params.executedPrice - params.requestedPrice) / params.requestedPrice) * 100
+          : undefined;
+
+      const executedVolumeUsdt =
+        params.executedAmount && params.executedPrice
+          ? params.executedAmount * params.executedPrice
+          : undefined;
+
+      await this.prisma.tradeExecutionLog.create({
+        data: {
+          userId: params.userId,
+          positionId: params.positionId,
+          signalId: params.signalId,
+          exchange: params.exchange,
+          symbol: params.symbol,
+          side: params.side,
+          orderType: params.orderType,
+          requestedAmountUsdt: new Decimal(params.requestedAmountUsdt),
+          requestedPrice: params.requestedPrice != null ? new Decimal(params.requestedPrice) : undefined,
+          executedAmount: params.executedAmount != null ? new Decimal(params.executedAmount) : undefined,
+          executedPrice: params.executedPrice != null ? new Decimal(params.executedPrice) : undefined,
+          executedVolumeUsdt: executedVolumeUsdt != null ? new Decimal(executedVolumeUsdt) : undefined,
+          slippagePercent: slippagePercent != null ? new Decimal(slippagePercent) : undefined,
+          status: params.status,
+          errorCode: params.errorCode,
+          errorMessage: params.errorMessage,
+          startedAt: params.startedAt,
+          completedAt: new Date(),
+          durationMs: params.durationMs,
+          configSnapshot: params.configSnapshot ? JSON.stringify(params.configSnapshot) : undefined,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`写入 TradeExecutionLog 失败: ${(e as Error).message}`);
+    }
   }
 }

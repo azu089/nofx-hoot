@@ -63,10 +63,12 @@ export class SignalProcessor extends WorkerHost {
       const subDirection = (sub as any).direction || 'both';
       if (subDirection === 'long' && (action === 'entry_short' || action === 'exit_short')) {
         this.logger.log(`用户 ${sub.userId} 配置仅做多，跳过空头信号 ${action}`);
+        await this.signalsService.markExecutionSkipped(signalId, sub.userId, `方向过滤：用户仅做多，跳过 ${action}`);
         continue;
       }
       if (subDirection === 'short' && (action === 'entry_long' || action === 'exit_long')) {
         this.logger.log(`用户 ${sub.userId} 配置仅做空，跳过多头信号 ${action}`);
+        await this.signalsService.markExecutionSkipped(signalId, sub.userId, `方向过滤：用户仅做空，跳过 ${action}`);
         continue;
       }
 
@@ -80,6 +82,7 @@ export class SignalProcessor extends WorkerHost {
           this.logger.log(
             `用户 ${sub.userId} 交易对 ${symbol} 不在订阅列表 [${subTradingPairs.join(', ')}] 中，跳过`,
           );
+          await this.signalsService.markExecutionSkipped(signalId, sub.userId, `交易对过滤：${symbol} 不在用户订阅列表中`);
           continue;
         }
       }
@@ -92,6 +95,7 @@ export class SignalProcessor extends WorkerHost {
 
       if (!apiKey || !apiKey.isActive) {
         this.logger.warn(`用户 ${sub.userId} 的 API Key 无效，跳过`);
+        await this.signalsService.markExecutionSkipped(signalId, sub.userId, 'API Key 无效或已停用');
         continue;
       }
 
@@ -163,13 +167,19 @@ export class SignalProcessor extends WorkerHost {
       await this.signalsService.markExecutionQueued(signalId, sub.userId);
 
       // 成功获取锁，立即执行
-      await this.tradeQueue.add('execute', tradeJob, {
-        attempts: tradingConfig.maxRetries,
-        backoff: {
-          type: 'exponential',
-          delay: tradingConfig.retryDelayMs,
-        },
-      });
+      try {
+        await this.tradeQueue.add('execute', tradeJob, {
+          attempts: tradingConfig.maxRetries,
+          backoff: {
+            type: 'exponential',
+            delay: tradingConfig.retryDelayMs,
+          },
+        });
+      } catch (error) {
+        // 推送队列失败时释放锁，防止死锁
+        await this.redisLock.releaseTradeLock(sub.userId, sub.apiKeyId);
+        throw error;
+      }
 
       distributed++;
       this.logger.log(

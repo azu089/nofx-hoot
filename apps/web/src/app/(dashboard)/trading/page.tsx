@@ -86,6 +86,26 @@ interface ExecutionLog {
   symbol: string;
   status: 'success' | 'warning' | 'error';
   message: string;
+  // 增强字段
+  orderId?: string;
+  executedPrice?: string;
+  executedAmount?: string;
+  slippage?: string;
+  durationMs?: number;
+  errorCode?: string;
+  skipReason?: string;
+}
+
+// 策略健康状态类型
+interface StrategyHealth {
+  strategyId: string;
+  strategyName: string;
+  isOnline: boolean;
+  lastSignalAt?: string;
+  minutesSinceLastSignal?: number;
+  todaySignals: number;
+  status: 'healthy' | 'degraded' | 'warning' | 'offline';
+  message: string;
 }
 
 // 盈亏统计类型
@@ -175,6 +195,18 @@ export default function TradingPage() {
     },
     enabled: isAuthenticated,
     retry: false,
+  });
+
+  // 获取策略健康状态
+  const { data: strategyHealthData } = useQuery({
+    queryKey: ['strategy-health'],
+    queryFn: async () => {
+      const response = await api.get<{ strategies: StrategyHealth[] }>('/signals/strategy-health');
+      return response.data.strategies;
+    },
+    enabled: isAuthenticated,
+    retry: false,
+    refetchInterval: 60000, // 每分钟刷新
   });
 
   // 获取盈亏统计
@@ -489,6 +521,14 @@ export default function TradingPage() {
     status: log.status,
     message: log.message,
     marketType: 'futures' as const,
+    // 增强字段
+    orderId: log.orderId,
+    executedPrice: log.executedPrice,
+    executedAmount: log.executedAmount,
+    slippage: log.slippage,
+    durationMs: log.durationMs,
+    errorCode: log.errorCode,
+    skipReason: log.skipReason,
   }));
 
   // 转换订阅的策略数据格式
@@ -567,6 +607,7 @@ export default function TradingPage() {
             todayPnl,
             unrealizedPnl,
           }}
+          strategyHealth={strategyHealthData}
           isLoading={positionsLoading}
           onClosePosition={handleClosePosition}
           onEmergencyCloseAll={handleEmergencyCloseAll}
@@ -585,6 +626,7 @@ export default function TradingPage() {
           executionLogs={transformedLogs}
           myStrategies={transformedStrategies}
           accounts={accounts}
+          strategyHealth={strategyHealthData}
           pnlStats={{
             totalAssets,
             availableBalance,

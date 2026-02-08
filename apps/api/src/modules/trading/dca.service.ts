@@ -88,6 +88,22 @@ export class DcaService {
           `防瀑布触发: ${position.symbol} 总跌幅 ${totalDrop.toFixed(2)}% 超过 ${config.waterfallTriggerPercent}%`,
         );
         await this.notifyWaterfallTriggered(position, totalDrop);
+        // 持久化防瀑布触发事件
+        await this.prisma.riskLog.create({
+          data: {
+            userId: position.userId,
+            reason: 'waterfall_protection',
+            details: JSON.stringify({
+              positionId: position.positionId,
+              symbol: position.symbol,
+              side: position.side,
+              totalDropPercent: parseFloat(totalDrop.toFixed(2)),
+              waterfallTriggerPercent: config.waterfallTriggerPercent,
+              currentDcaCount: position.dcaCount,
+              maxDcaCount: config.dcaMaxCount,
+            }),
+          },
+        }).catch((e: Error) => this.logger.warn(`写入防瀑布 RiskLog 失败: ${e.message}`));
         return;
       }
     }
@@ -148,6 +164,22 @@ export class DcaService {
     if (!riskCheck.allowed) {
       this.logger.warn(`补仓被风控拒绝: ${riskCheck.reason}`);
       await this.notifyDcaBlocked(position, riskCheck.reason || '风控限制');
+      // 持久化风控拒绝事件
+      await this.prisma.riskLog.create({
+        data: {
+          userId,
+          reason: 'dca_risk_rejected',
+          details: JSON.stringify({
+            positionId,
+            symbol,
+            side,
+            dcaNumber: dcaCount + 1,
+            dcaAmount,
+            dropPercent: parseFloat(dropPercent.toFixed(2)),
+            riskReason: riskCheck.reason,
+          }),
+        },
+      }).catch((e: Error) => this.logger.warn(`写入 DCA 风控拒绝 RiskLog 失败: ${e.message}`));
       return;
     }
 
@@ -164,13 +196,15 @@ export class DcaService {
       // 更新持仓记录
       position.dcaCount += 1;
       position.lastDcaPrice = currentPrice;
-      position.amount += order.amount;
+      const oldAmount = new Decimal(position.amount.toString());
+      const newAmount = oldAmount.plus(new Decimal(order.amount.toString()));
+      position.amount = newAmount.toNumber();
 
       // 计算新的平均入场价
-      const totalCost = new Decimal(position.entryPrice)
-        .times(position.amount - order.amount)
-        .plus(new Decimal(currentPrice).times(order.amount));
-      position.entryPrice = totalCost.div(position.amount).toNumber();
+      const totalCost = new Decimal(position.entryPrice.toString())
+        .times(oldAmount)
+        .plus(new Decimal(currentPrice.toString()).times(new Decimal(order.amount.toString())));
+      position.entryPrice = totalCost.div(newAmount).toNumber();
 
       // 更新数据库
       await this.prisma.position.update({
@@ -216,6 +250,22 @@ export class DcaService {
     } catch (error) {
       this.logger.error(`补仓失败: ${(error as Error).message}`);
       await this.notifyDcaFailed(position, (error as Error).message);
+      // 持久化补仓失败事件
+      await this.prisma.riskLog.create({
+        data: {
+          userId,
+          reason: 'dca_execution_failed',
+          details: JSON.stringify({
+            positionId,
+            symbol,
+            side,
+            dcaNumber: dcaCount + 1,
+            dcaAmount,
+            dropPercent: parseFloat(dropPercent.toFixed(2)),
+            error: (error as Error).message,
+          }),
+        },
+      }).catch((e: Error) => this.logger.warn(`写入 DCA 失败 RiskLog 失败: ${e.message}`));
     }
   }
 

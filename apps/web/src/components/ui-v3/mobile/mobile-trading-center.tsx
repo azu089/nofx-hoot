@@ -55,6 +55,14 @@ interface ExecutionLog {
   status: 'success' | 'warning' | 'error'
   message: string
   marketType: MarketType
+  // 增强字段
+  orderId?: string
+  executedPrice?: string
+  executedAmount?: string
+  slippage?: string
+  durationMs?: number
+  errorCode?: string
+  skipReason?: string
 }
 
 interface HistoryOrder {
@@ -133,6 +141,17 @@ interface PnlStatsProps {
   unrealizedPnl: number
 }
 
+interface StrategyHealthItem {
+  strategyId: string
+  strategyName: string
+  isOnline: boolean
+  lastSignalAt?: string
+  minutesSinceLastSignal?: number
+  todaySignals: number
+  status: 'healthy' | 'degraded' | 'warning' | 'offline'
+  message: string
+}
+
 // ============ Props ============
 interface MobileTradingCenterProps {
   positions?: Position[]
@@ -140,6 +159,7 @@ interface MobileTradingCenterProps {
   executionLogs?: ExecutionLog[]
   myStrategies?: MyStrategy[]
   accounts?: Account[]
+  strategyHealth?: StrategyHealthItem[]
   pnlStats?: PnlStatsProps
   onClosePosition?: (positionId: number | string) => void
   onEmergencyCloseAll?: () => void
@@ -156,6 +176,7 @@ export function MobileTradingCenter({
   executionLogs = [],
   myStrategies = [],
   accounts = [],
+  strategyHealth = [],
   pnlStats,
   onClosePosition,
   onEmergencyCloseAll,
@@ -170,7 +191,14 @@ export function MobileTradingCenter({
   const [showAccountDropdown, setShowAccountDropdown] = useState(false)
   const [accountType, setAccountType] = useState<'all' | 'spot' | 'futures'>('all')
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [dateRange, setDateRange] = useState({ start: '2026-01-01', end: '2026-01-29' })
+  const [dateRange, setDateRange] = useState(() => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    return {
+      start: start.toISOString().split('T')[0],
+      end: now.toISOString().split('T')[0],
+    }
+  })
   const [strategySearchQuery, setStrategySearchQuery] = useState('')
   const [strategyStatusFilter, setStrategyStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
   const [showSearchInput, setShowSearchInput] = useState(false)
@@ -313,6 +341,32 @@ export function MobileTradingCenter({
             )}
           </div>
         </div>
+
+        {/* 策略健康状态条 */}
+        {strategyHealth.length > 0 && (
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {strategyHealth.map((sh) => (
+                <div key={sh.strategyId || sh.strategyName} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#12121A]/50 border border-[#1E1E2E] rounded-lg flex-shrink-0">
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    sh.status === 'healthy' ? 'bg-green-400' :
+                    sh.status === 'degraded' ? 'bg-yellow-400' :
+                    sh.status === 'warning' ? 'bg-orange-400' :
+                    'bg-red-400'
+                  }`} />
+                  <span className="text-xs text-[#F8F8FC]">{sh.strategyName.replace('Strategy', '')}</span>
+                  <span className="text-xs text-[#606070]">
+                    {sh.minutesSinceLastSignal != null
+                      ? sh.minutesSinceLastSignal < 60
+                        ? `${sh.minutesSinceLastSignal}m`
+                        : `${Math.floor(sh.minutesSinceLastSignal / 60)}h`
+                      : '-'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 资产统计卡片 - 2行布局 */}
         <div className="px-4 pb-3">
@@ -725,6 +779,32 @@ export function MobileTradingCenter({
                         <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
                       </div>
                       <p className="text-xs text-[#9090A0] mb-1">{log.message}</p>
+                      {/* 增强执行详情 */}
+                      {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          {log.executedPrice && (
+                            <span className="text-xs text-[#94A3B8]">
+                              成交 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
+                            </span>
+                          )}
+                          {log.slippage && (
+                            <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
+                              滑点 {parseFloat(log.slippage).toFixed(3)}%
+                            </span>
+                          )}
+                          {log.durationMs != null && (
+                            <span className="text-xs text-[#94A3B8]">
+                              {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
+                            </span>
+                          )}
+                          {log.skipReason && (
+                            <span className="text-xs text-yellow-400/80">{log.skipReason}</span>
+                          )}
+                          {log.errorCode && (
+                            <span className="text-xs text-red-400/80">[{log.errorCode}]</span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-[#606070]" />
                         <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>

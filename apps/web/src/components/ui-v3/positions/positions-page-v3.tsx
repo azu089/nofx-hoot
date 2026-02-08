@@ -59,6 +59,14 @@ interface ExecutionLog {
   status: 'success' | 'warning' | 'error'
   message: string
   marketType: MarketType
+  // 增强字段
+  orderId?: string
+  executedPrice?: string
+  executedAmount?: string
+  slippage?: string
+  durationMs?: number
+  errorCode?: string
+  skipReason?: string
 }
 
 
@@ -128,6 +136,17 @@ interface PnlStatsProps {
   unrealizedPnl: number
 }
 
+interface StrategyHealthItem {
+  strategyId: string
+  strategyName: string
+  isOnline: boolean
+  lastSignalAt?: string
+  minutesSinceLastSignal?: number
+  todaySignals: number
+  status: 'healthy' | 'degraded' | 'warning' | 'offline'
+  message: string
+}
+
 // ============ Props ============
 interface PositionsPageV3Props {
   positions?: Position[]
@@ -135,6 +154,7 @@ interface PositionsPageV3Props {
   executionLogs?: ExecutionLog[]
   myStrategies?: MyStrategy[]
   accounts?: Account[]
+  strategyHealth?: StrategyHealthItem[]
   pnlStats?: PnlStatsProps
   isLoading?: boolean
   onClosePosition?: (positionId: number | string) => void
@@ -155,6 +175,7 @@ export function PositionsPageV3({
   executionLogs = [],
   myStrategies = [],
   accounts = [],
+  strategyHealth = [],
   pnlStats,
   isLoading = false,
   onClosePosition,
@@ -245,6 +266,34 @@ export function PositionsPageV3({
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('title')}</h1>
         </div>
+
+        {/* Strategy Health Panel */}
+        {strategyHealth.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-[#12121A]/50 backdrop-blur-2xl border border-cyan-500/[0.06] rounded-xl shadow-[0_4px_16px_rgba(0,0,0,0.3)]">
+            <span className="text-xs text-[#9090A0] mr-1">策略状态</span>
+            {strategyHealth.map((sh) => (
+              <div key={sh.strategyId || sh.strategyName} className="flex items-center gap-2 px-3 py-1.5 bg-[#0A0A0F]/50 rounded-lg border border-[#1E1E2E]">
+                <div className={`w-2 h-2 rounded-full ${
+                  sh.status === 'healthy' ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)]' :
+                  sh.status === 'degraded' ? 'bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.5)]' :
+                  sh.status === 'warning' ? 'bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.5)]' :
+                  'bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.5)]'
+                }`} />
+                <span className="text-xs text-[#F8F8FC]">{sh.strategyName.replace('Strategy', '')}</span>
+                <span className="text-xs text-[#606070]">
+                  {sh.minutesSinceLastSignal != null
+                    ? sh.minutesSinceLastSignal < 60
+                      ? `${sh.minutesSinceLastSignal}分钟前`
+                      : `${Math.floor(sh.minutesSinceLastSignal / 60)}小时前`
+                    : '无数据'}
+                </span>
+                {sh.todaySignals > 0 && (
+                  <span className="text-xs text-[#06B6D4]">今日 {sh.todaySignals}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Controls Row 1 - Account Selector + Type Filter (等宽) */}
         <div className="flex items-center gap-4">
@@ -870,6 +919,36 @@ export function PositionsPageV3({
                             <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
                           </div>
                           <p className="text-sm text-[#9090A0] mb-2">{log.message}</p>
+                          {/* 增强执行详情 */}
+                          {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
+                            <div className="flex flex-wrap items-center gap-3 mb-2">
+                              {log.executedPrice && (
+                                <span className="text-xs text-[#94A3B8]">
+                                  成交价 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
+                                </span>
+                              )}
+                              {log.slippage && (
+                                <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
+                                  滑点 {parseFloat(log.slippage).toFixed(3)}%
+                                </span>
+                              )}
+                              {log.durationMs != null && (
+                                <span className="text-xs text-[#94A3B8]">
+                                  耗时 {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
+                                </span>
+                              )}
+                              {log.skipReason && (
+                                <span className="text-xs text-yellow-400/80">
+                                  {log.skipReason}
+                                </span>
+                              )}
+                              {log.errorCode && (
+                                <span className="text-xs text-red-400/80">
+                                  [{log.errorCode}]
+                                </span>
+                              )}
+                            </div>
+                          )}
                           <div className="flex items-center gap-2">
                             <Clock className="w-3 h-3 text-[#606070]" />
                             <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>

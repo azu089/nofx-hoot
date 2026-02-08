@@ -462,6 +462,24 @@ export class PositionsService {
       },
     });
 
+    // 批量查询关联的 TradeExecutionLog（获取滑点、耗时等）
+    const signalIds = executions.map((e) => e.signalId).filter(Boolean);
+    const tradeLogs =
+      signalIds.length > 0
+        ? await this.prisma.tradeExecutionLog.findMany({
+            where: { signalId: { in: signalIds }, userId },
+            select: {
+              signalId: true,
+              slippagePercent: true,
+              durationMs: true,
+              configSnapshot: true,
+            },
+          })
+        : [];
+    const tradeLogMap = new Map(
+      tradeLogs.map((log) => [log.signalId, log]),
+    );
+
     return executions.map((exec) => {
       let status: 'success' | 'warning' | 'error' = 'success';
       let action = '执行';
@@ -487,6 +505,9 @@ export class PositionsService {
         message = '等待执行';
       }
 
+      // 合并 TradeExecutionLog 数据
+      const tradeLog = tradeLogMap.get(exec.signalId);
+
       return {
         id: exec.id,
         time: exec.completedAt || exec.createdAt,
@@ -495,6 +516,15 @@ export class PositionsService {
         symbol: exec.signal.symbol,
         status,
         message,
+        // 执行详情（来自 SignalExecution）
+        orderId: exec.orderId || undefined,
+        executedPrice: exec.executedPrice?.toString() || undefined,
+        executedAmount: exec.executedAmount?.toString() || undefined,
+        errorCode: exec.errorCode || undefined,
+        skipReason: exec.skipReason || undefined,
+        // 执行详情（来自 TradeExecutionLog）
+        slippage: tradeLog?.slippagePercent?.toString() || undefined,
+        durationMs: tradeLog?.durationMs || undefined,
       };
     });
   }

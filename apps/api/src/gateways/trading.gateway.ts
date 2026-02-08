@@ -41,6 +41,14 @@ export interface TradeExecutionEvent {
   executedAt: Date;
 }
 
+export interface StrategyHealthEvent {
+  strategyId: string;
+  strategyName: string;
+  status: 'healthy' | 'degraded' | 'warning' | 'offline';
+  message: string;
+  lastSignalAt?: Date;
+}
+
 @WebSocketGateway({
   namespace: '/trading',
   cors: {
@@ -169,6 +177,16 @@ export class TradingGateway
     },
   ) {
     this.server.to(`user:${userId}`).emit('notification', notification);
+  }
+
+  // 推送策略健康状态变化给指定用户
+  sendStrategyHealthUpdate(userId: string, health: StrategyHealthEvent) {
+    this.server.to(`user:${userId}`).emit('strategy:health', health);
+  }
+
+  // 广播策略健康状态给所有连接用户
+  broadcastStrategyHealth(health: StrategyHealthEvent) {
+    this.server.emit('strategy:health', health);
   }
 
   // 广播系统公告
