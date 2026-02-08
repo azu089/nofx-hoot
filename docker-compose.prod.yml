@@ -112,13 +112,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # === 管理后台 (Vite + React SPA) ===
+  admin:
+    build:
+      context: ./apps/admin
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=https://api.hoot.cool
+    container_name: hoot-admin
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - hoot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # === 数据库 ===
   postgres:
     image: postgres:16-alpine
     container_name: hoot-postgres
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:5433:5432"
+    # 生产环境不暴露端口，仅通过 Docker 内部网络访问
+    # 调试时取消注释: ports: ["127.0.0.1:5433:5432"]
     environment:
       - POSTGRES_USER=hoot
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -138,8 +166,8 @@ services:
     image: redis:7-alpine
     container_name: hoot-redis
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
+    # 生产环境不暴露端口，仅通过 Docker 内部网络访问
+    # 调试时取消注释: ports: ["127.0.0.1:6379:6379"]
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
@@ -272,6 +300,7 @@ services:
     depends_on:
       - api
       - web
+      - admin
     networks:
       - hoot-network
     profiles:

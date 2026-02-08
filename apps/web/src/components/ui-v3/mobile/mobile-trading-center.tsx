@@ -129,7 +129,7 @@ const strategyTypeColors: Record<string, string> = {
 // 策略类型映射函数 - 返回翻译后的标签
 const getStrategyTypeLabel = (type: string, t: (key: string) => string) => {
   const typeKey = `strategyTypes.${type}` as const
-  return t(typeKey as any) || type
+  return t(typeKey) || type
 }
 
 // 盈亏统计类型
@@ -207,7 +207,7 @@ export function MobileTradingCenter({
   useEffect(() => {
     if (accounts.length > 0 && selectedAccount.id === 0) {
       // 初始状态时选择第一个账户
-      setSelectedAccount(accounts[0])
+      queueMicrotask(() => setSelectedAccount(accounts[0]))
     } else if (accounts.length > 0) {
       // 如果当前选中的账户数据更新了，同步更新
       const updatedAccount = accounts.find(a => a.id === selectedAccount.id)
@@ -216,7 +216,7 @@ export function MobileTradingCenter({
         updatedAccount.spotValue !== selectedAccount.spotValue ||
         updatedAccount.futuresValue !== selectedAccount.futuresValue
       )) {
-        setSelectedAccount(updatedAccount)
+        queueMicrotask(() => setSelectedAccount(updatedAccount))
       }
     }
   }, [accounts, selectedAccount.id, selectedAccount.balance, selectedAccount.spotValue, selectedAccount.futuresValue])
@@ -513,7 +513,7 @@ export function MobileTradingCenter({
                   >
                     <Icon className={`w-4 h-4 mb-1.5 ${isActive ? 'text-[#06B6D4]' : 'text-[#606070]'}`} />
                     <span className={`text-[10px] font-medium ${isActive ? 'text-[#06B6D4]' : 'text-[#9090A0]'}`}>
-                      {t(tab.labelKey as any)}
+                      {t(tab.labelKey)}
                     </span>
                     {/* 数字徽章 - 绝对定位不影响居中 */}
                     <span className={`absolute top-1 right-1 min-w-[14px] h-[14px] flex items-center justify-center rounded-full text-[8px] font-medium ${

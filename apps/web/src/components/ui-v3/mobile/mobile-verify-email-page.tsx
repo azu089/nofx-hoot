@@ -114,8 +114,8 @@ export function MobileVerifyEmailPage({
       setTimeout(() => {
         onSuccess?.()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message || '验证失败，请重试')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '验证失败，请重试')
       setCode(Array(6).fill(''))
       inputRefs.current[0]?.focus()
     } finally {
@@ -133,8 +133,8 @@ export function MobileVerifyEmailPage({
       setCode(Array(6).fill(''))
       setError('')
       inputRefs.current[0]?.focus()
-    } catch (err: any) {
-      setError(err.message || '发送失败，请重试')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '发送失败，请重试')
     }
   }
 

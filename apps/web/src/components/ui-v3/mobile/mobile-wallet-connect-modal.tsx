@@ -84,7 +84,7 @@ export function MobileWalletConnectModal({
   // 创建翻译后的钱包选项
   const walletOptions: WalletOption[] = walletOptionsConfig.map((wallet) => ({
     ...wallet,
-    description: t(wallet.descKey as any),
+    description: t(wallet.descKey),
   }))
 
   if (!isOpen) return null

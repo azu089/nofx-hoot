@@ -218,26 +218,26 @@ export class WalletService {
     const fee = new Decimal(amount).times(this.WITHDRAW_FEE_RATE);
     const totalAmount = new Decimal(amount).plus(fee);
 
-    // 检查余额
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        usdtBalance: true,
-        hootBalance: true,
-      },
-    });
-
-    const balance = asset === 'USDT' ? user!.usdtBalance : user!.hootBalance;
-
-    if (new Decimal(balance).lessThan(totalAmount)) {
-      throw new BadRequestException('余额不足');
-    }
-
-    // 使用事务创建提现申请并冻结余额
+    // 使用事务：余额检查 + 扣减在同一事务内（防止 TOCTOU 并发问题）
     const result = await this.prisma.$transaction(async (tx) => {
-      // 扣减余额
-      const balanceField = asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
+      // 在事务内读取余额
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { usdtBalance: true, hootBalance: true },
+      });
 
+      if (!user) {
+        throw new BadRequestException('用户不存在');
+      }
+
+      const balanceField = asset === 'USDT' ? 'usdtBalance' : 'hootBalance';
+      const balance = asset === 'USDT' ? user.usdtBalance : user.hootBalance;
+
+      if (new Decimal(balance).lessThan(totalAmount)) {
+        throw new BadRequestException('余额不足');
+      }
+
+      // 原子扣减余额（事务内，与余额检查不可分割）
       await tx.user.update({
         where: { id: userId },
         data: {
@@ -470,12 +470,14 @@ export class WalletService {
 
   // 获取兑换汇率
   // USDT <-> POINT: 1:1
-  // USDT <-> HOOT: 假设 1 HOOT = 0.15 USDT（实际应从市场获取）
+  // USDT <-> HOOT: 通过环境变量配置（默认 0.15）
   private getExchangeRate(
     fromAsset: 'USDT' | 'HOOT' | 'POINT',
     toAsset: 'USDT' | 'HOOT' | 'POINT',
   ): Decimal {
-    const HOOT_PRICE_IN_USDT = new Decimal('0.15');
+    const HOOT_PRICE_IN_USDT = new Decimal(
+      process.env.HOOT_PRICE_USDT || '0.15',
+    );
 
     // USDT <-> POINT (1:1)
     if (

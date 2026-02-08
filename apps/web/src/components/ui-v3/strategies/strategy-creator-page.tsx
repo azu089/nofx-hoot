@@ -52,7 +52,10 @@ interface TabConfig {
 }
 
 const tabConfigs: TabConfig[] = [
-  { id: 'external', labelKey: 'TradingView', icon: <div className="w-8 h-8 rounded-lg overflow-hidden"><img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" /></div>, descriptionKey: 'tradingviewDesc', tagKey: 'recommended' },
+  { id: 'external', labelKey: 'TradingView', icon: <div className="w-8 h-8 rounded-lg overflow-hidden">
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" />
+  </div>, descriptionKey: 'tradingviewDesc', tagKey: 'recommended' },
   { id: 'visual', labelKey: 'visualBuilder', icon: <Layers className="w-6 h-6" />, descriptionKey: 'visualDesc' },
   { id: 'code', labelKey: 'codeDevelopment', icon: <Code className="w-6 h-6" />, descriptionKey: 'codeDesc', tagKey: 'advanced' }
 ]
@@ -98,13 +101,15 @@ export function StrategyCreatorPage({
 
   // 加载用户 API Keys
   useEffect(() => {
-    fetchApiKeys()
+    queueMicrotask(() => {
+      void fetchApiKeys()
+    })
   }, [fetchApiKeys])
 
   // Helper to get tab label
   const getTabLabel = (key: string) => {
     if (key === 'TradingView') return 'TradingView'
-    return t(key as any)
+    return t(key)
   }
 
   // 可视化搭建状态
@@ -237,7 +242,7 @@ class MyStrategy(BaseStrategy):
                     ? "bg-cyan-400/20 text-cyan-400"
                     : "bg-yellow-400/20 text-yellow-400"
                 )}>
-                  {t(tab.tagKey as any)}
+                  {t(tab.tagKey)}
                 </span>
               )}
             </button>
@@ -249,6 +254,7 @@ class MyStrategy(BaseStrategy):
           <div className="flex items-center gap-3">
             <div className={activeTab === 'external' ? "w-12 h-12 rounded-lg overflow-hidden" : "w-12 h-12 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center"}>
               {activeTab === 'external' ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" />
               ) : (
                 tabConfigs.find(tc => tc.id === activeTab)?.icon
@@ -256,7 +262,7 @@ class MyStrategy(BaseStrategy):
             </div>
             <div>
               <h2 className="font-semibold">{getTabLabel(tabConfigs.find(tc => tc.id === activeTab)?.labelKey || '')}</h2>
-              <p className="text-sm text-[#9090A0]">{t(tabConfigs.find(tc => tc.id === activeTab)?.descriptionKey as any)}</p>
+              <p className="text-sm text-[#9090A0]">{t(tabConfigs.find(tc => tc.id === activeTab)?.descriptionKey || '')}</p>
             </div>
           </div>
         </div>
@@ -665,8 +671,8 @@ class MyStrategy(BaseStrategy):
                         className="flex items-center justify-between p-4 bg-[#0A0A0F] rounded-xl hover:bg-[#1E1E2E] transition-colors text-left"
                       >
                         <div>
-                          <div className="font-medium">{t(template.nameKey as any)}</div>
-                          <div className="text-sm text-[#606070]">{t(template.descKey as any)}</div>
+                          <div className="font-medium">{t(template.nameKey)}</div>
+                          <div className="text-sm text-[#606070]">{t(template.descKey)}</div>
                         </div>
                         <ChevronRight className="w-5 h-5 text-[#606070]" />
                       </button>

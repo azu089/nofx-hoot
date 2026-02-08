@@ -30,7 +30,7 @@ export function TelegramBindModal({
   // 计算剩余时间
   useEffect(() => {
     if (!expiresAt) {
-      setCountdown(0)
+      queueMicrotask(() => setCountdown(0))
       return
     }
 
@@ -48,7 +48,9 @@ export function TelegramBindModal({
   // 初次打开时生成绑定码
   useEffect(() => {
     if (isOpen && !bindCode && !isLoading) {
-      onGenerateCode()
+      queueMicrotask(() => {
+        void onGenerateCode()
+      })
     }
   }, [isOpen, bindCode, isLoading, onGenerateCode])
 

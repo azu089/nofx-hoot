@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React from 'react'
 import {
   ArrowLeft,
   BookOpen,
@@ -27,7 +27,7 @@ interface MobileHelpArticlePageProps {
 }
 
 // 文章图标映射
-const articleIcons: Record<string, any> = {
+const articleIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   'getting-started': BookOpen,
   'api-keys': Key,
   'strategies': TrendingUp,
@@ -37,7 +37,7 @@ const articleIcons: Record<string, any> = {
 }
 
 // 提示框图标映射
-const alertIcons: Record<string, any> = {
+const alertIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   info: Info,
   warning: AlertCircle,
   success: CheckCircle2,
@@ -118,7 +118,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
   const Icon = articleIcons[slug] || BookOpen
 
   // 渲染段落内容（支持列表和提示框）
-  const renderContent = (content: string, type?: string) => {
+  const renderContent = (content: string) => {
     const lines = content.split('\n')
     const elements: React.ReactElement[] = []
     let currentList: string[] = []
@@ -154,7 +154,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
       }
     }
 
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       const trimmed = line.trim()
 
       // 空行
@@ -230,7 +230,7 @@ export function MobileHelpArticlePage({ slug, onBack, onNavigate }: MobileHelpAr
             </div>
             <h3 className="text-sm font-semibold text-white flex-1">{sectionTitle}</h3>
           </div>
-          <div className="pl-11">{renderContent(sectionContent, section.type)}</div>
+          <div className="pl-11">{renderContent(sectionContent)}</div>
         </div>
       )
     }

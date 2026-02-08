@@ -18,7 +18,7 @@ interface WalletOptionConfig {
   id: string
   name: string
   icon: string
-  descKey: keyof typeof import('@/i18n/messages/zh-CN.json')['modals']
+  descKey: string
   popular?: boolean
 }
 
@@ -86,16 +86,17 @@ export function WalletConnectModal({
   // 创建翻译后的钱包选项
   const walletOptions: WalletOption[] = walletOptionsConfig.map((wallet) => ({
     ...wallet,
-    description: t(wallet.descKey as any),
+    description: t(wallet.descKey),
   }))
 
   // 连接成功后回调
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- 钱包连接成功后清理状态是合理的副作用
   useEffect(() => {
     if (isConnected && address && connectingWallet) {
-      onSuccess?.(address)
-      setConnectingWallet(null)
-      onClose()
+      queueMicrotask(() => {
+        onSuccess?.(address)
+        setConnectingWallet(null)
+        onClose()
+      })
     }
   }, [isConnected, address, connectingWallet, onSuccess, onClose])
 

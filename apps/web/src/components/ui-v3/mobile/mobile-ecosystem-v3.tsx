@@ -142,7 +142,7 @@ export function MobileEcosystemV3({
                   : 'text-[#94A3B8]'
               }`}
             >
-              {t(tab.labelKey as any)}
+              {t(tab.labelKey)}
               {activeTab === tab.id && (
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#06B6D4] rounded-full" />
               )}
@@ -365,7 +365,7 @@ export function MobileEcosystemV3({
                       : 'text-[#94A3B8]'
                   }`}
                 >
-                  {t(tab.labelKey as any)}
+                  {t(tab.labelKey)}
                   {'count' in tab && tab.count !== undefined && (
                     <span className="ml-0.5">({tab.count})</span>
                   )}

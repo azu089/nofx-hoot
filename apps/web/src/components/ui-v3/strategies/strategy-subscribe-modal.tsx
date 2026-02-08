@@ -85,7 +85,7 @@ export function StrategySubscribeModal({
   const t = useTranslations('modals')
 
   // Risk presets with translations
-  const riskPresets = {
+  const riskPresets = useMemo(() => ({
     conservative: {
       ...riskPresetsConfig.conservative,
       label: t('conservative'),
@@ -101,7 +101,7 @@ export function StrategySubscribeModal({
       label: t('aggressive'),
       description: t('aggressiveDesc'),
     },
-  }
+  }), [t])
 
   // 核心配置状态
   const [selectedExchange, setSelectedExchange] = useState(connectedExchanges[0]?.id || '')
@@ -130,7 +130,7 @@ export function StrategySubscribeModal({
       leverage: customLeverage ?? preset.leverage,
       maxPositions: customMaxPositions ?? preset.maxPositions,
     }
-  }, [riskLevel, customStopLoss, customTakeProfit, customLeverage, customMaxPositions])
+  }, [riskLevel, customStopLoss, customTakeProfit, customLeverage, customMaxPositions, riskPresets])
 
   // 预估收益计算
   const estimatedReturn = useMemo(() => {
@@ -143,7 +143,7 @@ export function StrategySubscribeModal({
       max: (amountNum * maxPercent / 100).toFixed(2),
       period: '月',
     }
-  }, [amount, riskLevel])
+  }, [amount, riskLevel, riskPresets])
 
   // 验证
   const amountNum = parseFloat(amount) || 0

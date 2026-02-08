@@ -40,6 +40,7 @@ export function MobileWithdrawPage({
   balance = 0,
   recentWithdrawals = [],
   onBack,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onWithdraw: _onWithdraw
 }: MobileWithdrawPageProps) {
   const [selectedNetwork, setSelectedNetwork] = useState(networks[0])

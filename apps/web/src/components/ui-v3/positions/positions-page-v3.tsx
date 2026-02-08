@@ -797,7 +797,7 @@ export function PositionsPageV3({
                                   "px-2 py-0.5 rounded text-xs font-medium",
                                   strategyTypeColors[strategy.type]
                                 )}>
-                                  {t(`strategyTypes.${strategy.type}` as any)}
+                                  {t(`strategyTypes.${strategy.type}`)}
                                 </span>
                               </div>
                               <p className="text-[#9090A0] text-sm mb-3">{strategy.description}</p>

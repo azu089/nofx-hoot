@@ -104,8 +104,8 @@ export function HelpCenterPage({
   // Build translated FAQ items for search
   const faqItemsWithText = faqItemsConfig.map(item => ({
     ...item,
-    question: t(item.questionKey as any),
-    answer: t(item.answerKey as any)
+    question: t(item.questionKey),
+    answer: t(item.answerKey)
   }))
 
   const filteredFAQs = faqItemsWithText.filter(
@@ -161,8 +161,8 @@ export function HelpCenterPage({
                   <div className="w-10 h-10 rounded-xl bg-[#06B6D4]/10 flex items-center justify-center mb-3 group-hover:bg-[#06B6D4]/20 transition-colors">
                     <IconComponent className="w-5 h-5 text-[#06B6D4]" />
                   </div>
-                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t(link.titleKey as any)}</h3>
-                  <p className="text-xs text-[#9090A0]">{t(link.descKey as any)}</p>
+                  <h3 className="font-medium text-[#F8F8FC] mb-1">{t(link.titleKey)}</h3>
+                  <p className="text-xs text-[#9090A0]">{t(link.descKey)}</p>
                 </button>
               )
             })}

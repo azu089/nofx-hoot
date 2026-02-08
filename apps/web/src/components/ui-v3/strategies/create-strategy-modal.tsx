@@ -41,9 +41,9 @@ export function CreateStrategyModal({ onClose, onSelectType }: CreateStrategyMod
 
   const strategyTypes = strategyTypesConfig.map(type => ({
     ...type,
-    name: t(type.nameKey as any),
-    description: t(type.descKey as any),
-    tag: t(type.tagKey as any),
+    name: t(type.nameKey),
+    description: t(type.descKey),
+    tag: t(type.tagKey),
   }))
 
   return (

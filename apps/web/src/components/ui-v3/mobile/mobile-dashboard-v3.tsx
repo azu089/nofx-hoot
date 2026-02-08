@@ -66,10 +66,10 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   ]
 
   const defaultNewsData: CryptoNews[] = [
-    { id: '1', title: 'BTC突破10万美元大关，机构持续加仓', source: 'CoinDesk', url: '#', publishedAt: new Date().toISOString(), sentiment: 'positive' },
-    { id: '2', title: 'ETH升级完成，Gas费降低80%', source: 'The Block', url: '#', publishedAt: new Date(Date.now() - 5*3600000).toISOString(), sentiment: 'positive' },
-    { id: '3', title: '美联储暗示2025年可能降息，加密市场反弹', source: 'Bloomberg', url: '#', publishedAt: new Date(Date.now() - 8*3600000).toISOString(), sentiment: 'neutral' },
-    { id: '4', title: 'Solana生态TVL创新高，DeFi项目活跃', source: 'DeFi Llama', url: '#', publishedAt: new Date(Date.now() - 12*3600000).toISOString(), sentiment: 'positive' }
+    { id: '1', title: 'BTC突破10万美元大关，机构持续加仓', source: 'CoinDesk', url: '#', publishedAt: '2026-02-08T00:00:00.000Z', sentiment: 'positive' },
+    { id: '2', title: 'ETH升级完成，Gas费降低80%', source: 'The Block', url: '#', publishedAt: '2026-02-07T19:00:00.000Z', sentiment: 'positive' },
+    { id: '3', title: '美联储暗示2025年可能降息，加密市场反弹', source: 'Bloomberg', url: '#', publishedAt: '2026-02-07T16:00:00.000Z', sentiment: 'neutral' },
+    { id: '4', title: 'Solana生态TVL创新高，DeFi项目活跃', source: 'DeFi Llama', url: '#', publishedAt: '2026-02-07T12:00:00.000Z', sentiment: 'positive' }
   ]
 
   const marketData = data?.prices && data.prices.length > 0 ? data.prices : defaultMarketData
@@ -356,6 +356,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-7 h-7 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
                           {coin.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img src={coin.image} alt={coin.symbol} className="w-5 h-5" />
                           ) : (
                             <span className="text-xs font-bold text-[#06B6D4]">
@@ -399,6 +400,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                         {/* 新闻配图 */}
                         {news.image && (
                           <div className="flex-shrink-0 w-20 h-14 rounded-lg overflow-hidden bg-[#1E1E2E]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={news.image}
                               alt=""

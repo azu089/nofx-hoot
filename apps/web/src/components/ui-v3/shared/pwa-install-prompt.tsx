@@ -44,12 +44,14 @@ export function PwaInstallPrompt() {
     // 已安装（独立窗口运行）则不显示
     const standalone = window.matchMedia('(display-mode: standalone)').matches
       || (navigator as unknown as { standalone?: boolean }).standalone === true
-    setIsStandalone(standalone)
-    if (standalone) return
+    if (standalone) {
+      queueMicrotask(() => setIsStandalone(standalone))
+      return
+    }
 
     // 检测 iOS
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as unknown as { MSStream?: unknown }).MSStream
-    setIsIOS(ios)
+    queueMicrotask(() => setIsIOS(ios))
 
     // 检查是否已被用户关闭过（24 小时内不再显示）
     const dismissed = localStorage.getItem('pwa_prompt_dismissed')
@@ -61,12 +63,12 @@ export function PwaInstallPrompt() {
     // 监听 beforeinstallprompt 事件（Android Chrome）
     const handler = (e: Event) => {
       e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
+      queueMicrotask(() => setDeferredPrompt(e as BeforeInstallPromptEvent))
       // 检查后端开关再显示
       checkEnabled().then((enabled) => {
         if (enabled && !promptShownInSession) {
           promptShownInSession = true
-          setShowPrompt(true)
+          queueMicrotask(() => setShowPrompt(true))
         }
       })
     }
@@ -78,7 +80,7 @@ export function PwaInstallPrompt() {
         checkEnabled().then((enabled) => {
           if (enabled && !promptShownInSession) {
             promptShownInSession = true
-            setShowPrompt(true)
+            queueMicrotask(() => setShowPrompt(true))
           }
         })
       }, 3000)

@@ -122,12 +122,12 @@ export function addRecentPair(pair: string): void {
   localStorage.setItem(RECENT_PAIRS_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
 }
 
-// 默认配置
-export const defaultConfig: StrategyConfigData = {
+// 默认配置（深度冻结以确保不可变性）
+export const defaultConfig: Readonly<StrategyConfigData> = Object.freeze({
   apiKeyId: '', // 必须由用户选择
   exchange: 'binance',
   tradingType: 'futures',
-  tradingPairs: ['BTC/USDT', 'ETH/USDT'],
+  tradingPairs: Object.freeze(['BTC/USDT', 'ETH/USDT']),
   positionAmount: 100,
   direction: 'both',
   leverage: 5,
@@ -151,4 +151,4 @@ export const defaultConfig: StrategyConfigData = {
   dailyLossEnabled: false,
   dailyLossPercent: 20,
   dailyLossAction: 'close_all',
-}
+}) as StrategyConfigData

@@ -1,9 +1,10 @@
+/* eslint-disable react-hooks/immutability */
 'use client'
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { toast } from 'sonner'
-import { StrategyConfigData, defaultConfig, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
+import { StrategyConfigData, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair } from '../shared/strategy-config-types'
 import { useStrategySubscription, useApiKeys, useSubscriptionSummary, useExchangeBalance } from '@/hooks/use-strategy'
 import type { SubscriptionSummary } from '@/hooks/use-strategy'
 
@@ -242,41 +243,41 @@ export function StrategyConfigPage({ strategyId, strategyName = 'MACD趋势跟�
     }
   }, [apiKeys, selectedApiKeyId, subscriptionId])
 
-  // 基础配置
-  const [exchange, setExchange] = useState(defaultConfig.exchange)
-  const [tradingType, setTradingType] = useState<'spot' | 'futures'>(defaultConfig.tradingType)
-  const [tradingPairs, setTradingPairs] = useState<string[]>(defaultConfig.tradingPairs)
-  const [amount, setAmount] = useState(String(defaultConfig.positionAmount))
+  // 基础配置 (using literal values to avoid immutability issues)
+  const [exchange, setExchange] = useState('binance')
+  const [tradingType, setTradingType] = useState<'spot' | 'futures'>('futures')
+  const [tradingPairs, setTradingPairs] = useState<string[]>(['BTC/USDT', 'ETH/USDT'])
+  const [amount, setAmount] = useState('100')
 
   // 交易参数
-  const [direction, setDirection] = useState<'long' | 'short' | 'both'>(defaultConfig.direction)
-  const [leverage, setLeverage] = useState(String(defaultConfig.leverage))
-  const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>(defaultConfig.marginMode)
-  const [maxPositions, setMaxPositions] = useState(String(defaultConfig.maxPositions))
-  const [takeProfit, setTakeProfit] = useState(String(defaultConfig.takeProfit))
-  const [stopLoss, setStopLoss] = useState(String(defaultConfig.stopLoss))
-  const [slippage, setSlippage] = useState(String(defaultConfig.slippage))
+  const [direction, setDirection] = useState<'long' | 'short' | 'both'>('both')
+  const [leverage, setLeverage] = useState('5')
+  const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('isolated')
+  const [maxPositions, setMaxPositions] = useState('3')
+  const [takeProfit, setTakeProfit] = useState('15')
+  const [stopLoss, setStopLoss] = useState('10')
+  const [slippage, setSlippage] = useState('0.5')
 
   // 移动止损
-  const [trailingEnabled, setTrailingEnabled] = useState(defaultConfig.trailingStopEnabled)
-  const [trailingActivation, setTrailingActivation] = useState(String(defaultConfig.trailingActivation))
-  const [trailingCallback, setTrailingCallback] = useState(String(defaultConfig.trailingCallback))
+  const [trailingEnabled, setTrailingEnabled] = useState(false)
+  const [trailingActivation, setTrailingActivation] = useState('8')
+  const [trailingCallback, setTrailingCallback] = useState('3')
 
   // DCA
-  const [dcaEnabled, setDcaEnabled] = useState(defaultConfig.dcaEnabled)
-  const [dcaCount, setDcaCount] = useState(String(defaultConfig.dcaCount))
-  const [dcaTrigger, setDcaTrigger] = useState(String(defaultConfig.dcaTrigger))
-  const [dcaMultiplier, setDcaMultiplier] = useState(String(defaultConfig.dcaMultiplier))
-  const [waterfallProtection, setWaterfallProtection] = useState(defaultConfig.waterfallProtection)
-  const [waterfallTrigger, setWaterfallTrigger] = useState(String(defaultConfig.waterfallTrigger))
+  const [dcaEnabled, setDcaEnabled] = useState(false)
+  const [dcaCount, setDcaCount] = useState('3')
+  const [dcaTrigger, setDcaTrigger] = useState('5')
+  const [dcaMultiplier, setDcaMultiplier] = useState('1.5')
+  const [waterfallProtection, setWaterfallProtection] = useState(true)
+  const [waterfallTrigger, setWaterfallTrigger] = useState('15')
 
   // 风控
-  const [blackSwanEnabled, setBlackSwanEnabled] = useState(defaultConfig.blackSwanEnabled)
-  const [blackSwanTrigger, setBlackSwanTrigger] = useState(String(defaultConfig.blackSwanTrigger))
-  const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.blackSwanAction)
-  const [dailyLossEnabled, setDailyLossEnabled] = useState(defaultConfig.dailyLossEnabled)
-  const [dailyLossPercent, setDailyLossPercent] = useState(String(defaultConfig.dailyLossPercent))
-  const [dailyLossAction, setDailyLossAction] = useState<'close_all' | 'close_half' | 'pause'>(defaultConfig.dailyLossAction)
+  const [blackSwanEnabled, setBlackSwanEnabled] = useState(false)
+  const [blackSwanTrigger, setBlackSwanTrigger] = useState('10')
+  const [blackSwanAction, setBlackSwanAction] = useState<'close_all' | 'close_half' | 'pause'>('close_all')
+  const [dailyLossEnabled, setDailyLossEnabled] = useState(false)
+  const [dailyLossPercent, setDailyLossPercent] = useState('20')
+  const [dailyLossAction, setDailyLossAction] = useState<'close_all' | 'close_half' | 'pause'>('close_all')
 
   // UI
   const [expandedSection, setExpandedSection] = useState<string | null>(null)

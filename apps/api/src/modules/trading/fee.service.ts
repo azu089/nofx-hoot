@@ -194,7 +194,7 @@ export class FeeService {
         data: {
           userId,
           type: 'GAS_FEE',
-          amount: actualDeduction.toString(),
+          amount: actualDeduction,
           uniqueOrderId,
           description: `持仓 ${positionId} 盈利 ${profit} 手续费率 ${feeRate} 应扣 ${feeAmount} 实扣 ${actualDeduction}`,
         },

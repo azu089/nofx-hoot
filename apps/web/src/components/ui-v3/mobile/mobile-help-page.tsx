@@ -46,8 +46,8 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
   // Build translated FAQ items for search
   const faqItemsWithText = faqItemsConfig.map(item => ({
     ...item,
-    question: t(item.questionKey as any),
-    answer: t(item.answerKey as any)
+    question: t(item.questionKey),
+    answer: t(item.answerKey)
   }))
 
   const filteredFAQs = faqItemsWithText.filter(
@@ -102,7 +102,7 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
                   <div className="w-10 h-10 bg-cyan-500/10 rounded-xl flex items-center justify-center mb-2">
                     <Icon className="w-5 h-5 text-cyan-500" />
                   </div>
-                  <span className="text-xs text-[#94A3B8]">{t(item.titleKey as any)}</span>
+                  <span className="text-xs text-[#94A3B8]">{t(item.titleKey)}</span>
                 </button>
               )
             })}

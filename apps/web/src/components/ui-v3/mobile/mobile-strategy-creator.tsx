@@ -249,6 +249,7 @@ def on_bar(bar):
             <div className="bg-gradient-to-r from-[#131722]/50 to-[#1E222D]/50 border border-[#1E1E2E] rounded-xl p-4">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-14 h-14 rounded-xl overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/icons/tradingview.webp"
                     alt="TradingView"

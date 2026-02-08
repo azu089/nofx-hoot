@@ -30,7 +30,7 @@ export function Sidebar({ activeItem = 'home' }: SidebarProps) {
 
   const navigationItems = navigationItemsConfig.map(item => ({
     ...item,
-    label: t(item.labelKey as any)
+    label: t(item.labelKey)
   }))
 
   return (

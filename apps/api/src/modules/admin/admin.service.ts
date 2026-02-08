@@ -1442,23 +1442,23 @@ export class AdminService {
       select: { amount: true, type: true, createdAt: true },
     });
 
-    // 手动计算各项统计（amount 为字符串，需转换为数字）
+    // 手动计算各项统计（amount 为 Decimal 类型）
     const totalRevenue = allCompleted.reduce(
-      (sum, log) => sum + parseFloat(log.amount || '0'),
+      (sum, log) => sum + parseFloat(log.amount?.toString() || '0'),
       0,
     );
 
     const todayRevenue = allCompleted
       .filter((log) => log.createdAt >= today)
-      .reduce((sum, log) => sum + parseFloat(log.amount || '0'), 0);
+      .reduce((sum, log) => sum + parseFloat(log.amount?.toString() || '0'), 0);
 
     const subscriptionRevenue = allCompleted
       .filter((log) => log.type === 'subscription')
-      .reduce((sum, log) => sum + parseFloat(log.amount || '0'), 0);
+      .reduce((sum, log) => sum + parseFloat(log.amount?.toString() || '0'), 0);
 
     const gasFeeRevenue = allCompleted
       .filter((log) => log.type === 'gas_fee')
-      .reduce((sum, log) => sum + parseFloat(log.amount || '0'), 0);
+      .reduce((sum, log) => sum + parseFloat(log.amount?.toString() || '0'), 0);
 
     return {
       totalRevenue: totalRevenue.toFixed(2),

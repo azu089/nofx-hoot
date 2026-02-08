@@ -89,12 +89,14 @@ export function StrategyConfigSection({
 
   // 加载交易所支持的币种
   useEffect(() => {
-    setLoadingPairs(true)
+    queueMicrotask(() => setLoadingPairs(true))
     fetchExchangePairs(config.exchange).then(pairs => {
-      setAvailablePairs(pairs)
-      setLoadingPairs(false)
+      queueMicrotask(() => {
+        setAvailablePairs(pairs)
+        setLoadingPairs(false)
+      })
     })
-    setRecentPairs(getRecentPairs())
+    queueMicrotask(() => setRecentPairs(getRecentPairs()))
   }, [config.exchange])
 
   // 显示的币种

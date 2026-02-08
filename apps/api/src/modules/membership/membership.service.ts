@@ -313,7 +313,7 @@ export class MembershipService {
         data: {
           userId,
           type: 'MEMBERSHIP',
-          amount: price.toString(),
+          amount: price,
           uniqueOrderId,
           description: `购买${plan.name}，有效期至 ${expireAt.toISOString().split('T')[0]}`,
         },

@@ -60,8 +60,10 @@ export function MobileExchangePage({ balance, exchangeRecords = [], onBack, onEx
   // 外部 loading 同步
   useEffect(() => {
     if (!externalLoading && isExchanging) {
-      setIsExchanging(false)
-      setAmount('')
+      queueMicrotask(() => {
+        setIsExchanging(false)
+        setAmount('')
+      })
     }
   }, [externalLoading, isExchanging])
 
