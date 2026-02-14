@@ -105,6 +105,20 @@ class ApiClient {
     }
 
     if (!response.ok) {
+      // 401 处理：token 过期或无效，清除本地状态并跳转登录页
+      if (response.status === 401 && !endpoint.startsWith('/auth/')) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('hoot_token');
+          localStorage.removeItem('hoot_user');
+          this.token = null;
+          // 避免重复跳转
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login';
+          }
+        }
+        throw new Error('登录已过期，请重新登录');
+      }
+
       let error: { message?: string } = {};
       try {
         error = await response.json();

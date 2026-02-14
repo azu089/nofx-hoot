@@ -38,5 +38,17 @@ tmp/
 temp/
 *.tmp
 
+# 开发截图和调试产物
+*.png
+.playwright-mcp/
+
 # pnpm
 .pnpm-store/
+
+# Training（Freqtrade 回测数据 + Python venv）
+training/.venv/
+training/*.sqlite
+training/*.sqlite-shm
+training/*.sqlite-wal
+training/user_data/data/
+training/user_data/backtest_results/

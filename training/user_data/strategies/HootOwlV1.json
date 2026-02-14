@@ -1,0 +1,42 @@
+{
+  "strategy_name": "HootOwlV1",
+  "params": {
+    "max_open_trades": {
+      "max_open_trades": 5
+    },
+    "buy": {
+      "buy_adx_threshold": 26,
+      "buy_bb_enabled": false,
+      "buy_bb_width_min": 0.022,
+      "buy_ema_fast": 13,
+      "buy_ema_slow": 21,
+      "buy_rsi_lower": 41,
+      "buy_rsi_upper": 74,
+      "buy_volume_enabled": false,
+      "dca_multiplier": 1.09,
+      "dca_threshold_1": -0.022,
+      "dca_threshold_2": -0.111
+    },
+    "sell": {
+      "sell_rsi_lower": 31,
+      "sell_rsi_upper": 67
+    },
+    "roi": {
+      "0": 0.276,
+      "425": 0.089,
+      "1122": 0.042,
+      "2551": 0
+    },
+    "stoploss": {
+      "stoploss": -0.113
+    },
+    "trailing": {
+      "trailing_stop": true,
+      "trailing_stop_positive": 0.171,
+      "trailing_stop_positive_offset": 0.19,
+      "trailing_only_offset_is_reached": true
+    }
+  },
+  "ft_stratparam_v": 1,
+  "export_time": "2026-02-03 05:31:01.801992+00:00"
+}

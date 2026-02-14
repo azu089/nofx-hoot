@@ -327,6 +327,9 @@
     "dashboard": "Dasbor",
     "strategies": "Strategi",
     "trading": "Trading",
+    "aiTrading": "AI Trading",
+    "aiResearch": "AI Riset",
+    "aiSettings": "AI Pengaturan",
     "wallet": "Dompet",
     "settings": "Pengaturan",
     "profile": "Profil"
@@ -827,6 +830,55 @@
       "a7": "Buka halaman \"Profil > Langganan Member\", pilih tingkat member yang sesuai. Anda bisa bayar biaya langganan pakai USDT atau token HOOT. Bayar dengan token HOOT dapat diskon tambahan.",
       "q8": "Bagaimana cara mendapat bantuan jika ada masalah?",
       "a8": "Anda bisa dapat bantuan dengan kirim email atau gunakan chat langsung melalui \"Hubungi Dukungan\" di bagian bawah halaman. Tim dukungan kami akan jawab pertanyaan Anda dalam 24 jam. Untuk masalah mendesak, disarankan gunakan chat langsung untuk bantuan instan."
+    }
+  },
+  "dex": {
+    "title": "Dompet DEX",
+    "addWallet": "Tambah Dompet DEX",
+    "selectDex": "Pilih DEX",
+    "noWallets": "Belum ada dompet DEX yang terhubung",
+    "noWalletsHint": "Klik tombol di atas untuk menambahkan dompet DEX pertama Anda",
+    "walletAddress": "Alamat Dompet",
+    "privateKey": "Kunci Privat",
+    "newPrivateKey": "Kunci Privat Baru",
+    "keepCurrentKey": "Kosongkan untuk mempertahankan kunci privat saat ini",
+    "keyUpdatedHint": "Kunci privat akan dienkripsi ulang setelah diperbarui",
+    "currentWalletAddress": "Alamat Dompet Saat Ini",
+    "label": "Label",
+    "labelPlaceholder": "Label opsional",
+    "testnetMode": "Mode Testnet",
+    "testnetHint": "Aktifkan untuk terhubung ke jaringan pengujian",
+    "securityNotice": "Kunci privat Anda akan disimpan terenkripsi menggunakan AES-256-GCM dan hanya didekripsi saat eksekusi perdagangan. Pastikan Anda mempercayai platform ini.",
+    "addSuccess": "Dompet DEX berhasil ditambahkan",
+    "updateSuccess": "Dompet DEX berhasil diperbarui",
+    "deleteSuccess": "Dompet DEX berhasil dihapus",
+    "deleteConfirm": "Apakah Anda yakin ingin menghapus dompet DEX ini?",
+    "deleteConfirmHint": "Tindakan ini tidak dapat dibatalkan. Strategi perdagangan terkait akan berhenti berfungsi.",
+    "hyperliquid": {
+      "mainWallet": "Alamat Dompet Utama",
+      "mainWalletPlaceholder": "0x... alamat dompet utama",
+      "agentPrivateKey": "Kunci Privat Agent",
+      "agentPrivateKeyPlaceholder": "Kunci privat Hyperliquid Agent Wallet",
+      "agentHint": "Dapatkan setelah membuat Agent Wallet di Hyperliquid"
+    },
+    "lighter": {
+      "walletAddress": "Alamat Dompet",
+      "walletAddressPlaceholder": "0x... alamat dompet",
+      "walletPrivateKey": "Kunci Privat Dompet",
+      "walletPrivateKeyPlaceholder": "Kunci privat dompet (0x...)",
+      "apiKeyPrivateKey": "Kunci Privat API Key",
+      "apiKeyPrivateKeyPlaceholder": "Kunci privat Lighter API Key (40 byte hex)",
+      "apiKeyIndex": "Indeks API Key",
+      "apiKeyIndexHint": "Nilai antara 0-255, default 0"
+    },
+    "aster": {
+      "userWallet": "Alamat Dompet Pengguna",
+      "userWalletPlaceholder": "0x... alamat dompet utama",
+      "signerWallet": "Alamat Dompet Penandatangan (Opsional)",
+      "signerWalletPlaceholder": "Kosongkan untuk menggunakan alamat dompet pengguna",
+      "signerHint": "Alamat dompet Aster API, kosongkan jika sama dengan dompet pengguna",
+      "signerPrivateKey": "Kunci Privat Penandatangan",
+      "signerPrivateKeyPlaceholder": "Kunci privat dompet penandatangan"
     }
   },
   "errors": {

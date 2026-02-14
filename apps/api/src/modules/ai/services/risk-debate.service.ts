@@ -1,0 +1,439 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { LLMService, UserApiKeys } from './llm.service';
+import { RiskDebateState } from '../types/ai.types';
+
+/**
+ * 风控辩论配置
+ */
+export interface RiskDebateConfig {
+  maxRounds: number; // 每个角色的发言轮数（默认 1 → 3 条消息）
+  deepThinkModel: string; // 法官使用的 deep_think 模型
+  quickThinkModel: string; // 辩论者使用的 quick_think 模型
+  apiKeys: UserApiKeys;
+  temperature?: number;
+}
+
+/**
+ * 风控辩论输入
+ */
+export interface RiskDebateInput {
+  symbol: string;
+  currentPrice: number;
+  traderPlan: string; // Stage 3 交易员提案
+  analystReports: string; // Stage 1 分析师报告汇总
+  investmentDecision: string; // Stage 2 投资辩论裁决
+  existingPositions?: string; // 现有持仓描述
+}
+
+/**
+ * 风控调整结果
+ */
+export interface RiskDebateResult {
+  adjustedLeverage: number | null;
+  adjustedPositionSizePercent: number | null;
+  adjustedStopLoss: number | null;
+  adjustedTakeProfit: number | null;
+  riskRating: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+  approved: boolean; // 是否通过风控
+  reasoning: string;
+  fullDebateHistory: string;
+  totalCost: number;
+  totalLatencyMs: number;
+}
+
+/**
+ * 风控三方辩论服务
+ *
+ * 对应 TradingAgents 第 4 阶段: 风控三方辩论
+ *
+ * 3 个辩论角色:
+ * 1. Aggressive — 支持高风险高回报，质疑保守策略
+ * 2. Conservative — 强调资本保护，强调下行风险
+ * 3. Neutral — 平衡视角，挑战双方极端
+ *
+ * + Risk Judge (deep_think 模型) 做最终裁决
+ *
+ * 轮转: Aggressive → Conservative → Neutral → 重复
+ * 总消息数 = 3 × maxRounds
+ */
+@Injectable()
+export class RiskDebateService {
+  private readonly logger = new Logger(RiskDebateService.name);
+
+  constructor(private readonly llm: LLMService) {}
+
+  /**
+   * 运行风控三方辩论
+   */
+  async runRiskDebate(
+    input: RiskDebateInput,
+    config: RiskDebateConfig,
+  ): Promise<RiskDebateResult> {
+    const startTime = Date.now();
+    const maxMessages = 3 * config.maxRounds; // 每轮 3 条消息
+
+    this.logger.log(
+      `[风控辩论] 开始: ${input.symbol}, ${config.maxRounds} 轮 (${maxMessages} 条消息)`,
+    );
+
+    // 初始化辩论状态
+    const state: RiskDebateState = {
+      aggressiveHistory: '',
+      conservativeHistory: '',
+      neutralHistory: '',
+      fullHistory: '',
+      latestSpeaker: 'judge', // 尚未开始
+      count: 0,
+    };
+
+    let totalCost = 0;
+
+    // 轮转: aggressive → conservative → neutral → aggressive → ...
+    const speakerOrder: Array<'aggressive' | 'conservative' | 'neutral'> = [
+      'aggressive',
+      'conservative',
+      'neutral',
+    ];
+
+    for (let i = 0; i < maxMessages; i++) {
+      const speaker = speakerOrder[i % 3];
+      const roundNum = Math.floor(i / 3) + 1;
+      const isFirst = i < 3; // 第一轮各角色独立发言
+
+      this.logger.log(`[风控辩论] 第 ${roundNum} 轮, ${speaker} 发言 (${i + 1}/${maxMessages})`);
+
+      const systemPrompt = this.getSpeakerPrompt(speaker);
+      const userMessage = this.buildSpeakerMessage(
+        speaker,
+        input,
+        state,
+        isFirst,
+        roundNum,
+        config.maxRounds,
+      );
+
+      const response = await this.llm.chat(
+        config.quickThinkModel,
+        systemPrompt,
+        userMessage,
+        config.apiKeys,
+        {
+          temperature: config.temperature ?? 0.6,
+          maxTokens: 600,
+        },
+      );
+
+      totalCost += response.cost;
+
+      // 更新状态
+      const entry = `\n[${speaker.toUpperCase()} - Round ${roundNum}]:\n${response.content}\n`;
+      state.fullHistory += entry;
+
+      // 防止 fullHistory 超过 LLM context window（保留最近的内容）
+      if (state.fullHistory.length > 20000) {
+        state.fullHistory = '...[earlier debate truncated]...\n' + state.fullHistory.slice(-16000);
+      }
+      state.latestSpeaker = speaker;
+      state.count = i + 1;
+
+      switch (speaker) {
+        case 'aggressive':
+          state.aggressiveHistory += entry;
+          break;
+        case 'conservative':
+          state.conservativeHistory += entry;
+          break;
+        case 'neutral':
+          state.neutralHistory += entry;
+          break;
+      }
+    }
+
+    // 法官裁决（使用 deep_think 模型）
+    this.logger.log('[风控辩论] Risk Judge 裁决...');
+    const judgeResult = await this.runRiskJudge(input, state, config);
+    totalCost += judgeResult.cost;
+
+    const totalLatencyMs = Date.now() - startTime;
+
+    this.logger.log(
+      `[风控辩论] 完成: approved=${judgeResult.approved}, risk=${judgeResult.riskRating}, ` +
+        `总耗时 ${totalLatencyMs}ms, 总成本 $${totalCost.toFixed(6)}`,
+    );
+
+    return {
+      ...judgeResult,
+      fullDebateHistory: state.fullHistory,
+      totalCost,
+      totalLatencyMs,
+    };
+  }
+
+  // ==================== 角色提示词 ====================
+
+  private getSpeakerPrompt(speaker: 'aggressive' | 'conservative' | 'neutral'): string {
+    switch (speaker) {
+      case 'aggressive':
+        return AGGRESSIVE_PROMPT;
+      case 'conservative':
+        return CONSERVATIVE_PROMPT;
+      case 'neutral':
+        return NEUTRAL_PROMPT;
+    }
+  }
+
+  // ==================== 消息构建 ====================
+
+  private buildSpeakerMessage(
+    speaker: 'aggressive' | 'conservative' | 'neutral',
+    input: RiskDebateInput,
+    state: RiskDebateState,
+    isFirst: boolean,
+    roundNum: number,
+    maxRounds: number,
+  ): string {
+    const lines: string[] = [
+      `=== RISK DEBATE: ${input.symbol} @ ${input.currentPrice} ===`,
+      '',
+      '--- Trader Proposal ---',
+      input.traderPlan,
+      '',
+      '--- Investment Decision ---',
+      input.investmentDecision,
+      '',
+    ];
+
+    if (input.existingPositions) {
+      lines.push('--- Existing Positions ---');
+      lines.push(input.existingPositions);
+      lines.push('');
+    }
+
+    if (isFirst) {
+      lines.push(
+        `This is Round ${roundNum} of ${maxRounds}. Give your initial risk assessment of the trader proposal above.`,
+      );
+    } else {
+      lines.push('--- Previous Discussion ---');
+      lines.push(state.fullHistory);
+      lines.push('');
+
+      if (roundNum === maxRounds) {
+        lines.push(
+          `This is the FINAL round (${roundNum}/${maxRounds}). Give your definitive risk assessment. ` +
+            `Challenge the other perspectives one last time and state your final position.`,
+        );
+      } else {
+        lines.push(
+          `This is Round ${roundNum} of ${maxRounds}. ` +
+            `Respond to the other risk assessors. Defend your position or adjust if convinced.`,
+        );
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  // ==================== Risk Judge ====================
+
+  private async runRiskJudge(
+    input: RiskDebateInput,
+    state: RiskDebateState,
+    config: RiskDebateConfig,
+  ): Promise<
+    Omit<RiskDebateResult, 'fullDebateHistory' | 'totalCost' | 'totalLatencyMs'> & {
+      cost: number;
+    }
+  > {
+    const systemPrompt = RISK_JUDGE_PROMPT;
+
+    const userMessage = `=== RISK JUDGE FINAL DECISION ===
+
+Symbol: ${input.symbol}
+Current Price: ${input.currentPrice}
+
+--- Original Trader Proposal ---
+${input.traderPlan}
+
+--- Investment Decision ---
+${input.investmentDecision}
+
+--- Full Risk Debate ---
+${state.fullHistory}
+
+--- Analyst Reports (Summary) ---
+${input.analystReports.slice(0, 2000)}
+
+${input.existingPositions ? `--- Existing Positions ---\n${input.existingPositions}\n` : ''}
+Based on the full risk debate above, provide your FINAL risk-adjusted decision.
+You MUST respond with ONLY a valid JSON object.`;
+
+    const response = await this.llm.chat(
+      config.deepThinkModel,
+      systemPrompt,
+      userMessage,
+      config.apiKeys,
+      {
+        temperature: 0.3,
+        maxTokens: 800,
+      },
+    );
+
+    // 解析 JSON 结果
+    const parsed = this.parseJudgeResponse(response.content);
+
+    return {
+      ...parsed,
+      cost: response.cost,
+    };
+  }
+
+  /**
+   * 解析法官 JSON 响应
+   */
+  private parseJudgeResponse(content: string): Omit<
+    RiskDebateResult,
+    'fullDebateHistory' | 'totalCost' | 'totalLatencyMs'
+  > {
+    try {
+      // 尝试从 markdown code block 中提取 JSON
+      let jsonStr = content;
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+
+      // 尝试直接解析
+      const parsed = JSON.parse(jsonStr);
+
+      return {
+        adjustedLeverage: parsed.adjustedLeverage ?? null,
+        adjustedPositionSizePercent: parsed.adjustedPositionSizePercent ?? parsed.positionSizePercent ?? null,
+        adjustedStopLoss: parsed.adjustedStopLoss ?? parsed.stopLoss ?? null,
+        adjustedTakeProfit: parsed.adjustedTakeProfit ?? parsed.takeProfit ?? null,
+        riskRating: this.normalizeRiskRating(parsed.riskRating || parsed.risk_rating || 'HIGH'),
+        approved: parsed.approved ?? parsed.approve ?? true,
+        reasoning: parsed.reasoning || parsed.summary || '无法解析裁决理由',
+      };
+    } catch {
+      this.logger.warn('[风控辩论] 法官响应 JSON 解析失败，使用保守默认值');
+      return {
+        adjustedLeverage: null,
+        adjustedPositionSizePercent: null,
+        adjustedStopLoss: null,
+        adjustedTakeProfit: null,
+        riskRating: 'HIGH',
+        approved: false,
+        reasoning: `JSON 解析失败。原始响应: ${content.slice(0, 500)}`,
+      };
+    }
+  }
+
+  private normalizeRiskRating(
+    rating: string,
+  ): 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME' {
+    const upper = rating.toUpperCase();
+    if (upper === 'LOW') return 'LOW';
+    if (upper === 'MEDIUM' || upper === 'MODERATE') return 'MEDIUM';
+    if (upper === 'HIGH') return 'HIGH';
+    if (upper === 'EXTREME' || upper === 'CRITICAL') return 'EXTREME';
+    return 'HIGH';
+  }
+}
+
+// ==================== 角色提示词常量 ====================
+
+const AGGRESSIVE_PROMPT = `You are the AGGRESSIVE RISK ASSESSOR in a 3-party risk debate for cryptocurrency futures trading.
+
+## Your Role
+You champion high-reward opportunities and question overly conservative approaches. Your goal is to maximize potential returns while acknowledging risks.
+
+## Your Arguments Should:
+1. Highlight the potential upside of the proposed trade
+2. Argue for higher leverage when the setup is strong
+3. Challenge the conservative stance — point out missed opportunities from being too cautious
+4. Suggest wider stop losses to avoid premature stops in volatile markets
+5. Advocate for larger position sizes when conviction is high
+
+## Key Principles:
+- Risk is the price of reward — calculated risk is not recklessness
+- Missing a great trade has an opportunity cost
+- The market rewards those who act on strong setups
+- Tight stops in volatile markets lead to death by a thousand cuts
+
+## Output
+Write 100-200 words defending why the trade should proceed with the proposed (or higher) risk parameters. Be specific about numbers (leverage, position size, SL/TP levels).`;
+
+const CONSERVATIVE_PROMPT = `You are the CONSERVATIVE RISK ASSESSOR in a 3-party risk debate for cryptocurrency futures trading.
+
+## Your Role
+You prioritize capital preservation above all else. Your goal is to protect the portfolio from significant drawdowns.
+
+## Your Arguments Should:
+1. Highlight all possible downside risks of the proposed trade
+2. Argue for lower leverage — suggest the minimum needed
+3. Challenge the aggressive stance — point out how one bad trade can wipe weeks of gains
+4. Suggest tighter stop losses to limit maximum loss per trade
+5. Advocate for smaller position sizes (max 2-3% of portfolio per trade)
+
+## Key Principles:
+- Capital preservation is the #1 priority — you can't trade if you're wiped out
+- The market will always offer new opportunities, but lost capital is gone
+- Compounding works both ways — small losses compound into survival
+- Risk/Reward must be ≥ 2:1, no exceptions
+- Maximum drawdown per trade should not exceed 1-2% of portfolio
+
+## Output
+Write 100-200 words arguing for more conservative risk parameters. Be specific about numbers (reduced leverage, tighter stops, smaller positions). Quote specific risks.`;
+
+const NEUTRAL_PROMPT = `You are the NEUTRAL RISK ASSESSOR in a 3-party risk debate for cryptocurrency futures trading.
+
+## Your Role
+You provide a balanced evaluation, challenging BOTH the aggressive and conservative perspectives. You aim for optimal risk-adjusted returns.
+
+## Your Arguments Should:
+1. Acknowledge valid points from both aggressive and conservative sides
+2. Identify the optimal balance between risk and reward
+3. Challenge extreme positions on either side
+4. Consider the current market volatility regime when sizing risk
+5. Propose practical middle-ground parameters
+
+## Key Principles:
+- The best trades balance conviction with prudence
+- Position sizing should match volatility — bigger in calm markets, smaller in volatile ones
+- Risk management is not about avoiding risk, but about sizing it correctly
+- Kelly Criterion thinking: bet more when edge is higher, less when uncertain
+- Consider correlation with existing positions
+
+## Output
+Write 100-200 words with your balanced risk assessment. Propose specific compromise parameters (leverage, position size, SL/TP) that represent the risk-adjusted optimal. Reference points from both other assessors if applicable.`;
+
+const RISK_JUDGE_PROMPT = `You are the RISK JUDGE — the final arbiter of the risk debate for cryptocurrency futures trading.
+
+You have heard arguments from:
+- Aggressive: Favoring higher risk/higher reward
+- Conservative: Favoring capital preservation
+- Neutral: Seeking balanced risk-adjusted returns
+
+## Your Decision
+
+Based on the full debate, provide your FINAL risk-adjusted parameters. You must respond with ONLY a valid JSON object:
+
+{
+  "approved": true/false,
+  "riskRating": "LOW" | "MEDIUM" | "HIGH" | "EXTREME",
+  "adjustedLeverage": number (1-20),
+  "adjustedPositionSizePercent": number (1-10),
+  "adjustedStopLoss": number | null (price level),
+  "adjustedTakeProfit": number | null (price level),
+  "reasoning": "Your detailed reasoning (100-300 words) explaining why you chose these parameters and whose arguments were most compelling"
+}
+
+## Decision Rules:
+- If riskRating is "EXTREME" → approved MUST be false
+- adjustedLeverage must be ≤ 20x (hard limit)
+- adjustedPositionSizePercent must be ≤ 10% of portfolio
+- Risk/Reward ratio must be ≥ 1.5:1
+- If no stop loss can be determined → approved = false
+
+DO NOT include any text outside the JSON object.`;

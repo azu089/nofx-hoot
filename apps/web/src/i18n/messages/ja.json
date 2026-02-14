@@ -327,6 +327,9 @@
     "dashboard": "ダッシュボード",
     "strategies": "ストラテジー",
     "trading": "取引",
+    "aiTrading": "AI取引",
+    "aiResearch": "AIリサーチ",
+    "aiSettings": "AI設定",
     "wallet": "ウォレット",
     "settings": "設定",
     "profile": "マイページ"
@@ -827,6 +830,55 @@
       "a7": "「マイページ > メンバーシップ購読」ページに移動し、適切なメンバーシップレベルを選択してください。USDT または HOOT トークンで購読料を支払うことができます。HOOTトークンでの支払いは追加割引を受けられます。",
       "q8": "問題が発生した場合のヘルプ方法は？",
       "a8": "ページ下部の「サポートに連絡」からメールまたはライブチャットでヘルプを受けられます。カスタマーサポートチームが24時間以内に返信します。緊急の問題にはライブチャットでの即時サポートをお勧めします。"
+    }
+  },
+  "dex": {
+    "title": "DEX ウォレット",
+    "addWallet": "DEX ウォレットを追加",
+    "selectDex": "DEX を選択",
+    "noWallets": "DEX ウォレットが接続されていません",
+    "noWalletsHint": "上のボタンをクリックして最初の DEX ウォレットを追加",
+    "walletAddress": "ウォレットアドレス",
+    "privateKey": "秘密鍵",
+    "newPrivateKey": "新しい秘密鍵",
+    "keepCurrentKey": "現在の秘密鍵を維持する場合は空欄",
+    "keyUpdatedHint": "秘密鍵更新後、再暗号化されます",
+    "currentWalletAddress": "現在のウォレットアドレス",
+    "label": "ラベル",
+    "labelPlaceholder": "任意のラベル",
+    "testnetMode": "テストネットモード",
+    "testnetHint": "有効にするとテストネットに接続",
+    "securityNotice": "秘密鍵は AES-256-GCM で暗号化保存され、取引実行時のみ復号されます。このプラットフォームを信頼できることをご確認ください。",
+    "addSuccess": "DEX ウォレットの追加に成功しました",
+    "updateSuccess": "DEX ウォレットの更新に成功しました",
+    "deleteSuccess": "DEX ウォレットの削除に成功しました",
+    "deleteConfirm": "この DEX ウォレットを削除しますか？",
+    "deleteConfirmHint": "この操作は取り消せません。関連する取引戦略は停止します。",
+    "hyperliquid": {
+      "mainWallet": "メインウォレットアドレス",
+      "mainWalletPlaceholder": "0x... メインウォレットアドレス",
+      "agentPrivateKey": "Agent 秘密鍵",
+      "agentPrivateKeyPlaceholder": "Hyperliquid Agent Wallet 秘密鍵",
+      "agentHint": "Hyperliquid で Agent Wallet 作成後に取得"
+    },
+    "lighter": {
+      "walletAddress": "ウォレットアドレス",
+      "walletAddressPlaceholder": "0x... ウォレットアドレス",
+      "walletPrivateKey": "ウォレット秘密鍵",
+      "walletPrivateKeyPlaceholder": "ウォレット秘密鍵（0x...）",
+      "apiKeyPrivateKey": "API Key 秘密鍵",
+      "apiKeyPrivateKeyPlaceholder": "Lighter API Key 秘密鍵（40バイト hex）",
+      "apiKeyIndex": "API Key インデックス",
+      "apiKeyIndexHint": "0-255 の値、デフォルトは 0"
+    },
+    "aster": {
+      "userWallet": "ユーザーウォレットアドレス",
+      "userWalletPlaceholder": "0x... メインウォレットアドレス",
+      "signerWallet": "署名ウォレットアドレス（任意）",
+      "signerWalletPlaceholder": "空欄の場合ユーザーウォレットを使用",
+      "signerHint": "Aster API ウォレットアドレス、空欄の場合ユーザーウォレットと同じ",
+      "signerPrivateKey": "署名秘密鍵",
+      "signerPrivateKeyPlaceholder": "署名ウォレットの秘密鍵"
     }
   },
   "errors": {

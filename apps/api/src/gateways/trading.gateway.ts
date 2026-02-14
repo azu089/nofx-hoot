@@ -49,6 +49,66 @@ export interface StrategyHealthEvent {
   lastSignalAt?: Date;
 }
 
+// AI 模块 WebSocket 事件类型
+export interface AiResearchProgressEvent {
+  sessionId: string;
+  stage: number;
+  stageName: string;
+  status: 'running' | 'completed' | 'failed';
+  data?: any; // 阶段结果摘要
+  totalStages: number;
+}
+
+export interface AiStrategyStatusEvent {
+  strategyId: string;
+  status: 'running' | 'stopped' | 'paused' | 'error';
+  lastCycleAt?: Date;
+  cycleResult?: {
+    analyzed: number;
+    executed: number;
+    errors: number;
+  };
+}
+
+export interface AiDecisionEvent {
+  strategyId?: string;
+  sessionId?: string;
+  symbol: string;
+  action: string;
+  confidence: number;
+  leverage?: number;
+  reasoning?: string;
+  source: 'ai_research' | 'ai_strategy';
+}
+
+// DEX 连接状态事件 (Phase 8.1)
+export interface DexConnectionStatusEvent {
+  exchange: string; // 'hyperliquid' | 'lighter' | 'aster'
+  status: 'connected' | 'disconnected' | 'error';
+  walletAddress?: string;
+  message?: string;
+}
+
+// DEX 链上交易确认事件
+export interface DexTxConfirmedEvent {
+  exchange: string;
+  txHash: string;
+  symbol: string;
+  action: string;
+  orderId?: string;
+  confirmedAt: Date;
+}
+
+// DEX 链上交易失败事件
+export interface DexTxFailedEvent {
+  exchange: string;
+  symbol: string;
+  action: string;
+  error: string;
+  txHash?: string;
+  failedAt: Date;
+}
+
 @WebSocketGateway({
   namespace: '/trading',
   cors: {
@@ -198,6 +258,77 @@ export class TradingGateway
     this.server.emit('announcement', announcement);
     this.logger.log(`广播系统公告: ${announcement.title}`);
   }
+
+  // ==================== AI 模块推送方法 ====================
+
+  /**
+   * 推送 AI 研究进度（产品 A）
+   * 事件名: ai:research:progress
+   */
+  sendAiResearchProgress(userId: string, event: AiResearchProgressEvent) {
+    this.server.to(`user:${userId}`).emit('ai:research:progress', event);
+  }
+
+  /**
+   * 推送 AI 策略运行状态（产品 B）
+   * 事件名: ai:strategy:status
+   */
+  sendAiStrategyStatus(userId: string, event: AiStrategyStatusEvent) {
+    this.server.to(`user:${userId}`).emit('ai:strategy:status', event);
+  }
+
+  /**
+   * 推送 AI 决策实时通知
+   * 事件名: ai:decision
+   */
+  sendAiDecision(userId: string, event: AiDecisionEvent) {
+    this.server.to(`user:${userId}`).emit('ai:decision', event);
+  }
+
+  /**
+   * 推送 AI 预算告警
+   * 事件名: ai:budget:alert
+   */
+  sendAiBudgetAlert(
+    userId: string,
+    alert: { currentSpend: number; monthlyBudget: number; usagePercent: number; message: string },
+  ) {
+    this.server.to(`user:${userId}`).emit('ai:budget:alert', alert);
+  }
+
+  // ==================== DEX 事件推送 (Phase 8.1) ====================
+
+  /**
+   * 推送 DEX 连接状态
+   * 事件名: dex:connection:status
+   */
+  sendDexConnectionStatus(userId: string, event: DexConnectionStatusEvent) {
+    this.server.to(`user:${userId}`).emit('dex:connection:status', event);
+  }
+
+  /**
+   * 推送 DEX 链上交易确认
+   * 事件名: dex:tx:confirmed
+   */
+  sendDexTxConfirmed(userId: string, event: DexTxConfirmedEvent) {
+    this.server.to(`user:${userId}`).emit('dex:tx:confirmed', event);
+    this.logger.log(
+      `DEX 交易确认: ${event.exchange} ${event.symbol} tx=${event.txHash?.slice(0, 10)}...`,
+    );
+  }
+
+  /**
+   * 推送 DEX 链上交易失败
+   * 事件名: dex:tx:failed
+   */
+  sendDexTxFailed(userId: string, event: DexTxFailedEvent) {
+    this.server.to(`user:${userId}`).emit('dex:tx:failed', event);
+    this.logger.warn(
+      `DEX 交易失败: ${event.exchange} ${event.symbol} error=${event.error}`,
+    );
+  }
+
+  // ==================== 通用辅助方法 ====================
 
   // 检查用户是否在线
   isUserOnline(userId: string): boolean {

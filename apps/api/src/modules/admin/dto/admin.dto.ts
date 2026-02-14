@@ -167,6 +167,31 @@ export class UpdateStrategyDto {
 
   @IsOptional()
   tagsI18n?: Record<string, string[]>;
+
+  // 统计字段（管理员手动调整，或由定时任务自动计算）
+  @IsOptional()
+  @IsString()
+  return7d?: string;
+
+  @IsOptional()
+  @IsString()
+  return30d?: string;
+
+  @IsOptional()
+  @IsString()
+  return90d?: string;
+
+  @IsOptional()
+  @IsString()
+  maxDrawdown?: string;
+
+  @IsOptional()
+  @IsString()
+  winRate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalTrades?: number;
 }
 
 // 提现审核操作

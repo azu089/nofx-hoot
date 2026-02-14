@@ -327,6 +327,9 @@
     "dashboard": "Panel",
     "strategies": "Stratejiler",
     "trading": "İşlem",
+    "aiTrading": "AI Trading",
+    "aiResearch": "AI Araştırma",
+    "aiSettings": "AI Ayarlar",
     "wallet": "Cüzdan",
     "settings": "Ayarlar",
     "profile": "Profil"
@@ -827,6 +830,55 @@
       "a7": "\"Profil > Üyelik Aboneliği\" sayfasına gidin, size uygun üyelik seviyesini seçin. USDT veya HOOT token ile ödeme yapabilirsiniz. HOOT token ile ödeme yaparsanız ek indirim kazanabilirsiniz.",
       "q8": "Sorun yaşadığımda nasıl yardım alabilirim?",
       "a8": "Sayfanın altındaki \"Destek Ekibiyle İletişime Geçin\" bölümünden e-posta göndererek veya canlı sohbet kullanarak yardım alabilirsiniz. Müşteri hizmetleri ekibimiz sorularınızı 24 saat içinde yanıtlayacaktır. Acil sorunlar için anında yardım almak için canlı sohbet kullanmanızı öneririz."
+    }
+  },
+  "dex": {
+    "title": "DEX Cüzdanları",
+    "addWallet": "DEX Cüzdanı Ekle",
+    "selectDex": "DEX Seç",
+    "noWallets": "Bağlı DEX cüzdanı yok",
+    "noWalletsHint": "İlk DEX cüzdanınızı eklemek için yukarıdaki düğmeye tıklayın",
+    "walletAddress": "Cüzdan Adresi",
+    "privateKey": "Özel Anahtar",
+    "newPrivateKey": "Yeni Özel Anahtar",
+    "keepCurrentKey": "Mevcut anahtarı korumak için boş bırakın",
+    "keyUpdatedHint": "Özel anahtar güncellendikten sonra yeniden şifrelenir",
+    "currentWalletAddress": "Mevcut Cüzdan Adresi",
+    "label": "Etiket",
+    "labelPlaceholder": "İsteğe bağlı etiket",
+    "testnetMode": "Testnet Modu",
+    "testnetHint": "Test ağına bağlanmak için etkinleştirin",
+    "securityNotice": "Özel anahtarınız AES-256-GCM ile şifrelenerek saklanır ve yalnızca işlem yürütme sırasında çözülür. Bu platforma güvendiğinizden emin olun.",
+    "addSuccess": "DEX cüzdanı başarıyla eklendi",
+    "updateSuccess": "DEX cüzdanı başarıyla güncellendi",
+    "deleteSuccess": "DEX cüzdanı başarıyla silindi",
+    "deleteConfirm": "Bu DEX cüzdanını silmek istediğinizden emin misiniz?",
+    "deleteConfirmHint": "Bu işlem geri alınamaz. İlişkili ticaret stratejileri çalışmayı durduracaktır.",
+    "hyperliquid": {
+      "mainWallet": "Ana Cüzdan Adresi",
+      "mainWalletPlaceholder": "0x... ana cüzdan adresi",
+      "agentPrivateKey": "Agent Özel Anahtarı",
+      "agentPrivateKeyPlaceholder": "Hyperliquid Agent Wallet özel anahtarı",
+      "agentHint": "Hyperliquid'de Agent Wallet oluşturduktan sonra alın"
+    },
+    "lighter": {
+      "walletAddress": "Cüzdan Adresi",
+      "walletAddressPlaceholder": "0x... cüzdan adresi",
+      "walletPrivateKey": "Cüzdan Özel Anahtarı",
+      "walletPrivateKeyPlaceholder": "Cüzdan özel anahtarı (0x...)",
+      "apiKeyPrivateKey": "API Key Özel Anahtarı",
+      "apiKeyPrivateKeyPlaceholder": "Lighter API Key özel anahtarı (40 bayt hex)",
+      "apiKeyIndex": "API Key İndeksi",
+      "apiKeyIndexHint": "0-255 arası değer, varsayılan 0"
+    },
+    "aster": {
+      "userWallet": "Kullanıcı Cüzdan Adresi",
+      "userWalletPlaceholder": "0x... ana cüzdan adresi",
+      "signerWallet": "İmza Cüzdan Adresi (İsteğe Bağlı)",
+      "signerWalletPlaceholder": "Boş bırakılırsa kullanıcı cüzdan adresi kullanılır",
+      "signerHint": "Aster API cüzdan adresi, boş bırakılırsa kullanıcı cüzdanı ile aynı",
+      "signerPrivateKey": "İmza Özel Anahtarı",
+      "signerPrivateKeyPlaceholder": "İmza cüzdanının özel anahtarı"
     }
   },
   "errors": {

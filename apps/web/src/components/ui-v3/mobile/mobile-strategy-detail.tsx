@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import {
   ArrowLeft,
-  Star,
   Users,
   Shield,
   BarChart3,
@@ -16,20 +15,6 @@ import {
   Loader2
 } from 'lucide-react'
 
-interface TradeRecord {
-  pair: string
-  side: 'buy' | 'sell'
-  entry: number
-  exit: number
-  pnl: number
-  date: string
-}
-
-interface MonthlyReturn {
-  month: string
-  return: number
-}
-
 // API 返回的策略数据类型（与桌面端共用）
 export interface MobileStrategyApiData {
   id: string
@@ -41,6 +26,15 @@ export interface MobileStrategyApiData {
   subscriberCount: number
   isSubscribed: boolean
   riskLevel?: string
+  imageUrl?: string
+  tags?: string[]
+  return7d?: string | null
+  return30d?: string | null
+  return90d?: string | null
+  maxDrawdown?: string | null
+  winRate?: string | null
+  totalTrades?: number
+  isFeatured?: boolean
 }
 
 interface MobileStrategyDetailProps {
@@ -50,55 +44,48 @@ interface MobileStrategyDetailProps {
   onUseStrategy?: (id: string) => void
 }
 
-// 默认模拟数据（后端暂未提供的字段）
-const defaultMockData = {
-  author: 'Hoot Labs',
-  authorVerified: true,
-  tags: ['量化', '现货'],
-  rating: 4.8,
-  reviewCount: 256,
-
-  // 性能指标
-  performance: {
-    monthlyReturn: 18.5,
-    totalReturn: 156.8,
-    maxDrawdown: -8.2,
-    sharpeRatio: 2.1,
-    winRate: 68.5,
-    profitFactor: 2.3,
-    avgHoldingDays: 3.2,
-    totalTrades: 486,
-  },
-
-  // 策略特性
-  features: [
-    '自动信号执行',
-    '可配置止损止盈',
-    '实时交易通知',
-    '多交易对支持',
-    '风控参数自定义'
-  ],
-
-  // 月度收益
-  monthlyReturns: [
-    { month: '2025-07', return: 12.5 },
-    { month: '2025-08', return: -3.2 },
-    { month: '2025-09', return: 18.7 },
-    { month: '2025-10', return: 8.9 },
-    { month: '2025-11', return: 22.1 },
-    { month: '2025-12', return: 15.3 },
-    { month: '2026-01', return: 10.8 },
-  ] as MonthlyReturn[],
-
-  // 最近交易
-  recentTrades: [
-    { pair: 'BTC/USDT', side: 'buy' as const, entry: 42150, exit: 43280, pnl: 2.68, date: '2026-01-27' },
-    { pair: 'ETH/USDT', side: 'buy' as const, entry: 2350, exit: 2420, pnl: 2.98, date: '2026-01-26' },
-    { pair: 'SOL/USDT', side: 'buy' as const, entry: 98.5, exit: 95.2, pnl: -3.35, date: '2026-01-25' },
-    { pair: 'BNB/USDT', side: 'buy' as const, entry: 315, exit: 328, pnl: 4.13, date: '2026-01-24' },
-    { pair: 'XRP/USDT', side: 'buy' as const, entry: 0.52, exit: 0.55, pnl: 5.77, date: '2026-01-23' },
-  ] as TradeRecord[],
+// 格式化百分比，null/undefined 显示 "--"
+function formatPercent(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '--'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num)) return '--'
+  return `${num >= 0 ? '+' : ''}${num.toFixed(1)}%`
 }
+
+// 格式化统计值
+function formatStat(value: string | number | null | undefined, suffix = ''): string {
+  if (value === null || value === undefined) return '--'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num)) return '--'
+  return `${num}${suffix}`
+}
+
+// 计算运行时长
+function getRunningDuration(createdAt: string): string {
+  try {
+    const created = new Date(createdAt)
+    const now = new Date()
+    const diffMs = now.getTime() - created.getTime()
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    if (days < 1) return '刚刚创建'
+    if (days < 30) return `${days} 天`
+    const months = Math.floor(days / 30)
+    const remainDays = days % 30
+    if (remainDays === 0) return `${months} 个月`
+    return `${months} 个月 ${remainDays} 天`
+  } catch {
+    return '--'
+  }
+}
+
+// 策略固定特性（不依赖后端数据）
+const STRATEGY_FEATURES = [
+  '自动信号执行',
+  '可配置止损止盈',
+  '实时交易通知',
+  '多交易对支持',
+  '风控参数自定义'
+]
 
 export function MobileStrategyDetail({
   strategy,
@@ -108,7 +95,7 @@ export function MobileStrategyDetail({
 }: MobileStrategyDetailProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'performance' | 'trades'>('overview')
 
-  // 加载状态（包括数据未加载完成的情况）
+  // 加载状态
   if (isLoading || !strategy) {
     return (
       <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] flex items-center justify-center">
@@ -117,19 +104,8 @@ export function MobileStrategyDetail({
     )
   }
 
-  // 合并真实数据和默认数据
-  const strategyData = {
-    id: strategy.id,
-    name: strategy.name,
-    description: strategy?.description || '',
-    subscribers: strategy?.subscriberCount || 0,
-    createdAt: strategy?.createdAt ? new Date(strategy.createdAt).toLocaleDateString('zh-CN') : '-',
-    isSubscribed: strategy?.isSubscribed || false,
-    riskLevel: strategy?.riskLevel || 'medium',
-    ...defaultMockData,
-  }
-
-  const maxReturn = Math.max(...strategyData.monthlyReturns.map(m => Math.abs(m.return)))
+  const riskLevel = strategy.riskLevel || 'medium'
+  const tags = strategy.tags && strategy.tags.length > 0 ? strategy.tags : []
 
   const tabs = [
     { id: 'overview' as const, label: '策略概览' },
@@ -146,7 +122,7 @@ export function MobileStrategyDetail({
           策略说明
         </h3>
         <p className="text-[#9090A0] text-sm leading-relaxed">
-          {strategyData.description}
+          {strategy.description || '暂无策略说明'}
         </p>
       </div>
 
@@ -157,7 +133,7 @@ export function MobileStrategyDetail({
           策略特性
         </h3>
         <ul className="space-y-2">
-          {strategyData.features.map((feature, index) => (
+          {STRATEGY_FEATURES.map((feature, index) => (
             <li key={index} className="flex items-center gap-2 text-[#9090A0] text-sm">
               <Check className="w-3.5 h-3.5 text-[#10B981]" />
               {feature}
@@ -174,14 +150,18 @@ export function MobileStrategyDetail({
               <Calendar className="w-4 h-4" />
               创建时间
             </span>
-            <span className="text-sm text-[#F8F8FC]">{strategyData.createdAt}</span>
+            <span className="text-sm text-[#F8F8FC]">
+              {strategy.createdAt ? new Date(strategy.createdAt).toLocaleDateString('zh-CN') : '--'}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#9090A0] text-sm flex items-center gap-2">
               <Clock className="w-4 h-4" />
               运行时长
             </span>
-            <span className="text-sm text-[#F8F8FC]">8 个月</span>
+            <span className="text-sm text-[#F8F8FC]">
+              {strategy.createdAt ? getRunningDuration(strategy.createdAt) : '--'}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#9090A0] text-sm flex items-center gap-2">
@@ -189,12 +169,12 @@ export function MobileStrategyDetail({
               风险等级
             </span>
             <span className={`px-2 py-0.5 rounded text-xs ${
-              strategyData.riskLevel === 'low' ? 'bg-[#10B981]/20 text-[#10B981]' :
-              strategyData.riskLevel === 'high' ? 'bg-[#F43F5E]/20 text-[#F43F5E]' :
+              riskLevel === 'low' ? 'bg-[#10B981]/20 text-[#10B981]' :
+              riskLevel === 'high' ? 'bg-[#F43F5E]/20 text-[#F43F5E]' :
               'bg-[#F59E0B]/20 text-[#F59E0B]'
             }`}>
-              {strategyData.riskLevel === 'low' ? '低风险' :
-               strategyData.riskLevel === 'high' ? '高风险' : '中风险'}
+              {riskLevel === 'low' ? '低风险' :
+               riskLevel === 'high' ? '高风险' : '中风险'}
             </span>
           </div>
         </div>
@@ -214,121 +194,66 @@ export function MobileStrategyDetail({
     </div>
   )
 
-  const renderPerformanceTab = () => (
-    <div className="space-y-4">
-      {/* 月度收益图表 */}
-      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
-        <h3 className="text-[#F8F8FC] font-semibold mb-4">月度收益率 (%)</h3>
-        <div className="space-y-3">
-          {strategyData.monthlyReturns.map((item) => (
-            <div key={item.month} className="flex items-center gap-3">
-              <span className="text-[#9090A0] text-xs w-8 flex-shrink-0">
-                {item.month.slice(5)}月
-              </span>
-              <div className="flex-1 flex items-center gap-2">
-                <div className="flex-1 bg-[#1E1E2E] rounded-full h-2 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      item.return >= 0 ? 'bg-[#10B981]' : 'bg-[#F43F5E]'
-                    }`}
-                    style={{
-                      width: `${(Math.abs(item.return) / maxReturn) * 100}%`
-                    }}
-                  />
-                </div>
-                <span
-                  className={`text-xs font-medium font-mono w-14 text-right ${
-                    item.return >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'
-                  }`}
-                >
-                  {item.return > 0 ? '+' : ''}{item.return}%
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+  const renderPerformanceTab = () => {
+    const hasData = strategy.return7d || strategy.return30d || strategy.return90d || strategy.maxDrawdown
 
-      {/* 详细数据 */}
-      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
-        <h3 className="text-[#F8F8FC] font-semibold mb-4">详细数据</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
-            <div className="text-[#10B981] text-lg font-bold font-mono">
-              +{strategyData.performance.totalReturn}%
+    if (!hasData) {
+      return (
+        <div className="space-y-4">
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-8">
+            <div className="text-center">
+              <BarChart3 className="w-12 h-12 text-[#9090A0]/30 mx-auto mb-3" />
+              <p className="text-[#9090A0] text-sm">暂无历史表现数据</p>
+              <p className="text-[#9090A0]/60 text-xs mt-1">策略运行后将自动统计</p>
             </div>
-            <div className="text-[#9090A0] text-xs mt-1">累计收益</div>
           </div>
-          <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
-            <div className="text-[#F8F8FC] text-lg font-bold font-mono">
-              {strategyData.performance.profitFactor}
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* 详细数据 */}
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
+          <h3 className="text-[#F8F8FC] font-semibold mb-4">详细数据</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
+              <div className="text-[#10B981] text-lg font-bold font-mono">
+                {formatPercent(strategy.return7d)}
+              </div>
+              <div className="text-[#9090A0] text-xs mt-1">7日收益</div>
             </div>
-            <div className="text-[#9090A0] text-xs mt-1">盈亏比</div>
-          </div>
-          <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
-            <div className="text-[#F8F8FC] text-lg font-bold font-mono">
-              {strategyData.performance.avgHoldingDays} 天
+            <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
+              <div className="text-[#10B981] text-lg font-bold font-mono">
+                {formatPercent(strategy.return30d)}
+              </div>
+              <div className="text-[#9090A0] text-xs mt-1">30日收益</div>
             </div>
-            <div className="text-[#9090A0] text-xs mt-1">平均持仓</div>
-          </div>
-          <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
-            <div className="text-[#F8F8FC] text-lg font-bold font-mono">
-              {strategyData.performance.totalTrades}
+            <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
+              <div className="text-[#F43F5E] text-lg font-bold font-mono">
+                {formatPercent(strategy.maxDrawdown)}
+              </div>
+              <div className="text-[#9090A0] text-xs mt-1">最大回撤</div>
             </div>
-            <div className="text-[#9090A0] text-xs mt-1">总交易次数</div>
+            <div className="bg-[#1E1E2E]/50 rounded-lg p-3 text-center">
+              <div className="text-[#F8F8FC] text-lg font-bold font-mono">
+                {formatStat(strategy.totalTrades)}
+              </div>
+              <div className="text-[#9090A0] text-xs mt-1">总交易次数</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderTradesTab = () => (
     <div className="space-y-4">
-      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
-        <h3 className="text-[#F8F8FC] font-semibold mb-4 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-[#06B6D4]" />
-          最近交易记录
-        </h3>
-        <div className="space-y-3">
-          {strategyData.recentTrades.map((trade, index) => (
-            <div
-              key={index}
-              className="border border-[#1E1E2E] rounded-lg p-3 space-y-2"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[#F8F8FC] font-medium text-sm font-mono">
-                    {trade.pair}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      trade.side === 'buy'
-                        ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20'
-                        : 'bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20'
-                    }`}
-                  >
-                    {trade.side === 'buy' ? '买入' : '卖出'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div
-                    className={`text-sm font-bold font-mono ${
-                      trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'
-                    }`}
-                  >
-                    {trade.pnl >= 0 ? '+' : ''}{trade.pnl}%
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-xs text-[#9090A0]">
-                <div className="flex items-center gap-4">
-                  <span>入场: <span className="text-[#F8F8FC] font-mono">${trade.entry.toLocaleString()}</span></span>
-                  <span>出场: <span className="text-[#F8F8FC] font-mono">${trade.exit.toLocaleString()}</span></span>
-                </div>
-                <span>{trade.date}</span>
-              </div>
-            </div>
-          ))}
+      <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-8">
+        <div className="text-center">
+          <Activity className="w-12 h-12 text-[#9090A0]/30 mx-auto mb-3" />
+          <p className="text-[#9090A0] text-sm">暂无交易记录</p>
+          <p className="text-[#9090A0]/60 text-xs mt-1">策略执行交易后将在此显示</p>
         </div>
       </div>
     </div>
@@ -357,68 +282,63 @@ export function MobileStrategyDetail({
         <div className="p-4 space-y-4">
           {/* 策略头部信息 */}
           <div className="space-y-2">
-            {/* 策略名称 - 单独一行 */}
-            <h2 className="text-xl font-bold leading-tight">{strategyData.name}</h2>
+            <h2 className="text-xl font-bold leading-tight">{strategy.name}</h2>
 
-            {/* 标签 - 单独一行 */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {strategyData.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2.5 py-1 rounded-full text-xs bg-[#06B6D4]/20 text-[#06B6D4]"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+            {/* 标签 */}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2.5 py-1 rounded-full text-xs bg-[#06B6D4]/20 text-[#06B6D4]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
 
-            {/* 作者和统计 - 单独一行 */}
+            {/* 统计信息 */}
             <div className="flex items-center gap-3 text-sm text-[#9090A0] pt-1">
               <span className="flex items-center gap-1">
-                by {strategyData.author}
-                {strategyData.authorVerified && (
-                  <Check className="w-4 h-4 text-[#10B981]" />
-                )}
-              </span>
-              <span className="flex items-center gap-1">
-                <Star className="w-4 h-4 text-[#F59E0B] fill-[#F59E0B]" />
-                {strategyData.rating}
-              </span>
-              <span className="flex items-center gap-1">
                 <Users className="w-4 h-4" />
-                {strategyData.subscribers.toLocaleString()}
+                {strategy.subscriberCount.toLocaleString()} 订阅者
               </span>
+              {strategy.isActive && (
+                <span className="flex items-center gap-1 text-[#10B981]">
+                  <Activity className="w-4 h-4" />
+                  运行中
+                </span>
+              )}
             </div>
           </div>
 
-          {/* 快速数据卡片 - 合并为1个卡片 */}
+          {/* 快速数据卡片 */}
           <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
-                <p className={`text-xl font-mono font-bold ${
-                  strategyData.performance.monthlyReturn >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'
-                }`}>
-                  {strategyData.performance.monthlyReturn >= 0 ? '+' : ''}{strategyData.performance.monthlyReturn}%
+                <p className="text-xl font-mono font-bold text-[#10B981]">
+                  {formatPercent(strategy.return30d)}
                 </p>
-                <p className="text-[#9090A0] text-xs mt-1">月化收益</p>
+                <p className="text-[#9090A0] text-xs mt-1">30日收益</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-mono font-bold text-[#F43F5E]">
-                  {strategyData.performance.maxDrawdown}%
+                  {formatPercent(strategy.maxDrawdown)}
                 </p>
                 <p className="text-[#9090A0] text-xs mt-1">最大回撤</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-mono font-bold text-[#F8F8FC]">
-                  {strategyData.performance.winRate}%
+                  {formatStat(strategy.winRate, '%')}
                 </p>
                 <p className="text-[#9090A0] text-xs mt-1">胜率</p>
               </div>
               <div className="text-center">
                 <p className="text-xl font-mono font-bold text-[#F8F8FC]">
-                  {strategyData.performance.sharpeRatio}
+                  {formatStat(strategy.totalTrades)}
                 </p>
-                <p className="text-[#9090A0] text-xs mt-1">夏普比率</p>
+                <p className="text-[#9090A0] text-xs mt-1">总交易次数</p>
               </div>
             </div>
           </div>
@@ -448,15 +368,15 @@ export function MobileStrategyDetail({
         </div>
       </div>
 
-      {/* 底部按钮 - 不使用 fixed 定位，让它留在页面流中 */}
+      {/* 底部按钮 */}
       <div className="bg-[#0A0A0F]/95 backdrop-blur-xl border-t border-[#1E1E2E] p-4">
         <button
           type="button"
-          onClick={() => onUseStrategy?.(strategyData.id)}
+          onClick={() => onUseStrategy?.(strategy.id)}
           className="w-full py-3 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(6,182,212,0.3)]"
         >
           <Play className="w-5 h-5" />
-          {strategyData.isSubscribed ? '已订阅' : '立即使用'}
+          {strategy.isSubscribed ? '已订阅' : '立即使用'}
         </button>
       </div>
     </div>

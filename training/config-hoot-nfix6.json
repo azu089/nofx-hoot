@@ -1,0 +1,138 @@
+{
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+    "max_open_trades": 12,
+    "stake_currency": "USDT",
+    "stake_amount": 150,
+    "tradable_balance_ratio": 0.95,
+    "dry_run": true,
+    "dry_run_wallet": 10000,
+    "cancel_open_orders_on_exit": false,
+    "unfilledtimeout": {
+        "entry": 10,
+        "exit": 10,
+        "exit_timeout_count": 0,
+        "unit": "minutes"
+    },
+    "entry_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+    "exit_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1
+    },
+    "exchange": {
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "ccxt_config": {
+            "enableRateLimit": true
+        },
+        "ccxt_async_config": {
+            "enableRateLimit": true
+        },
+        "pair_whitelist": [
+            "BTC/USDT:USDT",
+            "ETH/USDT:USDT",
+            "SOL/USDT:USDT",
+            "BNB/USDT:USDT",
+            "XRP/USDT:USDT",
+            "DOGE/USDT:USDT",
+            "AVAX/USDT:USDT",
+            "LINK/USDT:USDT",
+            "LTC/USDT:USDT",
+            "NEAR/USDT:USDT",
+            "OP/USDT:USDT",
+            "UNI/USDT:USDT",
+            "ARB/USDT:USDT",
+            "ATOM/USDT:USDT",
+            "INJ/USDT:USDT",
+            "AAVE/USDT:USDT",
+            "SUI/USDT:USDT",
+            "SEI/USDT:USDT",
+            "RUNE/USDT:USDT",
+            "PEPE/USDT:USDT",
+            "TIA/USDT:USDT",
+            "ORDI/USDT:USDT",
+            "DOT/USDT:USDT",
+            "ADA/USDT:USDT",
+            "WLD/USDT:USDT",
+            "ETC/USDT:USDT",
+            "GALA/USDT:USDT",
+            "RENDER/USDT:USDT",
+            "PYTH/USDT:USDT",
+            "SAND/USDT:USDT",
+            "IMX/USDT:USDT",
+            "SNX/USDT:USDT"
+        ],
+        "pair_blacklist": [
+            "APT/USDT:USDT",
+            "FIL/USDT:USDT",
+            "WIF/USDT:USDT",
+            "SHIB/USDT:USDT"
+        ]
+    },
+    "pairlists": [
+        {
+            "method": "StaticPairList"
+        }
+    ],
+    "api_server": {
+        "enabled": true,
+        "listen_ip_address": "0.0.0.0",
+        "listen_port": 8092,
+        "verbosity": "error",
+        "username": "hoot",
+        "password": "hoot123",
+        "jwt_secret_key": "hootsecretkey3"
+    },
+    "webhook": {
+        "enabled": true,
+        "url": "http://localhost:4001/api/signals/webhook",
+        "webhookentry": {
+            "strategy": "NostalgiaForInfinityX6_MOD",
+            "symbol": "{pair}",
+            "side": "buy",
+            "action": "entry_long",
+            "price": "{current_rate}"
+        },
+        "webhookexit": {
+            "strategy": "NostalgiaForInfinityX6_MOD",
+            "symbol": "{pair}",
+            "side": "sell",
+            "action": "exit_long",
+            "price": "{current_rate}"
+        },
+        "webhookentrycancel": null,
+        "webhookexitcancel": null,
+        "webhookentryshort": {
+            "strategy": "NostalgiaForInfinityX6_MOD",
+            "symbol": "{pair}",
+            "side": "sell",
+            "action": "entry_short",
+            "price": "{current_rate}"
+        },
+        "webhookexitshort": {
+            "strategy": "NostalgiaForInfinityX6_MOD",
+            "symbol": "{pair}",
+            "side": "buy",
+            "action": "exit_short",
+            "price": "{current_rate}"
+        }
+    },
+    "bot_name": "HootNFIX6",
+    "initial_state": "running",
+    "force_entry_enable": false,
+    "internals": {
+        "process_throttle_secs": 5
+    },
+    "nfi_advanced_mode": true
+}

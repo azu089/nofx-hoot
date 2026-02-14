@@ -424,6 +424,9 @@
     "dashboard": "Dashboard",
     "strategies": "Strategies",
     "trading": "Trading",
+    "aiTrading": "AI Trading",
+    "aiResearch": "AI Research",
+    "aiSettings": "AI Settings",
     "wallet": "Assets",
     "settings": "Settings",
     "profile": "Profile"
@@ -1040,6 +1043,55 @@
       "a7": "Go to My Profile > Membership Subscription page and choose your membership tier. You can pay with USDT or HOOT tokens. Using HOOT tokens for payment gives you extra discounts.",
       "q8": "How do I get help with issues?",
       "a8": "You can contact support via email or live chat at the bottom of the page. Our support team will respond within 24 hours. For urgent issues, we recommend using live chat for immediate assistance."
+    }
+  },
+  "dex": {
+    "title": "DEX Wallets",
+    "addWallet": "Add DEX Wallet",
+    "selectDex": "Select DEX",
+    "noWallets": "No DEX wallets connected",
+    "noWalletsHint": "Click the button above to add your first DEX wallet",
+    "walletAddress": "Wallet Address",
+    "privateKey": "Private Key",
+    "newPrivateKey": "New Private Key",
+    "keepCurrentKey": "Leave empty to keep current key",
+    "keyUpdatedHint": "Private key will be re-encrypted after update",
+    "currentWalletAddress": "Current Wallet Address",
+    "label": "Label",
+    "labelPlaceholder": "Optional label",
+    "testnetMode": "Testnet Mode",
+    "testnetHint": "Enable to connect to testnet",
+    "securityNotice": "Your private key will be stored encrypted using AES-256-GCM and only decrypted during trade execution. Please make sure you trust this platform.",
+    "addSuccess": "DEX wallet added successfully",
+    "updateSuccess": "DEX wallet updated successfully",
+    "deleteSuccess": "DEX wallet deleted successfully",
+    "deleteConfirm": "Are you sure you want to delete this DEX wallet?",
+    "deleteConfirmHint": "This action cannot be undone. Associated trading strategies will stop working.",
+    "hyperliquid": {
+      "mainWallet": "Main Wallet Address",
+      "mainWalletPlaceholder": "0x... main wallet address",
+      "agentPrivateKey": "Agent Private Key",
+      "agentPrivateKeyPlaceholder": "Hyperliquid Agent Wallet private key",
+      "agentHint": "Obtain after creating an Agent Wallet in Hyperliquid"
+    },
+    "lighter": {
+      "walletAddress": "Wallet Address",
+      "walletAddressPlaceholder": "0x... wallet address",
+      "walletPrivateKey": "Wallet Private Key",
+      "walletPrivateKeyPlaceholder": "Wallet private key (0x...)",
+      "apiKeyPrivateKey": "API Key Private Key",
+      "apiKeyPrivateKeyPlaceholder": "Lighter API Key private key (40-byte hex)",
+      "apiKeyIndex": "API Key Index",
+      "apiKeyIndexHint": "Value between 0-255, default is 0"
+    },
+    "aster": {
+      "userWallet": "User Wallet Address",
+      "userWalletPlaceholder": "0x... main wallet address",
+      "signerWallet": "Signer Wallet Address (Optional)",
+      "signerWalletPlaceholder": "Leave empty to use user wallet address",
+      "signerHint": "Aster API wallet address, leave empty to use user wallet",
+      "signerPrivateKey": "Signer Private Key",
+      "signerPrivateKeyPlaceholder": "Signer wallet private key"
     }
   },
   "errors": {

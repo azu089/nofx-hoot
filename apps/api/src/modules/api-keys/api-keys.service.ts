@@ -8,9 +8,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { encrypt, decrypt, maskApiKey } from '../../common/utils/crypto.util';
 import {
   CreateApiKeyDto,
+  CreateDexCredentialDto,
   UpdateApiKeyDto,
   ApiKeyResponse,
   ApiKeyListResponse,
+  SUPPORTED_DEX_EXCHANGES,
 } from './dto/api-key.dto';
 import * as ccxt from 'ccxt';
 
@@ -61,6 +63,101 @@ export class ApiKeysService {
     };
   }
 
+  // 创建 DEX 凭证（钱包地址 + 加密私钥）
+  async createDexCredential(
+    userId: string,
+    dto: CreateDexCredentialDto,
+  ): Promise<ApiKeyResponse> {
+    // 1. 验证交易所专属必填字段
+    switch (dto.exchange) {
+      case 'hyperliquid':
+        if (!dto.walletAddress || !dto.privateKey) {
+          throw new BadRequestException(
+            'Hyperliquid 需要提供钱包地址和 Agent 私钥',
+          );
+        }
+        break;
+      case 'lighter':
+        if (
+          !dto.walletAddress ||
+          !dto.privateKey ||
+          !dto.lighterApiKeyPrivateKey ||
+          dto.lighterApiKeyIndex === undefined
+        ) {
+          throw new BadRequestException(
+            'Lighter 需要提供钱包地址、钱包私钥、API Key 私钥和 Key 索引',
+          );
+        }
+        break;
+      case 'aster':
+        if (
+          !dto.asterUserAddress ||
+          !dto.asterSignerAddress ||
+          !dto.privateKey
+        ) {
+          throw new BadRequestException(
+            'Aster 需要提供用户钱包地址、签名钱包地址和签名私钥',
+          );
+        }
+        break;
+    }
+
+    // 2. 构建存储数据
+    const data: any = {
+      userId,
+      exchange: dto.exchange,
+      label: dto.label,
+      authType: 'wallet',
+      isTestnet: dto.isTestnet || false,
+    };
+
+    // 钱包地址（公开，不加密）
+    if (dto.walletAddress) {
+      data.walletAddress = dto.walletAddress;
+    }
+    // Aster 的用户钱包地址存到 walletAddress
+    if (dto.asterUserAddress) {
+      data.walletAddress = dto.asterUserAddress;
+    }
+    if (dto.asterSignerAddress) {
+      data.asterSignerAddress = dto.asterSignerAddress;
+    }
+
+    // 3. 加密主私钥（Agent 私钥 / 钱包私钥 / 签名私钥）
+    if (dto.privateKey) {
+      const encrypted = encrypt(dto.privateKey);
+      data.encryptedPrivateKey = encrypted.encryptedData;
+      data.privateKeyIv = encrypted.iv;
+      data.privateKeyAuthTag = encrypted.authTag;
+    }
+
+    // 4. 加密 Lighter API Key 私钥
+    if (dto.lighterApiKeyPrivateKey) {
+      const encrypted = encrypt(dto.lighterApiKeyPrivateKey);
+      data.lighterApiKeyEncrypted = encrypted.encryptedData;
+      data.lighterApiKeyIv = encrypted.iv;
+      data.lighterApiKeyAuthTag = encrypted.authTag;
+      data.lighterApiKeyIndex = dto.lighterApiKeyIndex;
+    }
+
+    const record = await this.prisma.apiKey.create({ data });
+
+    const displayAddress =
+      dto.walletAddress || dto.asterUserAddress || '';
+
+    return {
+      id: record.id,
+      exchange: record.exchange,
+      label: record.label,
+      maskedKey: displayAddress ? maskApiKey(displayAddress) : '****',
+      isActive: record.isActive,
+      createdAt: record.createdAt,
+      authType: 'wallet',
+      isTestnet: dto.isTestnet || false,
+      walletAddress: displayAddress,
+    };
+  }
+
   // 获取用户的 API Key 列表
   async findAll(userId: string): Promise<ApiKeyListResponse> {
     const [items, total] = await Promise.all([
@@ -72,14 +169,24 @@ export class ApiKeysService {
     ]);
 
     return {
-      items: items.map((item) => ({
-        id: item.id,
-        exchange: item.exchange,
-        label: item.label,
-        maskedKey: '****' + item.encryptedKey.slice(-4), // 简单脱敏
-        isActive: item.isActive,
-        createdAt: item.createdAt,
-      })),
+      items: items.map((item) => {
+        const isDex = item.authType === 'wallet';
+        return {
+          id: item.id,
+          exchange: item.exchange,
+          label: item.label,
+          maskedKey: isDex
+            ? item.walletAddress
+              ? maskApiKey(item.walletAddress)
+              : '****'
+            : '****' + item.encryptedKey.slice(-4),
+          isActive: item.isActive,
+          createdAt: item.createdAt,
+          authType: item.authType || 'api_key',
+          isTestnet: item.isTestnet || false,
+          walletAddress: isDex ? (item.walletAddress || undefined) : undefined,
+        };
+      }),
       total,
     };
   }
@@ -221,6 +328,72 @@ export class ApiKeysService {
       apiSecret,
       exchange: record.exchange,
     };
+  }
+
+  // 内部方法：获取解密后的 DEX 凭证（供适配器工厂使用）
+  async getDecryptedDexCredential(
+    userId: string,
+    apiKeyId: string,
+  ): Promise<{
+    exchange: string;
+    walletAddress?: string;
+    privateKey?: string;
+    lighterApiKeyPrivateKey?: string;
+    lighterApiKeyIndex?: number;
+    asterSignerAddress?: string;
+    isTestnet: boolean;
+  }> {
+    const record = await this.prisma.apiKey.findUnique({
+      where: { id: apiKeyId },
+    });
+
+    if (!record) {
+      throw new NotFoundException('DEX 凭证不存在');
+    }
+
+    if (record.userId !== userId) {
+      throw new ForbiddenException('无权使用此 DEX 凭证');
+    }
+
+    if (!record.isActive) {
+      throw new ForbiddenException('DEX 凭证已禁用');
+    }
+
+    if (record.authType !== 'wallet') {
+      throw new BadRequestException('此记录不是 DEX 凭证');
+    }
+
+    const result: any = {
+      exchange: record.exchange,
+      walletAddress: record.walletAddress || undefined,
+      isTestnet: record.isTestnet,
+    };
+
+    // 解密主私钥
+    if (record.encryptedPrivateKey && record.privateKeyIv && record.privateKeyAuthTag) {
+      result.privateKey = decrypt({
+        encryptedData: record.encryptedPrivateKey,
+        iv: record.privateKeyIv,
+        authTag: record.privateKeyAuthTag,
+      });
+    }
+
+    // 解密 Lighter API Key 私钥
+    if (record.lighterApiKeyEncrypted && record.lighterApiKeyIv && record.lighterApiKeyAuthTag) {
+      result.lighterApiKeyPrivateKey = decrypt({
+        encryptedData: record.lighterApiKeyEncrypted,
+        iv: record.lighterApiKeyIv,
+        authTag: record.lighterApiKeyAuthTag,
+      });
+      result.lighterApiKeyIndex = record.lighterApiKeyIndex;
+    }
+
+    // Aster 签名钱包地址（公开，无需解密）
+    if (record.asterSignerAddress) {
+      result.asterSignerAddress = record.asterSignerAddress;
+    }
+
+    return result;
   }
 
   // 创建前验证 API Key（不需要先存储）

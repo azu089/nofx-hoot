@@ -8,7 +8,7 @@ import {
   Param,
 } from '@nestjs/common';
 import { ApiKeysService } from './api-keys.service';
-import { CreateApiKeyDto, UpdateApiKeyDto } from './dto/api-key.dto';
+import { CreateApiKeyDto, CreateDexCredentialDto, UpdateApiKeyDto } from './dto/api-key.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('api-keys')
@@ -22,6 +22,15 @@ export class ApiKeysController {
     @Body() dto: CreateApiKeyDto,
   ) {
     return this.apiKeysService.create(user.id, dto);
+  }
+
+  // 添加 DEX 凭证（钱包地址 + 私钥）
+  @Post('dex')
+  async createDex(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateDexCredentialDto,
+  ) {
+    return this.apiKeysService.createDexCredential(user.id, dto);
   }
 
   // 获取 API Key 列表

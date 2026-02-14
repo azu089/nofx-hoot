@@ -327,6 +327,9 @@
     "dashboard": "แดชบอร์ด",
     "strategies": "กลยุทธ์",
     "trading": "เทรด",
+    "aiTrading": "AI Trading",
+    "aiResearch": "AI วิจัย",
+    "aiSettings": "AI ตั้งค่า",
     "wallet": "กระเป๋าเงิน",
     "settings": "การตั้งค่า",
     "profile": "โปรไฟล์"
@@ -827,6 +830,55 @@
       "a7": "ไปที่หน้า \"โปรไฟล์ > การสมัครสมาชิก\" เลือกระดับสมาชิกที่เหมาะสมกับคุณ คุณสามารถชำระด้วย USDT หรือโทเค็น HOOT การชำระด้วยโทเค็น HOOT จะได้รับส่วนลดเพิ่มเติม",
       "q8": "จะขอความช่วยเหลือได้อย่างไรเมื่อพบปัญหา?",
       "a8": "คุณสามารถส่งอีเมลหรือใช้แชทสดที่ด้านล่างของหน้า \"ติดต่อฝ่ายสนับสนุน\" เพื่อขอความช่วยเหลือ ทีมบริการลูกค้าของเราจะตอบกลับคำถามของคุณภายใน 24 ชั่วโมง สำหรับปัญหาเร่งด่วนแนะนำให้ใช้แชทสดเพื่อรับความช่วยเหลือทันที"
+    }
+  },
+  "dex": {
+    "title": "กระเป๋า DEX",
+    "addWallet": "เพิ่มกระเป๋า DEX",
+    "selectDex": "เลือก DEX",
+    "noWallets": "ยังไม่มีกระเป๋า DEX ที่เชื่อมต่อ",
+    "noWalletsHint": "คลิกปุ่มด้านบนเพื่อเพิ่มกระเป๋า DEX แรกของคุณ",
+    "walletAddress": "ที่อยู่กระเป๋า",
+    "privateKey": "คีย์ส่วนตัว",
+    "newPrivateKey": "คีย์ส่วนตัวใหม่",
+    "keepCurrentKey": "เว้นว่างเพื่อใช้คีย์ส่วนตัวปัจจุบัน",
+    "keyUpdatedHint": "คีย์ส่วนตัวจะถูกเข้ารหัสใหม่หลังอัปเดต",
+    "currentWalletAddress": "ที่อยู่กระเป๋าปัจจุบัน",
+    "label": "ป้ายกำกับ",
+    "labelPlaceholder": "ป้ายกำกับเพิ่มเติม",
+    "testnetMode": "โหมดเทสต์เน็ต",
+    "testnetHint": "เปิดใช้งานเพื่อเชื่อมต่อเครือข่ายทดสอบ",
+    "securityNotice": "คีย์ส่วนตัวของคุณจะถูกเก็บรักษาด้วยการเข้ารหัส AES-256-GCM และจะถูกถอดรหัสเฉพาะตอนทำธุรกรรมเท่านั้น กรุณาตรวจสอบว่าคุณไว้วางใจแพลตฟอร์มนี้",
+    "addSuccess": "เพิ่มกระเป๋า DEX สำเร็จ",
+    "updateSuccess": "อัปเดตกระเป๋า DEX สำเร็จ",
+    "deleteSuccess": "ลบกระเป๋า DEX สำเร็จ",
+    "deleteConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบกระเป๋า DEX นี้?",
+    "deleteConfirmHint": "การดำเนินการนี้ไม่สามารถย้อนกลับได้ กลยุทธ์การซื้อขายที่เกี่ยวข้องจะหยุดทำงาน",
+    "hyperliquid": {
+      "mainWallet": "ที่อยู่กระเป๋าหลัก",
+      "mainWalletPlaceholder": "0x... ที่อยู่กระเป๋าหลัก",
+      "agentPrivateKey": "คีย์ส่วนตัว Agent",
+      "agentPrivateKeyPlaceholder": "คีย์ส่วนตัว Hyperliquid Agent Wallet",
+      "agentHint": "รับหลังจากสร้าง Agent Wallet ใน Hyperliquid"
+    },
+    "lighter": {
+      "walletAddress": "ที่อยู่กระเป๋า",
+      "walletAddressPlaceholder": "0x... ที่อยู่กระเป๋า",
+      "walletPrivateKey": "คีย์ส่วนตัวกระเป๋า",
+      "walletPrivateKeyPlaceholder": "คีย์ส่วนตัวกระเป๋า (0x...)",
+      "apiKeyPrivateKey": "คีย์ส่วนตัว API Key",
+      "apiKeyPrivateKeyPlaceholder": "คีย์ส่วนตัว Lighter API Key (40 ไบต์ hex)",
+      "apiKeyIndex": "ดัชนี API Key",
+      "apiKeyIndexHint": "ค่าระหว่าง 0-255 ค่าเริ่มต้นคือ 0"
+    },
+    "aster": {
+      "userWallet": "ที่อยู่กระเป๋าผู้ใช้",
+      "userWalletPlaceholder": "0x... ที่อยู่กระเป๋าหลัก",
+      "signerWallet": "ที่อยู่กระเป๋าลงนาม (ไม่บังคับ)",
+      "signerWalletPlaceholder": "เว้นว่างจะใช้ที่อยู่กระเป๋าผู้ใช้",
+      "signerHint": "ที่อยู่กระเป๋า Aster API เว้นว่างจะเหมือนกระเป๋าผู้ใช้",
+      "signerPrivateKey": "คีย์ส่วนตัวลงนาม",
+      "signerPrivateKeyPlaceholder": "คีย์ส่วนตัวของกระเป๋าลงนาม"
     }
   },
   "errors": {

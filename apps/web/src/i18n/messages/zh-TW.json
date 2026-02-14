@@ -330,6 +330,9 @@
     "dashboard": "儀表板",
     "strategies": "策略",
     "trading": "交易",
+    "aiTrading": "AI交易",
+    "aiResearch": "AI研究",
+    "aiSettings": "AI設定",
     "wallet": "資產",
     "settings": "設定",
     "profile": "我的"
@@ -830,6 +833,55 @@
       "a7": "前往「我的 > 會員訂閱」頁面，選擇適合您的會員等級。您可以使用 USDT 或 HOOT 代幣支付訂閱費用。使用 HOOT 代幣支付可享受額外折扣。",
       "q8": "遇到問題如何獲取幫助？",
       "a8": "您可以透過頁面下方的「聯絡客服」發送郵件或線上客服獲取幫助。我們的客服團隊會在 24 小時內回覆您的問題。緊急問題建議使用線上客服獲得即時幫助。"
+    }
+  },
+  "dex": {
+    "title": "DEX 錢包",
+    "addWallet": "新增 DEX 錢包",
+    "selectDex": "選擇 DEX",
+    "noWallets": "尚未綁定 DEX 錢包",
+    "noWalletsHint": "點擊上方按鈕新增您的第一個 DEX 錢包",
+    "walletAddress": "錢包地址",
+    "privateKey": "私鑰",
+    "newPrivateKey": "新私鑰",
+    "keepCurrentKey": "留空保持當前私鑰",
+    "keyUpdatedHint": "更新私鑰後將重新加密儲存",
+    "currentWalletAddress": "當前錢包地址",
+    "label": "備註名稱",
+    "labelPlaceholder": "可選備註",
+    "testnetMode": "測試網模式",
+    "testnetHint": "啟用後連接測試網路",
+    "securityNotice": "您的私鑰將使用 AES-256-GCM 加密儲存，僅在執行交易時解密使用。請確保您信任此平台。",
+    "addSuccess": "DEX 錢包新增成功",
+    "updateSuccess": "DEX 錢包更新成功",
+    "deleteSuccess": "DEX 錢包刪除成功",
+    "deleteConfirm": "確定要刪除此 DEX 錢包嗎？",
+    "deleteConfirmHint": "此操作不可撤銷，關聯的交易策略將停止運行。",
+    "hyperliquid": {
+      "mainWallet": "主錢包地址",
+      "mainWalletPlaceholder": "0x... 主錢包地址",
+      "agentPrivateKey": "Agent 私鑰",
+      "agentPrivateKeyPlaceholder": "Hyperliquid Agent Wallet 私鑰",
+      "agentHint": "在 Hyperliquid 中創建 Agent Wallet 後獲取"
+    },
+    "lighter": {
+      "walletAddress": "錢包地址",
+      "walletAddressPlaceholder": "0x... 錢包地址",
+      "walletPrivateKey": "錢包私鑰",
+      "walletPrivateKeyPlaceholder": "錢包私鑰（0x...）",
+      "apiKeyPrivateKey": "API Key 私鑰",
+      "apiKeyPrivateKeyPlaceholder": "Lighter API Key 私鑰（40位元組 hex）",
+      "apiKeyIndex": "API Key 索引",
+      "apiKeyIndexHint": "0-255 之間的數值，預設為 0"
+    },
+    "aster": {
+      "userWallet": "使用者錢包地址",
+      "userWalletPlaceholder": "0x... 主錢包地址",
+      "signerWallet": "簽名錢包地址（可選）",
+      "signerWalletPlaceholder": "留空則使用使用者錢包地址",
+      "signerHint": "Aster API 錢包地址，留空則與使用者錢包相同",
+      "signerPrivateKey": "簽名私鑰",
+      "signerPrivateKeyPlaceholder": "簽名錢包的私鑰"
     }
   },
   "errors": {

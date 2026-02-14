@@ -27,6 +27,8 @@ import { MembershipModule } from './modules/membership/membership.module';
 import { RedisLockModule } from './common/redis/redis-lock.module';
 import { ExchangesModule } from './modules/exchanges/exchanges.module';
 import { PublicConfigModule } from './modules/config/public-config.module';
+import { AiModule } from './modules/ai/ai.module';
+import { ExchangeAdaptersModule } from './modules/exchange-adapters/exchange-adapters.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -81,6 +83,8 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     RedisLockModule,
     ExchangesModule,
     PublicConfigModule,
+    AiModule,
+    ExchangeAdaptersModule,
   ],
   controllers: [AppController],
   providers: [

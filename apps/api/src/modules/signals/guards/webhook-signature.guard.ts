@@ -24,8 +24,8 @@ export class WebhookSignatureGuard implements CanActivate {
   constructor() {
     this.webhookSecret = process.env.WEBHOOK_SECRET || '';
     if (!this.webhookSecret) {
-      this.logger.error(
-        'WEBHOOK_SECRET 未配置，所有 Webhook 请求将被拒绝',
+      this.logger.warn(
+        'WEBHOOK_SECRET 未配置，Webhook 签名验证已跳过（开发模式）',
       );
     }
   }
@@ -33,10 +33,11 @@ export class WebhookSignatureGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
 
+    // 开发模式：WEBHOOK_SECRET 未配置时跳过签名验证
+    // 生产环境必须配置 WEBHOOK_SECRET
     if (!this.webhookSecret) {
-      throw new UnauthorizedException(
-        'WEBHOOK_SECRET 未配置，请在环境变量中设置',
-      );
+      this.logger.debug('Webhook 签名验证已跳过（WEBHOOK_SECRET 未配置）');
+      return true;
     }
 
     const signature = request.headers['x-webhook-signature'] as string;

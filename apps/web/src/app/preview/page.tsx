@@ -64,6 +64,13 @@ import { MobileAboutPage } from '@/components/ui-v3/mobile/mobile-about-page'
 import { MobileHelpPage } from '@/components/ui-v3/mobile/mobile-help-page'
 // Wallet connect modals
 import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-wallet-connect-modal'
+// AI Trading pages (Phase 8.0)
+import { AIResearchPage } from '@/components/ui-v3/mobile/ai-research-entry'
+import { ResearchDetailPage } from '@/components/ui-v3/mobile/ai-research-detail'
+import { Page as AiTradingListPage } from '@/components/ui-v3/mobile/ai-trading-list'
+import { CreateStrategyWizard } from '@/components/ui-v3/mobile/ai-trading-create'
+import { AIStrategyDetailPage } from '@/components/ui-v3/mobile/ai-trading-detail'
+import { AiSettingsPage } from '@/components/ui-v3/mobile/ai-settings'
 
 // Sidebar navigation configuration - 5 tabs only
 const sidebarNavItems = [
@@ -71,7 +78,7 @@ const sidebarNavItems = [
   { id: 'strategy-market', label: '策略', icon: TrendingUp, pageIds: ['strategy-market', 'strategy-detail', 'strategy-config', 'strategy-creator'] },
   { id: 'trading', label: '交易', icon: BarChart3, pageIds: ['trading'] },
   { id: 'wallet', label: '资产', icon: Wallet, pageIds: ['wallet', 'exchange', 'api-keys', 'deposit', 'withdraw'] },
-  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ecosystem', 'subscription', 'help', 'about', 'notifications'] },
+  { id: 'profile', label: '我的', icon: User, pageIds: ['profile', 'referral', 'settings', 'ai-settings', 'ecosystem', 'subscription', 'help', 'about', 'notifications'] },
 ]
 
 // Pages that need sidebar (user pages, not public pages)
@@ -79,7 +86,8 @@ const pagesWithSidebar = [
   'dashboard', 'strategy-market', 'strategy-detail', 'trading',
   'ecosystem', 'profile', 'wallet', 'exchange', 'api-keys', 'deposit', 'withdraw',
   'referral', 'strategy-config', 'strategy-creator', 'settings', 'subscription',
-  'help', 'about', 'notifications'
+  'help', 'about', 'notifications',
+  'ai-research', 'ai-research-detail', 'ai-trading', 'ai-trading-create', 'ai-trading-detail', 'ai-settings',
 ]
 
 type PreviewPage =
@@ -105,6 +113,12 @@ type PreviewPage =
   | 'help'
   | 'about'
   | 'notifications'
+  | 'ai-research'
+  | 'ai-research-detail'
+  | 'ai-trading'
+  | 'ai-trading-create'
+  | 'ai-trading-detail'
+  | 'ai-settings'
 
 // 移动端 Tab 映射
 type MobileTab = 'home' | 'strategies' | 'trading' | 'assets' | 'me'
@@ -132,6 +146,12 @@ const pageToMobileTab: Partial<Record<PreviewPage, MobileTab>> = {
   referral: 'me',
   settings: 'me',
   ecosystem: 'me',
+  'ai-research': 'home',
+  'ai-research-detail': 'home',
+  'ai-trading': 'strategies',
+  'ai-trading-create': 'strategies',
+  'ai-trading-detail': 'strategies',
+  'ai-settings': 'me',
 }
 
 export default function PreviewPage() {
@@ -177,9 +197,16 @@ export default function PreviewPage() {
     { id: 'help', name: '帮助', category: '更多', hasMobile: true },
     { id: 'about', name: '关于', category: '更多', hasMobile: true },
     { id: 'notifications', name: '公告', category: '更多', hasMobile: true },
+    // AI Trading (Phase 8.0)
+    { id: 'ai-research', name: 'AI研究', category: 'AI', hasMobile: true },
+    { id: 'ai-research-detail', name: '研究详情', category: 'AI', hasMobile: true },
+    { id: 'ai-trading', name: 'AI策略', category: 'AI', hasMobile: true },
+    { id: 'ai-trading-create', name: '创建AI策略', category: 'AI', hasMobile: true },
+    { id: 'ai-trading-detail', name: 'AI策略详情', category: 'AI', hasMobile: true },
+    { id: 'ai-settings', name: 'AI设置', category: 'AI', hasMobile: true },
   ]
 
-  const categories = ['公开', '核心', '策略', '资产', '更多']
+  const categories = ['公开', '核心', '策略', '资产', '更多', 'AI']
   const currentPageInfo = pages.find(p => p.id === currentPage)
 
   return (
@@ -365,6 +392,25 @@ export default function PreviewPage() {
                     )}
                     {currentPage === 'notifications' && (
                       <MobileNotificationsPage onBack={() => setCurrentPage('profile')} />
+                    )}
+                    {/* AI Pages */}
+                    {currentPage === 'ai-research' && (
+                      <AIResearchPage />
+                    )}
+                    {currentPage === 'ai-research-detail' && (
+                      <ResearchDetailPage />
+                    )}
+                    {currentPage === 'ai-trading' && (
+                      <AiTradingListPage />
+                    )}
+                    {currentPage === 'ai-trading-create' && (
+                      <CreateStrategyWizard />
+                    )}
+                    {currentPage === 'ai-trading-detail' && (
+                      <AIStrategyDetailPage />
+                    )}
+                    {currentPage === 'ai-settings' && (
+                      <AiSettingsPage />
                     )}
                     {currentPage === 'strategy-creator' && (
                       <MobileStrategyCreator
@@ -640,6 +686,37 @@ export default function PreviewPage() {
                   onMarkAsRead={(id) => console.log('标记已读:', id)}
                   onMarkAllAsRead={() => console.log('全部标记已读')}
                 />
+              )}
+              {/* AI Pages (Phase 8.0) */}
+              {currentPage === 'ai-research' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <AIResearchPage />
+                </div>
+              )}
+              {currentPage === 'ai-research-detail' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <ResearchDetailPage />
+                </div>
+              )}
+              {currentPage === 'ai-trading' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <AiTradingListPage />
+                </div>
+              )}
+              {currentPage === 'ai-trading-create' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <CreateStrategyWizard />
+                </div>
+              )}
+              {currentPage === 'ai-trading-detail' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <AIStrategyDetailPage />
+                </div>
+              )}
+              {currentPage === 'ai-settings' && (
+                <div className="max-w-4xl mx-auto p-6">
+                  <AiSettingsPage />
+                </div>
               )}
             </div>
           </div>

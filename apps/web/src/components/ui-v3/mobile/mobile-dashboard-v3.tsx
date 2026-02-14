@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
+import { AiDashboardCards } from './ai-dashboard-cards'
 
 interface MobileDashboardV3Props {
   onNavigate?: (path: string) => void
@@ -302,6 +303,12 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
             ))}
           </div>
         </div>
+
+        {/* AI Trading Cards */}
+        <AiDashboardCards
+          onResearchClick={() => onNavigate?.('/ai-research')}
+          onStrategyClick={() => onNavigate?.('/ai-trading')}
+        />
 
         {/* Tab Switcher - Market/News */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">

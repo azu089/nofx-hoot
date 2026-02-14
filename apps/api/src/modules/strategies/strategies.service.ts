@@ -156,24 +156,11 @@ export class StrategiesService {
 
     const subscription = (strategy as any).subscriptions?.[0];
 
+    // 复用 formatStrategyResponse 获取完整的统计字段（包括 return7d/winRate/tags 等）
+    const baseResponse = this.formatStrategyResponse(strategy, validLocale);
+
     return {
-      id: strategy.id,
-      // 多语言字段
-      name: getLocalizedContent(
-        (strategy as any).nameI18n as I18nContent,
-        validLocale,
-        strategy.name,
-      ),
-      description: getLocalizedContent(
-        (strategy as any).descriptionI18n as I18nContent,
-        validLocale,
-        strategy.description,
-      ),
-      freqtradeId: strategy.freqtradeId,
-      isActive: strategy.isActive,
-      createdAt: strategy.createdAt,
-      subscriberCount: strategy._count.subscriptions,
-      riskLevel: strategy.riskLevel || 'medium',
+      ...baseResponse,
       isSubscribed: !!subscription,
       subscription: subscription
         ? {

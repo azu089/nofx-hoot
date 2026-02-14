@@ -80,6 +80,10 @@ model User {
   pointCardRecords   PointCardRecord[]
   gasFeeRecords      GasFeeRecord[]
   membershipSubs     MembershipSubscription[]
+  aiAnalyses         AiAnalysis[]
+  aiConfig           AiConfig?
+  aiResearchSessions AiResearchSession[]
+  aiStrategies       AiStrategy[]
 
   @@index([status])
   @@index([membershipStatus])
@@ -156,22 +160,44 @@ model CheckinRecord {
   @@map("checkin_records")
 }
 
-// 交易所 API Key (核心)
+// 交易所 API Key (核心) — 同时支持 CEX API Key 和 DEX 钱包凭证
 model ApiKey {
   id     String @id @default(uuid())
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  exchange String // binance, okx, bybit
+  exchange String // binance, okx, bybit, hyperliquid, lighter, aster
   label    String
 
-  // 加密存储 (AES-256-GCM)
-  encryptedKey    String @map("encrypted_key")
-  encryptedSecret String @map("encrypted_secret")
-  iv              String
-  authTag         String @map("auth_tag")
+  // === 认证类型 ===
+  authType String @default("api_key") @map("auth_type") // "api_key" (CEX) | "wallet" (DEX)
+
+  // === CEX: API Key 加密存储 (AES-256-GCM) ===
+  // DEX 记录不需要这些字段，使用默认空字符串
+  encryptedKey    String @default("") @map("encrypted_key")
+  encryptedSecret String @default("") @map("encrypted_secret")
+  iv              String @default("")
+  authTag         String @default("") @map("auth_tag")
   secretIv        String? @map("secret_iv")
   secretAuthTag   String? @map("secret_auth_tag")
+
+  // === DEX: 钱包凭证 ===
+  walletAddress       String? @map("wallet_address")       // 公开钱包地址
+  encryptedPrivateKey String? @map("encrypted_private_key") // 加密的私钥
+  privateKeyIv        String? @map("private_key_iv")
+  privateKeyAuthTag   String? @map("private_key_auth_tag")
+
+  // === Lighter 专属字段 ===
+  lighterApiKeyEncrypted String? @map("lighter_api_key_encrypted") // Lighter API Key 私钥（加密）
+  lighterApiKeyIv        String? @map("lighter_api_key_iv")
+  lighterApiKeyAuthTag   String? @map("lighter_api_key_auth_tag")
+  lighterApiKeyIndex     Int?    @map("lighter_api_key_index")     // API Key 索引 (0-255)
+
+  // === Aster 专属字段 ===
+  asterSignerAddress String? @map("aster_signer_address") // Aster 签名钱包地址
+
+  // === 测试网 ===
+  isTestnet Boolean @default(false) @map("is_testnet")
 
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
@@ -307,6 +333,8 @@ model Signal {
   createdAt DateTime @default(now()) @map("created_at")
 
   executions SignalExecution[]
+  aiAnalyses AiAnalysis[]
+  positions  Position[]
 
   @@map("signals")
 }
@@ -376,11 +404,16 @@ model Position {
   // 交易所返回的订单ID
   exchangeOrderId String? @map("exchange_order_id")
 
+  // DEX 相关
+  exchangeType   String?  @default("cex") @map("exchange_type") // "cex" | "dex"
+  txHash         String?  @map("tx_hash")                       // DEX 链上交易哈希
+
   // 关联
   apiKeyId       String? @map("api_key_id")
   subscriptionId String? @map("subscription_id")
   subscription   StrategySubscription? @relation(fields: [subscriptionId], references: [id])
   signalId       String? @map("signal_id")
+  signal         Signal?  @relation(fields: [signalId], references: [id])
 
   status      String    @default("open") // open, closed, failed
   closedAt    DateTime? @map("closed_at")
@@ -389,6 +422,12 @@ model Position {
   closeReason String?   @map("close_reason") // stop_loss, take_profit, trailing_stop, signal, manual, black_swan, daily_loss_limit
   pnl         Decimal?  @db.Decimal(18, 8)
   realizedPnl Decimal?  @db.Decimal(18, 8) @map("realized_pnl")
+
+  // AI 交易来源
+  source         String?  // 来源标识: ai_analysis, strategy, manual
+  aiStrategyId   String?  @map("ai_strategy_id")                    // 关联 AI 策略 ID
+  aiStrategy     AiStrategy? @relation("AiStrategyPositions", fields: [aiStrategyId], references: [id])
+  highWaterMark  Decimal? @db.Decimal(10, 4) @map("high_water_mark") // 盈利高水位（百分比）
 
   // DCA 补仓
   dcaCount   Int       @default(0) @map("dca_count")
@@ -401,6 +440,7 @@ model Position {
 
   @@index([userId, status])
   @@index([userId, symbol, status])
+  @@index([userId, status, source])
   @@index([subscriptionId, status])
   @@index([signalId])
   @@map("positions")
@@ -1735,4 +1775,248 @@ model Exchange {
 
   @@index([isActive, sortOrder])
   @@map("exchanges")
+}
+
+// ========== AI 智能交易 (Phase 8.0) ==========
+
+// AI 分析记录
+model AiAnalysis {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id])
+  subscriptionId  String?  @map("subscription_id")
+
+  // 分析结果
+  symbol          String                        // BTC/USDT
+  timeframe       String                        // 4h, 1d
+  direction       String                        // buy, sell, hold
+  confidence      Decimal  @db.Decimal(5, 2)    // 0-100
+  consensusScore  Int      @map("consensus_score") // 0-5 (几个角色同意)
+
+  // 决策内容
+  reasoning       String   @db.Text             // 最终决策推理
+  positionSize    Decimal? @db.Decimal(5, 2) @map("position_size")   // 建议仓位%
+  stopLoss        Decimal? @db.Decimal(5, 2) @map("stop_loss")       // 止损%
+  takeProfit      Decimal? @db.Decimal(5, 2) @map("take_profit")     // 止盈%
+
+  // 状态: pending, executed, blocked, expired
+  status          String   @default("pending")
+  blockedBy       String?  @map("blocked_by")   // 被哪层安全防护拦截
+  executionCost   Decimal? @db.Decimal(10, 4) @map("execution_cost") // API 调用成本 USD
+
+  // 关联到 Signal 表（如果执行了）
+  signalId        String?  @map("signal_id")
+  signal          Signal?  @relation(fields: [signalId], references: [id])
+
+  // 技术指标快照
+  indicators      Json?
+
+  // 分析模式: quick(快速单AI) / expert(专家多角色辩论)
+  mode            String?  @default("expert")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  executedAt      DateTime? @map("executed_at")
+
+  // 关系
+  debateEntries   AiDebateEntry[]
+
+  @@index([userId, status])
+  @@index([symbol, createdAt])
+  @@map("ai_analyses")
+}
+
+// AI 辩论记录
+model AiDebateEntry {
+  id            String   @id @default(uuid())
+  analysisId    String   @map("analysis_id")
+  analysis      AiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  // 角色: bull, bear, analyst, contrarian, risk_manager
+  role          String
+  // 模型: deepseek-chat, gpt-4o-mini, claude-3-5-haiku, gemini-2.0-flash
+  model         String
+  round         Int                             // 1, 2, 3
+  // 立场: strong_buy, buy, hold, sell, strong_sell
+  direction     String
+  confidence    Decimal  @db.Decimal(5, 2)      // 0-100
+  arguments     Json                            // ["论据1", "论据2", ...]
+  chainOfThought Json?  @map("chain_of_thought") // 推理链步骤
+
+  // 开销追踪
+  tokenUsage    Int?     @map("token_usage")    // 消耗的 token 数
+  latencyMs     Int?     @map("latency_ms")     // 响应时间 ms
+  cost          Decimal? @db.Decimal(10, 6)     // 单次调用成本
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([analysisId, round])
+  @@map("ai_debate_entries")
+}
+
+// AI 配置（每用户一份）
+model AiConfig {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  user            User     @relation(fields: [userId], references: [id])
+
+  isEnabled       Boolean  @default(false) @map("is_enabled")
+  models          Json     @default("[]")       // 启用的模型列表
+  rolePrompts     Json     @default("{}") @map("role_prompts") // 5 角色自定义 prompt
+  timeframes      Json     @default("[\"4h\"]") // 监控的时间框架
+  symbols         Json     @default("[\"BTC/USDT\"]") // 监控的交易对
+  minConfidence   Int      @default(65) @map("min_confidence")   // 最低置信度 30-90
+  analysisInterval Int     @default(240) @map("analysis_interval") // 分析间隔(分钟)
+
+  // 安全参数
+  maxPositionSize Decimal  @default(5)  @db.Decimal(5, 2) @map("max_position_size") // 最大仓位%
+  maxLeverage     Int      @default(3) @map("max_leverage")
+  maxDailyTrades  Int      @default(10) @map("max_daily_trades")
+  maxDailyDrawdown Decimal @default(5)  @db.Decimal(5, 2) @map("max_daily_drawdown") // 日回撤%
+  cooldownMinutes Int      @default(30) @map("cooldown_minutes") // 止损后冷却
+  circuitBreaker  Int      @default(3)  @map("circuit_breaker")  // 连续止损熔断次数
+  maxDebateRounds Int      @default(5)  @map("max_debate_rounds") // AI 辩论最大轮次 (3-10)
+
+  // Per-role 模型配置: {"bull": "deepseek-chat", "bear": "gpt-4o-mini", ...}
+  roleModels      Json     @default("{}") @map("role_models")
+
+  // 用户 API Keys（前端填写）
+  apiKeys         Json     @default("{}") @map("api_keys") // {deepseek: "sk-xxx", openai: "sk-xxx", openrouter: "sk-xxx"}
+
+  // 指标条件矩阵
+  indicatorRules  Json?    @map("indicator_rules") // [{indicator, condition, threshold, action, enabled}]
+
+  // 预算
+  monthlyBudget   Decimal  @default(50) @db.Decimal(10, 2) @map("monthly_budget")  // 月度 API 预算 USD
+  currentSpend    Decimal  @default(0)  @db.Decimal(10, 4) @map("current_spend")   // 当月已花费
+
+  // === v6 双模式 + 自动运行 ===
+  mode              String   @default("quick")                           // "quick" | "expert"
+  autoEnabled       Boolean  @default(false)  @map("auto_enabled")      // 自动运行开关
+  autoStatus        String   @default("stopped") @map("auto_status")    // "running" | "stopped" | "paused"
+  autoStatusReason  String?  @map("auto_status_reason")                 // 暂停/停止原因
+  lastAutoRunAt     DateTime? @map("last_auto_run_at")                  // 上次自动运行时间
+  evolutionTier     Int      @default(2) @map("evolution_tier")         // 0=暂停 1=保守 2=正常 3=激进
+  rollingSharpe     Decimal? @db.Decimal(10, 4) @map("rolling_sharpe")  // 滚动 Sharpe Ratio
+  amountPerTrade    Decimal  @default(50) @db.Decimal(18, 8) @map("amount_per_trade") // 每笔交易金额 USDT
+  exchangeApiKeyId  String?  @map("exchange_api_key_id")                // 关联的交易所 API Key ID
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_configs")
+}
+
+// AI 交易记忆（BM25 检索用）
+model AiMemory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+
+  analysisId String   @map("analysis_id")
+  sceneText  String   @db.Text @map("scene_text") // 市场场景文本（用于 BM25 匹配）
+  action     String   // 当时的决策: open_long, open_short, close_long, close_short
+  symbol     String   // 交易对
+  pnl        Decimal? @db.Decimal(18, 8)  // 实际盈亏
+  pnlPercent Decimal? @db.Decimal(10, 4) @map("pnl_percent") // 盈亏百分比
+  isWin      Boolean? @map("is_win")      // 是否盈利
+  lesson     String?  @db.Text            // 教训/总结
+
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([userId, symbol])
+  @@map("ai_memories")
+}
+
+// ========== Phase 8.0: AI 智能交易模块 ==========
+
+// 产品 A: AI 研究会话（5 阶段多智能体研究 → 交易决策）
+model AiResearchSession {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id])
+  symbol         String
+  depth          String   @default("standard")    // quick / standard / deep
+  autoExecute    Boolean  @default(false) @map("auto_execute")
+  status         String   @default("running")      // running / completed / failed
+  stages         Json?                              // 5 阶段结果 JSON
+  finalDecision  Json?    @map("final_decision")   // { action, confidence, reasoning, params }
+  executedTradeId String? @map("executed_trade_id")
+  totalCost      Decimal  @default(0) @db.Decimal(18, 8) @map("total_cost") // LLM API 成本
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([userId, status])
+  @@map("ai_research_sessions")
+}
+
+// 产品 B: AI 策略配置（参考 NoFx StrategyConfig 50+ 字段）
+model AiStrategy {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  user              User     @relation(fields: [userId], references: [id])
+  name              String
+  strategyType      String   @default("normal") @map("strategy_type")  // normal / grid
+  tradingMode       String   @default("solo") @map("trading_mode")     // solo / debate
+  coinSourceConfig  Json     @map("coin_source_config")  // { mode: static/ai/oi_top, coins?: [] }
+  indicatorConfig   Json     @map("indicator_config")    // { timeframe, secondaryTimeframe, indicators: [] }
+  riskControlConfig Json     @map("risk_control_config") // { maxPositions, minPositionSize, maxLeverage }
+  promptSections    Json?    @map("prompt_sections")     // { customPrompt?, roleOverrides? }
+  gridConfig        Json?    @map("grid_config")         // { gridCount, totalInvestment, distribution }
+  intervalMinutes   Int      @default(60) @map("interval_minutes")
+  isActive          Boolean  @default(false) @map("is_active")
+  isPublic          Boolean  @default(false) @map("is_public")
+  totalTrades       Int      @default(0) @map("total_trades")
+  totalPnl          Decimal  @default(0) @db.Decimal(18, 8) @map("total_pnl")
+  winRate           Decimal  @default(0) @db.Decimal(5, 2) @map("win_rate")
+  sharpe            Decimal  @default(0) @db.Decimal(8, 4)
+  exchangeApiKeyId  String?  @map("exchange_api_key_id")
+  apiKeys           Json     @default("{}") @map("api_keys")  // LLM API Keys
+  models            Json     @default("[]")                     // 启用的 LLM 模型列表
+  lastCycleAt       DateTime? @map("last_cycle_at")              // 最近一次周期执行时间
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  logs              AiStrategyLog[]
+  competitions      AiStrategyCompetition[]
+  positions         Position[] @relation("AiStrategyPositions")
+
+  @@index([userId])
+  @@index([userId, isActive])
+  @@map("ai_strategies")
+}
+
+// 产品 B: AI 策略决策日志
+model AiStrategyLog {
+  id              String   @id @default(uuid())
+  strategyId      String   @map("strategy_id")
+  symbol          String
+  decision        Json     // { action, confidence, leverage, positionSize, sl, tp, reasoning }
+  executed        Boolean  @default(false)
+  executionResult Json?    @map("execution_result") // { orderId, price, amount, error? }
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  strategy        AiStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@index([strategyId, createdAt])
+  @@map("ai_strategy_logs")
+}
+
+// 竞赛快照（策略排行用）
+model AiStrategyCompetition {
+  id          String   @id @default(uuid())
+  strategyId  String   @map("strategy_id")
+  period      String   // daily / weekly / monthly
+  roi         Decimal  @db.Decimal(8, 4)
+  sharpe      Decimal  @db.Decimal(8, 4)
+  winRate     Decimal  @db.Decimal(5, 2) @map("win_rate")
+  totalTrades Int      @map("total_trades")
+  snapshotAt  DateTime @default(now()) @map("snapshot_at")
+
+  strategy    AiStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@index([period, snapshotAt])
+  @@map("ai_strategy_competitions")
 }

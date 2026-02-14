@@ -18,13 +18,25 @@ interface ApiKeyResponse {
   maskedKey: string
   isActive: boolean
   createdAt: string
+  authType?: 'api_key' | 'wallet'   // 认证类型
+  walletAddress?: string             // DEX 钱包地址
 }
 
-// 支持的交易所（与后端一致：binance, okx, bybit）
+// 支持的交易所（与后端一致：binance, okx, bybit, gate, bitget, coinbase）
 const supportedExchanges = [
   { id: 'binance', name: 'Binance', logo: '/icons/exchanges/币安.webp', guideUrl: 'https://www.binance.com/api-management' },
   { id: 'okx', name: 'OKX', logo: '/icons/exchanges/okx.webp', guideUrl: 'https://www.okx.com/account/my-api' },
   { id: 'bybit', name: 'Bybit', logo: '/icons/exchanges/bybit.webp', guideUrl: 'https://www.bybit.com/app/user/api-management' },
+  { id: 'gate', name: 'Gate.io', logo: '/icons/exchanges/gate.webp', guideUrl: 'https://www.gate.io/myaccount/apiv4keys' },
+  { id: 'bitget', name: 'Bitget', logo: '/icons/exchanges/bitget.webp', guideUrl: 'https://www.bitget.com/account/newapi' },
+  { id: 'coinbase', name: 'Coinbase', logo: '/icons/exchanges/coinbase.webp', guideUrl: 'https://www.coinbase.com/settings/api' },
+]
+
+// 支持的 DEX（id 与后端 SUPPORTED_DEX_EXCHANGES 一致）
+const supportedDexExchanges = [
+  { id: 'hyperliquid', name: 'Hyperliquid', logo: '/icons/exchanges/hyperliquid.webp', color: '#00FF00' },
+  { id: 'aster', name: 'Aster DEX', logo: '/icons/exchanges/aster-dex.webp', color: '#6366F1' },
+  { id: 'lighter', name: 'Lighter', logo: '/icons/exchanges/lighter.webp', color: '#F59E0B' },
 ]
 
 // 获取交易所 logo
@@ -36,11 +48,23 @@ const getExchangeLogo = (exchange: string) => {
 // 获取交易所名称
 const getExchangeName = (exchange: string) => {
   const found = supportedExchanges.find(e => e.id === exchange)
-  return found?.name || exchange
+  if (found) return found.name
+  const foundDex = supportedDexExchanges.find(e => e.id === exchange)
+  return foundDex?.name || exchange
+}
+
+// 截断钱包地址显示
+const truncateAddress = (address: string) => {
+  if (address.length <= 10) return address
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 export function ApiKeysPage() {
   const queryClient = useQueryClient()
+  // Tab 状态
+  const [activeTab, setActiveTab] = useState<'cex' | 'dex'>('cex')
+
+  // CEX 弹窗状态
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -48,6 +72,14 @@ export function ApiKeysPage() {
   const [selectedApiKey, setSelectedApiKey] = useState<ApiKeyResponse | null>(null)
   const [showSecret, setShowSecret] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // DEX 弹窗状态
+  const [showAddDexModal, setShowAddDexModal] = useState(false)
+  const [showEditDexModal, setShowEditDexModal] = useState(false)
+  const [showDeleteDexModal, setShowDeleteDexModal] = useState(false)
+  const [selectedDexExchange, setSelectedDexExchange] = useState<string | null>(null)
+  const [selectedDexWallet, setSelectedDexWallet] = useState<ApiKeyResponse | null>(null)
+  const [showDexPrivateKey, setShowDexPrivateKey] = useState(false)
 
   // 获取 API Key 列表（与 wallet-page-v3 统一数据结构）
   const { data: apiKeysData, isLoading } = useQuery({
@@ -58,7 +90,10 @@ export function ApiKeysPage() {
     },
   })
 
-  const boundApiKeys = apiKeysData || []
+  const allApiKeys = apiKeysData || []
+  // 分离 CEX 和 DEX
+  const boundApiKeys = allApiKeys.filter(key => !key.authType || key.authType === 'api_key')
+  const boundDexWallets = allApiKeys.filter(key => key.authType === 'wallet')
 
   // 为每个 API Key 获取余额（现货+合约）
   const apiKeyBalanceQueries = useQueries({
@@ -87,7 +122,7 @@ export function ApiKeysPage() {
 
   // 创建 API Key
   const createMutation = useMutation({
-    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
+    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string; authType?: string; walletAddress?: string }) => {
       const response = await api.post('/api-keys', data)
       return response.data
     },
@@ -167,6 +202,27 @@ export function ApiKeysPage() {
     apiKey: '',
     secretKey: '',
     passphrase: '',
+    label: '',
+  })
+
+  // DEX 表单状态（含交易所专属字段）
+  const [dexFormData, setDexFormData] = useState({
+    walletAddress: '',
+    privateKey: '',
+    label: '',
+    // Lighter 专属
+    lighterApiKeyPrivateKey: '',
+    lighterApiKeyIndex: 0,
+    // Aster 专属
+    asterSignerAddress: '',
+    // 通用
+    isTestnet: false,
+  })
+
+  // DEX 编辑表单状态
+  const [editDexFormData, setEditDexFormData] = useState({
+    walletAddress: '',
+    privateKey: '',
     label: '',
   })
 
@@ -254,6 +310,122 @@ export function ApiKeysPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // 创建 DEX 凭证 mutation（使用专用 /api-keys/dex 端点）
+  const createDexMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const response = await api.post('/api-keys/dex', data)
+      return response.data
+    },
+    onSuccess: () => {
+      toast.success('DEX 钱包添加成功')
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+      setShowAddDexModal(false)
+      setSelectedDexExchange(null)
+      setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || '添加失败')
+    },
+  })
+
+  // DEX 钱包操作函数
+  const handleSubmitAddDex = () => {
+    if (!selectedDexExchange) return
+
+    const dexName = supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || selectedDexExchange
+
+    // 构建 CreateDexCredentialDto 请求体
+    const payload: Record<string, unknown> = {
+      exchange: selectedDexExchange,
+      label: dexFormData.label || `${dexName} 钱包`,
+      isTestnet: dexFormData.isTestnet,
+    }
+
+    // 按交易所类型填充必填字段
+    if (selectedDexExchange === 'hyperliquid') {
+      if (!dexFormData.walletAddress || !dexFormData.privateKey) {
+        toast.error('请填写钱包地址和 Agent 私钥')
+        return
+      }
+      payload.walletAddress = dexFormData.walletAddress
+      payload.privateKey = dexFormData.privateKey
+    } else if (selectedDexExchange === 'lighter') {
+      if (!dexFormData.walletAddress || !dexFormData.privateKey || !dexFormData.lighterApiKeyPrivateKey) {
+        toast.error('请填写钱包地址、钱包私钥和 API Key 私钥')
+        return
+      }
+      payload.walletAddress = dexFormData.walletAddress
+      payload.privateKey = dexFormData.privateKey
+      payload.lighterApiKeyPrivateKey = dexFormData.lighterApiKeyPrivateKey
+      payload.lighterApiKeyIndex = dexFormData.lighterApiKeyIndex
+    } else if (selectedDexExchange === 'aster') {
+      if (!dexFormData.walletAddress || !dexFormData.privateKey) {
+        toast.error('请填写用户钱包地址和签名私钥')
+        return
+      }
+      payload.asterUserAddress = dexFormData.walletAddress
+      payload.asterSignerAddress = dexFormData.asterSignerAddress || dexFormData.walletAddress
+      payload.privateKey = dexFormData.privateKey
+    }
+
+    createDexMutation.mutate(payload)
+  }
+
+  const handleOpenEditDex = (wallet: ApiKeyResponse) => {
+    setSelectedDexWallet(wallet)
+    setEditDexFormData({
+      walletAddress: wallet.walletAddress || '',
+      privateKey: '', // 私钥留空
+      label: wallet.label,
+    })
+    setShowEditDexModal(true)
+  }
+
+  const handleOpenDeleteDex = (wallet: ApiKeyResponse) => {
+    setSelectedDexWallet(wallet)
+    setShowDeleteDexModal(true)
+  }
+
+  const handleConfirmDeleteDex = () => {
+    if (selectedDexWallet) {
+      deleteMutation.mutate(selectedDexWallet.id)
+      setShowDeleteDexModal(false)
+      setSelectedDexWallet(null)
+    }
+  }
+
+  const handleConfirmEditDex = () => {
+    if (!selectedDexWallet) return
+
+    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string } = {
+      id: selectedDexWallet.id,
+    }
+
+    // 只有填写了的字段才更新
+    if (editDexFormData.label && editDexFormData.label !== selectedDexWallet.label) {
+      updateData.label = editDexFormData.label
+    }
+
+    // 如果填写了新私钥
+    if (editDexFormData.privateKey) {
+      updateData.apiKey = editDexFormData.privateKey
+      updateData.apiSecret = 'not_used_for_dex'
+    }
+
+    // 如果没有任何更新，直接关闭
+    if (Object.keys(updateData).length === 1) {
+      toast.info('没有需要更新的内容')
+      setShowEditDexModal(false)
+      setSelectedDexWallet(null)
+      return
+    }
+
+    updateMutation.mutate(updateData)
+    setShowEditDexModal(false)
+    setSelectedDexWallet(null)
+    setEditDexFormData({ walletAddress: '', privateKey: '', label: '' })
+  }
+
   // 加载状态
   if (isLoading) {
     return (
@@ -265,19 +437,48 @@ export function ApiKeysPage() {
 
   return (
     <div className="text-[#F8F8FC] font-sans">
-          {/* 添加 API 按钮 - 青色样式 */}
+          {/* Tab 切换 */}
+          <div className="flex gap-2 mb-6 p-1 rounded-xl bg-[#12121A] border border-[#1E1E2E]">
+            <button
+              type="button"
+              onClick={() => setActiveTab('cex')}
+              className={cn(
+                "flex-1 py-2.5 px-4 rounded-lg font-medium transition-all",
+                activeTab === 'cex'
+                  ? "bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]"
+                  : "text-[#9090A0] hover:text-[#F8F8FC]"
+              )}
+            >
+              CEX 交易所
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('dex')}
+              className={cn(
+                "flex-1 py-2.5 px-4 rounded-lg font-medium transition-all",
+                activeTab === 'dex'
+                  ? "bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]"
+                  : "text-[#9090A0] hover:text-[#F8F8FC]"
+              )}
+            >
+              DEX 钱包
+            </button>
+          </div>
+
+          {/* 添加按钮 - 根据 Tab 切换 */}
           <button
             type="button"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => activeTab === 'cex' ? setShowAddModal(true) : setShowAddDexModal(true)}
             className="w-full py-3.5 mb-6 rounded-xl bg-[#06B6D4] hover:bg-[#0891B2] text-white font-medium transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.2)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)]"
           >
             <Plus className="w-5 h-5" />
-            添加 API
+            {activeTab === 'cex' ? '添加 CEX API' : '添加 DEX 钱包'}
           </button>
 
-          {/* Bound API Keys */}
-          <div className="mb-8">
-            {boundApiKeys.length === 0 ? (
+          {/* CEX API Keys List */}
+          {activeTab === 'cex' && (
+            <div className="mb-8">
+              {boundApiKeys.length === 0 ? (
               <Card className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
                 <CardContent className="p-8 text-center">
                   <Key className="w-12 h-12 text-[#606070] mx-auto mb-3" />
@@ -292,7 +493,7 @@ export function ApiKeysPage() {
                   const balanceQuery = apiKeyBalanceQueries[index]
                   const balanceData = balanceQuery?.data
                   const totalValue = balanceData?.totalUsdValue || 0
-                  const isLoadingBalance = balanceQuery?.isLoading
+                  const isLoadingBalance = balanceQuery?.isLoading || balanceQuery?.isFetching
                   const isVerifyFailed = balanceData && balanceData.valid === false
                   const verifyError = balanceData?.error
 
@@ -308,8 +509,9 @@ export function ApiKeysPage() {
                           <div className={cn(
                             "w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden",
                             isVerifyFailed ? "bg-[#F43F5E]/10" : "bg-[#1E1E2E]"
+                          , "relative"
                           )}>
-                            <Image src={getExchangeLogo(key.exchange)} alt={getExchangeName(key.exchange)} width={32} height={32} className={cn("object-contain", isVerifyFailed && "opacity-50")} />
+                            <Image src={getExchangeLogo(key.exchange)} alt={getExchangeName(key.exchange)} fill className={cn("object-cover", isVerifyFailed && "opacity-50")} />
                           </div>
 
                           {/* Info */}
@@ -365,11 +567,14 @@ export function ApiKeysPage() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => queryClient.invalidateQueries({ queryKey: ['api-key-balance', key.id] })}
+                            onClick={() => {
+                              queryClient.invalidateQueries({ queryKey: ['api-key-balance', key.id] })
+                              toast.info('正在刷新余额...')
+                            }}
                             title="刷新余额"
                             className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
                           >
-                            <RefreshCw className="w-4 h-4 text-[#9090A0] hover:text-[#F8F8FC]" />
+                            <RefreshCw className={cn("w-4 h-4 text-[#9090A0] hover:text-[#F8F8FC]", isLoadingBalance && "animate-spin")} />
                           </button>
                           <button
                             type="button"
@@ -396,19 +601,123 @@ export function ApiKeysPage() {
                 })}
               </div>
             )}
-          </div>
+            </div>
+          )}
+
+          {/* DEX Wallets List */}
+          {activeTab === 'dex' && (
+            <div className="mb-8">
+              {boundDexWallets.length === 0 ? (
+                <Card className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+                  <CardContent className="p-8 text-center">
+                    <Key className="w-12 h-12 text-[#606070] mx-auto mb-3" />
+                    <p className="text-[#9090A0]">暂无绑定的 DEX 钱包</p>
+                    <p className="text-[#606070] text-sm mt-1">点击上方按钮添加您的第一个 DEX 钱包</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {boundDexWallets.map((wallet) => {
+                    const dexInfo = supportedDexExchanges.find(e => e.id === wallet.exchange)
+                    return (
+                      <Card key={wallet.id} className={cn(
+                        "glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden border border-cyan-500/[0.08]"
+                      )}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              {/* DEX Logo */}
+                              <div className="w-12 h-12 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
+                                <Image
+                                  src={dexInfo?.logo || '/icons/exchanges/default.webp'}
+                                  alt={dexInfo?.name || wallet.exchange}
+                                  width={32}
+                                  height={32}
+                                  className="object-contain"
+                                />
+                              </div>
+
+                              {/* Info */}
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold">{wallet.label}</span>
+                                  {wallet.isActive ? (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#10B981]/20 text-[#10B981]">
+                                      <CheckCircle className="w-3 h-3" />
+                                      已连接
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F43F5E]/20 text-[#F43F5E]">
+                                      <AlertCircle className="w-3 h-3" />
+                                      未验证
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-1 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-[#9090A0]">地址:</span>
+                                    <span className="font-mono text-sm text-[#F8F8FC]">
+                                      {wallet.walletAddress ? truncateAddress(wallet.walletAddress) : 'N/A'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => queryClient.invalidateQueries({ queryKey: ['api-keys'] })}
+                                title="刷新"
+                                className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+                              >
+                                <RefreshCw className="w-4 h-4 text-[#9090A0] hover:text-[#F8F8FC]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditDex(wallet)}
+                                title="编辑"
+                                className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+                              >
+                                <Edit className="w-4 h-4 text-[#9090A0] hover:text-[#F8F8FC]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDeleteDex(wallet)}
+                                title="删除"
+                                disabled={deleteMutation.isPending}
+                                className="p-2 hover:bg-[#F43F5E]/10 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 className="w-4 h-4 text-[#F43F5E]/70" />
+                              </button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
       {/* Add API Key Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowAddModal(false); setSelectedExchange(''); }}>
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <CardContent className="p-6">
-              <h3 className="text-lg font-bold mb-4">
-                {selectedExchange
-                  ? `绑定 ${supportedExchanges.find(e => e.id === selectedExchange)?.name} API`
-                  : '选择交易所'
-                }
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold">
+                  {selectedExchange
+                    ? `绑定 ${supportedExchanges.find(e => e.id === selectedExchange)?.name} API`
+                    : '选择交易所'
+                  }
+                </h3>
+                <button type="button" onClick={() => { setShowAddModal(false); setSelectedExchange(''); }} className="p-1 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+                  <X className="w-5 h-5 text-[#9090A0]" />
+                </button>
+              </div>
 
               {!selectedExchange ? (
                 // Exchange Selection
@@ -420,8 +729,8 @@ export function ApiKeysPage() {
                       onClick={() => setSelectedExchange(exchange.id)}
                       className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
                     >
-                      <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] flex items-center justify-center overflow-hidden">
-                        <Image src={exchange.logo} alt={exchange.name} width={28} height={28} className="object-contain" />
+                      <div className="relative w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] overflow-hidden">
+                        <Image src={exchange.logo} alt={exchange.name} fill className="object-cover" />
                       </div>
                       <span className="text-sm">{exchange.name}</span>
                     </button>
@@ -564,13 +873,13 @@ export function ApiKeysPage() {
 
       {/* Edit API Key Modal */}
       {showEditModal && selectedApiKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowEditModal(false)}>
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
-                    <Image src={getExchangeLogo(selectedApiKey.exchange)} alt={getExchangeName(selectedApiKey.exchange)} width={28} height={28} className="object-contain" />
+                  <div className="relative w-10 h-10 rounded-xl bg-[#1E1E2E] overflow-hidden">
+                    <Image src={getExchangeLogo(selectedApiKey.exchange)} alt={getExchangeName(selectedApiKey.exchange)} fill className="object-cover" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold">编辑 {selectedApiKey.label || getExchangeName(selectedApiKey.exchange)} API</h3>
@@ -713,8 +1022,8 @@ export function ApiKeysPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && selectedApiKey && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowDeleteModal(false); setSelectedApiKey(null); }}>
+          <Card className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <CardContent className="p-6">
               <div className="text-center">
                 {/* Warning Icon */}
@@ -729,8 +1038,8 @@ export function ApiKeysPage() {
 
                 {/* API Key Info */}
                 <div className="flex items-center gap-3 p-4 mb-6 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
-                  <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
-                    <Image src={getExchangeLogo(selectedApiKey.exchange)} alt={getExchangeName(selectedApiKey.exchange)} width={28} height={28} className="object-contain" />
+                  <div className="relative w-10 h-10 rounded-xl bg-[#2A2A3A] overflow-hidden">
+                    <Image src={getExchangeLogo(selectedApiKey.exchange)} alt={getExchangeName(selectedApiKey.exchange)} fill className="object-cover" />
                   </div>
                   <div className="text-left">
                     <p className="font-semibold">{selectedApiKey.label || getExchangeName(selectedApiKey.exchange)}</p>
@@ -761,6 +1070,419 @@ export function ApiKeysPage() {
                   </Button>
                   <Button
                     onClick={handleConfirmDelete}
+                    className="flex-1 bg-[#F43F5E] hover:bg-[#E11D48] text-white"
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        确认删除
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add DEX Wallet Modal */}
+      {showAddDexModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowAddDexModal(false); setSelectedDexExchange(''); }}>
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold">
+                  {selectedDexExchange
+                    ? `连接 ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name} 钱包`
+                    : '选择 DEX'
+                  }
+                </h3>
+                <button type="button" onClick={() => { setShowAddDexModal(false); setSelectedDexExchange(''); }} className="p-1 hover:bg-[#1E1E2E] rounded-lg transition-colors">
+                  <X className="w-5 h-5 text-[#9090A0]" />
+                </button>
+              </div>
+
+              {!selectedDexExchange ? (
+                // DEX Selection
+                <div className="grid grid-cols-3 gap-3">
+                  {supportedDexExchanges.map((dex) => (
+                    <button
+                      key={dex.id}
+                      type="button"
+                      onClick={() => setSelectedDexExchange(dex.id)}
+                      className="p-4 rounded-xl bg-[#1E1E2E] hover:bg-[#2A2A3A] transition-colors text-center"
+                    >
+                      <div className="relative w-10 h-10 mx-auto mb-2 rounded-lg bg-[#12121A] overflow-hidden">
+                        <Image src={dex.logo} alt={dex.name} fill className="object-cover" />
+                      </div>
+                      <span className="text-sm">{dex.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                // DEX Wallet Form — 按交易所显示不同字段
+                <div className="space-y-4">
+                  {/* === Hyperliquid 表单 === */}
+                  {selectedDexExchange === 'hyperliquid' && (
+                    <>
+                      <div>
+                        <label htmlFor="add-dex-wallet" className="text-sm text-[#9090A0] block mb-1">主钱包地址 *</label>
+                        <input id="add-dex-wallet" type="text" value={dexFormData.walletAddress}
+                          onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
+                          placeholder="0x..." className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                      </div>
+                      <div>
+                        <label htmlFor="add-dex-pk" className="text-sm text-[#9090A0] block mb-1">Agent 私钥 *</label>
+                        <div className="relative">
+                          <input id="add-dex-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
+                            onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
+                            placeholder="Hyperliquid Agent Wallet 私钥" className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                          <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)} title={showDexPrivateKey ? '隐藏' : '显示'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]">
+                            {showDexPrivateKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <p className="text-xs text-[#606070] mt-1">在 Hyperliquid 中创建 Agent Wallet 后获取</p>
+                      </div>
+                    </>
+                  )}
+
+                  {/* === Lighter 表单 === */}
+                  {selectedDexExchange === 'lighter' && (
+                    <>
+                      <div>
+                        <label htmlFor="add-lighter-wallet" className="text-sm text-[#9090A0] block mb-1">钱包地址 *</label>
+                        <input id="add-lighter-wallet" type="text" value={dexFormData.walletAddress}
+                          onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
+                          placeholder="0x..." className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                      </div>
+                      <div>
+                        <label htmlFor="add-lighter-pk" className="text-sm text-[#9090A0] block mb-1">钱包私钥 *</label>
+                        <div className="relative">
+                          <input id="add-lighter-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
+                            onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
+                            placeholder="钱包私钥（0x...）" className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                          <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)} title={showDexPrivateKey ? '隐藏' : '显示'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]">
+                            {showDexPrivateKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label htmlFor="add-lighter-apk" className="text-sm text-[#9090A0] block mb-1">API Key 私钥 *</label>
+                        <input id="add-lighter-apk" type="password" value={dexFormData.lighterApiKeyPrivateKey}
+                          onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyPrivateKey: e.target.value })}
+                          placeholder="Lighter API Key 私钥（40字节 hex）" className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                      </div>
+                      <div>
+                        <label htmlFor="add-lighter-idx" className="text-sm text-[#9090A0] block mb-1">API Key 索引</label>
+                        <input id="add-lighter-idx" type="number" min={0} max={255} value={dexFormData.lighterApiKeyIndex}
+                          onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyIndex: parseInt(e.target.value) || 0 })}
+                          className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] focus:outline-none focus:border-cyan-500" />
+                        <p className="text-xs text-[#606070] mt-1">范围 0-255，通常为 0</p>
+                      </div>
+                    </>
+                  )}
+
+                  {/* === Aster 表单 === */}
+                  {selectedDexExchange === 'aster' && (
+                    <>
+                      <div>
+                        <label htmlFor="add-aster-user" className="text-sm text-[#9090A0] block mb-1">用户钱包地址 *</label>
+                        <input id="add-aster-user" type="text" value={dexFormData.walletAddress}
+                          onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
+                          placeholder="0x... 主钱包地址" className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                      </div>
+                      <div>
+                        <label htmlFor="add-aster-signer" className="text-sm text-[#9090A0] block mb-1">签名钱包地址（可选）</label>
+                        <input id="add-aster-signer" type="text" value={dexFormData.asterSignerAddress}
+                          onChange={(e) => setDexFormData({ ...dexFormData, asterSignerAddress: e.target.value })}
+                          placeholder="留空则使用用户钱包地址" className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                        <p className="text-xs text-[#606070] mt-1">Aster API 钱包地址，留空则与用户钱包相同</p>
+                      </div>
+                      <div>
+                        <label htmlFor="add-aster-pk" className="text-sm text-[#9090A0] block mb-1">签名私钥 *</label>
+                        <div className="relative">
+                          <input id="add-aster-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
+                            onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
+                            placeholder="签名钱包的私钥" className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                          <button type="button" onClick={() => setShowDexPrivateKey(!showDexPrivateKey)} title={showDexPrivateKey ? '隐藏' : '显示'}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]">
+                            {showDexPrivateKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 通用字段: 备注名称 + 测试网开关 */}
+                  <div>
+                    <label htmlFor="add-dex-label" className="text-sm text-[#9090A0] block mb-1">备注名称（可选）</label>
+                    <input id="add-dex-label" type="text" value={dexFormData.label}
+                      onChange={(e) => setDexFormData({ ...dexFormData, label: e.target.value })}
+                      placeholder={`如：我的 ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name}`}
+                      className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500" />
+                  </div>
+
+                  {/* 测试网开关 */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
+                    <div>
+                      <p className="text-sm font-medium">测试网模式</p>
+                      <p className="text-xs text-[#606070]">启用后连接测试网络</p>
+                    </div>
+                    <button type="button"
+                      onClick={() => setDexFormData({ ...dexFormData, isTestnet: !dexFormData.isTestnet })}
+                      className={cn(
+                        "relative w-11 h-6 rounded-full transition-colors",
+                        dexFormData.isTestnet ? "bg-[#06B6D4]" : "bg-[#2A2A3A]"
+                      )}>
+                      <span className={cn(
+                        "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform",
+                        dexFormData.isTestnet ? "translate-x-5" : "translate-x-0.5"
+                      )} />
+                    </button>
+                  </div>
+
+                  {/* Security Notice */}
+                  <Card className="bg-[#1E1E2E] border-[#2A2A3A]">
+                    <CardContent className="p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-[#06B6D4] flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">安全提示</p>
+                          <p className="text-[#9090A0] text-xs mt-1">
+                            您的私钥将使用 AES-256-GCM 加密存储，仅在执行交易时解密使用。请确保您信任此平台。
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-[#2A2A3A] text-[#9090A0]"
+                      onClick={() => {
+                        setShowAddDexModal(false)
+                        setSelectedDexExchange(null)
+                        setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
+                      }}
+                      disabled={createDexMutation.isPending}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-white"
+                      onClick={handleSubmitAddDex}
+                      disabled={createDexMutation.isPending}
+                    >
+                      {createDexMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          连接中...
+                        </>
+                      ) : (
+                        '连接钱包'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Edit DEX Wallet Modal */}
+      {showEditDexModal && selectedDexWallet && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <Card className="w-full max-w-lg glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
+                    <Image
+                      src={supportedDexExchanges.find(e => e.id === selectedDexWallet.exchange)?.logo || '/icons/exchanges/default.webp'}
+                      alt={getExchangeName(selectedDexWallet.exchange)}
+                      width={28}
+                      height={28}
+                      className="object-contain"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">编辑 {selectedDexWallet.label || getExchangeName(selectedDexWallet.exchange)} 钱包</h3>
+                    <p className="text-[#9090A0] text-xs">更新钱包配置</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  title="关闭"
+                  onClick={() => {
+                    setShowEditDexModal(false)
+                    setSelectedDexWallet(null)
+                  }}
+                  className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-[#9090A0]" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Current Wallet Address (readonly) */}
+                <div className="p-3 rounded-lg bg-[#0A0A0F] border border-[#1E1E2E]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-[#606070] mb-1">当前钱包地址</p>
+                      <p className="font-mono text-[#9090A0]">{selectedDexWallet.walletAddress ? truncateAddress(selectedDexWallet.walletAddress) : 'N/A'}</p>
+                    </div>
+                    <span className="text-xs px-2 py-1 rounded bg-[#1E1E2E] text-[#10B981]">
+                      <CheckCircle className="w-3 h-3 inline mr-1" />
+                      已加密
+                    </span>
+                  </div>
+                </div>
+
+                {/* Divider with hint */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-[#2A2A3A]" />
+                  <span className="text-xs text-[#606070]">以下字段留空则保持不变</span>
+                  <div className="flex-1 h-px bg-[#2A2A3A]" />
+                </div>
+
+                {/* New Private Key Input */}
+                <div>
+                  <label htmlFor="edit-dex-private-key" className="text-sm text-[#9090A0] block mb-1">新私钥</label>
+                  <div className="relative">
+                    <input
+                      id="edit-dex-private-key"
+                      type={showDexPrivateKey ? 'text' : 'password'}
+                      value={editDexFormData.privateKey}
+                      onChange={(e) => setEditDexFormData({ ...editDexFormData, privateKey: e.target.value })}
+                      placeholder="留空保持当前私钥"
+                      className="w-full px-4 py-2.5 pr-10 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDexPrivateKey(!showDexPrivateKey)}
+                      title={showDexPrivateKey ? '隐藏私钥' : '显示私钥'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#606070] hover:text-[#9090A0]"
+                    >
+                      {showDexPrivateKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#606070] mt-1">更新私钥后将重新加密存储</p>
+                </div>
+
+                {/* Label Input */}
+                <div>
+                  <label htmlFor="edit-dex-label" className="text-sm text-[#9090A0] block mb-1">备注名称</label>
+                  <input
+                    id="edit-dex-label"
+                    type="text"
+                    value={editDexFormData.label}
+                    onChange={(e) => setEditDexFormData({ ...editDexFormData, label: e.target.value })}
+                    placeholder="如：我的钱包"
+                    className="w-full px-4 py-2.5 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-[#2A2A3A] text-[#9090A0]"
+                    onClick={() => {
+                      setShowEditDexModal(false)
+                      setSelectedDexWallet(null)
+                    }}
+                    disabled={updateMutation.isPending}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleConfirmEditDex}
+                    className="flex-1 bg-[#06B6D4] hover:bg-[#0891B2] text-white"
+                    disabled={updateMutation.isPending}
+                  >
+                    {updateMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        保存中...
+                      </>
+                    ) : (
+                      '保存更改'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete DEX Wallet Confirmation Modal */}
+      {showDeleteDexModal && selectedDexWallet && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowDeleteDexModal(false); setSelectedDexWallet(null); }}>
+          <Card className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <CardContent className="p-6">
+              <div className="text-center">
+                {/* Warning Icon */}
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
+                  <AlertTriangle className="w-8 h-8 text-[#F43F5E]" />
+                </div>
+
+                <h3 className="text-xl font-bold mb-2">确认删除</h3>
+                <p className="text-[#9090A0] mb-6">
+                  您确定要删除 <span className="text-[#F8F8FC] font-semibold">{selectedDexWallet.label || getExchangeName(selectedDexWallet.exchange)}</span> 钱包吗？
+                </p>
+
+                {/* Wallet Info */}
+                <div className="flex items-center gap-3 p-4 mb-6 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
+                  <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden">
+                    <Image
+                      src={supportedDexExchanges.find(e => e.id === selectedDexWallet.exchange)?.logo || '/icons/exchanges/default.webp'}
+                      alt={getExchangeName(selectedDexWallet.exchange)}
+                      width={28}
+                      height={28}
+                      className="object-contain"
+                    />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">{selectedDexWallet.label || getExchangeName(selectedDexWallet.exchange)}</p>
+                    <p className="text-[#9090A0] text-sm font-mono">
+                      {selectedDexWallet.walletAddress ? truncateAddress(selectedDexWallet.walletAddress) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Warning Message */}
+                <div className="p-3 mb-6 rounded-lg bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left">
+                  <p className="text-sm text-[#F43F5E]">
+                    <AlertCircle className="w-4 h-4 inline mr-1" />
+                    删除后，使用此钱包的策略将无法继续执行交易。此操作不可撤销。
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-[#2A2A3A] text-[#9090A0]"
+                    onClick={() => {
+                      setShowDeleteDexModal(false)
+                      setSelectedDexWallet(null)
+                    }}
+                    disabled={deleteMutation.isPending}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={handleConfirmDeleteDex}
                     className="flex-1 bg-[#F43F5E] hover:bg-[#E11D48] text-white"
                     disabled={deleteMutation.isPending}
                   >

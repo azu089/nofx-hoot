@@ -559,6 +559,13 @@ export class AdminService {
         ...(dto.nameI18n && { nameI18n: dto.nameI18n }),
         ...(dto.descriptionI18n && { descriptionI18n: dto.descriptionI18n }),
         ...(dto.tagsI18n && { tagsI18n: dto.tagsI18n }),
+        // 统计字段（管理员手动调整）
+        ...(dto.return7d !== undefined && { return7d: dto.return7d }),
+        ...(dto.return30d !== undefined && { return30d: dto.return30d }),
+        ...(dto.return90d !== undefined && { return90d: dto.return90d }),
+        ...(dto.maxDrawdown !== undefined && { maxDrawdown: dto.maxDrawdown }),
+        ...(dto.winRate !== undefined && { winRate: dto.winRate }),
+        ...(dto.totalTrades !== undefined && { totalTrades: dto.totalTrades }),
       },
     });
 

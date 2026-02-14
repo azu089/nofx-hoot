@@ -327,6 +327,9 @@
     "dashboard": "Bảng điều khiển",
     "strategies": "Chiến lược",
     "trading": "Giao dịch",
+    "aiTrading": "AI Trading",
+    "aiResearch": "AI Nghiên cứu",
+    "aiSettings": "AI Cài đặt",
     "wallet": "Ví",
     "settings": "Cài đặt",
     "profile": "Cá nhân"
@@ -827,6 +830,55 @@
       "a7": "Truy cập trang \"Cá nhân > Đăng ký thành viên\", chọn cấp độ thành viên phù hợp với bạn. Bạn có thể thanh toán phí đăng ký bằng USDT hoặc token HOOT. Thanh toán bằng token HOOT có thể nhận thêm giảm giá.",
       "q8": "Làm thế nào để nhận trợ giúp khi gặp vấn đề?",
       "a8": "Bạn có thể nhận trợ giúp bằng cách gửi email hoặc sử dụng chat trực tuyến thông qua \"Liên hệ hỗ trợ\" ở cuối trang. Đội ngũ hỗ trợ của chúng tôi sẽ trả lời câu hỏi của bạn trong vòng 24 giờ. Đối với vấn đề khẩn cấp, đề xuất sử dụng chat trực tuyến để nhận trợ giúp tức thì."
+    }
+  },
+  "dex": {
+    "title": "Ví DEX",
+    "addWallet": "Thêm ví DEX",
+    "selectDex": "Chọn DEX",
+    "noWallets": "Chưa kết nối ví DEX nào",
+    "noWalletsHint": "Nhấn nút phía trên để thêm ví DEX đầu tiên",
+    "walletAddress": "Địa chỉ ví",
+    "privateKey": "Khóa riêng",
+    "newPrivateKey": "Khóa riêng mới",
+    "keepCurrentKey": "Để trống để giữ khóa riêng hiện tại",
+    "keyUpdatedHint": "Khóa riêng sẽ được mã hóa lại sau khi cập nhật",
+    "currentWalletAddress": "Địa chỉ ví hiện tại",
+    "label": "Nhãn",
+    "labelPlaceholder": "Nhãn tùy chọn",
+    "testnetMode": "Chế độ Testnet",
+    "testnetHint": "Bật để kết nối mạng thử nghiệm",
+    "securityNotice": "Khóa riêng của bạn sẽ được lưu trữ mã hóa bằng AES-256-GCM và chỉ giải mã khi thực hiện giao dịch. Hãy đảm bảo bạn tin tưởng nền tảng này.",
+    "addSuccess": "Thêm ví DEX thành công",
+    "updateSuccess": "Cập nhật ví DEX thành công",
+    "deleteSuccess": "Xóa ví DEX thành công",
+    "deleteConfirm": "Bạn có chắc muốn xóa ví DEX này?",
+    "deleteConfirmHint": "Hành động này không thể hoàn tác. Các chiến lược giao dịch liên quan sẽ ngừng hoạt động.",
+    "hyperliquid": {
+      "mainWallet": "Địa chỉ ví chính",
+      "mainWalletPlaceholder": "0x... địa chỉ ví chính",
+      "agentPrivateKey": "Khóa riêng Agent",
+      "agentPrivateKeyPlaceholder": "Khóa riêng Hyperliquid Agent Wallet",
+      "agentHint": "Lấy sau khi tạo Agent Wallet trong Hyperliquid"
+    },
+    "lighter": {
+      "walletAddress": "Địa chỉ ví",
+      "walletAddressPlaceholder": "0x... địa chỉ ví",
+      "walletPrivateKey": "Khóa riêng ví",
+      "walletPrivateKeyPlaceholder": "Khóa riêng ví (0x...)",
+      "apiKeyPrivateKey": "Khóa riêng API Key",
+      "apiKeyPrivateKeyPlaceholder": "Khóa riêng Lighter API Key (40 byte hex)",
+      "apiKeyIndex": "Chỉ mục API Key",
+      "apiKeyIndexHint": "Giá trị từ 0-255, mặc định là 0"
+    },
+    "aster": {
+      "userWallet": "Địa chỉ ví người dùng",
+      "userWalletPlaceholder": "0x... địa chỉ ví chính",
+      "signerWallet": "Địa chỉ ví ký (Tùy chọn)",
+      "signerWalletPlaceholder": "Để trống sẽ dùng địa chỉ ví người dùng",
+      "signerHint": "Địa chỉ ví Aster API, để trống sẽ giống ví người dùng",
+      "signerPrivateKey": "Khóa riêng ký",
+      "signerPrivateKeyPlaceholder": "Khóa riêng của ví ký"
     }
   },
   "errors": {
