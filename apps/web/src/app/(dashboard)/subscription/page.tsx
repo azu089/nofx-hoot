@@ -18,12 +18,16 @@ interface MembershipPlan {
   discountPercent?: number | null;
   monthlyPrice: string;
   maxStrategies: number;
+  gasFeeRate: string;
 }
 
 // 后端会员状态类型
 interface MembershipStatus {
   isMember: boolean;
   status: 'none' | 'active' | 'expired';
+  tier: 'free' | 'pro';
+  gasFeeRate: string;
+  maxStrategies: number;
   currentPlan?: {
     code: string;
     name: string;
@@ -116,6 +120,9 @@ export default function SubscriptionPageRoute() {
           isMember={membershipStatus?.isMember || false}
           daysRemaining={membershipStatus?.currentPlan?.daysRemaining}
           usdtBalance={walletBalance?.usdtBalance}
+          tier={membershipStatus?.tier || 'free'}
+          gasFeeRate={membershipStatus?.gasFeeRate || '0.25'}
+          maxStrategies={membershipStatus?.maxStrategies || 2}
           onSubscribe={handleSubscribe}
           isProcessing={purchaseMutation.isPending}
           isSuccess={purchaseMutation.isSuccess}
@@ -131,6 +138,9 @@ export default function SubscriptionPageRoute() {
           isMember={membershipStatus?.isMember || false}
           daysRemaining={membershipStatus?.currentPlan?.daysRemaining}
           usdtBalance={walletBalance?.usdtBalance}
+          tier={membershipStatus?.tier || 'free'}
+          gasFeeRate={membershipStatus?.gasFeeRate || '0.25'}
+          maxStrategies={membershipStatus?.maxStrategies || 2}
           onSubscribe={handleMobileSubscribe}
           isProcessing={purchaseMutation.isPending}
           isSuccess={purchaseMutation.isSuccess}

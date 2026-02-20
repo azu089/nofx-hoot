@@ -5,16 +5,16 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Crown,
-  Gift,
   Bell,
   Settings,
   HelpCircle,
   Info,
   LogOut,
-  Users,
   Copy,
   Check,
-  ChevronRight
+  ChevronRight,
+  Brain,
+  Download
 } from 'lucide-react'
 
 interface MobileProfilePageProps {
@@ -23,10 +23,6 @@ interface MobileProfilePageProps {
     username: string
     email: string
     subscriptionTier: 'basic' | 'premium' | 'pro'
-  }
-  referral?: {
-    inviteCount: number
-    totalEarnings: number
   }
   unreadNotifications?: number
   appVersion?: string
@@ -40,10 +36,6 @@ export function MobileProfilePage({
     username: 'CryptoTrader_Pro',
     email: 'use***@example.com',
     subscriptionTier: 'premium'
-  },
-  referral = {
-    inviteCount: 12,
-    totalEarnings: 1580.50
   },
   unreadNotifications = 3,
   appVersion = 'v1.19.0',
@@ -103,22 +95,6 @@ export function MobileProfilePage({
       )
     },
     {
-      icon: Gift,
-      label: t('referral'),
-      path: '/referral',
-      iconColor: 'text-[#EC4899]',
-      iconBg: 'bg-[#EC4899]/10',
-      rightContent: (
-        <div className="flex items-center gap-2">
-          <span className="text-[#EC4899] font-medium text-sm">${referral.totalEarnings.toLocaleString()}</span>
-          <div className="flex items-center gap-1 text-[#9090A0] text-xs">
-            <Users className="w-3 h-3" />
-            <span>{referral.inviteCount}</span>
-          </div>
-        </div>
-      )
-    },
-    {
       icon: Bell,
       label: t('notifications'),
       path: '/notifications',
@@ -129,6 +105,22 @@ export function MobileProfilePage({
           {unreadNotifications}
         </span>
       ) : null
+    },
+    {
+      icon: Brain,
+      label: t('aiSettings'),
+      path: '/settings/ai',
+      iconColor: 'text-[#06B6D4]',
+      iconBg: 'bg-[#06B6D4]/10',
+      rightContent: null
+    },
+    {
+      icon: Download,
+      label: t('installApp'),
+      path: 'pwa-install',
+      iconColor: 'text-[#10B981]',
+      iconBg: 'bg-[#10B981]/10',
+      rightContent: null
     },
     {
       icon: Settings,

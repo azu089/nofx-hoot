@@ -19,6 +19,7 @@ import {
   GoldOutlined,
   CloseOutlined,
   LinkOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { AdminHeader } from './Header';
@@ -57,6 +58,20 @@ const menuItems = [
       { key: '/trading/signals', label: '信号监控' },
       { key: '/trading/risk', label: '风控管理' },
       { key: '/trading/kill-switch', label: '紧急开关' },
+    ],
+  },
+  {
+    key: 'ai',
+    icon: <RobotOutlined />,
+    label: 'AI 智能交易',
+    children: [
+      { key: '/ai/overview', label: 'AI 总览' },
+      { key: '/ai/strategies', label: '策略监控' },
+      { key: '/ai/research', label: '研究会话' },
+      { key: '/ai/cost', label: 'Token 成本' },
+      { key: '/ai/configs', label: '用户配置' },
+      { key: '/ai/logs', label: '决策日志' },
+      { key: '/ai/platform-config', label: '平台 LLM 配置' },
     ],
   },
   {

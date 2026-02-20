@@ -12,7 +12,13 @@
 
 import * as ccxt from 'ccxt';
 import { Logger } from '@nestjs/common';
-import { ExchangeAdapter } from '../types/adapter.interface';
+import {
+  ExchangeAdapter,
+  GridExchangeAdapter,
+  LimitOrderRequest,
+  LimitOrderResult,
+  OrderBookSnapshot,
+} from '../types/adapter.interface';
 import {
   ExchangeBalance,
   ExchangePosition,
@@ -63,7 +69,7 @@ export interface CcxtAdapterConfig {
   isTestnet: boolean;
 }
 
-export class CcxtAdapter implements ExchangeAdapter {
+export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   readonly exchangeType: string;
   readonly category: ExchangeCategory;
   readonly isDex: boolean;
@@ -411,6 +417,62 @@ export class CcxtAdapter implements ExchangeAdapter {
           ? Math.pow(10, -market.precision.price)
           : 0.01,
       stepSize: market.limits?.amount?.min || 0.001,
+    };
+  }
+
+  // ========================= 限价单（网格交易专用） =========================
+
+  async placeLimitOrder(req: LimitOrderRequest): Promise<LimitOrderResult> {
+    const ex = this.getExchange();
+    const params: any = {};
+
+    // 对冲模式下设置 positionSide
+    if (req.positionSide) {
+      params.positionSide = req.positionSide;
+    }
+    if (req.postOnly) {
+      params.postOnly = true;
+    }
+    if (req.reduceOnly) {
+      params.reduceOnly = true;
+    }
+    if (req.clientId) {
+      params.clientOrderId = req.clientId;
+    }
+
+    const order = await ex.createOrder(
+      req.symbol,
+      'limit',
+      req.side,
+      req.quantity,
+      req.price,
+      params,
+    );
+
+    return {
+      orderId: order.id,
+      clientId: req.clientId,
+      symbol: order.symbol || req.symbol,
+      side: req.side,
+      positionSide: req.positionSide,
+      price: req.price,
+      quantity: req.quantity,
+      status: order.status || 'open',
+    };
+  }
+
+  async cancelOrder(symbol: string, orderId: string): Promise<void> {
+    const ex = this.getExchange();
+    await ex.cancelOrder(orderId, symbol);
+  }
+
+  async getOrderBook(symbol: string, depth: number): Promise<OrderBookSnapshot> {
+    const ex = this.getExchange();
+    const book = await ex.fetchOrderBook(symbol, depth);
+    return {
+      bids: (book.bids || []).map((b: any) => [Number(b[0]), Number(b[1])]),
+      asks: (book.asks || []).map((a: any) => [Number(a[0]), Number(a[1])]),
+      timestamp: book.timestamp || Date.now(),
     };
   }
 

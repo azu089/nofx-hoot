@@ -391,3 +391,35 @@ export async function getTradeLogs(
     loginResult.accessToken,
   );
 }
+
+// ===== AI 总览 API =====
+
+export interface AiOverview {
+  solo: { running: number; paused: number; stopped: number };
+  debate: { running: number; paused: number; stopped: number };
+  research: { cycling: number; stopped: number };
+  todayPnl: number;
+  budget: { used: number; limit: number };
+}
+
+// 获取 AI 总览
+export async function getAiOverview(telegramId: string): Promise<AiOverview> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<AiOverview>('/ai/overview', loginResult.accessToken);
+}
+
+// 暂停所有 AI 策略/研究
+export async function pauseAllAi(telegramId: string): Promise<{ paused: number }> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<{ paused: number }>('/ai/pause-all', loginResult.accessToken, {
+    method: 'POST',
+  });
+}
+
+// 恢复所有 AI 策略/研究
+export async function resumeAllAi(telegramId: string): Promise<{ resumed: number }> {
+  const loginResult = await telegramLogin({ telegramId });
+  return authRequest<{ resumed: number }>('/ai/resume-all', loginResult.accessToken, {
+    method: 'POST',
+  });
+}

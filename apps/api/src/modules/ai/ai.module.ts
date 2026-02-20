@@ -9,9 +9,8 @@ import { ExchangeAdaptersModule } from '../exchange-adapters/exchange-adapters.m
 // Controller
 import { AiController } from './ai.controller';
 
-// Services — 从 v2-dev 复制（Phase 8.0-A 任务 1）
+// === 共享服务（services/ 根目录） ===
 import { LLMService } from './services/llm.service';
-import { DebateService } from './services/debate.service';
 import { AiMemoryService } from './services/memory.service';
 import { EvolutionService } from './services/evolution.service';
 import { IndicatorsService } from './services/indicators.service';
@@ -19,24 +18,26 @@ import { TradeHistoryService } from './services/trade-history.service';
 import { AiPerformanceService } from './services/ai-performance.service';
 import { MarketDataService } from './services/market-data.service';
 import { SafetyService } from './services/safety.service';
-import { AutoSchedulerService } from './services/auto-scheduler.service';
-
-// Services — 新建（Phase 8.0-A 任务 4）
 import { AiExecutionService } from './services/ai-execution.service';
 
-// Services — 新建（Phase 8.0-B 产品 A）
-import { CryptoAnalystsService } from './services/crypto-analysts.service';
-import { RiskDebateService } from './services/risk-debate.service';
-import { ResearchPipelineService } from './services/research-pipeline.service';
-import { ResearchReflectionService } from './services/research-reflection.service';
-import { QuickAnalysisService } from './services/quick-analysis.service';
+// === 产品 A（AI 研究团队）→ services/research/ ===
+import { DebateService } from './services/research/debate.service';
+import { CryptoAnalystsService } from './services/research/crypto-analysts.service';
+import { RiskDebateService } from './services/research/risk-debate.service';
+import { ResearchPipelineService } from './services/research/research-pipeline.service';
+import { ResearchReflectionService } from './services/research/research-reflection.service';
+import { ResearchCycleService } from './services/research/research-cycle.service';
 
-// Services — 新建（Phase 8.0-C 产品 B）
-import { StrategyEngineService } from './services/strategy-engine.service';
-import { CoinScannerService } from './services/coin-scanner.service';
-import { ConsensusService } from './services/consensus.service';
-import { AutoTraderService } from './services/auto-trader.service';
-import { GridTradingService } from './services/grid-trading.service';
+// === 产品 B（AI 自动交易）→ services/trading/ ===
+import { QuickAnalysisService } from './services/trading/quick-analysis.service';
+import { StrategyEngineService } from './services/trading/strategy-engine.service';
+import { CoinScannerService } from './services/trading/coin-scanner.service';
+import { ConsensusService } from './services/trading/consensus.service';
+import { AutoTraderService } from './services/trading/auto-trader.service';
+import { GridTradingService } from './services/trading/grid-trading.service';
+import { AutoSchedulerService } from './services/trading/auto-scheduler.service';
+import { DebateOrchestratorService } from './services/trading/debate-orchestrator.service';
+import { PromptBuilderService } from './services/trading/prompt-builder.service';
 
 // Processors — 从 v2-dev 复制
 import { AutoRunProcessor } from './processors/auto-run.processor';
@@ -84,6 +85,7 @@ import { DrawdownMonitorProcessor } from './processors/drawdown-monitor.processo
     RiskDebateService,
     ResearchPipelineService,
     ResearchReflectionService,
+    ResearchCycleService, // Phase 10: 研究自动循环
     QuickAnalysisService,
 
     // === 新建服务（产品 B） ===
@@ -92,6 +94,8 @@ import { DrawdownMonitorProcessor } from './processors/drawdown-monitor.processo
     ConsensusService,
     AutoTraderService,
     GridTradingService,
+    DebateOrchestratorService, // Phase 8.2: 4阶段辩论编排器
+    PromptBuilderService, // Phase 9.0: 8-section 结构化 Prompt
 
     // === 处理器 ===
     AutoRunProcessor,

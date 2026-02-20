@@ -41,6 +41,7 @@ interface Position {
   roe: number
   icon: string
   strategy: string
+  source?: string // ai_strategy, ai_research, ai_analysis, strategy, manual
   stopLoss: number
   takeProfit: number
   marketType: MarketType
@@ -126,6 +127,7 @@ interface HistoryOrder {
   margin?: number
   closeReason?: string
   strategyName?: string
+  source?: string
 }
 
 interface PnlStatsProps {
@@ -557,10 +559,18 @@ export function PositionsPageV3({
                               </div>
                             </td>
                             <td className="py-4">
-                              <div className="flex items-center gap-2">
-                                <Zap className="w-3 h-3 text-cyan-400" />
-                                <span className="text-sm text-[#9090A0]">{position.strategy}</span>
-                              </div>
+                              {position.strategy ? (
+                                <div className="flex items-center gap-2">
+                                  {position.source?.startsWith('ai_') ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">AI</span>
+                                  ) : (
+                                    <Zap className="w-3 h-3 text-amber-400" />
+                                  )}
+                                  <span className="text-sm text-[#9090A0]">{position.strategy}</span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-[#606070]">{t('manual') || '手动'}</span>
+                              )}
                             </td>
                             <td className="py-4">
                               <span className={`px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
@@ -653,7 +663,12 @@ export function PositionsPageV3({
                               <td className="py-4">
                                 <div className="font-medium text-[#F8F8FC]">{order.symbol.replace(/:USDT$/, '')}</div>
                                 {order.strategyName && (
-                                  <div className="text-xs text-[#606070]">{order.strategyName}</div>
+                                  <div className="flex items-center gap-1 text-xs text-[#606070]">
+                                    {order.source?.startsWith('ai_') && (
+                                      <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400">AI</span>
+                                    )}
+                                    <span>{order.strategyName}</span>
+                                  </div>
                                 )}
                               </td>
                               <td className="py-4">

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
   AiConfig,
+  AiStrategy,
   UpdateAiConfigBody,
   UpdateAiConfigResponse,
   AiBudget,
@@ -22,6 +23,15 @@ import type {
   StrategyLogsResponse,
   StrategyPnlChartResponse,
   CompetitionResponse,
+  StrategyPositionsResponse,
+  UserPositionsResponse,
+  PromptPreviewResponse,
+  TriggerCycleResponse,
+  PromptSections,
+  RiskControlConfig,
+  CampaignStats,
+  TimelineResponse,
+  ResearchStagesResponse,
 } from '@/types/ai';
 
 // ========================= AI 配置 =========================
@@ -145,6 +155,60 @@ export function useExecuteResearch() {
   });
 }
 
+// ========================= 产品 A: 循环控制 =========================
+
+export function useStopResearchCycling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await api.post<{ success: boolean; message: string }>(`/ai/research/${sessionId}/stop-cycling`, {});
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-research-history'] });
+      qc.invalidateQueries({ queryKey: ['ai-campaign'] });
+    },
+  });
+}
+
+export function usePauseResearchCycling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await api.post<{ success: boolean; message: string }>(`/ai/research/${sessionId}/pause-cycling`, {});
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-campaign'] });
+    },
+  });
+}
+
+export function useResumeResearchCycling() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await api.post<{ success: boolean; message: string }>(`/ai/research/${sessionId}/resume-cycling`, {});
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-campaign'] });
+    },
+  });
+}
+
+export function useCampaignStats(rootSessionId: string | undefined) {
+  return useQuery({
+    queryKey: ['ai-campaign', rootSessionId],
+    queryFn: async () => {
+      const res = await api.get<CampaignStats>(`/ai/research/${rootSessionId}/campaign`);
+      return res.data;
+    },
+    enabled: !!rootSessionId,
+    refetchInterval: 30000, // 每30秒刷新
+  });
+}
+
 // ========================= 产品 B: 策略 =========================
 
 export function useStrategyList(page: number = 1, limit: number = 20) {
@@ -186,8 +250,8 @@ export function useStrategyDetail(id: string | undefined) {
 export function useUpdateStrategy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: any }) => {
-      const res = await api.put<{ success: boolean; strategy: any }>(`/ai/strategy/${id}`, body);
+    mutationFn: async ({ id, body }: { id: string; body: Partial<AiStrategy> }) => {
+      const res = await api.put<{ success: boolean; strategy: AiStrategy }>(`/ai/strategy/${id}`, body);
       return res.data;
     },
     onSuccess: (_data, vars) => {
@@ -227,13 +291,25 @@ export function useStrategyControl() {
 export function useHotUpdateConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: any }) => {
-      const res = await api.put<{ success: boolean; strategy: any }>(`/ai/strategy/${id}/config`, body);
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => {
+      const res = await api.put<{ success: boolean; strategy: AiStrategy }>(`/ai/strategy/${id}/config`, body);
       return res.data;
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['ai-strategy', vars.id] });
     },
+  });
+}
+
+export function useStrategyPositions(id: string | undefined, status: string = 'all') {
+  return useQuery({
+    queryKey: ['ai-strategy-positions', id, status],
+    queryFn: async () => {
+      const res = await api.get<StrategyPositionsResponse>(`/ai/strategy/${id}/positions?status=${status}`);
+      return res.data;
+    },
+    enabled: !!id,
+    staleTime: 15000,
   });
 }
 
@@ -269,5 +345,78 @@ export function useCompetition(period: string = 'weekly', page: number = 1, limi
       return res.data;
     },
     staleTime: 60000,
+  });
+}
+
+// ========================= 用户级持仓（独立于策略） =========================
+
+/** 用户所有 AI 持仓（含已删除策略的历史），单端点替代 N+1 查询 */
+export function useUserPositions(status: 'open' | 'closed' | 'all' = 'all', page: number = 1, limit: number = 50) {
+  return useQuery({
+    queryKey: ['ai-user-positions', status, page, limit],
+    queryFn: async () => {
+      const res = await api.get<UserPositionsResponse>(`/ai/positions?status=${status}&page=${page}&limit=${limit}`);
+      return res.data;
+    },
+    staleTime: 15000,
+  });
+}
+
+// ========================= Prompt 预览 =========================
+
+export function usePreviewPrompt() {
+  return useMutation({
+    mutationFn: async (body: {
+      promptSections?: PromptSections;
+      riskControlConfig?: Partial<RiskControlConfig>;
+      intervalMinutes?: number;
+    }) => {
+      const res = await api.post<PromptPreviewResponse>('/ai/strategy/preview-prompt', body);
+      return res.data;
+    },
+  });
+}
+
+// ========================= 统一时间线 =========================
+
+/** 跨策略/研究的统一时间线 */
+export function useAiTimeline(page: number = 1, limit: number = 10, type: string = 'all') {
+  return useQuery({
+    queryKey: ['ai-timeline', page, limit, type],
+    queryFn: async () => {
+      const res = await api.get<TimelineResponse>(`/ai/timeline?page=${page}&limit=${limit}&type=${type}`);
+      return res.data;
+    },
+    staleTime: 15000,
+  });
+}
+
+/** 懒加载研究阶段详情 */
+export function useResearchStages(sessionId: string | null) {
+  return useQuery({
+    queryKey: ['research-stages', sessionId],
+    queryFn: async () => {
+      const res = await api.get<ResearchStagesResponse>(`/ai/research/${sessionId}/stages`);
+      return res.data;
+    },
+    enabled: !!sessionId,
+    staleTime: 60000,
+  });
+}
+
+// ========================= 手动触发策略周期 =========================
+
+export function useTriggerCycle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (strategyId: string) => {
+      const res = await api.post<TriggerCycleResponse>(`/ai/strategy/${strategyId}/trigger-cycle`, {});
+      return res.data;
+    },
+    onSuccess: (_data, strategyId) => {
+      qc.invalidateQueries({ queryKey: ['ai-strategy', strategyId] });
+      qc.invalidateQueries({ queryKey: ['ai-strategy-logs', strategyId] });
+      qc.invalidateQueries({ queryKey: ['ai-strategy-positions', strategyId] });
+    },
   });
 }

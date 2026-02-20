@@ -1,16 +1,10 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import { ResearchDetailPage } from '@/components/ui-v3/mobile/ai-research-detail';
-
-export default function AiResearchDetailRoute() {
-  return (
-    <>
-      <div className="hidden md:block max-w-4xl mx-auto py-6 px-4">
-        <ResearchDetailPage />
-      </div>
-      <div className="block md:hidden">
-        <ResearchDetailPage />
-      </div>
-    </>
-  );
+export default async function AiResearchDetailRoute({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(`/ai/research/${id}`);
 }

@@ -18,8 +18,21 @@ describe('FeeService', () => {
     },
     user: {
       findUnique: jest.fn(),
+      update: jest.fn(),
     },
     $transaction: jest.fn(),
+  };
+
+  // Pro 会员 mock（会员状态 active，未过期）
+  const proUserMock = {
+    membershipStatus: 'active',
+    membershipExpireAt: new Date(Date.now() + 86400000 * 30), // 30天后过期
+  };
+
+  // Free 用户 mock（无会员）
+  const freeUserMock = {
+    membershipStatus: 'none',
+    membershipExpireAt: null,
   };
 
   beforeEach(async () => {
@@ -37,8 +50,9 @@ describe('FeeService', () => {
   });
 
   describe('calculateFee', () => {
-    // 正常路径 - 无质押用户
-    it('无质押用户应收取基础费率 20%', async () => {
+    // 正常路径 - Pro 用户，无质押
+    it('Pro 用户无质押应收取基础费率 20%', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([]);
 
       const result = await service.calculateFee('user-123', '100');
@@ -52,13 +66,29 @@ describe('FeeService', () => {
       expect(result.netProfit).toBe('80.00000000');
     });
 
-    // 正常路径 - B 类质押用户（10% 折扣）
+    // 正常路径 - Free 用户，无质押
+    it('Free 用户无质押应收取基础费率 25%', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(freeUserMock);
+      mockPrismaService.stakingRecord.findMany.mockResolvedValue([]);
+
+      const result = await service.calculateFee('user-123', '100');
+
+      expect(result.profit).toBe('100');
+      expect(result.baseFeeRate).toBe('0.25');
+      expect(result.finalFeeRate).toBe('0.25');
+      expect(result.feeAmount).toBe('25.00000000');
+      expect(result.netProfit).toBe('75.00000000');
+    });
+
+    // 正常路径 - B 类(定期)质押用户（10% 折扣）
     it('B 类质押用户应有 10% 折扣', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([
         {
           id: 'stake-1',
           userId: 'user-123',
           type: 'B',
+          lockDays: 90, // 定期 → B 类
           amount: { toString: () => '1000' },
           status: 'active',
         },
@@ -75,11 +105,13 @@ describe('FeeService', () => {
 
     // 正常路径 - VIP 折扣（质押 >= 10000）
     it('质押 10000 HOOT 应有 5% VIP 折扣', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([
         {
           id: 'stake-1',
           userId: 'user-123',
           type: 'B',
+          lockDays: 90,
           amount: { toString: () => '10000' },
           status: 'active',
         },
@@ -95,11 +127,13 @@ describe('FeeService', () => {
 
     // 正常路径 - 最高 VIP 折扣（质押 >= 100000）
     it('质押 100000 HOOT 应有 15% VIP 折扣', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([
         {
           id: 'stake-1',
           userId: 'user-123',
           type: 'B',
+          lockDays: 90,
           amount: { toString: () => '100000' },
           status: 'active',
         },
@@ -115,6 +149,7 @@ describe('FeeService', () => {
 
     // 边界路径 - 亏损不收费
     it('亏损时不应收取手续费', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(freeUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([]);
 
       const result = await service.calculateFee('user-123', '-50');
@@ -126,6 +161,7 @@ describe('FeeService', () => {
 
     // 边界路径 - 零盈利
     it('零盈利时不应收取手续费', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(freeUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([]);
 
       const result = await service.calculateFee('user-123', '0');
@@ -135,21 +171,24 @@ describe('FeeService', () => {
 
     // 边界路径 - 最小手续费
     it('手续费低于最小值时应使用最小手续费', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(freeUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([]);
 
-      // 盈利 0.01 USDT，20% 手续费 = 0.002 < 最小 0.01
+      // 盈利 0.01 USDT，25% 手续费 = 0.0025 < 最小 0.01
       const result = await service.calculateFee('user-123', '0.01');
 
       expect(result.feeAmount).toBe('0.01000000');
     });
 
-    // 边界路径 - A 类质押无折扣
+    // 边界路径 - A 类(活期)质押无折扣
     it('A 类质押用户无质押折扣', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([
         {
           id: 'stake-1',
           userId: 'user-123',
           type: 'A',
+          lockDays: 0, // 活期 → A 类
           amount: { toString: () => '5000' },
           status: 'active',
         },
@@ -163,16 +202,19 @@ describe('FeeService', () => {
 
     // 正常路径 - 多个质押记录
     it('多个质押记录时应累加计算', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(proUserMock);
       mockPrismaService.stakingRecord.findMany.mockResolvedValue([
         {
           id: 'stake-1',
           type: 'A',
+          lockDays: 0, // 活期
           amount: { toString: () => '3000' },
           status: 'active',
         },
         {
           id: 'stake-2',
           type: 'B',
+          lockDays: 180, // 定期 → 有定期记录，整体为 B 类
           amount: { toString: () => '7000' },
           status: 'active',
         },
@@ -180,9 +222,31 @@ describe('FeeService', () => {
 
       const result = await service.calculateFee('user-123', '100');
 
-      // 总质押 10000，有 B 类，质押折扣 10%，VIP 折扣 5%
+      // 总质押 10000，有定期质押，质押折扣 10%，VIP 折扣 5%
       expect(result.stakingDiscount).toBe('0.1');
       expect(result.vipDiscount).toBe('0.05');
+    });
+
+    // 边界路径 - Free 用户 + B 类质押
+    it('Free 用户有质押折扣时基于 25% 基础费率计算', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(freeUserMock);
+      mockPrismaService.stakingRecord.findMany.mockResolvedValue([
+        {
+          id: 'stake-1',
+          type: 'B',
+          lockDays: 90,
+          amount: { toString: () => '1000' },
+          status: 'active',
+        },
+      ]);
+
+      const result = await service.calculateFee('user-123', '100');
+
+      // 基础 25%，质押折扣 10%，最终 = 25% * (1 - 10%) = 22.5%
+      expect(result.baseFeeRate).toBe('0.25');
+      expect(result.stakingDiscount).toBe('0.1');
+      expect(result.finalFeeRate).toBe('0.225');
+      expect(result.feeAmount).toBe('22.50000000');
     });
   });
 
@@ -204,7 +268,8 @@ describe('FeeService', () => {
           user: {
             findUnique: jest
               .fn()
-              .mockResolvedValue({ usdtBalance: { toString: () => '100' } }),
+              .mockResolvedValue({ pointBalance: { toString: () => '100' } }),
+            update: jest.fn(),
           },
           billingLog: { create: jest.fn() },
         });
@@ -260,8 +325,6 @@ describe('FeeService', () => {
 
       expect(id1).toMatch(/^GAS_FEE_user-1_pos-1_\d+_[a-z0-9]+$/);
       expect(id2).toMatch(/^GAS_FEE_user-1_pos-1_\d+_[a-z0-9]+$/);
-      // 由于有时间戳和随机数，两次生成的 ID 应该不同
-      // 但由于测试执行速度快，时间戳可能相同，所以不强制断言不相等
     });
 
     // 边界路径 - 不同类型
@@ -314,9 +377,12 @@ describe('FeeService', () => {
   });
 
   describe('FEE_CONFIG', () => {
-    // 验证配置值
-    it('基础费率应为 20%', () => {
-      expect(FEE_CONFIG.BASE_GAS_FEE_RATE.toString()).toBe('0.2');
+    it('Free 费率应为 25%', () => {
+      expect(FEE_CONFIG.FREE_GAS_FEE_RATE.toString()).toBe('0.25');
+    });
+
+    it('Pro 费率应为 20%', () => {
+      expect(FEE_CONFIG.PRO_GAS_FEE_RATE.toString()).toBe('0.2');
     });
 
     it('B 类质押折扣应为 10%', () => {

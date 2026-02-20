@@ -37,6 +37,7 @@ interface Position {
   roe: number
   icon: string
   strategy: string
+  source?: string // ai_strategy, ai_research, ai_analysis, strategy, manual
   stopLoss: number
   takeProfit: number
   marketType: MarketType
@@ -87,6 +88,7 @@ interface HistoryOrder {
   margin: number
   closeReason?: string
   strategyName?: string
+  source?: string
 }
 
 
@@ -342,31 +344,7 @@ export function MobileTradingCenter({
           </div>
         </div>
 
-        {/* 策略健康状态条 */}
-        {strategyHealth.length > 0 && (
-          <div className="px-4 pb-2">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              {strategyHealth.map((sh) => (
-                <div key={sh.strategyId || sh.strategyName} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#12121A]/50 border border-[#1E1E2E] rounded-lg flex-shrink-0">
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    sh.status === 'healthy' ? 'bg-green-400' :
-                    sh.status === 'degraded' ? 'bg-yellow-400' :
-                    sh.status === 'warning' ? 'bg-orange-400' :
-                    'bg-red-400'
-                  }`} />
-                  <span className="text-xs text-[#F8F8FC]">{sh.strategyName.replace('Strategy', '')}</span>
-                  <span className="text-xs text-[#606070]">
-                    {sh.minutesSinceLastSignal != null
-                      ? sh.minutesSinceLastSignal < 60
-                        ? `${sh.minutesSinceLastSignal}m`
-                        : `${Math.floor(sh.minutesSinceLastSignal / 60)}h`
-                      : '-'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 策略健康状态条 - 已隐藏 */}
 
         {/* 资产统计卡片 - 2行布局 */}
         <div className="px-4 pb-3">
@@ -566,11 +544,17 @@ export function MobileTradingCenter({
                     </div>
                   </div>
 
-                  {/* 策略来源 */}
-                  <div className="flex items-center gap-1 text-[10px] text-[#606070] mb-3">
-                    <Zap className="w-2.5 h-2.5 text-[#06B6D4]" />
-                    <span>{position.strategy}</span>
-                  </div>
+                  {/* 策略来源（有策略名时才显示） */}
+                  {position.strategy && (
+                    <div className="flex items-center gap-1 text-[10px] text-[#606070] mb-3">
+                      {position.source?.startsWith('ai_') ? (
+                        <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">AI</span>
+                      ) : (
+                        <Zap className="w-2.5 h-2.5 text-amber-400" />
+                      )}
+                      <span>{position.strategy}</span>
+                    </div>
+                  )}
 
                   {/* 盈亏区域 - 突出显示 */}
                   <div className="grid grid-cols-2 gap-4 mb-3">
@@ -678,6 +662,10 @@ export function MobileTradingCenter({
                            order.closeReason === 'manual_cleanup' ? '手动清仓' :
                            order.closeReason === 'black_swan' ? '黑天鹅保护' :
                            order.closeReason === 'daily_loss_limit' ? '日亏损限额' :
+                           order.closeReason === 'ai_decision' ? 'AI 决策平仓' :
+                           order.closeReason === 'ai_stop_loss' ? 'AI 止损' :
+                           order.closeReason === 'ai_take_profit' ? 'AI 止盈' :
+                           order.closeReason === 'drawdown_limit' ? '回撤限额' :
                            order.closeReason}
                         </span>
                       )}
@@ -728,7 +716,10 @@ export function MobileTradingCenter({
                     </div>
                     {/* 策略名 右对齐 */}
                     {order.strategyName && (
-                      <div className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {order.source?.startsWith('ai_') && (
+                          <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400">AI</span>
+                        )}
                         <span className="text-cyan-400 text-[10px]">{order.strategyName}</span>
                       </div>
                     )}

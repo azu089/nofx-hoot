@@ -195,11 +195,13 @@ export class ReferralService {
     }));
   }
 
-  // 创建返佣记录（内部方法，供其他模块调用）
+  // 创建返佣记录（内部方法，供 trade.processor 调用）
+  // type: 'trading' = 燃油费返佣（唯一合法来源）
+  // 订阅费不参与返佣；质押分红不参与返佣
   async createReward(
     inviterId: string,
     fromUserId: string,
-    type: 'subscription' | 'trading',
+    type: 'trading',
     amount: string,
     asset: string,
     uniqueOrderId: string,

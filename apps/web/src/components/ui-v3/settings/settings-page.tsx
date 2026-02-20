@@ -22,6 +22,7 @@ import {
   Gift,
   CheckCircle2
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@/i18n/provider'
 import { localeNames, type Locale } from '@/i18n/config'
 import { useTheme } from '@/lib/theme'
@@ -192,11 +193,11 @@ export function SettingsPage({
 
   const handlePasswordSubmit = () => {
     if (passwordForm.new !== passwordForm.confirm) {
-      alert('两次输入的密码不一致')
+      toast.error('两次输入的密码不一致')
       return
     }
     if (!passwordForm.verifyCode) {
-      alert('请输入邮箱验证码')
+      toast.error('请输入邮箱验证码')
       return
     }
     onChangePassword?.(passwordForm.old, passwordForm.new)
@@ -208,7 +209,7 @@ export function SettingsPage({
 
   const handleEmailSubmit = () => {
     if (!emailForm.verifyCode) {
-      alert('请输入邮箱验证码')
+      toast.error('请输入邮箱验证码')
       return
     }
     onChangeEmail?.(emailForm.email, emailForm.password)
@@ -236,7 +237,7 @@ export function SettingsPage({
 
   const handleBindEmailSubmit = () => {
     if (!bindEmailForm.verifyCode) {
-      alert('请输入验证码')
+      toast.error('请输入验证码')
       return
     }
     onBindEmail?.(bindEmailForm.email)

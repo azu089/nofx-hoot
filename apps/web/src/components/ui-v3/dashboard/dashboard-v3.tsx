@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Users, Play, Pause, Megaphone, ExternalLink, Loader2, Building2, Download, Gift } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Users, Play, Pause, Megaphone, ExternalLink, Loader2, Building2, Gift } from 'lucide-react'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement, type MarqueeItem, type MarqueeConfig } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
 
@@ -230,9 +230,9 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
       gradient: 'from-cyan-500 to-blue-500'
     },
     {
-      icon: Download,
-      titleKey: 'quickAccess.installApp',
-      path: 'pwa-install',
+      icon: TrendingUp,
+      titleKey: 'quickAccess.strategies',
+      path: '/strategies',
       gradient: 'from-emerald-500 to-teal-500'
     },
     {
@@ -257,21 +257,7 @@ function QuickAccessCards({ onNavigate }: { onNavigate?: (path: string) => void 
           <button
             type="button"
             key={card.path}
-            onClick={() => {
-              if (card.path === 'pwa-install') {
-                const deferredPrompt = (window as PwaWindow).__pwaInstallPrompt
-                if (deferredPrompt) {
-                  deferredPrompt.prompt()
-                  deferredPrompt.userChoice.then(() => {
-                    ;(window as PwaWindow).__pwaInstallPrompt = null
-                  })
-                } else {
-                  alert('请使用浏览器菜单中的「添加到主屏幕」安装应用')
-                }
-                return
-              }
-              onNavigate?.(card.path)
-            }}
+            onClick={() => onNavigate?.(card.path)}
             className="flex flex-col items-center justify-center py-5 px-4 hover:bg-[#1E1E2E]/30 transition-all group"
           >
             <div className={`w-11 h-11 rounded-xl bg-gradient-to-r ${card.gradient} flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform shadow-lg`}>

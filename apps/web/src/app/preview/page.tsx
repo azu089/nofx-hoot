@@ -120,12 +120,12 @@ type PreviewPage =
   | 'ai-trading-detail'
   | 'ai-settings'
 
-// 移动端 Tab 映射
-type MobileTab = 'home' | 'strategies' | 'trading' | 'assets' | 'me'
+// 移动端 Tab 映射 — 与 mobile-nav.tsx 的 5 tab 对齐
+type MobileTab = 'home' | 'ai' | 'trading' | 'assets' | 'me'
 
 const mobileTabToPage: Record<MobileTab, PreviewPage> = {
   home: 'dashboard',
-  strategies: 'strategy-market',
+  ai: 'ai-research',
   trading: 'trading',
   assets: 'wallet',
   me: 'profile',
@@ -133,10 +133,10 @@ const mobileTabToPage: Record<MobileTab, PreviewPage> = {
 
 const pageToMobileTab: Partial<Record<PreviewPage, MobileTab>> = {
   dashboard: 'home',
-  'strategy-market': 'strategies',
-  'strategy-detail': 'strategies',
-  'strategy-config': 'strategies',
-  'strategy-creator': 'strategies',
+  'strategy-market': 'ai',
+  'strategy-detail': 'ai',
+  'strategy-config': 'ai',
+  'strategy-creator': 'ai',
   trading: 'trading',
   wallet: 'assets',
   deposit: 'assets',
@@ -146,11 +146,11 @@ const pageToMobileTab: Partial<Record<PreviewPage, MobileTab>> = {
   referral: 'me',
   settings: 'me',
   ecosystem: 'me',
-  'ai-research': 'home',
-  'ai-research-detail': 'home',
-  'ai-trading': 'strategies',
-  'ai-trading-create': 'strategies',
-  'ai-trading-detail': 'strategies',
+  'ai-research': 'ai',
+  'ai-research-detail': 'ai',
+  'ai-trading': 'ai',
+  'ai-trading-create': 'ai',
+  'ai-trading-detail': 'ai',
   'ai-settings': 'me',
 }
 
@@ -203,7 +203,7 @@ export default function PreviewPage() {
     { id: 'ai-trading', name: 'AI策略', category: 'AI', hasMobile: true },
     { id: 'ai-trading-create', name: '创建AI策略', category: 'AI', hasMobile: true },
     { id: 'ai-trading-detail', name: 'AI策略详情', category: 'AI', hasMobile: true },
-    { id: 'ai-settings', name: 'AI设置', category: 'AI', hasMobile: true },
+    { id: 'ai-settings', name: 'LLM API KEY', category: 'AI', hasMobile: true },
   ]
 
   const categories = ['公开', '核心', '策略', '资产', '更多', 'AI']

@@ -125,4 +125,24 @@ export class UpdateAiConfigDto {
   @IsOptional()
   @IsString()
   exchangeApiKeyId?: string; // 关联的交易所 API Key ID
+
+  // NoFx 风控参数对齐（3 个新增字段）
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(10)
+  maxPositions?: number; // 最大同时持仓数 (默认 3)
+
+  @IsOptional()
+  @IsNumber()
+  @Min(5)
+  @Max(1000)
+  minPositionSizeUSD?: number; // 最小仓位 USDT (默认 12)
+
+  @IsOptional()
+  @IsNumber()
+  @Min(10)
+  @Max(95)
+  maxMarginUsage?: number; // 最大保证金占用 % (默认 90)
 }

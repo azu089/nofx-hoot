@@ -13,37 +13,41 @@ import {
 } from './dto/membership.dto';
 import { v4 as uuidv4 } from 'uuid';
 
-// 会员套餐定价配置（方案 C）
+// Free / Pro 层级常量
+const FREE_TIER = { maxStrategies: 2, gasFeeRate: '0.25' };
+const PRO_TIER = { maxStrategies: 10, gasFeeRate: '0.20' };
+
+// Pro 会员套餐定价
 const MEMBERSHIP_PLANS = {
   monthly: {
     code: 'monthly',
-    nameZh: '月度会员',
-    nameEn: 'Monthly',
-    price: '15',
+    nameZh: 'Pro 月度',
+    nameEn: 'Pro Monthly',
+    price: '19.99',
     durationDays: 30,
-    originalPrice: '15',
+    originalPrice: '19.99',
     discountPercent: 0,
-    maxStrategies: 10,
+    maxStrategies: PRO_TIER.maxStrategies,
   },
   quarterly: {
     code: 'quarterly',
-    nameZh: '季度会员',
-    nameEn: 'Quarterly',
-    price: '36',
+    nameZh: 'Pro 季度',
+    nameEn: 'Pro Quarterly',
+    price: '49.99',
     durationDays: 90,
-    originalPrice: '45', // 15 * 3
-    discountPercent: 20,
-    maxStrategies: 10,
+    originalPrice: '59.97', // 19.99 * 3
+    discountPercent: 17,
+    maxStrategies: PRO_TIER.maxStrategies,
   },
   yearly: {
     code: 'yearly',
-    nameZh: '年度会员',
-    nameEn: 'Yearly',
-    price: '99',
+    nameZh: 'Pro 年度',
+    nameEn: 'Pro Yearly',
+    price: '149.99',
     durationDays: 365,
-    originalPrice: '180', // 15 * 12
-    discountPercent: 45,
-    maxStrategies: 10,
+    originalPrice: '239.88', // 19.99 * 12
+    discountPercent: 37,
+    maxStrategies: PRO_TIER.maxStrategies,
   },
 };
 
@@ -110,6 +114,7 @@ export class MembershipService {
         .mul(30)
         .toFixed(2),
       maxStrategies: plan.maxStrategies,
+      gasFeeRate: PRO_TIER.gasFeeRate,
     }));
   }
 
@@ -173,11 +178,15 @@ export class MembershipService {
       }
     }
 
+    const isPro = status === 'active';
     return {
-      isMember: status === 'active',
+      isMember: isPro,
       status: status,
+      tier: isPro ? ('pro' as const) : ('free' as const),
+      gasFeeRate: isPro ? PRO_TIER.gasFeeRate : FREE_TIER.gasFeeRate,
+      maxStrategies: isPro ? PRO_TIER.maxStrategies : FREE_TIER.maxStrategies,
       currentPlan,
-      canSubscribeStrategies: status === 'active',
+      canSubscribeStrategies: true, // Free 用户也可订阅(受数量限制)
     };
   }
 
@@ -385,14 +394,32 @@ export class MembershipService {
   }
 
   /**
-   * 验证会员资格（用于策略订阅前验证）
-   * 抛出异常如果没有有效会员
+   * 获取用户层级限制（Free / Pro）
+   */
+  async getTierLimits(userId: string): Promise<{
+    tier: 'free' | 'pro';
+    maxStrategies: number;
+    gasFeeRate: string;
+  }> {
+    const isPro = await this.isActiveMember(userId);
+    return isPro
+      ? { tier: 'pro', ...PRO_TIER }
+      : { tier: 'free', ...FREE_TIER };
+  }
+
+  /**
+   * 验证策略订阅限制（按层级限制数量，Free=2 / Pro=10）
    */
   async validateMembership(userId: string): Promise<void> {
-    const isActive = await this.isActiveMember(userId);
-    if (!isActive) {
+    const tierLimits = await this.getTierLimits(userId);
+    const currentCount = await this.prisma.strategySubscription.count({
+      where: { userId, isActive: true },
+    });
+    if (currentCount >= tierLimits.maxStrategies) {
       throw new BadRequestException(
-        '请先订阅会员后再订阅策略。会员套餐包含月度、季度、年度三种选择。',
+        tierLimits.tier === 'free'
+          ? `免费版最多订阅 ${tierLimits.maxStrategies} 个策略，升级 Pro 可解锁更多`
+          : `Pro 版最多订阅 ${tierLimits.maxStrategies} 个策略`,
       );
     }
   }

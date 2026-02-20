@@ -7,6 +7,7 @@ import { AiMemoryService } from './memory.service';
 import { AdapterFactoryService } from '../../exchange-adapters/adapter-factory.service';
 import { ExchangeAdapter } from '../../exchange-adapters/types/adapter.interface';
 import { OrderResult } from '../../exchange-adapters/types/exchange.types';
+import { AI_SAFETY_DEFAULTS } from '../constants/safety-defaults';
 
 // ========================= 类型定义 =========================
 
@@ -46,12 +47,9 @@ export interface ExecutionResult {
  */
 export type AiSource = 'ai_research' | 'ai_strategy';
 
-// ========================= 常量: NoFx 代码强制风控 =========================
-
-const MAX_POSITIONS = 3; // 最大同时持仓数
-const MIN_POSITION_SIZE = 12; // 最小仓位 USDT
-const BTC_ETH_MAX_RATIO = 5.0; // BTC/ETH 最大仓位/权益比
-const ALT_MAX_RATIO = 1.0; // 山寨币最大仓位/权益比
+// 硬编码常量已移至:
+// - 用户可配置: AiConfig (maxPositions, minPositionSizeUSD, maxMarginUsage)
+// - 代码强制: AI_SAFETY_DEFAULTS (btcEthMaxRatio, altMaxRatio, defaultLeverage, ...)
 
 /**
  * AI 交易执行服务
@@ -175,8 +173,16 @@ export class AiExecutionService {
     aiStrategyId?: string,
   ): Promise<ExecutionResult> {
     const futuresSymbol = toFuturesSymbol(symbol);
-    const leverage = decision.leverage || 5;
-    const rawPositionSize = decision.positionSizeUSD || 50;
+
+    // 0. 读取用户 AI 配置（用户可配置风控参数）
+    const aiConfig = await this.prisma.aiConfig.findUnique({
+      where: { userId },
+    });
+    const maxPositions = aiConfig?.maxPositions ?? 3;
+    const minPositionSize = Number(aiConfig?.minPositionSizeUSD ?? 12);
+
+    const leverage = decision.leverage || (aiConfig?.maxLeverage ?? AI_SAFETY_DEFAULTS.defaultLeverage);
+    const rawPositionSize = decision.positionSizeUSD || Number(aiConfig?.amountPerTrade ?? AI_SAFETY_DEFAULTS.defaultPositionSizeUSD);
 
     // 1. 获取当前 AI 持仓数
     const currentPositions = await this.prisma.position.count({
@@ -187,8 +193,8 @@ export class AiExecutionService {
       },
     });
 
-    // 2. 代码强制风控
-    this.enforceMaxPositions(currentPositions);
+    // 2. 代码强制风控（使用用户配置，回退到默认值）
+    this.enforceMaxPositions(currentPositions, maxPositions);
 
     // 3. 获取期货账户余额（通过适配器，带重试）
     const balance = await this.retryCall('getBalance', () => adapter.getBalance());
@@ -219,11 +225,11 @@ export class AiExecutionService {
     }
     // 保底：如果计算后仓位低于最小限制，自动提升到最小限制
     // 后续的 enforcePositionValueRatio + adaptPositionToBalance 会确保不超过可承受范围
-    if (positionSizeUSD < MIN_POSITION_SIZE) {
+    if (positionSizeUSD < minPositionSize) {
       this.logger.log(
-        `[AI执行] 仓位 $${positionSizeUSD.toFixed(2)} 低于最小 $${MIN_POSITION_SIZE}，自动提升`,
+        `[AI执行] 仓位 $${positionSizeUSD.toFixed(2)} 低于最小 $${minPositionSize}，自动提升`,
       );
-      positionSizeUSD = MIN_POSITION_SIZE;
+      positionSizeUSD = minPositionSize;
     }
 
     // 3.8 单笔交易金额上限（用户可配置）
@@ -247,8 +253,8 @@ export class AiExecutionService {
       availableBalance, cappedSize, leverage,
     );
 
-    // 6. 最小仓位检查
-    this.enforceMinPositionSize(adaptedSize);
+    // 6. 最小仓位检查（使用用户配置）
+    this.enforceMinPositionSize(adaptedSize, minPositionSize);
 
     // 7. 开仓前取消该币种已有订单（防止重复下单）
     try {
@@ -359,6 +365,27 @@ export class AiExecutionService {
       `[AI执行] 开仓成功: ${futuresSymbol} ${side} price=${filledPrice} qty=${filledAmount} positionId=${position.id}`,
     );
 
+    // 推送 TG 开仓通知（fire-and-forget）
+    (async () => {
+      let strategyName: string | undefined;
+      if (aiStrategyId) {
+        const strat = await this.prisma.aiStrategy.findUnique({
+          where: { id: aiStrategyId },
+          select: { name: true },
+        });
+        strategyName = strat?.name;
+      }
+      await this.sendTgAiNotify(userId, {
+        type: 'decision_open',
+        symbol: futuresSymbol,
+        side,
+        leverage,
+        confidence: decision.confidence,
+        strategyName,
+        tradingMode: source === 'ai_research' ? 'research' : 'solo',
+      });
+    })().catch(() => {});
+
     return {
       success: true,
       orderId: result.orderId,
@@ -460,27 +487,51 @@ export class AiExecutionService {
       }
     }
 
-    // 自动存 BM25 记忆（关键自学习机制）
-    try {
-      const marginVal = Number(position.margin);
-      const pnlPercent = marginVal > 0 ? (pnl / marginVal) * 100 : 0;
+    // 仅产品 A (ai_research) 存储 BM25 记忆
+    // 产品 B (ai_strategy) 不使用 BM25（NoFx 有意的无状态设计）
+    if (source === 'ai_research') {
+      try {
+        const marginVal = Number(position.margin);
+        const pnlPercent = marginVal > 0 ? (pnl / marginVal) * 100 : 0;
 
-      await this.memoryService.storeMemory({
-        userId,
-        analysisId: position.id, // 用 positionId 作为记录关联
-        symbol: futuresSymbol,
-        sceneText: `${futuresSymbol} ${side} entry=${entryPrice} exit=${exitPrice}`,
-        action: `close_${side}`,
-        pnl,
-        pnlPercent,
-      });
-    } catch (e: any) {
-      this.logger.warn(`存储 BM25 记忆失败(非致命): ${e.message}`);
+        await this.memoryService.storeMemory({
+          userId,
+          analysisId: position.id,
+          symbol: futuresSymbol,
+          sceneText: `${futuresSymbol} ${side} entry=${entryPrice} exit=${exitPrice}`,
+          action: `close_${side}`,
+          pnl,
+          pnlPercent,
+        });
+      } catch (e: any) {
+        this.logger.warn(`存储 BM25 记忆失败(非致命): ${e.message}`);
+      }
     }
 
     this.logger.log(
       `[AI执行] 平仓成功: ${futuresSymbol} ${side} PnL=$${pnl.toFixed(2)} positionId=${position.id}`,
     );
+
+    // 推送 TG 平仓通知（fire-and-forget）
+    const pnlSign = pnl >= 0 ? '+' : '';
+    (async () => {
+      let strategyName: string | undefined;
+      if (position.aiStrategyId) {
+        const strat = await this.prisma.aiStrategy.findUnique({
+          where: { id: position.aiStrategyId },
+          select: { name: true },
+        });
+        strategyName = strat?.name;
+      }
+      await this.sendTgAiNotify(userId, {
+        type: 'decision_close',
+        symbol: futuresSymbol,
+        side,
+        pnl: `${pnlSign}${pnl.toFixed(2)} USDT`,
+        strategyName,
+        tradingMode: source === 'ai_research' ? 'research' : 'solo',
+      });
+    })().catch(() => {});
 
     return {
       success: true,
@@ -541,28 +592,30 @@ export class AiExecutionService {
 
   /**
    * 最大持仓数检查
+   * @param maxPositions 来自用户 aiConfig.maxPositions，默认 3
    */
-  private enforceMaxPositions(currentCount: number): void {
-    if (currentCount >= MAX_POSITIONS) {
+  private enforceMaxPositions(currentCount: number, maxPositions: number = 3): void {
+    if (currentCount >= maxPositions) {
       throw new Error(
-        `AI 持仓数已达上限 (${currentCount}/${MAX_POSITIONS})，请先平仓后再开新仓`,
+        `AI 持仓数已达上限 (${currentCount}/${maxPositions})，请先平仓后再开新仓`,
       );
     }
   }
 
   /**
    * 最小仓位检查
+   * @param minSize 来自用户 aiConfig.minPositionSizeUSD，默认 12
    */
-  private enforceMinPositionSize(positionSizeUSD: number): void {
-    if (positionSizeUSD < MIN_POSITION_SIZE) {
+  private enforceMinPositionSize(positionSizeUSD: number, minSize: number = 12): void {
+    if (positionSizeUSD < minSize) {
       throw new Error(
-        `仓位大小 $${positionSizeUSD.toFixed(2)} 低于最小限制 $${MIN_POSITION_SIZE}`,
+        `仓位大小 $${positionSizeUSD.toFixed(2)} 低于最小限制 $${minSize}`,
       );
     }
   }
 
   /**
-   * 仓位价值比约束
+   * 仓位价值比约束（代码强制，非用户可配置）
    * BTC/ETH: position ≤ equity × 5.0
    * 山寨:    position ≤ equity × 1.0
    */
@@ -571,7 +624,9 @@ export class AiExecutionService {
     equity: number,
     symbol: string,
   ): number {
-    const ratio = this.isBTCETH(symbol) ? BTC_ETH_MAX_RATIO : ALT_MAX_RATIO;
+    const ratio = this.isBTCETH(symbol)
+      ? AI_SAFETY_DEFAULTS.btcEthMaxRatio
+      : AI_SAFETY_DEFAULTS.altMaxRatio;
     const maxValue = equity * ratio;
 
     if (positionSizeUSD > maxValue) {
@@ -592,5 +647,35 @@ export class AiExecutionService {
   private isBTCETH(symbol: string): boolean {
     const upper = symbol.toUpperCase();
     return upper.includes('BTC') || upper.includes('ETH');
+  }
+
+  /**
+   * 向 TG Bot 推送 AI 通知（fire-and-forget）
+   * 查询用户 telegramId，然后调用 TG Bot HTTP API
+   */
+  private async sendTgAiNotify(
+    userId: string,
+    data: Record<string, any>,
+  ): Promise<void> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { telegramId: true },
+      });
+
+      if (!user?.telegramId) return;
+
+      const tgBotApiUrl = process.env.TG_BOT_API_URL || 'http://localhost:4002';
+      await fetch(`${tgBotApiUrl}/notify-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramId: user.telegramId,
+          ...data,
+        }),
+      });
+    } catch (e) {
+      this.logger.debug(`TG AI 通知发送失败(非致命): ${(e as Error).message}`);
+    }
   }
 }

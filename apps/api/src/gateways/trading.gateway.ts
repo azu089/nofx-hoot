@@ -63,6 +63,7 @@ export interface AiStrategyStatusEvent {
   strategyId: string;
   status: 'running' | 'stopped' | 'paused' | 'error';
   lastCycleAt?: Date;
+  error?: string;
   cycleResult?: {
     analyzed: number;
     executed: number;
@@ -294,6 +295,26 @@ export class TradingGateway
     alert: { currentSpend: number; monthlyBudget: number; usagePercent: number; message: string },
   ) {
     this.server.to(`user:${userId}`).emit('ai:budget:alert', alert);
+  }
+
+  // ==================== Debate 辩论事件推送 (Phase 8.2) ====================
+
+  /**
+   * 推送 AI 辩论流水线进度
+   * 事件名: ai:debate:event
+   */
+  sendAiDebateEvent(
+    userId: string,
+    event: {
+      sessionId: string;
+      strategyId: string;
+      symbol: string;
+      type: 'stage_start' | 'stage_end' | 'debate_message' | 'risk_verdict' | 'vote' | 'consensus';
+      stage?: 'invest_debate' | 'risk_debate' | 'consensus_vote';
+      data?: any;
+    },
+  ) {
+    this.server.to(`user:${userId}`).emit('ai:debate:event', event);
   }
 
   // ==================== DEX 事件推送 (Phase 8.1) ====================

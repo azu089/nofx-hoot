@@ -137,6 +137,7 @@ export default function StrategiesPage() {
           onUseStrategy={(id) => router.push(`/strategies/${id}/config`)}
           onNavigate={(tab) => router.push(`/${tab}`)}
           onCreateStrategy={() => router.push('/strategies/create')}
+          onBack={() => router.back()}
           onLoadMore={handleLoadMore}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}

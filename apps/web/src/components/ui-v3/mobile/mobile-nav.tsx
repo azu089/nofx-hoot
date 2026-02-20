@@ -1,12 +1,12 @@
 'use client'
 
-import { Home, TrendingUp, Briefcase, Wallet, User } from 'lucide-react'
+import { Home, Brain, Briefcase, Wallet, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslations } from '@/i18n/provider'
 
 interface MobileNavProps {
-  activeTab: 'home' | 'strategies' | 'trading' | 'assets' | 'me'
-  onTabChange?: (tab: 'home' | 'strategies' | 'trading' | 'assets' | 'me') => void
+  activeTab: 'home' | 'ai' | 'trading' | 'assets' | 'me'
+  onTabChange?: (tab: 'home' | 'ai' | 'trading' | 'assets' | 'me') => void
   /** 是否嵌入容器内（非fixed定位） */
   embedded?: boolean
   className?: string
@@ -14,7 +14,7 @@ interface MobileNavProps {
 
 const tabConfig = [
   { id: 'home', labelKey: 'home', icon: Home },
-  { id: 'strategies', labelKey: 'strategies', icon: TrendingUp },
+  { id: 'ai', labelKey: 'ai', icon: Brain },
   { id: 'trading', labelKey: 'trading', icon: Briefcase },
   { id: 'assets', labelKey: 'wallet', icon: Wallet },
   { id: 'me', labelKey: 'profile', icon: User },

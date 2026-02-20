@@ -27,6 +27,7 @@ interface SyncedPosition {
   status: string;
   tradingType: string;
   strategyName?: string;
+  source?: string;
   createdAt: string;
   syncedAt: string;
   syncSource: 'exchange' | 'database';
@@ -43,6 +44,7 @@ interface Position {
   status: string;
   exchange: string;
   strategyName?: string;
+  source?: string;
   createdAt: string;
   // 交易配置（新增）
   tradingType?: string;
@@ -75,6 +77,7 @@ interface TradeHistory {
   marginMode?: string;
   closeReason?: string;
   strategyName?: string;
+  source?: string;
 }
 
 // 执行日志类型
@@ -453,7 +456,7 @@ export default function TradingPage() {
           unrealizedPnl: parseFloat(p.unrealizedPnl),
           roe: parseFloat(p.roe), // 收益率
           icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
-          strategy: p.strategyName || '手动交易',
+          strategy: p.strategyName || '',
           stopLoss: 0, // TODO: 从订阅配置获取
           takeProfit: 0,
           marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
@@ -461,6 +464,7 @@ export default function TradingPage() {
           margin: parseFloat(p.margin || '0'),
           marginMode: p.marginMode || 'cross',
           syncSource: p.syncSource, // 标记数据来源
+          source: p.source,
         };
       })
     : positionsData?.items?.map(p => {
@@ -476,13 +480,14 @@ export default function TradingPage() {
           unrealizedPnl: parseFloat(p.pnl || '0'),
           roe: 0,
           icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
-          strategy: p.strategyName || '手动交易',
+          strategy: p.strategyName || '',
           stopLoss: 0,
           takeProfit: 0,
           marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
           leverage: p.leverage || 1,
           margin: parseFloat(p.margin || '0'),
           marginMode: p.marginMode || 'cross',
+          source: p.source,
         };
       });
 
@@ -508,6 +513,7 @@ export default function TradingPage() {
     margin: parseFloat(h.margin || '0'),
     closeReason: h.closeReason,
     strategyName: h.strategyName,
+    source: h.source,
     openTime: h.createdAt,
   }));
 

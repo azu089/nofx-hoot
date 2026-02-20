@@ -17,6 +17,7 @@ export interface LocaleMessages {
   menu: {
     wallet: string;
     trade: string;
+    ai: string;
     checkin: string;
     invite: string;
     closeAll: string;
@@ -183,6 +184,44 @@ export interface LocaleMessages {
     strategy: string;
   };
 
+  // AI 面板
+  ai: {
+    title: string;
+    soloSection: string;
+    debateSection: string;
+    researchSection: string;
+    statusLine: string;
+    researchLine: string;
+    todayPnl: string;
+    budget: string;
+    noAi: string;
+    btnPauseAll: string;
+    btnResumeAll: string;
+    btnManageApp: string;
+    pauseSuccess: string;
+    resumeSuccess: string;
+    pauseEmpty: string;
+    resumeEmpty: string;
+    failed: string;
+  };
+
+  // AI 通知（HTTP 推送）
+  aiNotify: {
+    decisionOpen: string;
+    decisionClose: string;
+    symbol: string;
+    side: string;
+    leverage: string;
+    confidence: string;
+    strategy: string;
+    mode: string;
+    pnl: string;
+    alertTitle: string;
+    alertStrategy: string;
+    alertDrawdown: string;
+    alertAction: string;
+  };
+
   // 未知命令
   unknownCommand: string;
 }
@@ -197,6 +236,7 @@ export const zh: LocaleMessages = {
   menu: {
     wallet: '💰 钱包',
     trade: '📊 交易',
+    ai: '🤖 AI',
     checkin: '✅ 签到',
     invite: '🎁 邀请',
     closeAll: '🚨 紧急平仓',
@@ -236,6 +276,7 @@ export const zh: LocaleMessages = {
       `/start - 主菜单\n` +
       `/wallet - 钱包总览\n` +
       `/trade - 交易面板\n` +
+      `/ai - AI 交易总览\n` +
       `/checkin - 每日签到\n` +
       `/invite - 邀请好友\n` +
       `/closeall - 紧急平仓\n` +
@@ -247,6 +288,7 @@ export const zh: LocaleMessages = {
     notifications:
       `🔔 <b>自动推送通知:</b>\n` +
       `• 开仓/平仓通知\n` +
+      `• AI 决策/风控告警\n` +
       `• 空投到账通知`,
   },
 
@@ -388,6 +430,42 @@ export const zh: LocaleMessages = {
     strategy: '策略: {name}',
   },
 
+  ai: {
+    title: `🤖 <b>AI 交易总览</b>\n\n━━━━━━━━━━━━━━━━`,
+    soloSection: `<b>⚡ 极速策略</b>`,
+    debateSection: `<b>🤝 共识策略</b>`,
+    researchSection: `<b>🔬 深度研究</b>`,
+    statusLine: `  运行 {running} | 暂停 {paused} | 停止 {stopped}`,
+    researchLine: `  循环中 {cycling} | 已停止 {stopped}`,
+    todayPnl: `<b>💹 今日收益</b>`,
+    budget: `<b>💰 AI 预算</b>\n  本月消耗: \${used} / \${limit}`,
+    noAi: `  暂无 AI 策略，前往 App 创建 →`,
+    btnPauseAll: '⏸ 暂停全部',
+    btnResumeAll: '▶ 恢复全部',
+    btnManageApp: '🌐 App 管理',
+    pauseSuccess: '✅ 已暂停 {count} 个策略/研究',
+    resumeSuccess: '✅ 已恢复 {count} 个策略/研究',
+    pauseEmpty: '当前没有运行中的 AI 策略',
+    resumeEmpty: '当前没有暂停中的 AI 策略',
+    failed: '❌ 获取 AI 信息失败，请稍后重试',
+  },
+
+  aiNotify: {
+    decisionOpen: '🤖 <b>AI 开仓通知</b>',
+    decisionClose: '🤖 <b>AI 平仓通知</b>',
+    symbol: '交易对: <b>{symbol}</b>',
+    side: '方向: <b>{side}</b>',
+    leverage: '杠杆: <b>{leverage}x</b>',
+    confidence: '置信度: <b>{confidence}%</b>',
+    strategy: '策略: {name}',
+    mode: '模式: {mode}',
+    pnl: '盈亏: <b>{pnl}</b>',
+    alertTitle: '⚠️ <b>AI 风控告警</b>',
+    alertStrategy: '策略: {name}',
+    alertDrawdown: '今日回撤: <b>{drawdown}%</b>',
+    alertAction: '已触发: <b>{action}</b>',
+  },
+
   unknownCommand: '❌ 未知命令，请使用 /help 查看可用命令',
 };
 
@@ -401,6 +479,7 @@ export const en: LocaleMessages = {
   menu: {
     wallet: '💰 Wallet',
     trade: '📊 Trade',
+    ai: '🤖 AI',
     checkin: '✅ Check-in',
     invite: '🎁 Invite',
     closeAll: '🚨 Close All',
@@ -440,6 +519,7 @@ export const en: LocaleMessages = {
       `/start - Main menu\n` +
       `/wallet - Wallet overview\n` +
       `/trade - Trading panel\n` +
+      `/ai - AI trading overview\n` +
       `/checkin - Daily check-in\n` +
       `/invite - Invite friends\n` +
       `/closeall - Emergency close\n` +
@@ -451,6 +531,7 @@ export const en: LocaleMessages = {
     notifications:
       `🔔 <b>Auto notifications:</b>\n` +
       `• Open/Close position alerts\n` +
+      `• AI decision/risk alerts\n` +
       `• Airdrop received alerts`,
   },
 
@@ -590,6 +671,42 @@ export const en: LocaleMessages = {
     amount: 'Amount: {amount}',
     pnl: 'PnL: {pnl} USDT',
     strategy: 'Strategy: {name}',
+  },
+
+  ai: {
+    title: `🤖 <b>AI Trading Overview</b>\n\n━━━━━━━━━━━━━━━━`,
+    soloSection: `<b>⚡ Solo Strategies</b>`,
+    debateSection: `<b>🤝 Debate Strategies</b>`,
+    researchSection: `<b>🔬 Deep Research</b>`,
+    statusLine: `  Running {running} | Paused {paused} | Stopped {stopped}`,
+    researchLine: `  Cycling {cycling} | Stopped {stopped}`,
+    todayPnl: `<b>💹 Today's PnL</b>`,
+    budget: `<b>💰 AI Budget</b>\n  This month: \${used} / \${limit}`,
+    noAi: `  No AI strategies yet, create one in App →`,
+    btnPauseAll: '⏸ Pause All',
+    btnResumeAll: '▶ Resume All',
+    btnManageApp: '🌐 Manage in App',
+    pauseSuccess: '✅ Paused {count} strategies/research',
+    resumeSuccess: '✅ Resumed {count} strategies/research',
+    pauseEmpty: 'No running AI strategies to pause',
+    resumeEmpty: 'No paused AI strategies to resume',
+    failed: '❌ Failed to get AI info, please try again later',
+  },
+
+  aiNotify: {
+    decisionOpen: '🤖 <b>AI Position Opened</b>',
+    decisionClose: '🤖 <b>AI Position Closed</b>',
+    symbol: 'Pair: <b>{symbol}</b>',
+    side: 'Side: <b>{side}</b>',
+    leverage: 'Leverage: <b>{leverage}x</b>',
+    confidence: 'Confidence: <b>{confidence}%</b>',
+    strategy: 'Strategy: {name}',
+    mode: 'Mode: {mode}',
+    pnl: 'PnL: <b>{pnl}</b>',
+    alertTitle: '⚠️ <b>AI Risk Alert</b>',
+    alertStrategy: 'Strategy: {name}',
+    alertDrawdown: 'Today drawdown: <b>{drawdown}%</b>',
+    alertAction: 'Triggered: <b>{action}</b>',
   },
 
   unknownCommand: '❌ Unknown command, use /help to see available commands',

@@ -31,12 +31,16 @@ export class MembershipPlanResponse {
   discountPercent?: number | null;
   monthlyPrice: string; // 折合月费
   maxStrategies: number;
+  gasFeeRate: string; // Pro 费率 '0.20'
 }
 
 // 会员状态响应
 export class MembershipStatusResponse {
   isMember: boolean;
   status: 'none' | 'active' | 'expired';
+  tier: 'free' | 'pro';
+  gasFeeRate: string;
+  maxStrategies: number;
   currentPlan?: {
     code: string;
     name: string;

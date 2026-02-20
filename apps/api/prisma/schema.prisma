@@ -1561,12 +1561,14 @@ model ReferralConfig {
   id String @id @default("default")
 
   // 返佣比例配置（百分比）
-  level1Rate Decimal @default(10) @db.Decimal(5, 2) @map("level1_rate") // 一级返佣 10%
-  level2Rate Decimal @default(5)  @db.Decimal(5, 2) @map("level2_rate") // 二级返佣 5%
-  level3Rate Decimal @default(2)  @db.Decimal(5, 2) @map("level3_rate") // 三级返佣 2%
+  // 仅 2 级，level3Rate 保留字段但不使用
+  level1Rate Decimal @default(10) @db.Decimal(5, 2) @map("level1_rate") // 一级返佣 10%（直接邀请人）
+  level2Rate Decimal @default(5)  @db.Decimal(5, 2) @map("level2_rate") // 二级返佣 5%（邀请人的邀请人）
+  level3Rate Decimal @default(0)  @db.Decimal(5, 2) @map("level3_rate") // 三级返佣 0%（不启用）
 
-  // 返佣类型：subscription（订阅费返佣）、gas_fee（燃油费返佣）
-  enabledTypes String[] @default(["subscription"]) @map("enabled_types")
+  // 返佣来源类型：trading = 燃油费
+  // 业务规则：订阅费为平台纯收入不参与返佣；质押分红不参与返佣
+  enabledTypes String[] @default(["trading"]) @map("enabled_types")
 
   // 是否启用
   isActive Boolean @default(true) @map("is_active")
@@ -1900,6 +1902,11 @@ model AiConfig {
   amountPerTrade    Decimal  @default(50) @db.Decimal(18, 8) @map("amount_per_trade") // 每笔交易金额 USDT
   exchangeApiKeyId  String?  @map("exchange_api_key_id")                // 关联的交易所 API Key ID
 
+  // === NoFx 风控参数对齐 ===
+  maxPositions      Int      @default(3) @map("max_positions")          // 最大同时持仓数 (1-10)
+  minPositionSizeUSD Decimal @default(12) @db.Decimal(10, 2) @map("min_position_size_usd") // 最小仓位 USDT
+  maxMarginUsage    Int      @default(90) @map("max_margin_usage")      // 最大保证金占用 % (10-95)
+
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("ai_configs")
@@ -1942,11 +1949,20 @@ model AiResearchSession {
   executedTradeId String? @map("executed_trade_id")
   totalCost      Decimal  @default(0) @db.Decimal(18, 8) @map("total_cost") // LLM API 成本
   errorMessage   String?  @map("error_message")
+
+  // 循环字段 (Phase 10: Research Auto-Cycling)
+  cycleNumber      Int      @default(0) @map("cycle_number")       // 0=单次, 1+=循环周期号
+  rootSessionId    String?  @map("root_session_id")                // 子会话指向根会话
+  cyclingConfig    Json?    @map("cycling_config")                 // { enabled, intervalMinutes, maxCycles, ... }
+  campaignStatus   String?  @map("campaign_status")                // running/paused/stopped/completed (仅根会话)
+  exchangeApiKeyId String?  @map("exchange_api_key_id")            // 绑定的交易所 Key
+
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([userId, status])
+  @@index([rootSessionId])
   @@map("ai_research_sessions")
 }
 
@@ -1973,12 +1989,18 @@ model AiStrategy {
   exchangeApiKeyId  String?  @map("exchange_api_key_id")
   apiKeys           Json     @default("{}") @map("api_keys")  // LLM API Keys
   models            Json     @default("[]")                     // 启用的 LLM 模型列表
+  debateConfig      Json?    @map("debate_config")              // { maxRounds, riskRounds, temperature }
+  stopConditions    Json?    @map("stop_conditions")             // { maxCycles, profitTargetPercent, maxLossPercent }
+  cycleCount        Int      @default(0) @map("cycle_count")    // 已执行分析周期数
+  gridRuntimeState  Json?    @map("grid_runtime_state")           // 网格运行时状态（与 gridConfig 分离）
+  consecutiveFailures Int    @default(0) @map("consecutive_failures") // 连续失败次数（≥3 自动暂停）
   lastCycleAt       DateTime? @map("last_cycle_at")              // 最近一次周期执行时间
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   logs              AiStrategyLog[]
   competitions      AiStrategyCompetition[]
+  debateSessions    AiDebateSession[]
   positions         Position[] @relation("AiStrategyPositions")
 
   @@index([userId])
@@ -1994,6 +2016,7 @@ model AiStrategyLog {
   decision        Json     // { action, confidence, leverage, positionSize, sl, tp, reasoning }
   executed        Boolean  @default(false)
   executionResult Json?    @map("execution_result") // { orderId, price, amount, error? }
+  debateSessionId String?  @map("debate_session_id") // 关联辩论会话 (debate 模式)
   createdAt       DateTime @default(now()) @map("created_at")
 
   strategy        AiStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
@@ -2019,4 +2042,32 @@ model AiStrategyCompetition {
   @@index([strategyId])
   @@index([period, snapshotAt])
   @@map("ai_strategy_competitions")
+}
+
+// 产品 B: AI 辩论会话（4阶段流水线记录）
+model AiDebateSession {
+  id              String    @id @default(uuid())
+  strategyId      String    @map("strategy_id")
+  userId          String    @map("user_id")
+  symbol          String
+  status          String    @default("pending")  // pending|debating|risk_review|voting|completed|failed
+  // Stage 2: 投资辩论结果
+  investDebate    Json?     @map("invest_debate")   // { entries, rounds, convergedAt, voteResult }
+  // Stage 3: 风控辩论结果
+  riskDebate      Json?     @map("risk_debate")     // { debateHistory, judgeVerdict }
+  // Stage 4: 多模型共识投票
+  votes           Json      @default("[]")          // ConsensusVote[]
+  consensus       Json?                              // { action, confidence, leverage, sl, tp }
+  totalCost       Decimal   @default(0) @db.Decimal(18, 8) @map("total_cost")
+  totalLatencyMs  Int       @default(0) @map("total_latency_ms")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  strategy        AiStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+
+  @@index([strategyId])
+  @@index([userId, status])
+  @@index([strategyId, createdAt])
+  @@map("ai_debate_sessions")
 }

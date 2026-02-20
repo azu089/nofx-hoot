@@ -132,11 +132,12 @@ export interface ResearchResult {
  * 币种来源配置（参考 NoFx CoinSourceConfig）
  */
 export interface CoinSourceConfig {
-  mode: 'static' | 'ai' | 'oi_top';
+  mode: 'static' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
   coins?: string[]; // static 模式
-  maxCoins?: number; // ai/oi_top 模式
+  maxCoins?: number; // ai/oi_top/oi_low/mixed 模式
   criteria?: string; // ai 模式
   minOiChange?: number; // oi_top 模式
+  excludedCoins?: string[]; // 排除币种列表
 }
 
 /**
@@ -145,7 +146,18 @@ export interface CoinSourceConfig {
 export interface IndicatorConfig {
   timeframe: string;
   secondaryTimeframe?: string;
+  selectedTimeframes?: string[];
+  primaryTimeframe?: string;
+  klineCount?: number;
   indicators: string[]; // ['RSI', 'MACD', 'BB', 'ATR', ...]
+  enableEma?: boolean; emaPeriods?: string;
+  enableMacd?: boolean;
+  enableRsi?: boolean; rsiPeriods?: string;
+  enableAtr?: boolean; atrPeriods?: string;
+  enableBoll?: boolean; bollPeriods?: string;
+  enableVolume?: boolean;
+  enableOi?: boolean;
+  enableFundingRate?: boolean;
 }
 
 /**
@@ -161,6 +173,10 @@ export interface RiskControlConfig {
   circuitBreaker: number;
   maxTradeAmountUSD?: number; // 单笔交易金额上限（USDT），不设则由 AI + 余额自动计算
   allocatedCapital?: number; // AI 资金池上限（USDT），仓位百分比基于此值计算而非交易所全部余额
+  // 对齐 NoFx RiskControlConfig (store/strategy.go):
+  btcEthMaxPositionValueRatio?: number;  // BTC/ETH 仓位价值倍数上限，默认 5.0
+  altcoinMaxPositionValueRatio?: number; // 山寨币仓位价值倍数上限，默认 1.0
+  excludedCoins?: string[]; // 排除币种列表（不开仓）
 }
 
 /**

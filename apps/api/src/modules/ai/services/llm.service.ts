@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
  * LLM 调用结果
@@ -60,6 +61,13 @@ interface ModelCost {
 export class LLMService {
   private readonly logger = new Logger(LLMService.name);
 
+  // 平台 DB 配置缓存（5 分钟 TTL）
+  private platformCfgCache: Record<string, { apiKey: string; enabled: boolean }> | null = null;
+  private platformCfgLoadedAt = 0;
+  private readonly PLATFORM_CFG_TTL_MS = 5 * 60 * 1000; // 5 分钟
+
+  constructor(private prisma: PrismaService) {}
+
   // 模型成本配置（每百万 Token）
   private readonly modelCosts: Record<string, ModelCost> = {
     'deepseek-chat': { input: 0.14, output: 0.28 },
@@ -73,11 +81,45 @@ export class LLMService {
   };
 
   /**
+   * 从 DB 或缓存中获取平台 API Key（三轨优先级第二层）
+   * 读取 platform_configs.llm_platform_config，带 5 分钟 TTL 缓存
+   */
+  private async getPlatformApiKey(provider: string): Promise<string> {
+    const now = Date.now();
+    if (!this.platformCfgCache || now - this.platformCfgLoadedAt > this.PLATFORM_CFG_TTL_MS) {
+      try {
+        const row = await this.prisma.platformConfig.findUnique({
+          where: { key: 'llm_platform_config' },
+        });
+        if (row?.value) {
+          const parsed = JSON.parse(row.value) as {
+            providers?: Record<string, { apiKey?: string; enabled?: boolean }>;
+          };
+          this.platformCfgCache = {};
+          for (const [name, cfg] of Object.entries(parsed.providers || {})) {
+            this.platformCfgCache[name] = { apiKey: cfg.apiKey || '', enabled: cfg.enabled ?? true };
+          }
+        } else {
+          this.platformCfgCache = {};
+        }
+      } catch (err) {
+        this.logger.warn(`读取平台 LLM 配置失败: ${err.message}`);
+        this.platformCfgCache = {};
+      }
+      this.platformCfgLoadedAt = now;
+    }
+    return this.platformCfgCache[provider]?.apiKey || '';
+  }
+
+  /**
    * 根据模型 ID 和用户 API Key 创建 OpenAI 客户端
    *
-   * 双轨制解析：优先使用用户自备 Key，回退到平台默认 Key（环境变量）
+   * 三轨制解析（优先级从高到低）：
+   * 1. 用户自备 Key（AiConfig.apiKeys，AES-256-GCM 加密）
+   * 2. 平台 DB 配置（PlatformConfig.llm_platform_config，5 分钟 TTL 缓存）
+   * 3. 环境变量（DEEPSEEK_API_KEY 等，兜底）
    */
-  private createClient(modelId: string, apiKeys: UserApiKeys): OpenAI {
+  private async createClient(modelId: string, apiKeys: UserApiKeys): Promise<OpenAI> {
     let baseURL = '';
     let apiKey = '';
     let provider = '';
@@ -85,34 +127,34 @@ export class LLMService {
     if (modelId.startsWith('deepseek')) {
       provider = 'deepseek';
       baseURL = 'https://api.deepseek.com/v1';
-      apiKey = apiKeys.deepseek || process.env.DEEPSEEK_API_KEY || '';
+      apiKey = apiKeys.deepseek || await this.getPlatformApiKey('deepseek') || process.env.DEEPSEEK_API_KEY || '';
     } else if (modelId.startsWith('gpt-')) {
       provider = 'openai';
       baseURL = 'https://api.openai.com/v1';
-      apiKey = apiKeys.openai || process.env.OPENAI_API_KEY || '';
+      apiKey = apiKeys.openai || await this.getPlatformApiKey('openai') || process.env.OPENAI_API_KEY || '';
     } else if (modelId.startsWith('claude-') || modelId.startsWith('gemini-')) {
       provider = 'openrouter';
       baseURL = 'https://openrouter.ai/api/v1';
-      apiKey = apiKeys.openrouter || process.env.OPENROUTER_API_KEY || '';
+      apiKey = apiKeys.openrouter || await this.getPlatformApiKey('openrouter') || process.env.OPENROUTER_API_KEY || '';
     } else if (modelId.startsWith('qwen-')) {
       provider = 'qwen';
       baseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-      apiKey = apiKeys.qwen || process.env.QWEN_API_KEY || '';
+      apiKey = apiKeys.qwen || await this.getPlatformApiKey('qwen') || process.env.QWEN_API_KEY || '';
     } else if (modelId.startsWith('grok-')) {
       provider = 'grok';
       baseURL = 'https://api.x.ai/v1';
-      apiKey = apiKeys.grok || process.env.GROK_API_KEY || '';
+      apiKey = apiKeys.grok || await this.getPlatformApiKey('grok') || process.env.GROK_API_KEY || '';
     } else if (modelId.startsWith('moonshot-')) {
       provider = 'kimi';
       baseURL = 'https://api.moonshot.cn/v1';
-      apiKey = apiKeys.kimi || process.env.KIMI_API_KEY || '';
+      apiKey = apiKeys.kimi || await this.getPlatformApiKey('kimi') || process.env.KIMI_API_KEY || '';
     } else {
       throw new Error(`不支持的模型: ${modelId}`);
     }
 
     if (!apiKey) {
       throw new Error(
-        `${provider} API Key 未配置。用户未提供且平台未设置默认 Key（环境变量 ${this.getEnvVarName(provider)}）`,
+        `${provider} API Key 未配置。用户未提供、平台 DB 未配置且环境变量 ${this.getEnvVarName(provider)} 为空`,
       );
     }
 
@@ -197,7 +239,7 @@ export class LLMService {
     const startTime = Date.now();
 
     try {
-      const client = this.createClient(modelId, apiKeys);
+      const client = await this.createClient(modelId, apiKeys);
 
       this.logger.log(`调用 ${modelId}: ${userMessage.slice(0, 50)}...`);
 

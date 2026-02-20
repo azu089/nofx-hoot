@@ -38,6 +38,9 @@ import {
   getApiKeyBalance,
   getTradeHistory,
   getTradeLogs,
+  getAiOverview,
+  pauseAllAi,
+  resumeAllAi,
 } from './utils/api';
 
 // 空投奖励配置 v4（与后端 airdrop.dto.ts 保持一致）
@@ -104,16 +107,17 @@ function getMainMenu(lang: Language) {
     .text(msg.menu.wallet, 'menu_wallet')
     .text(msg.menu.trade, 'menu_trade')
     .row()
+    .text(msg.menu.ai, 'menu_ai')
     .text(msg.menu.checkin, 'menu_checkin')
-    .text(msg.menu.invite, 'menu_invite')
     .row()
+    .text(msg.menu.invite, 'menu_invite')
     .text(msg.menu.closeAll, 'menu_closeall')
+    .row()
     .text(msg.menu.help, 'menu_help')
+    .text(msg.menu.switchLang, 'menu_lang')
     .row()
     .url(msg.menu.joinGroup, GROUP_URL)
-    .url(msg.menu.channel, CHANNEL_URL)
-    .row()
-    .text(msg.menu.switchLang, 'menu_lang');
+    .url(msg.menu.channel, CHANNEL_URL);
 }
 
 // ==================== 功能面板构建 ====================
@@ -242,6 +246,65 @@ function getTradeKeyboard(msg: LocaleMessages) {
     .text(msg.trade.btnCloseAll, 'trade_closeall');
 }
 
+// AI 面板消息
+async function buildAiMessage(telegramId: string, msg: LocaleMessages) {
+  const overview = await getAiOverview(telegramId);
+
+  const { solo, debate, research, todayPnl, budget } = overview;
+  const hasAnything =
+    solo.running + solo.paused + solo.stopped +
+    debate.running + debate.paused + debate.stopped +
+    research.cycling + research.stopped > 0;
+
+  let message = `${msg.ai.title}\n`;
+
+  if (!hasAnything) {
+    message += `${msg.ai.noAi}\n`;
+  } else {
+    // 极速策略
+    if (solo.running + solo.paused + solo.stopped > 0) {
+      message +=
+        `${msg.ai.soloSection}\n` +
+        `${t(msg.ai.statusLine, { running: solo.running, paused: solo.paused, stopped: solo.stopped })}\n\n`;
+    }
+
+    // 共识策略
+    if (debate.running + debate.paused + debate.stopped > 0) {
+      message +=
+        `${msg.ai.debateSection}\n` +
+        `${t(msg.ai.statusLine, { running: debate.running, paused: debate.paused, stopped: debate.stopped })}\n\n`;
+    }
+
+    // 深度研究
+    if (research.cycling + research.stopped > 0) {
+      message +=
+        `${msg.ai.researchSection}\n` +
+        `${t(msg.ai.researchLine, { cycling: research.cycling, stopped: research.stopped })}\n\n`;
+    }
+  }
+
+  // 今日 PnL
+  const pnlSign = todayPnl >= 0 ? '+' : '';
+  const pnlEmoji = todayPnl >= 0 ? '📈' : '📉';
+  message +=
+    `${msg.ai.todayPnl}\n` +
+    `  ${pnlEmoji} ${pnlSign}${todayPnl.toFixed(2)} USDT\n\n`;
+
+  // 预算
+  message += `${t(msg.ai.budget, { used: budget.used.toFixed(2), limit: budget.limit.toFixed(0) })}\n`;
+
+  return message;
+}
+
+// AI 面板按钮
+function getAiKeyboard(msg: LocaleMessages, lang: Language) {
+  return new InlineKeyboard()
+    .text(msg.ai.btnPauseAll, 'ai_pause_all')
+    .text(msg.ai.btnResumeAll, 'ai_resume_all')
+    .row()
+    .webApp(msg.ai.btnManageApp, WEB_APP_URL + '/ai');
+}
+
 // ==================== Bot 命令 ====================
 
 // /start 命令 - 自动登录/注册 + 主菜单
@@ -368,6 +431,26 @@ bot.command('trade', async (ctx) => {
   } catch (error) {
     console.error('交易面板查询失败:', error);
     await ctx.reply(msg.trade.failed);
+  }
+});
+
+// /ai 命令 - AI 交易总览
+bot.command('ai', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  try {
+    const message = await buildAiMessage(telegramId, msg);
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: getAiKeyboard(msg, lang),
+    });
+  } catch (error) {
+    console.error('AI 面板查询失败:', error);
+    await ctx.reply(msg.ai.failed);
   }
 });
 
@@ -683,6 +766,97 @@ bot.callbackQuery('menu_help', async (ctx) => {
       `${msg.help.notifications}`,
     { parse_mode: 'HTML' }
   );
+});
+
+// AI 按钮
+bot.callbackQuery('menu_ai', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  await ctx.answerCallbackQuery();
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  try {
+    const message = await buildAiMessage(telegramId, msg);
+    await ctx.reply(message, {
+      parse_mode: 'HTML',
+      reply_markup: getAiKeyboard(msg, lang),
+    });
+  } catch (error) {
+    console.error('AI 面板查询失败:', error);
+    await ctx.reply(msg.ai.failed);
+  }
+});
+
+// AI 暂停全部回调
+bot.callbackQuery('ai_pause_all', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  try {
+    await ctx.answerCallbackQuery();
+    const result = await pauseAllAi(telegramId);
+
+    if (result.paused === 0) {
+      await ctx.reply(msg.ai.pauseEmpty, { parse_mode: 'HTML' });
+    } else {
+      await ctx.reply(
+        t(msg.ai.pauseSuccess, { count: result.paused }),
+        { parse_mode: 'HTML' },
+      );
+    }
+
+    // 刷新 AI 面板
+    try {
+      const message = await buildAiMessage(telegramId, msg);
+      await ctx.reply(message, {
+        parse_mode: 'HTML',
+        reply_markup: getAiKeyboard(msg, lang),
+      });
+    } catch { /* 刷新失败不阻断 */ }
+  } catch (error) {
+    console.error('AI 暂停全部失败:', error);
+    await ctx.answerCallbackQuery({ text: msg.ai.failed, show_alert: true });
+  }
+});
+
+// AI 恢复全部回调
+bot.callbackQuery('ai_resume_all', async (ctx) => {
+  const telegramId = ctx.from?.id.toString();
+  if (!telegramId) return;
+
+  const msg = getMsg(ctx);
+  const lang = getUserLang(ctx);
+
+  try {
+    await ctx.answerCallbackQuery();
+    const result = await resumeAllAi(telegramId);
+
+    if (result.resumed === 0) {
+      await ctx.reply(msg.ai.resumeEmpty, { parse_mode: 'HTML' });
+    } else {
+      await ctx.reply(
+        t(msg.ai.resumeSuccess, { count: result.resumed }),
+        { parse_mode: 'HTML' },
+      );
+    }
+
+    // 刷新 AI 面板
+    try {
+      const message = await buildAiMessage(telegramId, msg);
+      await ctx.reply(message, {
+        parse_mode: 'HTML',
+        reply_markup: getAiKeyboard(msg, lang),
+      });
+    } catch { /* 刷新失败不阻断 */ }
+  } catch (error) {
+    console.error('AI 恢复全部失败:', error);
+    await ctx.answerCallbackQuery({ text: msg.ai.failed, show_alert: true });
+  }
 });
 
 // ==================== 交易子面板回调 ====================
@@ -1117,6 +1291,64 @@ app.post('/notify-trade', async (req: Request, res: Response) => {
   }
 });
 
+// AI 通知端点 - 供后端 AI 模块调用（决策通知 + 风控告警）
+app.post('/notify-ai', async (req: Request, res: Response) => {
+  try {
+    const { telegramId, type, language, ...data } = req.body;
+
+    if (!telegramId || !type) {
+      return res.status(400).json({ error: '缺少必要参数: telegramId, type' });
+    }
+
+    const lang = (language === 'zh' ? 'zh' : 'en') as Language;
+    const msg = getLocale(lang);
+
+    let message = '';
+
+    if (type === 'decision_open' || type === 'decision_close') {
+      // AI 决策通知（开仓/平仓）
+      const title = type === 'decision_open' ? msg.aiNotify.decisionOpen : msg.aiNotify.decisionClose;
+      message = `${title}\n\n`;
+
+      if (data.symbol) message += `${t(msg.aiNotify.symbol, { symbol: data.symbol })}\n`;
+      if (data.side) message += `${t(msg.aiNotify.side, { side: data.side.toUpperCase() })}\n`;
+      if (data.leverage) message += `${t(msg.aiNotify.leverage, { leverage: data.leverage })}\n`;
+      if (data.confidence) message += `${t(msg.aiNotify.confidence, { confidence: data.confidence })}\n`;
+      if (data.strategyName) message += `${t(msg.aiNotify.strategy, { name: data.strategyName })}\n`;
+      if (data.tradingMode) {
+        const modeMap: Record<string, string> = lang === 'zh'
+          ? { solo: '⚡ 极速', debate: '🤝 共识', research: '🔬 深研' }
+          : { solo: '⚡ Solo', debate: '🤝 Debate', research: '🔬 Research' };
+        message += `${t(msg.aiNotify.mode, { mode: modeMap[data.tradingMode] || data.tradingMode })}\n`;
+      }
+      if (data.pnl) message += `${t(msg.aiNotify.pnl, { pnl: data.pnl })}\n`;
+    } else if (type === 'alert') {
+      // 风控告警
+      message = `${msg.aiNotify.alertTitle}\n\n`;
+      if (data.strategyName) message += `${t(msg.aiNotify.alertStrategy, { name: data.strategyName })}\n`;
+      if (data.drawdown) message += `${t(msg.aiNotify.alertDrawdown, { drawdown: data.drawdown })}\n`;
+      if (data.action) {
+        const actionMap: Record<string, string> = lang === 'zh'
+          ? { paused: '自动暂停', stopped: '自动停止' }
+          : { paused: 'Auto Paused', stopped: 'Auto Stopped' };
+        message += `${t(msg.aiNotify.alertAction, { action: actionMap[data.action] || data.action })}\n`;
+      }
+    } else {
+      return res.status(400).json({ error: '无效的 type，必须是 decision_open, decision_close 或 alert' });
+    }
+
+    await bot.api.sendMessage(telegramId, message, { parse_mode: 'HTML' });
+    console.log(`✅ AI 通知已推送: ${telegramId} ${type}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('推送 AI 通知失败:', error);
+    res.status(500).json({
+      error: '推送失败',
+      message: error instanceof Error ? error.message : '未知错误',
+    });
+  }
+});
+
 // 批量发送消息
 app.post('/send-bulk', async (req: Request, res: Response) => {
   try {
@@ -1160,6 +1392,7 @@ app.listen(HTTP_PORT, () => {
   console.log(`🌐 HTTP API 服务已启动: http://localhost:${HTTP_PORT}`);
   console.log(`   - POST /send-message - 发送单条消息`);
   console.log(`   - POST /notify-trade - 交易通知推送`);
+  console.log(`   - POST /notify-ai - AI 决策/告警通知`);
   console.log(`   - POST /send-bulk - 批量发送消息`);
   console.log(`   - GET /health - 健康检查`);
 });
@@ -1167,12 +1400,13 @@ app.listen(HTTP_PORT, () => {
 // 设置 Bot 命令菜单
 async function setupBotMenu() {
   try {
-    // 中文命令（7 核心 + 2 工具）
+    // 中文命令（8 核心 + 2 工具）
     await bot.api.setMyCommands(
       [
         { command: 'start', description: '开始使用 / 主菜单' },
         { command: 'wallet', description: '钱包总览' },
         { command: 'trade', description: '交易面板' },
+        { command: 'ai', description: 'AI 交易总览' },
         { command: 'checkin', description: '每日签到领取 HOOT' },
         { command: 'invite', description: '邀请好友赚取奖励' },
         { command: 'closeall', description: '紧急全部平仓' },
@@ -1187,6 +1421,7 @@ async function setupBotMenu() {
         { command: 'start', description: 'Start / Main Menu' },
         { command: 'wallet', description: 'Wallet overview' },
         { command: 'trade', description: 'Trading panel' },
+        { command: 'ai', description: 'AI trading overview' },
         { command: 'checkin', description: 'Daily check-in for HOOT' },
         { command: 'invite', description: 'Invite friends for rewards' },
         { command: 'closeall', description: 'Emergency close all' },
@@ -1200,6 +1435,7 @@ async function setupBotMenu() {
       { command: 'start', description: 'Start / 开始' },
       { command: 'wallet', description: 'Wallet / 钱包' },
       { command: 'trade', description: 'Trade / 交易' },
+      { command: 'ai', description: 'AI / AI 交易' },
       { command: 'checkin', description: 'Check-in / 签到' },
       { command: 'invite', description: 'Invite / 邀请' },
       { command: 'closeall', description: 'Close All / 紧急平仓' },

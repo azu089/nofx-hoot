@@ -2,15 +2,18 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { AutoTraderService } from '../services/auto-trader.service';
+import { AutoTraderService } from '../services/trading/auto-trader.service';
 import { EvolutionService } from '../services/evolution.service';
+import { StrategyEngineService } from '../services/trading/strategy-engine.service';
+import { ResearchCycleService } from '../services/research/research-cycle.service';
 
 /**
  * AI 自动运行任务处理器
  *
- * 处理两种任务:
+ * 处理三种任务:
  * 1. 'strategy-cycle' — 产品 B 策略定时循环（由 StrategyEngine 注册）
- * 2. 'auto-run' — 全局自动运行（AiConfig 级别，遍历所有交易对）
+ * 2. 'research-cycle' — 产品 A 研究自动循环（由 ResearchCycleService 注册）
+ * 3. 'auto-run' — 全局自动运行（AiConfig 级别，遍历所有交易对）
  */
 @Processor('ai-auto')
 export class AutoRunProcessor extends WorkerHost {
@@ -21,6 +24,8 @@ export class AutoRunProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly autoTrader: AutoTraderService,
     private readonly evolutionService: EvolutionService,
+    private readonly strategyEngine: StrategyEngineService,
+    private readonly researchCycleService: ResearchCycleService,
   ) {
     super();
   }
@@ -32,8 +37,29 @@ export class AutoRunProcessor extends WorkerHost {
       return this.processStrategyCycle(job);
     }
 
+    if (jobName === 'research-cycle') {
+      return this.processResearchCycle(job);
+    }
+
     // 兼容旧的 auto-run 任务
     return this.processAutoRun(job);
+  }
+
+  /**
+   * 处理产品 A 研究循环任务
+   */
+  private async processResearchCycle(
+    job: Job<{ rootSessionId: string; userId: string }>,
+  ): Promise<void> {
+    const { rootSessionId } = job.data;
+    this.logger.log(`[研究循环] 触发: rootSession=${rootSessionId}`);
+
+    try {
+      await this.researchCycleService.runNextCycle(rootSessionId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '未知错误';
+      this.logger.error(`[研究循环] 失败: rootSession=${rootSessionId} - ${msg}`);
+    }
   }
 
   /**
@@ -52,6 +78,10 @@ export class AutoRunProcessor extends WorkerHost {
       this.logger.log(
         `[策略周期] 完成: 策略=${strategyId}, 分析=${result.analyzed}, 执行=${result.executed}, 错误=${result.errors}, 耗时=${result.totalLatencyMs}ms`,
       );
+
+      // 周期完成后 lazy 清理过期日志（保留 30 天）
+      // 参考 NoFx CleanOldRecords — 每次周期调用一次，低频无性能问题
+      await this.strategyEngine.cleanOldLogs(strategyId, 30).catch(() => {});
 
       return {
         analyzed: result.analyzed,

@@ -81,6 +81,7 @@ export class PositionSyncService {
             strategy: true,
           },
         },
+        aiStrategy: { select: { name: true } },
       },
     });
 
@@ -114,7 +115,7 @@ export class PositionSyncService {
           roe: (exchangePos.roe * 100).toFixed(2), // 转为百分比
           status: 'open',
           tradingType: 'futures',
-          strategyName: dbPos.subscription?.strategy?.name,
+          strategyName: dbPos.aiStrategy?.name || dbPos.subscription?.strategy?.name,
           createdAt: dbPos.createdAt,
           syncedAt: new Date(),
           syncSource: 'exchange',
@@ -147,7 +148,7 @@ export class PositionSyncService {
           roe: '0',
           status: dbPos.status,
           tradingType: dbPos.tradingType || 'spot',
-          strategyName: dbPos.subscription?.strategy?.name,
+          strategyName: dbPos.aiStrategy?.name || dbPos.subscription?.strategy?.name,
           createdAt: dbPos.createdAt,
           syncedAt: new Date(),
           syncSource: 'database',

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Key, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, ExternalLink, Copy, Check, X, AlertTriangle, Edit, Loader2, RefreshCw } from 'lucide-react'
+import { Key, Plus, Trash2, Eye, EyeOff, CheckCircle, AlertCircle, ExternalLink, Copy, Check, X, XCircle, AlertTriangle, Edit, Loader2, RefreshCw } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -80,6 +80,16 @@ export function ApiKeysPage() {
   const [selectedDexExchange, setSelectedDexExchange] = useState<string | null>(null)
   const [selectedDexWallet, setSelectedDexWallet] = useState<ApiKeyResponse | null>(null)
   const [showDexPrivateKey, setShowDexPrivateKey] = useState(false)
+
+  // 验证弹窗状态（与移动端一致）
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [verifyStatus, setVerifyStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [verifyResult, setVerifyResult] = useState<{
+    permissions?: string[]
+    assets?: { symbol: string; amount: string; value: number }[]
+    totalValue?: number
+    error?: string
+  } | null>(null)
 
   // 获取 API Key 列表（与 wallet-page-v3 统一数据结构）
   const { data: apiKeysData, isLoading } = useQuery({
@@ -188,6 +198,52 @@ export function ApiKeysPage() {
       toast.error(error.message || '更新失败')
     },
   })
+
+  // 验证 API Key - 调用真实 API（与移动端一致的弹窗流程）
+  const handleVerify = async (key: ApiKeyResponse) => {
+    setSelectedApiKey(key)
+    setVerifyStatus('loading')
+    setVerifyResult(null)
+    setShowVerifyModal(true)
+
+    try {
+      const response = await api.get<{
+        valid: boolean
+        permissions: string[]
+        balances: { symbol: string; free: number; total: number; usdValue?: number }[]
+        totalUsdValue: number
+        error?: string
+      }>(`/api-keys/${key.id}/verify`)
+
+      const data = response.data
+      if (data.valid) {
+        setVerifyStatus('success')
+        setVerifyResult({
+          permissions: data.permissions,
+          assets: data.balances.map(b => ({
+            symbol: b.symbol,
+            amount: b.total.toFixed(
+              ['USDT', 'USD', 'BUSD', 'USDC'].includes(b.symbol) ? 2 : 8
+            ),
+            value: b.usdValue || 0
+          })),
+          totalValue: data.totalUsdValue
+        })
+        // 刷新余额缓存
+        queryClient.invalidateQueries({ queryKey: ['api-key-balance', key.id] })
+      } else {
+        setVerifyStatus('error')
+        setVerifyResult({
+          error: data.error || '验证失败，请检查 API Key 配置'
+        })
+      }
+    } catch (err: unknown) {
+      setVerifyStatus('error')
+      setVerifyResult({
+        error: err instanceof Error ? err.message : '验证失败，请检查网络连接'
+      })
+    }
+  }
 
   // 表单状态
   const [formData, setFormData] = useState({
@@ -508,10 +564,10 @@ export function ApiKeysPage() {
                           {/* Exchange Logo */}
                           <div className={cn(
                             "w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden",
-                            isVerifyFailed ? "bg-[#F43F5E]/10" : "bg-[#1E1E2E]"
+                            isVerifyFailed ? "bg-[#F43F5E]/10" : "bg-[#2A2A3A]"
                           , "relative"
                           )}>
-                            <Image src={getExchangeLogo(key.exchange)} alt={getExchangeName(key.exchange)} fill className={cn("object-cover", isVerifyFailed && "opacity-50")} />
+                            <Image src={getExchangeLogo(key.exchange)} alt={getExchangeName(key.exchange)} fill className={cn("object-contain p-1.5", isVerifyFailed && "opacity-50")} />
                           </div>
 
                           {/* Info */}
@@ -567,11 +623,8 @@ export function ApiKeysPage() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => {
-                              queryClient.invalidateQueries({ queryKey: ['api-key-balance', key.id] })
-                              toast.info('正在刷新余额...')
-                            }}
-                            title="刷新余额"
+                            onClick={() => handleVerify(key)}
+                            title="验证连接"
                             className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"
                           >
                             <RefreshCw className={cn("w-4 h-4 text-[#9090A0] hover:text-[#F8F8FC]", isLoadingBalance && "animate-spin")} />
@@ -1499,6 +1552,156 @@ export function ApiKeysPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ===== 验证结果弹窗（与移动端对齐） ===== */}
+      {showVerifyModal && selectedApiKey && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-5"
+          onClick={() => {
+            setShowVerifyModal(false)
+            setSelectedApiKey(null)
+            setVerifyResult(null)
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 右上角关闭 */}
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVerifyModal(false)
+                  setSelectedApiKey(null)
+                  setVerifyResult(null)
+                }}
+                className="p-1 hover:bg-[#1E1E2E] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-[#9090A0]" />
+              </button>
+            </div>
+
+            <div className="text-center">
+              {/* Loading 状态 */}
+              {verifyStatus === 'loading' && (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#06B6D4]/10 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-[#06B6D4] animate-spin" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">验证中</h3>
+                  <p className="text-[#94A3B8] text-sm">正在验证 {getExchangeName(selectedApiKey.exchange)} 连接状态...</p>
+                </>
+              )}
+
+              {/* 成功状态 */}
+              {verifyStatus === 'success' && verifyResult && (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-[#10B981]" />
+                  </div>
+                  <h3 className="text-xl font-bold text-[#10B981] mb-2">验证成功</h3>
+                  <p className="text-[#94A3B8] text-sm mb-5">API Key 连接正常，以下是账户信息</p>
+
+                  {/* 验证详情 */}
+                  <div className="space-y-3 text-left">
+                    {/* 交易所信息 */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                      <div className="w-10 h-10 rounded-xl bg-[#2A2A3A] flex items-center justify-center overflow-hidden relative">
+                        <Image src={getExchangeLogo(selectedApiKey.exchange)} alt={getExchangeName(selectedApiKey.exchange)} fill className="object-contain p-1" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-white text-sm">{selectedApiKey.label}</p>
+                        <p className="text-[#94A3B8] text-xs">{getExchangeName(selectedApiKey.exchange)} · <span className="font-mono">{selectedApiKey.maskedKey}</span></p>
+                      </div>
+                    </div>
+
+                    {/* 权限列表 */}
+                    {verifyResult.permissions && verifyResult.permissions.length > 0 && (
+                      <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                        <p className="text-[#94A3B8] text-xs mb-2">API 权限</p>
+                        <div className="flex flex-wrap gap-2">
+                          {verifyResult.permissions.map((perm, index) => (
+                            <span key={index} className="px-2.5 py-1 rounded-lg bg-[#10B981]/10 text-[#10B981] text-xs font-medium">
+                              {perm}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 资产列表 */}
+                    <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                      {/* 总资产 */}
+                      <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
+                        <span className="text-[#94A3B8] text-sm">总资产价值</span>
+                        <span className="text-xl font-bold font-mono text-[#10B981]">${verifyResult.totalValue?.toLocaleString()}</span>
+                      </div>
+                      {/* 币种明细 */}
+                      {verifyResult.assets && verifyResult.assets.length > 0 && (
+                        <>
+                          <p className="text-[#94A3B8] text-xs mb-2">资产明细</p>
+                          <div className="space-y-2.5">
+                            {verifyResult.assets.map((asset, index) => (
+                              <div key={index} className="flex justify-between items-center">
+                                <span className="text-white font-medium text-sm">{asset.symbol}</span>
+                                <span className="text-white font-mono text-sm">{asset.amount}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* 失败状态 */}
+              {verifyStatus === 'error' && verifyResult && (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
+                    <XCircle className="w-8 h-8 text-[#F43F5E]" />
+                  </div>
+                  <h3 className="text-xl font-bold text-[#F43F5E] mb-2">验证失败</h3>
+                  <p className="text-[#94A3B8] text-sm mb-5">无法连接到交易所，请检查配置</p>
+
+                  {/* 错误详情 */}
+                  <div className="p-3 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left mb-4">
+                    <p className="text-sm text-[#F43F5E] flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <span>{verifyResult.error}</span>
+                    </p>
+                  </div>
+
+                  {/* 排查建议 */}
+                  <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A] text-left">
+                    <p className="text-[#94A3B8] text-xs mb-2">请检查以下项目</p>
+                    <ul className="text-[#94A3B8] text-xs space-y-1.5">
+                      <li>• API Key 和 Secret 是否正确</li>
+                      <li>• API Key 是否已过期</li>
+                      <li>• IP 白名单是否包含服务器地址</li>
+                      <li>• 是否开启了交易权限</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+
+              {/* 底部关闭按钮 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVerifyModal(false)
+                  setSelectedApiKey(null)
+                  setVerifyResult(null)
+                }}
+                className="w-full mt-5 py-3.5 bg-[#1E1E2E] hover:bg-[#2A2A3A] border border-[#2A2A3A] text-white rounded-xl transition-colors font-medium"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

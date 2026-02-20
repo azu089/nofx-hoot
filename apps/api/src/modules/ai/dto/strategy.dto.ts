@@ -57,6 +57,22 @@ export class CreateStrategyDto {
 
   @IsOptional()
   models?: string[]; // 启用的 LLM 模型
+
+  @IsOptional()
+  @IsObject()
+  debateConfig?: {
+    maxRounds?: number;   // 2-5, 投资辩论轮数 (默认 3)
+    riskRounds?: number;  // 2-3, 风控辩论轮数 (默认 3)
+    temperature?: number; // 0.3-1.0, LLM 温度 (默认 0.7)
+  };
+
+  @IsOptional()
+  @IsObject()
+  stopConditions?: {
+    maxCycles?: number;           // 最大运行周期数 (0 = 无限)
+    profitTargetPercent?: number; // 达到此盈利%后自动停止
+    maxLossPercent?: number;      // 达到此亏损%后自动停止
+  };
 }
 
 /**
@@ -111,4 +127,20 @@ export class UpdateStrategyDto {
 
   @IsOptional()
   models?: string[];
+
+  @IsOptional()
+  @IsObject()
+  debateConfig?: {
+    maxRounds?: number;
+    riskRounds?: number;
+    temperature?: number;
+  };
+
+  @IsOptional()
+  @IsObject()
+  stopConditions?: {
+    maxCycles?: number;
+    profitTargetPercent?: number;
+    maxLossPercent?: number;
+  };
 }

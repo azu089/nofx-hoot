@@ -43,6 +43,7 @@ import { AdminReferralService } from './services/admin-referral.service';
 import { AdminSignalService } from './services/admin-signal.service';
 import { AdminExchangeService } from './services/admin-exchange.service';
 import { AdminConfigService } from './services/admin-config.service';
+import { AdminAiService } from './services/admin-ai.service';
 import { CreateExchangeDto, UpdateExchangeDto } from './dto/exchange.dto';
 
 @Controller('admin')
@@ -65,6 +66,7 @@ export class AdminController {
     private signalService: AdminSignalService,
     private exchangeService: AdminExchangeService,
     private configService: AdminConfigService,
+    private adminAiService: AdminAiService,
   ) {}
 
   // ==================== 仪表盘 ====================
@@ -1204,6 +1206,176 @@ export class AdminController {
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.configService.updateConfig(key, body.value, adminId);
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== AI 智能交易管理 ====================
+
+  /**
+   * AI 总览统计
+   * GET /admin/ai/overview
+   */
+  @Get('ai/overview')
+  async getAiOverview() {
+    const data = await this.adminAiService.getAiOverview();
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 全平台策略列表
+   * GET /admin/ai/strategies
+   */
+  @Get('ai/strategies')
+  async getAiStrategies(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+    @Query('status') status?: string,
+    @Query('tradingMode') tradingMode?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const data = await this.adminAiService.getStrategies({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      userId,
+      status,
+      tradingMode,
+      keyword,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 策略详情
+   * GET /admin/ai/strategies/:id
+   */
+  @Get('ai/strategies/:id')
+  async getAiStrategyDetail(@Param('id') id: string) {
+    const data = await this.adminAiService.getStrategyDetail(id);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 紧急停止策略
+   * POST /admin/ai/strategies/:id/force-stop
+   */
+  @Post('ai/strategies/:id/force-stop')
+  async forceStopAiStrategy(
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+  ) {
+    const data = await this.adminAiService.forceStopStrategy(id, body.reason || '管理员操作');
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 全平台研究会话列表
+   * GET /admin/ai/research
+   */
+  @Get('ai/research')
+  async getAiResearch(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+    @Query('status') status?: string,
+    @Query('symbol') symbol?: string,
+  ) {
+    const data = await this.adminAiService.getResearchSessions({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      userId,
+      status,
+      symbol,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * Token 成本统计
+   * GET /admin/ai/cost
+   */
+  @Get('ai/cost')
+  async getAiCost(
+    @Query('period') period?: 'today' | 'week' | 'month',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const data = await this.adminAiService.getCostStats({
+      period: period || 'month',
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      keyword,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 用户 AI 配置列表
+   * GET /admin/ai/configs
+   */
+  @Get('ai/configs')
+  async getAiConfigs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+    @Query('isEnabled') isEnabled?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const data = await this.adminAiService.getUserAiConfigs({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      userId,
+      isEnabled: isEnabled !== undefined ? isEnabled === 'true' : undefined,
+      keyword,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 清空用户 LLM API Keys
+   * POST /admin/ai/configs/:userId/reset-keys
+   */
+  @Post('ai/configs/:userId/reset-keys')
+  async resetUserAiKeys(@Param('userId') userId: string) {
+    const data = await this.adminAiService.resetUserApiKeys(userId);
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 停用用户 AI
+   * POST /admin/ai/configs/:userId/disable
+   */
+  @Post('ai/configs/:userId/disable')
+  async disableUserAi(
+    @Param('userId') userId: string,
+    @Body() body: { reason: string },
+  ) {
+    const data = await this.adminAiService.disableUserAi(userId, body.reason || '管理员操作');
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * AI 决策日志（安全审计）
+   * GET /admin/ai/logs
+   */
+  @Get('ai/logs')
+  async getAiLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('strategyId') strategyId?: string,
+    @Query('userId') userId?: string,
+    @Query('action') action?: string,
+    @Query('executed') executed?: string,
+  ) {
+    const data = await this.adminAiService.getDecisionLogs({
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+      strategyId,
+      userId,
+      action,
+      executed: executed !== undefined ? executed === 'true' : undefined,
+    });
     return { code: 0, message: 'success', data };
   }
 }

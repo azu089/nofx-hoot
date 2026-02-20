@@ -89,3 +89,12 @@ export { OperationLogsPage } from './logs/operations';
 export { TradeLogsPage } from './logs/trades';
 export { LoginLogsPage } from './logs/logins';
 export { SystemLogsPage } from './logs/system';
+
+// ==================== AI 智能交易管理 ====================
+export { AiOverviewPage } from './ai/overview';
+export { AiStrategiesPage } from './ai/strategies';
+export { AiResearchPage } from './ai/research';
+export { AiCostPage } from './ai/cost';
+export { AiConfigsPage } from './ai/configs';
+export { AiLogsPage } from './ai/logs';
+export { AiPlatformConfigPage } from './ai/platform-config';

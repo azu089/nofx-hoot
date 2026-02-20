@@ -4,8 +4,9 @@ import Decimal from 'decimal.js';
 
 // 手续费配置
 export const FEE_CONFIG = {
-  // 基础手续费率（盈利的百分比）
-  BASE_GAS_FEE_RATE: new Decimal('0.20'), // 20%
+  // 基础手续费率（按会员层级）
+  FREE_GAS_FEE_RATE: new Decimal('0.25'), // 25% — Free 用户
+  PRO_GAS_FEE_RATE: new Decimal('0.20'),  // 20% — Pro 用户
 
   // 质押用户折扣
   STAKING_DISCOUNT: {
@@ -61,11 +62,23 @@ export class FeeService {
   ): Promise<FeeCalculationResult> {
     const profitDecimal = new Decimal(profit);
 
+    // 根据会员状态获取基础费率
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipStatus: true, membershipExpireAt: true },
+    });
+    const isPro = user?.membershipStatus === 'active'
+      && user.membershipExpireAt != null
+      && user.membershipExpireAt > new Date();
+    const baseFeeRateForUser = isPro
+      ? FEE_CONFIG.PRO_GAS_FEE_RATE
+      : FEE_CONFIG.FREE_GAS_FEE_RATE;
+
     // 如果亏损，不收手续费
     if (profitDecimal.lte(0)) {
       return {
         profit,
-        baseFeeRate: FEE_CONFIG.BASE_GAS_FEE_RATE.toString(),
+        baseFeeRate: baseFeeRateForUser.toString(),
         stakingDiscount: '0',
         vipDiscount: '0',
         finalFeeRate: '0',
@@ -95,7 +108,7 @@ export class FeeService {
     }
 
     // 计算最终费率
-    const baseFeeRate = FEE_CONFIG.BASE_GAS_FEE_RATE;
+    const baseFeeRate = baseFeeRateForUser;
     const totalDiscount = stakingDiscount.plus(vipDiscount);
     let finalFeeRate = baseFeeRate.minus(baseFeeRate.times(totalDiscount));
 
@@ -237,12 +250,12 @@ export class FeeService {
       new Decimal(0),
     );
 
-    // 判断是否有定期质押（lockDays > 0）
+    // 判断是否有定期质押（lockDays > 0）→ B 类有折扣，A 类(活期)无折扣
     const hasLocked = stakingRecords.some((r) => r.lockDays > 0);
 
     return {
       hasActiveStake: true,
-      stakeType: hasLocked ? 'locked' : 'flexible',
+      stakeType: hasLocked ? 'B' : 'A',
       totalStaked,
     };
   }

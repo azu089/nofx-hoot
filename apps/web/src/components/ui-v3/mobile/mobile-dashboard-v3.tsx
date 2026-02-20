@@ -9,12 +9,10 @@ import {
   Megaphone,
   Loader2,
   Building2,
-  Download,
   Gift,
 } from 'lucide-react'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
-import { AiDashboardCards } from './ai-dashboard-cards'
 
 interface MobileDashboardV3Props {
   onNavigate?: (path: string) => void
@@ -27,16 +25,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
   const t = useTranslations('dashboard')
   const tNav = useTranslations('nav')
-
-  // 监听 PWA 安装事件
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault()
-      ;(window as PwaWindow).__pwaInstallPrompt = e as BeforeInstallPromptEvent
-    }
-    window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
 
   // 获取真实数据
   const { data, isLoading } = useHomepageData()
@@ -119,7 +107,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
 
   const quickAccessItems = [
     { titleKey: 'quickAccess.exchanges', icon: Building2, path: '/exchanges', gradient: 'from-cyan-500 to-blue-500' },
-    { titleKey: 'quickAccess.installApp', icon: Download, path: 'pwa-install', gradient: 'from-emerald-500 to-teal-500' },
+    { titleKey: 'quickAccess.strategies', icon: TrendingUp, path: '/strategies', gradient: 'from-emerald-500 to-teal-500' },
     { titleKey: 'quickAccess.checkin', icon: Gift, path: '/airdrop', gradient: 'from-purple-500 to-pink-500' },
     { titleKey: 'quickAccess.inviteFriends', icon: Users, path: '/referral', gradient: 'from-orange-500 to-red-500' }
   ]
@@ -274,23 +262,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
               <button
                 key={item.path}
                 type="button"
-                onClick={() => {
-                  if (item.path === 'pwa-install') {
-                    // PWA 安装逻辑
-                    const deferredPrompt = (window as PwaWindow).__pwaInstallPrompt
-                    if (deferredPrompt) {
-                      deferredPrompt.prompt()
-                      deferredPrompt.userChoice.then(() => {
-                        ;(window as PwaWindow).__pwaInstallPrompt = null
-                      })
-                    } else {
-                      // 已安装或不支持，跳转到提示页
-                      alert('请使用浏览器菜单中的「添加到主屏幕」安装应用')
-                    }
-                    return
-                  }
-                  onNavigate?.(item.path)
-                }}
+                onClick={() => onNavigate?.(item.path)}
                 className="flex flex-col items-center py-2 active:scale-95 transition-transform"
               >
                 <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${item.gradient} flex items-center justify-center mb-1.5 shadow-lg`}>
@@ -303,12 +275,6 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
             ))}
           </div>
         </div>
-
-        {/* AI Trading Cards */}
-        <AiDashboardCards
-          onResearchClick={() => onNavigate?.('/ai-research')}
-          onStrategyClick={() => onNavigate?.('/ai-trading')}
-        />
 
         {/* Tab Switcher - Market/News */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">

@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
 
   // 开发指示器位置（避免阻挡底部导航）
   devIndicators: {
-    position: 'top-right',
+    position: 'top-left',
   },
 
   // 图片优化配置

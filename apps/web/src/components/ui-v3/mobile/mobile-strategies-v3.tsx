@@ -6,7 +6,8 @@ import {
   Plus,
   ChevronDown,
   TrendingUp,
-  Filter
+  Filter,
+  ArrowLeft
 } from 'lucide-react'
 import { useTranslations } from '@/i18n/provider'
 
@@ -31,6 +32,7 @@ interface MobileStrategiesV3Props {
   onNavigate?: (tab: string) => void
   onCreateStrategy?: () => void
   onLoadMore?: () => void
+  onBack?: () => void
   hasMore?: boolean // 是否有更多数据
   isLoadingMore?: boolean // 是否正在加载更多
 }
@@ -46,6 +48,7 @@ export function MobileStrategiesV3({
   onNavigate: _onNavigate,
   onCreateStrategy,
   onLoadMore,
+  onBack,
   hasMore = true,
   isLoadingMore = false
 }: MobileStrategiesV3Props) {
@@ -186,7 +189,14 @@ export function MobileStrategiesV3({
       {/* Header - 标题 + 创建按钮 */}
       <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
-          <div className="w-10" />
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-[#1E1E2E] transition-colors"
+            aria-label="返回"
+          >
+            <ArrowLeft className="w-5 h-5 text-white" />
+          </button>
           <h1 className="text-base font-semibold text-white">{t('title')}</h1>
           <button
             type="button"

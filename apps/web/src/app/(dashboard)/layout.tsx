@@ -3,13 +3,13 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, TrendingUp, BarChart3, Wallet, User } from 'lucide-react';
+import { Home, Brain, BarChart3, Wallet, User } from 'lucide-react';
 import { AuthGuard } from '@/components/auth-guard';
 import { useTranslations } from '@/i18n/provider';
 
 const navItemsConfig = [
   { id: 'dashboard', labelKey: 'home', icon: Home, href: '/dashboard' },
-  { id: 'strategies', labelKey: 'strategies', icon: TrendingUp, href: '/strategies' },
+  { id: 'ai', labelKey: 'ai', icon: Brain, href: '/ai' },
   { id: 'trading', labelKey: 'trading', icon: BarChart3, href: '/trading' },
   { id: 'wallet', labelKey: 'wallet', icon: Wallet, href: '/wallet' },
   { id: 'profile', labelKey: 'profile', icon: User, href: '/profile' },
@@ -44,7 +44,9 @@ export default function DashboardLayout({
           <nav className="flex flex-col gap-2 p-4">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname.startsWith(item.href);
+              const isActive = item.id === 'ai'
+                ? pathname.startsWith('/ai')
+                : pathname.startsWith(item.href);
 
               return (
                 <Link
@@ -101,7 +103,9 @@ export default function DashboardLayout({
           <nav className="flex items-center justify-around h-16 px-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname.startsWith(item.href);
+              const isActive = item.id === 'ai'
+                ? pathname.startsWith('/ai')
+                : pathname.startsWith(item.href);
 
               return (
                 <Link

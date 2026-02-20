@@ -73,6 +73,13 @@ import {
   AppInstallPage,
   BlockchainStatusPage,
   SweepPage,
+  AiOverviewPage,
+  AiStrategiesPage,
+  AiResearchPage,
+  AiCostPage,
+  AiConfigsPage,
+  AiLogsPage,
+  AiPlatformConfigPage,
 } from './pages';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
@@ -214,6 +221,17 @@ const AppContent = () => {
             <Route path="security" element={<SecuritySettingsPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="monitor" element={<MonitorPage />} />
+          </Route>
+
+          {/* AI 智能交易管理 */}
+          <Route path="/ai">
+            <Route path="overview" element={<AiOverviewPage />} />
+            <Route path="strategies" element={<AiStrategiesPage />} />
+            <Route path="research" element={<AiResearchPage />} />
+            <Route path="cost" element={<AiCostPage />} />
+            <Route path="configs" element={<AiConfigsPage />} />
+            <Route path="logs" element={<AiLogsPage />} />
+            <Route path="platform-config" element={<AiPlatformConfigPage />} />
           </Route>
         </Route>
       </Routes>

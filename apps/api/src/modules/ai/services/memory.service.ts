@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { LLMService, UserApiKeys } from './llm.service';
 
 // ========================= 类型定义 =========================
 
@@ -130,7 +131,10 @@ export class AiMemoryService {
   /** 每用户每角色最大记忆数（超出后 FIFO 淘汰最旧的） */
   private readonly MAX_MEMORIES_PER_ROLE = 100;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly llm: LLMService,
+  ) {}
 
   /**
    * 将市场数据编码为场景文本（用于 BM25 匹配）
@@ -336,6 +340,135 @@ export class AiMemoryService {
       }
     } catch (error) {
       this.logger.warn(`记忆淘汰失败: ${error.message}`);
+    }
+  }
+
+  // ========================= Reflection Loop (产品A, 对齐 TradingAgents) =========================
+
+  /**
+   * LLM 驱动的结构化反思循环
+   *
+   * 对齐 TradingAgents reflection.py:
+   * 1. Reasoning — 交易决策是否正确，为什么
+   * 2. Improvement — 具体可改进的点
+   * 3. Summary — 提炼教训（存入 BM25 记忆）
+   * 4. Query — 浓缩关键词（用于未来 BM25 检索）
+   *
+   * 每个角色在平仓后独立执行反思，结果存入各自的 BM25 记忆
+   */
+  async generateReflection(params: {
+    userId: string;
+    analysisId: string;
+    symbol: string;
+    sceneText: string;
+    role: string; // bull | bear | analyst | contrarian | risk_manager
+    originalDecision: string; // 当时该角色的分析文本
+    finalAction: string; // 最终执行的操作
+    pnl: number;
+    pnlPercent: number;
+    apiKeys: UserApiKeys;
+    modelId?: string;
+  }): Promise<{ lesson: string; query: string; cost: number }> {
+    const { pnl, pnlPercent, role, symbol } = params;
+    const isWin = pnl > 0;
+    const outcomeText = isWin
+      ? `盈利 $${pnl.toFixed(2)} (${pnlPercent.toFixed(1)}%)`
+      : `亏损 $${Math.abs(pnl).toFixed(2)} (${pnlPercent.toFixed(1)}%)`;
+
+    const systemPrompt = `You are a trading reflection agent for the "${role}" analyst role.
+
+Your task: Analyze a completed trade and generate structured reflections to improve future decisions.
+
+Output EXACTLY this JSON format:
+{
+  "reasoning": "Was the original analysis correct? What market factors were missed or correctly identified?",
+  "improvement": "What specific changes should be made to improve analysis quality?",
+  "summary": "One-sentence lesson learned from this trade (max 200 chars)",
+  "query": "Key scenario descriptors for future BM25 memory retrieval (max 100 chars)"
+}`;
+
+    const userMessage = `Trade completed for ${symbol}:
+- Role: ${role}
+- Original analysis: ${params.originalDecision.slice(0, 500)}
+- Final action taken: ${params.finalAction}
+- Outcome: ${outcomeText}
+- Market scene: ${params.sceneText}
+
+Reflect on this trade and generate your structured reflection.`;
+
+    try {
+      const response = await this.llm.chat(
+        params.modelId || 'deepseek-chat',
+        systemPrompt,
+        userMessage,
+        params.apiKeys,
+        { temperature: 0.3, maxTokens: 600 },
+      );
+
+      // 解析反思结果
+      let reflection: { reasoning?: string; improvement?: string; summary?: string; query?: string };
+      try {
+        let jsonStr = response.content;
+        const jsonMatch = response.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) jsonStr = jsonMatch[1].trim();
+        reflection = JSON.parse(jsonStr);
+      } catch {
+        reflection = { summary: response.content.slice(0, 200), query: params.sceneText.slice(0, 100) };
+      }
+
+      const lesson = reflection.summary || `${isWin ? '盈利' : '亏损'}交易反思: ${params.finalAction}`;
+      const query = reflection.query || params.sceneText.slice(0, 100);
+
+      // 存储反思到 BM25 记忆（带角色标签）
+      await this.storeMemory({
+        userId: params.userId,
+        analysisId: params.analysisId,
+        symbol,
+        sceneText: query, // 使用反思生成的 query 作为场景文本（更精准的 BM25 匹配）
+        action: params.finalAction,
+        pnl,
+        pnlPercent,
+        role,
+      });
+
+      // 如果有详细反思，更新 lesson 字段
+      if (reflection.summary) {
+        const fullLesson = [
+          reflection.summary,
+          reflection.improvement ? `改进: ${reflection.improvement.slice(0, 200)}` : '',
+        ].filter(Boolean).join(' | ');
+
+        await this.prisma.aiMemory.updateMany({
+          where: { analysisId: params.analysisId, sceneText: { startsWith: `[role:${role}]` } },
+          data: { lesson: fullLesson.slice(0, 500) },
+        });
+      }
+
+      this.logger.log(
+        `[反思循环] ${symbol} ${role}: ${isWin ? '盈利' : '亏损'} → lesson="${lesson.slice(0, 80)}"`,
+      );
+
+      return { lesson, query, cost: response.cost };
+    } catch (error) {
+      this.logger.warn(`[反思循环] LLM 调用失败 (${role}): ${error.message}, 使用简单反思`);
+
+      // Fallback: 使用简单规则生成
+      const simpleLessons = isWin
+        ? `${symbol} ${params.finalAction} 盈利 ${pnlPercent.toFixed(1)}%，策略有效`
+        : `${symbol} ${params.finalAction} 亏损 ${pnlPercent.toFixed(1)}%，需改进`;
+
+      await this.storeMemory({
+        userId: params.userId,
+        analysisId: params.analysisId,
+        symbol,
+        sceneText: params.sceneText,
+        action: params.finalAction,
+        pnl,
+        pnlPercent,
+        role,
+      });
+
+      return { lesson: simpleLessons, query: params.sceneText, cost: 0 };
     }
   }
 

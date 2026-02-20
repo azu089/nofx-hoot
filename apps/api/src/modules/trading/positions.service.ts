@@ -30,6 +30,10 @@ export class PositionsService {
     const positions = await this.prisma.position.findMany({
       where: { userId, status: 'open' },
       orderBy: { createdAt: 'desc' },
+      include: {
+        subscription: { include: { strategy: { select: { name: true } } } },
+        aiStrategy: { select: { name: true } },
+      },
     });
 
     // 计算总 PnL
@@ -63,6 +67,8 @@ export class PositionsService {
         unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
         marginRatio: p.marginRatio?.toString() || undefined,
         lastSyncAt: p.lastSyncAt || undefined,
+        strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+        source: p.source || undefined,
       };
     });
 
@@ -81,6 +87,10 @@ export class PositionsService {
         status: 'open',
       },
       orderBy: { createdAt: 'desc' },
+      include: {
+        subscription: { include: { strategy: { select: { name: true } } } },
+        aiStrategy: { select: { name: true } },
+      },
     });
 
     return positions.map((p) => ({
@@ -104,6 +114,8 @@ export class PositionsService {
       unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
       marginRatio: p.marginRatio?.toString() || undefined,
       lastSyncAt: p.lastSyncAt || undefined,
+      strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+      source: p.source || undefined,
     }));
   }
 
@@ -389,6 +401,7 @@ export class PositionsService {
               strategy: true,
             },
           },
+          aiStrategy: { select: { name: true } },
         },
       }),
       this.prisma.position.count({ where }),
@@ -436,7 +449,8 @@ export class PositionsService {
         margin: margin.toString(),
         marginMode: p.marginMode || 'cross',
         closeReason: p.closeReason || undefined,
-        strategyName: p.subscription?.strategy?.name || undefined,
+        strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+        source: p.source || undefined,
       };
     });
 

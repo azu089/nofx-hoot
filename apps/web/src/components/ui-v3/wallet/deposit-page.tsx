@@ -51,13 +51,10 @@ const defaultNetworks: Network[] = [
   { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.svg', confirmations: 128, estimatedTime: '约 3 分钟', minDeposit: 1, fee: 0 },
 ]
 
-const defaultRecentDeposits = [
-  { id: '1', amount: 500, network: 'TRC20', status: 'completed' as const, txHash: '0x123...abc', time: '2026-01-29 14:30' },
-  { id: '2', amount: 1000, network: 'ERC20', status: 'pending' as const, txHash: '0x456...def', time: '2026-01-29 15:45' },
-]
+const defaultRecentDeposits: NonNullable<DepositPageProps['recentDeposits']> = []
 
 export function DepositPage({
-  walletAddress = 'TYDzsYUEpvnYmQk4zGP9sWWcTEd2MiAtW6',
+  walletAddress = '',
   networks = defaultNetworks,
   selectedNetworkName,
   recentDeposits = defaultRecentDeposits,

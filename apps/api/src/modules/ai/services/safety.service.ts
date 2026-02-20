@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { AI_SAFETY_DEFAULTS } from '../constants/safety-defaults';
 
 // ========================= 类型定义 =========================
 
@@ -28,6 +29,15 @@ export interface SafetyCheckInput {
   stopLossPercent?: number; // 止损百分比
   // v6: 分析模式
   mode?: string; // "quick" | "expert" — quick 模式跳过 L2 共识检查
+  // 策略级风控参数（优先于 aiConfig 全局默认值）
+  strategyRiskConfig?: {
+    maxLeverage?: number;
+    maxPositions?: number;
+    maxDailyTrades?: number;
+    cooldownMinutes?: number;
+    maxDailyDrawdown?: number;   // 策略级日最大回撤（美元），优先于 aiConfig
+    circuitBreaker?: { maxConsecutiveLosses?: number; maxDrawdownPercent?: number };
+  };
 }
 
 export interface SafetyCheckResult {
@@ -329,7 +339,7 @@ export class SafetyService {
    * L2: 至少 3/5 的角色必须达成共识
    */
   private checkL2(input: SafetyCheckInput): SafetyLayerResult {
-    const minConsensus = 3;
+    const minConsensus = AI_SAFETY_DEFAULTS.minConsensusModels;
 
     if (input.consensusScore < minConsensus) {
       return {
@@ -368,18 +378,18 @@ export class SafetyService {
     // RSI 检查
     if (rsi !== null) {
       // 禁止在超买区做多
-      if (direction === 'buy' && rsi > 80) {
+      if (direction === 'buy' && rsi > AI_SAFETY_DEFAULTS.rsiOverbought) {
         return {
           passed: false,
-          detail: `RSI 超买 (${rsi.toFixed(2)} > 80)，禁止做多`,
+          detail: `RSI 超买 (${rsi.toFixed(2)} > ${AI_SAFETY_DEFAULTS.rsiOverbought})，禁止做多`,
         };
       }
 
       // 禁止在超卖区做空
-      if (direction === 'sell' && rsi < 20) {
+      if (direction === 'sell' && rsi < AI_SAFETY_DEFAULTS.rsiOversold) {
         return {
           passed: false,
-          detail: `RSI 超卖 (${rsi.toFixed(2)} < 20)，禁止做空`,
+          detail: `RSI 超卖 (${rsi.toFixed(2)} < ${AI_SAFETY_DEFAULTS.rsiOversold})，禁止做空`,
         };
       }
     }
@@ -432,12 +442,13 @@ export class SafetyService {
       }
     }
 
-    // 检查杠杆
-    if (input.leverage && aiConfig.maxLeverage) {
-      if (input.leverage > aiConfig.maxLeverage) {
+    // 检查杠杆（策略风控参数优先，fallback 全局 aiConfig）
+    const effectiveMaxLeverage = input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null);
+    if (input.leverage && effectiveMaxLeverage) {
+      if (input.leverage > effectiveMaxLeverage) {
         return {
           passed: false,
-          detail: `杠杆超限: ${input.leverage}x > ${aiConfig.maxLeverage}x`,
+          detail: `杠杆超限: ${input.leverage}x > ${effectiveMaxLeverage}x`,
         };
       }
     }
@@ -479,10 +490,12 @@ export class SafetyService {
       },
     });
 
-    if (aiConfig.circuitBreaker && failedCount >= aiConfig.circuitBreaker) {
+    // 熔断阈值：策略风控参数优先，fallback 全局 aiConfig
+    const effectiveCircuitBreaker = input.strategyRiskConfig?.circuitBreaker?.maxConsecutiveLosses ?? aiConfig.circuitBreaker;
+    if (effectiveCircuitBreaker && failedCount >= effectiveCircuitBreaker) {
       return {
         passed: false,
-        detail: `熔断触发: 24h 内失败 ${failedCount} 次，达到阈值 ${aiConfig.circuitBreaker}`,
+        detail: `熔断触发: 24h 内失败 ${failedCount} 次，达到阈值 ${effectiveCircuitBreaker}`,
       };
     }
 
@@ -498,17 +511,19 @@ export class SafetyService {
       },
     });
 
-    if (aiConfig.maxDailyTrades && todayTradeCount >= aiConfig.maxDailyTrades) {
+    // 每日交易次数上限：策略风控参数优先，fallback 全局 aiConfig
+    const effectiveMaxDailyTrades = input.strategyRiskConfig?.maxDailyTrades ?? aiConfig.maxDailyTrades;
+    if (effectiveMaxDailyTrades && todayTradeCount >= effectiveMaxDailyTrades) {
       return {
         passed: false,
-        detail: `超过每日交易次数: ${todayTradeCount}/${aiConfig.maxDailyTrades}`,
+        detail: `超过每日交易次数: ${todayTradeCount}/${effectiveMaxDailyTrades}`,
       };
     }
 
-    // 3. 检查每日最大回撤（查询今日已平仓 PnL + 未平仓浮动 PnL）
-    const maxDailyDrawdown = aiConfig.maxDailyDrawdown
-      ? Number(aiConfig.maxDailyDrawdown)
-      : 100; // 默认 $100
+    // 3. 检查每日最大回撤（策略级优先，fallback 全局 aiConfig，默认 $100）
+    const maxDailyDrawdown =
+      input.strategyRiskConfig?.maxDailyDrawdown ??
+      (aiConfig.maxDailyDrawdown ? Number(aiConfig.maxDailyDrawdown) : 100);
 
     // 3a. 查询今日已平仓 AI 交易的实现盈亏
     const closedPositions = await this.prisma.position.findMany({
@@ -551,7 +566,7 @@ export class SafetyService {
 
     return {
       passed: true,
-      detail: `熔断检查通过: 失败=${failedCount}, 今日交易=${todayTradeCount}/${aiConfig.maxDailyTrades || '无限制'}, 今日PnL=$${totalDailyPnl.toFixed(2)}`,
+      detail: `熔断检查通过: 失败=${failedCount}, 今日交易=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}, 今日PnL=$${totalDailyPnl.toFixed(2)}`,
     };
   }
 
@@ -573,8 +588,11 @@ export class SafetyService {
       };
     }
 
+    // 冷却时长：策略风控参数优先，fallback 全局 aiConfig
+    const effectiveCooldownMinutes = input.strategyRiskConfig?.cooldownMinutes ?? aiConfig.cooldownMinutes;
+
     // 如果没有配置冷却期，跳过检查
-    if (!aiConfig.cooldownMinutes || aiConfig.cooldownMinutes === 0) {
+    if (!effectiveCooldownMinutes || effectiveCooldownMinutes === 0) {
       return {
         passed: true,
         detail: '未配置冷却期，跳过 L6 检查',
@@ -593,7 +611,7 @@ export class SafetyService {
 
     if (lastAnalysis) {
       const timeSinceLastTrade = Date.now() - lastAnalysis.createdAt.getTime();
-      const cooldownMs = aiConfig.cooldownMinutes * 60 * 1000;
+      const cooldownMs = effectiveCooldownMinutes * 60 * 1000;
 
       if (timeSinceLastTrade < cooldownMs) {
         const remainingMinutes = Math.ceil((cooldownMs - timeSinceLastTrade) / 60000);
@@ -606,7 +624,7 @@ export class SafetyService {
 
     return {
       passed: true,
-      detail: `冷却期检查通过: 冷却时长 ${aiConfig.cooldownMinutes} 分钟`,
+      detail: `冷却期检查通过: 冷却时长 ${effectiveCooldownMinutes} 分钟`,
     };
   }
 
@@ -642,11 +660,11 @@ export class SafetyService {
         const pnlPercent = (unrealizedPnl / margin) * 100;
 
         // 如果某持仓曾盈利 >5% 但当前回撤严重（亏损 >20%），警告
-        // 简化逻辑：如果任何持仓亏损超过 30%，拒绝开新仓
-        if (pnlPercent < -30) {
+        // 简化逻辑：如果任何持仓亏损超过阈值，拒绝开新仓
+        if (pnlPercent < AI_SAFETY_DEFAULTS.drawdownBlockThreshold) {
           return {
             passed: false,
-            detail: `持仓 ${pos.id} 亏损 ${pnlPercent.toFixed(1)}% 超过 30% 阈值，暂停开新仓`,
+            detail: `持仓 ${pos.id} 亏损 ${pnlPercent.toFixed(1)}% 超过 ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}% 阈值，暂停开新仓`,
           };
         }
       }
@@ -658,8 +676,8 @@ export class SafetyService {
     } catch (error) {
       this.logger.warn(`L7 Drawdown 检查出错: ${error.message}`);
       return {
-        passed: true,
-        detail: 'Drawdown 检查异常，允许通过',
+        passed: false,
+        detail: 'Drawdown 检查异常，拒绝开仓（安全优先）',
       };
     }
   }
@@ -701,16 +719,16 @@ export class SafetyService {
       (direction === 'buy' && input.fundingRate > 0) ||
       (direction === 'sell' && input.fundingRate < 0);
 
-    // 级别 1：极端资金费率（>0.1%/8h = 0.001）→ 硬拦截
-    if (absFundingRate > 0.001 && isPayingFunding) {
+    // 级别 1：极端资金费率 → 硬拦截
+    if (absFundingRate > AI_SAFETY_DEFAULTS.fundingRateExtreme && isPayingFunding) {
       return {
         passed: false,
         detail: `资金费率极端: ${frPercent.toFixed(4)}%/8h，${direction === 'buy' ? '做多' : '做空'}需支付高额费用，暂停交易`,
       };
     }
 
-    // 级别 2：偏高资金费率（>0.05%/8h = 0.0005）→ 软警告
-    if (absFundingRate > 0.0005 && isPayingFunding) {
+    // 级别 2：偏高资金费率 → 软警告
+    if (absFundingRate > AI_SAFETY_DEFAULTS.fundingRateHigh && isPayingFunding) {
       return {
         passed: true,
         detail: `资金费率偏高: ${frPercent.toFixed(4)}%/8h (软警告)`,
@@ -719,7 +737,7 @@ export class SafetyService {
     }
 
     // 级别 3：负资金费率 + 做多 → 软提示（正面信息）
-    if (input.fundingRate < -0.0005 && direction === 'buy') {
+    if (input.fundingRate < AI_SAFETY_DEFAULTS.fundingRateNegativeBenefit && direction === 'buy') {
       return {
         passed: true,
         detail: `负资金费率: ${frPercent.toFixed(4)}%/8h，做多可获得费率收益`,
@@ -744,27 +762,33 @@ export class SafetyService {
    * 平仓动作跳过仓位/冲突检查，但 ATR 极端仍拦截
    */
   private async checkL9(input: SafetyCheckInput): Promise<SafetyLayerResult> {
-    const MAX_AI_POSITIONS = 3;
     const isClose = this.isCloseAction(input);
+
+    // 读取用户配置的最大持仓数（策略风控参数优先，fallback 全局 aiConfig，最终默认 3）
+    const aiConfigForL9 = await this.prisma.aiConfig.findUnique({
+      where: { userId: input.userId },
+      select: { maxPositions: true },
+    });
+    const maxPositions = input.strategyRiskConfig?.maxPositions ?? aiConfigForL9?.maxPositions ?? 3;
 
     try {
       // === ATR 波动率守卫（开仓和平仓都检查） ===
       if (input.indicators?.atr3 != null && input.indicators?.atr14 != null && input.indicators.atr14 > 0) {
         const atrRatio = input.indicators.atr3 / input.indicators.atr14;
 
-        // 极端波动（atr3/atr14 > 3.0）→ 硬拦截
-        if (atrRatio > 3.0) {
+        // 极端波动 → 硬拦截
+        if (atrRatio > AI_SAFETY_DEFAULTS.atrExtremeRatio) {
           return {
             passed: false,
-            detail: `波动率极端: ATR3/ATR14 = ${atrRatio.toFixed(2)}，超过 3.0 阈值，暂停所有交易`,
+            detail: `波动率极端: ATR3/ATR14 = ${atrRatio.toFixed(2)}，超过 ${AI_SAFETY_DEFAULTS.atrExtremeRatio} 阈值，暂停所有交易`,
           };
         }
 
-        // 波动率异常（atr3/atr14 > 2.0）→ 开仓需更高共识（≥80%）
-        if (!isClose && atrRatio > 2.0 && input.confidence < 80) {
+        // 波动率异常 → 开仓需更高共识
+        if (!isClose && atrRatio > AI_SAFETY_DEFAULTS.atrAnomalyRatio && input.confidence < AI_SAFETY_DEFAULTS.atrAnomalyMinConfidence) {
           return {
             passed: false,
-            detail: `波动率异常升高: ATR3/ATR14 = ${atrRatio.toFixed(2)}，当前信心度 ${input.confidence}% 不足 80%，需更高共识`,
+            detail: `波动率异常升高: ATR3/ATR14 = ${atrRatio.toFixed(2)}，当前信心度 ${input.confidence}% 不足 ${AI_SAFETY_DEFAULTS.atrAnomalyMinConfidence}%，需更高共识`,
           };
         }
       }
@@ -785,10 +809,10 @@ export class SafetyService {
         },
       });
 
-      if (openPositionCount >= MAX_AI_POSITIONS) {
+      if (openPositionCount >= maxPositions) {
         return {
           passed: false,
-          detail: `已达最大持仓限制: ${openPositionCount}/${MAX_AI_POSITIONS}`,
+          detail: `已达最大持仓限制: ${openPositionCount}/${maxPositions}`,
         };
       }
 
@@ -833,10 +857,10 @@ export class SafetyService {
       // 4. 风险收益比检查（如果提供了 TP/SL）
       if (input.takeProfitPercent && input.stopLossPercent && input.stopLossPercent > 0) {
         const riskRewardRatio = input.takeProfitPercent / input.stopLossPercent;
-        if (riskRewardRatio < 2) {
+        if (riskRewardRatio < AI_SAFETY_DEFAULTS.minRiskRewardRatio) {
           return {
             passed: false,
-            detail: `风险收益比不足: TP ${input.takeProfitPercent}% / SL ${input.stopLossPercent}% = ${riskRewardRatio.toFixed(1)}:1，需要 ≥ 2:1`,
+            detail: `风险收益比不足: TP ${input.takeProfitPercent}% / SL ${input.stopLossPercent}% = ${riskRewardRatio.toFixed(1)}:1，需要 ≥ ${AI_SAFETY_DEFAULTS.minRiskRewardRatio}:1`,
           };
         }
       }
@@ -848,13 +872,13 @@ export class SafetyService {
 
       return {
         passed: true,
-        detail: `硬限制检查通过: 持仓 ${openPositionCount}/${MAX_AI_POSITIONS}, 无冲突${atrInfo}`,
+        detail: `硬限制检查通过: 持仓 ${openPositionCount}/${maxPositions}, 无冲突${atrInfo}`,
       };
     } catch (error) {
       this.logger.warn(`L9 硬限制检查出错: ${error.message}`);
       return {
-        passed: true,
-        detail: '硬限制检查异常，允许通过',
+        passed: false,
+        detail: '硬限制检查异常，拒绝开仓（安全优先）',
       };
     }
   }

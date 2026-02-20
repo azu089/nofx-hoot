@@ -15,6 +15,7 @@ export class PositionResponse {
   status: string;
   exchangeOrderId?: string;
   strategyName?: string;
+  source?: string; // ai_strategy, ai_research, ai_analysis, strategy, manual
   closeReason?: string;
   closedAt?: Date;
   createdAt: Date;
@@ -110,6 +111,7 @@ export class TradeHistoryResponse {
   marginMode?: string;
   closeReason?: string; // 平仓原因：signal, stop_loss, take_profit, manual
   strategyName?: string; // 策略名称
+  source?: string; // ai_strategy, ai_research, ai_analysis, strategy, manual
 }
 
 // 执行日志响应

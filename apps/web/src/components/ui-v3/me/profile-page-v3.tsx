@@ -10,10 +10,10 @@ import {
   HelpCircle,
   Info,
   LogOut,
-  Gift,
-  Users,
   Copy,
-  Check
+  Check,
+  Brain,
+  Download
 } from 'lucide-react'
 
 interface ProfilePageV3Props {
@@ -24,10 +24,6 @@ interface ProfilePageV3Props {
     memberSince: string
     vipLevel: number
     subscriptionTier: 'basic' | 'premium' | 'pro'
-  }
-  referral?: {
-    inviteCount: number
-    totalEarnings: number
   }
   unreadNotifications?: number
   appVersion?: string
@@ -43,10 +39,6 @@ export function ProfilePageV3({
     memberSince: '2023.3.15',
     vipLevel: 12,
     subscriptionTier: 'premium'
-  },
-  referral = {
-    inviteCount: 12,
-    totalEarnings: 1580.50
   },
   unreadNotifications = 3,
   appVersion = 'v1.19.0',
@@ -103,22 +95,6 @@ export function ProfilePageV3({
       )
     },
     {
-      icon: Gift,
-      label: '邀请返佣',
-      path: '/referral',
-      iconColor: 'text-[#EC4899]',
-      iconBg: 'bg-[#EC4899]/10',
-      rightContent: (
-        <div className="flex items-center gap-2">
-          <span className="text-[#EC4899] font-medium">${referral.totalEarnings.toLocaleString()}</span>
-          <div className="flex items-center gap-1 text-[#9090A0] text-sm">
-            <Users className="w-3.5 h-3.5" />
-            <span>{referral.inviteCount}</span>
-          </div>
-        </div>
-      )
-    },
-    {
       icon: Bell,
       label: '通知公告',
       path: '/notifications',
@@ -129,6 +105,22 @@ export function ProfilePageV3({
           {unreadNotifications}
         </span>
       ) : null
+    },
+    {
+      icon: Brain,
+      label: 'LLM API KEY',
+      path: '/settings/ai',
+      iconColor: 'text-[#06B6D4]',
+      iconBg: 'bg-[#06B6D4]/10',
+      rightContent: null
+    },
+    {
+      icon: Download,
+      label: '安装应用',
+      path: 'pwa-install',
+      iconColor: 'text-[#10B981]',
+      iconBg: 'bg-[#10B981]/10',
+      rightContent: null
     },
     {
       icon: Settings,

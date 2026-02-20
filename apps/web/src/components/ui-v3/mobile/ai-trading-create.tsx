@@ -11,6 +11,7 @@ import {
   Flame,
 } from 'lucide-react'
 import { useCreateStrategy, useStrategyControl } from '@/hooks/useAi'
+import type { CreateStrategyBody } from '@/types/ai'
 
 type CoinSource = '手动选择' | 'AI推荐' | 'OI榜'
 type StrategyStyle = '保守型' | '均衡型' | '激进型'
@@ -226,7 +227,7 @@ export function CreateStrategyWizard() {
       }
 
       // 创建策略
-      const result = await createStrategy.mutateAsync(body)
+      const result = await createStrategy.mutateAsync(body as CreateStrategyBody)
 
       // 如果不是仅保存，且策略创建成功，则启动策略
       if (!saveOnly && result.strategy?.id) {

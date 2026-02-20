@@ -21,6 +21,17 @@ export interface CryptoNewsItem {
 }
 
 /**
+ * 市场排名数据（对齐 NoFx RankingDataType: 价格涨跌幅+成交量排名）
+ */
+export interface MarketRankingData {
+  topGainers: Array<{ symbol: string; change24h: number }>;
+  topLosers: Array<{ symbol: string; change24h: number }>;
+  topVolume: Array<{ symbol: string; volume24h: number }>;
+  totalCoins: number;
+  targetRank: { priceRank: number; volumeRank: number };
+}
+
+/**
  * 市场数据服务
  * 使用 CCXT 获取交易所市场数据供 AI 分析使用
  */
@@ -476,6 +487,88 @@ export class MarketDataService implements OnModuleInit {
     }
 
     this.logger.debug(`缓存清理完成，剩余 OHLCV: ${this.ohlcvCache.size}, 价格: ${this.priceCache.size}, OI: ${this.oiCache.size}, 资金费率: ${this.fundingRateCache.size}`);
+  }
+
+  // ========================= 市场排名数据 (对齐 NoFx 资金流+价格排名) =========================
+
+  private readonly rankingCache = new Map<string, { data: MarketRankingData; timestamp: number }>();
+  private readonly RANKING_TTL = 5 * 60 * 1000; // 5 分钟
+
+  /**
+   * 获取市场排名数据（对齐 NoFx RankingDataType）
+   *
+   * 返回:
+   * - topGainers: 24h 涨幅前5
+   * - topLosers: 24h 跌幅前5
+   * - topVolume: 24h 成交量前5
+   * - targetRank: 目标币种在各维度的排名
+   */
+  async fetchMarketRanking(targetSymbol: string): Promise<MarketRankingData> {
+    const cacheKey = `ranking:all`;
+    const cached = this.rankingCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.RANKING_TTL) {
+      return this.enrichWithTargetRank(cached.data, targetSymbol);
+    }
+
+    try {
+      await this.ensureMarketsLoaded();
+      const tickers = await this.exchange.fetchTickers();
+
+      // 只保留 USDT 永续合约
+      const usdtTickers = Object.entries(tickers)
+        .filter(([k]) => k.endsWith('/USDT:USDT') || k.endsWith('/USDT'))
+        .map(([symbol, t]: [string, any]) => ({
+          symbol,
+          change24h: (t.percentage as number) || 0,
+          volume24h: ((t.quoteVolume as number) || 0),
+          last: (t.last as number) || 0,
+        }))
+        .filter((t) => t.last > 0 && t.volume24h > 100000); // 过滤极低流动性
+
+      // 排序
+      const byChange = [...usdtTickers].sort((a, b) => b.change24h - a.change24h);
+      const byVolume = [...usdtTickers].sort((a, b) => b.volume24h - a.volume24h);
+
+      const data: MarketRankingData = {
+        topGainers: byChange.slice(0, 5).map((t) => ({
+          symbol: t.symbol,
+          change24h: Math.round(t.change24h * 100) / 100,
+        })),
+        topLosers: byChange.slice(-5).reverse().map((t) => ({
+          symbol: t.symbol,
+          change24h: Math.round(t.change24h * 100) / 100,
+        })),
+        topVolume: byVolume.slice(0, 5).map((t) => ({
+          symbol: t.symbol,
+          volume24h: Math.round(t.volume24h),
+        })),
+        totalCoins: usdtTickers.length,
+        targetRank: { priceRank: 0, volumeRank: 0 },
+      };
+
+      this.rankingCache.set(cacheKey, { data, timestamp: Date.now() });
+      return this.enrichWithTargetRank(data, targetSymbol);
+    } catch (error) {
+      this.logger.warn(`[排名] fetchTickers 失败: ${error.message}`);
+      return {
+        topGainers: [], topLosers: [], topVolume: [],
+        totalCoins: 0, targetRank: { priceRank: 0, volumeRank: 0 },
+      };
+    }
+  }
+
+  private enrichWithTargetRank(data: MarketRankingData, targetSymbol: string): MarketRankingData {
+    // 找到目标币种在涨跌幅中的排名（从缓存的 tickers 中推算）
+    const result = { ...data };
+    const gainerIdx = data.topGainers.findIndex((t) => t.symbol.includes(targetSymbol.split('/')[0]));
+    const loserIdx = data.topLosers.findIndex((t) => t.symbol.includes(targetSymbol.split('/')[0]));
+    const volIdx = data.topVolume.findIndex((t) => t.symbol.includes(targetSymbol.split('/')[0]));
+
+    result.targetRank = {
+      priceRank: gainerIdx >= 0 ? gainerIdx + 1 : (loserIdx >= 0 ? data.totalCoins - loserIdx : 0),
+      volumeRank: volIdx >= 0 ? volIdx + 1 : 0,
+    };
+    return result;
   }
 
   // ========================= 新闻数据 =========================

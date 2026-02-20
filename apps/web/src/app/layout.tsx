@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
-import { PwaInstallPrompt } from "@/components/ui-v3/shared/pwa-install-prompt";
+
 
 export const metadata: Metadata = {
   title: "Hoot - AI 量化交易平台",
@@ -41,7 +41,6 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>{children}</Providers>
-        <PwaInstallPrompt />
       </body>
     </html>
   );

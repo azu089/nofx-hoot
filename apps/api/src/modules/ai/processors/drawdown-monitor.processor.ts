@@ -34,7 +34,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     const positions = await this.prisma.position.findMany({
       where: {
         status: 'open',
-        source: 'ai_analysis',
+        source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
       },
       select: {
         id: true,
@@ -204,10 +204,46 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       this.logger.log(
         `[AI监控] 自动平仓成功: ${pos.id} ${pos.symbol} ${pos.side} PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(4)} USDT，原因: ${reason}`,
       );
+
+      // 推送 TG 风控告警通知（fire-and-forget）
+      this.sendTgDrawdownAlert(pos.userId, pos.symbol, reason).catch(() => {});
     } catch (error) {
       this.logger.error(
         `[AI监控] 自动平仓失败: ${pos.id} ${pos.symbol} - ${error.message}`,
       );
+    }
+  }
+
+  /**
+   * 向 TG Bot 推送回撤告警通知
+   */
+  private async sendTgDrawdownAlert(
+    userId: string,
+    symbol: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { telegramId: true },
+      });
+
+      if (!user?.telegramId) return;
+
+      const tgBotApiUrl = process.env.TG_BOT_API_URL || 'http://localhost:4002';
+      await fetch(`${tgBotApiUrl}/notify-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramId: user.telegramId,
+          type: 'alert',
+          strategyName: symbol,
+          drawdown: reason,
+          action: 'paused',
+        }),
+      });
+    } catch (e) {
+      this.logger.debug(`TG 回撤告警发送失败(非致命): ${(e as Error).message}`);
     }
   }
 }

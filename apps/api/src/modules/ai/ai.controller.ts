@@ -11,21 +11,28 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ResearchPipelineService, ResearchConfig } from './services/research-pipeline.service';
+// 共享服务
 import { AiExecutionService } from './services/ai-execution.service';
-import { StrategyEngineService } from './services/strategy-engine.service';
-import { GridTradingService, GridConfig } from './services/grid-trading.service';
 import { AiPerformanceService } from './services/ai-performance.service';
 import { MarketDataService } from './services/market-data.service';
 import { IndicatorsService } from './services/indicators.service';
 import { SafetyService } from './services/safety.service';
+import { LLMService } from './services/llm.service';
+// 产品 A
+import { ResearchPipelineService, ResearchConfig } from './services/research/research-pipeline.service';
+import { ResearchCycleService } from './services/research/research-cycle.service';
+// 产品 B
+import { StrategyEngineService } from './services/trading/strategy-engine.service';
+import { GridTradingService, GridConfig } from './services/trading/grid-trading.service';
+import { AutoTraderService } from './services/trading/auto-trader.service';
+import { PromptBuilderService } from './services/trading/prompt-builder.service';
+// DTO
 import { StartResearchDto, ExecuteResearchDto } from './dto/research.dto';
 import { CreateStrategyDto, UpdateStrategyDto } from './dto/strategy.dto';
-import { LLMService } from './services/llm.service';
-import { AutoTraderService } from './services/auto-trader.service';
 import { encrypt, decrypt } from '../../common/utils/crypto.util';
 
 /**
@@ -74,6 +81,8 @@ export class AiController {
     private readonly safety: SafetyService,
     private readonly llmService: LLMService,
     private readonly autoTrader: AutoTraderService,
+    private readonly promptBuilder: PromptBuilderService,
+    private readonly researchCycleService: ResearchCycleService,
   ) {}
 
   // ========================= 基础端点 =========================
@@ -287,6 +296,7 @@ export class AiController {
       minConfidence: config.minConfidence,
       maxPositionSize: config.maxPositionSize,
       maxLeverage: config.maxLeverage,
+      maxPositions: config.maxPositions,
       maxDailyTrades: config.maxDailyTrades,
       maxDailyDrawdown: config.maxDailyDrawdown,
       cooldownMinutes: config.cooldownMinutes,
@@ -438,12 +448,42 @@ export class AiController {
 
     // 双轨制 Key 解析：先解密用户自备 Key，再回退平台默认
     const apiKeys = this.resolveApiKeys(aiConfig.apiKeys);
+
+    // Free 用户门控：无 BYOK Key 的免费用户不能使用平台 Key
+    await this.validateLlmAccess(userId, apiKeys);
+
     const quickModel = (aiConfig.models as string[])?.[0] || 'deepseek-chat';
     if (!this.llmService.hasAvailableKey(quickModel, apiKeys)) {
       throw new BadRequestException('无可用 LLM API Key：用户未配置且平台未设置默认 Key');
     }
 
-    // 异步启动研究流水线（不阻塞请求）
+    // ── 循环模式分支 ──
+    if (body.cyclingConfig?.enabled) {
+      const { rootSessionId } = await this.researchCycleService.startCycling(userId, {
+        symbol: body.symbol,
+        depth: (body.depth || 'standard') as any,
+        intervalMinutes: body.cyclingConfig.intervalMinutes,
+        maxCycles: body.cyclingConfig.maxCycles || 0,
+        profitTargetPercent: body.cyclingConfig.profitTargetPercent || 0,
+        maxLossPercent: body.cyclingConfig.maxLossPercent || 0,
+        exchangeApiKeyId: body.exchangeApiKeyId || aiConfig.exchangeApiKeyId || undefined,
+        llmApiKeys: apiKeys,
+        quickModel: body.quickModel || (aiConfig.models as string[])?.[0] || 'deepseek-chat',
+        deepModel: body.deepModel || (aiConfig.models as string[])?.[1] || 'deepseek-chat',
+        riskControlConfig: body.riskControlConfig,
+      });
+
+      return {
+        sessionId: rootSessionId,
+        symbol: body.symbol,
+        depth: body.depth || 'standard',
+        autoExecute: true,
+        status: 'running',
+        message: '自动循环研究已启动',
+      };
+    }
+
+    // ── 单次研究模式（原有逻辑） ──
     const sessionId = `rs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // 先创建会话记录
@@ -466,11 +506,12 @@ export class AiController {
       symbol: body.symbol,
       depth: body.depth || 'standard',
       autoExecute: body.autoExecute || false,
-      apiKeyId: aiConfig.exchangeApiKeyId || undefined,
+      apiKeyId: body.exchangeApiKeyId || aiConfig.exchangeApiKeyId || undefined,
       llmApiKeys: apiKeys,
-      quickThinkModel: (aiConfig.models as string[])?.[0] || 'deepseek-chat',
-      deepThinkModel: (aiConfig.models as string[])?.[1] || 'deepseek-chat',
-      sessionId, // 传入已创建的会话 ID
+      quickThinkModel: body.quickModel || (aiConfig.models as string[])?.[0] || 'deepseek-chat',
+      deepThinkModel: body.deepModel || (aiConfig.models as string[])?.[1] || 'deepseek-chat',
+      sessionId,
+      riskControlConfig: body.riskControlConfig,
     };
 
     // 在后台运行研究（不等待结果）
@@ -521,6 +562,34 @@ export class AiController {
       errorMessage: session.errorMessage,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      cyclingConfig: session.cyclingConfig,
+      campaignStatus: session.campaignStatus,
+      cycleNumber: session.cycleNumber,
+      rootSessionId: session.rootSessionId,
+    };
+  }
+
+  /**
+   * 研究阶段详情（懒加载）
+   *
+   * GET /ai/research/:id/stages
+   * 返回完整 5 阶段数据，供时间线卡片展开时使用
+   */
+  @Get('research/:id/stages')
+  async getResearchStages(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const session = await this.prisma.aiResearchSession.findFirst({
+      where: { id, userId },
+      select: { stages: true, finalDecision: true, status: true },
+    });
+    if (!session) throw new NotFoundException('研究会话不存在');
+
+    return {
+      stages: session.stages || [],
+      finalDecision: session.finalDecision || null,
+      status: session.status,
     };
   }
 
@@ -540,6 +609,47 @@ export class AiController {
 
     if (!session) throw new NotFoundException('研究会话不存在');
 
+    // 查询关联持仓
+    let positionSummary: any = null;
+    if (session.executedTradeId && session.executedTradeId !== 'executed') {
+      const posSelect = {
+        id: true, status: true, side: true, symbol: true,
+        entryPrice: true, markPrice: true, amount: true, leverage: true, margin: true,
+        unrealizedPnl: true, realizedPnl: true, pnl: true,
+        closeReason: true, createdAt: true, closedAt: true,
+      } as const;
+
+      let position = await db.position.findFirst({
+        where: { id: session.executedTradeId, userId },
+        select: posSelect,
+      });
+
+      if (!position) {
+        position = await db.position.findFirst({
+          where: { exchangeOrderId: session.executedTradeId, userId },
+          select: posSelect,
+        });
+      }
+
+      if (position) {
+        positionSummary = {
+          positionId: position.id,
+          status: position.status,
+          side: position.side,
+          entryPrice: Number(position.entryPrice),
+          markPrice: position.markPrice ? Number(position.markPrice) : null,
+          amount: Number(position.amount),
+          leverage: position.leverage,
+          margin: Number(position.margin),
+          unrealizedPnl: position.unrealizedPnl ? Number(position.unrealizedPnl) : null,
+          realizedPnl: position.realizedPnl ? Number(position.realizedPnl) : null,
+          closeReason: position.closeReason,
+          openedAt: position.createdAt,
+          closedAt: position.closedAt,
+        };
+      }
+    }
+
     return {
       sessionId: session.id,
       symbol: session.symbol,
@@ -548,10 +658,14 @@ export class AiController {
       stages: session.stages || [],
       finalDecision: session.finalDecision,
       executedTradeId: session.executedTradeId,
+      positionSummary,
       totalCost: Number(session.totalCost) || 0,
       errorMessage: session.errorMessage,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
+      rootSessionId: session.rootSessionId,
+      campaignStatus: session.campaignStatus,
+      cycleNumber: session.cycleNumber,
     };
   }
 
@@ -651,9 +765,12 @@ export class AiController {
     const pageSize = Math.min(50, Math.max(1, parseInt(limit) || 10));
     const skip = (pageNum - 1) * pageSize;
 
+    // 历史列表只显示根会话 + 单次研究（隐藏子会话）
+    const where = { userId, rootSessionId: null as string | null };
+
     const [sessions, total] = await Promise.all([
       db.aiResearchSession.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
@@ -668,10 +785,69 @@ export class AiController {
           totalCost: true,
           errorMessage: true,
           createdAt: true,
+          // 循环字段
+          cycleNumber: true,
+          campaignStatus: true,
+          cyclingConfig: true,
         },
       }),
-      db.aiResearchSession.count({ where: { userId } }),
+      db.aiResearchSession.count({ where }),
     ]);
+
+    // 根会话附加子会话数量 + 批量 campaign 统计
+    const rootIds = sessions
+      .filter((s: any) => s.campaignStatus)
+      .map((s: any) => s.id);
+    const childCounts = new Map<string, number>();
+    const cumulativeCosts = new Map<string, number>();
+    const cumulativePnls = new Map<string, number>();
+
+    if (rootIds.length > 0) {
+      const counts = await db.aiResearchSession.groupBy({
+        by: ['rootSessionId'],
+        where: { rootSessionId: { in: rootIds } },
+        _count: { id: true },
+      });
+      for (const c of counts) {
+        if (c.rootSessionId) childCounts.set(c.rootSessionId, c._count.id);
+      }
+
+      // 聚合子会话的 totalCost
+      const costAgg = await db.aiResearchSession.groupBy({
+        by: ['rootSessionId'],
+        where: { rootSessionId: { in: rootIds } },
+        _sum: { totalCost: true },
+      });
+      for (const c of costAgg) {
+        if (c.rootSessionId) {
+          cumulativeCosts.set(c.rootSessionId, Number(c._sum.totalCost) || 0);
+        }
+      }
+
+      // 批量查询已平仓 PnL
+      const childTrades = await db.aiResearchSession.findMany({
+        where: { rootSessionId: { in: rootIds }, executedTradeId: { not: null } },
+        select: { rootSessionId: true, executedTradeId: true },
+      });
+      const tradeIds = childTrades
+        .map((c) => c.executedTradeId)
+        .filter((id): id is string => !!id && id !== 'executed');
+
+      if (tradeIds.length > 0) {
+        const positions = await db.position.findMany({
+          where: { id: { in: tradeIds }, status: 'closed' },
+          select: { id: true, realizedPnl: true },
+        });
+        const pnlMap = new Map(positions.map((p) => [p.id, Number(p.realizedPnl) || 0]));
+
+        for (const ct of childTrades) {
+          if (ct.rootSessionId && ct.executedTradeId && pnlMap.has(ct.executedTradeId)) {
+            const current = cumulativePnls.get(ct.rootSessionId) || 0;
+            cumulativePnls.set(ct.rootSessionId, current + pnlMap.get(ct.executedTradeId)!);
+          }
+        }
+      }
+    }
 
     return {
       data: sessions.map((s: any) => ({
@@ -683,6 +859,10 @@ export class AiController {
               confidence: (s.finalDecision as any).confidence,
             }
           : null,
+        cycleCount: childCounts.get(s.id) || 0,
+        cumulativePnl: cumulativePnls.get(s.id) ?? 0,
+        cumulativeCost: cumulativeCosts.get(s.id) ?? 0,
+        totalCycles: childCounts.get(s.id) || 0,
       })),
       pagination: {
         page: pageNum,
@@ -691,6 +871,67 @@ export class AiController {
         totalPages: Math.ceil(total / pageSize),
       },
     };
+  }
+
+  // ── 产品 A 循环控制端点 ──
+
+  /**
+   * 停止研究循环
+   *
+   * POST /ai/research/:id/stop-cycling
+   */
+  @Post('research/:id/stop-cycling')
+  @HttpCode(HttpStatus.OK)
+  async stopResearchCycling(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    await this.researchCycleService.stopCycling(id, userId);
+    return { success: true, message: '研究循环已停止' };
+  }
+
+  /**
+   * 暂停研究循环
+   *
+   * POST /ai/research/:id/pause-cycling
+   */
+  @Post('research/:id/pause-cycling')
+  @HttpCode(HttpStatus.OK)
+  async pauseResearchCycling(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    await this.researchCycleService.pauseCycling(id, userId);
+    return { success: true, message: '研究循环已暂停' };
+  }
+
+  /**
+   * 恢复研究循环
+   *
+   * POST /ai/research/:id/resume-cycling
+   */
+  @Post('research/:id/resume-cycling')
+  @HttpCode(HttpStatus.OK)
+  async resumeResearchCycling(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    await this.researchCycleService.resumeCycling(id, userId);
+    return { success: true, message: '研究循环已恢复' };
+  }
+
+  /**
+   * 获取循环统计
+   *
+   * GET /ai/research/:id/campaign
+   */
+  @Get('research/:id/campaign')
+  async getResearchCampaign(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const stats = await this.researchCycleService.getCampaignStats(id, userId);
+    return stats;
   }
 
   // ========================= 产品 B: AI 自动交易策略 =========================
@@ -716,10 +957,51 @@ export class AiController {
       promptSections: body.promptSections,
       gridConfig: body.gridConfig,
       intervalMinutes: body.intervalMinutes,
+      exchangeApiKeyId: body.exchangeApiKeyId,
+      apiKeys: body.apiKeys,
+      models: body.models,
+      debateConfig: body.debateConfig,
+      stopConditions: body.stopConditions,
     });
 
     return { success: true, strategy };
   }
+
+  // ========================= 统一时间线 =========================
+
+  /**
+   * 统一时间线 — 跨策略/研究合并查询
+   *
+   * GET /ai/timeline?page=1&limit=10&type=all
+   * type: 'all' | 'solo' | 'debate' | 'research'
+   */
+  @Get('timeline')
+  async getTimeline(
+    @Request() req: any,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
+    @Query('type') type: string = 'all',
+  ) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(50, Math.max(1, parseInt(limit) || 10));
+
+    const result = await this.strategyEngine.getTimeline(userId, pageNum, pageSize, type);
+
+    return {
+      data: result.data,
+      pagination: {
+        page: pageNum,
+        limit: pageSize,
+        total: result.total,
+        totalPages: Math.ceil(result.total / pageSize),
+      },
+    };
+  }
+
+  // ========================= 策略管理 =========================
 
   /**
    * 获取策略列表
@@ -740,8 +1022,34 @@ export class AiController {
 
     const result = await this.strategyEngine.listStrategies(userId, pageNum, pageSize);
 
+    // 附加每个策略的 todayPnl
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const strategyIds = result.data.map((s: any) => s.id);
+
+    const todayPnlMap = new Map<string, number>();
+    if (strategyIds.length > 0) {
+      const todayPositions = await this.prisma.position.findMany({
+        where: {
+          aiStrategyId: { in: strategyIds },
+          status: 'closed',
+          closedAt: { gte: todayStart },
+        },
+        select: { aiStrategyId: true, realizedPnl: true },
+      });
+      for (const p of todayPositions) {
+        if (p.aiStrategyId) {
+          const prev = todayPnlMap.get(p.aiStrategyId) || 0;
+          todayPnlMap.set(p.aiStrategyId, prev + Number(p.realizedPnl || 0));
+        }
+      }
+    }
+
     return {
-      data: result.data,
+      data: result.data.map((s: any) => ({
+        ...s,
+        todayPnl: Number((todayPnlMap.get(s.id) || 0).toFixed(2)),
+      })),
       pagination: {
         page: pageNum,
         limit: pageSize,
@@ -861,6 +1169,43 @@ export class AiController {
   }
 
   /**
+   * 预览 System Prompt（渲染后的完整 8-section Prompt）
+   *
+   * POST /ai/strategy/preview-prompt
+   * 必须放在 GET /ai/strategy/:id 之前，避免路由冲突
+   */
+  @Post('strategy/preview-prompt')
+  @HttpCode(HttpStatus.OK)
+  async previewPrompt(@Body() body: {
+    promptSections?: { role?: string; mode?: 'aggressive' | 'conservative' | 'scalping'; custom?: string; tradingFrequency?: string; entryStandards?: string };
+    riskControlConfig?: { maxPositions?: number; maxLeverage?: number; maxDailyDrawdown?: number; allocatedCapital?: number };
+    intervalMinutes?: number;
+  }) {
+    const systemPrompt = this.promptBuilder.buildSystemPrompt({
+      promptSections: body.promptSections,
+      riskControl: body.riskControlConfig ? {
+        maxPositions: body.riskControlConfig.maxPositions,
+        maxLeverage: body.riskControlConfig.maxLeverage,
+        maxDailyDrawdown: body.riskControlConfig.maxDailyDrawdown,
+        allocatedCapital: body.riskControlConfig.allocatedCapital,
+      } : undefined,
+      intervalMinutes: body.intervalMinutes,
+    });
+
+    // 按 ## 标题拆分为 section 数组
+    const sections = systemPrompt
+      .split(/(?=^## )/m)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    return {
+      systemPrompt,
+      sections,
+      estimatedTokens: Math.ceil(systemPrompt.length / 4),
+    };
+  }
+
+  /**
    * 获取策略详情
    *
    * GET /ai/strategy/:id
@@ -963,6 +1308,10 @@ export class AiController {
 
     // 双轨制 Key 检查
     const apiKeys = this.resolveApiKeys(aiConfig.apiKeys);
+
+    // Free 用户门控：无 BYOK Key 的免费用户不能使用平台 Key
+    await this.validateLlmAccess(userId, apiKeys);
+
     const defaultModel = (aiConfig.models as string[])?.[0] || 'deepseek-chat';
     if (!this.llmService.hasAvailableKey(defaultModel, apiKeys)) {
       throw new BadRequestException('无可用 LLM API Key：用户未配置且平台未设置默认 Key');
@@ -983,7 +1332,10 @@ export class AiController {
       };
 
       if (gridConfig.upperBound && gridConfig.lowerBound) {
-        await this.gridTrading.initializeGrid(id, userId, gridConfig);
+        const aiCfg = await this.prisma.aiConfig.findUnique({ where: { userId }, select: { exchangeApiKeyId: true } });
+        if (aiCfg?.exchangeApiKeyId) {
+          await this.gridTrading.initializeGrid(id, userId, aiCfg.exchangeApiKeyId, gridConfig);
+        }
       }
     }
 
@@ -1180,6 +1532,343 @@ export class AiController {
     };
   }
 
+  /**
+   * 策略关联持仓列表
+   *
+   * GET /ai/strategy/:id/positions
+   * 返回该策略的活跃持仓和最近关闭的持仓
+   */
+  @Get('strategy/:id/positions')
+  async getStrategyPositions(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Query('status') status: string = 'all',
+  ) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    // 验证策略属于用户
+    await this.strategyEngine.getStrategy(id, userId);
+
+    const where: any = { aiStrategyId: id };
+    if (status === 'open') {
+      where.status = 'open';
+    } else if (status === 'closed') {
+      where.status = 'closed';
+    }
+
+    const positions = await this.prisma.position.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        symbol: true,
+        side: true,
+        leverage: true,
+        entryPrice: true,
+        exitPrice: true,
+        amount: true,
+        margin: true,
+        realizedPnl: true,
+        unrealizedPnl: true,
+        closeReason: true,
+        status: true,
+        createdAt: true,
+        closedAt: true,
+      },
+    });
+
+    return {
+      data: positions.map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        leverage: Number(p.leverage || 1),
+        entryPrice: Number(p.entryPrice || 0),
+        exitPrice: p.exitPrice ? Number(p.exitPrice) : null,
+        amount: Number(p.amount || 0),
+        margin: Number(p.margin || 0),
+        realizedPnl: Number(p.realizedPnl || 0),
+        unrealizedPnl: Number(p.unrealizedPnl || 0),
+        closeReason: p.closeReason || null,
+        status: p.status,
+        createdAt: p.createdAt,
+        closedAt: p.closedAt,
+      })),
+      total: positions.length,
+    };
+  }
+
+  // ========================= 用户级持仓（独立于策略） =========================
+
+  /**
+   * GET /ai/positions
+   * 返回用户所有 AI 相关持仓（不依赖策略是否存在）
+   */
+  @Get('positions')
+  async getUserPositions(
+    @Request() req: any,
+    @Query('status') status: string = 'all',
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '50',
+  ) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const take = Math.min(Number(limit) || 50, 100);
+    const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
+
+    // 不限制 aiStrategyId — 包含已删除策略的历史仓位
+    const where: any = { userId };
+    if (status === 'open') where.status = 'open';
+    else if (status === 'closed') where.status = 'closed';
+
+    const [positions, total] = await Promise.all([
+      this.prisma.position.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+        select: {
+          id: true,
+          symbol: true,
+          side: true,
+          leverage: true,
+          entryPrice: true,
+          exitPrice: true,
+          amount: true,
+          margin: true,
+          realizedPnl: true,
+          unrealizedPnl: true,
+          closeReason: true,
+          status: true,
+          createdAt: true,
+          closedAt: true,
+          source: true,
+          aiStrategyId: true,
+          aiStrategy: { select: { name: true } },
+        },
+      }),
+      this.prisma.position.count({ where }),
+    ]);
+
+    return {
+      data: positions.map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        leverage: Number(p.leverage || 1),
+        entryPrice: Number(p.entryPrice || 0),
+        exitPrice: p.exitPrice ? Number(p.exitPrice) : null,
+        amount: Number(p.amount || 0),
+        margin: Number(p.margin || 0),
+        realizedPnl: Number(p.realizedPnl || 0),
+        unrealizedPnl: Number(p.unrealizedPnl || 0),
+        closeReason: p.closeReason || null,
+        source: p.source || null,
+        status: p.status,
+        createdAt: p.createdAt,
+        closedAt: p.closedAt,
+        strategyId: p.aiStrategyId,
+        strategyName: p.aiStrategy?.name || '已删除策略',
+      })),
+      total,
+      page: Number(page) || 1,
+      limit: take,
+    };
+  }
+
+  // ========================= TG Bot 专用端点 =========================
+
+  /**
+   * AI 总览（TG Bot /ai 命令用）
+   *
+   * GET /ai/overview
+   * 返回策略/研究统计 + 今日 PnL + 预算
+   */
+  @Get('overview')
+  async getAiOverview(@Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const db = this.prisma;
+
+    // 策略统计：按 tradingMode 和 isActive 分组
+    const strategies = await db.aiStrategy.findMany({
+      where: { userId },
+      select: { id: true, tradingMode: true, isActive: true },
+    });
+
+    const soloStats = { running: 0, paused: 0, stopped: 0 };
+    const debateStats = { running: 0, paused: 0, stopped: 0 };
+
+    for (const s of strategies) {
+      const bucket = s.tradingMode === 'debate' ? debateStats : soloStats;
+      if (s.isActive) {
+        bucket.running++;
+      } else {
+        bucket.stopped++;
+      }
+    }
+
+    // 研究统计：循环中 vs 已停止
+    const researchSessions = await db.aiResearchSession.findMany({
+      where: { userId, rootSessionId: null },
+      select: { campaignStatus: true },
+    });
+
+    let researchCycling = 0;
+    let researchStopped = 0;
+    for (const r of researchSessions) {
+      if (r.campaignStatus === 'cycling' || r.campaignStatus === 'paused') {
+        researchCycling++;
+      } else if (r.campaignStatus) {
+        researchStopped++;
+      }
+    }
+
+    // 今日 PnL（策略 + 研究的已平仓持仓）
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    const todayPositions = await db.position.findMany({
+      where: {
+        userId,
+        status: 'closed',
+        closedAt: { gte: todayStart },
+        OR: [
+          { aiStrategyId: { not: null } },
+          { source: 'ai_research' },
+        ],
+      },
+      select: { realizedPnl: true },
+    });
+
+    const todayPnl = todayPositions.reduce(
+      (sum, p) => sum + Number(p.realizedPnl || 0),
+      0,
+    );
+
+    // 预算使用（本月 LLM 调用费用）
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+
+    const aiConfig = await db.aiConfig.findUnique({
+      where: { userId },
+      select: { monthlyBudget: true },
+    });
+
+    // 累加本月所有 AI 研究会话的 totalCost
+    const monthCostResult = await db.aiResearchSession.aggregate({
+      where: { userId, createdAt: { gte: monthStart } },
+      _sum: { totalCost: true },
+    });
+
+    const budgetUsed = Number(monthCostResult._sum.totalCost || 0);
+    const budgetLimit = Number(aiConfig?.monthlyBudget || 50);
+
+    return {
+      solo: soloStats,
+      debate: debateStats,
+      research: { cycling: researchCycling, stopped: researchStopped },
+      todayPnl: Number(todayPnl.toFixed(2)),
+      budget: {
+        used: Number(budgetUsed.toFixed(2)),
+        limit: budgetLimit,
+      },
+    };
+  }
+
+  /**
+   * 暂停用户所有 AI 策略 + 研究
+   *
+   * POST /ai/pause-all
+   */
+  @Post('pause-all')
+  @HttpCode(HttpStatus.OK)
+  async pauseAll(@Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const db = this.prisma;
+    let pausedCount = 0;
+
+    // 暂停所有运行中的策略
+    const activeStrategies = await db.aiStrategy.findMany({
+      where: { userId, isActive: true },
+      select: { id: true },
+    });
+
+    if (activeStrategies.length > 0) {
+      await db.aiStrategy.updateMany({
+        where: { id: { in: activeStrategies.map((s) => s.id) } },
+        data: { isActive: false },
+      });
+      pausedCount += activeStrategies.length;
+    }
+
+    // 暂停所有循环中的研究
+    const cyclingResearch = await db.aiResearchSession.findMany({
+      where: { userId, rootSessionId: null, campaignStatus: 'cycling' },
+      select: { id: true },
+    });
+
+    for (const r of cyclingResearch) {
+      try {
+        await this.researchCycleService.pauseCycling(r.id, userId);
+        pausedCount++;
+      } catch { /* 单个失败不阻断 */ }
+    }
+
+    return { success: true, paused: pausedCount };
+  }
+
+  /**
+   * 恢复用户所有暂停的 AI 策略 + 研究
+   *
+   * POST /ai/resume-all
+   */
+  @Post('resume-all')
+  @HttpCode(HttpStatus.OK)
+  async resumeAll(@Request() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const db = this.prisma;
+    let resumedCount = 0;
+
+    // 恢复所有已停止的策略（isActive = false）
+    const stoppedStrategies = await db.aiStrategy.findMany({
+      where: { userId, isActive: false },
+      select: { id: true },
+    });
+
+    if (stoppedStrategies.length > 0) {
+      await db.aiStrategy.updateMany({
+        where: { id: { in: stoppedStrategies.map((s) => s.id) } },
+        data: { isActive: true, consecutiveFailures: 0 },
+      });
+      resumedCount += stoppedStrategies.length;
+    }
+
+    // 恢复所有暂停的研究
+    const pausedResearch = await db.aiResearchSession.findMany({
+      where: { userId, rootSessionId: null, campaignStatus: 'paused' },
+      select: { id: true },
+    });
+
+    for (const r of pausedResearch) {
+      try {
+        await this.researchCycleService.resumeCycling(r.id, userId);
+        resumedCount++;
+      } catch { /* 单个失败不阻断 */ }
+    }
+
+    return { success: true, resumed: resumedCount };
+  }
+
   // ========================= 内部工具 =========================
 
   /**
@@ -1192,6 +1881,7 @@ export class AiController {
       'maxLeverage', 'maxDailyTrades', 'maxDailyDrawdown', 'cooldownMinutes',
       'circuitBreaker', 'maxDebateRounds', 'apiKeys', 'indicatorRules',
       'monthlyBudget', 'amountPerTrade', 'exchangeApiKeyId',
+      'maxPositions', 'minPositionSizeUSD', 'maxMarginUsage',
     ];
 
     const result: Record<string, any> = {};
@@ -1213,6 +1903,36 @@ export class AiController {
     }
 
     return result;
+  }
+
+  /**
+   * 免费用户 LLM 访问门控：无 BYOK Key 的 Free 用户不能使用平台 Key
+   */
+  private async validateLlmAccess(
+    userId: string,
+    apiKeys: import('./services/llm.service').UserApiKeys,
+  ): Promise<void> {
+    // 用户自带了 Key → 放行（无论 Free/Pro）
+    const hasByokKeys = Object.values(apiKeys).some(
+      (v) => typeof v === 'string' && v.trim().length > 0,
+    );
+    if (hasByokKeys) return;
+
+    // 无 BYOK Key → 只有 Pro 用户可使用平台 Key
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipStatus: true, membershipExpireAt: true },
+    });
+    const isPro =
+      user?.membershipStatus === 'active' &&
+      user.membershipExpireAt != null &&
+      user.membershipExpireAt > new Date();
+
+    if (!isPro) {
+      throw new ForbiddenException(
+        '免费用户需自行配置 LLM API Key（BYOK）才能使用 AI 功能，升级 Pro 可免费使用平台 AI 模型',
+      );
+    }
   }
 
   /**

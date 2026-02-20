@@ -79,7 +79,7 @@ export class AdminReferralService {
         level1Rate: 10,
         level2Rate: 5,
         level3Rate: 2,
-        enabledTypes: ['subscription'],
+        enabledTypes: ['trading'], // 燃油费返佣；订阅费不参与返佣
         isActive: true,
       },
       update: {}, // 已存在则不更新
@@ -112,7 +112,7 @@ export class AdminReferralService {
         level1Rate: data.level1Rate ?? 10,
         level2Rate: data.level2Rate ?? 5,
         level3Rate: data.level3Rate ?? 2,
-        enabledTypes: data.enabledTypes ?? ['subscription'],
+        enabledTypes: data.enabledTypes ?? ['trading'],
         isActive: data.isActive ?? true,
         updatedBy: adminId,
       },
