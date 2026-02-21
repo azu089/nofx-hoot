@@ -1002,17 +1002,38 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
 
     const symbolActions: Record<string, Record<string, ActionData>> = {};
 
+    // 构建 symbol 标准化映射: LLM 可能返回 "BTCUSDT" 但输入是 "BTC/USDT"
+    // 将所有格式统一映射到输入 symbols 的格式
+    const normalizeSymbol = (raw: string): string => {
+      // 1) 精确匹配
+      if (symbols.includes(raw)) return raw;
+      // 2) 去掉 "/" 和 ":" 后匹配 (BTC/USDT → BTCUSDT, BTC/USDT:USDT → BTCUSDTUSDT)
+      const stripped = raw.replace(/[/:]/g, '');
+      for (const s of symbols) {
+        if (s.replace(/[/:]/g, '') === stripped) return s;
+      }
+      // 3) 大小写不敏感匹配
+      const rawUpper = raw.toUpperCase();
+      for (const s of symbols) {
+        if (s.toUpperCase() === rawUpper) return s;
+        if (s.replace(/[/:]/g, '').toUpperCase() === stripped.toUpperCase()) return s;
+      }
+      // 4) 无法匹配 → 保持原样
+      return raw;
+    };
+
     // 从投票 entries 提取决策
     for (const entry of votingEntries) {
       const decisions = Array.isArray(entry.arguments) ? entry.arguments : [];
       if (decisions.length === 0) continue;
 
       for (const d of decisions) {
-        const symbol = d.symbol || '';
+        const rawSymbol = d.symbol || '';
         const action = (d.action || '').toLowerCase();
-        if (!symbol || !this.isValidVotingAction(action)) continue;
+        if (!rawSymbol || !this.isValidVotingAction(action)) continue;
 
-        // 标准化 symbol (BTCUSDT → 保持原样, BTC/USDT:USDT → 保持原样)
+        // 标准化 symbol: LLM 返回 "BTCUSDT" → 映射到 "BTC/USDT"
+        const symbol = normalizeSymbol(rawSymbol);
         if (!symbolActions[symbol]) symbolActions[symbol] = {};
         if (!symbolActions[symbol][action]) {
           symbolActions[symbol][action] = {
