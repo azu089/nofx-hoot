@@ -209,6 +209,20 @@ export function useCampaignStats(rootSessionId: string | undefined) {
   });
 }
 
+export function useUpdateResearchConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => {
+      const res = await api.put<{ success: boolean; config: Record<string, unknown> }>(`/ai/research/${id}/config`, body);
+      return res.data;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['ai-campaign', vars.id] });
+      qc.invalidateQueries({ queryKey: ['ai-research-status', vars.id] });
+    },
+  });
+}
+
 // ========================= 产品 B: 策略 =========================
 
 export function useStrategyList(page: number = 1, limit: number = 20) {

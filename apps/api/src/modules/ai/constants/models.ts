@@ -75,10 +75,10 @@ export const AI_MODELS: Record<string, AIModelConfig> = {
     provider: 'Alibaba',
     contextWindow: 131072,
   },
-  GROK_2: {
-    name: 'grok-2',
+  GROK_3: {
+    name: 'grok-3',
     baseUrl: 'https://api.x.ai/v1',
-    displayName: 'Grok 2',
+    displayName: 'Grok 3',
     provider: 'xAI',
     contextWindow: 131072,
   },
@@ -123,8 +123,8 @@ Action definitions:
 Rules:
 - action: Your recommended action from the 6 options above
 - confidence: How confident you are in this action (0-100)
-- reasoning: Detailed explanation in English (150-400 words), referencing specific indicators and price levels
-- keyPoints: 3-5 bullet points summarizing your analysis
+- reasoning: Detailed explanation in Chinese/中文 (150-400 words), referencing specific indicators and price levels
+- keyPoints: 3-5 bullet points summarizing your analysis (in Chinese/中文)
 - entryPrice: Recommended entry price for open actions, null for close/hold/wait
 - targetPrice: Price target for open actions, null for close/hold/wait
 - stopLoss: Stop loss level for open actions, null for close/hold/wait

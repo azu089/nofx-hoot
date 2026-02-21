@@ -49,7 +49,7 @@ export class SweepService {
     string,
     { amount: string; symbol: string }
   > = {
-    BSC: { amount: '0.001', symbol: 'BNB' },
+    BSC: { amount: '0.0003', symbol: 'BNB' },
     ETH: { amount: '0.005', symbol: 'ETH' },
     POLYGON: { amount: '0.01', symbol: 'MATIC' },
   };

@@ -1098,7 +1098,7 @@
       "debateDesc": "다중 모델 투표 결정"
     },
     "list": {
-      "title": "AI 자동 트레이딩",
+      "title": "AI 트레이딩",
       "createStrategy": "전략 생성",
       "strategyCount": "전략 수",
       "totalPnl": "총 PnL",
@@ -1370,6 +1370,9 @@
       "searchSymbol": "코인 검색...",
       "noMatch": "일치하는 코인 없음",
       "selectSymbolAction": "{symbol} 선택",
+      "quick": "빠른",
+      "standard": "표준",
+      "deep": "심층",
       "researchDepth": "리서치 깊이",
       "fundManagement": "자금 관리",
       "fundSummary": "${amount} / {leverage}x / {positions}개 포지션",
@@ -1505,7 +1508,7 @@
     },
     "dashboard": {
       "title": "AI 트레이딩",
-      "subtitle": "AI 리서치 및 자동 트레이딩",
+      "subtitle": "AI 리서치 및 트레이딩",
       "features": "심층 리서치 · 자동 전략 · 24/7"
     },
     "timeline": {

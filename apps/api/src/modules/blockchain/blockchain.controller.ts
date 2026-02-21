@@ -6,6 +6,7 @@ import {
   UseGuards,
   Param,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { BlockchainService } from './blockchain.service';
 import { WithdrawService } from './withdraw.service';
 import { SweepService } from './sweep.service';
@@ -139,7 +140,9 @@ export class BlockchainController {
 
   /**
    * 审批提现（管理员 / TG Bot 调用）
+   * 限流：5次/分钟，防止误操作批量审批
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @UseGuards(AdminGuard)
   @Post('withdraw/:id/approve')
   async approveWithdraw(

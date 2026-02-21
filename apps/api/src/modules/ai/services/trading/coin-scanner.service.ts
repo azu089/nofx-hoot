@@ -46,6 +46,7 @@ export class CoinScannerService {
 
     switch (config.mode) {
       case 'static':
+      case 'manual':
         result = this.scanStatic(config);
         break;
 

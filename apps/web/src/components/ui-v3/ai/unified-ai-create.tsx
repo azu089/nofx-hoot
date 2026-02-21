@@ -981,7 +981,11 @@ export function UnifiedAiCreate() {
                 aria-label={t('create.selectModel')} title={t('create.selectModel')}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-6 rounded-full" style={{ backgroundColor: MODEL_DISPLAY[selectedModel]?.color ?? '#64748B' }} />
+                  {MODEL_DISPLAY[selectedModel]?.logo ? (
+                    <img src={MODEL_DISPLAY[selectedModel].logo} alt={MODEL_DISPLAY[selectedModel].name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: MODEL_DISPLAY[selectedModel]?.color ?? '#64748B' }} />
+                  )}
                   <div>
                     <div className="text-sm font-medium text-[#F8F8FC]">{MODEL_DISPLAY[selectedModel]?.name ?? selectedModel}</div>
                     <div className="text-xs text-[#606070]">{MODEL_DISPLAY[selectedModel]?.provider ?? ''}</div>
@@ -1002,7 +1006,11 @@ export function UnifiedAiCreate() {
                           sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'
                         }`}
                       >
-                        <div className="w-2 h-6 rounded-full flex-shrink-0" style={{ backgroundColor: info.color }} />
+                        {info.logo ? (
+                          <img src={info.logo} alt={info.name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: info.color }} />
+                        )}
                         <div className="flex-1 text-left">
                           <div className={`text-sm font-medium ${sel ? 'text-[#06B6D4]' : 'text-[#F8F8FC]'}`}>{info.name}</div>
                           <div className="text-xs text-[#606070]">{info.provider}</div>
@@ -1035,7 +1043,11 @@ export function UnifiedAiCreate() {
                     <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
                       {sel && <Check className="w-3 h-3 text-[#F8F8FC]" />}
                     </div>
-                    <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: info.color }} />
+                    {info.logo ? (
+                      <img src={info.logo} alt={info.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ backgroundColor: info.color }} />
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-[#F8F8FC] truncate">{info.name}</div>
                       <div className="text-xs text-[#606070]">{info.provider}</div>

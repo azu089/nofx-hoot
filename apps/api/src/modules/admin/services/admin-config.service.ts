@@ -27,12 +27,12 @@ const ALLOWED_CONFIG_KEYS = [
 // LLM 平台配置默认值（与 llm.service.ts 中的 modelCosts 保持一致）
 const LLM_PLATFORM_CONFIG_DEFAULT = {
   providers: {
-    deepseek:   { apiKey: '', enabled: true,  displayName: 'DeepSeek' },
-    openai:     { apiKey: '', enabled: true,  displayName: 'OpenAI' },
-    openrouter: { apiKey: '', enabled: true,  displayName: 'OpenRouter (Claude/Gemini)' },
-    qwen:       { apiKey: '', enabled: false, displayName: 'Qwen (通义千问)' },
-    grok:       { apiKey: '', enabled: false, displayName: 'Grok (xAI)' },
-    kimi:       { apiKey: '', enabled: false, displayName: 'Kimi (Moonshot)' },
+    deepseek:   { apiKey: '', enabled: true,  displayName: 'DeepSeek',                  modelName: '' },
+    openai:     { apiKey: '', enabled: true,  displayName: 'OpenAI',                    modelName: '' },
+    openrouter: { apiKey: '', enabled: true,  displayName: 'OpenRouter (Claude/Gemini)', modelName: '' },
+    qwen:       { apiKey: '', enabled: false, displayName: 'Qwen (通义千问)',             modelName: '' },
+    grok:       { apiKey: '', enabled: false, displayName: 'Grok (xAI)',                modelName: '' },
+    kimi:       { apiKey: '', enabled: false, displayName: 'Kimi (Moonshot)',            modelName: '' },
   },
   modelCosts: {
     'deepseek-chat':             { input: 0.14, output: 0.28 },
@@ -40,7 +40,7 @@ const LLM_PLATFORM_CONFIG_DEFAULT = {
     'claude-3-5-haiku-20241022': { input: 1.0,  output: 5.0 },
     'gemini-2.0-flash':          { input: 0.10, output: 0.40 },
     'qwen-plus':                 { input: 0.80, output: 2.0 },
-    'grok-2':                    { input: 2.0,  output: 10.0 },
+    'grok-3':                    { input: 3.0,  output: 15.0 },
     'moonshot-v1-8k':            { input: 0.17, output: 0.17 },
   },
 };

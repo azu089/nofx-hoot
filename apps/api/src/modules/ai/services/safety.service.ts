@@ -437,7 +437,7 @@ export class SafetyService {
       if (input.positionSize > Number(aiConfig.maxPositionSize)) {
         return {
           passed: false,
-          detail: `仓位超限: ${input.positionSize} > ${aiConfig.maxPositionSize} USDT`,
+          detail: `仓位超限: ${input.positionSize}% > ${aiConfig.maxPositionSize}% (最大仓位比例)`,
         };
       }
     }

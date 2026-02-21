@@ -36,6 +36,7 @@ interface ProviderConfig {
   apiKey: string;
   enabled: boolean;
   displayName: string;
+  modelName?: string;
 }
 
 interface ModelCost {
@@ -58,7 +59,7 @@ const MODEL_PROVIDER_MAP: Record<string, string> = {
   'claude-3-5-haiku-20241022': 'openrouter',
   'gemini-2.0-flash':          'openrouter',
   'qwen-plus':                 'qwen',
-  'grok-2':                    'grok',
+  'grok-3':                    'grok',
   'moonshot-v1-8k':            'kimi',
 };
 
@@ -128,6 +129,7 @@ export const AiPlatformConfigPage = () => {
     setEditingProvider(providerName);
     providerForm.setFieldsValue({
       apiKey: '', // 不预填脱敏值，用户需重新输入
+      modelName: config?.providers[providerName]?.modelName || '',
     });
     setProviderModalVisible(true);
   };
@@ -143,6 +145,7 @@ export const AiPlatformConfigPage = () => {
           [editingProvider]: {
             ...config.providers[editingProvider],
             apiKey: values.apiKey,
+            modelName: values.modelName || '',
           },
         },
       };
@@ -189,7 +192,7 @@ export const AiPlatformConfigPage = () => {
       dataIndex: 'displayName',
       key: 'displayName',
       width: 200,
-      render: (text: string, row: { name: string; displayName: string; apiKey: string; enabled: boolean }) => (
+      render: (text: string, row: { name: string; displayName: string; apiKey: string; enabled: boolean; modelName?: string }) => (
         <Space>
           <Text strong>{text}</Text>
           <Text type="secondary" style={{ fontSize: 12 }}>({row.name})</Text>
@@ -214,6 +217,17 @@ export const AiPlatformConfigPage = () => {
       render: (apiKey: string) => (
         <Text type={apiKey ? 'secondary' : 'danger'} style={{ fontFamily: 'monospace' }}>
           {apiKey || '—— 未配置 ——'}
+        </Text>
+      ),
+    },
+    {
+      title: '当前模型',
+      dataIndex: 'modelName',
+      key: 'modelName',
+      width: 160,
+      render: (modelName: string) => (
+        <Text type="secondary" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+          {modelName || '（默认）'}
         </Text>
       ),
     },
@@ -374,6 +388,16 @@ export const AiPlatformConfigPage = () => {
             <Input.Password
               placeholder={`输入 ${editingProvider} API Key`}
               autoComplete="off"
+            />
+          </Form.Item>
+          <Form.Item
+            label="模型名称覆盖（可选）"
+            name="modelName"
+            extra="留空则使用代码默认模型版本。填入后调用此 Provider 的所有请求均使用该模型名。"
+          >
+            <Input
+              placeholder="例如: grok-3-fast（留空则使用默认）"
+              allowClear
             />
           </Form.Item>
         </Form>

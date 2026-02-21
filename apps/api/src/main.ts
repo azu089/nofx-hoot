@@ -121,6 +121,11 @@ async function bootstrap() {
   const port = process.env.API_PORT || 4001;
   await app.listen(port);
 
+  // 配置 HTTP keep-alive 超时，防止连接复用导致间歇性 401
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 65000; // 65s（需大于反向代理的 keep-alive）
+  server.headersTimeout = 66000;   // 需大于 keepAliveTimeout
+
   logger.log(`🚀 API 服务已启动: http://localhost:${port}/api`);
 }
 bootstrap();

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { WalletService } from './wallet.service';
 import {
   CreateWithdrawDto,
@@ -47,7 +48,8 @@ export class WalletController {
     );
   }
 
-  // 创建提现申请
+  // 创建提现申请（严格限流：3次/分钟，防止恶意频繁提现）
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Post('withdraw')
   async createWithdrawRequest(
     @CurrentUser() user: { id: string },

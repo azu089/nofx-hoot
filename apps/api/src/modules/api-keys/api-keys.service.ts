@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -18,6 +19,7 @@ import * as ccxt from 'ccxt';
 
 @Injectable()
 export class ApiKeysService {
+  private readonly logger = new Logger(ApiKeysService.name);
   constructor(private prisma: PrismaService) {}
 
   // 创建 API Key（先验证再存储）
@@ -501,7 +503,7 @@ export class ApiKeysService {
       if (spotOnlyExchanges.includes(exchangeLower)) {
         // 这些交易所不支持合约，跳过合约配置
         futuresEx = null;
-        console.log(`${exchange} 不支持合约交易`);
+        this.logger.debug(`${exchange} 不支持合约交易`);
       } else if (exchangeLower === 'binance') {
         // Binance USDT-M 合约使用独立的交易所类
         // 这会自动使用 fapi.binance.com 端点
@@ -604,7 +606,7 @@ export class ApiKeysService {
           }
         }
       } else {
-        console.log('获取现货余额失败:', spotResult.reason?.message);
+        this.logger.debug('获取现货余额失败:', spotResult.reason?.message);
       }
 
       // 处理合约余额（仅当交易所支持合约时）
@@ -627,7 +629,7 @@ export class ApiKeysService {
           }
         }
       } else if (futuresEx && futuresResult.status === 'rejected') {
-        console.log('获取合约余额失败:', futuresResult.reason?.message);
+        this.logger.debug('获取合约余额失败:', futuresResult.reason?.message);
       }
 
       // ===== 第二步：并行检测交易权限 =====
@@ -740,10 +742,10 @@ export class ApiKeysService {
         await futuresEx.loadMarkets();
       }
     } catch (e: any) {
-      console.log('合约权限检测: 加载市场失败:', e.message);
+      this.logger.debug('合约权限检测: 加载市场失败:', e.message);
       // 如果是权限错误，直接返回 false
       if (isPermissionError(e)) {
-        console.log('合约权限检测: 市场加载失败 - 无权限');
+        this.logger.debug('合约权限检测: 市场加载失败 - 无权限');
         return false;
       }
       // 其他错误，继续尝试
@@ -753,28 +755,28 @@ export class ApiKeysService {
     try {
       await futuresEx.fetchBalance();
       // 能获取余额，说明有基本的合约账户访问权限
-      console.log('合约权限检测: fetchBalance 成功');
+      this.logger.debug('合约权限检测: fetchBalance 成功');
       return true;
     } catch (e: any) {
       if (isPermissionError(e)) {
-        console.log('合约权限检测: fetchBalance 权限被拒绝');
+        this.logger.debug('合约权限检测: fetchBalance 权限被拒绝');
         return false;
       }
-      console.log('合约权限检测: fetchBalance 失败:', e.message);
+      this.logger.debug('合约权限检测: fetchBalance 失败:', e.message);
     }
 
     // 方法2: 尝试获取持仓
     if (futuresEx.has['fetchPositions']) {
       try {
         await futuresEx.fetchPositions();
-        console.log('合约权限检测: fetchPositions 成功');
+        this.logger.debug('合约权限检测: fetchPositions 成功');
         return true;
       } catch (e: any) {
         if (isPermissionError(e)) {
-          console.log('合约权限检测: fetchPositions 权限被拒绝');
+          this.logger.debug('合约权限检测: fetchPositions 权限被拒绝');
           return false;
         }
-        console.log('合约权限检测: fetchPositions 失败:', e.message);
+        this.logger.debug('合约权限检测: fetchPositions 失败:', e.message);
       }
     }
 
@@ -783,19 +785,19 @@ export class ApiKeysService {
       // 使用常用的合约交易对
       const symbol = 'BTC/USDT:USDT';
       await futuresEx.fetchOpenOrders(symbol);
-      console.log('合约权限检测: fetchOpenOrders 成功');
+      this.logger.debug('合约权限检测: fetchOpenOrders 成功');
       return true;
     } catch (e: any) {
       if (isPermissionError(e)) {
-        console.log('合约权限检测: fetchOpenOrders 权限被拒绝');
+        this.logger.debug('合约权限检测: fetchOpenOrders 权限被拒绝');
         return false;
       }
-      console.log('合约权限检测: fetchOpenOrders 失败:', e.message);
+      this.logger.debug('合约权限检测: fetchOpenOrders 失败:', e.message);
     }
 
     // 如果所有方法都失败了但没有收到明确的权限拒绝
     // 保守起见返回 false，因为我们无法确认有权限
-    console.log('合约权限检测: 所有方法失败，无法确认权限');
+    this.logger.debug('合约权限检测: 所有方法失败，无法确认权限');
     return false;
   }
 }

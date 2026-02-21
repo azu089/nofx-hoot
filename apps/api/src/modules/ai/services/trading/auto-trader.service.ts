@@ -139,7 +139,7 @@ export class AutoTraderService {
         }
       }
 
-      if (!this.llmService.hasAvailableKey(quickModel, apiKeys)) {
+      if (!(await this.llmService.hasAvailableKey(quickModel, apiKeys))) {
         this.logger.warn(`[自动交易] 用户 ${userId} 无可用 LLM API Key`);
         return result;
       }
@@ -458,6 +458,7 @@ export class AutoTraderService {
                   modelId: v.modelId,
                   action: v.decision.action,
                   confidence: v.decision.confidence,
+                  reasoning: v.decision.reasoning || '',
                   weight: v.weight,
                   success: v.success,
                   error: v.error,
@@ -1015,10 +1016,21 @@ export class AutoTraderService {
     startTime: number,
   ): Promise<CycleResult> {
     const gridConfig = strategy.gridConfig as GridConfig | null;
-    if (!gridConfig || !gridConfig.symbol) {
+    if (!gridConfig) {
       this.logger.warn(`[网格] 策略 ${strategy.id} 缺少 gridConfig`);
       result.errors = 1;
       return result;
+    }
+    // 如果 gridConfig 没有 symbol，从 coinSourceConfig 获取
+    if (!gridConfig.symbol) {
+      const coinSource = strategy.coinSourceConfig as { coins?: string[] } | null;
+      if (coinSource?.coins?.length) {
+        gridConfig.symbol = coinSource.coins[0];
+      } else {
+        this.logger.warn(`[网格] 策略 ${strategy.id} 缺少交易对配置`);
+        result.errors = 1;
+        return result;
+      }
     }
 
     try {

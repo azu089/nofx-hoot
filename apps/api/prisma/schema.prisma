@@ -1870,7 +1870,7 @@ model AiConfig {
   analysisInterval Int     @default(240) @map("analysis_interval") // 分析间隔(分钟)
 
   // 安全参数
-  maxPositionSize Decimal  @default(5)  @db.Decimal(5, 2) @map("max_position_size") // 最大仓位%
+  maxPositionSize Decimal  @default(20)  @db.Decimal(5, 2) @map("max_position_size") // 最大仓位%
   maxLeverage     Int      @default(3) @map("max_leverage")
   maxDailyTrades  Int      @default(10) @map("max_daily_trades")
   maxDailyDrawdown Decimal @default(5)  @db.Decimal(5, 2) @map("max_daily_drawdown") // 日回撤%

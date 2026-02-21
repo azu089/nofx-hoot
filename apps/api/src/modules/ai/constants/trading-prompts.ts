@@ -273,7 +273,7 @@ export const VOTING_OUTPUT_FORMAT = `
 - position_pct: 0.1-1.0 (fraction of available balance, default 0.2)
 - stop_loss: 0.01-0.10 (stop loss as decimal percentage, e.g. 0.03 = 3%)
 - take_profit: 0.01-0.20 (take profit as decimal percentage, e.g. 0.06 = 6%)
-- reasoning: Brief explanation for this vote
+- reasoning: Brief explanation for this vote (MUST be in Chinese 中文)
 `;
 
 // ==================== 投票阶段 Prompt 构建 (对齐 NoFx buildVotingSystemPrompt) ====================
@@ -304,6 +304,8 @@ Consider:
 - Market timing considerations
 
 You may vote differently from your earlier position if convinced by others' arguments.
+
+IMPORTANT: All "reasoning" text MUST be written in Chinese (中文). JSON keys and action values remain in English.
 
 ${VOTING_OUTPUT_FORMAT}
 

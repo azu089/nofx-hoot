@@ -87,21 +87,23 @@ export function Page({ embedded }: PageProps = {}) {
         </header>
       )}
 
-      {/* 统计卡片 — 3 列紧凑 */}
-      <div className="grid grid-cols-3 gap-2 px-4 py-3">
-        <div className="glass-card-hd p-3">
-          <div className="text-[#606070] text-[10px] mb-1">{t('list.strategyCount')}</div>
-          <div className="text-[#06B6D4] text-lg font-semibold font-mono">{strategies.length}</div>
-        </div>
-        <div className="glass-card-hd p-3">
-          <div className="text-[#606070] text-[10px] mb-1">{t('list.totalPnl')}</div>
-          <div className={`text-lg font-semibold font-mono ${totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
-            {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)}
+      {/* 统计卡片 */}
+      <div className="px-4 py-3">
+        <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] grid grid-cols-3">
+          <div className="p-3 text-center">
+            <div className="text-[#606070] text-[10px] mb-1">{t('list.strategyCount')}</div>
+            <div className="text-[#06B6D4] text-lg font-semibold font-mono">{strategies.length}</div>
           </div>
-        </div>
-        <div className="glass-card-hd p-3">
-          <div className="text-[#606070] text-[10px] mb-1">{t('list.avgWinRate')}</div>
-          <div className="text-[#F8F8FC] text-lg font-semibold font-mono">{avgWinRate.toFixed(1)}%</div>
+          <div className="p-3 text-center">
+            <div className="text-[#606070] text-[10px] mb-1">{t('list.totalPnl')}</div>
+            <div className={`text-lg font-semibold font-mono ${totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
+              {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)}
+            </div>
+          </div>
+          <div className="p-3 text-center">
+            <div className="text-[#606070] text-[10px] mb-1">{t('list.avgWinRate')}</div>
+            <div className="text-[#F8F8FC] text-lg font-semibold font-mono">{avgWinRate.toFixed(1)}%</div>
+          </div>
         </div>
       </div>
 

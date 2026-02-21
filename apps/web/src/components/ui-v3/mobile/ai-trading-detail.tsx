@@ -53,7 +53,7 @@ export function AIStrategyDetailPage() {
   const initialTab = tabParam === 'config' ? tabParam : 'overview';
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "config"
+    "overview" | "config" | "decisions"
   >(initialTab);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [showStopModal, setShowStopModal] = useState(false);
@@ -402,30 +402,32 @@ export function AIStrategyDetailPage() {
         </div>
 
         {/* 统计卡片 */}
-        <div className="px-4 pb-4 grid grid-cols-4 gap-2">
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-2.5">
-            <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.pnl')}</p>
-            <p className={`text-sm font-semibold ${Number(strategy.totalPnl) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
-              {Number(strategy.totalPnl) >= 0 ? '+' : ''}{Number(strategy.totalPnl).toFixed(2)}
-            </p>
-          </div>
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-2.5">
-            <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.winLoss')}</p>
-            <p className="text-sm font-semibold">
-              {Number(strategy.winRate).toFixed(1)}%
-            </p>
-          </div>
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-2.5">
-            <p className="text-[10px] text-[#606070] mb-0.5">Sharpe</p>
-            <p className="text-sm font-semibold">
-              {Number(strategy.sharpe).toFixed(2)}
-            </p>
-          </div>
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-2.5">
-            <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.trades')}</p>
-            <p className="text-sm font-semibold">
-              {strategy.totalTrades}
-            </p>
+        <div className="px-4 pb-4">
+          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] grid grid-cols-4">
+            <div className="p-2.5 text-center">
+              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.pnl')}</p>
+              <p className={`text-sm font-semibold ${Number(strategy.totalPnl) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
+                {Number(strategy.totalPnl) >= 0 ? '+' : ''}{Number(strategy.totalPnl).toFixed(2)}
+              </p>
+            </div>
+            <div className="p-2.5 text-center">
+              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.winLoss')}</p>
+              <p className="text-sm font-semibold">
+                {Number(strategy.winRate).toFixed(1)}%
+              </p>
+            </div>
+            <div className="p-2.5 text-center">
+              <p className="text-[10px] text-[#606070] mb-0.5">Sharpe</p>
+              <p className="text-sm font-semibold">
+                {Number(strategy.sharpe).toFixed(2)}
+              </p>
+            </div>
+            <div className="p-2.5 text-center">
+              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.trades')}</p>
+              <p className="text-sm font-semibold">
+                {strategy.totalTrades}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -434,6 +436,7 @@ export function AIStrategyDetailPage() {
           {[
             { key: "overview", label: t('detail.overviewTab') },
             { key: "config", label: t('detail.configTab') },
+            { key: "decisions", label: 'AI决策' },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -441,7 +444,7 @@ export function AIStrategyDetailPage() {
               aria-label={tab.label}
               onClick={() =>
                 setActiveTab(
-                  tab.key as "overview" | "config"
+                  tab.key as "overview" | "config" | "decisions"
                 )
               }
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -634,8 +637,13 @@ export function AIStrategyDetailPage() {
               </div>
             </div>
 
-            {/* 最近决策 */}
-            <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+          </div>
+        )}
+
+        {/* Tab 2: 最近决策 */}
+        {activeTab === "decisions" && (
+          <div className="space-y-4">
+            <div className="mx-4 mt-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold">{t('detail.recentDecisions')}</h3>
                 <button
@@ -665,7 +673,7 @@ export function AIStrategyDetailPage() {
           </div>
         )}
 
-        {/* Tab 2: 配置 */}
+        {/* Tab 3: 配置 */}
         {activeTab === "config" && (
           <div className={`p-4 space-y-4 ${isEditing ? 'pb-24' : ''}`}>
             {!isEditing ? (

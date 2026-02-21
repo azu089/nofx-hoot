@@ -176,7 +176,12 @@ export class WalletService {
       return { chain, asset, address };
     }
 
-    // 兜底：HD 钱包未配置时使用模拟地址（仅开发环境）
+    // 兜底：HD 钱包未配置时，生产环境直接报错，开发环境使用模拟地址
+    if (process.env.NODE_ENV === 'production') {
+      this.logger.error('HD 钱包未初始化，生产环境禁止生成模拟地址');
+      throw new BadRequestException('充值地址服务暂不可用，请联系客服');
+    }
+
     this.logger.warn('HD 钱包未配置，生成模拟地址（仅用于开发测试）');
     const mockAddress = chain === 'TRON'
       ? `T${uuidv4().replace(/-/g, '').slice(0, 33)}`

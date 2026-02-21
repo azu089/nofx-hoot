@@ -40,13 +40,13 @@ export const RISK_ROLE_LABELS: Record<string, string> = {
 
 // 模型显示名 (镜像后端 AI_MODELS)
 export const MODEL_DISPLAY: Record<string, { name: string; provider: string; color: string; logo: string }> = {
-  'deepseek-chat': { name: 'DeepSeek Chat', provider: 'DeepSeek', color: '#3B82F6', logo: '/icons/llm/deepseek.svg' },
-  'gpt-4o-mini': { name: 'GPT-4o Mini', provider: 'OpenAI', color: '#10B981', logo: '/icons/llm/openai.svg' },
-  'claude-3-5-haiku-20241022': { name: 'Claude 3.5 Haiku', provider: 'Anthropic', color: '#D97706', logo: '/icons/llm/anthropic.svg' },
-  'gemini-2.0-flash': { name: 'Gemini 2.0 Flash', provider: 'Google', color: '#6366F1', logo: '/icons/llm/google.svg' },
-  'qwen-plus': { name: 'Qwen Plus', provider: 'Alibaba', color: '#EC4899', logo: '/icons/llm/alibaba.svg' },
-  'grok-2': { name: 'Grok 2', provider: 'xAI', color: '#F43F5E', logo: '/icons/llm/xai.svg' },
-  'moonshot-v1-8k': { name: 'Kimi', provider: 'Moonshot', color: '#8B5CF6', logo: '/icons/llm/moonshot.svg' },
+  'deepseek-chat': { name: 'DeepSeek Chat', provider: 'DeepSeek', color: '#3B82F6', logo: '/icons/llm/deepseek.png' },
+  'gpt-4o-mini': { name: 'GPT-4o Mini', provider: 'OpenAI', color: '#10B981', logo: '/icons/llm/openai.png' },
+  'claude-3-5-haiku-20241022': { name: 'Claude 3.5 Haiku', provider: 'Anthropic', color: '#D97706', logo: '/icons/llm/anthropic.png' },
+  'gemini-2.0-flash': { name: 'Gemini 2.0 Flash', provider: 'Google', color: '#6366F1', logo: '/icons/llm/google.png' },
+  'qwen-plus': { name: 'Qwen Plus', provider: 'Alibaba', color: '#EC4899', logo: '/icons/llm/alibaba.png' },
+  'grok-3': { name: 'Grok 3', provider: 'xAI', color: '#F43F5E', logo: '/icons/llm/xai.png' },
+  'moonshot-v1-8k': { name: 'Kimi', provider: 'Moonshot', color: '#8B5CF6', logo: '/icons/llm/moonshot.png' },
 };
 
 // 阵营配色 (BULLISH/BEARISH/NEUTRAL)
@@ -77,7 +77,7 @@ export const MODEL_COST_ESTIMATE: Record<string, number> = {
   'claude-3-5-haiku-20241022': 0.005,
   'gemini-2.0-flash': 0.002,
   'qwen-plus': 0.002,
-  'grok-2': 0.005,
+  'grok-3': 0.005,
   'moonshot-v1-8k': 0.002,
 };
 

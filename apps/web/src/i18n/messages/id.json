@@ -1097,7 +1097,7 @@
       "debateDesc": "Multi-model voting decision"
     },
     "list": {
-      "title": "AI Auto Trading",
+      "title": "AI Trading",
       "createStrategy": "Create Strategy",
       "strategyCount": "Strategies",
       "totalPnl": "Total PnL",
@@ -1369,6 +1369,9 @@
       "searchSymbol": "Search coins...",
       "noMatch": "No matching coins",
       "selectSymbolAction": "Select {symbol}",
+      "quick": "Cepat",
+      "standard": "Standar",
+      "deep": "Mendalam",
       "researchDepth": "Research Depth",
       "fundManagement": "Fund Management",
       "fundSummary": "${amount} / {leverage}x / {positions} pos",
@@ -1504,7 +1507,7 @@
     },
     "dashboard": {
       "title": "AI Trading",
-      "subtitle": "AI Research & Auto Trading",
+      "subtitle": "AI Research & Trading",
       "features": "Deep Research · Auto Strategy · 24/7"
     },
     "timeline": {

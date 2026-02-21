@@ -1322,10 +1322,10 @@
       "debateDesc": "多模型投票决策"
     },
     "list": {
-      "title": "AI 自动交易",
+      "title": "AI 交易",
       "createStrategy": "创建策略",
       "strategyCount": "策略数",
-      "totalPnl": "总 PnL",
+      "totalPnl": "AI盈亏",
       "avgWinRate": "平均胜率",
       "createNew": "创建新策略",
       "noStrategies": "暂无策略",
@@ -1352,7 +1352,7 @@
       "interval": "间隔",
       "today": "今日",
       "winRate": "胜率",
-      "todayPnl": "今日 PnL",
+      "todayPnl": "今日盈亏",
       "excludeCoins": "排除币种"
     },
     "create": {
@@ -1473,7 +1473,7 @@
       "overviewTab": "概览",
       "configTab": "配置",
       "todayStats": "今日统计",
-      "todayPnl": "今日 PnL",
+      "todayPnl": "今日盈亏",
       "tradeCount": "交易笔数",
       "winLoss": "胜/负",
       "recentDecisions": "最近决策",
@@ -1566,8 +1566,8 @@
       "timeFilter7d": "7d",
       "timeFilter30d": "30d",
       "timeFilterAll": "全部",
-      "pnlChart": "{filter} 累计 PnL",
-      "pnl": "PnL",
+      "pnlChart": "{filter} AI盈亏",
+      "pnl": "AI盈亏",
       "sharpe": "Sharpe",
       "trades": "交易",
       "analyzed": "分析 {count} 币种, 执行 {executed} 笔, 费用",
@@ -1594,6 +1594,9 @@
       "searchSymbol": "搜索币种...",
       "noMatch": "未找到匹配币种",
       "selectSymbolAction": "选择{symbol}",
+      "quick": "快速",
+      "standard": "标准",
+      "deep": "深度",
       "researchDepth": "研究深度",
       "fundManagement": "资金管理",
       "fundSummary": "${amount} / {leverage}x / {positions}仓",
@@ -1729,7 +1732,7 @@
     },
     "dashboard": {
       "title": "AI 交易",
-      "subtitle": "AI 研究与自动交易",
+      "subtitle": "AI 研究与交易",
       "features": "深度研究 · 自动策略 · 7×24 小时"
     },
     "timeline": {

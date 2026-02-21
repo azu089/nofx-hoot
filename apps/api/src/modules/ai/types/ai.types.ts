@@ -132,7 +132,7 @@ export interface ResearchResult {
  * 币种来源配置（参考 NoFx CoinSourceConfig）
  */
 export interface CoinSourceConfig {
-  mode: 'static' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
+  mode: 'static' | 'manual' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
   coins?: string[]; // static 模式
   maxCoins?: number; // ai/oi_top/oi_low/mixed 模式
   criteria?: string; // ai 模式

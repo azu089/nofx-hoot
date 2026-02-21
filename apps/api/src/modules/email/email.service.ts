@@ -135,13 +135,14 @@ export class EmailService {
       <td style="background-color: #12121A; border-radius: 12px; padding: 40px; border: 1px solid #1E1E2E;">
         <h2 style="color: #F8F8FC; margin: 0 0 20px 0; font-size: 20px;">欢迎加入 HOOT，${nickname}！</h2>
         <p style="color: #9090A0; margin: 0 0 20px 0; font-size: 14px; line-height: 1.6;">
-          感谢您注册 HOOT AI 量化交易平台。您现在可以：
+          感谢您注册 HOOT —— 您的 AI 量化交易助手。您现在可以：
         </p>
         <ul style="color: #9090A0; margin: 0 0 20px 0; padding-left: 20px; font-size: 14px; line-height: 1.8;">
-          <li>浏览和订阅专业量化策略</li>
-          <li>绑定交易所 API 自动跟单</li>
-          <li>质押 HOOT 代币获取分红</li>
-          <li>邀请好友获得返佣奖励</li>
+          <li>一键启动 AI 研究，多维度分析市场行情</li>
+          <li>创建 AI 交易策略，7×24 小时自动捕捉机会</li>
+          <li>绑定交易所 API，AI 决策即时执行</li>
+          <li>质押 HOOT 代币，享受平台分红</li>
+          <li>邀请好友一起交易，获得返佣奖励</li>
         </ul>
         <a href="${process.env.WEB_URL || 'https://hoot.cool'}/dashboard"
            style="display: inline-block; background-color: #06B6D4; color: #000; text-decoration: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; margin-top: 10px;">

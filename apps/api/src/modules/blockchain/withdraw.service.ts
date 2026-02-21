@@ -116,7 +116,7 @@ export class WithdrawService {
         process.env.BSC_RPC_URL || 'https://bsc-dataseed1.binance.org',
       privateKey,
       gasSymbol: 'BNB',
-      relayGasAmount: '0.001', // BSC Gas 低
+      relayGasAmount: '0.0003', // BSC Gas 低
       tokens: {
         USDT: {
           address:
@@ -572,17 +572,15 @@ export class WithdrawService {
           },
         });
 
-        // 热钱包余额不足时自动退款
-        if (result.error?.includes('余额不足')) {
-          await this.refundWithdraw(withdrawRequest, `链上执行失败: ${result.error}`);
-        }
+        // 执行失败自动退款（用户资金不能卡住）
+        await this.refundWithdraw(withdrawRequest, `链上执行失败: ${result.error}`);
       }
 
       return result;
     } catch (error) {
       this.logger.error(`[${chain}] 提现失败: ${error.message}`);
 
-      // 异常时回退为 failed 状态
+      // 异常时回退为 failed 状态并自动退款
       await this.prisma.withdrawRequest.update({
         where: { id: withdrawRequestId },
         data: {
@@ -590,6 +588,11 @@ export class WithdrawService {
           remark: `执行异常: ${error.message}`,
         },
       });
+
+      // 自动退款
+      await this.refundWithdraw(withdrawRequest, `执行异常: ${error.message}`).catch(
+        (refundErr) => this.logger.error(`退款失败: ${refundErr.message}`),
+      );
 
       return { success: false, error: error.message };
     }

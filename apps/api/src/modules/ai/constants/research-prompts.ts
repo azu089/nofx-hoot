@@ -286,6 +286,9 @@ You will participate in multiple rounds:
 - Final Round: Cast your definitive vote
 
 CRITICAL: You MUST respond with ONLY a valid JSON object. No markdown, no explanations outside JSON.
+
+## Language
+All "reasoning" and textual analysis fields MUST be written in Chinese (中文). JSON keys and action values remain in English.
 `;
 
 // ==================== 轮次描述 ====================

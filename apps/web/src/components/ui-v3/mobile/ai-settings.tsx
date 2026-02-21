@@ -18,12 +18,12 @@ import { useTranslations } from '@/i18n/provider';
 // ── Provider list ────────────────────────────────────────────────
 
 const LLM_PROVIDERS = [
-  { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.svg', placeholder: 'sk-...', recommended: true },
-  { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.svg', placeholder: 'sk-...' },
-  { key: 'openrouter', label: 'OpenRouter', logo: '/icons/llm/anthropic.svg', placeholder: 'sk-or-...' },
-  { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.svg', placeholder: 'sk-...' },
-  { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.svg', placeholder: 'xai-...' },
-  { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.svg', placeholder: 'sk-...' },
+  { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.png', placeholder: 'sk-...', recommended: true },
+  { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.png', placeholder: 'sk-...' },
+  { key: 'openrouter', label: 'OpenRouter', logo: '/icons/llm/anthropic.png', placeholder: 'sk-or-...' },
+  { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.png', placeholder: 'sk-...' },
+  { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.png', placeholder: 'xai-...' },
+  { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.png', placeholder: 'sk-...' },
 ] as const;
 
 // ── Main ─────────────────────────────────────────────────────────

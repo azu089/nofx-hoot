@@ -542,17 +542,30 @@ export class DebateOrchestratorService {
       const consensusScores: Record<string, number> = {};
       const perSymbolVotes: Record<string, any[]> = {};
 
-      // 将 votingEntries 转换为 auto-trader 期望的 { modelId, decision, weight, success } 格式
-      const transformedVotes = (debateResult.votingEntries || []).map((ve) => ({
-        modelId: ve.model,
-        decision: {
-          action: ve.arguments?.[0]?.action || ve.direction?.toLowerCase() || 'hold',
-          confidence: ve.confidence,
-        },
-        weight: 1,
-        success: true,
-        error: undefined,
-      }));
+      // 辅助: 标准化 symbol (BTCUSDT / BTC/USDT / BTC/USDT:USDT → BTCUSDT)
+      const normSym = (raw: string): string =>
+        raw.replace(/[/:]/g, '').replace(/USDT$/, '').toUpperCase();
+
+      // 按 symbol 提取每个投票者的 reasoning (multi-coin 感知)
+      const buildSymbolVotes = (sym: string) =>
+        (debateResult.votingEntries || []).map((ve) => {
+          const target = normSym(sym);
+          // 找到此 symbol 对应的 argument; 找不到则 fallback 第一个
+          const symArg = Array.isArray(ve.arguments)
+            ? ve.arguments.find(a => normSym(a.symbol || '') === target) || ve.arguments[0]
+            : ve.arguments;
+          return {
+            modelId: ve.model,
+            decision: {
+              action: symArg?.action || ve.direction?.toLowerCase() || 'hold',
+              confidence: symArg?.confidence || ve.confidence,
+              reasoning: symArg?.reasoning || '',
+            },
+            weight: 1,
+            success: true,
+            error: undefined,
+          };
+        });
 
       for (const sym of effectiveSymbols) {
         const symConsensus = multiConsensus[sym];
@@ -570,7 +583,7 @@ export class DebateOrchestratorService {
             reasoning: symConsensus?.reasoning || '投票共识: 观望',
           };
           consensusScores[sym] = symConsensus?.score || 0;
-          perSymbolVotes[sym] = transformedVotes;
+          perSymbolVotes[sym] = buildSymbolVotes(sym);
           continue;
         }
 
@@ -604,7 +617,7 @@ export class DebateOrchestratorService {
           reasoning: `[NoFx投票共识] ${symConsensus.reasoning}`,
         };
         consensusScores[sym] = symConsensus.score;
-        perSymbolVotes[sym] = transformedVotes;
+        perSymbolVotes[sym] = buildSymbolVotes(sym);
       }
 
       const totalCost = debateResult.totalCost;

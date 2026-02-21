@@ -13,6 +13,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 // 共享服务
@@ -30,6 +31,7 @@ import { StrategyEngineService } from './services/trading/strategy-engine.servic
 import { GridTradingService, GridConfig } from './services/trading/grid-trading.service';
 import { AutoTraderService } from './services/trading/auto-trader.service';
 import { PromptBuilderService } from './services/trading/prompt-builder.service';
+import { AdapterFactoryService } from '../exchange-adapters/adapter-factory.service';
 // DTO
 import { StartResearchDto, ExecuteResearchDto } from './dto/research.dto';
 import { CreateStrategyDto, UpdateStrategyDto } from './dto/strategy.dto';
@@ -83,6 +85,7 @@ export class AiController {
     private readonly autoTrader: AutoTraderService,
     private readonly promptBuilder: PromptBuilderService,
     private readonly researchCycleService: ResearchCycleService,
+    @Optional() private readonly adapterFactory: AdapterFactoryService,
   ) {}
 
   // ========================= 基础端点 =========================
@@ -170,20 +173,19 @@ export class AiController {
     if (userId) {
       try {
         const config = await this.prisma.aiConfig.findUnique({ where: { userId } });
-        if (config?.exchangeApiKeyId) {
-          const exchange = await (this.aiExecution as any).createExchangeInstance(userId, config.exchangeApiKeyId);
-          const balance = await exchange.fetchBalance();
-          const futuresUSDT = balance.USDT || balance.total?.USDT;
+        if (config?.exchangeApiKeyId && this.adapterFactory) {
+          const adapter = await this.adapterFactory.createAdapter(userId, config.exchangeApiKeyId);
+          const balance = await adapter.getBalance();
           results.tests.exchangeConnection = {
             status: 'ok',
-            exchange: exchange.id,
-            futuresBalance: typeof futuresUSDT === 'object' ? futuresUSDT : { total: futuresUSDT },
+            exchange: adapter.exchangeType,
+            futuresBalance: balance,
           };
 
           // 6. 获取当前持仓
           try {
-            const positions = await exchange.fetchPositions([symbol.replace('/', '')]);
-            const openPositions = positions.filter((p: any) => p.contracts > 0 || Math.abs(parseFloat(p.info?.positionAmt || '0')) > 0);
+            const positions = await adapter.getPositions();
+            const openPositions = positions.filter((p: any) => p.contracts > 0 || Math.abs(parseFloat(p.positionAmt || '0')) > 0);
             results.tests.positions = {
               status: 'ok',
               total: positions.length,
@@ -453,7 +455,7 @@ export class AiController {
     await this.validateLlmAccess(userId, apiKeys);
 
     const quickModel = (aiConfig.models as string[])?.[0] || 'deepseek-chat';
-    if (!this.llmService.hasAvailableKey(quickModel, apiKeys)) {
+    if (!(await this.llmService.hasAvailableKey(quickModel, apiKeys))) {
       throw new BadRequestException('无可用 LLM API Key：用户未配置且平台未设置默认 Key');
     }
 
@@ -921,6 +923,56 @@ export class AiController {
   }
 
   /**
+   * 更新研究循环配置
+   *
+   * PUT /ai/research/:id/config
+   * Body: { intervalMinutes?, maxCycles?, profitTargetPercent?, maxLossPercent?, riskControlConfig? }
+   */
+  @Put('research/:id/config')
+  @HttpCode(HttpStatus.OK)
+  async updateResearchConfig(@Param('id') id: string, @Request() req: any, @Body() body: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    // 只允许更新根会话
+    const root = await this.prisma.aiResearchSession.findFirst({
+      where: { id, userId, rootSessionId: null },
+    });
+
+    if (!root) throw new NotFoundException('研究会话不存在或非根会话');
+
+    if (root.campaignStatus !== 'running' && root.campaignStatus !== 'paused' && root.campaignStatus !== 'cycling') {
+      throw new BadRequestException('只能更新运行中或暂停中的研究配置');
+    }
+
+    // 读取现有配置
+    const existing = (root.cyclingConfig as any) || {};
+
+    // 合并 cycling 参数
+    const merged: Record<string, any> = { ...existing };
+    if (body.intervalMinutes != null && body.intervalMinutes >= 1) merged.intervalMinutes = body.intervalMinutes;
+    if (body.maxCycles != null && body.maxCycles >= 0) merged.maxCycles = body.maxCycles;
+    if (body.profitTargetPercent != null && body.profitTargetPercent >= 0) merged.profitTargetPercent = body.profitTargetPercent;
+    if (body.maxLossPercent != null && body.maxLossPercent >= 0) merged.maxLossPercent = body.maxLossPercent;
+
+    // 合并 riskControlConfig（嵌套 merge）
+    if (body.riskControlConfig && typeof body.riskControlConfig === 'object') {
+      merged.riskControlConfig = {
+        ...(existing.riskControlConfig || {}),
+        ...body.riskControlConfig,
+      };
+    }
+
+    // 写入数据库
+    await this.prisma.aiResearchSession.update({
+      where: { id },
+      data: { cyclingConfig: merged },
+    });
+
+    return { success: true, config: merged };
+  }
+
+  /**
    * 获取循环统计
    *
    * GET /ai/research/:id/campaign
@@ -1313,7 +1365,7 @@ export class AiController {
     await this.validateLlmAccess(userId, apiKeys);
 
     const defaultModel = (aiConfig.models as string[])?.[0] || 'deepseek-chat';
-    if (!this.llmService.hasAvailableKey(defaultModel, apiKeys)) {
+    if (!(await this.llmService.hasAvailableKey(defaultModel, apiKeys))) {
       throw new BadRequestException('无可用 LLM API Key：用户未配置且平台未设置默认 Key');
     }
 

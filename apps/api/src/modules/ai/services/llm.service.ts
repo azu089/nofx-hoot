@@ -62,7 +62,7 @@ export class LLMService {
   private readonly logger = new Logger(LLMService.name);
 
   // 平台 DB 配置缓存（5 分钟 TTL）
-  private platformCfgCache: Record<string, { apiKey: string; enabled: boolean }> | null = null;
+  private platformCfgCache: Record<string, { apiKey: string; enabled: boolean; modelName: string }> | null = null;
   private platformCfgLoadedAt = 0;
   private readonly PLATFORM_CFG_TTL_MS = 5 * 60 * 1000; // 5 分钟
 
@@ -76,15 +76,16 @@ export class LLMService {
     'gemini-2.0-flash-001': { input: 0.10, output: 0.40 },
     'gemini-2.0-flash': { input: 0.10, output: 0.40 },
     'qwen-plus': { input: 0.80, output: 2.0 },
-    'grok-2': { input: 2.0, output: 10.0 },
+    'grok-3': { input: 3.0, output: 15.0 },
     'moonshot-v1-8k': { input: 0.17, output: 0.17 },
   };
 
   /**
-   * 从 DB 或缓存中获取平台 API Key（三轨优先级第二层）
+   * 从 DB 或缓存中获取平台 Provider 配置（三轨优先级第二层）
    * 读取 platform_configs.llm_platform_config，带 5 分钟 TTL 缓存
+   * 返回 { apiKey, modelName }，modelName 为空字符串表示使用代码默认值
    */
-  private async getPlatformApiKey(provider: string): Promise<string> {
+  private async getPlatformProviderConfig(provider: string): Promise<{ apiKey: string; modelName: string }> {
     const now = Date.now();
     if (!this.platformCfgCache || now - this.platformCfgLoadedAt > this.PLATFORM_CFG_TTL_MS) {
       try {
@@ -93,11 +94,15 @@ export class LLMService {
         });
         if (row?.value) {
           const parsed = JSON.parse(row.value) as {
-            providers?: Record<string, { apiKey?: string; enabled?: boolean }>;
+            providers?: Record<string, { apiKey?: string; enabled?: boolean; modelName?: string }>;
           };
           this.platformCfgCache = {};
           for (const [name, cfg] of Object.entries(parsed.providers || {})) {
-            this.platformCfgCache[name] = { apiKey: cfg.apiKey || '', enabled: cfg.enabled ?? true };
+            this.platformCfgCache[name] = {
+              apiKey: cfg.apiKey || '',
+              enabled: cfg.enabled ?? true,
+              modelName: cfg.modelName || '',
+            };
           }
         } else {
           this.platformCfgCache = {};
@@ -108,7 +113,29 @@ export class LLMService {
       }
       this.platformCfgLoadedAt = now;
     }
-    return this.platformCfgCache[provider]?.apiKey || '';
+    const cfg = this.platformCfgCache[provider];
+    return { apiKey: cfg?.apiKey || '', modelName: cfg?.modelName || '' };
+  }
+
+  /**
+   * 解析实际调用的模型 ID
+   * 若管理员在平台配置中为 provider 设置了 modelName 覆盖，则使用覆盖值；
+   * 否则返回原始 modelId（代码默认值）
+   */
+  private async resolveModelId(modelId: string): Promise<string> {
+    const providerPrefixes: Array<[string, string]> = [
+      ['deepseek', 'deepseek'],
+      ['gpt-', 'openai'],
+      ['claude-', 'openrouter'],
+      ['gemini-', 'openrouter'],
+      ['qwen-', 'qwen'],
+      ['grok-', 'grok'],
+      ['moonshot-', 'kimi'],
+    ];
+    const provider = providerPrefixes.find(([prefix]) => modelId.startsWith(prefix))?.[1];
+    if (!provider) return modelId;
+    const { modelName } = await this.getPlatformProviderConfig(provider);
+    return modelName || modelId;
   }
 
   /**
@@ -127,27 +154,27 @@ export class LLMService {
     if (modelId.startsWith('deepseek')) {
       provider = 'deepseek';
       baseURL = 'https://api.deepseek.com/v1';
-      apiKey = apiKeys.deepseek || await this.getPlatformApiKey('deepseek') || process.env.DEEPSEEK_API_KEY || '';
+      apiKey = apiKeys.deepseek || (await this.getPlatformProviderConfig('deepseek')).apiKey || process.env.DEEPSEEK_API_KEY || '';
     } else if (modelId.startsWith('gpt-')) {
       provider = 'openai';
       baseURL = 'https://api.openai.com/v1';
-      apiKey = apiKeys.openai || await this.getPlatformApiKey('openai') || process.env.OPENAI_API_KEY || '';
+      apiKey = apiKeys.openai || (await this.getPlatformProviderConfig('openai')).apiKey || process.env.OPENAI_API_KEY || '';
     } else if (modelId.startsWith('claude-') || modelId.startsWith('gemini-')) {
       provider = 'openrouter';
       baseURL = 'https://openrouter.ai/api/v1';
-      apiKey = apiKeys.openrouter || await this.getPlatformApiKey('openrouter') || process.env.OPENROUTER_API_KEY || '';
+      apiKey = apiKeys.openrouter || (await this.getPlatformProviderConfig('openrouter')).apiKey || process.env.OPENROUTER_API_KEY || '';
     } else if (modelId.startsWith('qwen-')) {
       provider = 'qwen';
       baseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-      apiKey = apiKeys.qwen || await this.getPlatformApiKey('qwen') || process.env.QWEN_API_KEY || '';
+      apiKey = apiKeys.qwen || (await this.getPlatformProviderConfig('qwen')).apiKey || process.env.QWEN_API_KEY || '';
     } else if (modelId.startsWith('grok-')) {
       provider = 'grok';
       baseURL = 'https://api.x.ai/v1';
-      apiKey = apiKeys.grok || await this.getPlatformApiKey('grok') || process.env.GROK_API_KEY || '';
+      apiKey = apiKeys.grok || (await this.getPlatformProviderConfig('grok')).apiKey || process.env.GROK_API_KEY || '';
     } else if (modelId.startsWith('moonshot-')) {
       provider = 'kimi';
       baseURL = 'https://api.moonshot.cn/v1';
-      apiKey = apiKeys.kimi || await this.getPlatformApiKey('kimi') || process.env.KIMI_API_KEY || '';
+      apiKey = apiKeys.kimi || (await this.getPlatformProviderConfig('kimi')).apiKey || process.env.KIMI_API_KEY || '';
     } else {
       throw new Error(`不支持的模型: ${modelId}`);
     }
@@ -166,22 +193,34 @@ export class LLMService {
   }
 
   /**
-   * 检查是否有可用的 LLM Key（用户或平台）
+   * 检查是否有可用的 LLM Key（用户 key / 平台 DB key / 环境变量，三轨均检查）
    * 供外部调用方在发起分析前快速判断
    */
-  hasAvailableKey(modelId: string, apiKeys: UserApiKeys): boolean {
+  async hasAvailableKey(modelId: string, apiKeys: UserApiKeys): Promise<boolean> {
     if (modelId.startsWith('deepseek')) {
-      return !!(apiKeys.deepseek || process.env.DEEPSEEK_API_KEY);
+      if (apiKeys.deepseek || process.env.DEEPSEEK_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('deepseek');
+      return !!apiKey;
     } else if (modelId.startsWith('gpt-')) {
-      return !!(apiKeys.openai || process.env.OPENAI_API_KEY);
+      if (apiKeys.openai || process.env.OPENAI_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('openai');
+      return !!apiKey;
     } else if (modelId.startsWith('claude-') || modelId.startsWith('gemini-')) {
-      return !!(apiKeys.openrouter || process.env.OPENROUTER_API_KEY);
+      if (apiKeys.openrouter || process.env.OPENROUTER_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('openrouter');
+      return !!apiKey;
     } else if (modelId.startsWith('qwen-')) {
-      return !!(apiKeys.qwen || process.env.QWEN_API_KEY);
+      if (apiKeys.qwen || process.env.QWEN_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('qwen');
+      return !!apiKey;
     } else if (modelId.startsWith('grok-')) {
-      return !!(apiKeys.grok || process.env.GROK_API_KEY);
+      if (apiKeys.grok || process.env.GROK_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('grok');
+      return !!apiKey;
     } else if (modelId.startsWith('moonshot-')) {
-      return !!(apiKeys.kimi || process.env.KIMI_API_KEY);
+      if (apiKeys.kimi || process.env.KIMI_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('kimi');
+      return !!apiKey;
     }
     return false;
   }
@@ -238,10 +277,16 @@ export class LLMService {
   ): Promise<LLMResponse> {
     const startTime = Date.now();
 
-    try {
-      const client = await this.createClient(modelId, apiKeys);
+    // 应用平台 modelName 覆盖（管理员可在后台指定具体版本，无需重部署）
+    const effectiveModelId = await this.resolveModelId(modelId);
+    if (effectiveModelId !== modelId) {
+      this.logger.log(`模型覆盖: ${modelId} → ${effectiveModelId}`);
+    }
 
-      this.logger.log(`调用 ${modelId}: ${userMessage.slice(0, 50)}...`);
+    try {
+      const client = await this.createClient(effectiveModelId, apiKeys);
+
+      this.logger.log(`调用 ${effectiveModelId}: ${userMessage.slice(0, 50)}...`);
 
       // 调用 API（带重试）
       let response: OpenAI.Chat.Completions.ChatCompletion | undefined;
@@ -250,7 +295,7 @@ export class LLMService {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           response = await client.chat.completions.create({
-            model: modelId,
+            model: effectiveModelId,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessage },
@@ -281,10 +326,10 @@ export class LLMService {
       const totalTokens = usage?.total_tokens || inputTokens + outputTokens;
 
       const latencyMs = Date.now() - startTime;
-      const cost = this.calculateCost(modelId, inputTokens, outputTokens);
+      const cost = this.calculateCost(effectiveModelId, inputTokens, outputTokens);
 
       this.logger.log(
-        `${modelId} 完成: ${totalTokens} tokens, ${latencyMs}ms, $${cost.toFixed(6)}`,
+        `${effectiveModelId} 完成: ${totalTokens} tokens, ${latencyMs}ms, $${cost.toFixed(6)}`,
       );
 
       return {
@@ -296,7 +341,7 @@ export class LLMService {
     } catch (error) {
       const latencyMs = Date.now() - startTime;
       this.logger.error(
-        `${modelId} 调用失败 (${latencyMs}ms): ${error.message}`,
+        `${effectiveModelId} 调用失败 (${latencyMs}ms): ${error.message}`,
         error.stack,
       );
       throw error;

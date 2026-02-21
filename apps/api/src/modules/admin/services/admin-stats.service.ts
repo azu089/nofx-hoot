@@ -319,7 +319,7 @@ export class AdminStatsService {
       this.prisma.position.aggregate({
         where: { createdAt: { gte: today } },
         _count: true,
-        _sum: { realizedPnl: true },
+        _sum: { realizedPnl: true, margin: true },
       }),
       this.prisma.stakingRecord.aggregate({
         where: { status: 'active' },
@@ -357,13 +357,13 @@ export class AdminStatsService {
           .plus(pointCardRevenue._sum.amount?.toString() || '0')
           .plus(gasFeeRevenue._sum.feeAmount?.toString() || '0'),
         totalTrades: tradeStats._count,
-        totalVolumeUsdt: 0, // TODO: 计算实际交易量
+        totalVolumeUsdt: tradeStats._sum.margin || 0,
         totalProfitUsdt: tradeStats._sum.realizedPnl || 0,
         totalStaked: stakingStats._sum.amount || 0,
         totalStakers: stakingStats._count,
         hootCirculating: hootStats._sum.amount || 0,
         hootStaked: stakingStats._sum.amount || 0,
-        hootBurned: 0, // TODO: 计算销毁量
+        hootBurned: 0, // 暂无销毁记录，未来实现代币销毁时更新
       },
       update: {
         totalUsers,
@@ -384,11 +384,13 @@ export class AdminStatsService {
           .plus(pointCardRevenue._sum.amount?.toString() || '0')
           .plus(gasFeeRevenue._sum.feeAmount?.toString() || '0'),
         totalTrades: tradeStats._count,
+        totalVolumeUsdt: tradeStats._sum.margin || 0,
         totalProfitUsdt: tradeStats._sum.realizedPnl || 0,
         totalStaked: stakingStats._sum.amount || 0,
         totalStakers: stakingStats._count,
         hootCirculating: hootStats._sum.amount || 0,
         hootStaked: stakingStats._sum.amount || 0,
+        hootBurned: 0, // 暂无销毁记录，未来实现代币销毁时更新
       },
     });
 
