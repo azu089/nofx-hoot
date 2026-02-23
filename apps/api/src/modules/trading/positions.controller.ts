@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PositionsService } from './positions.service';
 import { PositionSyncService, SyncedPosition } from './position-sync.service';
 import {
@@ -10,6 +11,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { TelegramBotGuard } from '../../common/guards/telegram-bot.guard';
 
+@ApiTags('trading')
 @Controller('trading/positions')
 export class PositionsController {
   constructor(
@@ -92,10 +94,12 @@ export class PositionsController {
   async getExecutionLogs(
     @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
+    @Query('actionsOnly') actionsOnly?: string,
   ) {
     return this.positionsService.getExecutionLogs(
       user.id,
       limit ? parseInt(limit) : 50,
+      actionsOnly !== 'false', // 默认 true: 只返回交易执行记录
     );
   }
 

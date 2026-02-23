@@ -8,7 +8,9 @@
  * - 进化 Tier 提示 (EVOLUTION_TIER_PROMPTS)
  */
 
-import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT } from './models';
+import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT, buildAnalysisOutputFormat } from './models';
+import { buildLanguageInstruction, buildReasoningLanguageHint } from './locale-instructions';
+import type { EnhancedMarketData } from '../types/ai.types';
 
 // ==================== 市场数据格式化模板 ====================
 
@@ -29,6 +31,7 @@ export function formatMarketDataPrompt(data: {
     targetRank?: { priceRank: number; volumeRank: number };
     totalCoins?: number;
   };
+  enhanced?: EnhancedMarketData;
 }): string {
   const lines: string[] = [
     `=== MARKET DATA: ${data.symbol} ===`,
@@ -63,9 +66,9 @@ export function formatMarketDataPrompt(data: {
       lines.push(`ATR Ratio (3/14): ${ratio.toFixed(2)} ${ratio > 2.0 ? '⚠ HIGH VOLATILITY' : ratio > 1.5 ? '⚡ ELEVATED' : '✓ NORMAL'}`);
     }
     if (ind.donchianUpper !== undefined) {
-      lines.push(`Donchian Upper: ${ind.donchianUpper.toFixed(2)}`);
-      lines.push(`Donchian Mid: ${ind.donchianMid?.toFixed(2) || 'N/A'}`);
-      lines.push(`Donchian Lower: ${ind.donchianLower?.toFixed(2) || 'N/A'}`);
+      lines.push(`唐奇安上轨(Donchian Upper): ${ind.donchianUpper.toFixed(2)}`);
+      lines.push(`唐奇安中轨(Donchian Mid): ${ind.donchianMid?.toFixed(2) || 'N/A'}`);
+      lines.push(`唐奇安下轨(Donchian Lower): ${ind.donchianLower?.toFixed(2) || 'N/A'}`);
     }
   }
 
@@ -78,7 +81,8 @@ export function formatMarketDataPrompt(data: {
     if (data.fundingRate !== undefined) {
       const fr = data.fundingRate;
       const frLabel = Math.abs(fr) > 0.001 ? '⚠ EXTREME' : Math.abs(fr) > 0.0005 ? '⚡ HIGH' : '✓ NORMAL';
-      lines.push(`Funding Rate (8h): ${(fr * 100).toFixed(4)}% ${frLabel}`);
+      const frDirection = fr > 0 ? '(Longs pay Shorts → bearish bias)' : fr < 0 ? '(Shorts pay Longs → bullish bias)' : '(Neutral)';
+      lines.push(`Funding Rate (8h): ${(fr * 100).toFixed(4)}% ${frLabel} ${frDirection}`);
     }
   }
 
@@ -99,6 +103,84 @@ export function formatMarketDataPrompt(data: {
       if (r.targetRank.volumeRank > 0) {
         lines.push(`Target Volume Rank: #${r.targetRank.volumeRank}/${r.totalCoins}`);
       }
+    }
+  }
+
+  // ==================== 增强市场数据（Phase 11） ====================
+  const enh = data.enhanced;
+  if (enh) {
+    // 多空账户比 + Taker 买卖比
+    if (enh.longShortRatio || enh.takerFlow) {
+      lines.push('', '--- Long/Short Positioning ---');
+      if (enh.longShortRatio) {
+        const ls = enh.longShortRatio;
+        const longPct = (ls.longAccount * 100).toFixed(1);
+        const shortPct = (ls.shortAccount * 100).toFixed(1);
+        lines.push(`L/S Account Ratio: ${ls.longShortRatio.toFixed(2)} (${longPct}% Long / ${shortPct}% Short)`);
+      }
+      if (enh.takerFlow) {
+        const tf = enh.takerFlow;
+        const label = tf.buySellRatio > 1 ? 'buyers more aggressive' : tf.buySellRatio < 1 ? 'sellers more aggressive' : 'balanced';
+        lines.push(`Taker Buy/Sell: ${tf.buySellRatio.toFixed(2)} (${label})`);
+      }
+    }
+
+    // OI 历史趋势
+    if (enh.oiHistory && enh.oiHistory.length >= 2) {
+      const latest = enh.oiHistory[enh.oiHistory.length - 1];
+      const earliest = enh.oiHistory[0];
+      const oiChangeVal = latest.sumOpenInterestValue - earliest.sumOpenInterestValue;
+      const oiChangePct = earliest.sumOpenInterestValue > 0 ? (oiChangeVal / earliest.sumOpenInterestValue * 100) : 0;
+      const dir = oiChangeVal > 0 ? 'increasing' : oiChangeVal < 0 ? 'decreasing' : 'flat';
+      lines.push(`OI Trend (${enh.oiHistory.length}h): ${dir} (${oiChangePct > 0 ? '+' : ''}${oiChangePct.toFixed(1)}%, $${(oiChangeVal / 1e6).toFixed(1)}M)`);
+    }
+
+    // 清算热力图
+    if (enh.liquidationHeatmap) {
+      const liq = enh.liquidationHeatmap;
+      lines.push('', '--- Liquidation Context ---');
+      lines.push(`24h Total: $${(liq.total24hLiquidation / 1e6).toFixed(1)}M (Long: $${(liq.longLiquidation24h / 1e6).toFixed(1)}M / Short: $${(liq.shortLiquidation24h / 1e6).toFixed(1)}M)`);
+      if (liq.nearestUpLiqZone > 0) lines.push(`Nearest Up Liq Zone: $${liq.nearestUpLiqZone.toLocaleString()}`);
+      if (liq.nearestDownLiqZone > 0) lines.push(`Nearest Down Liq Zone: $${liq.nearestDownLiqZone.toLocaleString()}`);
+    }
+
+    // 期权数据
+    if (enh.optionsData) {
+      const opt = enh.optionsData;
+      const pcLabel = opt.putCallRatio < 0.7 ? 'bullish' : opt.putCallRatio > 1.3 ? 'bearish' : 'neutral';
+      lines.push('', '--- Options Market (Deribit) ---');
+      lines.push(`Put/Call Ratio: ${opt.putCallRatio.toFixed(2)} (${pcLabel})`);
+      lines.push(`Max Pain: $${opt.maxPainPrice.toLocaleString()} | IV: ${(opt.impliedVolatility * 100).toFixed(1)}%`);
+    }
+
+    // 资金流（稳定币 + ETF）
+    if (enh.stablecoinFlows || enh.etfFlows) {
+      lines.push('', '--- Fund Flows ---');
+      if (enh.stablecoinFlows) {
+        const sc = enh.stablecoinFlows;
+        const dir = sc.netMinted24h > 0 ? 'minted (capital entering)' : sc.netMinted24h < 0 ? 'burned (capital exiting)' : 'flat';
+        lines.push(`Stablecoin 24h Net: ${sc.netMinted24h > 0 ? '+' : ''}$${(sc.netMinted24h / 1e6).toFixed(0)}M ${dir}`);
+        lines.push(`Total Stablecoin MCap: $${(sc.totalMarketCap / 1e9).toFixed(1)}B (7d: ${sc.change7d > 0 ? '+' : ''}${sc.change7d.toFixed(1)}%)`);
+      }
+      if (enh.etfFlows) {
+        const etf = enh.etfFlows;
+        lines.push(`BTC ETF 24h: ${etf.btcEtfNetFlow24h > 0 ? '+' : ''}$${(etf.btcEtfNetFlow24h / 1e6).toFixed(0)}M ${etf.btcEtfNetFlow24h > 0 ? 'inflow' : 'outflow'}`);
+        lines.push(`ETH ETF 24h: ${etf.ethEtfNetFlow24h > 0 ? '+' : ''}$${(etf.ethEtfNetFlow24h / 1e6).toFixed(0)}M ${etf.ethEtfNetFlow24h > 0 ? 'inflow' : 'outflow'}`);
+      }
+    }
+
+    // 宏观经济
+    if (enh.macroData) {
+      const m = enh.macroData;
+      lines.push('', '--- Macro Context ---');
+      lines.push(`Fed Rate: ${m.fedFundsRate.toFixed(2)}% | CPI: ${m.cpiYoY.toFixed(1)}% | 10Y-2Y: ${m.yieldCurveSpread > 0 ? '+' : ''}${m.yieldCurveSpread.toFixed(2)}% | VIX: ${m.vix.toFixed(1)}`);
+    }
+
+    // CFTC COT
+    if (enh.cotReport) {
+      const cot = enh.cotReport;
+      lines.push('', '--- Institutional (COT) ---');
+      lines.push(`BTC CME Net Speculative: ${cot.btcNetSpeculative > 0 ? '+' : ''}${cot.btcNetSpeculative.toLocaleString()} contracts (${cot.reportDate})`);
     }
   }
 
@@ -141,79 +223,147 @@ export function formatSafetyWarnings(warnings: string[]): string {
 
 // ==================== 快速模式系统提示（对齐 NoFx prompt_builder.go） ====================
 
+/**
+ * 快速模式系统提示（已被 PromptBuilder 8-section 替代，保留做 fallback）
+ * @deprecated 使用 PromptBuilderService.buildSystemPrompt() 替代
+ */
 export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助手，负责分析市场数据并做出交易决策。
 
-## 你的任务
+## Section 0: 第零原则 — 不确定时不动
+如果你对市场方向没有把握（confidence < 50），output action="wait"。
+不交易是正确的决策。patience generates alpha，overtrading destroys it。
 
-1. **分析账户状态**: 评估当前风险水平、保证金使用率、持仓情况
-2. **分析当前持仓**: 判断是否需要止盈、止损、加仓或持有
-3. **分析市场数据**: 评估交易机会，结合技术分析和资金流向
-4. **做出决策**: 输出明确的交易决策，包含详细的推理过程
+## Section 1: 市场状态识别 (Market Regime)
+入场前必须先判定当前市场 Regime:
+- **dead** (ATR14/Price < 0.3%): 极低波动，使用小仓位+宽止损，仍可交易，R:R ≥ 2.0
+- **ranging** (0.3-1.5%): 震荡区间，mean-reversion，R:R ≥ 2.0
+- **trending** (1.5-3.5%): 趋势跟随，breakout入场，R:R ≥ 2.0
+- **volatile** (> 3.5%): 极度谨慎，减仓，仅高信心交易，R:R ≥ 3.0
 
-## 决策原则
+重要: 低波动不等于不交易。BTC/ETH 在平静期 ATR14/Price 通常在 0.3-1.0%，属于 ranging 状态，仍应积极寻找交易机会。
 
-### 风险优先
-- 保证金使用率不得超过30%
-- 单个持仓亏损达到-5%必须止损
-- 优先保护资本，再考虑盈利
+## Section 2: 账户与持仓评估
+1. 保证金使用率 > 30% → 不开新仓
+2. 当前持仓 PnL% = (unrealizedPnl / margin) × 100（不要混淆美元值和百分比）
+3. PeakPnL% = 历史最高未实现盈亏百分比（由系统追踪）
+4. 杠杆放大效应: 3x 杠杆下，价格涨1% → 持仓盈亏约3%
 
-### 跟踪止盈
-- 当持仓盈亏从峰值回撤30%时，考虑部分或全部止盈
-- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤了30%，应该止盈
+## Section 3: 市场数据四维分析
 
-### 顺势交易
-- 只在多个时间框架趋势一致时进场
-- 结合持仓量(OI)变化判断资金流向真实性
-- OI增加+价格上涨 = 强多头趋势
-- OI减少+价格上涨 = 空头平仓（可能反转）
-
-### 分批操作
-- 分批建仓：第一次开仓不超过目标仓位的50%（positionSizePercent 建议 3-5%）
-- 分批止盈：盈利3%平33%，盈利5%平50%，盈利8%全平
-- 只在盈利仓位上加仓，永远不要追亏损
-
-### 技术分析要点
+### 3.1 趋势 (Trend)
 - EMA排列: EMA(7) > EMA(25) > EMA(99) 为多头排列，反之为空头
-- RSI(7): < 30 超卖，> 70 超买；关注与价格的背离
-- MACD: 金叉(MACD上穿Signal)做多确认，死叉做空确认
-- ATR(3)/ATR(14): > 2.0 高波动率（谨慎），> 3.0 极端（避免入场）
-- Funding Rate: |FR| > 0.05% 为拥挤交易警告
 - Donchian Channel: 价格触及上轨（强势），下轨（弱势），中轨（中性）
 
-## 6-Action 决策映射
+### 3.2 动量 (Momentum)
+- RSI(7): < 30 超卖，> 70 超买；关注与价格的背离
+- MACD: 金叉(MACD上穿Signal)做多确认，死叉做空确认
 
-根据当前持仓状态选择合适的 action:
+### 3.3 波动率 (Volatility)
+- ATR(3)/ATR(14): > 2.0 高波动（谨慎），> 3.0 极端（禁止入场）
+- 波动率影响止损距离: SL = max(1.5×ATR14/price, baseRisk/leverage)
 
-### 无持仓时
-- **open_long**: 开新多仓（看涨信号明确，≥3个技术指标确认）
-- **open_short**: 开新空仓（看跌信号明确，≥3个技术指标确认）
-- **wait**: 信号不明确，等待更好机会
+### 3.4 资金流 (Fund Flow)
+- **资金费率方向**:
+  - 正 FR: 多头付费给空头 → 多头拥挤，看跌信号
+  - 负 FR: 空头付费给多头 → 空头拥挤，看涨信号
+  - |FR| > 0.05% 为拥挤交易警告
+- **OI 变化四象限**:
+  - OI增 + 价涨 = 强多头（新多单入场）
+  - OI增 + 价跌 = 强空头（新空单入场）
+  - OI减 + 价涨 = 空头平仓（可能反转）
+  - OI减 + 价跌 = 多头平仓（可能反转）
 
-### 有多头持仓时
-- **open_long**: 加仓（仅限盈利仓位，用小的 positionSizePercent 表示加仓量）
-- **close_long**: 平多仓（部分止盈用小 positionSizePercent，全部平仓用大 positionSizePercent）
-- **hold**: 持有当前仓位，趋势完好
+## Section 4: 决策规则
 
-### 有空头持仓时
-- **open_short**: 加仓（仅限盈利仓位）
-- **close_short**: 平空仓（部分或全部）
-- **hold**: 持有当前仓位，趋势完好
+### 4.1 开仓规则 (无持仓时)
+可选: open_long / open_short / wait
+- 开仓条件: ≥ 3 个维度信号一致
+- 仓位大小 (positionSizePercent: 1-20 整数):
+  - confidence 80-100 → 15-20%
+  - confidence 60-80 → 8-15%
+  - confidence 50-60 → 3-8%
+  - confidence < 50 → wait
+- 止损: SL distance = max(1.5 × ATR14 / price, 0.5%) / leverage
+  - 多仓: stop_loss = entryPrice × (1 - SL_distance)
+  - 空仓: stop_loss = entryPrice × (1 + SL_distance)
+- 止盈 (ATR 倍数): +1.5×ATR → 平33%, +2.5×ATR → 平50%, +4×ATR → 全平
 
-## 重要提醒
+### 4.2 平仓规则 (有持仓时)
+可选: close_long / close_short / hold
 
-1. **永远不要**混淆已实现盈亏和未实现盈亏
-2. **永远记得**考虑杠杆对盈亏的放大作用
-3. **永远关注**Peak PnL，这是判断止盈的关键指标
-4. **永远结合**持仓量(OI)变化来判断趋势真实性
-5. **永远遵守**风险管理规则，保护资本是第一位的
-6. **止损必须设置**: 不提供 stopLoss 的交易建议是不合格的
-7. **Risk/Reward ≥ 1.5:1**: 止盈/止损比例至少 1.5 倍
+**你需要综合以下因素自主决策，没有固定公式:**
+
+- 当前 PnL% 与 PeakPnL% 的关系（利润是否在回撤）
+- 趋势指标是否仍支持持仓方向（EMA排列、MACD方向、RSI水平）
+- 波动率变化（ATR(3)/ATR(14) 是否异常放大）
+- 止损/止盈目标是否已触及
+- 持仓时间与市场结构变化
+
+**参考因素（非强制，根据具体情况灵活运用）:**
+- PeakPnL 较高但正在快速回撤时，考虑保护利润
+- 趋势明确反转（多指标确认）时，考虑平仓
+- 亏损持续扩大且趋势不支持时，考虑止损
+- 系统会在 PeakPnL > 5% 回撤 ≥ 40% 时自动保护平仓
+
+平仓时不需要设置 stop_loss/take_profit（可填 null）
+
+## Section 5: 代码层规则
+
+### 代码强制拦截 (Hard Limits — 违反会被自动拒绝):
+- ATR(3)/ATR(14) > 3.0 → 全面暂停交易
+- Risk/Reward < 2.0:1 → 拒绝交易
+- 未设置 stop_loss → 拒绝交易
+- 杠杆超限 → 拒绝交易
+- 同币种反向仓位冲突 → 拒绝交易
+
+### 代码软警告 (Soft Warnings — 你会看到警告但可以自主决策):
+- RSI > 80 或 < 20 → 系统警告但不阻止，由你判断
+- ATR(3)/ATR(14) > 2.0 → 波动率升高警告
+- 某持仓亏损 > 30% → 风险敞口提醒
+- 资金费率 > 0.05%/8h → 持仓成本提醒
+
+## Section 6: 风险意识提醒
+以下由代码层强制执行（你无需担心违反，系统会自动拦截）:
+- 同币种反向仓位冲突 → 代码拦截
+- 每日交易次数/冷却期 → 代码拦截
+- 连续亏损熔断 → 代码拦截
+
+以下是交易经验参考（非强制，由你自主判断）:
+- PnL% 是 unrealizedPnl/margin（已含杠杆），不要与价格变动百分比混淆
+- PeakPnL 反映历史最佳，可辅助判断利润回撤程度
 
 {EVOLUTION_CONTEXT}
 
 {MEMORY_CONTEXT}
 
-${ANALYSIS_OUTPUT_FORMAT}
+## Section 7: 输出格式
+你必须输出 <reasoning> 和 <decision> 两个标签:
+
+<reasoning>
+详细分析 (150-400字):
+- Market Regime 判定
+- 四维度信号分析
+- 风险评估
+</reasoning>
+<decision>
+[{
+  "symbol": "BTC/USDT:USDT",
+  "action": "open_long|open_short|close_long|close_short|hold|wait",
+  "confidence": 0-100,
+  "leverage": 1-20,
+  "positionSizePercent": 1-20,
+  "stop_loss": <绝对价格>,
+  "take_profit": <绝对价格>,
+  "reasoning": "一句话总结"
+}]
+</decision>
+
+注意:
+- positionSizePercent: 1-20 的整数（占可用余额百分比）
+- stop_loss / take_profit: 绝对价格（不是百分比）
+- 多仓: stop_loss < 当前价 < take_profit
+- 空仓: take_profit < 当前价 < stop_loss
+- R:R ≥ 2.0:1
 `;
 
 // ==================== 进化 Tier 提示模板 ====================
@@ -248,12 +398,17 @@ export const PERSONALITY_EMOJIS: Record<AIRole, string> = {
 
 // ==================== 投票阶段输出格式 (对齐 NoFx <final_vote>) ====================
 
-export const VOTING_OUTPUT_FORMAT = `
+/**
+ * 构建投票输出格式（支持动态语言）
+ */
+export function buildVotingOutputFormat(locale?: string): string {
+  const reasoningHint = buildReasoningLanguageHint(locale);
+  return `
 ### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
 <final_vote>
 [
-  {"symbol": "BTCUSDT", "action": "open_long", "confidence": 75, "leverage": 5, "position_pct": 0.3, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "BTC final vote reason"},
-  {"symbol": "ETHUSDT", "action": "open_short", "confidence": 80, "leverage": 3, "position_pct": 0.2, "stop_loss": 0.03, "take_profit": 0.06, "reasoning": "ETH final vote reason"}
+  {"symbol": "BTCUSDT", "action": "open_long", "confidence": 75, "leverage": 5, "positionSizePercent": 20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
+  {"symbol": "ETHUSDT", "action": "wait", "confidence": 35, "leverage": 1, "positionSizePercent": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
 ]
 </final_vote>
 
@@ -270,24 +425,35 @@ export const VOTING_OUTPUT_FORMAT = `
 - action: One of the 6 actions above
 - confidence: 0-100 (how confident you are)
 - leverage: 1-20 (recommended leverage, default 5)
-- position_pct: 0.1-1.0 (fraction of available balance, default 0.2)
+- positionSizePercent: 1-20 (integer, % of available balance, default 10)
 - stop_loss: 0.01-0.10 (stop loss as decimal percentage, e.g. 0.03 = 3%)
 - take_profit: 0.01-0.20 (take profit as decimal percentage, e.g. 0.06 = 6%)
-- reasoning: Brief explanation for this vote (MUST be in Chinese 中文)
+- reasoning: Detailed analysis (100-300 chars): include key indicators, signal interpretation, support/resistance levels, and risk assessment ${reasoningHint}
 `;
+}
+
+/** 默认投票输出格式（向后兼容，使用 zh-CN） */
+export const VOTING_OUTPUT_FORMAT = buildVotingOutputFormat('zh-CN');
 
 // ==================== 投票阶段 Prompt 构建 (对齐 NoFx buildVotingSystemPrompt) ====================
 
 /**
  * 构建投票阶段系统提示词
  * 对齐 NoFx debate/engine.go buildVotingSystemPrompt()
+ *
+ * @param role AI 角色
+ * @param basePrompt 基础 prompt（PromptBuilder 8-section 输出）
+ * @param locale 用户 locale（控制 reasoning 语言）
  */
 export function buildVotingSystemPrompt(
   role: AIRole,
   basePrompt: string,
+  locale?: string,
 ): string {
   const personality = TRADING_ROLE_PROMPTS[role] || 'Market Analyst - Provide balanced technical analysis.';
   const emoji = PERSONALITY_EMOJIS[role] || '📈';
+  const votingFormat = buildVotingOutputFormat(locale);
+  const langInstruction = buildLanguageInstruction(locale);
 
   return `## FINAL VOTE
 
@@ -305,9 +471,9 @@ Consider:
 
 You may vote differently from your earlier position if convinced by others' arguments.
 
-IMPORTANT: All "reasoning" text MUST be written in Chinese (中文). JSON keys and action values remain in English.
+${langInstruction}
 
-${VOTING_OUTPUT_FORMAT}
+${votingFormat}
 
 ---
 
@@ -446,6 +612,18 @@ export function GRID_SYSTEM_PROMPT(
 3. **方向调整**: 根据趋势变化动态调整多空比例
 4. **仓位管理**: 确保总仓位不超过投资限额 × 杠杆
 
+## ⚠️ 三条铁律（违反即错误决策）
+
+1. **cancel 后必须 place**：每取消 1 个订单，必须在同一响应中为该层放置 1 个替代订单。
+   - 错误示例：[cancel_order x5, adjust_grid]（取消后没放新单）
+   - 正确示例：[cancel_order x3, place_sell_limit x3] 或 [adjust_grid+新范围, place_sell_limit x5]
+
+2. **hold 优先**：如果所有卖单距当前价 < 15%，必须选 hold，不得取消这些订单。
+   - 例：当前价 0.0956，卖单在 0.097（差 1.5%）→ hold，不 cancel
+   - 例：当前价 0.0956，卖单在 0.12（差 25%）→ 可以 cancel+replace
+
+3. **adjust_grid 限制**：只有价格持续偏离网格中心超过 30% 才可调整网格边界，否则 hold。
+
 ## 决策规则
 
 ### 网格运行原则
@@ -523,7 +701,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   // Section 3: 箱体数据
   if (ctx.boxData) {
     lines.push('');
-    lines.push('--- Donchian 箱体 ---');
+    lines.push('--- 唐奇安通道(Donchian)箱体 ---');
     lines.push(`短期(3d): ${ctx.boxData.shortLower.toFixed(2)} ~ ${ctx.boxData.shortUpper.toFixed(2)}`);
     lines.push(`中期(10d): ${ctx.boxData.midLower.toFixed(2)} ~ ${ctx.boxData.midUpper.toFixed(2)}`);
     lines.push(`长期(21d): ${ctx.boxData.longLower.toFixed(2)} ~ ${ctx.boxData.longUpper.toFixed(2)}`);
@@ -539,12 +717,14 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
-  lines.push('序号 | 价格 | 方向 | 数量 | 状态 | 盈亏');
+  lines.push('序号 | 价格 | 方向 | 数量 | 状态 | 盈亏 | 订单ID');
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
     const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '已成交' : '已取消';
-    lines.push(`${String(i).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr}`);
+    // Fix-4: 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
+    const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
+    lines.push(`${String(i).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr} | ${orderIdStr}`);
   }
 
   // Section 6: 账户状态

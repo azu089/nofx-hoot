@@ -1,7 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LLMService, UserApiKeys } from '../llm.service';
 import { AiMemoryService } from '../memory.service';
-import { RiskDebateState } from '../../types/ai.types';
+import { buildLanguageInstruction, buildUserMessageLanguageReminder, buildReasoningLanguageHint } from '../../constants/locale-instructions';
+import { AiAction, RiskDebateState } from '../../types/ai.types';
 
 /**
  * 风控辩论配置
@@ -14,6 +15,7 @@ export interface RiskDebateConfig {
   temperature?: number;
   userId?: string;     // Q3: 用于 BM25 记忆检索
   sceneText?: string;  // Q3: 当前市场场景（BM25 查询文本）
+  locale?: string;     // AI 输出语言
 }
 
 /**
@@ -37,6 +39,8 @@ export interface RiskDebateResult {
   adjustedPositionSizePercent: number | null;
   adjustedStopLoss: number | null;
   adjustedTakeProfit: number | null;
+  // R5: Risk Judge 可覆盖交易方向（null=保持原方向, 'hold'/'wait'=推翻为不交易）
+  adjustedAction?: AiAction | null;
   riskRating: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
   approved: boolean; // 是否通过风控
   reasoning: string;
@@ -68,6 +72,26 @@ export class RiskDebateService {
     private readonly llm: LLMService,
     @Optional() private readonly memoryService?: AiMemoryService,
   ) {}
+
+  /**
+   * Y7: LLM 调用超时包装（60s debate 级别防护）
+   */
+  private async chatWithTimeout(
+    modelId: string,
+    systemPrompt: string,
+    userMessage: string,
+    apiKeys: UserApiKeys,
+    options: { temperature?: number; maxTokens?: number },
+    timeoutMs: number = 60000,
+  ): Promise<Awaited<ReturnType<LLMService['chat']>>> {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`LLM call timeout (${timeoutMs}ms)`)), timeoutMs),
+    );
+    return Promise.race([
+      this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, options),
+      timeoutPromise,
+    ]);
+  }
 
   /**
    * 运行风控三方辩论
@@ -109,7 +133,7 @@ export class RiskDebateService {
 
       this.logger.log(`[风控辩论] 第 ${roundNum} 轮, ${speaker} 发言 (${i + 1}/${maxMessages})`);
 
-      const systemPrompt = this.getSpeakerPrompt(speaker);
+      const systemPrompt = this.getSpeakerPrompt(speaker, config.locale);
       const userMessage = this.buildSpeakerMessage(
         speaker,
         input,
@@ -117,9 +141,11 @@ export class RiskDebateService {
         isFirst,
         roundNum,
         config.maxRounds,
+        config.locale,
       );
 
-      const response = await this.llm.chat(
+      // Y7: 60s 超时防护
+      const response = await this.chatWithTimeout(
         config.quickThinkModel,
         systemPrompt,
         userMessage,
@@ -131,6 +157,13 @@ export class RiskDebateService {
       );
 
       totalCost += response.cost;
+
+      // NoFx-aligned 详细日志: 角色观点预览
+      const riskPreview = response.content.slice(0, 200);
+      this.logger.log(
+        `[风控辩论] ${speaker} (Round ${roundNum}): tokens=${response.tokenUsage} 耗时=${response.latencyMs}ms\n` +
+        `  观点: ${riskPreview}${riskPreview.length >= 200 ? '...' : ''}`,
+      );
 
       // 更新状态
       const entry = `\n[${speaker.toUpperCase()} - Round ${roundNum}]:\n${response.content}\n`;
@@ -187,8 +220,14 @@ export class RiskDebateService {
     const totalLatencyMs = Date.now() - startTime;
 
     this.logger.log(
-      `[风控辩论] 完成: approved=${judgeResult.approved}, risk=${judgeResult.riskRating}, ` +
-        `总耗时 ${totalLatencyMs}ms, 总成本 $${totalCost.toFixed(6)}`,
+      `[风控辩论] ======== 裁决结果 ========\n` +
+      `  approved=${judgeResult.approved} risk=${judgeResult.riskRating}\n` +
+      `  adjustedLeverage=${judgeResult.adjustedLeverage ?? 'unchanged'}\n` +
+      `  adjustedPosPct=${judgeResult.adjustedPositionSizePercent ?? 'unchanged'}\n` +
+      `  adjustedSL=${judgeResult.adjustedStopLoss ?? 'unchanged'} TP=${judgeResult.adjustedTakeProfit ?? 'unchanged'}\n` +
+      `  adjustedAction=${(judgeResult as any).adjustedAction ?? 'unchanged'}\n` +
+      `  reasoning=${(judgeResult.reasoning || '').slice(0, 200)}\n` +
+      `  总耗时 ${totalLatencyMs}ms, 总成本 $${totalCost.toFixed(6)}`,
     );
 
     return {
@@ -201,14 +240,15 @@ export class RiskDebateService {
 
   // ==================== 角色提示词 ====================
 
-  private getSpeakerPrompt(speaker: 'aggressive' | 'conservative' | 'neutral'): string {
+  private getSpeakerPrompt(speaker: 'aggressive' | 'conservative' | 'neutral', locale?: string): string {
+    const langInst = buildLanguageInstruction(locale);
     switch (speaker) {
       case 'aggressive':
-        return AGGRESSIVE_PROMPT;
+        return AGGRESSIVE_PROMPT + '\n\n' + langInst;
       case 'conservative':
-        return CONSERVATIVE_PROMPT;
+        return CONSERVATIVE_PROMPT + '\n\n' + langInst;
       case 'neutral':
-        return NEUTRAL_PROMPT;
+        return NEUTRAL_PROMPT + '\n\n' + langInst;
     }
   }
 
@@ -221,6 +261,7 @@ export class RiskDebateService {
     isFirst: boolean,
     roundNum: number,
     maxRounds: number,
+    locale?: string,
   ): string {
     const lines: string[] = [
       `=== RISK DEBATE: ${input.symbol} @ ${input.currentPrice} ===`,
@@ -276,7 +317,9 @@ export class RiskDebateService {
       }
     }
 
-    return lines.join('\n');
+    // 末尾追加语言提醒（防止英文上下文淹没 system prompt 的语言指令）
+    const langReminder = buildUserMessageLanguageReminder(locale);
+    return lines.join('\n') + langReminder;
   }
 
   // ==================== Risk Judge ====================
@@ -291,8 +334,9 @@ export class RiskDebateService {
       cost: number;
     }
   > {
-    // Q3: 注入 BM25 记忆到法官系统提示
-    const systemPrompt = RISK_JUDGE_PROMPT + memoryPrompt;
+    // Q3: 注入 BM25 记忆到法官系统提示 + 语言指令
+    const langInst = buildLanguageInstruction(config.locale);
+    const systemPrompt = RISK_JUDGE_PROMPT + '\n\n' + langInst + memoryPrompt;
 
     const userMessage = `=== RISK JUDGE FINAL DECISION ===
 
@@ -314,9 +358,11 @@ ${input.analystReports.slice(0, 2000)}
 ${input.existingPositions ? `--- Existing Positions ---\n${input.existingPositions}\n` : ''}
 ${input.additionalSymbolData ? `--- Additional Candidate Coins ---\n${input.additionalSymbolData}\n` : ''}
 Based on the full risk debate above, provide your FINAL risk-adjusted decision.
-You MUST respond with ONLY a valid JSON object.`;
+You MUST respond with ONLY a valid JSON object.
+The "reasoning" field in JSON ${buildReasoningLanguageHint(config.locale)}.`;
 
-    const response = await this.llm.chat(
+    // Y7: Risk Judge 用 90s 超时（deep_think 模型可能较慢）
+    const response = await this.chatWithTimeout(
       config.deepThinkModel,
       systemPrompt,
       userMessage,
@@ -325,6 +371,7 @@ You MUST respond with ONLY a valid JSON object.`;
         temperature: 0.3,
         maxTokens: 800,
       },
+      90000,
     );
 
     // 解析 JSON 结果
@@ -354,14 +401,24 @@ You MUST respond with ONLY a valid JSON object.`;
       // 尝试直接解析
       const parsed = JSON.parse(jsonStr);
 
+      // R5: 提取 adjustedAction（null=保持原方向, 'hold'/'wait'=覆盖为不交易）
+      let adjustedAction: AiAction | null = null;
+      if (parsed.adjustedAction && typeof parsed.adjustedAction === 'string') {
+        const act = parsed.adjustedAction.toLowerCase().trim();
+        if (['hold', 'wait', 'open_long', 'open_short', 'close_long', 'close_short'].includes(act)) {
+          adjustedAction = act as AiAction;
+        }
+      }
+
       return {
         adjustedLeverage: parsed.adjustedLeverage ?? null,
         adjustedPositionSizePercent: parsed.adjustedPositionSizePercent ?? parsed.positionSizePercent ?? null,
         adjustedStopLoss: parsed.adjustedStopLoss ?? parsed.stopLoss ?? null,
         adjustedTakeProfit: parsed.adjustedTakeProfit ?? parsed.takeProfit ?? null,
+        adjustedAction,
         riskRating: this.normalizeRiskRating(parsed.riskRating || parsed.risk_rating || 'HIGH'),
         approved: parsed.approved ?? parsed.approve ?? true,
-        reasoning: parsed.reasoning || parsed.summary || '无法解析裁决理由',
+        reasoning: parsed.reasoning || parsed.summary || 'Unable to parse judge reasoning',
       };
     } catch {
       this.logger.warn('[风控辩论] 法官响应 JSON 解析失败，使用保守默认值');
@@ -372,7 +429,7 @@ You MUST respond with ONLY a valid JSON object.`;
         adjustedTakeProfit: null,
         riskRating: 'HIGH',
         approved: false,
-        reasoning: `JSON 解析失败。原始响应: ${content.slice(0, 500)}`,
+        reasoning: `JSON parse failed. Raw response: ${content.slice(0, 500)}`,
       };
     }
   }
@@ -470,6 +527,7 @@ Based on the full debate, provide your FINAL risk-adjusted parameters. You must 
 {
   "approved": true/false,
   "riskRating": "LOW" | "MEDIUM" | "HIGH" | "EXTREME",
+  "adjustedAction": null | "hold" | "wait",
   "adjustedLeverage": number (1-20),
   "adjustedPositionSizePercent": number (1-10),
   "adjustedStopLoss": number | null (price level),
@@ -479,9 +537,10 @@ Based on the full debate, provide your FINAL risk-adjusted parameters. You must 
 
 ## Decision Rules:
 - If riskRating is "EXTREME" → approved MUST be false
+- adjustedAction: set to null to keep Trader's original direction, or "hold"/"wait" to OVERRIDE the direction and cancel the trade entirely
 - adjustedLeverage must be ≤ 20x (hard limit)
 - adjustedPositionSizePercent must be ≤ 10% of portfolio
-- Risk/Reward ratio must be ≥ 1.5:1
+- Risk/Reward ratio must be ≥ 2.0:1
 - If no stop loss can be determined → approved = false
 
 DO NOT include any text outside the JSON object.`;

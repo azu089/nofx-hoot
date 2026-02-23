@@ -3,7 +3,7 @@
  * 处理带认证的 API 请求
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+import { API_URL } from './config';
 
 // 获取 token
 const getToken = () => localStorage.getItem('admin_token');

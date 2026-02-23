@@ -103,7 +103,7 @@ export class UpdateAiConfigDto {
 
   @IsOptional()
   @IsObject()
-  apiKeys?: Record<string, string>; // 用户 API Keys: {deepseek: "sk-xxx", openai: "sk-xxx", openrouter: "sk-xxx"}
+  apiKeys?: Record<string, string>; // 用户 API Keys: {deepseek: "sk-xxx", openai: "sk-xxx", anthropic: "sk-xxx"}
 
   @IsOptional()
   @IsString()

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { WalletService } from './wallet.service';
 import {
@@ -9,6 +10,7 @@ import {
 } from './dto/wallet.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('wallet')
 @Controller('wallet')
 export class WalletController {
   constructor(private walletService: WalletService) {}

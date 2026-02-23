@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import {
   AlertTriangle,
   ChevronDown,
+  ChevronRight,
   BarChart3,
   Wallet,
   Zap,
@@ -18,9 +19,14 @@ import {
   Settings,
   Trash2,
   Search,
-  RefreshCcw
+  RefreshCcw,
+  FlaskConical,
+  Users,
+  Grid3x3,
+  Radio,
 } from 'lucide-react'
 import { useTranslations } from '@/i18n/provider'
+import { getActionBadgeStyle, getActionText, getCloseReasonText, formatGridSummary } from '@/lib/execution-log-format'
 
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
@@ -64,6 +70,24 @@ interface ExecutionLog {
   durationMs?: number
   errorCode?: string
   skipReason?: string
+  // 执行参数
+  leverage?: number
+  stopLoss?: number
+  takeProfit?: number
+  blockedBy?: string
+  blockReason?: string
+  // AI 决策
+  confidence?: number
+  positionSizePercent?: number
+  reasoning?: string
+  votes?: Array<{ modelId: string; action: string; confidence: number; reasoning?: string }>
+  // Grid 专属
+  gridSummary?: string
+  gridBuyRange?: string
+  gridSellRange?: string
+  gridOrderCount?: number
+  // 策略类型标识
+  strategyType?: 'research' | 'solo' | 'debate' | 'grid' | 'signal'
 }
 
 interface HistoryOrder {
@@ -204,6 +228,7 @@ export function MobileTradingCenter({
   const [strategySearchQuery, setStrategySearchQuery] = useState('')
   const [strategyStatusFilter, setStrategyStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
   const [showSearchInput, setShowSearchInput] = useState(false)
+  const [visibleLogCount, setVisibleLogCount] = useState(10)
 
   // ========== 当 accounts 加载后更新 selectedAccount ==========
   useEffect(() => {
@@ -264,7 +289,7 @@ export function MobileTradingCenter({
     }
   }
   const totalAssets = getAccountAssets()
-  const availableBalance = totalAssets // 可用余额暂时等于总资产
+  const availableBalance = pnlStats?.availableBalance ?? totalAssets
   const totalPnl = pnlStats?.totalPnl ?? 0
   const todayPnl = pnlStats?.todayPnl ?? 0
   const totalUnrealizedPnl = pnlStats?.unrealizedPnl ?? filteredPositions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0)
@@ -359,7 +384,7 @@ export function MobileTradingCenter({
               </div>
               <div className="text-center">
                 <p className="text-xs text-[#606070] mb-0.5">{t('availableBalance')}</p>
-                <p className="text-xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</p>
+                <p className="text-xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </div>
             </div>
             {/* 第二行：今日盈亏 + 未实现 + 总盈亏 */}
@@ -544,15 +569,15 @@ export function MobileTradingCenter({
                     </div>
                   </div>
 
-                  {/* 策略来源（有策略名时才显示） */}
-                  {position.strategy && (
+                  {/* 策略来源 */}
+                  {(position.strategy || position.source?.startsWith('ai_')) && (
                     <div className="flex items-center gap-1 text-[10px] text-[#606070] mb-3">
-                      {position.source?.startsWith('ai_') ? (
+                      {position.source?.startsWith('ai_') || position.source === 'snapshot' ? (
                         <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">AI</span>
                       ) : (
                         <Zap className="w-2.5 h-2.5 text-amber-400" />
                       )}
-                      <span>{position.strategy}</span>
+                      <span>{position.strategy || (position.source === 'ai_research' ? 'AI Research' : 'AI Strategy')}</span>
                     </div>
                   )}
 
@@ -654,19 +679,7 @@ export function MobileTradingCenter({
                       )}
                       {order.closeReason && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
-                          {order.closeReason === 'signal' ? '信号平仓' :
-                           order.closeReason === 'stop_loss' ? '止损' :
-                           order.closeReason === 'take_profit' ? '止盈' :
-                           order.closeReason === 'trailing_stop' ? '移动止损' :
-                           order.closeReason === 'manual' ? '手动平仓' :
-                           order.closeReason === 'manual_cleanup' ? '手动清仓' :
-                           order.closeReason === 'black_swan' ? '黑天鹅保护' :
-                           order.closeReason === 'daily_loss_limit' ? '日亏损限额' :
-                           order.closeReason === 'ai_decision' ? 'AI 决策平仓' :
-                           order.closeReason === 'ai_stop_loss' ? 'AI 止损' :
-                           order.closeReason === 'ai_take_profit' ? 'AI 止盈' :
-                           order.closeReason === 'drawdown_limit' ? '回撤限额' :
-                           order.closeReason}
+                          {getCloseReasonText(order.closeReason, t)}
                         </span>
                       )}
                     </div>
@@ -740,70 +753,20 @@ export function MobileTradingCenter({
                 </p>
               </div>
             ) : (
-              filteredLogs.map((log) => (
-                <div key={log.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
-                  <div className="flex items-start gap-3">
-                    <div className={`p-1.5 rounded-full flex-shrink-0 ${
-                      log.status === 'success' ? 'bg-green-400/10' :
-                      log.status === 'warning' ? 'bg-yellow-400/10' :
-                      'bg-red-400/10'
-                    }`}>
-                      {log.status === 'success' ? (
-                        <CheckCircle className="w-4 h-4 text-green-400" />
-                      ) : log.status === 'warning' ? (
-                        <AlertCircle className="w-4 h-4 text-yellow-400" />
-                      ) : (
-                        <XCircle className="w-4 h-4 text-red-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-sm font-medium">{log.strategy}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          log.action === '开多' || log.action === '买入' ? 'bg-green-400/10 text-green-400' :
-                          log.action === '开空' || log.action === '卖出' ? 'bg-red-400/10 text-red-400' :
-                          log.action === '止盈' ? 'bg-cyan-400/10 text-cyan-400' :
-                          'bg-yellow-400/10 text-yellow-400'
-                        }`}>
-                          {log.action}
-                        </span>
-                        <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
-                      </div>
-                      <p className="text-xs text-[#9090A0] mb-1">{log.message}</p>
-                      {/* 增强执行详情 */}
-                      {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          {log.executedPrice && (
-                            <span className="text-xs text-[#94A3B8]">
-                              成交 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
-                            </span>
-                          )}
-                          {log.slippage && (
-                            <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
-                              滑点 {parseFloat(log.slippage).toFixed(3)}%
-                            </span>
-                          )}
-                          {log.durationMs != null && (
-                            <span className="text-xs text-[#94A3B8]">
-                              {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
-                            </span>
-                          )}
-                          {log.skipReason && (
-                            <span className="text-xs text-yellow-400/80">{log.skipReason}</span>
-                          )}
-                          {log.errorCode && (
-                            <span className="text-xs text-red-400/80">[{log.errorCode}]</span>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-[#606070]" />
-                        <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
+              <>
+              {filteredLogs.slice(0, visibleLogCount).map((log) => (
+                <LogCard key={log.id} log={log} />
+              ))}
+              {filteredLogs.length > visibleLogCount && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleLogCount(prev => prev + 10)}
+                  className="w-full py-2.5 text-xs text-[#06B6D4] hover:text-[#0891B2] bg-[#12121A]/50 rounded-lg border border-[#1E1E2E] transition-colors"
+                >
+                  {t('loadMore')} ({visibleLogCount}/{filteredLogs.length})
+                </button>
+              )}
+              </>
             )
           )}
 
@@ -986,3 +949,225 @@ export function MobileTradingCenter({
     </div>
   )
 }
+
+// ============ 策略类型视觉配置 ============
+const STRATEGY_STYLE: Record<string, { color: string; bg: string; border: string; label: string; Icon: typeof Zap }> = {
+  research: { color: 'text-[#8B5CF6]', bg: 'bg-[#8B5CF6]/10', border: 'border-[#8B5CF6]/40', label: '深研', Icon: FlaskConical },
+  solo:     { color: 'text-[#06B6D4]', bg: 'bg-[#06B6D4]/10', border: 'border-[#06B6D4]/40', label: '极速', Icon: Zap },
+  debate:   { color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', border: 'border-[#F59E0B]/40', label: '共识', Icon: Users },
+  grid:     { color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', border: 'border-[#10B981]/40', label: '网格', Icon: Grid3x3 },
+  signal:   { color: 'text-[#64748B]', bg: 'bg-[#64748B]/10', border: 'border-[#64748B]/40', label: '信号', Icon: Radio },
+}
+
+// getActionStyle → 已迁移到 getActionBadgeStyle (execution-log-format.ts)
+
+/** 置信度进度条 */
+function ConfidenceBar({ value }: { value: number }) {
+  const fill = value >= 70 ? '#10B981' : value >= 40 ? '#F59E0B' : '#F43F5E'
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-[60px] h-1 rounded-full bg-[#1E1E2E] overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%`, backgroundColor: fill }} />
+      </div>
+      <span className="text-[10px] font-mono" style={{ color: fill }}>{value}%</span>
+    </div>
+  )
+}
+
+/** 执行日志卡片 — 按策略类型分策略渲染 */
+function LogCard({ log }: { log: ExecutionLog }) {
+  const [expanded, setExpanded] = useState(false)
+  const tAi = useTranslations('ai')
+  const style = STRATEGY_STYLE[log.strategyType || ''] || STRATEGY_STYLE.signal
+  const StIcon = style.Icon
+
+  return (
+    <div className={`bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3 border-l-2 ${style.border}`}>
+      <div className="flex items-start gap-3">
+        {/* 状态图标 */}
+        <div className={`p-1.5 rounded-full flex-shrink-0 ${
+          log.status === 'success' ? 'bg-green-400/10' :
+          log.status === 'warning' ? 'bg-yellow-400/10' :
+          'bg-red-400/10'
+        }`}>
+          {log.status === 'success' ? (
+            <CheckCircle className="w-4 h-4 text-green-400" />
+          ) : log.status === 'warning' ? (
+            <AlertCircle className="w-4 h-4 text-yellow-400" />
+          ) : (
+            <XCircle className="w-4 h-4 text-red-400" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          {/* 标题行: 策略名 + 类型徽章 + 动作标签 + 币种 */}
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <span className="text-sm font-medium">{log.strategy}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${style.bg} ${style.color}`}>
+              <StIcon className="w-3 h-3" />
+              {style.label}
+            </span>
+            <span className={`text-xs px-1.5 py-0.5 rounded ${getActionBadgeStyle(log.action)}`}>
+              {getActionText(log.action, tAi)}
+            </span>
+            {log.gridSummary && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-[#8B5CF6]/10 text-[#8B5CF6] font-mono">
+                {formatGridSummary(log.gridSummary, tAi)}
+              </span>
+            )}
+            <span className="text-xs text-[#606070]">{log.symbol?.replace(/:USDT$/, '') || ''}</span>
+          </div>
+
+          {/* 消息行 */}
+          <p className="text-xs text-[#9090A0] mb-1.5">{log.message}</p>
+
+          {/* ===== 策略专属详情区 ===== */}
+
+          {/* Solo / Debate: 置信度 + 杠杆/仓位/SL/TP */}
+          {(log.strategyType === 'solo' || log.strategyType === 'debate') && (
+            <div className="space-y-1 mb-1.5">
+              {log.confidence != null && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#808090]">置信度</span>
+                  <ConfidenceBar value={log.confidence} />
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {log.leverage != null && (
+                  <span className="text-[10px] text-[#94A3B8]">
+                    杠杆 <span className="text-[#F8F8FC] font-mono">{log.leverage}x</span>
+                  </span>
+                )}
+                {log.positionSizePercent != null && (
+                  <span className="text-[10px] text-[#94A3B8]">
+                    仓位 <span className="text-[#F8F8FC] font-mono">{log.positionSizePercent}%</span>
+                  </span>
+                )}
+                {log.stopLoss != null && (
+                  <span className="text-[10px] text-[#F43F5E]">止损 ${log.stopLoss.toLocaleString()}</span>
+                )}
+                {log.takeProfit != null && (
+                  <span className="text-[10px] text-[#10B981]">止盈 ${log.takeProfit.toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Debate: 投票摘要 + 可展开投票详情 */}
+          {log.strategyType === 'debate' && log.votes && log.votes.length > 0 && (
+            <div className="mb-1.5">
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center gap-1 text-[10px] text-[#F59E0B] hover:text-[#D97706] transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                {log.votes.length}个模型投票
+              </button>
+              {expanded && (
+                <div className="mt-1 space-y-1 pl-3 border-l border-[#F59E0B]/20">
+                  {log.votes.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[10px]">
+                      <span className="text-[#F59E0B] font-mono truncate max-w-[100px]">{v.modelId.split('/').pop()}</span>
+                      <span className={`px-1 py-0.5 rounded ${getActionBadgeStyle(v.action)}`}>{getActionText(v.action, tAi)}</span>
+                      <span className="text-[#808090]">{v.confidence}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Grid: 买卖区间 + 操作数 */}
+          {log.strategyType === 'grid' && (log.gridBuyRange || log.gridSellRange) && (
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              {log.gridBuyRange && (
+                <span className="text-[10px] text-[#10B981]">
+                  买 <span className="font-mono">{log.gridBuyRange}</span>
+                </span>
+              )}
+              {log.gridSellRange && (
+                <span className="text-[10px] text-[#F43F5E]">
+                  卖 <span className="font-mono">{log.gridSellRange}</span>
+                </span>
+              )}
+              {log.gridOrderCount != null && (
+                <span className="text-[10px] text-[#94A3B8]">
+                  共 <span className="text-[#F8F8FC] font-mono">{log.gridOrderCount}</span> 笔
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Research: 杠杆（从消息文本已包含，仅显示成交信息） */}
+          {/* Signal: 滑点/耗时 */}
+
+          {/* 风控拦截 (所有策略通用) */}
+          {log.blockedBy && (
+            <div className="text-[10px] text-red-400/80 mb-1 flex items-center gap-1">
+              <span className="px-1 py-0.5 rounded bg-red-400/10 font-mono">{log.blockedBy}</span>
+              <span>{log.blockReason}</span>
+            </div>
+          )}
+
+          {/* 成交/执行详情 (所有策略通用) */}
+          {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              {log.executedPrice && (
+                <span className="text-xs text-[#94A3B8]">
+                  成交 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
+                </span>
+              )}
+              {log.executedAmount && (
+                <span className="text-xs text-[#94A3B8]">
+                  数量 <span className="text-[#F8F8FC] font-mono">{parseFloat(log.executedAmount)}</span>
+                </span>
+              )}
+              {log.slippage && (
+                <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
+                  滑点 {parseFloat(log.slippage).toFixed(3)}%
+                </span>
+              )}
+              {log.durationMs != null && (
+                <span className="text-xs text-[#94A3B8]">
+                  {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
+                </span>
+              )}
+              {log.skipReason && (
+                <span className="text-xs text-yellow-400/80">{log.skipReason}</span>
+              )}
+              {log.errorCode && (
+                <span className="text-xs text-red-400/80">[{log.errorCode}]</span>
+              )}
+            </div>
+          )}
+
+          {/* Solo/Debate: 推理文本（可展开） */}
+          {(log.strategyType === 'solo' || log.strategyType === 'debate') && log.reasoning && (
+            <div className="mb-1">
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center gap-1 text-[10px] text-[#808090] hover:text-[#A0A0B0] transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                AI 推理
+              </button>
+              {expanded && (
+                <p className="mt-1 text-[10px] text-[#808090] leading-relaxed pl-3 border-l border-[#2A2A3A] line-clamp-5">
+                  {log.reasoning}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* 时间行 */}
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3 text-[#606070]" />
+            <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+

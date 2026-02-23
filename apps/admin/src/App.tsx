@@ -82,7 +82,7 @@ import {
   AiPlatformConfigPage,
 } from './pages';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+import { API_URL } from './lib/config';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();

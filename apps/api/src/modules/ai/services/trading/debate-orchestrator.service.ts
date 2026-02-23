@@ -63,6 +63,8 @@ export interface MultiCoinOrchestratorConfig {
   riskRounds?: number;
   temperature?: number;
   promptConfig?: PromptConfig;
+  maxPositionPct?: number; // R4: 仓位百分比上限（默认 20）
+  accountInfo?: ConsensusConfig['accountInfo'];
 }
 
 /**
@@ -82,6 +84,13 @@ export interface MultiCoinOrchestratorResult {
   sessionId: string;
   investDebateResult: DebateResult;
   riskDebateResult: RiskDebateResult;
+  /** 逐币种市场数据快照（供 auto-trader 安全检查 L3/L8/L9 使用） */
+  marketDataSnapshots: Record<string, {
+    currentPrice: number;
+    fundingRate?: number;
+    volume24h?: number;
+    indicators: { rsi: number | null; atr3: number | null; atr14: number | null };
+  }>;
 }
 
 /**
@@ -203,6 +212,7 @@ export class DebateOrchestratorService {
         temperature: config.temperature || 0.7,
         tradeHistoryPrompt: tradeHistoryPrompt || undefined,
         memoryPrompt: memoryPrompt || undefined,
+        locale: (config as any).locale,
       };
 
       const debateResult = await this.debate.runDebate(debateContext, debateConfig);
@@ -230,7 +240,7 @@ export class DebateOrchestratorService {
         symbol,
         currentPrice,
         traderPlan,
-        analystReports: tradeHistoryPrompt || '暂无历史交易数据',
+        analystReports: tradeHistoryPrompt || 'No trade history data available',
         investmentDecision: debateResult.consensus.reasoning,
       };
 
@@ -269,7 +279,7 @@ export class DebateOrchestratorService {
           positionSizePercent: 0,
           stopLoss: null,
           takeProfit: null,
-          reasoning: `风控否决 (${riskResult.riskRating}): ${riskResult.reasoning}`,
+          reasoning: `Risk rejected (${riskResult.riskRating}): ${riskResult.reasoning}`,
         };
 
         const totalCost = debateResult.totalCost + riskResult.totalCost;
@@ -328,16 +338,26 @@ export class DebateOrchestratorService {
       let finalTP = riskResult.adjustedTakeProfit ?? consensusResult.avgTakeProfit;
 
       // Q4: 默认 SL=3%, TP=6% 兜底（仅对开仓 action）
+      // R3: 同时记录百分比，执行时用最新价格重算
+      let finalSLPct: number | undefined;
+      let finalTPPct: number | undefined;
       if (isOpening && currentPrice > 0) {
         if (finalSL == null) {
+          finalSLPct = 0.03;
           finalSL = isLong
             ? Math.round(currentPrice * 0.97 * 100) / 100  // long: 下方 3%
             : Math.round(currentPrice * 1.03 * 100) / 100; // short: 上方 3%
+        } else {
+          // 从绝对值反算百分比
+          finalSLPct = currentPrice > 0 ? Math.abs(finalSL - currentPrice) / currentPrice : undefined;
         }
         if (finalTP == null) {
+          finalTPPct = 0.06;
           finalTP = isLong
             ? Math.round(currentPrice * 1.06 * 100) / 100  // long: 上方 6%
             : Math.round(currentPrice * 0.94 * 100) / 100; // short: 下方 6%
+        } else {
+          finalTPPct = currentPrice > 0 ? Math.abs(finalTP - currentPrice) / currentPrice : undefined;
         }
       }
 
@@ -348,9 +368,10 @@ export class DebateOrchestratorService {
         positionSizePercent: riskResult.adjustedPositionSizePercent ?? consensusResult.avgPositionSizePercent,
         stopLoss: finalSL,
         takeProfit: finalTP,
-        reasoning: `[4阶段辩论] ${debateResult.consensus.reasoning}\n` +
-          `[风控] ${riskResult.riskRating}: ${riskResult.reasoning}\n` +
-          `[共识] ${consensusResult.reasoning}`,
+        reasoning: consensusResult.reasoning,
+        // R3: 保存百分比供执行时重算
+        stopLossPct: finalSLPct,
+        takeProfitPct: finalTPPct,
       };
 
       // 更新 DB: 最终结果
@@ -406,9 +427,9 @@ export class DebateOrchestratorService {
    * 对齐 NoFx debate/engine.go: 一次辩论覆盖所有候选币，节省 80% LLM 调用
    * 5 币种: 旧=5×28=140次, 新=1×28=28次
    *
-   * Stage 2: 投资辩论 — 主币种 + additionalMarketData 注入所有币数据
-   * Stage 3: 风控辩论 — 综合所有币种的交易提案
-   * Stage 4: 多模型共识 — 每个模型一次分析所有币种
+   * 共识策略: N 模型独立投票（NoFx-aligned 扁平等权设计）
+   * 每个模型独立分析所有币种，投出 1 票
+   * 选 N 模型 = N 票，无固定角色
    */
   async runMultiCoinDebate(
     config: MultiCoinOrchestratorConfig,
@@ -417,7 +438,7 @@ export class DebateOrchestratorService {
     const { userId, strategyId, symbols, timeframe } = config;
 
     if (symbols.length === 0) {
-      throw new Error('至少需要一个候选币种');
+      throw new Error('At least one candidate symbol is required');
     }
 
     // 限制单次辩论最多 5 个币种（防 prompt 超长）
@@ -425,8 +446,8 @@ export class DebateOrchestratorService {
     const primarySymbol = effectiveSymbols[0];
 
     this.logger.log(
-      `[多币种辩论] 开始: ${effectiveSymbols.length} 币种 [${effectiveSymbols.join(', ')}], ` +
-        `${config.models.length} 模型, 辩论${config.maxRounds || 3}轮`,
+      `[共识投票] 开始: ${effectiveSymbols.length} 币种 [${effectiveSymbols.join(', ')}], ` +
+        `${config.models.length} 模型独立投票`,
     );
 
     // 创建 DB 会话记录（使用主币种）
@@ -437,35 +458,19 @@ export class DebateOrchestratorService {
 
     try {
       // ============ 并行获取所有币种的市场数据 ============
-      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_start', 'invest_debate');
+      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_start', 'data_fetch');
 
       const symbolDataMap = await this.fetchAllSymbolsData(effectiveSymbols, timeframe);
 
-      // 构建主币种 MarketContext
-      const primaryData = symbolDataMap.get(primarySymbol)!;
-      const primaryContext: MarketContext = {
-        symbol: primarySymbol,
-        currentPrice: primaryData.currentPrice,
-        timeframe,
-        indicators: primaryData.indicators,
-        priceChange24h: primaryData.priceChange24h,
-      };
-
-      // 构建额外币种的市场数据文本
-      const additionalMarketData = this.buildAdditionalMarketData(
-        effectiveSymbols.slice(1),
-        symbolDataMap,
-        timeframe,
-      );
-
-      // 构建所有币种的综合市场数据 prompt（供 Stage 4 共识用）
+      // 构建所有币种的综合市场数据 prompt（传给 consensus.service）
       const combinedMarketDataPrompt = this.buildCombinedMarketDataPrompt(
         effectiveSymbols,
         symbolDataMap,
       );
 
-      // 获取交易历史 + BM25 记忆
-      const tradeHistoryPrompt = await this.tradeHistory.formatTradeHistoryForPrompt(userId);
+      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_end', 'data_fetch');
+
+      // 构建 BM25 场景文本（用于记忆检索）
       const sceneTexts: Record<string, string> = {};
 
       for (const sym of effectiveSymbols) {
@@ -486,44 +491,132 @@ export class DebateOrchestratorService {
         }
       }
 
-      // NoFx-aligned: 不使用 BM25 记忆（NoFx 用 RecentOrders+TradingStats 替代，已在 Solo 模式实现）
-      // Product B 辩论路径不注入 memoryPrompt，保持与 NoFx 一致
+      // ============ 多模型独立投票 (NoFx-aligned 扁平等权) ============
+      // 共识策略: N 个模型各独立投 1 票 = N 票（无固定角色）
+      // 区别于深研策略的 5 角色辩论
+      this.logger.log(
+        `[共识投票] 开始: ${effectiveSymbols.length} 币种, ${config.models.length} 模型独立投票`,
+      );
+      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_start', 'consensus_vote');
 
-      // ============ Phase 1: 投资辩论 + 投票 (NoFx-aligned 2阶段) ============
-      this.logger.log(`[多币种辩论] Phase 1: 辩论+投票 [${effectiveSymbols.join(', ')}]`);
-
-      const debateConfig: DebateConfig = {
+      const consensusConfig: ConsensusConfig = {
+        userId,
+        symbol: primarySymbol,
+        timeframe,
+        secondaryTimeframe: config.secondaryTimeframe,
+        models: config.models,
         apiKeys: config.apiKeys,
-        maxRounds: config.maxRounds || 3,
-        temperature: config.temperature || 0.7,
-        tradeHistoryPrompt: tradeHistoryPrompt || undefined,
-        // NoFx-aligned: 不注入 BM25 memoryPrompt（NoFx 无 BM25）
-        additionalMarketData,
-        // Phase 9.1: NoFx-aligned — 跳过 Judge，用投票共识
-        skipJudge: true,
-        useShortPrompts: true,
-        votingSymbols: effectiveSymbols,
+        symbols: effectiveSymbols,
+        precomputedMarketData: combinedMarketDataPrompt,
+        promptConfig: config.promptConfig,
+        accountInfo: config.accountInfo,
       };
 
-      const debateResult = await this.debate.runDebate(primaryContext, debateConfig);
+      const multiCoinResults = await this.consensus.runMultiCoinConsensus(consensusConfig);
 
-      await this.updateSession(session.id, {
-        status: 'voting',
-        investDebate: debateResult as any,
-      });
-
-      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_end', 'invest_debate', {
-        consensus: debateResult.consensus,
-        rounds: debateResult.entries.length,
-        cost: debateResult.totalCost,
+      this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_end', 'consensus_vote', {
         symbols: effectiveSymbols,
+        modelCount: config.models.length,
       });
 
-      // ============ Phase 2: 从投票共识构建决策 (无额外 LLM 调用) ============
-      this.logger.log(`[多币种辩论] Phase 2: 构建决策 [${effectiveSymbols.join(', ')}]`);
+      // ============ 构建决策（从 ConsensusResult 映射） ============
+      this.logger.log(`[共识投票] 构建决策 [${effectiveSymbols.join(', ')}]`);
       this.emitEvent(userId, session.id, strategyId, primarySymbol, 'stage_start', 'voting');
 
-      // 空风控结果 (NoFx-aligned: Risk Manager 作为 5 辩论者之一, 无独立风控阶段)
+      const decisions: Record<string, AiTradeDecision> = {};
+      const consensusScores: Record<string, number> = {};
+      const perSymbolVotes: Record<string, any[]> = {};
+
+      for (const sym of effectiveSymbols) {
+        const cr = multiCoinResults[sym];
+        if (!cr) {
+          decisions[sym] = {
+            action: 'hold',
+            confidence: 0,
+            leverage: 1,
+            positionSizePercent: 0,
+            stopLoss: null,
+            takeProfit: null,
+            reasoning: 'Consensus vote: no result',
+          };
+          consensusScores[sym] = 0;
+          perSymbolVotes[sym] = [];
+          continue;
+        }
+
+        const symData = symbolDataMap.get(sym);
+        const symPrice = symData?.currentPrice || 0;
+
+        // SL/TP: consensus.service 已计算绝对价格；若为 null 则默认 3%/6%
+        const isLong = cr.consensusAction === 'open_long' || cr.consensusAction === 'close_short';
+        const isOpening = cr.consensusAction === 'open_long' || cr.consensusAction === 'open_short';
+
+        let finalSL = cr.avgStopLoss;
+        let finalTP = cr.avgTakeProfit;
+        let slPct: number | undefined;
+        let tpPct: number | undefined;
+
+        if (isOpening && symPrice > 0) {
+          if (finalSL == null) {
+            slPct = 0.03;
+            finalSL = isLong
+              ? Math.round(symPrice * 0.97 * 100) / 100
+              : Math.round(symPrice * 1.03 * 100) / 100;
+          } else {
+            slPct = Math.abs(finalSL - symPrice) / symPrice;
+          }
+          if (finalTP == null) {
+            tpPct = 0.06;
+            finalTP = isLong
+              ? Math.round(symPrice * 1.06 * 100) / 100
+              : Math.round(symPrice * 0.94 * 100) / 100;
+          } else {
+            tpPct = Math.abs(finalTP - symPrice) / symPrice;
+          }
+        }
+
+        // 仓位上限
+        const maxPct = config.maxPositionPct ?? 20;
+        const posPct = Math.min(cr.avgPositionSizePercent, maxPct);
+
+        decisions[sym] = {
+          action: cr.consensusAction,
+          confidence: cr.avgConfidence,
+          leverage: cr.avgLeverage,
+          positionSizePercent: posPct,
+          stopLoss: finalSL,
+          takeProfit: finalTP,
+          reasoning: cr.reasoning,
+          stopLossPct: slPct,
+          takeProfitPct: tpPct,
+        };
+        consensusScores[sym] = cr.consensusScore;
+        perSymbolVotes[sym] = cr.votes;
+      }
+
+      // 逐币共识日志
+      for (const sym of effectiveSymbols) {
+        const d = decisions[sym];
+        this.logger.log(
+          `[共识投票] ${sym} → ${d.action} (confidence=${d.confidence}%, leverage=${d.leverage}x, posPct=${d.positionSizePercent}%, SL=${d.stopLoss ?? 'none'}, TP=${d.takeProfit ?? 'none'})`,
+        );
+      }
+
+      // 空的辩论/风控结果占位（共识策略无辩论阶段）
+      const debateResult: DebateResult = {
+        entries: [],
+        consensus: {
+          direction: decisions[primarySymbol]?.action?.includes('long') ? 'buy' : decisions[primarySymbol]?.action?.includes('short') ? 'sell' : 'hold',
+          action: decisions[primarySymbol]?.action || 'hold',
+          confidence: decisions[primarySymbol]?.confidence || 0,
+          score: consensusScores[primarySymbol] || 0,
+          reasoning: decisions[primarySymbol]?.reasoning || '',
+        },
+        totalCost: Object.values(multiCoinResults).reduce((s, r) => s + r.totalCost, 0),
+        totalTokens: 0,
+        totalLatencyMs: Object.values(multiCoinResults).reduce((s, r) => s + r.totalLatencyMs, 0),
+      };
+
       const riskResult: RiskDebateResult = {
         adjustedLeverage: null,
         adjustedPositionSizePercent: null,
@@ -531,94 +624,11 @@ export class DebateOrchestratorService {
         adjustedTakeProfit: null,
         riskRating: 'LOW',
         approved: true,
-        reasoning: 'NoFx-aligned: Risk Manager participates in debate, no separate risk stage',
+        reasoning: 'Consensus strategy: no independent risk debate stage',
         fullDebateHistory: '',
         totalCost: 0,
         totalLatencyMs: 0,
       };
-
-      const multiConsensus = debateResult.multiCoinConsensus || {};
-      const decisions: Record<string, AiTradeDecision> = {};
-      const consensusScores: Record<string, number> = {};
-      const perSymbolVotes: Record<string, any[]> = {};
-
-      // 辅助: 标准化 symbol (BTCUSDT / BTC/USDT / BTC/USDT:USDT → BTCUSDT)
-      const normSym = (raw: string): string =>
-        raw.replace(/[/:]/g, '').replace(/USDT$/, '').toUpperCase();
-
-      // 按 symbol 提取每个投票者的 reasoning (multi-coin 感知)
-      const buildSymbolVotes = (sym: string) =>
-        (debateResult.votingEntries || []).map((ve) => {
-          const target = normSym(sym);
-          // 找到此 symbol 对应的 argument; 找不到则 fallback 第一个
-          const symArg = Array.isArray(ve.arguments)
-            ? ve.arguments.find(a => normSym(a.symbol || '') === target) || ve.arguments[0]
-            : ve.arguments;
-          return {
-            modelId: ve.model,
-            decision: {
-              action: symArg?.action || ve.direction?.toLowerCase() || 'hold',
-              confidence: symArg?.confidence || ve.confidence,
-              reasoning: symArg?.reasoning || '',
-            },
-            weight: 1,
-            success: true,
-            error: undefined,
-          };
-        });
-
-      for (const sym of effectiveSymbols) {
-        const symConsensus = multiConsensus[sym];
-        const symData = symbolDataMap.get(sym);
-        const symPrice = symData?.currentPrice || 0;
-
-        if (!symConsensus || symConsensus.action === 'hold' || symConsensus.action === 'wait') {
-          decisions[sym] = {
-            action: (symConsensus?.action || 'hold') as AiAction,
-            confidence: symConsensus?.confidence || 0,
-            leverage: 1,
-            positionSizePercent: 0,
-            stopLoss: null,
-            takeProfit: null,
-            reasoning: symConsensus?.reasoning || '投票共识: 观望',
-          };
-          consensusScores[sym] = symConsensus?.score || 0;
-          perSymbolVotes[sym] = buildSymbolVotes(sym);
-          continue;
-        }
-
-        // SL/TP 百分比 → 绝对价格转换 (对齐 NoFx ExecuteConsensus)
-        const isLong = symConsensus.action === 'open_long' || symConsensus.action === 'close_short';
-        const slPct = (symConsensus as any).stopLoss || 0.03;
-        const tpPct = (symConsensus as any).takeProfit || 0.06;
-
-        let finalSL: number | null = null;
-        let finalTP: number | null = null;
-        if (symPrice > 0 && (symConsensus.action === 'open_long' || symConsensus.action === 'open_short')) {
-          finalSL = isLong
-            ? Math.round(symPrice * (1 - slPct) * 100) / 100
-            : Math.round(symPrice * (1 + slPct) * 100) / 100;
-          finalTP = isLong
-            ? Math.round(symPrice * (1 + tpPct) * 100) / 100
-            : Math.round(symPrice * (1 - tpPct) * 100) / 100;
-        }
-
-        // positionPct (0.1-1.0) → positionSizePercent (1-20)
-        const rawPosPct = (symConsensus as any).positionPct || 0.2;
-        const positionSizePercent = Math.min(Math.round(rawPosPct * 100), 20);
-
-        decisions[sym] = {
-          action: symConsensus.action as AiAction,
-          confidence: symConsensus.confidence,
-          leverage: (symConsensus as any).leverage || 5,
-          positionSizePercent,
-          stopLoss: finalSL,
-          takeProfit: finalTP,
-          reasoning: `[NoFx投票共识] ${symConsensus.reasoning}`,
-        };
-        consensusScores[sym] = symConsensus.score;
-        perSymbolVotes[sym] = buildSymbolVotes(sym);
-      }
 
       const totalCost = debateResult.totalCost;
       const totalLatencyMs = Date.now() - startTime;
@@ -639,9 +649,27 @@ export class DebateOrchestratorService {
       });
 
       this.logger.log(
-        `[多币种辩论] 完成(NoFx 2阶段): ${effectiveSymbols.length} 币种, ` +
+        `[共识投票] 完成: ${effectiveSymbols.length} 币种, ${config.models.length} 模型, ` +
           `cost=$${totalCost.toFixed(4)}, 耗时 ${totalLatencyMs}ms`,
       );
+
+      // 构建市场数据快照（供 auto-trader 安全检查 L3/L8/L9 使用）
+      const marketDataSnapshots: MultiCoinOrchestratorResult['marketDataSnapshots'] = {};
+      for (const sym of effectiveSymbols) {
+        const data = symbolDataMap.get(sym);
+        if (data) {
+          marketDataSnapshots[sym] = {
+            currentPrice: data.currentPrice,
+            fundingRate: data.fundingRate,
+            volume24h: data.volume24h,
+            indicators: {
+              rsi: data.indicators.rsi ?? null,
+              atr3: data.indicators.atr3 ?? null,
+              atr14: data.indicators.atr ?? null, // calculateAll() 中 atr = ATR(14)
+            },
+          };
+        }
+      }
 
       return {
         decisions,
@@ -653,6 +681,7 @@ export class DebateOrchestratorService {
         sessionId: session.id,
         investDebateResult: debateResult,
         riskDebateResult: riskResult,
+        marketDataSnapshots,
       };
     } catch (error) {
       this.logger.error(`[多币种辩论] 失败: ${error.message}`, error.stack);
@@ -677,12 +706,18 @@ export class DebateOrchestratorService {
     currentPrice: number;
     indicators: ReturnType<IndicatorsService['calculateAll']>;
     priceChange24h?: number;
+    fundingRate?: number;
+    volume24h?: number;
   }>> {
     const results = new Map();
 
     const fetchPromises = symbols.map(async (symbol) => {
       try {
-        const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, timeframe, 100);
+        // OHLCV 和 fundingRate 并行获取（fundingRate 供安全检查 L8 使用）
+        const [ohlcvRaw, frData] = await Promise.all([
+          this.marketData.fetchOHLCV(symbol, timeframe, 100),
+          this.marketData.fetchFundingRate(symbol).catch(() => null),
+        ]);
         const ohlcv: OHLCV[] = ohlcvRaw.map((c) => ({
           timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5],
         }));
@@ -696,7 +731,11 @@ export class DebateOrchestratorService {
           priceChange24h = old > 0 ? ((currentPrice - old) / old) * 100 : undefined;
         }
 
-        return { symbol, ohlcv, currentPrice, indicators: indicatorsResult, priceChange24h };
+        // 从 OHLCV 聚合 24h 成交量（L10 流动性检查用）
+        const barsFor24h = timeframe === '4h' ? 6 : timeframe === '1h' ? 24 : 6;
+        const volume24h = ohlcv.slice(-barsFor24h).reduce((sum, bar) => sum + (bar.volume || 0), 0);
+
+        return { symbol, ohlcv, currentPrice, indicators: indicatorsResult, priceChange24h, fundingRate: frData?.fundingRate, volume24h };
       } catch (error) {
         this.logger.warn(`[多币种辩论] ${symbol} 数据获取失败: ${error.message}`);
         return null;

@@ -7,6 +7,7 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { SignalsService } from './signals.service';
 import { FreqtradeHealthService } from './freqtrade-health.service';
 import { WebhookSignalDto } from './dto/signal.dto';
@@ -14,6 +15,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 
+@ApiTags('signals')
 @Controller('signals')
 export class SignalsController {
   constructor(

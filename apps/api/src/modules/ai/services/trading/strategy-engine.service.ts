@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
@@ -181,7 +182,8 @@ export class StrategyEngineService implements OnModuleInit {
     });
 
     // 注册定时任务到 BullMQ（strategy-cycle 类型）
-    const intervalMs = (strategy.intervalMinutes || 60) * 60 * 1000;
+    // 对齐 NoFx: 最小 3 分钟（服务端强制执行，防止过于频繁消耗 LLM 预算）
+    const intervalMs = Math.max(3, strategy.intervalMinutes || 60) * 60 * 1000;
     await this.addStrategyJob(strategyId, userId, intervalMs);
 
     this.logger.log(
@@ -224,14 +226,18 @@ export class StrategyEngineService implements OnModuleInit {
       throw new BadRequestException('策略未在运行，无需暂停');
     }
 
-    // 暂停: 停止定时任务但不改 isActive
+    // 暂停: 停止定时任务 + 设置 isActive = false（前端可感知状态变化）
     await this.removeStrategyJob(strategyId);
 
-    // 设置恢复时间
+    await db.aiStrategy.update({
+      where: { id: strategyId },
+      data: { isActive: false },
+    });
+
     const resumeAt = new Date(Date.now() + minutes * 60 * 1000);
 
     this.logger.log(
-      `[策略] 暂停: ${strategyId}, ${minutes} 分钟后恢复 (${resumeAt.toISOString()})`,
+      `[策略] 暂停: ${strategyId}, ${minutes} 分钟后可恢复 (${resumeAt.toISOString()})`,
     );
 
     return { paused: true, resumeAt };
@@ -275,13 +281,20 @@ export class StrategyEngineService implements OnModuleInit {
 
   // ========================= 策略日志 =========================
 
-  async getStrategyLogs(strategyId: string, userId: string, page: number = 1, limit: number = 20): Promise<{
+  async getStrategyLogs(
+    strategyId: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+    actionsOnly: boolean = false,
+  ): Promise<{
     data: any[];
     total: number;
+    totalAll: number; // 含 wait/hold 的总数
+    skippedCount: number; // 被过滤掉的 wait/hold 数量
   }> {
     const db = this.prisma;
 
-    // 先验证策略属于用户
     const strategy = await db.aiStrategy.findFirst({
       where: { id: strategyId, userId },
       select: { id: true },
@@ -290,17 +303,37 @@ export class StrategyEngineService implements OnModuleInit {
 
     const skip = (page - 1) * limit;
 
-    const [data, total] = await Promise.all([
+    // actionsOnly: 过滤掉 wait/hold 日志
+    const baseWhere: any = { strategyId };
+    const actionWhere: any = actionsOnly
+      ? {
+          strategyId,
+          AND: [
+            { decision: { path: ['action'], not: 'wait' } },
+            { decision: { path: ['action'], not: 'hold' } },
+          ],
+        }
+      : baseWhere;
+
+    const [data, total, totalAll] = await Promise.all([
       db.aiStrategyLog.findMany({
-        where: { strategyId },
+        where: actionWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      db.aiStrategyLog.count({ where: { strategyId } }),
+      db.aiStrategyLog.count({ where: actionWhere }),
+      actionsOnly
+        ? db.aiStrategyLog.count({ where: baseWhere })
+        : Promise.resolve(0),
     ]);
 
-    return { data, total };
+    return {
+      data,
+      total,
+      totalAll: actionsOnly ? totalAll : total,
+      skippedCount: actionsOnly ? totalAll - total : 0,
+    };
   }
 
   // ========================= 统一时间线 =========================
@@ -316,43 +349,78 @@ export class StrategyEngineService implements OnModuleInit {
     page: number = 1,
     limit: number = 10,
     type: string = 'all',
-  ): Promise<{ data: any[]; total: number }> {
+    actionsOnly: boolean = false,
+  ): Promise<{ data: any[]; total: number; totalAll: number; skippedCount: number }> {
     const db = this.prisma;
 
     // 1. 查询用户所有策略（获取 id→meta 映射）
     const strategies = await db.aiStrategy.findMany({
       where: { userId },
-      select: { id: true, name: true, tradingMode: true },
+      select: { id: true, name: true, tradingMode: true, strategyType: true },
     });
     const strategyMap = new Map(strategies.map((s) => [s.id, s]));
-    const soloIds = strategies.filter((s) => s.tradingMode === 'solo').map((s) => s.id);
+    const gridIds = strategies.filter((s) => s.strategyType === 'grid').map((s) => s.id);
+    const gridIdSet = new Set(gridIds);
+    const soloIds = strategies.filter((s) => s.tradingMode === 'solo' && !gridIdSet.has(s.id)).map((s) => s.id);
     const debateIds = strategies.filter((s) => s.tradingMode === 'debate').map((s) => s.id);
 
     // 2. 根据 type 过滤，并行查询
     const includeSolo = type === 'all' || type === 'solo';
     const includeDebate = type === 'all' || type === 'debate';
     const includeResearch = type === 'all' || type === 'research';
+    const includeGrid = type === 'all' || type === 'grid';
 
     // 策略日志查询
     const logStrategyIds = [
       ...(includeSolo ? soloIds : []),
       ...(includeDebate ? debateIds : []),
+      ...(includeGrid ? gridIds : []),
     ];
 
-    const [logs, logTotal, sessions, sessionTotal] = await Promise.all([
+    // actionsOnly: 过滤掉 wait/hold 日志
+    const logBaseWhere: any = { strategyId: { in: logStrategyIds } };
+    const logActionWhere: any = actionsOnly
+      ? {
+          strategyId: { in: logStrategyIds },
+          AND: [
+            { decision: { path: ['action'], not: 'wait' } },
+            { decision: { path: ['action'], not: 'hold' } },
+          ],
+        }
+      : logBaseWhere;
+
+    const [logs, logTotal, logTotalAll, sessions, sessionTotal, sessionTotalAll] = await Promise.all([
       logStrategyIds.length > 0
         ? db.aiStrategyLog.findMany({
-            where: { strategyId: { in: logStrategyIds } },
+            where: logActionWhere,
             orderBy: { createdAt: 'desc' },
-            take: limit * 2, // 多取一些用于合并排序
+            take: limit * 2,
           })
         : Promise.resolve([]),
       logStrategyIds.length > 0
-        ? db.aiStrategyLog.count({ where: { strategyId: { in: logStrategyIds } } })
+        ? db.aiStrategyLog.count({ where: logActionWhere })
+        : Promise.resolve(0),
+      logStrategyIds.length > 0 && actionsOnly
+        ? db.aiStrategyLog.count({ where: logBaseWhere })
         : Promise.resolve(0),
       includeResearch
         ? db.aiResearchSession.findMany({
-            where: { userId, rootSessionId: null },
+            where: {
+              userId,
+              OR: [
+                // 单次研究（无根会话、无 campaignStatus）
+                { rootSessionId: null, campaignStatus: null },
+                // 循环子会话（有实际 pipeline 结果）
+                { rootSessionId: { not: null } },
+              ],
+              // actionsOnly: 过滤掉 finalDecision.action = wait/hold 的研究记录
+              ...(actionsOnly ? {
+                AND: [
+                  { finalDecision: { path: ['action'], not: 'wait' } },
+                  { finalDecision: { path: ['action'], not: 'hold' } },
+                ],
+              } : {}),
+            },
             orderBy: { createdAt: 'desc' },
             take: limit * 2,
             select: {
@@ -364,7 +432,33 @@ export class StrategyEngineService implements OnModuleInit {
           })
         : Promise.resolve([]),
       includeResearch
-        ? db.aiResearchSession.count({ where: { userId, rootSessionId: null } })
+        ? db.aiResearchSession.count({
+            where: {
+              userId,
+              OR: [
+                { rootSessionId: null, campaignStatus: null },
+                { rootSessionId: { not: null } },
+              ],
+              ...(actionsOnly ? {
+                AND: [
+                  { finalDecision: { path: ['action'], not: 'wait' } },
+                  { finalDecision: { path: ['action'], not: 'hold' } },
+                ],
+              } : {}),
+            },
+          })
+        : Promise.resolve(0),
+      // 获取 research 未过滤总数（用于计算 skippedCount）
+      includeResearch && actionsOnly
+        ? db.aiResearchSession.count({
+            where: {
+              userId,
+              OR: [
+                { rootSessionId: null, campaignStatus: null },
+                { rootSessionId: { not: null } },
+              ],
+            },
+          })
         : Promise.resolve(0),
     ]);
 
@@ -374,7 +468,8 @@ export class StrategyEngineService implements OnModuleInit {
     for (const log of logs as any[]) {
       const meta = strategyMap.get(log.strategyId);
       if (!meta) continue;
-      const entryType = meta.tradingMode === 'debate' ? 'debate_log' : 'solo_log';
+      const entryType = (meta as any).strategyType === 'grid' ? 'grid_log'
+        : meta.tradingMode === 'debate' ? 'debate_log' : 'solo_log';
       merged.push({
         createdAt: new Date(log.createdAt),
         entry: {
@@ -400,41 +495,106 @@ export class StrategyEngineService implements OnModuleInit {
 
     // 4. 分页
     const total = logTotal + sessionTotal;
+    const totalAll = actionsOnly ? (logTotalAll + sessionTotalAll) : total;
     const skip = (page - 1) * limit;
     const paged = merged.slice(skip, skip + limit);
 
     return {
       data: paged.map((m) => m.entry),
       total,
+      totalAll,
+      skippedCount: totalAll - total,
     };
   }
 
   // ========================= 日志清理 =========================
 
   /**
-   * 清理策略的过期日志（保留最近 N 天）
-   * 参考 NoFx store/decision.go CleanOldRecords()
+   * 清理策略的过期日志（分层保留）
+   * - 有交易动作 (open_long/open_short/close_long/close_short): 90 天
+   * - 无交易 (wait/hold): 7 天
    *
    * 触发时机: 由 AutoRunProcessor 在每次策略周期完成后调用（lazy cleanup）
-   * 默认保留 30 天，估算每策略≈3,600 条/月，清理后不会无限增长
    */
-  async cleanOldLogs(strategyId: string, retentionDays: number = 30): Promise<number> {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - retentionDays);
+  async cleanOldLogs(strategyId: string): Promise<number> {
+    const now = new Date();
 
-    const result = await this.prisma.aiStrategyLog.deleteMany({
+    // 1. 所有日志: 90 天前全删
+    const allCutoff = new Date(now);
+    allCutoff.setDate(allCutoff.getDate() - 90);
+    const r1 = await this.prisma.aiStrategyLog.deleteMany({
+      where: { strategyId, createdAt: { lt: allCutoff } },
+    });
+
+    // 2. wait/hold 日志: 7 天前删
+    const waitCutoff = new Date(now);
+    waitCutoff.setDate(waitCutoff.getDate() - 7);
+    const r2 = await this.prisma.aiStrategyLog.deleteMany({
       where: {
         strategyId,
-        createdAt: { lt: cutoff },
+        createdAt: { lt: waitCutoff },
+        OR: [
+          { decision: { path: ['action'], equals: 'wait' } },
+          { decision: { path: ['action'], equals: 'hold' } },
+        ],
       },
     });
 
-    if (result.count > 0) {
-      this.logger.log(
-        `[策略] 清理 ${strategyId} 过期日志: ${result.count} 条 (>${retentionDays}天)`,
-      );
+    const total = r1.count + r2.count;
+    if (total > 0) {
+      this.logger.log(`[清理] 策略 ${strategyId}: ${r1.count} 条过期(>90天) + ${r2.count} 条 wait/hold(>7天)`);
     }
-    return result.count;
+    return total;
+  }
+
+  /**
+   * 每天凌晨 4 点全局清理过期 AI 日志
+   * 覆盖已停止策略 + 研究记录 + 辩论会话
+   *
+   * 保留策略:
+   * - 策略日志(有交易): 90 天
+   * - 策略日志(wait/hold): 7 天
+   * - 研究记录: 90 天
+   * - 辩论会话: 90 天
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async globalLogCleanup(): Promise<void> {
+    const now = new Date();
+    this.logger.log('[Cron] 全局 AI 日志清理开始...');
+
+    // 1. 策略日志: 90天前全删
+    const allCutoff = new Date(now);
+    allCutoff.setDate(allCutoff.getDate() - 90);
+    const r1 = await this.prisma.aiStrategyLog.deleteMany({
+      where: { createdAt: { lt: allCutoff } },
+    });
+
+    // 2. 策略日志: 7天前 wait/hold
+    const waitCutoff = new Date(now);
+    waitCutoff.setDate(waitCutoff.getDate() - 7);
+    const r2 = await this.prisma.aiStrategyLog.deleteMany({
+      where: {
+        createdAt: { lt: waitCutoff },
+        OR: [
+          { decision: { path: ['action'], equals: 'wait' } },
+          { decision: { path: ['action'], equals: 'hold' } },
+        ],
+      },
+    });
+
+    // 3. 研究记录: 90天前
+    const r3 = await this.prisma.aiResearchSession.deleteMany({
+      where: { createdAt: { lt: allCutoff } },
+    });
+
+    // 4. 辩论会话: 90天前
+    const r4 = await this.prisma.aiDebateSession.deleteMany({
+      where: { createdAt: { lt: allCutoff } },
+    });
+
+    this.logger.log(
+      `[Cron] 清理完成: 策略(>90天)=${r1.count}, wait/hold(>7天)=${r2.count}, 研究(>90天)=${r3.count}, 辩论(>90天)=${r4.count}`,
+    );
   }
 
   // ========================= BullMQ 调度 =========================
@@ -479,7 +639,7 @@ export class StrategyEngineService implements OnModuleInit {
       // 方案 1: removeRepeatable(name, repeatOpts, jobId)
       // 注意: jobId 必须作为第 3 参数，不能放入 repeatOpts！
       // BullMQ 内部 Object.assign({...repeat}, {jobId}) 会用第 3 参数覆盖
-      const possibleIntervals = [5, 10, 15, 30, 60, 120, 240, 480, 720, 1440];
+      const possibleIntervals = [3, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440];
       for (const minutes of possibleIntervals) {
         try {
           await this.autoQueue.removeRepeatable('strategy-cycle', {
@@ -530,7 +690,7 @@ export class StrategyEngineService implements OnModuleInit {
       // 查询所有活跃策略的 userId + exchangeApiKeyId
       const activeStrategies = await db.aiStrategy.findMany({
         where: { isActive: true },
-        select: { userId: true, id: true },
+        select: { userId: true, id: true, coinSourceConfig: true },
       });
 
       if (activeStrategies.length === 0) return;
@@ -581,6 +741,14 @@ export class StrategyEngineService implements OnModuleInit {
               (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
             );
             if (!matched) {
+              // 尝试匹配活跃策略：按 userId + symbol 查找
+              const baseCoin = ep.symbol.split('/')[0]; // "DOGE/USDT:USDT" → "DOGE"
+              const matchedStrategy = activeStrategies.find((s) => {
+                if (s.userId !== userId) return false;
+                const cfg = s.coinSourceConfig as { coins?: string[] };
+                return cfg?.coins?.some((c: string) => c.includes(baseCoin));
+              });
+
               await db.position.create({
                 data: {
                   userId,
@@ -595,32 +763,54 @@ export class StrategyEngineService implements OnModuleInit {
                   status: 'open',
                   source: 'ai_strategy',
                   apiKeyId,
+                  ...(matchedStrategy ? { aiStrategyId: matchedStrategy.id } : {}),
                 },
               });
               created++;
               this.logger.log(
-                `[快照] 创建遗失持仓: ${ep.symbol} ${ep.side} qty=${ep.quantity} user=${userId}`,
+                `[快照] 创建遗失持仓: ${ep.symbol} ${ep.side} qty=${ep.quantity} user=${userId}` +
+                (matchedStrategy ? ` → 关联策略 ${matchedStrategy.id}` : ''),
               );
             }
           }
 
-          // DB 有但交易所无 → 标记关闭
+          // DB 有但交易所无 → 标记关闭（估算 PnL）
           for (const dp of dbPositions) {
             const matched = exchangePositions.find(
               (ep) => ep.symbol === dp.symbol && ep.side === dp.side,
             );
             if (!matched) {
+              // 尝试获取当前价格估算 PnL（交易所侧 SL/TP 已平仓）
+              let estimatedPnl: number | undefined;
+              let closePrice: number | undefined;
+              try {
+                closePrice = await adapter.getMarketPrice(dp.symbol);
+                const entryPrice = Number(dp.entryPrice);
+                const amount = Number(dp.amount);
+                estimatedPnl = dp.side === 'long'
+                  ? (closePrice - entryPrice) * amount
+                  : (entryPrice - closePrice) * amount;
+              } catch {
+                this.logger.warn(`[快照] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
+              }
+
               await db.position.update({
                 where: { id: dp.id },
                 data: {
                   status: 'closed',
                   closeReason: 'not_found_on_exchange',
                   closedAt: new Date(),
+                  ...(closePrice != null ? { closePrice: closePrice.toFixed(8) } : {}),
+                  ...(estimatedPnl != null ? {
+                    pnl: estimatedPnl.toFixed(8),
+                    realizedPnl: estimatedPnl.toFixed(8),
+                  } : {}),
                 },
               });
               closed++;
               this.logger.log(
-                `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}`,
+                `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
+                (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
               );
             }
           }
@@ -644,6 +834,107 @@ export class StrategyEngineService implements OnModuleInit {
   }
 
   /**
+   * R2: 单用户持仓同步（可由 auto-trader 每周期调用）
+   *
+   * 对齐 NoFx OrderSync — 交易所 vs DB 持仓对比:
+   * - 交易所有 DB 无 → 创建 Position
+   * - DB 有交易所无 → 标记 closed
+   */
+  async syncPositionsForUser(
+    userId: string,
+    apiKeyId: string,
+  ): Promise<{ created: number; closed: number }> {
+    if (!this.adapterFactory) {
+      return { created: 0, closed: 0 };
+    }
+
+    let created = 0;
+    let closed = 0;
+
+    const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+    try {
+      const exchangePositions = await adapter.getPositions();
+      const dbPositions = await this.prisma.position.findMany({
+        where: {
+          userId,
+          status: 'open',
+          source: { in: ['ai_research', 'ai_strategy'] },
+        },
+      });
+
+      // 交易所有但 DB 无 → 创建
+      for (const ep of exchangePositions) {
+        const matched = dbPositions.find(
+          (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
+        );
+        if (!matched) {
+          await this.prisma.position.create({
+            data: {
+              userId,
+              exchange: adapter.exchangeType,
+              symbol: ep.symbol,
+              side: ep.side,
+              entryPrice: ep.entryPrice,
+              amount: ep.quantity,
+              margin: ep.margin,
+              leverage: ep.leverage,
+              unrealizedPnl: ep.unrealizedPnl,
+              status: 'open',
+              source: 'ai_strategy',
+              apiKeyId,
+            },
+          });
+          created++;
+        }
+      }
+
+      // DB 有但交易所无 → 标记关闭（估算 PnL）
+      for (const dp of dbPositions) {
+        const matched = exchangePositions.find(
+          (ep) => ep.symbol === dp.symbol && ep.side === dp.side,
+        );
+        if (!matched) {
+          let estimatedPnl: number | undefined;
+          let closePrice: number | undefined;
+          try {
+            closePrice = await adapter.getMarketPrice(dp.symbol);
+            const entryPrice = Number(dp.entryPrice);
+            const amount = Number(dp.amount);
+            estimatedPnl = dp.side === 'long'
+              ? (closePrice - entryPrice) * amount
+              : (entryPrice - closePrice) * amount;
+          } catch {
+            this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
+          }
+
+          await this.prisma.position.update({
+            where: { id: dp.id },
+            data: {
+              status: 'closed',
+              closeReason: 'not_found_on_exchange',
+              closedAt: new Date(),
+              ...(closePrice != null ? { closePrice: closePrice.toFixed(8) } : {}),
+              ...(estimatedPnl != null ? {
+                pnl: estimatedPnl.toFixed(8),
+                realizedPnl: estimatedPnl.toFixed(8),
+              } : {}),
+            },
+          });
+          closed++;
+        }
+      }
+
+      if (created > 0 || closed > 0) {
+        this.logger.log(`[持仓同步] user=${userId}: 新建${created}, 关闭${closed}`);
+      }
+    } finally {
+      await adapter.dispose();
+    }
+
+    return { created, closed };
+  }
+
+  /**
    * 服务启动时恢复所有运行中的策略
    */
   private async restoreActiveStrategies(): Promise<void> {
@@ -661,7 +952,7 @@ export class StrategyEngineService implements OnModuleInit {
       let restored = 0;
       for (const strategy of activeStrategies) {
         try {
-          const intervalMs = (strategy.intervalMinutes || 60) * 60 * 1000;
+          const intervalMs = Math.max(3, strategy.intervalMinutes || 60) * 60 * 1000;
           await this.addStrategyJob(strategy.id, strategy.userId, intervalMs);
           restored++;
         } catch (error) {

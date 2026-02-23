@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 export interface CreateAgentDto {
   name: string;
@@ -55,7 +56,7 @@ export class AdminAgentService {
     const { page = 1, limit = 20, search, status, level } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AgentWhereInput = {};
 
     if (search) {
       where.OR = [
@@ -478,7 +479,7 @@ export class AdminAgentService {
     const { page = 1, limit = 20, agentId, status } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AgentTokenQuotaWhereInput = {};
     if (agentId) where.agentId = agentId;
     if (status) where.status = status;
 
@@ -605,7 +606,7 @@ export class AdminAgentService {
     const { page = 1, limit = 20, status } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AgentDividendPoolWhereInput = {};
     if (status) where.status = status;
 
     const [pools, total] = await Promise.all([

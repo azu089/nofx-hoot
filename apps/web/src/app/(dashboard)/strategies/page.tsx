@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { StrategyMarketplaceV3 } from '@/components/ui-v3/strategies/strategy-marketplace-v3';
 import { MobileStrategiesV3 } from '@/components/ui-v3/mobile/mobile-strategies-v3';
@@ -14,6 +15,8 @@ export default function StrategiesPage() {
   const queryClient = useQueryClient();
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE); // 当前显示数量
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(''); // 搜索关键词
+  const [activeFilter, setActiveFilter] = useState<string>(''); // 当前筛选条件
 
   // 获取策略列表
   const { data: strategiesData } = useQuery({
@@ -48,10 +51,10 @@ export default function StrategiesPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['strategies'] });
-      alert('订阅成功');
+      toast.success('订阅成功');
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '订阅失败');
+      toast.error(error instanceof Error ? error.message : '订阅失败');
     },
   });
 
@@ -91,14 +94,56 @@ export default function StrategiesPage() {
     });
   }, [strategiesData]);
 
-  // 当前显示的策略（分页）
+  // 经搜索和筛选后的策略列表（前端内存过滤）
+  const filteredStrategies = useMemo(() => {
+    let result = allStrategies;
+
+    // 搜索过滤：按名称匹配（不区分大小写）
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q)
+      );
+    }
+
+    // 类型筛选：按 type / riskLevel / marketType 匹配
+    if (activeFilter) {
+      result = result.filter((s) => {
+        if (activeFilter === 'low' || activeFilter === 'medium' || activeFilter === 'high') {
+          return s.riskLevel === activeFilter;
+        }
+        if (activeFilter === 'spot' || activeFilter === 'futures') {
+          return s.marketType === activeFilter;
+        }
+        // 按策略类型筛选（DCA / Grid / Arbitrage / AI Signal）
+        return s.type === activeFilter;
+      });
+    }
+
+    return result;
+  }, [allStrategies, searchQuery, activeFilter]);
+
+  // 当前显示的策略（分页，基于过滤后结果）
   const strategies = useMemo(() => {
-    if (!allStrategies.length) return [];
-    return allStrategies.slice(0, displayCount);
-  }, [allStrategies, displayCount]);
+    if (!filteredStrategies.length) return [];
+    return filteredStrategies.slice(0, displayCount);
+  }, [filteredStrategies, displayCount]);
 
   // 是否还有更多数据
-  const hasMore = allStrategies.length > displayCount;
+  const hasMore = filteredStrategies.length > displayCount;
+
+  // 搜索处理：更新关键词并重置分页
+  const handleSearch = (q: string) => {
+    setSearchQuery(q);
+    setDisplayCount(PAGE_SIZE);
+  };
+
+  // 筛选处理：更新筛选条件并重置分页
+  const handleFilterChange = (filter: string) => {
+    setActiveFilter(filter);
+    setDisplayCount(PAGE_SIZE);
+  };
 
   // 加载更多
   const handleLoadMore = () => {
@@ -118,8 +163,8 @@ export default function StrategiesPage() {
           strategies={strategies}
           onStrategyClick={(id) => router.push(`/strategies/${id}`)}
           onSubscribe={(id) => subscribeMutation.mutate(id)}
-          onSearch={(q) => console.log('搜索:', q)}
-          onFilterChange={(f) => console.log('筛选:', f)}
+          onSearch={handleSearch}
+          onFilterChange={handleFilterChange}
           onConfigureStrategy={(id) => router.push(`/strategies/${id}/config`)}
           onCreateStrategy={() => router.push('/strategies/create')}
           onNavigate={(path) => router.push(path)}

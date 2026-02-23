@@ -6,11 +6,12 @@ import {
   TrendingDown,
   Users,
   Bell,
-  Megaphone,
+  Volume2,
   Loader2,
   Building2,
   Gift,
 } from 'lucide-react'
+import Image from 'next/image'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
 
@@ -112,27 +113,18 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
     { titleKey: 'quickAccess.inviteFriends', icon: Users, path: '/referral', gradient: 'from-orange-500 to-red-500' }
   ]
 
-  // 公告数据：优先使用 API 数据，根据系统语言选择对应内容
+  // 跑马灯文案：使用 i18n 本地化默认文案（10 语言精翻）
+  // 管理后台配置跑马灯后，可切换为 API 数据
   const defaultAnnouncements = [
-    t('defaultAnnouncements.maintenance'),
-    t('defaultAnnouncements.newStrategy'),
-    t('defaultAnnouncements.referralEvent'),
-    t('defaultAnnouncements.aiStrategy')
+    t('defaultAnnouncements.welcome'),
+    t('defaultAnnouncements.aiStrategy'),
+    t('defaultAnnouncements.security'),
+    t('defaultAnnouncements.referral')
   ]
+  const marqueeItems = defaultAnnouncements.map(text => ({ text, link: undefined as string | undefined }))
 
-  // API 已返回翻译后的内容，直接使用即可
-  // 跑马灯使用 marquees 数据，不是 announcements
-  const marqueeTexts = data?.marquees && data.marquees.length > 0
-    ? data.marquees.map(m => m.content)
-    : defaultAnnouncements
-
-  // 跑马灯配置
-  const marqueeConfig = data?.marqueeConfig || { scrollSpeed: 50, pauseOnHover: true, displayDuration: 5 }
-  // 根据速度计算动画时长（速度越快时长越短）
-  // scrollSpeed 单位是 px/s，假设内容宽度约 1500px
-  // 时长 = 宽度 / 速度
-  // 例：80px/s → 1500/80 ≈ 19秒，150px/s → 10秒
-  const marqueeDuration = Math.max(8, 1500 / marqueeConfig.scrollSpeed)
+  // 跑马灯动画 12s 循环（对标 Binance/OKX）
+  const marqueeDuration = 12
 
   // Touch handlers for carousel
   const onTouchStart = (e: TouchEvent) => {
@@ -233,24 +225,43 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
           </div>
         </div>
 
-        {/* Scrolling Marquee */}
-        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden py-2 px-3">
-          <div className="flex items-center">
-            <Megaphone className="w-3.5 h-3.5 text-[#06B6D4] mr-2 flex-shrink-0" />
-            <div className="flex-1 overflow-hidden">
-              <div
-                className="whitespace-nowrap text-[#9090A0] text-xs"
-                style={{
-                  animation: `marquee ${marqueeDuration}s linear infinite`,
-                }}
-              >
-                {marqueeTexts.map((text, index) => (
-                  <span key={index} className="mx-6">{text}</span>
-                ))}
-                {marqueeTexts.map((text, index) => (
-                  <span key={`dup-${index}`} className="mx-6">{text}</span>
-                ))}
-              </div>
+        {/* Scrolling Marquee — Binance/OKX 风格 */}
+        <div className="relative bg-[#12121A]/60 border border-[#1E1E2E] rounded-lg overflow-hidden h-9 flex items-center px-3">
+          <Volume2 className="w-3.5 h-3.5 text-[#F7931A] mr-2 flex-shrink-0" />
+          <div className="flex-1 overflow-hidden marquee-container">
+            <div
+              className="whitespace-nowrap text-[#B0B0C0] text-xs marquee-track"
+              style={{
+                animation: `marquee ${marqueeDuration}s linear infinite`,
+              }}
+            >
+              {marqueeItems.map((item, index) => (
+                <span key={index}>
+                  {index > 0 && <span className="mx-3 text-[#333]">|</span>}
+                  {item.link ? (
+                    <a href={item.link} target="_blank" rel="noopener noreferrer"
+                      className="hover:text-[#06B6D4] transition-colors">
+                      {item.text}
+                    </a>
+                  ) : (
+                    <span>{item.text}</span>
+                  )}
+                </span>
+              ))}
+              <span className="mx-3 text-[#333]">|</span>
+              {marqueeItems.map((item, index) => (
+                <span key={`dup-${index}`}>
+                  {index > 0 && <span className="mx-3 text-[#333]">|</span>}
+                  {item.link ? (
+                    <a href={item.link} target="_blank" rel="noopener noreferrer"
+                      className="hover:text-[#06B6D4] transition-colors">
+                      {item.text}
+                    </a>
+                  ) : (
+                    <span>{item.text}</span>
+                  )}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -329,8 +340,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-7 h-7 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
                           {coin.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={coin.image} alt={coin.symbol} className="w-5 h-5" />
+                            <Image src={coin.image} alt={coin.symbol} width={20} height={20} className="w-5 h-5" unoptimized />
                           ) : (
                             <span className="text-xs font-bold text-[#06B6D4]">
                               {coin.symbol.charAt(0)}

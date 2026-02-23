@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { useLocale, useTranslations } from '@/i18n/provider'
 import { localeNames, type Locale } from '@/i18n/config'
 import { useTheme } from '@/lib/theme'
+import { api } from '@/lib/api'
 
 // 绑定奖励配置（与后端 airdrop.dto.ts 保持一致）
 const BIND_REWARDS = {
@@ -158,46 +159,56 @@ export function SettingsPage({
   }
 
   // 发送密码修改验证码
-  const handleSendPasswordCode = () => {
+  const handleSendPasswordCode = async () => {
     if (countdown > 0) return
-    setCodeSent(true)
-    setCountdown(60)
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    // TODO: 实际调用发送验证码 API
+    try {
+      await api.post('/auth/send-verification', { email: userEmail })
+      setCodeSent(true)
+      setCountdown(60)
+      const timer = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      toast.success(ta('codeSent'))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '发送失败，请稍后重试')
+    }
   }
 
   // 发送邮箱更换验证码
-  const handleSendEmailCode = () => {
-    if (emailCountdown > 0) return
-    setEmailCodeSent(true)
-    setEmailCountdown(60)
-    const timer = setInterval(() => {
-      setEmailCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    // TODO: 实际调用发送验证码 API
+  const handleSendEmailCode = async () => {
+    if (emailCountdown > 0 || !emailForm.email) return
+    try {
+      await api.post('/auth/send-verification', { email: emailForm.email })
+      setEmailCodeSent(true)
+      setEmailCountdown(60)
+      const timer = setInterval(() => {
+        setEmailCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      toast.success(ta('codeSent'))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '发送失败，请稍后重试')
+    }
   }
 
   const handlePasswordSubmit = () => {
     if (passwordForm.new !== passwordForm.confirm) {
-      toast.error('两次输入的密码不一致')
+      toast.error(tc('passwordMismatch'))
       return
     }
     if (!passwordForm.verifyCode) {
-      toast.error('请输入邮箱验证码')
+      toast.error(tc('enterEmailCode'))
       return
     }
     onChangePassword?.(passwordForm.old, passwordForm.new)
@@ -209,7 +220,7 @@ export function SettingsPage({
 
   const handleEmailSubmit = () => {
     if (!emailForm.verifyCode) {
-      toast.error('请输入邮箱验证码')
+      toast.error(tc('enterEmailCode'))
       return
     }
     onChangeEmail?.(emailForm.email, emailForm.password)
@@ -220,24 +231,29 @@ export function SettingsPage({
   }
 
   // 发送绑定邮箱验证码
-  const handleSendBindEmailCode = () => {
+  const handleSendBindEmailCode = async () => {
     if (bindEmailCountdown > 0 || !bindEmailForm.email) return
-    setBindEmailCountdown(60)
-    const timer = setInterval(() => {
-      setBindEmailCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    // TODO: 实际调用发送验证码 API
+    try {
+      await api.post('/auth/send-verification', { email: bindEmailForm.email })
+      setBindEmailCountdown(60)
+      const timer = setInterval(() => {
+        setBindEmailCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+      toast.success(ta('codeSent'))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '发送失败，请稍后重试')
+    }
   }
 
   const handleBindEmailSubmit = () => {
     if (!bindEmailForm.verifyCode) {
-      toast.error('请输入验证码')
+      toast.error(tc('enterCode'))
       return
     }
     onBindEmail?.(bindEmailForm.email)

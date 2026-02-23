@@ -73,21 +73,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-/* 层级 3：普通（大部分元素）- 白色微边框 */
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  transition: all 0.3s ease;
-}
-
-.glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-}
+/* 层级 3：已迁移到 globals.css .glass-card（配合 glass-border-glow 使用）
+ * 旧规则的 transition: all 0.3s + :hover 白色边框 会导致展开时变色，故移除。
+ * 所有 41 处使用已改为 glass-border-glow glass-card 组合。
+ */
 
 /* 层级 4：弱（辅助元素）*/
 .glass-card-subtle {

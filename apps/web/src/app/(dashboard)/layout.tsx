@@ -1,13 +1,25 @@
 'use client';
 
+import type React from 'react';
+import { useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Brain, BarChart3, Wallet, User } from 'lucide-react';
 import { AuthGuard } from '@/components/auth-guard';
 import { useTranslations } from '@/i18n/provider';
+import { useAuth } from '@/lib/auth';
+import { toast } from 'sonner';
+import {
+  useNotificationSocket,
+  useBudgetAlertSocket,
+  type NotificationEvent,
+  type BudgetAlertEvent,
+} from '@/hooks/useSocket';
 
-const navItemsConfig = [
+type NavLabelKey = 'home' | 'ai' | 'trading' | 'wallet' | 'profile';
+
+const navItemsConfig: Array<{ id: string; labelKey: NavLabelKey; icon: React.ElementType; href: string }> = [
   { id: 'dashboard', labelKey: 'home', icon: Home, href: '/dashboard' },
   { id: 'ai', labelKey: 'ai', icon: Brain, href: '/ai' },
   { id: 'trading', labelKey: 'trading', icon: BarChart3, href: '/trading' },
@@ -22,11 +34,32 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
+  const { isAuthenticated } = useAuth();
+
+  // 全局通知监听
+  const handleNotification = useCallback((event: NotificationEvent) => {
+    const toastFn = event.type === 'error' ? toast.error
+      : event.type === 'warning' ? toast.warning
+      : event.type === 'success' ? toast.success
+      : toast.info;
+    toastFn(event.message, { description: event.title });
+  }, []);
+
+  // AI 预算告警监听
+  const handleBudgetAlert = useCallback((event: BudgetAlertEvent) => {
+    toast.warning(event.message, {
+      description: `${event.percentUsed.toFixed(0)}% used`,
+      duration: 10000,
+    });
+  }, []);
+
+  useNotificationSocket(isAuthenticated, handleNotification);
+  useBudgetAlertSocket(isAuthenticated, handleBudgetAlert);
 
   // 动态生成带翻译的导航项
   const navItems = navItemsConfig.map(item => ({
     ...item,
-    label: t(item.labelKey as any)
+    label: t(item.labelKey)
   }));
 
   return (

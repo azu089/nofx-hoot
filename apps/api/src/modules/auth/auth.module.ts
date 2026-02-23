@@ -18,7 +18,7 @@ import { ReferralModule } from '../referral/referral.module';
         }
         return secret || 'dev-only-jwt-secret-do-not-use-in-production';
       })(),
-      signOptions: { expiresIn: '24h' },
+      signOptions: { expiresIn: '15m' },
     }),
     forwardRef(() => AirdropModule),
     forwardRef(() => ReferralModule),

@@ -12,15 +12,17 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUpdateAiConfig } from '@/hooks/useAi';
+import { useUpdateAiConfig, useAiLocaleSync } from '@/hooks/useAi';
 import { useTranslations } from '@/i18n/provider';
+import { useLocale } from 'next-intl';
 
 // ── Provider list ────────────────────────────────────────────────
 
 const LLM_PROVIDERS = [
   { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.png', placeholder: 'sk-...', recommended: true },
   { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.png', placeholder: 'sk-...' },
-  { key: 'openrouter', label: 'OpenRouter', logo: '/icons/llm/anthropic.png', placeholder: 'sk-or-...' },
+  { key: 'anthropic', label: 'Claude', logo: '/icons/llm/anthropic.png', placeholder: 'sk-ant-...' },
+  { key: 'gemini', label: 'Gemini', logo: '/icons/llm/google.png', placeholder: 'AIza...' },
   { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.png', placeholder: 'sk-...' },
   { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.png', placeholder: 'xai-...' },
   { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.png', placeholder: 'sk-...' },
@@ -31,13 +33,17 @@ const LLM_PROVIDERS = [
 export function AiSettingsPage() {
   const t = useTranslations('ai');
   const updateConfig = useUpdateAiConfig();
+  const appLocale = useLocale();
+
+  // AI 输出语言自动跟随 App 语言设置
+  useAiLocaleSync(appLocale);
 
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [showKeyFor, setShowKeyFor] = useState<string | null>(null);
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [keys, setKeys] = useState<Record<string, string>>({
-    deepseek: '', openai: '', openrouter: '', qwen: '', grok: '', kimi: '',
+    deepseek: '', openai: '', anthropic: '', gemini: '', qwen: '', grok: '', kimi: '',
   });
 
   const setKey = (provider: string, value: string) =>
@@ -62,7 +68,7 @@ export function AiSettingsPage() {
     <div className="min-h-screen bg-[#0A0A0F]">
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 border-b border-[#1E1E2E] bg-[#0A0A0F]/95 backdrop-blur-lg">
-        <div className="flex h-14 items-center gap-3 px-4">
+        <div className="flex h-14 items-center px-4">
           <button
             type="button"
             onClick={() => window.history.back()}
@@ -71,7 +77,8 @@ export function AiSettingsPage() {
           >
             <ArrowLeft className="h-5 w-5 text-[#9090A0]" />
           </button>
-          <h1 className="text-base font-semibold text-[#F8F8FC]">{t('settings.title')}</h1>
+          <h1 className="flex-1 text-center text-base font-semibold text-[#F8F8FC]">{t('settings.title')}</h1>
+          <div className="w-10" />
         </div>
       </div>
 
@@ -104,8 +111,8 @@ export function AiSettingsPage() {
                     isExpanded ? 'bg-[#1E1E2E]/10' : ''
                   }`}
                 >
-                  <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl">
-                    <Image src={provider.logo} alt={provider.label} width={36} height={36} className="h-full w-full object-cover" />
+                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1E1E2E]/40">
+                    <Image src={provider.logo} alt={provider.label} width={36} height={36} className="h-full w-full object-contain" />
                   </div>
                   <span className="flex-1 text-left text-sm font-medium text-[#F8F8FC]">
                     {provider.label}

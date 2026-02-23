@@ -3,9 +3,24 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { EmailService } from '../email/email.service';
+import { AirdropService } from '../airdrop/airdrop.service';
+import { ReferralService } from '../referral/referral.service';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt');
+
+// Mock ioredis 防止测试创建真实 Redis 连接（AuthService 构造函数中连接 Redis）
+jest.mock('ioredis', () => {
+  return jest.fn().mockImplementation(() => ({
+    on: jest.fn(),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue('OK'),
+    del: jest.fn().mockResolvedValue(1),
+    quit: jest.fn().mockResolvedValue('OK'),
+    disconnect: jest.fn(),
+  }));
+});
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -25,10 +40,31 @@ describe('AuthService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    refreshToken: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
   };
 
   const mockJwtService = {
     sign: jest.fn().mockReturnValue('mock-jwt-token'),
+  };
+
+  const mockEmailService = {
+    sendVerificationCode: jest.fn(),
+    sendWelcomeEmail: jest.fn(),
+  };
+
+  const mockAirdropService = {
+    processRegistrationAirdrop: jest.fn(),
+  };
+
+  const mockReferralService = {
+    processReferral: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -37,6 +73,9 @@ describe('AuthService', () => {
         AuthService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
+        { provide: EmailService, useValue: mockEmailService },
+        { provide: AirdropService, useValue: mockAirdropService },
+        { provide: ReferralService, useValue: mockReferralService },
       ],
     }).compile();
 
@@ -49,13 +88,20 @@ describe('AuthService', () => {
   describe('register', () => {
     // 正常路径
     it('should register a new user successfully', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.create.mockResolvedValue({
+      const createdUser = {
         id: mockUser.id,
         email: mockUser.email,
         nickname: mockUser.nickname,
         createdAt: mockUser.createdAt,
-      });
+      };
+      // 第1次 findUnique: 检查邮箱是否已存在 → null
+      // 第2次 findUnique: sendVerificationCode 查找用户 → 返回用户(含 emailVerified=false)
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ ...createdUser, emailVerified: false });
+      mockPrismaService.user.create.mockResolvedValue(createdUser);
+      mockPrismaService.user.update.mockResolvedValue(createdUser);
+      mockEmailService.sendVerificationCode.mockResolvedValue(true);
       (bcrypt.hash as jest.Mock).mockResolvedValue('hashedpassword');
 
       const result = await service.register({

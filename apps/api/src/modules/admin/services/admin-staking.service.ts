@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdminStakingService {
@@ -454,7 +455,7 @@ export class AdminStakingService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.StakingRecordWhereInput = {};
     if (status) where.status = status;
 
     const [records, total] = await Promise.all([
@@ -544,7 +545,8 @@ export class AdminStakingService {
   }
 
   // 更新质押配置
-  async updateStakingConfig(data: any, adminId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async updateStakingConfig(data: Record<string, any>, adminId: string) {
     const currentConfig = await this.getStakingConfig();
     const newConfig = { ...currentConfig, ...data };
     // 清理旧版 typeA/typeB 字段
@@ -650,14 +652,13 @@ export class AdminStakingService {
 
   // 获取配置变更历史
   async getConfigChangeHistory(type?: string, limit: number = 20) {
-    const where: any = {};
-    if (type) where.type = type;
+    const where: Prisma.AuditLogWhereInput = {
+      action: { contains: 'config' },
+      ...(type ? { resourceType: type } : {}),
+    };
 
     const logs = await this.prisma.auditLog.findMany({
-      where: {
-        ...where,
-        action: { contains: 'config' },
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -674,8 +675,10 @@ export class AdminStakingService {
   // 记录配置变更
   private async logConfigChange(
     type: string,
-    oldConfig: any,
-    newConfig: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    oldConfig: Record<string, any>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    newConfig: Record<string, any>,
     adminId: string,
   ) {
     // 生成变更描述
@@ -698,10 +701,7 @@ export class AdminStakingService {
           resourceType: type === 'staking' ? '质押分红' : '邀请返佣',
           resourceId: 'config',
           details: changes.join('; '),
-          metadata: {
-            oldConfig,
-            newConfig,
-          },
+          metadata: { oldConfig, newConfig } as unknown as Prisma.InputJsonValue,
         },
       });
     }

@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdminReferralService {
@@ -145,7 +146,7 @@ export class AdminReferralService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Prisma.UserWhereInput = {
       invitees: { some: {} },
     };
 
@@ -282,7 +283,7 @@ export class AdminReferralService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.ReferralRewardWhereInput = {};
     if (userId) where.userId = userId;
     if (status) where.status = status;
 

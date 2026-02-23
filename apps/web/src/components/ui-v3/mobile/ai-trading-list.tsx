@@ -6,6 +6,13 @@ import {
   ArrowLeft, Plus, Brain, Play, Pause, Edit, Trash2,
   AlertTriangle, MessageSquare, Loader2,
 } from 'lucide-react'
+
+// 交易所显示名映射
+const EXCHANGE_DISPLAY: Record<string, string> = {
+  binance: 'Binance', okx: 'OKX', bybit: 'Bybit', gate: 'Gate.io',
+  bitget: 'Bitget', coinbase: 'Coinbase',
+  hyperliquid: 'Hyperliquid', aster: 'Aster', lighter: 'Lighter',
+};
 import {
   useStrategyList, useStrategyControl,
   useDeleteStrategy,
@@ -31,8 +38,13 @@ export function Page({ embedded }: PageProps = {}) {
   const strategyControl = useStrategyControl()
   const deleteStrategy = useDeleteStrategy()
 
-  // 策略数据
-  const strategies = strategyData?.data ?? []
+  // 策略数据 — 运行中优先
+  const strategies = [...(strategyData?.data ?? [])].sort((a, b) => {
+    const aActive = a.isActive ? 1 : 0;
+    const bActive = b.isActive ? 1 : 0;
+    if (bActive !== aActive) return bActive - aActive;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  })
   const totalPnl = strategies.reduce((sum, s) => sum + Number(s.totalPnl), 0)
   const avgWinRate = strategies.length > 0
     ? strategies.reduce((sum, s) => sum + Number(s.winRate), 0) / strategies.length
@@ -41,7 +53,7 @@ export function Page({ embedded }: PageProps = {}) {
   // 工具函数
   const getStatus = (s: AiStrategy): StrategyStatus => s.isActive ? 'running' : 'stopped'
   const getCoins = (s: AiStrategy): string[] => {
-    try { return (s.coinSourceConfig as any)?.coins || [] } catch { return [] }
+    try { return s.coinSourceConfig?.coins || [] } catch { return [] }
   }
 
   const statusConfig: Record<StrategyStatus, { color: string; dot: string; label: string }> = {
@@ -51,11 +63,11 @@ export function Page({ embedded }: PageProps = {}) {
   }
 
   const handleAction = async (id: string, action: 'start' | 'stop' | 'pause') => {
-    try { await strategyControl.mutateAsync({ id, action }) } catch (e) { console.error(e) }
+    try { await strategyControl.mutateAsync({ id, action }) } catch (e) { if (process.env.NODE_ENV === 'development') { console.error(e) } }
   }
 
   const handleDelete = async (id: string) => {
-    try { await deleteStrategy.mutateAsync(id); setDeleteConfirmId(null) } catch (e) { console.error(e) }
+    try { await deleteStrategy.mutateAsync(id); setDeleteConfirmId(null) } catch (e) { if (process.env.NODE_ENV === 'development') { console.error(e) } }
   }
 
   // ===================== 渲染 =====================
@@ -89,7 +101,7 @@ export function Page({ embedded }: PageProps = {}) {
 
       {/* 统计卡片 */}
       <div className="px-4 py-3">
-        <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] grid grid-cols-3">
+        <div className="glass-border-glow glass-card grid grid-cols-3">
           <div className="p-3 text-center">
             <div className="text-[#606070] text-[10px] mb-1">{t('list.strategyCount')}</div>
             <div className="text-[#06B6D4] text-lg font-semibold font-mono">{strategies.length}</div>
@@ -159,7 +171,7 @@ export function Page({ embedded }: PageProps = {}) {
                   <div
                     key={s.id}
                     onClick={() => router.push(`/ai/strategy/${s.id}`)}
-                    className="glass-card-hd p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
+                    className="glass-border-glow glass-card p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
                   >
                     {/* 策略名+状态 */}
                     <div className="flex items-start justify-between mb-3">
@@ -177,7 +189,7 @@ export function Page({ embedded }: PageProps = {}) {
                       </div>
                     </div>
 
-                    {/* 模式+币种 */}
+                    {/* 模式+币种+交易所 */}
                     <div className="flex items-center gap-2 mb-3 flex-wrap">
                       {s.tradingMode !== 'solo' ? (
                         <span className="px-2 py-0.5 bg-[#8B5CF6]/15 text-[#8B5CF6] text-xs rounded flex items-center gap-1 font-medium">
@@ -191,6 +203,11 @@ export function Page({ embedded }: PageProps = {}) {
                       ))}
                       {coins.length > 4 && (
                         <span className="px-2 py-0.5 text-[#606070] text-xs">+{coins.length - 4}</span>
+                      )}
+                      {(s as AiStrategyWithPnl).exchangeName && (
+                        <span className="px-2 py-0.5 bg-[#1E1E2E] text-[#9090A0] text-xs rounded ml-auto">
+                          {EXCHANGE_DISPLAY[(s as AiStrategyWithPnl).exchangeName!] ?? (s as AiStrategyWithPnl).exchangeName}
+                        </span>
                       )}
                     </div>
 
@@ -235,9 +252,9 @@ export function Page({ embedded }: PageProps = {}) {
                           type="button"
                           onClick={() => handleAction(s.id, 'start')}
                           disabled={strategyControl.isPending}
-                          className="flex-1 bg-[#1E1E2E] text-[#10B981] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#252530] transition-colors disabled:opacity-50"
+                          className="flex-1 bg-[#06B6D4] text-[#F8F8FC] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#0891B2] transition-colors disabled:opacity-50"
                         >
-                          <Play className="w-3.5 h-3.5" /> {t('common.resume')}
+                          <Play className="w-3.5 h-3.5" /> {t('common.start')}
                         </button>
                       )}
                       {status === 'stopped' && (

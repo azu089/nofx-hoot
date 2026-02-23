@@ -29,13 +29,21 @@ export interface SafetyCheckInput {
   stopLossPercent?: number; // 止损百分比
   // v6: 分析模式
   mode?: string; // "quick" | "expert" — quick 模式跳过 L2 共识检查
-  // 策略级风控参数（优先于 aiConfig 全局默认值）
+  totalModels?: number; // 参与投票的总模型数（用于 L2 动态共识门槛）
+  volume24h?: number; // 24h 成交量 USD（用于 L10 流动性检查）
+  positionSizeUSD?: number; // 实际仓位金额（美元），用于 L10 流动性比较
+  currentPrice?: number; // 当前价格，用于 L9 regime 感知 R:R 计算
+  strategyId?: string; // AI策略ID，用于 L9 按策略独立计算持仓数
+  // 策略级风控参数（对齐 NoFx RiskControlConfig，优先于 aiConfig 全局默认值）
   strategyRiskConfig?: {
     maxLeverage?: number;
+    btcEthMaxLeverage?: number;      // NoFx: 分类杠杆（BTC/ETH）
+    altcoinMaxLeverage?: number;     // NoFx: 分类杠杆（山寨币）
+    minRiskRewardRatio?: number;     // NoFx: 最小风险收益比
     maxPositions?: number;
     maxDailyTrades?: number;
     cooldownMinutes?: number;
-    maxDailyDrawdown?: number;   // 策略级日最大回撤（美元），优先于 aiConfig
+    maxDailyDrawdown?: number;       // 策略级日最大回撤（美元），优先于 aiConfig
     circuitBreaker?: { maxConsecutiveLosses?: number; maxDrawdownPercent?: number };
   };
 }
@@ -75,8 +83,14 @@ export class SafetyService {
   }
 
   /**
-   * 运行全部 9 层安全检查
-   * 所有检查都会运行，但只要有一层失败，整体结果就是失败
+   * 运行全部安全检查层
+   *
+   * 硬拦截层: L1(结构), L2(共识), L4(仓位/杠杆), L5(熔断), L6(冷却), L8(极端资金费率), L9(ATR极端+R:R+持仓冲突)
+   * 软警告层: L3(RSI), L7(Drawdown), L10(流动性)
+   *
+   * 设计参考: NoFx 原项目仅在 validateDecision() 中做 action/leverage/positionSize/R:R 验证，
+   * RSI/ATR/Drawdown 等均无代码级拦截。HOOT 将 L3/L7 改为软警告以对齐此设计。
+   *
    * 平仓动作（close_long/close_short）跳过 L2/L3/L5/L6 检查
    */
   async checkAll(input: SafetyCheckInput): Promise<SafetyCheckResult> {
@@ -94,7 +108,7 @@ export class SafetyService {
     const l1 = this.checkL1(input);
     checks.push({
       layer: 'L1',
-      name: '结构化输出验证',
+      name: '结构验证',
       passed: l1.passed,
       detail: l1.detail,
     });
@@ -108,15 +122,15 @@ export class SafetyService {
     if (isClose || isQuickMode) {
       checks.push({
         layer: 'L2',
-        name: '多模型共识检查',
+        name: '多模型共识',
         passed: true,
-        detail: isClose ? '平仓动作，跳过共识检查' : '快速模式，跳过共识检查',
+        detail: isClose ? '平仓操作，跳过共识检查' : '极速模式，跳过共识检查',
       });
     } else {
       const l2 = this.checkL2(input);
       checks.push({
         layer: 'L2',
-        name: '多模型共识检查',
+        name: '多模型共识',
         passed: l2.passed,
         detail: l2.detail,
       });
@@ -126,25 +140,24 @@ export class SafetyService {
       }
     }
 
-    // L3: 指标硬约束（平仓跳过）
+    // L3: 指标软警告（平仓跳过；不拦截，仅注入 warning）
     if (isClose) {
       checks.push({
         layer: 'L3',
-        name: '指标硬约束',
+        name: '指标警告',
         passed: true,
-        detail: '平仓动作，跳过指标约束',
+        detail: '平仓操作，跳过指标检查',
       });
     } else {
       const l3 = this.checkL3(input);
       checks.push({
         layer: 'L3',
-        name: '指标硬约束',
-        passed: l3.passed,
+        name: '指标警告',
+        passed: true, // L3 永远不拦截（软警告）
         detail: l3.detail,
       });
-      if (!l3.passed && !blockedBy) {
-        blockedBy = 'L3';
-        blockedReason = l3.detail;
+      if (l3.warning) {
+        warnings.push(l3.warning);
       }
     }
 
@@ -152,15 +165,15 @@ export class SafetyService {
     if (isClose) {
       checks.push({
         layer: 'L4',
-        name: '仓位与杠杆限制',
+        name: '仓位与杠杆',
         passed: true,
-        detail: '平仓动作，跳过仓位/杠杆检查',
+        detail: '平仓操作，跳过仓位/杠杆检查',
       });
     } else {
       const l4 = await this.checkL4(input);
       checks.push({
         layer: 'L4',
-        name: '仓位与杠杆限制',
+        name: '仓位与杠杆',
         passed: l4.passed,
         detail: l4.detail,
       });
@@ -176,7 +189,7 @@ export class SafetyService {
         layer: 'L5',
         name: '熔断机制',
         passed: true,
-        detail: '平仓动作，跳过熔断检查',
+        detail: '平仓操作，跳过熔断检查',
       });
     } else {
       const l5 = await this.checkL5(input);
@@ -198,7 +211,7 @@ export class SafetyService {
         layer: 'L6',
         name: '冷却期检查',
         passed: true,
-        detail: '平仓动作，跳过冷却期检查',
+        detail: '平仓操作，跳过冷却期检查',
       });
     } else {
       const l6 = await this.checkL6(input);
@@ -214,24 +227,23 @@ export class SafetyService {
       }
     }
 
-    // L7: Drawdown 保护（平仓不跳过——需要检查是否应该平仓）
+    // L7: Drawdown 软警告（不拦截，仅注入 warning）
     const l7 = await this.checkL7(input);
     checks.push({
       layer: 'L7',
-      name: 'Drawdown 保护',
-      passed: l7.passed,
+      name: '回撤警告',
+      passed: true, // L7 永远不拦截
       detail: l7.detail,
     });
-    if (!l7.passed && !blockedBy) {
-      blockedBy = 'L7';
-      blockedReason = l7.detail;
+    if (l7.warning) {
+      warnings.push(l7.warning);
     }
 
     // L8: 资金费率感知（分级处理：硬拦截 + 软警告）
     const l8 = this.checkL8(input);
     checks.push({
       layer: 'L8',
-      name: '资金费率检查',
+      name: '资金费率',
       passed: l8.passed,
       detail: l8.detail,
     });
@@ -247,13 +259,27 @@ export class SafetyService {
     const l9 = await this.checkL9(input);
     checks.push({
       layer: 'L9',
-      name: '硬限制 + 波动率检查',
+      name: '硬限制与波动率',
       passed: l9.passed,
       detail: l9.detail,
     });
     if (!l9.passed && !blockedBy) {
       blockedBy = 'L9';
       blockedReason = l9.detail;
+    }
+
+    // L10: 流动性软警告（不拦截，仅记录警告）
+    if (!isClose) {
+      const l10 = this.checkL10(input);
+      checks.push({
+        layer: 'L10',
+        name: '流动性检查',
+        passed: true, // L10 永远不拦截
+        detail: l10.detail,
+      });
+      if (l10.warning) {
+        warnings.push(l10.warning);
+      }
     }
 
     // 判断整体是否通过（所有层都通过才算通过）
@@ -297,13 +323,13 @@ export class SafetyService {
     if (!directionValid) {
       return {
         passed: false,
-        detail: `无效的方向: ${input.direction}，必须是 buy/sell/hold`,
+        detail: `无效方向: ${input.direction}，必须是 buy/sell/hold`,
       };
     }
     if (!actionValid) {
       return {
         passed: false,
-        detail: `无效的动作: ${input.action}，必须是 ${validActions.join('/')}`,
+        detail: `无效操作: ${input.action}，必须是 ${validActions.join('/')}`,
       };
     }
 
@@ -311,7 +337,7 @@ export class SafetyService {
     if (typeof input.confidence !== 'number' || input.confidence < 0 || input.confidence > 100) {
       return {
         passed: false,
-        detail: `无效的置信度: ${input.confidence}，必须是 0-100`,
+        detail: `无效置信度: ${input.confidence}，必须 0-100`,
       };
     }
 
@@ -323,81 +349,85 @@ export class SafetyService {
     ) {
       return {
         passed: false,
-        detail: `无效的共识分数: ${input.consensusScore}，必须是 0-5`,
+        detail: `无效共识分数: ${input.consensusScore}，必须 0-5`,
       };
     }
 
     return {
       passed: true,
-      detail: `结构验证通过: direction=${input.direction}, confidence=${input.confidence}, consensus=${input.consensusScore}`,
+      detail: `验证通过: direction=${input.direction}, confidence=${input.confidence}, consensus=${input.consensusScore}`,
     };
   }
 
   // ========================= L2: 多模型共识检查 =========================
 
   /**
-   * L2: 至少 3/5 的角色必须达成共识
+   * L2: 多模型共识检查（动态门槛）
+   * - 2 模型: 50% 门槛（1/2 即可，避免全票要求过严）
+   * - 3+ 模型: 60% 门槛
+   * - 下限 = min(total, minConsensusModels) 防止不可能情况
    */
   private checkL2(input: SafetyCheckInput): SafetyLayerResult {
-    const minConsensus = AI_SAFETY_DEFAULTS.minConsensusModels;
+    const total = input.totalModels || 5;
+    // 2 模型用 50% 门槛（ceil(2*0.6)=2 全票太严），3+ 用 60%
+    const ratio = total <= 2 ? 0.5 : 0.6;
+    const minConsensus = Math.max(
+      Math.ceil(total * ratio),
+      Math.min(total, AI_SAFETY_DEFAULTS.minConsensusModels),
+    );
 
     if (input.consensusScore < minConsensus) {
       return {
         passed: false,
-        detail: `共识不足: ${input.consensusScore}/5，需要至少 ${minConsensus}/5 的模型同意`,
+        detail: `共识不足: ${input.consensusScore}/${total}，需要至少 ${minConsensus}/${total} (${Math.round(ratio * 100)}%) 的模型同意`,
       };
     }
 
     return {
       passed: true,
-      detail: `共识达标: ${input.consensusScore}/5 的模型同意 ${input.direction}`,
+      detail: `共识达标: ${input.consensusScore}/${total} 的模型同意 ${input.direction}`,
     };
   }
 
   // ========================= L3: 指标硬约束 =========================
 
   /**
-   * L3: 基于技术指标的硬性规则
-   * - RSI > 80 时禁止做多
-   * - RSI < 20 时禁止做空
-   * - 可选：布林带边界检查
+   * L3: 基于技术指标的软警告（不拦截，仅注入提示）
+   *
+   * 设计决策: NoFx/TradingAgents 原项目均无 RSI 代码级拦截，
+   * AI 看到 RSI 数据后应自主决策。硬拦截剥夺了 AI 在强趋势
+   * 延续场景下正确交易的能力。改为软警告，让 AI 看到警告后自行判断。
    */
-  private checkL3(input: SafetyCheckInput): SafetyLayerResult {
+  private checkL3(input: SafetyCheckInput): SafetyLayerResult & { warning?: string } {
     const direction = input.direction.toLowerCase();
 
-    // 如果没有指标数据，跳过检查（但给出警告）
+    // 如果没有指标数据，跳过检查
     if (!input.indicators) {
       return {
         passed: true,
-        detail: '无指标数据，跳过 L3 检查',
+        detail: '无指标数据，跳过 L3',
       };
     }
 
-    const { rsi, bollingerBands } = input.indicators;
+    const { rsi } = input.indicators;
 
-    // RSI 检查
+    // RSI 极端值 → 软警告（不拦截）
     if (rsi !== null) {
-      // 禁止在超买区做多
       if (direction === 'buy' && rsi > AI_SAFETY_DEFAULTS.rsiOverbought) {
         return {
-          passed: false,
-          detail: `RSI 超买 (${rsi.toFixed(2)} > ${AI_SAFETY_DEFAULTS.rsiOverbought})，禁止做多`,
+          passed: true,
+          detail: `RSI 超买: ${rsi.toFixed(2)} > ${AI_SAFETY_DEFAULTS.rsiOverbought}`,
+          warning: `RSI 超买 (${rsi.toFixed(2)})，做多风险较高`,
         };
       }
 
-      // 禁止在超卖区做空
       if (direction === 'sell' && rsi < AI_SAFETY_DEFAULTS.rsiOversold) {
         return {
-          passed: false,
-          detail: `RSI 超卖 (${rsi.toFixed(2)} < ${AI_SAFETY_DEFAULTS.rsiOversold})，禁止做空`,
+          passed: true,
+          detail: `RSI 超卖: ${rsi.toFixed(2)} < ${AI_SAFETY_DEFAULTS.rsiOversold}`,
+          warning: `RSI 超卖 (${rsi.toFixed(2)})，做空风险较高`,
         };
       }
-    }
-
-    // 布林带检查（可选，作为额外保护）
-    if (bollingerBands && bollingerBands.upper && bollingerBands.lower) {
-      // 可以在这里添加更多布林带逻辑
-      // 例如：价格突破上轨时禁止做多等
     }
 
     return {
@@ -416,7 +446,7 @@ export class SafetyService {
     if (!input.positionSize && !input.leverage) {
       return {
         passed: true,
-        detail: '未提供仓位/杠杆信息，跳过 L4 检查',
+        detail: '无仓位/杠杆数据，跳过 L4',
       };
     }
 
@@ -428,7 +458,7 @@ export class SafetyService {
     if (!aiConfig || !aiConfig.isEnabled) {
       return {
         passed: false,
-        detail: 'AI 交易未启用或配置不存在',
+        detail: 'AI 交易未启用或配置缺失',
       };
     }
 
@@ -437,25 +467,29 @@ export class SafetyService {
       if (input.positionSize > Number(aiConfig.maxPositionSize)) {
         return {
           passed: false,
-          detail: `仓位超限: ${input.positionSize}% > ${aiConfig.maxPositionSize}% (最大仓位比例)`,
+          detail: `仓位超限: ${input.positionSize}% > ${aiConfig.maxPositionSize}%`,
         };
       }
     }
 
-    // 检查杠杆（策略风控参数优先，fallback 全局 aiConfig）
-    const effectiveMaxLeverage = input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null);
-    if (input.leverage && effectiveMaxLeverage) {
-      if (input.leverage > effectiveMaxLeverage) {
+    // 检查杠杆（对齐 NoFx: 分 BTC/ETH 和山寨币，策略级优先 → aiConfig → 默认）
+    if (input.leverage) {
+      const bs = input.symbol.split('/')[0]?.toUpperCase();
+      const isMaj = bs === 'BTC' || bs === 'ETH';
+      const effectiveMaxLeverage = isMaj
+        ? (input.strategyRiskConfig?.btcEthMaxLeverage ?? input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null))
+        : (input.strategyRiskConfig?.altcoinMaxLeverage ?? input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null));
+      if (effectiveMaxLeverage && input.leverage > effectiveMaxLeverage) {
         return {
           passed: false,
-          detail: `杠杆超限: ${input.leverage}x > ${effectiveMaxLeverage}x`,
+          detail: `杠杆超限: ${input.leverage}x > ${effectiveMaxLeverage}x (${isMaj ? 'BTC/ETH' : 'altcoin'})`,
         };
       }
     }
 
     return {
       passed: true,
-      detail: `仓位/杠杆检查通过: position=${input.positionSize || 'N/A'}, leverage=${input.leverage || 'N/A'}`,
+      detail: `仓位/杠杆通过: position=${input.positionSize || 'N/A'}, leverage=${input.leverage || 'N/A'}`,
     };
   }
 
@@ -475,7 +509,7 @@ export class SafetyService {
     if (!aiConfig || !aiConfig.isEnabled) {
       return {
         passed: false,
-        detail: 'AI 交易未启用或配置不存在',
+        detail: 'AI 交易未启用或配置缺失',
       };
     }
 
@@ -495,7 +529,7 @@ export class SafetyService {
     if (effectiveCircuitBreaker && failedCount >= effectiveCircuitBreaker) {
       return {
         passed: false,
-        detail: `熔断触发: 24h 内失败 ${failedCount} 次，达到阈值 ${effectiveCircuitBreaker}`,
+        detail: `熔断触发: 24h 内 ${failedCount} 次失败，阈值 ${effectiveCircuitBreaker}`,
       };
     }
 
@@ -516,7 +550,7 @@ export class SafetyService {
     if (effectiveMaxDailyTrades && todayTradeCount >= effectiveMaxDailyTrades) {
       return {
         passed: false,
-        detail: `超过每日交易次数: ${todayTradeCount}/${effectiveMaxDailyTrades}`,
+        detail: `日交易上限: ${todayTradeCount}/${effectiveMaxDailyTrades}`,
       };
     }
 
@@ -560,13 +594,13 @@ export class SafetyService {
     if (totalDailyPnl < -maxDailyDrawdown) {
       return {
         passed: false,
-        detail: `每日回撤已达 $${Math.abs(totalDailyPnl).toFixed(2)}，超过限制 $${maxDailyDrawdown}`,
+        detail: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限额 $${maxDailyDrawdown}`,
       };
     }
 
     return {
       passed: true,
-      detail: `熔断检查通过: 失败=${failedCount}, 今日交易=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}, 今日PnL=$${totalDailyPnl.toFixed(2)}`,
+      detail: `熔断通过: 失败=${failedCount}, 今日=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}, 日盈亏=$${totalDailyPnl.toFixed(2)}`,
     };
   }
 
@@ -584,7 +618,7 @@ export class SafetyService {
     if (!aiConfig || !aiConfig.isEnabled) {
       return {
         passed: false,
-        detail: 'AI 交易未启用或配置不存在',
+        detail: 'AI 交易未启用或配置缺失',
       };
     }
 
@@ -595,7 +629,7 @@ export class SafetyService {
     if (!effectiveCooldownMinutes || effectiveCooldownMinutes === 0) {
       return {
         passed: true,
-        detail: '未配置冷却期，跳过 L6 检查',
+        detail: '未配置冷却期，跳过 L6',
       };
     }
 
@@ -617,27 +651,28 @@ export class SafetyService {
         const remainingMinutes = Math.ceil((cooldownMs - timeSinceLastTrade) / 60000);
         return {
           passed: false,
-          detail: `冷却期未满: 距离上次交易 ${Math.floor(timeSinceLastTrade / 60000)} 分钟，需等待 ${remainingMinutes} 分钟`,
+          detail: `冷却中: 距上次交易 ${Math.floor(timeSinceLastTrade / 60000)} 分钟，还需等待 ${remainingMinutes} 分钟`,
         };
       }
     }
 
     return {
       passed: true,
-      detail: `冷却期检查通过: 冷却时长 ${effectiveCooldownMinutes} 分钟`,
+      detail: `冷却期通过: ${effectiveCooldownMinutes} 分钟`,
     };
   }
 
   // ========================= L7: Drawdown 保护 =========================
 
   /**
-   * L7: Drawdown 保护
-   * 检查用户 AI 持仓是否有 "盈利>5% 但从最高点回撤≥40%" 的情况
-   * 如果有，建议不再开新仓（让系统先处理现有回撤持仓）
+   * L7: Drawdown 保护（软警告，不拦截）
+   *
+   * 设计决策: NoFx/TradingAgents 原项目均无 Drawdown 代码级拦截。
+   * 某一持仓亏损严重不代表其他品种也不能交易。
+   * 改为软警告，让 AI 看到当前持仓回撤情况后自行判断。
    */
-  private async checkL7(input: SafetyCheckInput): Promise<SafetyLayerResult> {
+  private async checkL7(input: SafetyCheckInput): Promise<SafetyLayerResult & { warning?: string }> {
     try {
-      // 查找用户的 AI 来源开放持仓（通过 signalId 关联到有 AI 分析的信号）
       const openPositions = await this.prisma.position.findMany({
         where: {
           userId: input.userId,
@@ -659,25 +694,27 @@ export class SafetyService {
         const unrealizedPnl = Number(pos.unrealizedPnl || 0);
         const pnlPercent = (unrealizedPnl / margin) * 100;
 
-        // 如果某持仓曾盈利 >5% 但当前回撤严重（亏损 >20%），警告
-        // 简化逻辑：如果任何持仓亏损超过阈值，拒绝开新仓
+        // 软警告：某持仓亏损超过阈值时提醒（不拦截）
         if (pnlPercent < AI_SAFETY_DEFAULTS.drawdownBlockThreshold) {
           return {
-            passed: false,
-            detail: `持仓 ${pos.id} 亏损 ${pnlPercent.toFixed(1)}% 超过 ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}% 阈值，暂停开新仓`,
+            passed: true, // 不拦截
+            detail: `持仓 ${pos.id.slice(0, 8)} 亏损 ${pnlPercent.toFixed(1)}% 超过 ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}% 阈值`,
+            warning: `回撤警告: 持仓亏损 ${pnlPercent.toFixed(1)}%，开仓前请评估风险`,
           };
         }
       }
 
       return {
         passed: true,
-        detail: `Drawdown 检查通过: ${openPositions.length} 个开放持仓均在安全范围`,
+        detail: `回撤通过: ${openPositions.length} 个持仓在安全范围内`,
       };
     } catch (error) {
       this.logger.warn(`L7 Drawdown 检查出错: ${error.message}`);
+      // 检查异常也不拦截，仅警告
       return {
-        passed: false,
-        detail: 'Drawdown 检查异常，拒绝开仓（安全优先）',
+        passed: true,
+        detail: '回撤检查出错',
+        warning: '回撤检查出错，无法确认持仓状态',
       };
     }
   }
@@ -697,7 +734,7 @@ export class SafetyService {
     if (input.fundingRate === undefined || input.fundingRate === null) {
       return {
         passed: true,
-        detail: '无资金费率数据，跳过 L8 检查',
+        detail: '无资金费率数据，跳过 L8',
       };
     }
 
@@ -710,7 +747,7 @@ export class SafetyService {
     if (isClose) {
       return {
         passed: true,
-        detail: `平仓动作，跳过资金费率检查 (${frPercent.toFixed(4)}%/8h)`,
+        detail: `平仓操作，跳过资金费率检查 (${frPercent.toFixed(4)}%/8h)`,
       };
     }
 
@@ -723,7 +760,7 @@ export class SafetyService {
     if (absFundingRate > AI_SAFETY_DEFAULTS.fundingRateExtreme && isPayingFunding) {
       return {
         passed: false,
-        detail: `资金费率极端: ${frPercent.toFixed(4)}%/8h，${direction === 'buy' ? '做多' : '做空'}需支付高额费用，暂停交易`,
+        detail: `极端资金费率: ${frPercent.toFixed(4)}%/8h，${direction === 'buy' ? '多方' : '空方'}费用过高，已暂停`,
       };
     }
 
@@ -731,8 +768,8 @@ export class SafetyService {
     if (absFundingRate > AI_SAFETY_DEFAULTS.fundingRateHigh && isPayingFunding) {
       return {
         passed: true,
-        detail: `资金费率偏高: ${frPercent.toFixed(4)}%/8h (软警告)`,
-        warning: `资金费率偏高 (${frPercent.toFixed(4)}%/8h)，持仓成本较大，建议短线操作`,
+        detail: `资金费率偏高: ${frPercent.toFixed(4)}%/8h (警告)`,
+        warning: `资金费率偏高 (${frPercent.toFixed(4)}%/8h)，持仓成本较大`,
       };
     }
 
@@ -740,8 +777,8 @@ export class SafetyService {
     if (input.fundingRate < AI_SAFETY_DEFAULTS.fundingRateNegativeBenefit && direction === 'buy') {
       return {
         passed: true,
-        detail: `负资金费率: ${frPercent.toFixed(4)}%/8h，做多可获得费率收益`,
-        warning: `负资金费率 (${frPercent.toFixed(4)}%/8h)，做多可获得费率收益`,
+        detail: `负资金费率: ${frPercent.toFixed(4)}%/8h，多方可获资金费`,
+        warning: `负资金费率 (${frPercent.toFixed(4)}%/8h)，多方可获资金费收入`,
       };
     }
 
@@ -755,11 +792,11 @@ export class SafetyService {
 
   /**
    * L9: 代码强制硬限制 + ATR 波动率守卫
-   * - 最大 AI 持仓数 ≤ 3（开仓时）
+   * - 最大 AI 持仓数 ≤ 配置值（开仓时）
    * - 风险收益比 ≥ 2:1（TP/SL 比值，开仓时）
    * - 同一 symbol 不开反向仓（开仓时）
-   * - ATR 短期飙升检测（atr3/atr14 > 2.0 需更高共识，>3.0 硬拦截）
-   * 平仓动作跳过仓位/冲突检查，但 ATR 极端仍拦截
+   * - ATR 短期飙升检测: >3.0 硬拦截, >2.0 仅日志警告（不拦截）
+   * 平仓动作跳过仓位/冲突检查，但 ATR 极端(>3.0)仍拦截
    */
   private async checkL9(input: SafetyCheckInput): Promise<SafetyLayerResult> {
     const isClose = this.isCloseAction(input);
@@ -780,16 +817,16 @@ export class SafetyService {
         if (atrRatio > AI_SAFETY_DEFAULTS.atrExtremeRatio) {
           return {
             passed: false,
-            detail: `波动率极端: ATR3/ATR14 = ${atrRatio.toFixed(2)}，超过 ${AI_SAFETY_DEFAULTS.atrExtremeRatio} 阈值，暂停所有交易`,
+            detail: `极端波动: ATR3/ATR14=${atrRatio.toFixed(2)} 超过 ${AI_SAFETY_DEFAULTS.atrExtremeRatio}，暂停所有交易`,
           };
         }
 
-        // 波动率异常 → 开仓需更高共识
-        if (!isClose && atrRatio > AI_SAFETY_DEFAULTS.atrAnomalyRatio && input.confidence < AI_SAFETY_DEFAULTS.atrAnomalyMinConfidence) {
-          return {
-            passed: false,
-            detail: `波动率异常升高: ATR3/ATR14 = ${atrRatio.toFixed(2)}，当前信心度 ${input.confidence}% 不足 ${AI_SAFETY_DEFAULTS.atrAnomalyMinConfidence}%，需更高共识`,
-          };
+        // 波动率异常 → 软警告（NoFx 原项目无 ATR 代码级检查，AI 应自主评估）
+        if (!isClose && atrRatio > AI_SAFETY_DEFAULTS.atrAnomalyRatio) {
+          // 不拦截，仅记录警告，让 AI 在 prompt 中看到波动率信息后自行决策
+          this.logger.warn(
+            `L9 波动率异常: ATR3/ATR14 = ${atrRatio.toFixed(2)} > ${AI_SAFETY_DEFAULTS.atrAnomalyRatio}，confidence=${input.confidence}%`,
+          );
         }
       }
 
@@ -797,22 +834,26 @@ export class SafetyService {
       if (isClose) {
         return {
           passed: true,
-          detail: '平仓动作，跳过仓位/冲突硬限制检查',
+          detail: '平仓操作，跳过硬限制检查',
         };
       }
 
-      // 1. 最大持仓数检查
+      // 1. 最大持仓数检查（按策略独立计算）
+      const positionWhere: { userId: string; status: string; aiStrategyId?: string } = {
+        userId: input.userId,
+        status: 'open',
+      };
+      if (input.strategyId) {
+        positionWhere.aiStrategyId = input.strategyId;
+      }
       const openPositionCount = await this.prisma.position.count({
-        where: {
-          userId: input.userId,
-          status: 'open',
-        },
+        where: positionWhere,
       });
 
       if (openPositionCount >= maxPositions) {
         return {
           passed: false,
-          detail: `已达最大持仓限制: ${openPositionCount}/${maxPositions}`,
+          detail: `持仓数上限: ${openPositionCount}/${maxPositions}${input.strategyId ? ' (本策略)' : ''}`,
         };
       }
 
@@ -832,7 +873,7 @@ export class SafetyService {
       if (conflictingPosition) {
         return {
           passed: false,
-          detail: `${input.symbol} 已有 ${oppositeSize} 持仓 (${conflictingPosition.id})，不可开反向仓`,
+          detail: `${input.symbol} 存在 ${oppositeSize} 持仓，不能开反向仓`,
         };
       }
 
@@ -850,17 +891,21 @@ export class SafetyService {
       if (existingPosition) {
         return {
           passed: false,
-          detail: `${input.symbol} 已有 ${sameSide} 持仓 (${existingPosition.id})，不重复开仓`,
+          detail: `${input.symbol} 已有 ${sameSide} 持仓，不能重复开仓`,
         };
       }
 
-      // 4. 风险收益比检查（如果提供了 TP/SL）
+      // 4. 风险收益比检查（如果提供了 TP/SL）— 用户可配单值（对齐 NoFx validateDecision）
       if (input.takeProfitPercent && input.stopLossPercent && input.stopLossPercent > 0) {
         const riskRewardRatio = input.takeProfitPercent / input.stopLossPercent;
-        if (riskRewardRatio < AI_SAFETY_DEFAULTS.minRiskRewardRatio) {
+        // 优先使用策略级配置，fallback 到系统默认
+        const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
+          ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
+
+        if (riskRewardRatio < requiredRR) {
           return {
             passed: false,
-            detail: `风险收益比不足: TP ${input.takeProfitPercent}% / SL ${input.stopLossPercent}% = ${riskRewardRatio.toFixed(1)}:1，需要 ≥ ${AI_SAFETY_DEFAULTS.minRiskRewardRatio}:1`,
+            detail: `风险收益比不足: 止盈 ${input.takeProfitPercent.toFixed(2)}%/止损 ${input.stopLossPercent.toFixed(2)}%=${riskRewardRatio.toFixed(1)}:1，需 ≥ ${requiredRR}:1`,
           };
         }
       }
@@ -872,14 +917,46 @@ export class SafetyService {
 
       return {
         passed: true,
-        detail: `硬限制检查通过: 持仓 ${openPositionCount}/${maxPositions}, 无冲突${atrInfo}`,
+        detail: `硬限制通过: 持仓 ${openPositionCount}/${maxPositions}，无冲突${atrInfo}`,
       };
     } catch (error) {
       this.logger.warn(`L9 硬限制检查出错: ${error.message}`);
       return {
         passed: false,
-        detail: '硬限制检查异常，拒绝开仓（安全优先）',
+        detail: '硬限制检查出错，拒绝开仓（安全优先）',
       };
     }
+  }
+
+  // ========================= L10: 流动性软警告 =========================
+
+  /**
+   * L10: 流动性检查（软警告，不拦截）
+   * 如果 24h 成交量不足仓位金额的 100 倍，发出滑点警告
+   */
+  private checkL10(input: SafetyCheckInput): { detail: string; warning?: string } {
+    if (!input.volume24h) {
+      return { detail: '无成交量数据，跳过 L10' };
+    }
+
+    // 优先使用 positionSizeUSD（美元），回退到 positionSize（百分比）× 粗略估算
+    const posSizeUSD = input.positionSizeUSD;
+    if (!posSizeUSD || posSizeUSD <= 0) {
+      return { detail: `24h 成交量 $${input.volume24h.toFixed(0)}，无仓位金额，跳过` };
+    }
+
+    const minVolume = posSizeUSD * 100;
+
+    if (input.volume24h < minVolume) {
+      const ratio = (input.volume24h / posSizeUSD).toFixed(0);
+      return {
+        detail: `流动性不足: 24h 成交量 $${input.volume24h.toFixed(0)} < 100 倍仓位 $${minVolume.toFixed(0)}`,
+        warning: `流动性警告: 24h 成交量仅为仓位的 ${ratio} 倍，可能产生滑点`,
+      };
+    }
+
+    return {
+      detail: `流动性正常: 24h 成交量 $${input.volume24h.toFixed(0)}`,
+    };
   }
 }

@@ -98,6 +98,7 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
 
     this.depositAddressMap.clear();
     for (const addr of addresses) {
+      if (!addr.userId) continue; // 跳过无主地址（onDelete: SetNull 残留）
       if (addr.chain === 'TRON') {
         // TRON 地址区分大小写
         this.depositAddressMap.set(addr.address, addr.userId);

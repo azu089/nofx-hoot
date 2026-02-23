@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { ResearchPipelineService, ResearchConfig } from './research-pipeline.service';
 import { TradingGateway } from '../../../../gateways/trading.gateway';
+import { StrategyEngineService } from '../trading/strategy-engine.service';
 import { UserApiKeys } from '../llm.service';
 import { ResearchDepth } from '../../types/ai.types';
 
@@ -34,6 +35,7 @@ export interface StartCyclingParams {
   quickModel?: string;
   deepModel?: string;
   riskControlConfig?: Record<string, any>;
+  locale?: string;
 }
 
 /**
@@ -70,21 +72,29 @@ export interface CampaignStats {
  * 参考 Product B 的 AutoSchedulerService 模式
  */
 @Injectable()
-export class ResearchCycleService {
+export class ResearchCycleService implements OnModuleInit {
   private readonly logger = new Logger(ResearchCycleService.name);
+
+  async onModuleInit(): Promise<void> {
+    const restored = await this.restoreRunningCampaigns();
+    if (restored > 0) {
+      this.logger.log(`[OnModuleInit] 已恢复 ${restored} 个深研循环`);
+    }
+  }
 
   constructor(
     @InjectQueue('ai-auto') private readonly autoQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly researchPipeline: ResearchPipelineService,
     private readonly gateway: TradingGateway,
+    private readonly strategyEngine: StrategyEngineService,
   ) {}
 
   /**
    * 启动研究循环
    */
   async startCycling(userId: string, params: StartCyclingParams): Promise<{ rootSessionId: string }> {
-    const cyclingConfig: CyclingConfig & { riskControlConfig?: Record<string, any> } = {
+    const cyclingConfig: CyclingConfig & { riskControlConfig?: Record<string, any>; locale?: string } = {
       enabled: true,
       intervalMinutes: params.intervalMinutes,
       maxCycles: params.maxCycles || 0,
@@ -92,6 +102,8 @@ export class ResearchCycleService {
       maxLossPercent: params.maxLossPercent || 0,
       // 将风控配置嵌入 cyclingConfig JSON 以便后续周期读取（避免增加新字段/迁移）
       ...(params.riskControlConfig ? { riskControlConfig: params.riskControlConfig } : {}),
+      // locale 也嵌入 JSON，确保子周期继承用户语言设置
+      ...(params.locale ? { locale: params.locale } : {}),
     };
 
     // 1. 创建根会话
@@ -118,8 +130,8 @@ export class ResearchCycleService {
       `interval=${params.intervalMinutes}min, maxCycles=${params.maxCycles}`,
     );
 
-    // 2. 注册 BullMQ repeatable job
-    const intervalMs = params.intervalMinutes * 60 * 1000;
+    // 2. 注册 BullMQ repeatable job（最小 3 分钟，对齐 NoFx）
+    const intervalMs = Math.max(3, params.intervalMinutes) * 60 * 1000;
     await this.autoQueue.add(
       'research-cycle',
       { rootSessionId, userId },
@@ -293,6 +305,23 @@ export class ResearchCycleService {
       },
     });
 
+    // G1: 周期性持仓同步 — 对齐 Solo/Debate 的 R2 步骤
+    if (root.exchangeApiKeyId) {
+      try {
+        const syncResult = await this.strategyEngine.syncPositionsForUser(
+          root.userId,
+          root.exchangeApiKeyId,
+        );
+        if (syncResult.created > 0 || syncResult.closed > 0) {
+          this.logger.log(
+            `[循环-R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}`,
+          );
+        }
+      } catch (e: any) {
+        this.logger.warn(`[循环-R2] 持仓同步失败(非致命): ${e.message}`);
+      }
+    }
+
     // 6. 运行研究管线
     const cycConfig = root.cyclingConfig as any;
     const config: ResearchConfig = {
@@ -307,6 +336,8 @@ export class ResearchCycleService {
       sessionId: childSession.id,
       // 从根会话的 cyclingConfig JSON 中还原风控参数
       riskControlConfig: cycConfig?.riskControlConfig || undefined,
+      // 从根会话的 cyclingConfig JSON 中还原语言设置
+      locale: cycConfig?.locale || 'zh-CN',
     };
 
     try {

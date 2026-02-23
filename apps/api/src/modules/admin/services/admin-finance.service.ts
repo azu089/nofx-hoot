@@ -6,6 +6,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import Decimal from 'decimal.js';
 
+/** 日期过滤器形状（对应 Prisma createdAt 条件） */
+type DateFilter = { createdAt?: { gte?: Date; lte?: Date } };
+
 @Injectable()
 export class AdminFinanceService {
   private readonly logger = new Logger(AdminFinanceService.name);
@@ -46,7 +49,7 @@ export class AdminFinanceService {
   }
 
   // 获取订阅收入统计
-  async getSubscriptionRevenue(dateFilter: any) {
+  async getSubscriptionRevenue(dateFilter: DateFilter) {
     const revenues = await this.prisma.subscriptionRevenue.findMany({
       where: dateFilter,
       orderBy: { createdAt: 'desc' },
@@ -86,7 +89,7 @@ export class AdminFinanceService {
   }
 
   // 获取点卡收入统计
-  async getPointCardRevenue(dateFilter: any) {
+  async getPointCardRevenue(dateFilter: DateFilter) {
     const recharges = await this.prisma.pointCardRecord.findMany({
       where: {
         ...dateFilter,
@@ -137,7 +140,7 @@ export class AdminFinanceService {
   }
 
   // 获取燃油费收入统计
-  async getGasFeeRevenue(dateFilter: any) {
+  async getGasFeeRevenue(dateFilter: DateFilter) {
     const gasFees = await this.prisma.gasFeeRecord.findMany({
       where: dateFilter,
       orderBy: { createdAt: 'desc' },
@@ -207,7 +210,7 @@ export class AdminFinanceService {
   }
 
   // 获取提现统计
-  async getWithdrawStats(dateFilter: any) {
+  async getWithdrawStats(dateFilter: DateFilter) {
     const [pending, completed, rejected] = await Promise.all([
       this.prisma.withdrawRequest.aggregate({
         where: { status: 'pending' },
@@ -237,7 +240,7 @@ export class AdminFinanceService {
   }
 
   // 获取每日统计数据
-  private async getDailyStats(type: string, dateFilter: any) {
+  private async getDailyStats(type: string, dateFilter: DateFilter) {
     // 使用平台每日统计表
     const stats = await this.prisma.platformDailyStats.findMany({
       where: {
@@ -276,9 +279,9 @@ export class AdminFinanceService {
       };
     }
 
-    const filter: any = { createdAt: {} };
-    if (startDate) filter.createdAt.gte = startDate;
-    if (endDate) filter.createdAt.lte = endDate;
+    const filter: DateFilter = { createdAt: {} };
+    if (startDate) filter.createdAt!.gte = startDate;
+    if (endDate) filter.createdAt!.lte = endDate;
     return filter;
   }
 

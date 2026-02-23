@@ -33,6 +33,10 @@ export interface AiTradeDecision {
   stopLoss: number | null;
   takeProfit: number | null;
   reasoning: string;
+  // R3: SL/TP 百分比（执行时用最新价格重算绝对值）
+  stopLossPct?: number;   // 如 0.03 = 3%
+  takeProfitPct?: number; // 如 0.06 = 6%
+  symbol?: string;        // 多币种模式: LLM 输出的 symbol (用于逐币匹配)
 }
 
 // ========================= 市场上下文 =========================
@@ -138,6 +142,7 @@ export interface CoinSourceConfig {
   criteria?: string; // ai 模式
   minOiChange?: number; // oi_top 模式
   excludedCoins?: string[]; // 排除币种列表
+  models?: string[]; // 策略级模型列表（创建策略时由前端写入）
 }
 
 /**
@@ -177,6 +182,8 @@ export interface RiskControlConfig {
   btcEthMaxPositionValueRatio?: number;  // BTC/ETH 仓位价值倍数上限，默认 5.0
   altcoinMaxPositionValueRatio?: number; // 山寨币仓位价值倍数上限，默认 1.0
   excludedCoins?: string[]; // 排除币种列表（不开仓）
+  // R4: 仓位百分比上限，默认 20（保守风控），用户可按策略调大
+  maxPositionPct?: number;
 }
 
 /**
@@ -210,4 +217,98 @@ export interface EvolutionState {
   tier: EvolutionTier;
   sharpe: number | null;
   description: string;
+}
+
+// ========================= 增强市场数据类型（Phase 11: 数据源增强） =========================
+
+/** Binance 多空账户比 */
+export interface LongShortRatioData {
+  longShortRatio: number;   // >1偏多, <1偏空
+  longAccount: number;      // 多头账户占比 0-1
+  shortAccount: number;     // 空头账户占比 0-1
+  timestamp: number;
+}
+
+/** Binance Taker 买卖比 */
+export interface TakerFlowData {
+  buySellRatio: number;     // >1主动买入多, <1主动卖出多
+  buyVol: number;
+  sellVol: number;
+  timestamp: number;
+}
+
+/** Binance OI 历史数据点 */
+export interface OIHistoryData {
+  sumOpenInterest: number;
+  sumOpenInterestValue: number;  // USD
+  timestamp: number;
+}
+
+/** DeFiLlama 稳定币资金流 */
+export interface StablecoinFlowData {
+  totalMarketCap: number;
+  usdtCirculating: number;
+  usdcCirculating: number;
+  change24h: number;        // 24h 变化百分比
+  change7d: number;         // 7d 变化百分比
+  netMinted24h: number;     // 正=铸造(资金流入), 负=销毁(资金流出)
+  timestamp: number;
+}
+
+/** Deribit 期权市场数据 */
+export interface OptionsMarketData {
+  putCallRatio: number;     // <0.7偏多, >1.3偏空
+  totalCallOI: number;      // USD
+  totalPutOI: number;       // USD
+  maxPainPrice: number;
+  impliedVolatility: number; // 加权平均 IV
+  timestamp: number;
+}
+
+/** FRED 宏观经济数据 */
+export interface MacroData {
+  fedFundsRate: number;
+  cpiYoY: number;
+  yieldCurveSpread: number;  // 10Y-2Y 收益率差
+  vix: number;
+  lastUpdated: string;
+  timestamp: number;
+}
+
+/** CoinGlass 清算热力图 */
+export interface LiquidationHeatmapData {
+  total24hLiquidation: number;    // USD
+  longLiquidation24h: number;     // USD
+  shortLiquidation24h: number;    // USD
+  nearestUpLiqZone: number;       // 最近上方清算密集区价格
+  nearestDownLiqZone: number;     // 最近下方清算密集区价格
+  timestamp: number;
+}
+
+/** CoinGlass ETF 资金流 */
+export interface ETFFlowData {
+  btcEtfNetFlow24h: number;   // USD
+  ethEtfNetFlow24h: number;   // USD
+  trend: 'inflow' | 'outflow' | 'neutral';
+  timestamp: number;
+}
+
+/** CFTC COT 机构持仓报告 */
+export interface COTReportData {
+  btcNetSpeculative: number;  // 投机净头寸 (long - short)
+  reportDate: string;
+  timestamp: number;
+}
+
+/** 所有增强数据的聚合（单一入口） */
+export interface EnhancedMarketData {
+  longShortRatio?: LongShortRatioData;
+  takerFlow?: TakerFlowData;
+  oiHistory?: OIHistoryData[];
+  stablecoinFlows?: StablecoinFlowData;
+  optionsData?: OptionsMarketData;
+  macroData?: MacroData;
+  liquidationHeatmap?: LiquidationHeatmapData;
+  etfFlows?: ETFFlowData;
+  cotReport?: COTReportData;
 }

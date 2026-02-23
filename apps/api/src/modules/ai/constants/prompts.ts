@@ -9,5 +9,6 @@
  */
 
 export * from './models';
+export * from './locale-instructions';
 export * from './research-prompts';
 export * from './trading-prompts';

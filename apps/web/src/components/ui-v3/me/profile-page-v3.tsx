@@ -60,7 +60,9 @@ export function ProfilePageV3({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('复制失败:', err)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('复制失败:', err)
+      }
     }
   }
   // 获取会员等级标签

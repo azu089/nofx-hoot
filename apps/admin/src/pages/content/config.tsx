@@ -24,6 +24,7 @@ import {
   LinkOutlined,
 } from '@ant-design/icons';
 import { useMessage } from '../../hooks';
+import { api } from '../../lib/api';
 
 const { Text } = Typography;
 
@@ -81,12 +82,11 @@ export const SystemConfigPage = () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
-      console.log('保存配置:', values);
-      // 模拟保存
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await api.put('/admin/system-config', values);
       message.success('配置已保存');
-    } catch (error) {
-      console.error('保存失败:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '保存失败';
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }

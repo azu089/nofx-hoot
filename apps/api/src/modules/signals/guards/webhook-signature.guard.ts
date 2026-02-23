@@ -36,7 +36,11 @@ export class WebhookSignatureGuard implements CanActivate {
     // 开发模式：WEBHOOK_SECRET 未配置时跳过签名验证
     // 生产环境必须配置 WEBHOOK_SECRET
     if (!this.webhookSecret) {
-      this.logger.debug('Webhook 签名验证已跳过（WEBHOOK_SECRET 未配置）');
+      if (process.env.NODE_ENV === 'production') {
+        this.logger.error('WEBHOOK_SECRET is required in production');
+        return false;
+      }
+      this.logger.warn('WEBHOOK_SECRET 未配置，跳过签名验证（仅限开发环境）');
       return true;
     }
 

@@ -101,36 +101,36 @@ function toSubscriptionDto(
 }
 
 // 后端响应 -> 前端配置转换
-function fromSubscriptionResponse(response: any): StrategyConfigData {
+function fromSubscriptionResponse(response: CreateSubscriptionDto): StrategyConfigData {
   const { basic, advanced } = response
   return {
     apiKeyId: basic.apiKeyId || '', // 从响应获取
     exchange: 'Binance', // 需要从 apiKey 关联获取
     tradingType: basic.tradingType,
     tradingPairs: basic.tradingPairs || [],
-    positionAmount: parseFloat(basic.amountPerTrade),
+    positionAmount: basic.amountPerTrade,
     direction: basic.direction,
-    leverage: advanced.leverage,
-    marginMode: advanced.marginMode,
-    maxPositions: advanced.maxPositions,
-    takeProfit: parseFloat(basic.takeProfitPercent) || 15,
-    stopLoss: parseFloat(basic.stopLossPercent) || 10,
-    slippage: parseFloat(advanced.slippageTolerance) || 0.5,
-    trailingStopEnabled: advanced.trailingStopEnabled,
-    trailingActivation: parseFloat(advanced.trailingStopActivation) || 8,
-    trailingCallback: parseFloat(advanced.trailingStopCallback) || 3,
-    dcaEnabled: advanced.dcaEnabled,
-    dcaCount: advanced.dcaMaxCount,
-    dcaTrigger: parseFloat(advanced.dcaTrigger) || 5,
-    dcaMultiplier: parseFloat(advanced.dcaMultiplier) || 1.5,
-    waterfallProtection: advanced.waterfallProtection,
-    waterfallTrigger: parseFloat(advanced.waterfallTriggerPercent) || 15,
-    blackSwanEnabled: advanced.blackSwanProtection,
-    blackSwanTrigger: parseFloat(advanced.blackSwanTrigger) || 10,
-    blackSwanAction: advanced.blackSwanAction,
-    dailyLossEnabled: advanced.dailyMaxLossEnabled,
-    dailyLossPercent: parseFloat(advanced.dailyMaxLossPercent) || 20,
-    dailyLossAction: advanced.dailyMaxLossAction || 'close_all',
+    leverage: advanced?.leverage ?? 5,
+    marginMode: advanced?.marginMode ?? 'isolated',
+    maxPositions: advanced?.maxPositions ?? 3,
+    takeProfit: basic.takeProfitPercent ?? 15,
+    stopLoss: basic.stopLossPercent ?? 10,
+    slippage: advanced?.slippageTolerance ?? 0.5,
+    trailingStopEnabled: advanced?.trailingStopEnabled ?? false,
+    trailingActivation: advanced?.trailingStopActivation ?? 8,
+    trailingCallback: advanced?.trailingStopCallback ?? 3,
+    dcaEnabled: advanced?.dcaEnabled ?? false,
+    dcaCount: advanced?.dcaMaxCount ?? 3,
+    dcaTrigger: advanced?.dcaTrigger ?? 5,
+    dcaMultiplier: advanced?.dcaMultiplier ?? 1.5,
+    waterfallProtection: advanced?.waterfallProtection ?? false,
+    waterfallTrigger: advanced?.waterfallTriggerPercent ?? 15,
+    blackSwanEnabled: advanced?.blackSwanProtection ?? false,
+    blackSwanTrigger: advanced?.blackSwanTrigger ?? 10,
+    blackSwanAction: advanced?.blackSwanAction ?? 'close_all',
+    dailyLossEnabled: advanced?.dailyMaxLossEnabled ?? false,
+    dailyLossPercent: advanced?.dailyMaxLossPercent ?? 20,
+    dailyLossAction: advanced?.dailyMaxLossAction ?? 'close_all',
   }
 }
 
@@ -152,8 +152,8 @@ export function useStrategySubscription(strategyId: string) {
         const dto = toSubscriptionDto(config)
         const response = await api.post(`/strategies/${strategyId}/subscription`, dto)
         return response.data
-      } catch (err: any) {
-        setError(err.message || '创建订阅失败')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : '创建订阅失败')
         throw err
       } finally {
         setLoading(false)
@@ -178,8 +178,8 @@ export function useStrategySubscription(strategyId: string) {
           dto
         )
         return response.data
-      } catch (err: any) {
-        setError(err.message || '更新配置失败')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : '更新配置失败')
         throw err
       } finally {
         setLoading(false)
@@ -193,12 +193,12 @@ export function useStrategySubscription(strategyId: string) {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.get<any>(
+      const response = await api.get<CreateSubscriptionDto>(
         `/strategies/subscription/${subscriptionId}/config`
       )
       return fromSubscriptionResponse(response.data)
-    } catch (err: any) {
-      setError(err.message || '获取配置失败')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '获取配置失败')
       throw err
     } finally {
       setLoading(false)
@@ -216,8 +216,8 @@ export function useStrategySubscription(strategyId: string) {
           { isActive }
         )
         return response.data
-      } catch (err: any) {
-        setError(err.message || '切换状态失败')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : '切换状态失败')
         throw err
       } finally {
         setLoading(false)
@@ -240,19 +240,19 @@ export function useStrategySubscription(strategyId: string) {
 export function useApiKeys() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [apiKeys, setApiKeys] = useState<any[]>([])
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; exchange: string; label: string; isActive: boolean }>>([])
 
   const fetchApiKeys = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.get<{ items: any[]; total: number }>('/api-keys')
+      const response = await api.get<{ items: Array<{ id: string; exchange: string; label: string; isActive: boolean }>; total: number }>('/api-keys')
       // 确保返回的是数组 - API 返回 { items: [...], total: n }
       const keys = Array.isArray(response.data?.items) ? response.data.items : []
       setApiKeys(keys)
       return keys
-    } catch (err: any) {
-      setError(err.message || '获取 API Keys 失败')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '获取 API Keys 失败')
       // 失败时保持空数组
       setApiKeys([])
       throw err
@@ -320,8 +320,8 @@ export function useSubscriptionSummary() {
       const response = await api.get<SubscriptionSummary>('/strategies/subscriptions/summary')
       setSummary(response.data)
       return response.data
-    } catch (err: any) {
-      setError(err.message || '获取订阅汇总失败')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '获取订阅汇总失败')
       setSummary(null)
       throw err
     } finally {

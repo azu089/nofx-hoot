@@ -234,7 +234,7 @@ services:
 
   # === Freqtrade HootTest 策略 ===
   freqtrade-test:
-    image: freqtradeorg/freqtrade:stable
+    image: freqtradeorg/freqtrade:2024.11-py3.12
     container_name: hoot-freqtrade-test
     restart: unless-stopped
     volumes:
@@ -261,7 +261,7 @@ services:
 
   # === Freqtrade HootOwl 策略 ===
   freqtrade-owl:
-    image: freqtradeorg/freqtrade:stable
+    image: freqtradeorg/freqtrade:2024.11-py3.12
     container_name: hoot-freqtrade-owl
     restart: unless-stopped
     volumes:
@@ -287,7 +287,7 @@ services:
 
   # === Nginx 反向代理 ===
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: hoot-nginx
     restart: unless-stopped
     ports:

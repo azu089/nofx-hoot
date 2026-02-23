@@ -19,6 +19,7 @@ import {
 } from './dto/admin.dto';
 import * as bcrypt from 'bcrypt';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdminService {
@@ -33,7 +34,7 @@ export class AdminService {
     const { page = 1, limit = 20, search, bindTelegram, bindWallet } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.UserWhereInput = {};
 
     if (search) {
       where.OR = [
@@ -318,8 +319,7 @@ export class AdminService {
 
     this.logger.log(`管理员重置用户密码: ${userId}`);
 
-    // TODO: 发送邮件通知用户新密码
-    // await this.emailService.sendPasswordResetEmail(user.email, newPassword);
+    // 密码重置邮件通知：需要集成 EmailService 后实现（sendPasswordResetEmail）
 
     return {
       message: '密码已重置',
@@ -404,7 +404,7 @@ export class AdminService {
     const { page = 1, limit = 20, search, status } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.StrategyWhereInput = {};
 
     if (search) {
       where.OR = [
@@ -609,7 +609,7 @@ export class AdminService {
     const { page = 1, limit = 20, status } = dto;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.WithdrawRequestWhereInput = {};
 
     if (status) {
       where.status = status;
@@ -776,7 +776,7 @@ export class AdminService {
     const { page = 1, limit = 20, type, status, userId, search } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.TransactionWhereInput = {};
     if (type) where.type = type;
     if (status) where.status = status;
     if (userId) where.userId = userId;
@@ -905,7 +905,7 @@ export class AdminService {
     const { page = 1, limit = 20, status, userId, exchange, symbol } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.PositionWhereInput = {};
     if (status) where.status = status;
     if (userId) where.userId = userId;
     if (exchange) where.exchange = exchange;
@@ -1014,7 +1014,7 @@ export class AdminService {
     const { page = 1, limit = 20, status, userId, exchange, search } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.SignalExecutionWhereInput = {};
     if (status) where.status = status;
     if (userId) where.userId = userId;
     if (exchange) where.exchange = exchange;
@@ -1145,7 +1145,7 @@ export class AdminService {
     const { page = 1, limit = 20, strategyId, status } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.SignalWhereInput = {};
     if (strategyId) where.strategyId = strategyId;
 
     const [signals, total] = await Promise.all([
@@ -1389,7 +1389,7 @@ export class AdminService {
     const { page = 1, limit = 20, type, userId } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.BillingLogWhereInput = {};
     if (type) where.type = type;
     if (userId) where.userId = userId;
 
@@ -1588,5 +1588,158 @@ export class AdminService {
       pendingWithdraws,
       serverTime: new Date().toISOString(),
     };
+  }
+
+  // ==================== 日志查询 ====================
+
+  /**
+   * 获取管理员操作日志
+   */
+  async getOperationLogs(params: {
+    page?: number;
+    limit?: number;
+    module?: string;
+    action?: string;
+    adminId?: string;
+    search?: string;
+    result?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { page = 1, limit = 20, module, action, adminId, search, result, startDate, endDate } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.AdminOperationLogWhereInput = {};
+
+    if (module) where.module = module;
+    if (action) where.action = action;
+    if (adminId) where.adminId = adminId;
+    if (result) where.result = result;
+    if (search) {
+      where.OR = [
+        { description: { contains: search, mode: 'insensitive' } },
+        { targetId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.adminOperationLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          admin: { select: { id: true, username: true, role: true } },
+        },
+      }),
+      this.prisma.adminOperationLog.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  /**
+   * 获取登录日志（基于 RefreshToken 记录）
+   */
+  async getLoginLogs(params: {
+    page?: number;
+    limit?: number;
+    userId?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { page = 1, limit = 20, userId, search, startDate, endDate } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.RefreshTokenWhereInput = {};
+
+    if (userId) where.userId = userId;
+    if (search) {
+      where.user = {
+        OR: [
+          { email: { contains: search, mode: 'insensitive' } },
+          { nickname: { contains: search, mode: 'insensitive' } },
+        ],
+      };
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.refreshToken.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userId: true,
+          ipAddress: true,
+          userAgent: true,
+          createdAt: true,
+          revokedAt: true,
+          user: { select: { id: true, email: true, nickname: true } },
+        },
+      }),
+      this.prisma.refreshToken.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  /**
+   * 获取系统审计日志
+   */
+  async getSystemLogs(params: {
+    page?: number;
+    limit?: number;
+    actorType?: string;
+    action?: string;
+    resourceType?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { page = 1, limit = 20, actorType, action, resourceType, search, startDate, endDate } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.AuditLogWhereInput = {};
+
+    if (actorType) where.actorType = actorType;
+    if (action) where.action = action;
+    if (resourceType) where.resourceType = resourceType;
+    if (search) {
+      where.OR = [
+        { details: { contains: search, mode: 'insensitive' } },
+        { resourceId: { contains: search, mode: 'insensitive' } },
+        { actorId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { items, total };
   }
 }

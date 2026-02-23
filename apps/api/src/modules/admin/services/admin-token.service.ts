@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdminTokenService {
@@ -102,7 +103,7 @@ export class AdminTokenService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.TokenCirculationWhereInput = {};
     if (type) where.type = type;
     if (direction) where.direction = direction;
 
@@ -136,7 +137,7 @@ export class AdminTokenService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AirdropWhereInput = {};
     if (status) where.status = status;
 
     const [airdrops, total] = await Promise.all([

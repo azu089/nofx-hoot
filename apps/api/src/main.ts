@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -117,6 +118,41 @@ async function bootstrap() {
 
   // 全局响应转换拦截器
   app.useGlobalInterceptors(new TransformInterceptor());
+
+  // Swagger API 文档（仅非生产环境）
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('HOOT API')
+      .setDescription('HOOT AI 量化交易平台 API 文档')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addTag('auth', '认证')
+      .addTag('wallet', '钱包')
+      .addTag('trading', '交易')
+      .addTag('ai', 'AI 智能交易')
+      .addTag('strategies', '策略')
+      .addTag('staking', '质押')
+      .addTag('referral', '推荐')
+      .addTag('membership', '会员')
+      .addTag('market', '行情')
+      .addTag('notifications', '通知')
+      .addTag('airdrop', '空投')
+      .addTag('api-keys', 'API Keys')
+      .addTag('blockchain', '区块链')
+      .addTag('health', '健康检查')
+      .addTag('admin', '管理后台')
+      .addTag('admin-auth', '管理员认证')
+      .addTag('admin-content', '内容管理')
+      .addTag('agent', '代理商')
+      .addTag('agent-auth', '代理商认证')
+      .addTag('signals', '信号')
+      .addTag('exchanges', '交易所')
+      .addTag('config', '配置')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+    logger.log(`📄 Swagger 文档: http://localhost:${process.env.API_PORT || 4001}/api/docs`);
+  }
 
   const port = process.env.API_PORT || 4001;
   await app.listen(port);

@@ -136,6 +136,10 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
+  isReady(): boolean {
+    return this.exchange !== null;
+  }
+
   async dispose(): Promise<void> {
     this.exchange = null;
   }

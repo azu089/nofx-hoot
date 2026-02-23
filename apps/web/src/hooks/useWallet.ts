@@ -6,6 +6,7 @@
 
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { useState, useCallback } from 'react'
+import { api } from '@/lib/api'
 
 // 钱包类型映射到 connector
 const WALLET_CONNECTOR_MAP: Record<string, string> = {
@@ -66,34 +67,53 @@ export function useWallet() {
     }
   }, [isConnected, signMessageAsync])
 
-  // 钱包登录（连接 + 签名）
-  const walletLogin = useCallback(async (walletId: string) => {
-    // 1. 连接钱包
-    await connectWallet(walletId)
+  /**
+   * 钱包完整登录流程：获取 nonce → 签名 → 后端验证
+   * 调用前提：钱包已通过 wagmi 连接（isConnected === true，address 有值）
+   * @param walletAddress 已连接的钱包地址
+   * @returns 后端返回的 accessToken 和用户信息
+   */
+  const walletLogin = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) {
+      throw new Error('钱包地址无效，请重新连接')
+    }
 
-    // 等待连接完成后再签名
-    // 注意：这里可能需要等待状态更新
-    return new Promise<{ address: string; signature: string }>((resolve, reject) => {
-      // 使用 setTimeout 确保状态更新
-      setTimeout(async () => {
-        try {
-          const timestamp = Date.now()
-          const message = `HOOT 登录验证\n\n时间戳: ${timestamp}\n\n请签名以验证您的钱包所有权`
-          const signature = await signMessageAsync({ message })
+    // 1. 向后端请求 nonce/message
+    const nonceRes = await api.post<{ nonce: string; message: string }>(
+      '/auth/wallet/nonce',
+      { address: walletAddress }
+    )
+    const message = nonceRes.data.message || nonceRes.data.nonce
 
-          // 调用后端验证
-          // TODO: 实际调用后端 API
+    // 2. 让用户对 message 进行签名
+    let signature: string
+    try {
+      signature = await signMessageAsync({ message })
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '签名失败'
+      setError(errMsg)
+      throw new Error(errMsg)
+    }
 
-          resolve({
-            address: address || '',
-            signature,
-          })
-        } catch (err) {
-          reject(err)
-        }
-      }, 1000)
-    })
-  }, [connectWallet, signMessageAsync, address])
+    // 3. 提交签名给后端完成登录/注册
+    const loginRes = await api.post<{
+      accessToken: string
+      refreshToken?: string
+      user: {
+        id: string
+        email: string
+        nickname: string
+        walletAddress?: string
+        telegramId?: string
+        telegramUsername?: string
+        emailVerified?: boolean
+      }
+    }>('/auth/wallet/login', { address: walletAddress, signature, message })
+
+    const { accessToken, refreshToken, user } = loginRes.data
+
+    return { address: walletAddress, signature, message, accessToken, refreshToken, user }
+  }, [signMessageAsync])
 
   // 断开连接
   const disconnectWallet = useCallback(() => {

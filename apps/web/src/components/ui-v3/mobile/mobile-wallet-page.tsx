@@ -55,7 +55,8 @@ interface TransactionItem {
   type: 'deposit' | 'withdraw' | 'exchange'
   asset: string
   amount: string
-  status: 'completed' | 'pending' | 'failed'
+  status: 'completed' | 'pending' | 'failed' | 'refunded' | 'cancelled' | 'processing'
+  remark?: string
   time: string
   trend: "up" | "down"
 }
@@ -110,6 +111,7 @@ interface MobileWalletPageProps {
 
 export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWalletPageProps) {
   const t = useTranslations('wallet')
+  const tDex = useTranslations('dex')
   const tCommon = useTranslations('common')
   const queryClient = useQueryClient()
   const { isAuthenticated } = useAuth()
@@ -153,6 +155,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           asset: string
           amount: string
           status: string
+          remark?: string
           createdAt: string
         }>
         total: number
@@ -415,14 +418,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       return response.data
     },
     onSuccess: () => {
-      toast.success(t('dexAddSuccess') || 'DEX 钱包添加成功')
+      toast.success(tDex('addSuccess'))
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       setShowAddDexModal(false)
       setSelectedDexExchange(null)
       setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
     },
     onError: (error: Error) => {
-      toast.error(error.message || t('dexAddError') || '添加失败')
+      toast.error(error.message || tDex('addError'))
     },
   })
 
@@ -437,14 +440,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     }
     if (selectedDexExchange === 'hyperliquid') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey) {
-        toast.error(t('dexFillWalletAndKey') || '请填写钱包地址和 Agent 私钥')
+        toast.error(tDex('fillWalletAndKey'))
         return
       }
       payload.walletAddress = dexFormData.walletAddress
       payload.privateKey = dexFormData.privateKey
     } else if (selectedDexExchange === 'lighter') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey || !dexFormData.lighterApiKeyPrivateKey) {
-        toast.error(t('dexFillLighterFields') || '请填写钱包地址、钱包私钥和 API Key 私钥')
+        toast.error(tDex('fillLighterFields'))
         return
       }
       payload.walletAddress = dexFormData.walletAddress
@@ -453,7 +456,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       payload.lighterApiKeyIndex = dexFormData.lighterApiKeyIndex
     } else if (selectedDexExchange === 'aster') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey) {
-        toast.error(t('dexFillAsterFields') || '请填写用户钱包地址和签名私钥')
+        toast.error(tDex('fillAsterFields'))
         return
       }
       payload.asterUserAddress = dexFormData.walletAddress
@@ -536,6 +539,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       asset: tx.asset,
       amount: tx.type === 'withdraw' ? `-${parseFloat(tx.amount).toFixed(2)}` : `+${parseFloat(tx.amount).toFixed(2)}`,
       status: tx.status as TransactionItem['status'],
+      remark: tx.remark,
       time: new Date(tx.createdAt).toLocaleString('zh-CN'),
       trend: tx.type === 'withdraw' ? 'down' as const : 'up' as const,
     }))
@@ -580,17 +584,17 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     }
   }
 
-  // 获取状态图标和文本
+  // 获取状态图标和文本 — 只有成功/处理中/失败三种
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'completed':
         return { icon: <CheckCircle className="w-3.5 h-3.5 text-[#22C55E]" />, text: t('completed'), color: 'text-[#22C55E]' }
       case 'pending':
+      case 'processing':
         return { icon: <Clock className="w-3.5 h-3.5 text-[#F59E0B]" />, text: t('pending'), color: 'text-[#F59E0B]' }
-      case 'failed':
-        return { icon: <XCircle className="w-3.5 h-3.5 text-[#EF4444]" />, text: t('failed'), color: 'text-[#EF4444]' }
       default:
-        return { icon: null, text: status, color: 'text-[#94A3B8]' }
+        // failed / refunded / cancelled 统一显示"失败"红色
+        return { icon: <XCircle className="w-3.5 h-3.5 text-[#EF4444]" />, text: t('failed'), color: 'text-[#EF4444]' }
     }
   }
 
@@ -1128,6 +1132,12 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               </span>
                             </div>
                           </div>
+                          {/* 失败原因 */}
+                          {tx.remark && tx.status !== 'completed' && tx.status !== 'pending' && tx.status !== 'processing' && (
+                            <p className="text-xs text-[#EF4444]/80 mt-1.5 bg-[#EF4444]/5 rounded px-2 py-1">
+                              {tx.remark}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1192,11 +1202,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
           <button
             type="button"
             onClick={() => apiSubTab === 'cex' ? handleOpenAdd() : setShowAddDexModal(true)}
-            aria-label={apiSubTab === 'cex' ? t('addApi') : (t('dexAddWallet') || '添加 DEX 钱包')}
+            aria-label={apiSubTab === 'cex' ? t('addApi') : tDex('addWallet')}
             className="w-full flex items-center justify-center gap-2 py-3 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl font-medium transition-colors"
           >
             <Plus className="w-5 h-5" />
-            {apiSubTab === 'cex' ? t('addApi') : (t('dexAddWallet') || '添加 DEX 钱包')}
+            {apiSubTab === 'cex' ? t('addApi') : tDex('addWallet')}
           </button>
 
           {/* ===== CEX API 列表 ===== */}
@@ -1282,8 +1292,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               {dexWallets.length === 0 ? (
                 <div className="p-8 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
                   <Wallet className="w-12 h-12 text-[#94A3B8] mx-auto mb-3" />
-                  <p className="text-[#94A3B8]">{t('dexNoWallet') || '暂无绑定的 DEX 钱包'}</p>
-                  <p className="text-[#94A3B8] text-sm mt-1">{t('dexClickToAdd') || '点击上方按钮添加 DEX 钱包'}</p>
+                  <p className="text-[#94A3B8]">{tDex('noWallets')}</p>
+                  <p className="text-[#94A3B8] text-sm mt-1">{tDex('noWalletsHint')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1970,8 +1980,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-white">
                   {selectedDexExchange
-                    ? `${t('dexConnect') || '连接'} ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || ''}`
-                    : (t('dexSelectDex') || '选择 DEX')
+                    ? `${tDex('connect')} ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || ''}`
+                    : tDex('selectDex')
                   }
                 </h3>
                 <button
@@ -2010,14 +2020,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {selectedDexExchange === 'hyperliquid' && (
                     <>
                       <div>
-                        <label htmlFor="m-dex-hl-wallet" className="text-sm text-[#94A3B8] block mb-1">{t('dexWalletAddress') || '主钱包地址'} *</label>
+                        <label htmlFor="m-dex-hl-wallet" className="text-sm text-[#94A3B8] block mb-1">{tDex('hyperliquid.mainWallet')} *</label>
                         <input id="m-dex-hl-wallet" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x..."
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                       </div>
                       <div>
-                        <label htmlFor="m-dex-hl-pk" className="text-sm text-[#94A3B8] block mb-1">{t('dexAgentPrivateKey') || 'Agent 私钥'} *</label>
+                        <label htmlFor="m-dex-hl-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('hyperliquid.agentPrivateKey')} *</label>
                         <div className="relative">
                           <input id="m-dex-hl-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
@@ -2029,7 +2039,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             {showDexPrivateKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                           </button>
                         </div>
-                        <p className="text-xs text-[#64748B] mt-1">{t('dexHlAgentTip') || '在 Hyperliquid 中创建 Agent Wallet 后获取'}</p>
+                        <p className="text-xs text-[#64748B] mt-1">{tDex('hyperliquid.agentHint')}</p>
                       </div>
                     </>
                   )}
@@ -2038,14 +2048,14 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {selectedDexExchange === 'lighter' && (
                     <>
                       <div>
-                        <label htmlFor="m-dex-lt-wallet" className="text-sm text-[#94A3B8] block mb-1">{t('dexWalletAddress') || '钱包地址'} *</label>
+                        <label htmlFor="m-dex-lt-wallet" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.walletAddress')} *</label>
                         <input id="m-dex-lt-wallet" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x..."
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                       </div>
                       <div>
-                        <label htmlFor="m-dex-lt-pk" className="text-sm text-[#94A3B8] block mb-1">{t('dexPrivateKey') || '钱包私钥'} *</label>
+                        <label htmlFor="m-dex-lt-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.walletPrivateKey')} *</label>
                         <div className="relative">
                           <input id="m-dex-lt-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
@@ -2058,18 +2068,18 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                         </div>
                       </div>
                       <div>
-                        <label htmlFor="m-dex-lt-apk" className="text-sm text-[#94A3B8] block mb-1">{t('dexApiKeyPrivateKey') || 'API Key 私钥'} *</label>
+                        <label htmlFor="m-dex-lt-apk" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.apiKeyPrivateKey')} *</label>
                         <input id="m-dex-lt-apk" type="password" value={dexFormData.lighterApiKeyPrivateKey}
                           onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyPrivateKey: e.target.value })}
                           placeholder="Lighter API Key 私钥（40字节 hex）"
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                       </div>
                       <div>
-                        <label htmlFor="m-dex-lt-idx" className="text-sm text-[#94A3B8] block mb-1">{t('dexApiKeyIndex') || 'API Key 索引'}</label>
+                        <label htmlFor="m-dex-lt-idx" className="text-sm text-[#94A3B8] block mb-1">{tDex('lighter.apiKeyIndex')}</label>
                         <input id="m-dex-lt-idx" type="number" min={0} max={255} value={dexFormData.lighterApiKeyIndex}
                           onChange={(e) => setDexFormData({ ...dexFormData, lighterApiKeyIndex: parseInt(e.target.value) || 0 })}
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white focus:outline-none focus:border-[#06B6D4]" />
-                        <p className="text-xs text-[#64748B] mt-1">{t('dexApiKeyIndexTip') || '范围 0-255，通常为 0'}</p>
+                        <p className="text-xs text-[#64748B] mt-1">{tDex('lighter.apiKeyIndexHint')}</p>
                       </div>
                     </>
                   )}
@@ -2078,21 +2088,21 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   {selectedDexExchange === 'aster' && (
                     <>
                       <div>
-                        <label htmlFor="m-dex-ast-user" className="text-sm text-[#94A3B8] block mb-1">{t('dexUserWalletAddress') || '用户钱包地址'} *</label>
+                        <label htmlFor="m-dex-ast-user" className="text-sm text-[#94A3B8] block mb-1">{tDex('aster.userWallet')} *</label>
                         <input id="m-dex-ast-user" type="text" value={dexFormData.walletAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, walletAddress: e.target.value })}
                           placeholder="0x... 主钱包地址"
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                       </div>
                       <div>
-                        <label htmlFor="m-dex-ast-signer" className="text-sm text-[#94A3B8] block mb-1">{t('dexSignerAddress') || '签名钱包地址'}（{t('dexOptional') || '可选'}）</label>
+                        <label htmlFor="m-dex-ast-signer" className="text-sm text-[#94A3B8] block mb-1">{tDex('aster.signerWallet')}</label>
                         <input id="m-dex-ast-signer" type="text" value={dexFormData.asterSignerAddress}
                           onChange={(e) => setDexFormData({ ...dexFormData, asterSignerAddress: e.target.value })}
-                          placeholder={t('dexSignerPlaceholder') || '留空则使用用户钱包地址'}
+                          placeholder={tDex('aster.signerWalletPlaceholder')}
                           className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                       </div>
                       <div>
-                        <label htmlFor="m-dex-ast-pk" className="text-sm text-[#94A3B8] block mb-1">{t('dexSignerPrivateKey') || '签名私钥'} *</label>
+                        <label htmlFor="m-dex-ast-pk" className="text-sm text-[#94A3B8] block mb-1">{tDex('aster.signerPrivateKey')} *</label>
                         <div className="relative">
                           <input id="m-dex-ast-pk" type={showDexPrivateKey ? 'text' : 'password'} value={dexFormData.privateKey}
                             onChange={(e) => setDexFormData({ ...dexFormData, privateKey: e.target.value })}
@@ -2112,20 +2122,20 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     <label htmlFor="m-dex-label" className="text-sm text-[#94A3B8] block mb-1">{t('labelOptional')}</label>
                     <input id="m-dex-label" type="text" value={dexFormData.label}
                       onChange={(e) => setDexFormData({ ...dexFormData, label: e.target.value })}
-                      placeholder={`${t('dexMyWallet') || '我的'} ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || ''}`}
+                      placeholder={`${tDex('myWallet')} ${supportedDexExchanges.find(e => e.id === selectedDexExchange)?.name || ''}`}
                       className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]" />
                   </div>
 
                   {/* 测试网开关 */}
                   <div className="flex items-center justify-between p-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A]">
                     <div>
-                      <p className="text-sm font-medium text-white">{t('dexTestnet') || '测试网模式'}</p>
-                      <p className="text-xs text-[#64748B]">{t('dexTestnetTip') || '启用后连接测试网络'}</p>
+                      <p className="text-sm font-medium text-white">{tDex('testnetMode')}</p>
+                      <p className="text-xs text-[#64748B]">{tDex('testnetHint')}</p>
                     </div>
                     <button type="button"
                       onClick={() => setDexFormData({ ...dexFormData, isTestnet: !dexFormData.isTestnet })}
                       className={`relative w-11 h-6 rounded-full transition-colors ${dexFormData.isTestnet ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}>
-                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${dexFormData.isTestnet ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${dexFormData.isTestnet ? 'translate-x-[18px]' : 'translate-x-0'}`} />
                     </button>
                   </div>
 
@@ -2134,7 +2144,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                     <div className="flex items-start gap-2">
                       <Shield className="w-4 h-4 text-[#06B6D4] mt-0.5 flex-shrink-0" />
                       <p className="text-[#94A3B8] text-xs">
-                        {t('dexSecurityNotice') || '您的私钥将使用 AES-256-GCM 加密存储，仅在执行交易时解密使用。'}
+                        {tDex('securityNotice')}
                       </p>
                     </div>
                   </div>
@@ -2159,7 +2169,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       className="flex-1 py-3.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {createDexMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                      {t('dexConnectWallet') || '连接钱包'}
+                      {tDex('connectWallet')}
                     </button>
                   </div>
                 </div>
@@ -2186,7 +2196,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
               <h3 className="text-xl font-bold text-white mb-2">{t('confirmDelete')}</h3>
               <p className="text-[#94A3B8] text-sm mb-5">
-                {t('dexDeleteConfirm') || `确定删除 ${selectedDexWallet.label} 钱包？`}
+                {tDex('deleteConfirm')}
               </p>
 
               <div className="flex items-center gap-3 p-3 mb-4 rounded-xl bg-[#1E1E2E]/50 border border-[#2A2A3A]">
@@ -2208,7 +2218,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               <div className="p-3 mb-5 rounded-xl bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-left">
                 <p className="text-xs text-[#F43F5E] flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{t('dexDeleteWarning') || '删除后，使用此钱包的策略将无法继续执行交易。此操作不可撤销。'}</span>
+                  <span>{tDex('deleteConfirmHint')}</span>
                 </p>
               </div>
 

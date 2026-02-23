@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -8,6 +8,11 @@ import { useAuth } from '@/lib/auth';
 import { PositionsPageV3 } from '@/components/ui-v3/positions/positions-page-v3';
 import { MobileTradingCenter } from '@/components/ui-v3/mobile/mobile-trading-center';
 import { toast } from 'sonner';
+import {
+  usePositionSocket,
+  type PositionUpdateEvent,
+  type TradeExecutionEvent,
+} from '@/hooks/useSocket';
 
 // 同步后的持仓数据类型
 interface SyncedPosition {
@@ -46,11 +51,14 @@ interface Position {
   strategyName?: string;
   source?: string;
   createdAt: string;
-  // 交易配置（新增）
+  // 交易配置
   tradingType?: string;
   leverage?: number;
   margin?: string;
   marginMode?: string;
+  // 止盈止损（后端 Position 模型字段）
+  stopLossPrice?: string;
+  takeProfitPrice?: string;
 }
 
 // 交易历史类型
@@ -97,6 +105,24 @@ interface ExecutionLog {
   durationMs?: number;
   errorCode?: string;
   skipReason?: string;
+  // 执行参数
+  leverage?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  blockedBy?: string;
+  blockReason?: string;
+  // AI 决策详情
+  confidence?: number;
+  positionSizePercent?: number;
+  reasoning?: string;
+  votes?: Array<{ modelId: string; action: string; confidence: number; reasoning?: string }>;
+  // Grid 专属
+  gridSummary?: string;
+  gridBuyRange?: string;
+  gridSellRange?: string;
+  gridOrderCount?: number;
+  // 策略类型标识
+  strategyType?: 'research' | 'solo' | 'debate' | 'grid' | 'signal';
 }
 
 // 策略健康状态类型
@@ -145,6 +171,37 @@ export default function TradingPage() {
   // 当前选中的API Key ID
   const [selectedApiKeyId, setSelectedApiKeyId] = useState<string | null>(null);
 
+  // WebSocket: 持仓实时更新 + 交易执行反馈
+  const handlePositionUpdate = useCallback(
+    (_event: PositionUpdateEvent) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['synced-positions'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+    },
+    [queryClient],
+  );
+
+  const handleTradeExecution = useCallback(
+    (event: TradeExecutionEvent) => {
+      if (event.status === 'success') {
+        toast.success(event.message || '交易执行成功');
+      } else if (event.status === 'failed') {
+        toast.error(event.message || '交易执行失败');
+      }
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['synced-positions'] });
+      queryClient.invalidateQueries({ queryKey: ['trade-history'] });
+      queryClient.invalidateQueries({ queryKey: ['execution-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+    },
+    [queryClient],
+  );
+
+  usePositionSocket(isAuthenticated, {
+    onPositionUpdate: handlePositionUpdate,
+    onTradeExecution: handleTradeExecution,
+  });
+
   // 获取持仓数据（基础数据）
   const { data: positionsData, isLoading: positionsLoading } = useQuery({
     queryKey: ['positions'],
@@ -157,6 +214,7 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated,
+    refetchInterval: 15000, // 每15秒自动刷新（兜底，WebSocket 实时推送为主）
     retry: false,
   });
 
@@ -253,6 +311,9 @@ export default function TradingPage() {
     totalUsdValue: number;
     spotValue: number;
     futuresValue: number;
+    freeUsdValue?: number;
+    spotFreeValue?: number;
+    futuresFreeValue?: number;
     error?: string;
   }
 
@@ -265,7 +326,7 @@ export default function TradingPage() {
           const response = await api.get<ApiKeyBalanceData>(`/api-keys/${key.id}/verify`);
           return response.data;
         } catch (e) {
-          return { valid: false, totalUsdValue: 0, spotValue: 0, futuresValue: 0 };
+          return { valid: false, totalUsdValue: 0, spotValue: 0, futuresValue: 0, freeUsdValue: 0, spotFreeValue: 0, futuresFreeValue: 0 };
         }
       },
       enabled: isAuthenticated && !!key.id,
@@ -328,8 +389,9 @@ export default function TradingPage() {
       queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
       queryClient.invalidateQueries({ queryKey: ['trade-history'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || '平仓失败');
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : '平仓失败';
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || msg);
     },
   });
 
@@ -345,8 +407,9 @@ export default function TradingPage() {
       queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
       queryClient.invalidateQueries({ queryKey: ['trade-history'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || '紧急清仓失败');
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : '紧急清仓失败';
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || msg);
     },
   });
 
@@ -360,8 +423,9 @@ export default function TradingPage() {
       toast.success('已取消订阅');
       queryClient.invalidateQueries({ queryKey: ['subscribed-strategies'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || '取消订阅失败');
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : '取消订阅失败';
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || msg);
     },
   });
 
@@ -375,8 +439,9 @@ export default function TradingPage() {
       toast.success('策略状态已更新');
       queryClient.invalidateQueries({ queryKey: ['subscribed-strategies'] });
     },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.message || '更新失败');
+    onError: (error: unknown) => {
+      const msg = error instanceof Error ? error.message : '更新失败';
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || msg);
     },
   });
 
@@ -393,6 +458,12 @@ export default function TradingPage() {
     });
   };
 
+  // 确认弹窗 state
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'emergency_close' | 'unsubscribe';
+    payload?: string;
+  } | null>(null);
+
   // 处理紧急清仓
   const handleEmergencyCloseAll = () => {
     const activeApiKey = apiKeys?.find(k => k.isActive);
@@ -400,9 +471,17 @@ export default function TradingPage() {
       toast.error('请先绑定交易所API Key');
       return;
     }
-    if (window.confirm('确定要紧急清仓所有持仓吗？此操作不可撤销！')) {
-      emergencyCloseAllMutation.mutate(activeApiKey.id);
+    setConfirmAction({ type: 'emergency_close', payload: activeApiKey.id });
+  };
+
+  const executeConfirmAction = () => {
+    if (!confirmAction) return;
+    if (confirmAction.type === 'emergency_close' && confirmAction.payload) {
+      emergencyCloseAllMutation.mutate(confirmAction.payload);
+    } else if (confirmAction.type === 'unsubscribe' && confirmAction.payload) {
+      deleteStrategyMutation.mutate(confirmAction.payload);
     }
+    setConfirmAction(null);
   };
 
   // 处理编辑策略
@@ -412,9 +491,7 @@ export default function TradingPage() {
 
   // 处理删除策略
   const handleDeleteStrategy = (strategyId: string) => {
-    if (window.confirm('确定要取消订阅此策略吗？')) {
-      deleteStrategyMutation.mutate(strategyId);
-    }
+    setConfirmAction({ type: 'unsubscribe', payload: strategyId });
   };
 
   // 处理切换策略状态
@@ -457,7 +534,7 @@ export default function TradingPage() {
           roe: parseFloat(p.roe), // 收益率
           icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
           strategy: p.strategyName || '',
-          stopLoss: 0, // TODO: 从订阅配置获取
+          stopLoss: 0, // 交易所同步数据无独立 SL/TP 字段
           takeProfit: 0,
           marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
           leverage: p.leverage || 1,
@@ -481,8 +558,8 @@ export default function TradingPage() {
           roe: 0,
           icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
           strategy: p.strategyName || '',
-          stopLoss: 0,
-          takeProfit: 0,
+          stopLoss: parseFloat(p.stopLossPrice || '0'),
+          takeProfit: parseFloat(p.takeProfitPrice || '0'),
           marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
           leverage: p.leverage || 1,
           margin: parseFloat(p.margin || '0'),
@@ -535,6 +612,24 @@ export default function TradingPage() {
     durationMs: log.durationMs,
     errorCode: log.errorCode,
     skipReason: log.skipReason,
+    // 执行参数（AI 决策详情已在 AI 交易页面展示，此处只保留执行层面）
+    leverage: log.leverage,
+    stopLoss: log.stopLoss,
+    takeProfit: log.takeProfit,
+    blockedBy: log.blockedBy,
+    blockReason: log.blockReason,
+    // AI 决策详情
+    confidence: log.confidence,
+    positionSizePercent: log.positionSizePercent,
+    reasoning: log.reasoning,
+    votes: log.votes,
+    // 策略类型标识
+    strategyType: log.strategyType,
+    // Grid 专属
+    gridSummary: log.gridSummary,
+    gridBuyRange: log.gridBuyRange,
+    gridSellRange: log.gridSellRange,
+    gridOrderCount: log.gridOrderCount,
   }));
 
   // 转换订阅的策略数据格式
@@ -569,11 +664,14 @@ export default function TradingPage() {
       balance: balanceData?.totalUsdValue || 0,
       spotValue: balanceData?.spotValue || 0,
       futuresValue: balanceData?.futuresValue || 0,
+      freeBalance: balanceData?.freeUsdValue ?? balanceData?.totalUsdValue ?? 0,
+      spotFreeValue: balanceData?.spotFreeValue ?? balanceData?.spotValue ?? 0,
+      futuresFreeValue: balanceData?.futuresFreeValue ?? balanceData?.futuresValue ?? 0,
     };
   }) || [];
 
   // 获取当前选中账户的余额数据
-  const selectedAccount = accounts[selectedAccountIndex] || { balance: 0, spotValue: 0, futuresValue: 0 };
+  const selectedAccount = accounts[selectedAccountIndex] || { balance: 0, spotValue: 0, futuresValue: 0, freeBalance: 0, spotFreeValue: 0, futuresFreeValue: 0 };
 
   // 根据账户类型筛选计算资产
   // accountTypeFilter: 'all' | 'spot' | 'futures'
@@ -591,7 +689,14 @@ export default function TradingPage() {
 
   // 计算资产统计（使用选中交易所账户的余额）
   const totalAssets = getFilteredAssets();
-  const availableBalance = totalAssets; // 可用余额暂时等于总资产
+  // 可用余额 = 交易所返回的 free 值（扣除持仓保证金）
+  const availableBalance = (() => {
+    switch (accountTypeFilter) {
+      case 'spot': return selectedAccount.spotFreeValue;
+      case 'futures': return selectedAccount.futuresFreeValue;
+      default: return selectedAccount.freeBalance;
+    }
+  })();
   const totalPnl = parseFloat(pnlStats?.totalPnl || '0');
   const todayPnl = parseFloat(pnlStats?.todayPnl || '0');
   const unrealizedPnl = parseFloat(pnlStats?.unrealizedPnl || '0');
@@ -648,6 +753,40 @@ export default function TradingPage() {
           onViewMarket={handleViewMarket}
         />
       </div>
+
+      {/* 确认弹窗 */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#12121A] border border-[#1E1E2E] rounded-2xl p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className={`text-lg font-semibold mb-2 ${confirmAction.type === 'emergency_close' ? 'text-red-400' : 'text-white'}`}>
+              {confirmAction.type === 'emergency_close' ? '⚠️ 紧急清仓确认' : '取消订阅确认'}
+            </h3>
+            <p className="text-[#9090A0] text-sm mb-6">
+              {confirmAction.type === 'emergency_close'
+                ? '确定要紧急清仓所有持仓吗？此操作不可撤销！'
+                : '确定要取消订阅此策略吗？'}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="flex-1 px-4 py-2.5 bg-[#1A1A24] text-[#9090A0] rounded-lg text-sm font-medium hover:bg-[#22222E] transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={executeConfirmAction}
+                className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  confirmAction.type === 'emergency_close'
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                }`}
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

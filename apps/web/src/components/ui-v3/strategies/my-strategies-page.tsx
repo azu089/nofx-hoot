@@ -5,7 +5,7 @@ import {
   Zap,
   Play,
   Pause,
-  Settings,
+  Eye,
   Trash2,
   Clock,
   Plus,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
 interface MyStrategy {
   id: string
@@ -56,6 +57,7 @@ export function MyStrategiesPage({
   onCreateStrategy,
   onViewMarket
 }: MyStrategiesPageProps) {
+  const t = useTranslations('ai')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
 
@@ -186,7 +188,7 @@ export function MyStrategiesPage({
                           ? "bg-green-400/10 text-green-400"
                           : "bg-yellow-400/10 text-yellow-400"
                       )}>
-                        {strategy.status === 'running' ? '运行中' : '已暂停'}
+                        {strategy.status === 'running' ? t('common.running') : t('common.paused')}
                       </span>
                       <span className={cn(
                         "px-2 py-0.5 rounded text-xs font-medium",
@@ -228,36 +230,41 @@ export function MyStrategiesPage({
                     </div>
                   </div>
 
-                  {/* Actions - 暂停/启动在右边 */}
-                  <div className="flex items-center gap-2">
+                  {/* Actions: 详情 | 暂停/启动 | 删除 */}
+                  <div className="flex gap-2 min-w-[260px]">
                     <button
                       type="button"
                       onClick={() => onEditStrategy?.(strategy.id)}
-                      className="p-2.5 rounded-lg bg-[#1E1E2E] text-[#9090A0] hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors"
-                      title="编辑策略"
+                      className="flex-1 bg-[#1E1E2E] text-[#F8F8FC] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#252530] transition-colors"
                     >
-                      <Settings className="w-4 h-4" />
+                      <Eye className="w-3.5 h-3.5" />
+                      {t('common.details')}
                     </button>
+                    {strategy.status === 'running' ? (
+                      <button
+                        type="button"
+                        onClick={() => onToggleStrategy?.(strategy.id, 'paused')}
+                        className="flex-1 bg-[#1E1E2E] text-[#EAB308] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#252530] transition-colors"
+                      >
+                        <Pause className="w-3.5 h-3.5" />
+                        {t('common.pause')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onToggleStrategy?.(strategy.id, 'running')}
+                        className="flex-1 bg-[#06B6D4] text-[#F8F8FC] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#0891B2] transition-colors"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        {t('common.start')}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onDeleteStrategy?.(strategy.id)}
-                      className="p-2.5 rounded-lg bg-[#1E1E2E] text-[#9090A0] hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                      title="删除策略"
+                      className="px-3 bg-[#1E1E2E] text-[#F43F5E] py-2 rounded-lg hover:bg-[#252530] transition-colors"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onToggleStrategy?.(strategy.id, strategy.status === 'running' ? 'paused' : 'running')}
-                      className={cn(
-                        "p-2.5 rounded-lg transition-colors",
-                        strategy.status === 'running'
-                          ? "bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
-                          : "bg-green-400/10 text-green-400 hover:bg-green-400/20"
-                      )}
-                      title={strategy.status === 'running' ? '暂停' : '启动'}
-                    >
-                      {strategy.status === 'running' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

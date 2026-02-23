@@ -9,6 +9,7 @@
 
 import { Logger } from '@nestjs/common';
 import type { AiAction, AiTradeDecision } from '../types/ai.types';
+import { AI_SAFETY_DEFAULTS } from '../constants/safety-defaults';
 
 const logger = new Logger('DecisionParser');
 
@@ -25,6 +26,9 @@ const RE_JSON_FENCE = /```json\s*([\s\S]*?)\s*```/i;
 
 /** 裸 JSON 数组 [{...}] */
 const RE_JSON_ARRAY = /\[\s*\{[\s\S]*?\}\s*\]/;
+
+/** 裸单个 JSON 对象 {...} (含 "action" 字段) */
+const RE_JSON_OBJECT = /\{[^{}]*"action"\s*:\s*"[^"]+?"[^{}]*\}/;
 
 /** 必须以 [{ 开头 */
 const RE_ARRAY_HEAD = /^\[\s*\{/;
@@ -195,7 +199,7 @@ export function parseDecisions(
 ): AiTradeDecision[] {
   if (!raw || !raw.trim()) {
     logger.warn('[SafeFallback] AI 输出为空，进入安全等待模式');
-    return [buildWaitDecision('Model output is empty', defaultSymbol)];
+    return [buildWaitDecision('AI 模型输出为空，进入安全等待', defaultSymbol)];
   }
 
   // 预处理
@@ -248,11 +252,34 @@ export function parseDecisions(
     }
   }
 
+  // ── L3.5: 裸单个 JSON 对象 {"action": ...} ──
+  const objectMatch = RE_JSON_OBJECT.exec(jsonPart ?? s);
+  if (objectMatch?.[0]) {
+    const objectContent = fixChinesePunctuation(objectMatch[0]);
+    try {
+      const single: RawDecision = JSON.parse(objectContent);
+      if (single && single.action) {
+        const d = convertRawDecision(single, defaultSymbol);
+        if (d) {
+          logger.log('Extracted JSON from single object');
+          return [d];
+        }
+      }
+    } catch {
+      // 继续回退
+    }
+  }
+
   // ── L6: 安全回退 ──
   logger.warn('[SafeFallback] AI 未输出结构化 JSON 决策，进入安全等待模式');
   const action = fallbackParseAction(s);
-  const summary = s.length > 240 ? s.slice(0, 240) + '...' : s;
-  return [buildWaitDecision(`Model did not output structured JSON; fallback action: ${action}; summary: ${summary}`, defaultSymbol, action)];
+
+  // 尝试提取 <reasoning> 标签内容作为推理文本（即使 <decision> 缺失）
+  const reasoningMatch = RE_REASONING_TAG.exec(s);
+  const reasoningText = reasoningMatch?.[1]?.trim() || '';
+  const fallbackReasoning = reasoningText || `AI 未输出有效决策格式，回退动作: ${action}`;
+
+  return [buildWaitDecision(fallbackReasoning, defaultSymbol, action)];
 }
 
 /**
@@ -352,10 +379,11 @@ function convertRawDecision(
     action,
     confidence: clamp(r.confidence ?? 50, 0, 100),
     leverage: r.leverage && r.leverage > 0 ? r.leverage : 5,
-    positionSizePercent: clamp(positionSizePercent, 1, 100),
+    positionSizePercent: clamp(positionSizePercent, 1, 20), // max 20% 与执行层 maxPctThreshold 对齐
     stopLoss: stopLoss && stopLoss > 0 ? stopLoss : null,
     takeProfit: takeProfit && takeProfit > 0 ? takeProfit : null,
     reasoning: r.reasoning ?? '',
+    ...(r.symbol ? { symbol: r.symbol } : {}), // 多币种模式: 保留 LLM 输出的 symbol
   };
 }
 
@@ -459,10 +487,11 @@ export function validateDecision(
 
     if (riskPercent > 0) {
       const rr = rewardPercent / riskPercent;
-      if (rr < 3.0) {
+      const minRR = AI_SAFETY_DEFAULTS.minRiskRewardRatio;
+      if (rr < minRR) {
         return {
           valid: false,
-          reason: `R/R ratio too low (${rr.toFixed(2)}:1), must be >= 3.0:1 [risk: ${riskPercent.toFixed(2)}% reward: ${rewardPercent.toFixed(2)}%] [SL: ${sl} TP: ${tp}]`,
+          reason: `R/R ratio too low (${rr.toFixed(2)}:1), must be >= ${minRR}:1 [risk: ${riskPercent.toFixed(2)}% reward: ${rewardPercent.toFixed(2)}%] [SL: ${sl} TP: ${tp}]`,
         };
       }
     }
@@ -489,8 +518,11 @@ function buildWaitDecision(
   symbol?: string,
   action?: AiAction,
 ): AiTradeDecision {
+  // confidence=0 时强制非交易动作，避免 "开多 + 置信度0%" 的困惑组合
+  const safeAction =
+    action && (action === 'wait' || action === 'hold') ? action : 'wait';
   return {
-    action: action && VALID_ACTIONS.has(action) ? action : 'wait',
+    action: safeAction,
     confidence: 0,
     leverage: 1,
     positionSizePercent: 0,

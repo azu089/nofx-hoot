@@ -3,11 +3,20 @@
 import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, ChevronDown, ChevronUp, Clock, DollarSign, TrendingUp, TrendingDown, AlertTriangle, Check, Wifi, WifiOff, Play, Pencil } from 'lucide-react';
+import { translateErrorForDisplay } from '@/lib/error-translator';
 import { toast } from 'sonner';
-import { useResearchStatus, useResearchReport, useExecuteResearch, useCampaignStats, useStopResearchCycling, usePauseResearchCycling, useResumeResearchCycling, useUpdateResearchConfig } from '@/hooks/useAi';
+import { useResearchStatus, useResearchReport, useExecuteResearch, useCampaignStats, useStopResearchCycling, usePauseResearchCycling, useResumeResearchCycling, useUpdateResearchConfig, useAiConfig } from '@/hooks/useAi';
+import type { ResearchStatus, ResearchStageResult, ResearchStage } from '@/types/ai';
 import { useResearchProgress, type ResearchProgressEvent } from '@/hooks/useSocket';
-import { PERSONALITY_COLORS, PERSONALITY_LABELS, PERSONALITY_EMOJIS, ACTION_CONFIG, MODEL_DISPLAY } from '@/constants/debate';
+import { PERSONALITY_COLORS, PERSONALITY_EMOJIS, ACTION_CONFIG, MODEL_DISPLAY } from '@/constants/debate';
+
+const PERSONALITY_I18N: Record<string, string> = {
+  bull: 'detail.personalityBull', bear: 'detail.personalityBear',
+  analyst: 'detail.personalityAnalyst', contrarian: 'detail.personalityContrarian',
+  risk_manager: 'detail.personalityRiskManager',
+};
 import { AIAvatar } from '@/components/ui-v3/ai/ai-avatar';
+import { TruncatedText } from '@/components/ui-v3/ai/timeline-cards/truncated-text';
 import { useTranslations } from '@/i18n/provider';
 
 type Status = 'running' | 'completed' | 'failed';
@@ -15,6 +24,37 @@ type StageStatus = 'completed' | 'running' | 'pending';
 type AnalystType = 'market' | 'technical' | 'fundamental' | 'news' | 'sentiment';
 type Direction = 'long' | 'short';
 type RiskLevel = 'low' | 'medium' | 'high';
+
+/** 辩论条目类型（后端 debate entries） */
+interface DebateEntry {
+  role?: string;
+  model?: string;
+  round?: number;
+  direction?: string;
+  content?: string;
+  confidence?: number;
+  arguments?: {
+    reasoning?: string;
+    argument?: string;
+    leverage?: number;
+    position_pct?: number;
+    positionSizePercent?: number;
+    stop_loss?: number | string;
+    stopLoss?: number | string;
+    take_profit?: number | string;
+    takeProfit?: number | string;
+  };
+  leverage?: number;
+  position_pct?: number;
+  positionSizePercent?: number;
+  stop_loss?: number | string;
+  stopLoss?: number | string;
+  take_profit?: number | string;
+  takeProfit?: number | string;
+  reasoning?: string;
+  argument?: string;
+  chainOfThought?: string;
+}
 
 interface Analyst {
   id: AnalystType;
@@ -52,7 +92,7 @@ function formatCampaignTime(startedAt: string): string {
   return `${mins}m`;
 }
 
-function calcCampaignWinRate(children: any[]): number {
+function calcCampaignWinRate(children: Array<{ status: string; finalDecision: unknown; pnl: number | null }>): number {
   const finished = children.filter((c) => c.status === 'completed' && c.finalDecision);
   if (finished.length === 0) return 0;
   const profitable = finished.filter((c) => (c.pnl ?? 0) > 0).length;
@@ -63,6 +103,8 @@ export function ResearchDetailPage() {
   const params = useParams();
   const sessionId = params?.id as string;
   const t = useTranslations('ai');
+  const tc = useTranslations('common');
+  const te = useTranslations('errors');
 
   const [expandedStage, setExpandedStage] = useState<string | null>('analysts');
   const [activeTab, setActiveTab] = useState<string>('analysts');
@@ -103,12 +145,13 @@ export function ResearchDetailPage() {
   const symbol = statusData?.symbol || 'BTC/USDT';
 
   // rootId 始终有值 — 使用 sessionId 作为最终 fallback
-  const rootId = (statusData as any)?.rootSessionId || reportData?.rootSessionId || sessionId;
+  const rootId = statusData?.rootSessionId || reportData?.rootSessionId || sessionId;
   const campaignStats = useCampaignStats(rootId);
   const stopCycling = useStopResearchCycling();
   const pauseCycling = usePauseResearchCycling();
   const resumeCycling = useResumeResearchCycling();
   const updateConfig = useUpdateResearchConfig();
+  const { data: aiConfig } = useAiConfig();
 
   // cs 简写：campaignStats.data（null 时用 fallback）
   const cs = campaignStats.data;
@@ -117,7 +160,7 @@ export function ResearchDetailPage() {
   const campaignStatus = cs?.status || status;
 
   // 从 reportData 构建 stages
-  const stages: Stage[] = (reportData?.stages || []).map((s: any, idx: number) => ({
+  const stages: Stage[] = (reportData?.stages || []).map((s, idx: number) => ({
     id: `stage-${idx + 1}`,
     name: s.name || t('research.stage', { n: idx + 1 }),
     status: s.status as StageStatus || 'pending',
@@ -179,13 +222,13 @@ export function ResearchDetailPage() {
       await executeResearch.mutateAsync(sessionId);
       toast.success(t('research.tradeExecuted'));
       setShowExecuteModal(false);
-    } catch (err: any) {
-      toast.error(err.message || t('common.failed'));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('common.failed'));
     }
   };
 
   // 从 cyclingConfig 中提取配置
-  const cycConfig = (statusData as any)?.cyclingConfig || (cs as any)?.cyclingConfig || {};
+  const cycConfig = statusData?.cyclingConfig || cs?.cyclingConfig || {};
   const riskConfig = cycConfig?.riskControlConfig || {};
 
   const enterResearchEditMode = () => {
@@ -221,10 +264,10 @@ export function ResearchDetailPage() {
           },
         },
       });
-      toast.success('配置已更新');
+      toast.success(tc('configUpdated'));
       setIsEditingConfig(false);
-    } catch (err: any) {
-      toast.error(err.message || '更新失败');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : tc('updateFailed'));
     }
   };
 
@@ -312,11 +355,9 @@ export function ResearchDetailPage() {
         .filter(Boolean) as { label: string; text: string }[];
       if (reportEntries.length === 0) return <div className="text-sm text-[#606070] p-4">{t('common.analyzing')}</div>;
       return reportEntries.map(({ label, text }) => (
-        <div key={label} className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+        <div key={label} className="glass-border-glow glass-card p-4">
           <div className="text-xs text-[#06B6D4] font-medium mb-2">{label}</div>
-          <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line line-clamp-6">
-            {typeof text === 'string' ? text : JSON.stringify(text, null, 2)}
-          </div>
+          <TruncatedText text={typeof text === 'string' ? text : JSON.stringify(text, null, 2)} maxLines={6} />
         </div>
       ));
     }
@@ -335,11 +376,11 @@ export function ResearchDetailPage() {
         return <div className="text-sm text-[#606070] p-4">{isSkipped ? t('research.quickModeSkipDebate') : t('common.analyzing')}</div>;
       }
 
-      const renderMsg = (e: any, i: number) => {
+      const renderMsg = (e: DebateEntry, i: number) => {
         const roleKey = (e.role || '').toLowerCase().replace(/\s+/g, '_');
         const roleColor = PERSONALITY_COLORS[roleKey] || '#606070';
         const roleEmoji = PERSONALITY_EMOJIS[roleKey] || '';
-        const roleLabel = PERSONALITY_LABELS[roleKey] || e.role || `#${i + 1}`;
+        const roleLabel = (PERSONALITY_I18N[roleKey] ? t(PERSONALITY_I18N[roleKey]) : roleKey) || e.role || `#${i + 1}`;
         const modelName = e.model ? (MODEL_DISPLAY[e.model]?.name || e.model) : '';
         const content = e.arguments?.reasoning || e.arguments?.argument || e.content || '';
         const dir = (e.direction || '').toLowerCase();
@@ -359,19 +400,17 @@ export function ResearchDetailPage() {
                   {actCfg.icon} {actCfg.label}
                 </span>
               )}
-              {e.confidence > 0 && (
+              {(e.confidence ?? 0) > 0 && (
                 <span className="text-[10px] text-[#9090A0] font-mono">{e.confidence}%</span>
               )}
             </div>
-            <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line line-clamp-4">
-              {typeof content === 'string' ? content : JSON.stringify(content, null, 2)}
-            </div>
+            <TruncatedText text={typeof content === 'string' ? content : JSON.stringify(content, null, 2)} maxLines={4} />
           </div>
         );
       };
 
-      const grouped: Record<number, any[]> = {};
-      entries.forEach((e: any) => {
+      const grouped: Record<number, DebateEntry[]> = {};
+      entries.forEach((e: DebateEntry) => {
         const r = e.round ?? 1;
         if (!grouped[r]) grouped[r] = [];
         grouped[r].push(e);
@@ -407,11 +446,11 @@ export function ResearchDetailPage() {
               <div className="text-xs font-bold flex items-center gap-2" style={{ color: '#EAB308' }}>
                 {'\u{1F5F3}\uFE0F'} {t('research.finalVote')}
               </div>
-              {votingEntries.map((e: any, i: number) => {
+              {votingEntries.map((e: DebateEntry, i: number) => {
                 const roleKey = (e.role || '').toLowerCase().replace(/\s+/g, '_');
                 const roleColor = PERSONALITY_COLORS[roleKey] || '#606070';
                 const roleEmoji = PERSONALITY_EMOJIS[roleKey] || '';
-                const roleLabel = PERSONALITY_LABELS[roleKey] || e.role || `Vote #${i + 1}`;
+                const roleLabel = (PERSONALITY_I18N[roleKey] ? t(PERSONALITY_I18N[roleKey]) : roleKey) || e.role || `Vote #${i + 1}`;
                 const dir = (e.direction || '').toLowerCase();
                 const actKey = dir === 'long' ? 'open_long' : dir === 'short' ? 'open_short' : dir;
                 const actCfg = ACTION_CONFIG[actKey] || null;
@@ -456,9 +495,7 @@ export function ResearchDetailPage() {
                       )}
                     </div>
                     {(args.reasoning || args.argument) && (
-                      <div className="text-[11px] text-[#9090A0] mt-2 line-clamp-2">
-                        {args.reasoning || args.argument}
-                      </div>
+                      <TruncatedText text={(args.reasoning || args.argument) as string} maxLines={2} className="mt-2" />
                     )}
                   </div>
                 );
@@ -476,9 +513,7 @@ export function ResearchDetailPage() {
                 }`}>{consensus.action?.toUpperCase()}</span>
                 <span className="text-sm text-[#9090A0]">{t('research.confidence')} {consensus.confidence}%</span>
               </div>
-              <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line line-clamp-4">
-                {consensus.reasoning}
-              </div>
+              <TruncatedText text={consensus.reasoning || ''} maxLines={4} />
             </div>
           )}
         </>
@@ -487,24 +522,27 @@ export function ResearchDetailPage() {
 
     // ── 交易员 Tab ──
     if (activeTab === 'trader') {
-      let proposal = stageResult?.proposal;
-      if (typeof proposal === 'string') {
+      const rawProposal = stageResult?.proposal;
+      let proposal: ResearchStageResult | undefined;
+      if (typeof rawProposal === 'string') {
         try {
-          const jsonMatch = proposal.match(/```json\s*([\s\S]*?)```/);
-          const jsonStr = jsonMatch ? jsonMatch[1].trim() : proposal.trim();
-          proposal = JSON.parse(jsonStr);
+          const jsonMatch = rawProposal.match(/```json\s*([\s\S]*?)```/);
+          const jsonStr = jsonMatch ? jsonMatch[1].trim() : rawProposal.trim();
+          proposal = JSON.parse(jsonStr) as ResearchStageResult;
         } catch {
           return (
-            <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+            <div className="glass-border-glow glass-card p-4">
               <div className="text-xs text-[#06B6D4] font-medium mb-2">{t('research.traderAnalysis')}</div>
-              <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line">{proposal}</div>
+              <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line">{rawProposal}</div>
             </div>
           );
         }
+      } else {
+        proposal = rawProposal;
       }
       if (!proposal) return <div className="text-sm text-[#606070] p-4">{t('common.analyzing')}</div>;
       return (
-        <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-5">
+        <div className="glass-border-glow glass-card p-5">
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <div className="text-xs text-[#606070] mb-1">{t('research.action')}</div>
@@ -600,12 +638,10 @@ export function ResearchDetailPage() {
               )}
             </div>
           )}
-          {debateHistory.map((entry: any, i: number) => (
+          {debateHistory.map((entry: { role?: string; content?: string }, i: number) => (
             <div key={i} className="bg-[#12121A] rounded-xl p-4 border border-[#1E1E2E]">
               <div className="text-xs text-[#F59E0B] font-medium mb-2">{entry.role || t('research.riskExpert', { n: i + 1 })}</div>
-              <div className="text-sm text-[#9090A0] leading-relaxed whitespace-pre-line line-clamp-4">
-                {entry.content}
-              </div>
+              <TruncatedText text={entry.content || ''} maxLines={4} />
             </div>
           ))}
         </>
@@ -618,7 +654,7 @@ export function ResearchDetailPage() {
       const s5 = stageResult;
       if (!fd) return <div className="text-sm text-[#606070] p-4">{t('common.analyzing')}</div>;
       return (
-        <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-5 space-y-4">
+        <div className="glass-border-glow glass-card p-5 space-y-4">
           <div className="flex items-center gap-3">
             <span className={`px-3 py-1 rounded text-sm font-bold ${
               fd.action?.includes('long') ? 'bg-[#10B981]/20 text-[#10B981]' :
@@ -641,11 +677,11 @@ export function ResearchDetailPage() {
             {fd.reasoning || t('common.noData')}
           </div>
           {(() => {
-            const debateStage = reportData?.stages?.find((st: any) => st.name?.includes('debate'));
+            const debateStage = reportData?.stages?.find((st: ResearchStage) => st.name?.includes('debate'));
             const debateEntries = Array.isArray(debateStage?.result?.entries) ? debateStage.result.entries : [];
             const cotTexts = debateEntries
-              .filter((e: any) => e.chainOfThought)
-              .map((e: any) => `[${e.role || 'unknown'}] ${typeof e.chainOfThought === 'string' ? e.chainOfThought : JSON.stringify(e.chainOfThought)}`);
+              .filter((e: DebateEntry) => e.chainOfThought)
+              .map((e: DebateEntry) => `[${e.role || 'unknown'}] ${typeof e.chainOfThought === 'string' ? e.chainOfThought : JSON.stringify(e.chainOfThought)}`);
             const aggregatedCot = cotTexts.join('\n\n---\n\n');
             const sysPrompt = s5?.systemPrompt || debateStage?.result?.systemPrompt;
             const usrPrompt = s5?.userPrompt || debateStage?.result?.userPrompt;
@@ -783,13 +819,13 @@ export function ResearchDetailPage() {
         {/* 运行信息 */}
         <div className="px-4 pb-3">
           <p className="text-xs text-[#606070]">
-            {t('research.runDuration')} {cs?.startedAt ? formatCampaignTime(cs.startedAt) : '—'} · {t('research.cycles')} {cs?.currentCycle ?? 0}/{cs?.totalCycles || '∞'}
+            {t('research.runDuration')} {cs?.startedAt ? formatCampaignTime(cs.startedAt) : '—'} · {t('research.cycles')} {cs?.currentCycle ?? 0}/{cycConfig?.maxCycles ? cycConfig.maxCycles : '∞'}
           </p>
         </div>
 
         {/* 统计网格 — cs 未加载时用 fallback 值，不隐藏整个 header */}
         <div className="px-4 pb-4">
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] grid grid-cols-4">
+          <div className="glass-border-glow glass-card grid grid-cols-4">
             <div className="p-2.5 text-center">
               <p className="text-[10px] text-[#606070] mb-0.5">{t('research.cumulativePnl')}</p>
               <p className={`text-sm font-semibold ${(cs?.cumulativePnl ?? 0) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
@@ -847,7 +883,7 @@ export function ResearchDetailPage() {
         {campaignTab === 'overview' && (
           <div className="space-y-4">
             {/* 深度研究模式说明卡 */}
-            <div className="mx-4 mt-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+            <div className="mx-4 mt-4 glass-border-glow glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm bg-[#8B5CF6]/20">🔬</span>
                 <span className="text-sm font-semibold text-[#8B5CF6]">{'深度研究模式'}</span>
@@ -855,9 +891,26 @@ export function ResearchDetailPage() {
               <p className="text-xs text-[#9090A0] leading-relaxed mb-2">
                 {'5位AI分析师独立研究 → 多轮辩论 → 交易员决策 → 风控审批。每个周期完成完整的深度分析流程。'}
               </p>
+              {/* 模型图标 */}
+              {aiConfig?.models && aiConfig.models.length > 0 && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  {aiConfig.models.map((m: string) => {
+                    const info = MODEL_DISPLAY[m];
+                    const logo = info?.logo;
+                    const name = info?.name || m;
+                    return logo ? (
+                      <img key={m} src={logo} alt={name} title={name} className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <span key={m} title={name} className="w-6 h-6 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[10px] text-[#9090A0]">
+                        {name.charAt(0)}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               <div className="pt-2 border-t border-[#1E1E2E]">
                 <p className="text-xs text-[#606070]">
-                  {symbol} · {t('research.interval')} {(statusData as any)?.cyclingConfig?.intervalMinutes || (reportData as any)?.cyclingConfig?.intervalMinutes || '?'}{t('research.minutes')} · {t('research.cycles')} {cs?.currentCycle ?? 0}/{cs?.totalCycles || '∞'}
+                  {symbol} · {t('research.interval')} {cycConfig?.intervalMinutes || '?'}{t('research.minutes')} · {t('research.cycles')} {cs?.currentCycle ?? 0}/{cycConfig?.maxCycles ? cycConfig.maxCycles : '∞'}
                 </p>
               </div>
             </div>
@@ -910,7 +963,7 @@ export function ResearchDetailPage() {
               })();
               const finalPnl = filteredPnl.length > 0 ? filteredPnl[filteredPnl.length - 1].pnl : 0;
               return (
-                <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+                <div className="mx-4 glass-border-glow glass-card p-4">
                   <div className="mb-4">
                     <p className="text-xs text-[#606070] mb-1">{t('detail.pnlChart', { filter: timeFilter })}</p>
                     <p className={`text-2xl font-bold ${finalPnl >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
@@ -971,7 +1024,7 @@ export function ResearchDetailPage() {
               const todayWins = todayCompletedCycles.filter(c => (c.pnl ?? 0) > 0).length;
               const todayLosses = todayCompletedCycles.filter(c => (c.pnl ?? 0) <= 0 && c.finalDecision).length;
               return (
-                <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+                <div className="mx-4 glass-border-glow glass-card p-4">
                   <h3 className="text-sm font-semibold mb-3">{t('detail.todayStats')}</h3>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -1007,7 +1060,7 @@ export function ResearchDetailPage() {
                   <span className="font-semibold text-[#F43F5E]">{t('research.researchFailed')}</span>
                 </div>
                 <p className="text-sm text-[#9090A0] leading-relaxed">
-                  {statusData?.errorMessage || t('research.researchError')}
+                  {statusData?.errorMessage ? translateErrorForDisplay(statusData.errorMessage, te) : t('research.researchError')}
                 </p>
                 <div className="mt-3 flex items-center gap-3 text-xs text-[#606070]">
                   <span>{t('research.completedStages')} {statusData?.stagesCompleted || 0}/{statusData?.totalStages || 5}</span>
@@ -1026,7 +1079,7 @@ export function ResearchDetailPage() {
                 : [];
               if (recentDecisions.length === 0) return null;
               return (
-                <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+                <div className="mx-4 glass-border-glow glass-card p-4">
                   <h3 className="text-sm font-semibold mb-3">{t('detail.recentDecisions')}</h3>
                   <div className="space-y-0">
                     {recentDecisions.map((child, idx) => {
@@ -1055,7 +1108,7 @@ export function ResearchDetailPage() {
                             </span>
                           )}
                           <span className="text-[10px] text-[#606070]">
-                            {new Date(child.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(child.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       );
@@ -1074,11 +1127,11 @@ export function ResearchDetailPage() {
               /* ── 阅读模式 ── */
               <>
                 {/* 基本信息 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold mb-3">{t('detail.currentConfig')}</h3>
                   <div className="space-y-2.5">
                     <ResearchConfigRow label={t('research.pair')} value={symbol} />
-                    <ResearchConfigRow label={'分析模型'} value={(statusData as any)?.model || (reportData as any)?.model || 'DeepSeek V3'} />
+                    <ResearchConfigRow label={'分析模型'} value={statusData?.model || 'DeepSeek V3'} />
                     <ResearchConfigRow label={t('research.status')} value={statusText} />
                     <ResearchConfigRow
                       label={t('research.runDuration')}
@@ -1089,7 +1142,7 @@ export function ResearchDetailPage() {
                 </div>
 
                 {/* 循环参数 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold mb-3">循环参数</h3>
                   <div className="space-y-2.5">
                     <ResearchConfigRow
@@ -1110,13 +1163,13 @@ export function ResearchDetailPage() {
                     />
                     <ResearchConfigRow
                       label={'自动执行'}
-                      value={cycConfig?.autoExecute !== false ? '已开启' : '未开启'}
+                      value={(cycConfig as Record<string, unknown> | undefined)?.autoExecute !== false ? '已开启' : '未开启'}
                     />
                   </div>
                 </div>
 
                 {/* 风控参数 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold mb-3">风控配置</h3>
                   <div className="space-y-2.5">
                     <ResearchConfigRow
@@ -1160,7 +1213,7 @@ export function ResearchDetailPage() {
               /* ── 编辑模式 ── */
               <>
                 {/* 卡片 1: 循环参数 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">循环参数</h3>
                   <p className="text-xs text-[#606070]">执行周期</p>
                   <div className="flex gap-2">
@@ -1186,7 +1239,7 @@ export function ResearchDetailPage() {
                 </div>
 
                 {/* 卡片 2: 风控参数 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">风控配置</h3>
                   <ResearchSliderField label={'配置资金'} value={editAllocatedCapital} min={500} max={100000} step={500} prefix="$" onChange={setEditAllocatedCapital} />
                   <ResearchSliderField label={'最大杠杆'} value={editMaxLeverage} min={1} max={20} suffix="x" onChange={setEditMaxLeverage} />
@@ -1252,7 +1305,7 @@ export function ResearchDetailPage() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold text-[#06B6D4]">{t('research.currentCycle')}</p>
                 {stages.map((stage) => (
-                  <div key={stage.id} className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+                  <div key={stage.id} className="glass-border-glow glass-card p-4">
                     <button
                       onClick={() =>
                         stage.analysts &&
@@ -1438,7 +1491,7 @@ export function ResearchDetailPage() {
                     const isExpanded = expandedCycleId === child.id;
 
                     return (
-                      <div key={child.id} className="bg-[#12121A] rounded-xl border border-[#1E1E2E] overflow-hidden">
+                      <div key={child.id} className="glass-border-glow glass-card">
                         <button
                           onClick={() => setExpandedCycleId(isExpanded ? null : child.id)}
                           className="w-full p-4 flex items-center justify-between"
@@ -1503,12 +1556,10 @@ export function ResearchDetailPage() {
                               )}
                             </div>
                             {fd.reasoning && (
-                              <div className="text-xs text-[#9090A0] leading-relaxed line-clamp-3 pt-1">
-                                {fd.reasoning}
-                              </div>
+                              <TruncatedText text={fd.reasoning || ''} maxLines={3} className="pt-1" />
                             )}
                             <div className="text-[10px] text-[#606070] pt-1">
-                              {new Date(child.createdAt).toLocaleString('zh-CN')}
+                              {new Date(child.createdAt).toLocaleString(undefined)}
                               {child.totalCost > 0 && ` · $${child.totalCost.toFixed(4)}`}
                             </div>
                           </div>
@@ -1596,7 +1647,7 @@ export function ResearchDetailPage() {
 }
 
 // 只读配置行（深度研究详情页专用）
-function ResearchConfigRow({ label, value }: { label: string; value: any }) {
+function ResearchConfigRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-xs text-[#606070] mb-1">{label}</p>

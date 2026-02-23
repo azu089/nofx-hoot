@@ -20,15 +20,32 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, nickname?: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void> | void;
   sendVerificationCode: (email: string) => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
+  /** 钱包登录：接收已验证的 accessToken 和用户信息，写入认证状态 */
+  walletLogin: (accessToken: string, user: User, refreshToken?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = 'hoot_token';
 const USER_KEY = 'hoot_user';
+
+/** Cookie 最大有效期：24 小时（秒） */
+const COOKIE_MAX_AGE = 86400;
+
+/** 同步写入 hoot_token cookie（供 Next.js Middleware 读取） */
+function setAuthCookie(token: string) {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
+}
+
+/** 清除 hoot_token cookie */
+function clearAuthCookie() {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -61,10 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const response = await api.post<{
       accessToken: string;
+      refreshToken?: string;
+      expiresIn?: number;
       user: User;
     }>('/auth/login', { email, password });
 
-    const { accessToken, user: userData } = response.data;
+    const { accessToken, refreshToken: rt, user: userData } = response.data;
 
     setToken(accessToken);
     setUser(userData);
@@ -72,6 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem(TOKEN_KEY, accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    if (rt) {
+      localStorage.setItem('hoot_refresh_token', rt);
+    }
+    // 同步写入 cookie，供 Next.js Middleware 路由守卫使用
+    setAuthCookie(accessToken);
   };
 
   const register = async (email: string, password: string, nickname?: string) => {
@@ -79,13 +103,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 注册后不自动登录，需要先验证邮箱
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // 先通知后端撤销所有 refresh token（忽略失败，本地状态照常清除）
+    try {
+      await api.post('/auth/logout', {});
+    } catch {
+      // 即使后端调用失败，也要清除本地状态
+    }
+
     setToken(null);
     setUser(null);
-    api.clearToken();
-
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    api.clearAllTokens();
+    // 同步清除 cookie，确保 Next.js Middleware 立即生效
+    clearAuthCookie();
   };
 
   const sendVerificationCode = async (email: string) => {
@@ -94,6 +124,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyEmail = async (email: string, code: string) => {
     await api.post('/auth/verify-email', { email, code });
+  };
+
+  /**
+   * 钱包登录完成后写入认证状态
+   * 由 useWallet.walletLogin 完成 nonce→签名→后端验证后调用
+   */
+  const walletLogin = (accessToken: string, userData: User, refreshToken?: string) => {
+    setToken(accessToken);
+    setUser(userData);
+    api.setToken(accessToken);
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    if (refreshToken) {
+      localStorage.setItem('hoot_refresh_token', refreshToken);
+    }
+    // 同步写入 cookie，供 Next.js Middleware 路由守卫使用
+    setAuthCookie(accessToken);
   };
 
   return (
@@ -108,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         sendVerificationCode,
         verifyEmail,
+        walletLogin,
       }}
     >
       {children}

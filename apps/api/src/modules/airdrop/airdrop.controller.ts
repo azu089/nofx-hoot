@@ -7,11 +7,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AirdropService } from './airdrop.service';
 import { QueryAirdropDto } from './dto/airdrop.dto';
 
+@ApiTags('airdrop')
 @Controller('airdrop')
 @UseGuards(JwtAuthGuard)
 export class AirdropController {

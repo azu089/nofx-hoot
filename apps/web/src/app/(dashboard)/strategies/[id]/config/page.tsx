@@ -36,8 +36,7 @@ export default function StrategyConfigRoutePage() {
     enabled: !!strategyId,
   });
 
-  const handleSave = (config: StrategyConfigData) => {
-    console.log('保存配置:', config);
+  const handleSave = (_config: StrategyConfigData) => {
     // API 调用已在组件内部通过 useStrategySubscription hook 处理
   };
 

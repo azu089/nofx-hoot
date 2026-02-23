@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -21,26 +21,18 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useStrategyDetail, useStrategyLogs, useStrategyPnlChart, useStrategyControl, useHotUpdateConfig, useUpdateStrategy, usePreviewPrompt, useTriggerCycle } from "@/hooks/useAi";
-import { useStrategySocket } from "@/hooks/useSocket";
+import { useStrategySocket, useDecisionStream, type StrategyDecisionEvent } from "@/hooks/useSocket";
 import { useTranslations } from "@/i18n/provider";
 import { useQueryClient } from "@tanstack/react-query";
-import type { StrategyLog, CoinSourceConfig, RiskControlConfig, PromptSections } from "@/types/ai";
+import type { StrategyLog, CoinSourceConfig, RiskControlConfig, PromptSections, GridConfig } from "@/types/ai";
 import {
   MODEL_DISPLAY,
   ACTION_CONFIG,
-  CAMP_COLORS,
-  CAMP_LABELS,
-  DEBATE_STAGE_LABELS,
-  DEBATE_STAGE_LABELS_V2,
 } from "@/constants/debate";
-import { TRADING_MODE_INFO, buildConfigSummary } from "@/constants/trading-modes";
-
-const PROMPT_DEFAULTS = {
-  role: '你是一个专业的加密货币永续合约交易员，目标是通过精准分析实现稳定盈利。',
-  tradingFrequency: '严格控制交易频率。只在出现高概率机会时才开仓。宁可错过机会，也不要频繁交易。',
-  entryStandards: '开仓需要至少2个独立信号共振确认。趋势方向+动量+关键价位支撑。',
-  decisionProcess: '1. 判断市场结构和趋势方向 2. 寻找入场信号共振 3. 评估风险回报比 4. 确定仓位大小和止损',
-};
+import { getTradingModeInfo, buildConfigSummary } from "@/constants/trading-modes";
+import { TruncatedText } from "@/components/ui-v3/ai/timeline-cards/truncated-text";
+import { PillGroup } from "@/components/ui-v3/ai/pill-group";
+import { NumberStepper } from "@/components/ui-v3/ai/number-stepper";
 
 export function AIStrategyDetailPage() {
   const t = useTranslations('ai');
@@ -82,9 +74,28 @@ export function AIStrategyDetailPage() {
   const [editInterval, setEditInterval] = useState(60);
   const [showEditExcluded, setShowEditExcluded] = useState(false);
 
+  // 日志分页
+  const [logsPage, setLogsPage] = useState(1);
+  const [allLogs, setAllLogs] = useState<StrategyLog[]>([]);
+
+  // Grid 编辑 state
+  const [editGridInvestment, setEditGridInvestment] = useState(1000);
+  const [editGridLeverage, setEditGridLeverage] = useState(1);
+  const [editGridCount, setEditGridCount] = useState(10);
+  const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
+  const [editGridStopLoss, setEditGridStopLoss] = useState(5);
+  const [editGridInterval, setEditGridInterval] = useState(60);
+
+  // strategyId 变化时重置日志分页
+  useEffect(() => {
+    setLogsPage(1);
+    setAllLogs([]);
+  }, [strategyId]);
+
   // Data fetching
   const { data: detail, isLoading: detailLoading } = useStrategyDetail(strategyId);
-  const { data: logsData } = useStrategyLogs(strategyId, 1, 3);
+  const { data: logsData, isLoading: logsLoading } = useStrategyLogs(strategyId, logsPage, 20);
+  const { decisions: liveDecisions, connected: wsConnected } = useDecisionStream(strategyId);
 
   const daysMap: Record<string, number> = { '24h': 1, '7d': 7, '30d': 30, 'all': 365 };
   const chartDays = daysMap[timeFilter] || 7;
@@ -108,6 +119,22 @@ export function AIStrategyDetailPage() {
     }, [queryClient, strategyId]),
   };
   useStrategySocket(strategyId, wsCallbacks);
+
+  // 日志计算（必须在 early return 之前，避免 hooks 顺序变化）
+  const logs = (() => {
+    if (!logsData) return allLogs;
+    if (logsPage === 1) return logsData.data;
+    const existingIds = new Set(allLogs.map((l) => l.id));
+    const newLogs = logsData.data.filter((l) => !existingIds.has(l.id));
+    return [...allLogs, ...newLogs];
+  })();
+  const canLoadMoreLogs = logsData && logsData.pagination.page < logsData.pagination.totalPages;
+  const logsTotal = logsData?.pagination.total ?? logs.length;
+
+  const handleLoadMoreLogs = useCallback(() => {
+    setAllLogs(logs);
+    setLogsPage((p) => p + 1);
+  }, [logs]);
 
   // Loading state
   if (!strategyId || detailLoading) {
@@ -164,7 +191,9 @@ export function AIStrategyDetailPage() {
       });
       setShowPauseModal(false);
     } catch (error) {
-      console.error('暂停失败:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('暂停失败:', error);
+      }
     }
   };
 
@@ -174,7 +203,9 @@ export function AIStrategyDetailPage() {
       await strategyControl.mutateAsync({ id: strategyId, action: 'stop' });
       setShowStopModal(false);
     } catch (error) {
-      console.error('停止失败:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('停止失败:', error);
+      }
     }
   };
 
@@ -184,67 +215,101 @@ export function AIStrategyDetailPage() {
     try {
       const result = await triggerCycle.mutateAsync(strategyId);
       toast.success(`${t('detail.analyzed', { count: result.cycle.analyzed, executed: result.cycle.executed })} $${result.cycle.totalCost.toFixed(4)}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || err.message || t('common.failed'));
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '') || t('common.failed'));
     }
   };
 
   // 进入编辑模式 — 从当前策略配置填充表单
   const enterEditMode = () => {
-    const cc = (strategy?.coinSourceConfig || {}) as CoinSourceConfig;
-    const rc = (strategy?.riskControlConfig || {}) as RiskControlConfig;
-    const ps = (strategy?.promptSections || {}) as PromptSections;
-    setEditCoinMode(cc.mode || 'static');
-    setEditCoins(cc.coins || []);
-    setEditMaxCoins(cc.maxCoins || 5);
-    setEditExcludedCoins(cc.excludedCoins || []);
-    setEditMaxLeverage(rc.maxLeverage || 3);
-    setEditMaxPositions(rc.maxPositions || 3);
-    setEditMaxDailyDrawdown(rc.maxDailyDrawdown || 100);
-    setEditMaxDailyTrades(rc.maxDailyTrades || 10);
-    setEditCooldownMinutes(rc.cooldownMinutes || 15);
-    setEditAllocatedCapital(rc.allocatedCapital || 10000);
-    setEditPromptRole(ps.role || '');
-    setEditPromptMode(ps.mode || 'conservative');
-    setEditPromptCustom(ps.custom || '');
-    setEditPromptTradingFrequency(ps.tradingFrequency || '');
-    setEditPromptEntryStandards(ps.entryStandards || '');
-    setEditInterval(strategy?.intervalMinutes || 60);
-    setShowEditExcluded(false);
+    if (strategy?.strategyType === 'grid' && strategy.gridConfig) {
+      // Grid 策略加载 gridConfig
+      const gc = strategy.gridConfig as GridConfig;
+      setEditGridInvestment(gc.totalInvestment || 1000);
+      setEditGridLeverage(gc.leverage || 1);
+      setEditGridCount(gc.gridCount || 10);
+      setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
+      setEditGridStopLoss(gc.stopLossPct || 5);
+      setEditGridInterval(strategy?.intervalMinutes || 60);
+    } else {
+      // 非 Grid 策略加载通用配置
+      const cc = (strategy?.coinSourceConfig || {}) as CoinSourceConfig;
+      const rc = (strategy?.riskControlConfig || {}) as RiskControlConfig;
+      const ps = (strategy?.promptSections || {}) as PromptSections;
+      setEditCoinMode(cc.mode || 'static');
+      setEditCoins(cc.coins || []);
+      setEditMaxCoins(cc.maxCoins || 5);
+      setEditExcludedCoins(cc.excludedCoins || []);
+      setEditMaxLeverage(rc.maxLeverage || 3);
+      setEditMaxPositions(rc.maxPositions || 3);
+      setEditMaxDailyDrawdown(rc.maxDailyDrawdown || 100);
+      setEditMaxDailyTrades(rc.maxDailyTrades || 10);
+      setEditCooldownMinutes(rc.cooldownMinutes || 15);
+      setEditAllocatedCapital(rc.allocatedCapital || 10000);
+      setEditPromptRole(ps.role || '');
+      setEditPromptMode(ps.mode || 'conservative');
+      setEditPromptCustom(ps.custom || '');
+      setEditPromptTradingFrequency(ps.tradingFrequency || '');
+      setEditPromptEntryStandards(ps.entryStandards || '');
+      setEditInterval(strategy?.intervalMinutes || 60);
+      setShowEditExcluded(false);
+    }
     setIsEditing(true);
   };
 
   // 保存编辑 — 运行中用 hotUpdate, 停止用 updateStrategy
   const handleSaveEdit = async () => {
     if (!strategyId || !strategy) return;
-    const body = {
-      coinSourceConfig: {
-        mode: editCoinMode,
-        coins: editCoinMode === 'static' || editCoinMode === 'mixed' ? editCoins : undefined,
-        maxCoins: editCoinMode !== 'static' ? editMaxCoins : undefined,
-        excludedCoins: editExcludedCoins.length > 0 ? editExcludedCoins : undefined,
-      },
-      riskControlConfig: {
-        maxLeverage: editMaxLeverage,
-        maxPositions: editMaxPositions,
-        maxDailyDrawdown: editMaxDailyDrawdown,
-        maxDailyTrades: editMaxDailyTrades,
-        cooldownMinutes: editCooldownMinutes,
-        allocatedCapital: editAllocatedCapital,
-        // 保留已有高级参数（不在 UI 暴露）
-        circuitBreaker: (strategy?.riskControlConfig as any)?.circuitBreaker,
-        btcEthMaxPositionValueRatio: (strategy?.riskControlConfig as any)?.btcEthMaxPositionValueRatio,
-        altcoinMaxPositionValueRatio: (strategy?.riskControlConfig as any)?.altcoinMaxPositionValueRatio,
-      },
-      promptSections: {
-        role: editPromptRole || undefined,
-        mode: editPromptMode,
-        custom: editPromptCustom || undefined,
-        tradingFrequency: editPromptTradingFrequency || undefined,
-        entryStandards: editPromptEntryStandards || undefined,
-      },
-      intervalMinutes: editInterval,
-    };
+    let body: Record<string, unknown>;
+    if (strategy.strategyType === 'grid') {
+      // Grid 策略：提交 gridConfig + intervalMinutes
+      body = {
+        gridConfig: {
+          ...(strategy.gridConfig as GridConfig), // 保留 symbol, useAtrBounds 等不可编辑字段
+          totalInvestment: editGridInvestment,
+          leverage: editGridLeverage,
+          gridCount: editGridCount,
+          maxDrawdownPct: editGridMaxDrawdown,
+          stopLossPct: editGridStopLoss,
+        },
+        intervalMinutes: editGridInterval,
+      };
+    } else {
+      // 非 Grid：提交通用 coinSourceConfig + riskControlConfig + promptSections
+      body = {
+        coinSourceConfig: {
+          mode: editCoinMode,
+          coins: editCoinMode === 'static' || editCoinMode === 'mixed' ? editCoins : undefined,
+          maxCoins: editCoinMode !== 'static' ? editMaxCoins : undefined,
+          excludedCoins: editExcludedCoins.length > 0 ? editExcludedCoins : undefined,
+        },
+        riskControlConfig: {
+          maxLeverage: editMaxLeverage,
+          maxPositions: editMaxPositions,
+          maxDailyDrawdown: editMaxDailyDrawdown,
+          maxDailyTrades: editMaxDailyTrades,
+          cooldownMinutes: editCooldownMinutes,
+          allocatedCapital: editAllocatedCapital,
+          circuitBreaker: strategy?.riskControlConfig?.circuitBreaker,
+          btcEthMaxPositionValueRatio: strategy?.riskControlConfig?.btcEthMaxPositionValueRatio,
+          altcoinMaxPositionValueRatio: strategy?.riskControlConfig?.altcoinMaxPositionValueRatio,
+          btcEthMaxLeverage: strategy?.riskControlConfig?.btcEthMaxLeverage,
+          altcoinMaxLeverage: strategy?.riskControlConfig?.altcoinMaxLeverage,
+          minRiskRewardRatio: strategy?.riskControlConfig?.minRiskRewardRatio,
+          minConfidence: strategy?.riskControlConfig?.minConfidence,
+          minPositionSize: strategy?.riskControlConfig?.minPositionSize,
+          maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
+        },
+        promptSections: {
+          role: editPromptRole || undefined,
+          mode: editPromptMode,
+          custom: editPromptCustom || undefined,
+          tradingFrequency: editPromptTradingFrequency || undefined,
+          entryStandards: editPromptEntryStandards || undefined,
+        },
+        intervalMinutes: editInterval,
+      };
+    }
     try {
       if (strategy.isActive) {
         await hotUpdateConfig.mutateAsync({ id: strategyId, body });
@@ -253,8 +318,8 @@ export function AIStrategyDetailPage() {
       }
       toast.success(t('detail.editSave'));
       setIsEditing(false);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || err.message || t('common.failed'));
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '') || t('common.failed'));
     }
   };
 
@@ -280,8 +345,8 @@ export function AIStrategyDetailPage() {
         intervalMinutes: editInterval,
       });
       setShowPromptPreview(true);
-    } catch (err: any) {
-      toast.error(err.message || t('common.failed'));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('common.failed'));
     }
   };
 
@@ -297,8 +362,8 @@ export function AIStrategyDetailPage() {
 
   // Extract data
   const strategy = detail.strategy;
-  const coinSourceConfig = strategy.coinSourceConfig as any;
-  const riskControlConfig = strategy.riskControlConfig as any;
+  const coinSourceConfig = strategy.coinSourceConfig;
+  const riskControlConfig = strategy.riskControlConfig;
   const symbols = coinSourceConfig?.coins || [];
   const maxLeverage = riskControlConfig?.maxLeverage || '—';
   const maxPositions = riskControlConfig?.maxPositions || 3;
@@ -308,7 +373,6 @@ export function AIStrategyDetailPage() {
         : `$${riskControlConfig.maxDailyDrawdown}`)
     : '—';
 
-  const logs = logsData?.data || [];
   const pnlHistory = pnlChart?.dataPoints || [];
 
   // Today stats calculation (approximate from logs)
@@ -318,7 +382,7 @@ export function AIStrategyDetailPage() {
     return logDate.toDateString() === today.toDateString();
   });
   const todayTrades = todayLogs.filter(log => log.executed).length;
-  const todayWins = todayLogs.filter(log => log.executed && log.decision.action.includes('close')).length; // Simplified
+  const todayWins = todayLogs.filter(log => log.executed && log.decision?.action?.includes('close')).length;
   const todayLosses = todayTrades - todayWins;
 
   return (
@@ -380,8 +444,8 @@ export function AIStrategyDetailPage() {
               onClick={async () => {
                 try {
                   await strategyControl.mutateAsync({ id: strategyId, action: 'start' });
-                } catch (err: any) {
-                  toast.error(err?.response?.data?.message || t('common.failed'));
+                } catch (err: unknown) {
+                  toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || t('common.failed'));
                 }
               }}
               disabled={strategyControl.isPending}
@@ -403,7 +467,7 @@ export function AIStrategyDetailPage() {
 
         {/* 统计卡片 */}
         <div className="px-4 pb-4">
-          <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] grid grid-cols-4">
+          <div className="glass-border-glow glass-card grid grid-cols-4">
             <div className="p-2.5 text-center">
               <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.pnl')}</p>
               <p className={`text-sm font-semibold ${Number(strategy.totalPnl) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
@@ -436,7 +500,7 @@ export function AIStrategyDetailPage() {
           {[
             { key: "overview", label: t('detail.overviewTab') },
             { key: "config", label: t('detail.configTab') },
-            { key: "decisions", label: 'AI决策' },
+            { key: "decisions", label: t('wizard.decisionsTab') },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -466,10 +530,11 @@ export function AIStrategyDetailPage() {
           <div className="space-y-4">
             {/* 模式说明 */}
             {(() => {
-              const modeInfo = TRADING_MODE_INFO[strategy.tradingMode];
+              const effectiveMode = strategy.strategyType === 'grid' ? 'grid' : strategy.tradingMode;
+              const modeInfo = getTradingModeInfo(t)[effectiveMode];
               if (!modeInfo) return null;
               return (
-                <div className="mx-4 mt-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+                <div className="mx-4 mt-4 glass-border-glow glass-card p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <span
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
@@ -484,9 +549,33 @@ export function AIStrategyDetailPage() {
                   <p className="text-xs text-[#9090A0] leading-relaxed mb-2">
                     {modeInfo.description}
                   </p>
+                  {/* 模型图标列表（优先 strategy.models，fallback coinSourceConfig.models） */}
+                  {(() => {
+                    const modelList: string[] =
+                      (strategy.models && strategy.models.length > 0 ? strategy.models : null)
+                      || (strategy.coinSourceConfig?.models as string[])
+                      || [];
+                    if (modelList.length === 0) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 mb-2">
+                        {modelList.map((m: string) => {
+                          const info = MODEL_DISPLAY[m];
+                          const logo = info?.logo;
+                          const name = info?.name || m;
+                          return logo ? (
+                            <img key={m} src={logo} alt={name} title={name} className="w-6 h-6 rounded-full object-cover" />
+                          ) : (
+                            <span key={m} title={name} className="w-6 h-6 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[10px] text-[#9090A0]">
+                              {name.charAt(0)}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <div className="pt-2 border-t border-[#1E1E2E]">
                     <p className="text-xs text-[#606070]">
-                      {buildConfigSummary(strategy.tradingMode, strategy)}
+                      {buildConfigSummary(effectiveMode, strategy, t)}
                     </p>
                   </div>
                 </div>
@@ -520,7 +609,7 @@ export function AIStrategyDetailPage() {
             </div>
 
             {/* PnL 曲线图 */}
-            <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+            <div className="mx-4 glass-border-glow glass-card p-4">
               <div className="mb-4">
                 <p className="text-xs text-[#606070] mb-1">{t('detail.pnlChart', { filter: timeFilter })}</p>
                 <p className={`text-2xl font-bold ${(pnlChart?.finalPnl ?? 0) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
@@ -607,7 +696,7 @@ export function AIStrategyDetailPage() {
             </div>
 
             {/* 今日统计 */}
-            <div className="mx-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+            <div className="mx-4 glass-border-glow glass-card p-4">
               <h3 className="text-sm font-semibold mb-3">{t('detail.todayStats')}</h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -643,7 +732,31 @@ export function AIStrategyDetailPage() {
         {/* Tab 2: 最近决策 */}
         {activeTab === "decisions" && (
           <div className="space-y-4">
-            <div className="mx-4 mt-4 bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4">
+            {/* 实时决策流 */}
+            {liveDecisions.length > 0 && (
+              <div className="mx-4 mt-4 bg-[#12121A] rounded-xl border border-[#06B6D4]/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute h-full w-full rounded-full bg-[#06B6D4] opacity-75" />
+                    <span className="relative rounded-full h-2 w-2 bg-[#06B6D4]" />
+                  </span>
+                  <h3 className="text-sm font-semibold">{t('detail.liveDecisions')}</h3>
+                  <span className="text-[10px] text-[#606070]">({liveDecisions.length})</span>
+                </div>
+                <div className="space-y-0">
+                  {liveDecisions.map((d, idx) => (
+                    <LiveDecisionRow
+                      key={`${d.symbol}-${d.timestamp}-${idx}`}
+                      decision={d}
+                      isLast={idx === liveDecisions.length - 1}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 历史决策 */}
+            <div className="mx-4 mt-4 glass-border-glow glass-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold">{t('detail.recentDecisions')}</h3>
                 <button
@@ -657,17 +770,43 @@ export function AIStrategyDetailPage() {
               {logs.length === 0 ? (
                 <p className="text-xs text-[#606070] text-center py-4">{t('detail.noDecisions')}</p>
               ) : (
-                <div className="space-y-0">
-                  {logs.map((log, idx) => (
-                    <RecentDecisionRow
-                      key={log.id}
-                      log={log}
-                      tradingMode={strategy.tradingMode}
-                      onViewVotes={() => setVoteSheetLog(log)}
-                      isLast={idx === logs.length - 1}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="space-y-0">
+                    {logs.map((log, idx) => (
+                      <RecentDecisionRow
+                        key={log.id}
+                        log={log}
+                        tradingMode={strategy.strategyType === 'grid' ? 'grid' : strategy.tradingMode}
+                        onViewVotes={() => setVoteSheetLog(log)}
+                        isLast={idx === logs.length - 1}
+                      />
+                    ))}
+                  </div>
+                  {/* 加载更多 / 已加载全部 */}
+                  <div className="mt-3">
+                    {canLoadMoreLogs ? (
+                      <button
+                        type="button"
+                        onClick={handleLoadMoreLogs}
+                        disabled={logsLoading}
+                        className="w-full py-2.5 text-xs text-[#06B6D4] hover:text-[#0891B2] glass-border-glow glass-card hover:border-[#06B6D4]/30 transition-all flex items-center justify-center gap-2"
+                      >
+                        {logsLoading ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            {t('common.loading')}
+                          </>
+                        ) : (
+                          `${t('common.loadMore')} (${logs.length}/${logsTotal})`
+                        )}
+                      </button>
+                    ) : (
+                      <div className="text-center text-[10px] text-[#606070] py-2">
+                        {t('timeline.loadedAll')} ({logs.length}/{logsTotal})
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -679,24 +818,26 @@ export function AIStrategyDetailPage() {
             {!isEditing ? (
               /* ── 阅读模式 ── */
               <>
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold mb-3">{t('detail.currentConfig')}</h3>
                   <div className="space-y-2.5">
                     <ConfigRow label={t('detail.configStrategyType')} value={strategy.strategyType === 'grid' ? t('detail.gridTrading') : t('detail.normalStrategy')} />
 
                     {/* Grid 策略配置 */}
                     {strategy.strategyType === 'grid' && strategy.gridConfig ? (
-                      <>
-                        <ConfigRow label={t('detail.configTradingPair')} value={(strategy.gridConfig as any)?.symbol || '—'} />
-                        <ConfigRow label={t('detail.configInvestment')} value={`$${(strategy.gridConfig as any)?.totalInvestment?.toLocaleString() || '—'}`} />
-                        <ConfigRow label={t('detail.configLeverage')} value={`${(strategy.gridConfig as any)?.leverage || 1}x`} />
-                        <ConfigRow label={t('detail.configGridCount')} value={(strategy.gridConfig as any)?.gridCount || '—'} />
-                        <ConfigRow label={t('detail.configPriceBounds')} value={(strategy.gridConfig as any)?.useAtrBounds ? `ATR ${(strategy.gridConfig as any)?.atrMultiplier || 2}x` : `${(strategy.gridConfig as any)?.lowerBound} - ${(strategy.gridConfig as any)?.upperBound}`} />
-                        <ConfigRow label={t('detail.configMaxDrawdown')} value={`${(strategy.gridConfig as any)?.maxDrawdownPct || 15}%`} />
-                        <ConfigRow label={t('detail.configStopLoss')} value={`${(strategy.gridConfig as any)?.stopLossPct || 5}%`} />
+                      (() => {
+                        const gc = strategy.gridConfig;
+                        return <>
+                        <ConfigRow label={t('detail.configTradingPair')} value={gc.symbol || '—'} />
+                        <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
+                        <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
+                        <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
+                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds ? `ATR ${gc.atrMultiplier || 2}x` : `${gc.lowerBound} - ${gc.upperBound}`} />
+                        <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
+                        <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         {detail.gridState && (
                           <div className="mt-2 pt-2 border-t border-[#1E1E2E]">
-                            <p className="text-xs text-[#06B6D4] font-medium mb-2">{t('detail.gridStatus')}</p>
+                            <p className="text-xs text-[#10B981] font-medium mb-2">{t('detail.gridStatus')}</p>
                             <ConfigRow label={t('detail.activeOrders')} value={detail.gridState.activeOrders} />
                             <ConfigRow label={t('detail.filledOrders')} value={detail.gridState.filledOrders} />
                             <ConfigRow label={t('detail.gridLevels')} value={detail.gridState.gridLevels} />
@@ -709,10 +850,11 @@ export function AIStrategyDetailPage() {
                             <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? 'Yes' : 'No'} />
                           </div>
                         )}
-                      </>
+                      </>;
+                      })()
                     ) : (
                       <>
-                    <ConfigRow label={t('detail.configTradingMode')} value={strategy.tradingMode === 'solo' ? t('detail.soloMode') : strategy.tradingMode === 'debate' ? t('detail.debateMode') : strategy.tradingMode} />
+                    <ConfigRow label={t('detail.configTradingMode')} value={strategy.tradingMode === 'solo' ? t('detail.soloMode') : strategy.tradingMode === 'debate' ? t('detail.debateMode') : strategy.tradingMode === 'grid' ? t('detail.gridMode') : strategy.tradingMode} />
                     <div>
                       <p className="text-xs text-[#606070] mb-1">{t('detail.coinSource')}</p>
                       <p className="text-sm">{coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'}</p>
@@ -728,11 +870,11 @@ export function AIStrategyDetailPage() {
                     {coinSourceConfig?.maxCoins && (
                       <ConfigRow label={t('detail.maxCoins')} value={coinSourceConfig.maxCoins} />
                     )}
-                    {coinSourceConfig?.excludedCoins?.length > 0 && (
+                    {(coinSourceConfig?.excludedCoins?.length ?? 0) > 0 && (
                       <div>
                         <p className="text-xs text-[#606070] mb-1">{t('detail.excludeCoins')}</p>
                         <div className="flex flex-wrap gap-2">
-                          {coinSourceConfig.excludedCoins.map((s: string) => (
+                          {coinSourceConfig?.excludedCoins?.map((s: string) => (
                             <span key={s} className="px-3 py-1.5 text-xs font-medium bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded-lg">{s.split('/')[0]}</span>
                           ))}
                         </div>
@@ -744,6 +886,22 @@ export function AIStrategyDetailPage() {
                     <ConfigRow label={t('detail.maxDrawdown')} value={maxDrawdown} />
                     <ConfigRow label={t('detail.maxDailyTrades')} value={riskControlConfig?.maxDailyTrades || '—'} />
                     <ConfigRow label={t('detail.cooldownTime')} value={riskControlConfig?.cooldownMinutes ? `${riskControlConfig.cooldownMinutes}min` : '—'} />
+                    {/* NoFx 高级风控字段（有值时显示） */}
+                    {riskControlConfig?.btcEthMaxLeverage && (
+                      <ConfigRow label={t('detail.btcEthMaxLeverage')} value={`${riskControlConfig.btcEthMaxLeverage}x`} />
+                    )}
+                    {riskControlConfig?.altcoinMaxLeverage && (
+                      <ConfigRow label={t('detail.altcoinMaxLeverage')} value={`${riskControlConfig.altcoinMaxLeverage}x`} />
+                    )}
+                    {riskControlConfig?.minRiskRewardRatio && (
+                      <ConfigRow label={t('detail.minRiskRewardRatio')} value={`${riskControlConfig.minRiskRewardRatio}:1`} />
+                    )}
+                    {riskControlConfig?.minConfidence && (
+                      <ConfigRow label={t('detail.minConfidence')} value={`${riskControlConfig.minConfidence}%`} />
+                    )}
+                    {riskControlConfig?.minPositionSize && (
+                      <ConfigRow label={t('detail.minPositionSize')} value={`$${riskControlConfig.minPositionSize}`} />
+                    )}
                       </>
                     )}
                     <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
@@ -752,32 +910,40 @@ export function AIStrategyDetailPage() {
 
                 {/* Prompt 配置 */}
                 {strategy.promptSections && (
-                  <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                  <div className="glass-border-glow glass-card p-4 space-y-3">
                     <h3 className="text-sm font-semibold mb-3">{t('detail.promptConfig')}</h3>
                     <div className="space-y-2.5">
                       <ConfigRow label={t('detail.editTradingStyle')} value={strategy.promptSections.mode === 'aggressive' ? t('detail.promptAggressive') : strategy.promptSections.mode === 'scalping' ? t('detail.promptScalping') : t('detail.promptConservative')} />
                       {strategy.promptSections.role && (
                         <div>
                           <p className="text-xs text-[#606070] mb-1">{t('detail.roleDefinition')}</p>
-                          <p className="text-xs text-[#9090A0] bg-[#0A0A0F] rounded-lg p-2 whitespace-pre-line">{strategy.promptSections.role}</p>
+                          <div className="pl-2 border-l-2 border-[#1E1E2E]">
+                            <TruncatedText text={strategy.promptSections.role} maxLines={3} />
+                          </div>
                         </div>
                       )}
                       {strategy.promptSections.tradingFrequency && (
                         <div>
                           <p className="text-xs text-[#606070] mb-1">{t('detail.tradingFrequency')}</p>
-                          <p className="text-xs text-[#9090A0] bg-[#0A0A0F] rounded-lg p-2 whitespace-pre-line">{strategy.promptSections.tradingFrequency}</p>
+                          <div className="pl-2 border-l-2 border-[#1E1E2E]">
+                            <TruncatedText text={strategy.promptSections.tradingFrequency} maxLines={3} />
+                          </div>
                         </div>
                       )}
                       {strategy.promptSections.entryStandards && (
                         <div>
                           <p className="text-xs text-[#606070] mb-1">{t('detail.entryStandards')}</p>
-                          <p className="text-xs text-[#9090A0] bg-[#0A0A0F] rounded-lg p-2 whitespace-pre-line">{strategy.promptSections.entryStandards}</p>
+                          <div className="pl-2 border-l-2 border-[#1E1E2E]">
+                            <TruncatedText text={strategy.promptSections.entryStandards} maxLines={3} />
+                          </div>
                         </div>
                       )}
                       {strategy.promptSections.custom && (
                         <div>
                           <p className="text-xs text-[#606070] mb-1">{t('detail.decisionProcess')}</p>
-                          <p className="text-xs text-[#9090A0] bg-[#0A0A0F] rounded-lg p-2 whitespace-pre-line">{strategy.promptSections.custom}</p>
+                          <div className="pl-2 border-l-2 border-[#1E1E2E]">
+                            <TruncatedText text={strategy.promptSections.custom} maxLines={3} />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -796,8 +962,44 @@ export function AIStrategyDetailPage() {
             ) : (
               /* ── 编辑模式 ── */
               <>
+                {strategy.strategyType === 'grid' ? (
+                  /* ── Grid 专属编辑 ── */
+                  <>
+                    {/* 卡片 1: 网格参数 */}
+                    <div className="glass-border-glow glass-card p-4 space-y-3">
+                      <h3 className="text-sm font-semibold">{t('detail.editGridParams')}</h3>
+
+                      {/* 交易对（只读） */}
+                      <div className="flex justify-between items-center py-2 border-b border-[#1E1E2E]">
+                        <span className="text-xs text-[#606070]">{t('detail.symbol')}</span>
+                        <span className="text-xs font-mono text-[#F8F8FC]">{(strategy.gridConfig as GridConfig)?.symbol || '-'}</span>
+                      </div>
+
+                      <NumberStepper label={t('detail.editGridInvestment')} value={editGridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setEditGridInvestment} />
+                      <PillGroup label={t('detail.editGridLeverage')} options={[1,2,3,4,5].map(v => ({ value: v, label: `${v}x` }))} value={editGridLeverage} onChange={setEditGridLeverage} />
+                      <NumberStepper label={t('detail.editGridCount')} value={editGridCount} min={5} max={50} onChange={setEditGridCount} />
+
+                      {/* 网格边界（只读） */}
+                      {(strategy.gridConfig as GridConfig)?.upperBound > 0 && (
+                        <div className="flex justify-between items-center py-2 border-t border-[#1E1E2E]">
+                          <span className="text-xs text-[#606070]">{t('detail.editGridBoundsReadonly')}</span>
+                          <span className="text-xs font-mono text-[#9090A0]">${(strategy.gridConfig as GridConfig).lowerBound} ~ ${(strategy.gridConfig as GridConfig).upperBound}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 卡片 2: 风控 + 运行参数 */}
+                    <div className="glass-border-glow glass-card p-4 space-y-3">
+                      <h3 className="text-sm font-semibold">{t('detail.editGridRiskControl')}</h3>
+                      <PillGroup label={t('detail.editGridMaxDrawdown')} options={[5,10,15,20,30,50].map(v => ({ value: v, label: `${v}%` }))} value={editGridMaxDrawdown} onChange={setEditGridMaxDrawdown} />
+                      <PillGroup label={t('detail.editGridStopLoss')} options={[2,3,5,8,10,15,20].map(v => ({ value: v, label: `${v}%` }))} value={editGridStopLoss} onChange={setEditGridStopLoss} />
+                      <PillGroup label={t('detail.editRunInterval')} options={[5,15,30,60,120].map(v => ({ value: v, label: v < 60 ? `${v}min` : `${v/60}h` }))} value={editGridInterval} onChange={setEditGridInterval} />
+                    </div>
+                  </>
+                ) : (
+                <>
                 {/* 卡片 1: 交易币种 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editCoins')}</h3>
                   <p className="text-xs text-[#606070]">{t('detail.editCoinSource')}</p>
                   <div className="grid grid-cols-3 gap-2">
@@ -844,7 +1046,7 @@ export function AIStrategyDetailPage() {
 
                   {/* maxCoins 滑块 (非 static) */}
                   {editCoinMode !== 'static' && (
-                    <SliderField label={t('detail.editMaxCoins')} value={editMaxCoins} min={3} max={15} onChange={setEditMaxCoins} />
+                    <PillGroup label={t('detail.editMaxCoins')} options={[3,5,8,10,15].map(v => ({ value: v, label: String(v) }))} value={editMaxCoins} onChange={setEditMaxCoins} />
                   )}
 
                   {/* 排除币种 */}
@@ -877,18 +1079,18 @@ export function AIStrategyDetailPage() {
                 </div>
 
                 {/* 卡片 2: 风控参数 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editRiskControl')}</h3>
-                  <SliderField label={t('detail.editAllocatedCapital')} value={editAllocatedCapital} min={500} max={100000} step={500} prefix="$" onChange={setEditAllocatedCapital} />
-                  <SliderField label={t('detail.editMaxLeverage')} value={editMaxLeverage} min={1} max={20} suffix="x" onChange={setEditMaxLeverage} />
-                  <SliderField label={t('detail.editMaxPositions')} value={editMaxPositions} min={1} max={10} onChange={setEditMaxPositions} />
-                  <SliderField label={t('detail.editDailyDrawdown')} value={editMaxDailyDrawdown} min={50} max={5000} step={50} prefix="$" onChange={setEditMaxDailyDrawdown} />
-                  <SliderField label={t('detail.editMaxDailyTrades')} value={editMaxDailyTrades} min={1} max={50} onChange={setEditMaxDailyTrades} />
-                  <SliderField label={t('detail.editCooldown')} value={editCooldownMinutes} min={0} max={120} step={5} suffix="min" onChange={setEditCooldownMinutes} />
+                  <NumberStepper label={t('detail.editAllocatedCapital')} value={editAllocatedCapital} min={500} max={100000} step={500} prefix="$" onChange={setEditAllocatedCapital} />
+                  <PillGroup label={t('detail.editMaxLeverage')} options={[1,2,3,5,10,15,20].map(v => ({ value: v, label: `${v}x` }))} value={editMaxLeverage} onChange={setEditMaxLeverage} />
+                  <PillGroup label={t('detail.editMaxPositions')} options={[1,2,3,5,8,10].map(v => ({ value: v, label: String(v) }))} value={editMaxPositions} onChange={setEditMaxPositions} />
+                  <NumberStepper label={t('detail.editDailyDrawdown')} value={editMaxDailyDrawdown} min={50} max={5000} step={50} prefix="$" onChange={setEditMaxDailyDrawdown} />
+                  <PillGroup label={t('detail.editMaxDailyTrades')} options={[3,5,10,20,50].map(v => ({ value: v, label: String(v) }))} value={editMaxDailyTrades} onChange={setEditMaxDailyTrades} />
+                  <PillGroup label={t('detail.editCooldown')} options={[0,5,15,30,60,120].map(v => ({ value: v, label: v === 0 ? '0' : v < 60 ? `${v}min` : `${v/60}h` }))} value={editCooldownMinutes} onChange={setEditCooldownMinutes} />
                 </div>
 
                 {/* 卡片 3: Prompt 配置 (4段) */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editPromptConfig')}</h3>
 
                   <div>
@@ -918,10 +1120,10 @@ export function AIStrategyDetailPage() {
                       value: string; setter: (v: string) => void;
                       defaultVal: string; maxLen: number; placeholder: string;
                     }> = [
-                      { id: 'role', label: `${t('detail.editPromptSection', { n: '1' })}: ${t('detail.roleDefinition')}`, value: editPromptRole, setter: setEditPromptRole, defaultVal: PROMPT_DEFAULTS.role, maxLen: 300, placeholder: PROMPT_DEFAULTS.role },
-                      { id: 'frequency', label: `${t('detail.editPromptSection', { n: '2' })}: ${t('detail.tradingFrequency')}`, value: editPromptTradingFrequency, setter: setEditPromptTradingFrequency, defaultVal: PROMPT_DEFAULTS.tradingFrequency, maxLen: 300, placeholder: PROMPT_DEFAULTS.tradingFrequency },
-                      { id: 'entry', label: `${t('detail.editPromptSection', { n: '3' })}: ${t('detail.entryStandards')}`, value: editPromptEntryStandards, setter: setEditPromptEntryStandards, defaultVal: PROMPT_DEFAULTS.entryStandards, maxLen: 300, placeholder: PROMPT_DEFAULTS.entryStandards },
-                      { id: 'decision', label: `${t('detail.editPromptSection', { n: '4' })}: ${t('detail.decisionProcess')}`, value: editPromptCustom, setter: setEditPromptCustom, defaultVal: PROMPT_DEFAULTS.decisionProcess, maxLen: 500, placeholder: PROMPT_DEFAULTS.decisionProcess },
+                      { id: 'role', label: `${t('detail.editPromptSection', { n: '1' })}: ${t('detail.roleDefinition')}`, value: editPromptRole, setter: setEditPromptRole, defaultVal: t('detail.promptDefaultRole'), maxLen: 300, placeholder: t('detail.promptDefaultRole') },
+                      { id: 'frequency', label: `${t('detail.editPromptSection', { n: '2' })}: ${t('detail.tradingFrequency')}`, value: editPromptTradingFrequency, setter: setEditPromptTradingFrequency, defaultVal: t('detail.promptDefaultFrequency'), maxLen: 300, placeholder: t('detail.promptDefaultFrequency') },
+                      { id: 'entry', label: `${t('detail.editPromptSection', { n: '3' })}: ${t('detail.entryStandards')}`, value: editPromptEntryStandards, setter: setEditPromptEntryStandards, defaultVal: t('detail.promptDefaultEntry'), maxLen: 300, placeholder: t('detail.promptDefaultEntry') },
+                      { id: 'decision', label: `${t('detail.editPromptSection', { n: '4' })}: ${t('detail.decisionProcess')}`, value: editPromptCustom, setter: setEditPromptCustom, defaultVal: t('detail.promptDefaultDecision'), maxLen: 500, placeholder: t('detail.promptDefaultDecision') },
                     ];
                     return promptSections.map((sec) => (
                       <details key={sec.id} className="group">
@@ -965,7 +1167,7 @@ export function AIStrategyDetailPage() {
                 </div>
 
                 {/* 卡片 4: 执行配置 */}
-                <div className="bg-[#12121A] rounded-xl border border-[#1E1E2E] p-4 space-y-3">
+                <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editExecutionConfig')}</h3>
                   <p className="text-xs text-[#606070]">{t('detail.editRunInterval')}</p>
                   <div className="flex gap-2">
@@ -987,6 +1189,8 @@ export function AIStrategyDetailPage() {
                     ))}
                   </div>
                 </div>
+                </>
+                )}
 
                 {/* 提示 */}
                 <p className="text-xs text-[#606070]">
@@ -1131,7 +1335,94 @@ export function AIStrategyDetailPage() {
   );
 }
 
-// 最近决策行
+// 决策状态图标
+function DecisionStatusIcon({ status }: { status?: string }) {
+  switch (status) {
+    case 'executed':
+      return <Check className="w-3.5 h-3.5 text-[#10B981]" />;
+    case 'blocked':
+      return <X className="w-3.5 h-3.5 text-[#F43F5E]" />;
+    case 'failed':
+      return <X className="w-3.5 h-3.5 text-[#EF4444]" />;
+    case 'skipped':
+      return <span className="w-3.5 h-3.5 rounded-full border border-[#606070] inline-block" />;
+    default:
+      return <span className="w-3.5 h-3.5 rounded-full border border-[#606070] inline-block" />;
+  }
+}
+
+// 实时决策行（WS 推送）
+function LiveDecisionRow({ decision: d, isLast }: {
+  decision: StrategyDecisionEvent;
+  isLast: boolean;
+}) {
+  const t = useTranslations('ai');
+  const ac = ACTION_CONFIG[d.action];
+  const actionKeyMap: Record<string, string> = {
+    open_long: 'detail.actionOpenLong', open_short: 'detail.actionOpenShort',
+    close_long: 'detail.actionCloseLong', close_short: 'detail.actionCloseShort',
+    hold: 'detail.actionHold', wait: 'detail.actionWait',
+  };
+  const label = actionKeyMap[d.action] ? t(actionKeyMap[d.action]) : (ac?.label || d.action);
+  const color = ac?.color || '#94A3B8';
+  const bg = ac?.bg || 'rgba(148,163,184,0.15)';
+  const time = d.timestamp
+    ? new Date(d.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '—';
+  const symbolDisplay = d.symbol ? d.symbol.split('/')[0] : '—';
+
+  // 状态标签
+  const statusLabel: Record<string, string> = {
+    executed: t('detail.statusExecuted'),
+    blocked: t('detail.statusBlocked'),
+    skipped: t('detail.statusSkipped'),
+    failed: t('detail.statusFailed'),
+  };
+  const statusColor: Record<string, string> = {
+    executed: '#10B981', blocked: '#F43F5E', skipped: '#606070', failed: '#EF4444',
+  };
+
+  // 第二行详情
+  let detailText = '';
+  if (d.status === 'executed' && d.price) {
+    detailText = `$${d.price.toFixed(2)} × ${d.amount ?? '—'}`;
+    if (d.orderId) detailText += ` | ${d.orderId.slice(0, 8)}…`;
+  } else if (d.status === 'blocked') {
+    detailText = `${d.blockedBy || '—'}: ${d.reasoning || ''}`;
+  } else if (d.status === 'failed') {
+    detailText = d.error || d.reasoning || '';
+  } else if (d.status === 'skipped') {
+    detailText = d.reasoning || d.blockedBy || '';
+  }
+
+  return (
+    <div className={`py-2.5 ${!isLast ? 'border-b border-[#1E1E2E]' : ''}`}>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-[#606070] w-14 flex-shrink-0">{time}</span>
+        <span className="text-xs font-medium text-[#F8F8FC] w-12 flex-shrink-0 truncate">{symbolDisplay}</span>
+        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded" style={{ color, backgroundColor: bg }}>
+          {label}
+        </span>
+        {d.confidence > 0 && <span className="text-[10px] text-[#9090A0]">{Math.round(d.confidence)}%</span>}
+        {d.leverage && <span className="text-[10px] text-[#9090A0]">{d.leverage}x</span>}
+        <div className="flex-1" />
+        {d.status && (
+          <span className="text-[10px] font-medium" style={{ color: statusColor[d.status] || '#606070' }}>
+            {statusLabel[d.status] || d.status}
+          </span>
+        )}
+        <DecisionStatusIcon status={d.status} />
+      </div>
+      {detailText && (
+        <p className="text-[10px] mt-1 ml-14 truncate" style={{ color: statusColor[d.status || ''] || '#606070' }}>
+          {detailText.slice(0, 120)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// 最近决策行（增强版：含状态详情+展开行）
 function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   log: StrategyLog;
   tradingMode: string;
@@ -1139,53 +1430,118 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   isLast: boolean;
 }) {
   const t = useTranslations('ai');
-  const action = log.decision.action;
+  const [expanded, setExpanded] = useState(false);
+  const isGrid = tradingMode === 'grid';
+  // Grid 日志结构: { decisions: [{action, ...}] }, Solo/Debate: { action, confidence, ... }
+  const gridDecisions = isGrid ? (log.decision?.decisions as Array<{ action: string; reasoning?: string }> || []) : [];
+  const action = isGrid
+    ? (gridDecisions[0]?.action || 'grid')
+    : (log.decision?.action || 'hold');
   const ac = ACTION_CONFIG[action];
-  const label = ac?.labelZh || action;
-  const color = ac?.color || '#94A3B8';
-  const bg = ac?.bg || 'rgba(148,163,184,0.15)';
-  const time = new Date(log.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  const executed = log.executed && !log.executionResult?.error;
-  const hasVotes = tradingMode === 'debate' && log.decision.votes && log.decision.votes.length > 0;
+  const actionKeyMap: Record<string, string> = {
+    open_long: 'detail.actionOpenLong', open_short: 'detail.actionOpenShort',
+    close_long: 'detail.actionCloseLong', close_short: 'detail.actionCloseShort',
+    hold: 'detail.actionHold', wait: 'detail.actionWait',
+  };
+  const gridActionLabels: Record<string, string> = {
+    adjust_grid: '调整网格', place_buy_limit: '挂买单', place_sell_limit: '挂卖单',
+    cancel_order: '撤单', rebalance: '再平衡', emergency_exit: '紧急退出', hold: '持有',
+  };
+  const label = isGrid
+    ? (log.decision?.gridSummary || (gridActionLabels[action] || action) + (gridDecisions.length > 1 ? ` +${gridDecisions.length - 1}` : ''))
+    : (actionKeyMap[action] ? t(actionKeyMap[action]) : (ac?.label || action));
+  const color = isGrid ? '#10B981' : (ac?.color || '#94A3B8');
+  const bg = isGrid ? 'rgba(16,185,129,0.15)' : (ac?.bg || 'rgba(148,163,184,0.15)');
+  const time = new Date(log.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const hasVotes = tradingMode === 'debate' && log.decision?.votes && log.decision.votes.length > 0;
+  const symbolDisplay = log.symbol ? log.symbol.split('/')[0] : '—';
+
+  // 从 executionResult 提取状态
+  const er = log.executionResult;
+  const logStatus: string = er?.blocked ? 'blocked'
+    : er?.skipped ? 'skipped'
+    : er?.error && !log.executed ? 'failed'
+    : log.executed ? 'executed'
+    : 'skipped';
+  const statusLabel: Record<string, string> = {
+    executed: t('detail.statusExecuted'), blocked: t('detail.statusBlocked'),
+    skipped: t('detail.statusSkipped'), failed: t('detail.statusFailed'),
+  };
+  const statusColor: Record<string, string> = {
+    executed: '#10B981', blocked: '#F43F5E', skipped: '#606070', failed: '#EF4444',
+  };
+
+  // 详情文本
+  let detailText = '';
+  if (logStatus === 'executed' && er?.orderId) {
+    detailText = `orderId: ${er.orderId}`;
+    if (er.price) detailText = `$${er.price} | ${detailText}`;
+  } else if (logStatus === 'blocked') {
+    detailText = `${er?.blockedBy || '—'}: ${er?.reason || ''}`;
+  } else if (logStatus === 'failed') {
+    detailText = er?.error || er?.reason || '';
+  } else if (logStatus === 'skipped') {
+    detailText = er?.reason || log.decision?.reasoning?.slice(0, 100) || '';
+  }
+  const hasDetail = detailText || log.decision?.reasoning;
 
   return (
-    <div className={`flex items-center gap-3 py-2.5 ${!isLast ? 'border-b border-[#1E1E2E]' : ''}`}>
-      <span className="text-xs text-[#606070] w-10 flex-shrink-0">{time}</span>
-      <span className="text-xs font-medium text-[#F8F8FC] w-12 flex-shrink-0 truncate">
-        {log.symbol.split('/')[0]}
-      </span>
-      <span
-        className="px-1.5 py-0.5 text-[10px] font-medium rounded"
-        style={{ color, backgroundColor: bg }}
+    <div className={`py-2.5 ${!isLast ? 'border-b border-[#1E1E2E]' : ''}`}>
+      <div
+        className="flex items-center gap-3 cursor-pointer"
+        onClick={() => hasDetail && setExpanded(v => !v)}
       >
-        {label}
-      </span>
-      {log.decision.confidence && (
-        <span className="text-[10px] text-[#9090A0]">{Math.round(log.decision.confidence)}%</span>
-      )}
-      <div className="flex-1" />
-      {hasVotes && (
-        <button
-          onClick={onViewVotes}
-          className="px-2 py-0.5 text-[10px] font-medium text-[#8B5CF6] bg-[#8B5CF6]/10 rounded active:opacity-70"
-          title={t('detail.voteDetail', { symbol: log.symbol })} aria-label={t('detail.voteModelVotes')}
-        >
-          {t('detail.voteModelVotes')}
-        </button>
-      )}
-      <span className="flex-shrink-0">
-        {executed ? (
-          <Check className="w-3.5 h-3.5 text-[#10B981]" />
-        ) : (
-          <span className="w-3.5 h-3.5 rounded-full border border-[#606070] inline-block" />
+        <span className="text-xs text-[#606070] w-10 flex-shrink-0">{time}</span>
+        <span className="text-xs font-medium text-[#F8F8FC] w-12 flex-shrink-0 truncate">
+          {symbolDisplay}
+        </span>
+        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded" style={{ color, backgroundColor: bg }}>
+          {label}
+        </span>
+        {log.decision?.confidence && (
+          <span className="text-[10px] text-[#9090A0]">{Math.round(log.decision.confidence)}%</span>
         )}
-      </span>
+        <div className="flex-1" />
+        {hasVotes && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onViewVotes(); }}
+            className="px-2 py-0.5 text-[10px] font-medium text-[#8B5CF6] bg-[#8B5CF6]/10 rounded active:opacity-70"
+            title={t('detail.voteDetail', { symbol: log.symbol })} aria-label={t('detail.voteModelVotes')}
+          >
+            {t('detail.voteModelVotes')}
+          </button>
+        )}
+        <span className="text-[10px] font-medium" style={{ color: statusColor[logStatus] || '#606070' }}>
+          {statusLabel[logStatus] || '—'}
+        </span>
+        <DecisionStatusIcon status={logStatus} />
+      </div>
+      {/* 展开详情 */}
+      {expanded && hasDetail && (
+        <div className="mt-1.5 ml-10 pl-2 border-l-2 border-[#1E1E2E] space-y-1">
+          {detailText && (
+            <p className="text-[10px]" style={{ color: statusColor[logStatus] || '#606070' }}>
+              {detailText.slice(0, 200)}
+            </p>
+          )}
+          {log.decision?.reasoning && (
+            <p className="text-[10px] text-[#9090A0]">
+              {t('detail.decisionReasoning')}: {log.decision.reasoning.slice(0, 200)}
+            </p>
+          )}
+          {log.decision?.leverage && (
+            <p className="text-[10px] text-[#9090A0]">
+              {log.decision.leverage}x | {t('timeline.slLabel')}: {log.decision?.stopLoss ?? '—'} | {t('timeline.tpLabel')}: {log.decision?.takeProfit ?? '—'}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // 只读配置行
-function ConfigRow({ label, value }: { label: string; value: any }) {
+function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-xs text-[#606070] mb-1">{label}</p>
@@ -1194,27 +1550,6 @@ function ConfigRow({ label, value }: { label: string; value: any }) {
   );
 }
 
-// 滑块字段
-function SliderField({ label, value, min, max, step = 1, prefix, suffix, onChange }: {
-  label: string; value: number; min: number; max: number; step?: number;
-  prefix?: string; suffix?: string; onChange: (v: number) => void;
-}) {
-  const display = `${prefix || ''}${step < 1 ? value.toFixed(1) : value}${suffix || ''}`;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label className="text-xs text-[#9090A0]">{label}</label>
-        <span className="text-xs font-semibold">{display}</span>
-      </div>
-      <input
-        type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 bg-[#1E1E2E] rounded-lg appearance-none cursor-pointer"
-        aria-label={label} title={label}
-      />
-    </div>
-  );
-}
 
 // Prompt 预览底部弹窗
 function PromptPreviewSheet({ systemPrompt, sections, estimatedTokens, onClose }: {
@@ -1276,24 +1611,29 @@ function VoteDetailSheet({
   const validVotes = votes.filter((v) => v.success && v.weight > 0);
   const failedVotes = votes.filter((v) => !v.success);
 
-  // 阵营归类
-  const actionToCamp = (action: string): 'BULLISH' | 'BEARISH' | 'NEUTRAL' => {
-    if (action === 'open_long' || action === 'close_short') return 'BULLISH';
-    if (action === 'open_short' || action === 'close_long') return 'BEARISH';
-    return 'NEUTRAL';
-  };
-
   const actionLabel: Record<string, string> = {
     open_long: t('detail.actionOpenLong'), open_short: t('detail.actionOpenShort'),
     close_long: t('detail.actionCloseLong'), close_short: t('detail.actionCloseShort'),
     hold: t('detail.actionHold'), wait: t('detail.actionWait'),
   };
 
-  // 统计各阵营票数
-  const campCounts: Record<string, number> = { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
+  // 统计各 action 票数（action-based，对齐 NoFx）
+  const actionCounts: Record<string, number> = {};
   for (const v of validVotes) {
-    campCounts[actionToCamp(v.action)]++;
+    actionCounts[v.action] = (actionCounts[v.action] || 0) + 1;
   }
+  // 按固定顺序排列
+  const ACTION_ORDER = ['open_long', 'open_short', 'close_long', 'close_short', 'hold', 'wait'];
+  const actionGroups = ACTION_ORDER
+    .filter(a => actionCounts[a] > 0)
+    .map(a => ({ action: a, count: actionCounts[a] }));
+
+  // action → 颜色映射
+  const ACTION_COLORS: Record<string, string> = {
+    open_long: '#10B981', open_short: '#F43F5E',
+    close_long: '#F59E0B', close_short: '#06B6D4',
+    hold: '#64748B', wait: '#94A3B8',
+  };
 
   const toggleVoteExpand = (idx: number) => {
     const newSet = new Set(expandedVotes);
@@ -1303,8 +1643,7 @@ function VoteDetailSheet({
   };
 
   // 共识结果
-  const consensusAction = log.decision.action;
-  const consensusCamp = actionToCamp(consensusAction);
+  const consensusAction = log.decision?.action || 'hold';
 
   // 模型显示名辅助
   const getModelName = (modelId: string) => MODEL_DISPLAY[modelId]?.name || modelId;
@@ -1328,7 +1667,7 @@ function VoteDetailSheet({
                 {t('detail.voteDetail', { symbol: log.symbol })}
               </h2>
               <p className="text-xs text-[#606070] mt-0.5">
-                {new Date(log.createdAt).toLocaleString('zh-CN', {
+                {new Date(log.createdAt).toLocaleString(undefined, {
                   month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
                 })}
               </p>
@@ -1340,18 +1679,28 @@ function VoteDetailSheet({
 
           {/* 动态阶段进度指示 (有风控成本→4阶段, 否则→2阶段 NoFx) */}
           {(() => {
-            const hasRiskDebate = (log as any).riskDebateResult?.totalCost > 0;
-            const stageLabels = hasRiskDebate ? DEBATE_STAGE_LABELS : DEBATE_STAGE_LABELS_V2;
-            const stageEntries = Object.entries(stageLabels);
+            const logRecord = log as unknown as Record<string, unknown>;
+            const riskResult = logRecord.riskDebateResult as { totalCost?: number } | undefined;
+            const hasRiskDebate = (riskResult?.totalCost ?? 0) > 0;
+            const stageEntries = hasRiskDebate
+              ? [
+                  { key: 'invest', label: t('detail.stageInvestDebate') },
+                  { key: 'risk', label: t('detail.stageRiskDebate') },
+                  { key: 'consensus', label: t('detail.stageConsensusVote') },
+                ]
+              : [
+                  { key: 'debate', label: t('detail.stageDebateV2') },
+                  { key: 'voting', label: t('detail.stageVotingV2') },
+                ];
             return (
               <div className="flex items-center gap-1">
-                {stageEntries.map(([key, label], idx) => (
-                  <div key={key} className="flex items-center flex-1">
+                {stageEntries.map((entry, idx) => (
+                  <div key={entry.key} className="flex items-center flex-1">
                     <div className="flex items-center gap-1 flex-1">
                       <div className="w-4 h-4 rounded-full bg-[#10B981] flex items-center justify-center">
                         <Check className="w-2.5 h-2.5 text-[#F8F8FC]" />
                       </div>
-                      <span className="text-[10px] text-[#9090A0] truncate">{label}</span>
+                      <span className="text-[10px] text-[#9090A0] truncate">{entry.label}</span>
                     </div>
                     {idx < stageEntries.length - 1 && <div className="w-3 h-px bg-[#10B981] mx-0.5 flex-shrink-0" />}
                   </div>
@@ -1360,127 +1709,120 @@ function VoteDetailSheet({
             );
           })()}
 
-          {/* 共识结果 */}
-          <div className="bg-[#1E1E2E] border border-[#1E1E2E] rounded-2xl p-4 space-y-2">
+          {/* 综合判断 */}
+          <div className="bg-[#1E1E2E] border border-[#1E1E2E] rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">
-                {t('detail.voteConsensus')}: <span style={{ color: CAMP_COLORS[consensusCamp] || '#94A3B8' }}>
-                  {actionLabel[consensusAction] || consensusAction}
-                </span>
-              </span>
-              {log.decision.confidence && (
-                <span className="text-sm text-[#9090A0]">
-                  {t('detail.voteConfidence')} {Math.round(log.decision.confidence)}%
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span style={{ color: CAMP_COLORS.BULLISH }}>
-                {CAMP_LABELS.BULLISH} {campCounts.BULLISH}{t('common.times')}
-              </span>
-              <span className="text-[#2B3139]">·</span>
-              <span style={{ color: CAMP_COLORS.BEARISH }}>
-                {CAMP_LABELS.BEARISH} {campCounts.BEARISH}{t('common.times')}
-              </span>
-              <span className="text-[#2B3139]">·</span>
-              <span style={{ color: CAMP_COLORS.NEUTRAL }}>
-                {CAMP_LABELS.NEUTRAL} {campCounts.NEUTRAL}{t('common.times')}
+              <span className="text-sm font-medium text-[#9090A0]">{t('detail.consensusResult')}</span>
+              <span
+                className="px-3 py-1 text-sm font-semibold rounded-lg"
+                style={{
+                  color: ACTION_COLORS[consensusAction] || '#94A3B8',
+                  backgroundColor: `${ACTION_COLORS[consensusAction] || '#94A3B8'}20`,
+                }}
+              >
+                {actionLabel[consensusAction] || consensusAction}
               </span>
             </div>
+            {log.decision.confidence != null && log.decision.confidence > 0 && (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-1.5 rounded-full bg-[#12121A] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(log.decision.confidence, 100)}%`,
+                      backgroundColor: ACTION_COLORS[consensusAction] || '#94A3B8',
+                    }}
+                  />
+                </div>
+                <span className="text-sm font-medium text-[#F8F8FC] w-12 text-right">
+                  {Math.round(log.decision.confidence)}%
+                </span>
+              </div>
+            )}
             <p className="text-xs text-[#606070]">
-              {t('detail.voteModelVotes')}: {votes.length} ({validVotes.length})
+              {validVotes.length}/{votes.length} {t('detail.modelsCompleted')}
             </p>
           </div>
 
-          {/* 阵营分布条 */}
-          {validVotes.length > 0 && (
-            <div className="flex h-2 rounded-full overflow-hidden bg-[#1E1E2E]">
-              {campCounts.BULLISH > 0 && (
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${(campCounts.BULLISH / validVotes.length) * 100}%`,
-                    backgroundColor: CAMP_COLORS.BULLISH,
-                  }}
-                />
-              )}
-              {campCounts.NEUTRAL > 0 && (
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${(campCounts.NEUTRAL / validVotes.length) * 100}%`,
-                    backgroundColor: CAMP_COLORS.NEUTRAL,
-                  }}
-                />
-              )}
-              {campCounts.BEARISH > 0 && (
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${(campCounts.BEARISH / validVotes.length) * 100}%`,
-                    backgroundColor: CAMP_COLORS.BEARISH,
-                  }}
-                />
-              )}
-            </div>
-          )}
-
-          {/* 各模型投票 */}
+          {/* 各模型分析 */}
           <div className="space-y-2">
-            <p className="text-xs font-medium text-[#9090A0]">{t('detail.voteModelVotes')}</p>
+            <p className="text-xs font-medium text-[#9090A0]">{t('detail.modelAnalysis')}</p>
 
             {validVotes.map((vote, idx) => {
-              const camp = actionToCamp(vote.action);
               const isExpanded = expandedVotes.has(idx);
               const modelColor = getModelColor(vote.modelId);
+              const isOpen = vote.action === 'open_long' || vote.action === 'open_short';
 
               return (
                 <button
                   key={`${vote.modelId}-${idx}`}
                   type="button"
                   onClick={() => vote.reasoning ? toggleVoteExpand(idx) : undefined}
-                  className="w-full text-left bg-[#1E1E2E] rounded-lg p-3 space-y-1.5"
+                  className="w-full text-left bg-[#1E1E2E] rounded-lg p-3 space-y-2"
                   style={{ borderLeft: `3px solid ${modelColor}`, borderRight: '1px solid #1E1E2E', borderTop: '1px solid #1E1E2E', borderBottom: '1px solid #1E1E2E' }}
                 >
+                  {/* 模型名 + 判断 */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-medium text-[#F8F8FC] truncate">
                         {getModelName(vote.modelId)}
                       </span>
                       {getModelProvider(vote.modelId) && (
-                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-[#1E1E2E] text-[#606070] flex-shrink-0">
+                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-[#12121A] text-[#606070] flex-shrink-0">
                           {getModelProvider(vote.modelId)}
                         </span>
                       )}
                     </div>
                     <span
-                      className="px-2 py-0.5 text-xs font-medium rounded flex-shrink-0"
+                      className="px-2 py-0.5 text-xs font-semibold rounded flex-shrink-0"
                       style={{
-                        color: CAMP_COLORS[camp] || '#94A3B8',
-                        backgroundColor: `${CAMP_COLORS[camp] || '#94A3B8'}15`,
+                        color: ACTION_COLORS[vote.action] || '#94A3B8',
+                        backgroundColor: `${ACTION_COLORS[vote.action] || '#94A3B8'}15`,
                       }}
                     >
                       {actionLabel[vote.action] || vote.action}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-[#9090A0]">
-                    <span>{t('detail.voteConfidence')} {Math.round(vote.confidence)}%</span>
-                    <span className="text-[#2B3139]">·</span>
-                    <span>{t('detail.voteLeverage')} {vote.weight}x</span>
-                    {vote.reasoning && (
-                      <>
-                        <span className="text-[#2B3139]">·</span>
-                        <span className="text-[#06B6D4]">
-                          {isExpanded ? t('detail.collapseReasoning') : t('detail.expandReasoning')}
-                        </span>
-                      </>
-                    )}
+
+                  {/* 置信度条 + 参数 */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1 rounded-full bg-[#12121A] overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(vote.confidence, 100)}%`,
+                          backgroundColor: ACTION_COLORS[vote.action] || '#94A3B8',
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs text-[#9090A0] w-9 text-right">{Math.round(vote.confidence)}%</span>
                   </div>
-                  {/* 可展开的推理 */}
+
+                  {/* 开仓参数（仅开多/开空时显示） */}
+                  {isOpen && (
+                    <div className="flex items-center gap-3 text-xs text-[#606070]">
+                      <span>{t('detail.leverage')} {vote.weight || '-'}x</span>
+                      {(vote as unknown as Record<string, unknown>).positionSizePercent != null && (
+                        <>
+                          <span className="text-[#2B3139]">·</span>
+                          <span>{t('detail.positionSize')} {String((vote as unknown as Record<string, unknown>).positionSizePercent)}%</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 展开分析推理 */}
+                  {vote.reasoning && (
+                    <div className="flex items-center text-xs">
+                      <span className="text-[#06B6D4]">
+                        {isExpanded ? t('detail.collapseReasoning') : t('detail.expandReasoning')}
+                      </span>
+                    </div>
+                  )}
                   {isExpanded && vote.reasoning && (
-                    <p className="text-xs text-[#606070] leading-relaxed whitespace-pre-line pt-2 border-t border-[#1E1E2E]">
-                      {vote.reasoning}
-                    </p>
+                    <div className="pt-2 border-t border-[#1E1E2E]">
+                      <TruncatedText text={vote.reasoning} maxLines={4} />
+                    </div>
                   )}
                 </button>
               );
@@ -1497,7 +1839,7 @@ function VoteDetailSheet({
                     {getModelName(vote.modelId)}
                   </span>
                   <span className="px-2 py-0.5 text-xs font-medium rounded bg-[#F43F5E]/10 text-[#F43F5E]">
-                    {t('common.failed')}
+                    {t('detail.analysisFailed')}
                   </span>
                 </div>
                 {vote.error && (
@@ -1507,13 +1849,13 @@ function VoteDetailSheet({
             ))}
           </div>
 
-          {/* 共识推理 */}
+          {/* 共识推理摘要 */}
           {log.decision.reasoning && (
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-[#9090A0]">{t('detail.voteReasoning')}</p>
-              <p className="text-xs text-[#606070] leading-relaxed whitespace-pre-line bg-[#1E1E2E] border border-[#1E1E2E] rounded-lg p-3">
-                {log.decision.reasoning}
-              </p>
+              <p className="text-xs font-medium text-[#9090A0]">{t('detail.consensusSummary')}</p>
+              <div className="bg-[#1E1E2E] border border-[#1E1E2E] rounded-lg p-3">
+                <TruncatedText text={log.decision.reasoning} maxLines={4} />
+              </div>
             </div>
           )}
 

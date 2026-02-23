@@ -21,7 +21,7 @@ export function AiDashboardCards() {
       {/* Single Card */}
       <button
         onClick={() => router.push('/ai')}
-        className="group glass-card-hd p-4 w-full
+        className="group glass-border-glow glass-card p-4 w-full
                    hover:border-cyan-400/30 hover:scale-[1.02]
                    transition-all duration-200 text-left flex items-center gap-4"
       >

@@ -12,6 +12,7 @@ import { WithdrawService } from './withdraw.service';
 import { SweepService } from './sweep.service';
 import { HdWalletService } from './hd-wallet.service';
 import { AdminGuard } from '../admin/guards/admin.guard';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 
 class ScanBlocksDto {
@@ -33,6 +34,7 @@ class RejectWithdrawDto {
   reason?: string;
 }
 
+@ApiTags('blockchain')
 @Public() // 跳过全局 JwtAuthGuard，由各方法的 AdminGuard 独立鉴权
 @Controller('blockchain')
 export class BlockchainController {

@@ -10,6 +10,7 @@ export interface LLMResponse {
   tokenUsage: number; // 消耗的 Token 数
   latencyMs: number; // 延迟（毫秒）
   cost: number; // 预估成本（美元）
+  thinking?: string; // AI 思考链（DeepSeek-Reasoner reasoning_content / Claude 扩展思考）
 }
 
 /**
@@ -26,7 +27,9 @@ export interface ChatOptions {
 export interface UserApiKeys {
   deepseek?: string;
   openai?: string;
-  openrouter?: string;
+  anthropic?: string; // Claude（直连 Anthropic API）
+  gemini?: string;    // Gemini（直连 Google AI API）
+  openrouter?: string; // 向后兼容旧配置
   qwen?: string;
   grok?: string;
   kimi?: string;
@@ -44,16 +47,18 @@ interface ModelCost {
  * LLM 服务
  *
  * 通过 OpenAI SDK 以统一接口调用多个 LLM 提供商：
- * - DeepSeek
- * - OpenAI
- * - OpenRouter (Claude/Gemini)
+ * - DeepSeek (deepseek-chat, deepseek-reasoner)
+ * - OpenAI (gpt-4o-mini 等)
+ * - Claude (直连 Anthropic API，sk-ant-* 自动检测)
+ * - Gemini (直连 Google AI API，OpenAI 兼容接口)
  * - Qwen (阿里通义千问，DashScope OpenAI 兼容接口)
  * - Grok (xAI，OpenAI 兼容接口)
  * - Kimi (Moonshot AI，OpenAI 兼容接口)
  *
- * 双轨制 Key 解析（优先级从高到低）：
+ * 三轨制 Key 解析（优先级从高到低）：
  * 1. 用户自备 Key（AiConfig.apiKeys 中配置，AES-256-GCM 加密存储）
- * 2. 平台默认 Key（环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY / QWEN_API_KEY / GROK_API_KEY / KIMI_API_KEY）
+ * 2. 平台 DB 配置（PlatformConfig.llm_platform_config）
+ * 3. 环境变量（DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / QWEN_API_KEY / GROK_API_KEY / KIMI_API_KEY）
  *
  * 无论使用哪种 Key，预算系统均生效
  */
@@ -72,12 +77,17 @@ export class LLMService {
   private readonly modelCosts: Record<string, ModelCost> = {
     'deepseek-chat': { input: 0.14, output: 0.28 },
     'gpt-4o-mini': { input: 0.15, output: 0.60 },
-    'claude-3-5-haiku-20241022': { input: 1.0, output: 5.0 },
-    'gemini-2.0-flash-001': { input: 0.10, output: 0.40 },
-    'gemini-2.0-flash': { input: 0.10, output: 0.40 },
-    'qwen-plus': { input: 0.80, output: 2.0 },
-    'grok-3': { input: 3.0, output: 15.0 },
-    'moonshot-v1-8k': { input: 0.17, output: 0.17 },
+    'claude-3-5-haiku-20241022': { input: 1.0, output: 5.0 }, // 旧版兼容
+    'claude-haiku-4-5-20251001': { input: 1.0, output: 5.0 },
+    'gemini-2.0-flash-001': { input: 0.10, output: 0.40 }, // 旧版兼容
+    'gemini-2.0-flash': { input: 0.10, output: 0.40 },     // 旧版兼容
+    'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+    'qwen-plus': { input: 0.80, output: 2.0 },     // 旧版兼容
+    'qwen3.5-plus': { input: 0.80, output: 2.0 },
+    'grok-3': { input: 3.0, output: 15.0 },         // 旧版兼容
+    'grok-4-fast': { input: 0.20, output: 0.50 },
+    'moonshot-v1-8k': { input: 0.17, output: 0.17 }, // 旧版兼容
+    'kimi-k2.5': { input: 0.60, output: 2.50 },
   };
 
   /**
@@ -126,11 +136,12 @@ export class LLMService {
     const providerPrefixes: Array<[string, string]> = [
       ['deepseek', 'deepseek'],
       ['gpt-', 'openai'],
-      ['claude-', 'openrouter'],
-      ['gemini-', 'openrouter'],
-      ['qwen-', 'qwen'],
+      ['claude-', 'anthropic'],
+      ['gemini-', 'gemini'],
+      ['qwen', 'qwen'],           // 匹配 qwen-plus 和 qwen3.5-plus
       ['grok-', 'grok'],
       ['moonshot-', 'kimi'],
+      ['kimi-', 'kimi'],           // 匹配 kimi-k2.5
     ];
     const provider = providerPrefixes.find(([prefix]) => modelId.startsWith(prefix))?.[1];
     if (!provider) return modelId;
@@ -159,11 +170,20 @@ export class LLMService {
       provider = 'openai';
       baseURL = 'https://api.openai.com/v1';
       apiKey = apiKeys.openai || (await this.getPlatformProviderConfig('openai')).apiKey || process.env.OPENAI_API_KEY || '';
-    } else if (modelId.startsWith('claude-') || modelId.startsWith('gemini-')) {
-      provider = 'openrouter';
-      baseURL = 'https://openrouter.ai/api/v1';
-      apiKey = apiKeys.openrouter || (await this.getPlatformProviderConfig('openrouter')).apiKey || process.env.OPENROUTER_API_KEY || '';
-    } else if (modelId.startsWith('qwen-')) {
+    } else if (modelId.startsWith('claude-')) {
+      provider = 'anthropic';
+      baseURL = 'https://openrouter.ai/api/v1'; // sk-ant-* 由 chat() 拦截走直连
+      apiKey = apiKeys.anthropic || apiKeys.openrouter
+        || (await this.getPlatformProviderConfig('anthropic')).apiKey
+        || (await this.getPlatformProviderConfig('openrouter')).apiKey
+        || process.env.ANTHROPIC_API_KEY || process.env.OPENROUTER_API_KEY || '';
+    } else if (modelId.startsWith('gemini-')) {
+      provider = 'gemini';
+      baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+      apiKey = apiKeys.gemini
+        || (await this.getPlatformProviderConfig('gemini')).apiKey
+        || process.env.GEMINI_API_KEY || '';
+    } else if (modelId.startsWith('qwen')) {
       provider = 'qwen';
       baseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
       apiKey = apiKeys.qwen || (await this.getPlatformProviderConfig('qwen')).apiKey || process.env.QWEN_API_KEY || '';
@@ -171,9 +191,9 @@ export class LLMService {
       provider = 'grok';
       baseURL = 'https://api.x.ai/v1';
       apiKey = apiKeys.grok || (await this.getPlatformProviderConfig('grok')).apiKey || process.env.GROK_API_KEY || '';
-    } else if (modelId.startsWith('moonshot-')) {
+    } else if (modelId.startsWith('moonshot-') || modelId.startsWith('kimi-')) {
       provider = 'kimi';
-      baseURL = 'https://api.moonshot.cn/v1';
+      baseURL = modelId.startsWith('kimi-') ? 'https://api.moonshot.ai/v1' : 'https://api.moonshot.cn/v1';
       apiKey = apiKeys.kimi || (await this.getPlatformProviderConfig('kimi')).apiKey || process.env.KIMI_API_KEY || '';
     } else {
       throw new Error(`不支持的模型: ${modelId}`);
@@ -205,11 +225,17 @@ export class LLMService {
       if (apiKeys.openai || process.env.OPENAI_API_KEY) return true;
       const { apiKey } = await this.getPlatformProviderConfig('openai');
       return !!apiKey;
-    } else if (modelId.startsWith('claude-') || modelId.startsWith('gemini-')) {
-      if (apiKeys.openrouter || process.env.OPENROUTER_API_KEY) return true;
-      const { apiKey } = await this.getPlatformProviderConfig('openrouter');
+    } else if (modelId.startsWith('claude-')) {
+      if (apiKeys.anthropic || apiKeys.openrouter || process.env.ANTHROPIC_API_KEY || process.env.OPENROUTER_API_KEY) return true;
+      const anthropicCfg = await this.getPlatformProviderConfig('anthropic');
+      if (anthropicCfg.apiKey) return true;
+      const orCfg = await this.getPlatformProviderConfig('openrouter');
+      return !!orCfg.apiKey;
+    } else if (modelId.startsWith('gemini-')) {
+      if (apiKeys.gemini || process.env.GEMINI_API_KEY) return true;
+      const { apiKey } = await this.getPlatformProviderConfig('gemini');
       return !!apiKey;
-    } else if (modelId.startsWith('qwen-')) {
+    } else if (modelId.startsWith('qwen')) {
       if (apiKeys.qwen || process.env.QWEN_API_KEY) return true;
       const { apiKey } = await this.getPlatformProviderConfig('qwen');
       return !!apiKey;
@@ -217,7 +243,7 @@ export class LLMService {
       if (apiKeys.grok || process.env.GROK_API_KEY) return true;
       const { apiKey } = await this.getPlatformProviderConfig('grok');
       return !!apiKey;
-    } else if (modelId.startsWith('moonshot-')) {
+    } else if (modelId.startsWith('moonshot-') || modelId.startsWith('kimi-')) {
       if (apiKeys.kimi || process.env.KIMI_API_KEY) return true;
       const { apiKey } = await this.getPlatformProviderConfig('kimi');
       return !!apiKey;
@@ -230,12 +256,93 @@ export class LLMService {
     const map: Record<string, string> = {
       deepseek: 'DEEPSEEK_API_KEY',
       openai: 'OPENAI_API_KEY',
+      anthropic: 'ANTHROPIC_API_KEY',
+      gemini: 'GEMINI_API_KEY',
       openrouter: 'OPENROUTER_API_KEY',
       qwen: 'QWEN_API_KEY',
       grok: 'GROK_API_KEY',
       kimi: 'KIMI_API_KEY',
     };
     return map[provider] || `${provider.toUpperCase()}_API_KEY`;
+  }
+
+  /**
+   * 直连 Anthropic API（sk-ant-* Key 专用）
+   * Anthropic 原生 API 格式与 OpenAI 不同，需要单独处理
+   */
+  private async chatAnthropicDirect(
+    modelId: string,
+    systemPrompt: string,
+    userMessage: string,
+    apiKey: string,
+    options?: ChatOptions,
+  ): Promise<LLMResponse> {
+    const startTime = Date.now();
+    const body = {
+      model: modelId,
+      max_tokens: options?.maxTokens ?? 1000,
+      temperature: options?.temperature ?? 0.7,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    };
+
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Anthropic API ${res.status}: ${errText}`);
+        }
+
+        const data = await res.json() as {
+          content?: Array<{ type: string; text?: string; thinking?: string }>;
+          usage?: { input_tokens: number; output_tokens: number };
+        };
+
+        // Claude 扩展思考时 content 数组形如 [{type:'thinking', thinking:'...'}, {type:'text', text:'...'}]
+        const textBlock = data.content?.find(b => b.type === 'text');
+        const thinkingBlock = data.content?.find(b => b.type === 'thinking');
+        const content = textBlock?.text || '';
+        const thinking = thinkingBlock?.thinking;
+        const inputTokens = data.usage?.input_tokens || 0;
+        const outputTokens = data.usage?.output_tokens || 0;
+        const totalTokens = inputTokens + outputTokens;
+        const latencyMs = Date.now() - startTime;
+        const cost = this.calculateCost(modelId, inputTokens, outputTokens);
+
+        this.logger.log(`${modelId} (Anthropic直连) 完成: ${totalTokens} tokens, ${latencyMs}ms, $${cost.toFixed(6)}`);
+        return { content, tokenUsage: totalTokens, latencyMs, cost, ...(thinking && { thinking }) };
+      } catch (err) {
+        lastError = err;
+        this.logger.warn(`Anthropic 直连失败 (尝试 ${attempt}/2): ${err.message}`);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * 解析 Anthropic API Key（三轨制）
+   */
+  private async resolveAnthropicKey(apiKeys: UserApiKeys): Promise<string> {
+    return apiKeys.anthropic
+      || apiKeys.openrouter
+      || (await this.getPlatformProviderConfig('anthropic')).apiKey
+      || (await this.getPlatformProviderConfig('openrouter')).apiKey
+      || process.env.ANTHROPIC_API_KEY
+      || process.env.OPENROUTER_API_KEY
+      || '';
   }
 
   /**
@@ -284,18 +391,35 @@ export class LLMService {
     }
 
     try {
+      // Claude + sk-ant-* Key → 直连 Anthropic API（非 OpenAI 兼容格式）
+      if (effectiveModelId.startsWith('claude-')) {
+        const anthropicKey = await this.resolveAnthropicKey(apiKeys);
+        if (anthropicKey.startsWith('sk-ant-')) {
+          return this.chatAnthropicDirect(effectiveModelId, systemPrompt, userMessage, anthropicKey, options);
+        }
+      }
+
       const client = await this.createClient(effectiveModelId, apiKeys);
 
-      this.logger.log(`调用 ${effectiveModelId}: ${userMessage.slice(0, 50)}...`);
+      // OpenRouter 要求非 OpenAI 模型加 provider 前缀
+      let apiModelId = effectiveModelId;
+      if (effectiveModelId.startsWith('claude-')) {
+        const resolvedKey = await this.resolveAnthropicKey(apiKeys);
+        if (resolvedKey && !resolvedKey.startsWith('sk-ant-')) {
+          apiModelId = `anthropic/${effectiveModelId}`;
+        }
+      }
+
+      this.logger.log(`调用 ${apiModelId}: ${userMessage.slice(0, 50)}...`);
 
       // 调用 API（带重试）
       let response: OpenAI.Chat.Completions.ChatCompletion | undefined;
       let lastError: Error | undefined;
 
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           response = await client.chat.completions.create({
-            model: effectiveModelId,
+            model: apiModelId,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessage },
@@ -307,10 +431,13 @@ export class LLMService {
           break;
         } catch (err) {
           lastError = err;
-          this.logger.warn(`调用失败 (尝试 ${attempt}/2): ${err.message}`);
+          const isRateLimit = err.message?.includes('RATE_LIMIT') || err.message?.includes('429') || err.status === 429;
+          this.logger.warn(`调用失败 (尝试 ${attempt}/3)${isRateLimit ? ' [限流]' : ''}: ${err.message}`);
 
-          if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (attempt < 3) {
+            // 限流错误用更长的退避（3s/6s），普通错误用短退避（1s/2s）
+            const delay = isRateLimit ? attempt * 3000 : attempt * 1000;
+            await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }
       }
@@ -319,7 +446,9 @@ export class LLMService {
         throw lastError;
       }
 
-      const content = response.choices[0]?.message?.content || '';
+      const message = response.choices[0]?.message as any;
+      const content = message?.content || '';
+      const thinking = message?.reasoning_content as string | undefined; // DeepSeek-Reasoner 思考链
       const usage = response.usage;
       const inputTokens = usage?.prompt_tokens || 0;
       const outputTokens = usage?.completion_tokens || 0;
@@ -337,6 +466,7 @@ export class LLMService {
         tokenUsage: totalTokens,
         latencyMs,
         cost,
+        ...(thinking && { thinking }),
       };
     } catch (error) {
       const latencyMs = Date.now() - startTime;

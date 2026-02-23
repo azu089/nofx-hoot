@@ -23,6 +23,8 @@ import { CustomSwitch } from "@/components/custom-switch";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import { localeNames } from "@/i18n/config";
 import { useTheme } from "@/lib/theme";
+import { toast } from "sonner";
+import { api } from "@/lib/api";
 
 // 绑定奖励配置
 const BIND_REWARDS = {
@@ -83,13 +85,26 @@ export function MobileSettingsPage({
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: 调用修改密码 API
-    setIsPasswordModalOpen(false);
-    setOldPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    if (newPassword !== confirmPassword) {
+      toast.error('两次输入的密码不一致');
+      return;
+    }
+    if (!oldPassword || !newPassword) {
+      toast.error('请填写完整信息');
+      return;
+    }
+    try {
+      await api.post('/auth/change-password', { oldPassword, newPassword });
+      toast.success('密码修改成功');
+      setIsPasswordModalOpen(false);
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '密码修改失败，请检查当前密码');
+    }
   };
 
   const handleUsernameSubmit = (e: React.FormEvent) => {

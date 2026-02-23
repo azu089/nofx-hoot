@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { StrategySubscription } from '@prisma/client';
 import {
   PlatformConfig,
   UserRiskConfig,
@@ -288,7 +289,7 @@ export class TradingConfigService implements OnModuleInit {
   private mergeExecutionConfig(
     platform: PlatformConfig,
     user: UserFullConfig,
-    subscription: any,
+    subscription: StrategySubscription,
   ): MergedExecutionConfig {
     return {
       // 平台级限制
@@ -315,9 +316,9 @@ export class TradingConfigService implements OnModuleInit {
       // 订阅级配置
       subscription: {
         apiKeyId: subscription.apiKeyId,
-        tradingType: subscription.tradingType || 'spot',
+        tradingType: (subscription.tradingType || 'spot') as 'spot' | 'futures',
         leverage: subscription.leverage || 1,
-        marginMode: subscription.marginMode || 'cross',
+        marginMode: (subscription.marginMode || 'cross') as 'cross' | 'isolated',
         amountPerTrade: parseFloat(subscription.amountPerTrade.toString()),
         maxPositions: subscription.maxPositions || 3,
         slippageTolerance: parseFloat(

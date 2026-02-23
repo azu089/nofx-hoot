@@ -5,44 +5,27 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { StrategyDetailPage, type StrategyApiData } from '@/components/ui-v3/strategies/strategy-detail-page';
 import { MobileStrategyDetail, type MobileStrategyApiData } from '@/components/ui-v3/mobile/mobile-strategy-detail';
-import { useEffect, useState } from 'react';
 
 export default function StrategyDetailRoutePage() {
   const params = useParams();
   const router = useRouter();
   const strategyId = params.id as string;
-  const [debugInfo, setDebugInfo] = useState<string>('');
-
   // 获取策略详情
-  const { data: strategy, isLoading, error, isFetching, status } = useQuery({
+  const { data: strategy, isLoading, error } = useQuery({
     queryKey: ['strategy', strategyId],
     queryFn: async () => {
-      setDebugInfo(prev => prev + `\n[${new Date().toISOString()}] 开始请求 /strategies/${strategyId}`);
-      try {
-        const response = await api.get<StrategyApiData>(`/strategies/${strategyId}`);
-        setDebugInfo(prev => prev + `\n[${new Date().toISOString()}] 响应: ${JSON.stringify(response).slice(0, 200)}`);
-        return response.data;
-      } catch (e) {
-        setDebugInfo(prev => prev + `\n[${new Date().toISOString()}] 错误: ${e}`);
-        throw e;
-      }
+      const response = await api.get<StrategyApiData>(`/strategies/${strategyId}`);
+      return response.data;
     },
     enabled: !!strategyId,
   });
-
-  useEffect(() => {
-    setDebugInfo(`strategyId: ${strategyId}, status: ${status}, isLoading: ${isLoading}, isFetching: ${isFetching}`);
-  }, [strategyId, status, isLoading, isFetching]);
 
   // 点击"立即使用"跳转到配置页面
   const handleUseStrategy = () => {
     router.push(`/strategies/${strategyId}/config`);
   };
 
-  // 调试模式：显示详细信息
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[策略详情]', { strategyId, status, isLoading, isFetching, strategy, error });
-  }
+  // 调试信息已通过 debugInfo state 存储，无需 console.log
 
   // 如果有错误，显示错误信息
   if (error) {
@@ -51,7 +34,9 @@ export default function StrategyDetailRoutePage() {
         <h1 className="text-xl text-red-500">加载策略失败</h1>
         <p className="mt-4 text-gray-400">错误信息: {error instanceof Error ? error.message : '未知错误'}</p>
         <p className="mt-2 text-gray-500">策略 ID: {strategyId}</p>
-        <pre className="mt-4 p-4 bg-gray-900 rounded text-xs overflow-auto">{debugInfo}</pre>
+        {process.env.NODE_ENV === 'development' && (
+          <pre className="mt-4 p-4 bg-gray-900 rounded text-xs overflow-auto">策略 ID: {strategyId}</pre>
+        )}
         <button
           type="button"
           onClick={() => router.push('/strategies')}

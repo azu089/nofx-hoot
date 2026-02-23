@@ -79,9 +79,8 @@ export class AutoRunProcessor extends WorkerHost {
         `[策略周期] 完成: 策略=${strategyId}, 分析=${result.analyzed}, 执行=${result.executed}, 错误=${result.errors}, 耗时=${result.totalLatencyMs}ms`,
       );
 
-      // 周期完成后 lazy 清理过期日志（保留 30 天）
-      // 参考 NoFx CleanOldRecords — 每次周期调用一次，低频无性能问题
-      await this.strategyEngine.cleanOldLogs(strategyId, 30).catch(() => {});
+      // 周期完成后 lazy 清理过期日志（交易90天 + wait/hold 7天）
+      await this.strategyEngine.cleanOldLogs(strategyId).catch(() => {});
 
       return {
         analyzed: result.analyzed,

@@ -17,8 +17,12 @@ function getEncryptionKey(): Buffer {
     throw new Error('ENCRYPTION_KEY 环境变量未设置');
   }
 
-  // 盐从环境变量读取，向后兼容：如果没设 ENCRYPTION_SALT 则使用旧盐 'salt'
-  const salt = process.env.ENCRYPTION_SALT || 'salt';
+  // 盐从环境变量读取，生产环境强制配置，开发环境向后兼容
+  const envSalt = process.env.ENCRYPTION_SALT;
+  if (!envSalt && process.env.NODE_ENV === 'production') {
+    throw new Error('ENCRYPTION_SALT is required in production');
+  }
+  const salt = envSalt || 'salt';
 
   // 缓存机制：相同密钥+盐不重复计算
   if (cachedKey && cachedSalt === `${key}:${salt}`) {

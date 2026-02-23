@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import {
   ArrowLeft,
   ChevronDown,
@@ -25,27 +26,31 @@ import {
   useStrategyControl,
   useAiConfig,
   useUpdateAiConfig,
+  useAiLocaleSync,
 } from '@/hooks/useAi';
 import type { CreateStrategyBody } from '@/types/ai';
 import { ExchangeKeySelector } from '@/components/ui-v3/ai/exchange-key-selector';
 import { MODEL_DISPLAY, DEFAULT_DEBATE_MODELS } from '@/constants/debate';
 import { useTranslations } from '@/i18n/provider';
+import { useLocale } from 'next-intl';
+import { PillGroup } from '@/components/ui-v3/ai/pill-group';
+import { NumberStepper } from '@/components/ui-v3/ai/number-stepper';
 
 // ═══════════════════ Types ═══════════════════
 
-type ReasoningMode = 'research' | 'solo' | 'debate';
-type StrategyType = 'normal' | 'grid';
+type ReasoningMode = 'research' | 'solo' | 'debate' | 'grid';
 type ResearchDepth = 'quick' | 'standard' | 'deep';
-type CoinSource = '手动选择' | 'AI推荐' | 'OI榜' | 'OI低' | '混合';
-type StrategyStyle = '保守型' | '均衡型' | '激进型';
-type Interval = '15m' | '30m' | '60m' | '4h' | '24h';
+type CoinSource = 'manual' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
+type StrategyStyle = 'conservative' | 'balanced' | 'aggressive';
+type Interval = '3m' | '5m' | '15m' | '30m' | '60m' | '4h' | '24h';
 
 // ═══════════════════ Constants ═══════════════════
 
 const REASONING_OPTION_KEYS: { key: ReasoningMode; icon: typeof Brain }[] = [
-  { key: 'research', icon: FlaskConical },
   { key: 'solo', icon: Zap },
   { key: 'debate', icon: MessageSquare },
+  { key: 'research', icon: FlaskConical },
+  { key: 'grid', icon: Grid3X3 },
 ];
 
 const DEPTH_OPTION_KEYS: { value: ResearchDepth; time: string }[] = [
@@ -66,7 +71,19 @@ const ALL_SYMBOLS = [
 const POPULAR_SYMBOLS = ['BTC', 'ETH', 'SOL', 'BNB'];
 const COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ARB', 'OP'];
 const GRID_COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE'];
-const INTERVALS: Interval[] = ['15m', '30m', '60m', '4h', '24h'];
+/** 按策略性质提供不同间隔选项 */
+const STRATEGY_INTERVALS: Record<ReasoningMode, Interval[]> = {
+  research: ['15m', '30m', '60m', '4h'],
+  solo:     ['3m', '5m', '15m', '30m', '60m'],
+  debate:   ['5m', '15m', '30m', '60m'],
+  grid:     ['3m', '5m', '15m', '30m'],
+};
+const STRATEGY_DEFAULT_INTERVAL: Record<ReasoningMode, Interval> = {
+  research: '30m',
+  solo:     '3m',
+  debate:   '5m',
+  grid:     '3m',
+};
 
 // placeholder 仅做输入引导，不暴露实际 system prompt 内容
 const PROMPT_PLACEHOLDERS = {
@@ -76,10 +93,10 @@ const PROMPT_PLACEHOLDERS = {
   decisionProcess: 'Hoot 已内置：完整多步骤分析框架（趋势→信号→风控→仓位）。\n可追加特殊约束，例如：「BTC 跌破 20 日均线时所有山寨币暂停开仓」',
 };
 
-const STRATEGY_PRESET_KEYS = ['保守型', '均衡型', '激进型'] as const;
+const STRATEGY_PRESET_KEYS = ['conservative', 'balanced', 'aggressive'] as const;
 
 const STRATEGY_PRESETS = {
-  保守型: {
+  conservative: {
     icon: Shield,
     descKey: 'create.conservativeDesc',
     tagKeys: ['create.tagLev1_3', 'create.tagConf80', 'create.tagDD5'],
@@ -93,7 +110,7 @@ const STRATEGY_PRESETS = {
       selectedTimeframes: ['1h', '4h', '1d'], primaryTimeframe: '4h', klineCount: 30,
     },
   },
-  均衡型: {
+  balanced: {
     icon: Scale,
     descKey: 'create.balancedDesc',
     tagKeys: ['create.tagLev3_5', 'create.tagConf70', 'create.tagDD10'],
@@ -107,7 +124,7 @@ const STRATEGY_PRESETS = {
       selectedTimeframes: ['15m', '1h', '4h'], primaryTimeframe: '1h', klineCount: 30,
     },
   },
-  激进型: {
+  aggressive: {
     icon: Flame,
     descKey: 'create.aggressiveDesc',
     tagKeys: ['create.tagLev5_10', 'create.tagConf60', 'create.tagDD15'],
@@ -123,31 +140,7 @@ const STRATEGY_PRESETS = {
   },
 };
 
-type PresetParams = typeof STRATEGY_PRESETS['均衡型']['params'];
-
-// ═══════════════════ Helper Components ═══════════════════
-
-function SliderField({
-  label, value, onChange, min, max, step = 1, unit = '',
-}: {
-  label: string; value: number; onChange: (v: number) => void;
-  min: number; max: number; step?: number; unit?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-xs text-[#9090A0]">{label}</label>
-        <span className="text-sm font-semibold text-[#F8F8FC]">{value}{unit}</span>
-      </div>
-      <input
-        type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-2 bg-[#1E1E2E] rounded-xl appearance-none cursor-pointer slider-thumb"
-        aria-label={label} title={label}
-      />
-    </div>
-  );
-}
+type PresetParams = typeof STRATEGY_PRESETS['balanced']['params'];
 
 // ═══════════════════ Main Component ═══════════════════
 
@@ -159,9 +152,10 @@ export function UnifiedAiCreate() {
   const strategyControl = useStrategyControl();
   const { data: aiConfig } = useAiConfig();
   const updateAiConfig = useUpdateAiConfig();
-  // ── Two-dimensional selection ─────────────────────
-  const [reasoningMode, setReasoningMode] = useState<ReasoningMode>('research');
-  const [strategyType, setStrategyType] = useState<StrategyType>('normal');
+  const appLocale = useLocale();
+  useAiLocaleSync(appLocale);
+  // ── Strategy mode selection ─────────────────────
+  const [reasoningMode, setReasoningMode] = useState<ReasoningMode>('solo');
   const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
   const reasoningRef = useRef<HTMLDivElement>(null);
 
@@ -170,6 +164,8 @@ export function UnifiedAiCreate() {
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
   const [debateModels, setDebateModels] = useState([...DEFAULT_DEBATE_MODELS]);
+  const [showModelListDropdown, setShowModelListDropdown] = useState(false);
+  const modelListRef = useRef<HTMLDivElement>(null);
 
   // ── Core state ─────────────────────────────────
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -178,9 +174,9 @@ export function UnifiedAiCreate() {
   const [strategyName, setStrategyName] = useState('');
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [exchangeApiKeyId, setExchangeApiKeyId] = useState<string | null>(null);
-  const [strategyStyle, setStrategyStyle] = useState<StrategyStyle>('均衡型');
-  const [customParams, setCustomParams] = useState<PresetParams>(STRATEGY_PRESETS['均衡型'].params);
-  const [interval, setInterval_] = useState<Interval>('60m');
+  const [strategyStyle, setStrategyStyle] = useState<StrategyStyle>('balanced');
+  const [customParams, setCustomParams] = useState<PresetParams>(STRATEGY_PRESETS['balanced'].params);
+  const [interval, setInterval_] = useState<Interval>(STRATEGY_DEFAULT_INTERVAL.solo);
 
   // ── Stop conditions ─────────────────────────────
   const [maxCycles, setMaxCycles] = useState(0);
@@ -195,7 +191,7 @@ export function UnifiedAiCreate() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Solo/Debate: coins ─────────────────────────────
-  const [coinSource, setCoinSource] = useState<CoinSource>('手动选择');
+  const [coinSource, setCoinSource] = useState<CoinSource>('manual');
   const [selectedCoins, setSelectedCoins] = useState<string[]>([]);
   const [excludedCoins, setExcludedCoins] = useState<string[]>([]);
   const [maxCoins, setMaxCoins] = useState(5);
@@ -228,23 +224,22 @@ export function UnifiedAiCreate() {
 
   // ── Derived state ─────────────────────────────
   const isResearch = reasoningMode === 'research';
-  const isGrid = strategyType === 'grid' && reasoningMode === 'solo';
+  const isGrid = reasoningMode === 'grid';
   const isDebate = reasoningMode === 'debate';
-  const showStrategyType = reasoningMode === 'solo';
-  const derivedPromptMode = strategyStyle === '激进型' ? 'aggressive' : 'conservative';
+  const derivedPromptMode = strategyStyle === 'aggressive' ? 'aggressive' : 'conservative';
 
   const currentReasoningKey = REASONING_OPTION_KEYS.find((o) => o.key === reasoningMode)!;
 
   // ── 智能默认名称 ─────────────────────────────
   const generateDefaultName = useCallback(
-    (opts: { mode: ReasoningMode; sType: StrategyType; coins: string[]; gSymbol: string; symbol: string }) => {
+    (opts: { mode: ReasoningMode; coins: string[]; gSymbol: string; symbol: string }) => {
       if (opts.mode === 'research') {
         return `${opts.symbol.split('/')[0]} ${t('create.nameResearch')}`;
       }
-      const modeLabel = (opts.sType === 'grid' && opts.mode === 'solo')
+      const modeLabel = opts.mode === 'grid'
         ? t('create.nameGrid')
         : opts.mode === 'debate' ? t('create.nameConsensus') : t('create.nameSolo');
-      const coinNames = (opts.sType === 'grid' && opts.mode === 'solo')
+      const coinNames = opts.mode === 'grid'
         ? opts.gSymbol
         : opts.coins.slice(0, 3).join(' ');
       return coinNames ? `${coinNames} ${modeLabel}` : modeLabel;
@@ -253,17 +248,16 @@ export function UnifiedAiCreate() {
   );
 
   const autoFillName = useCallback(
-    (overrides?: Partial<{ mode: ReasoningMode; sType: StrategyType; coins: string[]; gSymbol: string; symbol: string }>) => {
+    (overrides?: Partial<{ mode: ReasoningMode; coins: string[]; gSymbol: string; symbol: string }>) => {
       if (nameManuallyEdited) return;
       setStrategyName(generateDefaultName({
         mode: overrides?.mode ?? reasoningMode,
-        sType: overrides?.sType ?? strategyType,
         coins: overrides?.coins ?? selectedCoins,
         gSymbol: overrides?.gSymbol ?? gridSymbol,
         symbol: overrides?.symbol ?? selectedSymbol,
       }));
     },
-    [nameManuallyEdited, generateDefaultName, reasoningMode, strategyType, selectedCoins, gridSymbol, selectedSymbol],
+    [nameManuallyEdited, generateDefaultName, reasoningMode, selectedCoins, gridSymbol, selectedSymbol],
   );
 
   // ── Effects ─────────────────────────────
@@ -272,6 +266,7 @@ export function UnifiedAiCreate() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowSymbolDropdown(false);
       if (reasoningRef.current && !reasoningRef.current.contains(e.target as Node)) setShowReasoningDropdown(false);
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelDropdown(false);
+      if (modelListRef.current && !modelListRef.current.contains(e.target as Node)) setShowModelListDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -301,12 +296,18 @@ export function UnifiedAiCreate() {
 
   // ── Handlers ─────────────────────────────
 
+  // 当前模式对应的间隔选项
+  const intervals = STRATEGY_INTERVALS[reasoningMode];
+
   const handleReasoningChange = (mode: ReasoningMode) => {
     setReasoningMode(mode);
-    const sType = mode !== 'solo' ? 'normal' : strategyType;
-    if (mode !== 'solo') setStrategyType('normal');
     setShowReasoningDropdown(false);
-    autoFillName({ mode, sType });
+    autoFillName({ mode });
+    // 切换模式时重置间隔为新模式的默认值（或保留当前值如果新列表中存在）
+    const newIntervals = STRATEGY_INTERVALS[mode];
+    if (!newIntervals.includes(interval)) {
+      setInterval_(STRATEGY_DEFAULT_INTERVAL[mode]);
+    }
   };
 
   const handleStyleChange = (style: StrategyStyle) => {
@@ -346,7 +347,7 @@ export function UnifiedAiCreate() {
   };
 
   const intervalToMinutes = (v: string): number => {
-    const map: Record<string, number> = { '15m': 15, '30m': 30, '60m': 60, '4h': 240, '24h': 1440 };
+    const map: Record<string, number> = { '3m': 3, '5m': 5, '15m': 15, '30m': 30, '60m': 60, '4h': 240, '24h': 1440 };
     return map[v] || 60;
   };
 
@@ -386,15 +387,14 @@ export function UnifiedAiCreate() {
       }
 
       // ===== Strategy (Solo/Debate × Normal/Grid) =====
-      const coinSourceModeMap: Record<string, string> = {
-        '手动选择': 'static', 'AI推荐': 'ai', OI榜: 'oi_top', OI低: 'oi_low', '混合': 'mixed',
+      const coinSourceModeMap: Record<CoinSource, string> = {
+        manual: 'static', ai: 'ai', oi_top: 'oi_top', oi_low: 'oi_low', mixed: 'mixed',
       };
       const coins = selectedCoins.map((c) => `${c}/USDT:USDT`);
       const excluded = excludedCoins.map((c) => `${c}/USDT:USDT`);
 
-      const modeLabel = isDebate ? t('create.nameConsensus') : isGrid ? t('create.nameGrid') : t('create.nameSolo');
       const body: Record<string, any> = {
-        name: strategyName.trim() || generateDefaultName({ mode: reasoningMode, sType: strategyType, coins: selectedCoins, gSymbol: gridSymbol, symbol: selectedSymbol }),
+        name: strategyName.trim() || generateDefaultName({ mode: reasoningMode, coins: selectedCoins, gSymbol: gridSymbol, symbol: selectedSymbol }),
         strategyType: isGrid ? 'grid' : 'normal',
         tradingMode: isDebate ? 'debate' : 'solo',
         coinSourceConfig: isGrid
@@ -420,7 +420,7 @@ export function UnifiedAiCreate() {
           maxLeverage: isGrid ? gridLeverage : customParams.maxLeverage,
           maxPositionPercent: customParams.maxPosition,
           minConfidence: customParams.minConfidence,
-          minRiskReward: customParams.minRR,
+          minRiskRewardRatio: customParams.minRR,
           amountPerTrade: customParams.allocatedCapital * (customParams.maxPerTrade / 100),
           maxDailyDrawdown: customParams.allocatedCapital * (customParams.dailyDrawdown / 100),
           allocatedCapital: customParams.allocatedCapital,
@@ -461,11 +461,13 @@ export function UnifiedAiCreate() {
       if (isDebate) {
         body.debateConfig = { maxRounds: 3, riskRounds: 3, temperature: 0.7 };
         body.coinSourceConfig.models = debateModels;
+        body.models = debateModels;
       }
 
       // Solo/Grid: attach single model
       if (!isDebate) {
         body.coinSourceConfig.models = [selectedModel];
+        body.models = [selectedModel];
       }
 
       // Stop conditions (non-Research)
@@ -482,9 +484,11 @@ export function UnifiedAiCreate() {
       }
 
       router.push(`/ai/strategy/${result.strategy.id}`);
-    } catch (error: any) {
-      console.error('Create failed:', error);
-      toast.error(error.message || t('common.failed'));
+    } catch (error: unknown) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Create failed:', error);
+      }
+      toast.error(error instanceof Error ? error.message : t('common.failed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -492,8 +496,8 @@ export function UnifiedAiCreate() {
 
   // ── Style label helpers ─────────────────────────────
   const getStyleLabel = (style: StrategyStyle): string => {
-    if (style === '保守型') return t('create.conservative');
-    if (style === '激进型') return t('create.aggressive');
+    if (style === 'conservative') return t('create.conservative');
+    if (style === 'aggressive') return t('create.aggressive');
     return t('create.balanced');
   };
 
@@ -501,12 +505,14 @@ export function UnifiedAiCreate() {
   const getModeLabel = (key: ReasoningMode): string => {
     if (key === 'research') return t('modes.research');
     if (key === 'solo') return t('modes.solo');
+    if (key === 'grid') return t('modes.grid');
     return t('modes.debate');
   };
 
   const getModeDesc = (key: ReasoningMode): string => {
     if (key === 'research') return t('modes.researchDesc');
     if (key === 'solo') return t('modes.soloDesc');
+    if (key === 'grid') return t('modes.gridDesc');
     return t('modes.debateDesc');
   };
 
@@ -519,10 +525,10 @@ export function UnifiedAiCreate() {
 
   // ── CoinSource label helpers ─────────────────────────────
   const getCoinSourceLabel = (src: CoinSource): string => {
-    if (src === '手动选择') return t('create.coinSourceManual');
-    if (src === 'AI推荐') return t('create.coinSourceAI');
-    if (src === 'OI榜') return t('create.coinSourceOIHigh');
-    if (src === 'OI低') return t('create.coinSourceOILow');
+    if (src === 'manual') return t('create.coinSourceManual');
+    if (src === 'ai') return t('create.coinSourceAI');
+    if (src === 'oi_top') return t('create.coinSourceOIHigh');
+    if (src === 'oi_low') return t('create.coinSourceOILow');
     return t('create.coinSourceMixed');
   };
 
@@ -616,37 +622,6 @@ export function UnifiedAiCreate() {
               className="w-full px-4 py-3 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] transition-colors"
               aria-label={t('create.strategyName')}
             />
-          </div>
-        )}
-
-        {/* ═══════════ 2. Strategy Type Toggle (Solo only) ═══════════ */}
-        {showStrategyType && (
-          <div className="space-y-2">
-            <label className="block text-sm text-[#9090A0]">{t('create.strategyName')}</label>
-            <div className="flex gap-2">
-              {([
-                { key: 'normal' as StrategyType, label: t('modes.solo'), icon: Zap },
-                { key: 'grid' as StrategyType, label: t('modes.grid'), icon: Grid3X3 },
-              ]).map((opt) => {
-                const sel = strategyType === opt.key;
-                const Icon = opt.icon;
-                return (
-                  <button
-                    key={opt.key} type="button"
-                    onClick={() => { setStrategyType(opt.key); autoFillName({ sType: opt.key }); }}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      sel
-                        ? 'bg-[#06B6D4]/10 border border-[#06B6D4] text-[#06B6D4]'
-                        : 'bg-[#12121A] border border-[#1E1E2E] text-[#9090A0] hover:border-[#06B6D4]/40'
-                    }`}
-                    aria-label={opt.label} title={opt.label}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -758,7 +733,7 @@ export function UnifiedAiCreate() {
             <div className="space-y-3">
               <label className="block text-sm text-[#9090A0]">{t('create.coinSource')}</label>
               <div className="flex flex-wrap gap-2">
-                {(['手动选择', 'AI推荐', 'OI榜', 'OI低', '混合'] as CoinSource[]).map((src) => (
+                {(['manual', 'ai', 'oi_top', 'oi_low', 'mixed'] as CoinSource[]).map((src) => (
                   <button
                     key={src} type="button"
                     onClick={() => setCoinSource(src)}
@@ -771,25 +746,30 @@ export function UnifiedAiCreate() {
                   </button>
                 ))}
               </div>
-              {coinSource !== '手动选择' && (
+              {coinSource !== 'manual' && (
                 <p className="text-xs text-[#606070]">
-                  {coinSource === 'AI推荐' && t('create.coinSourceAIDesc')}
-                  {coinSource === 'OI榜' && t('create.coinSourceOIDesc')}
-                  {coinSource === 'OI低' && t('create.coinSourceOILowDesc')}
-                  {coinSource === '混合' && t('create.coinSourceMixedDesc')}
+                  {coinSource === 'ai' && t('create.coinSourceAIDesc')}
+                  {coinSource === 'oi_top' && t('create.coinSourceOIDesc')}
+                  {coinSource === 'oi_low' && t('create.coinSourceOILowDesc')}
+                  {coinSource === 'mixed' && t('create.coinSourceMixedDesc')}
                 </p>
               )}
             </div>
 
-            {coinSource !== '手动选择' && (
-              <SliderField label={t('create.maxCoins')} value={maxCoins} onChange={setMaxCoins} min={3} max={15} />
+            {coinSource !== 'manual' && (
+              <PillGroup
+                label={t('create.maxCoins')}
+                options={[{value:3,label:'3'},{value:5,label:'5'},{value:8,label:'8'},{value:10,label:'10'},{value:15,label:'15'}]}
+                value={maxCoins}
+                onChange={setMaxCoins}
+              />
             )}
 
-            {(coinSource === '手动选择' || coinSource === '混合') && (
+            {(coinSource === 'manual' || coinSource === 'mixed') && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#9090A0]">
-                    {coinSource === '混合' ? t('create.seedCoins') : t('create.tradingPair')}
+                    {coinSource === 'mixed' ? t('create.seedCoins') : t('create.tradingPair')}
                   </span>
                   <button type="button" onClick={() => setShowCoinPicker(!showCoinPicker)}
                     className="text-xs text-[#06B6D4]"
@@ -899,7 +879,7 @@ export function UnifiedAiCreate() {
         {isGrid && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-1">
-              <Grid3X3 className="w-4 h-4 text-[#06B6D4]" />
+              <Grid3X3 className="w-4 h-4 text-[#10B981]" />
               <h3 className="text-sm font-semibold">{t('create.gridParams')}</h3>
             </div>
 
@@ -909,7 +889,7 @@ export function UnifiedAiCreate() {
                 {GRID_COINS.map((coin) => (
                   <button key={coin} type="button" onClick={() => { setGridSymbol(coin); autoFillName({ gSymbol: coin }); }}
                     className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                      gridSymbol === coin ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]' : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
+                      gridSymbol === coin ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]' : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#10B981]/40'
                     }`}
                     aria-label={`${coin}/USDT`} title={`${coin}/USDT`}
                   >{coin}/USDT</button>
@@ -917,9 +897,14 @@ export function UnifiedAiCreate() {
               </div>
             </div>
 
-            <SliderField label={t('create.gridInvestment')} value={gridInvestment} onChange={setGridInvestment} min={100} max={50000} step={100} unit="$" />
-            <SliderField label={t('create.gridLeverage')} value={gridLeverage} onChange={setGridLeverage} min={1} max={5} unit="x" />
-            <SliderField label={t('create.gridCount')} value={gridCount} onChange={setGridCount} min={5} max={50} />
+            <NumberStepper label={t('create.gridInvestment')} value={gridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setGridInvestment} />
+            <PillGroup
+              label={t('create.gridLeverage')}
+              options={[{value:1,label:'1x'},{value:2,label:'2x'},{value:3,label:'3x'},{value:4,label:'4x'},{value:5,label:'5x'}]}
+              value={gridLeverage}
+              onChange={setGridLeverage}
+            />
+            <NumberStepper label={t('create.gridCount')} value={gridCount} min={5} max={50} onChange={setGridCount} />
 
             <div className="space-y-2">
               <label className="block text-xs text-[#9090A0]">{t('create.gridSpacing')}</label>
@@ -938,7 +923,12 @@ export function UnifiedAiCreate() {
             </div>
 
             {gridBoundsMode === 'auto' ? (
-              <SliderField label={t('create.gridAtrMultiplier')} value={gridAtrMultiplier} onChange={setGridAtrMultiplier} min={1} max={5} step={0.5} unit="x" />
+              <PillGroup
+                label={t('create.gridAtrMultiplier')}
+                options={[{value:1,label:'1x'},{value:1.5,label:'1.5x'},{value:2,label:'2x'},{value:2.5,label:'2.5x'},{value:3,label:'3x'},{value:4,label:'4x'},{value:5,label:'5x'}]}
+                value={gridAtrMultiplier}
+                onChange={setGridAtrMultiplier}
+              />
             ) : (
               <div className="space-y-3">
                 <div className="space-y-1">
@@ -960,8 +950,18 @@ export function UnifiedAiCreate() {
               </div>
             )}
 
-            <SliderField label={t('create.gridMaxDrawdown')} value={gridMaxDrawdown} onChange={setGridMaxDrawdown} min={5} max={50} unit="%" />
-            <SliderField label={t('create.gridStopLossPercent')} value={gridStopLoss} onChange={setGridStopLoss} min={1} max={20} unit="%" />
+            <PillGroup
+              label={t('create.gridMaxDrawdown')}
+              options={[{value:5,label:'5%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'},{value:30,label:'30%'},{value:50,label:'50%'}]}
+              value={gridMaxDrawdown}
+              onChange={setGridMaxDrawdown}
+            />
+            <PillGroup
+              label={t('create.gridStopLossPercent')}
+              options={[{value:2,label:'2%'},{value:3,label:'3%'},{value:5,label:'5%'},{value:8,label:'8%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'}]}
+              value={gridStopLoss}
+              onChange={setGridStopLoss}
+            />
           </div>
         )}
 
@@ -982,7 +982,7 @@ export function UnifiedAiCreate() {
               >
                 <div className="flex items-center gap-3">
                   {MODEL_DISPLAY[selectedModel]?.logo ? (
-                    <img src={MODEL_DISPLAY[selectedModel].logo} alt={MODEL_DISPLAY[selectedModel].name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                    <Image src={MODEL_DISPLAY[selectedModel].logo} alt={MODEL_DISPLAY[selectedModel].name} width={28} height={28} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
                   ) : (
                     <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: MODEL_DISPLAY[selectedModel]?.color ?? '#64748B' }} />
                   )}
@@ -1007,7 +1007,7 @@ export function UnifiedAiCreate() {
                         }`}
                       >
                         {info.logo ? (
-                          <img src={info.logo} alt={info.name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                          <Image src={info.logo} alt={info.name} width={28} height={28} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: info.color }} />
                         )}
@@ -1025,36 +1025,56 @@ export function UnifiedAiCreate() {
           </div>
         )}
 
-        {/* Multi-model checkbox for Debate */}
+        {/* Multi-model dropdown for Debate */}
         {isDebate && (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <label className="block text-sm text-[#9090A0]">{t('create.consensusModels', { count: debateModels.length })}</label>
-            <p className="text-xs text-[#606070]">{t('create.consensusModelsDesc')}</p>
-            <div className="space-y-2">
-              {Object.entries(MODEL_DISPLAY).map(([modelId, info]) => {
-                const sel = debateModels.includes(modelId);
-                return (
-                  <button key={modelId} type="button" onClick={() => handleModelToggle(modelId)}
-                    className={`w-full p-3 rounded-xl text-left transition-all flex items-center gap-3 ${
-                      sel ? 'bg-[#06B6D4]/10 border border-[#06B6D4]' : 'bg-[#12121A] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
-                    }`}
-                    aria-label={t('create.selectModelName', { name: info.name })} title={info.name}
-                  >
-                    <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
-                      {sel && <Check className="w-3 h-3 text-[#F8F8FC]" />}
-                    </div>
-                    {info.logo ? (
-                      <img src={info.logo} alt={info.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ backgroundColor: info.color }} />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-[#F8F8FC] truncate">{info.name}</div>
-                      <div className="text-xs text-[#606070]">{info.provider}</div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="relative" ref={modelListRef}>
+              {/* Trigger — 图标堆叠 + 箭头 */}
+              <button type="button"
+                onClick={() => setShowModelListDropdown(!showModelListDropdown)}
+                className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
+              >
+                <div className="flex items-center -space-x-2">
+                  {debateModels.map((id) => {
+                    const m = MODEL_DISPLAY[id];
+                    return m?.logo
+                      ? <Image key={id} src={m.logo} alt={m.name} width={28} height={28}
+                          className="w-7 h-7 rounded-full border-2 border-[#12121A] object-cover" title={m.name} />
+                      : <div key={id} className="w-7 h-7 rounded-full border-2 border-[#12121A]"
+                          style={{ backgroundColor: m?.color || '#1E1E2E' }} title={m?.name} />;
+                  })}
+                </div>
+                <ChevronDown className={`w-5 h-5 text-[#606070] transition-transform ${showModelListDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown */}
+              {showModelListDropdown && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl shadow-2xl max-h-[320px] overflow-y-auto">
+                  <p className="px-4 pt-3 pb-1 text-xs text-[#606070]">{t('create.consensusModelsDesc')}</p>
+                  {Object.entries(MODEL_DISPLAY).map(([modelId, info]) => {
+                    const sel = debateModels.includes(modelId);
+                    return (
+                      <button key={modelId} type="button" onClick={() => handleModelToggle(modelId)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${
+                          sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'
+                        }`}
+                        title={info.name}
+                      >
+                        <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
+                          {sel && <Check className="w-3 h-3 text-[#F8F8FC]" />}
+                        </div>
+                        <Image src={info.logo} alt={info.name} width={24} height={24}
+                          className="w-6 h-6 rounded-lg object-cover flex-shrink-0" />
+                        <div className="flex-1 min-w-0 text-left">
+                          <span className="text-sm text-[#F8F8FC]">{info.name}</span>
+                          <span className="text-xs text-[#606070] ml-2">{info.provider}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1072,7 +1092,7 @@ export function UnifiedAiCreate() {
         <div className="space-y-3">
           <label className="block text-sm text-[#9090A0]">{t('create.runInterval')}</label>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {INTERVALS.map((iv) => (
+            {intervals.map((iv) => (
               <button key={iv} type="button" onClick={() => setInterval_(iv)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
                   interval === iv ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]' : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
@@ -1127,7 +1147,7 @@ export function UnifiedAiCreate() {
                               <span className="text-xs text-[#606070]">{t(preset.descKey)}</span>
                             </div>
                             {sel && <Check className="w-4 h-4 text-[#06B6D4]" />}
-                            {style === '均衡型' && !sel && <span className="px-2 py-0.5 bg-[#06B6D4]/20 text-[#06B6D4] text-[10px] rounded-full">{t('common.recommended')}</span>}
+                            {style === 'balanced' && !sel && <span className="px-2 py-0.5 bg-[#06B6D4]/20 text-[#06B6D4] text-[10px] rounded-full">{t('common.recommended')}</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {preset.tagKeys.map((tagKey) => (
@@ -1140,32 +1160,44 @@ export function UnifiedAiCreate() {
                   </div>
                 </div>
 
-                {/* Advanced sliders */}
+                {/* Advanced controls */}
                 <div className="space-y-4 pt-2 border-t border-[#1E1E2E]">
                   <p className="text-xs text-[#606070]">{t('create.presetAutoConfig')}</p>
-                  <SliderField label={t('create.allocatedCapital')} value={customParams.allocatedCapital}
+                  <NumberStepper
+                    label={t('create.allocatedCapital')}
+                    value={customParams.allocatedCapital}
+                    min={500} max={100000} step={500} prefix="$"
                     onChange={(v) => setCustomParams((p) => ({ ...p, allocatedCapital: v }))}
-                    min={500} max={100000} step={500} unit="$"
                   />
-                  <SliderField label={t('create.maxLeverage')} value={customParams.maxLeverage}
+                  <PillGroup
+                    label={t('create.maxLeverage')}
+                    options={[{value:1,label:'1x'},{value:2,label:'2x'},{value:3,label:'3x'},{value:5,label:'5x'},{value:10,label:'10x'},{value:15,label:'15x'},{value:20,label:'20x'}]}
+                    value={customParams.maxLeverage}
                     onChange={(v) => setCustomParams((p) => ({ ...p, maxLeverage: v }))}
-                    min={1} max={20} unit="x"
                   />
-                  <SliderField label={t('create.maxPositions')} value={customParams.maxPositions}
+                  <PillGroup
+                    label={t('create.maxPositions')}
+                    options={[{value:1,label:'1'},{value:2,label:'2'},{value:3,label:'3'},{value:5,label:'5'},{value:8,label:'8'},{value:10,label:'10'}]}
+                    value={customParams.maxPositions}
                     onChange={(v) => setCustomParams((p) => ({ ...p, maxPositions: v }))}
-                    min={1} max={10}
                   />
-                  <SliderField label={t('create.dailyDrawdown')} value={customParams.dailyDrawdown}
+                  <PillGroup
+                    label={t('create.dailyDrawdown')}
+                    options={[{value:3,label:'3%'},{value:5,label:'5%'},{value:8,label:'8%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'}]}
+                    value={customParams.dailyDrawdown}
                     onChange={(v) => setCustomParams((p) => ({ ...p, dailyDrawdown: v }))}
-                    min={3} max={20} unit="%"
                   />
-                  <SliderField label={t('create.maxDailyTrades')} value={customParams.maxDailyTrades}
+                  <PillGroup
+                    label={t('create.maxDailyTrades')}
+                    options={[{value:3,label:'3'},{value:5,label:'5'},{value:10,label:'10'},{value:20,label:'20'},{value:50,label:'50'}]}
+                    value={customParams.maxDailyTrades}
                     onChange={(v) => setCustomParams((p) => ({ ...p, maxDailyTrades: v }))}
-                    min={1} max={50}
                   />
-                  <SliderField label={t('create.cooldownMinutes')} value={customParams.cooldownMinutes}
+                  <PillGroup
+                    label={t('create.cooldownMinutes')}
+                    options={[{value:0,label:'0'},{value:5,label:'5m'},{value:15,label:'15m'},{value:30,label:'30m'},{value:60,label:'1h'},{value:120,label:'2h'}]}
+                    value={customParams.cooldownMinutes}
                     onChange={(v) => setCustomParams((p) => ({ ...p, cooldownMinutes: v }))}
-                    min={0} max={120} step={5} unit={t('common.min')}
                   />
                 </div>
               </div>

@@ -206,74 +206,76 @@ export class MembershipService {
       throw new BadRequestException('套餐不存在或已下架');
     }
 
-    // 获取用户余额
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        usdtBalance: true,
-        pointBalance: true,
-        membershipStatus: true,
-        membershipExpireAt: true,
-      },
-    });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
-
     const paymentAsset = dto.paymentAsset || 'USDT';
     const price = new Decimal(plan.price.toString());
-    const balance =
-      paymentAsset === 'USDT'
-        ? new Decimal(user.usdtBalance.toString())
-        : new Decimal(user.pointBalance.toString());
 
-    // 检查余额
-    if (balance.lt(price)) {
-      throw new BadRequestException(
-        `${paymentAsset} 余额不足，需要 ${price.toString()}，当前余额 ${balance.toString()}`,
-      );
-    }
-
-    // 计算有效期
-    const now = new Date();
-    let startAt = now;
-    let isRenewal = false;
-    let renewedFrom: string | null = null;
-
-    // 如果已有会员且未过期，从到期时间开始算
-    if (
-      user.membershipStatus === 'active' &&
-      user.membershipExpireAt &&
-      user.membershipExpireAt > now
-    ) {
-      startAt = user.membershipExpireAt;
-      isRenewal = true;
-
-      // 获取最后一个订阅
-      const lastSub = await this.prisma.membershipSubscription.findFirst({
-        where: { userId, status: 'active' },
-        orderBy: { expireAt: 'desc' },
-      });
-      if (lastSub) {
-        renewedFrom = lastSub.id;
-      }
-    }
-
-    const expireAt = new Date(startAt);
-    expireAt.setDate(expireAt.getDate() + plan.durationDays);
-
-    // 生成唯一订单号
+    // 生成唯一订单号（在事务外生成，避免重复）
     const uniqueOrderId = `membership_${userId}_${Date.now()}_${uuidv4().slice(0, 8)}`;
+    const now = new Date();
 
-    // 使用事务扣费并创建订阅
+    // 使用事务：余额检查 + 扣费 + 创建订阅（防止 TOCTOU 并发问题）
     const subscription = await this.prisma.$transaction(async (tx) => {
-      // 扣除余额
+      // 在事务内读取用户余额，防止并发竞态
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          usdtBalance: true,
+          pointBalance: true,
+          membershipStatus: true,
+          membershipExpireAt: true,
+        },
+      });
+
+      if (!user) {
+        throw new NotFoundException('用户不存在');
+      }
+
+      const balance =
+        paymentAsset === 'USDT'
+          ? new Decimal(user.usdtBalance.toString())
+          : new Decimal(user.pointBalance.toString());
+
+      // 在事务内检查余额，与扣款操作原子不可分割
+      if (balance.lt(price)) {
+        throw new BadRequestException(
+          `${paymentAsset} 余额不足，需要 ${price.toString()}，当前余额 ${balance.toString()}`,
+        );
+      }
+
+      // 计算有效期
+      let startAt = now;
+      let isRenewal = false;
+      let renewedFrom: string | null = null;
+
+      // 如果已有会员且未过期，从到期时间开始算
+      if (
+        user.membershipStatus === 'active' &&
+        user.membershipExpireAt &&
+        user.membershipExpireAt > now
+      ) {
+        startAt = user.membershipExpireAt;
+        isRenewal = true;
+
+        // 获取最后一个订阅（在事务内查询）
+        const lastSub = await tx.membershipSubscription.findFirst({
+          where: { userId, status: 'active' },
+          orderBy: { expireAt: 'desc' },
+        });
+        if (lastSub) {
+          renewedFrom = lastSub.id;
+        }
+      }
+
+      const expireAt = new Date(startAt);
+      expireAt.setDate(expireAt.getDate() + plan.durationDays);
+
+      // 扣除余额（使用精确的 Decimal 字符串，避免浮点精度问题）
+      const newBalance = balance.minus(price);
       const updateData =
         paymentAsset === 'USDT'
-          ? { usdtBalance: { decrement: price.toNumber() } }
-          : { pointBalance: { decrement: price.toNumber() } };
+          ? { usdtBalance: newBalance.toFixed(8) }
+          : { pointBalance: newBalance.toFixed(8) };
 
       await tx.user.update({
         where: { id: userId },

@@ -55,7 +55,7 @@ export interface AiResearchProgressEvent {
   stage: number;
   stageName: string;
   status: 'running' | 'completed' | 'failed';
-  data?: any; // 阶段结果摘要
+  data?: Record<string, unknown>; // 阶段结果摘要
   totalStages: number;
 }
 
@@ -80,6 +80,18 @@ export interface AiDecisionEvent {
   leverage?: number;
   reasoning?: string;
   source: 'ai_research' | 'ai_strategy';
+  // 决策状态 + 执行结果（实时追踪用）
+  status?: 'blocked' | 'skipped' | 'executed' | 'failed';
+  blockedBy?: string;
+  orderId?: string;
+  positionId?: string;
+  price?: number;
+  amount?: number;
+  error?: string;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  positionSizePercent?: number;
+  timestamp?: string;
 }
 
 // DEX 连接状态事件 (Phase 8.1)
@@ -113,7 +125,7 @@ export interface DexTxFailedEvent {
 @WebSocketGateway({
   namespace: '/trading',
   cors: {
-    origin: '*',
+    origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3001'],
     credentials: true,
   },
 })
@@ -205,6 +217,11 @@ export class TradingGateway
 
   // ==================== 服务端推送方法 ====================
 
+  // 通用推送方法：向指定用户发送任意事件
+  sendToUser(userId: string, event: string, data: unknown) {
+    this.server.to(`user:${userId}`).emit(event, data);
+  }
+
   // 广播信号给订阅者
   broadcastSignal(strategyId: string, signal: SignalEvent) {
     this.server.to(`strategy:${strategyId}`).emit('signal', signal);
@@ -234,7 +251,7 @@ export class TradingGateway
       type: string;
       title: string;
       message: string;
-      data?: any;
+      data?: Record<string, unknown>;
     },
   ) {
     this.server.to(`user:${userId}`).emit('notification', notification);
@@ -297,6 +314,27 @@ export class TradingGateway
     this.server.to(`user:${userId}`).emit('ai:budget:alert', alert);
   }
 
+  /**
+   * 推送 AI 执行结果通知
+   * 事件名: ai:execution:result
+   */
+  sendAiExecutionResult(
+    userId: string,
+    result: {
+      strategyId: string;
+      symbol: string;
+      action: string;
+      executed: boolean;
+      orderId?: string;
+      positionId?: string;
+      price?: number;
+      amount?: number;
+      error?: string;
+    },
+  ) {
+    this.server.to(`user:${userId}`).emit('ai:execution:result', result);
+  }
+
   // ==================== Debate 辩论事件推送 (Phase 8.2) ====================
 
   /**
@@ -311,7 +349,7 @@ export class TradingGateway
       symbol: string;
       type: 'stage_start' | 'stage_end' | 'debate_message' | 'risk_verdict' | 'vote' | 'consensus';
       stage?: 'invest_debate' | 'risk_debate' | 'consensus_vote';
-      data?: any;
+      data?: Record<string, unknown>;
     },
   ) {
     this.server.to(`user:${userId}`).emit('ai:debate:event', event);
@@ -361,5 +399,14 @@ export class TradingGateway
   // 获取在线用户数
   getOnlineUserCount(): number {
     return this.userSockets.size;
+  }
+
+  // 获取当前活跃 WebSocket 连接总数（同一用户多个 tab 各算一条）
+  getConnectedCount(): number {
+    let total = 0;
+    for (const sockets of this.userSockets.values()) {
+      total += sockets.size;
+    }
+    return total;
   }
 }

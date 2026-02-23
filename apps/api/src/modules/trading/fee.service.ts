@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { randomBytes } from 'crypto';
 
 // 手续费配置
 export const FEE_CONFIG = {
@@ -8,11 +9,8 @@ export const FEE_CONFIG = {
   FREE_GAS_FEE_RATE: new Decimal('0.25'), // 25% — Free 用户
   PRO_GAS_FEE_RATE: new Decimal('0.20'),  // 20% — Pro 用户
 
-  // 质押用户折扣
-  STAKING_DISCOUNT: {
-    A: new Decimal('0'), // A 类无折扣
-    B: new Decimal('0.10'), // B 类 10% 折扣（实际 18%）
-  },
+  // HOOT 质押用户折扣（有活跃质押即享）
+  STAKING_DISCOUNT: new Decimal('0.10'), // 10% 折扣
 
   // VIP 折扣（按质押金额）
   VIP_DISCOUNT_TIERS: [
@@ -90,13 +88,10 @@ export class FeeService {
     // 获取用户质押信息
     const stakingInfo = await this.getUserStakingInfo(userId);
 
-    // 计算质押折扣
+    // 计算质押折扣（有活跃 HOOT 质押即享折扣）
     let stakingDiscount = new Decimal(0);
     if (stakingInfo.hasActiveStake) {
-      stakingDiscount =
-        stakingInfo.stakeType === 'B'
-          ? FEE_CONFIG.STAKING_DISCOUNT.B
-          : FEE_CONFIG.STAKING_DISCOUNT.A;
+      stakingDiscount = FEE_CONFIG.STAKING_DISCOUNT;
     }
 
     // 计算 VIP 折扣
@@ -190,14 +185,13 @@ export class FeeService {
       // 计算实际扣除金额（不能超过当前余额）
       const actualDeduction = Decimal.min(currentPointBalance, feeAmountDecimal);
 
-      // 扣除点卡余额
+      // 扣除点卡余额（使用精确计算避免浮点误差）
       if (actualDeduction.gt(0)) {
+        const newPointBalance = currentPointBalance.minus(actualDeduction);
         await tx.user.update({
           where: { id: userId },
           data: {
-            pointBalance: {
-              decrement: actualDeduction.toNumber(),
-            },
+            pointBalance: newPointBalance.toFixed(8),
           },
         });
       }
@@ -226,20 +220,18 @@ export class FeeService {
    */
   private async getUserStakingInfo(userId: string): Promise<{
     hasActiveStake: boolean;
-    stakeType: string;
     totalStaked: Decimal;
   }> {
     const stakingRecords = await this.prisma.stakingRecord.findMany({
       where: {
         userId,
-        status: 'active',
+        status: { in: ['active', 'locked'] },
       },
     });
 
     if (stakingRecords.length === 0) {
       return {
         hasActiveStake: false,
-        stakeType: 'A',
         totalStaked: new Decimal(0),
       };
     }
@@ -250,12 +242,8 @@ export class FeeService {
       new Decimal(0),
     );
 
-    // 判断是否有定期质押（lockDays > 0）→ B 类有折扣，A 类(活期)无折扣
-    const hasLocked = stakingRecords.some((r) => r.lockDays > 0);
-
     return {
       hasActiveStake: true,
-      stakeType: hasLocked ? 'B' : 'A',
       totalStaked,
     };
   }
@@ -272,7 +260,7 @@ export class FeeService {
     positionId: string,
   ): string {
     const timestamp = Date.now();
-    const nonce = Math.random().toString(36).substring(2, 10);
+    const nonce = randomBytes(8).toString('hex');
     return `${type}_${userId}_${positionId}_${timestamp}_${nonce}`;
   }
 

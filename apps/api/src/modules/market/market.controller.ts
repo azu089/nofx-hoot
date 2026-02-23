@@ -1,8 +1,10 @@
 import { Controller, Get, Query, Headers } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { MarketService } from './market.service';
 import { DEFAULT_LOCALE } from '../../common/utils/i18n.util';
 
+@ApiTags('market')
 @Controller('market')
 export class MarketController {
   constructor(private marketService: MarketService) {}

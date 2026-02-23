@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type {
@@ -59,6 +60,27 @@ export function useUpdateAiConfig() {
       qc.invalidateQueries({ queryKey: ['ai-budget'] });
     },
   });
+}
+
+/**
+ * AI 输出语言自动跟随 App 语言设置
+ * 在 AI 相关页面调用此 hook，当 App locale 与 AiConfig.locale 不一致时静默同步
+ */
+export function useAiLocaleSync(appLocale: string) {
+  const { data: aiConfig } = useAiConfig();
+  const updateConfig = useUpdateAiConfig();
+  const syncedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!aiConfig || !appLocale) return;
+    if (syncedRef.current === appLocale) return;
+    if (aiConfig.locale === appLocale) {
+      syncedRef.current = appLocale;
+      return;
+    }
+    syncedRef.current = appLocale;
+    updateConfig.mutate({ locale: appLocale });
+  }, [aiConfig, appLocale]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // ========================= 预算 =========================
@@ -288,10 +310,23 @@ export function useDeleteStrategy() {
   });
 }
 
+export function useDeleteResearch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete<{ success: boolean; message: string }>(`/ai/research/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-research-history'] });
+    },
+  });
+}
+
 export function useStrategyControl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, action, body }: { id: string; action: 'start' | 'stop' | 'pause'; body?: any }) => {
+    mutationFn: async ({ id, action, body }: { id: string; action: 'start' | 'stop' | 'pause'; body?: Record<string, unknown> }) => {
       const res = await api.post<StrategyControlResponse>(`/ai/strategy/${id}/${action}`, body || {});
       return res.data;
     },
@@ -327,11 +362,11 @@ export function useStrategyPositions(id: string | undefined, status: string = 'a
   });
 }
 
-export function useStrategyLogs(id: string | undefined, page: number = 1, limit: number = 20) {
+export function useStrategyLogs(id: string | undefined, page: number = 1, limit: number = 20, actionsOnly: boolean = true) {
   return useQuery({
-    queryKey: ['ai-strategy-logs', id, page, limit],
+    queryKey: ['ai-strategy-logs', id, page, limit, actionsOnly],
     queryFn: async () => {
-      const res = await api.get<StrategyLogsResponse>(`/ai/strategy/${id}/logs?page=${page}&limit=${limit}`);
+      const res = await api.get<StrategyLogsResponse>(`/ai/strategy/${id}/logs?page=${page}&limit=${limit}&actionsOnly=${actionsOnly}`);
       return res.data;
     },
     enabled: !!id,
@@ -394,11 +429,11 @@ export function usePreviewPrompt() {
 // ========================= 统一时间线 =========================
 
 /** 跨策略/研究的统一时间线 */
-export function useAiTimeline(page: number = 1, limit: number = 10, type: string = 'all') {
+export function useAiTimeline(page: number = 1, limit: number = 10, type: string = 'all', actionsOnly: boolean = true) {
   return useQuery({
-    queryKey: ['ai-timeline', page, limit, type],
+    queryKey: ['ai-timeline', page, limit, type, actionsOnly],
     queryFn: async () => {
-      const res = await api.get<TimelineResponse>(`/ai/timeline?page=${page}&limit=${limit}&type=${type}`);
+      const res = await api.get<TimelineResponse>(`/ai/timeline?page=${page}&limit=${limit}&type=${type}&actionsOnly=${actionsOnly}`);
       return res.data;
     },
     staleTime: 15000,

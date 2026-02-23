@@ -35,6 +35,7 @@ import {
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMessage } from '../../hooks';
+import { api } from '../../lib/api';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -55,14 +56,16 @@ export const StrategyCreate = () => {
       const values = await form.validateFields();
       setLoading(true);
 
-      console.log('创建策略:', values);
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await api.post('/admin/strategies', {
+        ...values,
+        strategyCode: strategyCode || undefined,
+      });
 
       message.success('策略创建成功！');
       navigate('/strategies');
-    } catch (error) {
-      console.error('创建失败:', error);
-      message.error('请填写完整的策略信息');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '创建失败';
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }

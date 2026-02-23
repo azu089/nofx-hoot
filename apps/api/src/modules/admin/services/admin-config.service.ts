@@ -27,21 +27,27 @@ const ALLOWED_CONFIG_KEYS = [
 // LLM 平台配置默认值（与 llm.service.ts 中的 modelCosts 保持一致）
 const LLM_PLATFORM_CONFIG_DEFAULT = {
   providers: {
-    deepseek:   { apiKey: '', enabled: true,  displayName: 'DeepSeek',                  modelName: '' },
-    openai:     { apiKey: '', enabled: true,  displayName: 'OpenAI',                    modelName: '' },
-    openrouter: { apiKey: '', enabled: true,  displayName: 'OpenRouter (Claude/Gemini)', modelName: '' },
-    qwen:       { apiKey: '', enabled: false, displayName: 'Qwen (通义千问)',             modelName: '' },
-    grok:       { apiKey: '', enabled: false, displayName: 'Grok (xAI)',                modelName: '' },
-    kimi:       { apiKey: '', enabled: false, displayName: 'Kimi (Moonshot)',            modelName: '' },
+    deepseek:   { apiKey: '', enabled: true,  displayName: 'DeepSeek',            modelName: '' },
+    openai:     { apiKey: '', enabled: true,  displayName: 'OpenAI',              modelName: '' },
+    anthropic:  { apiKey: '', enabled: true,  displayName: 'Claude (Anthropic)',  modelName: '' },
+    gemini:     { apiKey: '', enabled: true,  displayName: 'Gemini (Google)',     modelName: '' },
+    qwen:       { apiKey: '', enabled: true,  displayName: 'Qwen (通义千问)',      modelName: '' },
+    grok:       { apiKey: '', enabled: true,  displayName: 'Grok (xAI)',          modelName: '' },
+    kimi:       { apiKey: '', enabled: true,  displayName: 'Kimi (Moonshot)',     modelName: '' },
   },
   modelCosts: {
     'deepseek-chat':             { input: 0.14, output: 0.28 },
     'gpt-4o-mini':               { input: 0.15, output: 0.60 },
     'claude-3-5-haiku-20241022': { input: 1.0,  output: 5.0 },
+    'claude-haiku-4-5-20251001': { input: 1.0,  output: 5.0 },
     'gemini-2.0-flash':          { input: 0.10, output: 0.40 },
+    'gemini-2.5-flash':          { input: 0.30, output: 2.50 },
     'qwen-plus':                 { input: 0.80, output: 2.0 },
+    'qwen3.5-plus':              { input: 0.80, output: 2.0 },
     'grok-3':                    { input: 3.0,  output: 15.0 },
+    'grok-4-fast':               { input: 0.20, output: 0.50 },
     'moonshot-v1-8k':            { input: 0.17, output: 0.17 },
+    'kimi-k2.5':                 { input: 0.60, output: 2.50 },
   },
 };
 
@@ -126,7 +132,14 @@ export class AdminConfigService {
       },
     });
 
-    // 写操作日志
+    // 写操作日志（LLM 配置脱敏，防止 API Key 明文落日志）
+    let logOldValue = oldValue;
+    let logNewValue = valueStr;
+    if (key === 'llm_platform_config') {
+      try { logOldValue = JSON.stringify(this.maskLlmConfig(JSON.parse(oldValue) as Record<string, unknown>)); } catch { /* keep original */ }
+      try { logNewValue = JSON.stringify(this.maskLlmConfig(JSON.parse(valueStr) as Record<string, unknown>)); } catch { /* keep original */ }
+    }
+
     await this.prisma.adminOperationLog.create({
       data: {
         adminId,
@@ -136,8 +149,8 @@ export class AdminConfigService {
         description: `更新配置: ${key}`,
         details: JSON.stringify({
           key,
-          oldValue,
-          newValue: valueStr,
+          oldValue: logOldValue,
+          newValue: logNewValue,
         }),
         ipAddress: '',
       },

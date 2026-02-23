@@ -142,6 +142,10 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
     );
   }
 
+  isReady(): boolean {
+    return this.marketCache.size > 0;
+  }
+
   async dispose(): Promise<void> {
     this.authToken = '';
     this.marketCache.clear();
@@ -543,7 +547,8 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
           closeType: 'unknown' as const,
           exchangeId: t.trade_id,
         }));
-    } catch {
+    } catch (e) {
+      logger.debug(`Lighter adapter non-critical error (getClosedPnl): ${e instanceof Error ? e.message : e}`);
       return [];
     }
   }

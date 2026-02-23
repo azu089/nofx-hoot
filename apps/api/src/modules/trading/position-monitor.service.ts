@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TradingService } from './trading.service';
+import { FeeService } from './fee.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import Decimal from 'decimal.js';
 
@@ -42,6 +43,7 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private prisma: PrismaService,
     private tradingService: TradingService,
+    private feeService: FeeService,
     private notificationsService: NotificationsService,
   ) {}
 
@@ -358,7 +360,7 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
     currentPrice: number,
     pnlPercent: number,
   ) {
-    const { positionId, userId, apiKeyId, symbol, side, amount } = position;
+    const { positionId, userId, apiKeyId, symbol, side, amount, entryPrice } = position;
 
     try {
       // 执行平仓
@@ -370,6 +372,11 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
         side,
       );
 
+      // G4: 计算绝对盈亏 (USDT) — 对齐 ai-execution.service.ts
+      const absolutePnl = side === 'long'
+        ? (currentPrice - entryPrice) * amount
+        : (entryPrice - currentPrice) * amount;
+
       // 更新数据库
       await this.prisma.position.update({
         where: { id: positionId },
@@ -378,7 +385,8 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
           exitPrice: new Decimal(currentPrice).toString(),
           closedAt: new Date(),
           closeReason: reason,
-          realizedPnl: new Decimal(pnlPercent).toString(),
+          realizedPnl: new Decimal(absolutePnl).toFixed(8),
+          pnl: new Decimal(absolutePnl).toFixed(8),
         },
       });
 
@@ -414,6 +422,27 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
         });
       } catch (logErr) {
         this.logger.warn(`写入 TradeExecutionLog 失败: ${(logErr as Error).message}`);
+      }
+
+      // ===== 燃油费扣除（仅盈利时） =====
+      if (absolutePnl > 0) {
+        try {
+          const feeCalc = await this.feeService.calculateFee(userId, new Decimal(absolutePnl).toFixed(8));
+          if (parseFloat(feeCalc.feeAmount) > 0) {
+            const uniqueOrderId = this.feeService.generateUniqueOrderId('GAS_FEE', userId, positionId);
+            await this.feeService.chargeFee({
+              userId,
+              positionId,
+              profit: feeCalc.profit,
+              feeRate: feeCalc.finalFeeRate,
+              feeAmount: feeCalc.feeAmount,
+              uniqueOrderId,
+            });
+            this.logger.log(`燃油费已扣除: ${symbol} 盈利=$${absolutePnl.toFixed(2)} 费用=$${feeCalc.feeAmount} (${reason})`);
+          }
+        } catch (feeErr) {
+          this.logger.error(`燃油费扣除失败(非致命): ${(feeErr as Error).message}`);
+        }
       }
 
       // 移除监控

@@ -99,6 +99,14 @@ export interface LighterTxSigner {
  *
  * 当 lighter-sdk 未安装或未配置时使用。
  * 所有签名操作返回友好错误信息。
+ *
+ * TODO(@lighter-xyz): 等待 lighter-sdk npm 包发布后替换为 NativeLighterSigner
+ * 跟踪: https://github.com/lighter-xyz/lighter-sdk (尚未发布 npm 包)
+ * 当前状态: 市场数据 + 只读账户查询可用, 交易下单/取消/认证不可用
+ * 替换步骤:
+ *   1. `pnpm add lighter-sdk` (待发布)
+ *   2. 实现 NativeLighterSigner (import TxClient from lighter-sdk)
+ *   3. 在 AdapterFactory 中注入 NativeLighterSigner 替换 PlaceholderLighterSigner
  */
 export class PlaceholderLighterSigner implements LighterTxSigner {
   private ready = false;

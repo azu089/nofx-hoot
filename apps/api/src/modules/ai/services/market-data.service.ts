@@ -2,7 +2,13 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as ccxt from 'ccxt';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { translateExchangeError } from '../utils/error-translator';
+import {
+  LongShortRatioData, TakerFlowData, OIHistoryData,
+  StablecoinFlowData, OptionsMarketData, MacroData,
+  LiquidationHeatmapData, ETFFlowData, COTReportData,
+  EnhancedMarketData,
+} from '../types/ai.types';
 
 /**
  * CryptoPanic 新闻条目
@@ -47,11 +53,36 @@ export class MarketDataService implements OnModuleInit {
   private readonly oiCache = new Map<string, { data: any; timestamp: number }>();
   private readonly fundingRateCache = new Map<string, { data: any; timestamp: number }>();
   private readonly newsCache = new Map<string, { data: CryptoNewsItem[]; timestamp: number }>();
+  private readonly orderBookCache = new Map<string, { data: { bids: number[][]; asks: number[][] }; timestamp: number }>();
+
+  // === 增强数据缓存 (Phase 11) ===
+  private readonly longShortCache = new Map<string, { data: LongShortRatioData; timestamp: number }>();
+  private readonly takerFlowCache = new Map<string, { data: TakerFlowData; timestamp: number }>();
+  private readonly oiHistoryCache = new Map<string, { data: OIHistoryData[]; timestamp: number }>();
+  private readonly stablecoinCache = new Map<string, { data: StablecoinFlowData; timestamp: number }>();
+  private readonly optionsCache = new Map<string, { data: OptionsMarketData; timestamp: number }>();
+  private readonly macroCache = new Map<string, { data: MacroData; timestamp: number }>();
+  private readonly liquidationCache = new Map<string, { data: LiquidationHeatmapData; timestamp: number }>();
+  private readonly etfCache = new Map<string, { data: ETFFlowData; timestamp: number }>();
+  private readonly cotCache = new Map<string, { data: COTReportData; timestamp: number }>();
+
   private readonly OHLCV_TTL = 5 * 60 * 1000; // 5 分钟
   private readonly PRICE_TTL = 30 * 1000; // 30 秒
   private readonly OI_TTL = 60 * 1000; // 1 分钟
   private readonly FUNDING_RATE_TTL = 60 * 1000; // 1 分钟
   private readonly NEWS_TTL = 15 * 60 * 1000; // 15 分钟（新闻更新不需要太频繁）
+  private readonly ORDER_BOOK_TTL = 10 * 1000; // 10 秒（订单簿变化快）
+
+  // === 增强数据 TTL ===
+  private readonly LONG_SHORT_TTL = 5 * 60 * 1000;     // 5 分钟
+  private readonly TAKER_FLOW_TTL = 5 * 60 * 1000;     // 5 分钟
+  private readonly OI_HISTORY_TTL = 5 * 60 * 1000;     // 5 分钟
+  private readonly STABLECOIN_TTL = 30 * 60 * 1000;    // 30 分钟
+  private readonly OPTIONS_TTL = 10 * 60 * 1000;       // 10 分钟
+  private readonly MACRO_TTL = 6 * 60 * 60 * 1000;     // 6 小时
+  private readonly LIQUIDATION_TTL = 5 * 60 * 1000;    // 5 分钟
+  private readonly ETF_TTL = 60 * 60 * 1000;           // 1 小时
+  private readonly COT_TTL = 24 * 60 * 60 * 1000;      // 24 小时
 
   constructor() {
     // 使用 binanceusdm 期货专用类（使用 fapi.binance.com 域名，避免 api.binance.com 被墙）
@@ -122,17 +153,20 @@ export class MarketDataService implements OnModuleInit {
       }
     }
 
-    // 策略 2: 用 curl 下载（curl 通过 TUN 代理更稳定）
-    this.logger.log('尝试使用 curl 下载 exchangeInfo...');
+    // 策略 2: 用 fetch 下载 exchangeInfo
+    this.logger.log('尝试下载 exchangeInfo...');
     try {
-      execSync(
-        `curl -s --connect-timeout 15 --max-time 120 -o ${this.EXCHANGE_INFO_CACHE} https://fapi.binance.com/fapi/v1/exchangeInfo`,
-        { timeout: 130000 },
-      );
-      const loaded = this.loadFromCacheFile();
-      if (loaded) return;
+      const resp = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo', {
+        signal: AbortSignal.timeout(120000),
+      });
+      if (resp.ok) {
+        const text = await resp.text();
+        fs.writeFileSync(this.EXCHANGE_INFO_CACHE, text);
+        const loaded = this.loadFromCacheFile();
+        if (loaded) return;
+      }
     } catch (e) {
-      this.logger.warn(`curl 下载失败: ${e.message}`);
+      this.logger.warn(`fetch 下载失败: ${(e as Error).message}`);
     }
 
     // 策略 3: 从本地缓存文件加载（可能是旧的但仍可用）
@@ -281,7 +315,7 @@ export class MarketDataService implements OnModuleInit {
         return cached.data;
       }
 
-      throw new Error(`获取市场数据失败: ${error.message}`);
+      throw new Error(`获取市场数据失败: ${translateExchangeError(error.message)}`);
     }
   }
 
@@ -326,7 +360,7 @@ export class MarketDataService implements OnModuleInit {
         return cached.price;
       }
 
-      throw new Error(`获取价格失败: ${error.message}`);
+      throw new Error(`获取价格失败: ${translateExchangeError(error.message)}`);
     }
   }
 
@@ -338,6 +372,16 @@ export class MarketDataService implements OnModuleInit {
     this.priceCache.clear();
     this.oiCache.clear();
     this.fundingRateCache.clear();
+    this.orderBookCache.clear();
+    this.longShortCache.clear();
+    this.takerFlowCache.clear();
+    this.oiHistoryCache.clear();
+    this.stablecoinCache.clear();
+    this.optionsCache.clear();
+    this.macroCache.clear();
+    this.liquidationCache.clear();
+    this.etfCache.clear();
+    this.cotCache.clear();
     this.logger.log('缓存已清除');
   }
 
@@ -346,7 +390,7 @@ export class MarketDataService implements OnModuleInit {
    * @param symbol 交易对，如 'BTC/USDT:USDT'
    * @returns { openInterest: number, timestamp: number } | null
    */
-  async fetchOpenInterest(symbol: string): Promise<{ openInterest: number; timestamp: number } | null> {
+  async fetchOpenInterest(symbol: string): Promise<{ openInterest: number; openInterestValue: number; timestamp: number } | null> {
     const cacheKey = `oi_${symbol}`;
     const cached = this.oiCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.OI_TTL) {
@@ -363,6 +407,7 @@ export class MarketDataService implements OnModuleInit {
       );
       const result = {
         openInterest: (oi as any).openInterestAmount || (oi as any).openInterestValue || 0,
+        openInterestValue: (oi as any).openInterestValue || 0, // R1: USD 计价，用于流动性过滤
         timestamp: Date.now(),
       };
 
@@ -410,6 +455,90 @@ export class MarketDataService implements OnModuleInit {
       if (cached) return cached.data;
       return null;
     }
+  }
+
+  // ========================= 订单簿 & 滑点预估 =========================
+
+  /**
+   * 获取订单簿（缓存 10 秒）
+   * @param symbol 交易对，如 'BTC/USDT:USDT'
+   * @param depth 深度层数，默认 20
+   */
+  async fetchOrderBook(
+    symbol: string,
+    depth: number = 20,
+  ): Promise<{ bids: number[][]; asks: number[][] }> {
+    const cacheKey = `ob:${symbol}:${depth}`;
+    const cached = this.orderBookCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.ORDER_BOOK_TTL) {
+      return cached.data;
+    }
+
+    try {
+      await this.ensureMarketsLoaded();
+      const book = await this.retryCall<ccxt.OrderBook>(
+        `fetchOrderBook(${symbol})`,
+        () => this.exchange.fetchOrderBook(symbol, depth),
+      );
+      const data = {
+        bids: (book.bids || []).map((b: any) => [Number(b[0]), Number(b[1])]),
+        asks: (book.asks || []).map((a: any) => [Number(a[0]), Number(a[1])]),
+      };
+
+      this.orderBookCache.set(cacheKey, { data, timestamp: Date.now() });
+      return data;
+    } catch (error) {
+      this.logger.warn(`[订单簿] 获取失败: ${symbol} - ${error.message}`);
+      if (cached) return cached.data;
+      throw new Error(`获取订单簿失败: ${translateExchangeError(error.message)}`);
+    }
+  }
+
+  /**
+   * 预估大单滑点
+   * 遍历订单簿逐层吃单，计算加权平均成交价与中间价的偏差
+   *
+   * @param orderBook 订单簿数据
+   * @param side 'buy' 吃 asks，'sell' 吃 bids
+   * @param sizeUSD 订单金额（USDT）
+   * @returns { estimatedSlippage: 百分比, canFill: 是否有足够流动性, depthUSD: 盘口总深度 }
+   */
+  estimateSlippage(
+    orderBook: { bids: number[][]; asks: number[][] },
+    side: 'buy' | 'sell',
+    sizeUSD: number,
+  ): { estimatedSlippage: number; canFill: boolean; depthUSD: number } {
+    const levels = side === 'buy' ? orderBook.asks : orderBook.bids;
+    if (!levels || levels.length === 0) {
+      return { estimatedSlippage: 0, canFill: false, depthUSD: 0 };
+    }
+
+    const bestBid = orderBook.bids[0]?.[0] || 0;
+    const bestAsk = orderBook.asks[0]?.[0] || 0;
+    const midPrice = bestBid && bestAsk ? (bestBid + bestAsk) / 2 : levels[0][0];
+
+    let remaining = sizeUSD;
+    let totalCost = 0;
+    let totalQty = 0;
+
+    for (const [price, qty] of levels) {
+      const levelUSD = price * qty;
+      const fill = Math.min(remaining, levelUSD);
+      totalCost += fill;
+      totalQty += fill / price;
+      remaining -= fill;
+      if (remaining <= 0) break;
+    }
+
+    const depthUSD = levels.reduce((sum, [p, q]) => sum + p * q, 0);
+    const avgPrice = totalQty > 0 ? totalCost / totalQty : midPrice;
+    const slippage = Math.abs((avgPrice - midPrice) / midPrice) * 100;
+
+    return {
+      estimatedSlippage: Math.round(slippage * 10000) / 10000, // 保留4位小数
+      canFill: remaining <= 0,
+      depthUSD: Math.round(depthUSD),
+    };
   }
 
   /**
@@ -486,7 +615,48 @@ export class MarketDataService implements OnModuleInit {
       }
     }
 
-    this.logger.debug(`缓存清理完成，剩余 OHLCV: ${this.ohlcvCache.size}, 价格: ${this.priceCache.size}, OI: ${this.oiCache.size}, 资金费率: ${this.fundingRateCache.size}`);
+    // 清理订单簿缓存
+    for (const [key, value] of this.orderBookCache.entries()) {
+      if (now - value.timestamp > this.ORDER_BOOK_TTL) {
+        this.orderBookCache.delete(key);
+      }
+    }
+
+    // 清理增强数据缓存
+    for (const [key, value] of this.longShortCache.entries()) {
+      if (now - value.timestamp > this.LONG_SHORT_TTL) this.longShortCache.delete(key);
+    }
+    for (const [key, value] of this.takerFlowCache.entries()) {
+      if (now - value.timestamp > this.TAKER_FLOW_TTL) this.takerFlowCache.delete(key);
+    }
+    for (const [key, value] of this.oiHistoryCache.entries()) {
+      if (now - value.timestamp > this.OI_HISTORY_TTL) this.oiHistoryCache.delete(key);
+    }
+    for (const [key, value] of this.stablecoinCache.entries()) {
+      if (now - value.timestamp > this.STABLECOIN_TTL) this.stablecoinCache.delete(key);
+    }
+    for (const [key, value] of this.optionsCache.entries()) {
+      if (now - value.timestamp > this.OPTIONS_TTL) this.optionsCache.delete(key);
+    }
+    for (const [key, value] of this.macroCache.entries()) {
+      if (now - value.timestamp > this.MACRO_TTL) this.macroCache.delete(key);
+    }
+    for (const [key, value] of this.liquidationCache.entries()) {
+      if (now - value.timestamp > this.LIQUIDATION_TTL) this.liquidationCache.delete(key);
+    }
+    for (const [key, value] of this.etfCache.entries()) {
+      if (now - value.timestamp > this.ETF_TTL) this.etfCache.delete(key);
+    }
+    for (const [key, value] of this.cotCache.entries()) {
+      if (now - value.timestamp > this.COT_TTL) this.cotCache.delete(key);
+    }
+
+    // 清理排名缓存
+    for (const [key, value] of this.rankingCache.entries()) {
+      if (now - value.timestamp > this.RANKING_TTL) this.rankingCache.delete(key);
+    }
+
+    this.logger.debug(`缓存清理完成，剩余: OHLCV=${this.ohlcvCache.size} 价格=${this.priceCache.size} OI=${this.oiCache.size} 资金费率=${this.fundingRateCache.size} 订单簿=${this.orderBookCache.size} 排名=${this.rankingCache.size} 多空比=${this.longShortCache.size} Taker=${this.takerFlowCache.size} OI历史=${this.oiHistoryCache.size} 稳定币=${this.stablecoinCache.size} 期权=${this.optionsCache.size} 宏观=${this.macroCache.size} 清算=${this.liquidationCache.size} ETF=${this.etfCache.size} COT=${this.cotCache.size}`);
   }
 
   // ========================= 市场排名数据 (对齐 NoFx 资金流+价格排名) =========================
@@ -658,5 +828,529 @@ export class MarketDataService implements OnModuleInit {
     if (positive > negative * 2) return 'positive';
     if (negative > positive * 2) return 'negative';
     return 'neutral';
+  }
+
+  /** 将 CCXT 格式 symbol 转换为 Binance API 格式: 'BTC/USDT:USDT' → 'BTCUSDT' */
+  private toBinanceSymbol(symbol: string): string {
+    return symbol.replace('/', '').replace(':USDT', '').replace(':BUSD', '').toUpperCase();
+  }
+
+  // ========================= 增强市场数据 (Phase 11) =========================
+
+  /**
+   * 获取 Binance 多空账户比
+   * API: https://fapi.binance.com/futures/data/globalLongShortAccountRatio
+   * 免费，无需 Key
+   */
+  async fetchLongShortRatio(symbol: string, period: string = '1h'): Promise<LongShortRatioData | null> {
+    const cacheKey = `ls:${symbol}:${period}`;
+    const cached = this.longShortCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.LONG_SHORT_TTL) return cached.data;
+
+    try {
+      const binanceSymbol = this.toBinanceSymbol(symbol);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(
+        `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${binanceSymbol}&period=${period}&limit=1`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) return null;
+
+      const item = data[0];
+      const result: LongShortRatioData = {
+        longShortRatio: parseFloat(item.longShortRatio),
+        longAccount: parseFloat(item.longAccount),
+        shortAccount: parseFloat(item.shortAccount),
+        timestamp: item.timestamp,
+      };
+
+      this.longShortCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[多空比] ${binanceSymbol}: L/S=${result.longShortRatio.toFixed(2)} (${(result.longAccount * 100).toFixed(1)}%/${(result.shortAccount * 100).toFixed(1)}%)`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[多空比] 获取失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取 Binance Taker 买卖比
+   * API: https://fapi.binance.com/futures/data/takerlongshortRatio
+   * 免费，无需 Key
+   */
+  async fetchTakerBuySellRatio(symbol: string, period: string = '1h'): Promise<TakerFlowData | null> {
+    const cacheKey = `taker:${symbol}:${period}`;
+    const cached = this.takerFlowCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.TAKER_FLOW_TTL) return cached.data;
+
+    try {
+      const binanceSymbol = this.toBinanceSymbol(symbol);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(
+        `https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=${binanceSymbol}&period=${period}&limit=1`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) return null;
+
+      const item = data[0];
+      const result: TakerFlowData = {
+        buySellRatio: parseFloat(item.buySellRatio),
+        buyVol: parseFloat(item.buyVol),
+        sellVol: parseFloat(item.sellVol),
+        timestamp: item.timestamp,
+      };
+
+      this.takerFlowCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[Taker] ${binanceSymbol}: Buy/Sell=${result.buySellRatio.toFixed(2)}`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[Taker] 获取失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取 Binance OI 历史数据
+   * API: https://fapi.binance.com/futures/data/openInterestHist
+   * 免费，无需 Key
+   */
+  async fetchOIHistory(symbol: string, period: string = '1h', limit: number = 24): Promise<OIHistoryData[] | null> {
+    const cacheKey = `oih:${symbol}:${period}:${limit}`;
+    const cached = this.oiHistoryCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.OI_HISTORY_TTL) return cached.data;
+
+    try {
+      const binanceSymbol = this.toBinanceSymbol(symbol);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(
+        `https://fapi.binance.com/futures/data/openInterestHist?symbol=${binanceSymbol}&period=${period}&limit=${limit}`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data)) return null;
+
+      const result: OIHistoryData[] = data.map((item: any) => ({
+        sumOpenInterest: parseFloat(item.sumOpenInterest),
+        sumOpenInterestValue: parseFloat(item.sumOpenInterestValue),
+        timestamp: item.timestamp,
+      }));
+
+      this.oiHistoryCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[OI历史] ${binanceSymbol}: ${result.length} 条记录`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[OI历史] 获取失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取稳定币铸造/销毁数据 (DeFiLlama)
+   * API: https://stablecoins.llama.fi/stablecoins?includePrices=true
+   * 免费，无需 Key
+   */
+  async fetchStablecoinFlows(): Promise<StablecoinFlowData | null> {
+    const cacheKey = 'stablecoin:global';
+    const cached = this.stablecoinCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.STABLECOIN_TTL) return cached.data;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const json = await res.json();
+      const stablecoins = json?.peggedAssets || [];
+
+      // 查找 USDT 和 USDC
+      let usdtCirc = 0, usdtPrev = 0, usdcCirc = 0, usdcPrev = 0, totalMcap = 0;
+      for (const sc of stablecoins) {
+        const circ = sc.circulating?.peggedUSD || 0;
+        totalMcap += circ;
+
+        if (sc.symbol === 'USDT') {
+          usdtCirc = circ;
+          usdtPrev = sc.circulatingPrevDay?.peggedUSD || circ;
+        } else if (sc.symbol === 'USDC') {
+          usdcCirc = circ;
+          usdcPrev = sc.circulatingPrevDay?.peggedUSD || circ;
+        }
+      }
+
+      const netMinted24h = (usdtCirc - usdtPrev) + (usdcCirc - usdcPrev);
+      const change24h = totalMcap > 0 ? (netMinted24h / totalMcap * 100) : 0;
+
+      // 7d 变化需要额外计算
+      let usdtPrev7d = 0, usdcPrev7d = 0, totalPrev7d = 0;
+      for (const sc of stablecoins) {
+        const prev7 = sc.circulatingPrevWeek?.peggedUSD || sc.circulating?.peggedUSD || 0;
+        totalPrev7d += prev7;
+        if (sc.symbol === 'USDT') usdtPrev7d = prev7;
+        else if (sc.symbol === 'USDC') usdcPrev7d = prev7;
+      }
+      const net7d = (usdtCirc - usdtPrev7d) + (usdcCirc - usdcPrev7d);
+      const change7d = totalPrev7d > 0 ? (net7d / totalPrev7d * 100) : 0;
+
+      const result: StablecoinFlowData = {
+        totalMarketCap: Math.round(totalMcap),
+        usdtCirculating: Math.round(usdtCirc),
+        usdcCirculating: Math.round(usdcCirc),
+        change24h: Math.round(change24h * 100) / 100,
+        change7d: Math.round(change7d * 100) / 100,
+        netMinted24h: Math.round(netMinted24h),
+        timestamp: Date.now(),
+      };
+
+      this.stablecoinCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[稳定币] 总市值: $${(totalMcap / 1e9).toFixed(1)}B, 24h净铸造: ${netMinted24h > 0 ? '+' : ''}$${(netMinted24h / 1e6).toFixed(1)}M`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[稳定币] DeFiLlama API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取期权市场数据 (Deribit)
+   * API: https://www.deribit.com/api/v2/public/get_book_summary_by_currency
+   * 免费，无需 Key。仅支持 BTC 和 ETH
+   */
+  async fetchOptionsData(baseCurrency: string = 'BTC'): Promise<OptionsMarketData | null> {
+    const upper = baseCurrency.toUpperCase();
+    if (upper !== 'BTC' && upper !== 'ETH') return null; // Deribit 仅支持 BTC/ETH
+
+    const cacheKey = `options:${upper}`;
+    const cached = this.optionsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.OPTIONS_TTL) return cached.data;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(
+        `https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=${upper}&kind=option`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const json = await res.json();
+      const summaries = json?.result || [];
+
+      if (summaries.length === 0) return null;
+
+      let totalCallOI = 0, totalPutOI = 0;
+      let ivSum = 0, ivCount = 0;
+      const strikeOI = new Map<number, number>(); // strike → total OI
+
+      for (const s of summaries) {
+        const name: string = s.instrument_name || '';
+        const oi = (s.open_interest || 0) * (s.underlying_price || 0); // 转 USD
+        const iv = s.mark_iv || 0;
+
+        // 从名称解析: BTC-28MAR25-100000-C → C=Call, P=Put
+        const isCall = name.endsWith('-C');
+        const isPut = name.endsWith('-P');
+
+        if (isCall) totalCallOI += oi;
+        else if (isPut) totalPutOI += oi;
+
+        if (iv > 0) { ivSum += iv; ivCount++; }
+
+        // 提取 strike 用于 max pain 计算
+        const parts = name.split('-');
+        if (parts.length >= 3) {
+          const strike = parseFloat(parts[2]);
+          if (!isNaN(strike)) {
+            strikeOI.set(strike, (strikeOI.get(strike) || 0) + oi);
+          }
+        }
+      }
+
+      // Max pain: OI 最集中的 strike
+      let maxPainPrice = 0, maxOI = 0;
+      for (const [strike, oi] of strikeOI) {
+        if (oi > maxOI) { maxOI = oi; maxPainPrice = strike; }
+      }
+
+      const putCallRatio = totalCallOI > 0 ? totalPutOI / totalCallOI : 1;
+
+      const result: OptionsMarketData = {
+        putCallRatio: Math.round(putCallRatio * 100) / 100,
+        totalCallOI: Math.round(totalCallOI),
+        totalPutOI: Math.round(totalPutOI),
+        maxPainPrice,
+        impliedVolatility: ivCount > 0 ? Math.round(ivSum / ivCount * 100) / 100 : 0,
+        timestamp: Date.now(),
+      };
+
+      this.optionsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[期权] ${upper}: P/C=${result.putCallRatio}, MaxPain=$${maxPainPrice}, IV=${result.impliedVolatility}%`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[期权] Deribit API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取宏观经济数据 (FRED)
+   * API: https://api.stlouisfed.org/fred/series/observations
+   * 需要免费 API Key (FRED_API_KEY)
+   */
+  async fetchMacroData(): Promise<MacroData | null> {
+    const fredKey = process.env.FRED_API_KEY;
+    if (!fredKey) return null; // 无 Key 直接跳过
+
+    const cacheKey = 'macro:global';
+    const cached = this.macroCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.MACRO_TTL) return cached.data;
+
+    try {
+      const series = ['DFF', 'CPIAUCSL', 'T10Y2Y', 'VIXCLS'];
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const results = await Promise.all(
+        series.map(async (id) => {
+          try {
+            const res = await fetch(
+              `https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${fredKey}&file_type=json&limit=1&sort_order=desc`,
+              { signal: controller.signal },
+            );
+            if (!res.ok) return null;
+            const json = await res.json();
+            const obs = json?.observations?.[0];
+            return obs ? { id, value: parseFloat(obs.value), date: obs.date } : null;
+          } catch { return null; }
+        }),
+      );
+      clearTimeout(timeout);
+
+      const getValue = (id: string) => results.find(r => r?.id === id)?.value || 0;
+      const getDate = (id: string) => results.find(r => r?.id === id)?.date || '';
+
+      const result: MacroData = {
+        fedFundsRate: getValue('DFF'),
+        cpiYoY: getValue('CPIAUCSL'),
+        yieldCurveSpread: getValue('T10Y2Y'),
+        vix: getValue('VIXCLS'),
+        lastUpdated: getDate('DFF') || getDate('VIXCLS'),
+        timestamp: Date.now(),
+      };
+
+      this.macroCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[宏观] Fed=${result.fedFundsRate}% CPI=${result.cpiYoY} 10Y-2Y=${result.yieldCurveSpread} VIX=${result.vix}`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[宏观] FRED API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取清算热力图数据 (CoinGlass)
+   * API: https://open-api-v3.coinglass.com/api/futures/liquidation/chart
+   * 需要付费 Key (COINGLASS_API_KEY, $29/月)
+   */
+  async fetchLiquidationHeatmap(symbol: string): Promise<LiquidationHeatmapData | null> {
+    const cgKey = process.env.COINGLASS_API_KEY;
+    if (!cgKey) return null;
+
+    const base = symbol.split('/')[0].toUpperCase();
+    const cacheKey = `liq:${base}`;
+    const cached = this.liquidationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.LIQUIDATION_TTL) return cached.data;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(
+        `https://open-api-v3.coinglass.com/api/futures/liquidation/chart?symbol=${base}&interval=1h`,
+        { signal: controller.signal, headers: { 'CG-API-KEY': cgKey } },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        this.logger.warn(`[清算] CoinGlass 返回 ${res.status}`);
+        return null;
+      }
+
+      const json = await res.json();
+      const d = json?.data;
+      if (!d) return null;
+
+      const result: LiquidationHeatmapData = {
+        total24hLiquidation: d.total24hLiquidation || d.h24TotalLiquidationUsd || 0,
+        longLiquidation24h: d.longLiquidation24h || d.h24LongLiquidationUsd || 0,
+        shortLiquidation24h: d.shortLiquidation24h || d.h24ShortLiquidationUsd || 0,
+        nearestUpLiqZone: d.nearestUpLiqZone || d.upperLiquidationPrice || 0,
+        nearestDownLiqZone: d.nearestDownLiqZone || d.lowerLiquidationPrice || 0,
+        timestamp: Date.now(),
+      };
+
+      this.liquidationCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[清算] ${base}: 24h=$${(result.total24hLiquidation / 1e6).toFixed(1)}M (L:$${(result.longLiquidation24h / 1e6).toFixed(1)}M S:$${(result.shortLiquidation24h / 1e6).toFixed(1)}M)`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[清算] CoinGlass API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取 ETF 资金流数据 (CoinGlass)
+   * 需要付费 Key (COINGLASS_API_KEY)
+   */
+  async fetchETFFlows(): Promise<ETFFlowData | null> {
+    const cgKey = process.env.COINGLASS_API_KEY;
+    if (!cgKey) return null;
+
+    const cacheKey = 'etf:global';
+    const cached = this.etfCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.ETF_TTL) return cached.data;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(
+        'https://open-api-v3.coinglass.com/api/etf/bitcoin/flow-total',
+        { signal: controller.signal, headers: { 'CG-API-KEY': cgKey } },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const json = await res.json();
+      const d = json?.data;
+
+      // 尝试获取最新一天的数据
+      let btcFlow = 0;
+      if (Array.isArray(d) && d.length > 0) {
+        const latest = d[d.length - 1];
+        btcFlow = latest?.totalNetFlow || latest?.netFlow || 0;
+      } else if (d?.totalNetFlow !== undefined) {
+        btcFlow = d.totalNetFlow;
+      }
+
+      const result: ETFFlowData = {
+        btcEtfNetFlow24h: btcFlow,
+        ethEtfNetFlow24h: 0, // ETH ETF 端点可能不同，先置 0
+        trend: btcFlow > 0 ? 'inflow' : btcFlow < 0 ? 'outflow' : 'neutral',
+        timestamp: Date.now(),
+      };
+
+      this.etfCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[ETF] BTC ETF 24h: ${btcFlow > 0 ? '+' : ''}$${(btcFlow / 1e6).toFixed(1)}M [${result.trend}]`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[ETF] CoinGlass ETF API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取 CFTC COT 机构持仓报告 (NASDAQ Data Link)
+   * 需要免费 Key (NASDAQ_DATA_LINK_API_KEY)
+   */
+  async fetchCOTReport(): Promise<COTReportData | null> {
+    const nasdaqKey = process.env.NASDAQ_DATA_LINK_API_KEY;
+    if (!nasdaqKey) return null;
+
+    const cacheKey = 'cot:btc';
+    const cached = this.cotCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.COT_TTL) return cached.data;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      // CME Bitcoin Futures COT 数据
+      const res = await fetch(
+        `https://data.nasdaq.com/api/v3/datasets/CFTC/133741_FO_ALL.json?api_key=${nasdaqKey}&rows=1`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const json = await res.json();
+      const dataset = json?.dataset;
+      if (!dataset?.data || dataset.data.length === 0) return null;
+
+      const columns: string[] = dataset.column_names || [];
+      const row = dataset.data[0];
+
+      // 查找 Non-Commercial Long/Short 列索引
+      const ncLongIdx = columns.findIndex(c => c.includes('Noncommercial') && c.includes('Long'));
+      const ncShortIdx = columns.findIndex(c => c.includes('Noncommercial') && c.includes('Short'));
+      const dateIdx = 0; // 第一列通常是日期
+
+      const ncLong = ncLongIdx >= 0 ? (row[ncLongIdx] || 0) : 0;
+      const ncShort = ncShortIdx >= 0 ? (row[ncShortIdx] || 0) : 0;
+
+      const result: COTReportData = {
+        btcNetSpeculative: ncLong - ncShort,
+        reportDate: row[dateIdx] || '',
+        timestamp: Date.now(),
+      };
+
+      this.cotCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      this.logger.log(`[COT] BTC CME 投机净头寸: ${result.btcNetSpeculative > 0 ? '+' : ''}${result.btcNetSpeculative} (${result.reportDate})`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[COT] NASDAQ Data Link API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取所有增强市场数据（单一入口，并行调用，全部降级）
+   * 供 quick-analysis 和 research-pipeline 调用
+   */
+  async fetchEnhancedMarketData(symbol: string): Promise<EnhancedMarketData> {
+    const baseCurrency = symbol.split('/')[0].toUpperCase();
+
+    const [
+      longShortRatio, takerFlow, oiHistory,
+      stablecoinFlows, optionsData, macroData,
+      liquidationHeatmap, etfFlows, cotReport,
+    ] = await Promise.all([
+      this.fetchLongShortRatio(symbol).catch(() => null),
+      this.fetchTakerBuySellRatio(symbol).catch(() => null),
+      this.fetchOIHistory(symbol).catch(() => null),
+      this.fetchStablecoinFlows().catch(() => null),
+      this.fetchOptionsData(baseCurrency).catch(() => null),
+      this.fetchMacroData().catch(() => null),
+      this.fetchLiquidationHeatmap(symbol).catch(() => null),
+      this.fetchETFFlows().catch(() => null),
+      this.fetchCOTReport().catch(() => null),
+    ]);
+
+    return {
+      longShortRatio: longShortRatio ?? undefined,
+      takerFlow: takerFlow ?? undefined,
+      oiHistory: oiHistory ?? undefined,
+      stablecoinFlows: stablecoinFlows ?? undefined,
+      optionsData: optionsData ?? undefined,
+      macroData: macroData ?? undefined,
+      liquidationHeatmap: liquidationHeatmap ?? undefined,
+      etfFlows: etfFlows ?? undefined,
+      cotReport: cotReport ?? undefined,
+    };
   }
 }

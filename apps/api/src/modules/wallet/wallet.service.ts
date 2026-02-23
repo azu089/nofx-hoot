@@ -6,6 +6,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -63,7 +64,7 @@ export class WalletService {
   ): Promise<TransactionListResponse> {
     const { type, asset, page = 1, pageSize = 20 } = query;
 
-    const where: any = { userId };
+    const where: Prisma.TransactionWhereInput = { userId };
     if (type) where.type = type;
     if (asset) where.asset = asset;
 
@@ -397,34 +398,34 @@ export class WalletService {
       throw new BadRequestException('来源和目标资产不能相同');
     }
 
-    // 获取用户当前余额
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        usdtBalance: true,
-        hootBalance: true,
-        pointBalance: true,
-      },
-    });
-
-    if (!user) {
-      throw new BadRequestException('用户不存在');
-    }
-
-    // 检查来源余额
-    const fromBalance = this.getBalanceByAsset(user, fromAsset);
     const fromAmount = new Decimal(amount);
 
-    if (fromBalance.lessThan(fromAmount)) {
-      throw new BadRequestException(`${fromAsset} 余额不足`);
-    }
-
-    // 计算兑换汇率和目标金额
+    // 计算兑换汇率和目标金额（汇率不依赖用户数据，可在事务外计算）
     const rate = this.getExchangeRate(fromAsset, toAsset);
     const toAmount = fromAmount.times(rate);
 
-    // 执行兑换（事务）
+    // 执行兑换（事务）：余额检查与扣款在同一事务内，防止 TOCTOU 并发问题
     await this.prisma.$transaction(async (tx) => {
+      // 在事务内读取用户余额
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          usdtBalance: true,
+          hootBalance: true,
+          pointBalance: true,
+        },
+      });
+
+      if (!user) {
+        throw new BadRequestException('用户不存在');
+      }
+
+      // 在事务内检查来源余额，与扣款操作原子不可分割
+      const fromBalance = this.getBalanceByAsset(user, fromAsset);
+      if (fromBalance.lessThan(fromAmount)) {
+        throw new BadRequestException(`${fromAsset} 余额不足`);
+      }
+
       // 扣除来源资产
       await this.updateBalance(tx, userId, fromAsset, fromAmount.negated());
 
@@ -517,7 +518,7 @@ export class WalletService {
 
   // 更新用户余额
   private async updateBalance(
-    tx: any,
+    tx: Prisma.TransactionClient,
     userId: string,
     asset: 'USDT' | 'HOOT' | 'POINT',
     amount: Decimal,

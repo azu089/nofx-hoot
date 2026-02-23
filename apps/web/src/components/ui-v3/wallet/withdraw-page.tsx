@@ -309,7 +309,12 @@ export function WithdrawPage({
                           </div>
                           {withdrawal.txHash && (
                             <a
-                              href={`https://tronscan.org/#/transaction/${withdrawal.txHash}`}
+                              href={`${{
+                                TRC20: 'https://tronscan.org/#/transaction/',
+                                ERC20: 'https://etherscan.io/tx/',
+                                BEP20: 'https://bscscan.com/tx/',
+                                Polygon: 'https://polygonscan.com/tx/',
+                              }[withdrawal.network] || 'https://tronscan.org/#/transaction/'}${withdrawal.txHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-2 hover:bg-[#1E1E2E] rounded-lg transition-colors"

@@ -9,12 +9,26 @@ import {
   Put,
   Body,
   UseGuards,
-  Request,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
 import { AgentAuthService } from './agent-auth.service';
 import { AgentGuard } from './guards/agent.guard';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
+
+interface AgentRequest extends Request {
+  agent: {
+    id: string;
+    email: string;
+    name: string;
+    status: string;
+    isActive: boolean;
+    level: string;
+    commissionRate: unknown;
+  };
+}
 
 // DTOs
 class LoginDto {
@@ -42,6 +56,7 @@ class UpdateSettlementDto {
   walletAddress?: string;
 }
 
+@ApiTags('agent-auth')
 @Controller('agent/auth')
 @Public() // 跳过全局 JwtAuthGuard，使用 AgentGuard 进行认证
 export class AgentAuthController {
@@ -56,14 +71,14 @@ export class AgentAuthController {
   // 获取当前代理商信息
   @Get('profile')
   @UseGuards(AgentGuard)
-  async getProfile(@Request() req: any) {
+  async getProfile(@Req() req: AgentRequest) {
     return this.agentAuthService.getProfile(req.agent.id);
   }
 
   // 修改密码
   @Put('password')
   @UseGuards(AgentGuard)
-  async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
+  async changePassword(@Req() req: AgentRequest, @Body() dto: ChangePasswordDto) {
     return this.agentAuthService.changePassword(
       req.agent.id,
       dto.oldPassword,
@@ -75,7 +90,7 @@ export class AgentAuthController {
   @Put('settlement')
   @UseGuards(AgentGuard)
   async updateSettlement(
-    @Request() req: any,
+    @Req() req: AgentRequest,
     @Body() dto: UpdateSettlementDto,
   ) {
     return this.agentAuthService.updateSettlementAccount(req.agent.id, dto);

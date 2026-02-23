@@ -5,13 +5,16 @@ import {
   AI_ROLES,
   AI_MODELS,
   DEFAULT_ROLE_PROMPTS,
+  buildRolePrompts,
   SYSTEM_PROMPT_BASE,
   ANALYSIS_OUTPUT_FORMAT,
+  buildAnalysisOutputFormat,
   AIRole,
   AIAction,
   AI_ACTIONS,
   formatMemoryPrompt,
 } from '../../constants/prompts';
+import { buildLanguageInstruction, buildUserMessageLanguageReminder } from '../../constants/locale-instructions';
 import { IndicatorsResult } from '../indicators.service';
 import {
   TRADING_ROLE_PROMPTS,
@@ -38,6 +41,7 @@ export interface DebateConfig {
   skipJudge?: boolean; // Phase 9.1: true → 跳过 Judge, 用投票阶段 (Product B NoFx-aligned)
   useShortPrompts?: boolean; // Phase 9.1: true → 用 TRADING_ROLE_PROMPTS 短提示词
   votingSymbols?: string[]; // Phase 9.1: 多币种投票时的 symbol 列表
+  locale?: string; // AI 输出语言 locale (e.g. "zh-CN", "en", "ko")
 }
 
 /**
@@ -116,6 +120,27 @@ export class DebateService {
   ) {}
 
   /**
+   * Y7: LLM 调用超时包装（60s debate 级别防护）
+   * OpenAI SDK 已有 ~30s client timeout，此处是辩论级别的兜底
+   */
+  private async chatWithTimeout(
+    modelId: string,
+    systemPrompt: string,
+    userMessage: string,
+    apiKeys: UserApiKeys,
+    options: { temperature?: number; maxTokens?: number },
+    timeoutMs: number = 60000,
+  ): Promise<Awaited<ReturnType<LLMService['chat']>>> {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`LLM call timeout (${timeoutMs}ms)`)), timeoutMs),
+    );
+    return Promise.race([
+      this.llmService.chat(modelId, systemPrompt, userMessage, apiKeys, options),
+      timeoutPromise,
+    ]);
+  }
+
+  /**
    * 运行 AI 辩论
    *
    * @param context 市场上下文
@@ -133,19 +158,13 @@ export class DebateService {
     const maxRounds = config.maxRounds || 1;
     const effectiveMaxRounds = Math.max(1, Math.min(maxRounds, 10));
 
-    // 合并配置
+    // 合并配置（保留所有原始字段，仅覆盖 models/rolePrompts/maxRounds）
     const finalConfig: DebateConfig = {
+      ...config,
       models: { ...this.defaultRoleModels, ...(config?.models || {}) },
-      rolePrompts: { ...DEFAULT_ROLE_PROMPTS, ...(config?.rolePrompts || {}) },
+      rolePrompts: { ...buildRolePrompts(config.locale), ...(config?.rolePrompts || {}) },
       temperature: config?.temperature ?? 0.7,
-      apiKeys: config.apiKeys,
       maxRounds: effectiveMaxRounds,
-      tradeHistoryPrompt: config.tradeHistoryPrompt,
-      memoryPrompt: config.memoryPrompt,
-      additionalMarketData: config.additionalMarketData,
-      skipJudge: config.skipJudge,
-      useShortPrompts: config.useShortPrompts,
-      votingSymbols: config.votingSymbols,
     };
 
     // 存储所有辩论条目
@@ -180,7 +199,7 @@ export class DebateService {
       // 取主币种共识作为 DebateResult.consensus
       const primaryConsensus = multiConsensus[context.symbol] || {
         direction: 'hold', action: 'hold', confidence: 0, score: 0,
-        reasoning: '投票阶段未产生有效共识',
+        reasoning: 'Voting phase produced no valid consensus',
       };
 
       const totalCost = [...allEntries, ...votingEntries].reduce((sum, e) => sum + e.cost, 0);
@@ -336,10 +355,10 @@ export class DebateService {
    * @returns 轮次描述
    */
   private getRoundDescription(round: number, maxRounds: number): string {
-    if (round === 1) return '初步分析 - 各角色独立分析市场数据';
-    if (round === maxRounds) return '最终投票 - 各角色给出最终立场';
-    if (round === 2) return '反驳 - 各角色回应其他角色的观点';
-    return `深度讨论 (Round ${round}) - 继续讨论并修正观点`;
+    if (round === 1) return 'Initial analysis - each role independently analyzes market data';
+    if (round === maxRounds) return 'Final vote - each role gives final position';
+    if (round === 2) return 'Rebuttal - each role responds to other perspectives';
+    return `Deep discussion (Round ${round}) - continue discussing and refining positions`;
   }
 
   /**
@@ -458,6 +477,11 @@ export class DebateService {
       : (config.rolePrompts?.[role] || DEFAULT_ROLE_PROMPTS[role]);
     let systemPrompt = SYSTEM_PROMPT_BASE + '\n\n' + rolePrompt;
 
+    // 注入语言指令 — 指示 LLM 用指定语言输出 reasoning 等文本字段
+    if (config.locale) {
+      systemPrompt += '\n\n' + buildLanguageInstruction(config.locale);
+    }
+
     // 如果提供了交易历史提示词，注入到系统提示中
     if (config.tradeHistoryPrompt) {
       systemPrompt += '\n\n' + config.tradeHistoryPrompt;
@@ -503,8 +527,11 @@ export class DebateService {
       userMessage += '\n\n' + config.additionalMarketData;
     }
 
-    // 调用 LLM（传入用户 API Keys）
-    const response = await this.llmService.chat(modelId, systemPrompt, userMessage, config.apiKeys, {
+    // 末尾追加语言提醒（防止英文上下文淹没 system prompt 的语言指令）
+    userMessage += buildUserMessageLanguageReminder(config.locale);
+
+    // 调用 LLM（传入用户 API Keys，Y7: 60s 超时防护）
+    const response = await this.chatWithTimeout(modelId, systemPrompt, userMessage, config.apiKeys, {
       temperature: config.temperature,
       maxTokens: 1000,
     });
@@ -528,8 +555,13 @@ export class DebateService {
       cost: response.cost,
     };
 
+    // NoFx-aligned 详细日志: 模型名+方向+置信度+思考内容预览
+    const reasoningPreview = (parsedArgs.reasoning || response.content || '').slice(0, 300);
     this.logger.log(
-      `${role} (Round ${round}): ${entry.direction} @ ${entry.confidence}% - ${entry.model}`,
+      `[辩论] ${role} (Round ${round}) - ${modelId}\n` +
+      `  方向=${entry.direction} 置信度=${entry.confidence}% tokens=${response.tokenUsage} 耗时=${response.latencyMs}ms\n` +
+      `  action=${parsedArgs.action || 'N/A'} leverage=${parsedArgs.leverage || 'N/A'} SL=${parsedArgs.stopLoss ?? 'N/A'} TP=${parsedArgs.takeProfit ?? 'N/A'}\n` +
+      `  思考: ${reasoningPreview}${reasoningPreview.length >= 300 ? '...' : ''}`,
     );
 
     return entry;
@@ -665,30 +697,37 @@ export class DebateService {
    * @returns 解析后的对象
    */
   private parseResponse(raw: string, role: string): any {
+    // 先修复中文标点
+    const fixed = this.fixChinesePunctuation(raw);
     try {
       // 尝试直接解析 JSON
-      return JSON.parse(raw);
+      return JSON.parse(fixed);
     } catch (e1) {
-      // 失败：尝试提取 Markdown 代码块中的 JSON
+      // 失败：多种方式尝试提取 JSON
       try {
-        const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        // 1. Markdown 代码块
+        const jsonMatch = fixed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (jsonMatch && jsonMatch[1]) {
-          return JSON.parse(jsonMatch[1]);
+          return JSON.parse(this.fixChinesePunctuation(jsonMatch[1]));
         }
 
-        // 尝试提取 { ... } 包裹的 JSON
-        const braceMatch = raw.match(/\{[\s\S]*\}/);
+        // 2. { ... } 包裹的 JSON（贪婪匹配最外层大括号）
+        const braceMatch = fixed.match(/\{[\s\S]*\}/);
         if (braceMatch) {
           return JSON.parse(braceMatch[0]);
         }
 
-        // 都失败了
-        this.logger.warn(`${role} 响应无法解析为 JSON，返回原始文本`);
+        // 3. 尝试从自然语言中提取关键字段
+        const fallback = this.extractFromNaturalLanguage(raw, role);
+        if (fallback) return fallback;
+
+        // 都失败了 — 保留原始响应前 300 字作为 reasoning
+        this.logger.warn(`${role} 响应无法解析为 JSON，保留原始文本`);
         return {
           action: 'hold',
           confidence: 50,
           reasoning: raw.slice(0, 300),
-          keyPoints: ['解析失败，原始响应'],
+          keyPoints: [],
           vote: 'hold',
         };
       } catch (e2) {
@@ -697,12 +736,39 @@ export class DebateService {
         return {
           action: 'hold',
           confidence: 50,
-          reasoning: 'JSON 解析失败',
+          reasoning: raw.slice(0, 300),
           keyPoints: [],
           vote: 'hold',
         };
       }
     }
+  }
+
+  /** 从非 JSON 响应中提取关键字段 */
+  private extractFromNaturalLanguage(raw: string, role: string): Record<string, any> | null {
+    // 尝试识别方向
+    const dirMatch = raw.match(/(bullish|bearish|neutral|看多|看空|等待|open_long|open_short|hold|wait)/i);
+    if (!dirMatch) return null;
+
+    const dirMap: Record<string, string> = {
+      bullish: 'open_long', '看多': 'open_long', open_long: 'open_long',
+      bearish: 'open_short', '看空': 'open_short', open_short: 'open_short',
+      neutral: 'hold', '等待': 'wait', hold: 'hold', wait: 'wait',
+    };
+    const action = dirMap[dirMatch[1].toLowerCase()] || 'hold';
+
+    // 尝试识别置信度
+    const confMatch = raw.match(/(?:confidence|置信度)[：:\s]*(\d{1,3})%?/i);
+    const confidence = confMatch ? Math.min(100, parseInt(confMatch[1])) : 50;
+
+    this.logger.warn(`${role} JSON 解析失败，从自然语言提取: action=${action}, confidence=${confidence}`);
+    return {
+      action,
+      confidence,
+      reasoning: raw.slice(0, 300),
+      keyPoints: [],
+      vote: action === 'open_long' ? 'bullish' : action === 'open_short' ? 'bearish' : 'hold',
+    };
   }
 
   /**
@@ -747,7 +813,9 @@ export class DebateService {
 IMPORTANT: You are the FINAL decision maker. Be decisive. Reference the strongest arguments from each analyst.
 If bull and bear cases are roughly equal, lean toward "wait" rather than gambling. But if one side has clearly stronger evidence, commit to that direction.
 
-${ANALYSIS_OUTPUT_FORMAT}`;
+${buildLanguageInstruction(config.locale)}
+
+${buildAnalysisOutputFormat(config.locale)}`;
 
     // 注入交易历史（如果有）
     if (config.tradeHistoryPrompt) {
@@ -797,12 +865,14 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
     const judgeModel = config.judgeModel || config.models?.[AI_ROLES.RISK_MANAGER] || this.defaultRoleModels[AI_ROLES.RISK_MANAGER];
 
     try {
-      const response = await this.llmService.chat(
+      // Y7: Judge 用 90s 超时（深度思考模型可能较慢）
+      const response = await this.chatWithTimeout(
         judgeModel,
         systemPrompt,
         userMessage,
         config.apiKeys,
         { temperature: 0.3, maxTokens: 1200 },
+        90000,
       );
 
       const parsed = this.parseResponse(response.content, 'judge');
@@ -875,9 +945,10 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
     for (const role of roles) {
       try {
         const modelId = config.models?.[role] || this.defaultRoleModels[role];
-        const systemPrompt = buildVotingSystemPrompt(role as AIRole, '');
+        const systemPrompt = buildVotingSystemPrompt(role as AIRole, '', config.locale);
 
-        const response = await this.llmService.chat(modelId, systemPrompt, userPrompt, config.apiKeys, {
+        // Y7: 投票阶段 60s 超时防护
+        const response = await this.chatWithTimeout(modelId, systemPrompt, userPrompt, config.apiKeys, {
           temperature: config.temperature ?? 0.3, // 投票阶段用低温度提高一致性
           maxTokens: 1200,
         });
@@ -900,7 +971,13 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
           cost: response.cost,
         };
 
-        this.logger.log(`投票: ${role} → ${parsedVotes.length} 币种决策, 模型=${modelId}`);
+        // NoFx-aligned 详细投票日志
+        const voteDetails = parsedVotes.map((v: any) =>
+          `${v.symbol || context.symbol}: ${v.action}(${v.confidence}%) lev=${v.leverage || 'N/A'}`,
+        ).join(', ');
+        this.logger.log(
+          `[投票] ${role} (${modelId}) → ${parsedVotes.length} 币种: ${voteDetails || 'none'}`,
+        );
         entries.push(entry);
       } catch (error) {
         this.logger.warn(`${role} 投票失败: ${error.message}`);
@@ -912,7 +989,27 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
   }
 
   /**
+   * 修复中文标点 (对齐 NoFx fixMissingQuotes)
+   * 中文 LLM (DeepSeek/Qwen) 有时输出中文引号/逗号/冒号，导致 JSON.parse 失败
+   */
+  private fixChinesePunctuation(s: string): string {
+    return s
+      .replace(/\u201c/g, '"')  // "
+      .replace(/\u201d/g, '"')  // "
+      .replace(/\u2018/g, "'")  // '
+      .replace(/\u2019/g, "'")  // '
+      .replace(/\uff0c/g, ',')  // ，
+      .replace(/\uff1a/g, ':')  // ：
+      .replace(/\uff1b/g, ';')  // ；
+      .replace(/\uff3b/g, '[')  // ［
+      .replace(/\uff3d/g, ']')  // ］
+      .replace(/\uff5b/g, '{')  // ｛
+      .replace(/\uff5d/g, '}'); // ｝
+  }
+
+  /**
    * 解析 <final_vote> 标签内的 JSON 数组
+   * 对齐 NoFx parseDecisions: tag提取 → JSON解析 → 嵌入JSON → fallback关键字计数
    */
   private parseFinalVote(
     content: string,
@@ -927,9 +1024,12 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
     take_profit: number;
     reasoning: string;
   }> {
+    // 第0步: 修复中文标点
+    const fixed = this.fixChinesePunctuation(content);
+
     try {
       // 提取 <final_vote>...</final_vote> 内容
-      const match = content.match(/<final_vote>\s*([\s\S]*?)\s*<\/final_vote>/);
+      const match = fixed.match(/<final_vote>\s*([\s\S]*?)\s*<\/final_vote>/);
       if (match && match[1]) {
         const parsed = JSON.parse(match[1].trim());
         if (Array.isArray(parsed)) return parsed;
@@ -938,7 +1038,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       }
 
       // 兜底: 尝试直接解析整个 content 为 JSON
-      const directParse = JSON.parse(content.trim());
+      const directParse = JSON.parse(fixed.trim());
       if (Array.isArray(directParse)) return directParse;
       if (typeof directParse === 'object') return [directParse];
     } catch (e) {
@@ -947,7 +1047,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
 
     // 最终兜底: 尝试从 content 中提取 JSON 数组
     try {
-      const jsonMatch = content.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+      const jsonMatch = fixed.match(/\[\s*\{[\s\S]*?\}\s*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
@@ -955,7 +1055,87 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       this.logger.warn(`${role} 兜底 JSON 解析也失败`);
     }
 
+    // BUG-6 修复: fallback 关键字计数 (对齐 NoFx fallbackParseAction)
+    // 当所有 JSON 解析都失败时，通过关键字频率推断投票意图
+    const fallback = this.fallbackParseAction(fixed, role);
+    if (fallback) return [fallback];
+
     return [];
+  }
+
+  /**
+   * 关键字计数兜底解析 (对齐 NoFx fallbackParseAction)
+   * 统计 LLM 响应中 action 关键字出现次数，取最高频的作为投票
+   */
+  private fallbackParseAction(
+    content: string,
+    role: string,
+  ): {
+    symbol: string;
+    action: string;
+    confidence: number;
+    leverage: number;
+    position_pct: number;
+    stop_loss: number;
+    take_profit: number;
+    reasoning: string;
+  } | null {
+    const lower = content.toLowerCase();
+
+    const actionCounts: Record<string, number> = {
+      open_long: 0,
+      open_short: 0,
+      hold: 0,
+      close_long: 0,
+      close_short: 0,
+    };
+
+    // 统计各 action 关键字出现次数 (匹配 NoFx 的精确字符串搜索)
+    const patterns: Record<string, string[]> = {
+      open_long: ['open_long', '"buy"', '"long"', 'action": "open_long'],
+      open_short: ['open_short', '"sell"', '"short"', 'action": "open_short'],
+      hold: ['hold', '"wait"', '"neutral"', 'action": "hold'],
+      close_long: ['close_long', 'action": "close_long'],
+      close_short: ['close_short', 'action": "close_short'],
+    };
+
+    for (const [action, keywords] of Object.entries(patterns)) {
+      for (const kw of keywords) {
+        const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const matches = lower.match(regex);
+        if (matches) actionCounts[action] += matches.length;
+      }
+    }
+
+    // 找出最高频 action
+    let bestAction = 'hold';
+    let bestCount = 0;
+    for (const [action, count] of Object.entries(actionCounts)) {
+      if (count > bestCount) {
+        bestCount = count;
+        bestAction = action;
+      }
+    }
+
+    if (bestCount === 0) return null;
+
+    this.logger.warn(`${role} 使用 fallback 关键字计数: ${bestAction} (出现 ${bestCount} 次)`);
+
+    // 尝试提取 confidence 数字
+    let confidence = 50;
+    const confMatch = content.match(/confidence["\s:]*(\d+)/i);
+    if (confMatch) confidence = Math.min(100, Math.max(0, parseInt(confMatch[1])));
+
+    return {
+      symbol: '',
+      action: bestAction,
+      confidence,
+      leverage: 0,
+      position_pct: 0,
+      stop_loss: 0,
+      take_profit: 0,
+      reasoning: `Fallback keyword parse: ${bestAction}`,
+    };
   }
 
   /**
@@ -1012,13 +1192,21 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       for (const s of symbols) {
         if (s.replace(/[/:]/g, '') === stripped) return s;
       }
-      // 3) 大小写不敏感匹配
+      // 3) CCXT 期货后缀兼容: LLM 输出 "ETH/USDT" → 匹配 "ETH/USDT:USDT"
+      //    或 "ETHUSDT" → 匹配 "ETH/USDT:USDT"
+      for (const s of symbols) {
+        const basePair = s.split(':')[0]; // "ETH/USDT:USDT" → "ETH/USDT"
+        if (basePair === raw || basePair.replace(/[/:]/g, '') === stripped) return s;
+      }
+      // 4) 大小写不敏感匹配
       const rawUpper = raw.toUpperCase();
       for (const s of symbols) {
         if (s.toUpperCase() === rawUpper) return s;
         if (s.replace(/[/:]/g, '').toUpperCase() === stripped.toUpperCase()) return s;
+        const basePair = s.split(':')[0];
+        if (basePair.toUpperCase() === rawUpper) return s;
       }
-      // 4) 无法匹配 → 保持原样
+      // 5) 无法匹配 → 保持原样
       return raw;
     };
 
@@ -1027,13 +1215,22 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       const decisions = Array.isArray(entry.arguments) ? entry.arguments : [];
       if (decisions.length === 0) continue;
 
+      // 每个投票者每个 symbol 只计一票 (防止 LLM 返回多个同 symbol 决策导致重复计票)
+      const countedSymbols = new Set<string>();
+
       for (const d of decisions) {
-        const rawSymbol = d.symbol || '';
+        // 单币辩论时 LLM 经常省略 symbol 字段，自动填充为主币种
+        const rawSymbol = d.symbol || (symbols.length === 1 ? symbols[0] : '');
         const action = (d.action || '').toLowerCase();
         if (!rawSymbol || !this.isValidVotingAction(action)) continue;
 
         // 标准化 symbol: LLM 返回 "BTCUSDT" → 映射到 "BTC/USDT"
         const symbol = normalizeSymbol(rawSymbol);
+
+        // 每个投票者每个 symbol 只计第一票 (与 buildSymbolVotes 展示逻辑对齐)
+        if (countedSymbols.has(symbol)) continue;
+        countedSymbols.add(symbol);
+
         if (!symbolActions[symbol]) symbolActions[symbol] = {};
         if (!symbolActions[symbol][action]) {
           symbolActions[symbol][action] = {
@@ -1075,7 +1272,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
         // 该 symbol 无投票 → hold
         result[symbol] = {
           direction: 'hold', action: 'hold', confidence: 0, score: 0,
-          reasoning: '投票阶段未收到该币种的有效投票',
+          reasoning: 'No valid votes received for this symbol',
         };
         continue;
       }
@@ -1093,7 +1290,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       if (!winningAction) {
         result[symbol] = {
           direction: 'hold', action: 'hold', confidence: 0, score: 0,
-          reasoning: '无有效投票动作',
+          reasoning: 'No valid voting action',
         };
         continue;
       }
@@ -1167,7 +1364,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
         action: 'hold',
         confidence: 0,
         score: 0,
-        reasoning: '无有效投票',
+        reasoning: 'No valid votes',
       };
     }
 
@@ -1224,7 +1421,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
         action: 'hold',
         confidence: 50,
         score: maxCampVotes,
-        reasoning: '辩论未达成明确共识（无过半投票），建议观望',
+        reasoning: 'Debate did not reach clear consensus (no majority), suggest wait',
       };
     }
 
@@ -1253,7 +1450,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
 
     // 组合推理
     const keyPoints = campDetails[winningCamp].keyPoints.slice(0, 5);
-    const reasoning = `共识: ${winningAction} (${winningCamp})\n阵营得票: ${campVotes.BULLISH} BULLISH | ${campVotes.BEARISH} BEARISH | ${campVotes.NEUTRAL} NEUTRAL\n关键理由:\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
+    const reasoning = `Consensus: ${winningAction} (${winningCamp})\nCamp votes: ${campVotes.BULLISH} BULLISH | ${campVotes.BEARISH} BEARISH | ${campVotes.NEUTRAL} NEUTRAL\nKey reasons:\n${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
 
     return {
       direction: majorityDirection,
@@ -1268,13 +1465,27 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
    * 将 vote/action 标准化为 6-action 格式
    */
   private normalizeAction(vote: string): string {
+    // 去空格、下划线、连字符后统一小写 (对齐 NoFx normalizeAction)
     const v = vote.toLowerCase().trim();
-    // 6-action 格式
+    // 6-action 标准格式直接返回
     if (['open_long', 'open_short', 'close_long', 'close_short', 'hold', 'wait'].includes(v)) return v;
-    // 向后兼容旧格式
-    if (v === 'long') return 'open_long';
-    if (v === 'short') return 'open_short';
-    if (v === 'neutral') return 'hold';
-    return 'hold';
+
+    // NoFx fuzzy mapping: 12 种常见 LLM 输出变体
+    const stripped = v.replace(/[\s_-]/g, ''); // "open long" / "open_long" / "open-long" → "openlong"
+    const actionMap: Record<string, string> = {
+      long: 'open_long',
+      openlong: 'open_long',
+      buy: 'open_long',
+      short: 'open_short',
+      openshort: 'open_short',
+      sell: 'open_short',
+      closelong: 'close_long',
+      closeshort: 'close_short',
+      neutral: 'hold',
+      donothing: 'hold',
+      noaction: 'hold',
+      close: 'close_long', // 默认平多
+    };
+    return actionMap[stripped] ?? 'hold';
   }
 }

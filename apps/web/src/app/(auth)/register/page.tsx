@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
+import { useWallet } from '@/hooks/useWallet';
 import { RegisterPage as RegisterPageUI } from '@/components/ui-v3/auth/register-page';
 import { MobileRegisterPage } from '@/components/ui-v3/mobile/mobile-register-page';
 import { WalletConnectModal } from '@/components/ui-v3/auth/wallet-connect-modal';
@@ -10,7 +12,8 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register, isAuthenticated, isLoading } = useAuth();
+  const { register, walletLogin, isAuthenticated, isLoading } = useAuth();
+  const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -39,19 +42,36 @@ export default function RegisterPage() {
       // 跳转到邮箱验证页面
       router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '注册失败');
+      toast.error(err instanceof Error ? err.message : '注册失败');
     }
   };
 
-  const handleWalletSuccess = (address: string) => {
-    // 钱包连接成功后，跳转到仪表盘
-    // TODO: 后续接入后端钱包注册 API
-    console.log('钱包注册成功:', address);
-    router.push('/dashboard');
+  /**
+   * WalletConnectModal 的 onSuccess 回调
+   * 后端 wallet/login 接口会自动注册新用户（如地址首次登录则创建账户）
+   * 流程：获取 nonce → 签名 → 后端登录/注册 → 写入 auth 状态
+   */
+  const handleWalletSuccess = async (address: string) => {
+    try {
+      const result = await walletLoginHook(address);
+      walletLogin(result.accessToken, result.user, result.refreshToken);
+      router.push('/dashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '钱包注册失败，请重试';
+      toast.error(message);
+    }
+  };
+
+  /**
+   * 移动端 MobileWalletConnectModal 的 onConnect 回调
+   * 暂时提示用户使用桌面端，待移动端 wagmi 集成后补全
+   */
+  const handleMobileWalletConnect = async (_walletId: string) => {
+    throw new Error('移动端钱包注册正在接入，请使用桌面端或邮箱注册');
   };
 
   const handleTelegramLogin = () => {
-    // TODO: 接入 Telegram 登录（Privy 或 TG WebApp）
+    // KNOWN-LIMITATION: TG 登录待 Privy/TG WebApp 集成，当前跳转 Bot
     // 临时方案：跳转到 TG Bot
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
     window.open(`https://t.me/${botUsername}?start=register`, '_blank');
@@ -99,12 +119,7 @@ export default function RegisterPage() {
         <MobileWalletConnectModal
           isOpen={showWalletModal}
           onClose={() => setShowWalletModal(false)}
-          onConnect={async (walletId) => {
-            console.log('连接钱包:', walletId);
-            // TODO: 实际连接钱包逻辑
-            setShowWalletModal(false);
-            router.push('/dashboard');
-          }}
+          onConnect={handleMobileWalletConnect}
           mode="register"
         />
       </div>

@@ -23,6 +23,9 @@ import {
   TrophyOutlined,
   ReloadOutlined,
   ShareAltOutlined,
+  DollarOutlined,
+  BarChartOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { api } from '../../lib/api';
 import { useMessage } from '../../hooks';
@@ -68,22 +71,43 @@ interface UserSourceStats {
   wallet: number;
 }
 
+// 用户增长趋势
+interface TrendItem {
+  date: string;
+  totalUsers: number;
+  newUsers: number;
+  activeUsers: number;
+  tradingUsers: number;
+}
+
+// 用户资产分布
+interface AssetDistribution {
+  distribution: Array<{ label: string; count: number }>;
+  totals: { usdt: string; hoot: string; points: string };
+}
+
 export const UserStatsPage = () => {
   const message = useMessage();
   const [data, setData] = useState<UserDashboard | null>(null);
   const [sourceStats, setSourceStats] = useState<UserSourceStats | null>(null);
+  const [trendData, setTrendData] = useState<TrendItem[]>([]);
+  const [assetData, setAssetData] = useState<AssetDistribution | null>(null);
   const [loading, setLoading] = useState(true);
 
   // 获取用户统计数据
   const fetchUserStats = async () => {
     setLoading(true);
     try {
-      const [dashboard, source] = await Promise.all([
+      const [dashboard, source, trend, assets] = await Promise.all([
         api.get<UserDashboard>('/admin/stats/users'),
         api.get<UserSourceStats>('/admin/stats/users/source'),
+        api.get<TrendItem[]>('/admin/stats/users/trend?days=30').catch(() => []),
+        api.get<AssetDistribution>('/admin/stats/users/assets').catch(() => null),
       ]);
       setData(dashboard);
       setSourceStats(source);
+      setTrendData(trend || []);
+      setAssetData(assets);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '获取数据失败';
       message.error(errorMessage);
@@ -342,6 +366,171 @@ export const UserStatsPage = () => {
             </Card>
           </Col>
         </Row>
+
+        {/* C1: 用户增长趋势 */}
+        {trendData.length > 0 && (
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col span={24}>
+              <Card
+                title={
+                  <span>
+                    <BarChartOutlined style={{ marginRight: 8 }} />
+                    用户增长趋势（近 30 天）
+                  </span>
+                }
+                size="small"
+              >
+                {/* 简易条形图 — 新增用户 */}
+                <div style={{ marginBottom: 16 }}>
+                  <Text type="secondary" style={{ fontSize: 12, marginBottom: 8, display: 'block' }}>
+                    每日新增用户
+                  </Text>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 100 }}>
+                    {(() => {
+                      const maxNew = Math.max(...trendData.map((d) => d.newUsers), 1);
+                      return trendData.map((item) => {
+                        const height = Math.max((item.newUsers / maxNew) * 80, 2);
+                        return (
+                          <div
+                            key={item.date}
+                            title={`${item.date}: 新增 ${item.newUsers} 人`}
+                            style={{
+                              flex: 1,
+                              height,
+                              background: '#1890ff',
+                              borderRadius: '2px 2px 0 0',
+                              cursor: 'pointer',
+                              minWidth: 4,
+                            }}
+                          />
+                        );
+                      });
+                    })()}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <Text type="secondary" style={{ fontSize: 10 }}>
+                      {trendData[0]?.date}
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 10 }}>
+                      {trendData[trendData.length - 1]?.date}
+                    </Text>
+                  </div>
+                </div>
+                {/* 汇总数据表 — 最近 7 天 */}
+                <Table
+                  size="small"
+                  pagination={false}
+                  dataSource={trendData.slice(-7)}
+                  rowKey="date"
+                  columns={[
+                    { title: '日期', dataIndex: 'date', key: 'date', width: 120 },
+                    {
+                      title: '总用户',
+                      dataIndex: 'totalUsers',
+                      key: 'totalUsers',
+                      render: (v: number) => <Text strong>{v}</Text>,
+                    },
+                    {
+                      title: '新增',
+                      dataIndex: 'newUsers',
+                      key: 'newUsers',
+                      render: (v: number) => (
+                        <Text style={{ color: v > 0 ? '#52c41a' : undefined }}>
+                          {v > 0 ? `+${v}` : v}
+                        </Text>
+                      ),
+                    },
+                    {
+                      title: '活跃',
+                      dataIndex: 'activeUsers',
+                      key: 'activeUsers',
+                    },
+                    {
+                      title: '交易用户',
+                      dataIndex: 'tradingUsers',
+                      key: 'tradingUsers',
+                    },
+                  ]}
+                />
+              </Card>
+            </Col>
+          </Row>
+        )}
+
+        {/* C2: 用户资产分布 */}
+        {assetData && (
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} md={14}>
+              <Card
+                title={
+                  <span>
+                    <WalletOutlined style={{ marginRight: 8 }} />
+                    用户资产分布
+                  </span>
+                }
+                size="small"
+              >
+                {(() => {
+                  const maxCount = Math.max(...assetData.distribution.map((d) => d.count), 1);
+                  const COLORS = ['#d9d9d9', '#1890ff', '#52c41a', '#faad14', '#f5222d'];
+                  return assetData.distribution.map((item, idx) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Text style={{ width: 90, fontSize: 13 }}>
+                        ${item.label}
+                      </Text>
+                      <Progress
+                        percent={Math.round((item.count / maxCount) * 100)}
+                        strokeColor={COLORS[idx] || '#1890ff'}
+                        showInfo={false}
+                        style={{ flex: 1, marginRight: 12 }}
+                      />
+                      <Text strong style={{ width: 60, textAlign: 'right' }}>
+                        {item.count} 人
+                      </Text>
+                    </div>
+                  ));
+                })()}
+              </Card>
+            </Col>
+            <Col xs={24} md={10}>
+              <Card
+                title={
+                  <span>
+                    <DollarOutlined style={{ marginRight: 8 }} />
+                    平台资产总计
+                  </span>
+                }
+                size="small"
+              >
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                  <Statistic
+                    title="USDT 总额"
+                    value={parseFloat(assetData.totals.usdt).toFixed(2)}
+                    prefix="$"
+                    valueStyle={{ color: '#52c41a', fontSize: 22 }}
+                  />
+                  <Statistic
+                    title="HOOT 总额"
+                    value={parseFloat(assetData.totals.hoot).toFixed(2)}
+                    valueStyle={{ color: '#1890ff', fontSize: 22 }}
+                  />
+                  <Statistic
+                    title="积分总额"
+                    value={parseFloat(assetData.totals.points).toFixed(2)}
+                    valueStyle={{ color: '#faad14', fontSize: 22 }}
+                  />
+                </Space>
+              </Card>
+            </Col>
+          </Row>
+        )}
 
         {/* 排行榜和最近注册 */}
         <Row gutter={[16, 16]}>

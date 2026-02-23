@@ -7,8 +7,7 @@ import { MobileStrategyCreator } from '@/components/ui-v3/mobile/mobile-strategy
 export default function StrategyCreateRoutePage() {
   const router = useRouter();
 
-  const handleSave = (data: unknown) => {
-    console.log('策略已保存:', data);
+  const handleSave = (_data: unknown) => {
     // 创建成功后跳转到策略列表
     router.push('/strategies');
   };

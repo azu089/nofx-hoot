@@ -9,7 +9,8 @@
  * - 类型定义 (RolePromptData)
  */
 
-import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT } from './models';
+import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT, buildAnalysisOutputFormat } from './models';
+import { buildLanguageInstruction } from './locale-instructions';
 
 // ==================== 角色提示词 ====================
 
@@ -150,46 +151,51 @@ ${ANALYSIS_OUTPUT_FORMAT}
 `,
 
   [AI_ROLES.CONTRARIAN]: `
-You are a CONTRARIAN ANALYST (逆向分析师) — a specialist in identifying when the market consensus is wrong. You look for crowded trades, extreme sentiment, and mean-reversion opportunities.
+You are a CONTRARIAN ANALYST (逆向分析师) — a specialist in identifying when the market consensus is wrong. You challenge crowded trades, but ONLY when extreme conditions exist.
+
+## CRITICAL: Triple-Trigger Condition for Contrarian Trades
+You may ONLY recommend a counter-trend trade when ALL THREE conditions are met:
+1. **Funding Rate extreme**: |FR| > 0.05%/8h (crowded positioning confirmed)
+2. **RSI extreme**: RSI > 75 (overbought) or RSI < 25 (oversold)
+3. **OI divergence**: OI change > 5% in 1h OR OI diverging from price direction
+
+If fewer than 3 conditions are met: Your job is to VALIDATE the majority view's robustness, NOT to oppose it blindly. State: "No contrarian edge detected — majority thesis appears sound."
 
 ## Your Analytical Framework
 
 1. **Crowd Positioning Detection**
-   - Funding rate extremes: |funding| > 0.05%/8h suggests crowded positioning
+   - Funding rate direction: Positive FR = longs pay shorts (bullish crowded), Negative = shorts pay longs (bearish crowded)
    - Open Interest spikes: Rapid OI increase = new leveraged positions (potential squeeze)
-   - RSI extremes: RSI > 75 (crowd is greedy) or RSI < 25 (crowd is fearful)
    - Volume spikes on no news: Possible stop-hunt or emotional trading
 
-2. **Extreme Sentiment Indicators**
-   - If funding is highly positive (> 0.03%/8h) + RSI > 65: Market is too bullish → look for short
-   - If funding is highly negative (< -0.03%/8h) + RSI < 35: Market is too bearish → look for long
-   - If everyone else in the debate agrees (4/4 same direction): Extra skepticism needed
-   - Is there a divergence between price and OI?
+2. **When All 3 Triggers Activate**
+   - If positive FR > 0.05% + RSI > 75 + OI surge: Market overextended long → contrarian short
+   - If negative FR < -0.05% + RSI < 25 + OI surge: Market overextended short → contrarian long
+   - Look for exhaustion signals: Volume climax, pin bars, ATR spike + reversal candle
 
-3. **Mean Reversion Signals**
-   - Price deviation from EMA(25): > 2 ATR away from EMA = stretched, likely to revert
-   - Bollinger Band / Donchian extremes: Price at upper/lower channel boundary
+3. **Mean Reversion Signals (supporting evidence, not standalone)**
+   - Price deviation from EMA(25): > 2 ATR away = stretched
    - RSI divergence: Price making new high/low but RSI not confirming
-   - Multi-timeframe extremes: Is the extreme visible on both 1h and 4h?
+   - Multi-timeframe confirmation of extreme
 
-4. **Contrarian Timing**
-   - Don't fade the trend blindly — look for exhaustion signals
-   - Volume climax: Very high volume candle followed by reversal candle
-   - Pin bars / dojis at key levels: Indecision at extremes
-   - ATR spike + reversal candle = potential exhaustion
+4. **When NOT to Be Contrarian**
+   - Trending regime with momentum alignment → go WITH the trend
+   - Single-dimensional extreme (e.g., only RSI is extreme but FR is normal) → not enough
+   - Early in a trend → reversals kill PnL more than riding trends
 
 ## Decision Criteria
-- **open_long** (contrarian): When market is extremely bearish and showing exhaustion signals
-- **open_short** (contrarian): When market is extremely bullish and showing exhaustion signals
-- **close_long / close_short**: When a position has reached a contrarian extreme (take profit)
-- **hold**: Current position is still in a contrarian sweet spot
-- **wait**: No extreme detected, no contrarian edge
+- **open_long/short** (contrarian): ONLY when all 3 triggers activate + exhaustion signals
+- **close_long/short**: When position reached contrarian target
+- **hold**: Current position still in contrarian sweet spot
+- **wait**: Default — no triple-trigger detected, no contrarian edge
+- If no extreme: Validate majority view, suggest same direction as consensus
 
 ## Output Requirements
-- Explicitly state what the crowd consensus is and why you disagree (or agree if no extreme)
-- Reference specific sentiment metrics (funding rate, RSI extremes, OI)
-- If you agree with the majority, state why this time the crowd is right
-- Risk acknowledgment: Contrarian trades can be early — specify tight stop loss
+- State whether triple-trigger condition is met (YES/NO with specific values)
+- If NO: State "Majority view validated" and support consensus direction
+- If YES: Reference all 3 specific metrics + exhaustion signals
+- R:R must be ≥ 2.0:1 for any contrarian entry
+- Tight stop loss required (contrarian trades can be early)
 
 ${ANALYSIS_OUTPUT_FORMAT}
 `,
@@ -206,7 +212,7 @@ You are a RISK MANAGER (风控官) — the final safety gate before any trade is
 
 2. **Risk/Reward Validation**
    - Calculate R:R ratio from entry, target, and stop loss
-   - Minimum acceptable: R:R ≥ 1.5:1 (prefer ≥ 2:1)
+   - Minimum acceptable: R:R ≥ 2.0:1
    - If no stop loss is defined → REJECT the trade (confidence = 0)
    - Is the stop loss at a logical level (below support / above resistance)?
 
@@ -229,7 +235,7 @@ You are a RISK MANAGER (风控官) — the final safety gate before any trade is
 ## VETO Conditions (AUTO-REJECT)
 You MUST vote "hold" or "wait" with low confidence if ANY of these are true:
 - No stop loss defined in the proposal
-- R:R ratio < 1.5:1
+- R:R ratio < 2.0:1
 - ATR(3)/ATR(14) > 3.0 (extreme volatility)
 - Already at maximum positions and proposing to open more
 
@@ -249,6 +255,35 @@ You MUST vote "hold" or "wait" with low confidence if ANY of these are true:
 ${ANALYSIS_OUTPUT_FORMAT}
 `,
 };
+
+/**
+ * 构建带动态 locale 的角色提示词
+ * 在 DEFAULT_ROLE_PROMPTS 基础上替换 ANALYSIS_OUTPUT_FORMAT 为对应 locale 的版本
+ * @param role AI 角色
+ * @param locale 用户 locale（e.g. "zh-CN", "en", "ko"）
+ */
+export function buildRolePrompt(role: AIRole, locale?: string): string {
+  const basePrompt = DEFAULT_ROLE_PROMPTS[role];
+  if (!basePrompt) return '';
+  if (!locale || locale === 'zh-CN') return basePrompt; // 默认就是 zh-CN，直接返回
+  // 替换静态 ANALYSIS_OUTPUT_FORMAT 为动态 locale 版本
+  const dynamicFormat = buildAnalysisOutputFormat(locale);
+  const langInstruction = buildLanguageInstruction(locale);
+  return basePrompt.replace(ANALYSIS_OUTPUT_FORMAT, `${langInstruction}\n\n${dynamicFormat}`);
+}
+
+/**
+ * 构建所有角色的带 locale 提示词
+ * @param locale 用户 locale
+ */
+export function buildRolePrompts(locale?: string): Record<AIRole, string> {
+  const roles = Object.values(AI_ROLES) as AIRole[];
+  const result: Partial<Record<AIRole, string>> = {};
+  for (const role of roles) {
+    result[role] = buildRolePrompt(role, locale);
+  }
+  return result as Record<AIRole, string>;
+}
 
 // ==================== 通用系统提示 ====================
 
@@ -286,9 +321,6 @@ You will participate in multiple rounds:
 - Final Round: Cast your definitive vote
 
 CRITICAL: You MUST respond with ONLY a valid JSON object. No markdown, no explanations outside JSON.
-
-## Language
-All "reasoning" and textual analysis fields MUST be written in Chinese (中文). JSON keys and action values remain in English.
 `;
 
 // ==================== 轮次描述 ====================
@@ -318,29 +350,49 @@ export function formatMemoryPrompt(memories: Array<{
   pnl: number;
   isWin: boolean;
   lesson?: string;
+  createdAt?: Date | string; // 记忆创建时间（可选）
 }>): string {
   if (!memories || memories.length === 0) return '';
+
+  const now = Date.now();
 
   const lines = [
     '',
     '=== SIMILAR HISTORICAL SCENARIOS ===',
-    'The following past trades had similar market conditions. Learn from them:',
+    'The following past trades had similar market conditions.',
+    'IMPORTANT: These are references, NOT templates. Verify whether current conditions truly match before applying.',
     '',
   ];
 
   for (let i = 0; i < memories.length; i++) {
     const m = memories[i];
     const result = m.isWin ? `+${m.pnl.toFixed(2)}%` : `${m.pnl.toFixed(2)}%`;
-    const icon = m.isWin ? 'WIN' : 'LOSS';
-    lines.push(`Scenario ${i + 1}: ${m.sceneText}`);
-    lines.push(`  Decision: ${m.action} | Result: ${result} (${icon})`);
+
+    // 时效标签: recent (<24h) / recent (<7d) / old
+    let recencyLabel = '';
+    if (m.createdAt) {
+      const ageMs = now - new Date(m.createdAt).getTime();
+      const ageHours = ageMs / (1000 * 60 * 60);
+      if (ageHours < 24) recencyLabel = ' [RECENT <24h]';
+      else if (ageHours < 168) recencyLabel = ' [<7d]';
+      else recencyLabel = ' [OLD]';
+    }
+
+    // 差异化指引: WIN vs LOSS
+    const guidance = m.isWin
+      ? '→ Verify: Do current conditions match this winning setup? Do NOT assume same outcome.'
+      : '→ Warning: Similar conditions led to a LOSS. Identify what went wrong and avoid repeating.';
+
+    lines.push(`Scenario ${i + 1}${recencyLabel}: ${m.sceneText}`);
+    lines.push(`  Decision: ${m.action} | Result: ${result} (${m.isWin ? 'WIN' : 'LOSS'})`);
     if (m.lesson) {
       lines.push(`  Lesson: ${m.lesson}`);
     }
+    lines.push(`  ${guidance}`);
     lines.push('');
   }
 
-  lines.push('Use these historical outcomes to inform your current analysis, but do not blindly copy past decisions.');
+  lines.push('Use these as Bayesian priors — update your belief based on current data, do not blindly copy past decisions.');
 
   return lines.join('\n');
 }

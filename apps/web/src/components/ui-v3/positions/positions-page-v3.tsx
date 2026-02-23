@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   RefreshCcw,
   ChevronDown,
+  ChevronRight,
   BarChart3,
   Wallet,
   Zap,
@@ -20,11 +21,16 @@ import {
   Calendar,
   Settings,
   Trash2,
-  Search
+  Search,
+  FlaskConical,
+  Users,
+  Grid3x3,
+  Radio,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useTranslations } from '@/i18n/provider'
+import { getActionBadgeStyle, getActionText, formatGridSummary } from '@/lib/execution-log-format'
 
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
@@ -68,6 +74,24 @@ interface ExecutionLog {
   durationMs?: number
   errorCode?: string
   skipReason?: string
+  // 执行参数
+  leverage?: number
+  stopLoss?: number
+  takeProfit?: number
+  blockedBy?: string
+  blockReason?: string
+  // AI 决策详情
+  confidence?: number
+  positionSizePercent?: number
+  reasoning?: string
+  votes?: Array<{ modelId: string; action: string; confidence: number; reasoning?: string }>
+  // Grid 专属
+  gridSummary?: string
+  gridBuyRange?: string
+  gridSellRange?: string
+  gridOrderCount?: number
+  // 策略类型标识
+  strategyType?: 'research' | 'solo' | 'debate' | 'grid' | 'signal'
 }
 
 
@@ -202,6 +226,7 @@ export function PositionsPageV3({
   const [dateRange, setDateRange] = useState({ start: '2026-01-01', end: '2026-01-29' })
   const [strategySearchQuery, setStrategySearchQuery] = useState('')
   const [strategyStatusFilter, setStrategyStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
+  const [visibleLogCount, setVisibleLogCount] = useState(10)
 
   // ========== 数据过滤（基于 accountType） ==========
   // 持仓过滤
@@ -360,13 +385,13 @@ export function PositionsPageV3({
             {/* 总资产 */}
             <div className="py-2">
               <div className="text-sm text-[#606070] mb-1">{t('totalAssets')}</div>
-              <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${totalAssets.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
 
             {/* 可用余额 */}
             <div className="py-2">
               <div className="text-sm text-[#606070] mb-1">{t('availableBalance')}</div>
-              <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-[#F8F8FC]">${availableBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
 
             {/* 今日盈亏 */}
@@ -905,72 +930,18 @@ export function PositionsPageV3({
                   </div>
 
                   <div className="space-y-3">
-                    {filteredLogs.map((log) => (
-                      <div key={log.id} className="flex items-start gap-4 p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors">
-                        <div className={`p-2 rounded-full flex-shrink-0 ${
-                          log.status === 'success' ? 'bg-green-400/10' :
-                          log.status === 'warning' ? 'bg-yellow-400/10' :
-                          'bg-red-400/10'
-                        }`}>
-                          {log.status === 'success' ? (
-                            <CheckCircle className="w-4 h-4 text-green-400" />
-                          ) : log.status === 'warning' ? (
-                            <AlertCircle className="w-4 h-4 text-yellow-400" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-red-400" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-sm font-medium text-[#F8F8FC]">{log.strategy}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              log.action === '开多' ? 'bg-green-400/10 text-green-400' :
-                              log.action === '开空' ? 'bg-red-400/10 text-red-400' :
-                              log.action === '止盈' ? 'bg-cyan-400/10 text-cyan-400' :
-                              'bg-yellow-400/10 text-yellow-400'
-                            }`}>
-                              {log.action}
-                            </span>
-                            <span className="text-xs text-[#606070]">{log.symbol.replace(/:USDT$/, '')}</span>
-                          </div>
-                          <p className="text-sm text-[#9090A0] mb-2">{log.message}</p>
-                          {/* 增强执行详情 */}
-                          {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
-                            <div className="flex flex-wrap items-center gap-3 mb-2">
-                              {log.executedPrice && (
-                                <span className="text-xs text-[#94A3B8]">
-                                  成交价 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
-                                </span>
-                              )}
-                              {log.slippage && (
-                                <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
-                                  滑点 {parseFloat(log.slippage).toFixed(3)}%
-                                </span>
-                              )}
-                              {log.durationMs != null && (
-                                <span className="text-xs text-[#94A3B8]">
-                                  耗时 {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
-                                </span>
-                              )}
-                              {log.skipReason && (
-                                <span className="text-xs text-yellow-400/80">
-                                  {log.skipReason}
-                                </span>
-                              )}
-                              {log.errorCode && (
-                                <span className="text-xs text-red-400/80">
-                                  [{log.errorCode}]
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-3 h-3 text-[#606070]" />
-                            <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
-                          </div>
-                        </div>
-                      </div>
+                    {filteredLogs.slice(0, visibleLogCount).map((log) => (
+                      <DesktopLogCard key={log.id} log={log} />
                     ))}
+                    {filteredLogs.length > visibleLogCount && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleLogCount(prev => prev + 10)}
+                        className="w-full py-3 text-sm text-[#06B6D4] hover:text-[#0891B2] bg-[#12121A]/50 rounded-xl border border-[#1E1E2E] hover:border-[#06B6D4]/30 transition-colors"
+                      >
+                        {t('loadMore')} ({visibleLogCount}/{filteredLogs.length})
+                      </button>
+                    )}
                   </div>
 
                   {filteredLogs.length === 0 && (
@@ -989,3 +960,221 @@ export function PositionsPageV3({
     </div>
   )
 }
+
+// ============ 策略类型视觉配置 ============
+const STRATEGY_STYLE: Record<string, { color: string; bg: string; border: string; label: string; Icon: typeof Zap }> = {
+  research: { color: 'text-[#06B6D4]', bg: 'bg-[#06B6D4]/10', border: 'border-[#06B6D4]/40', label: '深研', Icon: FlaskConical },
+  solo:     { color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', border: 'border-[#F59E0B]/40', label: '极速', Icon: Zap },
+  debate:   { color: 'text-[#8B5CF6]', bg: 'bg-[#8B5CF6]/10', border: 'border-[#8B5CF6]/40', label: '共识', Icon: Users },
+  grid:     { color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', border: 'border-[#10B981]/40', label: '网格', Icon: Grid3x3 },
+  signal:   { color: 'text-[#64748B]', bg: 'bg-[#64748B]/10', border: 'border-[#64748B]/40', label: '信号', Icon: Radio },
+}
+
+// getDesktopActionStyle → 已迁移到 getActionBadgeStyle (execution-log-format.ts)
+
+function DesktopConfidenceBar({ value }: { value: number }) {
+  const fill = value >= 70 ? '#10B981' : value >= 40 ? '#F59E0B' : '#F43F5E'
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-[80px] h-1.5 rounded-full bg-[#1E1E2E] overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%`, backgroundColor: fill }} />
+      </div>
+      <span className="text-xs font-mono" style={{ color: fill }}>{value}%</span>
+    </div>
+  )
+}
+
+function DesktopLogCard({ log }: { log: ExecutionLog }) {
+  const [expanded, setExpanded] = useState(false)
+  const tAi = useTranslations('ai')
+  const style = STRATEGY_STYLE[log.strategyType || ''] || STRATEGY_STYLE.signal
+  const StIcon = style.Icon
+
+  return (
+    <div className={`flex items-start gap-4 p-4 bg-[#0A0A0F]/50 rounded-xl border border-[#1E1E2E] hover:border-[#2A2A3A] transition-colors border-l-2 ${style.border}`}>
+      {/* 状态图标 */}
+      <div className={`p-2 rounded-full flex-shrink-0 ${
+        log.status === 'success' ? 'bg-green-400/10' :
+        log.status === 'warning' ? 'bg-yellow-400/10' :
+        'bg-red-400/10'
+      }`}>
+        {log.status === 'success' ? (
+          <CheckCircle className="w-4 h-4 text-green-400" />
+        ) : log.status === 'warning' ? (
+          <AlertCircle className="w-4 h-4 text-yellow-400" />
+        ) : (
+          <XCircle className="w-4 h-4 text-red-400" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        {/* 标题行 */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-medium text-[#F8F8FC]">{log.strategy}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${style.bg} ${style.color}`}>
+            <StIcon className="w-3 h-3" />
+            {style.label}
+          </span>
+          <span className={`text-xs px-2 py-0.5 rounded ${getActionBadgeStyle(log.action)}`}>
+            {getActionText(log.action, tAi)}
+          </span>
+          {log.gridSummary && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-[#8B5CF6]/10 text-[#8B5CF6] font-mono">
+              {formatGridSummary(log.gridSummary, tAi)}
+            </span>
+          )}
+          <span className="text-xs text-[#606070]">{log.symbol?.replace(/:USDT$/, '') || ''}</span>
+        </div>
+
+        {/* 消息行 */}
+        <p className="text-sm text-[#9090A0] mb-2">{log.message}</p>
+
+        {/* Solo / Debate: 置信度 + 执行参数 */}
+        {(log.strategyType === 'solo' || log.strategyType === 'debate') && (
+          <div className="space-y-1.5 mb-2">
+            {log.confidence != null && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-[#808090]">置信度</span>
+                <DesktopConfidenceBar value={log.confidence} />
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {log.leverage != null && (
+                <span className="text-xs text-[#94A3B8]">
+                  杠杆 <span className="text-[#F8F8FC] font-mono">{log.leverage}x</span>
+                </span>
+              )}
+              {log.positionSizePercent != null && (
+                <span className="text-xs text-[#94A3B8]">
+                  仓位 <span className="text-[#F8F8FC] font-mono">{log.positionSizePercent}%</span>
+                </span>
+              )}
+              {log.stopLoss != null && (
+                <span className="text-xs text-[#F43F5E]">
+                  止损 <span className="font-mono">${log.stopLoss.toLocaleString()}</span>
+                </span>
+              )}
+              {log.takeProfit != null && (
+                <span className="text-xs text-[#10B981]">
+                  止盈 <span className="font-mono">${log.takeProfit.toLocaleString()}</span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Debate: 投票 */}
+        {log.strategyType === 'debate' && log.votes && log.votes.length > 0 && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-xs text-[#F59E0B] hover:text-[#D97706] transition-colors"
+            >
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+              {log.votes.length}个模型投票
+            </button>
+            {expanded && (
+              <div className="mt-1.5 space-y-1 pl-4 border-l border-[#F59E0B]/20">
+                {log.votes.map((v, i) => (
+                  <div key={i} className="flex items-center gap-3 text-xs">
+                    <span className="text-[#F59E0B] font-mono truncate max-w-[140px]">{v.modelId.split('/').pop()}</span>
+                    <span className={`px-1.5 py-0.5 rounded ${getActionBadgeStyle(v.action)}`}>{getActionText(v.action, tAi)}</span>
+                    <span className="text-[#808090]">{v.confidence}%</span>
+                    {v.reasoning && <span className="text-[#606070] truncate max-w-[200px]">{v.reasoning}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Grid: 买卖区间 */}
+        {log.strategyType === 'grid' && (log.gridBuyRange || log.gridSellRange) && (
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            {log.gridBuyRange && (
+              <span className="text-xs text-[#10B981]">
+                买 <span className="font-mono">{log.gridBuyRange}</span>
+              </span>
+            )}
+            {log.gridSellRange && (
+              <span className="text-xs text-[#F43F5E]">
+                卖 <span className="font-mono">{log.gridSellRange}</span>
+              </span>
+            )}
+            {log.gridOrderCount != null && (
+              <span className="text-xs text-[#94A3B8]">
+                共 <span className="text-[#F8F8FC] font-mono">{log.gridOrderCount}</span> 笔
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 风控拦截 */}
+        {log.blockedBy && (
+          <div className="text-xs text-red-400/80 mb-2 flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 rounded bg-red-400/10 font-mono text-[10px]">{log.blockedBy}</span>
+            <span>{log.blockReason}</span>
+          </div>
+        )}
+
+        {/* 成交/执行详情 */}
+        {(log.executedPrice || log.slippage || log.durationMs || log.skipReason) && (
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            {log.executedPrice && (
+              <span className="text-xs text-[#94A3B8]">
+                成交价 <span className="text-[#F8F8FC]">{parseFloat(log.executedPrice).toFixed(2)}</span>
+              </span>
+            )}
+            {log.executedAmount && (
+              <span className="text-xs text-[#94A3B8]">
+                数量 <span className="text-[#F8F8FC] font-mono">{parseFloat(log.executedAmount)}</span>
+              </span>
+            )}
+            {log.slippage && (
+              <span className={`text-xs ${parseFloat(log.slippage) > 0.5 ? 'text-yellow-400' : 'text-[#94A3B8]'}`}>
+                滑点 {parseFloat(log.slippage).toFixed(3)}%
+              </span>
+            )}
+            {log.durationMs != null && (
+              <span className="text-xs text-[#94A3B8]">
+                耗时 {log.durationMs < 1000 ? `${log.durationMs}ms` : `${(log.durationMs / 1000).toFixed(1)}s`}
+              </span>
+            )}
+            {log.skipReason && (
+              <span className="text-xs text-yellow-400/80">{log.skipReason}</span>
+            )}
+            {log.errorCode && (
+              <span className="text-xs text-red-400/80">[{log.errorCode}]</span>
+            )}
+          </div>
+        )}
+
+        {/* 推理文本（可展开） */}
+        {(log.strategyType === 'solo' || log.strategyType === 'debate') && log.reasoning && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-xs text-[#808090] hover:text-[#A0A0B0] transition-colors"
+            >
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+              AI 推理
+            </button>
+            {expanded && (
+              <p className="mt-1 text-xs text-[#808090] leading-relaxed pl-4 border-l border-[#2A2A3A] line-clamp-6">
+                {log.reasoning}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 时间行 */}
+        <div className="flex items-center gap-2">
+          <Clock className="w-3 h-3 text-[#606070]" />
+          <span className="text-xs text-[#606070]">{log.time ? new Date(log.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+

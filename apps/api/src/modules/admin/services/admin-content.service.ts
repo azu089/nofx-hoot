@@ -6,6 +6,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TranslateService } from '../../../common/services/translate.service';
 import Redis from 'ioredis';
+import { Prisma } from '@prisma/client';
 
 // ==================== DTOs ====================
 
@@ -108,7 +109,7 @@ export class AdminContentService {
    * 获取公告列表
    */
   async getAnnouncements(page = 1, limit = 20, status?: string, type?: string) {
-    const where: any = {};
+    const where: Prisma.AnnouncementWhereInput = {};
     if (status) where.status = status;
     if (type) where.type = type;
 
@@ -126,10 +127,10 @@ export class AdminContentService {
       items: announcements.map((a) => ({
         ...a,
         // 提取中文内容供管理后台显示
-        titleZh: (a.titleI18n as any)?.['zh-CN'] || a.title,
-        contentZh: (a.contentI18n as any)?.['zh-CN'] || a.content,
-        titleEn: (a.titleI18n as any)?.['en'] || '',
-        contentEn: (a.contentI18n as any)?.['en'] || '',
+        titleZh: (a.titleI18n as Record<string, string>)?.['zh-CN'] || a.title,
+        contentZh: (a.contentI18n as Record<string, string>)?.['zh-CN'] || a.content,
+        titleEn: (a.titleI18n as Record<string, string>)?.['en'] || '',
+        contentEn: (a.contentI18n as Record<string, string>)?.['en'] || '',
       })),
       total,
       page,
@@ -184,7 +185,7 @@ export class AdminContentService {
       throw new NotFoundException('公告不存在');
     }
 
-    const updateData: any = { ...dto };
+    const updateData: Record<string, unknown> = { ...dto };
 
     // 如果内容有变化，根据开关状态翻译
     if (dto.content && dto.content !== existing.content) {
@@ -239,8 +240,8 @@ export class AdminContentService {
       marquees: marquees.map((m) => ({
         id: m.id,
         content: m.content,
-        contentZh: (m.contentI18n as any)?.['zh-CN'] || m.content,
-        contentEn: (m.contentI18n as any)?.['en'] || '',
+        contentZh: (m.contentI18n as Record<string, string>)?.['zh-CN'] || m.content,
+        contentEn: (m.contentI18n as Record<string, string>)?.['en'] || '',
         link: m.link || '',
         order: m.sortOrder,
         enabled: m.isActive,
@@ -286,8 +287,8 @@ export class AdminContentService {
     return {
       id: marquee.id,
       content: marquee.content,
-      contentZh: (contentI18n as any)?.['zh-CN'] || marquee.content,
-      contentEn: (contentI18n as any)?.['en'] || '',
+      contentZh: (contentI18n as Record<string, string>)?.['zh-CN'] || marquee.content,
+      contentEn: (contentI18n as Record<string, string>)?.['en'] || '',
       link: marquee.link || '',
       order: marquee.sortOrder,
       enabled: marquee.isActive,
@@ -305,7 +306,7 @@ export class AdminContentService {
       throw new NotFoundException('跑马灯不存在');
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     // 映射前端字段到数据库字段
     if (dto.content !== undefined) updateData.content = dto.content;
@@ -317,7 +318,7 @@ export class AdminContentService {
     if (dto.sortOrder !== undefined) updateData.sortOrder = dto.sortOrder;
 
     // 如果内容有变化，根据开关状态翻译
-    let contentI18n = existing.contentI18n as any;
+    let contentI18n = existing.contentI18n as Record<string, string> | null;
     if (dto.content && dto.content !== existing.content) {
       contentI18n = await this.translateIfEnabled(dto.content);
       updateData.contentI18n = contentI18n;
@@ -333,8 +334,8 @@ export class AdminContentService {
     return {
       id: marquee.id,
       content: marquee.content,
-      contentZh: (marquee.contentI18n as any)?.['zh-CN'] || marquee.content,
-      contentEn: (marquee.contentI18n as any)?.['en'] || '',
+      contentZh: (marquee.contentI18n as Record<string, string>)?.['zh-CN'] || marquee.content,
+      contentEn: (marquee.contentI18n as Record<string, string>)?.['en'] || '',
       link: marquee.link || '',
       order: marquee.sortOrder,
       enabled: marquee.isActive,
@@ -578,7 +579,7 @@ export class AdminContentService {
    * 获取 FAQ 列表
    */
   async getFaqItems(page = 1, limit = 50, category?: string) {
-    const where: any = {};
+    const where: Prisma.FaqItemWhereInput = {};
     if (category) where.category = category;
 
     const [total, items] = await Promise.all([
@@ -594,10 +595,10 @@ export class AdminContentService {
     return {
       items: items.map((item) => ({
         ...item,
-        questionZh: (item.questionI18n as any)?.['zh-CN'] || item.questionZh,
-        questionEn: (item.questionI18n as any)?.['en'] || item.questionEn,
-        answerZh: (item.answerI18n as any)?.['zh-CN'] || item.answerZh,
-        answerEn: (item.answerI18n as any)?.['en'] || item.answerEn,
+        questionZh: (item.questionI18n as Record<string, string>)?.['zh-CN'] || item.questionZh,
+        questionEn: (item.questionI18n as Record<string, string>)?.['en'] || item.questionEn,
+        answerZh: (item.answerI18n as Record<string, string>)?.['zh-CN'] || item.answerZh,
+        answerEn: (item.answerI18n as Record<string, string>)?.['en'] || item.answerEn,
       })),
       total,
       page,
@@ -616,10 +617,10 @@ export class AdminContentService {
     }
     return {
       ...item,
-      questionZh: (item.questionI18n as any)?.['zh-CN'] || item.questionZh,
-      questionEn: (item.questionI18n as any)?.['en'] || item.questionEn,
-      answerZh: (item.answerI18n as any)?.['zh-CN'] || item.answerZh,
-      answerEn: (item.answerI18n as any)?.['en'] || item.answerEn,
+      questionZh: (item.questionI18n as Record<string, string>)?.['zh-CN'] || item.questionZh,
+      questionEn: (item.questionI18n as Record<string, string>)?.['en'] || item.questionEn,
+      answerZh: (item.answerI18n as Record<string, string>)?.['zh-CN'] || item.answerZh,
+      answerEn: (item.answerI18n as Record<string, string>)?.['en'] || item.answerEn,
     };
   }
 
@@ -647,8 +648,8 @@ export class AdminContentService {
         answerI18n,
         questionZh: dto.question,
         answerZh: dto.answer,
-        questionEn: (questionI18n as any)?.['en'] || '',
-        answerEn: (answerI18n as any)?.['en'] || '',
+        questionEn: (questionI18n as Record<string, string>)?.['en'] || '',
+        answerEn: (answerI18n as Record<string, string>)?.['en'] || '',
         category: dto.category || 'general',
         sortOrder: dto.sortOrder ?? (maxOrder._max.sortOrder || 0) + 1,
         isActive: true,
@@ -668,7 +669,7 @@ export class AdminContentService {
       throw new NotFoundException('FAQ 不存在');
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     // 映射字段
     if (dto.category !== undefined) updateData.category = dto.category;
@@ -680,7 +681,7 @@ export class AdminContentService {
       const questionI18n = await this.translateIfEnabled(dto.question);
       updateData.questionI18n = questionI18n;
       updateData.questionZh = dto.question;
-      updateData.questionEn = (questionI18n as any)?.['en'] || '';
+      updateData.questionEn = (questionI18n as Record<string, string>)?.['en'] || '';
     }
 
     // 如果回答有变化，翻译
@@ -688,7 +689,7 @@ export class AdminContentService {
       const answerI18n = await this.translateIfEnabled(dto.answer);
       updateData.answerI18n = answerI18n;
       updateData.answerZh = dto.answer;
-      updateData.answerEn = (answerI18n as any)?.['en'] || '';
+      updateData.answerEn = (answerI18n as Record<string, string>)?.['en'] || '';
     }
 
     return this.prisma.faqItem.update({
@@ -738,8 +739,8 @@ export class AdminContentService {
       data: {
         questionI18n,
         answerI18n,
-        questionEn: (questionI18n as any)?.['en'] || '',
-        answerEn: (answerI18n as any)?.['en'] || '',
+        questionEn: (questionI18n as Record<string, string>)?.['en'] || '',
+        answerEn: (answerI18n as Record<string, string>)?.['en'] || '',
       },
     });
   }
@@ -762,8 +763,8 @@ export class AdminContentService {
     return {
       items: documents.map((doc) => ({
         ...doc,
-        titleZh: (doc.titleI18n as any)?.['zh-CN'] || doc.titleZh,
-        titleEn: (doc.titleI18n as any)?.['en'] || doc.titleEn,
+        titleZh: (doc.titleI18n as Record<string, string>)?.['zh-CN'] || doc.titleZh,
+        titleEn: (doc.titleI18n as Record<string, string>)?.['en'] || doc.titleEn,
         // 内容太长，列表不返回全部内容
         contentPreview: doc.contentZh?.slice(0, 200) || '',
       })),
@@ -784,10 +785,10 @@ export class AdminContentService {
     }
     return {
       ...doc,
-      titleZh: (doc.titleI18n as any)?.['zh-CN'] || doc.titleZh,
-      titleEn: (doc.titleI18n as any)?.['en'] || doc.titleEn,
-      contentZh: (doc.contentI18n as any)?.['zh-CN'] || doc.contentZh,
-      contentEn: (doc.contentI18n as any)?.['en'] || doc.contentEn,
+      titleZh: (doc.titleI18n as Record<string, string>)?.['zh-CN'] || doc.titleZh,
+      titleEn: (doc.titleI18n as Record<string, string>)?.['en'] || doc.titleEn,
+      contentZh: (doc.contentI18n as Record<string, string>)?.['zh-CN'] || doc.contentZh,
+      contentEn: (doc.contentI18n as Record<string, string>)?.['en'] || doc.contentEn,
     };
   }
 
@@ -801,10 +802,10 @@ export class AdminContentService {
     }
     return {
       ...doc,
-      titleZh: (doc.titleI18n as any)?.['zh-CN'] || doc.titleZh,
-      titleEn: (doc.titleI18n as any)?.['en'] || doc.titleEn,
-      contentZh: (doc.contentI18n as any)?.['zh-CN'] || doc.contentZh,
-      contentEn: (doc.contentI18n as any)?.['en'] || doc.contentEn,
+      titleZh: (doc.titleI18n as Record<string, string>)?.['zh-CN'] || doc.titleZh,
+      titleEn: (doc.titleI18n as Record<string, string>)?.['en'] || doc.titleEn,
+      contentZh: (doc.contentI18n as Record<string, string>)?.['zh-CN'] || doc.contentZh,
+      contentEn: (doc.contentI18n as Record<string, string>)?.['en'] || doc.contentEn,
     };
   }
 
@@ -835,8 +836,8 @@ export class AdminContentService {
         contentI18n,
         titleZh: dto.title,
         contentZh: dto.content,
-        titleEn: (titleI18n as any)?.['en'] || '',
-        contentEn: (contentI18n as any)?.['en'] || '',
+        titleEn: (titleI18n as Record<string, string>)?.['en'] || '',
+        contentEn: (contentI18n as Record<string, string>)?.['en'] || '',
         version: dto.version || '1.0',
         effectiveAt: dto.effectiveAt || new Date(),
         isActive: true,
@@ -863,7 +864,7 @@ export class AdminContentService {
       throw new NotFoundException('法律文档不存在');
     }
 
-    const updateData: any = { updatedBy };
+    const updateData: Record<string, unknown> = { updatedBy };
 
     // 映射字段
     if (dto.version !== undefined) updateData.version = dto.version;
@@ -875,7 +876,7 @@ export class AdminContentService {
       const titleI18n = await this.translateIfEnabled(dto.title);
       updateData.titleI18n = titleI18n;
       updateData.titleZh = dto.title;
-      updateData.titleEn = (titleI18n as any)?.['en'] || '';
+      updateData.titleEn = (titleI18n as Record<string, string>)?.['en'] || '';
     }
 
     // 如果内容有变化，翻译
@@ -883,7 +884,7 @@ export class AdminContentService {
       const contentI18n = await this.translateIfEnabled(dto.content);
       updateData.contentI18n = contentI18n;
       updateData.contentZh = dto.content;
-      updateData.contentEn = (contentI18n as any)?.['en'] || '';
+      updateData.contentEn = (contentI18n as Record<string, string>)?.['en'] || '';
     }
 
     return this.prisma.legalDocument.update({
@@ -918,8 +919,8 @@ export class AdminContentService {
       data: {
         titleI18n,
         contentI18n,
-        titleEn: (titleI18n as any)?.['en'] || '',
-        contentEn: (contentI18n as any)?.['en'] || '',
+        titleEn: (titleI18n as Record<string, string>)?.['en'] || '',
+        contentEn: (contentI18n as Record<string, string>)?.['en'] || '',
       },
     });
   }

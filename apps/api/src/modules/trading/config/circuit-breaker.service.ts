@@ -215,7 +215,7 @@ export class CircuitBreakerService {
     const config = await this.configService.getPlatformConfig();
     const now = new Date();
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       state: newState,
       failureCount: 0,
       successCount: 0,

@@ -385,12 +385,8 @@ describe('FeeService', () => {
       expect(FEE_CONFIG.PRO_GAS_FEE_RATE.toString()).toBe('0.2');
     });
 
-    it('B 类质押折扣应为 10%', () => {
-      expect(FEE_CONFIG.STAKING_DISCOUNT.B.toString()).toBe('0.1');
-    });
-
-    it('A 类质押无折扣', () => {
-      expect(FEE_CONFIG.STAKING_DISCOUNT.A.toString()).toBe('0');
+    it('HOOT 质押折扣应为 10%', () => {
+      expect(FEE_CONFIG.STAKING_DISCOUNT.toString()).toBe('0.1');
     });
 
     it('VIP 折扣阶梯正确', () => {

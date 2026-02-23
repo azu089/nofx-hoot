@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TradingGateway } from '../../gateways/trading.gateway';
 import Redis from 'ioredis';
 
 export interface HealthStatus {
@@ -25,7 +26,10 @@ export class HealthService {
   private readonly startTime = Date.now();
   private redis: Redis;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private tradingGateway: TradingGateway,
+  ) {
     // 初始化 Redis 连接用于健康检查
     this.redis = new Redis({
       host: process.env.REDIS_HOST || 'localhost',
@@ -120,7 +124,7 @@ export class HealthService {
       memory: process.memoryUsage(),
       uptime: process.uptime(),
       cpuUsage: process.cpuUsage(),
-      activeConnections: 0, // TODO: 从 WebSocket 获取
+      activeConnections: this.tradingGateway?.getConnectedCount() ?? 0,
     };
   }
 

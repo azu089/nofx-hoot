@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { StakingService } from './staking.service';
 import { CreateStakingDto } from './dto/staking.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('staking')
 @Controller('staking')
 export class StakingController {
   constructor(private stakingService: StakingService) {}

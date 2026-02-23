@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { MembershipService } from './membership.service';
 import { PurchaseMembershipDto } from './dto/membership.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('membership')
 @Controller('membership')
 export class MembershipController {
   constructor(private membershipService: MembershipService) {}

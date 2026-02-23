@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Users, Play, Pause, Megaphone, ExternalLink, Loader2, Building2, Gift } from 'lucide-react'
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Users, Play, Pause, Volume2, ExternalLink, Loader2, Building2, Gift } from 'lucide-react'
+import Image from 'next/image'
 import { useHomepageData, formatPrice, formatChange, formatTimeAgo, type CoinPrice, type CryptoNews, type Announcement, type MarqueeItem, type MarqueeConfig } from '@/hooks/useMarket'
 import { useTranslations } from '@/i18n/provider'
 
@@ -166,52 +167,59 @@ function Marquee({
 }) {
   const t = useTranslations('dashboard')
 
+  // 跑马灯文案：使用 i18n 本地化默认文案（10 语言精翻）
+  // 管理后台配置跑马灯后，可切换为 API 数据
   const defaultAnnouncements = [
-    t('defaultAnnouncements.maintenance'),
-    t('defaultAnnouncements.newStrategy'),
-    t('defaultAnnouncements.referralEvent'),
-    t('defaultAnnouncements.aiStrategy')
+    t('defaultAnnouncements.welcome'),
+    t('defaultAnnouncements.aiStrategy'),
+    t('defaultAnnouncements.security'),
+    t('defaultAnnouncements.referral')
   ]
+  const displayItems = defaultAnnouncements.map(text => ({ text, link: undefined as string | undefined }))
 
-  // 优先使用跑马灯数据，其次使用公告数据，最后使用默认数据
-  // API 已返回翻译后的内容，直接使用即可
-  const displayTexts = marquees && marquees.length > 0
-    ? marquees.map(m => m.content)
-    : announcementsData && announcementsData.length > 0
-      ? announcementsData.map(a => a.title)
-      : defaultAnnouncements
-
-  // 获取跑马灯样式（如果有跑马灯数据则使用其颜色）
-  const bgColor = marquees?.[0]?.bgColor || '#06B6D4'
-  const textColor = marquees?.[0]?.textColor || '#9090A0'
-
-  // 根据配置计算动画时长（速度越快，时长越短）
-  const scrollSpeed = config?.scrollSpeed || 50
-  const animationDuration = Math.max(10, 200 / scrollSpeed * 10) // 10-40秒范围
+  // 跑马灯动画 12s 循环（对标 Binance/OKX）
+  const animationDuration = 12
 
   return (
-    <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden p-3">
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-cyan-400/[0.04] via-transparent to-transparent pointer-events-none z-[1]" />
-      <div className="relative z-[2] flex items-center">
-        <div className="flex items-center gap-2 font-medium mr-4 whitespace-nowrap" style={{ color: bgColor }}>
-          <Megaphone className="w-4 h-4" />
-          <span className="text-sm">{t('announcement')}</span>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <div
-            className="whitespace-nowrap text-sm"
-            style={{
-              color: textColor,
-              animation: `marquee ${animationDuration}s linear infinite`,
-            }}
-          >
-            {displayTexts.map((text, index) => (
-              <span key={index} className="mx-8">{text}</span>
-            ))}
-            {displayTexts.map((text, index) => (
-              <span key={`dup-${index}`} className="mx-8">{text}</span>
-            ))}
-          </div>
+    <div className="relative bg-[#12121A]/60 border border-[#1E1E2E] rounded-xl overflow-hidden h-10 flex items-center px-4">
+      <div className="flex items-center gap-2 mr-4 whitespace-nowrap">
+        <Volume2 className="w-4 h-4 text-[#F7931A]" />
+        <span className="text-sm font-medium text-[#B0B0C0]">{t('announcement')}</span>
+      </div>
+      <div className="flex-1 overflow-hidden marquee-container">
+        <div
+          className="whitespace-nowrap text-sm text-[#B0B0C0] marquee-track"
+          style={{
+            animation: `marquee ${animationDuration}s linear infinite`,
+          }}
+        >
+          {displayItems.map((item, index) => (
+            <span key={index}>
+              {index > 0 && <span className="mx-4 text-[#333]">|</span>}
+              {item.link ? (
+                <a href={item.link} target="_blank" rel="noopener noreferrer"
+                  className="hover:text-[#06B6D4] transition-colors cursor-pointer">
+                  {item.text}
+                </a>
+              ) : (
+                <span>{item.text}</span>
+              )}
+            </span>
+          ))}
+          <span className="mx-4 text-[#333]">|</span>
+          {displayItems.map((item, index) => (
+            <span key={`dup-${index}`}>
+              {index > 0 && <span className="mx-4 text-[#333]">|</span>}
+              {item.link ? (
+                <a href={item.link} target="_blank" rel="noopener noreferrer"
+                  className="hover:text-[#06B6D4] transition-colors cursor-pointer">
+                  {item.text}
+                </a>
+              ) : (
+                <span>{item.text}</span>
+              )}
+            </span>
+          ))}
         </div>
       </div>
     </div>
@@ -370,8 +378,7 @@ function MarketTabs({ prices, news, isLoading }: {
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-9 h-9 rounded-full bg-[#1E1E2E] flex items-center justify-center overflow-hidden">
                       {coin.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={coin.image} alt={coin.symbol} className="w-7 h-7" />
+                        <Image src={coin.image} alt={coin.symbol} width={28} height={28} className="w-7 h-7" unoptimized />
                       ) : (
                         <span className="text-sm font-bold text-[#06B6D4]">
                           {coin.symbol.charAt(0)}

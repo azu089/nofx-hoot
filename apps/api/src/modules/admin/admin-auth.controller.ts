@@ -22,10 +22,12 @@ import {
   EnableTotpDto,
   DisableTotpDto,
 } from './dto/auth.dto';
+import { ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from './guards/admin.guard';
 import { Admin } from './decorators/admin.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('admin-auth')
 @Controller('admin/auth')
 export class AdminAuthController {
   constructor(private adminAuthService: AdminAuthService) {}

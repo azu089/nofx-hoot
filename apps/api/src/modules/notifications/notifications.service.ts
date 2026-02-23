@@ -250,7 +250,7 @@ export class NotificationsService {
       return;
     }
 
-    // TODO: 集成邮件服务（如 Novu, SendGrid, AWS SES）
+    // EmailService 已就绪 (Resend)，邮件通知由 EmailService 独立处理
     this.logger.log(`邮件推送给 ${user.email}: ${title}`);
   }
 

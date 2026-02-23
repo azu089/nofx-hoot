@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Rocket } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { EcosystemPageV3 } from '@/components/ui-v3/ecosystem/ecosystem-page-v3';
@@ -130,10 +131,10 @@ export default function EcosystemPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staking'] });
       queryClient.invalidateQueries({ queryKey: ['wallet', 'balance'] });
-      alert('质押成功');
+      toast.success('质押成功');
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '质押失败');
+      toast.error(error instanceof Error ? error.message : '质押失败');
     },
   });
 
@@ -146,10 +147,10 @@ export default function EcosystemPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staking'] });
       queryClient.invalidateQueries({ queryKey: ['wallet', 'balance'] });
-      alert('解押成功');
+      toast.success('解押成功');
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '解押失败');
+      toast.error(error instanceof Error ? error.message : '解押失败');
     },
   });
 
@@ -162,10 +163,10 @@ export default function EcosystemPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staking'] });
       queryClient.invalidateQueries({ queryKey: ['wallet', 'balance'] });
-      alert('奖励领取成功');
+      toast.success('奖励领取成功');
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '领取失败');
+      toast.error(error instanceof Error ? error.message : '领取失败');
     },
   });
 

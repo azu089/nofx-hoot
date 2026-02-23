@@ -7,10 +7,12 @@ import {
   Body,
   Param,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ApiKeysService } from './api-keys.service';
 import { CreateApiKeyDto, CreateDexCredentialDto, UpdateApiKeyDto } from './dto/api-key.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
+@ApiTags('api-keys')
 @Controller('api-keys')
 export class ApiKeysController {
   constructor(private apiKeysService: ApiKeysService) {}

@@ -44,7 +44,7 @@ model User {
   // 邀请关系
   inviteCode    String?  @unique @map("invite_code")
   invitedBy     String?  @map("invited_by")
-  inviter       User?    @relation("Referral", fields: [invitedBy], references: [id])
+  inviter       User?    @relation("Referral", fields: [invitedBy], references: [id], onDelete: SetNull)
   invitees      User[]   @relation("Referral")
 
   // Telegram 绑定
@@ -59,7 +59,7 @@ model User {
 
   // 代理商关联（如果用户是代理商的下级）
   agentId String? @map("agent_id")
-  agent   Agent?  @relation("AgentUsers", fields: [agentId], references: [id])
+  agent   Agent?  @relation("AgentUsers", fields: [agentId], references: [id], onDelete: SetNull)
 
   // 会员状态
   membershipStatus   String    @default("none") @map("membership_status") // none, active, expired
@@ -84,9 +84,11 @@ model User {
   aiConfig           AiConfig?
   aiResearchSessions AiResearchSession[]
   aiStrategies       AiStrategy[]
+  refreshTokens      RefreshToken[]
 
   @@index([status])
   @@index([membershipStatus])
+  @@index([membershipStatus, membershipExpireAt])
   @@index([agentId])
   @@map("users")
 }
@@ -97,7 +99,7 @@ model User {
 model Airdrop {
   id          String   @id @default(uuid())
   userId      String   @map("user_id")
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 空投类型: register, bind_tg, referral, trading_profit, checkin
   type        String
@@ -164,7 +166,7 @@ model CheckinRecord {
 model ApiKey {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   exchange String // binance, okx, bybit, hyperliquid, lighter, aster
   label    String
@@ -202,6 +204,7 @@ model ApiKey {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@index([userId, exchange, isActive])
   @@map("api_keys")
 }
 
@@ -250,9 +253,9 @@ model Strategy {
 model StrategySubscription {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
-  user       User     @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   strategyId String   @map("strategy_id")
-  strategy   Strategy @relation(fields: [strategyId], references: [id])
+  strategy   Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
 
   // === 基础配置 ===
   apiKeyId       String  @map("api_key_id") // 使用哪个 API Key
@@ -318,7 +321,7 @@ model StrategySubscription {
 model Signal {
   id         String   @id @default(uuid())
   strategyId String   @map("strategy_id")
-  strategy   Strategy @relation(fields: [strategyId], references: [id])
+  strategy   Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
 
   symbol String // BTC/USDT
   side   String // buy, sell
@@ -343,7 +346,7 @@ model Signal {
 model SignalExecution {
   id       String @id @default(uuid())
   signalId String @map("signal_id")
-  signal   Signal @relation(fields: [signalId], references: [id])
+  signal   Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
   userId   String @map("user_id")
 
   // 执行状态
@@ -379,7 +382,7 @@ model SignalExecution {
 model Position {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   exchange String
   symbol   String
@@ -411,9 +414,9 @@ model Position {
   // 关联
   apiKeyId       String? @map("api_key_id")
   subscriptionId String? @map("subscription_id")
-  subscription   StrategySubscription? @relation(fields: [subscriptionId], references: [id])
+  subscription   StrategySubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   signalId       String? @map("signal_id")
-  signal         Signal?  @relation(fields: [signalId], references: [id])
+  signal         Signal?  @relation(fields: [signalId], references: [id], onDelete: SetNull)
 
   status      String    @default("open") // open, closed, failed
   closedAt    DateTime? @map("closed_at")
@@ -436,13 +439,15 @@ model Position {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  dcaLogs DcaLog[]
+  dcaLogs       DcaLog[]
+  gasFeeRecords GasFeeRecord[]
 
   @@index([userId, status])
   @@index([userId, symbol, status])
   @@index([userId, status, source])
   @@index([subscriptionId, status])
   @@index([signalId])
+  @@index([aiStrategyId, status, closedAt])
   @@map("positions")
 }
 
@@ -452,7 +457,7 @@ model Position {
 model Transaction {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   type   String // deposit, withdraw, fee, reward, referral
   asset  String // USDT, HOOT
@@ -470,14 +475,15 @@ model Transaction {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId, type])
+  @@index([userId, type, createdAt])
   @@map("transactions")
 }
 
 // 充值地址（HD 钱包派生，每次充值生成新地址）
 model DepositAddress {
-  id     String @id @default(uuid())
-  userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  id     String  @id @default(uuid())
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   chain           String // BSC, ETH, TRC20
   asset           String // USDT, HOOT
@@ -497,7 +503,7 @@ model DepositAddress {
 model WithdrawRequest {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   asset   String // USDT, HOOT
   amount  Decimal @db.Decimal(18, 8)
@@ -523,6 +529,7 @@ model WithdrawRequest {
 
   @@unique([relayIndex], map: "withdraw_requests_relay_index_unique") // 防止并发分配相同中继地址
   @@index([userId, status])
+  @@index([status, createdAt])
   @@map("withdraw_requests")
 }
 
@@ -532,7 +539,7 @@ model WithdrawRequest {
 model ReferralReward {
   id     String @id @default(uuid())
   userId String @map("user_id") // 获得返佣的用户
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   fromUserId String  @map("from_user_id") // 被邀请人
   type       String // subscription, trading
@@ -554,7 +561,7 @@ model ReferralReward {
 model StakingRecord {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   // 质押金额
   amount Decimal @db.Decimal(18, 8)
@@ -589,7 +596,7 @@ model StakingRecord {
 model DividendRecord {
   id        String @id @default(uuid())
   stakingId String @map("staking_id")
-  staking   StakingRecord @relation(fields: [stakingId], references: [id])
+  staking   StakingRecord @relation(fields: [stakingId], references: [id], onDelete: Cascade)
 
   // 分红周期
   periodStart DateTime @map("period_start")
@@ -679,7 +686,7 @@ model BillingLog {
 model Notification {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   type     String // signal_received, position_opened, etc.
   title    String
@@ -775,7 +782,7 @@ model PlatformConfig {
 model UserTradingConfig {
   id     String @id @default(uuid())
   userId String @unique @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // === 风控配置 (JSON) ===
   riskConfig String @default("{}") @map("risk_config") @db.Text
@@ -1123,7 +1130,7 @@ model TradeExecutionLog {
 model PointCardRecord {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 类型：recharge（充值）、consume（消费）、refund（退款）
   type   String
@@ -1154,10 +1161,11 @@ model PointCardRecord {
 model GasFeeRecord {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 关联持仓
-  positionId String @map("position_id")
+  positionId String? @map("position_id")
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
 
   // 交易信息
   symbol     String
@@ -1623,7 +1631,7 @@ model MembershipPlan {
 model MembershipSubscription {
   id     String @id @default(uuid())
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 套餐信息
   planId       String         @map("plan_id")
@@ -1785,7 +1793,7 @@ model Exchange {
 model AiAnalysis {
   id              String   @id @default(uuid())
   userId          String   @map("user_id")
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subscriptionId  String?  @map("subscription_id")
 
   // 分析结果
@@ -1808,7 +1816,7 @@ model AiAnalysis {
 
   // 关联到 Signal 表（如果执行了）
   signalId        String?  @map("signal_id")
-  signal          Signal?  @relation(fields: [signalId], references: [id])
+  signal          Signal?  @relation(fields: [signalId], references: [id], onDelete: SetNull)
 
   // 技术指标快照
   indicators      Json?
@@ -1859,7 +1867,7 @@ model AiDebateEntry {
 model AiConfig {
   id              String   @id @default(uuid())
   userId          String   @unique @map("user_id")
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   isEnabled       Boolean  @default(false) @map("is_enabled")
   models          Json     @default("[]")       // 启用的模型列表
@@ -1873,7 +1881,7 @@ model AiConfig {
   maxPositionSize Decimal  @default(20)  @db.Decimal(5, 2) @map("max_position_size") // 最大仓位%
   maxLeverage     Int      @default(3) @map("max_leverage")
   maxDailyTrades  Int      @default(10) @map("max_daily_trades")
-  maxDailyDrawdown Decimal @default(5)  @db.Decimal(5, 2) @map("max_daily_drawdown") // 日回撤%
+  maxDailyDrawdown Decimal @default(5)  @db.Decimal(5, 2) @map("max_daily_drawdown") // 日回撤(USD，前端由%×fundPool转换)
   cooldownMinutes Int      @default(30) @map("cooldown_minutes") // 止损后冷却
   circuitBreaker  Int      @default(3)  @map("circuit_breaker")  // 连续止损熔断次数
   maxDebateRounds Int      @default(5)  @map("max_debate_rounds") // AI 辩论最大轮次 (3-10)
@@ -1907,6 +1915,9 @@ model AiConfig {
   minPositionSizeUSD Decimal @default(12) @db.Decimal(10, 2) @map("min_position_size_usd") // 最小仓位 USDT
   maxMarginUsage    Int      @default(90) @map("max_margin_usage")      // 最大保证金占用 % (10-95)
 
+  // === 语言设置 ===
+  locale            String   @default("zh-CN")                          // AI 输出语言: "zh-CN" | "en" | "ko" | "ja" 等
+
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("ai_configs")
@@ -1930,6 +1941,7 @@ model AiMemory {
 
   @@index([userId])
   @@index([userId, symbol])
+  @@index([userId, symbol, createdAt])
   @@map("ai_memories")
 }
 
@@ -1939,7 +1951,7 @@ model AiMemory {
 model AiResearchSession {
   id             String   @id @default(uuid())
   userId         String   @map("user_id")
-  user           User     @relation(fields: [userId], references: [id])
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   symbol         String
   depth          String   @default("standard")    // quick / standard / deep
   autoExecute    Boolean  @default(false) @map("auto_execute")
@@ -1970,7 +1982,7 @@ model AiResearchSession {
 model AiStrategy {
   id                String   @id @default(uuid())
   userId            String   @map("user_id")
-  user              User     @relation(fields: [userId], references: [id])
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name              String
   strategyType      String   @default("normal") @map("strategy_type")  // normal / grid
   tradingMode       String   @default("solo") @map("trading_mode")     // solo / debate
@@ -2005,6 +2017,7 @@ model AiStrategy {
 
   @@index([userId])
   @@index([userId, isActive])
+  @@index([isPublic, totalTrades])
   @@map("ai_strategies")
 }
 
@@ -2070,4 +2083,24 @@ model AiDebateSession {
   @@index([userId, status])
   @@index([strategyId, createdAt])
   @@map("ai_debate_sessions")
+}
+
+// ========== Refresh Token ==========
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
 }

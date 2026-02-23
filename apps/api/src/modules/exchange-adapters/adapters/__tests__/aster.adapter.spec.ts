@@ -16,9 +16,10 @@ const mockFetch = jest.fn();
 global.fetch = mockFetch as any;
 
 describe('AsterAdapter', () => {
+  // 使用 Hardhat 默认账户 #0 和 #1（有效 EIP-55 checksum 地址）
   const mainnetConfig: AsterAdapterConfig = {
-    userAddress: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD1e',
-    signerAddress: '0xAbC1234567890AbCdEf1234567890AbCdEf12345',
+    userAddress: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',
+    signerAddress: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
     privateKey:
       '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
     isTestnet: false,
@@ -57,7 +58,7 @@ describe('AsterAdapter', () => {
 
   describe('initialize', () => {
     it('初始化加载 exchangeInfo 并缓存精度', async () => {
-      // Mock exchangeInfo API
+      // Mock exchangeInfo API (第1次 fetch)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -113,12 +114,24 @@ describe('AsterAdapter', () => {
           ],
         }),
       });
+      // Mock getBalance → /fapi/v3/balance (第2次 fetch)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify([
+          { asset: 'USDT', balance: '1000.00', availableBalance: '800.00', crossUnPnl: '0.00' },
+        ]),
+      });
+      // Mock getPositions → /fapi/v3/positionRisk (第3次 fetch，getBalance 内部调用)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify([]),
+      });
 
       const adapter = new AsterAdapter(mainnetConfig);
       await adapter.initialize();
 
-      // 验证调用了 exchangeInfo
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // 验证调用了 exchangeInfo + getBalance + getPositions
+      expect(mockFetch).toHaveBeenCalledTimes(3);
       const url = mockFetch.mock.calls[0][0];
       expect(url).toContain('/fapi/v3/exchangeInfo');
     });
@@ -150,10 +163,18 @@ describe('AsterAdapter', () => {
 
   describe('dispose', () => {
     it('dispose 清理精度缓存', async () => {
-      // 先初始化
+      // 先初始化 (exchangeInfo + getBalance + getPositions)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ symbols: [] }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify([]),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify([]),
       });
 
       const adapter = new AsterAdapter(mainnetConfig);

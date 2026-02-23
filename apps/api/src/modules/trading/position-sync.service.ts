@@ -1,8 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { TradingService } from './trading.service';
+import { AdapterFactoryService } from '../exchange-adapters/adapter-factory.service';
+import { ExchangePosition as AdapterPosition } from '../exchange-adapters/types/exchange.types';
 import Decimal from 'decimal.js';
 import { isSameSymbol } from '../../common/utils/symbol.util';
+
+/** 从持仓记录推导策略名称 */
+function resolveStrategyName(
+  aiStrategyName?: string | null,
+  subscriptionStrategyName?: string | null,
+  source?: string | null,
+  symbol?: string,
+): string | undefined {
+  if (aiStrategyName) return aiStrategyName;
+  if (subscriptionStrategyName) return subscriptionStrategyName;
+  const coin = symbol?.split('/')[0] || '';
+  if (source === 'ai_research') return `深研-${coin}`;
+  if (source === 'ai_strategy') return `AI策略-${coin}`;
+  return undefined;
+}
 
 interface ExchangePosition {
   symbol: string;
@@ -54,7 +70,7 @@ export class PositionSyncService {
 
   constructor(
     private prisma: PrismaService,
-    private tradingService: TradingService,
+    @Optional() private readonly adapterFactory?: AdapterFactoryService,
   ) {}
 
   /**
@@ -87,14 +103,16 @@ export class PositionSyncService {
 
     // 3. 合并与更新数据
     const syncedPositions: SyncedPosition[] = [];
+    const matchedExchangeSymbols = new Set<string>();
 
     for (const dbPos of dbPositions) {
       // 在交易所持仓中查找匹配的持仓
       const exchangePos = exchangePositions.find(
-        (ep) => isSameSymbol(ep.symbol, dbPos.symbol),
+        (ep) => isSameSymbol(ep.symbol, dbPos.symbol) && ep.side === dbPos.side,
       );
 
       if (exchangePos) {
+        matchedExchangeSymbols.add(`${exchangePos.symbol}:${exchangePos.side}`);
         // 更新数据库中的持仓数据
         await this.updatePositionFromExchange(dbPos.id, exchangePos);
 
@@ -115,7 +133,7 @@ export class PositionSyncService {
           roe: (exchangePos.roe * 100).toFixed(2), // 转为百分比
           status: 'open',
           tradingType: 'futures',
-          strategyName: dbPos.aiStrategy?.name || dbPos.subscription?.strategy?.name,
+          strategyName: resolveStrategyName(dbPos.aiStrategy?.name, dbPos.subscription?.strategy?.name, dbPos.source, dbPos.symbol),
           createdAt: dbPos.createdAt,
           syncedAt: new Date(),
           syncSource: 'exchange',
@@ -125,9 +143,6 @@ export class PositionSyncService {
         this.logger.warn(
           `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到`,
         );
-
-        // 标记为关闭（可选）
-        // await this.markPositionClosed(dbPos.id, 'exchange_not_found');
 
         // 返回数据库数据
         syncedPositions.push({
@@ -148,7 +163,7 @@ export class PositionSyncService {
           roe: '0',
           status: dbPos.status,
           tradingType: dbPos.tradingType || 'spot',
-          strategyName: dbPos.aiStrategy?.name || dbPos.subscription?.strategy?.name,
+          strategyName: resolveStrategyName(dbPos.aiStrategy?.name, dbPos.subscription?.strategy?.name, dbPos.source, dbPos.symbol),
           createdAt: dbPos.createdAt,
           syncedAt: new Date(),
           syncSource: 'database',
@@ -156,68 +171,80 @@ export class PositionSyncService {
       }
     }
 
-    this.logger.log(`同步完成，共 ${syncedPositions.length} 个持仓`);
+    // 4. 交易所存在但 DB 中没有对应 open 记录的持仓（手动开仓/DB未记录/SL触发后DB未同步）
+    for (const ep of exchangePositions) {
+      const key = `${ep.symbol}:${ep.side}`;
+      if (!matchedExchangeSymbols.has(key)) {
+        this.logger.log(
+          `交易所持仓 ${ep.symbol} ${ep.side} 在数据库中未找到，添加为 exchange-only`,
+        );
+        syncedPositions.push({
+          id: `exchange_${ep.symbol}_${ep.side}`,
+          symbol: ep.symbol,
+          side: ep.side,
+          entryPrice: ep.entryPrice.toString(),
+          markPrice: ep.markPrice.toString(),
+          liquidationPrice: ep.liquidationPrice.toString(),
+          amount: ep.amount.toString(),
+          notionalValue: ep.notionalValue.toString(),
+          margin: ep.margin.toString(),
+          leverage: ep.leverage,
+          marginMode: ep.marginMode,
+          unrealizedPnl: ep.unrealizedPnl.toString(),
+          roe: (ep.roe * 100).toFixed(2),
+          status: 'open',
+          tradingType: 'futures',
+          createdAt: new Date(),
+          syncedAt: new Date(),
+          syncSource: 'exchange',
+        });
+      }
+    }
+
+    this.logger.log(`同步完成，共 ${syncedPositions.length} 个持仓（DB=${dbPositions.length}, 交易所=${exchangePositions.length}）`);
     return syncedPositions;
   }
 
   /**
    * 从交易所获取持仓数据
+   * 使用 AdapterFactoryService (CcxtAdapter) — binance 自动映射 binanceusdm
    */
   private async fetchExchangePositions(
     userId: string,
     apiKeyId: string,
   ): Promise<ExchangePosition[]> {
     try {
-      // 使用 TradingService 获取交易所持仓
-      const positions = await this.tradingService.fetchPositions(userId, apiKeyId);
+      if (!this.adapterFactory) {
+        this.logger.warn('AdapterFactoryService 未注入，无法同步交易所持仓');
+        return [];
+      }
 
-      return positions.map((pos: any) => {
-        const side =
-          pos.side ||
-          (parseFloat(pos.info?.positionAmt || 0) > 0 ? 'long' : 'short');
-        const amount = Math.abs(
-          parseFloat(pos.contracts || pos.info?.positionAmt || 0),
-        );
-        const entryPrice = parseFloat(
-          pos.entryPrice || pos.info?.entryPrice || 0,
-        );
-        const markPrice = parseFloat(pos.markPrice || pos.info?.markPrice || 0);
-        const leverage = parseInt(pos.leverage || pos.info?.leverage || 1);
-        const unrealizedPnl = parseFloat(
-          pos.unrealizedPnl || pos.info?.unRealizedProfit || 0,
-        );
-        const notionalValue = parseFloat(
-          pos.notional || pos.info?.notional || amount * markPrice,
-        );
-        const margin = parseFloat(
-          pos.initialMargin ||
-            pos.info?.isolatedWallet ||
-            pos.info?.isolatedMargin ||
-            notionalValue / leverage,
-        );
-        const liquidationPrice = parseFloat(
-          pos.liquidationPrice || pos.info?.liquidationPrice || 0,
-        );
+      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const positions: AdapterPosition[] = await adapter.getPositions();
 
-        // 计算收益率 (ROE)
-        const roe = margin > 0 ? unrealizedPnl / margin : 0;
+      this.logger.log(`交易所返回 ${positions.length} 个持仓`);
+
+      return positions.map((pos) => {
+        const notionalValue = pos.quantity * pos.markPrice;
+        const margin = pos.margin > 0 ? pos.margin : notionalValue / (pos.leverage || 1);
+        const roe = margin > 0 ? pos.unrealizedPnl / margin : 0;
 
         return {
           symbol: pos.symbol,
-          side,
-          entryPrice,
-          markPrice,
-          amount,
-          leverage,
+          side: pos.side,
+          entryPrice: pos.entryPrice,
+          markPrice: pos.markPrice,
+          amount: pos.quantity,
+          leverage: pos.leverage,
           margin,
-          marginMode: pos.marginMode || pos.info?.marginType || 'cross',
-          unrealizedPnl,
+          marginMode: pos.marginMode,
+          unrealizedPnl: pos.unrealizedPnl,
           roe,
-          liquidationPrice,
+          liquidationPrice: pos.liquidationPrice || 0,
           notionalValue,
         };
       });
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`获取交易所持仓失败: ${error.message}`);
       return [];
     }
@@ -258,8 +285,6 @@ export class PositionSyncService {
       },
     });
   }
-
-  // normalizeSymbol 已迁移到 common/utils/symbol.util.ts (isSameSymbol)
 
   /**
    * 获取单个持仓的实时数据

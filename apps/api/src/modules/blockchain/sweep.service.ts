@@ -105,7 +105,7 @@ export class SweepService {
         chainAddresses.set(chain, new Map());
       }
       const chainMap = chainAddresses.get(chain)!;
-      if (!chainMap.has(addr.address)) {
+      if (!chainMap.has(addr.address) && addr.userId) {
         chainMap.set(addr.address, {
           derivationIndex: addr.derivationIndex,
           userId: addr.userId,

@@ -20,6 +20,15 @@ import {
   SubscriptionConfigResponse,
 } from './dto/subscription-config.dto';
 import { TradingConfigService } from '../trading/config/config.service';
+import { PlatformConfig } from '../trading/config/trading-config.types';
+import { Strategy, StrategySubscription } from '@prisma/client';
+
+/** PlatformConfig 扩展字段（实际运行时由 DB 动态配置，接口暂未收录） */
+type ExtendedPlatformConfig = PlatformConfig & {
+  maxLeverage?: number;
+  maxPositions?: number;
+  futuresEnabled?: boolean;
+};
 import { MembershipService } from '../membership/membership.service';
 import {
   getLocalizedContent,
@@ -93,7 +102,10 @@ export class StrategiesService {
   }
 
   // 格式化策略响应（支持多语言）
-  private formatStrategyResponse(s: any, locale: string): StrategyResponse {
+  private formatStrategyResponse(
+    s: Strategy & { _count?: { subscriptions: number } },
+    locale: string,
+  ): StrategyResponse {
     return {
       id: s.id,
       // 多语言字段：优先使用 i18n 字段，兼容旧的单语言字段
@@ -107,7 +119,7 @@ export class StrategiesService {
       isActive: s.isActive,
       createdAt: s.createdAt,
       subscriberCount: s._count?.subscriptions || 0,
-      imageUrl: s.imageUrl,
+      imageUrl: s.imageUrl ?? undefined,
       riskLevel: s.riskLevel,
       // tags 也支持多语言
       tags: getLocalizedArrayContent(
@@ -767,7 +779,7 @@ export class StrategiesService {
    */
   private async validateSubscriptionConfig(
     dto: CreateSubscriptionDto,
-    platformConfig: any,
+    platformConfig: ExtendedPlatformConfig,
   ): Promise<void> {
     const errors: string[] = [];
 
@@ -780,14 +792,14 @@ export class StrategiesService {
     }
 
     // 验证杠杆
-    if (dto.advanced?.leverage) {
+    if (dto.advanced?.leverage && platformConfig.maxLeverage !== undefined) {
       if (dto.advanced.leverage > platformConfig.maxLeverage) {
         errors.push(`杠杆不能超过 ${platformConfig.maxLeverage}x`);
       }
     }
 
     // 验证持仓数
-    if (dto.advanced?.maxPositions) {
+    if (dto.advanced?.maxPositions && platformConfig.maxPositions !== undefined) {
       if (dto.advanced.maxPositions > platformConfig.maxPositions) {
         errors.push(`最大持仓数不能超过 ${platformConfig.maxPositions}`);
       }
@@ -795,7 +807,7 @@ export class StrategiesService {
 
     // 合约交易检查
     if (dto.basic.tradingType === 'futures') {
-      if (!platformConfig.futuresEnabled) {
+      if (platformConfig.futuresEnabled === false) {
         errors.push('平台暂不支持合约交易');
       }
     }
@@ -809,9 +821,9 @@ export class StrategiesService {
    * 格式化订阅配置响应（支持多语言）
    */
   private formatSubscriptionResponse(
-    subscription: any,
+    subscription: StrategySubscription & { strategy: Strategy },
     apiKeyLabel: string,
-    platformConfig: any,
+    platformConfig: ExtendedPlatformConfig,
     locale = DEFAULT_LOCALE,
   ): SubscriptionConfigResponse {
     const validLocale = getValidLocale(locale);
@@ -867,10 +879,10 @@ export class StrategiesService {
         retryDelayMs: subscription.retryDelayMs,
       },
       platformLimits: {
-        maxLeverage: platformConfig.maxLeverage,
+        maxLeverage: platformConfig.maxLeverage ?? 10,
         maxAmountPerTrade: platformConfig.maxOrderAmountUsdt,
         minAmountPerTrade: platformConfig.minOrderAmountUsdt,
-        maxPositions: platformConfig.maxPositions,
+        maxPositions: platformConfig.maxPositions ?? 10,
       },
       createdAt: subscription.createdAt,
     };

@@ -12,12 +12,5 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Public()
-  @Get('health')
-  health() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-    };
-  }
+  // 健康检查统一由 HealthController (/health) 处理
 }

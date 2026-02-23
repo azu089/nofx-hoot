@@ -16,10 +16,12 @@ import {
   CreateSubscriptionDto,
   UpdateSubscriptionDto,
 } from './dto/subscription-config.dto';
+import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { DEFAULT_LOCALE } from '../../common/utils/i18n.util';
 
+@ApiTags('strategies')
 @Controller('strategies')
 export class StrategiesController {
   constructor(private strategiesService: StrategiesService) {}

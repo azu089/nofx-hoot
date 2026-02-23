@@ -198,20 +198,23 @@ export class DcaService {
       position.lastDcaPrice = currentPrice;
       const oldAmount = new Decimal(position.amount.toString());
       const newAmount = oldAmount.plus(new Decimal(order.amount.toString()));
-      position.amount = newAmount.toNumber();
 
       // 计算新的平均入场价
       const totalCost = new Decimal(position.entryPrice.toString())
         .times(oldAmount)
         .plus(new Decimal(currentPrice.toString()).times(new Decimal(order.amount.toString())));
-      position.entryPrice = totalCost.div(newAmount).toNumber();
+      const newEntryPrice = totalCost.div(newAmount);
 
-      // 更新数据库
+      // 更新内存对象（供后续逻辑使用）
+      position.amount = newAmount.toNumber();
+      position.entryPrice = newEntryPrice.toNumber();
+
+      // 更新数据库（使用 Decimal 字符串保留精度）
       await this.prisma.position.update({
         where: { id: positionId },
         data: {
-          amount: new Decimal(position.amount).toString(),
-          entryPrice: new Decimal(position.entryPrice).toString(),
+          amount: newAmount.toString(),
+          entryPrice: newEntryPrice.toString(),
           dcaCount: position.dcaCount,
           lastDcaAt: new Date(),
         },

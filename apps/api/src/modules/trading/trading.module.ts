@@ -12,6 +12,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { SignalsModule } from '../signals/signals.module';
 import { ReferralModule } from '../referral/referral.module';
 import { AirdropModule } from '../airdrop/airdrop.module';
+import { ExchangeAdaptersModule } from '../exchange-adapters/exchange-adapters.module';
 
 // 配置管理服务
 import { TradingConfigService } from './config/config.service';
@@ -32,6 +33,7 @@ import { PositionSyncService } from './position-sync.service';
     BullModule.registerQueue({ name: 'trade' }),
     ScheduleModule.forRoot(),
     ApiKeysModule,
+    ExchangeAdaptersModule,
     forwardRef(() => NotificationsModule),
     forwardRef(() => SignalsModule),
     ReferralModule,

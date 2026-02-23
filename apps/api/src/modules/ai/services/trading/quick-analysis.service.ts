@@ -56,6 +56,35 @@ export interface QuickAnalysisConfig {
   promptConfig?: PromptConfig;
   /** Phase 9.0 T4: 预构建的市场数据 prompt（多币种模式，跳过内部 fetch） */
   precomputedMarketData?: string;
+  /** Phase 1: 流动性数据（订单簿深度+滑点预估，AI 决策参考） */
+  liquidityData?: Array<{
+    symbol: string;
+    depthUSD: number;
+    estimatedSlippage: number;
+    referenceSizeUSD: number;
+    canFill: boolean;
+    spread: number;
+  }>;
+  /** 账户上下文（auto-trader 预计算，注入 Prompt 让 LLM 看到真实余额/持仓） */
+  accountInfo?: {
+    exchangeTotalEquity: number;
+    exchangeAvailableBalance: number;
+    allocatedCapital: number;
+    strategyMarginUsed: number;
+    strategyUnrealizedPnl: number;
+    strategyPositions: Array<{
+      symbol: string;
+      side: string;
+      entryPrice: number;
+      size: number;
+      leverage: number;
+      pnlPercent: number;
+      peakPnlPercent?: number;
+      margin: number;
+    }>;
+    otherStrategiesCount: number;
+    otherStrategiesMargin: number;
+  };
 }
 
 /**
@@ -67,6 +96,18 @@ export interface QuickAnalysisResult {
   rawResponse: string;
   cost: number;
   latencyMs: number;
+  /** 技术指标快照，供 safety.service 风控层使用（结构对齐 SafetyCheckInput.indicators） */
+  indicators?: {
+    rsi: number | null;
+    atr3?: number | null;
+    atr14?: number | null;
+  };
+  /** 资金费率，供 safety.service L8 检查 */
+  fundingRate?: number;
+  /** 当前价格，用于 SL/TP 百分比计算 */
+  currentPrice?: number;
+  /** 24h 成交量 USD，供 safety.service L10 流动性检查 */
+  volume24h?: number;
 }
 
 /**
@@ -112,21 +153,37 @@ export class QuickAnalysisService {
 
     // Phase 9.0 T4: 多币种模式 — 使用预构建的市场数据，跳过 fetch
     let marketDataPrompt: string;
-    let existingPositions: Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number }> = [];
+    let existingPositions: Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }> = [];
+    // 风控数据: 提升到外层作用域，供 safety.service 使用
+    let safetyIndicators: { rsi: number | null; atr3?: number | null; atr14?: number | null } | undefined;
+    let safetyFundingRate: number | undefined;
+    let safetyCurrentPrice: number | undefined;
+    let safetyVolume24h: number | undefined;
 
     if (config.precomputedMarketData) {
       // 多币种模式: 市场数据已由调用方预构建
       marketDataPrompt = config.precomputedMarketData;
     } else {
-      // 1. 获取市场数据 + 市场排名（并行，对齐 NoFx RankingDataType）
-      const [marketData, marketRanking] = await Promise.all([
+      // 1. 获取市场数据 + 市场排名 + 增强数据（并行，对齐 NoFx RankingDataType）
+      const [marketData, marketRanking, enhancedData] = await Promise.all([
         this.fetchMarketData(config),
         this.marketData.fetchMarketRanking(config.symbol).catch(() => null),
+        this.marketData.fetchEnhancedMarketData(config.symbol).catch(() => null),
       ]);
-      const { ohlcv, currentPrice, openInterest, fundingRate } = marketData;
+      const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
+      safetyVolume24h = volume24h;
 
       // 2. 计算技术指标
       const indicatorResult = this.indicators.calculateAll(ohlcv);
+
+      // 保存风控关键数据供 safety.service 使用（字段名对齐 SafetyCheckInput.indicators）
+      safetyIndicators = {
+        rsi: indicatorResult.rsi ?? null, // RSI(14) 用于 L3 超买/超卖检查
+        atr3: indicatorResult.atr3,
+        atr14: indicatorResult.atr,
+      };
+      safetyFundingRate = fundingRate;
+      safetyCurrentPrice = currentPrice;
 
       // 3. 构建最近交易上下文（替代 BM25 记忆，NoFx 轻量设计）
       this.formatRecentTrades(config.recentTrades, config.tradingStats);
@@ -145,6 +202,7 @@ export class QuickAnalysisService {
         fundingRate,
         existingPositions,
         marketRanking: marketRanking || undefined,
+        enhanced: enhancedData || undefined,
       });
     }
 
@@ -152,8 +210,17 @@ export class QuickAnalysisService {
     const systemPrompt = this.promptBuilder.buildSystemPrompt(config.promptConfig);
 
     // 7. 构建用户消息（Phase 9.0: 结构化 User Prompt，注入账户/交易/持仓上下文）
+    const ai = config.accountInfo;
     const userPromptCtx: UserPromptContext = {
       now: new Date(),
+      // 账户信息: 有 accountInfo 时用真实数据，否则不传（prompt-builder 跳过该段）
+      equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
+      balance: ai?.allocatedCapital,
+      marginUsage: ai && ai.allocatedCapital > 0 ? (ai.strategyMarginUsed / ai.allocatedCapital * 100) : undefined,
+      positionCount: ai?.strategyPositions.length,
+      exchangeEquity: ai?.exchangeTotalEquity,
+      otherStrategiesCount: ai?.otherStrategiesCount,
+      otherStrategiesMargin: ai?.otherStrategiesMargin,
       recentTrades: config.recentTrades?.map(t => ({
         symbol: t.symbol,
         side: t.side,
@@ -174,17 +241,29 @@ export class QuickAnalysisService {
         avgLoss: config.tradingStats.avgLoss,
         maxDrawdownPct: config.tradingStats.maxDrawdownPct,
       } : undefined,
-      positions: existingPositions.map(p => ({
+      // 持仓: 有 accountInfo 时用全策略持仓（全币种），否则降级到单币种查询
+      positions: ai ? ai.strategyPositions.map(p => ({
+        symbol: p.symbol,
+        side: p.side,
+        entryPrice: p.entryPrice,
+        size: p.size,
+        leverage: p.leverage,
+        pnlPercent: p.pnlPercent,
+        peakPnlPercent: p.peakPnlPercent,
+        margin: p.margin,
+      })) : existingPositions.map(p => ({
         symbol: config.symbol,
         side: p.side,
         entryPrice: p.entryPrice,
         size: p.size,
-        leverage: 1,
+        leverage: p.leverage ?? 1,
         pnlPercent: p.pnlPercent,
         peakPnlPercent: p.peakPnlPercent,
       })),
       marketDataPrompt,
+      liquidityData: config.liquidityData,
       debateContext: config.debateContext,
+      locale: config.promptConfig?.locale,
     };
 
     const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);
@@ -197,7 +276,7 @@ export class QuickAnalysisService {
       config.apiKeys,
       {
         temperature: config.temperature ?? 0.5,
-        maxTokens: config.maxTokens ?? 800,
+        maxTokens: config.maxTokens ?? 1500,
       },
     );
 
@@ -205,17 +284,25 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(response.content, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // 提取 <reasoning> CoT trace（如有）
+    // 提取 <reasoning> CoT trace（如有）— 优先使用更详细的版本
     const reasoningTrace = extractReasoning(response.content);
-    if (reasoningTrace && !decision.reasoning) {
+    if (reasoningTrace && reasoningTrace.length > (decision.reasoning?.length || 0)) {
       decision.reasoning = reasoningTrace;
     }
 
     const latencyMs = Date.now() - startTime;
 
+    // 详细日志: LLM 原始思考预览 + 决策参数 Banner
+    const thinkingPreview = (decision.reasoning || response.content || '').slice(0, 300);
     this.logger.log(
-      `[快速分析] 完成: ${config.symbol} → ${decision.action} (confidence=${decision.confidence}), ` +
-        `${allDecisions.length} 决策, 耗时 ${latencyMs}ms, 成本 $${response.cost.toFixed(6)}`,
+      `[快速分析] ======== 分析完成 ========\n` +
+      `  ${config.symbol} @ ${config.timeframe} (模型: ${config.modelId})\n` +
+      `  决策: ${decision.action} (confidence=${decision.confidence}%)\n` +
+      `  leverage=${decision.leverage}x posPct=${decision.positionSizePercent}%\n` +
+      `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'}\n` +
+      `  tokens=${response.tokenUsage || 'N/A'} 耗时=${latencyMs}ms 成本=$${response.cost.toFixed(6)}\n` +
+      `  思考: ${thinkingPreview}${thinkingPreview.length >= 300 ? '...' : ''}\n` +
+      `  ================================`,
     );
 
     return {
@@ -224,6 +311,10 @@ export class QuickAnalysisService {
       rawResponse: response.content,
       cost: response.cost,
       latencyMs,
+      indicators: safetyIndicators,
+      fundingRate: safetyFundingRate,
+      currentPrice: safetyCurrentPrice,
+      volume24h: safetyVolume24h,
     };
   }
 
@@ -234,6 +325,7 @@ export class QuickAnalysisService {
     currentPrice: number;
     openInterest: number | undefined;
     fundingRate: number | undefined;
+    volume24h: number | undefined;
   }> {
     // 并行获取市场数据
     const [ohlcvRaw, currentPrice, oiData, frData] = await Promise.all([
@@ -252,11 +344,18 @@ export class QuickAnalysisService {
       volume: c[5],
     }));
 
+    // 从 OHLCV 聚合 24h 成交量（L10 流动性检查用）
+    const barsFor24h = config.timeframe === '4h' ? 6 : config.timeframe === '1h' ? 24 : 6;
+    const volume24h = ohlcv.length >= barsFor24h
+      ? ohlcv.slice(-barsFor24h).reduce((sum, bar) => sum + (bar.volume || 0), 0)
+      : undefined;
+
     return {
       ohlcv,
       currentPrice,
       openInterest: oiData?.openInterest,
       fundingRate: frData?.fundingRate,
+      volume24h,
     };
   }
 
@@ -319,9 +418,9 @@ export class QuickAnalysisService {
       macd: ind.macd?.macd,
       macdSignal: ind.macd?.signal,
       macdHistogram: ind.macd?.histogram,
-      ema7: ind.ema?.ema12, // 最接近的 EMA
-      ema25: ind.ema?.ema26,
-      ema99: ind.ema?.ema50, // 使用 ema50 近似
+      ema7: ind.ema?.ema12, // 实际为 EMA(12)，标注为短期 EMA
+      ema25: ind.ema?.ema26, // 实际为 EMA(26)，标注为中期 EMA
+      ema99: ind.ema?.ema50, // 实际为 EMA(50)，标注为长期 EMA (无 EMA99 计算)
       atr3: ind.atr3,
       atr14: ind.atr,
       donchianUpper: ind.donchian?.upper,
@@ -341,7 +440,7 @@ export class QuickAnalysisService {
     userId: string,
     symbol: string,
   ): Promise<
-    Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number }>
+    Array<{ side: string; entryPrice: number; size: number; pnlPercent: number; peakPnlPercent?: number; leverage?: number }>
   > {
     try {
       const positions = await this.prisma.position.findMany({
@@ -357,6 +456,7 @@ export class QuickAnalysisService {
           unrealizedPnl: true,
           highWaterMark: true, // 对齐 NoFx PeakPnLPct
           margin: true,
+          leverage: true,
         },
       });
 
@@ -364,11 +464,13 @@ export class QuickAnalysisService {
         side: p.side,
         entryPrice: Number(p.entryPrice),
         size: Number(p.amount),
-        pnlPercent: Number(p.unrealizedPnl || 0),
-        // PeakPnL: 历史最高盈利百分比（对齐 NoFx PeakPnLPct）
-        peakPnlPercent: p.highWaterMark && Number(p.margin) > 0
-          ? (Number(p.highWaterMark) / Number(p.margin)) * 100
-          : undefined,
+        // 盈亏百分比 = 未实现盈亏(美元) / 保证金(美元) × 100
+        pnlPercent: Number(p.margin) > 0
+          ? (Number(p.unrealizedPnl || 0) / Number(p.margin)) * 100
+          : 0,
+        // PeakPnL: highWaterMark 已由 drawdown-monitor 按百分比存储，直接使用
+        peakPnlPercent: p.highWaterMark ? Number(p.highWaterMark) : undefined,
+        leverage: p.leverage ?? 1,
       }));
     } catch {
       return [];

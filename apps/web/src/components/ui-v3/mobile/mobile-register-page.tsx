@@ -118,7 +118,9 @@ export function MobileRegisterPage({
 
       await onRegister?.(registerData)
     } catch (error) {
-      console.error('Registration error:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Registration error:', error)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -129,7 +131,9 @@ export function MobileRegisterPage({
     try {
       await onWalletConnect?.()
     } catch (error) {
-      console.error('Wallet connection error:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Wallet connection error:', error)
+      }
     } finally {
       setIsLoading(false)
     }

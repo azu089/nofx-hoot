@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -89,15 +90,15 @@ export default function ProfilePage() {
       // iOS — 提示手动添加
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       if (isIOS) {
-        alert('请点击 Safari 底部的分享按钮 ⬆️，然后选择「添加到主屏幕」');
+        toast.info('请点击 Safari 底部的分享按钮 ⬆️，然后选择「添加到主屏幕」');
         return;
       }
       // 已安装或不支持
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
       if (isStandalone) {
-        alert('应用已安装');
+        toast.info('应用已安装');
       } else {
-        alert('请使用 Chrome / Edge 浏览器打开本网站，即可安装为桌面应用');
+        toast.info('请使用 Chrome / Edge 浏览器打开本网站，即可安装为桌面应用');
       }
       return;
     }

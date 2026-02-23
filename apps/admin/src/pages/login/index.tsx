@@ -11,7 +11,7 @@ import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+import { API_URL } from '../../lib/config';
 
 interface LoginFormData {
   username: string;

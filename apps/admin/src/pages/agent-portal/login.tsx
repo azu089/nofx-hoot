@@ -11,7 +11,7 @@ import { useMessage } from '../../hooks';
 
 const { Title, Text } = Typography;
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+import { API_URL as API_BASE } from '../../lib/config';
 
 export default function AgentLogin() {
   const message = useMessage();

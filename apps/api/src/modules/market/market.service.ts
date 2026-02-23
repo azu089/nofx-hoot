@@ -69,7 +69,7 @@ export interface MarqueeConfig {
 }
 
 const DEFAULT_MARQUEE_CONFIG: MarqueeConfig = {
-  scrollSpeed: 50,
+  scrollSpeed: 100,
   pauseOnHover: true,
   displayDuration: 5,
 };
@@ -565,14 +565,23 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       );
 
       const data = response.data;
-      const news = (data.results || []).slice(0, 15).map((item: any) => ({
+      interface CryptoPanicItem {
+        id: string | number;
+        title: string;
+        source?: { title?: string; domain?: string };
+        url: string;
+        published_at: string;
+        votes?: Record<string, unknown>;
+        currencies?: { code: string }[];
+      }
+      const news = (data.results || []).slice(0, 15).map((item: CryptoPanicItem) => ({
         id: `cp_${item.id}`,
         title: item.title,
         source: item.source?.title || item.source?.domain || 'CryptoPanic',
         url: item.url,
         publishedAt: item.published_at,
         sentiment: this.mapSentiment(item.votes),
-        tags: item.currencies?.map((c: any) => c.code) || [],
+        tags: item.currencies?.map((c) => c.code) || [],
       }));
 
       this.logger.debug(`CryptoPanic 返回 ${news.length} 条新闻`);
@@ -610,7 +619,18 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       );
 
       const data = response.data;
-      const news = (data.Data || []).slice(0, 25).map((item: any) => ({
+      interface CryptoCompareItem {
+        id: string | number;
+        title: string;
+        source_info?: { name?: string };
+        source?: string;
+        url: string;
+        published_on: number;
+        sentiment?: string;
+        categories?: string;
+        imageurl?: string;
+      }
+      const news = (data.Data || []).slice(0, 25).map((item: CryptoCompareItem) => ({
         id: `cc_${item.id}`,
         title: item.title,
         source: item.source_info?.name || item.source || 'CryptoCompare',
@@ -633,7 +653,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
    * 映射 CryptoCompare 情绪
    */
   private mapCryptoCompareSentiment(
-    sentiment: string,
+    sentiment: string | undefined,
   ): 'positive' | 'negative' | 'neutral' {
     if (!sentiment) return 'neutral';
     const lower = sentiment.toLowerCase();
@@ -698,10 +718,10 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   /**
    * 映射情绪分析
    */
-  private mapSentiment(votes: any): 'positive' | 'negative' | 'neutral' {
+  private mapSentiment(votes: Record<string, unknown> | undefined): 'positive' | 'negative' | 'neutral' {
     if (!votes) return 'neutral';
-    const positive = votes.positive || 0;
-    const negative = votes.negative || 0;
+    const positive = Number(votes.positive) || 0;
+    const negative = Number(votes.negative) || 0;
     if (positive > negative * 2) return 'positive';
     if (negative > positive * 2) return 'negative';
     return 'neutral';

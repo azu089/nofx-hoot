@@ -155,7 +155,7 @@ export class AdminAuthService {
   /**
    * 检查账号锁定状态
    */
-  private async checkAccountLock(admin: any) {
+  private async checkAccountLock(admin: { id: string; username: string; lockedUntil?: Date | null }) {
     if (admin.lockedUntil && new Date() < admin.lockedUntil) {
       const remainingMinutes = Math.ceil(
         (admin.lockedUntil.getTime() - Date.now()) / 60000,
@@ -177,7 +177,7 @@ export class AdminAuthService {
 
     const newAttempts = (admin?.loginAttempts || 0) + 1;
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       loginAttempts: newAttempts,
     };
 
@@ -212,7 +212,7 @@ export class AdminAuthService {
    * 检查是否为新登录位置
    */
   private async checkNewLoginLocation(
-    admin: any,
+    admin: { lastLoginIp?: string | null },
     ip?: string,
   ): Promise<boolean> {
     if (!ip || !admin.lastLoginIp) return false;
@@ -223,11 +223,11 @@ export class AdminAuthService {
    * 发送新登录通知
    */
   private async sendNewLoginNotification(
-    admin: any,
+    admin: { id: string; username: string; email?: string | null },
     ip?: string,
     userAgent?: string,
   ) {
-    // TODO: 集成 TG Bot 或邮件通知
+    // 审计日志已覆盖管理员操作记录，TG Bot 通知为可选增强
     this.logger.log(`异地登录通知: ${admin.username} from ${ip}`);
 
     // 记录到操作日志
@@ -730,7 +730,7 @@ export class AdminAuthService {
         },
       });
 
-      this.logger.log('已创建默认管理员账号: admin / admin123');
+      this.logger.log('已创建默认管理员账号: admin，请立即登录修改密码');
       this.logger.warn('⚠️ 请立即修改默认密码并启用两步验证！');
     }
   }

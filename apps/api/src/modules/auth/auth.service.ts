@@ -9,10 +9,11 @@ import {
   forwardRef,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { ethers } from 'ethers';
-import { createHmac } from 'crypto';
+import { createHmac, randomBytes, randomInt } from 'crypto';
 import Redis from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -33,6 +34,10 @@ const NONCE_TTL = 5 * 60; // 5分钟
 const LOGIN_ATTEMPT_TTL = 15 * 60; // 15分钟窗口
 const MAX_LOGIN_ATTEMPTS = 5; // 最大登录尝试次数
 const ACCOUNT_LOCK_TTL = 30 * 60; // 锁定30分钟
+
+// Token TTL 常量
+const ACCESS_TOKEN_TTL = 15 * 60; // 15分钟（秒）
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7天（秒）
 
 @Injectable()
 export class AuthService implements OnModuleDestroy {
@@ -63,6 +68,105 @@ export class AuthService implements OnModuleDestroy {
 
   onModuleDestroy() {
     this.redis.disconnect();
+  }
+
+  // ===== Refresh Token 机制 =====
+
+  /**
+   * 生成 Access Token + Refresh Token 对
+   * Access Token: JWT 15分钟，Refresh Token: 随机 64 字节 hex，7天
+   */
+  private async generateTokenPair(
+    userId: string,
+    email?: string | null,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    // Access Token (15min)
+    const payload: JwtPayload = {
+      sub: userId,
+      email: email || undefined,
+    };
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: ACCESS_TOKEN_TTL,
+    });
+
+    // Refresh Token（随机 64 字节 hex，不是 JWT）
+    const refreshTokenValue = randomBytes(64).toString('hex');
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL * 1000);
+
+    // 存储到数据库
+    await this.prisma.refreshToken.create({
+      data: {
+        token: refreshTokenValue,
+        userId,
+        expiresAt,
+        ipAddress: ip,
+        userAgent,
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken: refreshTokenValue,
+      expiresIn: ACCESS_TOKEN_TTL,
+    };
+  }
+
+  /**
+   * 使用 Refresh Token 换取新的 Token 对（Token Rotation）
+   * 旧 Token 立即撤销，生成新 Token 对
+   * 重放检测：已撤销的 Token 被再次使用 = 撤销该用户所有 Token
+   */
+  async refreshAccessToken(
+    refreshToken: string,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+    // 查找 Refresh Token（连同用户信息）
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      include: { user: { select: { id: true, email: true } } },
+    });
+
+    if (!stored) {
+      throw new UnauthorizedException('无效的 Refresh Token');
+    }
+
+    if (stored.revokedAt) {
+      // Token 已被使用过（可能是被盗）— 撤销该用户所有活跃 Token
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      this.logger.warn(
+        `Refresh Token 重放攻击检测: userId=${stored.userId}, ip=${ip}`,
+      );
+      throw new UnauthorizedException('Refresh Token 已失效，请重新登录');
+    }
+
+    if (stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Refresh Token 已过期，请重新登录');
+    }
+
+    // Token Rotation：撤销旧 Token
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    });
+
+    // 生成新的 Token 对
+    return this.generateTokenPair(stored.userId, stored.user.email, ip, userAgent);
+  }
+
+  /**
+   * 撤销指定用户的所有活跃 Refresh Token（登出时调用）
+   */
+  async revokeAllTokens(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   // ===== 防暴力破解 =====
@@ -192,7 +296,7 @@ export class AuthService implements OnModuleDestroy {
     }
 
     // 生成 6 位验证码
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 999999).toString();
     const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10分钟过期
 
     // 保存验证码
@@ -327,16 +431,11 @@ export class AuthService implements OnModuleDestroy {
     // 审计日志
     await this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip);
 
-    // 生成 JWT
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email || undefined,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
+    // 生成 Token 对（Access Token 15min + Refresh Token 7天）
+    const tokenPair = await this.generateTokenPair(user.id, user.email, ip);
 
     return {
-      accessToken,
+      ...tokenPair,
       user: {
         id: user.id,
         email: user.email,
@@ -394,8 +493,8 @@ export class AuthService implements OnModuleDestroy {
   async generateBindCode(
     userId: string,
   ): Promise<{ bindCode: string; expiresAt: Date }> {
-    // 生成 6 位绑定码
-    const bindCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // 生成 8 位绑定码（crypto 安全随机）
+    const bindCode = randomBytes(4).toString('hex').toUpperCase();
     const expiresAt = new Date(Date.now() + BIND_CODE_TTL * 1000);
 
     // 存入 Redis，自动过期
@@ -584,14 +683,6 @@ export class AuthService implements OnModuleDestroy {
     // 审计日志
     await this.logAudit(user.id, 'user', 'login', 'user', user.id, `TG 登录: ${dto.telegramId}`);
 
-    // 生成 JWT
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email || undefined,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
-
     // 重新查询包含余额的用户信息（注册后余额可能已变）
     const freshUser = await this.prisma.user.findUnique({
       where: { id: user.id },
@@ -608,8 +699,11 @@ export class AuthService implements OnModuleDestroy {
     // freshUser 理论上不会为 null（刚创建/查到的用户），但 TS 要求 null check
     const u = freshUser || user;
 
+    // 生成 Token 对（Access Token 15min + Refresh Token 7天）
+    const tokenPair = await this.generateTokenPair(user.id, user.email);
+
     return {
-      accessToken,
+      ...tokenPair,
       user: {
         id: u.id,
         email: u.email,
@@ -704,9 +798,7 @@ export class AuthService implements OnModuleDestroy {
   async getWalletNonce(
     address: string,
   ): Promise<{ nonce: string; expiresAt: Date }> {
-    const nonce =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    const nonce = randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + NONCE_TTL * 1000);
 
     // 存入 Redis，自动过期
@@ -792,16 +884,11 @@ export class AuthService implements OnModuleDestroy {
     // 审计日志
     await this.logAudit(user.id, 'user', 'login', 'user', user.id, `钱包登录: ${address}`);
 
-    // 生成 JWT
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email || undefined,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
+    // 生成 Token 对（Access Token 15min + Refresh Token 7天）
+    const tokenPair = await this.generateTokenPair(user.id, user.email);
 
     return {
-      accessToken,
+      ...tokenPair,
       user: {
         id: user.id,
         email: user.email,
@@ -978,5 +1065,34 @@ export class AuthService implements OnModuleDestroy {
         wallet: !!user.walletAddress,
       },
     };
+  }
+
+  // ===== 定期清理 =====
+
+  /**
+   * 每天凌晨 3 点清理过期和已撤销的 Refresh Token
+   * - 已过期超过 24 小时的 token
+   * - 已撤销超过 24 小时的 token
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async cleanupExpiredRefreshTokens(): Promise<void> {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24小时前
+
+    try {
+      const result = await this.prisma.refreshToken.deleteMany({
+        where: {
+          OR: [
+            { expiresAt: { lt: cutoff } },
+            { revokedAt: { lt: cutoff } },
+          ],
+        },
+      });
+
+      if (result.count > 0) {
+        this.logger.log(`清理过期 Refresh Token: 删除 ${result.count} 条`);
+      }
+    } catch (error) {
+      this.logger.error('清理过期 Refresh Token 失败:', error);
+    }
   }
 }

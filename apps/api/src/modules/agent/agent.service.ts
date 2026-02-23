@@ -5,6 +5,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AgentService {
@@ -121,7 +122,7 @@ export class AgentService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = { agentId };
+    const where: Prisma.UserWhereInput = { agentId };
     if (search) {
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
@@ -203,7 +204,7 @@ export class AgentService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = { agentId };
+    const where: Prisma.AgentCommissionWhereInput = { agentId };
     if (status) where.status = status;
     if (type) where.type = type;
 

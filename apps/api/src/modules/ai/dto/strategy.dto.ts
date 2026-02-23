@@ -43,7 +43,7 @@ export class CreateStrategyDto {
 
   @IsOptional()
   @IsInt()
-  @Min(5)
+  @Min(3)
   @Max(1440)
   intervalMinutes?: number = 60;
 
@@ -109,7 +109,7 @@ export class UpdateStrategyDto {
 
   @IsOptional()
   @IsInt()
-  @Min(5)
+  @Min(3)
   @Max(1440)
   intervalMinutes?: number;
 

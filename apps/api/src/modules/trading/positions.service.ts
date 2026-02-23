@@ -5,7 +5,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { TradingService } from './trading.service';
+import { FeeService } from './fee.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   PositionResponse,
@@ -16,6 +18,24 @@ import {
   PnlStatsResponse,
 } from './dto/position.dto';
 
+/**
+ * 从持仓记录推导策略名称（统一 fallback 逻辑）
+ * 优先级: aiStrategy.name > subscription.strategy.name > source fallback
+ */
+function resolveStrategyName(
+  aiStrategyName?: string | null,
+  subscriptionStrategyName?: string | null,
+  source?: string | null,
+  symbol?: string,
+): string | undefined {
+  if (aiStrategyName) return aiStrategyName;
+  if (subscriptionStrategyName) return subscriptionStrategyName;
+  const coin = symbol?.split('/')[0] || '';
+  if (source === 'ai_research') return `Research-${coin}`;
+  if (source === 'ai_strategy') return `AI-${coin}`;
+  return undefined;
+}
+
 @Injectable()
 export class PositionsService {
   private readonly logger = new Logger(PositionsService.name);
@@ -23,6 +43,7 @@ export class PositionsService {
   constructor(
     private prisma: PrismaService,
     private tradingService: TradingService,
+    private feeService: FeeService,
   ) {}
 
   // 获取用户持仓列表（仅开仓状态）
@@ -67,7 +88,7 @@ export class PositionsService {
         unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
         marginRatio: p.marginRatio?.toString() || undefined,
         lastSyncAt: p.lastSyncAt || undefined,
-        strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+        strategyName: resolveStrategyName(p.aiStrategy?.name, p.subscription?.strategy?.name, p.source, p.symbol),
         source: p.source || undefined,
       };
     });
@@ -114,7 +135,7 @@ export class PositionsService {
       unrealizedPnl: p.unrealizedPnl?.toString() || undefined,
       marginRatio: p.marginRatio?.toString() || undefined,
       lastSyncAt: p.lastSyncAt || undefined,
-      strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+      strategyName: resolveStrategyName(p.aiStrategy?.name, p.subscription?.strategy?.name, p.source, p.symbol),
       source: p.source || undefined,
     }));
   }
@@ -299,6 +320,27 @@ export class PositionsService {
         },
       });
 
+      // ===== 燃油费扣除（仅盈利时） =====
+      if (pnl.gt(0)) {
+        try {
+          const feeCalc = await this.feeService.calculateFee(userId, pnl.toFixed(8));
+          if (parseFloat(feeCalc.feeAmount) > 0) {
+            const uniqueOrderId = this.feeService.generateUniqueOrderId('GAS_FEE', userId, positionId);
+            await this.feeService.chargeFee({
+              userId,
+              positionId,
+              profit: feeCalc.profit,
+              feeRate: feeCalc.finalFeeRate,
+              feeAmount: feeCalc.feeAmount,
+              uniqueOrderId,
+            });
+            this.logger.log(`燃油费已扣除: ${position.symbol} 盈利=$${pnl.toFixed(2)} 费用=$${feeCalc.feeAmount}`);
+          }
+        } catch (feeErr) {
+          this.logger.error(`燃油费扣除失败(非致命): ${(feeErr as Error).message}`);
+        }
+      }
+
       return {
         id: updated.id,
         exchange: updated.exchange,
@@ -366,7 +408,7 @@ export class PositionsService {
   ): Promise<{ items: TradeHistoryResponse[]; total: number }> {
     const { page = 1, limit = 20, symbol, side, startDate, endDate } = query;
 
-    const where: any = {
+    const where: Prisma.PositionWhereInput = {
       userId,
       status: 'closed',
     };
@@ -382,10 +424,10 @@ export class PositionsService {
     if (startDate || endDate) {
       where.closedAt = {};
       if (startDate) {
-        where.closedAt.gte = new Date(startDate);
+        where.closedAt = { ...((where.closedAt as Prisma.DateTimeNullableFilter) ?? {}), gte: new Date(startDate) };
       }
       if (endDate) {
-        where.closedAt.lte = new Date(endDate);
+        where.closedAt = { ...((where.closedAt as Prisma.DateTimeNullableFilter) ?? {}), lte: new Date(endDate) };
       }
     }
 
@@ -449,7 +491,7 @@ export class PositionsService {
         margin: margin.toString(),
         marginMode: p.marginMode || 'cross',
         closeReason: p.closeReason || undefined,
-        strategyName: p.aiStrategy?.name || p.subscription?.strategy?.name || undefined,
+        strategyName: resolveStrategyName(p.aiStrategy?.name, p.subscription?.strategy?.name, p.source, p.symbol),
         source: p.source || undefined,
       };
     });
@@ -457,14 +499,20 @@ export class PositionsService {
     return { items, total };
   }
 
-  // 获取执行日志
+  // 获取执行日志（合并 SignalExecution + AiStrategyLog + AI Research 持仓记录）
   async getExecutionLogs(
     userId: string,
     limit = 50,
+    actionsOnly = true,
   ): Promise<ExecutionLogResponse[]> {
-    // 从 SignalExecution 获取执行日志
+    const logs: ExecutionLogResponse[] = [];
+
+    // === 来源 1: SignalExecution（Freqtrade 信号系统）===
     const executions = await this.prisma.signalExecution.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(actionsOnly ? { status: { in: ['success', 'failed'] } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {
@@ -494,53 +542,226 @@ export class PositionsService {
       tradeLogs.map((log) => [log.signalId, log]),
     );
 
-    return executions.map((exec) => {
+    for (const exec of executions) {
       let status: 'success' | 'warning' | 'error' = 'success';
-      let action = '执行';
+      let action = 'execute';
       let message = '';
 
       if (exec.status === 'success') {
         status = 'success';
-        action = exec.signal.side === 'buy' ? '开多' : '平仓';
-        message = exec.signal.side === 'buy'
-          ? `信号触发，已开多 ${exec.executedAmount || '?'} ${exec.signal.symbol}`
-          : `信号触发，已平仓 ${exec.executedAmount || '?'} ${exec.signal.symbol}`;
+        action = exec.signal.side === 'buy' ? 'open_long' : 'close';
+        message = `Signal: ${action} ${exec.executedAmount || '?'} ${exec.signal.symbol}`;
       } else if (exec.status === 'skipped') {
         status = 'warning';
-        action = '跳过';
-        message = exec.skipReason || '信号已跳过';
+        action = 'skip';
+        message = exec.skipReason || 'Signal skipped';
       } else if (exec.status === 'failed') {
         status = 'error';
-        action = '失败';
-        message = this.translateExchangeError(exec.errorMessage) || '执行失败';
+        action = 'fail';
+        message = this.translateExchangeError(exec.errorMessage) || 'Execution failed';
       } else {
         status = 'warning';
-        action = '等待';
-        message = '等待执行';
+        action = 'wait';
+        message = 'Waiting for execution';
       }
 
-      // 合并 TradeExecutionLog 数据
       const tradeLog = tradeLogMap.get(exec.signalId);
-
-      return {
+      logs.push({
         id: exec.id,
         time: exec.completedAt || exec.createdAt,
-        strategy: exec.signal.strategy?.name || '未知策略',
+        strategy: exec.signal.strategy?.name || 'Unknown',
         action,
         symbol: exec.signal.symbol,
         status,
         message,
-        // 执行详情（来自 SignalExecution）
         orderId: exec.orderId || undefined,
         executedPrice: exec.executedPrice?.toString() || undefined,
         executedAmount: exec.executedAmount?.toString() || undefined,
         errorCode: exec.errorCode || undefined,
         skipReason: exec.skipReason || undefined,
-        // 执行详情（来自 TradeExecutionLog）
         slippage: tradeLog?.slippagePercent?.toString() || undefined,
         durationMs: tradeLog?.durationMs || undefined,
-      };
+        strategyType: 'signal',
+      });
+    }
+
+    // === 来源 2: AiStrategyLog（AI 产品 B 策略日志）===
+    const aiLogs = await this.prisma.aiStrategyLog.findMany({
+      where: {
+        strategy: { userId },
+        ...(actionsOnly ? {
+          NOT: {
+            OR: [
+              { decision: { path: ['action'], equals: 'wait' } },
+              { decision: { path: ['action'], equals: 'hold' } },
+            ],
+          },
+        } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { strategy: { select: { name: true, coinSourceConfig: true } } },
     });
+
+    // 规范化 symbol: "ETH/USDT:USDT" → "ETH/USDT"
+    const normSym = (s: string) => s?.replace(/:[\w]+$/, '') || s;
+
+    for (const log of aiLogs) {
+      const decision = log.decision as Record<string, any> || {};
+      const execResult = log.executionResult as Record<string, any> || {};
+      // 兼容旧 Grid 日志（无 action 字段但有 decisions 数组）
+      const isGridLog = Array.isArray(decision.decisions);
+      const actionStr = decision.action || (isGridLog ? 'adjust_grid' : 'unknown');
+      const isOpen = actionStr.startsWith('open');
+      const isClose = actionStr.startsWith('close');
+      // symbol 回退: 日志字段 → 策略的第一个 coin
+      const coinCfg = log.strategy?.coinSourceConfig as Record<string, any> | null;
+      const fallbackSym = (coinCfg?.coins as string[])?.[0] || '';
+      const sym = normSym(log.symbol || fallbackSym);
+
+      let status: 'success' | 'warning' | 'error';
+      let action: string;
+      let message: string;
+
+      if (log.executed) {
+        status = 'success';
+        action = actionStr;
+
+        if (isGridLog) {
+          // Grid 日志: 显示操作摘要（语言无关格式）
+          let summary = decision.gridSummary;
+          if (!summary && Array.isArray(decision.decisions)) {
+            const buys = decision.decisions.filter((d: any) => d.action === 'place_buy_limit').length;
+            const sells = decision.decisions.filter((d: any) => d.action === 'place_sell_limit').length;
+            const cancels = decision.decisions.filter((d: any) => d.action === 'cancel_order').length;
+            const parts: string[] = [];
+            if (buys) parts.push(`${buys}B`);
+            if (sells) parts.push(`${sells}S`);
+            if (cancels) parts.push(`${cancels}C`);
+            summary = parts.join('/') || `${decision.decisions.length}ops`;
+          }
+          message = `AI: ${actionStr} ${sym} ${summary || ''}`.trim();
+        } else {
+          message = `AI: ${actionStr} ${sym}` +
+            (execResult.orderId ? ` #${execResult.orderId}` : '') +
+            (decision.confidence ? ` conf=${decision.confidence}%` : '');
+        }
+      } else if (execResult?.error) {
+        status = 'error';
+        action = 'fail';
+        message = `${sym} ${this.translateExchangeError(execResult.error) || execResult.error}`;
+      } else if (actionStr === 'hold' || actionStr === 'wait') {
+        status = 'warning';
+        action = actionStr;
+        message = `AI: ${actionStr} ${sym}`;
+      } else {
+        status = 'warning';
+        action = actionStr;
+        message = `AI: ${actionStr} ${sym}`;
+      }
+
+      logs.push({
+        id: log.id,
+        time: log.createdAt,
+        strategy: log.strategy?.name || 'AI Strategy',
+        action,
+        symbol: log.symbol,
+        status,
+        message,
+        orderId: execResult?.orderId || undefined,
+        executedPrice: execResult?.price?.toString() || undefined,
+        executedAmount: execResult?.amount?.toString() || undefined,
+        // AI 决策详情
+        confidence: decision.confidence || undefined,
+        leverage: decision.leverage || undefined,
+        positionSizePercent: decision.positionSizePercent || undefined,
+        stopLoss: decision.stopLoss || undefined,
+        takeProfit: decision.takeProfit || undefined,
+        reasoning: decision.reasoning || undefined,
+        blockedBy: execResult?.blockedBy || undefined,
+        blockReason: execResult?.blocked ? (execResult.reason || undefined) : undefined,
+        votes: decision.votes?.map((v: any) => ({
+          modelId: v.modelId,
+          action: v.action,
+          confidence: v.confidence,
+          reasoning: v.reasoning,
+        })) || undefined,
+        // Grid 专属字段
+        ...(isGridLog ? (() => {
+          const decs = decision.decisions as any[] || [];
+          const buys = decs.filter((d: any) => d.action === 'place_buy_limit');
+          const sells = decs.filter((d: any) => d.action === 'place_sell_limit');
+          const fmtRange = (orders: any[]) => {
+            if (!orders.length) return undefined;
+            const prices = orders.map((o: any) => Number(o.price)).filter(Boolean).sort((a, b) => a - b);
+            if (!prices.length) return undefined;
+            return prices.length === 1
+              ? `$${prices[0]}`
+              : `$${prices[0]}~$${prices[prices.length - 1]}`;
+          };
+          return {
+            gridSummary: decision.gridSummary || undefined,
+            gridBuyRange: fmtRange(buys),
+            gridSellRange: fmtRange(sells),
+            gridOrderCount: decs.length,
+          };
+        })() : {}),
+        // 策略类型标识
+        strategyType: isGridLog ? 'grid' as const : decision.votes ? 'debate' as const : 'solo' as const,
+      });
+    }
+
+    // === 来源 3: Position（AI Research 产品 A 的开仓/平仓记录）===
+    const aiPositions = await this.prisma.position.findMany({
+      where: {
+        userId,
+        source: { in: ['ai_research', 'ai_analysis'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { aiStrategy: { select: { name: true } } },
+    });
+
+    for (const pos of aiPositions) {
+      const sym = normSym(pos.symbol);
+      // 开仓日志
+      logs.push({
+        id: `pos_open_${pos.id}`,
+        time: pos.createdAt,
+        strategy: 'AI Research',
+        action: pos.side === 'long' ? 'open_long' : 'open_short',
+        symbol: pos.symbol,
+        status: 'success',
+        message: `Research: ${pos.side === 'long' ? 'open_long' : 'open_short'} ${sym} ×${pos.leverage || 1} qty=${pos.amount}`,
+        orderId: pos.exchangeOrderId || undefined,
+        executedPrice: pos.entryPrice?.toString(),
+        executedAmount: pos.amount?.toString(),
+        strategyType: 'research',
+      });
+
+      // 平仓日志（如果已平仓）
+      if (pos.status === 'closed' && pos.closedAt) {
+        const pnl = pos.pnl ? Number(pos.pnl) : 0;
+        const pnlSign = pnl >= 0 ? '+' : '';
+        logs.push({
+          id: `pos_close_${pos.id}`,
+          time: pos.closedAt,
+          strategy: 'AI Research',
+          action: 'close',
+          symbol: pos.symbol,
+          status: pnl >= 0 ? 'success' : 'error',
+          message: `Research: close ${sym} PnL: ${pnlSign}${pnl.toFixed(2)} USDT` +
+            (pos.closeReason ? ` (${pos.closeReason})` : ''),
+          executedPrice: pos.closePrice?.toString(),
+          executedAmount: pos.amount?.toString(),
+          strategyType: 'research',
+        });
+      }
+    }
+
+    // 按时间降序排序，截取 limit 条
+    logs.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    return logs.slice(0, limit);
   }
 
   // 将交易所英文错误消息翻译为中文
@@ -597,6 +818,9 @@ export class PositionsService {
     }
     if (msg.includes('no position') || msg.includes('position not found')) {
       return '未找到持仓';
+    }
+    if (msg.includes('初始化') || msg.includes('initialize')) {
+      return '交易所适配器初始化失败，请检查 API Key';
     }
 
     // 未匹配的保留原文
@@ -682,9 +906,13 @@ export class PositionsService {
     const winRate =
       tradeCount > 0 ? ((winCount / tradeCount) * 100).toFixed(1) : '0';
 
+    // 今日盈亏 = 今日已实现 + 当前未实现（反映当日实际盈亏情况）
+    const todayTotalPnl = todayPnl.plus(unrealizedPnl);
+
     return {
       totalPnl: totalPnl.toFixed(2),
-      todayPnl: todayPnl.toFixed(2),
+      todayPnl: todayTotalPnl.toFixed(2),
+      todayRealizedPnl: todayPnl.toFixed(2),
       weekPnl: weekPnl.toFixed(2),
       monthPnl: monthPnl.toFixed(2),
       unrealizedPnl: unrealizedPnl.toFixed(2),

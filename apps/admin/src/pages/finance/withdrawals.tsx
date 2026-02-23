@@ -319,20 +319,32 @@ export const WithdrawalList = () => {
       okText: '确认通过',
       cancelText: '取消',
       async onOk() {
-        try {
-          // 逐个处理
-          for (const withdrawal of selectedRows) {
+        // 逐个处理，收集每个请求的结果
+        let successCount = 0;
+        const errors: string[] = [];
+
+        for (const withdrawal of selectedRows) {
+          try {
             await api.post(`/admin/withdraws/${withdrawal.id}/process`, {
               action: 'approved',
             });
+            successCount++;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : '未知错误';
+            errors.push(`${withdrawal.id.slice(0, 8)}: ${msg}`);
           }
-          message.success(`已通过 ${selectedRows.length} 条提现申请`);
-          setSelectedRows([]);
-          fetchWithdrawals(pagination.current, statusFilter);
-        } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : '批量操作失败';
-          message.error(errorMessage);
         }
+
+        if (errors.length === 0) {
+          message.success(`已通过 ${successCount} 条提现申请`);
+        } else if (successCount > 0) {
+          message.warning(`成功 ${successCount} 条，失败 ${errors.length} 条: ${errors[0]}`);
+        } else {
+          message.error(`批量操作全部失败: ${errors[0]}`);
+        }
+
+        setSelectedRows([]);
+        fetchWithdrawals(pagination.current, statusFilter);
       },
     });
   };

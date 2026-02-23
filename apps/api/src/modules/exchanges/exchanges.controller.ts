@@ -1,7 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 
+@ApiTags('exchanges')
 @Controller('exchanges')
 export class ExchangesController {
   constructor(private prisma: PrismaService) {}

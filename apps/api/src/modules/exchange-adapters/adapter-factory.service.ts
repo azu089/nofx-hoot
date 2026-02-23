@@ -14,7 +14,7 @@
  *   authType=wallet  + exchange=aster       → AsterAdapter
  */
 
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiKeysService } from '../api-keys/api-keys.service';
 import { ExchangeAdapter } from './types/adapter.interface';
@@ -23,14 +23,78 @@ import { CcxtAdapter } from './adapters/ccxt.adapter';
 import { LighterAdapter } from './adapters/lighter.adapter';
 import { AsterAdapter } from './adapters/aster.adapter';
 
+/** 缓存条目 */
+interface CachedAdapter {
+  adapter: ExchangeAdapter;
+  lastUsed: number;
+  /** 防止并发创建同一适配器 */
+  initPromise?: Promise<ExchangeAdapter>;
+}
+
+/** 适配器缓存 TTL（10 分钟） */
+const ADAPTER_CACHE_TTL = 10 * 60 * 1000;
+/** 缓存清理间隔（2 分钟） */
+const CLEANUP_INTERVAL = 2 * 60 * 1000;
+
 @Injectable()
-export class AdapterFactoryService {
+export class AdapterFactoryService implements OnModuleDestroy {
   private readonly logger = new Logger(AdapterFactoryService.name);
+
+  /** userId:apiKeyId → CachedAdapter */
+  private readonly adapterCache = new Map<string, CachedAdapter>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private prisma: PrismaService,
     private apiKeysService: ApiKeysService,
-  ) {}
+  ) {
+    // 定期清理过期适配器
+    this.cleanupTimer = setInterval(() => this.evictStale(), CLEANUP_INTERVAL);
+  }
+
+  async onModuleDestroy() {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    // 销毁所有缓存的适配器
+    const disposePromises: Promise<void>[] = [];
+    for (const [key, cached] of this.adapterCache) {
+      disposePromises.push(
+        cached.adapter.dispose().catch((e: Error) =>
+          this.logger.warn(`销毁适配器 ${key} 失败: ${e.message}`),
+        ),
+      );
+    }
+    await Promise.all(disposePromises);
+    this.adapterCache.clear();
+    this.logger.log(`已销毁 ${disposePromises.length} 个缓存适配器`);
+  }
+
+  /** 清除过期适配器 */
+  private evictStale() {
+    const now = Date.now();
+    for (const [key, cached] of this.adapterCache) {
+      if (now - cached.lastUsed > ADAPTER_CACHE_TTL) {
+        cached.adapter.dispose().catch((e: Error) =>
+          this.logger.warn(`清理适配器 ${key} 失败: ${e.message}`),
+        );
+        this.adapterCache.delete(key);
+        this.logger.debug(`适配器缓存过期: ${key}`);
+      }
+    }
+  }
+
+  /** 手动移除某个适配器缓存（凭证变更时调用） */
+  async invalidateAdapter(userId: string, apiKeyId: string): Promise<void> {
+    const cacheKey = `${userId}:${apiKeyId}`;
+    const cached = this.adapterCache.get(cacheKey);
+    if (cached) {
+      await cached.adapter.dispose().catch(() => {});
+      this.adapterCache.delete(cacheKey);
+      this.logger.log(`适配器缓存已失效: ${cacheKey.slice(0, 20)}...`);
+    }
+  }
 
   /**
    * 根据 userId + apiKeyId 创建适配器实例
@@ -43,7 +107,27 @@ export class AdapterFactoryService {
     userId: string,
     apiKeyId: string,
   ): Promise<ExchangeAdapter> {
-    // 1. 查询 API Key 记录
+    const cacheKey = `${userId}:${apiKeyId}`;
+
+    // 1. 检查缓存
+    const cached = this.adapterCache.get(cacheKey);
+    if (cached) {
+      // 如果正在初始化中，等待初始化完成
+      if (cached.initPromise) {
+        return cached.initPromise;
+      }
+      // 验证缓存适配器是否仍可用（防止 dispose 后残留引用）
+      if (cached.adapter && cached.adapter.isReady()) {
+        cached.lastUsed = Date.now();
+        this.logger.debug(`适配器缓存命中: ${cacheKey.slice(0, 20)}...`);
+        return cached.adapter;
+      }
+      // 适配器已失效，清理并重新创建
+      this.adapterCache.delete(cacheKey);
+      this.logger.warn(`缓存适配器已失效，重新创建: ${cacheKey.slice(0, 20)}...`);
+    }
+
+    // 2. 查询 API Key 记录
     const record = await this.prisma.apiKey.findUnique({
       where: { id: apiKeyId },
     });
@@ -67,11 +151,38 @@ export class AdapterFactoryService {
       `创建适配器: exchange=${exchange}, authType=${authType}, userId=${userId.slice(0, 8)}...`,
     );
 
-    // 2. 根据 authType + exchange 分发
-    if (authType === 'wallet') {
-      return this.createDexAdapter(userId, apiKeyId, exchange);
-    } else {
-      return this.createCexAdapter(userId, apiKeyId, exchange);
+    // 3. 创建并缓存（使用 initPromise 防止并发重复创建）
+    const initPromise = (async () => {
+      let adapter: ExchangeAdapter;
+      if (authType === 'wallet') {
+        adapter = await this.createDexAdapter(userId, apiKeyId, exchange);
+      } else {
+        adapter = await this.createCexAdapter(userId, apiKeyId, exchange);
+      }
+
+      // 初始化完成，更新缓存条目
+      const entry = this.adapterCache.get(cacheKey);
+      if (entry) {
+        entry.adapter = adapter;
+        entry.initPromise = undefined;
+      }
+      return adapter;
+    })();
+
+    // 先占位缓存条目（含 initPromise）
+    this.adapterCache.set(cacheKey, {
+      adapter: null as any, // 初始化完成后替换
+      lastUsed: Date.now(),
+      initPromise,
+    });
+
+    try {
+      const adapter = await initPromise;
+      return adapter;
+    } catch (error) {
+      // 初始化失败，移除缓存占位
+      this.adapterCache.delete(cacheKey);
+      throw error;
     }
   }
 

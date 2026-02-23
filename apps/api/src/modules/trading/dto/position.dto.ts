@@ -131,12 +131,32 @@ export class ExecutionLogResponse {
   durationMs?: number;    // 执行耗时(ms)
   errorCode?: string;     // 错误码
   skipReason?: string;    // 跳过原因
+  // AI 决策详情（来自 AiStrategyLog.decision JSON）
+  confidence?: number;           // 置信度 0-100
+  leverage?: number;             // 杠杆倍数
+  positionSizePercent?: number;  // 仓位比例 1-20
+  stopLoss?: number;             // 止损价格
+  takeProfit?: number;           // 止盈价格
+  reasoning?: string;            // AI 推理文本
+  // 风控拦截详情（来自 executionResult JSON）
+  blockedBy?: string;            // 拦截层标识
+  blockReason?: string;          // 拦截原因
+  // Debate 模式投票（来自 decision.votes）
+  votes?: Array<{ modelId: string; action: string; confidence: number; reasoning?: string }>;
+  // Grid 网格模式专属
+  gridSummary?: string;    // 操作摘要 "5买/5卖"
+  gridBuyRange?: string;   // 买单价格区间 "$0.1780~$0.1820"
+  gridSellRange?: string;  // 卖单价格区间 "$0.1830~$0.1870"
+  gridOrderCount?: number; // 总操作数
+  // 策略类型标识（前端分策略渲染）
+  strategyType?: 'research' | 'solo' | 'debate' | 'grid' | 'signal';
 }
 
 // 盈亏统计响应
 export class PnlStatsResponse {
   totalPnl: string;
   todayPnl: string;
+  todayRealizedPnl: string;
   weekPnl: string;
   monthPnl: string;
   unrealizedPnl: string;

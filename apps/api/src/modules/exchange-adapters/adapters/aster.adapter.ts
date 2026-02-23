@@ -115,6 +115,10 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
     logger.log(`Aster 初始化完成: ${this.precisionCache.size} 个交易对`);
   }
 
+  isReady(): boolean {
+    return this.precisionCache.size > 0;
+  }
+
   async dispose(): Promise<void> {
     this.precisionCache.clear();
   }
@@ -143,7 +147,8 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
         (sum, p) => sum + p.unrealizedPnl,
         0,
       );
-    } catch {
+    } catch (e) {
+      logger.debug(`Aster adapter non-critical error (getBalance positions): ${e instanceof Error ? e.message : e}`);
       unrealizedPnl = parseFloat(usdtBalance?.crossUnPnl || '0');
     }
 
@@ -630,7 +635,8 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
             exchangeId: String(t.id),
           };
         });
-    } catch {
+    } catch (e) {
+      logger.debug(`Aster adapter non-critical error (getClosedPnl): ${e instanceof Error ? e.message : e}`);
       return [];
     }
   }

@@ -4,6 +4,8 @@
  * 产品A (Research) 和产品B (Trading) 都使用这些基础定义。
  */
 
+import { getLanguageName } from './locale-instructions';
+
 // ==================== 角色定义 ====================
 
 export const AI_ROLES = {
@@ -55,45 +57,56 @@ export const AI_MODELS: Record<string, AIModelConfig> = {
     contextWindow: 128000,
   },
   CLAUDE_HAIKU: {
-    name: 'claude-3-5-haiku-20241022',
+    name: 'claude-haiku-4-5-20251001',
     baseUrl: 'https://openrouter.ai/api/v1',
-    displayName: 'Claude 3.5 Haiku',
+    displayName: 'Claude Haiku 4.5',
     provider: 'Anthropic',
     contextWindow: 200000,
   },
   GEMINI_FLASH: {
-    name: 'gemini-2.0-flash',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    displayName: 'Gemini 2.0 Flash',
+    name: 'gemini-2.5-flash',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    displayName: 'Gemini 2.5 Flash',
     provider: 'Google',
     contextWindow: 1000000,
   },
   QWEN_PLUS: {
-    name: 'qwen-plus',
+    name: 'qwen3.5-plus',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    displayName: 'Qwen Plus',
+    displayName: 'Qwen 3.5 Plus',
     provider: 'Alibaba',
     contextWindow: 131072,
   },
   GROK_3: {
-    name: 'grok-3',
+    name: 'grok-4-fast',
     baseUrl: 'https://api.x.ai/v1',
-    displayName: 'Grok 3',
+    displayName: 'Grok 4 Fast',
     provider: 'xAI',
-    contextWindow: 131072,
+    contextWindow: 2000000,
   },
   KIMI_V1: {
-    name: 'moonshot-v1-8k',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    displayName: 'Kimi (Moonshot)',
+    name: 'kimi-k2.5',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    displayName: 'Kimi K2.5',
     provider: 'Moonshot',
-    contextWindow: 8192,
+    contextWindow: 131072,
   },
 };
 
 // ==================== 结构化输出格式 (6-Action) ====================
 
-export const ANALYSIS_OUTPUT_FORMAT = `
+/**
+ * 构建结构化输出格式提示（支持动态语言）
+ * @param locale 用户 locale，默认 'zh-CN'
+ */
+export function buildAnalysisOutputFormat(locale?: string): string {
+  // 动态语言提示
+  const langHint = locale === 'en' ? '' : (() => {
+    const lang = getLanguageName(locale || 'zh-CN');
+    return ` (in ${lang.english}/${lang.native})`;
+  })();
+
+  return `
 You MUST respond ONLY with a valid JSON object following this exact schema:
 
 {
@@ -123,8 +136,8 @@ Action definitions:
 Rules:
 - action: Your recommended action from the 6 options above
 - confidence: How confident you are in this action (0-100)
-- reasoning: Detailed explanation in Chinese/中文 (150-400 words), referencing specific indicators and price levels
-- keyPoints: 3-5 bullet points summarizing your analysis (in Chinese/中文)
+- reasoning: Detailed explanation${langHint} (150-400 words), referencing specific indicators and price levels
+- keyPoints: 3-5 bullet points summarizing your analysis${langHint}
 - entryPrice: Recommended entry price for open actions, null for close/hold/wait
 - targetPrice: Price target for open actions, null for close/hold/wait
 - stopLoss: Stop loss level for open actions, null for close/hold/wait
@@ -133,3 +146,7 @@ Rules:
 
 DO NOT include any text outside the JSON object.
 `;
+}
+
+/** 默认输出格式（向后兼容，使用 zh-CN） */
+export const ANALYSIS_OUTPUT_FORMAT = buildAnalysisOutputFormat('zh-CN');

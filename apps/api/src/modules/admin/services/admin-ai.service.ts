@@ -5,6 +5,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import Decimal from 'decimal.js';
+import { Prisma } from '@prisma/client';
 
 /** 用户显示名（优先昵称，其次邮箱前缀，最后 userId） */
 function displayName(user: { nickname?: string | null; email?: string | null } | null | undefined, fallback: string): string {
@@ -112,7 +113,7 @@ export class AdminAiService {
     const limit = Math.min(query.limit || 20, 100);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AiStrategyWhereInput = {};
     if (query.userId) where.userId = query.userId;
     if (query.tradingMode) where.tradingMode = query.tradingMode;
     if (query.status === 'active') where.isActive = true;
@@ -227,7 +228,7 @@ export class AdminAiService {
     const limit = Math.min(query.limit || 20, 100);
     const skip = (page - 1) * limit;
 
-    const where: any = { rootSessionId: null };
+    const where: Prisma.AiResearchSessionWhereInput = { rootSessionId: null };
     if (query.userId) where.userId = query.userId;
     if (query.status) where.status = query.status;
     if (query.symbol) where.symbol = { contains: query.symbol, mode: 'insensitive' };
@@ -322,7 +323,7 @@ export class AdminAiService {
     const userIdsArray = Array.from(allUserIds);
 
     // 搜索时过滤用户
-    const userWhere: any = { id: { in: userIdsArray } };
+    const userWhere: Prisma.UserWhereInput = { id: { in: userIdsArray } };
     if (query.keyword) {
       userWhere.OR = [
         { nickname: { contains: query.keyword, mode: 'insensitive' } },
@@ -389,7 +390,8 @@ export class AdminAiService {
     ]);
 
     const dailyMap = new Map<string, Decimal>();
-    const addToMap = (cost: any, createdAt: Date) => {
+    const addToMap = (cost: { toString(): string } | null | undefined, createdAt: Date) => {
+      if (cost == null) return;
       const date = createdAt.toISOString().slice(0, 10);
       const prev = dailyMap.get(date) || new Decimal('0');
       dailyMap.set(date, prev.plus(new Decimal(cost.toString())));
@@ -423,7 +425,7 @@ export class AdminAiService {
     const limit = Math.min(query.limit || 20, 100);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AiConfigWhereInput = {};
     if (query.userId) where.userId = query.userId;
     if (query.isEnabled !== undefined) where.isEnabled = query.isEnabled;
     if (query.keyword) {
@@ -517,7 +519,7 @@ export class AdminAiService {
     const limit = Math.min(query.limit || 20, 100);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AiStrategyLogWhereInput = {};
     if (query.strategyId) where.strategyId = query.strategyId;
     if (query.executed !== undefined) where.executed = query.executed;
     if (query.userId) {
@@ -551,7 +553,7 @@ export class AdminAiService {
     const strategyMap = new Map(strategies.map((s) => [s.id, s]));
 
     const data = rawItems.map((log) => {
-      const decision = log.decision as any;
+      const decision = log.decision as Record<string, unknown> | null;
       const strategy = strategyMap.get(log.strategyId);
       return {
         ...log,

@@ -13,6 +13,9 @@ import { CoinSourceConfig } from '../../types/ai.types';
  * 4. oi_low: OI 最低 N 个（空头/减仓候选）
  * 5. mixed: 混合模式（ai + oi_top + oi_low + static 去重合并）
  */
+// R1: OI 最小流动性阈值（USD），对齐 NoFx minOIThresholdMillions = 15
+const MIN_OI_VALUE_USD = 15_000_000;
+
 @Injectable()
 export class CoinScannerService {
   private readonly logger = new Logger(CoinScannerService.name);
@@ -143,12 +146,15 @@ Respond with ONLY a JSON array.`;
     const topN = config.maxCoins || 10;
     const oiResults = await this.fetchAllOi();
 
+    // R1: 流动性过滤 — 对齐 NoFx minOIThresholdMillions = 15
+    const liquidResults = oiResults.filter((r) => r.oiValueUSD >= MIN_OI_VALUE_USD);
+
     // 按 OI 降序排序，取前 topN
-    oiResults.sort((a, b) => b.openInterest - a.openInterest);
-    const selected = oiResults.slice(0, topN).map((r) => r.symbol);
+    liquidResults.sort((a, b) => b.openInterest - a.openInterest);
+    const selected = liquidResults.slice(0, topN).map((r) => r.symbol);
 
     this.logger.log(
-      `[扫描] OI Top: 有效 ${oiResults.length} 个, 选出 ${selected.length} 个`,
+      `[扫描] OI Top: 总${oiResults.length}个, 流动性达标${liquidResults.length}个, 选出${selected.length}个 (min $${(MIN_OI_VALUE_USD / 1e6).toFixed(0)}M)`,
     );
 
     return selected.length > 0 ? selected : ['BTC/USDT', 'ETH/USDT'];
@@ -162,12 +168,15 @@ Respond with ONLY a JSON array.`;
     const topN = config.maxCoins || 10;
     const oiResults = await this.fetchAllOi();
 
+    // R1: 流动性过滤 — 低 OI 策略也不能选流动性过低的币（大滑点风险）
+    const liquidResults = oiResults.filter((r) => r.oiValueUSD >= MIN_OI_VALUE_USD);
+
     // 按 OI 升序排序（最低在前）
-    oiResults.sort((a, b) => a.openInterest - b.openInterest);
-    const selected = oiResults.slice(0, topN).map((r) => r.symbol);
+    liquidResults.sort((a, b) => a.openInterest - b.openInterest);
+    const selected = liquidResults.slice(0, topN).map((r) => r.symbol);
 
     this.logger.log(
-      `[扫描] OI Low: 有效 ${oiResults.length} 个, 选出 ${selected.length} 个`,
+      `[扫描] OI Low: 总${oiResults.length}个, 流动性达标${liquidResults.length}个, 选出${selected.length}个 (min $${(MIN_OI_VALUE_USD / 1e6).toFixed(0)}M)`,
     );
 
     return selected.length > 0 ? selected : ['BTC/USDT', 'ETH/USDT'];
@@ -250,8 +259,8 @@ Respond with ONLY a JSON array.`;
   /**
    * 获取候选池所有币种的 OI（共享给 oi_top 和 oi_low）
    */
-  private async fetchAllOi(): Promise<Array<{ symbol: string; openInterest: number }>> {
-    const oiResults: Array<{ symbol: string; openInterest: number }> = [];
+  private async fetchAllOi(): Promise<Array<{ symbol: string; openInterest: number; oiValueUSD: number }>> {
+    const oiResults: Array<{ symbol: string; openInterest: number; oiValueUSD: number }> = [];
     const batchSize = 5;
 
     for (let i = 0; i < this.CANDIDATE_POOL.length; i += batchSize) {
@@ -259,7 +268,11 @@ Respond with ONLY a JSON array.`;
       const results = await Promise.allSettled(
         batch.map(async (symbol) => {
           const oi = await this.marketData.fetchOpenInterest(symbol);
-          return { symbol, openInterest: oi?.openInterest || 0 };
+          return {
+            symbol,
+            openInterest: oi?.openInterest || 0,
+            oiValueUSD: oi?.openInterestValue || 0, // R1: USD 计价
+          };
         }),
       );
 

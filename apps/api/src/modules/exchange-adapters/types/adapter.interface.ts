@@ -190,6 +190,12 @@ export interface ExchangeAdapter {
   initialize(): Promise<void>;
 
   /**
+   * 检查适配器是否已初始化且可用
+   * 用于缓存命中时验证适配器状态
+   */
+  isReady(): boolean;
+
+  /**
    * 清理资源
    */
   dispose(): Promise<void>;
@@ -225,7 +231,7 @@ export interface GridExchangeAdapter extends ExchangeAdapter {
 export interface LimitOrderRequest {
   symbol: string;
   side: 'buy' | 'sell';
-  positionSide: 'long' | 'short';
+  positionSide?: 'long' | 'short';
   price: number;
   quantity: number;
   leverage: number;
@@ -242,7 +248,7 @@ export interface LimitOrderResult {
   clientId?: string;
   symbol: string;
   side: 'buy' | 'sell';
-  positionSide: 'long' | 'short';
+  positionSide?: 'long' | 'short';
   price: number;
   quantity: number;
   status: string;

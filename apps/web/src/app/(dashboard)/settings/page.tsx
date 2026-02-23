@@ -32,7 +32,11 @@ export default function SettingsPage() {
 
   // 获取用户绑定状态
   useEffect(() => {
-    fetchProfile().catch(console.error);
+    fetchProfile().catch((err) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.error(err);
+      }
+    });
   }, [fetchProfile]);
 
   // 当钱包连接后自动绑定
@@ -46,7 +50,9 @@ export default function SettingsPage() {
       // 刷新用户信息
       await fetchProfile();
     } catch (err) {
-      console.error('绑定钱包失败:', err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('绑定钱包失败:', err);
+      }
     } finally {
       setWalletBindLoading(false);
     }
@@ -63,9 +69,8 @@ export default function SettingsPage() {
   };
 
   // 绑定邮箱
-  const handleBindEmail = async (email: string) => {
-    // 设置页面的邮箱绑定弹窗内部处理
-    console.log('绑定邮箱:', email);
+  const handleBindEmail = async (_email: string) => {
+    // NEXT-SPRINT: 接入邮箱验证码 API，弹窗内处理绑定流程
   };
 
   // 合并本地用户信息和 API 返回的绑定状态
@@ -101,8 +106,8 @@ export default function SettingsPage() {
           userEmail={user?.email || 'user@example.com'}
           bindingStatus={mergedBindingStatus}
           onNavigate={(path) => router.push(path)}
-          onSettingChange={(key, value) => {
-            console.log('设置变更:', key, value);
+          onSettingChange={(_key, _value) => {
+            // NEXT-SPRINT: 调用后端 API 持久化用户设置偏好
           }}
           onBindTelegram={handleBindTelegram}
           onBindWallet={handleBindWallet}

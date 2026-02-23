@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { useTranslations } from '@/i18n/provider';
 
 interface TruncatedTextProps {
   text: string;
@@ -11,7 +10,6 @@ interface TruncatedTextProps {
 }
 
 export function TruncatedText({ text, maxLines = 3, className = '' }: TruncatedTextProps) {
-  const t = useTranslations('ai');
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
   const textRef = useRef<HTMLDivElement>(null);
@@ -27,7 +25,9 @@ export function TruncatedText({ text, maxLines = 3, className = '' }: TruncatedT
     <div className={className}>
       <div
         ref={textRef}
-        className="text-[#9090A0] text-xs leading-relaxed whitespace-pre-wrap break-words"
+        className={`text-[#9090A0] text-xs leading-relaxed whitespace-pre-wrap break-words ${
+          expanded ? 'max-h-[200px] overflow-y-auto' : ''
+        }`}
         style={
           expanded
             ? undefined
@@ -48,13 +48,12 @@ export function TruncatedText({ text, maxLines = 3, className = '' }: TruncatedT
             e.stopPropagation();
             setExpanded(!expanded);
           }}
-          className="flex items-center gap-0.5 text-[10px] text-[#06B6D4] mt-1 hover:text-[#0891B2] transition-colors"
+          className="flex items-center justify-end w-full mt-0.5 text-[#606070] hover:text-[#06B6D4] transition-colors"
         >
-          {expanded ? (
-            <>{t('common.collapse')} <ChevronUp className="w-3 h-3" /></>
-          ) : (
-            <>{t('common.expand')} <ChevronDown className="w-3 h-3" /></>
-          )}
+          {expanded
+            ? <ChevronUp className="w-3.5 h-3.5" />
+            : <ChevronDown className="w-3.5 h-3.5" />
+          }
         </button>
       )}
     </div>

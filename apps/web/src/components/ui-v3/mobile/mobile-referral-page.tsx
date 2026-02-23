@@ -100,7 +100,9 @@ export function MobileReferralPage({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error(t('copyFailed') + ':', err)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(t('copyFailed') + ':', err)
+      }
     }
   }
 

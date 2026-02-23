@@ -4,6 +4,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { ArrowLeft, ChevronDown, Check, Search, X, Loader2, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from '@/i18n/provider'
 import { StrategyConfigData, hotPairs, fetchExchangePairs, getRecentPairs, addRecentPair, getTopPairs } from '../shared/strategy-config-types'
 import { useStrategySubscription, useApiKeys } from '@/hooks/use-strategy'
 
@@ -67,6 +68,7 @@ export function MobileStrategyConfig({
   onCancel,
   onSuccess
 }: MobileStrategyConfigProps) {
+  const tc = useTranslations('common')
   // API Hooks
   const { loading: apiLoading, error: apiError, createSubscription, updateSubscription, getSubscriptionConfig } = useStrategySubscription(strategyId || '')
   const { apiKeys, fetchApiKeys, loading: apiKeysLoading } = useApiKeys()
@@ -243,9 +245,7 @@ export function MobileStrategyConfig({
   const handleSave = async () => {
     // 验证 API Key
     if (!selectedApiKeyId) {
-      toast.error('请选择 API Key', {
-        description: '您需要先绑定交易所 API Key 才能订阅策略',
-      })
+      toast.error(tc('selectApiKey'))
       return
     }
 
@@ -285,29 +285,25 @@ export function MobileStrategyConfig({
         if (subscriptionId) {
           // 更新模式
           await updateSubscription(subscriptionId, data)
-          toast.success('配置已更新', {
-            description: '策略配置已成功保存',
-          })
+          toast.success(tc('configUpdated'))
         } else {
           // 创建模式
           await createSubscription(data)
-          toast.success('订阅成功', {
-            description: '已成功订阅策略',
-          })
+          toast.success(tc('subscribeSuccess'))
         }
         onSuccess?.()
       } catch (err) {
-        console.error('保存失败:', err)
-        toast.error('保存失败', {
-          description: err instanceof Error ? err.message : '请稍后重试',
+        if (process.env.NODE_ENV === 'development') {
+          console.error('保存失败:', err)
+        }
+        toast.error(tc('saveFailed'), {
+          description: err instanceof Error ? err.message : undefined,
         })
         return
       }
     } else {
       // 本地预览模式
-      toast.success('配置已保存', {
-        description: `策略配置已成功保存`,
-      })
+      toast.success(tc('configSaved'))
     }
 
     // 调用父组件回调

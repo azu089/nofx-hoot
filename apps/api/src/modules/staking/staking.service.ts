@@ -44,30 +44,31 @@ export class StakingService {
   async stake(userId: string, dto: CreateStakingDto): Promise<StakingResponse> {
     const amount = new Decimal(dto.amount.toString());
 
-    // 检查用户 HOOT 余额
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { hootBalance: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
-
-    const balance = new Decimal(user.hootBalance.toString());
-    if (balance.lessThan(amount)) {
-      throw new BadRequestException('HOOT 余额不足');
-    }
-
-    // 计算锁定到期时间
+    // 计算锁定到期时间（不依赖用户数据，可在事务外计算）
     const lockDays = dto.lockDays || 0;
     const lockUntil =
       lockDays > 0
         ? new Date(Date.now() + lockDays * 24 * 60 * 60 * 1000)
         : null;
 
-    // 执行质押（事务）
+    // 执行质押（事务）：余额检查与扣款在同一事务内，防止 TOCTOU 并发问题
     const staking = await this.prisma.$transaction(async (tx) => {
+      // 在事务内读取用户余额
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { hootBalance: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException('用户不存在');
+      }
+
+      // 在事务内检查余额，与扣款操作原子不可分割
+      const balance = new Decimal(user.hootBalance.toString());
+      if (balance.lessThan(amount)) {
+        throw new BadRequestException('HOOT 余额不足');
+      }
+
       // 扣除 HOOT 余额
       await tx.user.update({
         where: { id: userId },

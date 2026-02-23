@@ -469,6 +469,18 @@
   z-index: 1;
 }
 
+/* 玻璃卡片背景 — 与 glass-border-glow 配合使用 */
+.glass-card {
+  position: relative;
+  background: rgba(18, 18, 26, 0.30);
+  backdrop-filter: blur(72px);
+  -webkit-backdrop-filter: blur(72px);
+  border: 1px solid rgba(6, 182, 212, 0.08);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  overflow: hidden;
+}
+
 /* 渐变流动动画 - 缓慢流动 */
 @keyframes border-flow {
   0% {
@@ -479,7 +491,7 @@
   }
 }
 
-/* 跑马灯动画 */
+/* 跑马灯动画（行业标准 15s 循环，对标 Binance/OKX，内联 style 可覆盖） */
 @keyframes marquee {
   0% {
     transform: translateX(0);
@@ -490,7 +502,18 @@
 }
 
 .animate-marquee {
-  animation: marquee 30s linear infinite;
+  animation: marquee 12s linear infinite;
+}
+
+/* 悬停暂停 — 对标 Binance/OKX */
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* 跑马灯左右渐变遮罩（3% 窄渐变，模拟行业标杆淡入淡出） */
+.marquee-container {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
 }
 
 /* 扫描动画 */

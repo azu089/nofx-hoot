@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
-import { NextIntlClientProvider, useMessages } from 'next-intl';
+import { NextIntlClientProvider, IntlErrorCode } from 'next-intl';
 import { locales, defaultLocale, localeNames, type Locale } from './config';
 import { api } from '../lib/api';
 
@@ -73,12 +73,33 @@ export function LocaleProvider({ children, initialLocale }: LocaleProviderProps)
   }, []);
 
   if (!messages) {
-    return null; // 或者返回 loading 状态
+    // 消息加载中，显示加载动画而非 null（null 会导致整棵组件树不渲染→黑屏）
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
     <LocaleContext.Provider value={{ locale, setLocale, locales, localeNames }}>
-      <NextIntlClientProvider locale={locale} messages={messages}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={messages}
+        onError={(error) => {
+          // 仅在开发模式下用 warn 代替 error（避免控制台红色刷屏）
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[i18n]', error.message);
+          }
+        }}
+        getMessageFallback={({ namespace, key, error }) => {
+          // MISSING_MESSAGE: 返回 key 名作为兜底文本
+          if (error.code === IntlErrorCode.MISSING_MESSAGE) {
+            return key;
+          }
+          return `${namespace}.${key}`;
+        }}
+      >
         {children as React.ReactNode}
       </NextIntlClientProvider>
     </LocaleContext.Provider>

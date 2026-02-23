@@ -4,7 +4,7 @@
  */
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+import { API_URL } from '../lib/config';
 
 interface AdminUser {
   username: string;
@@ -56,16 +56,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             localStorage.removeItem('admin_user');
           }
         } catch {
-          // 网络错误时，尝试使用本地缓存
-          try {
-            const userData = JSON.parse(userStr);
-            setUser(userData);
-            setToken(savedToken);
-            setIsAuthenticated(true);
-          } catch {
-            localStorage.removeItem('admin_token');
-            localStorage.removeItem('admin_user');
-          }
+          // 网络错误时，清除缓存，要求重新登录（安全优先）
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
         }
       }
 

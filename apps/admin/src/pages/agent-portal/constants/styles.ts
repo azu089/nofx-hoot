@@ -103,6 +103,6 @@ export const statusConfig: Record<string, { label: string; color: string }> = {
   rejected: { label: '已拒绝', color: 'red' },
 };
 
-// API 基础地址
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+// API 基础地址（从统一配置导入）
+export { API_URL as API_BASE } from '../../../lib/config';
 export const WEB_URL = import.meta.env.VITE_WEB_URL || 'https://hoot.ai';

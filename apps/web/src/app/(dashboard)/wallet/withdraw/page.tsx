@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { WithdrawPage as WithdrawPageUI } from '@/components/ui-v3/wallet/withdraw-page';
@@ -72,11 +73,11 @@ export default function WithdrawPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
-      alert('提现申请已提交');
+      toast.success('提现申请已提交');
       router.push('/wallet');
     },
     onError: (error) => {
-      alert(error instanceof Error ? error.message : '提现失败');
+      toast.error(error instanceof Error ? error.message : '提现失败');
     },
   });
 

@@ -3,7 +3,8 @@ import { LLMService, UserApiKeys, LLMResponse } from '../llm.service';
 import { IndicatorsService, OHLCV, IndicatorsResult } from '../indicators.service';
 import { MarketDataService } from '../market-data.service';
 import { formatMarketDataPrompt } from '../../constants/prompts';
-import { AnalystReports } from '../../types/ai.types';
+import { buildLanguageInstruction, buildUserMessageLanguageReminder } from '../../constants/locale-instructions';
+import { AnalystReports, EnhancedMarketData } from '../../types/ai.types';
 
 /**
  * 单个分析师结果
@@ -41,6 +42,8 @@ export interface AnalystContext {
     size: number;
     pnlPercent: number;
   }>;
+  /** Phase 11: 增强市场数据（多空比/清算/期权/稳定币/ETF/宏观/COT） */
+  enhanced?: EnhancedMarketData;
 }
 
 /**
@@ -79,6 +82,7 @@ export class CryptoAnalystsService {
     modelId: string,
     apiKeys: UserApiKeys,
     skipAnalysts?: string[],
+    locale?: string,
   ): Promise<AllAnalystResults> {
     const skip = new Set(skipAnalysts || []);
 
@@ -88,31 +92,31 @@ export class CryptoAnalystsService {
     if (!skip.has('market')) {
       tasks.push({
         name: 'market',
-        fn: () => this.analyzeMarket(context, modelId, apiKeys),
+        fn: () => this.analyzeMarket(context, modelId, apiKeys, locale),
       });
     }
     if (!skip.has('technical')) {
       tasks.push({
         name: 'technical',
-        fn: () => this.analyzeTechnical(context, modelId, apiKeys),
+        fn: () => this.analyzeTechnical(context, modelId, apiKeys, locale),
       });
     }
     if (!skip.has('fundamentals')) {
       tasks.push({
         name: 'fundamentals',
-        fn: () => this.analyzeFundamentals(context, modelId, apiKeys),
+        fn: () => this.analyzeFundamentals(context, modelId, apiKeys, locale),
       });
     }
     if (!skip.has('news')) {
       tasks.push({
         name: 'news',
-        fn: () => this.analyzeNews(context, modelId, apiKeys),
+        fn: () => this.analyzeNews(context, modelId, apiKeys, locale),
       });
     }
     if (!skip.has('sentiment')) {
       tasks.push({
         name: 'sentiment',
-        fn: () => this.analyzeSentiment(context, modelId, apiKeys),
+        fn: () => this.analyzeSentiment(context, modelId, apiKeys, locale),
       });
     }
 
@@ -155,8 +159,10 @@ export class CryptoAnalystsService {
             break;
         }
 
+        const reportPreview = (report || '').slice(0, 200);
         this.logger.log(
-          `[分析师] ${taskName} 完成: ${result.value.tokenUsage} tokens, $${cost.toFixed(6)}`,
+          `[分析师] ${taskName} 完成: ${result.value.tokenUsage} tokens, ${result.value.latencyMs}ms, $${cost.toFixed(6)}\n` +
+          `  报告: ${reportPreview}${reportPreview.length >= 200 ? '...' : ''}`,
         );
       } else {
         const errMsg = result.reason?.message || '未知错误';
@@ -187,7 +193,9 @@ export class CryptoAnalystsService {
     context: AnalystContext,
     modelId: string,
     apiKeys: UserApiKeys,
+    locale?: string,
   ): Promise<AnalystResult> {
+    const langInst = buildLanguageInstruction(locale);
     const systemPrompt = `You are a CRYPTO MARKET ANALYST specializing in price action and market structure analysis for cryptocurrency futures.
 
 ## Your Focus Areas
@@ -205,9 +213,11 @@ export class CryptoAnalystsService {
 - Provide a concise market outlook
 
 ## Output Format
-Write a structured analysis report (200-500 words) with clear sections. Use specific price levels and percentages. End with a directional bias: BULLISH / BEARISH / NEUTRAL with brief justification.`;
+Write a structured analysis report (200-500 words) with clear sections. Use specific price levels and percentages. End with a directional bias: BULLISH / BEARISH / NEUTRAL with brief justification.
 
-    const userMessage = this.buildMarketDataMessage(context);
+${langInst}`;
+
+    const userMessage = this.buildMarketDataMessage(context) + buildUserMessageLanguageReminder(locale);
 
     const response = await this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, {
       temperature: 0.3,
@@ -227,7 +237,9 @@ Write a structured analysis report (200-500 words) with clear sections. Use spec
     context: AnalystContext,
     modelId: string,
     apiKeys: UserApiKeys,
+    locale?: string,
   ): Promise<AnalystResult> {
+    const langInst = buildLanguageInstruction(locale);
     const systemPrompt = `You are an EXPERT CRYPTO TECHNICAL ANALYST performing a 4-dimensional indicator analysis.
 
 ## 4-Dimensional Analysis Framework
@@ -261,9 +273,26 @@ Write a structured analysis report (200-500 words) with clear sections. Use spec
 - CONFLICTING: Dimensions disagree → recommend WAIT
 
 ## Output Format
-Write a structured report (200-500 words). Score each dimension (BULLISH / NEUTRAL / BEARISH). State the cross-validation result. Reference specific indicator values. End with directional bias and confidence level.`;
+Write a structured plain-text report (200-500 words). Do NOT output JSON or code blocks.
 
-    const userMessage = this.buildTechnicalMessage(context);
+Use this structure:
+**维度评分**
+• 趋势: BULLISH / NEUTRAL / BEARISH — (one sentence reason)
+• 动量: BULLISH / NEUTRAL / BEARISH — (one sentence reason)
+• 波动率: BULLISH / NEUTRAL / BEARISH — (one sentence reason)
+• 成交量: BULLISH / NEUTRAL / BEARISH — (one sentence reason)
+
+**交叉验证**: STRONG / MODERATE / WEAK / CONFLICTING
+
+**详细分析**
+(Your analysis paragraphs with specific indicator values)
+
+**方向偏向与置信度**
+(Your directional bias and confidence level)
+
+${langInst}`;
+
+    const userMessage = this.buildTechnicalMessage(context) + buildUserMessageLanguageReminder(locale);
 
     const response = await this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, {
       temperature: 0.2,
@@ -283,7 +312,9 @@ Write a structured report (200-500 words). Score each dimension (BULLISH / NEUTR
     context: AnalystContext,
     modelId: string,
     apiKeys: UserApiKeys,
+    locale?: string,
   ): Promise<AnalystResult> {
+    const langInst = buildLanguageInstruction(locale);
     const systemPrompt = `You are a CRYPTO DERIVATIVES & ON-CHAIN ANALYST specializing in futures market fundamentals.
 
 ## Your Focus Areas (Crypto-Specific Fundamentals)
@@ -311,9 +342,11 @@ Write a structured report (200-500 words). Score each dimension (BULLISH / NEUTR
    - Cash-and-carry basis spread (if observable)
 
 ## Output Format
-Write a structured analysis (200-400 words) with specific numbers and interpretations. Rate the derivatives positioning: BULLISH / BEARISH / NEUTRAL with confidence.`;
+Write a structured analysis (200-400 words) with specific numbers and interpretations. Rate the derivatives positioning: BULLISH / BEARISH / NEUTRAL with confidence.
 
-    const userMessage = this.buildFundamentalsMessage(context);
+${langInst}`;
+
+    const userMessage = this.buildFundamentalsMessage(context) + buildUserMessageLanguageReminder(locale);
 
     const response = await this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, {
       temperature: 0.3,
@@ -334,6 +367,7 @@ Write a structured analysis (200-400 words) with specific numbers and interpreta
     context: AnalystContext,
     modelId: string,
     apiKeys: UserApiKeys,
+    locale?: string,
   ): Promise<AnalystResult> {
     // 获取真实新闻数据
     const newsItems = await this.marketData.fetchCryptoNews(context.symbol, 10);
@@ -368,7 +402,9 @@ Write a structured analysis (200-400 words) with specific numbers and interpreta
 ${hasRealNews ? 'You have REAL-TIME news data below. Prioritize analyzing these actual headlines.' : 'No real-time news available. Use your training knowledge but clearly note that your information may be outdated.'}
 
 ## Output Format
-Write a concise analysis (150-300 words). State key events or patterns relevant to the symbol. Rate news sentiment: POSITIVE / NEGATIVE / NEUTRAL. Flag any significant risk events.`;
+Write a concise analysis (150-300 words). State key events or patterns relevant to the symbol. Rate news sentiment: POSITIVE / NEGATIVE / NEUTRAL. Flag any significant risk events.
+
+${buildLanguageInstruction(locale)}`;
 
     const userMessage = `Analyze the news and event landscape for ${context.symbol} futures trading.
 
@@ -378,7 +414,7 @@ Market context: This is a cryptocurrency perpetual futures contract.
 === NEWS DATA ===
 ${newsDataSection}
 
-Based on the above${hasRealNews ? ' real-time news' : ' (limited to your training knowledge)'}, what are the most relevant news factors, upcoming events, and risk scenarios that could affect ${context.symbol} in the near term?`;
+Based on the above${hasRealNews ? ' real-time news' : ' (limited to your training knowledge)'}, what are the most relevant news factors, upcoming events, and risk scenarios that could affect ${context.symbol} in the near term?${buildUserMessageLanguageReminder(locale)}`;
 
     const response = await this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, {
       temperature: 0.5,
@@ -414,7 +450,9 @@ Based on the above${hasRealNews ? ' real-time news' : ' (limited to your trainin
     context: AnalystContext,
     modelId: string,
     apiKeys: UserApiKeys,
+    locale?: string,
   ): Promise<AnalystResult> {
+    const langInst = buildLanguageInstruction(locale);
     const systemPrompt = `You are a CRYPTO SENTIMENT & CONTRARIAN ANALYST who specializes in detecting market sentiment extremes and contrarian opportunities.
 
 ## Your Analytical Framework
@@ -443,9 +481,11 @@ Based on the above${hasRealNews ? ' real-time news' : ' (limited to your trainin
    - Timing: Contrarian entries need confirmation (reversal candle, divergence)
 
 ## Output Format
-Write a structured analysis (200-400 words). Estimate the current sentiment (EXTREME GREED / GREED / NEUTRAL / FEAR / EXTREME FEAR). Identify any contrarian opportunities. Rate sentiment bias: BULLISH (contrarian long) / BEARISH (contrarian short) / NEUTRAL.`;
+Write a structured analysis (200-400 words). Estimate the current sentiment (EXTREME GREED / GREED / NEUTRAL / FEAR / EXTREME FEAR). Identify any contrarian opportunities. Rate sentiment bias: BULLISH (contrarian long) / BEARISH (contrarian short) / NEUTRAL.
 
-    const userMessage = await this.buildSentimentMessage(context);
+${langInst}`;
+
+    const userMessage = (await this.buildSentimentMessage(context)) + buildUserMessageLanguageReminder(locale);
 
     const response = await this.llm.chat(modelId, systemPrompt, userMessage, apiKeys, {
       temperature: 0.4,
@@ -616,6 +656,37 @@ Write a structured analysis (200-400 words). Estimate the current sentiment (EXT
       lines.push(`RSI(14): ${ctx.indicators.rsi.toFixed(1)} (sentiment context)`);
     }
 
+    // Phase 11: 增强衍生品数据
+    const enh = ctx.enhanced;
+    if (enh) {
+      if (enh.longShortRatio) {
+        const ls = enh.longShortRatio;
+        lines.push('');
+        lines.push('--- Long/Short Account Ratio ---');
+        lines.push(`L/S Ratio: ${ls.longShortRatio.toFixed(2)} (Long: ${(ls.longAccount * 100).toFixed(1)}% / Short: ${(ls.shortAccount * 100).toFixed(1)}%)`);
+      }
+      if (enh.takerFlow) {
+        const tf = enh.takerFlow;
+        const label = tf.buySellRatio > 1 ? 'buyers aggressive' : tf.buySellRatio < 1 ? 'sellers aggressive' : 'balanced';
+        lines.push(`Taker Buy/Sell Ratio: ${tf.buySellRatio.toFixed(2)} (${label})`);
+      }
+      if (enh.oiHistory && enh.oiHistory.length >= 2) {
+        const latest = enh.oiHistory[enh.oiHistory.length - 1];
+        const earliest = enh.oiHistory[0];
+        const oiDelta = latest.sumOpenInterestValue - earliest.sumOpenInterestValue;
+        const oiPct = earliest.sumOpenInterestValue > 0 ? (oiDelta / earliest.sumOpenInterestValue * 100) : 0;
+        lines.push(`OI History Trend (${enh.oiHistory.length}h): ${oiPct > 0 ? '+' : ''}${oiPct.toFixed(1)}% ($${(oiDelta / 1e6).toFixed(1)}M)`);
+      }
+      if (enh.liquidationHeatmap) {
+        const liq = enh.liquidationHeatmap;
+        lines.push('');
+        lines.push('--- Liquidation Data (24h) ---');
+        lines.push(`Total: $${(liq.total24hLiquidation / 1e6).toFixed(1)}M (Long: $${(liq.longLiquidation24h / 1e6).toFixed(1)}M / Short: $${(liq.shortLiquidation24h / 1e6).toFixed(1)}M)`);
+        if (liq.nearestUpLiqZone > 0) lines.push(`Nearest Up Liquidation Zone: $${liq.nearestUpLiqZone.toLocaleString()}`);
+        if (liq.nearestDownLiqZone > 0) lines.push(`Nearest Down Liquidation Zone: $${liq.nearestDownLiqZone.toLocaleString()}`);
+      }
+    }
+
     return lines.join('\n');
   }
 
@@ -720,6 +791,49 @@ Write a structured analysis (200-400 words). Estimate the current sentiment (EXT
         lines.push(`Volume Dry-up: ${volSpike.toFixed(2)}x average [LOW PARTICIPATION]`);
       } else {
         lines.push(`Volume: ${volSpike.toFixed(2)}x average [NORMAL]`);
+      }
+    }
+
+    // Phase 11: 增强情绪数据
+    const enh = ctx.enhanced;
+    if (enh) {
+      if (enh.stablecoinFlows) {
+        const sc = enh.stablecoinFlows;
+        const dir = sc.netMinted24h > 0 ? 'capital entering crypto' : sc.netMinted24h < 0 ? 'capital exiting crypto' : 'flat';
+        lines.push('');
+        lines.push('--- Stablecoin Fund Flows ---');
+        lines.push(`24h Net Minted: ${sc.netMinted24h > 0 ? '+' : ''}$${(sc.netMinted24h / 1e6).toFixed(0)}M (${dir})`);
+        lines.push(`Total MCap: $${(sc.totalMarketCap / 1e9).toFixed(1)}B | 7d Change: ${sc.change7d > 0 ? '+' : ''}${sc.change7d.toFixed(1)}%`);
+      }
+      if (enh.etfFlows) {
+        const etf = enh.etfFlows;
+        lines.push('');
+        lines.push('--- ETF Fund Flows ---');
+        lines.push(`BTC ETF 24h Net: ${etf.btcEtfNetFlow24h > 0 ? '+' : ''}$${(etf.btcEtfNetFlow24h / 1e6).toFixed(0)}M (${etf.btcEtfNetFlow24h > 0 ? 'institutional buying' : 'institutional selling'})`);
+        lines.push(`ETH ETF 24h Net: ${etf.ethEtfNetFlow24h > 0 ? '+' : ''}$${(etf.ethEtfNetFlow24h / 1e6).toFixed(0)}M`);
+      }
+      if (enh.optionsData) {
+        const opt = enh.optionsData;
+        const pcLabel = opt.putCallRatio < 0.7 ? 'bullish (more calls)' : opt.putCallRatio > 1.3 ? 'bearish (more puts)' : 'neutral';
+        lines.push('');
+        lines.push('--- Options Sentiment (Deribit) ---');
+        lines.push(`Put/Call Ratio: ${opt.putCallRatio.toFixed(2)} (${pcLabel})`);
+        lines.push(`Max Pain: $${opt.maxPainPrice.toLocaleString()} | IV: ${(opt.impliedVolatility * 100).toFixed(1)}%`);
+      }
+      if (enh.macroData) {
+        const m = enh.macroData;
+        lines.push('');
+        lines.push('--- Macro Sentiment ---');
+        lines.push(`VIX: ${m.vix.toFixed(1)} (${m.vix > 30 ? 'HIGH FEAR' : m.vix > 20 ? 'ELEVATED' : 'CALM'})`);
+        lines.push(`Fed Rate: ${m.fedFundsRate.toFixed(2)}% | CPI YoY: ${m.cpiYoY.toFixed(1)}%`);
+        lines.push(`Yield Curve (10Y-2Y): ${m.yieldCurveSpread > 0 ? '+' : ''}${m.yieldCurveSpread.toFixed(2)}% (${m.yieldCurveSpread < 0 ? 'INVERTED - recession risk' : 'normal'})`);
+      }
+      if (enh.cotReport) {
+        const cot = enh.cotReport;
+        lines.push('');
+        lines.push('--- Institutional Positioning (CFTC COT) ---');
+        lines.push(`BTC CME Net Speculative: ${cot.btcNetSpeculative > 0 ? '+' : ''}${cot.btcNetSpeculative.toLocaleString()} contracts`);
+        lines.push(`Report Date: ${cot.reportDate}`);
       }
     }
 

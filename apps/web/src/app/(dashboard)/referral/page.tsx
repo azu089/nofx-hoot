@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { ReferralPageV3 } from '@/components/ui-v3/referral/referral-page-v3';
 import { MobileReferralPage } from '@/components/ui-v3/mobile/mobile-referral-page';
@@ -109,7 +110,7 @@ export default function ReferralPage() {
               window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
             } else {
               navigator.clipboard.writeText(link);
-              alert('链接已复制');
+              toast.success('链接已复制');
             }
           }}
         />

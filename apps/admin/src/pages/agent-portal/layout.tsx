@@ -19,6 +19,7 @@ import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import type { MenuProps } from 'antd';
 
 import { useMessage } from '../../hooks';
+import { API_BASE } from './constants/styles';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -59,18 +60,46 @@ export default function AgentLayout() {
   const location = useLocation();
 
   useEffect(() => {
-    // 检查登录状态
-    const token = localStorage.getItem('agent_token');
-    const info = localStorage.getItem('agent_info');
+    const validateToken = async () => {
+      const token = localStorage.getItem('agent_token');
+      const info = localStorage.getItem('agent_info');
 
-    if (!token) {
-      navigate('/agent/login');
-      return;
-    }
+      if (!token) {
+        navigate('/agent/login');
+        return;
+      }
 
-    if (info) {
-      setAgentInfo(JSON.parse(info));
-    }
+      // 服务端验证 token 有效性
+      try {
+        const response = await fetch(`${API_BASE}/agent/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!response.ok) {
+          // Token 无效，清除并跳转登录
+          localStorage.removeItem('agent_token');
+          localStorage.removeItem('agent_info');
+          navigate('/agent/login');
+          return;
+        }
+      } catch {
+        // 网络错误时清除缓存，要求重新登录
+        localStorage.removeItem('agent_token');
+        localStorage.removeItem('agent_info');
+        navigate('/agent/login');
+        return;
+      }
+
+      if (info) {
+        try {
+          setAgentInfo(JSON.parse(info));
+        } catch {
+          // JSON 解析失败，忽略
+        }
+      }
+    };
+
+    validateToken();
   }, [navigate]);
 
   const handleLogout = () => {

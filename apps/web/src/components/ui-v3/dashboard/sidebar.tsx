@@ -7,13 +7,15 @@ import {
   TrendingUp,
   Briefcase,
   Wallet,
-  User
+  User,
+  Brain
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslations } from '@/i18n/provider'
 
 const navigationItemsConfig = [
   { id: 'home', labelKey: 'home', icon: Home, href: '/dashboard' },
+  { id: 'ai', labelKey: 'ai', icon: Brain, href: '/ai' },
   { id: 'strategy', labelKey: 'strategies', icon: TrendingUp, href: '/strategies' },
   { id: 'trading', labelKey: 'trading', icon: Briefcase, href: '/trading' },
   { id: 'assets', labelKey: 'wallet', icon: Wallet, href: '/wallet' },

@@ -40,6 +40,7 @@ export interface AiConfig {
   rollingSharpe: number;
   exchangeApiKeyId: string | null;
   hasApiKeys: boolean;
+  locale?: string;
 }
 
 export interface UpdateAiConfigBody {
@@ -61,6 +62,7 @@ export interface UpdateAiConfigBody {
   amountPerTrade?: number;
   exchangeApiKeyId?: string;
   apiKeys?: Record<string, string>;
+  locale?: string;
 }
 
 export interface UpdateAiConfigResponse {
@@ -139,6 +141,8 @@ export interface ResearchSession {
   cumulativePnl?: number;
   cumulativeCost?: number;
   totalCycles?: number;
+  exchangeName?: string | null;
+  exchangeLabel?: string | null;
 }
 
 export interface ResearchDecision {
@@ -146,6 +150,7 @@ export interface ResearchDecision {
   confidence: number;
   leverage?: number;
   positionSizePercent?: number;
+  capitalUSD?: number;
   stopLoss?: number | null;
   takeProfit?: number | null;
   reasoning?: string;
@@ -168,13 +173,81 @@ export interface ResearchStatus {
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+  // 循环/活动字段（后端动态附加）
+  rootSessionId?: string | null;
+  model?: string;
+  cyclingConfig?: ResearchCyclingConfig | null;
+}
+
+/** 研究循环配置（后端动态附加到 ResearchStatus） */
+export interface ResearchCyclingConfig {
+  intervalMinutes?: number;
+  maxCycles?: number;
+  profitTargetPercent?: number;
+  maxLossPercent?: number;
+  riskControlConfig?: {
+    allocatedCapital?: number;
+    maxLeverage?: number;
+    maxPositions?: number;
+    maxDailyDrawdown?: number;
+    maxDailyTrades?: number;
+    cooldownMinutes?: number;
+    circuitBreaker?: number;
+  };
+}
+
+/** 研究阶段结果 — 各阶段返回结构不同，联合所有已知属性 */
+export interface ResearchStageResult {
+  // 分析师阶段
+  reports?: Record<string, string>;
+  // 辩论阶段
+  entries?: Array<Record<string, unknown>> | number;
+  consensus?: ResearchStageResult;
+  // 交易决策阶段 (proposal 可以是 string 或 parsed object)
+  proposal?: ResearchStageResult | string;
+  action?: string;
+  confidence?: number;
+  leverage?: number;
+  positionSizePercent?: number;
+  capitalUSD?: number;
+  stopLoss?: string | number;
+  takeProfit?: string | number;
+  reasoning?: string;
+  // 风控阶段
+  riskResult?: ResearchStageResult;
+  approved?: boolean;
+  riskRating?: string;
+  adjustedLeverage?: number;
+  adjustedSL?: string | number;
+  adjustedTP?: string | number;
+  debateHistory?: Array<{ role?: string; content?: string; chainOfThought?: string }>;
+  skipped?: boolean;
+  // 最终决策阶段
+  decision?: {
+    action?: string;
+    confidence?: number;
+    leverage?: number;
+    reasoning?: string;
+    direction?: string;
+    positionSizePercent?: number;
+    stopLoss?: string | number;
+    takeProfit?: string | number;
+  };
+  safetyPassed?: boolean;
+  riskApproved?: boolean;
+  executedTradeId?: string;
+  direction?: string;
+  // 辩论/提示阶段
+  systemPrompt?: string;
+  userPrompt?: string;
+  chainOfThought?: string;
 }
 
 export interface ResearchStage {
   stage: number;
   name: string;
   status: string;
-  result?: any;
+  result?: ResearchStageResult;
   cost?: number;
   durationMs?: number;
 }
@@ -284,7 +357,7 @@ export interface RiskControlConfig {
   maxMarginUsage?: number;
   maxPositionPercent?: number;
   minConfidence?: number;
-  minRiskReward?: number;
+  minRiskRewardRatio?: number;
   amountPerTrade?: number;
   // NoFx 对齐新增
   maxDailyTrades?: number;
@@ -293,6 +366,8 @@ export interface RiskControlConfig {
   allocatedCapital?: number;
   btcEthMaxPositionValueRatio?: number;
   altcoinMaxPositionValueRatio?: number;
+  btcEthMaxLeverage?: number;
+  altcoinMaxLeverage?: number;
 }
 
 export interface PromptSections {
@@ -354,11 +429,11 @@ export interface AiStrategy {
   strategyType: string;
   tradingMode: string;
   models?: string[];
-  coinSourceConfig: CoinSourceConfig | any;
-  indicatorConfig: IndicatorConfig | any;
-  riskControlConfig: RiskControlConfig | any;
-  promptSections: PromptSections | any;
-  gridConfig: GridConfig | any;
+  coinSourceConfig: CoinSourceConfig;
+  indicatorConfig: IndicatorConfig;
+  riskControlConfig: RiskControlConfig;
+  promptSections: PromptSections;
+  gridConfig: GridConfig;
   debateConfig?: {
     maxRounds?: number;
     riskRounds?: number;
@@ -397,6 +472,8 @@ export interface StrategyDetailResponse {
 
 export interface AiStrategyWithPnl extends AiStrategy {
   todayPnl?: number;
+  exchangeName?: string | null;
+  exchangeLabel?: string | null;
 }
 
 export interface StrategyListResponse {
@@ -444,13 +521,16 @@ export interface CreateStrategyBody {
   name: string;
   strategyType?: string;
   tradingMode?: string;
+  models?: string[];
   coinSourceConfig: CoinSourceConfig;
-  indicatorConfig: IndicatorConfig | any;
+  indicatorConfig: IndicatorConfig;
   riskControlConfig: RiskControlConfig;
   promptSections?: PromptSections;
   gridConfig?: GridConfig;
+  debateConfig?: { maxRounds?: number; riskRounds?: number; temperature?: number };
   intervalMinutes?: number;
   exchangeApiKeyId?: string; // 指定交易所账号
+  stopConditions?: { maxCycles?: number; profitTargetPercent?: number; maxLossPercent?: number };
 }
 
 export interface CreateStrategyResponse {
@@ -473,6 +553,13 @@ export interface StrategyLogVote {
   error?: string;
   reasoning?: string;
   personality?: string;
+  // Per-vote 交易参数
+  leverage?: number;
+  positionSizePercent?: number;
+  stopLoss?: number | null;    // 绝对价格 (如 $62000)
+  takeProfit?: number | null;  // 绝对价格 (如 $72000)
+  stopLossPct?: number;        // 向后兼容（历史数据可能有）
+  takeProfitPct?: number;
 }
 
 export interface StrategyLog {
@@ -480,23 +567,66 @@ export interface StrategyLog {
   strategyId: string;
   symbol: string;
   decision: {
-    action: string;
+    action?: string;
     confidence?: number;
     leverage?: number;
     positionSizePercent?: number;
+    capitalUSD?: number;
     stopLoss?: number;
     takeProfit?: number;
+    stopLossPct?: number;      // 百分比形式 (如 0.03 = 3%)
+    takeProfitPct?: number;    // 百分比形式 (如 0.06 = 6%)
     reasoning?: string;
+    modelId?: string; // Solo 模式使用的模型 (后端增强后生效)
     votes?: StrategyLogVote[];
+    // Grid 策略: decisions 数组替代 action
+    decisions?: Array<{ action: string; reasoning?: string; lowerPrice?: number; upperPrice?: number; level_index?: number; price?: number; quantity?: number; order_id?: string; confidence?: number }>;
+    gridSummary?: string; // Grid 操作摘要 (如 "5买/5卖")
+    cost?: number;
+    aiThinking?: string; // AI 思考链（DeepSeek-Reasoner / Claude 扩展思考）
+    // Grid 状态快照（对齐 NoFx saveGridDecisionRecord）
+    gridSnapshot?: {
+      upperPrice: number;
+      lowerPrice: number;
+      gridSpacing?: number;
+      direction: string;
+      regime: string;
+      totalLevels: number;
+      filledLevels: number;
+      pendingLevels: number;
+      activeOrders: number;
+      totalProfit: number;
+      totalTrades: number;
+      winRate: number;
+      maxDrawdown: number;
+      dailyPnl: number;
+      breakoutLevel: string;
+      lastPrice: number;
+    };
+    // auto_disabled_failure 格式
+    reason?: string;
+    lastError?: string;
   };
   executed: boolean;
-  executionResult: any;
+  executionResult: {
+    blocked?: boolean;
+    blockedBy?: string;
+    reason?: string;
+    skipped?: boolean;
+    orderId?: string;
+    positionId?: string;
+    price?: number;
+    amount?: number;
+    error?: string;
+  } | null;
   createdAt: string;
 }
 
 export interface StrategyLogsResponse {
   data: StrategyLog[];
   pagination: Pagination;
+  totalAll?: number;
+  skippedCount?: number;
 }
 
 export interface StrategyPnlChartResponse {
@@ -534,13 +664,13 @@ export interface CompetitionResponse {
 export interface TimelineSoloLog {
   entryType: 'solo_log';
   log: StrategyLog;
-  strategy: { id: string; name: string; tradingMode: string };
+  strategy: { id: string; name: string; tradingMode: string; models?: string[] };
 }
 
 export interface TimelineDebateLog {
   entryType: 'debate_log';
   log: StrategyLog;
-  strategy: { id: string; name: string; tradingMode: string };
+  strategy: { id: string; name: string; tradingMode: string; models?: string[] };
 }
 
 export interface TimelineResearch {
@@ -548,16 +678,24 @@ export interface TimelineResearch {
   session: ResearchSession;
 }
 
-export type TimelineEntry = TimelineSoloLog | TimelineDebateLog | TimelineResearch;
+export interface TimelineGridLog {
+  entryType: 'grid_log';
+  log: StrategyLog;
+  strategy: { id: string; name: string; tradingMode: string; models?: string[] };
+}
+
+export type TimelineEntry = TimelineSoloLog | TimelineDebateLog | TimelineResearch | TimelineGridLog;
 
 export interface TimelineResponse {
   data: TimelineEntry[];
   pagination: Pagination;
+  totalAll?: number;
+  skippedCount?: number;
 }
 
 export interface ResearchStagesResponse {
-  stages: any;
-  finalDecision: any;
+  stages: ResearchStage[];
+  finalDecision: ResearchDecision | null;
   status: string;
 }
 
@@ -572,6 +710,8 @@ export interface CampaignStats {
   status: string;
   startedAt: string;
   lastCycleAt: string | null;
+  // 后端动态附加的循环配置
+  cyclingConfig?: ResearchCyclingConfig | null;
   childSessions: Array<{
     id: string;
     cycleNumber: number;

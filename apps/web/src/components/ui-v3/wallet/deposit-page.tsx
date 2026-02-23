@@ -53,6 +53,13 @@ const defaultNetworks: Network[] = [
 
 const defaultRecentDeposits: NonNullable<DepositPageProps['recentDeposits']> = []
 
+const EXPLORER_MAP: Record<string, string> = {
+  TRC20: 'https://tronscan.org/#/transaction/',
+  ERC20: 'https://etherscan.io/tx/',
+  BEP20: 'https://bscscan.com/tx/',
+  Polygon: 'https://polygonscan.com/tx/',
+}
+
 export function DepositPage({
   walletAddress = '',
   networks = defaultNetworks,
@@ -78,7 +85,9 @@ export function DepositPage({
       setTimeout(() => setCopied(false), 2000)
       onCopyAddress?.()
     } catch (err) {
-      console.error('Failed to copy:', err)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to copy:', err)
+      }
     }
   }
 
@@ -250,7 +259,7 @@ export function DepositPage({
                             {getStatusText(deposit.status)}
                           </span>
                           <a
-                            href={`https://tronscan.org/#/transaction/${deposit.txHash}`}
+                            href={`${EXPLORER_MAP[deposit.network] || 'https://tronscan.org/#/transaction/'}${deposit.txHash}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="查看交易详情"

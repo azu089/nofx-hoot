@@ -9,6 +9,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useTranslations } from '@/i18n/provider'
 
 // 后端 API 响应类型
 interface ApiKeyResponse {
@@ -61,6 +62,7 @@ const truncateAddress = (address: string) => {
 
 export function ApiKeysPage() {
   const queryClient = useQueryClient()
+  const tc = useTranslations('common')
   // Tab 状态
   const [activeTab, setActiveTab] = useState<'cex' | 'dex'>('cex')
 
@@ -137,14 +139,14 @@ export function ApiKeysPage() {
       return response.data
     },
     onSuccess: () => {
-      toast.success('API Key 添加成功')
+      toast.success(tc('apiKeyAddSuccess'))
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       setShowAddModal(false)
       setSelectedExchange(null)
       setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
     },
     onError: (error: Error) => {
-      toast.error(error.message || '添加失败')
+      toast.error(error.message || tc('addFailed'))
     },
   })
 
@@ -167,12 +169,12 @@ export function ApiKeysPage() {
       queryClient.removeQueries({ queryKey: ['api-key-balance', deletedId] })
       // 然后重新获取确保数据同步
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
-      toast.success('API Key 已删除')
+      toast.success(tc('apiKeyDeleteSuccess'))
       setShowDeleteModal(false)
       setSelectedApiKey(null)
     },
     onError: (error: Error) => {
-      toast.error(error.message || '删除失败')
+      toast.error(error.message || tc('deleteFailed'))
     },
   })
 
@@ -184,7 +186,7 @@ export function ApiKeysPage() {
       return response.data
     },
     onSuccess: () => {
-      toast.success('API Key 更新成功')
+      toast.success(tc('apiKeyUpdateSuccess'))
       // 刷新列表和余额
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       if (selectedApiKey) {
@@ -195,7 +197,7 @@ export function ApiKeysPage() {
       setEditFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
     },
     onError: (error: Error) => {
-      toast.error(error.message || '更新失败')
+      toast.error(error.message || tc('updateFailed'))
     },
   })
 
@@ -327,16 +329,16 @@ export function ApiKeysPage() {
       updateData.apiKey = editFormData.apiKey
       updateData.apiSecret = editFormData.secretKey
     } else if (editFormData.apiKey && !editFormData.secretKey) {
-      toast.error('更新 API Key 时必须同时提供 Secret Key')
+      toast.error(tc('apiKeyRequireSecret'))
       return
     } else if (!editFormData.apiKey && editFormData.secretKey) {
-      toast.error('更新 Secret Key 时必须同时提供 API Key')
+      toast.error(tc('secretRequireApiKey'))
       return
     }
 
     // 如果没有任何更新，直接关闭
     if (Object.keys(updateData).length === 1) {
-      toast.info('没有需要更新的内容')
+      toast.info(tc('noChanges'))
       setShowEditModal(false)
       setSelectedApiKey(null)
       return
@@ -349,7 +351,7 @@ export function ApiKeysPage() {
   const handleSubmitAdd = () => {
     if (!selectedExchange) return
     if (!formData.apiKey || !formData.secretKey) {
-      toast.error('请填写 API Key 和 Secret Key')
+      toast.error(tc('fillApiKeyAndSecret'))
       return
     }
     createMutation.mutate({
@@ -373,14 +375,14 @@ export function ApiKeysPage() {
       return response.data
     },
     onSuccess: () => {
-      toast.success('DEX 钱包添加成功')
+      toast.success(tc('dexAddSuccess'))
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       setShowAddDexModal(false)
       setSelectedDexExchange(null)
       setDexFormData({ walletAddress: '', privateKey: '', label: '', lighterApiKeyPrivateKey: '', lighterApiKeyIndex: 0, asterSignerAddress: '', isTestnet: false })
     },
     onError: (error: Error) => {
-      toast.error(error.message || '添加失败')
+      toast.error(error.message || tc('addFailed'))
     },
   })
 
@@ -400,14 +402,14 @@ export function ApiKeysPage() {
     // 按交易所类型填充必填字段
     if (selectedDexExchange === 'hyperliquid') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey) {
-        toast.error('请填写钱包地址和 Agent 私钥')
+        toast.error(tc('fillHLFields'))
         return
       }
       payload.walletAddress = dexFormData.walletAddress
       payload.privateKey = dexFormData.privateKey
     } else if (selectedDexExchange === 'lighter') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey || !dexFormData.lighterApiKeyPrivateKey) {
-        toast.error('请填写钱包地址、钱包私钥和 API Key 私钥')
+        toast.error(tc('fillLighterFields'))
         return
       }
       payload.walletAddress = dexFormData.walletAddress
@@ -416,7 +418,7 @@ export function ApiKeysPage() {
       payload.lighterApiKeyIndex = dexFormData.lighterApiKeyIndex
     } else if (selectedDexExchange === 'aster') {
       if (!dexFormData.walletAddress || !dexFormData.privateKey) {
-        toast.error('请填写用户钱包地址和签名私钥')
+        toast.error(tc('fillAsterFields'))
         return
       }
       payload.asterUserAddress = dexFormData.walletAddress
@@ -470,7 +472,7 @@ export function ApiKeysPage() {
 
     // 如果没有任何更新，直接关闭
     if (Object.keys(updateData).length === 1) {
-      toast.info('没有需要更新的内容')
+      toast.info(tc('noChanges'))
       setShowEditDexModal(false)
       setSelectedDexWallet(null)
       return

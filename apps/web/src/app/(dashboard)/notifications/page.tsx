@@ -11,14 +11,12 @@ export default function NotificationsPageRoute() {
     router.push(path);
   };
 
-  const handleMarkAsRead = (id: string) => {
-    console.log('标记已读:', id);
-    // TODO: 调用 API 标记已读
+  const handleMarkAsRead = (_id: string) => {
+    // NEXT-SPRINT: 接入后端通知 API 标记已读
   };
 
   const handleMarkAllAsRead = () => {
-    console.log('全部标记已读');
-    // TODO: 调用 API 全部标记已读
+    // NEXT-SPRINT: 接入后端通知 API 全部标记已读
   };
 
   return (

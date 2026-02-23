@@ -10,6 +10,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './guards/admin.guard';
 import { StakingService } from '../staking/staking.service';
@@ -31,6 +32,11 @@ import {
   UpdatePlatformConfigDto,
   SuspendTradingDto,
   ResumeTradingDto,
+  UpdateStakingConfigDto,
+  CreateAdminAgentDto,
+  UpdateAdminAgentDto,
+  UpdateReferralConfigDto,
+  UpdateEcosystemWeightsDto,
 } from './dto/admin.dto';
 
 // 新增服务
@@ -43,9 +49,15 @@ import { AdminReferralService } from './services/admin-referral.service';
 import { AdminSignalService } from './services/admin-signal.service';
 import { AdminExchangeService } from './services/admin-exchange.service';
 import { AdminConfigService } from './services/admin-config.service';
+import { ApiTags } from '@nestjs/swagger';
 import { AdminAiService } from './services/admin-ai.service';
 import { CreateExchangeDto, UpdateExchangeDto } from './dto/exchange.dto';
 
+interface AdminRequest extends Request {
+  admin: { id: string; username: string; role: string };
+}
+
+@ApiTags('admin')
 @Controller('admin')
 @Public() // 跳过全局 JwtAuthGuard，使用 AdminGuard 验证
 @UseGuards(AdminGuard)
@@ -114,7 +126,7 @@ export class AdminController {
   async adjustUserBalance(
     @Param('id') id: string,
     @Body() dto: AdjustBalanceDto,
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     return this.adminService.adjustUserBalance(id, dto, adminId);
@@ -376,7 +388,10 @@ export class AdminController {
 
   // 更新质押配置
   @Put('ecosystem/staking/config')
-  async updateStakingConfig(@Body() dto: any, @Req() req: any) {
+  async updateStakingConfig(
+    @Body() dto: UpdateStakingConfigDto,
+    @Req() req: AdminRequest,
+  ) {
     const adminId = req.admin?.id || 'system';
     const config = await this.adminStakingService.updateStakingConfig(
       dto,
@@ -543,13 +558,13 @@ export class AdminController {
 
   // 创建代理商
   @Post('agents')
-  async createAgent(@Body() dto: any) {
+  async createAgent(@Body() dto: CreateAdminAgentDto) {
     return this.agentService.createAgent(dto);
   }
 
   // 更新代理商
   @Put('agents/:id')
-  async updateAgent(@Param('id') id: string, @Body() dto: any) {
+  async updateAgent(@Param('id') id: string, @Body() dto: UpdateAdminAgentDto) {
     return this.agentService.updateAgent(id, dto);
   }
 
@@ -617,7 +632,7 @@ export class AdminController {
   async reviewTokenQuota(
     @Param('id') id: string,
     @Body() dto: { action: 'approve' | 'reject' },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     return this.agentService.reviewTokenQuota(id, dto.action, adminId);
@@ -670,7 +685,10 @@ export class AdminController {
 
   // 更新返佣配置
   @Put('referral/config')
-  async updateReferralConfig(@Body() dto: any, @Req() req: any) {
+  async updateReferralConfig(
+    @Body() dto: UpdateReferralConfigDto,
+    @Req() req: AdminRequest,
+  ) {
     const adminId = req.admin?.id || 'system';
     return this.referralService.updateReferralConfig(dto, adminId);
   }
@@ -746,7 +764,7 @@ export class AdminController {
   @Post('signals/kill-switch/global')
   async setGlobalSignalSwitch(
     @Body() dto: { enabled: boolean; reason: string },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.signalService.setGlobalSignalSwitch(
@@ -766,7 +784,7 @@ export class AdminController {
   async setStrategySignalSwitch(
     @Param('id') strategyId: string,
     @Body() dto: { enabled: boolean; reason: string },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.signalService.setStrategySignalStatus(
@@ -786,7 +804,7 @@ export class AdminController {
   @Post('signals/kill-switch/strategies/batch')
   async batchSetStrategySignalSwitch(
     @Body() dto: { enabled: boolean; reason: string },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.signalService.batchSetStrategySignalStatus(
@@ -802,7 +820,7 @@ export class AdminController {
   async setUserSignalSwitch(
     @Param('id') userId: string,
     @Body() dto: { enabled: boolean; reason: string },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.signalService.setUserSignalStatus(
@@ -1061,7 +1079,7 @@ export class AdminController {
    * PUT /admin/ecosystem/weights
    */
   @Put('ecosystem/weights')
-  async updateEcosystemWeights(@Body() weights: any) {
+  async updateEcosystemWeights(@Body() weights: UpdateEcosystemWeightsDto) {
     const data = await this.adminService.updateEcosystemWeights(weights);
     return { code: 0, message: '权重配置已更新', data };
   }
@@ -1202,7 +1220,7 @@ export class AdminController {
   async updateConfig(
     @Param('key') key: string,
     @Body() body: { value: unknown },
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id || 'system';
     const data = await this.configService.updateConfig(key, body.value, adminId);
@@ -1375,6 +1393,90 @@ export class AdminController {
       userId,
       action,
       executed: executed !== undefined ? executed === 'true' : undefined,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  // ==================== 日志查询 ====================
+
+  /**
+   * 获取管理员操作日志
+   * GET /admin/logs/operations?page=1&limit=20&module=&action=&adminId=&search=&startDate=&endDate=
+   */
+  @Get('logs/operations')
+  async getOperationLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('adminId') adminId?: string,
+    @Query('search') search?: string,
+    @Query('result') result?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.adminService.getOperationLogs({
+      page: Math.max(1, Number(page) || 1),
+      limit: Math.min(Math.max(1, Number(limit) || 20), 100),
+      module,
+      action,
+      adminId,
+      search,
+      result,
+      startDate,
+      endDate,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取登录日志
+   * GET /admin/logs/logins?page=1&limit=20&userId=&search=&startDate=&endDate=
+   */
+  @Get('logs/logins')
+  async getLoginLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('userId') userId?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.adminService.getLoginLogs({
+      page: Math.max(1, Number(page) || 1),
+      limit: Math.min(Math.max(1, Number(limit) || 20), 100),
+      userId,
+      search,
+      startDate,
+      endDate,
+    });
+    return { code: 0, message: 'success', data };
+  }
+
+  /**
+   * 获取系统审计日志
+   * GET /admin/logs/system?page=1&limit=20&actorType=&action=&resourceType=&search=&startDate=&endDate=
+   */
+  @Get('logs/system')
+  async getSystemLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('actorType') actorType?: string,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const data = await this.adminService.getSystemLogs({
+      page: Math.max(1, Number(page) || 1),
+      limit: Math.min(Math.max(1, Number(limit) || 20), 100),
+      actorType,
+      action,
+      resourceType,
+      search,
+      startDate,
+      endDate,
     });
     return { code: 0, message: 'success', data };
   }

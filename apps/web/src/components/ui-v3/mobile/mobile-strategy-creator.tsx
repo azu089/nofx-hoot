@@ -158,7 +158,9 @@ def on_bar(bar):
       await createSubscription(configWithApiKey)
       onSave?.(strategyData)
     } catch (err) {
-      console.error('创建策略失败:', err)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('创建策略失败:', err)
+      }
     }
   }
 

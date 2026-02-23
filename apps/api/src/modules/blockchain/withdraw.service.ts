@@ -2,6 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ethers, Wallet, Contract } from 'ethers';
 import { PrismaService } from '../../prisma/prisma.service';
 import { HdWalletService } from './hd-wallet.service';
+import { Prisma } from '@prisma/client';
+
+// 提现请求（含关联用户信息）
+type WithdrawRequestWithUser = Prisma.WithdrawRequestGetPayload<{
+  include: { user: { select: { id: true; email: true; telegramId: true } } };
+}>;
+// 不含关联的基础提现请求
+type WithdrawRequestBase = Prisma.WithdrawRequestGetPayload<{ include: Record<string, never> }>;
+
+// TronGrid API 响应（松散结构）
+interface TronApiResponse {
+  result?: { result?: boolean; message?: string };
+  transaction?: { txID: string; signature?: string[]; [key: string]: unknown };
+  message?: string;
+  balance?: number;
+  constant_result?: string[];
+  [key: string]: unknown;
+}
 
 // ERC-20 转账 ABI
 const ERC20_TRANSFER_ABI = [
@@ -366,7 +384,7 @@ export class WithdrawService {
   /**
    * 通知管理员审核提现（通过独立的 Admin TG Bot）
    */
-  private async notifyAdminForReview(request: any): Promise<void> {
+  private async notifyAdminForReview(request: WithdrawRequestWithUser): Promise<void> {
     try {
       const adminBotUrl =
         process.env.ADMIN_BOT_URL || 'http://localhost:4003';
@@ -468,7 +486,7 @@ export class WithdrawService {
 
       await tx.transaction.updateMany({
         where: { uniqueOrderId: `withdraw_${withdrawRequestId}` },
-        data: { status: 'failed', remark: reason || '提现被拒绝' },
+        data: { status: 'failed', remark: reason || '审核未通过' },
       });
     });
 
@@ -568,12 +586,12 @@ export class WithdrawService {
           where: { id: withdrawRequestId },
           data: {
             status: 'failed',
-            remark: `执行失败: ${result.error}`,
+            remark: result.error || '链上交易执行失败',
           },
         });
 
         // 执行失败自动退款（用户资金不能卡住）
-        await this.refundWithdraw(withdrawRequest, `链上执行失败: ${result.error}`);
+        await this.refundWithdraw(withdrawRequest, result.error || '链上交易执行失败');
       }
 
       return result;
@@ -585,12 +603,12 @@ export class WithdrawService {
         where: { id: withdrawRequestId },
         data: {
           status: 'failed',
-          remark: `执行异常: ${error.message}`,
+          remark: error.message || '提现执行异常',
         },
       });
 
       // 自动退款
-      await this.refundWithdraw(withdrawRequest, `执行异常: ${error.message}`).catch(
+      await this.refundWithdraw(withdrawRequest, error.message || '提现执行异常').catch(
         (refundErr) => this.logger.error(`退款失败: ${refundErr.message}`),
       );
 
@@ -602,7 +620,7 @@ export class WithdrawService {
    * 退款：执行失败时将余额退回给用户
    */
   private async refundWithdraw(
-    request: any,
+    request: WithdrawRequestBase,
     reason: string,
   ): Promise<void> {
     try {
@@ -648,7 +666,7 @@ export class WithdrawService {
    * 3. 中继 → 用户: 转出代币到用户外部地址
    */
   private async executeEvmWithdraw(
-    withdrawRequest: any,
+    withdrawRequest: WithdrawRequestBase,
     chain: string,
   ): Promise<WithdrawResult> {
     const chainWallet = this.evmWallets.get(chain);
@@ -764,7 +782,7 @@ export class WithdrawService {
    * 3. broadcasttransaction 广播
    */
   private async executeTronWithdraw(
-    withdrawRequest: any,
+    withdrawRequest: WithdrawRequestBase,
   ): Promise<WithdrawResult> {
     if (!this.tronWallet) {
       return { success: false, error: 'TRON 提现钱包未配置' };
@@ -869,7 +887,7 @@ export class WithdrawService {
   /**
    * TronGrid API 通用调用
    */
-  private async tronApiCall(path: string, body: any): Promise<any> {
+  private async tronApiCall(path: string, body: Record<string, unknown>): Promise<TronApiResponse | null> {
     if (!this.tronWallet) return null;
 
     const headers: Record<string, string> = {
@@ -898,7 +916,7 @@ export class WithdrawService {
    * 通知用户提现完成
    */
   private async notifyWithdrawComplete(
-    request: any,
+    request: WithdrawRequestBase,
     txHash: string,
   ): Promise<void> {
     try {

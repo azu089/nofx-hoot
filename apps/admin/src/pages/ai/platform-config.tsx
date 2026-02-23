@@ -60,7 +60,10 @@ const MODEL_PROVIDER_MAP: Record<string, string> = {
   'gemini-2.0-flash':          'openrouter',
   'qwen-plus':                 'qwen',
   'grok-3':                    'grok',
+  'grok-4-fast':               'grok',
   'moonshot-v1-8k':            'kimi',
+  'kimi-k2.5':                 'kimi',
+  'qwen3.5-plus':              'qwen',
 };
 
 // ======================== 主页面 ========================
@@ -396,7 +399,7 @@ export const AiPlatformConfigPage = () => {
             extra="留空则使用代码默认模型版本。填入后调用此 Provider 的所有请求均使用该模型名。"
           >
             <Input
-              placeholder="例如: grok-3-fast（留空则使用默认）"
+              placeholder="例如: grok-4-fast（留空则使用默认）"
               allowClear
             />
           </Form.Item>

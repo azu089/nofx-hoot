@@ -35,6 +35,8 @@ export class LoginDto {
 // 登录响应
 export class LoginResponse {
   accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
   user: {
     id: string;
     email?: string | null;
@@ -46,6 +48,30 @@ export class LoginResponse {
     pointBalance?: string;
   };
   isNewUser?: boolean; // 新注册用户标识
+}
+
+// Refresh Token 请求 DTO
+export class RefreshTokenDto {
+  @IsString()
+  refreshToken: string;
+}
+
+// 带 Refresh Token 的 Token 对响应
+export class TokenPairResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number; // access token 过期时间（秒）
+  user?: {
+    id: string;
+    email?: string | null;
+    nickname?: string | null;
+    walletAddress?: string | null;
+    telegramId?: string | null;
+    usdtBalance?: string;
+    hootBalance?: string;
+    pointBalance?: string;
+  };
+  isNewUser?: boolean;
 }
 
 // 用户信息响应

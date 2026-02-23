@@ -78,11 +78,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyTheme(effective);
   }, [applyTheme]);
 
-  // 防止服务端渲染闪烁 - 返回占位符
+  // 防止服务端渲染闪烁 - 返回加载占位符
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F]">
-        {/* 加载占位符，防止闪烁 */}
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import {
   AirdropType,
@@ -589,10 +590,10 @@ export class AirdropService {
   private async releaseVesting(airdrop: {
     id: string;
     userId: string;
-    amount: any;
+    amount: Prisma.Decimal | string | number;
     vestingDays: number;
     vestingStart: Date;
-    releasedAmount: any;
+    releasedAmount: Prisma.Decimal | string | number;
   }): Promise<void> {
     const now = new Date();
     const startDate = new Date(airdrop.vestingStart);
@@ -628,11 +629,12 @@ export class AirdropService {
       });
 
       // 更新用户余额：锁定减少，可用增加
+      // 使用精确的 Decimal 字符串避免浮点精度问题
       await tx.user.update({
         where: { id: airdrop.userId },
         data: {
-          lockedBalance: { decrement: toRelease.toNumber() },
-          availableBalance: { increment: toRelease.toNumber() },
+          lockedBalance: { decrement: toRelease.toFixed(8) },
+          availableBalance: { increment: toRelease.toFixed(8) },
           lastVestingAt: now,
         },
       });
@@ -703,7 +705,7 @@ export class AirdropService {
     const { type, status, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { userId };
+    const where: Prisma.AirdropWhereInput = { userId };
     if (type) where.type = type;
     if (status) where.status = status;
 
@@ -921,8 +923,8 @@ export class AirdropService {
   // ==================== 辅助方法 ====================
 
   private calculateVestingProgress(airdrop: {
-    amount: any;
-    releasedAmount: any;
+    amount: Prisma.Decimal | string | number;
+    releasedAmount: Prisma.Decimal | string | number;
   }): number {
     const total = new Decimal(airdrop.amount.toString());
     const released = new Decimal(airdrop.releasedAmount.toString());

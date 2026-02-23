@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
+import { TelegramScript } from "@/components/telegram-script";
 
 
 export const metadata: Metadata = {
@@ -30,11 +30,8 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <meta name="google" content="notranslate" />
         <meta name="theme-color" content="#06B6D4" />
-        {/* Telegram WebApp SDK — 必须在 head 中同步加载 */}
-        <Script
-          src="https://telegram.org/js/telegram-web-app.js"
-          strategy="beforeInteractive"
-        />
+        {/* Telegram WebApp SDK — 仅在 TG Mini App 环境中条件加载 */}
+        <TelegramScript />
       </head>
       <body
         className="font-sans antialiased bg-[#0A0A0F] text-[#F8F8FC]"

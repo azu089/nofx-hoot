@@ -41,6 +41,7 @@ describe('ReferralService', () => {
               findUnique: jest.fn(),
               findMany: jest.fn(),
               update: jest.fn(),
+              count: jest.fn(),
             },
             referralReward: {
               findMany: jest.fn(),
@@ -67,10 +68,9 @@ describe('ReferralService', () => {
 
     // 正常路径 - 生成新邀请码
     it('should create new invite code if not exists', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
-        ...mockUser,
-        inviteCode: null,
-      });
+      (prisma.user.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ ...mockUser, inviteCode: null }) // 查当前用户
+        .mockResolvedValueOnce(null); // 检查邀请码唯一性（不存在=可用）
       (prisma.user.update as jest.Mock).mockResolvedValue({
         ...mockUser,
         inviteCode: 'NEW123',
@@ -137,7 +137,13 @@ describe('ReferralService', () => {
   describe('getInvitees', () => {
     // 正常路径
     it('should return list of invitees', async () => {
-      (prisma.user.findMany as jest.Mock).mockResolvedValue([mockInvitee]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([{
+        ...mockInvitee,
+        nickname: 'invitee',
+      }]);
+      (prisma.referralReward.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { amount: '10.00' },
+      });
 
       const result = await service.getInvitees('user-123');
 
@@ -159,10 +165,10 @@ describe('ReferralService', () => {
     // 正常路径
     it('should return referral statistics', async () => {
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
-      (prisma.user.findMany as jest.Mock).mockResolvedValue([mockInvitee]);
-      (prisma.referralReward.aggregate as jest.Mock).mockResolvedValue({
-        _sum: { amount: '100.00' },
-      });
+      (prisma.user.count as jest.Mock).mockResolvedValue(1);
+      (prisma.referralReward.aggregate as jest.Mock)
+        .mockResolvedValueOnce({ _sum: { amount: '100.00' } })
+        .mockResolvedValueOnce({ _sum: { amount: '20.00' } });
 
       const result = await service.getStats('user-123');
 
@@ -175,7 +181,10 @@ describe('ReferralService', () => {
     // 正常路径
     it('should return reward records', async () => {
       (prisma.referralReward.findMany as jest.Mock).mockResolvedValue([
-        mockReward,
+        { ...mockReward, amount: { toString: () => '10.00' }, asset: 'USDT', status: 'completed' },
+      ]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'user-456', nickname: 'invitee' },
       ]);
 
       const result = await service.getRewardRecords('user-123');

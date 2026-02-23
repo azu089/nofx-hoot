@@ -9,6 +9,7 @@ import { MarketDataService } from '../market-data.service';
 import { AiMemoryService } from '../memory.service';
 import { SafetyService, SafetyCheckInput } from '../safety.service';
 import { AiExecutionService } from '../ai-execution.service';
+import { translateExchangeError } from '../../utils/error-translator';
 import {
   ResearchDepth,
   ResearchResult,
@@ -16,8 +17,11 @@ import {
   AiTradeDecision,
   AnalystReports,
 } from '../../types/ai.types';
-import { QUICK_MODE_SYSTEM_PROMPT, ANALYSIS_OUTPUT_FORMAT, formatMemoryPrompt, formatMarketDataPrompt } from '../../constants/prompts';
+import { formatMemoryPrompt } from '../../constants/prompts';
+import { buildLanguageInstruction, buildReasoningLanguageHint, buildUserMessageLanguageReminder } from '../../constants/locale-instructions';
 import { TradingGateway } from '../../../../gateways/trading.gateway';
+import { parseDecisions } from '../../utils/decision-parser';
+import { AI_SAFETY_DEFAULTS } from '../../constants/safety-defaults';
 
 /**
  * 研究配置
@@ -40,7 +44,16 @@ export interface ResearchConfig {
     maxDailyTrades?: number;
     cooldownMinutes?: number;
     circuitBreaker?: number;
+    // === NoFx 对齐字段 ===
+    btcEthMaxLeverage?: number;         // AI GUIDED + CODE ENFORCED, 默认 5
+    altcoinMaxLeverage?: number;        // AI GUIDED + CODE ENFORCED, 默认 5
+    btcEthMaxPositionValueRatio?: number;   // CODE ENFORCED, 默认 5.0
+    altcoinMaxPositionValueRatio?: number;  // CODE ENFORCED, 默认 1.0
+    minRiskRewardRatio?: number;        // AI GUIDED + L9 检查, 默认 1.5
+    minConfidence?: number;             // AI GUIDED, 默认 60
+    minPositionSize?: number;           // CODE ENFORCED, 默认 12
   };
+  locale?: string; // AI 输出语言 locale (e.g. "zh-CN", "en")
 }
 
 /**
@@ -136,6 +149,7 @@ export class ResearchPipelineService {
           autoExecute,
           status: 'running',
           stages: [],
+          exchangeApiKeyId: config.apiKeyId || null,
         },
       });
     }
@@ -152,6 +166,7 @@ export class ResearchPipelineService {
       indicators: IndicatorsResult;
       openInterest?: number;
       fundingRate?: number;
+      volume24h?: number;
     } | null = null;
 
     try {
@@ -182,12 +197,19 @@ export class ResearchPipelineService {
         try {
           const oiData = await this.marketData.fetchOpenInterest(futuresSymbol);
           openInterest = oiData?.openInterest;
-        } catch {}
+        } catch (err: any) {
+          this.logger.warn(`[Stage 1] OI 数据获取失败: ${err.message}`, { symbol: futuresSymbol });
+        }
 
         try {
           const frData = await this.marketData.fetchFundingRate(futuresSymbol);
           fundingRate = frData?.fundingRate;
-        } catch {}
+        } catch (err: any) {
+          this.logger.warn(`[Stage 1] FundingRate 获取失败: ${err.message}`, { symbol: futuresSymbol });
+        }
+
+        // Phase 11: 获取增强市场数据（非阻塞，失败返回 null）
+        const enhanced = await this.marketData.fetchEnhancedMarketData(symbol).catch(() => null);
 
         // 构建分析师上下文
         const analystCtx: AnalystContext = {
@@ -197,6 +219,7 @@ export class ResearchPipelineService {
           indicators,
           openInterest,
           fundingRate,
+          enhanced: enhanced || undefined,
         };
 
         // 运行所有分析师
@@ -205,12 +228,19 @@ export class ResearchPipelineService {
           quickModel,
           config.llmApiKeys,
           depthCfg.skipAnalysts,
+          config.locale,
         );
 
         return {
           reports: result.reports,
           cost: result.totalCost,
-          context: { currentPrice, ohlcv, indicators, openInterest, fundingRate },
+          context: {
+            currentPrice, ohlcv, indicators, openInterest, fundingRate,
+            // 从 OHLCV (1h) 聚合 24h 成交量（L10 流动性检查用）
+            volume24h: ohlcv.length >= 24
+              ? ohlcv.slice(-24).reduce((sum, bar) => sum + (bar.volume || 0), 0)
+              : undefined,
+          },
         };
       });
 
@@ -221,6 +251,16 @@ export class ResearchPipelineService {
 
       const reports: AnalystReports = stage1.result?.reports || {};
       marketCtx = stage1.result?.context || null;
+
+      // Stage 1 汇总日志
+      const reportKeys = Object.keys(reports).filter(k => (reports as Record<string, string>)[k]);
+      this.logger.log(
+        `[研究-Stage1] 分析师报告汇总 (${reportKeys.length} 份):\n` +
+        reportKeys.map(k => {
+          const content = ((reports as Record<string, string>)[k] || '').slice(0, 150);
+          return `  ${k}: ${content}${content.length >= 150 ? '...' : ''}`;
+        }).join('\n'),
+      );
 
       if (!marketCtx) {
         throw new Error('Stage 1 未能获取市场上下文');
@@ -261,6 +301,7 @@ export class ResearchPipelineService {
             userId,                          // G2: 角色专属 BM25 记忆
             sceneText: reportsConcat,        // G2: BM25 查询文本
             judgeModel: deepModel,           // G3: Judge 使用深度思考模型
+            locale: config.locale,           // 动态语言设置
           };
 
           const result = await this.debate.runDebate(debateCtx, debateConfig);
@@ -310,14 +351,52 @@ export class ResearchPipelineService {
           this.logger.warn(`[Stage 3] Trader BM25 记忆检索失败: ${err.message}`);
         }
 
+        // G2: 查询现有持仓 — 使 Trader 可以建议平仓
+        let existingPositionsPrompt = '';
+        try {
+          const baseSymbol = symbol.replace('/USDT:USDT', '').replace('/USDT', '');
+          const openPositions = await this.prisma.position.findMany({
+            where: {
+              userId,
+              symbol: { contains: baseSymbol },
+              status: 'open',
+            },
+            select: {
+              side: true, entryPrice: true, amount: true,
+              unrealizedPnl: true, margin: true, leverage: true,
+              highWaterMark: true, createdAt: true,
+            },
+          });
+
+          if (openPositions.length > 0) {
+            const posLines = openPositions.map((p) => {
+              const entry = Number(p.entryPrice);
+              const margin = Number(p.margin || 0);
+              const unrealizedPnl = Number(p.unrealizedPnl || 0);
+              // ROE% = unrealizedPnl / margin * 100（已含杠杆效应）
+              const roePct = margin > 0 ? (unrealizedPnl / margin * 100).toFixed(2) : '0.00';
+              const peakPnl = p.highWaterMark ? Number(p.highWaterMark).toFixed(2) : 'N/A';
+              return `  - ${p.side.toUpperCase()} | Entry: $${entry} | Qty: ${Number(p.amount)} | ${p.leverage}x | ROE: ${roePct}% | PeakPnL: ${peakPnl}% | Since: ${p.createdAt.toISOString().split('T')[0]}`;
+            }).join('\n');
+
+            existingPositionsPrompt = `\n\n=== EXISTING OPEN POSITIONS ===\n${posLines}\n\nIMPORTANT: ROE% = Return on Equity (includes leverage effect). PeakPnL% = highest ROE ever reached for this position.\nIf the analysis suggests closing existing positions, use "close_long" or "close_short". Avoid opening conflicting positions.\nDo NOT close a profitable position just because it pulled back slightly — only close if PeakPnL ≥ 2% AND pullback from peak ≥ 30%, or if trend has reversed.`;
+          }
+        } catch (err) {
+          this.logger.warn(`[Stage 3] 持仓查询失败: ${(err as Error).message}`);
+        }
+
+        const reasoningHint = buildReasoningLanguageHint(config.locale);
+        const langInstruction = buildLanguageInstruction(config.locale);
         const systemPrompt = `You are an EXPERT CRYPTO FUTURES TRADER. Based on the analyst reports and investment debate decision below, generate a FINAL TRANSACTION PROPOSAL.
+
+${langInstruction}
 
 You MUST respond ONLY with a valid JSON object following this exact schema:
 
 {
   "action": "open_long" | "open_short" | "close_long" | "close_short" | "hold" | "wait",
   "confidence": 0-100 (integer),
-  "reasoning": "Your detailed analysis (150-400 words)",
+  "reasoning": "Your detailed analysis ${reasoningHint} (150-400 words)",
   "keyPoints": ["Key point 1", "Key point 2", "Key point 3"],
   "leverage": 1-20 (integer, recommended leverage),
   "positionSizePercent": 1-10 (integer, position size as % of portfolio),
@@ -338,9 +417,9 @@ ${investmentDecision}
 === CURRENT MARKET ===
 Symbol: ${symbol}
 Price: ${marketCtx!.currentPrice}
-${marketCtx!.fundingRate !== undefined ? `Funding Rate: ${(marketCtx!.fundingRate * 100).toFixed(4)}%` : ''}
+${marketCtx!.fundingRate !== undefined ? `Funding Rate: ${(marketCtx!.fundingRate * 100).toFixed(4)}%` : ''}${existingPositionsPrompt}
 
-Generate your final transaction proposal.`;
+Generate your final transaction proposal.${buildUserMessageLanguageReminder(config.locale)}`;
 
         const response = await this.llm.chat(
           quickModel,
@@ -362,6 +441,13 @@ Generate your final transaction proposal.`;
       this.pushProgress(userId, session.id, 3, '交易员提案', 'completed');
 
       const traderPlan = stage3.result?.proposal || '';
+
+      // Stage 3 交易员提案预览
+      const proposalPreview = traderPlan.slice(0, 300);
+      this.logger.log(
+        `[研究-Stage3] 交易员提案:\n` +
+        `  内容: ${proposalPreview}${proposalPreview.length >= 300 ? '...' : ''}`,
+      );
 
       // ==================== Stage 4: 风控辩论 ====================
       let riskResult: {
@@ -385,6 +471,7 @@ Generate your final transaction proposal.`;
             apiKeys: config.llmApiKeys,
             userId,                          // BM25 记忆检索（补全 Q3 调用方传参）
             sceneText: reportsText,          // BM25 查询文本
+            locale: config.locale,           // AI 输出语言
           };
 
           const result = await this.riskDebate.runRiskDebate(
@@ -419,20 +506,34 @@ Generate your final transaction proposal.`;
       await this.updateSession(session.id, stages);
       this.pushProgress(userId, session.id, 4, '风控辩论', 'completed');
 
+      // Stage 4 风控辩论结果日志
+      this.logger.log(
+        `[研究-Stage4] 风控辩论结果: approved=${riskResult.approved}, risk=${riskResult.riskRating}\n` +
+        `  adjustedLeverage=${riskResult.adjustedLeverage ?? 'unchanged'}\n` +
+        `  adjustedPosPct=${riskResult.adjustedPositionSizePercent ?? 'unchanged'}\n` +
+        `  adjustedSL=${riskResult.adjustedStopLoss ?? 'unchanged'} TP=${riskResult.adjustedTakeProfit ?? 'unchanged'}\n` +
+        `  reasoning: ${(riskResult.reasoning || '').slice(0, 200)}`,
+      );
+
       // ==================== Stage 5: 最终决策 ====================
       const stage5 = await this.runStage(5, '最终决策', async () => {
         // 从交易员提案中提取决策
         const decision = this.parseTraderDecision(traderPlan, riskResult);
 
         // 安全检查
+        // 计算实际仓位金额（USD），供 L10 流动性检查比较
+        const allocCap = config.riskControlConfig?.allocatedCapital || 1000;
+        const positionSizeUSD = allocCap * (decision.positionSizePercent / 100) * (decision.leverage || 1);
+
         const safetyInput: SafetyCheckInput = {
           userId,
           symbol,
           direction: this.actionToDirection(decision.action),
           action: decision.action,
           confidence: decision.confidence,
-          consensusScore: 3, // 研究模式默认共识分
+          consensusScore: 5, // 深研已有 Risk Judge 裁决，等同于最高共识
           positionSize: decision.positionSizePercent,
+          positionSizeUSD,
           leverage: decision.leverage,
           indicators: {
             rsi: marketCtx!.indicators.rsi,
@@ -449,10 +550,21 @@ Generate your final transaction proposal.`;
             },
           },
           fundingRate: marketCtx!.fundingRate,
-          mode: depth === 'quick' ? 'quick' : undefined,
-          // 传入策略级风控参数（用户在深研创建时配置）
+          volume24h: marketCtx!.volume24h,
+          // SL/TP 百分比（L9 R:R 检查需要，从绝对价格反算）
+          takeProfitPercent: (decision.takeProfit && marketCtx!.currentPrice > 0)
+            ? Math.abs(decision.takeProfit - marketCtx!.currentPrice) / marketCtx!.currentPrice * 100
+            : undefined,
+          stopLossPercent: (decision.stopLoss && marketCtx!.currentPrice > 0)
+            ? Math.abs(decision.stopLoss - marketCtx!.currentPrice) / marketCtx!.currentPrice * 100
+            : undefined,
+          mode: 'quick', // Research 无多模型投票，始终跳过 L2 共识检查
+          // 传入策略级风控参数（用户在深研创建时配置，含 NoFx 对齐字段）
           strategyRiskConfig: config.riskControlConfig ? {
             maxLeverage: config.riskControlConfig.maxLeverage,
+            btcEthMaxLeverage: config.riskControlConfig.btcEthMaxLeverage,
+            altcoinMaxLeverage: config.riskControlConfig.altcoinMaxLeverage,
+            minRiskRewardRatio: config.riskControlConfig.minRiskRewardRatio,
             maxPositions: config.riskControlConfig.maxPositions,
             maxDailyTrades: config.riskControlConfig.maxDailyTrades,
             cooldownMinutes: config.riskControlConfig.cooldownMinutes,
@@ -472,6 +584,19 @@ Generate your final transaction proposal.`;
           );
           decision.action = 'wait';
           decision.reasoning += `\n\n[SAFETY BLOCKED] ${safetyResult.blockedBy}: ${safetyResult.blockedReason}`;
+
+          // G3: 即时推送安全检查拦截
+          this.gateway.sendAiDecision(userId, {
+            sessionId: session.id,
+            symbol,
+            action: decision.action,
+            confidence: decision.confidence,
+            source: 'ai_research',
+            status: 'blocked',
+            blockedBy: safetyResult.blockedBy || 'safety',
+            reasoning: `安全检查拦截: ${safetyResult.blockedReason}`,
+            timestamp: new Date().toISOString(),
+          });
         }
 
         // 如果风控辩论不通过
@@ -479,12 +604,95 @@ Generate your final transaction proposal.`;
           this.logger.warn(`[研究] 风控辩论拒绝: ${riskResult.riskRating}`);
           decision.action = 'wait';
           decision.reasoning += `\n\n[RISK REJECTED] Rating: ${riskResult.riskRating}. ${riskResult.reasoning || ''}`;
+
+          // G3: 即时推送风控辩论拒绝
+          this.gateway.sendAiDecision(userId, {
+            sessionId: session.id,
+            symbol,
+            action: decision.action,
+            confidence: decision.confidence,
+            source: 'ai_research',
+            status: 'blocked',
+            blockedBy: 'risk_debate',
+            reasoning: `风控辩论拒绝: ${riskResult.riskRating}`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // ===== CODE ENFORCED 执行层检查（对齐 NoFx auto-trader E2/D6/E4）=====
+        // 这些检查在 safety check 之后、execution 之前执行
+        // 深研有自己的思考流程，但执行层风控与 auto-trader 保持一致
+        const rc = config.riskControlConfig || {};
+        if (decision.action === 'open_long' || decision.action === 'open_short') {
+          const baseSymbol = symbol.split('/')[0]?.toUpperCase();
+          const isMajor = baseSymbol === 'BTC' || baseSymbol === 'ETH';
+
+          // E2: 杠杆 auto-clamp（分 BTC/ETH 和山寨币）
+          if (decision.leverage) {
+            const effectiveMaxLev = isMajor
+              ? (rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5)
+              : (rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5);
+            if (decision.leverage > effectiveMaxLev) {
+              this.logger.warn(
+                `[研究-E2] ${symbol}: 杠杆 ${decision.leverage}x > ${effectiveMaxLev}x (${isMajor ? 'BTC/ETH' : 'altcoin'})，auto-clamp`,
+              );
+              decision.leverage = effectiveMaxLev;
+            }
+          }
+
+          // D6: positionValueRatio auto-cap（超限缩小仓位，不拦截）
+          const maxRatio = isMajor
+            ? (rc.btcEthMaxPositionValueRatio ?? 5.0)
+            : (rc.altcoinMaxPositionValueRatio ?? 1.0);
+          const allocCap = rc.allocatedCapital || 1000;
+          const posValueEst = (decision.positionSizePercent / 100) * allocCap * (decision.leverage || 1);
+          const maxPosValue = allocCap * maxRatio;
+          if (posValueEst > maxPosValue) {
+            const cappedPercent = (maxPosValue / (allocCap * (decision.leverage || 1))) * 100;
+            this.logger.warn(
+              `[研究-D6] ${symbol}: 仓位价值 $${posValueEst.toFixed(0)} 超限 $${maxPosValue.toFixed(0)} (${isMajor ? 'BTC/ETH' : 'altcoin'} ${maxRatio}x), auto-cap ${decision.positionSizePercent}% → ${cappedPercent.toFixed(1)}%`,
+            );
+            decision.positionSizePercent = Math.max(cappedPercent, 1);
+          }
+
+          // E4: 最小仓位检查（用户可配 minPositionSize）
+          const marginEst = (decision.positionSizePercent / 100) * allocCap;
+          const userMinSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
+          const minMargin = isMajor
+            ? Math.max(userMinSize, AI_SAFETY_DEFAULTS.minPositionSizeMajor) // BTC/ETH 系统硬底 $60
+            : userMinSize;
+          if (marginEst < minMargin * 0.95) {
+            this.logger.warn(
+              `[研究-E4] ${symbol}: 预估保证金 $${marginEst.toFixed(1)} < 最低 $${(minMargin * 0.95).toFixed(1)} (${isMajor ? 'BTC/ETH' : '山寨币'})，降级为 wait`,
+            );
+            decision.action = 'wait';
+            decision.reasoning += `\n\n[E4] 仓位金额 $${marginEst.toFixed(1)} 低于最低要求 $${minMargin}`;
+          }
         }
 
         finalDecision = decision;
 
+        // Stage 5 最终决策 Banner
+        this.logger.log(
+          `[研究-Stage5] ======== 最终决策 ========\n` +
+          `  ${symbol} → ${decision.action} (confidence=${decision.confidence}%)\n` +
+          `  leverage=${decision.leverage}x posPct=${decision.positionSizePercent}%\n` +
+          `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'}\n` +
+          `  安全检查: ${safetyResult.passed ? '✅ 通过' : `🚫 拦截(${safetyResult.blockedBy})`}\n` +
+          `  风控辩论: ${riskResult.approved ? '✅ 通过' : `🚫 拒绝(${riskResult.riskRating})`}\n` +
+          `  自动执行: ${autoExecute && config.apiKeyId ? '已开启' : '未开启'}\n` +
+          `  reasoning: ${(decision.reasoning || '').slice(0, 200)}\n` +
+          `  ================================`,
+        );
+
         // 自动执行
         let executedTradeId: string | null = null;
+        let execOrderId: string | undefined;
+        let execPrice: number | undefined;
+        let execAmount: number | undefined;
+        let execError: string | undefined;
+        let execSuccess = false;
+
         if (autoExecute && config.apiKeyId && this.isActionable(decision.action)) {
           try {
             const execResult = await this.execution.executeDecision(
@@ -502,14 +710,57 @@ Generate your final transaction proposal.`;
               'ai_research',
             );
 
+            execSuccess = execResult.success;
+            execOrderId = execResult.orderId;
+            execPrice = execResult.price;
+            execAmount = execResult.amount;
+            execError = execResult.error;
+
             if (execResult.success) {
               executedTradeId = execResult.positionId || null;
-              this.logger.log(`[研究] 自动执行成功: ${execResult.orderId}`);
+              this.logger.log(
+                `[研究-Stage5] ✅ 自动执行成功: orderId=${execResult.orderId} positionId=${execResult.positionId} price=$${execResult.price} amount=${execResult.amount}`,
+              );
+            } else {
+              this.logger.warn(
+                `[研究-Stage5] ❌ 自动执行失败: ${execResult.error}`,
+              );
             }
           } catch (error) {
-            this.logger.error(`[研究] 自动执行失败: ${error.message}`);
+            execError = error.message;
+            this.logger.error(`[研究-Stage5] ❌ 自动执行异常: ${error.message}`);
           }
+        } else if (this.isActionable(decision.action)) {
+          this.logger.log(
+            `[研究-Stage5] ⏸ 可执行决策但未自动执行 (autoExecute=${autoExecute}, apiKeyId=${config.apiKeyId ? '有' : '无'})`,
+          );
         }
+
+        // WebSocket: 推送最终决策（含执行结果）
+        this.gateway.sendAiDecision(userId, {
+          sessionId: session.id,
+          symbol,
+          action: decision.action,
+          confidence: decision.confidence,
+          leverage: decision.leverage,
+          reasoning: decision.reasoning?.slice(0, 500),
+          source: 'ai_research',
+          status: !safetyResult.passed ? 'blocked' :
+                  !riskResult.approved ? 'blocked' :
+                  execSuccess ? 'executed' :
+                  execError ? 'failed' : 'skipped',
+          blockedBy: !safetyResult.passed ? (safetyResult.blockedBy || 'safety') :
+                     !riskResult.approved ? 'risk_debate' : undefined,
+          orderId: execOrderId,
+          positionId: executedTradeId || undefined,
+          price: execPrice,
+          amount: execAmount,
+          error: execError,
+          stopLoss: decision.stopLoss,
+          takeProfit: decision.takeProfit,
+          positionSizePercent: decision.positionSizePercent,
+          timestamp: new Date().toISOString(),
+        });
 
         return {
           decision,
@@ -548,7 +799,7 @@ Generate your final transaction proposal.`;
         data: {
           status: 'failed',
           stages: JSON.parse(JSON.stringify(stages)),
-          errorMessage: error.message,
+          errorMessage: translateExchangeError(error.message),
           totalCost: totalCost,
         },
       });
@@ -651,6 +902,8 @@ Generate your final transaction proposal.`;
 
   /**
    * 从交易员提案文本中解析结构化决策
+   * Y12: 使用共享 decision-parser（含中文标点修复 + 6 层回退 + 动作别名映射）
+   * R5: 支持 Risk Judge adjustedAction 覆盖
    */
   private parseTraderDecision(
     proposal: string,
@@ -659,63 +912,42 @@ Generate your final transaction proposal.`;
       adjustedPositionSizePercent?: number | null;
       adjustedStopLoss?: number | null;
       adjustedTakeProfit?: number | null;
+      adjustedAction?: import('../../types/ai.types').AiAction | null;
     },
   ): AiTradeDecision {
-    const defaults: AiTradeDecision = {
+    // Y12: 共享解析器（含中文标点修复 + 6 层 JSON 回退 + 动作别名映射）
+    const parsed = parseDecisions(proposal);
+    const decision: AiTradeDecision = parsed[0] || {
       action: 'wait',
       confidence: 0,
       leverage: 1,
       positionSizePercent: 2,
       stopLoss: null,
       takeProfit: null,
-      reasoning: proposal,
+      reasoning: proposal.slice(0, 1000),
     };
 
-    try {
-      // 尝试从 proposal 中提取 JSON
-      let jsonStr = proposal;
-      const jsonMatch = proposal.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[1].trim();
-      }
-
-      // 尝试找到 JSON 对象
-      const jsonObjMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonObjMatch) {
-        jsonStr = jsonObjMatch[0];
-      }
-
-      const parsed = JSON.parse(jsonStr);
-
-      const decision: AiTradeDecision = {
-        action: parsed.action || parsed.vote || 'wait',
-        confidence: Math.min(100, Math.max(0, parsed.confidence || 0)),
-        leverage: parsed.leverage || 1,
-        positionSizePercent: parsed.positionSizePercent || parsed.positionSize || 2,
-        stopLoss: parsed.stopLoss || null,
-        takeProfit: parsed.targetPrice || parsed.takeProfit || null,
-        reasoning: parsed.reasoning || proposal.slice(0, 1000),
-      };
-
-      // 应用风控调整
-      if (riskAdjustments.adjustedLeverage != null) {
-        decision.leverage = riskAdjustments.adjustedLeverage;
-      }
-      if (riskAdjustments.adjustedPositionSizePercent != null) {
-        decision.positionSizePercent = riskAdjustments.adjustedPositionSizePercent;
-      }
-      if (riskAdjustments.adjustedStopLoss != null) {
-        decision.stopLoss = riskAdjustments.adjustedStopLoss;
-      }
-      if (riskAdjustments.adjustedTakeProfit != null) {
-        decision.takeProfit = riskAdjustments.adjustedTakeProfit;
-      }
-
-      return decision;
-    } catch {
-      this.logger.warn('[研究] 交易员提案 JSON 解析失败，使用 wait 默认值');
-      return defaults;
+    // R5: Risk Judge 方向覆盖（如果 adjustedAction='hold'/'wait'，推翻 Trader 的开仓方向）
+    if (riskAdjustments.adjustedAction) {
+      this.logger.log(`[研究-R5] Risk Judge 覆盖方向: ${decision.action} → ${riskAdjustments.adjustedAction}`);
+      decision.action = riskAdjustments.adjustedAction;
     }
+
+    // 应用风控参数调整
+    if (riskAdjustments.adjustedLeverage != null) {
+      decision.leverage = riskAdjustments.adjustedLeverage;
+    }
+    if (riskAdjustments.adjustedPositionSizePercent != null) {
+      decision.positionSizePercent = riskAdjustments.adjustedPositionSizePercent;
+    }
+    if (riskAdjustments.adjustedStopLoss != null) {
+      decision.stopLoss = riskAdjustments.adjustedStopLoss;
+    }
+    if (riskAdjustments.adjustedTakeProfit != null) {
+      decision.takeProfit = riskAdjustments.adjustedTakeProfit;
+    }
+
+    return decision;
   }
 
   /**

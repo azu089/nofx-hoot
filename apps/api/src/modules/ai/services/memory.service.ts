@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { LLMService, UserApiKeys } from './llm.service';
 
@@ -248,7 +249,7 @@ export class AiMemoryService {
   ): Promise<MemoryEntry[]> {
     try {
       // 查询该用户的所有记忆
-      const whereClause: any = { userId };
+      const whereClause: Prisma.AiMemoryWhereInput = { userId };
 
       // 如果指定了角色，使用 sceneText 前缀过滤
       if (role) {
@@ -297,7 +298,7 @@ export class AiMemoryService {
    */
   private async evictOldMemories(userId: string, role?: string): Promise<void> {
     try {
-      const whereClause: any = { userId };
+      const whereClause: Prisma.AiMemoryWhereInput = { userId };
       if (role) {
         whereClause.sceneText = { startsWith: `[role:${role}]` };
       }

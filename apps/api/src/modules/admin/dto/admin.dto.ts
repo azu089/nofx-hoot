@@ -338,3 +338,200 @@ export class ResumeTradingDto {
   @IsString()
   exchange: string;
 }
+
+// ==================== 质押配置 ====================
+
+// 质押子配置（锁定期参数）
+export class StakingSubConfigDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  minLockDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxLockDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxMultiplier?: number;
+}
+
+// 更新质押配置
+export class UpdateStakingConfigDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  dividendPoolRatio?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  buybackRatio?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  platformRatio?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StakingSubConfigDto)
+  staking?: StakingSubConfigDto;
+
+  @IsOptional()
+  @IsString()
+  dividendCycle?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minDividendAmount?: number;
+}
+
+// ==================== 代理商管理 ====================
+
+// 创建代理商
+export class CreateAdminAgentDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  email: string;
+
+  @IsString()
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  level?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  commissionRate?: number;
+
+  @IsOptional()
+  @IsString()
+  settlementType?: string;
+
+  @IsOptional()
+  @IsString()
+  walletAddress?: string;
+}
+
+// 更新代理商
+export class UpdateAdminAgentDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  level?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  commissionRate?: number;
+
+  @IsOptional()
+  @IsString()
+  settlementType?: string;
+
+  @IsOptional()
+  @IsString()
+  walletAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+// ==================== 返佣配置 ====================
+
+// 更新返佣配置
+export class UpdateReferralConfigDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  level1Rate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  level2Rate?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  level3Rate?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  enabledTypes?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+// ==================== 生态权重配置 ====================
+
+// 单条权重项
+export class EcosystemWeightItemDto {
+  @IsNumber()
+  @Min(0)
+  weight: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+// 更新生态权重配置
+// 结构为 Record<string, EcosystemWeightItemDto>，使用自由键名
+// 例如: { stakeLock30: { weight: 1.0, description: '30天锁定' }, ... }
+export class UpdateEcosystemWeightsDto {
+  [key: string]: EcosystemWeightItemDto;
+}

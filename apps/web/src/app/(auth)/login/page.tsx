@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
+import { useWallet } from '@/hooks/useWallet';
 import { LoginPage as LoginPageUI } from '@/components/ui-v3/auth/login-page';
 import { MobileLoginPage } from '@/components/ui-v3/mobile/mobile-login-page';
 import { WalletConnectModal } from '@/components/ui-v3/auth/wallet-connect-modal';
@@ -11,9 +13,11 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, walletLogin, isAuthenticated, isLoading } = useAuth();
+  const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   // 检查是否需要直接显示邮箱表单（从注册页跳转过来时）
   const showEmailForm = searchParams.get('method') === 'email';
@@ -37,19 +41,44 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err) {
       // 错误由 UI 组件内部处理
-      alert(err instanceof Error ? err.message : '登录失败');
+      toast.error(err instanceof Error ? err.message : '登录失败');
     }
   };
 
-  const handleWalletSuccess = (address: string) => {
-    // 钱包连接成功后，跳转到仪表盘
-    // TODO: 后续接入后端钱包登录 API
-    console.log('钱包连接成功:', address);
-    router.push('/dashboard');
+  /**
+   * WalletConnectModal 的 onSuccess 回调
+   * 此时 wagmi 已连接完成，address 已确认
+   * 流程：获取 nonce → 签名 → 后端登录 → 写入 auth 状态
+   */
+  const handleWalletSuccess = async (address: string) => {
+    setWalletError(null);
+    try {
+      const result = await walletLoginHook(address);
+      walletLogin(result.accessToken, result.user, result.refreshToken);
+      router.push('/dashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '钱包登录失败，请重试';
+      setWalletError(message);
+      // 重新打开 modal 让用户看到错误（或可选择 alert）
+      toast.error(message);
+    }
+  };
+
+  /**
+   * 移动端 MobileWalletConnectModal 的 onConnect 回调
+   * walletId 是钱包类型（metamask/walletconnect 等），
+   * 但 MobileWalletConnectModal 没有集成 wagmi，需要走独立流程
+   * 暂时使用 alert 提示用户使用桌面端，后续集成 wagmi mobile
+   */
+  const handleMobileWalletConnect = async (_walletId: string) => {
+    // KNOWN-LIMITATION: 移动端 wagmi 钱包连接待集成，当前提示用户使用桌面端
+    // 当前移动端 MobileWalletConnectModal 未集成 wagmi，地址不可用
+    // 临时方案：提示用户
+    throw new Error('移动端钱包登录正在接入，请使用桌面端或邮箱登录');
   };
 
   const handleTelegramLogin = () => {
-    // TODO: 接入 Telegram 登录（Privy 或 TG WebApp）
+    // KNOWN-LIMITATION: TG 登录待 Privy/TG WebApp 集成，当前跳转 Bot
     // 临时方案：跳转到 TG Bot
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
     window.open(`https://t.me/${botUsername}?start=login`, '_blank');
@@ -78,10 +107,7 @@ export default function LoginPage() {
           onWalletConnect={() => setShowWalletModal(true)}
           onTelegramLogin={handleTelegramLogin}
           onRegister={() => router.push('/register')}
-          onForgotPassword={() => {
-            // TODO: 忘记密码
-            console.log('忘记密码');
-          }}
+          onForgotPassword={() => router.push('/forgot-password')}
           initialShowEmailForm={showEmailForm}
         />
         <WalletConnectModal
@@ -99,17 +125,12 @@ export default function LoginPage() {
           onWalletConnect={() => setShowWalletModal(true)}
           onTelegramLogin={handleTelegramLogin}
           onRegister={() => router.push('/register')}
-          onForgotPassword={() => console.log('忘记密码')}
+          onForgotPassword={() => router.push('/forgot-password')}
         />
         <MobileWalletConnectModal
           isOpen={showWalletModal}
           onClose={() => setShowWalletModal(false)}
-          onConnect={async (walletId) => {
-            console.log('连接钱包:', walletId);
-            // TODO: 实际连接钱包逻辑
-            setShowWalletModal(false);
-            router.push('/dashboard');
-          }}
+          onConnect={handleMobileWalletConnect}
           mode="login"
         />
       </div>

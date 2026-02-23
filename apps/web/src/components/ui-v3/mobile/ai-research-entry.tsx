@@ -59,7 +59,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
   const [symbolSearch, setSymbolSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [cyclingEnabled, setCyclingEnabled] = useState(false);
-  const [intervalMinutes, setIntervalMinutes] = useState(60);
+  const [intervalMinutes, setIntervalMinutes] = useState(30);
   const [maxCycles, setMaxCycles] = useState(0);
   const [profitTarget, setProfitTarget] = useState(0);
   const [maxLoss, setMaxLoss] = useState(0);
@@ -142,11 +142,16 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
             profitTargetPercent: profitTarget,
             maxLossPercent: maxLoss,
           },
+          riskControlConfig: {
+            allocatedCapital: amountPerTrade * 100,
+            maxLeverage: fundMaxLeverage,
+            maxPositions,
+          },
         }),
       });
       router.push(`/ai/research/${result.sessionId}`);
-    } catch (err: any) {
-      toast.error(err.message || t('common.failed'));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('common.failed'));
     }
   };
 
@@ -204,7 +209,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
       {/* 主内容区 */}
       <main className="px-4 py-6 space-y-6">
         {/* 核心操作区 */}
-        <div className="glass-card-hd p-5 space-y-6 !overflow-visible">
+        <div className="glass-border-glow glass-card p-5 space-y-6 !overflow-visible">
           {/* 选择币种 */}
           <div className="space-y-3">
             <label className="block text-sm font-medium text-[#9090A0]">
@@ -331,7 +336,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
             </button>
 
             {fundingExpanded && (
-              <div className="space-y-4 p-4 bg-[#12121A] rounded-xl border border-[#1E1E2E]">
+              <div className="space-y-4 p-4 glass-border-glow glass-card">
                 {/* 单次开仓金额 */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
@@ -421,7 +426,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
             </div>
 
             {cyclingEnabled && (
-              <div className="space-y-4 p-4 bg-[#12121A] rounded-xl border border-[#1E1E2E]">
+              <div className="space-y-4 p-4 glass-border-glow glass-card">
                 {/* 循环间隔 */}
                 <div className="space-y-2">
                   <label className="text-xs text-[#606070]">{t('research.cycleInterval')}</label>
@@ -524,7 +529,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
           </div>
 
           {/* 历史列表 */}
-          <div className="glass-card-hd">
+          <div className="glass-border-glow glass-card">
             {historyLoading ? (
               <div className="p-8 flex justify-center"><div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" /></div>
             ) : historyData?.data && historyData.data.length > 0 ? (
@@ -548,10 +553,10 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
                           <span className="font-semibold text-[#F8F8FC]">
                             {item.symbol}
                           </span>
-                          {(item as any).campaignStatus && (
+                          {item.campaignStatus && (
                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-cyan-500/10 rounded text-[10px] text-cyan-400">
                               <RefreshCw className="w-3 h-3" />
-                              <span>{(item as any).cycleCount || 0} {t('common.rounds')}</span>
+                              <span>{item.cycleCount || 0} {t('common.rounds')}</span>
                             </div>
                           )}
                           {isSuccess ? (

@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { ReferralService } from './referral.service';
 import { BindInviteCodeDto } from './dto/referral.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 
+@ApiTags('referral')
 @Controller('referral')
 export class ReferralController {
   constructor(private referralService: ReferralService) {}

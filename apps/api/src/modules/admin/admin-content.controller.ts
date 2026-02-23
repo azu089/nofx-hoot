@@ -14,8 +14,14 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { AdminGuard } from './guards/admin.guard';
 import { Public } from '../auth/decorators/public.decorator';
+
+interface AdminRequest extends Request {
+  admin: { id: string; username: string; role: string };
+}
+import { ApiTags } from '@nestjs/swagger';
 import { AdminContentService } from './services/admin-content.service';
 import type {
   CreateAnnouncementDto,
@@ -28,6 +34,7 @@ import type {
   UpdateLegalDocDto,
 } from './services/admin-content.service';
 
+@ApiTags('admin-content')
 @Controller('admin/content')
 @Public() // 跳过全局 JwtAuthGuard
 @UseGuards(AdminGuard)
@@ -63,7 +70,7 @@ export class AdminContentController {
   @Post('announcements')
   async createAnnouncement(
     @Body() dto: CreateAnnouncementDto,
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id;
     const announcement = await this.contentService.createAnnouncement(
@@ -455,7 +462,7 @@ export class AdminContentController {
    * POST /admin/content/legal
    */
   @Post('legal')
-  async createLegalDocument(@Body() dto: CreateLegalDocDto, @Req() req: any) {
+  async createLegalDocument(@Body() dto: CreateLegalDocDto, @Req() req: AdminRequest) {
     const adminId = req.admin?.id;
     const document = await this.contentService.createLegalDocument(
       dto,
@@ -476,7 +483,7 @@ export class AdminContentController {
   async updateLegalDocument(
     @Param('id') id: string,
     @Body() dto: UpdateLegalDocDto,
-    @Req() req: any,
+    @Req() req: AdminRequest,
   ) {
     const adminId = req.admin?.id;
     const document = await this.contentService.updateLegalDocument(

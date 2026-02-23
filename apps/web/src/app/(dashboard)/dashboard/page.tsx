@@ -1,49 +1,18 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-// import { useQuery } from '@tanstack/react-query';
-// import { api } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
 import { DashboardV3 } from '@/components/ui-v3/dashboard/dashboard-v3';
 import { MobileDashboardV3 } from '@/components/ui-v3/mobile/mobile-dashboard-v3';
 
-// TODO: 后端实现 /dashboard 接口后启用
-// interface DashboardData {
-//   totalAssets: string;
-//   todayPnl: string;
-//   todayPnlPercent: string;
-//   activeStrategies: number;
-//   totalTrades: number;
-//   winRate: string;
-//   usdtBalance: string;
-//   hootBalance: string;
-// }
+// Dashboard 组件内部通过 useHomepageData() 获取市场数据。
+// 如需展示用户级统计（余额/PnL/策略数），可使用以下已有后端接口：
+//   GET /wallet/balance          — USDT/HOOT 余额
+//   GET /trading/positions/pnl-stats — 今日/周/月收益
+//   GET /health/stats            — 平台统计（用户数、策略数、持仓数）
+// 届时需扩展 DashboardV3Props 以接收这些数据。
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
-
-  // TODO: 后端实现 /dashboard 接口后启用
-  // const { data, isLoading, error } = useQuery({
-  //   queryKey: ['dashboard'],
-  //   queryFn: async () => {
-  //     const response = await api.get<DashboardData>('/dashboard');
-  //     return response.data;
-  //   },
-  //   enabled: isAuthenticated,
-  //   retry: false,
-  // });
-
-  // TODO: 后端实现后启用
-  // const { data: balance } = useQuery({
-  //   queryKey: ['wallet', 'balance'],
-  //   queryFn: async () => {
-  //     const response = await api.get<{ usdt: string; hoot: string }>('/wallet/balance');
-  //     return response.data;
-  //   },
-  //   enabled: isAuthenticated,
-  //   retry: false,
-  // });
 
   const handleNavigate = (path: string) => {
     router.push(path);

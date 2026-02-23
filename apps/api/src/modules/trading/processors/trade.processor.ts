@@ -12,6 +12,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { SignalsService } from '../../signals/signals.service';
 import { TradeJobData, TradeAction } from '../../signals/dto/signal.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { DailyPnlService } from '../daily-pnl.service';
 import { MarketMonitorService } from '../market-monitor.service';
 import { ReferralService } from '../../referral/referral.service';
@@ -329,6 +330,7 @@ export class TradeProcessor extends WorkerHost {
         signalId,
         subscriptionId: subscription?.id,
         apiKeyId,
+        source: 'signal',
         // 交易配置
         tradingType: config.tradingType || 'spot',
         leverage: config.leverage || 1,
@@ -367,7 +369,7 @@ export class TradeProcessor extends WorkerHost {
           symbol,
         );
         const matchedPos = exchangePositions.find(
-          (p: any) => isSameSymbol(p.symbol || '', symbol),
+          (p: Record<string, unknown>) => isSameSymbol((p.symbol as string) || '', symbol),
         );
         if (matchedPos) {
           const actualLeverage = parseInt(
@@ -380,7 +382,7 @@ export class TradeProcessor extends WorkerHost {
             matchedPos.liquidationPrice || matchedPos.info?.liquidationPrice || 0,
           );
 
-          const updateData: any = {};
+          const updateData: Prisma.PositionUpdateInput & { lastSyncAt?: Date } = {};
           if (actualLeverage !== (config.leverage || 1)) {
             updateData.leverage = actualLeverage;
             this.logger.warn(
@@ -604,6 +606,7 @@ export class TradeProcessor extends WorkerHost {
         signalId,
         subscriptionId: subscription?.id,
         apiKeyId,
+        source: 'signal',
         tradingType: config.tradingType || 'spot',
         leverage: config.leverage || 1,
         margin: new Decimal(requiredAmount),
@@ -641,7 +644,7 @@ export class TradeProcessor extends WorkerHost {
           symbol,
         );
         const matchedPos = exchangePositions.find(
-          (p: any) => isSameSymbol(p.symbol || '', symbol),
+          (p: Record<string, unknown>) => isSameSymbol((p.symbol as string) || '', symbol),
         );
         if (matchedPos) {
           const actualLeverage = parseInt(
@@ -654,7 +657,7 @@ export class TradeProcessor extends WorkerHost {
             matchedPos.liquidationPrice || matchedPos.info?.liquidationPrice || 0,
           );
 
-          const updateData: any = {};
+          const updateData: Prisma.PositionUpdateInput & { lastSyncAt?: Date } = {};
           if (actualLeverage !== (config.leverage || 1)) {
             updateData.leverage = actualLeverage;
             this.logger.warn(

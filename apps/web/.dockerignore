@@ -1,0 +1,16 @@
+node_modules
+.git
+.next
+dist
+coverage
+*.spec.ts
+*.test.ts
+.env
+.env.*
+!.env.example
+.DS_Store
+tmp
+README.md
+CHANGELOG*.md
+.turbo
+.eslintcache

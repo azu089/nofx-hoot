@@ -28,6 +28,7 @@ export interface GridConfig {
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
+  breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
   enableDirectionAdjust?: boolean; // 启用方向自适应
   useMakerOnly?: boolean;      // PostOnly 限价单
   modelId?: string;            // AI 模型（默认 deepseek-chat）
@@ -117,8 +118,11 @@ export interface GridDecision {
   symbol: string;
   action: string;
   price?: number;
+  upperPrice?: number;
+  lowerPrice?: number;
   quantity?: number;
-  level_index?: number;
+  level_index?: number; // 旧字段名，兼容保留
+  level?: number;       // Prompt 中使用的字段名（AI 返回此字段）
   order_id?: string;
   confidence: number;
   reasoning: string;
@@ -130,6 +134,7 @@ const BREAKOUT_CONFIRM_REQUIRED = 3;
 const DEFAULT_ATR_MULTIPLIER = 2.0;
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 5;
+const DEFAULT_BREAKOUT_PCT = 2;
 const DIRECTION_BIAS_RATIO = 0.7; // 70/30 分配
 const POSITION_SAFETY_MULTIPLIER = 2; // 仓位绝对安全上限 = TotalInvestment × Leverage × 2
 
@@ -373,8 +378,9 @@ export class GridTradingService {
 
     // Step 2: 简单边界突破检查
     const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
-    if (breakoutPct >= 2.0) {
-      this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}%，暂停网格`);
+    const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
+    if (breakoutPct >= breakoutThreshold) {
+      this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%，暂停网格`);
       state.isPaused = true;
       state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}%`;
       await this.persistGridState(strategyId, state);
@@ -506,9 +512,9 @@ export class GridTradingService {
           }
         }
 
-        // 记录到 AiStrategyLog
+        // 记录到 AiStrategyLog（含 GridState 快照）
         if (decisions.length > 0) {
-          await this.saveGridDecisionLog(strategyId, decisions, response.cost);
+          await this.saveGridDecisionLog(strategyId, state.symbol, decisions, response.cost, state, response.thinking);
         }
 
         await adapter.dispose();
@@ -962,8 +968,31 @@ export class GridTradingService {
 
       case 'adjust_grid': {
         await adapter.cancelAllOrders(state.symbol);
-        const newPrice = decision.price || state.lastPrice;
-        this.reinitializeGridLevels(state, newPrice);
+        // 优先使用 AI 返回的 upperPrice/lowerPrice，否则 fallback 到中心价格重算
+        if (decision.upperPrice && decision.lowerPrice && decision.upperPrice > decision.lowerPrice) {
+          state.upperPrice = decision.upperPrice;
+          state.lowerPrice = decision.lowerPrice;
+          state.gridSpacing = (state.upperPrice - state.lowerPrice) / Math.max(state.gridLines.length - 1, 1);
+          // 重算各格线价格并重置状态（订单已取消，state 须与边界保持一致）
+          const weights = this.calculateWeights(state.gridLines.length, state.distribution);
+          const weightSum = weights.reduce((a, b) => a + b, 0);
+          for (let i = 0; i < state.gridLines.length; i++) {
+            const line = state.gridLines[i];
+            line.price = Math.round((state.lowerPrice + i * state.gridSpacing) * 100000) / 100000;
+            line.allocatedUSD = state.totalInvestment * (weights[i] / weightSum);
+            if (line.state !== 'filled') {
+              line.state = 'empty';
+              line.orderId = undefined;
+              line.orderQuantity = 0;
+            }
+          }
+          this.applyGridDirection(state.gridLines, state.lastPrice, state.currentDirection);
+          state.orderBook = {};
+          this.logger.log(`[网格] AI 调整网格边界: ${state.lowerPrice.toFixed(4)}-${state.upperPrice.toFixed(4)}, 格线已重算`);
+        } else {
+          const newPrice = decision.price || state.lastPrice;
+          this.reinitializeGridLevels(state, newPrice);
+        }
         break;
       }
 
@@ -984,13 +1013,16 @@ export class GridTradingService {
     adapter: GridExchangeAdapter,
     useMakerOnly = false,
   ): Promise<void> {
-    const levelIndex = decision.level_index ?? -1;
+    // Prompt 中字段名为 "level"，兼容旧字段名 "level_index"
+    const levelIndex = decision.level_index ?? decision.level ?? -1;
     let quantity = decision.quantity ?? 0;
-    const price = decision.price ?? 0;
-
-    if (price <= 0 || quantity <= 0) return;
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
+    // Fix-3: 优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
+    // 防止 adjust_grid 与 place 同批次时 AI 旧价格覆盖刚重算的正确价格
+    const price = (level && level.price > 0) ? level.price : (decision.price ?? 0);
+
+    if (price <= 0 || quantity <= 0) return;
 
     // Step 1: 仓位上限检查
     if (price > 0 && state.totalInvestment > 0) {
@@ -1024,14 +1056,12 @@ export class GridTradingService {
     const finalQty = parseFloat(formattedQty);
     if (finalQty <= 0) return;
 
-    // Step 3: 下单
-    const positionSide = side === 'buy' ? 'long' : 'short';
+    // Step 3: 下单（单向持仓模式不传 positionSide，避免 Binance -4061）
     const clientId = level ? `grid-${levelIndex}-${Date.now()}` : undefined;
 
     const result = await adapter.placeLimitOrder({
       symbol: state.symbol,
       side,
-      positionSide,
       price,
       quantity: finalQty,
       leverage: state.leverage,
@@ -1042,6 +1072,7 @@ export class GridTradingService {
     // Step 4: 更新本地状态
     if (level) {
       level.state = 'pending';
+      level.price = price;           // 与实际下单价保持一致
       level.orderId = result.orderId;
       level.orderQuantity = finalQty;
       state.orderBook[result.orderId] = levelIndex;
@@ -1286,9 +1317,10 @@ export class GridTradingService {
               status: 'open',
               source: 'snapshot',
               apiKeyId,
+              aiStrategyId: strategyId,
             },
           });
-          this.logger.log(`[网格] 创建快照持仓: ${symPos.symbol} ${symPos.side}`);
+          this.logger.log(`[网格] 创建快照持仓: ${symPos.symbol} ${symPos.side} → 策略 ${strategyId}`);
         }
       }
 
@@ -1389,7 +1421,12 @@ export class GridTradingService {
   /** 重新初始化网格层级（保持边界，更新价格中心） */
   private reinitializeGridLevels(state: GridState, centerPrice: number): void {
     const gridCount = state.gridLines.length;
-    const halfRange = (state.upperPrice - state.lowerPrice) / 2;
+    // 防御: 边界为 null/NaN 时用中心价格 ±5% 作为默认范围
+    const validUpper = state.upperPrice && isFinite(state.upperPrice);
+    const validLower = state.lowerPrice && isFinite(state.lowerPrice);
+    const halfRange = (validUpper && validLower)
+      ? (state.upperPrice - state.lowerPrice) / 2
+      : centerPrice * 0.05;
 
     state.upperPrice = centerPrice + halfRange;
     state.lowerPrice = centerPrice - halfRange;
@@ -1460,15 +1497,67 @@ export class GridTradingService {
 
   private async saveGridDecisionLog(
     strategyId: string,
+    symbol: string,
     decisions: GridDecision[],
     cost: number,
+    state?: GridState,
+    thinking?: string,
   ): Promise<void> {
     try {
+      // 统计各操作类型数量，生成摘要
+      const counts: Record<string, number> = {};
+      for (const d of decisions) {
+        counts[d.action] = (counts[d.action] || 0) + 1;
+      }
+      const buyCount = (counts['place_buy_limit'] || 0);
+      const sellCount = (counts['place_sell_limit'] || 0);
+      const cancelCount = (counts['cancel_order'] || 0);
+      const parts: string[] = [];
+      if (buyCount) parts.push(`${buyCount}B`);
+      if (sellCount) parts.push(`${sellCount}S`);
+      if (cancelCount) parts.push(`${cancelCount}C`);
+      for (const [act, cnt] of Object.entries(counts)) {
+        if (!['place_buy_limit', 'place_sell_limit', 'cancel_order'].includes(act)) {
+          parts.push(`${act}×${cnt}`);
+        }
+      }
+      const gridSummary = parts.join('/') || `${decisions.length}ops`;
+
+      // 构建 GridState 快照（对齐 NoFx saveGridDecisionRecord）
+      const gridSnapshot = state ? {
+        upperPrice: state.upperPrice,
+        lowerPrice: state.lowerPrice,
+        gridSpacing: state.gridSpacing,
+        direction: state.currentDirection,
+        regime: state.currentRegime,
+        totalLevels: state.gridLines.length,
+        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
+        pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
+        activeOrders: Object.keys(state.orderBook).length,
+        totalProfit: state.totalProfit,
+        totalTrades: state.totalTrades,
+        winRate: state.totalTrades > 0
+          ? Math.round((state.winningTrades / state.totalTrades) * 100)
+          : 0,
+        maxDrawdown: state.maxDrawdown,
+        dailyPnl: state.dailyPnl,
+        breakoutLevel: state.breakoutLevel,
+        lastPrice: state.lastPrice,
+      } : undefined;
+
       await this.prisma.aiStrategyLog.create({
         data: {
           strategyId,
-          symbol: decisions[0]?.symbol || '',
-          decision: { decisions, cost } as any,
+          symbol,
+          decision: {
+            action: 'adjust_grid',
+            gridSummary,
+            reasoning: decisions[0]?.reasoning || '',
+            decisions,
+            cost,
+            ...(thinking && { aiThinking: thinking }),
+            ...(gridSnapshot && { gridSnapshot }),
+          } as any,
           executed: true,
         },
       });

@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Query,
-  Request,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -15,6 +14,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 // 共享服务
 import { AiExecutionService } from './services/ai-execution.service';
@@ -28,14 +28,42 @@ import { ResearchPipelineService, ResearchConfig } from './services/research/res
 import { ResearchCycleService } from './services/research/research-cycle.service';
 // 产品 B
 import { StrategyEngineService } from './services/trading/strategy-engine.service';
-import { GridTradingService, GridConfig } from './services/trading/grid-trading.service';
+import { GridTradingService, GridConfig, GridState } from './services/trading/grid-trading.service';
 import { AutoTraderService } from './services/trading/auto-trader.service';
 import { PromptBuilderService } from './services/trading/prompt-builder.service';
 import { AdapterFactoryService } from '../exchange-adapters/adapter-factory.service';
 // DTO
 import { StartResearchDto, ExecuteResearchDto } from './dto/research.dto';
 import { CreateStrategyDto, UpdateStrategyDto } from './dto/strategy.dto';
+import { UpdateAiConfigDto } from './dto/ai-config.dto';
+import { TestExecuteDto, UpdateResearchConfigDto } from './dto/ai-controller.dto';
+import { ApiTags } from '@nestjs/swagger';
 import { encrypt, decrypt } from '../../common/utils/crypto.util';
+// 类型
+import type { AiDecision } from './services/ai-execution.service';
+import { ResearchDepth } from './types/ai.types';
+import { Prisma } from '@prisma/client';
+
+/** 交易所持仓数据（CCXT 返回格式） */
+interface CcxtPosition {
+  symbol: string;
+  side: string;
+  contracts: number;
+  unrealizedPnl: number;
+  leverage: number;
+  positionAmt?: string;
+}
+
+/** AI 研究最终决策（Prisma Json 字段） */
+interface ResearchFinalDecision {
+  action: string;
+  confidence: number;
+  leverage?: number;
+  positionSizePercent?: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  reasoning?: string;
+}
 
 /**
  * AI 模块控制器
@@ -69,6 +97,7 @@ import { encrypt, decrypt } from '../../common/utils/crypto.util';
  *   GET    /ai/strategy/:id/logs    — 决策日志
  *   GET    /ai/strategy/competition — 竞赛排行
  */
+@ApiTags('ai')
 @Controller('ai')
 export class AiController {
   constructor(
@@ -112,9 +141,8 @@ export class AiController {
    * GET /ai/diagnose?symbol=BTC/USDT
    */
   @Get('diagnose')
-  async diagnose(@Query('symbol') symbol: string = 'BTC/USDT', @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
-    const results: Record<string, any> = { symbol, tests: {} };
+  async diagnose(@Query('symbol') symbol: string = 'BTC/USDT', @CurrentUser('id') userId: string) {
+    const results: { symbol: string; tests: Record<string, unknown> } = { symbol, tests: {} };
 
     // 1. 市场数据（OHLCV）
     try {
@@ -134,7 +162,7 @@ export class AiController {
 
       // 2. 技术指标
       try {
-        const ohlcvObjects = ohlcv.map((bar: any[]) => ({
+        const ohlcvObjects = ohlcv.map((bar: number[]) => ({
           timestamp: bar[0], open: bar[1], high: bar[2], low: bar[3], close: bar[4], volume: bar[5],
         }));
         const ind = this.indicators.calculateAll(ohlcvObjects);
@@ -146,27 +174,27 @@ export class AiController {
           atr: ind.atr,
           bollingerBands: ind.bollingerBands ? { upper: ind.bollingerBands.upper, lower: ind.bollingerBands.lower } : null,
         };
-      } catch (e: any) {
-        results.tests.indicators = { status: 'error', message: e.message };
+      } catch (e: unknown) {
+        results.tests.indicators = { status: 'error', message: e instanceof Error ? e.message : String(e) };
       }
-    } catch (e: any) {
-      results.tests.ohlcv = { status: 'error', message: e.message };
+    } catch (e: unknown) {
+      results.tests.ohlcv = { status: 'error', message: e instanceof Error ? e.message : String(e) };
     }
 
     // 3. 当前价格
     try {
       const price = await this.marketData.fetchCurrentPrice(symbol);
       results.tests.price = { status: 'ok', price };
-    } catch (e: any) {
-      results.tests.price = { status: 'error', message: e.message };
+    } catch (e: unknown) {
+      results.tests.price = { status: 'error', message: e instanceof Error ? e.message : String(e) };
     }
 
     // 4. 资金费率
     try {
       const fr = await this.marketData.fetchFundingRate(symbol);
       results.tests.fundingRate = { status: 'ok', ...fr };
-    } catch (e: any) {
-      results.tests.fundingRate = { status: 'error', message: e.message };
+    } catch (e: unknown) {
+      results.tests.fundingRate = { status: 'error', message: e instanceof Error ? e.message : String(e) };
     }
 
     // 5. CCXT 交易所连接（如果配置了 API Key）
@@ -184,13 +212,13 @@ export class AiController {
 
           // 6. 获取当前持仓
           try {
-            const positions = await adapter.getPositions();
-            const openPositions = positions.filter((p: any) => p.contracts > 0 || Math.abs(parseFloat(p.positionAmt || '0')) > 0);
+            const positions = await adapter.getPositions() as unknown as CcxtPosition[];
+            const openPositions = positions.filter((p) => p.contracts > 0 || Math.abs(parseFloat(p.positionAmt || '0')) > 0);
             results.tests.positions = {
               status: 'ok',
               total: positions.length,
               open: openPositions.length,
-              details: openPositions.map((p: any) => ({
+              details: openPositions.map((p) => ({
                 symbol: p.symbol,
                 side: p.side,
                 contracts: p.contracts,
@@ -198,14 +226,14 @@ export class AiController {
                 leverage: p.leverage,
               })),
             };
-          } catch (e: any) {
-            results.tests.positions = { status: 'error', message: e.message };
+          } catch (e: unknown) {
+            results.tests.positions = { status: 'error', message: e instanceof Error ? e.message : String(e) };
           }
         } else {
           results.tests.exchangeConnection = { status: 'skipped', message: '未绑定交易所 API Key' };
         }
-      } catch (e: any) {
-        results.tests.exchangeConnection = { status: 'error', message: e.message };
+      } catch (e: unknown) {
+        results.tests.exchangeConnection = { status: 'error', message: e instanceof Error ? e.message : String(e) };
       }
     }
 
@@ -219,8 +247,7 @@ export class AiController {
    */
   @Post('test-execute')
   @HttpCode(HttpStatus.OK)
-  async testExecute(@Body() body: any, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async testExecute(@Body() body: TestExecuteDto, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const config = await this.prisma.aiConfig.findUnique({ where: { userId } });
@@ -256,7 +283,7 @@ export class AiController {
     const result = await this.aiExecution.executeDecision(
       userId,
       config.exchangeApiKeyId,
-      decision as any,
+      decision as AiDecision,
       'ai_research',
     );
 
@@ -267,8 +294,7 @@ export class AiController {
    * 获取用户 AI 配置
    */
   @Get('config')
-  async getConfig(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getConfig(@CurrentUser('id') userId: string) {
 
     const config = await this.prisma.aiConfig.findUnique({
       where: { userId },
@@ -320,17 +346,17 @@ export class AiController {
    * 更新用户 AI 配置
    */
   @Put('config')
-  async updateConfig(@Request() req: any, @Body() body: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async updateConfig(@CurrentUser('id') userId: string, @Body() body: UpdateAiConfigDto) {
 
     // upsert: 如果不存在则创建
+    const bodyMap = body as unknown as Record<string, unknown>;
     const config = await this.prisma.aiConfig.upsert({
       where: { userId },
       create: {
         userId,
-        ...this.sanitizeConfigBody(body),
+        ...this.sanitizeConfigBody(bodyMap),
       },
-      update: this.sanitizeConfigBody(body),
+      update: this.sanitizeConfigBody(bodyMap),
     });
 
     return {
@@ -353,8 +379,7 @@ export class AiController {
    * 返回模型排名、角色准确度、整体统计
    */
   @Get('performance')
-  async getPerformance(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getPerformance(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const summary = await this.aiPerformance.getPerformanceSummary(userId);
@@ -368,8 +393,7 @@ export class AiController {
    * 返回月度预算、当前消耗、使用百分比
    */
   @Get('budget')
-  async getBudget(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getBudget(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const aiConfig = await this.prisma.aiConfig.findUnique({
@@ -427,8 +451,7 @@ export class AiController {
    */
   @Post('research/start')
   @HttpCode(HttpStatus.ACCEPTED)
-  async startResearch(@Request() req: any, @Body() body: StartResearchDto) {
-    const userId = req.user?.sub || req.user?.id;
+  async startResearch(@CurrentUser('id') userId: string, @Body() body: StartResearchDto) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 并发研究请求限制（最多 3 个同时运行）
@@ -463,7 +486,7 @@ export class AiController {
     if (body.cyclingConfig?.enabled) {
       const { rootSessionId } = await this.researchCycleService.startCycling(userId, {
         symbol: body.symbol,
-        depth: (body.depth || 'standard') as any,
+        depth: (body.depth || 'standard') as ResearchDepth,
         intervalMinutes: body.cyclingConfig.intervalMinutes,
         maxCycles: body.cyclingConfig.maxCycles || 0,
         profitTargetPercent: body.cyclingConfig.profitTargetPercent || 0,
@@ -473,6 +496,7 @@ export class AiController {
         quickModel: body.quickModel || (aiConfig.models as string[])?.[0] || 'deepseek-chat',
         deepModel: body.deepModel || (aiConfig.models as string[])?.[1] || 'deepseek-chat',
         riskControlConfig: body.riskControlConfig,
+        locale: aiConfig.locale || 'zh-CN',
       });
 
       return {
@@ -486,7 +510,7 @@ export class AiController {
     }
 
     // ── 单次研究模式（原有逻辑） ──
-    const sessionId = `rs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `rs_${Date.now()}_${require('crypto').randomBytes(4).toString('hex')}`;
 
     // 先创建会话记录
     const db = this.prisma;
@@ -514,6 +538,7 @@ export class AiController {
       deepThinkModel: body.deepModel || (aiConfig.models as string[])?.[1] || 'deepseek-chat',
       sessionId,
       riskControlConfig: body.riskControlConfig,
+      locale: aiConfig.locale || 'zh-CN',
     };
 
     // 在后台运行研究（不等待结果）
@@ -537,8 +562,7 @@ export class AiController {
    * GET /ai/research/:id/status
    */
   @Get('research/:id/status')
-  async getResearchStatus(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getResearchStatus(@Param('id') id: string, @CurrentUser('id') userId: string) {
     const db = this.prisma;
 
     const session = await db.aiResearchSession.findFirst({
@@ -547,7 +571,7 @@ export class AiController {
 
     if (!session) throw new NotFoundException('研究会话不存在');
 
-    const stages = (session.stages as any[]) || [];
+    const stages = (session.stages as unknown[]) || [];
 
     return {
       sessionId: session.id,
@@ -558,7 +582,7 @@ export class AiController {
       currentStage: stages.length > 0
         ? stages[stages.length - 1]
         : { stage: 0, name: '等待开始', status: 'pending' },
-      stagesCompleted: stages.filter((s: any) => s.status === 'completed').length,
+      stagesCompleted: stages.filter((s: Record<string, unknown>) => s.status === 'completed').length,
       totalStages: 5,
       totalCost: Number(session.totalCost) || 0,
       errorMessage: session.errorMessage,
@@ -578,15 +602,41 @@ export class AiController {
    * 返回完整 5 阶段数据，供时间线卡片展开时使用
    */
   @Get('research/:id/stages')
-  async getResearchStages(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getResearchStages(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const session = await this.prisma.aiResearchSession.findFirst({
       where: { id, userId },
-      select: { stages: true, finalDecision: true, status: true },
+      select: {
+        stages: true, finalDecision: true, status: true,
+        rootSessionId: true, campaignStatus: true,
+      },
     });
     if (!session) throw new NotFoundException('研究会话不存在');
+
+    // 循环模式根会话(rootSessionId=null + campaignStatus存在)自身无stages
+    // 自动返回最新子会话的stages
+    const stagesArr = session.stages as any[] | null;
+    const isRootWithoutStages =
+      session.rootSessionId === null &&
+      session.campaignStatus &&
+      (!stagesArr || stagesArr.length === 0);
+
+    if (isRootWithoutStages) {
+      const latestChild = await this.prisma.aiResearchSession.findFirst({
+        where: { rootSessionId: id, userId },
+        orderBy: { createdAt: 'desc' },
+        select: { stages: true, finalDecision: true, status: true },
+      });
+
+      if (latestChild) {
+        return {
+          stages: latestChild.stages || [],
+          finalDecision: latestChild.finalDecision || session.finalDecision || null,
+          status: latestChild.status,
+        };
+      }
+    }
 
     return {
       stages: session.stages || [],
@@ -601,8 +651,7 @@ export class AiController {
    * GET /ai/research/:id/report
    */
   @Get('research/:id/report')
-  async getResearchReport(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getResearchReport(@Param('id') id: string, @CurrentUser('id') userId: string) {
     const db = this.prisma;
 
     const session = await db.aiResearchSession.findFirst({
@@ -612,7 +661,21 @@ export class AiController {
     if (!session) throw new NotFoundException('研究会话不存在');
 
     // 查询关联持仓
-    let positionSummary: any = null;
+    let positionSummary: {
+      positionId: string;
+      status: string;
+      side: string;
+      entryPrice: number;
+      markPrice: number | null;
+      amount: number;
+      leverage: number | null;
+      margin: number;
+      unrealizedPnl: number | null;
+      realizedPnl: number | null;
+      closeReason: string | null;
+      openedAt: Date;
+      closedAt: Date | null;
+    } | null = null;
     if (session.executedTradeId && session.executedTradeId !== 'executed') {
       const posSelect = {
         id: true, status: true, side: true, symbol: true,
@@ -679,8 +742,7 @@ export class AiController {
    */
   @Post('research/:id/execute')
   @HttpCode(HttpStatus.OK)
-  async executeResearch(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async executeResearch(@Param('id') id: string, @CurrentUser('id') userId: string) {
     const db = this.prisma;
 
     const session = await db.aiResearchSession.findFirst({
@@ -695,7 +757,7 @@ export class AiController {
       throw new BadRequestException('该研究结果已执行过交易');
     }
 
-    const decision = session.finalDecision as any;
+    const decision = session.finalDecision as unknown as ResearchFinalDecision;
     if (!decision || decision.action === 'hold' || decision.action === 'wait') {
       throw new BadRequestException('研究结论为 hold/wait，无需执行交易');
     }
@@ -721,7 +783,7 @@ export class AiController {
       aiConfig.exchangeApiKeyId,
       {
         symbol: session.symbol,
-        action: decision.action,
+        action: decision.action as AiDecision['action'],
         confidence: decision.confidence,
         leverage: decision.leverage,
         positionSizeUSD,
@@ -756,11 +818,10 @@ export class AiController {
    */
   @Get('research/history')
   async getResearchHistory(
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     const db = this.prisma;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -791,15 +852,31 @@ export class AiController {
           cycleNumber: true,
           campaignStatus: true,
           cyclingConfig: true,
+          exchangeApiKeyId: true,
         },
       }),
       db.aiResearchSession.count({ where }),
     ]);
 
+    // 批量查询交易所名称
+    const researchApiKeyIds = sessions
+      .map((s) => (s as any).exchangeApiKeyId)
+      .filter(Boolean) as string[];
+    const researchApiKeyMap = new Map<string, { exchange: string; label: string }>();
+    if (researchApiKeyIds.length > 0) {
+      const apiKeys = await db.apiKey.findMany({
+        where: { id: { in: researchApiKeyIds } },
+        select: { id: true, exchange: true, label: true },
+      });
+      for (const ak of apiKeys) {
+        researchApiKeyMap.set(ak.id, { exchange: ak.exchange, label: ak.label });
+      }
+    }
+
     // 根会话附加子会话数量 + 批量 campaign 统计
     const rootIds = sessions
-      .filter((s: any) => s.campaignStatus)
-      .map((s: any) => s.id);
+      .filter((s) => s.campaignStatus)
+      .map((s) => s.id);
     const childCounts = new Map<string, number>();
     const cumulativeCosts = new Map<string, number>();
     const cumulativePnls = new Map<string, number>();
@@ -852,20 +929,25 @@ export class AiController {
     }
 
     return {
-      data: sessions.map((s: any) => ({
-        ...s,
-        totalCost: Number(s.totalCost) || 0,
-        decision: s.finalDecision
-          ? {
-              action: (s.finalDecision as any).action,
-              confidence: (s.finalDecision as any).confidence,
-            }
-          : null,
-        cycleCount: childCounts.get(s.id) || 0,
-        cumulativePnl: cumulativePnls.get(s.id) ?? 0,
-        cumulativeCost: cumulativeCosts.get(s.id) ?? 0,
-        totalCycles: childCounts.get(s.id) || 0,
-      })),
+      data: sessions.map((s) => {
+        const akInfo = (s as any).exchangeApiKeyId ? researchApiKeyMap.get((s as any).exchangeApiKeyId) : undefined;
+        return {
+          ...s,
+          totalCost: Number(s.totalCost) || 0,
+          decision: s.finalDecision
+            ? {
+                action: (s.finalDecision as unknown as ResearchFinalDecision)?.action,
+                confidence: (s.finalDecision as unknown as ResearchFinalDecision)?.confidence,
+              }
+            : null,
+          cycleCount: childCounts.get(s.id) || 0,
+          cumulativePnl: cumulativePnls.get(s.id) ?? 0,
+          cumulativeCost: cumulativeCosts.get(s.id) ?? 0,
+          totalCycles: childCounts.get(s.id) || 0,
+          exchangeName: akInfo?.exchange ?? null,
+          exchangeLabel: akInfo?.label ?? null,
+        };
+      }),
       pagination: {
         page: pageNum,
         limit: pageSize,
@@ -884,12 +966,41 @@ export class AiController {
    */
   @Post('research/:id/stop-cycling')
   @HttpCode(HttpStatus.OK)
-  async stopResearchCycling(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async stopResearchCycling(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     await this.researchCycleService.stopCycling(id, userId);
     return { success: true, message: '研究循环已停止' };
+  }
+
+  /**
+   * 删除研究会话（及其所有子会话）
+   *
+   * DELETE /ai/research/:id
+   */
+  @Delete('research/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteResearch(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    const session = await this.prisma.aiResearchSession.findFirst({
+      where: { id, userId },
+    });
+    if (!session) throw new NotFoundException('研究会话不存在');
+
+    if (session.campaignStatus === 'running') {
+      throw new BadRequestException('请先停止研究循环再删除');
+    }
+
+    // 删除根会话及所有子会话
+    await this.prisma.aiResearchSession.deleteMany({
+      where: {
+        OR: [{ id }, { rootSessionId: id }],
+        userId,
+      },
+    });
+
+    return { success: true, message: '研究会话已删除' };
   }
 
   /**
@@ -899,8 +1010,7 @@ export class AiController {
    */
   @Post('research/:id/pause-cycling')
   @HttpCode(HttpStatus.OK)
-  async pauseResearchCycling(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async pauseResearchCycling(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     await this.researchCycleService.pauseCycling(id, userId);
@@ -914,8 +1024,7 @@ export class AiController {
    */
   @Post('research/:id/resume-cycling')
   @HttpCode(HttpStatus.OK)
-  async resumeResearchCycling(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async resumeResearchCycling(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     await this.researchCycleService.resumeCycling(id, userId);
@@ -930,8 +1039,7 @@ export class AiController {
    */
   @Put('research/:id/config')
   @HttpCode(HttpStatus.OK)
-  async updateResearchConfig(@Param('id') id: string, @Request() req: any, @Body() body: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async updateResearchConfig(@Param('id') id: string, @CurrentUser('id') userId: string, @Body() body: UpdateResearchConfigDto) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 只允许更新根会话
@@ -945,11 +1053,11 @@ export class AiController {
       throw new BadRequestException('只能更新运行中或暂停中的研究配置');
     }
 
-    // 读取现有配置
-    const existing = (root.cyclingConfig as any) || {};
+    // 读取现有配置（cyclingConfig 是 Prisma Json 字段）
+    const existing = (root.cyclingConfig as Record<string, unknown>) || {};
 
-    // 合并 cycling 参数
-    const merged: Record<string, any> = { ...existing };
+    // 合并 cycling 参数（类型保持与 Prisma Json 兼容）
+    const merged: Record<string, unknown> = { ...existing };
     if (body.intervalMinutes != null && body.intervalMinutes >= 1) merged.intervalMinutes = body.intervalMinutes;
     if (body.maxCycles != null && body.maxCycles >= 0) merged.maxCycles = body.maxCycles;
     if (body.profitTargetPercent != null && body.profitTargetPercent >= 0) merged.profitTargetPercent = body.profitTargetPercent;
@@ -966,7 +1074,7 @@ export class AiController {
     // 写入数据库
     await this.prisma.aiResearchSession.update({
       where: { id },
-      data: { cyclingConfig: merged },
+      data: { cyclingConfig: merged as Prisma.InputJsonValue },
     });
 
     return { success: true, config: merged };
@@ -978,8 +1086,7 @@ export class AiController {
    * GET /ai/research/:id/campaign
    */
   @Get('research/:id/campaign')
-  async getResearchCampaign(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getResearchCampaign(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const stats = await this.researchCycleService.getCampaignStats(id, userId);
@@ -995,8 +1102,7 @@ export class AiController {
    */
   @Post('strategy')
   @HttpCode(HttpStatus.CREATED)
-  async createStrategy(@Request() req: any, @Body() body: CreateStrategyDto) {
-    const userId = req.user?.sub || req.user?.id;
+  async createStrategy(@CurrentUser('id') userId: string, @Body() body: CreateStrategyDto) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const strategy = await this.strategyEngine.createStrategy(userId, {
@@ -1024,23 +1130,25 @@ export class AiController {
   /**
    * 统一时间线 — 跨策略/研究合并查询
    *
-   * GET /ai/timeline?page=1&limit=10&type=all
+   * GET /ai/timeline?page=1&limit=10&type=all&actionsOnly=true
    * type: 'all' | 'solo' | 'debate' | 'research'
+   * actionsOnly: 'true' 时过滤掉 wait/hold 日志（默认 true）
    */
   @Get('timeline')
   async getTimeline(
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
     @Query('type') type: string = 'all',
+    @Query('actionsOnly') actionsOnly: string = 'true',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(50, Math.max(1, parseInt(limit) || 10));
+    const filterActions = actionsOnly !== 'false';
 
-    const result = await this.strategyEngine.getTimeline(userId, pageNum, pageSize, type);
+    const result = await this.strategyEngine.getTimeline(userId, pageNum, pageSize, type, filterActions);
 
     return {
       data: result.data,
@@ -1050,6 +1158,8 @@ export class AiController {
         total: result.total,
         totalPages: Math.ceil(result.total / pageSize),
       },
+      totalAll: result.totalAll,
+      skippedCount: result.skippedCount,
     };
   }
 
@@ -1062,11 +1172,10 @@ export class AiController {
    */
   @Get('strategy')
   async listStrategies(
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1077,7 +1186,7 @@ export class AiController {
     // 附加每个策略的 todayPnl
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
-    const strategyIds = result.data.map((s: any) => s.id);
+    const strategyIds = result.data.map((s: Record<string, unknown> & { id: string }) => s.id);
 
     const todayPnlMap = new Map<string, number>();
     if (strategyIds.length > 0) {
@@ -1097,11 +1206,31 @@ export class AiController {
       }
     }
 
+    // 附加交易所信息（批量查 ApiKey 表）
+    const exchangeApiKeyIds = result.data
+      .map((s: any) => s.exchangeApiKeyId)
+      .filter(Boolean) as string[];
+    const apiKeyMap = new Map<string, { exchange: string; label: string }>();
+    if (exchangeApiKeyIds.length > 0) {
+      const apiKeys = await this.prisma.apiKey.findMany({
+        where: { id: { in: exchangeApiKeyIds } },
+        select: { id: true, exchange: true, label: true },
+      });
+      for (const ak of apiKeys) {
+        apiKeyMap.set(ak.id, { exchange: ak.exchange, label: ak.label });
+      }
+    }
+
     return {
-      data: result.data.map((s: any) => ({
-        ...s,
-        todayPnl: Number((todayPnlMap.get(s.id) || 0).toFixed(2)),
-      })),
+      data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string }) => {
+        const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
+        return {
+          ...s,
+          todayPnl: Number((todayPnlMap.get(s.id) || 0).toFixed(2)),
+          exchangeName: akInfo?.exchange ?? null,
+          exchangeLabel: akInfo?.label ?? null,
+        };
+      }),
       pagination: {
         page: pageNum,
         limit: pageSize,
@@ -1168,7 +1297,7 @@ export class AiController {
       return {
         period: selectedPeriod,
         snapshotAt: latestSnapshot.snapshotAt,
-        data: data.map((c: any, index: number) => ({
+        data: data.map((c, index) => ({
           rank: skip + index + 1,
           strategyId: c.strategyId,
           name: c.strategy?.name,
@@ -1203,7 +1332,7 @@ export class AiController {
     return {
       period: selectedPeriod,
       snapshotAt: null,
-      data: data.map((s: any, index: number) => ({
+      data: data.map((s, index) => ({
         rank: skip + index + 1,
         strategyId: s.id,
         name: s.name,
@@ -1263,8 +1392,7 @@ export class AiController {
    * GET /ai/strategy/:id
    */
   @Get('strategy/:id')
-  async getStrategy(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getStrategy(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const strategy = await this.strategyEngine.getStrategy(id, userId);
@@ -1290,7 +1418,7 @@ export class AiController {
     const todayPnl = todayPositions.reduce((sum, p) => sum + Number(p.realizedPnl || 0), 0);
 
     // 如果是网格策略，附加网格状态
-    let gridState: any = null;
+    let gridState: GridState | null = null;
     if (strategy.strategyType === 'grid') {
       gridState = await this.gridTrading.getGridState(id);
     }
@@ -1306,10 +1434,9 @@ export class AiController {
   @Put('strategy/:id')
   async updateStrategy(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Body() body: UpdateStrategyDto,
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const strategy = await this.strategyEngine.updateStrategy(id, userId, body);
@@ -1323,8 +1450,7 @@ export class AiController {
    */
   @Delete('strategy/:id')
   @HttpCode(HttpStatus.OK)
-  async deleteStrategy(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async deleteStrategy(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 如果是网格策略，关闭网格
@@ -1341,8 +1467,7 @@ export class AiController {
    */
   @Post('strategy/:id/start')
   @HttpCode(HttpStatus.OK)
-  async startStrategy(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async startStrategy(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 验证用户有 AI 配置和 API Key
@@ -1373,14 +1498,14 @@ export class AiController {
 
     // 如果是网格策略，初始化网格
     if (strategy.strategyType === 'grid' && strategy.gridConfig) {
-      const gc = strategy.gridConfig as any;
+      const gc = strategy.gridConfig as unknown as Record<string, unknown>;
       const gridConfig: GridConfig = {
-        symbol: gc.symbol || ((strategy.coinSourceConfig as any)?.coins?.[0]) || 'BTC/USDT',
-        gridCount: gc.gridCount || 10,
-        totalInvestment: gc.totalInvestment || 1000,
-        upperBound: gc.upperBound,
-        lowerBound: gc.lowerBound,
-        leverage: gc.leverage || 1,
+        symbol: (gc.symbol as string) || ((strategy.coinSourceConfig as unknown as Record<string, unknown>)?.coins as string[])?.[0] || 'BTC/USDT',
+        gridCount: (gc.gridCount as number) || 10,
+        totalInvestment: (gc.totalInvestment as number) || 1000,
+        upperBound: gc.upperBound as number | undefined,
+        lowerBound: gc.lowerBound as number | undefined,
+        leverage: (gc.leverage as number) || 1,
       };
 
       if (gridConfig.upperBound && gridConfig.lowerBound) {
@@ -1401,8 +1526,7 @@ export class AiController {
    */
   @Post('strategy/:id/stop')
   @HttpCode(HttpStatus.OK)
-  async stopStrategy(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async stopStrategy(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 关闭网格（如果有）
@@ -1420,8 +1544,7 @@ export class AiController {
    */
   @Post('strategy/:id/trigger-cycle')
   @HttpCode(HttpStatus.OK)
-  async triggerCycle(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async triggerCycle(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 验证策略属于该用户且已激活
@@ -1454,10 +1577,9 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   async pauseStrategy(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Body() body: { minutes?: number },
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const minutes = Math.max(1, Math.min(1440, body?.minutes || 60));
@@ -1473,10 +1595,9 @@ export class AiController {
   @Put('strategy/:id/config')
   async hotUpdateStrategyConfig(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Body() body: UpdateStrategyDto,
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const strategy = await this.strategyEngine.hotUpdateConfig(id, userId, body);
@@ -1492,10 +1613,9 @@ export class AiController {
   @Get('strategy/:id/pnl-chart')
   async getStrategyPnlChart(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('days') days: string = '30',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 验证策略属于用户
@@ -1556,22 +1676,24 @@ export class AiController {
   /**
    * 策略决策日志
    *
-   * GET /ai/strategy/:id/logs?page=1&limit=20
+   * GET /ai/strategy/:id/logs?page=1&limit=20&actionsOnly=true
+   * actionsOnly: 'true' 时过滤掉 wait/hold 日志（默认 true）
    */
   @Get('strategy/:id/logs')
   async getStrategyLogs(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
+    @Query('actionsOnly') actionsOnly: string = 'true',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const filterActions = actionsOnly !== 'false';
 
-    const result = await this.strategyEngine.getStrategyLogs(id, userId, pageNum, pageSize);
+    const result = await this.strategyEngine.getStrategyLogs(id, userId, pageNum, pageSize, filterActions);
 
     return {
       data: result.data,
@@ -1581,6 +1703,8 @@ export class AiController {
         total: result.total,
         totalPages: Math.ceil(result.total / pageSize),
       },
+      totalAll: result.totalAll,
+      skippedCount: result.skippedCount,
     };
   }
 
@@ -1593,16 +1717,15 @@ export class AiController {
   @Get('strategy/:id/positions')
   async getStrategyPositions(
     @Param('id') id: string,
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('status') status: string = 'all',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     // 验证策略属于用户
     await this.strategyEngine.getStrategy(id, userId);
 
-    const where: any = { aiStrategyId: id };
+    const where: Prisma.PositionWhereInput = { aiStrategyId: id };
     if (status === 'open') {
       where.status = 'open';
     } else if (status === 'closed') {
@@ -1660,19 +1783,18 @@ export class AiController {
    */
   @Get('positions')
   async getUserPositions(
-    @Request() req: any,
+    @CurrentUser('id') userId: string,
     @Query('status') status: string = 'all',
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '50',
   ) {
-    const userId = req.user?.sub || req.user?.id;
     if (!userId) throw new BadRequestException('用户未认证');
 
     const take = Math.min(Number(limit) || 50, 100);
     const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
 
     // 不限制 aiStrategyId — 包含已删除策略的历史仓位
-    const where: any = { userId };
+    const where: Prisma.PositionWhereInput = { userId };
     if (status === 'open') where.status = 'open';
     else if (status === 'closed') where.status = 'closed';
 
@@ -1740,8 +1862,7 @@ export class AiController {
    * 返回策略/研究统计 + 今日 PnL + 预算
    */
   @Get('overview')
-  async getAiOverview(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async getAiOverview(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const db = this.prisma;
@@ -1840,8 +1961,7 @@ export class AiController {
    */
   @Post('pause-all')
   @HttpCode(HttpStatus.OK)
-  async pauseAll(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async pauseAll(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const db = this.prisma;
@@ -1884,8 +2004,7 @@ export class AiController {
    */
   @Post('resume-all')
   @HttpCode(HttpStatus.OK)
-  async resumeAll(@Request() req: any) {
-    const userId = req.user?.sub || req.user?.id;
+  async resumeAll(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
     const db = this.prisma;
@@ -1926,7 +2045,7 @@ export class AiController {
   /**
    * 清洗配置更新请求
    */
-  private sanitizeConfigBody(body: any): Record<string, any> {
+  private sanitizeConfigBody(body: Record<string, unknown>): Record<string, unknown> {
     const allowed = [
       'isEnabled', 'mode', 'models', 'symbols', 'timeframes',
       'rolePrompts', 'roleModels', 'minConfidence', 'maxPositionSize',
@@ -1936,7 +2055,7 @@ export class AiController {
       'maxPositions', 'minPositionSizeUSD', 'maxMarginUsage',
     ];
 
-    const result: Record<string, any> = {};
+    const result: Record<string, unknown> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) {
         result[key] = body[key];
@@ -1945,8 +2064,8 @@ export class AiController {
 
     // AES-256-GCM 加密用户提供的 LLM API Keys
     if (result.apiKeys && typeof result.apiKeys === 'object') {
-      const encrypted: Record<string, any> = {};
-      for (const [provider, key] of Object.entries(result.apiKeys)) {
+      const encrypted: Record<string, unknown> = {};
+      for (const [provider, key] of Object.entries(result.apiKeys as Record<string, unknown>)) {
         if (typeof key === 'string' && key.length > 0) {
           encrypted[provider] = encrypt(key);
         }
@@ -1990,10 +2109,10 @@ export class AiController {
   /**
    * 解析 API Keys：如果是加密格式则解密，否则原样返回（向后兼容）
    */
-  private resolveApiKeys(raw: any): import('./services/llm.service').UserApiKeys {
+  private resolveApiKeys(raw: unknown): import('./services/llm.service').UserApiKeys {
     if (!raw || typeof raw !== 'object') return {};
     const result: Record<string, string> = {};
-    for (const provider of ['deepseek', 'openai', 'openrouter', 'qwen', 'grok', 'kimi']) {
+    for (const provider of ['deepseek', 'openai', 'anthropic', 'gemini', 'openrouter', 'qwen', 'grok', 'kimi']) {
       const val = raw[provider];
       if (!val) continue;
       if (typeof val === 'object' && val.encryptedData && val.iv && val.authTag) {

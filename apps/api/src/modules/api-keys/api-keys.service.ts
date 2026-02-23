@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { encrypt, decrypt, maskApiKey } from '../../common/utils/crypto.util';
 import {
   CreateApiKeyDto,
@@ -102,13 +103,19 @@ export class ApiKeysService {
           );
         }
         break;
+      default:
+        throw new BadRequestException(`Unsupported DEX exchange: ${dto.exchange}`);
     }
 
-    // 2. 构建存储数据
-    const data: any = {
+    // 2. 构建存储数据（使用 Prisma.ApiKeyUncheckedCreateInput 构建动态字段）
+    const data: Prisma.ApiKeyUncheckedCreateInput = {
       userId,
       exchange: dto.exchange,
       label: dto.label,
+      encryptedKey: '',   // DEX 凭证不使用 API Key，填空字符串占位
+      encryptedSecret: '',
+      iv: '',
+      authTag: '',
       authType: 'wallet',
       isTestnet: dto.isTestnet || false,
     };
@@ -211,7 +218,7 @@ export class ApiKeysService {
       throw new ForbiddenException('无权修改此 API Key');
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.ApiKeyUpdateInput = {};
 
     // 更新 label
     if (dto.label !== undefined) {
@@ -365,7 +372,15 @@ export class ApiKeysService {
       throw new BadRequestException('此记录不是 DEX 凭证');
     }
 
-    const result: any = {
+    const result: {
+      exchange: string;
+      walletAddress?: string;
+      isTestnet: boolean;
+      privateKey?: string;
+      lighterApiKeyPrivateKey?: string;
+      lighterApiKeyIndex?: number;
+      asterSignerAddress?: string;
+    } = {
       exchange: record.exchange,
       walletAddress: record.walletAddress || undefined,
       isTestnet: record.isTestnet,
@@ -387,7 +402,7 @@ export class ApiKeysService {
         iv: record.lighterApiKeyIv,
         authTag: record.lighterApiKeyAuthTag,
       });
-      result.lighterApiKeyIndex = record.lighterApiKeyIndex;
+      result.lighterApiKeyIndex = record.lighterApiKeyIndex ?? undefined;
     }
 
     // Aster 签名钱包地址（公开，无需解密）
@@ -459,6 +474,9 @@ export class ApiKeysService {
     totalUsdValue: number;
     spotValue: number;
     futuresValue: number;
+    freeUsdValue: number;
+    spotFreeValue: number;
+    futuresFreeValue: number;
     error?: string;
   }> {
     try {
@@ -482,6 +500,8 @@ export class ApiKeysService {
       }[] = [];
       let spotValue = 0;
       let futuresValue = 0;
+      let spotFreeValue = 0;
+      let futuresFreeValue = 0;
       const permissions: string[] = ['读取账户'];
 
       // 创建现货交易所实例
@@ -555,7 +575,9 @@ export class ApiKeysService {
       }
 
       // ===== 第一步：并行获取余额和价格 =====
-      // 构建并行请求数组
+      // 有独立资金账户的交易所白名单（Gate.io funding→spot 会双重计算，Bitget 无映射）
+      const fundingSupportedExchanges = ['binance', 'bybit', 'okx'];
+
       const fetchPromises: Promise<any>[] = [
         // 现货余额
         spotEx.fetchBalance(),
@@ -563,13 +585,18 @@ export class ApiKeysService {
         futuresEx
           ? futuresEx.loadMarkets().then(() => futuresEx!.fetchBalance())
           : Promise.resolve(null),
-        // BTC 价格
+        // 资金账户余额（仅 Binance/Bybit/OKX 有独立 funding 钱包）
+        fundingSupportedExchanges.includes(exchangeLower)
+          ? spotEx.fetchBalance({ type: 'funding' }).catch(() => null)
+          : Promise.resolve(null),
+        // 主流币价格
         spotEx.fetchTicker('BTC/USDT'),
-        // ETH 价格
         spotEx.fetchTicker('ETH/USDT'),
+        spotEx.fetchTicker('BNB/USDT').catch(() => null),
+        spotEx.fetchTicker('SOL/USDT').catch(() => null),
       ];
 
-      const [spotResult, futuresResult, btcTickerResult, ethTickerResult] =
+      const [spotResult, futuresResult, fundingResult, btcTickerResult, ethTickerResult, bnbTickerResult, solTickerResult] =
         await Promise.allSettled(fetchPromises);
 
       // 解析价格
@@ -581,24 +608,37 @@ export class ApiKeysService {
         ethTickerResult.status === 'fulfilled'
           ? ethTickerResult.value.last || 0
           : 0;
+      const bnbPrice =
+        bnbTickerResult.status === 'fulfilled' && bnbTickerResult.value
+          ? bnbTickerResult.value.last || 0
+          : 0;
+      const solPrice =
+        solTickerResult.status === 'fulfilled' && solTickerResult.value
+          ? solTickerResult.value.last || 0
+          : 0;
+
+      // USD 估值公用函数（消除重复）
+      const calcUsdValue = (symbol: string, amount: number): number => {
+        if (['USDT', 'USD', 'BUSD', 'USDC'].includes(symbol)) return amount;
+        if (symbol === 'BTC' && btcPrice > 0) return amount * btcPrice;
+        if (symbol === 'ETH' && ethPrice > 0) return amount * ethPrice;
+        if (symbol === 'BNB' && bnbPrice > 0) return amount * bnbPrice;
+        if (symbol === 'SOL' && solPrice > 0) return amount * solPrice;
+        return 0;
+      };
 
       // 处理现货余额
       if (spotResult.status === 'fulfilled') {
         const spotBalance = spotResult.value;
         for (const [symbol, total] of Object.entries(spotBalance.total)) {
           if ((total as number) > 0) {
-            let usdValue = 0;
-            if (['USDT', 'USD', 'BUSD', 'USDC'].includes(symbol)) {
-              usdValue = total as number;
-            } else if (symbol === 'BTC' && btcPrice > 0) {
-              usdValue = (total as number) * btcPrice;
-            } else if (symbol === 'ETH' && ethPrice > 0) {
-              usdValue = (total as number) * ethPrice;
-            }
+            const usdValue = calcUsdValue(symbol, total as number);
+            const freeAmt = spotBalance.free[symbol] || 0;
             spotValue += usdValue;
+            spotFreeValue += calcUsdValue(symbol, freeAmt);
             allBalances.push({
               symbol,
-              free: spotBalance.free[symbol] || 0,
+              free: freeAmt,
               total: total as number,
               type: 'spot',
               usdValue,
@@ -614,14 +654,13 @@ export class ApiKeysService {
         const futuresBalance = futuresResult.value;
         for (const [symbol, total] of Object.entries(futuresBalance.total)) {
           if ((total as number) > 0) {
-            let usdValue = 0;
-            if (['USDT', 'USD', 'BUSD', 'USDC'].includes(symbol)) {
-              usdValue = total as number;
-            }
+            const usdValue = calcUsdValue(symbol, total as number);
+            const freeAmt = futuresBalance.free[symbol] || 0;
             futuresValue += usdValue;
+            futuresFreeValue += calcUsdValue(symbol, freeAmt);
             allBalances.push({
               symbol,
-              free: futuresBalance.free[symbol] || 0,
+              free: freeAmt,
               total: total as number,
               type: 'futures',
               usdValue,
@@ -630,6 +669,34 @@ export class ApiKeysService {
         }
       } else if (futuresEx && futuresResult.status === 'rejected') {
         this.logger.debug('获取合约余额失败:', futuresResult.reason?.message);
+      }
+
+      // 处理资金账户余额（Funding）— 仅 Binance/Bybit/OKX
+      if (fundingResult.status === 'fulfilled' && fundingResult.value) {
+        const fundingBalance = fundingResult.value;
+        for (const [symbol, total] of Object.entries(fundingBalance.total)) {
+          if ((total as number) > 0) {
+            const amount = total as number;
+            const usdValue = calcUsdValue(symbol, amount);
+            const existing = allBalances.find(b => b.symbol === symbol);
+            if (existing) {
+              // 合并到已有记录，同步更新 usdValue
+              existing.total += amount;
+              existing.free += fundingBalance.free[symbol] || 0;
+              existing.usdValue = (existing.usdValue || 0) + usdValue;
+              spotValue += usdValue;
+            } else {
+              spotValue += usdValue;
+              allBalances.push({
+                symbol,
+                free: fundingBalance.free[symbol] || 0,
+                total: amount,
+                type: 'funding',
+                usdValue,
+              });
+            }
+          }
+        }
       }
 
       // ===== 第二步：并行检测交易权限 =====
@@ -669,6 +736,9 @@ export class ApiKeysService {
         totalUsdValue,
         spotValue,
         futuresValue,
+        freeUsdValue: spotFreeValue + futuresFreeValue,
+        spotFreeValue,
+        futuresFreeValue,
       };
     } catch (error: any) {
       // 解析 CCXT 错误
@@ -688,6 +758,9 @@ export class ApiKeysService {
         totalUsdValue: 0,
         spotValue: 0,
         futuresValue: 0,
+        freeUsdValue: 0,
+        spotFreeValue: 0,
+        futuresFreeValue: 0,
         error: errorMessage,
       };
     }

@@ -17,8 +17,10 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { getSchemaPrompt, SCHEMA_VERSION } from '../../constants/schema-dictionary';
+import { getSchemaPrompt, SCHEMA_VERSION, SchemaLang } from '../../constants/schema-dictionary';
 import { AI_SAFETY_DEFAULTS } from '../../constants/safety-defaults';
+import { buildLanguageInstruction, buildUserMessageLanguageReminder } from '../../constants/locale-instructions';
+import { TRADING_PHILOSOPHY, calculateRegime, MarketRegime } from '../../constants/trading-philosophy';
 
 // ========================= 配置接口 =========================
 
@@ -35,6 +37,11 @@ export interface PromptConfig {
   riskControl?: {
     maxPositions?: number;
     maxLeverage?: number;
+    btcEthMaxLeverage?: number;      // NoFx: BTC/ETH 杠杆上限（AI GUIDED）
+    altcoinMaxLeverage?: number;     // NoFx: 山寨币杠杆上限（AI GUIDED）
+    minRiskRewardRatio?: number;     // NoFx: 最低风险收益比（AI GUIDED）
+    minConfidence?: number;          // NoFx: 最低信心度（AI GUIDED）
+    minPositionSize?: number;        // NoFx: 最小仓位（CODE ENFORCED）
     maxDailyDrawdown?: number;
     allocatedCapital?: number;
     maxDailyTrades?: number;   // 每日最大交易次数（L5 强制）
@@ -47,6 +54,10 @@ export interface PromptConfig {
   todayTrades?: number;
   /** 策略运行时长（小时） */
   runningHours?: number;
+  /** 连续 wait/hold 周期数（≥3 时注入降低门槛提示） */
+  consecutiveWaits?: number;
+  /** AI 输出语言 locale (e.g. "zh-CN", "en", "ko") */
+  locale?: string;
 }
 
 export interface UserPromptContext {
@@ -101,8 +112,27 @@ export interface UserPromptContext {
   marketDataPrompt?: string;
   /** 市场排名 */
   marketRankingPrompt?: string;
+  /** 流动性数据（订单簿深度 + 滑点预估） */
+  liquidityData?: Array<{
+    symbol: string;
+    depthUSD: number;
+    estimatedSlippage: number; // 参考金额预估滑点百分比
+    referenceSizeUSD: number;  // 参考金额
+    canFill: boolean;
+    spread: number; // 买卖价差百分比
+  }>;
+  /** 增强市场数据（Phase 11: 多空比/清算/期权/稳定币/ETF/宏观/COT） */
+  enhancedDataPrompt?: string;
   /** 辩论上下文 */
   debateContext?: string;
+  /** AI 输出语言 locale */
+  locale?: string;
+  /** 交易所总权益（区别于策略权益） */
+  exchangeEquity?: number;
+  /** 其他策略持仓数 */
+  otherStrategiesCount?: number;
+  /** 其他策略总保证金 */
+  otherStrategiesMargin?: number;
 }
 
 // ========================= Service =========================
@@ -119,9 +149,11 @@ export class PromptBuilderService {
     const sections: string[] = [];
     const ps = config.promptSections || {};
     const rc = config.riskControl || {};
+    const locale = config.locale || 'zh-CN';
 
-    // Section 0: Data Dictionary
-    sections.push(getSchemaPrompt({ lang: 'en-US', includeRules: true, includeOI: true, includeMistakes: true }));
+    // Section 0: Data Dictionary (use locale for bilingual schema)
+    const schemaLang: SchemaLang = locale.startsWith('zh') ? 'zh-CN' : 'en-US';
+    sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: true, includeOI: true, includeMistakes: true }));
 
     // Section 1: Role Definition
     sections.push(this.buildRoleSection(ps.role));
@@ -130,19 +162,26 @@ export class PromptBuilderService {
     sections.push(this.buildModeSection(ps.mode));
 
     // Section 3: Hard Constraints (CODE ENFORCED)
-    sections.push(this.buildHardConstraints(rc));
+    const isCN = locale.startsWith('zh');
+    sections.push(this.buildHardConstraints(rc, isCN));
 
     // Section 4: AI Guidance (recommended)
-    sections.push(this.buildAIGuidance());
+    sections.push(this.buildAIGuidance(isCN));
 
     // Section 5: Position Sizing Guidance
     sections.push(this.buildPositionSizing());
 
     // Section 6: Trading Frequency Awareness
-    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades));
+    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, config.consecutiveWaits));
 
     // Section 7: Output Format
     sections.push(this.buildOutputFormat());
+
+    // Section 8: Language Instruction
+    sections.push(buildLanguageInstruction(locale));
+
+    // Section 9: Trading Philosophy (14 core rules)
+    sections.push(TRADING_PHILOSOPHY);
 
     // Custom Sections: Trading Frequency / Entry Standards / Decision Process
     if (ps.tradingFrequency) {
@@ -183,15 +222,17 @@ export class PromptBuilderService {
     if (ctx.equity !== undefined) {
       lines.push('');
       lines.push('=== Account Info ===');
-      lines.push(`Equity: $${ctx.equity.toFixed(2)}`);
+      if (ctx.balance !== undefined) lines.push(`Strategy Budget: $${ctx.balance.toFixed(2)}`);
+      if (ctx.exchangeEquity !== undefined) lines.push(`Exchange Total Equity: $${ctx.exchangeEquity.toFixed(2)}`);
+      lines.push(`Strategy Equity: $${ctx.equity.toFixed(2)}`);
       if (ctx.balance !== undefined) {
         const pnlPct = ctx.equity > 0 && ctx.balance > 0
           ? ((ctx.equity - ctx.balance) / ctx.balance * 100)
           : 0;
-        lines.push(`Balance: $${ctx.balance.toFixed(2)} (PnL: ${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%)`);
+        lines.push(`Unrealized PnL: ${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
       }
-      if (ctx.marginUsage !== undefined) lines.push(`Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
-      if (ctx.positionCount !== undefined) lines.push(`Open Positions: ${ctx.positionCount}`);
+      if (ctx.marginUsage !== undefined) lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
+      if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }
 
     // [3] Recent Trades — 对齐 NoFx RecentOrder 格式
@@ -235,6 +276,14 @@ export class PromptBuilderService {
       lines.push('  No open positions');
     }
 
+    // [5.5] Other Strategies Exposure（同账户其他策略的持仓概览）
+    if (ctx.otherStrategiesCount && ctx.otherStrategiesCount > 0) {
+      lines.push('');
+      lines.push('=== Other Strategies Exposure (same exchange account) ===');
+      lines.push(`  ${ctx.otherStrategiesCount} other positions using $${ctx.otherStrategiesMargin?.toFixed(2) ?? '0'} margin.`);
+      lines.push('  NOTE: Factor total account exposure when sizing your positions.');
+    }
+
     // [6] Market Data (已格式化)
     if (ctx.marketDataPrompt) {
       lines.push('');
@@ -247,7 +296,27 @@ export class PromptBuilderService {
       lines.push(ctx.marketRankingPrompt);
     }
 
-    // [8] Debate Context
+    // [7.5] Enhanced Market Data (Phase 11: 多空比/清算/期权/稳定币/ETF/宏观/COT)
+    if (ctx.enhancedDataPrompt) {
+      lines.push('');
+      lines.push(ctx.enhancedDataPrompt);
+    }
+
+    // [8] Liquidity & Order Book
+    if (ctx.liquidityData && ctx.liquidityData.length > 0) {
+      lines.push('');
+      lines.push('=== Liquidity & Order Book ===');
+      for (const liq of ctx.liquidityData) {
+        const fillWarning = !liq.canFill ? ' ⚠ INSUFFICIENT DEPTH' : '';
+        lines.push(
+          `  ${liq.symbol}: Depth: $${liq.depthUSD.toLocaleString()} | Spread: ${liq.spread.toFixed(3)}% | ` +
+          `Est.Slippage(@$${liq.referenceSizeUSD.toLocaleString()}): ${liq.estimatedSlippage.toFixed(4)}%${fillWarning}`,
+        );
+      }
+      lines.push('NOTE: Factor liquidity into your position sizing. High slippage = reduce size or skip.');
+    }
+
+    // [9] Debate Context
     if (ctx.debateContext) {
       lines.push('');
       lines.push(ctx.debateContext);
@@ -256,6 +325,10 @@ export class PromptBuilderService {
     // [9] Instruction
     lines.push('');
     lines.push('Analyze the above data and output your trading decision.');
+
+    // [10] 语言提醒（防止英文上下文淹没 system prompt 的语言指令）
+    const langReminder = buildUserMessageLanguageReminder(ctx.locale);
+    if (langReminder) lines.push(langReminder);
 
     return lines.join('\n');
   }
@@ -303,76 +376,160 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
     }
   }
 
-  private buildHardConstraints(rc: PromptConfig['riskControl'] = {}): string {
-    const maxLev = rc.maxLeverage || 20;
-    const maxPos = rc.maxPositions || 5;
+  private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
+    const btcLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
+    const altLev = rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5;
+    const maxPos = rc.maxPositions ?? 3;
+    const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
+    const minConf = rc.minConfidence ?? 60;
+    const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
     const maxDD = rc.maxDailyDrawdown || 100;
     const maxDailyTrades = rc.maxDailyTrades;
     const cooldown = rc.cooldownMinutes;
     const cbThreshold = rc.circuitBreaker;
 
-    const dynamicLines = [
-      maxDailyTrades ? `- **Max Daily Trades**: ${maxDailyTrades} — if today's count is reached, output action=wait` : '',
-      cooldown ? `- **Cooldown Period**: ${cooldown} minutes between trades — if in cooldown, output action=wait` : '',
+    if (isCN) {
+      const dyn = [
+        maxDailyTrades ? `- **每日最大交易次数**: ${maxDailyTrades}，达到上限时输出 action=wait` : '',
+        cooldown ? `- **冷却期**: 每笔交易间隔 ${cooldown} 分钟，冷却中输出 action=wait` : '',
+        cbThreshold ? `- **熔断器**: 连续亏损 ${cbThreshold} 次触发暂停，输出 action=wait` : '',
+      ].filter(Boolean).join('\n');
+
+      return `## 硬性约束（代码强制执行，违规自动拒绝）
+
+- **最大杠杆**: BTC/ETH <= ${btcLev}x，山寨币 <= ${altLev}x
+- **最小仓位**: ${minPosSize} USDT（BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor}）
+- **风险回报比**: 必须 >= ${minRR}:1
+- **ATR极端波动**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} 时暂停所有交易
+- **最大持仓数**: ${maxPos}
+- **每日最大回撤**: $${maxDD}
+- **同币种冲突**: 不能同时持有同一币种的多空仓位
+${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
+
+## AI 建议（推荐遵循，非硬性强制）
+- **最低置信度**: 置信度 >= ${minConf}% 才开仓
+- **仓位与置信度挂钩**: 60%→5%，70%→10%，80%→15%
+
+## 软性警告（系统会提醒但不会拦截）
+- **RSI极端**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} 或 < ${AI_SAFETY_DEFAULTS.rsiOversold}，是否操作由你决定
+- **ATR偏高**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrAnomalyRatio}，波动率较大，谨慎考虑
+- **持仓回撤**: 已有仓位亏损 > ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}%，评估总风险敞口
+- **资金费率偏高**: |资金费率| > 0.05%/8h，持仓成本较高
+
+设计止损/止盈使风险回报比 >= ${minRR}:1。`;
+    }
+
+    // English (default for non-Chinese locales)
+    const dyn = [
+      maxDailyTrades ? `- **Max Daily Trades**: ${maxDailyTrades} — if reached, output action=wait` : '',
+      cooldown ? `- **Cooldown Period**: ${cooldown} min between trades — if in cooldown, output action=wait` : '',
       cbThreshold ? `- **Circuit Breaker**: ${cbThreshold} consecutive losses triggers pause — output action=wait` : '',
     ].filter(Boolean).join('\n');
 
-    return `## Hard Constraints (CODE ENFORCED — you cannot bypass these)
-The following rules are enforced by code. Violations will be automatically rejected:
+    return `## Hard Constraints (CODE ENFORCED — violations auto-rejected)
 
-- **Max Leverage**: BTC/ETH <= ${Math.min(maxLev, 20)}x, Altcoins <= ${Math.min(maxLev, 10)}x
-- **Min Position Size**: BTC/ETH >= $60, Altcoins >= $12
-- **Risk/Reward Ratio**: Must be >= 3.0:1 (TP distance / SL distance)
-- **RSI Hard Limits**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} = NO new longs, RSI < ${AI_SAFETY_DEFAULTS.rsiOversold} = NO new shorts
+- **Max Leverage**: BTC/ETH <= ${btcLev}x, Altcoins <= ${altLev}x
+- **Min Position Size**: ${minPosSize} USDT (BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor})
+- **Risk/Reward Ratio**: Must be >= ${minRR}:1
 - **ATR Extreme**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} = ALL trading paused
 - **Max Open Positions**: ${maxPos}
 - **Max Daily Drawdown**: $${maxDD}
-${dynamicLines ? dynamicLines + '\n' : ''}- **Stop Loss Required**: Every open_long/open_short MUST have stop_loss and take_profit
+- **Same-Symbol Conflict**: Cannot open opposite direction on same symbol
+${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss and take_profit
 
-If your decision violates any of these, it WILL be blocked. Design your SL/TP to satisfy R/R >= 3.0.`;
+## AI Guidance (recommended, not hard-enforced)
+- **Min Confidence**: Only trade when confidence >= ${minConf}%
+- **Position Sizing**: Scale with confidence (60%→5%, 70%→10%, 80%→15%)
+
+## Soft Warnings (system warns but does NOT block)
+- **RSI Extreme**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} or < ${AI_SAFETY_DEFAULTS.rsiOversold}
+- **ATR Elevated**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrAnomalyRatio} — high volatility
+- **Position Drawdown**: Loss > ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}% — evaluate risk
+- **Funding Rate High**: |FR| > 0.05%/8h — significant holding cost
+
+Design SL/TP to achieve R/R >= ${minRR}:1.`;
   }
 
-  private buildAIGuidance(): string {
-    return `## AI Guidance (recommended but not enforced)
-The following are best-practice recommendations:
+  private buildAIGuidance(isCN = false): string {
+    if (isCN) {
+      return `## AI 交易指南（推荐但不强制）
+
+- 保证金使用率 <= 30%（预留 70% 应对极端行情）
+- 止损距离: max(1.5 × ATR14 / 价格, 基础风险 / 杠杆) — 杠杆自适应
+- 最高盈利回撤 30% 时考虑止盈（仅当最高盈利 >= 2% 时）
+- ATR 阶梯止盈: +1.5×ATR 平 33%，+2.5×ATR 平 50%，+4×ATR 平 100%
+- 只对盈利仓位加仓，禁止对亏损仓位补仓
+- 成交量突增 2 倍均值 → 潜在入场信号
+- 持仓量 1 小时变化 >2% → 大额资金流动
+- 资金费率: 正=多头付费给空头(偏空), 负=空头付费给多头(偏多)
+
+## 禁止行为
+- 禁止对亏损仓位补仓（禁止摊薄成本）
+- 禁止同一币种同时持有多空仓位
+- 禁止亏损后立即报复性交易（等待明确信号）
+- 禁止忽略最高盈利来决定是否平仓
+- 禁止混淆已实现盈亏和未实现盈亏
+- 禁止不写理由就输出操作`;
+    }
+
+    return `## AI Trading Guidance (recommended but not enforced)
 
 - Margin usage <= 30% (reserve 70% for extreme conditions)
-- Single position loss -5% → consider stop loss
-- PeakPnL drawback 30% → consider take profit
-- Scale-out: +3% close 33%, +5% close 50%, +8% close 100%
+- Stop loss distance: max(1.5 × ATR14 / price, baseRisk / leverage) — adapts to leverage
+- PeakPnL drawback 30% → consider take profit (only when PeakPnL >= 2%)
+- Scale-out (ATR-based): +1.5×ATR close 33%, +2.5×ATR close 50%, +4×ATR close 100%
 - Only add to winning positions, never average down losers
 - Volume spike 2x average → potential entry signal
-- OI change >2% in 1h → significant fund flow`;
+- OI change >2% in 1h → significant fund flow
+- Funding Rate: positive = longs pay shorts (bearish), negative = shorts pay longs (bullish)
+
+## NEVER-DO List
+- NEVER add to a losing position (no averaging down)
+- NEVER hold simultaneous long AND short on the same asset
+- NEVER revenge-trade immediately after a loss (wait for clear setup)
+- NEVER ignore PeakPnL when deciding whether to close a position
+- NEVER mix realized and unrealized PnL in your calculations
+- NEVER output action without reasoning — every decision must be justified`;
   }
 
   private buildPositionSizing(): string {
     return `## Position Sizing Guidance
 Map your confidence level to position size:
 
-- **High confidence (80-100)**: positionSizePercent 30-50
-- **Medium confidence (60-80)**: positionSizePercent 15-30
-- **Low confidence (50-60)**: positionSizePercent 10-15
+- **High confidence (80-100)**: positionSizePercent 15-20
+- **Medium confidence (60-80)**: positionSizePercent 8-15
+- **Low confidence (50-60)**: positionSizePercent 3-8
 - **Below 50**: Recommend "wait" — insufficient conviction
 
-positionSizePercent represents % of available balance (or allocatedCapital if set).
-Example: positionSizePercent=20 with $1000 balance → $200 position value.`;
+positionSizePercent is an INTEGER between 1-20, representing % of available balance.
+Example: positionSizePercent=10 with $1000 balance → $100 position value.
+IMPORTANT: Max value is 20. Never output values above 20.`;
   }
 
-  private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number): string {
+  private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
     const interval = intervalMinutes || 60;
     const trades = todayTrades ?? 0;
 
-    return `## Trading Frequency Awareness
+    let section = `## Trading Frequency Awareness
 - Strategy cycle interval: ${interval} minutes
 - Trades executed today: ${trades}
 - Overtrading increases fees and slippage — be selective
 - If you already traded recently, prefer "hold" or "wait" unless a strong signal appears
 - Quality over quantity: fewer trades with higher conviction`;
+
+    if (consecutiveWaits && consecutiveWaits >= 3) {
+      section += `\n\n⚠️ You have output "wait" for ${consecutiveWaits} consecutive cycles.
+If ANY reasonable setup exists (confidence >= 55), consider entering with a smaller position (3-8%).
+Doing nothing indefinitely is also a risk — you miss opportunities and waste analysis budget.`;
+    }
+
+    return section;
   }
 
   private buildOutputFormat(): string {
-    return `## Output Format
-You MUST use this exact format:
+    return `## Output Format (MANDATORY — strictly follow)
+
+You MUST output BOTH <reasoning> AND <decision> tags. Missing either tag = INVALID response.
 
 <reasoning>
 Your detailed analysis here (150-400 words):
@@ -387,19 +544,21 @@ Your detailed analysis here (150-400 words):
   "action": "open_long" | "open_short" | "close_long" | "close_short" | "hold" | "wait",
   "confidence": 0-100,
   "leverage": 1-20,
-  "positionSizePercent": 1-50,
+  "positionSizePercent": 1-20,
   "stop_loss": <price>,
   "take_profit": <price>,
   "reasoning": "One-line summary"
 }]
 </decision>
 
-Rules:
-- Output a JSON ARRAY inside <decision> tags (even for single decision)
-- stop_loss and take_profit are ABSOLUTE PRICES (not percentages)
-- For "hold" or "wait": set confidence to your conviction level, other fields can be 0/null
-- For long: stop_loss < current_price < take_profit
-- For short: take_profit < current_price < stop_loss
-- Ensure R/R >= 3.0 (take_profit distance >= 3 × stop_loss distance from entry)`;
+CRITICAL RULES:
+1. You MUST ALWAYS output BOTH <reasoning> and <decision> tags — even for hold/wait decisions
+2. The <decision> tag MUST contain a valid JSON ARRAY (even for a single coin: use [{...}])
+3. Do NOT output only <reasoning> without <decision> — this will cause a system failure
+4. stop_loss and take_profit are ABSOLUTE PRICES (not percentages)
+5. For "hold" or "wait": set confidence to your conviction level, other fields can be 0/null
+6. For long: stop_loss < current_price < take_profit
+7. For short: take_profit < current_price < stop_loss
+8. Ensure R/R ratio >= the minimum specified in Hard Constraints above`;
   }
 }

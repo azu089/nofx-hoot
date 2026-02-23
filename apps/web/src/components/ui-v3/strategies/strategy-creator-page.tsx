@@ -17,6 +17,7 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -53,8 +54,7 @@ interface TabConfig {
 
 const tabConfigs: TabConfig[] = [
   { id: 'external', labelKey: 'TradingView', icon: <div className="w-8 h-8 rounded-lg overflow-hidden">
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" />
+    <Image src="/icons/tradingview.webp" alt="TradingView" width={32} height={32} className="w-full h-full object-cover" />
   </div>, descriptionKey: 'tradingviewDesc', tagKey: 'recommended' },
   { id: 'visual', labelKey: 'visualBuilder', icon: <Layers className="w-6 h-6" />, descriptionKey: 'visualDesc' },
   { id: 'code', labelKey: 'codeDevelopment', icon: <Code className="w-6 h-6" />, descriptionKey: 'codeDesc', tagKey: 'advanced' }
@@ -169,7 +169,9 @@ class MyStrategy(BaseStrategy):
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (error) {
-      console.error('保存失败:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('保存失败:', error)
+      }
     } finally {
       setIsSaving(false)
     }
@@ -254,8 +256,7 @@ class MyStrategy(BaseStrategy):
           <div className="flex items-center gap-3">
             <div className={activeTab === 'external' ? "w-12 h-12 rounded-lg overflow-hidden" : "w-12 h-12 rounded-lg bg-[#06B6D4]/10 flex items-center justify-center"}>
               {activeTab === 'external' ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src="/icons/tradingview.webp" alt="TradingView" className="w-full h-full object-cover" />
+                <Image src="/icons/tradingview.webp" alt="TradingView" width={48} height={48} className="w-full h-full object-cover" />
               ) : (
                 tabConfigs.find(tc => tc.id === activeTab)?.icon
               )}

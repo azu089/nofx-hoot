@@ -1,8 +1,10 @@
 import { Controller, Post, Get, Body, Param, Delete, Req, UseGuards } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { TelegramBotGuard } from '../../common/guards/telegram-bot.guard';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, RefreshTokenDto } from './dto/auth.dto';
 import {
   BindTelegramDto,
   TelegramLoginDto,
@@ -15,6 +17,7 @@ import {
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -31,8 +34,27 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
-  async login(@Body() dto: LoginDto, @Req() req: any) {
+  async login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, req.ip);
+  }
+
+  // 刷新 Token - 公开接口（限流：每分钟最多 10 次）
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('refresh')
+  async refreshToken(@Body() dto: RefreshTokenDto, @Req() req: Request) {
+    return this.authService.refreshAccessToken(
+      dto.refreshToken,
+      req.ip,
+      req.headers['user-agent'],
+    );
+  }
+
+  // 登出 - 需要认证（撤销所有活跃 Refresh Token）
+  @Post('logout')
+  async logout(@CurrentUser() user: { id: string }) {
+    await this.authService.revokeAllTokens(user.id);
+    return { message: '已登出' };
   }
 
   // 获取当前用户信息 - 需要认证
