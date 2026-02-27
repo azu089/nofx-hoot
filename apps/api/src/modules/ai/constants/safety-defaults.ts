@@ -24,9 +24,13 @@ export const AI_SAFETY_DEFAULTS = {
   atrAnomalyRatio: 2.0, // ATR3/ATR14 > 2.0 → 需更高共识
   atrAnomalyMinConfidence: 80, // 波动异常时最低信心度要求
 
+  // ── L9: 单小时价格变化率守卫（黑天鹅检测，ATR 滞后补偿） ──
+  priceChange1hExtreme: 8.0, // |1h涨跌| > 8% → 硬拦截新开仓
+  priceChange1hHigh: 5.0, // |1h涨跌| > 5% → 软警告（不拦截）
+
   // ── R:R 系统默认下限（用户可在策略 riskControlConfig.minRiskRewardRatio 覆盖） ──
-  // 对齐 NoFx: 单一固定值（NoFx 默认 3.0，HOOT 适度放宽到 1.5 适配加密市场波动）
-  minRiskRewardRatio: 1.5,
+  // NoFx 默认 3.0 → 加密短周期折中 2.0（策略可通过 strategyRiskConfig.minRiskRewardRatio 单独降低）
+  minRiskRewardRatio: 2.0,
 
   // ── L2: 共识（仅 Research 模式使用，Solo/Debate 跳过 L2） ──
   minConsensusModels: 2,

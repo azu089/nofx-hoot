@@ -28,6 +28,8 @@ interface ExchangePosition {
   amount: number;
   leverage: number;
   margin: number;
+  /** 交易所原始保证金比率（维持保证金/保证金余额），越接近 100% 越危险 */
+  marginRatio?: number;
   marginMode: 'cross' | 'isolated';
   unrealizedPnl: number;
   roe: number; // 收益率
@@ -50,6 +52,8 @@ export interface SyncedPosition {
   // 杠杆与保证金
   leverage: number;
   marginMode: string;
+  /** 交易所原始保证金比率（%），直接用于显示，不需要前端重算 */
+  marginRatio?: string;
   // 盈亏
   unrealizedPnl: string;
   roe: string; // 收益率百分比
@@ -89,8 +93,13 @@ export class PositionSyncService {
     );
 
     // 2. 获取数据库中的持仓
+    // 只查同一 apiKey 的持仓 + 未关联 apiKey 的旧持仓，避免跨交易所干扰
     const dbPositions = await this.prisma.position.findMany({
-      where: { userId, status: 'open' },
+      where: {
+        userId,
+        status: 'open',
+        OR: [{ apiKeyId }, { apiKeyId: null }],
+      },
       include: {
         subscription: {
           include: {
@@ -129,6 +138,10 @@ export class PositionSyncService {
           margin: exchangePos.margin.toString(),
           leverage: exchangePos.leverage,
           marginMode: exchangePos.marginMode,
+          // 交易所原始 marginRatio（小数形式 × 100 → 百分比字符串）
+          marginRatio: exchangePos.marginRatio != null
+            ? (exchangePos.marginRatio * 100).toFixed(2)
+            : undefined,
           unrealizedPnl: exchangePos.unrealizedPnl.toString(),
           roe: (exchangePos.roe * 100).toFixed(2), // 转为百分比
           status: 'open',
@@ -145,6 +158,16 @@ export class PositionSyncService {
         );
 
         // 返回数据库数据
+        // 若 DB leverage=1（可能是早期 CCXT bug 写入的错误值），尝试从 margin/notional 反推真实杠杆
+        const dbNotional = new Decimal(dbPos.amount.toString()).times(dbPos.entryPrice.toString());
+        let effectiveLeverage = dbPos.leverage || 1;
+        if (effectiveLeverage <= 1 && dbPos.margin) {
+          const dbMargin = new Decimal(dbPos.margin.toString());
+          if (dbMargin.gt(0) && dbNotional.gt(0)) {
+            const derived = Math.round(dbNotional.div(dbMargin).toNumber());
+            if (derived > 1 && derived <= 200) effectiveLeverage = derived;
+          }
+        }
         syncedPositions.push({
           id: dbPos.id,
           symbol: dbPos.symbol,
@@ -153,11 +176,9 @@ export class PositionSyncService {
           markPrice: dbPos.entryPrice.toString(), // 没有实时价格
           liquidationPrice: '0',
           amount: dbPos.amount.toString(),
-          notionalValue: new Decimal(dbPos.amount.toString())
-            .times(dbPos.entryPrice.toString())
-            .toString(),
+          notionalValue: dbNotional.toString(),
           margin: dbPos.margin?.toString() || '0',
-          leverage: dbPos.leverage || 1,
+          leverage: effectiveLeverage,
           marginMode: dbPos.marginMode || 'cross',
           unrealizedPnl: dbPos.pnl?.toString() || '0',
           roe: '0',
@@ -190,6 +211,9 @@ export class PositionSyncService {
           margin: ep.margin.toString(),
           leverage: ep.leverage,
           marginMode: ep.marginMode,
+          marginRatio: ep.marginRatio != null
+            ? (ep.marginRatio * 100).toFixed(2)
+            : undefined,
           unrealizedPnl: ep.unrealizedPnl.toString(),
           roe: (ep.roe * 100).toFixed(2),
           status: 'open',
@@ -237,6 +261,8 @@ export class PositionSyncService {
           amount: pos.quantity,
           leverage: pos.leverage,
           margin,
+          // 直接透传交易所原始 marginRatio，不重算
+          marginRatio: pos.marginRatio,
           marginMode: pos.marginMode,
           unrealizedPnl: pos.unrealizedPnl,
           roe,
@@ -259,10 +285,13 @@ export class PositionSyncService {
   ): Promise<void> {
     const margin = new Decimal(exchangePos.margin);
     const notional = new Decimal(exchangePos.notionalValue);
-    // 保证金比率 = 保证金 / 名义价值 * 100
-    const marginRatio = notional.gt(0)
-      ? margin.div(notional).times(100)
-      : new Decimal(0);
+    // 优先使用交易所原始 marginRatio（维持保证金/保证金余额，Binance 风险指标）
+    // 无交易所值时降级为 margin/notional*100（等价于 1/leverage，仅表示保证金占用率）
+    const marginRatio = exchangePos.marginRatio != null && exchangePos.marginRatio > 0
+      ? new Decimal(exchangePos.marginRatio).times(100)  // 交易所返回小数形式（0.05 = 5%）
+      : notional.gt(0)
+        ? margin.div(notional).times(100)
+        : new Decimal(0);
 
     await this.prisma.position.update({
       where: { id: positionId },

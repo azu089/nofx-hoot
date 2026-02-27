@@ -93,8 +93,6 @@ const PROMPT_PLACEHOLDERS = {
   decisionProcess: 'Hoot 已内置：完整多步骤分析框架（趋势→信号→风控→仓位）。\n可追加特殊约束，例如：「BTC 跌破 20 日均线时所有山寨币暂停开仓」',
 };
 
-const STRATEGY_PRESET_KEYS = ['conservative', 'balanced', 'aggressive'] as const;
-
 const STRATEGY_PRESETS = {
   conservative: {
     icon: Shield,
@@ -151,12 +149,11 @@ export function UnifiedAiCreate() {
   const createStrategy = useCreateStrategy();
   const strategyControl = useStrategyControl();
   const { data: aiConfig } = useAiConfig();
-  const updateAiConfig = useUpdateAiConfig();
+  useUpdateAiConfig(); // 保留 hook 调用以维持订阅，暂不使用返回值
   const appLocale = useLocale();
   useAiLocaleSync(appLocale);
   // ── Strategy mode selection ─────────────────────
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>('solo');
-  const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
   const reasoningRef = useRef<HTMLDivElement>(null);
 
   // ── Model selection ─────────────────────────────
@@ -174,7 +171,8 @@ export function UnifiedAiCreate() {
   const [strategyName, setStrategyName] = useState('');
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [exchangeApiKeyId, setExchangeApiKeyId] = useState<string | null>(null);
-  const [strategyStyle, setStrategyStyle] = useState<StrategyStyle>('balanced');
+  // strategyStyle 用于 derivedPromptMode（prompt 配置的 mode 字段），固定 'balanced' 即可
+  const [strategyStyle] = useState<StrategyStyle>('balanced');
   const [customParams, setCustomParams] = useState<PresetParams>(STRATEGY_PRESETS['balanced'].params);
   const [interval, setInterval_] = useState<Interval>(STRATEGY_DEFAULT_INTERVAL.solo);
 
@@ -186,28 +184,28 @@ export function UnifiedAiCreate() {
   // ── Research-specific ─────────────────────────────
   const [selectedSymbol, setSelectedSymbol] = useState('BTC/USDT');
   const [depth, setDepth] = useState<ResearchDepth>('standard');
-  const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
   const [symbolSearch, setSymbolSearch] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [symbolLimit, setSymbolLimit] = useState<number | null>(null);
 
   // ── Solo/Debate: coins ─────────────────────────────
   const [coinSource, setCoinSource] = useState<CoinSource>('manual');
   const [selectedCoins, setSelectedCoins] = useState<string[]>([]);
   const [excludedCoins, setExcludedCoins] = useState<string[]>([]);
-  const [maxCoins, setMaxCoins] = useState(5);
+  const [maxCoins] = useState(5); // 提交时仍用于 coinSourceConfig.maxCoins，UI 不再展示选择器
   const [showExcludedCoins, setShowExcludedCoins] = useState(false);
   const [coinSearch, setCoinSearch] = useState('');
-  const [showCoinPicker, setShowCoinPicker] = useState(false);
+  const [minPositionSize, setMinPositionSize] = useState(100);
+  // 日亏损上限（单位：$，直接金额，非百分比）
+  const [maxDailyDrawdownDollar, setMaxDailyDrawdownDollar] = useState(500);
 
   // ── Grid-specific ─────────────────────────────
   const [gridSymbol, setGridSymbol] = useState('BTC');
+  const [gridCoinSearch, setGridCoinSearch] = useState('');
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
   const [gridLeverage, setGridLeverage] = useState(1);
-  const [gridBoundsMode, setGridBoundsMode] = useState<'auto' | 'manual'>('auto');
   const [gridUpperBound, setGridUpperBound] = useState(0);
   const [gridLowerBound, setGridLowerBound] = useState(0);
-  const [gridAtrMultiplier, setGridAtrMultiplier] = useState(2);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
 
@@ -228,7 +226,7 @@ export function UnifiedAiCreate() {
   const isDebate = reasoningMode === 'debate';
   const derivedPromptMode = strategyStyle === 'aggressive' ? 'aggressive' : 'conservative';
 
-  const currentReasoningKey = REASONING_OPTION_KEYS.find((o) => o.key === reasoningMode)!;
+  // currentReasoningKey removed; mode selector now uses tabs;
 
   // ── 智能默认名称 ─────────────────────────────
   const generateDefaultName = useCallback(
@@ -263,8 +261,6 @@ export function UnifiedAiCreate() {
   // ── Effects ─────────────────────────────
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowSymbolDropdown(false);
-      if (reasoningRef.current && !reasoningRef.current.contains(e.target as Node)) setShowReasoningDropdown(false);
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelDropdown(false);
       if (modelListRef.current && !modelListRef.current.contains(e.target as Node)) setShowModelListDropdown(false);
     };
@@ -282,10 +278,13 @@ export function UnifiedAiCreate() {
   }, [aiConfig]);
 
   const filteredSymbols = useMemo(() => {
-    if (!symbolSearch) return POPULAR_SYMBOLS.map((s) => `${s}/USDT`);
-    const q = symbolSearch.toUpperCase();
-    return ALL_SYMBOLS.filter((s) => s.includes(q));
-  }, [symbolSearch]);
+    if (symbolSearch) {
+      const q = symbolSearch.toUpperCase();
+      return ALL_SYMBOLS.filter((s) => s.includes(q));
+    }
+    if (symbolLimit) return ALL_SYMBOLS.slice(0, symbolLimit);
+    return POPULAR_SYMBOLS.map((s) => `${s}/USDT`);
+  }, [symbolSearch, symbolLimit]);
 
   const allCoinNames = useMemo(() => [...new Set(ALL_SYMBOLS.map((s) => s.split('/')[0]))], []);
   const filteredCoins = useMemo(() => {
@@ -293,6 +292,11 @@ export function UnifiedAiCreate() {
     const q = coinSearch.toUpperCase();
     return allCoinNames.filter((c) => c.includes(q));
   }, [coinSearch, allCoinNames]);
+  const filteredGridCoins = useMemo(() => {
+    if (!gridCoinSearch) return GRID_COINS;
+    const q = gridCoinSearch.toUpperCase();
+    return allCoinNames.filter((c) => c.includes(q));
+  }, [gridCoinSearch, allCoinNames]);
 
   // ── Handlers ─────────────────────────────
 
@@ -301,18 +305,12 @@ export function UnifiedAiCreate() {
 
   const handleReasoningChange = (mode: ReasoningMode) => {
     setReasoningMode(mode);
-    setShowReasoningDropdown(false);
     autoFillName({ mode });
     // 切换模式时重置间隔为新模式的默认值（或保留当前值如果新列表中存在）
     const newIntervals = STRATEGY_INTERVALS[mode];
     if (!newIntervals.includes(interval)) {
       setInterval_(STRATEGY_DEFAULT_INTERVAL[mode]);
     }
-  };
-
-  const handleStyleChange = (style: StrategyStyle) => {
-    setStrategyStyle(style);
-    setCustomParams(STRATEGY_PRESETS[style].params);
   };
 
   const handleCoinToggle = (coin: string) => {
@@ -376,10 +374,13 @@ export function UnifiedAiCreate() {
           riskControlConfig: {
             maxPositions: customParams.maxPositions,
             maxLeverage: customParams.maxLeverage,
-            maxDailyDrawdown: customParams.dailyDrawdown,
+            maxDailyDrawdown: maxDailyDrawdownDollar,  // 直接$金额
             allocatedCapital: customParams.allocatedCapital,
             maxDailyTrades: customParams.maxDailyTrades,
             cooldownMinutes: customParams.cooldownMinutes,
+            minPositionSize,
+            minConfidence: customParams.minConfidence,
+            minRiskRewardRatio: customParams.minRR,
           },
         });
         router.push(`/ai/research/${result.sessionId}`);
@@ -416,13 +417,13 @@ export function UnifiedAiCreate() {
         riskControlConfig: {
           maxPositions: customParams.maxPositions,
           maxMarginUsage: customParams.maxMarginUsage,
-          minPositionSize: 12,
+          minPositionSize,
           maxLeverage: isGrid ? gridLeverage : customParams.maxLeverage,
           maxPositionPercent: customParams.maxPosition,
           minConfidence: customParams.minConfidence,
           minRiskRewardRatio: customParams.minRR,
           amountPerTrade: customParams.allocatedCapital * (customParams.maxPerTrade / 100),
-          maxDailyDrawdown: customParams.allocatedCapital * (customParams.dailyDrawdown / 100),
+          maxDailyDrawdown: maxDailyDrawdownDollar,  // 直接$金额，非百分比换算
           allocatedCapital: customParams.allocatedCapital,
           maxDailyTrades: customParams.maxDailyTrades,
           cooldownMinutes: customParams.cooldownMinutes,
@@ -439,9 +440,8 @@ export function UnifiedAiCreate() {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
           gridCount, totalInvestment: gridInvestment, leverage: gridLeverage,
-          useAtrBounds: gridBoundsMode === 'auto', atrMultiplier: gridAtrMultiplier,
-          upperBound: gridBoundsMode === 'manual' ? gridUpperBound : 0,
-          lowerBound: gridBoundsMode === 'manual' ? gridLowerBound : 0,
+          upperBound: gridUpperBound,
+          lowerBound: gridLowerBound,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
         };
       }
@@ -494,17 +494,10 @@ export function UnifiedAiCreate() {
     }
   };
 
-  // ── Style label helpers ─────────────────────────────
-  const getStyleLabel = (style: StrategyStyle): string => {
-    if (style === 'conservative') return t('create.conservative');
-    if (style === 'aggressive') return t('create.aggressive');
-    return t('create.balanced');
-  };
-
   // ── Reasoning mode label helpers ─────────────────────────────
   const getModeLabel = (key: ReasoningMode): string => {
     if (key === 'research') return t('modes.research');
-    if (key === 'solo') return t('modes.solo');
+    if (key === 'solo') return '极速';  // solo 模式品牌名称：极速（单模型，不同于共识debate≥2模型）
     if (key === 'grid') return t('modes.grid');
     return t('modes.debate');
   };
@@ -555,141 +548,124 @@ export function UnifiedAiCreate() {
       {/* ── Form content (single page scroll) ────────────────────────── */}
       <main className="pb-44 p-4 space-y-6">
 
-        {/* ═══════════ 1. Reasoning Mode Dropdown ═══════════ */}
-        <div className="space-y-2">
-          <label className="block text-sm text-[#9090A0]">{t('create.reasoningMode')}</label>
-          <div className="relative" ref={reasoningRef}>
-            <button
-              type="button"
-              onClick={() => setShowReasoningDropdown(!showReasoningDropdown)}
-              className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
-              aria-label={t('create.selectMode')} title={t('create.selectMode')}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#06B6D4]/15 flex items-center justify-center">
-                  <currentReasoningKey.icon className="w-4 h-4 text-[#06B6D4]" />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-[#F8F8FC]">{getModeLabel(currentReasoningKey.key)}</div>
-                  <div className="text-xs text-[#606070]">{getModeDesc(currentReasoningKey.key)}</div>
-                </div>
-              </div>
-              <ChevronDown className={`w-5 h-5 text-[#606070] transition-transform ${showReasoningDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showReasoningDropdown && (
-              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl shadow-2xl overflow-hidden">
-                {REASONING_OPTION_KEYS.map((opt) => {
-                  const Icon = opt.icon;
-                  const sel = reasoningMode === opt.key;
-                  return (
-                    <button
-                      key={opt.key} type="button"
-                      onClick={() => handleReasoningChange(opt.key)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
-                        sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${sel ? 'bg-[#06B6D4]/20' : 'bg-[#1E1E2E]'}`}>
-                        <Icon className={`w-4 h-4 ${sel ? 'text-[#06B6D4]' : 'text-[#9090A0]'}`} />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className={`text-sm font-medium ${sel ? 'text-[#06B6D4]' : 'text-[#F8F8FC]'}`}>{getModeLabel(opt.key)}</div>
-                        <div className="text-xs text-[#606070]">{getModeDesc(opt.key)}</div>
-                      </div>
-                      {sel && <Check className="w-4 h-4 text-[#06B6D4]" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        {/* ═══════════ 1. Reasoning Mode Tabs ═══════════ */}
+        <div className="flex gap-1 bg-[#12121A] p-1 rounded-xl">
+          {REASONING_OPTION_KEYS.map(({ key, icon: Icon }) => {
+            const sel = reasoningMode === key;
+            return (
+              <button key={key} type="button" onClick={() => handleReasoningChange(key)}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                  sel ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30' : 'text-[#9090A0] hover:text-[#F8F8FC]'
+                }`}
+                aria-label={getModeLabel(key)} title={getModeLabel(key)}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{getModeLabel(key)}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* ═══════════ 策略名称 ═══════════ */}
-        {!isResearch && (
-          <div className="space-y-2">
-            <label className="block text-sm text-[#9090A0]">{t('create.strategyName')}</label>
-            <input
-              type="text"
-              placeholder={t('create.strategyNamePlaceholder')}
-              value={strategyName}
-              onChange={(e) => {
-                const val = e.target.value;
-                setStrategyName(val);
-                setNameManuallyEdited(val !== '');
-              }}
-              className="w-full px-4 py-3 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] transition-colors"
-              aria-label={t('create.strategyName')}
-            />
-          </div>
-        )}
+        {/* ═══════════ 策略名称（所有模式固定显示）═══════════ */}
+        <div className="space-y-2">
+          <label className="block text-sm text-[#9090A0]">{t('create.strategyName')}</label>
+          <input
+            type="text"
+            placeholder={t('create.strategyNamePlaceholder')}
+            value={strategyName}
+            onChange={(e) => {
+              const val = e.target.value;
+              setStrategyName(val);
+              setNameManuallyEdited(val !== '');
+            }}
+            className="w-full px-4 py-3 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] transition-colors"
+            aria-label={t('create.strategyName')}
+          />
+        </div>
+
+        {/* ═══════════ 交易所（所有模式固定显示）═══════════ */}
+        <ExchangeKeySelector
+          value={exchangeApiKeyId}
+          onChange={setExchangeApiKeyId}
+          label={t('create.exchangeAccount')}
+        />
 
         {/* ═══════════ 交易目标 section ═══════════ */}
 
-        {/* ═══════════ 5. Research: Single Coin + Depth ═══════════ */}
+        {/* ═══════════ 5. Research: Coin Source + Single Coin + Depth ═══════════ */}
         {isResearch && (
           <>
+            {/* 币种来源（与共识/极速一致）*/}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm text-[#9090A0]">{t('create.selectCoins')}</label>
-                <button type="button" onClick={() => setShowSymbolDropdown(!showSymbolDropdown)}
-                  className="text-xs text-[#06B6D4]"
-                >
-                  {showSymbolDropdown ? t('create.collapseCoins') : t('create.selectCoins2')}
-                </button>
+              <label className="block text-sm text-[#9090A0]">{t('create.coinSource')}</label>
+              <div className="flex flex-wrap gap-2">
+                {(['manual', 'ai', 'oi_top', 'oi_low', 'mixed'] as CoinSource[]).map((src) => (
+                  <button
+                    key={src} type="button"
+                    onClick={() => setCoinSource(src)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                      coinSource === src
+                        ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                        : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
+                    }`}
+                  >{getCoinSourceLabel(src)}</button>
+                ))}
               </div>
+              {coinSource !== 'manual' && coinSource !== 'mixed' && (
+                <p className="text-xs text-[#606070]">
+                  {coinSource === 'ai' && t('create.coinSourceAIDesc')}
+                  {coinSource === 'oi_top' && t('create.coinSourceOIDesc')}
+                  {coinSource === 'oi_low' && t('create.coinSourceOILowDesc')}
+                </p>
+              )}
+            </div>
 
-              {/* Selected chip container */}
-              <div
-                className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px] cursor-text"
-                onClick={() => setShowSymbolDropdown(true)}
-              >
-                {selectedSymbol ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs">
-                    {selectedSymbol}
-                    <X className="w-3 h-3 cursor-pointer hover:text-white"
-                      onClick={(e) => { e.stopPropagation(); setSelectedSymbol('BTC/USDT'); }}
+            {/* 手动/混合：单一交易对选择 */}
+            {(coinSource === 'manual' || coinSource === 'mixed') && (
+              <div className="space-y-3">
+                <label className="block text-sm text-[#9090A0]">{t('create.tradingPair')}</label>
+
+                {/* Tag-input：选中 chip + 内联搜索 */}
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
+                  {selectedSymbol && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs">
+                      {selectedSymbol.replace('/USDT', '')}
+                      <X className="w-3 h-3 cursor-pointer hover:text-white"
+                        onClick={() => setSelectedSymbol('')}
+                      />
+                    </span>
+                  )}
+                  <div className="flex items-center flex-1 min-w-[120px]">
+                    <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                    <input
+                      type="text"
+                      placeholder={t('create.searchCoins')}
+                      value={symbolSearch}
+                      onChange={(e) => setSymbolSearch(e.target.value)}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
                     />
-                  </span>
-                ) : (
-                  <span className="text-xs text-[#606070]">{t('create.clickToSelect')}</span>
-                )}
-              </div>
+                  </div>
+                </div>
 
-              {/* Expandable picker */}
-              {showSymbolDropdown && (
+                {/* Quick select + Symbol list */}
                 <div className="space-y-2">
-                  {/* Quick select */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] text-[#606070]">{t('create.quickSelect')}</span>
                     {[10, 20, 30].map((n) => (
                       <button key={n} type="button"
-                        onClick={() => setSelectedSymbol(ALL_SYMBOLS[n - 1] ?? ALL_SYMBOLS[0])}
+                        onClick={() => { setSymbolLimit(n); setSymbolSearch(''); }}
                         className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
                       >Top {n}</button>
                     ))}
-                    <button type="button" onClick={() => setSelectedSymbol('BTC/USDT')}
+                    <button type="button" onClick={() => { setSelectedSymbol(''); setSymbolLimit(null); setSymbolSearch(''); }}
                       className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
                     >{t('common.clear')}</button>
                   </div>
-                  {/* Search */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#606070]" />
-                    <input
-                      type="text" placeholder={t('create.searchCoins')}
-                      value={symbolSearch}
-                      onChange={(e) => setSymbolSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:border-[#06B6D4] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  {/* 常用 label — only when no search */}
                   {!symbolSearch && <div className="text-[10px] text-[#606070]">{t('create.popular')}</div>}
-                  {/* Symbol list */}
-                  <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                  <div className="flex flex-wrap gap-1.5">
                     {filteredSymbols.map((symbol) => (
                       <button key={symbol} type="button"
-                        onClick={() => { setSelectedSymbol(symbol); setSymbolSearch(''); setShowSymbolDropdown(false); autoFillName({ symbol }); }}
+                        onClick={() => { setSelectedSymbol(symbol); setSymbolSearch(''); setSymbolLimit(null); autoFillName({ symbol }); }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                           selectedSymbol === symbol ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
                         }`}
@@ -701,8 +677,9 @@ export function UnifiedAiCreate() {
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
 
             <div className="space-y-3">
               <label className="block text-sm text-[#9090A0]">{t('create.researchDepth')}</label>
@@ -756,89 +733,66 @@ export function UnifiedAiCreate() {
               )}
             </div>
 
-            {coinSource !== 'manual' && (
-              <PillGroup
-                label={t('create.maxCoins')}
-                options={[{value:3,label:'3'},{value:5,label:'5'},{value:8,label:'8'},{value:10,label:'10'},{value:15,label:'15'}]}
-                value={maxCoins}
-                onChange={setMaxCoins}
-              />
-            )}
-
             {(coinSource === 'manual' || coinSource === 'mixed') && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#9090A0]">
-                    {coinSource === 'mixed' ? t('create.seedCoins') : t('create.tradingPair')}
-                  </span>
-                  <button type="button" onClick={() => setShowCoinPicker(!showCoinPicker)}
-                    className="text-xs text-[#06B6D4]"
-                  >
-                    {showCoinPicker ? t('create.collapseCoins') : t('create.selectCoins2')}
-                  </button>
-                </div>
+                <span className="text-sm text-[#9090A0]">
+                  {coinSource === 'mixed' ? t('create.seedCoins') : t('create.tradingPair')}
+                </span>
 
-                {/* Selected chips container */}
-                <div
-                  className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px] cursor-text"
-                  onClick={() => setShowCoinPicker(true)}
-                >
+                {/* Tag-input：已选 chips + 内联搜索（单一输入区，消除双搜索框）*/}
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
                   {selectedCoins.map((coin) => (
                     <span key={coin} className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs">
                       {coin}
-                      <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={(e) => { e.stopPropagation(); handleCoinToggle(coin); }} />
+                      <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => handleCoinToggle(coin)} />
                     </span>
                   ))}
-                  {selectedCoins.length === 0 && (
-                    <span className="text-xs text-[#606070]">{t('create.clickToSelect')}</span>
-                  )}
+                  <div className="flex items-center flex-1 min-w-[120px]">
+                    <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={coinSearch}
+                      onChange={(e) => setCoinSearch(e.target.value)}
+                      placeholder={selectedCoins.length === 0 ? t('create.searchCoins') : ''}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
+                    />
+                  </div>
                 </div>
 
-                {/* Expandable picker */}
-                {showCoinPicker && (
-                  <div className="space-y-3">
-                    {/* Quick select */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] text-[#606070]">{t('create.quickSelect')}</span>
-                      {[10, 20, 30].map((n) => (
-                        <button key={n} type="button" onClick={() => handleQuickSelect(n)}
-                          className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
-                        >Top {n}</button>
-                      ))}
-                      <button type="button" onClick={() => setSelectedCoins([])}
+                {/* Coin picker */}
+                <div className="space-y-3">
+                  {/* Quick select */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-[#606070]">{t('create.quickSelect')}</span>
+                    {[10, 20, 30].map((n) => (
+                      <button key={n} type="button" onClick={() => handleQuickSelect(n)}
                         className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
-                      >{t('common.clear')}</button>
-                    </div>
-
-                    {/* Search */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#606070]" />
-                      <input type="text" value={coinSearch} onChange={(e) => setCoinSearch(e.target.value)}
-                        placeholder={t('create.searchCoins')}
-                        className="w-full pl-9 pr-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:border-[#06B6D4] focus:outline-none transition-colors"
-                      />
-                    </div>
-
-                    {/* Coin chips */}
-                    {!coinSearch && <div className="text-[10px] text-[#606070]">{t('create.popular')}</div>}
-                    <div className="flex flex-wrap gap-1.5">
-                      {filteredCoins.map((coin) => {
-                        const sel = selectedCoins.includes(coin);
-                        return (
-                          <button key={coin} type="button" onClick={() => { handleCoinToggle(coin); setCoinSearch(''); }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                              sel ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
-                            }`}
-                            aria-label={coin} title={coin}
-                          >{coin}</button>
-                        );
-                      })}
-                      {coinSearch && filteredCoins.length === 0 && (
-                        <span className="text-xs text-[#606070] py-2">{t('create.notFound')}</span>
-                      )}
-                    </div>
+                      >Top {n}</button>
+                    ))}
+                    <button type="button" onClick={() => setSelectedCoins([])}
+                      className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
+                    >{t('common.clear')}</button>
                   </div>
-                )}
+
+                  {/* Coin chips */}
+                  {!coinSearch && <div className="text-[10px] text-[#606070]">{t('create.popular')}</div>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {filteredCoins.map((coin) => {
+                      const sel = selectedCoins.includes(coin);
+                      return (
+                        <button key={coin} type="button" onClick={() => { handleCoinToggle(coin); setCoinSearch(''); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            sel ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
+                          }`}
+                          aria-label={coin} title={coin}
+                        >{coin}</button>
+                      );
+                    })}
+                    {coinSearch && filteredCoins.length === 0 && (
+                      <span className="text-xs text-[#606070] py-2">{t('create.notFound')}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -879,89 +833,171 @@ export function UnifiedAiCreate() {
         {isGrid && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-1">
-              <Grid3X3 className="w-4 h-4 text-[#10B981]" />
+              <Grid3X3 className="w-4 h-4 text-[#06B6D4]" />
               <h3 className="text-sm font-semibold">{t('create.gridParams')}</h3>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs text-[#9090A0]">{t('create.gridPair')}</label>
-              <div className="flex flex-wrap gap-2">
-                {GRID_COINS.map((coin) => (
-                  <button key={coin} type="button" onClick={() => { setGridSymbol(coin); autoFillName({ gSymbol: coin }); }}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                      gridSymbol === coin ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]' : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#10B981]/40'
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-[#9090A0]">{t('create.gridPair')}</label>
+                <span className="text-[10px] text-[#606070]">⚠ 网格仅支持单一交易对</span>
+              </div>
+              {/* Tag-input：选中 chip + 内联搜索 */}
+              <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs font-medium">
+                  {gridSymbol}
+                </span>
+                <div className="flex items-center flex-1 min-w-[100px]">
+                  <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={gridCoinSearch}
+                    onChange={(e) => setGridCoinSearch(e.target.value)}
+                    placeholder="搜索更多..."
+                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
+                  />
+                </div>
+              </div>
+              {!gridCoinSearch && <div className="text-[10px] text-[#606070]">{t('create.popular')}</div>}
+              <div className="flex flex-wrap gap-1.5">
+                {filteredGridCoins.map((coin) => (
+                  <button key={coin} type="button"
+                    onClick={() => { setGridSymbol(coin); setGridCoinSearch(''); autoFillName({ gSymbol: coin }); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      gridSymbol === coin ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
                     }`}
-                    aria-label={`${coin}/USDT`} title={`${coin}/USDT`}
-                  >{coin}/USDT</button>
+                    aria-label={coin} title={coin}
+                  >{coin}</button>
                 ))}
               </div>
             </div>
 
-            <NumberStepper label={t('create.gridInvestment')} value={gridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setGridInvestment} />
-            <PillGroup
-              label={t('create.gridLeverage')}
-              options={[{value:1,label:'1x'},{value:2,label:'2x'},{value:3,label:'3x'},{value:4,label:'4x'},{value:5,label:'5x'}]}
-              value={gridLeverage}
-              onChange={setGridLeverage}
-            />
-            <NumberStepper label={t('create.gridCount')} value={gridCount} min={5} max={50} onChange={setGridCount} />
-
-            <div className="space-y-2">
-              <label className="block text-xs text-[#9090A0]">{t('create.gridSpacing')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                {([{ key: 'auto' as const, label: t('create.gridAutoATR') }, { key: 'manual' as const, label: t('create.gridManualSetting') }]).map((m) => (
-                  <button key={m.key} type="button" onClick={() => setGridBoundsMode(m.key)}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                      gridBoundsMode === m.key
-                        ? 'bg-[#06B6D4]/10 border border-[#06B6D4] text-[#06B6D4]'
-                        : 'bg-[#12121A] border border-[#1E1E2E] text-[#9090A0] hover:border-[#06B6D4]/40'
-                    }`}
-                    aria-label={m.label} title={m.label}
-                  >{m.label}</button>
-                ))}
+            <NumberStepper label="资金上限" value={gridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setGridInvestment} />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridLeverage')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={20}
+                    value={gridLeverage || ''} onChange={(e) => setGridLeverage(parseInt(e.target.value) || 0)}
+                    aria-label={t('create.gridLeverage')}
+                  />
+                  <span className="text-[#606070] text-xs shrink-0">x</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridCount')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={5} max={100}
+                    value={gridCount || ''} onChange={(e) => setGridCount(parseInt(e.target.value) || 0)}
+                    aria-label={t('create.gridCount')}
+                  />
+                  <span className="text-[#606070] text-xs shrink-0">格</span>
+                </div>
               </div>
             </div>
 
-            {gridBoundsMode === 'auto' ? (
-              <PillGroup
-                label={t('create.gridAtrMultiplier')}
-                options={[{value:1,label:'1x'},{value:1.5,label:'1.5x'},{value:2,label:'2x'},{value:2.5,label:'2.5x'},{value:3,label:'3x'},{value:4,label:'4x'},{value:5,label:'5x'}]}
-                value={gridAtrMultiplier}
-                onChange={setGridAtrMultiplier}
-              />
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label htmlFor="grid-upper" className="block text-xs text-[#9090A0]">{t('create.gridUpperBound')}</label>
-                  <input id="grid-upper" type="number" placeholder={t('create.gridUpperBound')}
-                    value={gridUpperBound || ''} onChange={(e) => setGridUpperBound(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4]"
+            {/* 配置后果预览：实时展示强平距离、每层保证金、风险等级 */}
+            {(() => {
+              const safeCount = Math.max(gridCount, 1);
+              const safeLeverage = Math.max(gridLeverage, 1);
+              const perLevelMargin = gridInvestment / safeCount;
+              const liqDropPct = Math.floor((1 / safeLeverage) * 100);
+
+              const risk = safeLeverage <= 1 ? { label: '安全',   color: '#10B981', bar: 10 }
+                : safeLeverage <= 2           ? { label: '低风险', color: '#22C55E', bar: 25 }
+                : safeLeverage <= 3           ? { label: '中等',   color: '#F59E0B', bar: 50 }
+                : safeLeverage <= 5           ? { label: '较高',   color: '#EF4444', bar: 72 }
+                :                               { label: '高风险', color: '#DC2626', bar: 92 };
+
+              const rec = gridInvestment < 300  ? { leverage: 1, count: 5  }
+                : gridInvestment < 1000         ? { leverage: 2, count: 6  }
+                : gridInvestment < 3000         ? { leverage: 2, count: 8  }
+                :                                 { leverage: 3, count: 10 };
+
+              const showRec = safeLeverage > rec.leverage;
+
+              return (
+                <div className="p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#9090A0]">
+                      每层保证金{' '}
+                      <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
+                      <span className="text-[#404060] mx-1.5">·</span>
+                      强平距离{' '}
+                      <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 触发
+                    </span>
+                    <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
+                  </div>
+                  <div className="h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
+                    />
+                  </div>
+                  {showRec && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-[#606070]">
+                        💡 ${gridInvestment} 建议 {rec.leverage}x · {rec.count}格，强平距离 &gt;{Math.floor(100 / rec.leverage)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setGridLeverage(rec.leverage); setGridCount(rec.count); }}
+                        className="px-2 py-0.5 rounded bg-[#06B6D4]/15 text-[#06B6D4] hover:bg-[#06B6D4]/25 transition-colors"
+                      >
+                        应用
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridUpperBound')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <span className="text-[#606070] text-xs shrink-0">$</span>
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0}
+                    value={gridUpperBound || ''} placeholder="0"
+                    onChange={(e) => setGridUpperBound(parseFloat(e.target.value) || 0)}
                     aria-label={t('create.gridUpperBound')}
                   />
                 </div>
-                <div className="space-y-1">
-                  <label htmlFor="grid-lower" className="block text-xs text-[#9090A0]">{t('create.gridLowerBound')}</label>
-                  <input id="grid-lower" type="number" placeholder={t('create.gridLowerBound')}
-                    value={gridLowerBound || ''} onChange={(e) => setGridLowerBound(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4]"
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridLowerBound')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <span className="text-[#606070] text-xs shrink-0">$</span>
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0}
+                    value={gridLowerBound || ''} placeholder="0"
+                    onChange={(e) => setGridLowerBound(parseFloat(e.target.value) || 0)}
                     aria-label={t('create.gridLowerBound')}
                   />
                 </div>
               </div>
-            )}
-
-            <PillGroup
-              label={t('create.gridMaxDrawdown')}
-              options={[{value:5,label:'5%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'},{value:30,label:'30%'},{value:50,label:'50%'}]}
-              value={gridMaxDrawdown}
-              onChange={setGridMaxDrawdown}
-            />
-            <PillGroup
-              label={t('create.gridStopLossPercent')}
-              options={[{value:2,label:'2%'},{value:3,label:'3%'},{value:5,label:'5%'},{value:8,label:'8%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'}]}
-              value={gridStopLoss}
-              onChange={setGridStopLoss}
-            />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridMaxDrawdown')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={100}
+                    value={gridMaxDrawdown || ''} onChange={(e) => setGridMaxDrawdown(parseInt(e.target.value) || 0)}
+                    aria-label={t('create.gridMaxDrawdown')}
+                  />
+                  <span className="text-[#606070] text-xs shrink-0">%</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">{t('create.gridStopLossPercent')}</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={100}
+                    value={gridStopLoss || ''} onChange={(e) => setGridStopLoss(parseInt(e.target.value) || 0)}
+                    aria-label={t('create.gridStopLossPercent')}
+                  />
+                  <span className="text-[#606070] text-xs shrink-0">%</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -972,7 +1008,7 @@ export function UnifiedAiCreate() {
         {/* Single model dropdown for Research / Solo */}
         {!isDebate && (
           <div className="space-y-3">
-            <label className="block text-sm text-[#9090A0]">{t('create.aiModel')}</label>
+            <label className="block text-sm text-[#9090A0]">LLM</label>
             <div className="relative" ref={modelRef}>
               <button
                 type="button"
@@ -1079,15 +1115,6 @@ export function UnifiedAiCreate() {
           </div>
         )}
 
-        {/* ═══════════ 运行配置 section ═══════════ */}
-        <div className="h-px bg-[#1E1E2E]" />
-
-        <ExchangeKeySelector
-          value={exchangeApiKeyId}
-          onChange={setExchangeApiKeyId}
-          label={t('create.exchangeAccount')}
-        />
-
         {/* ═══════════ 7. Interval ═══════════ */}
         <div className="space-y-3">
           <label className="block text-sm text-[#9090A0]">{t('create.runInterval')}</label>
@@ -1119,86 +1146,110 @@ export function UnifiedAiCreate() {
                   <div className="text-sm font-medium text-[#9090A0]">{t('create.riskControl')}</div>
                   <div className="text-[10px] text-[#606070]">{t('create.riskControlDesc')}</div>
                 </div>
-                <span className="px-2 py-0.5 text-[10px] bg-[#06B6D4]/15 text-[#06B6D4] rounded-full">{getStyleLabel(strategyStyle)}</span>
               </div>
               <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showRiskControl ? 'rotate-180' : ''}`} />
             </button>
             {showRiskControl && (
-              <div className="px-4 pb-4 space-y-5">
-                {/* Strategy style presets */}
-                <div className="space-y-2.5">
-                  <label className="block text-xs text-[#9090A0]">{t('create.stylePreset')}</label>
-                  <div className="space-y-2">
-                    {(STRATEGY_PRESET_KEYS as readonly StrategyStyle[]).map((style) => {
-                      const preset = STRATEGY_PRESETS[style];
-                      const Icon = preset.icon;
-                      const sel = strategyStyle === style;
-                      return (
-                        <button key={style} type="button" onClick={() => handleStyleChange(style)}
-                          className={`w-full p-3 rounded-xl text-left transition-all ${
-                            sel ? 'bg-[#06B6D4]/10 border border-[#06B6D4]' : 'bg-[#12121A] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
-                          }`}
-                          aria-label={t('create.selectStylePreset', { style: getStyleLabel(style) })} title={getStyleLabel(style)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Icon className={`w-4 h-4 ${sel ? 'text-[#06B6D4]' : 'text-[#9090A0]'}`} />
-                              <span className="font-semibold text-sm">{getStyleLabel(style)}</span>
-                              <span className="text-xs text-[#606070]">{t(preset.descKey)}</span>
-                            </div>
-                            {sel && <Check className="w-4 h-4 text-[#06B6D4]" />}
-                            {style === 'balanced' && !sel && <span className="px-2 py-0.5 bg-[#06B6D4]/20 text-[#06B6D4] text-[10px] rounded-full">{t('common.recommended')}</span>}
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {preset.tagKeys.map((tagKey) => (
-                              <span key={tagKey} className={`px-2 py-0.5 rounded-full text-[10px] ${sel ? 'bg-[#06B6D4]/10 text-[#06B6D4]' : 'bg-[#1E1E2E] text-[#606070]'}`}>{t(tagKey)}</span>
-                            ))}
-                          </div>
-                        </button>
-                      );
-                    })}
+              <div className="px-4 pb-4 space-y-4">
+                {/* 资金上限 */}
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">{t('create.allocatedCapital')}</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <span className="text-[#606070] text-xs">$</span>
+                    <input type="number" min={500} max={100000}
+                      value={customParams.allocatedCapital || ''}
+                      onChange={(e) => setCustomParams((p) => ({ ...p, allocatedCapital: parseFloat(e.target.value) || 0 }))}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    />
                   </div>
                 </div>
 
-                {/* Advanced controls */}
-                <div className="space-y-4 pt-2 border-t border-[#1E1E2E]">
-                  <p className="text-xs text-[#606070]">{t('create.presetAutoConfig')}</p>
-                  <NumberStepper
-                    label={t('create.allocatedCapital')}
-                    value={customParams.allocatedCapital}
-                    min={500} max={100000} step={500} prefix="$"
-                    onChange={(v) => setCustomParams((p) => ({ ...p, allocatedCapital: v }))}
-                  />
-                  <PillGroup
-                    label={t('create.maxLeverage')}
-                    options={[{value:1,label:'1x'},{value:2,label:'2x'},{value:3,label:'3x'},{value:5,label:'5x'},{value:10,label:'10x'},{value:15,label:'15x'},{value:20,label:'20x'}]}
-                    value={customParams.maxLeverage}
-                    onChange={(v) => setCustomParams((p) => ({ ...p, maxLeverage: v }))}
-                  />
-                  <PillGroup
-                    label={t('create.maxPositions')}
-                    options={[{value:1,label:'1'},{value:2,label:'2'},{value:3,label:'3'},{value:5,label:'5'},{value:8,label:'8'},{value:10,label:'10'}]}
-                    value={customParams.maxPositions}
-                    onChange={(v) => setCustomParams((p) => ({ ...p, maxPositions: v }))}
-                  />
-                  <PillGroup
-                    label={t('create.dailyDrawdown')}
-                    options={[{value:3,label:'3%'},{value:5,label:'5%'},{value:8,label:'8%'},{value:10,label:'10%'},{value:15,label:'15%'},{value:20,label:'20%'}]}
-                    value={customParams.dailyDrawdown}
-                    onChange={(v) => setCustomParams((p) => ({ ...p, dailyDrawdown: v }))}
-                  />
-                  <PillGroup
-                    label={t('create.maxDailyTrades')}
-                    options={[{value:3,label:'3'},{value:5,label:'5'},{value:10,label:'10'},{value:20,label:'20'},{value:50,label:'50'}]}
-                    value={customParams.maxDailyTrades}
-                    onChange={(v) => setCustomParams((p) => ({ ...p, maxDailyTrades: v }))}
-                  />
-                  <PillGroup
-                    label={t('create.cooldownMinutes')}
-                    options={[{value:0,label:'0'},{value:5,label:'5m'},{value:15,label:'15m'},{value:30,label:'30m'},{value:60,label:'1h'},{value:120,label:'2h'}]}
-                    value={customParams.cooldownMinutes}
-                    onChange={(v) => setCustomParams((p) => ({ ...p, cooldownMinutes: v }))}
-                  />
+                {/* 2列风控参数网格 */}
+                <div className="grid grid-cols-2 gap-2">
+                  {/* 最大杠杆 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('create.maxLeverage')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={1} max={100}
+                        value={customParams.maxLeverage || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, maxLeverage: parseFloat(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">x</span>
+                    </div>
+                  </div>
+                  {/* 日亏损上限（$，非%） */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">日亏损上限</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <span className="text-[#606070] text-xs">$</span>
+                      <input type="number" min={0}
+                        value={maxDailyDrawdownDollar || ''}
+                        onChange={(e) => setMaxDailyDrawdownDollar(parseFloat(e.target.value) || 0)}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                    </div>
+                  </div>
+                  {/* 每日最大交易 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('create.maxDailyTrades')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={1} max={200}
+                        value={customParams.maxDailyTrades || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, maxDailyTrades: parseInt(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">次</span>
+                    </div>
+                  </div>
+                  {/* 冷却时间 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('create.cooldownMinutes')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0} max={1440}
+                        value={customParams.cooldownMinutes || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, cooldownMinutes: parseInt(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">min</span>
+                    </div>
+                  </div>
+                  {/* 最低置信度 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('create.minConfidence')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0} max={100}
+                        value={customParams.minConfidence || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, minConfidence: parseInt(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">%</span>
+                    </div>
+                  </div>
+                  {/* 最低盈亏比 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">最低盈亏比</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0} max={20} step={0.1}
+                        value={customParams.minRR || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, minRR: parseFloat(e.target.value) || 0 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">:1</span>
+                    </div>
+                  </div>
+                  {/* 最小持仓 */}
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('create.minPositionSize')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <span className="text-[#606070] text-xs">$</span>
+                      <input type="number" min={0}
+                        value={minPositionSize || ''}
+                        onChange={(e) => setMinPositionSize(parseFloat(e.target.value) || 0)}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

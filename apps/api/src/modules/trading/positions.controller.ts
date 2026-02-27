@@ -49,27 +49,41 @@ export class PositionsController {
     if (!apiKeyId) {
       // 如果没有指定 apiKeyId，返回数据库中的持仓（含已同步的实时数据）
       const dbPositions = await this.positionsService.getOpenPositions(user.id);
-      return dbPositions.map((pos) => ({
-        id: pos.id,
-        symbol: pos.symbol,
-        side: pos.side,
-        entryPrice: pos.entryPrice,
-        markPrice: pos.markPrice || pos.entryPrice,
-        liquidationPrice: pos.liquidationPrice || '0',
-        amount: pos.amount,
-        notionalValue: '0',
-        margin: pos.margin || '0',
-        leverage: pos.leverage || 1,
-        marginMode: pos.marginMode || 'cross',
-        unrealizedPnl: pos.unrealizedPnl || pos.pnl || '0',
-        roe: pos.pnlPercent || '0',
-        status: pos.status,
-        tradingType: pos.tradingType || 'spot',
-        strategyName: pos.strategyName,
-        createdAt: pos.createdAt,
-        syncedAt: pos.lastSyncAt || new Date(),
-        syncSource: 'database' as const,
-      }));
+      return dbPositions.map((pos) => {
+        // 若 DB leverage ≤ 1 但有保证金数据，从 margin/notional 反推真实杠杆
+        let effectiveLeverage = pos.leverage || 1;
+        if (effectiveLeverage <= 1 && pos.margin && pos.margin !== '0') {
+          const notional = parseFloat(pos.amount) * parseFloat(pos.entryPrice);
+          const margin = parseFloat(pos.margin);
+          if (margin > 0 && notional > 0) {
+            const derived = Math.round(notional / margin);
+            if (derived > 1 && derived <= 200) effectiveLeverage = derived;
+          }
+        }
+        return {
+          id: pos.id,
+          symbol: pos.symbol,
+          side: pos.side,
+          entryPrice: pos.entryPrice,
+          markPrice: pos.markPrice || pos.entryPrice,
+          liquidationPrice: pos.liquidationPrice || '0',
+          amount: pos.amount,
+          notionalValue: '0',
+          margin: pos.margin || '0',
+          leverage: effectiveLeverage,
+          marginMode: pos.marginMode || 'cross',
+          // 从 DB 读取上次同步的交易所 marginRatio（可能为 null）
+          marginRatio: pos.marginRatio != null ? pos.marginRatio.toString() : undefined,
+          unrealizedPnl: pos.unrealizedPnl || pos.pnl || '0',
+          roe: pos.pnlPercent || '0',
+          status: pos.status,
+          tradingType: pos.tradingType || 'spot',
+          strategyName: pos.strategyName,
+          createdAt: pos.createdAt,
+          syncedAt: pos.lastSyncAt || new Date(),
+          syncSource: 'database' as const,
+        };
+      });
     }
     return this.positionSyncService.syncUserPositions(user.id, apiKeyId);
   }
@@ -98,7 +112,7 @@ export class PositionsController {
   ) {
     return this.positionsService.getExecutionLogs(
       user.id,
-      limit ? parseInt(limit) : 50,
+      limit ? Math.min(100, Math.max(1, parseInt(limit) || 50)) : 50,
       actionsOnly !== 'false', // 默认 true: 只返回交易执行记录
     );
   }

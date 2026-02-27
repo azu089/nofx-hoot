@@ -64,9 +64,9 @@ export const AI_MODELS: Record<string, AIModelConfig> = {
     contextWindow: 200000,
   },
   GEMINI_FLASH: {
-    name: 'gemini-2.5-flash',
+    name: 'gemini-3-flash-preview',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    displayName: 'Gemini 2.5 Flash',
+    displayName: 'Gemini 3 Flash',
     provider: 'Google',
     contextWindow: 1000000,
   },

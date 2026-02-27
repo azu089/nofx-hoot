@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
+import { encrypt } from '../../../../common/utils/crypto.util';
 
 /**
  * 策略引擎服务 — 产品 B 策略 CRUD + 启停控制
@@ -38,6 +39,31 @@ export class StrategyEngineService implements OnModuleInit {
 
   // ========================= CRUD =========================
 
+  /**
+   * 加密 LLM API Keys（AiStrategy 级别 BYOK）
+   * 与 AiConfig 的 sanitizeAiConfigUpdate 保持一致
+   */
+  private encryptApiKeys(raw: Record<string, string>): Record<string, unknown> {
+    const encrypted: Record<string, unknown> = {};
+    for (const [provider, key] of Object.entries(raw)) {
+      if (typeof key === 'string' && key.length > 0) {
+        encrypted[provider] = encrypt(key);
+      }
+    }
+    return encrypted;
+  }
+
+  /**
+   * 从策略对象中去除 apiKeys 字段，返回含 hasApiKeys 标记的安全副本
+   */
+  private sanitizeStrategyResponse(strategy: any): any {
+    const { apiKeys, ...rest } = strategy;
+    return {
+      ...rest,
+      hasApiKeys: !!(apiKeys && Object.keys(apiKeys as object).length > 0),
+    };
+  }
+
   async createStrategy(userId: string, data: {
     name: string;
     strategyType?: string;
@@ -56,6 +82,20 @@ export class StrategyEngineService implements OnModuleInit {
   }): Promise<any> {
     const db = this.prisma;
 
+    // 共识/深研模式：创建时必须选择 2 个以上 AI 模型
+    if (data.tradingMode === 'debate' || data.tradingMode === 'research') {
+      if (!data.models || data.models.length < 2) {
+        throw new BadRequestException(
+          `共识/深研模式需要至少选择 2 个 AI 模型，当前选择 ${data.models?.length ?? 0} 个`,
+        );
+      }
+    }
+
+    // 加密 LLM BYOK Keys（与 AiConfig 保持一致）
+    const encryptedApiKeys = data.apiKeys && Object.keys(data.apiKeys).length > 0
+      ? this.encryptApiKeys(data.apiKeys)
+      : {};
+
     const strategy = await db.aiStrategy.create({
       data: {
         userId,
@@ -69,7 +109,7 @@ export class StrategyEngineService implements OnModuleInit {
         gridConfig: data.gridConfig || undefined,
         intervalMinutes: data.intervalMinutes || 60,
         exchangeApiKeyId: data.exchangeApiKeyId || null,
-        apiKeys: data.apiKeys || {},
+        apiKeys: encryptedApiKeys as any,
         models: data.models || [],
         debateConfig: data.debateConfig || undefined,
         stopConditions: data.stopConditions || undefined,
@@ -78,7 +118,7 @@ export class StrategyEngineService implements OnModuleInit {
     });
 
     this.logger.log(`[策略] 创建: ${strategy.id} (${data.name}) for user ${userId}`);
-    return strategy;
+    return this.sanitizeStrategyResponse(strategy);
   }
 
   async getStrategy(strategyId: string, userId: string): Promise<any> {
@@ -87,7 +127,8 @@ export class StrategyEngineService implements OnModuleInit {
       where: { id: strategyId, userId },
     });
     if (!strategy) throw new NotFoundException('策略不存在');
-    return strategy;
+    // 不返回 apiKeys 密文，只暴露 hasApiKeys 标记
+    return this.sanitizeStrategyResponse(strategy);
   }
 
   async listStrategies(userId: string, page: number = 1, limit: number = 20): Promise<{
@@ -97,7 +138,7 @@ export class StrategyEngineService implements OnModuleInit {
     const db = this.prisma;
     const skip = (page - 1) * limit;
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       db.aiStrategy.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
@@ -107,7 +148,7 @@ export class StrategyEngineService implements OnModuleInit {
       db.aiStrategy.count({ where: { userId } }),
     ]);
 
-    return { data, total };
+    return { data: rows.map(s => this.sanitizeStrategyResponse(s)), total };
   }
 
   async updateStrategy(strategyId: string, userId: string, data: Record<string, any>): Promise<any> {
@@ -118,6 +159,15 @@ export class StrategyEngineService implements OnModuleInit {
       where: { id: strategyId, userId },
     });
     if (!existing) throw new NotFoundException('策略不存在');
+
+    // 共识/深研模式：修改模型列表时也需要保证 2 个以上
+    const newMode = data.tradingMode ?? existing.tradingMode;
+    const newModels = data.models ?? (existing.models as string[] | null) ?? [];
+    if ((newMode === 'debate' || newMode === 'research') && newModels.length < 2) {
+      throw new BadRequestException(
+        `共识/深研模式需要至少选择 2 个 AI 模型，当前选择 ${newModels.length} 个`,
+      );
+    }
 
     // 白名单过滤可更新字段
     const allowed = [
@@ -135,13 +185,25 @@ export class StrategyEngineService implements OnModuleInit {
       }
     }
 
+    // 如果传入了 apiKeys 则加密存储（与 createStrategy 保持一致）
+    if (updateData.apiKeys && typeof updateData.apiKeys === 'object') {
+      updateData.apiKeys = this.encryptApiKeys(updateData.apiKeys as Record<string, string>);
+    }
+
+    // 网格策略：gridConfig.symbol 变更时同步 coinSourceConfig.coins（保持卡片显示一致）
+    if (updateData.gridConfig?.symbol) {
+      const newSymbol = updateData.gridConfig.symbol as string;
+      const existingCc = (existing.coinSourceConfig as Record<string, any>) || {};
+      updateData.coinSourceConfig = { ...existingCc, coins: [newSymbol] };
+    }
+
     const updated = await db.aiStrategy.update({
       where: { id: strategyId },
       data: updateData,
     });
 
     this.logger.log(`[策略] 更新: ${strategyId}`);
-    return updated;
+    return this.sanitizeStrategyResponse(updated);
   }
 
   async deleteStrategy(strategyId: string, userId: string): Promise<void> {
@@ -165,6 +227,15 @@ export class StrategyEngineService implements OnModuleInit {
 
   async startStrategy(strategyId: string, userId: string): Promise<any> {
     const db = this.prisma;
+
+    // 点卡余额门控：余额为 0 时禁止启动
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { pointBalance: true },
+    });
+    if (!user || Number(user.pointBalance) <= 0) {
+      throw new BadRequestException('点卡余额不足，请充值后再启动策略');
+    }
 
     const strategy = await db.aiStrategy.findFirst({
       where: { id: strategyId, userId },
@@ -356,7 +427,7 @@ export class StrategyEngineService implements OnModuleInit {
     // 1. 查询用户所有策略（获取 id→meta 映射）
     const strategies = await db.aiStrategy.findMany({
       where: { userId },
-      select: { id: true, name: true, tradingMode: true, strategyType: true },
+      select: { id: true, name: true, tradingMode: true, strategyType: true, models: true },
     });
     const strategyMap = new Map(strategies.map((s) => [s.id, s]));
     const gridIds = strategies.filter((s) => s.strategyType === 'grid').map((s) => s.id);
@@ -475,7 +546,7 @@ export class StrategyEngineService implements OnModuleInit {
         entry: {
           entryType,
           log,
-          strategy: { id: meta.id, name: meta.name, tradingMode: meta.tradingMode },
+          strategy: { id: meta.id, name: meta.name, tradingMode: meta.tradingMode, models: (meta as any).models as string[] | undefined },
         },
       });
     }
@@ -509,10 +580,14 @@ export class StrategyEngineService implements OnModuleInit {
 
   // ========================= 日志清理 =========================
 
+  /** 每个策略最多保留的日志条数（超出则删除最旧记录） */
+  private static readonly MAX_LOGS_PER_STRATEGY = 500;
+
   /**
    * 清理策略的过期日志（分层保留）
    * - 有交易动作 (open_long/open_short/close_long/close_short): 90 天
    * - 无交易 (wait/hold): 7 天
+   * - 数量上限: 最多保留 MAX_LOGS_PER_STRATEGY 条
    *
    * 触发时机: 由 AutoRunProcessor 在每次策略周期完成后调用（lazy cleanup）
    */
@@ -540,9 +615,31 @@ export class StrategyEngineService implements OnModuleInit {
       },
     });
 
-    const total = r1.count + r2.count;
+    // 3. 数量上限: 保留最新 MAX_LOGS_PER_STRATEGY 条，删除超出的旧记录
+    let r3Count = 0;
+    const totalCount = await this.prisma.aiStrategyLog.count({ where: { strategyId } });
+    if (totalCount > StrategyEngineService.MAX_LOGS_PER_STRATEGY) {
+      // 找第 501 条（按时间倒序），其 createdAt 即为删除边界
+      const anchor = await this.prisma.aiStrategyLog.findMany({
+        where: { strategyId },
+        orderBy: { createdAt: 'desc' },
+        skip: StrategyEngineService.MAX_LOGS_PER_STRATEGY,
+        take: 1,
+        select: { createdAt: true },
+      });
+      if (anchor.length > 0) {
+        const r3 = await this.prisma.aiStrategyLog.deleteMany({
+          where: { strategyId, createdAt: { lte: anchor[0].createdAt } },
+        });
+        r3Count = r3.count;
+      }
+    }
+
+    const total = r1.count + r2.count + r3Count;
     if (total > 0) {
-      this.logger.log(`[清理] 策略 ${strategyId}: ${r1.count} 条过期(>90天) + ${r2.count} 条 wait/hold(>7天)`);
+      this.logger.log(
+        `[清理] 策略 ${strategyId}: ${r1.count} 条过期(>90天) + ${r2.count} 条 wait/hold(>7天) + ${r3Count} 条超数量上限(>${StrategyEngineService.MAX_LOGS_PER_STRATEGY})`,
+      );
     }
     return total;
   }
@@ -592,8 +689,30 @@ export class StrategyEngineService implements OnModuleInit {
       where: { createdAt: { lt: allCutoff } },
     });
 
+    // 5. 全策略数量上限（覆盖已停止策略，cleanOldLogs 仅在运行中的策略周期触发）
+    const allStrategies = await this.prisma.aiStrategy.findMany({ select: { id: true } });
+    let r5Count = 0;
+    for (const strategy of allStrategies) {
+      const cnt = await this.prisma.aiStrategyLog.count({ where: { strategyId: strategy.id } });
+      if (cnt > StrategyEngineService.MAX_LOGS_PER_STRATEGY) {
+        const anchor = await this.prisma.aiStrategyLog.findMany({
+          where: { strategyId: strategy.id },
+          orderBy: { createdAt: 'desc' },
+          skip: StrategyEngineService.MAX_LOGS_PER_STRATEGY,
+          take: 1,
+          select: { createdAt: true },
+        });
+        if (anchor.length > 0) {
+          const del = await this.prisma.aiStrategyLog.deleteMany({
+            where: { strategyId: strategy.id, createdAt: { lte: anchor[0].createdAt } },
+          });
+          r5Count += del.count;
+        }
+      }
+    }
+
     this.logger.log(
-      `[Cron] 清理完成: 策略(>90天)=${r1.count}, wait/hold(>7天)=${r2.count}, 研究(>90天)=${r3.count}, 辩论(>90天)=${r4.count}`,
+      `[Cron] 清理完成: 策略(>90天)=${r1.count}, wait/hold(>7天)=${r2.count}, 研究(>90天)=${r3.count}, 辩论(>90天)=${r4.count}, 超数量上限=${r5Count}`,
     );
   }
 

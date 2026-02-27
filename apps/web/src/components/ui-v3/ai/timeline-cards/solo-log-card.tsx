@@ -104,6 +104,24 @@ const GRID_ACTION_I18N: Record<string, { key: string; color: string }> = {
   pause_grid: { key: 'timeline.gridPause', color: '#F59E0B' },
   exit_all: { key: 'timeline.gridExitAll', color: '#F43F5E' },
   reduce_exposure: { key: 'timeline.gridReduce', color: '#F59E0B' },
+  hold: { key: 'detail.actionHold', color: '#64748B' },
+  cancel_all_orders: { key: 'timeline.gridExitAll', color: '#F43F5E' },
+};
+
+/** Grid 方向 — i18n key 映射 */
+const GRID_DIR_I18N: Record<string, string> = {
+  neutral: 'timeline.dirNeutral', long: 'timeline.dirLong', short: 'timeline.dirShort',
+  long_bias: 'timeline.dirLongBias', short_bias: 'timeline.dirShortBias',
+};
+/** Grid 市场形态 — i18n key 映射 */
+const GRID_REGIME_I18N: Record<string, string> = {
+  narrow: 'timeline.regimeNarrow', standard: 'timeline.regimeStandard',
+  wide: 'timeline.regimeWide', volatile: 'timeline.regimeVolatile',
+};
+/** Grid 突破级别 — i18n key 映射 */
+const GRID_BREAKOUT_I18N: Record<string, string> = {
+  none: 'timeline.breakoutNone', short: 'timeline.breakoutShort',
+  mid: 'timeline.breakoutMid', long: 'timeline.breakoutLong',
 };
 
 function formatTimeAgo(dateStr: string, t: TFunc): string {
@@ -146,6 +164,191 @@ function rrColor(rr: number): string {
   return '#F43F5E';
 }
 
+/** AI 推理分段数据 */
+interface ReasoningSection {
+  title?: string;
+  content: string;
+}
+
+/** 解析 AI 推理文本为结构化分段 */
+function parseReasoningSections(text: string): ReasoningSection[] {
+  if (!text) return [];
+  const lines = text.split('\n');
+  const sections: ReasoningSection[] = [];
+  let currentTitle: string | undefined;
+  let currentLines: string[] = [];
+
+  const extractHeader = (line: string): string | null => {
+    const t = line.trim();
+    // **Header：** 或 **Header:**
+    const m1 = t.match(/^\*\*([^*]{2,12})[：:]\*\*/);
+    if (m1) return m1[1];
+    // ### Header / ## Header
+    const m2 = t.match(/^#{1,3}\s+([\u4e00-\u9fffA-Za-z0-9 ]{2,15})[\s：:]*$/);
+    if (m2) return m2[1].trim();
+    // 中文短标题行：2-8汉字 + 冒号，行尾无内容
+    const m3 = t.match(/^([\u4e00-\u9fff]{2,8})[：:]\s*$/);
+    if (m3) return m3[1];
+    return null;
+  };
+
+  for (const line of lines) {
+    const header = extractHeader(line);
+    if (header) {
+      const pending = currentLines.join('\n').trim();
+      if (pending || currentTitle) sections.push({ title: currentTitle, content: pending });
+      currentTitle = header;
+      currentLines = [];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  const pending = currentLines.join('\n').trim();
+  if (pending || currentTitle) sections.push({ title: currentTitle, content: pending });
+
+  // 没有找到任何标题 → 返回纯文本块
+  if (!sections.some(s => s.title)) return [{ content: text.trim() }];
+  return sections.filter(s => s.content.length > 0 || s.title);
+}
+
+/** 根据标题关键词返回主题色 */
+const SECTION_COLOR_MAP: Array<{ keywords: string[]; color: string }> = [
+  { keywords: ['技术', '指标', 'RSI', 'MACD', 'KDJ', '均线', '价格', '支撑', '压力'], color: '#06B6D4' },
+  { keywords: ['趋势', '行情', '走势', '方向'], color: '#3B82F6' },
+  { keywords: ['基本', '消息', '新闻', '事件', '宏观'], color: '#8B5CF6' },
+  { keywords: ['情绪', '市场', '资金', '多空', '仓位'], color: '#F59E0B' },
+  { keywords: ['风险', '止损', '止盈', '安全', '危险'], color: '#F43F5E' },
+  { keywords: ['结论', '建议', '总结', '综合', '判断', '决策', '操作'], color: '#10B981' },
+  { keywords: ['量能', '成交量', '换手', '流动'], color: '#A78BFA' },
+];
+
+function getSectionColor(title: string): string {
+  for (const { keywords, color } of SECTION_COLOR_MAP) {
+    if (keywords.some(k => title.includes(k))) return color;
+  }
+  return '#6B7280';
+}
+
+/** 按中文/英文句号将长段落拆成视觉小段（每2句一组） */
+function toParas(raw: string): string[] {
+  // 只在中文句末标点后断句；英文 !? 要求前面非数字，避免拆分小数（如 576.61）
+  const sentences = raw.split(/(?<=[。！？])\s*|(?<=(?<!\d)[!?])\s+/).map(s => s.trim()).filter(s => s.length > 1);
+  if (sentences.length <= 1) return [raw.trim()];
+  const paras: string[] = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    paras.push(sentences.slice(i, i + 2).join(''));
+  }
+  return paras;
+}
+
+/** 推理展示组件：收起=2行，展开=分段；可传 modelId 在文字上方显示模型 Logo */
+function SectionedReasoning({ text, modelId }: { text: string; modelId?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const cleaned = cleanReasoning(text);
+  if (!cleaned) return null;
+
+  const needsExpand = cleaned.length > 60;
+
+  // 模型标识头（在对话框内部顶部）
+  const modelHeader = modelId ? (() => {
+    const info = MODEL_DISPLAY[modelId];
+    const name = info?.name || modelId;
+    const color = info?.color || '#9090A0';
+    return (
+      <div className="flex items-center gap-1.5 mb-1.5">
+        {info?.logo ? (
+          <img src={info.logo} alt={name} title={name} className="w-4 h-4 rounded-full flex-shrink-0" />
+        ) : (
+          <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+            style={{ color }}>
+            {name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="text-[10px]" style={{ color }}>{name}</span>
+      </div>
+    );
+  })() : null;
+
+  const ToggleBtn = ({ cls }: { cls?: string }) => (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+      className={`text-[#4A4A6A] hover:text-[#9090A0] transition-colors flex-shrink-0 ${cls ?? ''}`}
+    >
+      {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+    </button>
+  );
+
+  const sections = parseReasoningSections(cleaned);
+  const hasHeaders = sections.some(s => s.title);
+
+  // ── 有标题结构：彩色左边框分段 ──
+  if (hasHeaders) {
+    const PREVIEW = 2;
+    const visible = expanded ? sections : sections.slice(0, PREVIEW);
+    const hasMore = sections.length > PREVIEW;
+    return (
+      <div className="space-y-1.5">
+        {modelHeader}
+        {visible.map((sec, i) => {
+          const color = sec.title ? getSectionColor(sec.title) : '#6B7280';
+          return (
+            <div key={i} className="pl-2 border-l-2" style={{ borderColor: `${color}50` }}>
+              {sec.title && (
+                <span className="text-[10px] font-semibold" style={{ color }}>{sec.title}</span>
+              )}
+              {sec.content && (
+                expanded ? (
+                  // 展开：按 \n 分行渲染，避免所有内容挤在一起
+                  <div className="space-y-1 mt-0.5">
+                    {sec.content.split('\n').filter(l => l.trim()).map((line, li) => (
+                      <p key={li} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
+                    ))}
+                  </div>
+                ) : (
+                  // 收起：单行截断
+                  <p className={`text-xs text-[#9090A0] leading-relaxed mt-0.5${i === visible.length - 1 ? ' line-clamp-2' : ''}`}>
+                    {sec.content}
+                  </p>
+                )
+              )}
+            </div>
+          );
+        })}
+        {(hasMore || expanded) && (
+          <div className="flex justify-end"><ToggleBtn /></div>
+        )}
+      </div>
+    );
+  }
+
+  // ── 无标题结构 ──
+  if (!expanded) {
+    // 收起：2 行截断 + 右侧展开按钮
+    return (
+      <div>
+        {modelHeader}
+        <div className="flex items-start gap-1">
+          <p className="flex-1 text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
+          {needsExpand && <ToggleBtn />}
+        </div>
+      </div>
+    );
+  }
+
+  // 展开：按句号分段显示
+  const paras = toParas(cleaned);
+  return (
+    <div className="space-y-2">
+      {modelHeader}
+      {paras.map((para, i) => (
+        <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{para}</p>
+      ))}
+      <div className="flex justify-end"><ToggleBtn /></div>
+    </div>
+  );
+}
+
 interface SoloLogCardProps {
   entry: TimelineSoloLog;
 }
@@ -156,8 +359,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   const d = log.decision;
   const er = log.executionResult;
 
-  // 检测 Grid 网格日志格式: decision.decisions 数组
+  // 检测 Grid 网格日志格式: decision.decisions 数组 或 entryType
   const gridDecisions: any[] = Array.isArray(d.decisions) ? d.decisions : [];
+  const isGridEntry = gridDecisions.length > 0 || (entry as any).entryType === 'grid_log';
   const isGridLog = gridDecisions.length > 0;
   // 检测自动禁用日志
   const isAutoDisabled = d.action === 'auto_disabled_failure';
@@ -204,8 +408,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* === 标题行 === */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs">
-          {isGridLog ? (
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F59E0B]/20 text-[#F59E0B] font-semibold text-xs">
+          {isGridEntry ? (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#10B981]/20 text-[#10B981] font-semibold text-xs">
               <Grid3X3 className="w-3.5 h-3.5" />
               {t('modes.grid')}
             </span>
@@ -220,7 +424,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               {t('modes.solo')}
             </span>
           )}
-          <span className="text-[#F8F8FC] font-medium">{log.symbol || strategy.name}</span>
+          <span className="text-[#F8F8FC] font-medium">{(!log.symbol || log.symbol === 'ALL') ? strategy.name : log.symbol.replace(/:USDT$/, '')}</span>
         </div>
         <span className="text-[10px] text-[#606070]">{formatTimeAgo(log.createdAt, t as TFunc)}</span>
       </div>
@@ -267,21 +471,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     {t('research.position') || '仓位'} <span className="text-[#F8F8FC] font-mono">{d.positionSizePercent}%</span>
                   </span>
                 )}
-                {d.modelId && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1A1A2E] text-[#4A4A6A]">
-                    {d.modelId}
-                  </span>
-                )}
               </div>
 
             </>
           )}
 
-          {/* 推理文本 — 始终显示（即使 wait/hold 也有分析价值） */}
+          {/* 推理文本 — 分段显示，模型 Logo 在对话框内部顶端 */}
           {reasoning && (
-            <div className="text-xs text-[#9090A0] leading-relaxed">
-              <TruncatedText text={cleanReasoning(reasoning)} maxLines={3} />
-            </div>
+            <SectionedReasoning text={reasoning} modelId={d.modelId} />
           )}
 
           {/* SL/TP + R:R (放在推理之后) */}
@@ -326,7 +523,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {isGridLog && (
         <div className="space-y-3">
           {/* 操作摘要 */}
-          <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-semibold bg-[#06B6D4]/15 text-[#06B6D4]">
+          <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-semibold bg-[#10B981]/15 text-[#10B981]">
             {(() => {
               const counts: Record<string, number> = {};
               for (const op of gridDecisions) counts[op.action] = (counts[op.action] || 0) + 1;
@@ -334,17 +531,19 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 place_buy_limit: 'timeline.gridBuyShort',
                 place_sell_limit: 'timeline.gridSellShort',
                 cancel_order: 'timeline.gridCancelShort',
+                cancel_all_orders: 'timeline.gridExitShort',
                 adjust_grid: 'timeline.gridAdjustShort',
                 pause_grid: 'timeline.gridPauseShort',
                 exit_all: 'timeline.gridExitShort',
                 reduce_exposure: 'timeline.gridReduceShort',
+                hold: 'timeline.gridHoldShort',
               };
               const parts = Object.entries(counts).map(([act, n]) => {
                 const key = SHORT_KEYS[act];
-                const label = key ? t(key) : act;
+                const label = key ? t(key) : t('timeline.gridHoldShort');
                 return `${n}${label}`;
               });
-              return parts.join('/') || `${gridDecisions.length} ops`;
+              return parts.join('/') || t('timeline.gridOpsCount', { count: gridDecisions.length });
             })()}
           </span>
 
@@ -353,11 +552,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
               <div className="flex justify-between">
                 <span className="text-[#606070]">{t('timeline.gridRange')}</span>
-                <span className="font-mono text-[#F8F8FC]">${d.gridSnapshot.lowerPrice}~${d.gridSnapshot.upperPrice}</span>
+                <span className="font-mono text-[#F8F8FC]">${Number(d.gridSnapshot.lowerPrice).toFixed(2)}~${Number(d.gridSnapshot.upperPrice).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
-                <span className="text-[#F8F8FC]">{d.gridSnapshot.filledLevels}/{d.gridSnapshot.totalLevels}</span>
+                <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
               </div>
               {d.gridSnapshot.totalProfit != null && (
                 <div className="flex justify-between">
@@ -375,19 +574,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               )}
               {d.gridSnapshot.pendingLevels != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">挂单层</span>
+                  <span className="text-[#606070]">{t('timeline.gridPendingLevels')}</span>
                   <span className="text-[#F8F8FC]">{d.gridSnapshot.pendingLevels}</span>
-                </div>
-              )}
-              {d.gridSnapshot.activeOrders != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">活跃订单</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.activeOrders}</span>
                 </div>
               )}
               {d.gridSnapshot.dailyPnl != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">日内盈亏</span>
+                  <span className="text-[#606070]">{t('timeline.gridDailyPnl')}</span>
                   <span className={`font-mono ${d.gridSnapshot.dailyPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                     {d.gridSnapshot.dailyPnl >= 0 ? '+' : ''}{d.gridSnapshot.dailyPnl.toFixed(2)}
                   </span>
@@ -395,31 +588,31 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               )}
               {d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">最大回撤</span>
+                  <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
                   <span className="font-mono text-[#EF4444]">{d.gridSnapshot.maxDrawdown.toFixed(1)}%</span>
                 </div>
               )}
               {d.gridSnapshot.direction && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">方向</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.direction}</span>
+                  <span className="text-[#606070]">{t('timeline.gridDirection')}</span>
+                  <span className="text-[#F8F8FC]">{GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}</span>
                 </div>
               )}
               {d.gridSnapshot.regime && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">市场形态</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.regime}</span>
+                  <span className="text-[#606070]">{t('timeline.gridRegime')}</span>
+                  <span className="text-[#F8F8FC]">{GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}</span>
                 </div>
               )}
               {d.gridSnapshot.breakoutLevel && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">突破级别</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.breakoutLevel}</span>
+                  <span className="text-[#606070]">{t('timeline.gridBreakoutLevel')}</span>
+                  <span className="text-[#F8F8FC]">{GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel] ? t(GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel]) : d.gridSnapshot.breakoutLevel}</span>
                 </div>
               )}
               {d.gridSnapshot.gridSpacing != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">格线间距</span>
+                  <span className="text-[#606070]">{t('timeline.gridSpacingLabel')}</span>
                   <span className="font-mono text-[#F8F8FC]">${d.gridSnapshot.gridSpacing.toFixed(4)}</span>
                 </div>
               )}
@@ -429,14 +622,35 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {/* AI 思考链（DeepSeek-Reasoner / Claude 扩展思考） */}
           {d.aiThinking && (
             <div className="text-[10px] text-[#606070] leading-relaxed border-l-2 border-[#2E2E3E] pl-2">
-              <span className="text-[#4A4A5A] text-[9px]">思考链 · </span>
+              <span className="text-[#4A4A5A] text-[9px]">{t('timeline.gridThinking')} · </span>
               <TruncatedText text={d.aiThinking as string} maxLines={3} />
             </div>
           )}
 
-          {/* AI 市场分析 — 只显示整体分析，不显示逐条操作推理 */}
+          {/* AI 市场分析 — 模型 Logo + 分析文字 */}
           {gridAnalysisText && (
             <div className="text-xs text-[#9090A0] leading-relaxed">
+              {(() => {
+                // 优先 decision.modelId，fallback strategy.models[0]
+                const resolvedModelId = d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined);
+                if (!resolvedModelId) return null;
+                const info = MODEL_DISPLAY[resolvedModelId];
+                const name = info?.name || resolvedModelId;
+                const color = info?.color || '#9090A0';
+                return (
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {info?.logo ? (
+                      <img src={info.logo} alt={name} title={name} className="w-4 h-4 rounded-full flex-shrink-0" />
+                    ) : (
+                      <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+                        style={{ color }}>
+                        {name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="text-[10px]" style={{ color }}>{name}</span>
+                  </div>
+                );
+              })()}
               <TruncatedText text={cleanReasoning(gridAnalysisText)} maxLines={1} />
             </div>
           )}
@@ -472,16 +686,16 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     </span>
                     <div className="flex-1 min-w-0 text-[10px] flex flex-wrap items-center gap-1.5">
                       {op.price && (
-                        <span className="font-mono text-[#F8F8FC]">${Number(op.price).toLocaleString()}</span>
+                        <span className="font-mono text-[#F8F8FC]">${Number(op.price).toFixed(2)}</span>
                       )}
                       {op.quantity && (
-                        <span className="font-mono text-[#9090A0]">x{op.quantity}</span>
+                        <span className="font-mono text-[#9090A0]">x{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
                       {op.level_index != null && (
                         <span className="text-[#606070]">L{op.level_index}</span>
                       )}
                       {op.reasoning && (
-                        <span className="w-full text-[#606070] text-[9px] leading-tight mt-0.5 line-clamp-2">
+                        <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
                           {op.reasoning}
                         </span>
                       )}
@@ -519,7 +733,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <span className="text-[#06B6D4] font-medium">{t('timeline.positionClosed')}</span>
             {er?.price && er?.amount && (
               <span className="text-[#9090A0] font-mono">
-                ${er.price.toLocaleString()} × {er.amount}
+                ${Number(er.price).toFixed(2)} × {er.amount}
               </span>
             )}
             {er?.orderId && (
@@ -541,7 +755,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             {d.leverage != null && d.leverage > 1 && (
               <span className="text-[#9090A0] font-mono">{d.leverage}x</span>
             )}
-            {er?.price && <span className="text-[#9090A0] font-mono">${er.price.toLocaleString()}</span>}
+            {er?.price && <span className="text-[#9090A0] font-mono">${Number(er.price).toFixed(2)}</span>}
             {er?.amount && <span className="text-[#606070] font-mono">×{er.amount}</span>}
             {er?.positionId && (
               <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
@@ -559,28 +773,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           </div>
         ) : isWait ? (
-          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#94A3B8]/5 text-xs">
-            <Clock className="w-3.5 h-3.5 text-[#94A3B8] flex-shrink-0 mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <span className="text-[#94A3B8] font-medium">{t('timeline.waitingSignal')}</span>
-              {reasoning && (
-                <div className="text-[#9090A0] text-xs mt-0.5 leading-relaxed">
-                  <TruncatedText text={cleanReasoning(reasoning)} maxLines={2} />
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#94A3B8]/5 text-xs">
+            <Clock className="w-3.5 h-3.5 text-[#94A3B8]" />
+            <span className="text-[#94A3B8] font-medium">{t('timeline.waitingSignal')}</span>
           </div>
         ) : isHoldPos ? (
-          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#64748B]/5 text-xs">
-            <Pause className="w-3.5 h-3.5 text-[#64748B] flex-shrink-0 mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <span className="text-[#64748B] font-medium">{t('timeline.holdingPosition')}</span>
-              {reasoning && (
-                <div className="text-[#9090A0] text-xs mt-0.5 leading-relaxed">
-                  <TruncatedText text={cleanReasoning(reasoning)} maxLines={2} />
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#64748B]/5 text-xs">
+            <Pause className="w-3.5 h-3.5 text-[#64748B]" />
+            <span className="text-[#64748B] font-medium">{t('timeline.holdingPosition')}</span>
           </div>
         ) : er?.skipped ? (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#94A3B8]/5 text-xs">
@@ -588,6 +788,101 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <span className="text-[#94A3B8] font-medium">{t('timeline.holdingPosition')}</span>
             {er.reason && <span className="text-[#606070]"> · {er.reason}</span>}
           </div>
+        ) : isGridLog && !log.executed && (er as any)?.errors?.length > 0 ? (
+          // 网格执行失败 — 区分"部分失败"(部分成功)与"全部失败"，让用户看懂原因
+          (() => {
+            const gridErrors: Array<{ action: string; error: string }> = (er as any)?.errors || [];
+            const failedBuy    = gridErrors.filter(e => e.action === 'place_buy_limit').length;
+            const failedSell   = gridErrors.filter(e => e.action === 'place_sell_limit').length;
+            const failedCancel = gridErrors.filter(e => e.action === 'cancel_order').length;
+            const failedOther  = gridErrors.length - failedBuy - failedSell - failedCancel;
+            const failedPlaces = failedBuy + failedSell;
+
+            // 计划下单数（AI decisions 中的挂单操作）
+            const plannedPlaces = gridDecisions.filter(
+              (op: any) => op.action === 'place_buy_limit' || op.action === 'place_sell_limit'
+            ).length;
+            const succeededPlaces = Math.max(0, plannedPlaces - failedPlaces);
+            // 部分失败：有成功的单，也有失败的单
+            const isPartialFailure = succeededPlaces > 0 && failedPlaces > 0;
+
+            const firstErrRaw = gridErrors[0]?.error || '';
+            const codeMatch   = firstErrRaw.match(/"code":(-?\d+)/);
+            const errCode     = codeMatch ? parseInt(codeMatch[1]) : null;
+            const isMarginErr = errCode === -2019;
+
+            const activeOrders    = d.gridSnapshot?.activeOrders ?? 0;
+            const totalLevels     = d.gridSnapshot?.totalLevels ?? 0;
+            const totalInvestment = (d.gridSnapshot as any)?.totalInvestment as number | undefined;
+            const perLevelCost    = totalInvestment && totalLevels > 0
+              ? totalInvestment / totalLevels : undefined;
+
+            // 失败类型文案
+            const failedParts: string[] = [];
+            if (failedBuy > 0)    failedParts.push(`买单×${failedBuy}层`);
+            if (failedSell > 0)   failedParts.push(`卖单×${failedSell}层`);
+            if (failedCancel > 0) failedParts.push(`撤单×${failedCancel}层`);
+            if (failedOther > 0)  failedParts.push(`其他×${failedOther}项`);
+
+            // 错误原因
+            let reasonText: string;
+            let hintText: string | null = null;
+            if (isMarginErr) {
+              reasonText = '保证金不足';
+              hintText   = activeOrders > 0
+                ? `${activeOrders} 个活跃挂单正在占用保证金，等待成交后自动补挂`
+                : '等待保证金释放后自动补挂';
+            } else {
+              const msgMatch = firstErrRaw.match(/"msg":"([^"]+)"/);
+              reasonText = msgMatch
+                ? msgMatch[1]
+                : firstErrRaw.replace(/^binanceusdm\s*/, '').slice(0, 60);
+            }
+
+            // 颜色方案：部分失败 → amber 警告；全部失败 → red 错误
+            const containerCls = isPartialFailure
+              ? 'bg-[#F59E0B]/5 border-[#F59E0B]/15'
+              : 'bg-[#EF4444]/5 border-[#EF4444]/15';
+            const iconCls      = isPartialFailure ? 'text-[#F59E0B]' : 'text-[#EF4444]';
+            const titleCls     = isPartialFailure ? 'text-[#F59E0B]' : 'text-[#EF4444]';
+            const reasonCls    = isPartialFailure ? 'text-[#D97706]' : 'text-[#DC2626]';
+
+            // 标题文案区分三种情况
+            const titleText = isPartialFailure
+              ? `${succeededPlaces}层已挂单 · ${failedPlaces}层失败`
+              : failedPlaces > 0
+                ? `全部 ${failedPlaces} 层挂单均失败`
+                : `${gridErrors.length} 项操作失败`;
+
+            return (
+              <div className={`flex items-start gap-1.5 px-2 py-2 rounded-md border text-xs ${containerCls}`}>
+                <AlertTriangle className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${iconCls}`} />
+                <div className="min-w-0 flex-1 space-y-1">
+                  {/* 标题行：成功/失败层数 · 原因 */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className={`font-medium ${titleCls}`}>{titleText}</span>
+                    <span className="text-[#606070]">·</span>
+                    <span className={reasonCls}>{reasonText}</span>
+                  </div>
+                  {/* 详情行：失败类型 + 每层成本估算 */}
+                  {(failedParts.length > 0 || perLevelCost) && (
+                    <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[#707080]">
+                      {failedParts.length > 0 && (
+                        <span>{failedParts.join('  ')}</span>
+                      )}
+                      {isMarginErr && perLevelCost != null && perLevelCost > 0 && (
+                        <span className="text-[#505060]">每层约 ${perLevelCost.toFixed(1)}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* 提示行 */}
+                  {hintText && (
+                    <p className="text-[#505060] leading-relaxed">{hintText}</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()
         ) : isGridLog ? (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs flex-wrap">
             <Check className="w-3.5 h-3.5 text-[#10B981]" />

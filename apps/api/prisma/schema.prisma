@@ -183,6 +183,11 @@ model ApiKey {
   secretIv        String? @map("secret_iv")
   secretAuthTag   String? @map("secret_auth_tag")
 
+  // === OKX: 交易密码 (Passphrase) ===
+  encryptedPassphrase String? @map("encrypted_passphrase")
+  passphraseIv        String? @map("passphrase_iv")
+  passphraseAuthTag   String? @map("passphrase_auth_tag")
+
   // === DEX: 钱包凭证 ===
   walletAddress       String? @map("wallet_address")       // 公开钱包地址
   encryptedPrivateKey String? @map("encrypted_private_key") // 加密的私钥

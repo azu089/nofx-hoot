@@ -27,6 +27,8 @@ interface SyncedPosition {
   margin: string;
   leverage: number;
   marginMode: string;
+  /** 交易所原始保证金比率（%字符串），如 "5.23" 表示 5.23% */
+  marginRatio?: string;
   unrealizedPnl: string;
   roe: string;
   status: string;
@@ -56,6 +58,7 @@ interface Position {
   leverage?: number;
   margin?: string;
   marginMode?: string;
+  marginRatio?: string;  // 交易所原始保证金比率（%字符串）
   // 止盈止损（后端 Position 模型字段）
   stopLossPrice?: string;
   takeProfitPrice?: string;
@@ -540,6 +543,7 @@ export default function TradingPage() {
           leverage: p.leverage || 1,
           margin: parseFloat(p.margin || '0'),
           marginMode: p.marginMode || 'cross',
+          marginRatio: p.marginRatio,  // 直接传递交易所原始值，不重算
           syncSource: p.syncSource, // 标记数据来源
           source: p.source,
         };

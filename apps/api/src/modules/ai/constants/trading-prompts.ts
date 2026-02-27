@@ -28,6 +28,7 @@ export function formatMarketDataPrompt(data: {
     topGainers?: Array<{ symbol: string; change24h: number }>;
     topLosers?: Array<{ symbol: string; change24h: number }>;
     topVolume?: Array<{ symbol: string; volume24h: number }>;
+    topOI?: Array<{ symbol: string; openInterest: number }>;
     targetRank?: { priceRank: number; volumeRank: number };
     totalCoins?: number;
   };
@@ -70,6 +71,16 @@ export function formatMarketDataPrompt(data: {
       lines.push(`唐奇安中轨(Donchian Mid): ${ind.donchianMid?.toFixed(2) || 'N/A'}`);
       lines.push(`唐奇安下轨(Donchian Lower): ${ind.donchianLower?.toFixed(2) || 'N/A'}`);
     }
+    // 指标趋势序列（对齐 NoFx 时间序列数组，让 AI 感知动量方向）
+    if (ind.rsiSeries && ind.rsiSeries.length > 0) {
+      lines.push(`RSI(14) trend [${ind.rsiSeries.length} bars, oldest→latest]: ${ind.rsiSeries.join(', ')}`);
+    }
+    if (ind.macdHistSeries && ind.macdHistSeries.length > 0) {
+      const first = ind.macdHistSeries[0];
+      const last = ind.macdHistSeries[ind.macdHistSeries.length - 1];
+      const trend = last > first ? '↑ expanding' : last < first ? '↓ contracting' : '→ flat';
+      lines.push(`MACD Hist trend [${ind.macdHistSeries.length} bars]: ${ind.macdHistSeries.join(', ')} (${trend})`);
+    }
   }
 
   // 合约数据
@@ -103,6 +114,12 @@ export function formatMarketDataPrompt(data: {
       if (r.targetRank.volumeRank > 0) {
         lines.push(`Target Volume Rank: #${r.targetRank.volumeRank}/${r.totalCoins}`);
       }
+    }
+    // OI 排名（对齐 NoFx OI 持仓量排名）
+    if (r.topOI && r.topOI.length > 0) {
+      lines.push('Top OI: ' + r.topOI
+        .map(o => `${o.symbol.split('/')[0]} $${(o.openInterest / 1e9).toFixed(2)}B`)
+        .join(', '));
     }
   }
 
@@ -407,8 +424,8 @@ export function buildVotingOutputFormat(locale?: string): string {
 ### CRITICAL: Output your votes in STRICT JSON ARRAY format (one vote per coin):
 <final_vote>
 [
-  {"symbol": "BTCUSDT", "action": "open_long", "confidence": 75, "leverage": 5, "positionSizePercent": 20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
-  {"symbol": "ETHUSDT", "action": "wait", "confidence": 35, "leverage": 1, "positionSizePercent": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_long", "confidence": 75, "leverage": 5, "positionSizePercent": 20, "stop_loss": 0.02, "take_profit": 0.04, "reasoning": "EMA(7)>EMA(25)>EMA(99) bullish alignment confirmed. RSI at 42 bouncing from oversold, MACD histogram turning positive. OI increasing 8% with positive funding rate suggests long bias. Key support at 94500 held on 3 retests. R:R = 1:2.3 with SL below support, TP at previous resistance."},
+  {"symbol": "ETH/USDT:USDT", "action": "wait", "confidence": 35, "leverage": 1, "positionSizePercent": 0, "stop_loss": 0, "take_profit": 0, "reasoning": "Mixed signals: EMA crossing but no volume confirmation. RSI neutral at 52. Bollinger bands narrowing suggests imminent breakout but direction unclear. Funding rate negative while OI rising indicates potential short squeeze. Wait for clear breakout above 3350 or breakdown below 3200 before entry."}
 ]
 </final_vote>
 
@@ -421,7 +438,7 @@ export function buildVotingOutputFormat(locale?: string): string {
 - "wait" (Not enough clarity, wait for better setup)
 
 ### Fields:
-- symbol: Trading pair (e.g. "BTCUSDT")
+- symbol: Trading pair, use the EXACT symbol from the market data above (e.g. "BTC/USDT:USDT")
 - action: One of the 6 actions above
 - confidence: 0-100 (how confident you are)
 - leverage: 1-20 (recommended leverage, default 5)
@@ -562,11 +579,35 @@ export interface GridContext {
   volume24h: number;
   priceChange1h: number;
   priceChange4h: number;
+  // 补充技术指标（已计算但此前未传给 AI）
+  rsi7?: number;           // RSI(7) 短期动量
+  atr3?: number;           // ATR(3) 短期波动率
+  atrHourly?: number;      // ATR(14) 基于 1h 数据，趋势可靠性更高
+  // 价格区间（从 1h 数据计算，反映真实 24h 支撑阻力）
+  high24h?: number;        // 近 24h 最高价
+  low24h?: number;         // 近 24h 最低价
   // 账户
   totalEquity: number;
   availableBalance: number;
   currentPosition: number;
   unrealizedPnl: number;
+  // 持仓详情（双向持仓分别展示）
+  positionLong?: {
+    quantity: number;
+    entryPrice: number;
+    margin: number;
+    unrealizedPnl: number;
+    liquidationPrice?: number;
+    marginRatio?: number;
+  };
+  positionShort?: {
+    quantity: number;
+    entryPrice: number;
+    margin: number;
+    unrealizedPnl: number;
+    liquidationPrice?: number;
+    marginRatio?: number;
+  };
   // 绩效
   totalProfit: number;
   totalTrades: number;
@@ -583,6 +624,15 @@ export interface GridContext {
     longLower: number;
   };
   currentDirection: string;
+  // 利润峰值追踪（保护盈利不被单边行情带走）
+  startEquity: number;          // 策略启动时权益
+  peakProfitPct: number;       // 历史最高盈利%（相对启动权益）
+  currentProfitPct: number;    // 当前盈利%（相对启动权益）
+  profitRetracement: number;   // 从峰值回撤%（0 = 仍在峰值，50 = 利润已回撤一半）
+  marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
+  oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
+  // K线历史（最近30根1h蜡烛，对齐NoFx candle history）
+  ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
 }
 
 /**
@@ -611,6 +661,25 @@ export function GRID_SYSTEM_PROMPT(
 2. **风险控制**: 监控回撤、日内亏损，必要时暂停网格
 3. **方向调整**: 根据趋势变化动态调整多空比例
 4. **仓位管理**: 确保总仓位不超过投资限额 × 杠杆
+
+## ⚡ 极端行情处置（优先级高于三条铁律）
+
+当出现以下信号时，立即采取防御动作，不受"hold 优先"铁律约束：
+
+### 触发条件与对应动作
+
+| 信号 | 条件 | 必须动作 |
+|------|------|---------|
+| 单边快速上涨 | priceChange1h > 6% 且 RSI > 70 | cancel_all_orders + pause_grid，暂停所有卖单 |
+| 单边快速下跌 | priceChange1h < -6% 且 RSI < 30 | cancel_all_orders + pause_grid，暂停所有买单 |
+| 极端高波动 | bollingerWidth > 6% | 仅保留距当前价最近的 3 层订单，其余 cancel |
+| 资金费率过高 | fundingRate > 0.05% | 若持有 long 仓位，告警并建议 pause_grid |
+
+### 黑天鹅识别
+若 priceChange1h 绝对值 > 8%，视为黑天鹅事件：
+- 立即选择 pause_grid
+- 不再放置新订单
+- 等待市场稳定（priceChange1h < 3%）后再 resume_grid
 
 ## ⚠️ 三条铁律（违反即错误决策）
 
@@ -660,6 +729,10 @@ export function GRID_SYSTEM_PROMPT(
   \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"reasoning":"原因"}\`
 - **hold**: 保持当前状态不变
   \`{"action":"hold","reasoning":"原因"}\`
+- **cancel_all_orders**: 取消该交易对所有挂单（慎用）
+  \`{"action":"cancel_all_orders","reasoning":"原因"}\`
+  ⚠️ 限制：仅在网格严重偏移（价格偏离中心 > 40%）或需要完全重置时使用。
+  取消后必须在同一响应中附加 adjust_grid 或 place_buy_limit/place_sell_limit 操作重建挂单。
 
 ## 输出格式
 
@@ -684,18 +757,23 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`=== 市场数据: ${ctx.symbol} ===`);
   lines.push(`当前价格: ${ctx.currentPrice}`);
   lines.push(`时间: ${ctx.currentTime}`);
-  lines.push(`1h 涨跌: ${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%`);
+  const p1hAbs = Math.abs(ctx.priceChange1h);
+  const p1hLabel = p1hAbs >= 8 ? '⚠️ 极端行情' : p1hAbs >= 5 ? '⚡ 快速行情' : '✓ 正常';
+  lines.push(`📈 价格速度: 1H变化=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%（${p1hLabel}，>5%为快速行情，>8%为极端行情）`);
   lines.push(`4h 涨跌: ${ctx.priceChange4h > 0 ? '+' : ''}${ctx.priceChange4h.toFixed(2)}%`);
+  if (ctx.high24h !== undefined && ctx.low24h !== undefined && ctx.high24h > 0) {
+    lines.push(`24h高: ${ctx.high24h} | 24h低: ${ctx.low24h}`);
+  }
   lines.push(`24h 成交量: ${ctx.volume24h.toLocaleString()}`);
   lines.push(`资金费率: ${(ctx.fundingRate * 100).toFixed(4)}%`);
 
   // Section 2: 技术指标
   lines.push('');
   lines.push('--- 技术指标 ---');
-  lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}`);
+  lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
   lines.push(`EMA(20): ${ctx.ema20.toFixed(2)} | EMA(50): ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
-  lines.push(`ATR(14): ${ctx.atr14.toFixed(4)}`);
+  lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
 
   // Section 3: 箱体数据
@@ -713,6 +791,11 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  // 预计算每层推荐数量（避免 AI 自行估算导致误差）
+  const suggestedQtyPerLevel = ctx.currentPrice > 0 && ctx.levels.length > 0
+    ? (ctx.totalInvestment / ctx.levels.length * ctx.leverage) / ctx.currentPrice
+    : 0;
+  lines.push(`推荐每层数量: ${suggestedQtyPerLevel.toFixed(6)} (= ${ctx.totalInvestment}÷${ctx.levels.length}层×${ctx.leverage}x÷${ctx.currentPrice.toFixed(2)}，请在 place_buy/sell_limit 中使用此值)`);
 
   // Section 5: 网格层级表
   lines.push('');
@@ -732,8 +815,30 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push('--- 账户状态 ---');
   lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
   lines.push(`可用余额: ${ctx.availableBalance.toFixed(2)} USDT`);
-  lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
+  if (ctx.positionLong || ctx.positionShort) {
+    if (ctx.positionLong) {
+      const pl = ctx.positionLong;
+      const liqStr = pl.liquidationPrice ? ` | 强平价=${pl.liquidationPrice.toFixed(2)}` : '';
+      const mrStr = pl.marginRatio !== undefined ? ` (margin率=${(pl.marginRatio * 100).toFixed(1)}%)` : '';
+      lines.push(`多仓: ${pl.quantity.toFixed(4)} @ 入场价=${pl.entryPrice.toFixed(4)} | 保证金=${pl.margin.toFixed(2)} | 未实现=${pl.unrealizedPnl > 0 ? '+' : ''}${pl.unrealizedPnl.toFixed(2)}${liqStr}${mrStr}`);
+    } else {
+      lines.push('多仓: 无');
+    }
+    if (ctx.positionShort) {
+      const ps = ctx.positionShort;
+      const liqStr = ps.liquidationPrice ? ` | 强平价=${ps.liquidationPrice.toFixed(2)}` : '';
+      const mrStr = ps.marginRatio !== undefined ? ` (margin率=${(ps.marginRatio * 100).toFixed(1)}%)` : '';
+      lines.push(`空仓: ${ps.quantity.toFixed(4)} @ 入场价=${ps.entryPrice.toFixed(4)} | 保证金=${ps.margin.toFixed(2)} | 未实现=${ps.unrealizedPnl > 0 ? '+' : ''}${ps.unrealizedPnl.toFixed(2)}${liqStr}${mrStr}`);
+    } else {
+      lines.push('空仓: 无');
+    }
+  } else {
+    lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
+  }
   lines.push(`未实现盈亏: ${ctx.unrealizedPnl > 0 ? '+' : ''}${ctx.unrealizedPnl.toFixed(2)} USDT`);
+  // 保证金使用率风险提示
+  const marginWarning = ctx.marginUsedPct > 70 ? ' ⚠️严重' : ctx.marginUsedPct > 50 ? ' ⚠️危险' : ctx.marginUsedPct > 30 ? ' ⚠️警惕' : '';
+  lines.push(`保证金使用率: ${ctx.marginUsedPct.toFixed(1)}%${marginWarning} (>30%警惕 | >50%危险 | >70%严重)`);
 
   // Section 7: 绩效统计
   lines.push('');
@@ -743,6 +848,42 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   const winRate = ctx.totalTrades > 0 ? ((ctx.winningTrades / ctx.totalTrades) * 100).toFixed(1) : '0.0';
   lines.push(`交易次数: ${ctx.totalTrades} | 胜率: ${winRate}%`);
   lines.push(`最大回撤: ${ctx.maxDrawdown.toFixed(2)}%`);
+
+  // Section 8: 利润峰值追踪（防利润回撤核心指标）
+  lines.push('');
+  lines.push('--- 策略盈利追踪（相对策略启动权益） ---');
+  lines.push(`启动权益: ${ctx.startEquity.toFixed(2)} USDT`);
+  lines.push(`当前盈利: ${ctx.currentProfitPct >= 0 ? '+' : ''}${ctx.currentProfitPct.toFixed(2)}%`);
+  if (ctx.peakProfitPct > 0) {
+    const retraceWarn = ctx.profitRetracement >= 40 ? ' ⚠️回撤过大，考虑暂停保护利润' : ctx.profitRetracement >= 25 ? ' ⚠️注意回撤' : '';
+    lines.push(`历史峰值: +${ctx.peakProfitPct.toFixed(2)}% | 峰值回撤: ${ctx.profitRetracement.toFixed(1)}%${retraceWarn}`);
+  } else {
+    lines.push('历史峰值: 暂无 (策略尚未盈利)');
+  }
+  if (ctx.oiChange1h !== undefined && ctx.oiChange1h !== 0) {
+    const oiDir = ctx.oiChange1h > 0 ? '↑新开仓增加' : '↓平仓减少';
+    const oiInterpretation = ctx.oiChange1h > 2
+      ? '(OI↑+价格↑=真多头 | OI↑+价格↓=真空头建仓)'
+      : ctx.oiChange1h < -2
+      ? '(OI↓+价格↑=空头平仓假突破 | OI↓+价格↓=多头止损)'
+      : '(OI变化平稳)';
+    lines.push(`持仓量变化: ${ctx.oiChange1h >= 0 ? '+' : ''}${ctx.oiChange1h.toFixed(2)}% ${oiDir} ${oiInterpretation}`);
+  }
+
+  // Section 9: K线历史（最近30根1h蜡烛，对齐NoFx candle history）
+  if (ctx.ohlcv && ctx.ohlcv.length > 0) {
+    lines.push('');
+    lines.push(`--- K线历史 (1h×${ctx.ohlcv.length}，最旧→最新) ---`);
+    lines.push('# 开      高      低      收      量');
+    ctx.ohlcv.forEach((c, i) => {
+      const idx = String(i + 1).padStart(2, ' ');
+      lines.push(
+        `${idx} ${c.open.toFixed(2).padStart(8)} ${c.high.toFixed(2).padStart(8)} ` +
+        `${c.low.toFixed(2).padStart(8)} ${c.close.toFixed(2).padStart(8)} ` +
+        `${c.volume.toFixed(1).padStart(10)}`,
+      );
+    });
+  }
 
   lines.push('');
   lines.push('请根据以上数据输出你的网格操作决策（JSON 数组）。');

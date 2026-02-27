@@ -21,12 +21,24 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AdminLoginDto, CreateAdminDto } from './dto/auth.dto';
 
 // 安全配置常量
+// TOTP_ENCRYPTION_KEY：生产环境必须通过环境变量注入，禁止使用默认值
+function getTotpEncryptionKey(): string {
+  const key = process.env.TOTP_ENCRYPTION_KEY;
+  if (!key) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('TOTP_ENCRYPTION_KEY 环境变量未设置（生产环境必须配置）');
+    }
+    // 开发环境警告：此 Key 仅用于本地测试，禁止在生产使用
+    return 'hoot-totp-dev-only-32bytes-long!';
+  }
+  return key;
+}
+
 const SECURITY_CONFIG = {
   MAX_LOGIN_ATTEMPTS: 5, // 最大登录失败次数
   LOCKOUT_DURATION_MINUTES: 15, // 锁定时长（分钟）
   TOTP_ISSUER: 'HOOT Admin', // TOTP 发行方名称
-  ENCRYPTION_KEY:
-    process.env.TOTP_ENCRYPTION_KEY || 'hoot-totp-key-32bytes-long!!', // 32 字节
+  ENCRYPTION_KEY: getTotpEncryptionKey(), // 32 字节，从环境变量读取
 };
 
 @Injectable()

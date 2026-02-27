@@ -28,6 +28,7 @@ interface CostBreakdown {
   username: string;
   researchCost: string;
   strategyCost: string;
+  soloCost: string;  // 快速分析/solo 策略成本（月度估算）
   total: string;
 }
 
@@ -38,6 +39,7 @@ interface CostData {
   totalCost: string;
   breakdown: CostBreakdown[];
   dailyTrend: { date: string; cost: string }[];
+  soloIncluded: boolean;  // today/week 查询不含 solo 成本
 }
 
 export const AiCostPage = () => {
@@ -96,7 +98,16 @@ export const AiCostPage = () => {
       key: 'strategyCost',
       width: 140,
       render: (v: string) => (
-        <Text>$ {parseFloat(v).toFixed(6)}</Text>
+        <Text>$ {parseFloat(v || '0').toFixed(6)}</Text>
+      ),
+    },
+    {
+      title: '快速分析成本',
+      dataIndex: 'soloCost',
+      key: 'soloCost',
+      width: 140,
+      render: (v: string) => (
+        <Text type="secondary">$ {parseFloat(v || '0').toFixed(6)}</Text>
       ),
     },
     {
@@ -186,6 +197,11 @@ export const AiCostPage = () => {
               style={{ width: 220 }}
               onSearch={(v) => { setKeyword(v); setPage(1); }}
             />
+            {data && !data.soloIncluded && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                * 快速分析成本仅月度统计可见
+              </Text>
+            )}
           </Space>
 
           <Table

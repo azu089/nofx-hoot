@@ -26,6 +26,21 @@ echo "# WEBHOOK_SECRET (用于验证 Freqtrade 信号)"
 echo "WEBHOOK_SECRET=$(openssl rand -hex 32)"
 echo ""
 
+# 加密盐（首次部署后永远不可更改，否则已加密的 API Key 无法解密）
+echo "# ENCRYPTION_SALT (API Key 加密盐 — ⚠️ 首次部署后不可更改！)"
+echo "ENCRYPTION_SALT=$(openssl rand -hex 16)"
+echo ""
+
+# 管理员 JWT 密钥（与用户 JWT 分离）
+echo "# ADMIN_JWT_SECRET (管理后台独立 JWT 密钥)"
+echo "ADMIN_JWT_SECRET=$(openssl rand -base64 32)"
+echo ""
+
+# Telegram Bot API 共享密钥
+echo "# TELEGRAM_BOT_API_SECRET (TG Bot 与后端通信密钥)"
+echo "TELEGRAM_BOT_API_SECRET=$(openssl rand -hex 32)"
+echo ""
+
 # Freqtrade JWT
 echo "# FREQTRADE_JWT_SECRET"
 echo "FREQTRADE_JWT_SECRET=$(openssl rand -base64 24)"

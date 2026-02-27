@@ -298,7 +298,11 @@ export class AdminAiService {
         break;
     }
 
-    const [researchCosts, debateSessions] = await Promise.all([
+    // period=month 时，从 aiConfig.currentSpend 补全 solo 策略成本
+    // solo 成本 = currentSpend - research - debate（auto-trader 每周期结束后写入）
+    const isMonthPeriod = !query.period || query.period === 'month';
+
+    const [researchCosts, debateSessions, soloConfigs] = await Promise.all([
       this.prisma.aiResearchSession.groupBy({
         by: ['userId'],
         _sum: { totalCost: true },
@@ -308,6 +312,13 @@ export class AdminAiService {
         where: { createdAt: { gte: sinceDate } },
         select: { userId: true, totalCost: true },
       }),
+      // 仅月度才读取 currentSpend（快速分析/solo 策略累计成本）
+      isMonthPeriod
+        ? this.prisma.aiConfig.findMany({
+            where: { currentSpend: { gt: 0 } },
+            select: { userId: true, currentSpend: true },
+          })
+        : Promise.resolve([] as Array<{ userId: string; currentSpend: { toString(): string } }>),
     ]);
 
     const researchMap = new Map(
@@ -318,8 +329,23 @@ export class AdminAiService {
       const prev = debateMap.get(d.userId) || new Decimal('0');
       debateMap.set(d.userId, prev.plus(new Decimal(d.totalCost.toString())));
     }
+    // solo 成本估算（月度）= currentSpend - research - debate
+    const soloMap = new Map<string, Decimal>();
+    for (const c of soloConfigs) {
+      const configSpend = new Decimal(c.currentSpend.toString());
+      const research = researchMap.get(c.userId) || new Decimal('0');
+      const debate = debateMap.get(c.userId) || new Decimal('0');
+      const solo = configSpend.minus(research).minus(debate);
+      if (solo.gt(0)) {
+        soloMap.set(c.userId, solo);
+      }
+    }
 
-    const allUserIds = new Set([...researchMap.keys(), ...debateMap.keys()]);
+    const allUserIds = new Set([
+      ...researchMap.keys(),
+      ...debateMap.keys(),
+      ...soloMap.keys(), // 补入只有 solo 成本的用户
+    ]);
     const userIdsArray = Array.from(allUserIds);
 
     // 搜索时过滤用户
@@ -343,13 +369,15 @@ export class AdminAiService {
       .map((uid) => {
         const research = researchMap.get(uid) || new Decimal('0');
         const debate = debateMap.get(uid) || new Decimal('0');
-        const total = research.plus(debate);
+        const solo = soloMap.get(uid) || new Decimal('0');
+        const total = research.plus(debate).plus(solo);
         const user = userMap.get(uid)!;
         return {
           userId: uid,
           username: displayName(user, uid),
           researchCost: research.toString(),
           strategyCost: debate.toString(),
+          soloCost: solo.toString(),       // 快速分析/solo 策略成本（月度估算）
           total: total.toString(),
           totalNum: total.toNumber(),
         };
@@ -372,6 +400,8 @@ export class AdminAiService {
       totalCost: totalCost.toString(),
       breakdown: paginatedBreakdown,
       dailyTrend,
+      // 标注 solo 成本的有效范围（today/week 不含 solo，仅月度准确）
+      soloIncluded: isMonthPeriod,
     };
   }
 

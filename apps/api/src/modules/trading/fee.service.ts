@@ -138,7 +138,7 @@ export class FeeService {
    * 扣除手续费（幂等性）
    * @param feeRecord 手续费记录
    */
-  async chargeFee(feeRecord: FeeRecord): Promise<boolean> {
+  async chargeFee(feeRecord: FeeRecord): Promise<{ ok: boolean; balanceDepleted: boolean }> {
     const { userId, positionId, profit, feeRate, feeAmount, uniqueOrderId } =
       feeRecord;
 
@@ -149,15 +149,17 @@ export class FeeService {
 
     if (existingLog) {
       this.logger.warn(`手续费已处理: ${uniqueOrderId}`);
-      return false;
+      return { ok: false, balanceDepleted: false };
     }
 
     const feeAmountDecimal = new Decimal(feeAmount);
 
     // 如果手续费为 0，不扣费
     if (feeAmountDecimal.lte(0)) {
-      return true;
+      return { ok: true, balanceDepleted: false };
     }
+
+    let balanceDepleted = false;
 
     // 使用事务扣费
     await this.prisma.$transaction(async (tx) => {
@@ -173,17 +175,16 @@ export class FeeService {
 
       const currentPointBalance = new Decimal(user.pointBalance.toString());
 
-      // 检查点卡余额是否足够
-      if (currentPointBalance.lt(feeAmountDecimal)) {
-        this.logger.warn(
-          `用户 ${userId} 点卡余额不足: ${currentPointBalance} < ${feeAmountDecimal}`,
-        );
-        // 点卡不足时，扣除全部点卡余额，剩余部分记录欠费
-        // 暂时只扣除可用部分
-      }
-
       // 计算实际扣除金额（不能超过当前余额）
       const actualDeduction = Decimal.min(currentPointBalance, feeAmountDecimal);
+
+      // 余额不足标记
+      if (currentPointBalance.lt(feeAmountDecimal)) {
+        balanceDepleted = true;
+        this.logger.warn(
+          `用户 ${userId} 点卡余额不足: 当前 ${currentPointBalance} < 应扣 ${feeAmountDecimal}，实扣 ${actualDeduction}`,
+        );
+      }
 
       // 扣除点卡余额（使用精确计算避免浮点误差）
       if (actualDeduction.gt(0)) {
@@ -212,7 +213,7 @@ export class FeeService {
       );
     });
 
-    return true;
+    return { ok: true, balanceDepleted };
   }
 
   /**

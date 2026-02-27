@@ -209,6 +209,8 @@ export class AdapterFactoryService implements OnModuleDestroy {
       exchangeType: exchange,
       apiKey: credentials.apiKey,
       apiSecret: credentials.apiSecret,
+      // OKX 等交易所需要 passphrase（CCXT 内部字段名为 password）
+      passphrase: credentials.passphrase,
       isTestnet: false,
     });
 

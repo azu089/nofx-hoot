@@ -185,19 +185,23 @@ export class QuickAnalysisService {
       safetyFundingRate = fundingRate;
       safetyCurrentPrice = currentPrice;
 
-      // 3. 构建最近交易上下文（替代 BM25 记忆，NoFx 轻量设计）
-      this.formatRecentTrades(config.recentTrades, config.tradingStats);
-
-      // 4. 获取交易历史
-      await this.tradeHistory.formatTradeHistoryForPrompt(config.userId);
+      // 3. 最近交易上下文 + 历史（通过 userPromptCtx 传入 PromptBuilder，此处无需额外格式化）
 
       // 5. 获取现有持仓（对齐 NoFx: 无 Evolution Tier，扁平等权设计）
       existingPositions = await this.getExistingPositions(config.userId, config.symbol);
 
+      // 追加指标趋势序列（供 AI 感知 RSI/MACD 动量方向）
+      const indicatorSeries = this.indicators.calculateSeries(ohlcv);
+      const flatIndicators = {
+        ...this.flattenIndicators(indicatorResult),
+        rsiSeries: indicatorSeries.rsiSeries,
+        macdHistSeries: indicatorSeries.macdHistSeries,
+      };
+
       marketDataPrompt = formatMarketDataPrompt({
         symbol: config.symbol,
         currentPrice,
-        indicators: this.flattenIndicators(indicatorResult),
+        indicators: flatIndicators,
         openInterest,
         fundingRate,
         existingPositions,
@@ -284,10 +288,16 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(response.content, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // 提取 <reasoning> CoT trace（如有）— 优先使用更详细的版本
+    // 提取 <reasoning> CoT trace（如有）— 分发给所有 decisions
     const reasoningTrace = extractReasoning(response.content);
-    if (reasoningTrace && reasoningTrace.length > (decision.reasoning?.length || 0)) {
-      decision.reasoning = reasoningTrace;
+    if (reasoningTrace) {
+      // 对所有 decision: 只要 <reasoning> 内容比 JSON reasoning 更长就替换
+      // 这样每个币种都能获得完整的 AI 思考过程（含账户分析+多币种市场分析）
+      for (const d of allDecisions) {
+        if (reasoningTrace.length > (d.reasoning?.length || 0)) {
+          d.reasoning = reasoningTrace;
+        }
+      }
     }
 
     const latencyMs = Date.now() - startTime;
@@ -345,7 +355,16 @@ export class QuickAnalysisService {
     }));
 
     // 从 OHLCV 聚合 24h 成交量（L10 流动性检查用）
-    const barsFor24h = config.timeframe === '4h' ? 6 : config.timeframe === '1h' ? 24 : 6;
+    const barsFor24h = config.timeframe === '1h' ? 24
+      : config.timeframe === '2h' ? 12
+      : config.timeframe === '4h' ? 6
+      : config.timeframe === '6h' ? 4
+      : config.timeframe === '8h' ? 3
+      : config.timeframe === '12h' ? 2
+      : config.timeframe === '1d' ? 1
+      : config.timeframe === '30m' ? 48
+      : config.timeframe === '15m' ? 96
+      : 6; // fallback
     const volume24h = ohlcv.length >= barsFor24h
       ? ohlcv.slice(-barsFor24h).reduce((sum, bar) => sum + (bar.volume || 0), 0)
       : undefined;

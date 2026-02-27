@@ -193,6 +193,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     permissions?: string[]
     assets?: { symbol: string; amount: string; value: number }[]
     totalValue?: number
+    balanceFetchError?: boolean
     error?: string
   } | null>(null)
   const [selectedExchange, setSelectedExchange] = useState<string | null>(null)
@@ -334,23 +335,23 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
         permissions: string[]
         balances: { symbol: string; free: number; total: number; usdValue?: number }[]
         totalUsdValue: number
+        balanceFetchError?: boolean
         error?: string
       }>(`/api-keys/${apiItem.id}/verify`)
 
       const data = response.data
       if (data.valid) {
+        const STABLECOINS = new Set(['USDT', 'USD', 'BUSD', 'USDC', 'FDUSD', 'TUSD', 'DAI'])
         setVerifyStatus('success')
         setVerifyResult({
           permissions: data.permissions,
-          // 使用后端返回的 usdValue，不再前端计算
           assets: data.balances.map(b => ({
             symbol: b.symbol,
-            amount: b.total.toFixed(
-              ['USDT', 'USD', 'BUSD', 'USDC'].includes(b.symbol) ? 2 : 8
-            ),
+            amount: b.total.toFixed(STABLECOINS.has(b.symbol) ? 2 : 6),
             value: b.usdValue || 0
           })),
-          totalValue: data.totalUsdValue
+          totalValue: data.totalUsdValue,
+          balanceFetchError: data.balanceFetchError,
         })
         // 更新 selectedApiKey 的权限，确保编辑弹窗显示一致的权限
         setSelectedApiKey({
@@ -384,14 +385,23 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   const createApiKeyMutation = useMutation({
     mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
       const response = await api.post('/api-keys', data)
-      return response.data
+      return response.data as { id: string; exchange: string; label: string; maskedKey?: string }
     },
-    onSuccess: () => {
-      toast.success(t('apiAddSuccess'))
+    onSuccess: (newKey) => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       setShowAddModal(false)
       setSelectedExchange(null)
       setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
+      // 绑定完成后自动弹出验证结果（含交易所 logo）
+      const allExchanges = [...supportedExchanges, ...supportedDexExchanges]
+      const exchangeInfo = allExchanges.find(e => e.id === newKey.exchange.toLowerCase())
+      handleVerify({
+        id: newKey.id,
+        name: newKey.label || newKey.exchange,
+        exchange: newKey.exchange,
+        status: 'active',
+        icon: exchangeInfo?.logo,
+      })
     },
     onError: (error: Error) => {
       toast.error(error.message || t('apiAddError'))
@@ -1855,11 +1865,25 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               {/* 成功状态 */}
               {verifyStatus === 'success' && verifyResult && (
                 <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-[#10B981]" />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#10B981] mb-2">{t('verifySuccess')}</h3>
-                  <p className="text-[#94A3B8] text-sm mb-5">{t('verifySuccessMessage')}</p>
+                  {verifyResult.balanceFetchError ? (
+                    /* 余额获取失败：amber 警告状态 */
+                    <>
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F59E0B]/10 flex items-center justify-center">
+                        <AlertTriangle className="w-8 h-8 text-[#F59E0B]" />
+                      </div>
+                      <h3 className="text-xl font-bold text-[#F59E0B] mb-2">API Key 有效</h3>
+                      <p className="text-[#94A3B8] text-sm mb-5">连接异常，余额暂时无法获取</p>
+                    </>
+                  ) : (
+                    /* 完全成功：绿色成功状态 */
+                    <>
+                      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#10B981]/10 flex items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-[#10B981]" />
+                      </div>
+                      <h3 className="text-xl font-bold text-[#10B981] mb-2">{t('verifySuccess')}</h3>
+                      <p className="text-[#94A3B8] text-sm mb-5">{t('verifySuccessMessage')}</p>
+                    </>
+                  )}
 
                   {/* 验证详情 */}
                   <div className="space-y-3 text-left">
@@ -1878,35 +1902,64 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                       </div>
                     </div>
 
-                    {/* 权限列表 */}
-                    <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      <p className="text-[#94A3B8] text-xs mb-2">{t('apiPermissions')}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {verifyResult.permissions?.map((perm, index) => (
-                          <span key={index} className="px-2.5 py-1 rounded-lg bg-[#10B981]/10 text-[#10B981] text-xs font-medium">
-                            {perm}
-                          </span>
-                        ))}
+                    {/* 权限列表（余额获取失败时隐藏：权限来自 fallback 逻辑，不可靠） */}
+                    {!verifyResult.balanceFetchError && (
+                      <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
+                        <p className="text-[#94A3B8] text-xs mb-2">{t('apiPermissions')}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {verifyResult.permissions?.map((perm, index) => (
+                            <span key={index} className="px-2.5 py-1 rounded-lg bg-[#10B981]/10 text-[#10B981] text-xs font-medium">
+                              {perm}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* 资产列表 */}
                     <div className="p-3 rounded-xl bg-[#1E1E2E] border border-[#2A2A3A]">
-                      {/* 总资产在上面 */}
+                      {/* 总资产 */}
                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
                         <span className="text-[#94A3B8] text-sm">{t('totalAssetValue')}</span>
-                        <span className="text-xl font-bold font-mono text-[#10B981]">${verifyResult.totalValue?.toLocaleString()}</span>
+                        {verifyResult.balanceFetchError ? (
+                          <span className="text-sm text-[#F59E0B] font-medium">获取失败，请稍后重试</span>
+                        ) : (
+                          <span className="text-xl font-bold font-mono text-[#10B981]">
+                            ${(verifyResult.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
                       </div>
+                      {/* 余额获取失败提示 */}
+                      {verifyResult.balanceFetchError && (
+                        <p className="text-[#606070] text-xs leading-relaxed">
+                          余额查询失败，可能是网络连接问题。API Key 格式正确，策略功能仍可正常使用。请稍后再次点击"验证"重试。
+                        </p>
+                      )}
                       {/* 币种明细 */}
-                      <p className="text-[#94A3B8] text-xs mb-2">{t('assetBreakdown')}</p>
-                      <div className="space-y-2.5">
-                        {verifyResult.assets?.map((asset, index) => (
-                          <div key={index} className="flex justify-between items-center">
-                            <span className="text-white font-medium text-sm">{asset.symbol}</span>
-                            <span className="text-white font-mono text-sm">{asset.amount}</span>
+                      {!verifyResult.balanceFetchError && verifyResult.assets && verifyResult.assets.length > 0 && (
+                        <>
+                          <p className="text-[#94A3B8] text-xs mb-2">{t('assetBreakdown')}</p>
+                          <div className="space-y-2.5">
+                            {verifyResult.assets.map((asset, index) => (
+                              <div key={index} className="flex justify-between items-center">
+                                <span className="text-white font-medium text-sm">{asset.symbol}</span>
+                                <div className="text-right">
+                                  <span className="text-white font-mono text-sm">{asset.amount}</span>
+                                  {asset.value > 0 && (
+                                    <span className="text-[#606070] text-xs ml-1.5">${asset.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </>
+                      )}
+                      {/* 余额为0的说明 */}
+                      {!verifyResult.balanceFetchError && (!verifyResult.assets || verifyResult.assets.length === 0) && (
+                        <p className="text-[#606070] text-xs leading-relaxed">
+                          现货与合约账户余额为空。若资金在 Binance Earn 理财中，请在 Binance App「理财」页确认后转入现货钱包再使用。
+                        </p>
+                      )}
                     </div>
                   </div>
                 </>

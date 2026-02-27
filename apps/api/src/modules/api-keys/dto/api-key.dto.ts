@@ -46,6 +46,10 @@ export class CreateApiKeyDto {
   @IsString()
   @IsNotEmpty({ message: 'API Secret 不能为空' })
   apiSecret: string;
+
+  @IsOptional()
+  @IsString()
+  passphrase?: string; // OKX 交易密码（passphrase），其他交易所忽略
 }
 
 // ========================= DEX: 钱包凭证 DTO =========================
@@ -132,4 +136,8 @@ export class UpdateApiKeyDto {
   @IsOptional()
   @IsString()
   apiSecret?: string; // 可选，留空不更新
+
+  @IsOptional()
+  @IsString()
+  passphrase?: string; // OKX 交易密码（可选，留空不更新）
 }

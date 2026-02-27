@@ -152,11 +152,13 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
       unrealizedPnl = parseFloat(usdtBalance?.crossUnPnl || '0');
     }
 
+    const usedMarginAster = totalEquity - availableBalance;
     return {
       totalEquity,
       availableBalance,
-      usedMargin: totalEquity - availableBalance,
+      usedMargin: usedMarginAster,
       unrealizedPnl,
+      marginUsedPct: totalEquity > 0 ? (usedMarginAster / totalEquity) * 100 : 0,
     };
   }
 

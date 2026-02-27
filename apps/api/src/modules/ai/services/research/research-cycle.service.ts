@@ -205,8 +205,8 @@ export class ResearchCycleService implements OnModuleInit {
   async resumeCycling(rootSessionId: string, userId: string): Promise<void> {
     const root = await this.validateRootSession(rootSessionId, userId);
 
-    if (root.campaignStatus !== 'paused') {
-      throw new Error('只能恢复暂停状态的循环');
+    if (root.campaignStatus !== 'paused' && root.campaignStatus !== 'stopped') {
+      throw new Error('只能恢复暂停或已停止状态的循环');
     }
 
     const config = root.cyclingConfig as unknown as CyclingConfig;

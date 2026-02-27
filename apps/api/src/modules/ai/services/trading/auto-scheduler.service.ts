@@ -8,7 +8,7 @@ import { PrismaService } from '../../../../prisma/prisma.service';
  * 管理每个用户的 BullMQ 定时任务，定期触发 AI 分析与交易
  *
  * 服务启动时自动恢复所有 running 状态的自动交易任务
- * + 注册回撤监控定时任务（每 60 秒）
+ * + 注册回撤监控定时任务（每 30 秒）
  */
 @Injectable()
 export class AutoSchedulerService implements OnModuleInit {
@@ -48,22 +48,24 @@ export class AutoSchedulerService implements OnModuleInit {
   private async registerDrawdownMonitor(): Promise<void> {
     const jobId = 'ai-drawdown-monitor';
     try {
-      // 先清理可能存在的旧任务（防止重复注册）
-      try {
-        await this.monitorQueue.removeRepeatable('drawdown-check', { every: 60_000 }, jobId);
-      } catch {
-        // 旧任务不存在，忽略
+      // 先清理可能存在的旧任务（防止重复注册），兼容 60s 和 30s 旧版本
+      for (const oldInterval of [60_000, 30_000]) {
+        try {
+          await this.monitorQueue.removeRepeatable('drawdown-check', { every: oldInterval }, jobId);
+        } catch {
+          // 旧任务不存在，忽略
+        }
       }
 
-      // 注册每 60 秒执行一次
+      // 注册每 30 秒执行一次（高杠杆场景下 60s 延迟不够，收紧到 30s）
       await this.monitorQueue.add('drawdown-check', {}, {
-        repeat: { every: 60_000 },
+        repeat: { every: 30_000 },
         jobId,
         removeOnComplete: 10,
         removeOnFail: 5,
       });
 
-      this.logger.log('[监控] 回撤监控已注册 (每 60 秒)');
+      this.logger.log('[监控] 回撤监控已注册 (每 30 秒)');
     } catch (error) {
       this.logger.error(`[监控] 注册回撤监控失败: ${error.message}`);
     }

@@ -6,6 +6,168 @@
 
 ---
 
+## [2026-02-28] 上线准备 — 补全密钥脚本 + SSL 域名 + 生产环境变量 + Sentry 集成
+
+**状态**: 已完成
+
+### 背景
+
+上线前全面检查发现 5 个代码层阻塞项，生产部署会直接崩溃或功能缺失。
+
+### 变更清单
+
+**1. 补全 `scripts/generate-secrets.sh`**
+- 新增 ENCRYPTION_SALT（`openssl rand -hex 16`，首次部署后不可更改）
+- 新增 ADMIN_JWT_SECRET（管理后台独立 JWT）
+- 新增 TELEGRAM_BOT_API_SECRET（TG Bot 与后端通信密钥）
+
+**2. 补全 `docker-compose.prod.yml`**
+- API 服务添加 `ENCRYPTION_SALT` / `ADMIN_JWT_SECRET` 环境变量（缺失会导致 API 启动崩溃）
+- API 服务添加 `SENTRY_DSN` 环境变量
+- Web 服务添加 `NEXT_PUBLIC_SENTRY_DSN` build arg
+
+**3. 补全 `scripts/setup-ssl.sh`**
+- 添加 `admin.hoot.cool` 域名（原来缺失导致管理后台无 HTTPS）
+- certbot 命令增加 `-d admin.hoot.cool`
+
+**4. 补全 `scripts/init-vps.sh`**
+- 密钥生成添加 ENCRYPTION_SALT / ADMIN_JWT_SECRET / TELEGRAM_BOT_API_SECRET
+- .env 模板添加管理员 Bot / HD 钱包 / 热钱包 / Sentry / 链上监听等缺失变量
+- DNS 检查添加 `admin.hoot.cool` 提示
+- 添加 ENCRYPTION_SALT 不可更改警告
+
+**5. Sentry 错误追踪集成**
+- 后端：`@sentry/node` + main.ts 初始化 + GlobalExceptionFilter 500 错误上报
+- 前端：`@sentry/nextjs` + `instrumentation.ts` 动态初始化
+- Web Dockerfile 添加 `NEXT_PUBLIC_SENTRY_DSN` build arg
+- `.env.example` 添加 `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN`
+
+**6. 依赖安全修复**
+- axios 升级到 1.13.6（修复 DoS 漏洞 GHSA-43fc-jf86-j433）
+
+### 构建验证
+
+| 应用 | 状态 |
+|------|------|
+| API (NestJS) | ✅ 200 files compiled |
+| Web (Next.js) | ✅ 所有页面生成 |
+| Admin (Vite) | ✅ 构建成功 |
+| Telegram Bot | ✅ tsc 编译通过 |
+| Admin Bot | ✅ tsc 编译通过 |
+
+### 安全审计
+
+pnpm audit: 8 vulnerabilities (6 high / 1 moderate / 1 low)
+- axios DoS: ✅ 已修复（升级到 1.13.6）
+- 其余均为 @sentry/node 和 @refinedev 传递依赖，需等上游发布修复版本
+
+### ⚠️ 重要提醒
+
+**ENCRYPTION_SALT 首次部署后永远不可更改！** 此值用于 `crypto.scryptSync()` 派生 AES 密钥，更改后所有已加密的交易所 API Key 将无法解密。必须安全备份。
+
+### 回滚方案
+
+```bash
+git revert HEAD
+```
+
+---
+
+## [2026-02-26] 网格策略全面审计 + 6 项关键 Bug 修复
+
+**状态**: 已完成
+
+### 背景
+
+对 `grid-trading.service.ts` 进行全面代码审计，发现 6 个严重问题并全部修复。
+
+### 修复 1：AI 数据源增强（双周期 OHLCV + 持仓详情）
+
+**问题**：`buildGridContext` 只拉 5m×50 K 线（约 4 小时），ATR/布林带基于噪声数据；持仓用 `.find()` 只取一方向，双向持仓丢失 short 仓信息。
+
+**修复**（`grid-trading.service.ts` + `trading-prompts.ts`）：
+- 并行拉取 5m×50 和 1h×100 两套 K 线（`Promise.all`，不增加等待时间）
+- 5m：短期信号（RSI/MACD/布林带/EMA）；1h：趋势指标（ATR/价格变化/24h 区间）
+- `priceChange1h/4h` 改用 1h K 线，精确且无临界问题
+- 新增 24h 高低价（`high24h`/`low24h`）
+- 持仓提取改为 `.filter()`，long/short 分别构建 `positionLong`/`positionShort` 详细信息
+- Step 3 预取持仓快照（`livePositions`），Step 8 直接复用，减少重复 API 调用
+- `GridContext` 接口新增：`rsi7`、`atr3`、`atrHourly`、`high24h`、`low24h`、`positionLong`、`positionShort`
+
+---
+
+### 修复 2：H-2 cancel_order 字段名不匹配（AI 撤单完全失效）
+
+**问题**：Prompt 要求 AI 返回 `orderId`，但代码读取 `decision.order_id`，两个字段名不一致，导致 AI 所有 cancel_order 决策**静默失效**，挂单永远无法通过 AI 撤销。
+
+**修复**（`grid-trading.service.ts`）：
+- `parseGridDecisions` 重写：优先匹配 ` ```json ... ``` ` 代码块（修复非贪婪正则顺带），回退到 `indexOf + lastIndexOf` 贪婪截取
+- `map` 中规范化字段：`if (d.orderId && !d.order_id) d.order_id = d.orderId`
+- `GridDecision` 接口新增 `orderId?: string`，`confidence` 改为可选
+
+---
+
+### 修复 3：H-6 placeReverseOrders 价格错误（网格盈利机制失效）
+
+**问题**：买单在 level i 成交后，反向卖单仍挂在 `line.price`（同一价格），而非 `level i+1` 的更高价格。导致反向单在成交价附近立即成交，形成连续手续费损耗，网格**低买高卖盈利机制完全失效**。
+
+**修复**（`grid-trading.service.ts`，`placeReverseOrders` 方法）：
+- `line.side === 'sell'`（原 buy 成交）→ 取 `targetLine = gridLines[index+1]`，挂卖单在上格价格
+- `line.side === 'buy'`（原 sell 成交）→ 取 `targetLine = gridLines[index-1]`，挂买单在下格价格
+- 边界检查：到达顶/底格跳过
+- 目标格线已有 `pending/filled` 跳过（避免重复下单）
+- 订单状态写到 `targetLine`（目标格线），而非触发格线
+
+---
+
+### 修复 4：C-1 并发保护缺失（多 job 并发可能双倍下单）
+
+**问题**：`gridStates` 是 Map 内存共享状态，`runGridCycle` 无任何互斥锁，BullMQ 若对同一 strategyId 产生多个并发 job，会同时读写同一份 `state`，导致重复下单、仓位超限、`orderBook` 错位。
+
+**修复**（`grid-trading.service.ts`）：
+- 类中新增 `private readonly runningStrategies = new Set<string>()`
+- `runGridCycle` 改为轻量包装层：检查 Set → add → 调用 `_runGridCycleInner` → `finally` 中 delete
+- 所有 early return 路径自动受 `finally` 保护
+
+---
+
+### 修复 5：C-2 adapter.dispose() 资源泄漏
+
+**问题**：Step 8 的 `adapter.dispose()` 只在 `try` 块末尾调用，中途抛异常则 `catch` 块无 dispose，高频运行下连接池耗尽导致服务不可用。
+
+**修复**（`grid-trading.service.ts`）：
+- `adapter` 提前声明为 `null`
+- 将 dispose 移入 `finally` 块，包含 try-catch 防止 dispose 本身抛异常
+
+---
+
+### 修复 6：日内亏损风控死代码（始终不触发）
+
+**问题**：`dailyPnl` 在 `syncOrderFills` 中只被正向累加（`gridSpacing × qty`，永远 ≥ 0），所以 `state.dailyPnl < 0` 永远为 false，Step 4 日内亏损检查是**死代码**，风控完全无效。
+
+**正确设计**：每天开始时记录起始权益，用真实权益变化（`currentEquity - dailyStartEquity`）计算日内 P&L。
+
+**修复**（`grid-trading.service.ts`）：
+- `GridState` 新增 `dailyStartEquity: number` 字段
+- `initializeGrid` 初始化 `dailyStartEquity = initialEquity`
+- Step 4 重写：新的一天 → 记录 `dailyStartEquity = currentEquity`；同一天 → `dailyPnl = currentEquity - dailyStartEquity`（真实值，可为负）；风控检查用 `dailyStartEquity` 为基数
+- `syncOrderFills` 移除 `dailyPnl += gridProfit`，`totalProfit` 累计保留（终身盈亏统计）
+
+### 变更文件
+
+| 文件 | 改动 |
+|------|------|
+| `apps/api/src/modules/ai/services/trading/grid-trading.service.ts` | 以上全部 6 项 |
+| `apps/api/src/modules/ai/constants/trading-prompts.ts` | `GridContext` 接口扩展 + `buildGridUserPrompt` 显示增强 |
+
+### 验收
+
+```bash
+pnpm --filter api exec tsc --noEmit  # 零报错 ✅
+```
+
+---
+
 ## [2026-02-22] Phase 11: 大资金实战硬约束补全 + 手续费修复
 
 **状态**: 进行中

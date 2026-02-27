@@ -141,8 +141,19 @@ export class ConsensusService {
     }
 
     if (validVotes.length === 0) {
-      this.logger.warn('[共识] 所有模型分析失败，默认 hold');
-      return this.buildDefaultResult(config.symbol, votes, Date.now() - startTime);
+      const succeededVotes = votes.filter((v) => v.success);
+      let holdReason: string;
+      if (succeededVotes.length === 0) {
+        holdReason = '模型调用均失败，默认持有';
+        this.logger.warn('[共识] 所有模型调用失败，默认 hold');
+      } else {
+        const avgConf = Math.round(
+          succeededVotes.reduce((s, v) => s + v.decision.confidence, 0) / succeededVotes.length,
+        );
+        holdReason = `模型置信度不足（${succeededVotes.length}个模型均值 ${avgConf}%），观望等待`;
+        this.logger.warn(`[共识] 模型置信度不足（均值 ${avgConf}%），默认 hold`);
+      }
+      return this.buildDefaultResult(config.symbol, votes, Date.now() - startTime, holdReason);
     }
 
     // 阵营归类 + 加权计算
@@ -256,6 +267,13 @@ export class ConsensusService {
           reasoning: `模型未返回 ${symbol} 的决策`,
         };
 
+        // 区分三种情况:
+        // a) 模型调用失败 (v.success=false) → success=false, error=原始错误
+        // b) 调用成功但未返回该币种 → success=true, weight=0, confidence=0 (不参与共识但不算失败)
+        // c) 调用成功且有决策 → success=true, weight=flatWeight
+        const modelCallFailed = v.success === false;
+        const missingCoin = !modelCallFailed && !symbolDecision;
+
         return {
           modelId: v.modelId,
           decision: {
@@ -267,11 +285,11 @@ export class ConsensusService {
             takeProfit: dec.takeProfit ?? null,
             reasoning: dec.reasoning || '',
           },
-          weight: v.success && symbolDecision ? flatWeight : 0,
+          weight: symbolDecision && !modelCallFailed ? flatWeight : 0,
           cost: v.cost / symbols.length,
           latencyMs: v.latencyMs,
-          success: v.success !== false && !!symbolDecision,
-          error: v.error,
+          success: !modelCallFailed,
+          error: modelCallFailed ? v.error : missingCoin ? `未覆盖 ${symbol}` : v.error,
         };
       });
 
@@ -280,7 +298,28 @@ export class ConsensusService {
       );
 
       if (validVotes.length === 0) {
-        results[symbol] = this.buildDefaultResult(symbol, symbolVotes, 0);
+        const successVotes = symbolVotes.filter((v) => v.success && v.weight > 0);
+        let holdReason: string;
+        if (successVotes.length > 0) {
+          // 有模型成功调用，但信度全低于 50%
+          const avgConf = Math.round(successVotes.reduce((s, v) => s + v.decision.confidence, 0) / successVotes.length);
+          holdReason = `模型置信度不足（${successVotes.length}个模型均值 ${avgConf}%），观望等待`;
+          this.logger.warn(
+            `[多币种共识] ${symbol}: 所有 ${successVotes.length} 个有效模型信度不足 50%（均值 ${avgConf}%），默认 hold`,
+          );
+        } else {
+          const failedCount = symbolVotes.filter((v) => !v.success).length;
+          const missingCount = symbolVotes.filter((v) => v.success && v.weight === 0).length;
+          if (failedCount > 0 && missingCount === 0) {
+            holdReason = `模型调用失败（${failedCount}/${symbolVotes.length}），默认持有`;
+          } else if (missingCount > 0 && failedCount === 0) {
+            holdReason = `模型未覆盖 ${symbol}（${missingCount}/${symbolVotes.length}），默认持有`;
+          } else {
+            holdReason = `无有效投票（失败${failedCount}个，未覆盖${missingCount}个），默认持有`;
+          }
+          this.logger.warn(`[多币种共识] ${symbol}: ${holdReason}`);
+        }
+        results[symbol] = this.buildDefaultResult(symbol, symbolVotes, 0, holdReason);
       } else {
         results[symbol] = this.calculateConsensus(symbol, validVotes, symbolVotes);
       }
@@ -342,6 +381,9 @@ export class ConsensusService {
 
   /**
    * 多币种模型投票（一次 LLM 调用覆盖所有候选币）
+   *
+   * 降级策略: 如果模型返回的决策数量 < 币种数量（如 DeepSeek 只返回 BTC 遗漏 ETH），
+   * 自动对缺失的币种逐一发起单币种补充调用。
    */
   private async getMultiCoinModelVote(
     modelId: string,
@@ -357,30 +399,108 @@ export class ConsensusService {
     error?: string;
   }> {
     const startTime = Date.now();
+    const symbols = config.symbols || [config.symbol];
 
     // 使用预构建的市场数据 + 多币种 prompt
+    // 多币种需要更多 token 以输出每个币的详细 reasoning（3-5句 × N币种）
+    const coinCount = symbols.length;
+    const multiCoinMaxTokens = Math.min(4000, 1500 + coinCount * 800);
     const analysisConfig: QuickAnalysisConfig = {
       userId: config.userId,
-      symbol: config.symbols?.[0] || config.symbol, // 主币种
+      symbol: symbols[0] || config.symbol, // 主币种
       timeframe: config.timeframe,
       secondaryTimeframe: config.secondaryTimeframe,
       modelId,
       apiKeys: config.apiKeys,
       temperature: 0.4,
+      maxTokens: multiCoinMaxTokens,
       debateContext: config.debateContext,
       promptConfig: config.promptConfig,
       precomputedMarketData: config.precomputedMarketData,
       accountInfo: config.accountInfo,
     };
 
+    this.logger.log(`🤖 [${modelId}] 多币种分析中... (${symbols.length} 币: ${symbols.join(', ')})`);
     const result: QuickAnalysisResult =
       await this.quickAnalysis.analyze(analysisConfig);
+    this.logger.log(
+      `⏱️ [${modelId}] ${((Date.now() - startTime) / 1000).toFixed(1)}s → ${result.allDecisions?.length ?? 0}/${symbols.length} 币决策`,
+    );
+
+    let allDecisions = result.allDecisions;
+    let totalCost = result.cost;
+
+    // 降级: 检查哪些币种缺失决策，自动补充单币种调用
+    if (allDecisions.length < symbols.length && symbols.length > 1) {
+      // 找出已覆盖的 symbol
+      const coveredSymbols = new Set<string>();
+      for (const d of allDecisions) {
+        if (d.symbol) {
+          const normalized = this.normalizeSymbol(d.symbol, symbols);
+          coveredSymbols.add(normalized);
+        }
+      }
+      // 按索引兜底: allDecisions[i] 对应 symbols[i]
+      for (let i = 0; i < Math.min(allDecisions.length, symbols.length); i++) {
+        coveredSymbols.add(symbols[i]);
+      }
+
+      const missingSymbols = symbols.filter((s) => !coveredSymbols.has(s));
+
+      if (missingSymbols.length > 0) {
+        this.logger.warn(
+          `[多币种共识] 模型 ${modelId} 仅返回 ${allDecisions.length}/${symbols.length} 个决策，` +
+          `缺失: ${missingSymbols.join(', ')}，降级为单币种补充调用`,
+        );
+
+        // 逐个补充缺失币种的单币种调用
+        for (const missSymbol of missingSymbols) {
+          try {
+            const fallbackConfig: QuickAnalysisConfig = {
+              userId: config.userId,
+              symbol: missSymbol,
+              timeframe: config.timeframe,
+              secondaryTimeframe: config.secondaryTimeframe,
+              modelId,
+              apiKeys: config.apiKeys,
+              temperature: 0.4,
+              maxTokens: 1500,
+              debateContext: config.debateContext,
+              accountInfo: config.accountInfo,
+              // 不传 precomputedMarketData — 让 QuickAnalysis 自行 fetch 单币种数据
+            };
+            this.logger.log(`🤖 [${modelId}] 降级补充: ${missSymbol}...`);
+            const fallbackResult = await this.quickAnalysis.analyze(fallbackConfig);
+            const fallbackDecision = fallbackResult.decision;
+            fallbackDecision.symbol = missSymbol;
+            allDecisions.push(fallbackDecision);
+            totalCost += fallbackResult.cost;
+            this.logger.log(
+              `[多币种共识] 补充 ${missSymbol}: ${fallbackDecision.action} (confidence=${fallbackDecision.confidence}%)`,
+            );
+          } catch (e: any) {
+            this.logger.warn(`[多币种共识] 补充 ${missSymbol} 失败: ${e.message}`);
+            // 补充失败时推入占位 hold
+            allDecisions.push({
+              action: 'hold' as any,
+              confidence: 0,
+              leverage: 1,
+              positionSizePercent: 0,
+              stopLoss: null,
+              takeProfit: null,
+              reasoning: `单币种补充调用失败: ${e.message}`,
+              symbol: missSymbol,
+            });
+          }
+        }
+      }
+    }
 
     return {
       modelId,
-      allDecisions: result.allDecisions, // 所有币种的决策
+      allDecisions,
       weight,
-      cost: result.cost,
+      cost: totalCost,
       latencyMs: Date.now() - startTime,
       success: true,
     };
@@ -407,15 +527,20 @@ export class ConsensusService {
       accountInfo: config.accountInfo,
     };
 
+    this.logger.log(`🤖 [${modelId}] 分析中...`);
     const result: QuickAnalysisResult =
       await this.quickAnalysis.analyze(analysisConfig);
+    const latencyMs = Date.now() - startTime;
+    this.logger.log(
+      `⏱️ [${modelId}] ${(latencyMs / 1000).toFixed(1)}s → ${result.decision.action} (conf=${result.decision.confidence}%)`,
+    );
 
     return {
       modelId,
       decision: result.decision,
       weight,
       cost: result.cost,
-      latencyMs: Date.now() - startTime,
+      latencyMs,
       success: true,
     };
   }
@@ -622,12 +747,13 @@ export class ConsensusService {
   }
 
   /**
-   * 默认结果（所有模型失败时）
+   * 默认结果（无有效投票时）
    */
   private buildDefaultResult(
     symbol: string,
     allVotes: ModelVote[],
     totalLatencyMs: number,
+    reason?: string,
   ): ConsensusResult {
     return {
       symbol,
@@ -638,11 +764,11 @@ export class ConsensusService {
       avgPositionSizePercent: 0,
       avgStopLoss: null,
       avgTakeProfit: null,
-      reasoning: '所有模型调用失败，默认持有',
+      reasoning: reason ?? '无有效投票，默认持有',
       votes: allVotes,
       totalCost: allVotes.reduce((sum, v) => sum + v.cost, 0),
       totalLatencyMs,
-      sceneText: `consensus:${symbol}:failed`,
+      sceneText: `consensus:${symbol}:hold`,
       consensusScore: 0,
     };
   }

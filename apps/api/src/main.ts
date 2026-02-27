@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+// 先加载 api 级别 .env（优先级高）
+dotenv.config();
+// 再加载 monorepo 根目录 .env 作为回退（不覆盖已有变量）
+// dist/main.js 路径: apps/api/dist/main.js → ../../../.env = HOOT/.env
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+import * as Sentry from '@sentry/node';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
@@ -6,6 +13,15 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+
+// Sentry 初始化（必须在 NestFactory.create 之前）
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.1,
+  });
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

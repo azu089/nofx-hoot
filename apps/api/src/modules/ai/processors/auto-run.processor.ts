@@ -70,6 +70,16 @@ export class AutoRunProcessor extends WorkerHost {
   ): Promise<{ analyzed: number; executed: number; errors: number }> {
     const { strategyId, userId } = job.data;
 
+    // 策略已停止时（如点卡耗尽被自动停止）直接跳过，不发起 LLM 调用
+    const strategy = await this.prisma.aiStrategy.findUnique({
+      where: { id: strategyId },
+      select: { isActive: true },
+    });
+    if (!strategy?.isActive) {
+      this.logger.debug(`[策略周期] 跳过: 策略=${strategyId} 已停止`);
+      return { analyzed: 0, executed: 0, errors: 0 };
+    }
+
     this.logger.log(`[策略周期] 开始: 策略=${strategyId}, 用户=${userId}`);
 
     try {

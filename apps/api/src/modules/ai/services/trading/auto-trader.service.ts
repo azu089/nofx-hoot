@@ -130,7 +130,10 @@ interface CycleDecision {
  * Step 3: 重置每日 PnL（24h 周期）
  * Step 4: 构建交易上下文（余额、持仓、候选币种、市场数据、指标）
  * Step 5: 检查现有持仓（是否需要平仓/调仓）
- * Step 6: AI 决策（Solo 或 Debate 模式）
+ * Step 6: AI 决策（三种模式，互相独立，勿混淆）：
+ *   - 极速策略 (quick/默认): tradingMode 非 debate/research → 单模型 QuickAnalysisService 分析
+ *   - 共识策略 (debate):      tradingMode === 'debate' → N 模型各自独立分析 + 投票聚合（无辩论轮次）
+ *   - 深研策略 (research):    tradingMode === 'research' → Stage2 投资辩论 + Stage3 风控辩论 + Stage4 共识投票
  * Step 7: 9 层安全检查
  * Step 8: 排序决策（平仓优先）
  * Step 9: 逐一执行
@@ -207,6 +210,19 @@ export class AutoTraderService {
         return result;
       }
 
+      // 月度预算检查：超出则跳过本周期，避免产生额外 LLM 费用
+      const monthlyBudget = Number(aiConfig.monthlyBudget) || 0;
+      if (monthlyBudget > 0) {
+        const currentSpend = Number(aiConfig.currentSpend) || 0;
+        if (currentSpend >= monthlyBudget) {
+          this.logger.warn(
+            `[自动交易] 用户 ${userId} 月度 LLM 预算已用尽 ` +
+            `($${currentSpend.toFixed(4)} / $${monthlyBudget})，跳过本周期`,
+          );
+          return result;
+        }
+      }
+
       let models = (aiConfig.models as string[]) || ['deepseek-chat'];
 
       // 策略级模型列表优先于全局 AI 配置（strategy.models 由创建策略时指定，Debate 模式必需）
@@ -220,6 +236,16 @@ export class AutoTraderService {
 
       const quickModel = models[0] || 'deepseek-chat';
       const locale = (aiConfig as unknown as Record<string, unknown>).locale as string || 'zh-CN';
+
+      // 共识/深研模式模型数校验已移至 startStrategy() 启动时，运行时仅记录异常
+      if (
+        (strategy.tradingMode === 'debate' || strategy.tradingMode === 'research') &&
+        models.length < AI_SAFETY_DEFAULTS.minConsensusModels
+      ) {
+        this.logger.warn(
+          `[自动交易] ${strategy.tradingMode} 模式建议至少 ${AI_SAFETY_DEFAULTS.minConsensusModels} 个模型（当前 ${models.length}），继续执行`,
+        );
+      }
 
       // 双轨制 Key 解析：用户自备 Key（解密）→ 平台默认 Key
       const rawApiKeys = (aiConfig.apiKeys as Record<string, unknown>) || {};
@@ -284,6 +310,12 @@ export class AutoTraderService {
         lastCycleAt: new Date(),
       });
 
+      // 网格策略优先路由: 有独立的回撤保护，跳过用户级日回撤检查
+      if (strategy.strategyType === 'grid') {
+        const riskControlGrid = (strategy.riskControlConfig as RiskControlConfig) || {};
+        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, riskControlGrid, result, startTime);
+      }
+
       // Step 2: 检查是否被风控暂停
       // 2a: 策略级暂停检查（riskControlConfig 中的 pauseUntil）
       const riskControl = (strategy.riskControlConfig as RiskControlConfig) || {};
@@ -302,7 +334,7 @@ export class AutoTraderService {
       const closedToday = await this.prisma.position.findMany({
         where: {
           userId,
-          source: { in: ['ai_research', 'ai_strategy'] },
+          source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
           status: 'closed',
           closedAt: { gte: todayStart },
         },
@@ -315,7 +347,7 @@ export class AutoTraderService {
       const openPositions = await this.prisma.position.findMany({
         where: {
           userId,
-          source: { in: ['ai_research', 'ai_strategy'] },
+          source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
           status: 'open',
         },
         select: { unrealizedPnl: true },
@@ -337,7 +369,7 @@ export class AutoTraderService {
             symbol: 'ALL',
             decision: {
               action: 'circuit_breaker',
-              reason: `Daily drawdown $${Math.abs(totalDailyPnl).toFixed(2)} exceeds limit $${maxDailyDrawdown}`,
+              reason: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`,
               closedPnl,
               unrealizedPnl,
               totalDailyPnl,
@@ -376,11 +408,6 @@ export class AutoTraderService {
 
       this.logger.log(`[自动交易] 候选币种: ${candidates.join(', ')}`);
 
-      // Grid 策略路由: 网格交易走独立循环
-      if (strategy.strategyType === 'grid') {
-        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, riskControl, result, startTime);
-      }
-
       // Step 4: 获取指标配置
       const indicatorConfig = (strategy.indicatorConfig as IndicatorConfig) || {};
       const timeframe = indicatorConfig.timeframe || '4h';
@@ -397,17 +424,19 @@ export class AutoTraderService {
 
       // E1: 仓位已满预筛选（对齐 NoFx enforceMaxPositions — Pre-AI 拦截，避免浪费 Token）
       // NoFx 在调用 LLM 前先检查仓位数，满则只处理有持仓的币种（允许平仓）
+      // 修复: maxPositions 仅计入本策略的持仓，避免其他策略持仓误触发本策略的仓位限制
       const effectiveMaxPositions = riskControl.maxPositions ?? 3;
-      const positionsFull = existingPositions.length >= effectiveMaxPositions;
+      const thisStrategyOpenPositions = existingPositions.filter(p => p.aiStrategyId === strategy.id);
+      const positionsFull = thisStrategyOpenPositions.length >= effectiveMaxPositions;
       const activeCandidates = positionsFull
         ? candidates.filter(sym =>
-            existingPositions.some(p => p.symbol === sym),
+            thisStrategyOpenPositions.some(p => p.symbol === sym),
           )
         : candidates;
 
       if (positionsFull && activeCandidates.length < candidates.length) {
         this.logger.log(
-          `[风控-E1] 仓位已满 ${existingPositions.length}/${effectiveMaxPositions}，` +
+          `[风控-E1] 仓位已满 ${thisStrategyOpenPositions.length}/${effectiveMaxPositions}（本策略），` +
           `候选池从 ${candidates.length} 缩减至 ${activeCandidates.length} 个（仅处理有持仓币种）`,
         );
       }
@@ -424,7 +453,61 @@ export class AutoTraderService {
       try {
         exchangeBalance = await this.aiExecution.getFullBalance(userId, effectiveExchangeApiKeyId);
       } catch (err) {
-        this.logger.warn(`[账户] 交易所余额获取失败，降级到 allocatedCapital: ${err instanceof Error ? err.message : err}`);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[账户] 交易所余额获取失败，降级到 allocatedCapital: ${errMsg}`);
+        // key 被删/禁用属于致命配置错误（不同于网络抖动），写前端可见日志后终止本周期
+        const isFatalKeyError =
+          errMsg.includes('凭证不存在') ||
+          errMsg.includes('凭证已禁用') ||
+          errMsg.includes('无权使用此凭证');
+        if (isFatalKeyError) {
+          await this.prisma.aiStrategyLog.create({
+            data: {
+              strategyId,
+              symbol: (strategy.coinSourceConfig as any)?.coins?.[0] || 'ALL',
+              decision: {
+                action: 'auto_disabled_failure',
+                reason: '交易所 API Key 已被删除或禁用，请重新绑定',
+                lastError: errMsg,
+              },
+              executed: false,
+            },
+          }).catch(() => {});
+          return result;
+        }
+      }
+
+      // Step 2b-Live: 日回撤二次校验（使用交易所实时权益，补偿 DB unrealizedPnl 的快照延迟）
+      // 期货账户恒等式：totalEquity = availableBalance + usedMargin + liveUnrealizedPnl
+      // 故 liveUnrealizedPnl = totalEquity - availableBalance - usedMargin（含账户全部期货浮亏）
+      if (exchangeBalance) {
+        const liveUnrealizedPnl =
+          exchangeBalance.totalEquity - exchangeBalance.availableBalance - exchangeBalance.usedMargin;
+        const liveTotalDailyPnl = closedPnl + liveUnrealizedPnl;
+        if (liveTotalDailyPnl < -maxDailyDrawdown) {
+          this.logger.warn(
+            `[自动交易] 策略 ${strategyId} 日回撤熔断（实时）: 浮亏=$${Math.abs(liveUnrealizedPnl).toFixed(2)}，` +
+            `今日总PnL=$${liveTotalDailyPnl.toFixed(2)} < -$${maxDailyDrawdown}` +
+            `（DB快照=$${totalDailyPnl.toFixed(2)}，差值=$${Math.abs(liveTotalDailyPnl - totalDailyPnl).toFixed(2)}）`,
+          );
+          await this.prisma.aiStrategyLog.create({
+            data: {
+              strategyId,
+              symbol: 'ALL',
+              decision: {
+                action: 'circuit_breaker',
+                reason: `日回撤实时校验 $${Math.abs(liveTotalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`,
+                closedPnl,
+                liveUnrealizedPnl,
+                liveTotalDailyPnl,
+                dbSnapshot: totalDailyPnl,
+              },
+              executed: false,
+            },
+          }).catch(() => {});
+          result.errors = 1;
+          return result;
+        }
       }
 
       // Step 5.2: 分类持仓 + 构建 accountInfo（注入 Prompt 让 LLM 看到真实余额/持仓）
@@ -627,14 +710,28 @@ export class AutoTraderService {
         currentPrice: number;
         fundingRate?: number;
         volume24h?: number;
+        priceChange1h?: number;
         indicators: { rsi: number | null; atr3: number | null; atr14: number | null };
       }> = {};
 
+      // ═══════════════════════════════════════════════════════════════════════
+      // 【共识策略 — debate 模式】
+      //
+      // 工作方式：N 个模型各自独立分析（无辩论轮次），最终汇总投票决出获胜方向。
+      // 调用路径：ConsensusService.runMultiCoinConsensus()（非 runFullDebate）
+      //
+      // ⚠ 注意：debateConfig.maxRounds 字段虽然传入，但共识模式本身不存在"辩论轮次"。
+      //   该字段对共识策略无实质效果，仅深研策略（research 模式）真正使用 maxRounds/riskRounds。
+      //
+      // 与深研策略（research）的关键区别：
+      //   - debate（共识）: 模型独立思考 → 投票聚合 → 出决策（无 Stage2/Stage3 辩论）
+      //   - research（深研）: Stage2 投资辩论 → Stage3 风控辩论 → Stage4 共识投票
+      // ═══════════════════════════════════════════════════════════════════════
       if (strategy.tradingMode === 'debate' && activeCandidates.length > 0) {
         const debateConfig = strategy.debateConfig as DebateConfig | null;
         this.logger.log(
-          `🗳 Debate 模式: ${activeCandidates.length} 个候选币, ${models.length} 模型, ` +
-          `辩论${debateConfig?.maxRounds || 3}轮, 时间框架=${timeframe}/${secondaryTimeframe}`,
+          `🗳 共识策略(debate): ${activeCandidates.length} 个候选币, ${models.length} 模型独立投票, ` +
+          `时间框架=${timeframe}/${secondaryTimeframe}`,
         );
         try {
           const promptSections = strategy.promptSections as PromptSections | null;
@@ -686,9 +783,12 @@ export class AutoTraderService {
           // 保存市场数据快照（供安全检查 L3/L8/L9 使用）
           debateMarketSnapshots = multiResult.marketDataSnapshots || {};
 
-          // 将多币种结果填入 Map
+          // 将多币种结果填入 Map（orchestrator 保证每个 sym 都有 decisions[sym]）
           for (const sym of activeCandidates) {
             const dec = multiResult.decisions[sym];
+            if (!dec) {
+              this.logger.warn(`[多币种辩论] ${sym}: 编排器未返回决策（不应发生），将降级 Solo 分析`);
+            }
             if (dec) {
               debateResults.set(sym, {
                 decision: dec,
@@ -733,10 +833,90 @@ export class AutoTraderService {
         }
       }
 
-      // Solo 模式提示（对齐 NoFx AI 请求日志）
-      if (strategy.tradingMode !== 'debate') {
+      // ═══════════════════════════════════════════════════════════════════════
+      // 【深研策略 — research 模式】
+      //
+      // 工作方式：真正的多轮角色扮演辩论，分三个 Stage：
+      //   Stage 2: 投资辩论 —— Analyst / TechTrader / MacroStrategist / RiskManager / Contrarian
+      //            5 个角色轮流发言，进行 maxRounds 轮辩论
+      //   Stage 3: 风控辩论 —— Aggressive / Conservative / Neutral + Judge 裁决
+      //            进行 riskRounds 轮风控对抗，判断仓位/杠杆是否合理
+      //   Stage 4: 共识投票 —— 所有参与模型最终投票，决出最终动作
+      // 调用路径：DebateOrchestratorService.runFullDebate()（逐币调用，非多币种批处理）
+      //
+      // ⚠ 注意：debateConfig.maxRounds（投资辩论轮次）和 riskRounds（风控辩论轮次）
+      //   在此模式下真正生效。共识策略（debate 模式）中这两个参数无实质作用。
+      //
+      // 与共识策略（debate）的关键区别：
+      //   - debate（共识）: 模型独立思考 → 投票聚合（无角色扮演，无多轮辩论）
+      //   - research（深研）: 5角色投资辩论 + 风控辩论 + 最终共识投票（有角色扮演，有多轮辩论）
+      // ═══════════════════════════════════════════════════════════════════════
+      if (strategy.tradingMode === 'research' && activeCandidates.length > 0) {
+        const debateConfig = strategy.debateConfig as DebateConfig | null;
         this.logger.log(
-          `🤖 Solo 模式: ${activeCandidates.length} 个候选币, 模型=${quickModel}, ` +
+          `🔬 深研策略(research): ${activeCandidates.length} 个候选币, ${models.length} 模型, ` +
+          `投资辩论${debateConfig?.maxRounds || 3}轮, 风控辩论${debateConfig?.riskRounds || 3}轮, 时间框架=${timeframe}`,
+        );
+        for (const sym of activeCandidates) {
+          try {
+            const researchConfig: OrchestratorConfig = {
+              userId,
+              strategyId: strategy.id,
+              symbol: sym,
+              timeframe,
+              secondaryTimeframe,
+              models,
+              apiKeys,
+              maxRounds: debateConfig?.maxRounds || 3,
+              riskRounds: debateConfig?.riskRounds || 3,
+              temperature: debateConfig?.temperature || 0.7,
+            };
+            const researchResult = await this.orchestrator.runFullDebate(researchConfig);
+            result.totalCost += researchResult.totalCost;
+            debateResults.set(sym, {
+              decision: researchResult.decision,
+              cost: 0, // 已统一计入 result.totalCost
+              consensusScore: researchResult.consensusScore,
+              consensusVotes: researchResult.votes.map(v => ({
+                modelId: v.modelId,
+                action: v.decision.action,
+                confidence: v.decision.confidence,
+                reasoning: v.decision.reasoning || '',
+                weight: v.weight,
+                success: v.success,
+                error: v.error,
+                leverage: v.decision.leverage,
+                positionSizePercent: v.decision.positionSizePercent,
+                stopLoss: v.decision.stopLoss ?? null,
+                takeProfit: v.decision.takeProfit ?? null,
+              })),
+            });
+            this.logger.log(
+              `[深研] ${sym}: ${researchResult.decision.action} ` +
+              `(conf=${researchResult.decision.confidence}%, score=${researchResult.consensusScore}/${models.length})`,
+            );
+          } catch (error) {
+            this.logger.error(`[深研] ${sym} 深研分析失败: ${error.message}`);
+            result.errors++;
+            // 失败 → 不填入 debateResults → 逐币循环降级 Solo
+          }
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // 【极速策略 — quick/Solo 模式（默认）】
+      //
+      // 条件：tradingMode 既不是 'debate' 也不是 'research'
+      // 工作方式：单模型逐币快速分析，无投票/无辩论，每币一次 LLM 调用。
+      // 调用路径：QuickAnalysisService.analyze()（逐币循环调用，见下方 for 循环）
+      //
+      // ⚠ 注意：此 if 块仅打印提示日志，实际 Solo 分析在下方 for 循环的 else 分支执行。
+      //   共识策略（debate）和深研策略（research）在上方各自的 if 块中完成预处理，
+      //   结果存入 debateResults Map，下方 for 循环中通过 debateResults.has(symbol) 判断分支。
+      // ═══════════════════════════════════════════════════════════════════════
+      if (strategy.tradingMode !== 'debate' && strategy.tradingMode !== 'research') {
+        this.logger.log(
+          `🤖 极速策略(Solo): ${activeCandidates.length} 个候选币, 模型=${quickModel}, ` +
           `时间框架=${timeframe}/${secondaryTimeframe}`,
         );
       }
@@ -751,7 +931,7 @@ export class AutoTraderService {
           // Step 6: AI 决策
           let decision: AiTradeDecision;
           let cost = 0;
-          let debateConsensusScore = 5; // Solo 模式默认满分（跳过 L2 共识检查）
+          let debateConsensusScore = models.length; // Solo 模式默认满分 = 模型数（跳过 L2 共识检查）
           let consensusVotes: ConsensusVote[] | undefined; // Debate 模式各模型投票详情
 
           // R4: 提前获取订单簿数据供 AI 决策参考
@@ -780,9 +960,15 @@ export class AutoTraderService {
           let safetyFundingRate: number | undefined;
           let safetyCurrentPrice: number | undefined;
           let safetyVolume24h: number | undefined;
+          let safetyPriceChange1h: number | undefined;
 
+          // ── 分支判断：共识/深研策略（预处理已完成）vs 极速策略（此处实时调用）──
+          // debateResults 在上方的 if(debate) / if(research) 块中填入
+          // 极速策略从未进入那两个块，所以 debateResults.has(symbol) === false
           if (debateResults.has(symbol)) {
-            // Phase 9.0 T4: Debate 多币种辩论 — 从预计算结果获取（一次辩论覆盖所有币）
+            // 【共识策略 or 深研策略】— 决策已在上方预处理阶段完成，此处仅取结果
+            // debate:   结果由 ConsensusService.runMultiCoinConsensus() 产出（N模型投票）
+            // research: 结果由 DebateOrchestratorService.runFullDebate() 产出（多轮辩论）
             const debateData = debateResults.get(symbol)!;
             decision = debateData.decision;
             cost = debateData.cost; // 0（已在辩论预处理阶段统一计入 result.totalCost）
@@ -795,9 +981,12 @@ export class AutoTraderService {
               safetyFundingRate = snapshot.fundingRate;
               safetyCurrentPrice = snapshot.currentPrice;
               safetyVolume24h = snapshot.volume24h;
+              safetyPriceChange1h = snapshot.priceChange1h;
             }
           } else {
-            // Solo 模式（或 Debate 降级兜底）: 单模型分析（Phase 9.0: 传入 promptConfig + 最近交易）
+            // 【极速策略】or 【共识/深研降级兜底】— 单模型实时分析
+            // 极速策略：每币一次 QuickAnalysis（单模型，无投票，无辩论）
+            // 降级兜底：共识/深研整体失败时，debateResults 为空，此处接管逐币处理
             const promptSections = strategy.promptSections as PromptSections | null;
             const analysisConfig: QuickAnalysisConfig = {
               userId,
@@ -836,7 +1025,10 @@ export class AutoTraderService {
                 locale,
               },
             };
+            this.logger.log(`🤖 [${symbol}] 极速分析中... [QuickAnalysis]`);
+            const _soloT0 = Date.now();
             const analysisResult = await this.quickAnalysis.analyze(analysisConfig);
+            const _soloDurationSec = ((Date.now() - _soloT0) / 1000).toFixed(1);
             cost = analysisResult.cost;
             decision = analysisResult.decision;
             safetyIndicators = analysisResult.indicators;
@@ -844,10 +1036,20 @@ export class AutoTraderService {
             safetyCurrentPrice = analysisResult.currentPrice;
             safetyVolume24h = analysisResult.volume24h;
             this.logger.log(
-              `[自动交易] Solo 分析完成: ${symbol} → ${decision.action} (confidence=${decision.confidence}%, leverage=${decision.leverage}x, posPct=${decision.positionSizePercent}%)\n` +
+              `⏱️ [${symbol}] AI 响应耗时 ${_soloDurationSec}s → ${decision.action} (conf=${decision.confidence}%, lev=${decision.leverage}x, pos=${decision.positionSizePercent}%)\n` +
               `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'} 成本=$${cost.toFixed(6)}\n` +
-              `  reasoning: ${(decision.reasoning || '').slice(0, 200)}`,
+              `  分析: ${(decision.reasoning || '').slice(0, 200)}`,
             );
+          }
+
+          // priceChange1h 黑天鹅拦截（Solo + Debate 共用，Debate 快照不含此字段）
+          // OHLCV 有 5min 缓存，Debate 路径命中缓存，重复调用成本极低
+          if (safetyPriceChange1h === undefined) {
+            try {
+              safetyPriceChange1h = await this.marketData.fetchPriceChange1h(symbol);
+            } catch {
+              // 非致命，priceChange1h 缺失时 L9 跳过黑天鹅检查
+            }
           }
 
           // E2: 杠杆 auto-clamp（对齐 NoFx validateDecision — 分 BTC/ETH 和山寨币）
@@ -933,19 +1135,60 @@ export class AutoTraderService {
             continue;
           }
 
+          // === minConfidence 代码级预过滤（对齐 NoFx validateDecision confidence 检查）===
+          // RiskControlConfig.minConfidence 默认 60，用户可在策略 riskControlConfig 中调整
+          {
+            const isOpenDecision = decision.action === 'open_long' || decision.action === 'open_short';
+            const minConf = riskControl.minConfidence ?? 60;
+            if (isOpenDecision && decision.confidence < minConf) {
+              this.logger.log(
+                `[风控] ${symbol}: confidence ${decision.confidence}% < minConfidence ${minConf}%，强制转为 wait`,
+              );
+              decision = { ...decision, action: 'wait' as AiAction };
+              // 转为 wait 后进入跳过流程
+              result.decisions.push({ symbol, action: 'wait', confidence: decision.confidence, executed: false });
+              await db.aiStrategyLog.create({
+                data: {
+                  strategyId,
+                  symbol,
+                  decision: {
+                    action: 'wait',
+                    confidence: decision.confidence,
+                    reasoning: `minConfidence 过滤: ${decision.confidence}% < ${minConf}%`,
+                  } as unknown as Prisma.InputJsonValue,
+                  executed: false,
+                  executionResult: { skipped: true, reason: 'min_confidence' },
+                },
+              });
+              continue;
+            }
+          }
+
           // Step 7: 安全检查
           // Solo 模式: consensusScore = 5（满分），跳过 L2 共识检查
           // Debate 模式: 使用辩论的实际共识得分（0-5）
 
-          // 从 AI 决策的绝对价格计算 SL/TP 百分比（safety.service L9 R:R 检查需要）
+          // 从 AI 决策的绝对价格计算 SL/TP 百分比 + 方向验证（safety.service L9 R:R 检查需要）
           let takeProfitPercent: number | undefined;
           let stopLossPercent: number | undefined;
+          let stopLossValid: boolean | undefined;
+          let takeProfitValid: boolean | undefined;
           if (safetyCurrentPrice && safetyCurrentPrice > 0) {
-            if (decision.takeProfit) {
-              takeProfitPercent = Math.abs(decision.takeProfit - safetyCurrentPrice) / safetyCurrentPrice * 100;
+            const isLongAction = decision.action === 'open_long';
+            const isShortAction = decision.action === 'open_short';
+            if (decision.stopLoss != null) {
+              const slDiff = decision.stopLoss - safetyCurrentPrice;
+              stopLossPercent = Math.abs(slDiff) / safetyCurrentPrice * 100;
+              // 方向验证：long 的 SL 须低于当前价（slDiff<0），short 须高于当前价（slDiff>0）
+              if (isLongAction) stopLossValid = slDiff < 0;
+              else if (isShortAction) stopLossValid = slDiff > 0;
             }
-            if (decision.stopLoss) {
-              stopLossPercent = Math.abs(decision.stopLoss - safetyCurrentPrice) / safetyCurrentPrice * 100;
+            if (decision.takeProfit != null) {
+              const tpDiff = decision.takeProfit - safetyCurrentPrice;
+              takeProfitPercent = Math.abs(tpDiff) / safetyCurrentPrice * 100;
+              // 方向验证：long 的 TP 须高于当前价（tpDiff>0），short 须低于当前价（tpDiff<0）
+              if (isLongAction) takeProfitValid = tpDiff > 0;
+              else if (isShortAction) takeProfitValid = tpDiff < 0;
             }
           }
 
@@ -968,9 +1211,12 @@ export class AutoTraderService {
             indicators: safetyIndicators as SafetyCheckInput['indicators'],
             fundingRate: safetyFundingRate,
             volume24h: safetyVolume24h,
+            priceChange1h: safetyPriceChange1h, // L9 黑天鹅检测
             positionSizeUSD,
             takeProfitPercent,
             stopLossPercent,
+            stopLossValid,    // SL 方向验证结果
+            takeProfitValid,  // TP 方向验证结果
             currentPrice: safetyCurrentPrice,
             strategyId, // L9 按策略独立计算持仓数
             // 策略级风控参数（对齐 NoFx RiskControlConfig 9 字段 + HOOT 多用户额外字段）
@@ -1117,7 +1363,7 @@ export class AutoTraderService {
           break;
         }
 
-        const { symbol, consensusVotes: votes, consensusScore: itemConsensusScore } = item;
+        const { symbol, consensusVotes: votes } = item;
         let decision = item.decision; // R3: let 允许执行时价格刷新重算 SL/TP
 
         // D7: 排除币种检查 — 对齐 NoFx filterExcludedCoins
@@ -1289,6 +1535,17 @@ export class AutoTraderService {
             }
           }
 
+          // 执行前打印动作前缀（对齐 NoFx 2空格缩进子步骤）
+          if (decision.action === 'open_long') {
+            this.logger.log(`  📈 开多: ${symbol} (conf=${decision.confidence}%, lev=${decision.leverage}x)`);
+          } else if (decision.action === 'open_short') {
+            this.logger.log(`  📉 开空: ${symbol} (conf=${decision.confidence}%, lev=${decision.leverage}x)`);
+          } else if (decision.action === 'close_long') {
+            this.logger.log(`  🔄 平多: ${symbol}`);
+          } else if (decision.action === 'close_short') {
+            this.logger.log(`  🔄 平空: ${symbol}`);
+          }
+
           // 直接传 positionSizePercent 给执行层（值 1-20）
           // 执行层内部统一做 百分比→USD 转换（基于交易所实际余额）
           // 不在此处预乘 amountPerTrade，避免双重转换
@@ -1314,8 +1571,7 @@ export class AutoTraderService {
           if (execResult.success) {
             result.executed++;
             this.logger.log(
-              `[自动交易] 决策摘要: ${symbol} → ${decision.action} (confidence=${decision.confidence}%, consensusScore=${itemConsensusScore}/${models.length})\n` +
-              `  ✅ 执行成功: orderId=${execResult.orderId} positionId=${execResult.positionId}\n` +
+              `  ✓ 执行成功: orderId=${execResult.orderId} positionId=${execResult.positionId}\n` +
               `  price=$${execResult.price} amount=${execResult.amount} leverage=${decision.leverage}x`,
             );
             // 记录到熔断器: 成功
@@ -1324,8 +1580,7 @@ export class AutoTraderService {
             }
           } else {
             this.logger.warn(
-              `[自动交易] 决策摘要: ${symbol} → ${decision.action} (confidence=${decision.confidence}%, consensusScore=${itemConsensusScore}/${models.length})\n` +
-              `  ❌ 执行失败: ${execResult.error}`,
+              `❌ 执行失败 (${symbol} ${decision.action}): ${execResult.error}`,
             );
             // 记录到熔断器: 失败
             if (this.circuitBreaker) {

@@ -90,6 +90,7 @@ export function ApiKeysPage() {
     permissions?: string[]
     assets?: { symbol: string; amount: string; value: number }[]
     totalValue?: number
+    balanceFetchError?: boolean
     error?: string
   } | null>(null)
 
@@ -136,14 +137,15 @@ export function ApiKeysPage() {
   const createMutation = useMutation({
     mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string; authType?: string; walletAddress?: string }) => {
       const response = await api.post('/api-keys', data)
-      return response.data
+      return response.data as ApiKeyResponse
     },
-    onSuccess: () => {
-      toast.success(tc('apiKeyAddSuccess'))
+    onSuccess: (newKey: ApiKeyResponse) => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] })
       setShowAddModal(false)
       setSelectedExchange(null)
       setFormData({ apiKey: '', secretKey: '', passphrase: '', label: '' })
+      // 绑定完成后自动弹出验证结果（拉取真实账户信息）
+      handleVerify(newKey)
     },
     onError: (error: Error) => {
       toast.error(error.message || tc('addFailed'))
@@ -214,22 +216,23 @@ export function ApiKeysPage() {
         permissions: string[]
         balances: { symbol: string; free: number; total: number; usdValue?: number }[]
         totalUsdValue: number
+        balanceFetchError?: boolean
         error?: string
       }>(`/api-keys/${key.id}/verify`)
 
       const data = response.data
       if (data.valid) {
+        const STABLECOINS = new Set(['USDT', 'USD', 'BUSD', 'USDC', 'FDUSD', 'TUSD', 'DAI'])
         setVerifyStatus('success')
         setVerifyResult({
           permissions: data.permissions,
           assets: data.balances.map(b => ({
             symbol: b.symbol,
-            amount: b.total.toFixed(
-              ['USDT', 'USD', 'BUSD', 'USDC'].includes(b.symbol) ? 2 : 8
-            ),
+            amount: b.total.toFixed(STABLECOINS.has(b.symbol) ? 2 : 6),
             value: b.usdValue || 0
           })),
-          totalValue: data.totalUsdValue
+          totalValue: data.totalUsdValue,
+          balanceFetchError: data.balanceFetchError,
         })
         // 刷新余额缓存
         queryClient.invalidateQueries({ queryKey: ['api-key-balance', key.id] })
@@ -1631,6 +1634,13 @@ export function ApiKeysPage() {
                             </span>
                           ))}
                         </div>
+                        {/* 缺少合约交易权限时的警告（网格/Solo策略需要合约权限） */}
+                        {!verifyResult.permissions.includes('合约交易') && (
+                          <div className="mt-2 p-2 rounded-lg bg-[#F59E0B]/10 border border-[#F59E0B]/20 flex items-start gap-2">
+                            <span className="text-[#F59E0B] text-xs mt-0.5">⚠</span>
+                            <p className="text-[#F59E0B] text-xs">未检测到合约交易权限。AI 网格/合约策略需要在 Binance 后台开启合约交易权限。</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1639,21 +1649,42 @@ export function ApiKeysPage() {
                       {/* 总资产 */}
                       <div className="flex justify-between items-center mb-3 pb-3 border-b border-[#2A2A3A]">
                         <span className="text-[#94A3B8] text-sm">总资产价值</span>
-                        <span className="text-xl font-bold font-mono text-[#10B981]">${verifyResult.totalValue?.toLocaleString()}</span>
+                        {verifyResult.balanceFetchError ? (
+                          <span className="text-sm text-[#F59E0B] font-medium">获取失败，请稍后重试</span>
+                        ) : (
+                          <span className="text-xl font-bold font-mono text-[#10B981]">
+                            ${(verifyResult.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
                       </div>
+                      {/* 余额获取失败提示 */}
+                      {verifyResult.balanceFetchError && (
+                        <p className="text-[#606070] text-xs">
+                          API Key 验证通过，但余额查询失败（可能是网络问题）。策略功能正常可用。
+                        </p>
+                      )}
                       {/* 币种明细 */}
-                      {verifyResult.assets && verifyResult.assets.length > 0 && (
+                      {!verifyResult.balanceFetchError && verifyResult.assets && verifyResult.assets.length > 0 && (
                         <>
                           <p className="text-[#94A3B8] text-xs mb-2">资产明细</p>
                           <div className="space-y-2.5">
                             {verifyResult.assets.map((asset, index) => (
                               <div key={index} className="flex justify-between items-center">
                                 <span className="text-white font-medium text-sm">{asset.symbol}</span>
-                                <span className="text-white font-mono text-sm">{asset.amount}</span>
+                                <div className="text-right">
+                                  <span className="text-white font-mono text-sm">{asset.amount}</span>
+                                  {asset.value > 0 && (
+                                    <span className="text-[#606070] text-xs ml-1.5">${asset.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
                         </>
+                      )}
+                      {/* 余额为0的说明 */}
+                      {!verifyResult.balanceFetchError && (!verifyResult.assets || verifyResult.assets.length === 0) && (
+                        <p className="text-[#606070] text-xs">交易所账户余额为空</p>
                       )}
                     </div>
                   </div>

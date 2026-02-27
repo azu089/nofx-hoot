@@ -1479,10 +1479,6 @@ export class AiController {
       throw new BadRequestException('请先启用 AI 模块');
     }
 
-    if (!aiConfig.exchangeApiKeyId) {
-      throw new BadRequestException('请先绑定交易所 API Key');
-    }
-
     // 双轨制 Key 检查
     const apiKeys = this.resolveApiKeys(aiConfig.apiKeys);
 
@@ -1492,6 +1488,16 @@ export class AiController {
     const defaultModel = (aiConfig.models as string[])?.[0] || 'deepseek-chat';
     if (!(await this.llmService.hasAvailableKey(defaultModel, apiKeys))) {
       throw new BadRequestException('无可用 LLM API Key：用户未配置且平台未设置默认 Key');
+    }
+
+    // 检查有效的交易所 API Key（策略级优先，回退到全局 aiConfig）
+    const strategyRecord = await this.prisma.aiStrategy.findUnique({
+      where: { id, userId },
+      select: { exchangeApiKeyId: true },
+    });
+    const effectiveExchangeKeyId = strategyRecord?.exchangeApiKeyId ?? aiConfig.exchangeApiKeyId;
+    if (!effectiveExchangeKeyId) {
+      throw new BadRequestException('请先绑定交易所 API Key');
     }
 
     const strategy = await this.strategyEngine.startStrategy(id, userId);
@@ -2006,6 +2012,15 @@ export class AiController {
   @HttpCode(HttpStatus.OK)
   async resumeAll(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
+
+    // 点卡余额门控：余额为 0 时禁止恢复策略
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { pointBalance: true },
+    });
+    if (!user || Number(user.pointBalance) <= 0) {
+      throw new BadRequestException('点卡余额不足，请充值后再恢复策略');
+    }
 
     const db = this.prisma;
     let resumedCount = 0;

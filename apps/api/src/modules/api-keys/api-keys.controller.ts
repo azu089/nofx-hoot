@@ -6,16 +6,21 @@ import {
   Patch,
   Body,
   Param,
+  Optional,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ApiKeysService } from './api-keys.service';
+import { AdapterFactoryService } from '../exchange-adapters/adapter-factory.service';
 import { CreateApiKeyDto, CreateDexCredentialDto, UpdateApiKeyDto } from './dto/api-key.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('api-keys')
 @Controller('api-keys')
 export class ApiKeysController {
-  constructor(private apiKeysService: ApiKeysService) {}
+  constructor(
+    private apiKeysService: ApiKeysService,
+    @Optional() private adapterFactory?: AdapterFactoryService,
+  ) {}
 
   // 添加 API Key
   @Post()
@@ -77,6 +82,8 @@ export class ApiKeysController {
   @Delete(':id')
   async delete(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     await this.apiKeysService.delete(user.id, id);
+    // 立即失效适配器缓存，确保已禁用/删除的 Key 不再被使用
+    await this.adapterFactory?.invalidateAdapter(user.id, id);
     return { message: 'API Key 已删除' };
   }
 }

@@ -322,8 +322,18 @@ export class PromptBuilderService {
       lines.push(ctx.debateContext);
     }
 
-    // [9] Instruction
+    // [9] Instruction — 多币种模式强调每币独立分析
     lines.push('');
+    const coinMatches = ctx.marketDataPrompt?.match(/===\s+(\S+\/\S+)\s/g) || [];
+    if (coinMatches.length > 1) {
+      const coinList = coinMatches.map(m => m.replace(/===\s+/, '').trim()).join(', ');
+      lines.push(`⚠️ MULTI-COIN MODE (${coinMatches.length} coins: ${coinList}):`);
+      lines.push(`1. You MUST return exactly ${coinMatches.length} decision objects in the JSON array, one per coin.`);
+      lines.push('2. Each coin MUST have INDEPENDENT, DETAILED reasoning (≥3 sentences). Do NOT say "similar to BTC" or "same as above".');
+      lines.push('3. Analyze each coin\'s own indicators (RSI, MACD, EMA, volume, funding rate) separately.');
+      lines.push('4. Missing any coin or giving lazy cross-references = INVALID output.');
+      lines.push(`5. Return the array in the EXACT same order as listed above: ${coinList}. Index 0 = first coin, do NOT reorder.`);
+    }
     lines.push('Analyze the above data and output your trading decision.');
 
     // [10] 语言提醒（防止英文上下文淹没 system prompt 的语言指令）
@@ -527,38 +537,28 @@ Doing nothing indefinitely is also a risk — you miss opportunities and waste a
   }
 
   private buildOutputFormat(): string {
-    return `## Output Format (MANDATORY — strictly follow)
+    return `## Output Format (MANDATORY — follow EXACTLY as shown)
 
-You MUST output BOTH <reasoning> AND <decision> tags. Missing either tag = INVALID response.
+Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
 
 <reasoning>
-Your detailed analysis here (150-400 words):
-- Account assessment
-- Position management decisions
-- Market analysis for each candidate coin
-- Risk evaluation
+3-5 sentences covering: overall trend, key indicator readings, risk assessment, why you chose this action.
 </reasoning>
 <decision>
-[{
-  "symbol": "BTC/USDT:USDT",
-  "action": "open_long" | "open_short" | "close_long" | "close_short" | "hold" | "wait",
-  "confidence": 0-100,
-  "leverage": 1-20,
-  "positionSizePercent": 1-20,
-  "stop_loss": <price>,
-  "take_profit": <price>,
-  "reasoning": "One-line summary"
-}]
+[{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"positionSizePercent":10,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from $96,000 key support with 1.5x volume. Funding rate neutral 0.01%."}]
 </decision>
 
-CRITICAL RULES:
-1. You MUST ALWAYS output BOTH <reasoning> and <decision> tags — even for hold/wait decisions
-2. The <decision> tag MUST contain a valid JSON ARRAY (even for a single coin: use [{...}])
-3. Do NOT output only <reasoning> without <decision> — this will cause a system failure
-4. stop_loss and take_profit are ABSOLUTE PRICES (not percentages)
-5. For "hold" or "wait": set confidence to your conviction level, other fields can be 0/null
+FORMAT RULES — violations cause parse failure:
+1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait
+2. <decision> MUST contain a raw JSON ARRAY — starts with [{ ends with }]
+3. DO NOT use markdown code blocks (\`\`\`json\`\`\`) inside or outside the tags
+4. DO NOT output any text AFTER </decision> — it corrupts the parser
+5. stop_loss / take_profit = ABSOLUTE PRICE values (not percentages)
 6. For long: stop_loss < current_price < take_profit
 7. For short: take_profit < current_price < stop_loss
-8. Ensure R/R ratio >= the minimum specified in Hard Constraints above`;
+8. R/R ratio MUST be >= minimum in Hard Constraints
+9. "reasoning" field: cite ≥2 specific indicators (e.g. "RSI(14) at 42", "MACD histogram negative", "$95,000 support")
+10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent (≥3 sentences, no "same as BTC")
+11. confidence < 50 → use action="wait", confidence=0, leverage=1, positionSizePercent=0`;
   }
 }

@@ -8,12 +8,12 @@
  *   - ApiKeysModule: 获取解密的凭证
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { AdapterFactoryService } from './adapter-factory.service';
 
 @Module({
-  imports: [ApiKeysModule],
+  imports: [forwardRef(() => ApiKeysModule)],
   providers: [AdapterFactoryService],
   exports: [AdapterFactoryService],
 })

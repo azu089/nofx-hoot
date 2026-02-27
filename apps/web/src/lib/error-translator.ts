@@ -49,6 +49,10 @@ const FALLBACK_PATTERNS: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /quota.*exceeded|insufficient_quota|额度已用完/i, key: 'llmQuotaExceeded' },
   { pattern: /BadSymbol|symbol.*not.*found|交易对不存在/i, key: 'badSymbol' },
   { pattern: /exchangeInfo|loadMarkets|市场信息.*失败/i, key: 'marketInfoFailed' },
+  // 阿里云 / DashScope：账号欠费或无访问权限（"400 Access denied, account is not in good standing"）
+  { pattern: /400.*[Aa]ccess [Dd]enied|[Aa]ccess [Dd]enied.*account|overdue.?payment|account.*good standing/i, key: 'llmQuotaExceeded' },
+  // class-validator 参数验证错误
+  { pattern: /property .+ should not exist|must be a string|must not be less than|must be an? |Validation failed|Bad Request/i, key: 'validationFailed' },
 ];
 
 /**

@@ -551,13 +551,34 @@ Generate your final transaction proposal.${buildUserMessageLanguageReminder(conf
           },
           fundingRate: marketCtx!.fundingRate,
           volume24h: marketCtx!.volume24h,
-          // SL/TP 百分比（L9 R:R 检查需要，从绝对价格反算）
-          takeProfitPercent: (decision.takeProfit && marketCtx!.currentPrice > 0)
-            ? Math.abs(decision.takeProfit - marketCtx!.currentPrice) / marketCtx!.currentPrice * 100
-            : undefined,
-          stopLossPercent: (decision.stopLoss && marketCtx!.currentPrice > 0)
-            ? Math.abs(decision.stopLoss - marketCtx!.currentPrice) / marketCtx!.currentPrice * 100
-            : undefined,
+          // SL/TP 百分比 + 方向验证（L9 R:R + 方向检查需要，从绝对价格反算）
+          ...(() => {
+            const resPrice = marketCtx!.currentPrice;
+            const isResLong = decision.action === 'open_long';
+            const isResShort = decision.action === 'open_short';
+            let resTpPct: number | undefined, resSlPct: number | undefined;
+            let resSlValid: boolean | undefined, resTpValid: boolean | undefined;
+            if (resPrice > 0) {
+              if (decision.takeProfit != null) {
+                const d = decision.takeProfit - resPrice;
+                resTpPct = Math.abs(d) / resPrice * 100;
+                if (isResLong) resTpValid = d > 0;
+                else if (isResShort) resTpValid = d < 0;
+              }
+              if (decision.stopLoss != null) {
+                const d = decision.stopLoss - resPrice;
+                resSlPct = Math.abs(d) / resPrice * 100;
+                if (isResLong) resSlValid = d < 0;
+                else if (isResShort) resSlValid = d > 0;
+              }
+            }
+            return {
+              takeProfitPercent: resTpPct,
+              stopLossPercent: resSlPct,
+              stopLossValid: resSlValid,
+              takeProfitValid: resTpValid,
+            };
+          })(),
           mode: 'quick', // Research 无多模型投票，始终跳过 L2 共识检查
           // 传入策略级风控参数（用户在深研创建时配置，含 NoFx 对齐字段）
           strategyRiskConfig: config.riskControlConfig ? {

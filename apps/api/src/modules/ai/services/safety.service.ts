@@ -27,12 +27,15 @@ export interface SafetyCheckInput {
   fundingRate?: number; // 资金费率
   takeProfitPercent?: number; // 止盈百分比
   stopLossPercent?: number; // 止损百分比
+  stopLossValid?: boolean;   // SL 方向是否正确（open_long: SL<price; open_short: SL>price）
+  takeProfitValid?: boolean; // TP 方向是否正确（open_long: TP>price; open_short: TP<price）
   // v6: 分析模式
   mode?: string; // "quick" | "expert" — quick 模式跳过 L2 共识检查
   totalModels?: number; // 参与投票的总模型数（用于 L2 动态共识门槛）
   volume24h?: number; // 24h 成交量 USD（用于 L10 流动性检查）
   positionSizeUSD?: number; // 实际仓位金额（美元），用于 L10 流动性比较
   currentPrice?: number; // 当前价格，用于 L9 regime 感知 R:R 计算
+  priceChange1h?: number; // 近1h价格变化率（%），用于 L9 黑天鹅检测（ATR 滞后补偿）
   strategyId?: string; // AI策略ID，用于 L9 按策略独立计算持仓数
   // 策略级风控参数（对齐 NoFx RiskControlConfig，优先于 aiConfig 全局默认值）
   strategyRiskConfig?: {
@@ -341,15 +344,16 @@ export class SafetyService {
       };
     }
 
-    // 检查共识分数
+    // 检查共识分数（上限 = 实际模型数，兼容 6+ 模型配置）
+    const maxConsensusScore = input.totalModels ?? 20;
     if (
       typeof input.consensusScore !== 'number' ||
       input.consensusScore < 0 ||
-      input.consensusScore > 5
+      input.consensusScore > maxConsensusScore
     ) {
       return {
         passed: false,
-        detail: `无效共识分数: ${input.consensusScore}，必须 0-5`,
+        detail: `无效共识分数: ${input.consensusScore}，必须 0-${maxConsensusScore}`,
       };
     }
 
@@ -598,6 +602,32 @@ export class SafetyService {
       };
     }
 
+    // 4. 连续亏损检查（基于已实现 PnL，与失败计数互补——每笔执行成功但连续亏损也触发）
+    const maxConsecLoss = input.strategyRiskConfig?.circuitBreaker?.maxConsecutiveLosses;
+    if (maxConsecLoss && maxConsecLoss > 0) {
+      const recentClosed = await this.prisma.position.findMany({
+        where: {
+          userId: input.userId,
+          source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
+          status: 'closed',
+          closedAt: { gte: last24h }, // 24h 内，避免历史噪声
+        },
+        orderBy: { closedAt: 'desc' },
+        take: maxConsecLoss,
+        select: { realizedPnl: true },
+      });
+
+      if (recentClosed.length >= maxConsecLoss) {
+        const allLosses = recentClosed.every(p => Number(p.realizedPnl ?? 0) < 0);
+        if (allLosses) {
+          return {
+            passed: false,
+            detail: `连续 ${recentClosed.length} 笔亏损（24h内），触发熔断保护`,
+          };
+        }
+      }
+    }
+
     return {
       passed: true,
       detail: `熔断通过: 失败=${failedCount}, 今日=${todayTradeCount}/${effectiveMaxDailyTrades || '无限制'}, 日盈亏=$${totalDailyPnl.toFixed(2)}`,
@@ -830,6 +860,22 @@ export class SafetyService {
         }
       }
 
+      // === priceChange1h 黑天鹅拦截（仅新开仓，ATR 滞后补偿） ===
+      if (!isClose && input.priceChange1h !== undefined && input.priceChange1h !== null) {
+        const absChange = Math.abs(input.priceChange1h);
+        if (absChange > AI_SAFETY_DEFAULTS.priceChange1hExtreme) {
+          return {
+            passed: false,
+            detail: `黑天鹅行情: 近1h涨跌 ${input.priceChange1h.toFixed(2)}% 超过 ±${AI_SAFETY_DEFAULTS.priceChange1hExtreme}%，暂停新开仓`,
+          };
+        }
+        if (absChange > AI_SAFETY_DEFAULTS.priceChange1hHigh) {
+          this.logger.warn(
+            `L9 快速行情警告: 近1h涨跌 ${input.priceChange1h.toFixed(2)}%，接近极端阈值 ±${AI_SAFETY_DEFAULTS.priceChange1hExtreme}%`,
+          );
+        }
+      }
+
       // === 以下检查仅对开仓动作执行 ===
       if (isClose) {
         return {
@@ -895,17 +941,45 @@ export class SafetyService {
         };
       }
 
-      // 4. 风险收益比检查（如果提供了 TP/SL）— 用户可配单值（对齐 NoFx validateDecision）
-      if (input.takeProfitPercent && input.stopLossPercent && input.stopLossPercent > 0) {
+      // 4. 开仓动作：SL/TP 强制验证 + 方向检查 + R:R 检查
+      // （对齐 NoFx validateDecision，仅对 open_long/open_short 执行）
+      const isOpenAction = input.action === 'open_long' || input.action === 'open_short';
+      if (isOpenAction) {
+        // 4a. 强制要求 SL 存在（对齐 NoFx: StopLoss<=0 → 硬拒绝）
+        if (!input.stopLossPercent || input.stopLossPercent <= 0) {
+          return {
+            passed: false,
+            detail: '开仓必须提供止损价格，SL 未设置或无效 (对齐 NoFx validateDecision)',
+          };
+        }
+        // 4b. 强制要求 TP 存在（对齐 NoFx: TakeProfit<=0 → 硬拒绝）
+        if (!input.takeProfitPercent || input.takeProfitPercent <= 0) {
+          return {
+            passed: false,
+            detail: '开仓必须提供止盈价格，TP 未设置或无效 (对齐 NoFx validateDecision)',
+          };
+        }
+        // 4c. 方向性验证（open_long: SL<price,TP>price; open_short: SL>price,TP<price）
+        if (input.stopLossValid === false) {
+          return {
+            passed: false,
+            detail: `止损方向错误: ${input.action} 时 SL 应在当前价格的${input.action === 'open_long' ? '下方' : '上方'}`,
+          };
+        }
+        if (input.takeProfitValid === false) {
+          return {
+            passed: false,
+            detail: `止盈方向错误: ${input.action} 时 TP 应在当前价格的${input.action === 'open_long' ? '上方' : '下方'}`,
+          };
+        }
+        // 4d. 风险收益比（对齐 NoFx: riskRewardRatio < minRiskRewardRatio → 硬拒绝）
         const riskRewardRatio = input.takeProfitPercent / input.stopLossPercent;
-        // 优先使用策略级配置，fallback 到系统默认
         const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
           ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
-
         if (riskRewardRatio < requiredRR) {
           return {
             passed: false,
-            detail: `风险收益比不足: 止盈 ${input.takeProfitPercent.toFixed(2)}%/止损 ${input.stopLossPercent.toFixed(2)}%=${riskRewardRatio.toFixed(1)}:1，需 ≥ ${requiredRR}:1`,
+            detail: `风险收益比不足: 止盈 ${input.takeProfitPercent.toFixed(2)}%/止损 ${input.stopLossPercent.toFixed(2)}%=${riskRewardRatio.toFixed(2)}，需 ≥ ${requiredRR}`,
           };
         }
       }

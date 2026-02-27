@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import * as Sentry from '@sentry/node';
 import { ApiResponse } from '../dto/api-response.dto';
 
 @Catch()
@@ -45,6 +46,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       `[${requestId}] ${request.method} ${request.url} - ${status} - ${message}`,
       exception instanceof Error ? exception.stack : undefined,
     );
+
+    // 500 级错误上报 Sentry
+    if (status >= 500 && exception instanceof Error) {
+      Sentry.withScope((scope) => {
+        scope.setTag('requestId', requestId);
+        scope.setExtra('url', `${request.method} ${request.url}`);
+        Sentry.captureException(exception);
+      });
+    }
 
     const apiResponse = ApiResponse.error(code, message);
     apiResponse.requestId = requestId;

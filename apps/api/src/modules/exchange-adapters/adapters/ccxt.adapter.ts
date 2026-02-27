@@ -11,6 +11,7 @@
  */
 
 import * as ccxt from 'ccxt';
+import * as fs from 'fs';
 import { Logger } from '@nestjs/common';
 import {
   ExchangeAdapter,
@@ -31,7 +32,7 @@ import {
   ExchangeCategory,
 } from '../types/exchange.types';
 
-// CCXT 期货子类映射
+// CCXT 期货子类映射（binance 映射到专用的 binanceusdm 永续合约类）
 const FUTURES_CLASS_MAP: Record<string, string> = {
   binance: 'binanceusdm',
   okx: 'okx',
@@ -42,6 +43,22 @@ const FUTURES_CLASS_MAP: Record<string, string> = {
   hyperliquid: 'hyperliquid',
 };
 
+/**
+ * 各交易所的 defaultType：
+ *   binanceusdm — 专用类，无需 defaultType
+ *   okx/bybit/gate/bitget/hyperliquid — 永续合约用 'swap'
+ *   coinbase — 无期货
+ */
+const DEFAULT_TYPE_MAP: Record<string, string> = {
+  binanceusdm: 'future',   // binanceusdm 类内部已经是 USDT-M，此字段无实际影响
+  okx: 'swap',             // OKX 永续合约（USDT-M）
+  bybit: 'swap',           // Bybit 线性永续
+  gate: 'swap',            // Gate 永续
+  bitget: 'swap',          // Bitget 永续
+  coinbase: 'spot',
+  hyperliquid: 'swap',
+};
+
 // CCXT 订单状态 → 统一状态映射
 function mapOrderStatus(status: string | undefined): OrderStatus {
   switch (status) {
@@ -50,11 +67,14 @@ function mapOrderStatus(status: string | undefined): OrderStatus {
     case 'closed':
       return 'FILLED';
     case 'canceled':
+    case 'cancelled':
       return 'CANCELED';
     case 'expired':
       return 'EXPIRED';
     case 'rejected':
       return 'REJECTED';
+    case 'partially_filled':
+      return 'PARTIALLY_FILLED';
     default:
       return 'NEW';
   }
@@ -64,6 +84,8 @@ export interface CcxtAdapterConfig {
   exchangeType: string;
   apiKey?: string;
   apiSecret?: string;
+  /** OKX 等交易所需要的 passphrase（CCXT 内部字段名为 password） */
+  passphrase?: string;
   walletAddress?: string;
   privateKey?: string;
   isTestnet: boolean;
@@ -96,16 +118,23 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       throw new Error(`CCXT 不支持交易所: ${className}`);
     }
 
+    const defaultType = DEFAULT_TYPE_MAP[className] || 'swap';
+
     const options: any = {
       enableRateLimit: true,
       timeout: 60000,
-      options: { defaultType: 'future', fetchCurrencies: false },
+      options: { defaultType, fetchCurrencies: false },
     };
 
     // CEX: API Key + Secret
     if (this.config.apiKey) {
       options.apiKey = this.config.apiKey;
       options.secret = this.config.apiSecret;
+    }
+
+    // OKX 等交易所需要 passphrase（CCXT 内部字段名为 password）
+    if (this.config.passphrase) {
+      options.password = this.config.passphrase;
     }
 
     // DEX (Hyperliquid): wallet + private key
@@ -124,15 +153,68 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     this.exchange = new ExchangeClass(options);
 
     // 显式加载期货市场（带容错，最多 3 次重试）
+    let marketsLoaded = false;
+    let lastLoadError: string = '';
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await this.exchange.loadMarkets();
+        marketsLoaded = true;
         break;
       } catch (e: any) {
+        lastLoadError = e.message;
         this.logger.warn(`加载市场数据失败(${attempt}/3): ${e.message}`);
-        if (attempt === 3) throw e;
-        await new Promise((r) => setTimeout(r, 3000 * attempt));
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 3000 * attempt));
+        }
       }
+    }
+
+    // 降级：从 MarketDataService 共享的本地缓存文件加载（适用于 VPN/网络阻断场景）
+    if (!marketsLoaded) {
+      const cacheFile = '/tmp/binance_exchangeinfo.json';
+      try {
+        if (fs.existsSync(cacheFile)) {
+          const stat = fs.statSync(cacheFile);
+          const ageHours = (Date.now() - stat.mtimeMs) / 3600000;
+          if (ageHours <= 48) {
+            const raw = fs.readFileSync(cacheFile, 'utf-8');
+            const data = JSON.parse(raw);
+            if (data.symbols && data.symbols.length >= 100) {
+              const ex = this.exchange as any;
+              if (typeof ex.parseMarkets === 'function') {
+                const markets = ex.parseMarkets(data.symbols);
+                this.exchange.setMarkets(markets);
+              } else {
+                const marketDict: Record<string, any> = {};
+                for (const s of data.symbols) {
+                  const sym = `${s.baseAsset}/${s.quoteAsset}:${s.marginAsset || s.quoteAsset}`;
+                  marketDict[sym] = {
+                    id: s.symbol, symbol: sym,
+                    base: s.baseAsset, quote: s.quoteAsset,
+                    baseId: s.baseAsset, quoteId: s.quoteAsset,
+                    active: s.status === 'TRADING',
+                    type: 'swap', spot: false, future: true, linear: true,
+                    info: s,
+                    precision: { amount: s.quantityPrecision, price: s.pricePrecision },
+                    limits: { amount: { min: undefined, max: undefined }, price: { min: undefined, max: undefined } },
+                  };
+                }
+                this.exchange.setMarkets(Object.values(marketDict));
+              }
+              marketsLoaded = true;
+              this.logger.warn(`[CcxtAdapter] loadMarkets 网络失败，已从本地缓存加载市场数据 (${ageHours.toFixed(1)}h 前)`);
+            }
+          }
+        }
+      } catch (cacheErr: any) {
+        this.logger.warn(`[CcxtAdapter] 从本地缓存加载失败: ${cacheErr.message}`);
+      }
+    }
+
+    if (!marketsLoaded) {
+      throw new Error(
+        `${this.exchangeType} loadMarkets 失败(3次): ${lastLoadError}`,
+      );
     }
   }
 
@@ -141,7 +223,17 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   async dispose(): Promise<void> {
-    this.exchange = null;
+    if (this.exchange) {
+      try {
+        // 关闭 WebSocket 连接（CCXT Pro / 支持 close() 的实例）
+        if (typeof (this.exchange as any).close === 'function') {
+          await (this.exchange as any).close();
+        }
+      } catch {
+        // 忽略关闭错误
+      }
+      this.exchange = null;
+    }
   }
 
   /** 获取底层 CCXT 实例（供内部使用） */
@@ -157,13 +249,23 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getBalance(): Promise<ExchangeBalance> {
     const ex = this.getExchange();
     const balance = await ex.fetchBalance();
-    const total = Number(balance.total?.['USDT'] || 0);
-    const free = Number(balance.free?.['USDT'] || 0);
+    const total = Number(balance.total?.['USDT'] || balance.total?.['USDC'] || 0);
+    const free = Number(balance.free?.['USDT'] || balance.free?.['USDC'] || 0);
+    const usedMargin = total - free;
+    // 尝试从交易所原始数据提取未实现盈亏（Binance: totalUnrealizedProfit，OKX: totalUpl）
+    const unrealizedPnl = Number(
+      balance.info?.totalUnrealizedProfit ||
+      balance.info?.totalUpl ||
+      0,
+    );
     return {
-      totalEquity: total,
+      totalEquity: total + unrealizedPnl,
       availableBalance: free,
-      usedMargin: total - free,
-      unrealizedPnl: 0,
+      usedMargin,
+      unrealizedPnl,
+      marginUsedPct: (total + unrealizedPnl) > 0
+        ? (usedMargin / (total + unrealizedPnl)) * 100
+        : 0,
     };
   }
 
@@ -179,9 +281,13 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         entryPrice: Number(p.entryPrice || 0),
         markPrice: Number(p.markPrice || 0),
         unrealizedPnl: Number(p.unrealizedPnl || 0),
-        leverage: Number(p.leverage || 1),
+        leverage: Number(p.leverage || p.info?.leverage || 1),
         marginMode: (p.marginMode || 'cross') as 'cross' | 'isolated',
-        margin: Number(p.initialMargin || p.collateral || 0),
+        // 保证金：优先 positionInitialMargin (Binance)，次选 CCXT 标准 initialMargin，
+        // 不使用 collateral（全仓时等于账户总权益，非持仓保证金）
+        margin: Number(p.info?.positionInitialMargin || p.initialMargin || 0),
+        // 交易所原始保证金比率（维持保证金/保证金余额），Binance 显示的风险比率
+        marginRatio: Number(p.marginRatio || 0),
         liquidationPrice: p.liquidationPrice
           ? Number(p.liquidationPrice)
           : undefined,
@@ -193,10 +299,11 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async openLong(
     symbol: string,
     quantity: number,
-    leverage: number,
+    _leverage: number,
   ): Promise<OrderResult> {
+    // 注意：调用方（ai-execution.service / grid-trading.service）负责在调用前设置杠杆，
+    // 此处不重复调用 setLeverage 以避免双重 API 调用。
     const ex = this.getExchange();
-    await this.setLeverage(symbol, leverage);
     const order = await ex.createMarketOrder(symbol, 'buy', quantity);
     return this.mapOrderResult(order);
   }
@@ -204,37 +311,30 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async openShort(
     symbol: string,
     quantity: number,
-    leverage: number,
+    _leverage: number,
   ): Promise<OrderResult> {
     const ex = this.getExchange();
-    await this.setLeverage(symbol, leverage);
     const order = await ex.createMarketOrder(symbol, 'sell', quantity);
     return this.mapOrderResult(order);
   }
 
   async closeLong(symbol: string, quantity: number): Promise<OrderResult> {
+    if (!quantity || quantity <= 0) {
+      throw new Error(`closeLong 数量无效: ${quantity}，请传入正数`);
+    }
     const ex = this.getExchange();
     const params: any = { reduceOnly: true };
-    const order = await ex.createMarketOrder(
-      symbol,
-      'sell',
-      quantity || undefined,
-      undefined,
-      params,
-    );
+    const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, params);
     return this.mapOrderResult(order);
   }
 
   async closeShort(symbol: string, quantity: number): Promise<OrderResult> {
+    if (!quantity || quantity <= 0) {
+      throw new Error(`closeShort 数量无效: ${quantity}，请传入正数`);
+    }
     const ex = this.getExchange();
     const params: any = { reduceOnly: true };
-    const order = await ex.createMarketOrder(
-      symbol,
-      'buy',
-      quantity || undefined,
-      undefined,
-      params,
-    );
+    const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, params);
     return this.mapOrderResult(order);
   }
 
@@ -245,10 +345,16 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     try {
       await ex.setLeverage(leverage, symbol);
     } catch (e: any) {
-      // 忽略"已设置"错误
-      if (!e.message?.includes('No need to change leverage')) {
-        throw e;
+      // 忽略"已设置"错误（Binance / Bybit 等均有此类响应）
+      const msg: string = e.message || '';
+      if (
+        msg.includes('No need to change leverage') ||
+        msg.includes('leverage not modified') ||
+        msg.includes('Leverage should change')
+      ) {
+        return;
       }
+      throw e;
     }
   }
 
@@ -279,7 +385,13 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getMarketPrice(symbol: string): Promise<number> {
     const ex = this.getExchange();
     const ticker = await ex.fetchTicker(symbol);
-    return ticker.last || 0;
+    const price = ticker.last ?? ticker.close ?? ticker.bid ?? 0;
+    if (!price || price <= 0) {
+      throw new Error(
+        `无法获取 ${symbol} 市场价格，ticker.last=${ticker.last}，请检查交易对是否正确`,
+      );
+    }
+    return price;
   }
 
   // ========================= 止盈止损 =========================
@@ -292,10 +404,34 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   ): Promise<void> {
     const ex = this.getExchange();
     const side = positionSide === 'long' ? 'sell' : 'buy';
-    await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, {
-      stopPrice,
-      reduceOnly: true,
-    });
+    const exchangeId = (ex.id ?? '').toLowerCase();
+
+    if (exchangeId === 'okx') {
+      // OKX 对冲模式：需要 posSide，不支持 reduceOnly
+      const params: Record<string, any> = {
+        triggerPrice: stopPrice,
+        posSide: positionSide === 'long' ? 'long' : 'short',
+      };
+      await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+
+    } else if (exchangeId === 'bybit') {
+      // Bybit 线性永续：positionIdx 区分单向/对冲
+      const params: Record<string, any> = {
+        triggerPrice: stopPrice,
+        triggerBy: 'MarkPrice',
+        reduceOnly: true,
+        positionIdx: positionSide === 'long' ? 1 : 2,
+      };
+      await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+
+    } else {
+      // Binance USDM / Gate / Bitget 通用参数
+      const params: Record<string, any> = {
+        stopPrice,
+        reduceOnly: true,
+      };
+      await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+    }
   }
 
   async setTakeProfit(
@@ -306,24 +442,52 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   ): Promise<void> {
     const ex = this.getExchange();
     const side = positionSide === 'long' ? 'sell' : 'buy';
-    await ex.createOrder(
-      symbol,
-      'take_profit_market',
-      side,
-      quantity,
-      undefined,
-      {
+    const exchangeId = (ex.id ?? '').toLowerCase();
+
+    if (exchangeId === 'okx') {
+      const params: Record<string, any> = {
+        triggerPrice: takeProfitPrice,
+        posSide: positionSide === 'long' ? 'long' : 'short',
+      };
+      await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+
+    } else if (exchangeId === 'bybit') {
+      const params: Record<string, any> = {
+        triggerPrice: takeProfitPrice,
+        triggerBy: 'MarkPrice',
+        reduceOnly: true,
+        positionIdx: positionSide === 'long' ? 1 : 2,
+      };
+      await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+
+    } else {
+      const params: Record<string, any> = {
         stopPrice: takeProfitPrice,
         reduceOnly: true,
-      },
-    );
+      };
+      await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+    }
   }
 
   // ========================= 订单管理 =========================
 
   async cancelAllOrders(symbol: string): Promise<void> {
     const ex = this.getExchange();
-    await ex.cancelAllOrders(symbol);
+    try {
+      await ex.cancelAllOrders(symbol);
+    } catch (e: any) {
+      const msg: string = e.message || '';
+      // 交易所在没有挂单时有些会抛错（如 Gate、Bitget），属于正常情况，静默处理
+      if (
+        msg.includes('No orders') ||
+        msg.includes('no orders') ||
+        msg.includes('order not found') ||
+        msg.includes('Order does not exist')
+      ) {
+        return;
+      }
+      this.logger.warn(`cancelAllOrders(${symbol}) 失败（可忽略）: ${msg}`);
+    }
   }
 
   async cancelStopOrders(symbol: string): Promise<void> {
@@ -359,17 +523,31 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getOpenOrders(symbol: string): Promise<OpenOrder[]> {
     const ex = this.getExchange();
     const orders = await ex.fetchOpenOrders(symbol);
-    return orders.map((o: any) => ({
-      orderId: o.id,
-      symbol: o.symbol,
-      side: (o.side || 'buy') as 'buy' | 'sell',
-      positionSide: 'long' as 'long' | 'short', // CCXT 不直接返回 positionSide
-      type: (o.type || 'limit') as OpenOrder['type'],
-      price: o.price ? Number(o.price) : undefined,
-      stopPrice: o.stopPrice ? Number(o.stopPrice) : undefined,
-      quantity: Number(o.amount || 0),
-      status: o.status || 'open',
-    }));
+    return orders.map((o: any) => {
+      // 尝试从交易所原始字段中读取真实的 positionSide
+      // Binance: o.info.positionSide ('LONG'/'SHORT'/'BOTH')
+      // OKX: o.info.posSide ('long'/'short'/'net')
+      const rawPosSide: string =
+        o.info?.positionSide?.toLowerCase() ||
+        o.info?.posSide?.toLowerCase() ||
+        '';
+      const positionSide: 'long' | 'short' =
+        rawPosSide === 'long' || rawPosSide === 'short'
+          ? rawPosSide
+          : (o.side === 'sell' ? 'long' : 'short'); // sell 减仓 → 原仓为 long
+
+      return {
+        orderId: o.id,
+        symbol: o.symbol,
+        side: (o.side || 'buy') as 'buy' | 'sell',
+        positionSide,
+        type: (o.type || 'limit') as OpenOrder['type'],
+        price: o.price ? Number(o.price) : undefined,
+        stopPrice: o.stopPrice ? Number(o.stopPrice) : undefined,
+        quantity: Number(o.amount || 0),
+        status: o.status || 'open',
+      };
+    });
   }
 
   // ========================= 精度 =========================
@@ -381,20 +559,27 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     try {
       return ex.amountToPrecision(symbol, quantity);
     } catch {
-      // fallback 1: market.limits
       const market = ex.market(symbol);
-      if (market?.limits?.amount?.min) {
-        const step = market.limits.amount.min;
+      // step size：优先 precision.amount（CCXT 标准，表示小数位数或步长），
+      // 次选 limits.amount.step，最后降级到 limits.amount.min（语义不同但通常接近）
+      const precisionAmount = market?.precision?.amount;
+      if (precisionAmount !== undefined) {
+        if (typeof precisionAmount === 'number' && precisionAmount < 1) {
+          // precisionAmount 为步长值（如 0.001）
+          const adjusted = Math.floor(quantity / precisionAmount) * precisionAmount;
+          return adjusted.toFixed(
+            Math.max(0, -Math.floor(Math.log10(precisionAmount))),
+          );
+        }
+        if (typeof precisionAmount === 'number' && precisionAmount >= 1) {
+          // precisionAmount 为小数位数
+          return quantity.toFixed(precisionAmount);
+        }
+      }
+      const step = (market?.limits?.amount as any)?.step || market?.limits?.amount?.min;
+      if (step) {
         const adjusted = Math.floor(quantity / step) * step;
         return adjusted.toString();
-      }
-      // fallback 2: market.precision
-      if (market?.precision?.amount !== undefined) {
-        const decimals =
-          typeof market.precision.amount === 'number'
-            ? market.precision.amount
-            : 3;
-        return quantity.toFixed(decimals);
       }
       // fallback 3: 3 位小数
       return quantity.toFixed(3);
@@ -404,23 +589,32 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getMarketPrecision(symbol: string): Promise<MarketPrecision> {
     const ex = this.getExchange();
     const market = ex.market(symbol);
+    const precisionAmount = market?.precision?.amount;
+    const quantityPrecision =
+      typeof precisionAmount === 'number' && precisionAmount >= 1
+        ? precisionAmount
+        : 3;
+    // stepSize：优先 precision.amount（步长值），次选 limits.amount.step，最后降级到 min
+    const stepSize =
+      (typeof precisionAmount === 'number' && precisionAmount < 1 ? precisionAmount : null) ||
+      (market?.limits?.amount as any)?.step ||
+      market?.limits?.amount?.min ||
+      0.001;
+
     return {
       symbol,
       pricePrecision:
         typeof market.precision?.price === 'number'
           ? market.precision.price
           : 2,
-      quantityPrecision:
-        typeof market.precision?.amount === 'number'
-          ? market.precision.amount
-          : 3,
+      quantityPrecision,
       minQuantity: market.limits?.amount?.min || 0,
       minNotional: market.limits?.cost?.min || 0,
       tickSize:
         typeof market.precision?.price === 'number'
           ? Math.pow(10, -market.precision.price)
           : 0.01,
-      stepSize: market.limits?.amount?.min || 0.001,
+      stepSize,
     };
   }
 

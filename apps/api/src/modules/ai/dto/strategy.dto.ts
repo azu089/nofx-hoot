@@ -21,7 +21,7 @@ export class CreateStrategyDto {
   strategyType?: string = 'normal';
 
   @IsOptional()
-  @IsEnum(['solo', 'debate'])
+  @IsEnum(['solo', 'debate', 'research'])
   tradingMode?: string = 'solo';
 
   @IsObject()
@@ -84,7 +84,7 @@ export class UpdateStrategyDto {
   name?: string;
 
   @IsOptional()
-  @IsEnum(['solo', 'debate'])
+  @IsEnum(['solo', 'debate', 'research'])
   tradingMode?: string;
 
   @IsOptional()

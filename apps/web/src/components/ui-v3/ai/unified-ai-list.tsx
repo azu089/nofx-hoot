@@ -49,6 +49,11 @@ function getStrategyStatus(s: AiStrategy): StrategyStatus {
 
 function getStrategyCoins(s: AiStrategy): string[] {
   try {
+    // 网格策略：以 gridConfig.symbol 为权威来源（coinSourceConfig.coins 可能是旧数据）
+    if (s.strategyType === 'grid' && s.gridConfig) {
+      const gc = s.gridConfig as { symbol?: string };
+      if (gc.symbol) return [gc.symbol];
+    }
     return s.coinSourceConfig?.coins || [];
   } catch {
     return [];
@@ -159,9 +164,13 @@ function ResearchCard({
         </div>
       </div>
 
-      {/* 深度 + 决策 + 周期 + 交易所 */}
+      {/* 深度 + 交易对 + 决策 + 周期 + 交易所 */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="px-2 py-0.5 bg-[#1E1E2E] text-[#9090A0] text-xs rounded">{depthLabel}</span>
+        {/* 交易对 badge（对齐策略卡片的 coin badge 风格） */}
+        <span className="px-2 py-0.5 bg-[#1E1E2E] text-[#06B6D4] text-xs rounded">
+          {session.symbol?.split('/')[0] ?? session.symbol}
+        </span>
         {decision && (
           <span className={`px-2 py-0.5 text-xs rounded font-medium ${
             isLong ? 'bg-[#10B981]/15 text-[#10B981]'
@@ -256,14 +265,25 @@ function ResearchCard({
             </button>
           </>
         ) : (
-          /* stopped/completed: 详情 + 删除 */
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onDeleteRequest(); }}
-            className="px-3 bg-[#1E1E2E] text-[#F43F5E] py-2 rounded-lg hover:bg-[#252530] transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          /* stopped: 重启 + 删除 */
+          <>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAction('resume'); }}
+              disabled={isActionPending}
+              className="flex-1 bg-[#06B6D4] text-[#F8F8FC] py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1.5 hover:bg-[#0891B2] transition-colors disabled:opacity-50"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {t('common.restart')}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDeleteRequest(); }}
+              className="px-3 bg-[#1E1E2E] text-[#F43F5E] py-2 rounded-lg hover:bg-[#252530] transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -771,7 +791,8 @@ export function UnifiedAiList() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteConfirmId(null)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 shadow-2xl">
+          {/* pb-20: 为底部导航栏（约 72px）留出空间，防止按钮被截断 */}
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 pb-20 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
                 <AlertTriangle className="w-5 h-5 text-[#F43F5E]" />
@@ -809,7 +830,8 @@ export function UnifiedAiList() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteResearchConfirmId(null)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 shadow-2xl">
+          {/* pb-20: 为底部导航栏（约 72px）留出空间，防止按钮被截断 */}
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 pb-20 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
                 <AlertTriangle className="w-5 h-5 text-[#F43F5E]" />

@@ -55,6 +55,7 @@ interface Position {
   leverage?: number
   margin?: number
   marginMode?: string
+  marginRatio?: string  // 交易所原始保证金比率（%字符串）
 }
 
 interface ExecutionLog {
@@ -1076,8 +1077,8 @@ function DesktopLogCard({ log }: { log: ExecutionLog }) {
             {expanded && (
               <div className="mt-1.5 space-y-1 pl-4 border-l border-[#F59E0B]/20">
                 {log.votes.map((v, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs">
-                    <span className="text-[#F59E0B] font-mono truncate max-w-[140px]">{v.modelId.split('/').pop()}</span>
+                  <div key={v.modelId || i} className="flex items-center gap-3 text-xs">
+                    <span className="text-[#F59E0B] font-mono truncate max-w-[140px]">{(v.modelId || '').split('/').pop()}</span>
                     <span className={`px-1.5 py-0.5 rounded ${getActionBadgeStyle(v.action)}`}>{getActionText(v.action, tAi)}</span>
                     <span className="text-[#808090]">{v.confidence}%</span>
                     {v.reasoning && <span className="text-[#606070] truncate max-w-[200px]">{v.reasoning}</span>}

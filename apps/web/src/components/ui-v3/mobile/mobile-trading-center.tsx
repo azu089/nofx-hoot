@@ -51,6 +51,7 @@ interface Position {
   leverage?: number
   margin?: number
   marginMode?: string
+  marginRatio?: string  // 交易所原始保证金比率（%字符串），直接显示
 }
 
 interface ExecutionLog {
@@ -612,8 +613,8 @@ export function MobileTradingCenter({
                       <div>
                         <p className="text-[#606070]">{t('marginRatio')}</p>
                         <p className="font-medium text-cyan-400">
-                          {position.margin && position.margin > 0 && position.markPrice > 0
-                            ? ((position.margin / (position.size * position.markPrice)) * 100).toFixed(2) + '%'
+                          {position.marginRatio
+                            ? position.marginRatio + '%'
                             : '-'}
                         </p>
                       </div>

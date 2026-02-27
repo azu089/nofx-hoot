@@ -174,11 +174,14 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
       }
     }
 
+    const finalEquity = totalEquity + unrealizedPnl;
+    const usedMarginLighter = totalEquity - availableBalance;
     return {
-      totalEquity: totalEquity + unrealizedPnl,
+      totalEquity: finalEquity,
       availableBalance,
-      usedMargin: totalEquity - availableBalance,
+      usedMargin: usedMarginLighter,
       unrealizedPnl,
+      marginUsedPct: finalEquity > 0 ? (usedMarginLighter / finalEquity) * 100 : 0,
     };
   }
 

@@ -289,8 +289,8 @@ export const StrategyShow = () => {
               <Descriptions.Item label="标签">
                 {strategy.tags && strategy.tags.length > 0 ? (
                   <Space>
-                    {strategy.tags.map((tag, idx) => (
-                      <Tag key={idx}>{tag}</Tag>
+                    {strategy.tags.map((tag) => (
+                      <Tag key={tag}>{tag}</Tag>
                     ))}
                   </Space>
                 ) : '-'}

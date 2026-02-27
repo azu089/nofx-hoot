@@ -33,6 +33,7 @@ export interface MarketRankingData {
   topGainers: Array<{ symbol: string; change24h: number }>;
   topLosers: Array<{ symbol: string; change24h: number }>;
   topVolume: Array<{ symbol: string; volume24h: number }>;
+  topOI?: Array<{ symbol: string; openInterest: number }>; // 持仓量前 5（对齐 NoFx OI排名）
   totalCoins: number;
   targetRank: { priceRank: number; volumeRank: number };
 }
@@ -316,6 +317,24 @@ export class MarketDataService implements OnModuleInit {
       }
 
       throw new Error(`获取市场数据失败: ${translateExchangeError(error.message)}`);
+    }
+  }
+
+  /**
+   * 计算近 1h 价格变化率（%）
+   * 用于黑天鹅检测，ATR 指标对极端行情有滞后，1h 涨跌幅可提前拦截
+   * @returns 变化率(%)，数据不足时返回 undefined
+   */
+  async fetchPriceChange1h(symbol: string): Promise<number | undefined> {
+    try {
+      const bars = await this.fetchOHLCV(symbol, '1h', 3);
+      if (bars.length < 2) return undefined;
+      const prev = bars[bars.length - 2][4] as number; // 上一根 close
+      const curr = bars[bars.length - 1][4] as number; // 最新 close
+      if (!prev || prev === 0) return undefined;
+      return ((curr - prev) / prev) * 100;
+    } catch {
+      return undefined;
     }
   }
 
@@ -699,6 +718,20 @@ export class MarketDataService implements OnModuleInit {
       const byChange = [...usdtTickers].sort((a, b) => b.change24h - a.change24h);
       const byVolume = [...usdtTickers].sort((a, b) => b.volume24h - a.volume24h);
 
+      // 并行获取 top-10 成交量币种的 OI（failsafe：单个失败返回 0，不影响主流程）
+      const top10Symbols = byVolume.slice(0, 10).map(t => t.symbol);
+      const oiResults = await Promise.all(
+        top10Symbols.map(sym =>
+          this.fetchOpenInterest(sym)
+            .then(r => ({ symbol: sym, openInterest: r?.openInterest ?? 0 }))
+            .catch(() => ({ symbol: sym, openInterest: 0 }))
+        )
+      );
+      const topOI = oiResults
+        .filter(r => r.openInterest > 0)
+        .sort((a, b) => b.openInterest - a.openInterest)
+        .slice(0, 5);
+
       const data: MarketRankingData = {
         topGainers: byChange.slice(0, 5).map((t) => ({
           symbol: t.symbol,
@@ -712,6 +745,7 @@ export class MarketDataService implements OnModuleInit {
           symbol: t.symbol,
           volume24h: Math.round(t.volume24h),
         })),
+        topOI: topOI.length > 0 ? topOI : undefined,
         totalCoins: usdtTickers.length,
         targetRank: { priceRank: 0, volumeRank: 0 },
       };

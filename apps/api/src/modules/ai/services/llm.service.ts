@@ -81,7 +81,8 @@ export class LLMService {
     'claude-haiku-4-5-20251001': { input: 1.0, output: 5.0 },
     'gemini-2.0-flash-001': { input: 0.10, output: 0.40 }, // 旧版兼容
     'gemini-2.0-flash': { input: 0.10, output: 0.40 },     // 旧版兼容
-    'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+    'gemini-2.5-flash': { input: 0.30, output: 2.50 },     // 旧版兼容
+    'gemini-3-flash-preview': { input: 0.50, output: 3.00 },
     'qwen-plus': { input: 0.80, output: 2.0 },     // 旧版兼容
     'qwen3.5-plus': { input: 0.80, output: 2.0 },
     'grok-3': { input: 3.0, output: 15.0 },         // 旧版兼容
@@ -208,7 +209,7 @@ export class LLMService {
     return new OpenAI({
       baseURL,
       apiKey,
-      timeout: 30000,
+      timeout: 60000, // 60s — Qwen/DashScope 等海外调用可能较慢
     });
   }
 
@@ -416,6 +417,14 @@ export class LLMService {
       let response: OpenAI.Chat.Completions.ChatCompletion | undefined;
       let lastError: Error | undefined;
 
+      // Gemini 2.5 系列为内置思考模型，thinking tokens 计入 max_tokens 配额
+      // 若不保留足够空间，thinking 结束后无 token 可输出 JSON，导致 SafeFallback
+      // 最低保障 6000 tokens（thinking ~2000-3000 + 结构化输出 ~1000-2000）
+      const isThinkingModel = effectiveModelId.startsWith('gemini-2.5') || effectiveModelId.startsWith('gemini-3');
+      const actualMaxTokens = isThinkingModel
+        ? Math.max(options?.maxTokens ?? 1000, 6000)
+        : options?.maxTokens ?? 1000;
+
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           response = await client.chat.completions.create({
@@ -425,18 +434,19 @@ export class LLMService {
               { role: 'user', content: userMessage },
             ],
             temperature: options?.temperature ?? 0.7,
-            max_tokens: options?.maxTokens ?? 1000,
+            max_tokens: actualMaxTokens,
           });
 
           break;
         } catch (err) {
           lastError = err;
           const isRateLimit = err.message?.includes('RATE_LIMIT') || err.message?.includes('429') || err.status === 429;
-          this.logger.warn(`调用失败 (尝试 ${attempt}/3)${isRateLimit ? ' [限流]' : ''}: ${err.message}`);
+          const isTimeout = err.message?.includes('timed out') || err.message?.includes('TIMEOUT') || err.message?.includes('ECONNRESET');
+          this.logger.warn(`调用失败 (尝试 ${attempt}/3)${isRateLimit ? ' [限流]' : ''}${isTimeout ? ' [超时]' : ''}: ${err.message}`);
 
           if (attempt < 3) {
-            // 限流错误用更长的退避（3s/6s），普通错误用短退避（1s/2s）
-            const delay = isRateLimit ? attempt * 3000 : attempt * 1000;
+            // 限流/超时错误用更长的退避（3s/6s），普通错误用短退避（1s/2s）
+            const delay = (isRateLimit || isTimeout) ? attempt * 3000 : attempt * 1000;
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }

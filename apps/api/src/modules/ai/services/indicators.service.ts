@@ -277,4 +277,35 @@ export class IndicatorsService {
       donchian: this.calculateDonchianChannel(highs, lows),
     };
   }
+
+  /**
+   * 返回最近 N 根 K 线的指标序列（供 AI 感知趋势方向）
+   * 独立方法，不修改 calculateAll() 接口和 IndicatorsResult 类型
+   */
+  calculateSeries(ohlcv: OHLCV[], count = 10): {
+    rsiSeries: number[];
+    macdHistSeries: number[];
+  } {
+    if (ohlcv.length < 26) return { rsiSeries: [], macdHistSeries: [] };
+    const closes = ohlcv.map(b => b.close);
+
+    // RSI(14) 序列
+    const rsiAll = RSI.calculate({ values: closes, period: 14 });
+    const rsiSeries = rsiAll.slice(-count).map(v => Math.round(v * 10) / 10);
+
+    // MACD Histogram 序列
+    const macdAll = MACD.calculate({
+      values: closes,
+      fastPeriod: 12,
+      slowPeriod: 26,
+      signalPeriod: 9,
+      SimpleMAOscillator: false,
+      SimpleMASignal: false,
+    });
+    const macdHistSeries = macdAll
+      .slice(-count)
+      .map(v => Math.round((v.histogram ?? 0) * 100) / 100);
+
+    return { rsiSeries, macdHistSeries };
+  }
 }

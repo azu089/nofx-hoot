@@ -28,6 +28,8 @@ export function NumberStepper({
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 防止 touch 后模拟的 mouseDown 重复触发（移动端双计步问题）
+  const touchActiveRef = useRef(false);
 
   const clamp = useCallback(
     (v: number) => Math.min(max, Math.max(min, v)),
@@ -73,15 +75,16 @@ export function NumberStepper({
     requestAnimationFrame(() => inputRef.current?.select());
   };
 
-  const commitEdit = () => {
-    const parsed = parseFloat(inputValue);
+  const commitEdit = useCallback(() => {
+    // 优先读取 DOM 实际值，避免 React state 闭包过期问题
+    const rawValue = inputRef.current?.value ?? inputValue;
+    const parsed = parseFloat(rawValue);
     if (!isNaN(parsed)) {
-      // 对齐到 step
-      const aligned = Math.round(parsed / step) * step;
-      onChange(clamp(aligned));
+      // 手动输入不对齐 step，只做 min/max 范围限制，允许小数
+      onChange(clamp(parsed));
     }
     setEditing(false);
-  };
+  }, [inputRef, inputValue, clamp, onChange]);
 
   const displayValue = `${prefix}${value.toLocaleString()}${suffix}`;
 
@@ -94,11 +97,11 @@ export function NumberStepper({
         {/* 减少按钮 */}
         <button
           type="button"
-          onMouseDown={() => startHold(decrement)}
+          onMouseDown={() => { if (!touchActiveRef.current) startHold(decrement); }}
           onMouseUp={stopHold}
           onMouseLeave={stopHold}
-          onTouchStart={() => startHold(decrement)}
-          onTouchEnd={stopHold}
+          onTouchStart={() => { touchActiveRef.current = true; startHold(decrement); }}
+          onTouchEnd={() => { stopHold(); setTimeout(() => { touchActiveRef.current = false; }, 500); }}
           disabled={value <= min}
           className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[#9090A0] hover:text-[#06B6D4] active:bg-[#06B6D4]/10 transition-colors disabled:opacity-30 disabled:hover:text-[#9090A0] flex-shrink-0"
           title="-"
@@ -112,18 +115,17 @@ export function NumberStepper({
           {editing ? (
             <input
               ref={inputRef}
-              type="number"
+              type="text"
+              inputMode="decimal"
+              autoFocus
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onBlur={commitEdit}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') commitEdit();
+                if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
                 if (e.key === 'Escape') setEditing(false);
               }}
-              min={min}
-              max={max}
-              step={step}
-              className="w-full bg-transparent text-center text-lg font-semibold text-[#F8F8FC] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-full bg-transparent text-center text-lg font-semibold text-[#F8F8FC] outline-none"
               aria-label={label}
             />
           ) : (
@@ -142,11 +144,11 @@ export function NumberStepper({
         {/* 增加按钮 */}
         <button
           type="button"
-          onMouseDown={() => startHold(increment)}
+          onMouseDown={() => { if (!touchActiveRef.current) startHold(increment); }}
           onMouseUp={stopHold}
           onMouseLeave={stopHold}
-          onTouchStart={() => startHold(increment)}
-          onTouchEnd={stopHold}
+          onTouchStart={() => { touchActiveRef.current = true; startHold(increment); }}
+          onTouchEnd={() => { stopHold(); setTimeout(() => { touchActiveRef.current = false; }, 500); }}
           disabled={value >= max}
           className="w-8 h-8 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[#9090A0] hover:text-[#06B6D4] active:bg-[#06B6D4]/10 transition-colors disabled:opacity-30 disabled:hover:text-[#9090A0] flex-shrink-0"
           title="+"

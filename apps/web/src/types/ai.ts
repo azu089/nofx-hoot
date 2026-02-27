@@ -326,6 +326,9 @@ export interface StartResearchBody {
     maxDailyTrades?: number;
     cooldownMinutes?: number;
     circuitBreaker?: number;
+    minPositionSize?: number;
+    minConfidence?: number;
+    minRiskRewardRatio?: number;
   };
 }
 
@@ -429,6 +432,7 @@ export interface AiStrategy {
   strategyType: string;
   tradingMode: string;
   models?: string[];
+  quickModel?: string;
   coinSourceConfig: CoinSourceConfig;
   indicatorConfig: IndicatorConfig;
   riskControlConfig: RiskControlConfig;
@@ -440,6 +444,12 @@ export interface AiStrategy {
     temperature?: number;
   };
   intervalMinutes: number;
+  stopConditions?: {
+    maxCycles?: number;
+    profitTargetPercent?: number;
+    maxLossPercent?: number;
+  };
+  exchangeApiKeyId?: string | null;
   isActive: boolean;
   isPublic: boolean;
   totalTrades: number;

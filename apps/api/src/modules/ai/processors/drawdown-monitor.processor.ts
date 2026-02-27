@@ -1,8 +1,9 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger, Inject, forwardRef } from '@nestjs/common';
+import { Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TradingService, TradingConfig } from '../../trading/trading.service';
+import { AdapterFactoryService } from '../../exchange-adapters/adapter-factory.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { isSameSymbol } from '../../../common/utils/symbol.util';
 
@@ -23,6 +24,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => TradingService))
     private readonly tradingService: TradingService,
+    @Optional() private readonly adapterFactory?: AdapterFactoryService,
   ) {
     super();
   }
@@ -46,11 +48,28 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         amount: true,
         margin: true,
         highWaterMark: true,
+        leverage: true,
       },
     });
 
     if (positions.length === 0) {
       return { checked: 0, closed: 0 };
+    }
+
+    // 按用户+APIKey 分组获取交易所持仓（批量，减少 API 调用次数）
+    const exchangePosCache = new Map<string, any[]>();
+    if (this.adapterFactory) {
+      const keys = [...new Set(positions.filter(p => p.apiKeyId).map(p => `${p.userId}:${p.apiKeyId}`))];
+      for (const key of keys) {
+        const [userId, apiKeyId] = key.split(':');
+        try {
+          const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+          const eps = await adapter.getPositions();
+          exchangePosCache.set(key, eps as any);
+        } catch (e: any) {
+          this.logger.debug(`[AI监控] 获取交易所持仓失败(${key.slice(0, 16)}): ${e.message}`);
+        }
+      }
     }
 
     let closedCount = 0;
@@ -59,8 +78,28 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       try {
         if (!pos.apiKeyId) continue;
 
-        // 获取当前价格
-        const currentPrice = await this.tradingService.getCurrentPrice(
+        // 从缓存获取该用户的交易所持仓，更新 amount/margin
+        const cacheKey = `${pos.userId}:${pos.apiKeyId}`;
+        const exchangePositions = exchangePosCache.get(cacheKey) as any[] | undefined;
+        let liveAmount: number | undefined;
+        let liveMargin: number | undefined;
+        let liveMarkPrice: number | undefined;
+        let liveUnrealizedPnl: number | undefined;
+
+        if (exchangePositions) {
+          const ep = exchangePositions.find(
+            (e: any) => isSameSymbol(e.symbol, pos.symbol) && e.side === pos.side,
+          );
+          if (ep) {
+            liveAmount = ep.quantity;
+            liveMargin = ep.margin;
+            liveMarkPrice = ep.markPrice;
+            liveUnrealizedPnl = ep.unrealizedPnl;
+          }
+        }
+
+        // 获取当前价格（优先用 exchange 持仓里的 markPrice，fallback 到单独查价）
+        const currentPrice = liveMarkPrice || await this.tradingService.getCurrentPrice(
           pos.userId,
           pos.apiKeyId,
           pos.symbol,
@@ -68,46 +107,64 @@ export class DrawdownMonitorProcessor extends WorkerHost {
 
         if (!currentPrice || currentPrice <= 0) continue;
 
-        // 计算未实现盈亏百分比
+        // 以交易所实时数据为准，fallback 到 DB 数据
         const entryPrice = Number(pos.entryPrice);
-        const amount = Number(pos.amount);
-        const margin = Number(pos.margin || 0);
+        const amount = liveAmount ?? Number(pos.amount);
+        const margin = liveMargin ?? Number(pos.margin || 0);
 
         if (entryPrice <= 0 || margin <= 0) continue;
 
-        let unrealizedPnl: number;
-        if (pos.side === 'long') {
-          unrealizedPnl = (currentPrice - entryPrice) * amount;
-        } else {
-          unrealizedPnl = (entryPrice - currentPrice) * amount;
-        }
+        const unrealizedPnl = liveUnrealizedPnl ?? (
+          pos.side === 'long'
+            ? (currentPrice - entryPrice) * amount
+            : (entryPrice - currentPrice) * amount
+        );
         const pnlPercent = (unrealizedPnl / margin) * 100;
 
         // 更新高水位
         const currentHWM = pos.highWaterMark ? Number(pos.highWaterMark) : null;
+        const baseUpdateData: any = {
+          markPrice: new Decimal(currentPrice),
+          unrealizedPnl: new Decimal(unrealizedPnl),
+          lastSyncAt: new Date(),
+        };
+        // 同步交易所的实时 amount 和 margin（若获取到）
+        if (liveAmount !== undefined) baseUpdateData.amount = new Decimal(liveAmount);
+        if (liveMargin !== undefined) baseUpdateData.margin = new Decimal(liveMargin);
+
         if (currentHWM === null || pnlPercent > currentHWM) {
           await this.prisma.position.update({
             where: { id: pos.id },
             data: {
               highWaterMark: new Decimal(Math.max(pnlPercent, 0)),
-              markPrice: new Decimal(currentPrice),
-              unrealizedPnl: new Decimal(unrealizedPnl),
-              lastSyncAt: new Date(),
+              ...baseUpdateData,
             },
           });
         } else {
-          // 仅更新标记价格和未实现盈亏
           await this.prisma.position.update({
             where: { id: pos.id },
-            data: {
-              markPrice: new Decimal(currentPrice),
-              unrealizedPnl: new Decimal(unrealizedPnl),
-              lastSyncAt: new Date(),
-            },
+            data: baseUpdateData,
           });
         }
 
-        // 回撤检查：曾盈利 >5% 且从高水位回撤 ≥40%
+        // 绝对亏损保护：不依赖高水位，当前亏损超过阈值直接平仓
+        // 高杠杆（≥5x）收紧到 -20%，低杠杆维持 -30%（减少高杠杆滑动窗口风险）
+        const lev = (pos as any).leverage ?? 1;
+        const ABSOLUTE_LOSS_THRESHOLD = lev >= 5 ? -20 : -30;
+        if (pnlPercent < ABSOLUTE_LOSS_THRESHOLD) {
+          this.logger.warn(
+            `[AI监控] 绝对亏损保护触发: ${pos.symbol} ${pos.side} 亏损 ${pnlPercent.toFixed(1)}% < ${ABSOLUTE_LOSS_THRESHOLD}% (杠杆 ${lev}x)`,
+          );
+          await this.autoClosePosition(
+            pos,
+            `绝对亏损保护：当前亏损 ${pnlPercent.toFixed(1)}% 超过 ${ABSOLUTE_LOSS_THRESHOLD}% 阈值 (杠杆 ${lev}x)`,
+            currentPrice,
+          );
+          closedCount++;
+          continue; // 跳过高水位检查
+        }
+
+        // 盈利保护回撤检查：曾盈利 >5% 且从高水位回撤 ≥40%
         if (currentHWM !== null && currentHWM > 5) {
           const drawdownFromPeak =
             (currentHWM - pnlPercent) / currentHWM;

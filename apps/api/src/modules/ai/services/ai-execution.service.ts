@@ -450,8 +450,14 @@ export class AiExecutionService {
     }
 
     // 14. 设置止损（3次重试 → 降级到软监控）
+    // 开仓无 SL/TP 防御检查（正常情况 safety L9 已拦截，此处为最终防线 WARN）
+    if (!decision.stopLoss || decision.stopLoss <= 0) {
+      this.logger.warn(
+        `[AI执行] ⚠ 开仓无止损: ${futuresSymbol} ${side} orderId=${result.orderId} — SL 缺失，仅依赖软监控`,
+      );
+    }
     let slSet = false;
-    if (decision.stopLoss) {
+    if (decision.stopLoss != null && decision.stopLoss > 0) {
       for (let slAttempt = 1; slAttempt <= 3; slAttempt++) {
         try {
           await adapter.setStopLoss(futuresSymbol, side, filledAmount, decision.stopLoss);
@@ -470,7 +476,7 @@ export class AiExecutionService {
 
     // 14b. 设置止盈（3次重试 → 降级到软监控）
     let tpSet = false;
-    if (decision.takeProfit) {
+    if (decision.takeProfit != null && decision.takeProfit > 0) {
       for (let tpAttempt = 1; tpAttempt <= 3; tpAttempt++) {
         try {
           await adapter.setTakeProfit(futuresSymbol, side, filledAmount, decision.takeProfit);
@@ -488,8 +494,8 @@ export class AiExecutionService {
     }
 
     // 15. 如果交易所 SL/TP 未设置成功，降级到 position-monitor 软监控
-    if (this.positionMonitor && ((decision.stopLoss && !slSet) || (decision.takeProfit && !tpSet))) {
-      const slPercent = decision.stopLoss
+    if (this.positionMonitor && (((decision.stopLoss != null && decision.stopLoss > 0) && !slSet) || ((decision.takeProfit != null && decision.takeProfit > 0) && !tpSet))) {
+      const slPercent = (decision.stopLoss != null && decision.stopLoss > 0)
         ? Math.abs((decision.stopLoss - filledPrice) / filledPrice) * 100
         : undefined;
       const tpPercent = decision.takeProfit
@@ -687,7 +693,7 @@ export class AiExecutionService {
 
         if (parseFloat(feeCalc.feeAmount) > 0) {
           const uniqueOrderId = this.feeService.generateUniqueOrderId('GAS_FEE', userId, position.id);
-          await this.feeService.chargeFee({
+          const feeResult = await this.feeService.chargeFee({
             userId,
             positionId: position.id,
             profit: feeCalc.profit,
@@ -696,6 +702,17 @@ export class AiExecutionService {
             uniqueOrderId,
           });
           this.logger.log(`[AI执行] 燃油费已扣除: $${feeCalc.feeAmount} (orderId=${uniqueOrderId})`);
+
+          // 点卡余额不足 → 自动停止该用户所有活跃策略
+          if (feeResult.balanceDepleted) {
+            const stopped = await this.prisma.aiStrategy.updateMany({
+              where: { userId, isActive: true },
+              data: { isActive: false },
+            });
+            this.logger.warn(
+              `[AI执行] 点卡余额不足，已自动停止 ${stopped.count} 个策略，请充值点卡后手动重启`,
+            );
+          }
         }
       } catch (e: any) {
         this.logger.error(`[AI执行] 燃油费扣除失败(非致命): ${e.message}`);

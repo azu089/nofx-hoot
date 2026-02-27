@@ -19,7 +19,7 @@ import {
   AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
-import { ACTION_CONFIG } from '@/constants/debate';
+import { ACTION_CONFIG, MODEL_DISPLAY } from '@/constants/debate';
 import { TruncatedText } from './truncated-text';
 import { useResearchStages } from '@/hooks/useAi';
 import type { TimelineResearch, ResearchStage, ResearchStageResult } from '@/types/ai';
@@ -315,6 +315,46 @@ export function ResearchLogCard({ entry }: ResearchLogCardProps) {
         </div>
       )}
 
+      {/* 参与模型头像组 — 完成态从辩论阶段提取，无需展开即可见 */}
+      {isCompleted && stagesData?.stages && (() => {
+        const debateStage = stagesData.stages.find(
+          (s: ResearchStage) => STAGE_NAME_MAP[s.name] === 1,
+        );
+        const entries = (debateStage?.result as Record<string, unknown> | undefined)?.entries;
+        if (!Array.isArray(entries) || entries.length === 0) return null;
+        const uniqueModels = [...new Set(
+          (entries as Array<Record<string, unknown>>)
+            .map((e) => e.model as string)
+            .filter(Boolean),
+        )];
+        if (uniqueModels.length === 0) return null;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-[#606070]">{t('research.stageDebate')}:</span>
+            <div className="flex items-center -space-x-1">
+              {uniqueModels.slice(0, 4).map((modelId, i) => {
+                const info = MODEL_DISPLAY[modelId];
+                const name = info?.name || modelId;
+                const color = info?.color || '#9090A0';
+                return info?.logo ? (
+                  <img key={i} src={info.logo} alt={name} title={name}
+                    className="w-5 h-5 rounded-full border border-[#12121A]" />
+                ) : (
+                  <span key={i}
+                    className="w-5 h-5 rounded-full bg-[#1E1E2E] border border-[#12121A] flex items-center justify-center text-[8px] font-bold"
+                    style={{ color }} title={name}>
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                );
+              })}
+            </div>
+            {uniqueModels.length > 4 && (
+              <span className="text-[10px] text-[#606070]">+{uniqueModels.length - 4}</span>
+            )}
+          </div>
+        );
+      })()}
+
       {/* 思考链 — 完成态默认展开 */}
       {isCompleted && (
         <div className="pt-1">
@@ -582,6 +622,35 @@ function StageAccordion({
         {summary && (
           <span className="text-[#606070] truncate flex-1 text-left">· {summary}</span>
         )}
+        {stageKey === 'debate' && (() => {
+          const entries = (stage.result as Record<string, unknown>)?.entries;
+          if (!Array.isArray(entries) || entries.length === 0) return null;
+          const uniqueModels = [...new Set(
+            (entries as Array<Record<string, unknown>>)
+              .map((e) => e.model as string)
+              .filter(Boolean),
+          )];
+          if (uniqueModels.length === 0) return null;
+          return (
+            <div className="flex items-center -space-x-1 flex-shrink-0">
+              {uniqueModels.slice(0, 4).map((modelId, i) => {
+                const info = MODEL_DISPLAY[modelId];
+                const name = info?.name || modelId;
+                const color = info?.color || '#9090A0';
+                return info?.logo ? (
+                  <img key={i} src={info.logo} alt={name} title={name}
+                    className="w-4 h-4 rounded-full border border-[#12121A]" />
+                ) : (
+                  <span key={i}
+                    className="w-4 h-4 rounded-full bg-[#1E1E2E] border border-[#12121A] flex items-center justify-center text-[7px] font-bold"
+                    style={{ color }} title={name}>
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })()}
         {duration && (
           <span className="text-[10px] text-[#606070] flex-shrink-0">{duration}</span>
         )}
@@ -602,6 +671,25 @@ function StageAccordion({
                 {item.label && (
                   <div className="text-[10px] text-[#06B6D4] mb-0.5 font-medium">{item.label}</div>
                 )}
+                {item.modelId && (() => {
+                  const info = MODEL_DISPLAY[item.modelId!];
+                  const name = info?.name || item.modelId!;
+                  const color = info?.color || '#9090A0';
+                  return (
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {info?.logo ? (
+                        <img src={info.logo} alt={name} title={name}
+                          className="w-4 h-4 rounded-full flex-shrink-0" />
+                      ) : (
+                        <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+                          style={{ color }}>
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="text-[10px]" style={{ color }}>{name}</span>
+                    </div>
+                  );
+                })()}
                 <div className="text-[#9090A0] text-xs leading-relaxed break-words">
                   <FormattedReport text={item.text} />
                 </div>
@@ -697,7 +785,7 @@ function extractStageContent(
   stageKey: string,
   stage: ResearchStage,
   t: TFunc,
-): Array<{ label?: string; text: string }> | null {
+): Array<{ label?: string; text: string; modelId?: string }> | null {
   if (!stage) return null;
   const data = stage.result as ResearchStageResult & Record<string, unknown>;
   if (!data) return null;
@@ -865,8 +953,9 @@ function extractStageContent(
         : t('timeline.roundN', { n: isNaN(roundNum) ? '?' : roundNum });
       const confVal = e.confidence ?? (args as Record<string, unknown> | undefined)?.confidence;
       const conf = confVal != null ? ` · ${confVal}%` : '';
+      const modelId = String(e.model || '') || undefined;
 
-      return { label: `${roleLabel} ${roundLabel}${conf}`, text };
+      return { label: `${roleLabel} ${roundLabel}${conf}`, text, modelId };
     });
 
     // 共识结果
@@ -879,7 +968,7 @@ function extractStageContent(
         typeof c.reasoning === 'string' && c.reasoning,
       ].filter(Boolean);
       if (conParts.length > 0) {
-        items.push({ label: `→ ${t('timeline.consensus')}`, text: conParts.join('\n') });
+        items.push({ label: `→ ${t('timeline.consensus')}`, text: conParts.join('\n'), modelId: undefined });
       }
     }
 
@@ -995,34 +1084,58 @@ function analystLabelMap(key: string, t: TFunc): string {
 // ─── 智能分段：LLM 输出常无换行，检测逻辑断点插入换行 ─────────
 function smartSplit(raw: string): string[] {
   let text = raw;
-  // 编号列表前插入换行 — 仅匹配「句末+编号」模式，避免误拆 EMA(12、20、50) 等括号内数字
-  // 「。1）」「。(1)」「。（1）」→ 在编号前换行
-  text = text.replace(/([。！？\.\?\!])(\d{1,3}[）\)])/g, '$1\n$2');
-  text = text.replace(/([。！？\.\?\!])(（\d{1,3}）)/g, '$1\n$2');
-  text = text.replace(/([。！？\.\?\!])(\(\d{1,3}\))/g, '$1\n$2');
-  // • · - 列表项前插入换行
+
+  // ── 1. 编号列表前插入换行 ──
+  // 标点（句末 + 逗号 + 分号 + 冒号）后跟编号 → 编号前换行
+  // 不会误拆 EMA(12)，因为 EMA 不是标点
+  const pun = '。！？\\.\\?\\!，,；;：:';
+  text = text.replace(new RegExp(`([${pun}])\\s*(\\d{1,3}[）\\)])`, 'g'), '$1\n$2');
+  text = text.replace(new RegExp(`([${pun}])\\s*(（\\d{1,3}）)`, 'g'), '$1\n$2');
+  text = text.replace(new RegExp(`([${pun}])\\s*(\\(\\d{1,3}\\))`, 'g'), '$1\n$2');
+
+  // ── 2. 列表标记前换行 ──
   text = text.replace(/([^\n])([•·])\s/g, '$1\n$2 ');
   text = text.replace(/([^\n\s])([-–]\s)/g, '$1\n$2');
-  // **标题** 前插入换行
+
+  // ── 3. **标题** 前换行 ──
   text = text.replace(/([^\n])(\*\*[^*]+\*\*)/g, '$1\n$2');
-  // --- 或 === 分隔符变空行
+
+  // ── 4. 分隔符 ──
   text = text.replace(/\s*[-=]{3,}\s*/g, '\n\n');
-  // === SECTION === 标题
   text = text.replace(/===\s*(.+?)\s*===/g, '\n**$1**\n');
 
+  // ── 5. 分行 + 长行拆分 ──
   const lines = text.split('\n');
   const result: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) { result.push(''); continue; }
-    // 超长行（>200字无编号/列表头）在中文句号后拆分
+    // 超长行（>200字无编号/列表头）在句末标点后拆分
     if (trimmed.length > 200 && !/^[\d•·\-（(]/.test(trimmed)) {
-      result.push(...trimmed.split(/(?<=。)(?=[^\s])/).map(s => s.trim()));
+      result.push(...trimmed.split(/(?<=[。！？])/).map(s => s.trim()).filter(Boolean));
     } else {
       result.push(trimmed);
     }
   }
-  return result.filter(l => l.trim());
+
+  // ── 6. 合并孤立编号行 ──
+  // 如果某行只有编号（"(1)" "1）" "（2）"），合并到下一行
+  const merged: string[] = [];
+  for (let i = 0; i < result.length; i++) {
+    const t = result[i].trim();
+    if (/^[（(]?\d{1,3}[）\)、.\s]*$/.test(t) && t.length <= 6) {
+      if (i + 1 < result.length && result[i + 1].trim()) {
+        merged.push(t + (t.endsWith(' ') ? '' : '') + result[i + 1].trim());
+        i++;
+      } else {
+        merged.push(result[i]);
+      }
+    } else {
+      merged.push(result[i]);
+    }
+  }
+
+  return merged.filter(l => l.trim());
 }
 
 // ─── 格式化报告文本（智能分段 + 标题 + 列表 + 指标） ────────────

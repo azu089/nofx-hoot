@@ -40,6 +40,26 @@ function cleanBackendTags(text: string, t: TFunc): string {
 
 /** 从完整 reasoning 提取简短等待/持仓原因（1行） */
 function briefWaitReason(text: string, t: TFunc): string {
+  // 0. 共识策略格式：[共识] N 个模型独立分析 · Model1: 观望...
+  // 提取 "N模型XXX，得分Y" 行 + "→ 执行XXX" 行，拼成判断结果摘要
+  if (text.includes('[共识]') && text.includes('得分')) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const scoreLine = lines.find(l => /\d+模型.+得分\s*[\d.]+/.test(l));
+    const execLine = lines.find(l => /^→\s+/.test(l));
+    if (scoreLine || execLine) {
+      // 得分后注释计算方式：得分 = Σ(各模型置信度/100)
+      const scoreWithNote = scoreLine?.replace(/(得分\s*)([\d.]+)/, '$1$2 (=Σ置信度÷100)');
+      // 将 "执行观望" → "继续等待信号"，"执行持有" → "维持持仓"
+      const execText = execLine
+        ?.replace(/^→\s*/, '')
+        .replace(/执行观望/, '继续等待信号')
+        .replace(/执行持有/, '维持持仓');
+      const parts = [scoreWithNote, execText].filter(Boolean);
+      const combined = parts.join('，');
+      return combined.length > 100 ? combined.slice(0, 100) + '…' : combined;
+    }
+  }
+
   // 1. 风控拒绝 → 提取评级
   const riskMatch = text.match(/\[RISK REJECTED\]\s*Rating:\s*(\w+)/i);
   if (riskMatch) {
@@ -85,6 +105,42 @@ function briefWaitReason(text: string, t: TFunc): string {
   }
 
   return cleanBackendTags(text, t).slice(0, 80);
+}
+
+/**
+ * 智能格式化推理文本
+ * DeepSeek 原生输出含 \n，直接透传；
+ * GPT/Gemini 输出连续文本，按中英文句末标点 + 编号 + 章节标题断行
+ */
+function formatReasoning(text: string): string {
+  if (!text) return text;
+
+  // 已有足够换行（DeepSeek / Claude 风格）→ 直接透传，不破坏原有格式
+  const newlineCount = (text.match(/\n/g) || []).length;
+  if (newlineCount >= 3) return text;
+
+  let s = text;
+
+  // 1. 中文章节标题前断行：句末标点后出现 "xx分析："、"结论：" 等
+  s = s.replace(/([。！？.!?])\s*([\u4e00-\u9fff]{2,8}[：:])/g, '$1\n$2');
+
+  // 2. 中文句末标点后断行（后跟非空白内容）
+  s = s.replace(/([。！？])(?=[^\n\s])/g, '$1\n');
+
+  // 3. 英文句末断行（句点/问号/感叹号后跟空格再跟大写字母）
+  //    (?<!\d) 保护小数点，避免拆分 "72.5 USD"、"$100.5 BTC" 这类小数+大写组合
+  s = s.replace(/(?<!\d)([.!?])\s+(?=[A-Z])/g, '$1\n');
+
+  // 4. 数字编号列表断行：" 1. " / " 2) "
+  s = s.replace(/\s+(\d+[.)]\s+)/g, '\n$1');
+
+  // 5. 项目符号断行
+  s = s.replace(/\s+([·•\-]\s)/g, '\n$1');
+
+  // 清理多余空行
+  s = s.replace(/\n{3,}/g, '\n\n');
+
+  return s.trim();
 }
 
 function formatTimeAgo(dateStr: string, t: TFunc): string {
@@ -148,6 +204,7 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
     ? (d.stopLoss + d.takeProfit) / 2
     : 0);
 
+
   // R:R — 优先用百分比（与后端 L9 safety check 一致），fallback 用价格
   const rr = calcRiskRewardFromPct(d.stopLossPct, d.takeProfitPct)
     ?? (d.stopLoss && d.takeProfit && entryPrice
@@ -164,7 +221,7 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
             {t('modes.debate')}
           </span>
           <span className="text-[#9090A0]">{strategy.name}</span>
-          <span className="text-[#F8F8FC] font-medium">{log.symbol}</span>
+          <span className="text-[#F8F8FC] font-medium">{(!log.symbol || log.symbol === 'ALL') ? strategy.name : log.symbol.replace(/:USDT$/, '')}</span>
           {d.cost != null && d.cost > 0 && (
             <span className="flex items-center gap-0.5 text-[#606070]">
               <DollarSign className="w-2.5 h-2.5" />
@@ -230,19 +287,24 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
       )}
 
       {/* === 投票列表 — 手风琴式，类似深研思考链 === */}
-      {votes.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 text-[10px] text-[#606070] mb-1">
-            <MessageSquare className="w-3 h-3" />
-            <span>{t('timeline.aiThinkingChain')}</span>
-          </div>
+      <div>
+        <div className="flex items-center gap-1.5 text-[10px] text-[#606070] mb-1">
+          <MessageSquare className="w-3 h-3" />
+          <span>{t('timeline.aiThinkingChain')}</span>
+        </div>
+        {votes.length > 0 ? (
           <div className="border-l border-[#1E1E2E] ml-1 pl-3">
             {votes.map((vote: StrategyLogVote, idx: number) => (
-              <VoteItem key={idx} vote={vote} consensusAction={action} />
+              <VoteItem key={vote.modelId || idx} vote={vote} consensusAction={action} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="border-l border-[#1E1E2E] ml-1 pl-3 py-1.5 flex items-center gap-1.5 text-xs text-[#F43F5E]/70">
+            <Clock className="w-3 h-3 flex-shrink-0" />
+            <span>LLM API {t('timeline.analysisFailed')} — {t('timeline.llmNoResponse')}</span>
+          </div>
+        )}
+      </div>
 
       {/* === 执行状态 === */}
       <div className="border-t border-[#1E1E2E] pt-2">
@@ -292,20 +354,20 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
         ) : isWait ? (
           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#94A3B8]/5 text-xs">
             <Clock className="w-3.5 h-3.5 text-[#94A3B8] flex-shrink-0 mt-0.5" />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 leading-relaxed">
               <span className="text-[#94A3B8] font-medium">{t('timeline.waitingSignal')}</span>
               {d.reasoning && (
-                <p className="text-[#9090A0] text-xs mt-0.5 leading-relaxed">{briefWaitReason(d.reasoning, t as TFunc)}</p>
+                <span className="text-[#9090A0] ml-1">{briefWaitReason(d.reasoning, t as TFunc)}</span>
               )}
             </div>
           </div>
         ) : isHoldPos ? (
           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#64748B]/5 text-xs">
             <Pause className="w-3.5 h-3.5 text-[#64748B] flex-shrink-0 mt-0.5" />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 leading-relaxed">
               <span className="text-[#64748B] font-medium">{t('timeline.holdingPosition')}</span>
               {d.reasoning && (
-                <p className="text-[#9090A0] text-xs mt-0.5 leading-relaxed">{briefWaitReason(d.reasoning, t as TFunc)}</p>
+                <span className="text-[#9090A0] ml-1">{briefWaitReason(d.reasoning, t as TFunc)}</span>
               )}
             </div>
           </div>
@@ -318,10 +380,10 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
         ) : (
           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#606070]/5 text-xs">
             <Clock className="w-3.5 h-3.5 text-[#606070] flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
+            <div className="min-w-0 leading-relaxed">
               <span className="text-[#606070] font-medium">{t('timeline.notExecuted')}</span>
               {d.reasoning && (
-                <p className="text-[#9090A0] text-xs mt-0.5">{briefWaitReason(d.reasoning, t as TFunc)}</p>
+                <span className="text-[#9090A0] ml-1">{briefWaitReason(d.reasoning, t as TFunc)}</span>
               )}
             </div>
           </div>
@@ -344,6 +406,10 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
   // 提取一行摘要 — 跳过章节标题（"xxx分析：" 格式）
   const summary = vote.reasoning
     ? (() => {
+        // 模型调用失败 → 友好文案，不暴露技术细节
+        if (vote.success === false) {
+          return t('timeline.modelFailed');
+        }
         const lines = vote.reasoning.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const line = lines.find(l => !/^[\w\u4e00-\u9fff]{1,8}[：:]\s*$/.test(l) && !/^\*\*[^*]+\*\*$/.test(l) && l.length > 4)
           || lines[0] || '';
@@ -358,21 +424,13 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
         agreed ? 'bg-[#10B981]' : 'bg-[#606070]'
       }`} />
 
-      {/* 行标题 — 点击展开/收起 */}
+      {/* 行标题 — 点击展开/收起（仅投票参数，logo 移到下方独立行） */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); if (vote.reasoning) setOpen(!open); }}
         className="w-full flex items-center gap-2 py-2 text-xs group"
         disabled={!vote.reasoning}
       >
-        {/* 模型图标 */}
-        {modelInfo?.logo ? (
-          <img src={modelInfo.logo} alt={modelName} title={modelName} className="w-5 h-5 rounded-full flex-shrink-0" />
-        ) : (
-          <span className="w-5 h-5 rounded-full flex-shrink-0 bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold" style={{ color: modelColor }}>
-            {modelName.charAt(0).toUpperCase()}
-          </span>
-        )}
         {/* 动作标签 */}
         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
           style={{ color: voteCfg.color, backgroundColor: voteCfg.bg }}>
@@ -391,8 +449,13 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
           {agreed ? '✓' : '✗'}
         </span>
         {vote.success === false && (
-          <span className="text-[10px] text-[#F43F5E] truncate max-w-[100px]" title={vote.error || ''}>
-            {vote.error?.replace(/^Error:\s*/i, '').slice(0, 20) || t('timeline.modelFailed')}
+          <span className="text-[10px] text-[#F43F5E]/70 truncate max-w-[100px]">
+            {t('timeline.modelFailed')}
+          </span>
+        )}
+        {vote.success !== false && vote.error?.startsWith('未覆盖') && (
+          <span className="text-[10px] text-[#606070] truncate max-w-[100px]" title={vote.error}>
+            {vote.error}
           </span>
         )}
         <span className="flex-1" />
@@ -404,21 +467,48 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
         )}
       </button>
 
-      {/* 推理文本 — 收起时一行摘要，展开时完整内容（限高可滚动） */}
-      {vote.reasoning && (
-        <div className="pl-7 pb-2">
-          {open ? (
-            <div className="text-xs text-[#9090A0] leading-relaxed whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
-              {vote.reasoning}
-            </div>
+      {/* 推理文本区 — 模型 Logo 始终显示，即使 reasoning 为空 */}
+      <div className="pb-2">
+        {/* 模型标识行 */}
+        <div className="flex items-center gap-1.5 mb-1.5">
+          {modelInfo?.logo ? (
+            <img src={modelInfo.logo} alt={modelName} title={modelName}
+              className="w-4 h-4 rounded-full flex-shrink-0" />
           ) : (
-            <p className="text-xs text-[#606070] truncate">{summary}</p>
+            <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+              style={{ color: modelColor }}>
+              {modelName.charAt(0).toUpperCase()}
+            </span>
           )}
+          <span className="text-[10px]" style={{ color: modelColor }}>{modelName}</span>
         </div>
-      )}
+        {vote.reasoning ? (
+          open ? (
+            vote.success === false ? (
+              <p className="text-xs text-[#606070] leading-relaxed">
+                {t('timeline.modelUnavailableMsg')}
+              </p>
+            ) : (
+              <div className="text-xs text-[#9090A0] leading-relaxed whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
+                {formatReasoning(vote.reasoning)}
+              </div>
+            )
+          ) : (
+            <p className="text-xs text-[#606070] truncate">{summary || '...'}</p>
+          )
+        ) : vote.success === false ? (
+          /* reasoning 为空 + 调用失败：友好说明 */
+          <p className="text-xs text-[#606070] leading-relaxed">
+            {t('timeline.modelUnavailableMsg')}
+          </p>
+        ) : (
+          /* reasoning 为空 + 无错误：提示用户 */
+          <p className="text-xs text-[#606070]">—</p>
+        )}
+      </div>
       {/* Per-vote SL/TP（展开时，仅 open 动作） */}
       {open && vote.action !== 'wait' && vote.action !== 'hold' && (vote.stopLoss != null || vote.takeProfit != null) && (
-        <div className="flex items-center gap-3 pl-7 pb-2 text-[10px]">
+        <div className="flex items-center gap-3 pb-2 text-[10px]">
           {vote.stopLoss != null && (
             <span className="text-[#F43F5E]">{t('timeline.slLabel')}: <span className="font-mono">${Number(vote.stopLoss).toLocaleString()}</span></span>
           )}

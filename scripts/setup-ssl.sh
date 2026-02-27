@@ -16,11 +16,12 @@ set -e
 
 DOMAIN="hoot.cool"
 API_DOMAIN="api.hoot.cool"
+ADMIN_DOMAIN="admin.hoot.cool"
 EMAIL="${ADMIN_EMAIL:-admin@hoot.cool}"
 SSL_DIR="$(cd "$(dirname "$0")/.." && pwd)/nginx/ssl"
 
 echo "=== HOOT SSL 证书配置 ==="
-echo "域名: ${DOMAIN}, ${API_DOMAIN}"
+echo "域名: ${DOMAIN}, ${API_DOMAIN}, ${ADMIN_DOMAIN}"
 echo "邮箱: ${EMAIL}"
 echo "证书目录: ${SSL_DIR}"
 echo ""
@@ -55,7 +56,8 @@ certbot certonly \
     --agree-tos \
     --email "${EMAIL}" \
     -d "${DOMAIN}" \
-    -d "${API_DOMAIN}"
+    -d "${API_DOMAIN}" \
+    -d "${ADMIN_DOMAIN}"
 
 # 复制证书到 nginx/ssl 目录
 echo ""

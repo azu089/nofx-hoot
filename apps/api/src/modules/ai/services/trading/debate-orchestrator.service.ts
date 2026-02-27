@@ -731,8 +731,17 @@ export class DebateOrchestratorService {
           priceChange24h = old > 0 ? ((currentPrice - old) / old) * 100 : undefined;
         }
 
-        // 从 OHLCV 聚合 24h 成交量（L10 流动性检查用）
-        const barsFor24h = timeframe === '4h' ? 6 : timeframe === '1h' ? 24 : 6;
+        // 从 OHLCV 聚合 24h 成交量（L10 流动性检查用，对齐 quick-analysis 时间周期映射）
+        const barsFor24h = timeframe === '1h' ? 24
+          : timeframe === '2h' ? 12
+          : timeframe === '4h' ? 6
+          : timeframe === '6h' ? 4
+          : timeframe === '8h' ? 3
+          : timeframe === '12h' ? 2
+          : timeframe === '1d' ? 1
+          : timeframe === '30m' ? 48
+          : timeframe === '15m' ? 96
+          : 6; // fallback
         const volume24h = ohlcv.slice(-barsFor24h).reduce((sum, bar) => sum + (bar.volume || 0), 0);
 
         return { symbol, ohlcv, currentPrice, indicators: indicatorsResult, priceChange24h, fundingRate: frData?.fundingRate, volume24h };

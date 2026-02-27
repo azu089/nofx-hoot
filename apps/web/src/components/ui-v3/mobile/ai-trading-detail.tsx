@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
   Pencil,
   Eye,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useStrategyDetail, useStrategyLogs, useStrategyPnlChart, useStrategyControl, useHotUpdateConfig, useUpdateStrategy, usePreviewPrompt, useTriggerCycle } from "@/hooks/useAi";
@@ -28,14 +29,25 @@ import type { StrategyLog, CoinSourceConfig, RiskControlConfig, PromptSections, 
 import {
   MODEL_DISPLAY,
   ACTION_CONFIG,
+  DEFAULT_DEBATE_MODELS,
 } from "@/constants/debate";
 import { getTradingModeInfo, buildConfigSummary } from "@/constants/trading-modes";
 import { TruncatedText } from "@/components/ui-v3/ai/timeline-cards/truncated-text";
 import { PillGroup } from "@/components/ui-v3/ai/pill-group";
 import { NumberStepper } from "@/components/ui-v3/ai/number-stepper";
+import { ExchangeKeySelector } from "@/components/ui-v3/ai/exchange-key-selector";
+import { translateErrorForDisplay } from "@/lib/error-translator";
+
+const GRID_COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE'];
+const ALL_COIN_NAMES = [
+  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
+  'MATIC', 'UNI', 'ATOM', 'LTC', 'FIL', 'APT', 'ARB', 'OP', 'SUI', 'INJ',
+  'TIA', 'SEI', 'JUP', 'WIF', 'PEPE', 'NEAR', 'FTM', 'AAVE', 'MKR', 'RENDER',
+];
 
 export function AIStrategyDetailPage() {
   const t = useTranslations('ai');
+  const te = useTranslations('errors');
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -85,6 +97,48 @@ export function AIStrategyDetailPage() {
   const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridInterval, setEditGridInterval] = useState(60);
+  const [editGridUpperBound, setEditGridUpperBound] = useState(0);
+  const [editGridLowerBound, setEditGridLowerBound] = useState(0);
+  const [editGridModel, setEditGridModel] = useState('deepseek-chat');
+
+  // 创建表单对齐：高级风控 + 止停条件
+  const [editMinConfidence, setEditMinConfidence] = useState(0);
+  const [editMinRR, setEditMinRR] = useState(0);
+  const [editMinPositionSize, setEditMinPositionSize] = useState(0);
+  const [editMaxCycles, setEditMaxCycles] = useState(0);
+  const [editProfitTarget, setEditProfitTarget] = useState(0);
+  const [editMaxLoss, setEditMaxLoss] = useState(0);
+
+  // Debate 编辑 state
+  const [editDebateModels, setEditDebateModels] = useState<string[]>([]);
+  const [editDebateMaxRounds, setEditDebateMaxRounds] = useState(3);
+  const [editDebateTemperature, setEditDebateTemperature] = useState(0.7);
+
+  // Solo 模型编辑 state
+  const [editSoloModel, setEditSoloModel] = useState('deepseek-chat');
+  const [showEditSoloModelDropdown, setShowEditSoloModelDropdown] = useState(false);
+  const [showEditDebateModelDropdown, setShowEditDebateModelDropdown] = useState(false);
+
+  // 交易所 + Grid 交易对 + Grid LLM 下拉
+  const [editExchangeApiKeyId, setEditExchangeApiKeyId] = useState<string | null>(null);
+  const [editGridSymbol, setEditGridSymbol] = useState('BTC');
+  const [showEditGridModelDropdown, setShowEditGridModelDropdown] = useState(false);
+  // 币种搜索
+  const [editGridCoinSearch, setEditGridCoinSearch] = useState('');
+  const [editCoinSearch, setEditCoinSearch] = useState('');
+  const [showEditStopConditions, setShowEditStopConditions] = useState(false);
+
+  // 搜索过滤
+  const filteredEditGridCoins = useMemo(() => {
+    if (!editGridCoinSearch) return GRID_COINS;
+    const q = editGridCoinSearch.toUpperCase();
+    return ALL_COIN_NAMES.filter((c) => c.includes(q));
+  }, [editGridCoinSearch]);
+  const filteredEditCoins = useMemo(() => {
+    if (!editCoinSearch) return ALL_COIN_NAMES.slice(0, 8);
+    const q = editCoinSearch.toUpperCase();
+    return ALL_COIN_NAMES.filter((c) => c.includes(q));
+  }, [editCoinSearch]);
 
   // strategyId 变化时重置日志分页
   useEffect(() => {
@@ -216,7 +270,8 @@ export function AIStrategyDetailPage() {
       const result = await triggerCycle.mutateAsync(strategyId);
       toast.success(`${t('detail.analyzed', { count: result.cycle.analyzed, executed: result.cycle.executed })} $${result.cycle.totalCost.toFixed(4)}`);
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '') || t('common.failed'));
+      const rawMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '');
+      toast.error(translateErrorForDisplay(rawMsg, te));
     }
   };
 
@@ -231,6 +286,18 @@ export function AIStrategyDetailPage() {
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridInterval(strategy?.intervalMinutes || 60);
+      setEditGridUpperBound(gc.upperBound || 0);
+      setEditGridLowerBound(gc.lowerBound || 0);
+      setEditGridModel((strategy.models && strategy.models[0]) || strategy.quickModel || 'deepseek-chat');
+      setEditGridCoinSearch('');
+      setShowEditGridModelDropdown(false);
+      setEditExchangeApiKeyId(strategy.exchangeApiKeyId || null);
+      const rawGridSymbol = (strategy.gridConfig as GridConfig)?.symbol || '';
+      setEditGridSymbol(rawGridSymbol.split('/')[0] || 'BTC');
+      // Grid 止停条件
+      setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
+      setEditProfitTarget(strategy.stopConditions?.profitTargetPercent ?? 0);
+      setEditMaxLoss(strategy.stopConditions?.maxLossPercent ?? 0);
     } else {
       // 非 Grid 策略加载通用配置
       const cc = (strategy?.coinSourceConfig || {}) as CoinSourceConfig;
@@ -252,7 +319,25 @@ export function AIStrategyDetailPage() {
       setEditPromptTradingFrequency(ps.tradingFrequency || '');
       setEditPromptEntryStandards(ps.entryStandards || '');
       setEditInterval(strategy?.intervalMinutes || 60);
+      // 高级风控 + 止停条件
+      setEditMinConfidence(rc.minConfidence ?? 0);
+      setEditMinRR(rc.minRiskRewardRatio ?? 0);
+      setEditMinPositionSize(rc.minPositionSize ?? 0);
+      setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
+      setEditProfitTarget(strategy.stopConditions?.profitTargetPercent ?? 0);
+      setEditMaxLoss(strategy.stopConditions?.maxLossPercent ?? 0);
+      // Debate 模型 + 配置
+      setEditDebateModels(strategy.models && strategy.models.length > 0 ? strategy.models : [...DEFAULT_DEBATE_MODELS]);
+      setEditDebateMaxRounds(strategy.debateConfig?.maxRounds ?? 3);
+      setEditDebateTemperature(strategy.debateConfig?.temperature ?? 0.7);
+      // Solo 模型
+      setEditSoloModel(strategy.quickModel || (strategy.models && strategy.models[0]) || 'deepseek-chat');
+      setShowEditSoloModelDropdown(false);
+      setShowEditDebateModelDropdown(false);
       setShowEditExcluded(false);
+      // 交易所
+      setEditExchangeApiKeyId(strategy.exchangeApiKeyId || null);
+      setEditCoinSearch('');
     }
     setIsEditing(true);
   };
@@ -265,14 +350,24 @@ export function AIStrategyDetailPage() {
       // Grid 策略：提交 gridConfig + intervalMinutes
       body = {
         gridConfig: {
-          ...(strategy.gridConfig as GridConfig), // 保留 symbol, useAtrBounds 等不可编辑字段
+          ...(strategy.gridConfig as GridConfig),
+          symbol: editGridSymbol ? `${editGridSymbol}/USDT:USDT` : (strategy.gridConfig as GridConfig)?.symbol,
           totalInvestment: editGridInvestment,
           leverage: editGridLeverage,
           gridCount: editGridCount,
           maxDrawdownPct: editGridMaxDrawdown,
           stopLossPct: editGridStopLoss,
+          upperBound: editGridUpperBound || undefined,
+          lowerBound: editGridLowerBound || undefined,
         },
+        models: [editGridModel],
         intervalMinutes: editGridInterval,
+        ...(editExchangeApiKeyId && { exchangeApiKeyId: editExchangeApiKeyId }),
+        stopConditions: {
+          maxCycles: editMaxCycles || undefined,
+          profitTargetPercent: editProfitTarget || undefined,
+          maxLossPercent: editMaxLoss || undefined,
+        },
       };
     } else {
       // 非 Grid：提交通用 coinSourceConfig + riskControlConfig + promptSections
@@ -285,7 +380,7 @@ export function AIStrategyDetailPage() {
         },
         riskControlConfig: {
           maxLeverage: editMaxLeverage,
-          maxPositions: editMaxPositions,
+          maxPositions: strategy?.riskControlConfig?.maxPositions,
           maxDailyDrawdown: editMaxDailyDrawdown,
           maxDailyTrades: editMaxDailyTrades,
           cooldownMinutes: editCooldownMinutes,
@@ -295,9 +390,9 @@ export function AIStrategyDetailPage() {
           altcoinMaxPositionValueRatio: strategy?.riskControlConfig?.altcoinMaxPositionValueRatio,
           btcEthMaxLeverage: strategy?.riskControlConfig?.btcEthMaxLeverage,
           altcoinMaxLeverage: strategy?.riskControlConfig?.altcoinMaxLeverage,
-          minRiskRewardRatio: strategy?.riskControlConfig?.minRiskRewardRatio,
-          minConfidence: strategy?.riskControlConfig?.minConfidence,
-          minPositionSize: strategy?.riskControlConfig?.minPositionSize,
+          minRiskRewardRatio: editMinRR || undefined,
+          minConfidence: editMinConfidence || undefined,
+          minPositionSize: editMinPositionSize || undefined,
           maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
         },
         promptSections: {
@@ -308,6 +403,22 @@ export function AIStrategyDetailPage() {
           entryStandards: editPromptEntryStandards || undefined,
         },
         intervalMinutes: editInterval,
+        stopConditions: {
+          maxCycles: editMaxCycles || undefined,
+          profitTargetPercent: editProfitTarget || undefined,
+          maxLossPercent: editMaxLoss || undefined,
+        },
+        ...(strategy.tradingMode === 'debate' ? {
+          models: editDebateModels,
+          debateConfig: {
+            maxRounds: editDebateMaxRounds,
+            riskRounds: editDebateMaxRounds,
+            temperature: editDebateTemperature,
+          },
+        } : strategy.tradingMode === 'solo' ? {
+          models: [editSoloModel],
+        } : {}),
+        ...(editExchangeApiKeyId && { exchangeApiKeyId: editExchangeApiKeyId }),
       };
     }
     try {
@@ -319,7 +430,8 @@ export function AIStrategyDetailPage() {
       toast.success(t('detail.editSave'));
       setIsEditing(false);
     } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '') || t('common.failed'));
+      const rawMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : '');
+      toast.error(translateErrorForDisplay(rawMsg, te));
     }
   };
 
@@ -368,9 +480,7 @@ export function AIStrategyDetailPage() {
   const maxLeverage = riskControlConfig?.maxLeverage || '—';
   const maxPositions = riskControlConfig?.maxPositions || 3;
   const maxDrawdown = riskControlConfig?.maxDailyDrawdown
-    ? (riskControlConfig.maxDailyDrawdown <= 1
-        ? `${(riskControlConfig.maxDailyDrawdown * 100).toFixed(0)}%`
-        : `$${riskControlConfig.maxDailyDrawdown}`)
+    ? `$${Number(riskControlConfig.maxDailyDrawdown).toLocaleString()}`
     : '—';
 
   const pnlHistory = pnlChart?.dataPoints || [];
@@ -549,10 +659,11 @@ export function AIStrategyDetailPage() {
                   <p className="text-xs text-[#9090A0] leading-relaxed mb-2">
                     {modeInfo.description}
                   </p>
-                  {/* 模型图标列表（优先 strategy.models，fallback coinSourceConfig.models） */}
+                  {/* 模型图标列表（优先 strategy.models，fallback quickModel，fallback coinSourceConfig.models） */}
                   {(() => {
                     const modelList: string[] =
                       (strategy.models && strategy.models.length > 0 ? strategy.models : null)
+                      || (strategy.quickModel ? [strategy.quickModel] : null)
                       || (strategy.coinSourceConfig?.models as string[])
                       || [];
                     if (modelList.length === 0) return null;
@@ -855,6 +966,42 @@ export function AIStrategyDetailPage() {
                     ) : (
                       <>
                     <ConfigRow label={t('detail.configTradingMode')} value={strategy.tradingMode === 'solo' ? t('detail.soloMode') : strategy.tradingMode === 'debate' ? t('detail.debateMode') : strategy.tradingMode === 'grid' ? t('detail.gridMode') : strategy.tradingMode} />
+                    {/* Solo 模型展示 */}
+                    {strategy.tradingMode === 'solo' && (
+                      <ConfigRow
+                        label="LLM"
+                        value={MODEL_DISPLAY[strategy.quickModel as keyof typeof MODEL_DISPLAY]?.name
+                          || MODEL_DISPLAY[(strategy.models?.[0]) as keyof typeof MODEL_DISPLAY]?.name
+                          || strategy.quickModel || '—'}
+                      />
+                    )}
+                    {/* Debate 模型展示 */}
+                    {strategy.tradingMode === 'debate' && strategy.models && strategy.models.length > 0 && (
+                      <div>
+                        <p className="text-xs text-[#606070] mb-1">{t('detail.editDebateModels')}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {strategy.models.map((m: string) => {
+                            const info = MODEL_DISPLAY[m as keyof typeof MODEL_DISPLAY];
+                            return (
+                              <span key={m} className="px-3 py-1.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded-lg">
+                                {info?.name || m}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {/* debateConfig 展示 */}
+                    {strategy.tradingMode === 'debate' && strategy.debateConfig && (
+                      <>
+                        {strategy.debateConfig.maxRounds && (
+                          <ConfigRow label={t('detail.editDebateMaxRounds')} value={strategy.debateConfig.maxRounds} />
+                        )}
+                        {strategy.debateConfig.temperature && (
+                          <ConfigRow label={t('detail.editDebateTemperature')} value={strategy.debateConfig.temperature} />
+                        )}
+                      </>
+                    )}
                     <div>
                       <p className="text-xs text-[#606070] mb-1">{t('detail.coinSource')}</p>
                       <p className="text-sm">{coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'}</p>
@@ -883,7 +1030,7 @@ export function AIStrategyDetailPage() {
                     <ConfigRow label={t('detail.allocatedCapital')} value={riskControlConfig?.allocatedCapital ? `$${Number(riskControlConfig.allocatedCapital).toLocaleString()}` : '—'} />
                     <ConfigRow label={t('detail.maxLeverage')} value={`${maxLeverage}x`} />
                     <ConfigRow label={t('detail.maxPositions')} value={maxPositions} />
-                    <ConfigRow label={t('detail.maxDrawdown')} value={maxDrawdown} />
+                    <ConfigRow label={t('detail.editDailyDrawdown')} value={maxDrawdown} />
                     <ConfigRow label={t('detail.maxDailyTrades')} value={riskControlConfig?.maxDailyTrades || '—'} />
                     <ConfigRow label={t('detail.cooldownTime')} value={riskControlConfig?.cooldownMinutes ? `${riskControlConfig.cooldownMinutes}min` : '—'} />
                     {/* NoFx 高级风控字段（有值时显示） */}
@@ -905,6 +1052,23 @@ export function AIStrategyDetailPage() {
                       </>
                     )}
                     <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
+                    {/* 止停条件（有值时显示） */}
+                    {(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
+                      <>
+                        <div className="pt-1 border-t border-[#1E1E2E]">
+                          <p className="text-xs text-[#606070] font-medium">止停条件</p>
+                        </div>
+                        {!!strategy.stopConditions?.maxCycles && (
+                          <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
+                        )}
+                        {!!strategy.stopConditions?.profitTargetPercent && (
+                          <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
+                        )}
+                        {!!strategy.stopConditions?.maxLossPercent && (
+                          <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -965,44 +1129,406 @@ export function AIStrategyDetailPage() {
                 {strategy.strategyType === 'grid' ? (
                   /* ── Grid 专属编辑 ── */
                   <>
+                    {/* 交易所选择 */}
+                    <ExchangeKeySelector
+                      value={editExchangeApiKeyId}
+                      onChange={setEditExchangeApiKeyId}
+                      label={t('create.exchangeAccount')}
+                    />
+
                     {/* 卡片 1: 网格参数 */}
                     <div className="glass-border-glow glass-card p-4 space-y-3">
                       <h3 className="text-sm font-semibold">{t('detail.editGridParams')}</h3>
 
-                      {/* 交易对（只读） */}
-                      <div className="flex justify-between items-center py-2 border-b border-[#1E1E2E]">
-                        <span className="text-xs text-[#606070]">{t('detail.symbol')}</span>
-                        <span className="text-xs font-mono text-[#F8F8FC]">{(strategy.gridConfig as GridConfig)?.symbol || '-'}</span>
+                      {/* 交易对（Tag-input + 搜索，与创建表单一致） */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs text-[#9090A0]">{t('detail.symbol')}</label>
+                          <span className="text-[10px] text-[#606070]">⚠ 网格仅支持单一交易对</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs font-medium">
+                            {editGridSymbol}
+                          </span>
+                          <div className="flex items-center flex-1 min-w-[100px]">
+                            <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                            <input
+                              type="text"
+                              value={editGridCoinSearch}
+                              onChange={(e) => setEditGridCoinSearch(e.target.value)}
+                              placeholder="搜索更多..."
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
+                            />
+                          </div>
+                        </div>
+                        {!editGridCoinSearch && <div className="text-[10px] text-[#606070]">{t('create.popular')}</div>}
+                        <div className="flex flex-wrap gap-1.5">
+                          {filteredEditGridCoins.map((coin) => (
+                            <button key={coin} type="button"
+                              onClick={() => { setEditGridSymbol(coin); setEditGridCoinSearch(''); }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                editGridSymbol === coin ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
+                              }`}
+                              aria-label={coin} title={coin}
+                            >{coin}</button>
+                          ))}
+                        </div>
                       </div>
 
                       <NumberStepper label={t('detail.editGridInvestment')} value={editGridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setEditGridInvestment} />
-                      <PillGroup label={t('detail.editGridLeverage')} options={[1,2,3,4,5].map(v => ({ value: v, label: `${v}x` }))} value={editGridLeverage} onChange={setEditGridLeverage} />
-                      <NumberStepper label={t('detail.editGridCount')} value={editGridCount} min={5} max={50} onChange={setEditGridCount} />
 
-                      {/* 网格边界（只读） */}
-                      {(strategy.gridConfig as GridConfig)?.upperBound > 0 && (
-                        <div className="flex justify-between items-center py-2 border-t border-[#1E1E2E]">
-                          <span className="text-xs text-[#606070]">{t('detail.editGridBoundsReadonly')}</span>
-                          <span className="text-xs font-mono text-[#9090A0]">${(strategy.gridConfig as GridConfig).lowerBound} ~ ${(strategy.gridConfig as GridConfig).upperBound}</span>
+                      {/* 杠杆 + 网格层数 — 两列输入 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridLeverage')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input
+                              type="number" min={1} max={20}
+                              value={editGridLeverage || ''}
+                              onChange={(e) => setEditGridLeverage(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridLeverage')}
+                            />
+                            <span className="text-[#606070] text-xs shrink-0">x</span>
+                          </div>
                         </div>
-                      )}
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridCount')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input
+                              type="number" min={5} max={100}
+                              value={editGridCount || ''}
+                              onChange={(e) => setEditGridCount(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridCount')}
+                            />
+                            <span className="text-[#606070] text-xs shrink-0">格</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 配置后果预览：强平距离、每层保证金、风险等级、推荐 */}
+                      {(() => {
+                        const safeCount = Math.max(editGridCount, 1);
+                        const safeLeverage = Math.max(editGridLeverage, 1);
+                        const perLevelMargin = editGridInvestment / safeCount;
+                        const liqDropPct = Math.floor((1 / safeLeverage) * 100);
+
+                        const risk = safeLeverage <= 1 ? { label: '安全',   color: '#10B981', bar: 10 }
+                          : safeLeverage <= 2           ? { label: '低风险', color: '#22C55E', bar: 25 }
+                          : safeLeverage <= 3           ? { label: '中等',   color: '#F59E0B', bar: 50 }
+                          : safeLeverage <= 5           ? { label: '较高',   color: '#EF4444', bar: 72 }
+                          :                               { label: '高风险', color: '#DC2626', bar: 92 };
+
+                        const rec = editGridInvestment < 300  ? { leverage: 1, count: 5  }
+                          : editGridInvestment < 1000         ? { leverage: 2, count: 6  }
+                          : editGridInvestment < 3000         ? { leverage: 2, count: 8  }
+                          :                                     { leverage: 3, count: 10 };
+
+                        const showRec = safeLeverage > rec.leverage;
+
+                        return (
+                          <div className="p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-[#9090A0]">
+                                每层保证金{' '}
+                                <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
+                                <span className="text-[#404060] mx-1.5">·</span>
+                                强平距离{' '}
+                                <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 触发
+                              </span>
+                              <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
+                            </div>
+                            <div className="h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
+                              />
+                            </div>
+                            {showRec && (
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-[#606070]">
+                                  💡 ${editGridInvestment} 建议 {rec.leverage}x · {rec.count}格，强平距离 &gt;{Math.floor(100 / rec.leverage)}%
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditGridLeverage(rec.leverage); setEditGridCount(rec.count); }}
+                                  className="px-2 py-0.5 rounded bg-[#06B6D4]/15 text-[#06B6D4] hover:bg-[#06B6D4]/25 transition-colors"
+                                >
+                                  应用
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* 上边界 + 下边界 — 两列输入 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridUpperBound')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <span className="text-[#606070] text-xs shrink-0">$</span>
+                            <input
+                              type="number" min={0} step={0.01}
+                              value={editGridUpperBound || ''}
+                              onChange={(e) => setEditGridUpperBound(parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridUpperBound')}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridLowerBound')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <span className="text-[#606070] text-xs shrink-0">$</span>
+                            <input
+                              type="number" min={0} step={0.01}
+                              value={editGridLowerBound || ''}
+                              onChange={(e) => setEditGridLowerBound(parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridLowerBound')}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-[#606070]">边界设为 0 则保持原有配置</p>
                     </div>
 
                     {/* 卡片 2: 风控 + 运行参数 */}
                     <div className="glass-border-glow glass-card p-4 space-y-3">
                       <h3 className="text-sm font-semibold">{t('detail.editGridRiskControl')}</h3>
-                      <PillGroup label={t('detail.editGridMaxDrawdown')} options={[5,10,15,20,30,50].map(v => ({ value: v, label: `${v}%` }))} value={editGridMaxDrawdown} onChange={setEditGridMaxDrawdown} />
-                      <PillGroup label={t('detail.editGridStopLoss')} options={[2,3,5,8,10,15,20].map(v => ({ value: v, label: `${v}%` }))} value={editGridStopLoss} onChange={setEditGridStopLoss} />
-                      <PillGroup label={t('detail.editRunInterval')} options={[5,15,30,60,120].map(v => ({ value: v, label: v < 60 ? `${v}min` : `${v/60}h` }))} value={editGridInterval} onChange={setEditGridInterval} />
+
+                      {/* 最大回撤 + 止损比例 — 两列输入 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridMaxDrawdown')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input
+                              type="number" min={1} max={100}
+                              value={editGridMaxDrawdown || ''}
+                              onChange={(e) => setEditGridMaxDrawdown(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridMaxDrawdown')}
+                            />
+                            <span className="text-[#606070] text-xs shrink-0">%</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.editGridStopLoss')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input
+                              type="number" min={1} max={100}
+                              value={editGridStopLoss || ''}
+                              onChange={(e) => setEditGridStopLoss(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.editGridStopLoss')}
+                            />
+                            <span className="text-[#606070] text-xs shrink-0">%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs text-[#9090A0]">{t('detail.editRunInterval')}</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {[{ m: 3, l: '3m' }, { m: 5, l: '5m' }, { m: 15, l: '15m' }, { m: 30, l: '30m' }].map(({ m, l }) => (
+                            <button key={m} type="button" onClick={() => setEditGridInterval(m)}
+                              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
+                                editGridInterval === m
+                                  ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                                  : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
+                              }`}
+                              title={l} aria-label={l}
+                            >{l}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 卡片 3: LLM 模型（可折叠下拉） */}
+                    <div className="glass-border-glow glass-card p-4 space-y-3">
+                      <h3 className="text-sm font-semibold">LLM</h3>
+                      <div>
+                        <button type="button"
+                          onClick={() => setShowEditGridModelDropdown(!showEditGridModelDropdown)}
+                          className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
+                          title="选择模型" aria-label="选择模型"
+                        >
+                          <div className="flex items-center gap-3">
+                            {MODEL_DISPLAY[editGridModel as keyof typeof MODEL_DISPLAY]?.logo && (
+                              <img src={MODEL_DISPLAY[editGridModel as keyof typeof MODEL_DISPLAY].logo}
+                                alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                            )}
+                            <div>
+                              <div className="text-sm font-medium text-[#F8F8FC]">
+                                {MODEL_DISPLAY[editGridModel as keyof typeof MODEL_DISPLAY]?.name ?? editGridModel}
+                              </div>
+                              <div className="text-xs text-[#606070]">
+                                {MODEL_DISPLAY[editGridModel as keyof typeof MODEL_DISPLAY]?.provider ?? ''}
+                              </div>
+                            </div>
+                          </div>
+                          <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditGridModelDropdown ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showEditGridModelDropdown && (
+                          <div className="mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl overflow-hidden">
+                            {Object.entries(MODEL_DISPLAY).map(([modelId, info]) => {
+                              const sel = editGridModel === modelId;
+                              return (
+                                <button key={modelId} type="button"
+                                  onClick={() => { setEditGridModel(modelId); setShowEditGridModelDropdown(false); }}
+                                  className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'}`}
+                                  title={info.name} aria-label={info.name}
+                                >
+                                  {info.logo && <img src={info.logo} alt={info.name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />}
+                                  <div className="flex-1 text-left">
+                                    <div className={`text-sm font-medium ${sel ? 'text-[#06B6D4]' : 'text-[#F8F8FC]'}`}>{info.name}</div>
+                                    <div className="text-xs text-[#606070]">{info.provider}</div>
+                                  </div>
+                                  {sel && <Check className="w-4 h-4 text-[#06B6D4] flex-shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </>
                 ) : (
                 <>
+                {/* 交易所选择 */}
+                <ExchangeKeySelector
+                  value={editExchangeApiKeyId}
+                  onChange={setEditExchangeApiKeyId}
+                  label={t('create.exchangeAccount')}
+                />
+
+                {/* 卡片 0: LLM 模型选择（solo=单选下拉 / debate=多选下拉） */}
+                <div className="glass-border-glow glass-card p-4 space-y-3">
+                  <h3 className="text-sm font-semibold">
+                    {strategy.tradingMode === 'debate'
+                      ? t('create.consensusModels', { count: editDebateModels.length })
+                      : 'LLM'}
+                  </h3>
+
+                  {/* Solo 单选下拉 */}
+                  {strategy.tradingMode !== 'debate' && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEditSoloModelDropdown(!showEditSoloModelDropdown)}
+                        className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
+                        title="选择模型" aria-label="选择模型"
+                      >
+                        <div className="flex items-center gap-3">
+                          {MODEL_DISPLAY[editSoloModel as keyof typeof MODEL_DISPLAY]?.logo && (
+                            <img src={MODEL_DISPLAY[editSoloModel as keyof typeof MODEL_DISPLAY].logo}
+                              alt="" className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-[#F8F8FC]">
+                              {MODEL_DISPLAY[editSoloModel as keyof typeof MODEL_DISPLAY]?.name ?? editSoloModel}
+                            </div>
+                            <div className="text-xs text-[#606070]">
+                              {MODEL_DISPLAY[editSoloModel as keyof typeof MODEL_DISPLAY]?.provider ?? ''}
+                            </div>
+                          </div>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditSoloModelDropdown ? 'rotate-180' : ''}`} />
+                      </button>
+                      {showEditSoloModelDropdown && (
+                        <div className="mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl overflow-hidden">
+                          {Object.entries(MODEL_DISPLAY).map(([modelId, info]) => {
+                            const sel = editSoloModel === modelId;
+                            return (
+                              <button key={modelId} type="button"
+                                onClick={() => { setEditSoloModel(modelId); setShowEditSoloModelDropdown(false); }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'}`}
+                                title={info.name} aria-label={info.name}
+                              >
+                                {info.logo && <img src={info.logo} alt={info.name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />}
+                                <div className="flex-1 text-left">
+                                  <div className={`text-sm font-medium ${sel ? 'text-[#06B6D4]' : 'text-[#F8F8FC]'}`}>{info.name}</div>
+                                  <div className="text-xs text-[#606070]">{info.provider}</div>
+                                </div>
+                                {sel && <Check className="w-4 h-4 text-[#06B6D4] flex-shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Debate 多选下拉（叠层图标 + 展开列表） */}
+                  {strategy.tradingMode === 'debate' && (
+                    <div className="space-y-3">
+                      <div>
+                        <button type="button"
+                          onClick={() => setShowEditDebateModelDropdown(!showEditDebateModelDropdown)}
+                          className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
+                          title="选择共识模型" aria-label="选择共识模型"
+                        >
+                          <div className="flex items-center -space-x-2">
+                            {editDebateModels.map((id) => {
+                              const m = MODEL_DISPLAY[id as keyof typeof MODEL_DISPLAY];
+                              return m?.logo
+                                ? <img key={id} src={m.logo} alt={m.name}
+                                    className="w-7 h-7 rounded-full border-2 border-[#12121A] object-cover" title={m.name} />
+                                : <div key={id} className="w-7 h-7 rounded-full border-2 border-[#12121A]"
+                                    style={{ backgroundColor: (m as { color?: string })?.color || '#1E1E2E' }} title={m?.name} />;
+                            })}
+                          </div>
+                          <ChevronDown className={`w-5 h-5 text-[#606070] transition-transform ${showEditDebateModelDropdown ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showEditDebateModelDropdown && (
+                          <div className="mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl overflow-hidden">
+                            <p className="px-4 pt-3 pb-1 text-xs text-[#606070]">{t('create.consensusModelsDesc')}</p>
+                            {Object.entries(MODEL_DISPLAY).map(([modelId, info]) => {
+                              const sel = editDebateModels.includes(modelId);
+                              return (
+                                <button key={modelId} type="button"
+                                  onClick={() => {
+                                    if (sel) {
+                                      if (editDebateModels.length > 2) setEditDebateModels(editDebateModels.filter(id => id !== modelId));
+                                    } else {
+                                      if (editDebateModels.length < 5) setEditDebateModels([...editDebateModels, modelId]);
+                                    }
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'}`}
+                                  title={info.name} aria-label={info.name}
+                                >
+                                  <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
+                                    {sel && <Check className="w-3 h-3 text-[#F8F8FC]" />}
+                                  </div>
+                                  {info.logo && <img src={info.logo} alt={info.name} className="w-6 h-6 rounded-lg object-cover flex-shrink-0" />}
+                                  <div className="flex-1 min-w-0 text-left">
+                                    <span className="text-sm text-[#F8F8FC]">{info.name}</span>
+                                    <span className="text-xs text-[#606070] ml-2">{info.provider}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <PillGroup label={t('detail.editDebateMaxRounds')}
+                        options={[2,3,5].map(v => ({ value: v, label: String(v) }))}
+                        value={editDebateMaxRounds} onChange={setEditDebateMaxRounds} />
+                      <PillGroup label={t('detail.editDebateTemperature')}
+                        options={[0.3, 0.5, 0.7, 0.9, 1.0].map(v => ({ value: v, label: String(v) }))}
+                        value={editDebateTemperature} onChange={setEditDebateTemperature} />
+                    </div>
+                  )}
+                </div>
                 {/* 卡片 1: 交易币种 */}
                 <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editCoins')}</h3>
-                  <p className="text-xs text-[#606070]">{t('detail.editCoinSource')}</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <label className="block text-sm text-[#9090A0]">{t('detail.editCoinSource')}</label>
+                  <div className="flex flex-wrap gap-2">
                     {([
                       { key: 'static', label: t('detail.coinSourceManual') },
                       { key: 'ai', label: t('detail.coinSourceAI') },
@@ -1013,34 +1539,69 @@ export function AIStrategyDetailPage() {
                       <button
                         key={key}
                         onClick={() => setEditCoinMode(key)}
-                        className={`py-2 text-xs font-medium rounded-lg transition-all ${editCoinMode === key
-                          ? 'bg-[#06B6D4]/15 border-2 border-[#06B6D4] text-[#06B6D4] shadow-[0_0_8px_rgba(6,182,212,0.12)]'
-                          : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E]'}`}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${editCoinMode === key
+                          ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                          : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
                         title={label} aria-label={label}
                       >{label}</button>
                     ))}
                   </div>
 
-                  {/* 币种选择（static / mixed） */}
+                  {/* 币种选择（static / mixed）— Tag-input + 搜索 */}
                   {(editCoinMode === 'static' || editCoinMode === 'mixed') && (
-                    <div className="flex flex-wrap gap-2">
-                      {POPULAR_COINS.map(coin => {
-                        const short = coin.split('/')[0];
-                        const selected = editCoins.includes(coin);
-                        return (
-                          <button
-                            key={coin}
-                            onClick={() => toggleEditCoin(coin)}
-                            className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${selected
-                              ? 'bg-[#06B6D4]/10 border-2 border-[#06B6D4] text-[#06B6D4] shadow-[0_0_12px_rgba(6,182,212,0.15)]'
-                              : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/30'}`}
-                            title={short} aria-label={short}
-                          >
-                            {selected && <Check className="w-3 h-3 inline mr-1" />}
-                            {short}
-                          </button>
-                        );
-                      })}
+                    <div className="space-y-3">
+                      <span className="text-sm text-[#9090A0]">
+                        {editCoinMode === 'mixed' ? t('detail.coinSourceMixed') : t('detail.coinSourceManual')}
+                      </span>
+                      {/* Tag-input：已选 chips + 内联搜索 */}
+                      <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
+                        {editCoins.map((coin) => {
+                          const short = coin.split('/')[0];
+                          return (
+                            <span key={coin} className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs">
+                              {short}
+                              <X className="w-3 h-3 cursor-pointer hover:text-white" onClick={() => toggleEditCoin(coin)} />
+                            </span>
+                          );
+                        })}
+                        <div className="flex items-center flex-1 min-w-[120px]">
+                          <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                          <input
+                            type="text"
+                            value={editCoinSearch}
+                            onChange={(e) => setEditCoinSearch(e.target.value)}
+                            placeholder={editCoins.length === 0 ? '搜索币种...' : ''}
+                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
+                          />
+                        </div>
+                      </div>
+                      {/* Quick Select + Coin chips */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-[#606070]">{t('create.popular')}</span>
+                          <button type="button" onClick={() => setEditCoins([])}
+                            className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
+                          >{t('common.clear')}</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {filteredEditCoins.map((coinName) => {
+                            const full = `${coinName}/USDT:USDT`;
+                            const sel = editCoins.includes(full);
+                            return (
+                              <button key={coinName} type="button"
+                                onClick={() => { toggleEditCoin(full); setEditCoinSearch(''); }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                  sel ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
+                                }`}
+                                aria-label={coinName} title={coinName}
+                              >{coinName}</button>
+                            );
+                          })}
+                          {editCoinSearch && filteredEditCoins.length === 0 && (
+                            <span className="text-xs text-[#606070] py-2">{t('create.notFound')}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1049,44 +1610,137 @@ export function AIStrategyDetailPage() {
                     <PillGroup label={t('detail.editMaxCoins')} options={[3,5,8,10,15].map(v => ({ value: v, label: String(v) }))} value={editMaxCoins} onChange={setEditMaxCoins} />
                   )}
 
-                  {/* 排除币种 */}
-                  <button
-                    onClick={() => setShowEditExcluded(!showEditExcluded)}
-                    className="flex items-center gap-1 text-xs text-[#9090A0]"
-                    title={t('detail.editExcludeCoins')} aria-label={t('detail.editExcludeCoins')}
-                  >
-                    {t('detail.editExcludeCoins')} ({editExcludedCoins.length})
-                    {showEditExcluded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
-                  {showEditExcluded && (
-                    <div className="flex flex-wrap gap-2">
-                      {POPULAR_COINS.map(coin => {
-                        const short = coin.split('/')[0];
-                        const excluded = editExcludedCoins.includes(coin);
-                        return (
-                          <button
-                            key={coin}
-                            onClick={() => toggleEditExcludedCoin(coin)}
-                            className={`px-4 py-2 text-xs font-medium rounded-lg transition-all ${excluded
-                              ? 'bg-[#EF4444]/10 border-2 border-[#EF4444] text-[#EF4444] shadow-[0_0_12px_rgba(239,68,68,0.15)]'
-                              : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E] hover:border-[#EF4444]/30'}`}
-                            title={short} aria-label={short}
-                          >{short}</button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* 排除币种（折叠面板，与创建表单一致） */}
+                  <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
+                    <button type="button"
+                      onClick={() => setShowEditExcluded(!showEditExcluded)}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
+                      title={t('detail.editExcludeCoins')} aria-label={t('detail.editExcludeCoins')}
+                    >
+                      <span className="text-sm font-medium text-[#9090A0]">
+                        {t('detail.editExcludeCoins')} {editExcludedCoins.length > 0 && `(${editExcludedCoins.length})`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditExcluded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {showEditExcluded && (
+                      <div className="px-4 pb-4">
+                        <p className="text-xs text-[#606070] mb-3">选中的币种将被排除在交易范围外</p>
+                        <div className="flex flex-wrap gap-2">
+                          {POPULAR_COINS.map(coin => {
+                            const short = coin.split('/')[0];
+                            const excluded = editExcludedCoins.includes(coin);
+                            return (
+                              <button
+                                key={coin}
+                                onClick={() => toggleEditExcludedCoin(coin)}
+                                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${excluded
+                                  ? 'bg-[#EF4444]/10 border border-[#EF4444] text-[#EF4444]'
+                                  : 'bg-[#12121A] border border-[#1E1E2E] text-[#9090A0] hover:border-[#EF4444]/40'}`}
+                                title={short} aria-label={short}
+                              >{short}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* 卡片 2: 风控参数 */}
-                <div className="glass-border-glow glass-card p-4 space-y-3">
+                {/* 卡片 2: 风控参数（与创建表单对齐，全用 input 2列网格） */}
+                <div className="glass-border-glow glass-card p-4 space-y-4">
                   <h3 className="text-sm font-semibold">{t('detail.editRiskControl')}</h3>
-                  <NumberStepper label={t('detail.editAllocatedCapital')} value={editAllocatedCapital} min={500} max={100000} step={500} prefix="$" onChange={setEditAllocatedCapital} />
-                  <PillGroup label={t('detail.editMaxLeverage')} options={[1,2,3,5,10,15,20].map(v => ({ value: v, label: `${v}x` }))} value={editMaxLeverage} onChange={setEditMaxLeverage} />
-                  <PillGroup label={t('detail.editMaxPositions')} options={[1,2,3,5,8,10].map(v => ({ value: v, label: String(v) }))} value={editMaxPositions} onChange={setEditMaxPositions} />
-                  <NumberStepper label={t('detail.editDailyDrawdown')} value={editMaxDailyDrawdown} min={50} max={5000} step={50} prefix="$" onChange={setEditMaxDailyDrawdown} />
-                  <PillGroup label={t('detail.editMaxDailyTrades')} options={[3,5,10,20,50].map(v => ({ value: v, label: String(v) }))} value={editMaxDailyTrades} onChange={setEditMaxDailyTrades} />
-                  <PillGroup label={t('detail.editCooldown')} options={[0,5,15,30,60,120].map(v => ({ value: v, label: v === 0 ? '0' : v < 60 ? `${v}min` : `${v/60}h` }))} value={editCooldownMinutes} onChange={setEditCooldownMinutes} />
+                  {/* 资金上限（全宽） */}
+                  <div className="space-y-1">
+                    <p className="text-xs text-[#9090A0]">{t('create.allocatedCapital')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <span className="text-[#606070] text-xs">$</span>
+                      <input type="number" min={500} max={100000} step="any"
+                        value={editAllocatedCapital || ''}
+                        onChange={(e) => setEditAllocatedCapital(parseFloat(e.target.value) || 0)}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                    </div>
+                  </div>
+                  {/* 2列网格参数 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('create.maxLeverage')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={1} max={100}
+                          value={editMaxLeverage || ''}
+                          onChange={(e) => setEditMaxLeverage(parseFloat(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">x</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">日亏损上限</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <span className="text-[#606070] text-xs">$</span>
+                        <input type="number" min={0}
+                          value={editMaxDailyDrawdown || ''}
+                          onChange={(e) => setEditMaxDailyDrawdown(parseFloat(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('create.maxDailyTrades')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={1} max={200}
+                          value={editMaxDailyTrades || ''}
+                          onChange={(e) => setEditMaxDailyTrades(parseInt(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">次</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('create.cooldownMinutes')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={0} max={1440}
+                          value={editCooldownMinutes || ''}
+                          onChange={(e) => setEditCooldownMinutes(parseInt(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">min</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('create.minConfidence')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={0} max={100}
+                          value={editMinConfidence || ''}
+                          onChange={(e) => setEditMinConfidence(parseInt(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">最低盈亏比</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={0} max={20} step={0.1}
+                          value={editMinRR || ''}
+                          onChange={(e) => setEditMinRR(parseFloat(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">:1</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('create.minPositionSize')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <span className="text-[#606070] text-xs">$</span>
+                        <input type="number" min={0}
+                          value={editMinPositionSize || ''}
+                          onChange={(e) => setEditMinPositionSize(parseFloat(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 卡片 3: Prompt 配置 (4段) */}
@@ -1166,27 +1820,63 @@ export function AIStrategyDetailPage() {
                   </button>
                 </div>
 
-                {/* 卡片 4: 执行配置 */}
-                <div className="glass-border-glow glass-card p-4 space-y-3">
-                  <h3 className="text-sm font-semibold">{t('detail.editExecutionConfig')}</h3>
-                  <p className="text-xs text-[#606070]">{t('detail.editRunInterval')}</p>
-                  <div className="flex gap-2">
-                    {[
-                      { m: 15, label: '15m' },
-                      { m: 30, label: '30m' },
-                      { m: 60, label: '1h' },
-                      { m: 240, label: '4h' },
-                      { m: 1440, label: '24h' },
-                    ].map(({ m, label }) => (
-                      <button
-                        key={m}
-                        onClick={() => setEditInterval(m)}
-                        className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${editInterval === m
-                          ? 'bg-[#06B6D4]/15 border-2 border-[#06B6D4] text-[#06B6D4] shadow-[0_0_8px_rgba(6,182,212,0.12)]'
-                          : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E]'}`}
-                        title={label} aria-label={label}
-                      >{label}</button>
+                {/* 卡片 4: 执行配置（间隔按模式动态展示，与创建表单一致） */}
+                <div className="space-y-3">
+                  <label className="block text-sm text-[#9090A0]">{t('detail.editRunInterval')}</label>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {(strategy.tradingMode === 'solo'
+                      ? [{ m: 3, l: '3m' }, { m: 5, l: '5m' }, { m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '60m' }]
+                      : strategy.tradingMode === 'debate'
+                      ? [{ m: 5, l: '5m' }, { m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '60m' }]
+                      : [{ m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '1h' }, { m: 240, l: '4h' }, { m: 1440, l: '24h' }]
+                    ).map(({ m, l }) => (
+                      <button key={m} type="button" onClick={() => setEditInterval(m)}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${editInterval === m
+                          ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                          : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
+                        title={l} aria-label={l}
+                      >{l}</button>
                     ))}
+                  </div>
+                </div>
+
+                {/* 卡片 5: 止停条件（折叠面板，与创建表单一致） */}
+                <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
+                  <button type="button" onClick={() => {
+                    const el = document.getElementById('edit-stop-conditions');
+                    if (el) el.classList.toggle('hidden');
+                  }}
+                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
+                      <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-[#606070]" />
+                  </button>
+                  <div id="edit-stop-conditions" className="hidden px-4 pb-4 space-y-3">
+                    <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大周期</span>
+                      <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
+                        placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                      />
+                      <span className="text-xs text-[#606070]">次</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">盈利目标</span>
+                      <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
+                        placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                      />
+                      <span className="text-xs text-[#606070]">%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大亏损</span>
+                      <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
+                        placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                      />
+                      <span className="text-xs text-[#606070]">%</span>
+                    </div>
                   </div>
                 </div>
                 </>
@@ -1526,7 +2216,7 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
           )}
           {log.decision?.reasoning && (
             <p className="text-[10px] text-[#9090A0]">
-              {t('detail.decisionReasoning')}: {log.decision.reasoning.slice(0, 200)}
+              {log.decision.reasoning.slice(0, 200)}
             </p>
           )}
           {log.decision?.leverage && (

@@ -25,14 +25,15 @@ export class ApiKeysService {
 
   // 创建 API Key（先验证再存储）
   async create(userId: string, dto: CreateApiKeyDto): Promise<ApiKeyResponse> {
-    // 1. 先验证 API Key 是否有效
+    // 1. 先验证 API Key 是否有效（网络错误时放行，让用户通过"验证"按钮自行确认）
     const validation = await this.validateApiKeyBeforeCreate(
       dto.exchange,
       dto.apiKey,
       dto.apiSecret,
+      dto.passphrase,
     );
 
-    if (!validation.valid) {
+    if (!validation.valid && !validation.networkError) {
       throw new BadRequestException(
         validation.error || 'API Key 验证失败，请检查密钥是否正确',
       );
@@ -41,6 +42,21 @@ export class ApiKeysService {
     // 2. 验证通过后再加密存储
     const encryptedKey = encrypt(dto.apiKey);
     const encryptedSecret = encrypt(dto.apiSecret);
+
+    // OKX 等交易所的 passphrase 加密存储
+    let passphraseData: {
+      encryptedPassphrase?: string;
+      passphraseIv?: string;
+      passphraseAuthTag?: string;
+    } = {};
+    if (dto.passphrase) {
+      const encryptedPassphrase = encrypt(dto.passphrase);
+      passphraseData = {
+        encryptedPassphrase: encryptedPassphrase.encryptedData,
+        passphraseIv: encryptedPassphrase.iv,
+        passphraseAuthTag: encryptedPassphrase.authTag,
+      };
+    }
 
     const apiKey = await this.prisma.apiKey.create({
       data: {
@@ -53,6 +69,7 @@ export class ApiKeysService {
         authTag: encryptedKey.authTag,
         secretIv: encryptedSecret.iv,
         secretAuthTag: encryptedSecret.authTag,
+        ...passphraseData,
       },
     });
 
@@ -227,11 +244,12 @@ export class ApiKeysService {
 
     // 如果提供了新的 API Key 和 Secret，需要先验证再更新
     if (dto.apiKey && dto.apiSecret) {
-      // 验证新的 API Key
+      // 验证新的 API Key（含 passphrase）
       const validation = await this.validateApiKeyBeforeCreate(
         record.exchange,
         dto.apiKey,
         dto.apiSecret,
+        dto.passphrase,
       );
 
       if (!validation.valid) {
@@ -248,6 +266,20 @@ export class ApiKeysService {
       updateData.encryptedSecret = encryptedSecret.encryptedData;
       updateData.secretIv = encryptedSecret.iv;
       updateData.secretAuthTag = encryptedSecret.authTag;
+    }
+
+    // 更新 passphrase（传空字符串表示清除）
+    if (dto.passphrase !== undefined) {
+      if (dto.passphrase === '') {
+        updateData.encryptedPassphrase = null;
+        updateData.passphraseIv = null;
+        updateData.passphraseAuthTag = null;
+      } else {
+        const encryptedPassphrase = encrypt(dto.passphrase);
+        updateData.encryptedPassphrase = encryptedPassphrase.encryptedData;
+        updateData.passphraseIv = encryptedPassphrase.iv;
+        updateData.passphraseAuthTag = encryptedPassphrase.authTag;
+      }
     }
 
     // 只有有更新内容时才执行更新
@@ -301,7 +333,7 @@ export class ApiKeysService {
   async getDecryptedApiKey(
     userId: string,
     apiKeyId: string,
-  ): Promise<{ apiKey: string; apiSecret: string; exchange: string }> {
+  ): Promise<{ apiKey: string; apiSecret: string; exchange: string; passphrase?: string }> {
     const record = await this.prisma.apiKey.findUnique({
       where: { id: apiKeyId },
     });
@@ -332,10 +364,21 @@ export class ApiKeysService {
       authTag: record.secretAuthTag || record.authTag,
     });
 
+    // OKX 等交易所的 passphrase 解密（可选字段）
+    let passphrase: string | undefined;
+    if (record.encryptedPassphrase && record.passphraseIv && record.passphraseAuthTag) {
+      passphrase = decrypt({
+        encryptedData: record.encryptedPassphrase,
+        iv: record.passphraseIv,
+        authTag: record.passphraseAuthTag,
+      });
+    }
+
     return {
       apiKey,
       apiSecret,
       exchange: record.exchange,
+      passphrase,
     };
   }
 
@@ -418,7 +461,8 @@ export class ApiKeysService {
     exchange: string,
     apiKey: string,
     apiSecret: string,
-  ): Promise<{ valid: boolean; error?: string }> {
+    passphrase?: string,
+  ): Promise<{ valid: boolean; networkError?: boolean; error?: string }> {
     try {
       // 创建 CCXT 交易所实例
       const exchangeClass = ccxt[exchange.toLowerCase()];
@@ -429,6 +473,7 @@ export class ApiKeysService {
       const ex = new exchangeClass({
         apiKey,
         secret: apiSecret,
+        password: passphrase, // OKX 等交易所需要 passphrase（CCXT 内部字段为 password）
         enableRateLimit: true,
         timeout: 10000, // 10秒超时
         options: {
@@ -445,12 +490,17 @@ export class ApiKeysService {
       let errorMessage = 'API Key 验证失败';
       if (error instanceof ccxt.AuthenticationError) {
         errorMessage = 'API Key 或 Secret 无效，请检查是否正确';
+        return { valid: false, error: errorMessage };
       } else if (error instanceof ccxt.PermissionDenied) {
         errorMessage = 'API Key 权限不足，请确保开启了读取权限';
+        return { valid: false, error: errorMessage };
       } else if (error instanceof ccxt.NetworkError) {
-        errorMessage = '网络连接失败，请稍后重试';
+        // 网络问题不阻止保存，让用户通过"验证"按钮在网络恢复后自行确认
+        this.logger.warn(`[ApiKeys] 创建前验证网络失败(${exchange})，放行保存: ${error.message}`);
+        return { valid: false, networkError: true, error: '网络不稳定，已跳过连通性检查，请保存后点击"验证"确认' };
       } else if (error instanceof ccxt.ExchangeError) {
         errorMessage = `交易所返回错误: ${error.message}`;
+        return { valid: false, error: errorMessage };
       }
 
       return { valid: false, error: errorMessage };
@@ -477,10 +527,11 @@ export class ApiKeysService {
     freeUsdValue: number;
     spotFreeValue: number;
     futuresFreeValue: number;
+    balanceFetchError?: boolean;
     error?: string;
   }> {
     try {
-      const { apiKey, apiSecret, exchange } = await this.getDecryptedApiKey(
+      const { apiKey, apiSecret, exchange, passphrase } = await this.getDecryptedApiKey(
         userId,
         apiKeyId,
       );
@@ -504,12 +555,16 @@ export class ApiKeysService {
       let futuresFreeValue = 0;
       const permissions: string[] = ['读取账户'];
 
-      // 创建现货交易所实例
+      // 创建现货交易所实例（passphrase 为 OKX 等交易所所需）
+      // 注意：不设 httpProxy，让 CCXT 走系统默认网络（Shadowrocket TUN 模式自动代理）
+      //   显式设 httpProxy 会强制走 127.0.0.1:1082 端口，若该端口断线则全部失败
+      // fetchCurrencies: false — 禁止 CCXT Binance 调用 /sapi/v1/capital/config/getall
       const spotEx = new exchangeClass({
         apiKey,
         secret: apiSecret,
+        password: passphrase,
         enableRateLimit: true,
-        options: { defaultType: 'spot' },
+        options: { defaultType: 'spot', fetchCurrencies: false },
       });
 
       // 创建合约交易所实例
@@ -525,50 +580,50 @@ export class ApiKeysService {
         futuresEx = null;
         this.logger.debug(`${exchange} 不支持合约交易`);
       } else if (exchangeLower === 'binance') {
-        // Binance USDT-M 合约使用独立的交易所类
-        // 这会自动使用 fapi.binance.com 端点
+        // Binance USDT-M 合约（fapi.binance.com），同样禁用 fetchCurrencies
         futuresEx = new ccxt.binanceusdm({
           apiKey,
           secret: apiSecret,
           enableRateLimit: true,
+          options: { fetchCurrencies: false },
         });
       } else if (exchangeLower === 'bybit') {
-        // Bybit 使用 linear 类型 (USDT 永续)
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
+          password: passphrase,
           enableRateLimit: true,
           options: { defaultType: 'linear' },
         });
       } else if (exchangeLower === 'okx') {
-        // OKX 使用 swap 类型
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
+          password: passphrase,
           enableRateLimit: true,
           options: { defaultType: 'swap' },
         });
       } else if (exchangeLower === 'gate') {
-        // Gate.io 使用 swap 类型
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
+          password: passphrase,
           enableRateLimit: true,
           options: { defaultType: 'swap' },
         });
       } else if (exchangeLower === 'bitget') {
-        // Bitget 使用 swap 类型
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
+          password: passphrase,
           enableRateLimit: true,
           options: { defaultType: 'swap' },
         });
       } else {
-        // 其他交易所默认使用 swap 类型
         futuresEx = new exchangeClass({
           apiKey,
           secret: apiSecret,
+          password: passphrase,
           enableRateLimit: true,
           options: { defaultType: 'swap' },
         });
@@ -578,53 +633,104 @@ export class ApiKeysService {
       // 有独立资金账户的交易所白名单（Gate.io funding→spot 会双重计算，Bitget 无映射）
       const fundingSupportedExchanges = ['binance', 'bybit', 'okx'];
 
-      const fetchPromises: Promise<any>[] = [
-        // 现货余额
-        spotEx.fetchBalance(),
-        // 合约余额（如果支持）
-        futuresEx
-          ? futuresEx.loadMarkets().then(() => futuresEx!.fetchBalance())
-          : Promise.resolve(null),
-        // 资金账户余额（仅 Binance/Bybit/OKX 有独立 funding 钱包）
-        fundingSupportedExchanges.includes(exchangeLower)
-          ? spotEx.fetchBalance({ type: 'funding' }).catch(() => null)
-          : Promise.resolve(null),
-        // 主流币价格
-        spotEx.fetchTicker('BTC/USDT'),
-        spotEx.fetchTicker('ETH/USDT'),
-        spotEx.fetchTicker('BNB/USDT').catch(() => null),
-        spotEx.fetchTicker('SOL/USDT').catch(() => null),
+      // 需要获取价格的代币列表（涵盖主流 + 常见 Binance 持仓）
+      const priceSymbols = [
+        'BTC', 'ETH', 'BNB', 'SOL',
+        'XRP', 'ADA', 'DOGE', 'DOT', 'AVAX', 'LTC',
+        'MATIC', 'POL', 'LINK', 'UNI', 'ATOM', 'XLM',
+        'TRX', 'TON', 'SHIB', 'PEPE',
       ];
 
-      const [spotResult, futuresResult, fundingResult, btcTickerResult, ethTickerResult, bnbTickerResult, solTickerResult] =
-        await Promise.allSettled(fetchPromises);
+      const [balanceResults, priceResults] = await Promise.all([
+        Promise.allSettled([
+          // 现货余额：
+          // Binance 专用路径：直接调用 /api/v3/account，绕过 loadMarkets 触发的 SAPI 私有端点链
+          //   (loadMarkets 会调用 /sapi/v1/capital/config/getall、/sapi/v1/margin/allPairs、dapi/fapi exchangeInfo)
+          // 其他交易所：标准 loadMarkets + fetchBalance 路径
+          (async (): Promise<any> => {
+            if (exchangeLower === 'binance') {
+              // 直接调用 Binance REST /api/v3/account，无需 loadMarkets
+              const accountRaw = await (spotEx as any).privateGetAccount();
+              // 构建与 CCXT fetchBalance 兼容的 {total, free} 结构
+              const total: Record<string, number> = {};
+              const free: Record<string, number> = {};
+              for (const item of (accountRaw.balances || [])) {
+                const t = parseFloat(item.free) + parseFloat(item.locked);
+                const f = parseFloat(item.free);
+                if (t > 0) {
+                  total[item.asset] = t;
+                  free[item.asset] = f;
+                }
+              }
+              this.logger.log(
+                `[verifyApiKey] Binance privateGetAccount 成功 — 非零资产数: ${Object.keys(total).length}`,
+              );
+              return { total, free };
+            }
+            // 非 Binance：先 loadMarkets（可失败），再 fetchBalance
+            try {
+              await spotEx.loadMarkets();
+            } catch (loadErr: any) {
+              this.logger.warn(`[verifyApiKey] 现货 loadMarkets 失败: ${loadErr.message}，继续尝试 fetchBalance`);
+              // 用占位符阻止 CCXT 在 fetchBalance 内部再次调用 loadMarkets
+              if (!spotEx.markets || Object.keys(spotEx.markets).length === 0) {
+                (spotEx as any).markets = { '_skip': {} };
+                (spotEx as any).marketsById = {};
+                (spotEx as any).symbols = [];
+              }
+            }
+            return spotEx.fetchBalance();
+          })(),
+          // 合约余额（如果支持）
+          // loadMarkets() 失败时用占位符绕过 CCXT 内部自动重加载检查，确保 fetchBalance() 仍能执行
+          futuresEx
+            ? (async (): Promise<any> => {
+                try {
+                  await futuresEx!.loadMarkets();
+                } catch (loadErr: any) {
+                  this.logger.warn(`[verifyApiKey] 合约 loadMarkets 失败: ${loadErr.message}，继续尝试 fetchBalance`);
+                  // 用占位符阻止 CCXT 在 fetchBalance 内部再次调用 loadMarkets
+                  if (!futuresEx!.markets || Object.keys(futuresEx!.markets).length === 0) {
+                    (futuresEx as any).markets = { '_skip': {} };
+                    (futuresEx as any).marketsById = {};
+                    (futuresEx as any).symbols = [];
+                  }
+                }
+                return futuresEx!.fetchBalance();
+              })()
+            : Promise.resolve(null),
+          // 资金账户余额（仅 Binance/Bybit/OKX 有独立 funding 钱包）
+          fundingSupportedExchanges.includes(exchangeLower)
+            ? spotEx.fetchBalance({ type: 'funding' }).catch(() => null)
+            : Promise.resolve(null),
+        ]),
+        Promise.allSettled(
+          priceSymbols.map(sym => spotEx.fetchTicker(`${sym}/USDT`).catch(() => null))
+        ),
+      ]);
 
-      // 解析价格
-      const btcPrice =
-        btcTickerResult.status === 'fulfilled'
-          ? btcTickerResult.value.last || 0
-          : 0;
-      const ethPrice =
-        ethTickerResult.status === 'fulfilled'
-          ? ethTickerResult.value.last || 0
-          : 0;
-      const bnbPrice =
-        bnbTickerResult.status === 'fulfilled' && bnbTickerResult.value
-          ? bnbTickerResult.value.last || 0
-          : 0;
-      const solPrice =
-        solTickerResult.status === 'fulfilled' && solTickerResult.value
-          ? solTickerResult.value.last || 0
-          : 0;
+      const [spotResult, futuresResult, fundingResult] = balanceResults;
 
-      // USD 估值公用函数（消除重复）
+      // 解析价格 Map（symbol → USD 价格）
+      const prices: Record<string, number> = {};
+      priceSymbols.forEach((sym, i) => {
+        const result = priceResults[i];
+        if (result.status === 'fulfilled' && result.value?.last) {
+          prices[sym] = result.value.last;
+        }
+      });
+
+      // 稳定币集合（直接 1:1 计为 USD）— FDUSD 是 Binance 当前主流稳定币
+      const STABLECOINS = new Set([
+        'USDT', 'USD', 'BUSD', 'USDC', 'FDUSD', 'TUSD',
+        'DAI', 'USDD', 'USDP', 'GUSD', 'SUSD', 'FRAX',
+      ]);
+
+      // USD 估值公用函数
       const calcUsdValue = (symbol: string, amount: number): number => {
-        if (['USDT', 'USD', 'BUSD', 'USDC'].includes(symbol)) return amount;
-        if (symbol === 'BTC' && btcPrice > 0) return amount * btcPrice;
-        if (symbol === 'ETH' && ethPrice > 0) return amount * ethPrice;
-        if (symbol === 'BNB' && bnbPrice > 0) return amount * bnbPrice;
-        if (symbol === 'SOL' && solPrice > 0) return amount * solPrice;
-        return 0;
+        if (STABLECOINS.has(symbol)) return amount;
+        const price = prices[symbol] || 0;
+        return price > 0 ? amount * price : 0;
       };
 
       // 处理现货余额
@@ -646,7 +752,7 @@ export class ApiKeysService {
           }
         }
       } else {
-        this.logger.debug('获取现货余额失败:', spotResult.reason?.message);
+        this.logger.warn(`[verifyApiKey] 获取现货余额失败: ${(spotResult as PromiseRejectedResult).reason?.message}`);
       }
 
       // 处理合约余额（仅当交易所支持合约时）
@@ -668,7 +774,7 @@ export class ApiKeysService {
           }
         }
       } else if (futuresEx && futuresResult.status === 'rejected') {
-        this.logger.debug('获取合约余额失败:', futuresResult.reason?.message);
+        this.logger.warn(`[verifyApiKey] 获取合约余额失败: ${(futuresResult as PromiseRejectedResult).reason?.message}`);
       }
 
       // 处理资金账户余额（Funding）— 仅 Binance/Bybit/OKX
@@ -728,6 +834,12 @@ export class ApiKeysService {
       }
 
       const totalUsdValue = spotValue + futuresValue;
+      // 任一余额 fetch 失败时标记，供前端显示提示
+      // 情况1: 现货 fetch 失败
+      // 情况2: 合约 fetch 失败且现货为空（用户钱可能全在合约）
+      const spotFailed = spotResult.status === 'rejected';
+      const futuresFailed = futuresEx !== null && futuresResult.status === 'rejected';
+      const balanceFetchError = spotFailed || (futuresFailed && allBalances.length === 0);
 
       return {
         valid: true,
@@ -739,9 +851,10 @@ export class ApiKeysService {
         freeUsdValue: spotFreeValue + futuresFreeValue,
         spotFreeValue,
         futuresFreeValue,
+        balanceFetchError: balanceFetchError || undefined,
       };
     } catch (error: any) {
-      // 解析 CCXT 错误
+      // 解析 CCXT 错误及系统错误
       let errorMessage = error.message || '验证失败';
       if (error instanceof ccxt.AuthenticationError) {
         errorMessage = 'API Key 或 Secret 无效';
@@ -749,6 +862,16 @@ export class ApiKeysService {
         errorMessage = 'API Key 权限不足';
       } else if (error instanceof ccxt.NetworkError) {
         errorMessage = '网络连接失败，请稍后重试';
+      } else if (
+        error.message?.includes('Unsupported state') ||
+        error.message?.includes('unable to authenticate') ||
+        error.message?.includes('decrypt') ||
+        error.message?.includes('decipher') ||
+        error.message?.includes('ENCRYPTION_KEY')
+      ) {
+        // AES-GCM 解密失败 — 服务器重启或密钥变更导致无法读取已存储的 API Key
+        errorMessage = '密钥解密失败，请重新绑定交易所 API Key';
+        this.logger.error(`[verifyApiKey] 解密失败 (${error.message})`);
       }
 
       return {

@@ -56,6 +56,8 @@ export interface ExchangeBalance {
   usedMargin: number;
   /** 未实现盈亏 */
   unrealizedPnl: number;
+  /** 保证金使用率 % (usedMargin / totalEquity × 100) */
+  marginUsedPct: number;
   /** 原始数据（交易所特定格式） */
   raw?: Record<string, unknown>;
 }
@@ -84,6 +86,8 @@ export interface ExchangePosition {
   marginMode: 'cross' | 'isolated';
   /** 持仓保证金 */
   margin: number;
+  /** 保证金比率（交易所原值，如 Binance 的 marginRatio = 维持保证金/保证金余额，越接近100%越危险） */
+  marginRatio?: number;
   /** 强平价格 */
   liquidationPrice?: number;
   /** 交易所持仓 ID */
