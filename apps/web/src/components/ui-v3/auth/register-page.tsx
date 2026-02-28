@@ -36,6 +36,7 @@ interface FormErrors {
   username?: string
   password?: string
   confirmPassword?: string
+  referralCode?: string
   terms?: string
 }
 
@@ -96,6 +97,11 @@ export function RegisterPage({
       newErrors.confirmPassword = t('confirmPassword')
     } else if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = tErrors('passwordMismatch')
+    }
+
+    // Referral code validation（必填）
+    if (!formData.referralCode?.trim()) {
+      newErrors.referralCode = tErrors('inviteCodeRequired')
     }
 
     // Terms validation
@@ -326,12 +332,9 @@ export function RegisterPage({
                   )}
                 </div>
 
-                {/* Referral Code Field */}
+                {/* Referral Code Field（必填） */}
                 <div>
-                  <label className="block text-sm font-medium text-[#9090A0] mb-2">
-                    {t('inviteCode')} <span className="text-[#606070]">({t('inviteCodeOptional')})</span>
-                  </label>
-                  <div className="glass-border-glow rounded-xl overflow-hidden">
+                  <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.referralCode ? 'ring-1 ring-red-500' : ''}`}>
                     <div className="relative">
                       <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#606070]" />
                       <input
@@ -343,6 +346,9 @@ export function RegisterPage({
                       />
                     </div>
                   </div>
+                  {errors.referralCode && (
+                    <p className="mt-1 text-sm text-red-400">{errors.referralCode}</p>
+                  )}
                 </div>
 
                 {/* Terms Checkbox */}
@@ -369,13 +375,25 @@ export function RegisterPage({
                     </div>
                     <span className="text-sm text-[#9090A0] leading-5">
                       {t('agreeTerms')}
-                      <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                      <a
+                        href="/legal/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 ml-1 underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {t('termsOfService')}
-                      </button>
+                      </a>
                       {t('and')}
-                      <button type="button" className="text-cyan-400 hover:text-cyan-300 ml-1">
+                      <a
+                        href="/legal/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-400 hover:text-cyan-300 ml-1 underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {t('privacyPolicy')}
-                      </button>
+                      </a>
                     </span>
                   </label>
                   {errors.terms && (

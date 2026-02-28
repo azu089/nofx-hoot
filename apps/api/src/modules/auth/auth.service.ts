@@ -243,6 +243,16 @@ export class AuthService implements OnModuleDestroy {
 
   // 注册
   async register(dto: RegisterDto): Promise<UserResponse> {
+    // 验证邀请码是否有效（注册前先检查，避免创建用户后绑定失败）
+    const inviter = await this.prisma.user.findUnique({
+      where: { inviteCode: dto.inviteCode },
+      select: { id: true },
+    });
+
+    if (!inviter) {
+      throw new BadRequestException('邀请码无效');
+    }
+
     // 检查邮箱是否已存在
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -270,8 +280,17 @@ export class AuthService implements OnModuleDestroy {
       },
     });
 
+    // 绑定邀请码
+    try {
+      await this.referralService.bindInviteCode(user.id, dto.inviteCode);
+      this.logger.log(`邮箱注册绑定邀请人: ${dto.email} -> ${dto.inviteCode}`);
+    } catch (error) {
+      // 绑定失败不影响注册流程（用户已创建成功）
+      this.logger.warn(`邀请码绑定失败: ${dto.email}, ${error.message}`);
+    }
+
     // 审计日志
-    await this.logAudit(user.id, 'user', 'register', 'user', user.id, `邮箱注册: ${dto.email}`);
+    await this.logAudit(user.id, 'user', 'register', 'user', user.id, `邮箱注册: ${dto.email}, 邀请码: ${dto.inviteCode}`);
 
     // 发送验证码（邮箱注册必定有 email）
     if (user.email) {

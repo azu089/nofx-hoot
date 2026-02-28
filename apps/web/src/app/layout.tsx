@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "Hoot - AI 量化交易平台",
   description: "Hoot - 智能量化交易，自动化投资策略",
   icons: {
-    icon: "/icons/hoot/token.png",
+    icon: "/icons/hoot/logo.png",
     apple: "/icons/hoot/logo.png",
   },
   manifest: "/manifest.json",

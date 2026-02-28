@@ -5,6 +5,7 @@ import React from "react"
 import { useState } from 'react'
 import Image from 'next/image'
 import { Mail, Lock, Eye, EyeOff, Wallet, Send } from 'lucide-react'
+import { useTranslations } from '@/i18n/provider'
 
 interface MobileLoginPageProps {
   onLogin?: (email: string, password: string) => Promise<void> | void
@@ -21,6 +22,8 @@ export function MobileLoginPage({
   onRegister,
   onForgotPassword,
 }: MobileLoginPageProps) {
+  const t = useTranslations('auth')
+  const tCommon = useTranslations('common')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -53,7 +56,7 @@ export function MobileLoginPage({
 
   return (
     <div className="min-h-screen w-full bg-[#0A0A0F] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* 背景装饰 - 与首页同步的动态光晕效果 */}
+      {/* 背景装饰 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-32 -right-32 w-80 h-80 bg-[#06B6D4] rounded-full mix-blend-multiply filter blur-[100px] opacity-20 animate-pulse" />
         <div
@@ -65,7 +68,7 @@ export function MobileLoginPage({
 
       {/* 毛玻璃登录卡片 */}
       <div className="w-full max-w-md glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.02)_inset] overflow-hidden z-10">
-        {/* Logo区域 */}
+        {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="mb-4">
             <div className="w-24 h-24">
@@ -84,22 +87,22 @@ export function MobileLoginPage({
         </div>
 
         <div className="space-y-5">
-          {/* Telegram 登录 - 主推按钮 */}
+          {/* Telegram 登录 */}
           <button
             type="button"
             onClick={onTelegramLogin}
-            title="Telegram 登录"
-            aria-label="Telegram 登录"
+            title={t('continueWithTelegram')}
+            aria-label={t('continueWithTelegram')}
             className="w-full py-4 px-4 rounded-xl font-semibold text-white bg-[#0088cc] hover:bg-[#0099dd] active:scale-[0.98] transition-all shadow-lg shadow-[#0088cc]/25 flex items-center justify-center gap-3"
           >
             <Send className="w-6 h-6" />
-            <span className="text-lg">Telegram 登录</span>
+            <span className="text-lg">{t('continueWithTelegram')}</span>
           </button>
 
           {/* 分隔线 */}
           <div className="flex items-center">
             <div className="flex-1 h-px bg-[#1E1E2E]" />
-            <span className="px-4 text-sm text-[#94A3B8]">或</span>
+            <span className="px-4 text-sm text-[#94A3B8]">{t('or')}</span>
             <div className="flex-1 h-px bg-[#1E1E2E]" />
           </div>
 
@@ -110,22 +113,22 @@ export function MobileLoginPage({
                 type="button"
                 onClick={handleWalletConnect}
                 disabled={isWalletLoading}
-                title="钱包登录"
-                aria-label="钱包登录"
+                title={t('walletLogin')}
+                aria-label={t('walletLogin')}
                 className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Wallet className="w-5 h-5" />
-                {isWalletLoading ? '连接中...' : '钱包登录'}
+                {isWalletLoading ? tCommon('loading') : t('walletLogin')}
               </button>
               <button
                 type="button"
                 onClick={() => setShowEmailForm(true)}
-                title="邮箱登录"
-                aria-label="邮箱登录"
+                title={t('emailLogin')}
+                aria-label={t('emailLogin')}
                 className="py-3 px-4 rounded-xl font-medium border border-cyan-500/20 bg-[#1A1A24] hover:bg-[#1E1E2E] text-white active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 <Mail className="w-5 h-5" />
-                邮箱登录
+                {t('emailLogin')}
               </button>
             </div>
           ) : (
@@ -136,10 +139,10 @@ export function MobileLoginPage({
                 onClick={() => setShowEmailForm(false)}
                 className="text-sm text-[#06B6D4] hover:text-[#0891B2] transition-colors"
               >
-                ← 返回
+                ← {t('back')}
               </button>
 
-              {/* 邮箱输入框 */}
+              {/* 邮箱 */}
               <div className="glass-border-glow rounded-xl overflow-hidden">
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
@@ -148,15 +151,15 @@ export function MobileLoginPage({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    aria-label="邮箱地址"
+                    placeholder={t('emailPlaceholder')}
+                    aria-label={t('email')}
                     className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-4 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                     required
                   />
                 </div>
               </div>
 
-              {/* 密码输入框 */}
+              {/* 密码 */}
               <div className="glass-border-glow rounded-xl overflow-hidden">
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
@@ -165,16 +168,14 @@ export function MobileLoginPage({
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    aria-label="密码"
+                    placeholder={t('passwordPlaceholder')}
+                    aria-label={t('password')}
                     className="w-full bg-[#1A1A24] border border-cyan-500/20 rounded-xl pl-12 pr-12 py-3.5 text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    title={showPassword ? '隐藏密码' : '显示密码'}
-                    aria-label={showPassword ? '隐藏密码' : '显示密码'}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -189,7 +190,7 @@ export function MobileLoginPage({
                   onClick={onForgotPassword}
                   className="text-sm text-[#06B6D4] hover:text-[#0891B2] transition-colors"
                 >
-                  忘记密码？
+                  {t('forgotPassword')}
                 </button>
               </div>
 
@@ -197,11 +198,11 @@ export function MobileLoginPage({
               <button
                 type="submit"
                 disabled={isLoading}
-                title="登录"
-                aria-label="登录"
+                title={t('login')}
+                aria-label={t('login')}
                 className="w-full bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-[#0A0A0F] font-semibold py-3.5 rounded-xl hover:shadow-lg hover:shadow-[#06B6D4]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? '登录中...' : '登录'}
+                {isLoading ? t('loggingIn') : t('login')}
               </button>
             </form>
           )}
@@ -209,15 +210,15 @@ export function MobileLoginPage({
 
         {/* 底部注册链接 */}
         <div className="mt-6 text-center text-sm">
-          <span className="text-[#94A3B8]">还没有账户？</span>
+          <span className="text-[#94A3B8]">{t('noAccount')}</span>
           <button
             type="button"
             onClick={onRegister}
-            title="立即注册"
-            aria-label="立即注册"
+            title={t('registerNow')}
+            aria-label={t('registerNow')}
             className="ml-1 text-[#06B6D4] hover:text-[#0891B2] font-semibold transition-colors"
           >
-            立即注册
+            {t('registerNow')}
           </button>
         </div>
       </div>

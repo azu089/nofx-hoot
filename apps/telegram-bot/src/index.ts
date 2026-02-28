@@ -315,10 +315,12 @@ bot.command('start', async (ctx) => {
   const lastName = ctx.from?.last_name;
   if (!telegramId) return;
 
-  // 解析深度链接参数: /start ref_XXXXXXXX
+  // 解析深度链接参数: /start ref_XXXXXXXX | /start login | /start register
   const args = ctx.message?.text?.split(' ').slice(1);
   const startParam = args?.[0];
   let referralCode: string | undefined;
+  // 是否来自 Web App 登录/注册跳转（需要在登录成功后回传 token）
+  const isWebLoginFlow = startParam === 'login' || startParam === 'register';
   if (startParam?.startsWith('ref_')) {
     referralCode = startParam.replace('ref_', '');
     console.log(`[TG Bot] 检测到邀请码: ${referralCode}`);
@@ -344,6 +346,27 @@ bot.command('start', async (ctx) => {
     ctx.session.userId = result.user.id;
 
     const nickname = result.user.nickname || username || (lang === 'zh' ? '用户' : 'User');
+
+    // 如果是来自 Web App 登录跳转，优先发送携带 token 的「进入 App」按钮
+    if (isWebLoginFlow) {
+      const callbackUrl = `${WEB_APP_URL}/auth/callback?token=${result.accessToken}`;
+      const enterAppKeyboard = new InlineKeyboard()
+        .url(lang === 'zh' ? '🚀 进入 HOOT App' : '🚀 Enter HOOT App', callbackUrl);
+
+      const loginSuccessMsg = result.isNewUser
+        ? (lang === 'zh'
+            ? `✅ <b>注册成功！</b>\n\n欢迎 <b>${nickname}</b>，你已获得 <b>${AIRDROP_REWARDS.register} HOOT</b> 注册奖励！\n\n点击下方按钮进入应用 👇`
+            : `✅ <b>Registered!</b>\n\nWelcome <b>${nickname}</b>! You received <b>${AIRDROP_REWARDS.register} HOOT</b> bonus!\n\nClick below to enter the app 👇`)
+        : (lang === 'zh'
+            ? `✅ <b>登录成功！</b>\n\n欢迎回来 <b>${nickname}</b>！\n\n点击下方按钮进入应用 👇`
+            : `✅ <b>Login successful!</b>\n\nWelcome back <b>${nickname}</b>!\n\nClick below to enter the app 👇`);
+
+      await ctx.reply(loginSuccessMsg, {
+        parse_mode: 'HTML',
+        reply_markup: enterAppKeyboard,
+      });
+      return;
+    }
 
     if (result.isNewUser) {
       await ctx.reply(

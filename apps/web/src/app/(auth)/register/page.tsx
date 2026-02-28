@@ -12,7 +12,7 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register, walletLogin, isAuthenticated, isLoading } = useAuth();
+  const { register, walletLogin, telegramWebAppLogin, isAuthenticated, isLoading } = useAuth();
   const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -35,10 +35,13 @@ export default function RegisterPage() {
     password: string;
     nickname?: string;
     inviteCode?: string;
+    referralCode?: string;
   }) => {
     try {
       // 注册（后端会自动发送验证码）
-      await register(data.email, data.password, data.nickname);
+      // UI 组件传递的字段名可能是 referralCode 或 inviteCode
+      const inviteCode = data.inviteCode || data.referralCode;
+      await register(data.email, data.password, data.nickname, inviteCode);
       // 跳转到邮箱验证页面
       router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
     } catch (err) {
@@ -70,11 +73,22 @@ export default function RegisterPage() {
     throw new Error('移动端钱包注册正在接入，请使用桌面端或邮箱注册');
   };
 
-  const handleTelegramLogin = () => {
-    // KNOWN-LIMITATION: TG 登录待 Privy/TG WebApp 集成，当前跳转 Bot
-    // 临时方案：跳转到 TG Bot
+  const handleTelegramLogin = async () => {
+    // 在 TG Mini App 内时，直接用 initData 完成登录/注册
+    const tgWebApp = (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp;
+    if (tgWebApp?.initData) {
+      try {
+        await telegramWebAppLogin(tgWebApp.initData);
+        router.push('/dashboard');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Telegram 登录失败，请重试');
+      }
+      return;
+    }
+    // 普通浏览器降级：引导去 TG Bot 触发登录
+    // 使用 location.href 而非 window.open，避免移动端弹窗拦截器静默阻止
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
-    window.open(`https://t.me/${botUsername}?start=register`, '_blank');
+    window.location.href = `https://t.me/${botUsername}?start=register`;
   };
 
   // 服务端和客户端首次渲染保持一致（都显示 loading）
@@ -114,6 +128,7 @@ export default function RegisterPage() {
         <MobileRegisterPage
           onRegister={handleRegister}
           onWalletConnect={() => setShowWalletModal(true)}
+          onTelegramLogin={handleTelegramLogin}
           onLogin={() => router.push('/login?method=email')}
         />
         <MobileWalletConnectModal

@@ -13,7 +13,12 @@ export default function LegalPageRoute() {
   const slug = params.slug as string;
 
   const handleBack = () => {
-    router.back();
+    // 如果有历史记录则返回，否则关闭标签页
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      window.close();
+    }
   };
 
   // 检查是否是有效的 slug
@@ -25,10 +30,10 @@ export default function LegalPageRoute() {
           <p className="text-[#9090A0] mb-6">抱歉，您访问的法律文档不存在。</p>
           <button
             type="button"
-            onClick={() => router.push('/about')}
+            onClick={() => router.push('/')}
             className="px-6 py-2 bg-[#06B6D4] text-white rounded-lg hover:bg-[#06B6D4]/80 transition-colors"
           >
-            返回关于页面
+            返回首页
           </button>
         </div>
       </div>

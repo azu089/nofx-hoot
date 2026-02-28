@@ -80,8 +80,9 @@ export default function LoginPage() {
   const handleTelegramLogin = () => {
     // KNOWN-LIMITATION: TG 登录待 Privy/TG WebApp 集成，当前跳转 Bot
     // 临时方案：跳转到 TG Bot
+    // 使用 location.href 而非 window.open，避免移动端弹窗拦截器静默阻止
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
-    window.open(`https://t.me/${botUsername}?start=login`, '_blank');
+    window.location.href = `https://t.me/${botUsername}?start=login`;
   };
 
   // 服务端和客户端首次渲染保持一致（都显示 loading）

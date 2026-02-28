@@ -65,6 +65,7 @@ describe('AuthService', () => {
 
   const mockReferralService = {
     processReferral: jest.fn(),
+    bindInviteCode: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -94,10 +95,12 @@ describe('AuthService', () => {
         nickname: mockUser.nickname,
         createdAt: mockUser.createdAt,
       };
-      // 第1次 findUnique: 检查邮箱是否已存在 → null
-      // 第2次 findUnique: sendVerificationCode 查找用户 → 返回用户(含 emailVerified=false)
+      // 第1次 findUnique: 验证邀请码 → 返回邀请人
+      // 第2次 findUnique: 检查邮箱是否已存在 → null
+      // 第3次 findUnique: sendVerificationCode 查找用户 → 返回用户(含 emailVerified=false)
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'inviter-id' }) // 邀请人存在
+        .mockResolvedValueOnce(null) // 邮箱不存在
         .mockResolvedValueOnce({ ...createdUser, emailVerified: false });
       mockPrismaService.user.create.mockResolvedValue(createdUser);
       mockPrismaService.user.update.mockResolvedValue(createdUser);
@@ -107,6 +110,7 @@ describe('AuthService', () => {
       const result = await service.register({
         email: 'new@example.com',
         password: 'Password123',
+        inviteCode: 'TEST123',
       });
 
       expect(result.id).toBeDefined();
@@ -115,12 +119,17 @@ describe('AuthService', () => {
 
     // 异常路径 - 邮箱已存在
     it('should throw ConflictException when email already exists', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      // 第1次 findUnique: 验证邀请码 → 邀请人存在
+      // 第2次 findUnique: 检查邮箱 → 已存在
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ id: 'inviter-id' })
+        .mockResolvedValueOnce(mockUser);
 
       await expect(
         service.register({
           email: 'test@example.com',
           password: 'Password123',
+          inviteCode: 'TEST123',
         }),
       ).rejects.toThrow(ConflictException);
     });

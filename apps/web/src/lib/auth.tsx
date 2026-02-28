@@ -19,12 +19,14 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, nickname?: string) => Promise<void>;
+  register: (email: string, password: string, nickname?: string, inviteCode?: string) => Promise<void>;
   logout: () => Promise<void> | void;
   sendVerificationCode: (email: string) => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
   /** 钱包登录：接收已验证的 accessToken 和用户信息，写入认证状态 */
   walletLogin: (accessToken: string, user: User, refreshToken?: string) => void;
+  /** TG WebApp 登录：用 Telegram Mini App 的 initData 直接登录/注册 */
+  telegramWebAppLogin: (initData: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 在客户端挂载后从 localStorage 读取认证状态
+  // 在客户端挂载后从 localStorage 读取认证状态，或在 TG Mini App 环境中静默自动登录
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
@@ -69,6 +71,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // 忽略解析错误
       }
+    }
+
+    if (storedToken) {
+      // 已有本地 token，直接标记加载完成
+      setIsLoading(false);
+      return;
+    }
+
+    // TG Mini App 静默自动登录：
+    // 若无本地 token 且在 TG Mini App 环境中（initData 存在），自动完成登录
+    // 这是行业标准做法，类似微信小程序静默登录，无需用户点击登录按钮
+    const tgWebApp = (
+      window as { Telegram?: { WebApp?: { initData?: string } } }
+    ).Telegram?.WebApp;
+
+    if (tgWebApp?.initData) {
+      api
+        .post<{ accessToken: string; refreshToken?: string; user: User }>(
+          '/auth/telegram/webapp-login',
+          { initData: tgWebApp.initData },
+        )
+        .then((response) => {
+          const { accessToken, refreshToken: rt, user: userData } = response.data;
+          setToken(accessToken);
+          setUser(userData);
+          api.setToken(accessToken);
+          localStorage.setItem(TOKEN_KEY, accessToken);
+          localStorage.setItem(USER_KEY, JSON.stringify(userData));
+          if (rt) {
+            localStorage.setItem('hoot_refresh_token', rt);
+          }
+          setAuthCookie(accessToken);
+        })
+        .catch(() => {
+          // 静默失败：initData 无效或过期，降级显示正常登录页面，不报错
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+      return; // 异步处理，由 finally 负责 setIsLoading(false)
     }
 
     // 标记加载完成
@@ -98,8 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthCookie(accessToken);
   };
 
-  const register = async (email: string, password: string, nickname?: string) => {
-    await api.post('/auth/register', { email, password, nickname });
+  const register = async (email: string, password: string, nickname?: string, inviteCode?: string) => {
+    await api.post('/auth/register', { email, password, nickname, inviteCode });
     // 注册后不自动登录，需要先验证邮箱
   };
 
@@ -124,6 +166,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyEmail = async (email: string, code: string) => {
     await api.post('/auth/verify-email', { email, code });
+  };
+
+  /**
+   * TG WebApp 登录：传入 Telegram Mini App initData，后端验签后返回 JWT
+   */
+  const telegramWebAppLogin = async (initData: string) => {
+    const response = await api.post<{
+      accessToken: string;
+      refreshToken?: string;
+      user: User;
+    }>('/auth/telegram/webapp-login', { initData });
+
+    const { accessToken, refreshToken: rt, user: userData } = response.data;
+
+    setToken(accessToken);
+    setUser(userData);
+    api.setToken(accessToken);
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    if (rt) {
+      localStorage.setItem('hoot_refresh_token', rt);
+    }
+    setAuthCookie(accessToken);
   };
 
   /**
@@ -156,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sendVerificationCode,
         verifyEmail,
         walletLogin,
+        telegramWebAppLogin,
       }}
     >
       {children}

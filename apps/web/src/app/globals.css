@@ -525,3 +525,14 @@
 .animate-scan {
   animation: scan 3s ease-in-out infinite;
 }
+
+/* 浏览器自动填充样式覆盖 — 防止 autofill 破坏深色主题 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #1A1A24 inset !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  border-color: rgba(6, 182, 212, 0.2) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
