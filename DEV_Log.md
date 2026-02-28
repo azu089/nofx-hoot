@@ -6,6 +6,57 @@
 
 ---
 
+## [2026-03-01] 生产上线 — 首次成功部署
+
+**状态**: ✅ 已上线
+
+### 服务器信息
+- VPS: DigitalOcean SGP1, Ubuntu 24.04 LTS
+- IP: 139.59.254.219
+- 目录: /root/HOOT
+
+### 域名与 SSL
+- https://hoot.cool → 前端 (hoot-web)
+- https://api.hoot.cool → 后端 API (hoot-api)
+- https://admin.hoot.cool → 管理后台 (hoot-admin)
+- SSL: Let's Encrypt, 有效期至 2026-05-29
+
+### 运行中的容器
+| 容器 | 状态 |
+|------|------|
+| hoot-postgres | healthy |
+| hoot-redis | healthy |
+| hoot-api | healthy |
+| hoot-web | healthy |
+| hoot-admin | healthy |
+| hoot-telegram-bot ([@HootCool_bot](https://t.me/HootCool_bot)) | healthy |
+| hoot-admin-bot | healthy |
+| hoot-nginx | running |
+
+### 关键修复记录
+1. **pnpm --frozen-lockfile** → 改为 `--no-frozen-lockfile`（monorepo 结构）
+2. **Prisma OpenSSL** → Alpine 需安装 `openssl` + `binaryTargets = linux-musl-openssl-3.0.x`
+3. **DB 迁移顺序** → `prisma db push` 代替 broken migrations（首次部署）
+4. **positions 表缺列** → 创建迁移 `20260301000000_add_missing_position_columns`
+5. **healthcheck localhost** → 改为 `127.0.0.1`（IPv6 解析问题）
+6. **TOTP_ENCRYPTION_KEY** → 生产环境必须配置
+
+### 重要密钥提醒
+- **ENCRYPTION_SALT**: 5bae84ac6f0fdb24c716de29b1943cf9 — **永远不可更改**
+- 所有密钥存储在 VPS /root/HOOT/.env，已安全备份
+
+### 定时任务
+- 每日 03:00 数据库备份
+- 每 5 分钟健康监控
+- 每周日 04:00 清理旧日志
+
+### 回滚方案
+```bash
+cd /root/HOOT && bash scripts/deploy.sh rollback
+```
+
+---
+
 ## [2026-02-28] 网格策略 — 配置变更自动重建 + 小资金仓位适配
 
 **状态**: 已完成
