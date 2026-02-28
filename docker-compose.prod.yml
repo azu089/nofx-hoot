@@ -109,6 +109,7 @@ services:
         - NEXT_PUBLIC_API_URL=https://api.hoot.cool/api
         - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN:-}
         - NEXT_PUBLIC_TG_BOT_USERNAME=HootCool_bot
+        - NEXT_PUBLIC_WALLETCONNECT_ID=${NEXT_PUBLIC_WALLETCONNECT_ID:-}
     container_name: hoot-web
     restart: unless-stopped
     ports:
