@@ -122,12 +122,29 @@ start_services() {
     echo -e "${GREEN}✅ 服务已启动${NC}"
 }
 
-# 运行数据库迁移
+# 运行数据库迁移（在 API 启动前用一次性容器运行，避免 onModuleInit 查询未迁移的表）
 run_migrations() {
     echo ""
-    echo "📦 运行数据库迁移..."
+    echo "📦 运行数据库迁移（启动前）..."
 
-    if ! docker compose -f "$COMPOSE_FILE" exec -T api npx prisma migrate deploy; then
+    # 先启动 postgres + redis，等待它们健康
+    docker compose -f "$COMPOSE_FILE" up -d postgres redis
+    echo "  等待数据库就绪..."
+    for i in $(seq 1 30); do
+        if docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U hoot -d hoot > /dev/null 2>&1; then
+            echo "  数据库就绪"
+            break
+        fi
+        sleep 2
+    done
+
+    # 用一次性容器运行迁移（不依赖 API 容器健康状态）
+    DB_URL="postgresql://hoot:${DB_PASSWORD}@postgres:5432/hoot"
+    if ! docker run --rm \
+        --network hoot_hoot-network \
+        -e DATABASE_URL="$DB_URL" \
+        hoot-api:latest \
+        npx prisma migrate deploy; then
         echo -e "${RED}❌ 数据库迁移失败！自动回滚中...${NC}"
         rollback_deployment
         exit 1
@@ -288,9 +305,8 @@ main() {
             pre_deploy_backup
             build_images
             stop_services
-            start_services
-            sleep 5
             run_migrations
+            start_services
             health_check
             show_status
             echo ""

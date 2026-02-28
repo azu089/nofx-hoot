@@ -78,7 +78,16 @@ export class AdminModule implements OnModuleInit {
   constructor(private adminAuthService: AdminAuthService) {}
 
   async onModuleInit() {
-    // 启动时初始化默认管理员
-    await this.adminAuthService.initDefaultAdmin();
+    // 启动时初始化默认管理员（迁移尚未运行时跳过，不影响启动）
+    try {
+      await this.adminAuthService.initDefaultAdmin();
+    } catch (err) {
+      const code = (err as any)?.code;
+      if (code === 'P2021' || code === 'P1001') {
+        // P2021: 表不存在（迁移未运行）P1001: DB 连接失败 — 均属正常启动阶段，跳过
+        return;
+      }
+      throw err;
+    }
   }
 }
