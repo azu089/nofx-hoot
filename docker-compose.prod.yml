@@ -65,6 +65,22 @@ services:
       - ADMIN_BOT_URL=http://admin-bot:4003
       # Sentry 错误追踪
       - SENTRY_DSN=${SENTRY_DSN:-}
+      # AI 模型 Key
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GROK_API_KEY=${GROK_API_KEY:-}
+      - KIMI_API_KEY=${KIMI_API_KEY:-}
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # 数据源 Key
+      - CRYPTOCOMPARE_API_KEY=${CRYPTOCOMPARE_API_KEY:-}
+      - CRYPTOPANIC_API_KEY=${CRYPTOPANIC_API_KEY:-}
+      - COINGLASS_API_KEY=${COINGLASS_API_KEY:-}
+      - FRED_API_KEY=${FRED_API_KEY:-}
+      - NASDAQ_DATA_LINK_API_KEY=${NASDAQ_DATA_LINK_API_KEY:-}
+      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
