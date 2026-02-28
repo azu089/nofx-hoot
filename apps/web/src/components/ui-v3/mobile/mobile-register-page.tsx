@@ -2,11 +2,12 @@
 
 import { useState, type FormEvent } from 'react'
 import Image from 'next/image'
-import { Mail, User, Lock, Eye, EyeOff, Gift, Loader2, Wallet } from 'lucide-react'
+import { Mail, User, Lock, Eye, EyeOff, Gift, Loader2, Wallet, Check } from 'lucide-react'
 
 interface MobileRegisterPageProps {
   onRegister?: (data: RegisterData) => void | Promise<void>
   onWalletConnect?: () => void | Promise<void>
+  onTelegramLogin?: () => void | Promise<void>
   onLogin?: () => void
   defaultReferralCode?: string
 }
@@ -25,12 +26,14 @@ interface FormErrors {
   username?: string
   password?: string
   confirmPassword?: string
+  referralCode?: string
   terms?: string
 }
 
 export function MobileRegisterPage({
   onRegister,
   onWalletConnect,
+  onTelegramLogin,
   onLogin,
   defaultReferralCode = ''
 }: MobileRegisterPageProps) {
@@ -87,6 +90,10 @@ export function MobileRegisterPage({
       newErrors.confirmPassword = '请确认密码'
     } else if (password !== confirmPassword) {
       newErrors.confirmPassword = '两次密码输入不一致'
+    }
+
+    if (!referralCode?.trim()) {
+      newErrors.referralCode = '请输入邀请码'
     }
 
     if (!agreedToTerms) {
@@ -297,28 +304,34 @@ export function MobileRegisterPage({
               )}
             </div>
 
-            {/* 邀请码输入框 */}
+            {/* 邀请码输入框（必填） */}
             <div>
-              <div className="glass-border-glow rounded-xl overflow-hidden">
+              <div className={`glass-border-glow rounded-xl overflow-hidden ${errors.referralCode ? 'ring-1 ring-red-500' : ''}`}>
                 <div className="relative">
                   <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
                   <input
                     type="text"
                     value={referralCode}
-                    onChange={(e) => setReferralCode(e.target.value)}
-                    placeholder="邀请码（可选）"
+                    onChange={(e) => {
+                      setReferralCode(e.target.value)
+                      setErrors((prev) => ({ ...prev, referralCode: undefined }))
+                    }}
+                    placeholder="输入邀请码获得奖励"
                     className="w-full h-12 pl-11 pr-4 bg-[#1A1A24] border border-cyan-500/20 rounded-xl text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:border-transparent transition-all"
                     aria-label="邀请码"
                     disabled={isLoading}
                   />
                 </div>
               </div>
+              {errors.referralCode && (
+                <p className="mt-1.5 text-sm text-[#EF4444] pl-1">{errors.referralCode}</p>
+              )}
             </div>
 
             {/* 服务条款复选框 */}
             <div>
               <label className="flex items-start gap-3 cursor-pointer group">
-                <div className="relative flex items-center justify-center mt-0.5">
+                <div className="relative flex-shrink-0 mt-0.5">
                   <input
                     type="checkbox"
                     checked={agreedToTerms}
@@ -326,34 +339,43 @@ export function MobileRegisterPage({
                       setAgreedToTerms(e.target.checked)
                       setErrors((prev) => ({ ...prev, terms: undefined }))
                     }}
-                    className="w-5 h-5 rounded border-2 border-[#1E1E2E] bg-[#1A1A24] checked:bg-[#06B6D4] checked:border-[#06B6D4] focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:ring-offset-2 focus:ring-offset-[#12121A] transition-all cursor-pointer"
+                    className="sr-only"
                     aria-label="同意服务条款"
                     disabled={isLoading}
                   />
+                  <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-all ${
+                    agreedToTerms
+                      ? 'bg-[#06B6D4] border-[#06B6D4]'
+                      : errors.terms
+                        ? 'border-[#EF4444] bg-transparent'
+                        : 'border-[#2A2A3A] bg-transparent group-hover:border-[#06B6D4]/50'
+                  }`}>
+                    {agreedToTerms && (
+                      <Check className="w-3 h-3 text-white" />
+                    )}
+                  </div>
                 </div>
                 <span className="text-sm text-[#94A3B8] leading-relaxed">
                   我已阅读并同意{' '}
-                  <button
-                    type="button"
+                  <a
+                    href="/legal/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-[#06B6D4] hover:text-[#0891B2] transition-colors underline"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // 打开服务条款
-                    }}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     服务条款
-                  </button>{' '}
+                  </a>{' '}
                   和{' '}
-                  <button
-                    type="button"
+                  <a
+                    href="/legal/privacy"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-[#06B6D4] hover:text-[#0891B2] transition-colors underline"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // 打开隐私政策
-                    }}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     隐私政策
-                  </button>
+                  </a>
                 </span>
               </label>
               {errors.terms && (
@@ -380,31 +402,44 @@ export function MobileRegisterPage({
           </form>
 
           {/* 分隔线 */}
-          <div className="relative my-6">
+          <div className="relative my-5">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-[#1E1E2E]" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-[#12121A] px-3 text-[#94A3B8]">或</span>
+            <div className="relative flex justify-center">
+              <span className="bg-[#0A0A0F]/60 px-4 text-xs text-[#64748B] tracking-widest">或</span>
             </div>
           </div>
 
+          {/* Telegram 登录按钮 */}
+          <button
+            type="button"
+            onClick={() => onTelegramLogin?.()}
+            disabled={isLoading}
+            className="w-full h-12 bg-[#0088cc] hover:bg-[#0077bb] active:bg-[#006699] text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,136,204,0.25)]"
+            aria-label="使用 Telegram 登录"
+          >
+            {/* Telegram 官方图标 SVG */}
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.26 14.4l-2.94-.917c-.638-.203-.65-.638.136-.944l11.49-4.43c.53-.194.994.131.948.112z"/>
+            </svg>
+            <span>使用 Telegram 登录</span>
+          </button>
+
           {/* 钱包注册按钮 */}
-          <div className="glass-border-glow rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={handleWalletConnect}
-              disabled={isLoading}
-              className="w-full h-12 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-cyan-500/20 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              aria-label="使用钱包注册"
-            >
-              <Wallet className="w-5 h-5" />
-              <span>使用钱包注册</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleWalletConnect}
+            disabled={isLoading}
+            className="mt-3 w-full h-12 bg-[#1A1A24] hover:bg-[#1E1E2E] border border-cyan-500/20 text-white font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            aria-label="使用钱包注册"
+          >
+            <Wallet className="w-5 h-5" />
+            <span>使用钱包注册</span>
+          </button>
 
           {/* 底部登录链接 */}
-          <div className="mt-6 text-center">
+          <div className="mt-5 text-center">
             <p className="text-sm text-[#94A3B8]">
               已有账户？{' '}
               <button
