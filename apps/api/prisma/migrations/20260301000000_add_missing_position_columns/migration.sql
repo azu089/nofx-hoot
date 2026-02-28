@@ -35,6 +35,9 @@ ALTER TABLE "positions" ADD COLUMN IF NOT EXISTS "high_water_mark" DECIMAL(10,4)
 ALTER TABLE "positions" ADD COLUMN IF NOT EXISTS "dca_count" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "positions" ADD COLUMN IF NOT EXISTS "last_dca_at" TIMESTAMP(3);
 
+-- ai_strategy_id 列添加后补充索引（从 add_refresh_tokens 迁移移出，修复列不存在导致的失败）
+CREATE INDEX IF NOT EXISTS "positions_ai_strategy_id_status_closed_at_idx" ON "positions"("ai_strategy_id", "status", "closed_at");
+
 -- 外键约束（IF NOT EXISTS 防止重复添加）
 DO $$
 BEGIN

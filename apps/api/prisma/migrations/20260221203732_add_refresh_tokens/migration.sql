@@ -35,9 +35,6 @@ CREATE INDEX "ai_strategies_is_public_total_trades_idx" ON "ai_strategies"("is_p
 CREATE INDEX "api_keys_user_id_exchange_is_active_idx" ON "api_keys"("user_id", "exchange", "is_active");
 
 -- CreateIndex
-CREATE INDEX "positions_ai_strategy_id_status_closed_at_idx" ON "positions"("ai_strategy_id", "status", "closed_at");
-
--- CreateIndex
 CREATE INDEX "transactions_user_id_type_created_at_idx" ON "transactions"("user_id", "type", "created_at");
 
 -- CreateIndex
