@@ -261,7 +261,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         entryPrice: Number(p.entryPrice || 0),
         markPrice: Number(p.markPrice || 0),
         unrealizedPnl: Number(p.unrealizedPnl || 0),
-        leverage: Number(p.leverage || p.info?.leverage || 1),
+        leverage: Math.max(1, Number(p.leverage) || parseInt(String(p.info?.leverage ?? ''), 10) || 1),
         marginMode: (p.marginMode || 'cross') as 'cross' | 'isolated',
         // 保证金：优先 positionInitialMargin (Binance)，次选 CCXT 标准 initialMargin，
         // 不使用 collateral（全仓时等于账户总权益，非持仓保证金）

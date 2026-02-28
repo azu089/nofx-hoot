@@ -40,7 +40,8 @@
     "configSaved": "Configuration saved",
     "passwordMismatch": "Passwords do not match",
     "enterEmailCode": "Please enter email verification code",
-    "enterCode": "Please enter verification code"
+    "enterCode": "Please enter verification code",
+    "days": "days"
   },
   "auth": {
     "login": "Login",
@@ -1377,7 +1378,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "Load more"
+      "loadMore": "Load more",
+      "yes": "Yes",
+      "no": "No"
     },
     "modes": {
       "research": "Research",
@@ -1473,6 +1476,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "Profit Retrace Protection",
+      "gridProfitRetraceHint": "When profit drops below threshold from the peak within last {days} days, auto close. Peak resets after {days} days.",
+      "gridProfitRetraceThreshold": "Retracement",
+      "gridProfitPeakWindow": "Peak Window",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1725,6 +1732,7 @@
       "gridErrPartial": "{ok} placed · {fail} failed",
       "gridErrAllFail": "All {count} orders failed",
       "gridErrOpsFail": "{count} operations failed",
+      "soloResumeDrawdownNote": "Daily drawdown counter will auto-reset at midnight",
       "personalityBull": "Bull",
       "personalityBear": "Bear",
       "personalityAnalyst": "Analyst",
@@ -2005,6 +2013,18 @@
       "gridSpacingLabel": "Grid Spacing",
       "gridThinking": "Thinking Chain",
       "gridHoldShort": "Hold",
+      "gridPerLevelCost": "~${cost}/level",
+      "gridRiskPaused": "Trading paused by risk control",
+      "gridResumeTrading": "Resume Trading",
+      "gridResumeSuccess": "Strategy resumed",
+      "gridResumeConfirmTitle": "Confirm Resume Trading",
+      "gridResumeConfirmDesc": "This strategy was paused by risk control. After resuming, trading will restart, but market risk remains.",
+      "gridResumeWillDo": "After resuming:",
+      "gridResumePeakReset": "Profit peak reset to current level (prevents immediate re-trigger)",
+      "gridResumeDailyReset": "Daily P&L counter reset to zero",
+      "gridResumeRiskRemain": "Risk rules remain unchanged — will pause again if triggered",
+      "gridResuming": "Resuming...",
+      "gridConfirmResume": "Confirm Resume",
       "dirNeutral": "Neutral",
       "dirLong": "Long",
       "dirShort": "Short",

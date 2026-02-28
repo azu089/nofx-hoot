@@ -40,7 +40,8 @@
     "enterEmailCode": "Vui lòng nhập mã xác nhận email",
     "enterCode": "Vui lòng nhập mã xác nhận",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "ngày"
   },
   "auth": {
     "login": "Đăng nhập",
@@ -1383,7 +1384,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "Tải thêm"
+      "loadMore": "Tải thêm",
+      "yes": "Có",
+      "no": "Không"
     },
     "modes": {
       "research": "Research",
@@ -1479,6 +1482,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "Bảo vệ lùi lợi nhuận",
+      "gridProfitRetraceHint": "Tự đóng khi lợi nhuận giảm quá ngưỡng từ đỉnh trong {days} ngày. Đặt lại đỉnh sau {days} ngày không cập nhật",
+      "gridProfitRetraceThreshold": "Ngưỡng lùi",
+      "gridProfitPeakWindow": "Cửa sổ bộ nhớ đỉnh",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1747,7 +1754,8 @@
       "promptDefaultEntry": "Mở vị thế cần ít nhất 2 tín hiệu xác nhận độc lập. Xu hướng + momentum + hỗ trợ giá chính.",
       "promptDefaultDecision": "1. Đánh giá cấu trúc thị trường 2. Tìm điểm hội tụ tín hiệu 3. Đánh giá tỷ lệ rủi ro/lợi nhuận 4. Xác định kích thước vị thế và cắt lỗ",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "Bộ đếm drawdown hằng ngày sẽ tự động đặt lại vào nửa đêm"
     },
     "research": {
       "title": "AI Research Team",
@@ -2052,7 +2060,19 @@
       "aiFallbackWarning": "AI không xuất định dạng quyết định hợp lệ",
       "fallbackAction": "Fallback action",
       "partialExecFailed": "Thực thi một phần",
-      "llmNoResponse": "Không có kết quả phân tích"
+      "llmNoResponse": "Không có kết quả phân tích",
+      "gridPerLevelCost": "~${cost}/cấp",
+      "gridRiskPaused": "Giao dịch bị tạm dừng bởi kiểm soát rủi ro",
+      "gridResumeTrading": "Tiếp tục Giao dịch",
+      "gridResumeSuccess": "Chiến lược đã được tiếp tục",
+      "gridResumeConfirmTitle": "Xác nhận Tiếp tục Giao dịch",
+      "gridResumeConfirmDesc": "Chiến lược này bị tạm dừng bởi kiểm soát rủi ro. Sau khi tiếp tục, giao dịch sẽ khởi động lại nhưng rủi ro thị trường vẫn còn.",
+      "gridResumeWillDo": "Sau khi tiếp tục：",
+      "gridResumePeakReset": "Đỉnh lợi nhuận đặt lại về mức hiện tại",
+      "gridResumeDailyReset": "Bộ đếm P&L hằng ngày đặt về 0",
+      "gridResumeRiskRemain": "Quy tắc rủi ro không thay đổi — sẽ tạm dừng lại nếu kích hoạt",
+      "gridResuming": "Đang tiếp tục...",
+      "gridConfirmResume": "Xác nhận"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

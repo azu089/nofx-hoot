@@ -40,7 +40,8 @@
     "enterEmailCode": "이메일 인증코드를 입력해주세요",
     "enterCode": "인증코드를 입력해주세요",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "일"
   },
   "auth": {
     "login": "로그인",
@@ -1382,7 +1383,9 @@
       "min": "분",
       "hour": "시간",
       "day": "일",
-      "loadMore": "더 보기"
+      "loadMore": "더 보기",
+      "yes": "예",
+      "no": "아니요"
     },
     "modes": {
       "research": "리서치",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR 배수",
       "gridMaxDrawdown": "최대 낙폭",
       "gridStopLossPercent": "손절 비율",
+      "gridProfitRetrace": "수익 되돌림 보호",
+      "gridProfitRetraceHint": "최근 {days}일 내 최고점에서 임계값 이상 하락 시 자동 청산. {days}일간 업데이트 없으면 기준 리셋",
+      "gridProfitRetraceThreshold": "되돌림 임계값",
+      "gridProfitPeakWindow": "피크 기억 창",
       "notBoundExchange": "거래소 미연동",
       "goToBind": "연동하기",
       "selectExchangeAccount": "거래소 계정 선택",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "진입 시 최소 2개 독립 신호 확인이 필요합니다. 추세 + 모멘텀 + 주요 가격대 지지.",
       "promptDefaultDecision": "1. 시장 구조와 추세 판단 2. 진입 신호 공명 탐색 3. 위험/보상 비율 평가 4. 포지션 규모와 손절 설정",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "일일 드로우다운 카운터는 다음 날 자정에 자동 재설정됩니다"
     },
     "research": {
       "title": "AI 리서치 팀",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AI가 유효한 결정 형식을 출력하지 못했습니다",
       "fallbackAction": "폴백 동작",
       "partialExecFailed": "부분 실행 실패",
-      "llmNoResponse": "분석 결과가 반환되지 않았습니다"
+      "llmNoResponse": "분석 결과가 반환되지 않았습니다",
+      "gridPerLevelCost": "~${cost}/레벨",
+      "gridRiskPaused": "리스크 제어로 거래 일시 중지",
+      "gridResumeTrading": "거래 재개",
+      "gridResumeSuccess": "전략이 재개되었습니다",
+      "gridResumeConfirmTitle": "거래 재개 확인",
+      "gridResumeConfirmDesc": "리스크 제어로 전략이 일시 중지되었습니다. 재개 후 거래가 재시작되지만 시장 위험은 여전히 존재합니다.",
+      "gridResumeWillDo": "재개 후 실행：",
+      "gridResumePeakReset": "이익 최고점을 현재 수준으로 재설정(즉시 재트리거 방지)",
+      "gridResumeDailyReset": "일일 손익 카운터 초기화",
+      "gridResumeRiskRemain": "리스크 규칙은 변경되지 않음 — 재트리거 시 다시 일시 중지",
+      "gridResuming": "재개 중...",
+      "gridConfirmResume": "재개 확인"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",

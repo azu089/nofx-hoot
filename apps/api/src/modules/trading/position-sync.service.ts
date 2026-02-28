@@ -307,7 +307,8 @@ export class PositionSyncService {
         // 基础数据
         entryPrice: new Decimal(exchangePos.entryPrice),
         amount: new Decimal(exchangePos.amount),
-        leverage: exchangePos.leverage,
+        // 仅当交易所返回有效杠杆（>1）时才更新，防止 CCXT fallback 值 1 覆盖 DB 中的正确值
+        ...(exchangePos.leverage > 1 && { leverage: exchangePos.leverage }),
         margin: margin,
         marginMode: exchangePos.marginMode,
         tradingType: 'futures',

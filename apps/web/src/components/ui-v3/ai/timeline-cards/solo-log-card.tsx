@@ -384,10 +384,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   // 检测自动禁用日志
   const isAutoDisabled = d.action === 'auto_disabled_failure';
 
-  // Grid: 提取整体市场分析 — 优先级：adjust_grid > hold > pause_grid > 最长的非 cancel 推理
+  // Grid: 提取整体市场分析 — 优先级：adjust_grid > hold > pause_grid > 全部推理拼接
   const gridAnalysisText = isGridLog
     ? (() => {
-        // 1. adjust_grid 包含最完整的网格重建分析
+        // 1. adjust_grid 包含最完整的网格重建分析（含 EMA/Regime 依据）
         const adjustR = gridDecisions
           .filter((op: any) => op.action === 'adjust_grid' && op.reasoning)
           .map((op: any) => op.reasoning);
@@ -398,11 +398,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         // 3. pause_grid 包含风险判断
         const pauseR = gridDecisions.find((op: any) => op.action === 'pause_grid' && op.reasoning)?.reasoning;
         if (pauseR) return pauseR;
-        // 4. 降级：取非 cancel_order 中最长的推理
+        // 4. 降级：拼接所有非空推理（cancel_order 也包含市场判断，不应排除）
+        //    去重后取最长的前3条，给出完整操作背景
         const allR = gridDecisions
-          .filter((op: any) => op.action !== 'cancel_order' && op.reasoning)
+          .filter((op: any) => op.reasoning)
           .map((op: any) => op.reasoning as string);
-        return allR.sort((a, b) => b.length - a.length)[0] || '';
+        const unique = [...new Set(allR)].sort((a, b) => b.length - a.length).slice(0, 3);
+        return unique.join('\n') || '';
       })()
     : '';
   const reasoning = isGridLog
@@ -888,7 +890,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         <span>{failedParts.join('  ')}</span>
                       )}
                       {isMarginErr && perLevelCost != null && perLevelCost > 0 && (
-                        <span className="text-[#505060]">每层约 ${perLevelCost.toFixed(1)}</span>
+                        <span className="text-[#505060]">{t('timeline.gridPerLevelCost', { cost: perLevelCost.toFixed(1) })}</span>
                       )}
                     </div>
                   )}
@@ -913,8 +915,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               if (counts['cancel_order']) details.push(t('timeline.gridExecCancel', { count: counts['cancel_order'] }));
               if (counts['adjust_grid']) details.push(t('timeline.gridExecAdjust', { count: counts['adjust_grid'] }));
               if (counts['pause_grid']) details.push(t('timeline.gridExecPause'));
-              if (counts['exit_all']) details.push(t('timeline.gridExecExit'));
+              if (counts['exit_all'] || counts['cancel_all_orders']) details.push(t('timeline.gridExecExit'));
               if (counts['reduce_exposure']) details.push(t('timeline.gridExecReduce', { count: counts['reduce_exposure'] }));
+              if (counts['hold']) details.push(t('timeline.gridHoldShort'));
               return details.length > 0
                 ? <span className="text-[#9090A0]"> · {details.join(', ')}</span>
                 : d.gridSummary ? <span className="text-[#9090A0]"> · {d.gridSummary}</span> : null;

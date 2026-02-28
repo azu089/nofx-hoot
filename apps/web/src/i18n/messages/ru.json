@@ -40,7 +40,8 @@
     "enterEmailCode": "Введите код подтверждения email",
     "enterCode": "Введите код подтверждения",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "дней"
   },
   "auth": {
     "login": "Войти",
@@ -1382,7 +1383,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "Загрузить ещё"
+      "loadMore": "Загрузить ещё",
+      "yes": "Да",
+      "no": "Нет"
     },
     "modes": {
       "research": "Research",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "Защита от отката прибыли",
+      "gridProfitRetraceHint": "Автоматическое закрытие при откате прибыли от пика за {days} дней выше порога. Сброс пика после {days} дней без обновления",
+      "gridProfitRetraceThreshold": "Порог отката",
+      "gridProfitPeakWindow": "Окно памяти пика",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "Для входа требуется минимум 2 независимых подтверждающих сигнала. Тренд + импульс + ключевые уровни.",
       "promptDefaultDecision": "1. Определить структуру рынка 2. Найти совпадение сигналов 3. Оценить соотношение риск/доходность 4. Определить размер позиции и стоп-лосс",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "Дневной счётчик просадки автоматически сбрасывается в полночь"
     },
     "research": {
       "title": "AI Research Team",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AI не смог сформировать корректный формат решения",
       "fallbackAction": "Fallback action",
       "partialExecFailed": "Частичное исполнение",
-      "llmNoResponse": "Анализ не был возвращён"
+      "llmNoResponse": "Анализ не был возвращён",
+      "gridPerLevelCost": "~${cost}/ур.",
+      "gridRiskPaused": "Торговля приостановлена риск-контролем",
+      "gridResumeTrading": "Возобновить торговлю",
+      "gridResumeSuccess": "Стратегия возобновлена",
+      "gridResumeConfirmTitle": "Подтвердить возобновление",
+      "gridResumeConfirmDesc": "Стратегия приостановлена риск-контролем. После возобновления торговля перезапустится, но рыночный риск сохраняется.",
+      "gridResumeWillDo": "После возобновления：",
+      "gridResumePeakReset": "Пик прибыли сброшен до текущего уровня (предотвращение повторного срабатывания)",
+      "gridResumeDailyReset": "Дневной счётчик P&L обнулён",
+      "gridResumeRiskRemain": "Правила риска без изменений — будет снова приостановлена при срабатывании",
+      "gridResuming": "Возобновление...",
+      "gridConfirmResume": "Подтвердить"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

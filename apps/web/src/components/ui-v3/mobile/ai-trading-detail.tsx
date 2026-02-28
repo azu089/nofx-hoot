@@ -1021,7 +1021,7 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
                         <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
-                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds ? `ATR ${gc.atrMultiplier || 2}x` : `${gc.lowerBound} - ${gc.upperBound}`} />
+                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound) ? `ATR ${gc.atrMultiplier || 5}x` : `${gc.lowerBound} - ${gc.upperBound}`} />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         {detail.gridState && (
@@ -1036,7 +1036,7 @@ export function AIStrategyDetailPage() {
                             {detail.gridState.gridSpacing && (
                               <ConfigRow label={t('detail.gridSpacing')} value={`$${detail.gridState.gridSpacing.toFixed(2)}`} />
                             )}
-                            <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? 'Yes' : 'No'} />
+                            <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? t('common.yes') : t('common.no')} />
                           </div>
                         )}
                         {/* LLM 模型 */}
@@ -1051,16 +1051,16 @@ export function AIStrategyDetailPage() {
                         {(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
                           <>
                             <div className="pt-1 border-t border-[#1E1E2E]">
-                              <p className="text-xs text-[#606070] font-medium">止停条件</p>
+                              <p className="text-xs text-[#606070] font-medium">{t('create.stopConditions')}</p>
                             </div>
                             {!!strategy.stopConditions?.maxCycles && (
-                              <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
+                              <ConfigRow label={t('create.maxCycles')} value={`${strategy.stopConditions.maxCycles} ${t('common.times')}`} />
                             )}
                             {!!strategy.stopConditions?.profitTargetPercent && (
-                              <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
+                              <ConfigRow label={t('create.profitTarget')} value={`${strategy.stopConditions.profitTargetPercent}%`} />
                             )}
                             {!!strategy.stopConditions?.maxLossPercent && (
-                              <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                              <ConfigRow label={t('create.maxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
                             )}
                           </>
                         )}
@@ -2612,14 +2612,18 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   } else if (logStatus === 'skipped') {
     detailText = er?.reason || log.decision?.reasoning?.slice(0, 100) || '';
   }
-  // Grid 日志：从 decisions 数组中提取最有意义的推理（优先 adjust_grid > hold > 最长的非 cancel 推理）
+  // Grid 日志：从 decisions 数组中提取最有意义的推理（优先 adjust_grid > hold > 全部拼接）
   const gridReasoning = isGrid
-    ? (gridDecisions.find(d => d.action === 'adjust_grid' && d.reasoning)?.reasoning ||
-       gridDecisions.find(d => d.action === 'hold' && d.reasoning)?.reasoning ||
-       gridDecisions
-         .filter(d => d.reasoning && d.action !== 'cancel_order')
-         .sort((a, b) => (b.reasoning?.length || 0) - (a.reasoning?.length || 0))[0]?.reasoning ||
-       '')
+    ? (() => {
+        const adjustR = gridDecisions.find(d => d.action === 'adjust_grid' && d.reasoning)?.reasoning;
+        if (adjustR) return adjustR;
+        const holdR = gridDecisions.find(d => d.action === 'hold' && d.reasoning)?.reasoning;
+        if (holdR) return holdR;
+        // 降级：拼接所有非空推理（cancel_order 也包含市场判断），取最长的前2条
+        const allR = [...new Set(gridDecisions.filter(d => d.reasoning).map(d => d.reasoning as string))]
+          .sort((a, b) => b.length - a.length).slice(0, 2);
+        return allR.join('\n') || '';
+      })()
     : '';
   const hasDetail = detailText || log.decision?.reasoning || gridReasoning;
 

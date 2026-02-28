@@ -40,7 +40,8 @@
     "enterEmailCode": "Silakan masukkan kode verifikasi email",
     "enterCode": "Silakan masukkan kode verifikasi",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "hari"
   },
   "auth": {
     "login": "Masuk",
@@ -1382,7 +1383,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "Muat lebih banyak"
+      "loadMore": "Muat lebih banyak",
+      "yes": "Ya",
+      "no": "Tidak"
     },
     "modes": {
       "research": "Research",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "Perlindungan Retracement Profit",
+      "gridProfitRetraceHint": "Tutup otomatis saat profit turun melebihi ambang dari puncak dalam {days} hari. Reset puncak setelah {days} hari tanpa pembaruan",
+      "gridProfitRetraceThreshold": "Ambang Retracement",
+      "gridProfitPeakWindow": "Jendela Memori Puncak",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "Pembukaan memerlukan minimal 2 konfirmasi sinyal independen. Tren + momentum + support harga kunci.",
       "promptDefaultDecision": "1. Evaluasi struktur pasar 2. Cari konfluensi sinyal 3. Evaluasi rasio risiko/reward 4. Tentukan ukuran posisi dan stop loss",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "Penghitung drawdown harian akan otomatis direset pada tengah malam"
     },
     "research": {
       "title": "AI Research Team",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AI gagal menghasilkan format keputusan yang valid",
       "fallbackAction": "Fallback action",
       "partialExecFailed": "Sebagian gagal",
-      "llmNoResponse": "Tidak ada hasil analisis"
+      "llmNoResponse": "Tidak ada hasil analisis",
+      "gridPerLevelCost": "~${cost}/level",
+      "gridRiskPaused": "Perdagangan dijeda oleh kontrol risiko",
+      "gridResumeTrading": "Lanjutkan Perdagangan",
+      "gridResumeSuccess": "Strategi dilanjutkan",
+      "gridResumeConfirmTitle": "Konfirmasi Lanjutkan Perdagangan",
+      "gridResumeConfirmDesc": "Strategi ini dijeda oleh kontrol risiko. Setelah dilanjutkan, perdagangan akan dimulai kembali, namun risiko pasar tetap ada.",
+      "gridResumeWillDo": "Setelah dilanjutkan：",
+      "gridResumePeakReset": "Puncak keuntungan direset ke level saat ini",
+      "gridResumeDailyReset": "Penghitung P&L harian direset ke nol",
+      "gridResumeRiskRemain": "Aturan risiko tidak berubah — akan dijeda lagi jika terpicu",
+      "gridResuming": "Melanjutkan...",
+      "gridConfirmResume": "Konfirmasi"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

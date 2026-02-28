@@ -383,7 +383,7 @@ export default function TradingPage() {
   // 单个平仓
   const closePositionMutation = useMutation({
     mutationFn: async ({ positionId, apiKeyId }: { positionId: string; apiKeyId: string }) => {
-      const response = await api.post(`/trading/positions/${positionId}/close`, { apiKeyId });
+      const response = await api.post(`/trading/positions/${encodeURIComponent(positionId)}/close`, { apiKeyId });
       return response.data;
     },
     onSuccess: () => {

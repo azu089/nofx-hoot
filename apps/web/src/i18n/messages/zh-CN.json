@@ -40,7 +40,8 @@
     "configSaved": "配置已保存",
     "passwordMismatch": "两次输入的密码不一致",
     "enterEmailCode": "请输入邮箱验证码",
-    "enterCode": "请输入验证码"
+    "enterCode": "请输入验证码",
+    "days": "天"
   },
   "auth": {
     "login": "登录",
@@ -1390,7 +1391,9 @@
       "min": "分钟",
       "hour": "小时",
       "day": "天",
-      "loadMore": "加载更多"
+      "loadMore": "加载更多",
+      "yes": "是",
+      "no": "否"
     },
     "modes": {
       "research": "深研",
@@ -1486,6 +1489,10 @@
       "gridAtrMultiplier": "ATR倍数",
       "gridMaxDrawdown": "最大回撤",
       "gridStopLossPercent": "止损比例",
+      "gridProfitRetrace": "利润回撤保护",
+      "gridProfitRetraceHint": "利润从近 {days} 天内最高点回落超过阈值时自动平仓。峰值超过 {days} 天不更新则自动重置基准",
+      "gridProfitRetraceThreshold": "回撤阈值",
+      "gridProfitPeakWindow": "峰值记忆窗口",
       "notBoundExchange": "未绑定交易所",
       "goToBind": "前往绑定",
       "selectExchangeAccount": "选择交易所账号",
@@ -2071,7 +2078,8 @@
       "aiFallbackWarning": "AI 未输出有效决策格式，参数为默认值",
       "fallbackAction": "回退动作",
       "partialExecFailed": "部分执行失败",
-      "llmNoResponse": "未返回任何分析结果"
+      "llmNoResponse": "未返回任何分析结果",
+      "gridPerLevelCost": "~${cost}/格"
     },
     "modeInfo": {
       "soloTitle": "极速模式",

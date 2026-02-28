@@ -399,6 +399,8 @@ export interface GridConfig {
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
+  profitRetracePct?: number;        // 利润峰值回撤保护阈值（默认 50%）
+  profitPeakWindowDays?: number;    // 利润峰值滚动窗口天数（默认 30）
 }
 
 export interface IndicatorConfig {

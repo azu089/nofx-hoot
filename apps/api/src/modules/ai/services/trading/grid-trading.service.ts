@@ -4,6 +4,7 @@ import { MarketDataService } from '../market-data.service';
 import { IndicatorsService, OHLCV } from '../indicators.service';
 import { LLMService, UserApiKeys } from '../llm.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
+import { FeeService } from '../../../trading/fee.service';
 import {
   ExchangeAdapter,
   GridExchangeAdapter,
@@ -39,6 +40,7 @@ export interface GridConfig {
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   profitRetracePct?: number;     // 利润峰值回撤触发阈值（默认 50%）：回撤 ≥ 此值时暂停网格
   profitProtectMinPct?: number;  // 触发保护所需最低盈利%（默认 1%）：低于此值不启动保护
+  profitPeakWindowDays?: number; // 利润峰值滚动窗口天数（默认 30）：超出此天数的历史峰值自动过期，以当前利润为新起点
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
 }
 
@@ -130,9 +132,13 @@ export interface GridState {
   takerFeeRate: number;
   makerFeeRate: number;
 
+  // 燃油费结算（点卡扣费基准）
+  chargedProfit: number;    // 已结算扣费的利润累计，防止重复扣费
+
   // 利润峰值追踪（保护盈利不被单边行情带走）
   startEquity: number;      // 策略启动时的账户权益，永不变更（用于计算策略总收益率）
   peakProfitPct: number;   // 相对 startEquity 的历史最高盈利%（触发利润回撤保护）
+  peakProfitSetAt?: string; // 上次更新峰值的时间 ISO 字符串，用于滚动窗口过期检测
   lastEquity: number;       // 最近一次成功获取的账户权益（用于计算总盈亏）
 
   // OI 持仓量追踪（用于计算周期间变化，区分真假突破）
@@ -164,7 +170,7 @@ export interface GridDecision {
 // ========================= 常量 =========================
 
 const BREAKOUT_CONFIRM_REQUIRED = 3;
-const DEFAULT_ATR_MULTIPLIER = 2.0;
+const DEFAULT_ATR_MULTIPLIER = 5.0; // 5x ATR ≈ 覆盖 2-3 天波幅（原2x过窄，易被行情突破）
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
 const DEFAULT_BREAKOUT_PCT = 2;
@@ -280,6 +286,7 @@ export class GridTradingService {
     @Optional() private readonly indicators: IndicatorsService,
     @Optional() private readonly llm: LLMService,
     @Optional() private readonly adapterFactory: AdapterFactoryService,
+    @Optional() private readonly feeService: FeeService,
   ) {}
 
   // ========================= 初始化 =========================
@@ -312,9 +319,9 @@ export class GridTradingService {
     // 获取当前价格
     const currentPrice = await this.getCurrentPrice(symbol);
 
-    // Step 1: 计算边界
-    let upperPrice: number;
-    let lowerPrice: number;
+    // Step 1: 计算边界（初始化为 ±8% 兜底，后续可被更精确算法覆盖）
+    let upperPrice: number = currentPrice * 1.08;
+    let lowerPrice: number = currentPrice * 0.92;
 
     if (useATRBounds && this.indicators) {
       // ATR 自动边界
@@ -330,19 +337,46 @@ export class GridTradingService {
         upperPrice = currentPrice + halfRange;
         lowerPrice = currentPrice - halfRange;
       } else {
-        // ATR 计算失败，使用默认范围
-        const mult = 0.03 * gridCount / 10;
-        upperPrice = currentPrice * (1 + mult);
-        lowerPrice = currentPrice * (1 - mult);
+        // ATR 计算失败，使用 ±8% 兜底（原方案 ±1.5% 过窄）
+        upperPrice = currentPrice * 1.08;
+        lowerPrice = currentPrice * 0.92;
       }
     } else if (config.upperBound && config.lowerBound) {
       upperPrice = config.upperBound;
       lowerPrice = config.lowerBound;
     } else {
-      // 默认范围
-      const mult = 0.03 * gridCount / 10;
-      upperPrice = currentPrice * (1 + mult);
-      lowerPrice = currentPrice * (1 - mult);
+      // 用户未填写边界：自动用 ATR 计算最优宽度（ATR×5 ≈ 2-3天波幅，避免行情轻易突破）
+      let autoRangeSet = false;
+      if (this.indicators) {
+        try {
+          const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '4h', 20);
+          const highs = ohlcvRaw.map((c: any) => Number(c[2]));
+          const lows = ohlcvRaw.map((c: any) => Number(c[3]));
+          const closes = ohlcvRaw.map((c: any) => Number(c[4]));
+          const atr = this.indicators.calculateATR(highs, lows, closes, 14);
+          if (atr && atr > 0) {
+            const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
+            upperPrice = currentPrice + halfRange;
+            lowerPrice = currentPrice - halfRange;
+            autoRangeSet = true;
+            this.logger.log(
+              `[网格] 自动宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}): 当前价=${currentPrice.toFixed(2)}, ` +
+              `ATR(4H,14)=${atr.toFixed(2)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+            );
+          }
+        } catch (_e) {
+          // ATR 获取失败，使用百分比兜底
+        }
+      }
+      if (!autoRangeSet) {
+        // 兜底：固定 ±8%（原方案 ±1.5% 过窄，改为 ±8% 更合理）
+        upperPrice = currentPrice * 1.08;
+        lowerPrice = currentPrice * 0.92;
+        this.logger.log(
+          `[网格] 自动宽度 (±8% 兜底): 当前价=${currentPrice.toFixed(2)}, ` +
+          `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+        );
+      }
     }
 
     if (upperPrice <= lowerPrice) {
@@ -461,6 +495,8 @@ export class GridTradingService {
 
       takerFeeRate: config.takerFeeRate ?? DEFAULT_TAKER_FEE_RATE,
       makerFeeRate: config.makerFeeRate ?? DEFAULT_MAKER_FEE_RATE,
+
+      chargedProfit: 0,
 
       startEquity: initialEquity,
       peakProfitPct: 0,
@@ -665,10 +701,28 @@ export class GridTradingService {
       const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
       if (currentProfitPct > state.peakProfitPct) {
         state.peakProfitPct = currentProfitPct;
+        state.peakProfitSetAt = new Date().toISOString(); // 记录峰值时间（用于滚动窗口过期检测）
       }
     }
 
     // Step 3.5: 利润峰值回撤保护（防止盈利被单边行情带走）
+    // 滚动窗口：峰值超过 N 天未更新，重置为当前利润（防止历史高峰永久卡位）
+    if (equityFetched && state.startEquity > 0 && currentEquity > 0) {
+      const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
+      const profitPeakWindowDays = gridConfig?.profitPeakWindowDays ?? 30;
+      if (profitPeakWindowDays > 0 && state.peakProfitSetAt && state.peakProfitPct > 0) {
+        const peakAgeMs = Date.now() - new Date(state.peakProfitSetAt).getTime();
+        const peakAgeDays = peakAgeMs / (1000 * 3600 * 24);
+        if (peakAgeDays > profitPeakWindowDays) {
+          this.logger.log(
+            `[网格] 利润峰值滚动窗口到期 (${peakAgeDays.toFixed(1)}天 > ${profitPeakWindowDays}天)，` +
+            `峰值从 +${state.peakProfitPct.toFixed(2)}% 重置为当前 ${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}%`,
+          );
+          state.peakProfitPct = Math.max(currentProfitPct, 0); // 重置，亏损时归零（不用负数起点）
+          state.peakProfitSetAt = new Date().toISOString();
+        }
+      }
+    }
     const profitRetracePct = gridConfig?.profitRetracePct ?? 50;
     const profitProtectMinPct = gridConfig?.profitProtectMinPct ?? 1;
     if (equityFetched && state.startEquity > 0 && state.peakProfitPct >= profitProtectMinPct) {
@@ -676,18 +730,17 @@ export class GridTradingService {
       if (state.peakProfitPct > 0) {
         const retracement = (state.peakProfitPct - currentProfitPct) / state.peakProfitPct * 100;
         if (retracement >= profitRetracePct) {
-          state.isPaused = true;
-          state.pauseSource = 'risk_control';
           // 生成用户可读的暂停原因
           const profitLostDesc = currentProfitPct < 0
             ? `利润已全部回吐并转为亏损 ${currentProfitPct.toFixed(2)}%`
             : `利润从 +${state.peakProfitPct.toFixed(2)}% 回落至 +${currentProfitPct.toFixed(2)}%`;
-          state.pauseReason =
+          const profitReason =
             `利润保护触发\n` +
-            `保护规则: 利润从最高点回落超过 ${profitRetracePct}% 时暂停\n` +
+            `保护规则: 利润从最高点回落超过 ${profitRetracePct}% 时平仓退出\n` +
             `实际情况: 利润最高 +${state.peakProfitPct.toFixed(2)}% → 现在 ${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}%\n` +
             profitLostDesc;
-          this.logger.warn(`[网格] ${state.pauseReason}`);
+          // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
+          await this.emergencyExit(state, userId, apiKeyId, profitReason);
           await this.persistGridState(strategyId, state);
           await this.deactivateStrategy(strategyId);
           return { trades: 0, errors: 0 };
@@ -726,15 +779,12 @@ export class GridTradingService {
     if (state.dailyPnl < 0 && dailyBase > 0) {
       const dailyLossPct = (Math.abs(state.dailyPnl) / dailyBase) * 100;
       if (dailyLossPct >= dailyLossLimitPct) {
-        state.isPaused = true;
-        state.pauseSource = 'risk_control';
-        state.pauseReason =
+        const dailyReason =
           `日内亏损保护触发\n` +
-          `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时暂停\n` +
+          `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时平仓退出\n` +
           `实际情况: 今日已亏损 ${dailyLossPct.toFixed(1)}%（$${Math.abs(state.dailyPnl).toFixed(2)}）`;
-        this.logger.warn(
-          `[网格] ⛔ 日损限触发: 日内PnL=${state.dailyPnl.toFixed(2)} USDT (${dailyLossPct.toFixed(2)}%) ≥ 限制 ${dailyLossLimitPct}%，网格暂停`,
-        );
+        // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
+        await this.emergencyExit(state, userId, apiKeyId, dailyReason);
         await this.persistGridState(strategyId, state);
         await this.deactivateStrategy(strategyId);
         return { trades: 0, errors: 0 };
@@ -879,6 +929,39 @@ export class GridTradingService {
 
         // 构建 AI 上下文（传入 Step 3 预取的持仓快照，避免重复 API 调用）
         const context = await this.buildGridContext(state, adapter, currentPrice, livePositions);
+
+        // Step 5.5: 1H 价格变化代码层硬检查（A1/A2 提升为硬规则，防止 AI 漏判）
+        // --- 黑天鹅级别：≥10%，直接 emergencyExit 平仓 ---
+        const maxHourlyChangePct = gridConfig?.maxHourlyChangePct ?? DEFAULT_MAX_HOURLY_CHANGE_PCT;
+        if (Math.abs(context.priceChange1h) >= maxHourlyChangePct) {
+          const dir = context.priceChange1h > 0 ? '上涨' : '下跌';
+          await this.emergencyExit(state, userId, apiKeyId,
+            `1H 极端行情: 价格${dir} ${Math.abs(context.priceChange1h).toFixed(1)}% ≥ ${maxHourlyChangePct}%，紧急平仓退出`);
+          await this.persistGridState(strategyId, state);
+          await this.deactivateStrategy(strategyId);
+          return { trades: 0, errors: 0 };
+        }
+        // --- 单边快速行情：≥6% + RSI 确认，取消订单并暂停（不强平，可手动恢复）---
+        const rapidRise = context.priceChange1h > 6 && context.rsi14 > 70;
+        const rapidFall = context.priceChange1h < -6 && context.rsi14 < 30;
+        if (rapidRise || rapidFall) {
+          const dir = rapidRise
+            ? `上涨 ${context.priceChange1h.toFixed(1)}%（RSI ${context.rsi14.toFixed(0)}）`
+            : `下跌 ${Math.abs(context.priceChange1h).toFixed(1)}%（RSI ${context.rsi14.toFixed(0)}）`;
+          this.logger.warn(`[网格] 单边快速行情: 1H ${dir}，取消订单并暂停`);
+          try {
+            await adapter.cancelAllOrders(state.symbol);
+          } catch (e: any) {
+            this.logger.warn(`[网格] 快速行情撤单失败: ${e.message}`);
+          }
+          state.isPaused = true;
+          state.pauseSource = 'risk_control';
+          state.pauseReason = `单边快速行情\n保护规则: 1H 价格变化超过 6% 且 RSI 超出合理区间时暂停\n实际情况: 1H ${dir}`;
+          await this.persistGridState(strategyId, state);
+          await this.deactivateStrategy(strategyId);
+          return { trades: 0, errors: 0 };
+        }
+
         const modelId = gridConfig?.modelId || 'deepseek-chat';
 
         const response = await this.llm.chat(
@@ -1873,6 +1956,9 @@ export class GridTradingService {
           this.logger.warn(`[网格] 平仓失败: ${pos.symbol} ${pos.side} - ${e.message}`);
         }
       }
+
+      // 平仓完成后结算燃油费（基于已实现网格利润，失败不阻塞后续状态更新）
+      await this.settleGridFee(state, userId);
     } catch (e: any) {
       this.logger.error(`[网格] 紧急退出执行失败: ${e.message}`);
     } finally {
@@ -1891,6 +1977,48 @@ export class GridTradingService {
       }
     }
     state.orderBook = {};
+  }
+
+  // ========================= 燃油费结算 =========================
+
+  /**
+   * 结算网格策略的点卡燃油费
+   * - 只在有新增盈利时扣费（高水位标记，防止重复扣费）
+   * - 失败不影响平仓流程（非致命错误）
+   */
+  private async settleGridFee(state: GridState, userId: string): Promise<void> {
+    if (!this.feeService) return;
+    const pendingProfit = state.totalProfit - (state.chargedProfit ?? 0);
+    if (pendingProfit <= 0) return;
+
+    try {
+      const feeCalc = await this.feeService.calculateFee(userId, pendingProfit.toFixed(8));
+      if (parseFloat(feeCalc.feeAmount) > 0) {
+        const uniqueOrderId = this.feeService.generateUniqueOrderId(
+          'GRID_FEE',
+          userId,
+          state.strategyId,
+        );
+        const result = await this.feeService.chargeFee({
+          userId,
+          positionId: state.strategyId,
+          profit: feeCalc.profit,
+          feeRate: feeCalc.finalFeeRate,
+          feeAmount: feeCalc.feeAmount,
+          uniqueOrderId,
+        });
+        state.chargedProfit = state.totalProfit; // 更新高水位，防止重复扣费
+        this.logger.log(
+          `[网格] 燃油费结算: 利润=${pendingProfit.toFixed(2)} USDT, ` +
+          `扣费=${feeCalc.feeAmount} 点, 费率=${(parseFloat(feeCalc.finalFeeRate) * 100).toFixed(1)}%`,
+        );
+        if (result.balanceDepleted) {
+          this.logger.warn(`[网格] 点卡余额不足，策略将在下次周期自动停止`);
+        }
+      }
+    } catch (e: any) {
+      this.logger.error(`[网格] 燃油费结算失败（非致命，平仓继续）: ${e.message}`);
+    }
   }
 
   // ========================= 订单同步 =========================

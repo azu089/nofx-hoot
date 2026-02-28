@@ -257,7 +257,7 @@ export class PromptBuilderService {
       lines.push(`Total Trades: ${s.totalTrades} | Win Rate: ${(s.winRate * 100).toFixed(1)}% | Total PnL: $${s.totalPnl.toFixed(2)}`);
       if (s.profitFactor !== undefined) lines.push(`Profit Factor: ${s.profitFactor} | Avg Win: $${s.avgWin?.toFixed(2) ?? 'N/A'} | Avg Loss: $${s.avgLoss?.toFixed(2) ?? 'N/A'}`);
       if (s.sharpeRatio !== undefined) lines.push(`Sharpe Ratio: ${s.sharpeRatio}`);
-      if (s.maxDrawdownPct !== undefined) lines.push(`Max Drawdown: ${s.maxDrawdownPct}%`);
+      if (s.maxDrawdownPct !== undefined) lines.push(`历史最大回撤(峰值统计,非当前): ${s.maxDrawdownPct.toFixed(1)}%`);
     }
 
     // [5] Current Positions

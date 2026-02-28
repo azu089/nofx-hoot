@@ -19,30 +19,18 @@ type CoinSource = 'manual' | 'ai' | 'oi_top'
 // ═══════════════════ Constants ═══════════════════
 
 /**
- * 模式显示标签
  * 注：solo = "极速"，与共识(debate)逻辑不同：
  *   - 极速/深研/网格：单选 1 个 LLM
  *   - 共识：多选 ≥2 个 LLM（投票机制需要不同观点）
  *   - 深研使用 quickThinkModel/deepThinkModel 两个角色，但可由同一模型担任
+ * 模式/深度/来源标签通过 i18n t() 获取，跟随系统语言
  */
-const MODE_LABELS: Record<StrategyMode, string> = {
-  solo: '极速',
-  debate: '共识',
-  research: '深研',
-  grid: '网格',
-}
 
-const DEPTH_OPTIONS: { value: ResearchDepth; label: string; time: string }[] = [
-  { value: 'quick', label: '快速', time: '~1min' },
-  { value: 'standard', label: '标准', time: '~3min' },
-  { value: 'deep', label: '深度', time: '~5min' },
+const DEPTH_OPTIONS: { value: ResearchDepth; time: string }[] = [
+  { value: 'quick', time: '~1min' },
+  { value: 'standard', time: '~3min' },
+  { value: 'deep', time: '~5min' },
 ]
-
-const COIN_SOURCE_LABELS: Record<CoinSource, string> = {
-  manual: '手动选',
-  ai: 'AI精选',
-  oi_top: 'OI排名',
-}
 
 const STRATEGY_INTERVALS: Record<StrategyMode, string[]> = {
   solo:     ['3m', '5m', '15m', '30m', '60m'],
@@ -81,6 +69,27 @@ const intervalToMinutes = (v: string): number => {
 export function CreateStrategyWizard() {
   const router = useRouter()
   const t = useTranslations('ai')
+
+  // ── i18n label helpers（跟随系统语言）──────────────
+  const getModeLabel = (m: StrategyMode): string => ({
+    solo: t('modes.solo'),
+    debate: t('modes.debate'),
+    research: t('modes.research'),
+    grid: t('modes.grid'),
+  }[m])
+
+  const getDepthLabel = (value: ResearchDepth): string => {
+    if (value === 'quick') return t('create.quick')
+    if (value === 'deep') return t('create.deep')
+    return t('create.standard')
+  }
+
+  const getCoinSourceLabel = (src: CoinSource): string => {
+    if (src === 'manual') return t('create.coinSourceManual')
+    if (src === 'ai') return t('create.coinSourceAI')
+    return t('create.coinSourceOIHigh')
+  }
+
   const startResearch = useStartResearch()
   const createStrategy = useCreateStrategy()
   const strategyControl = useStrategyControl()
@@ -148,6 +157,8 @@ export function CreateStrategyWizard() {
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
+    profitRetracePct: 50,       // 利润峰值回撤保护阈值（默认 50%）
+    profitPeakWindowDays: 30,   // 利润峰值滚动窗口天数（默认 30）
   })
 
   // ── Stop conditions ───────────────────────────
@@ -274,7 +285,7 @@ export function CreateStrategyWizard() {
       }
 
       const body: Record<string, unknown> = {
-        name: name.trim() || `${MODE_LABELS[mode]} 策略`,
+        name: name.trim() || getModeLabel(mode),
         strategyType: isGrid ? 'grid' : 'normal',
         tradingMode: isDebate ? 'debate' : 'solo',
         coinSourceConfig: isGrid
@@ -324,6 +335,8 @@ export function CreateStrategyWizard() {
           lowerBound: gridParams.lowerBound,
           maxDrawdownPct: gridParams.maxDrawdownPct,
           dailyLossLimitPct: gridParams.dailyLossLimitPct,
+          profitRetracePct: gridParams.profitRetracePct,
+          profitPeakWindowDays: gridParams.profitPeakWindowDays,
         }
       }
 
@@ -381,10 +394,10 @@ export function CreateStrategyWizard() {
                   ? 'bg-[#06B6D4] text-white'
                   : 'text-[#606070] hover:text-[#94A3B8]'
               }`}
-              aria-label={MODE_LABELS[m]}
-              title={MODE_LABELS[m]}
+              aria-label={getModeLabel(m)}
+              title={getModeLabel(m)}
             >
-              {MODE_LABELS[m]}
+              {getModeLabel(m)}
             </button>
           ))}
         </div>
@@ -396,7 +409,7 @@ export function CreateStrategyWizard() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={`${MODE_LABELS[mode]} 策略`}
+            placeholder={getModeLabel(mode)}
             className="w-full px-4 py-3 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] transition-colors"
             aria-label="策略名称"
           />
@@ -482,10 +495,10 @@ export function CreateStrategyWizard() {
                         ? 'bg-[#06B6D4] text-white'
                         : 'bg-[#12121A] text-[#94A3B8] border border-[#1E1E2E] hover:border-[#06B6D4]/50'
                     }`}
-                    aria-label={COIN_SOURCE_LABELS[src]}
-                    title={COIN_SOURCE_LABELS[src]}
+                    aria-label={getCoinSourceLabel(src)}
+                    title={getCoinSourceLabel(src)}
                   >
-                    {COIN_SOURCE_LABELS[src]}
+                    {getCoinSourceLabel(src)}
                   </button>
                 ))}
               </div>
@@ -713,10 +726,10 @@ export function CreateStrategyWizard() {
                       ? 'bg-[#06B6D4]/10 border border-[#06B6D4] text-[#06B6D4]'
                       : 'bg-[#12121A] border border-[#1E1E2E] text-[#94A3B8] hover:border-[#06B6D4]/50'
                   }`}
-                  aria-label={opt.label}
-                  title={opt.label}
+                  aria-label={getDepthLabel(opt.value)}
+                  title={getDepthLabel(opt.value)}
                 >
-                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-sm font-medium">{getDepthLabel(opt.value)}</div>
                   <div className="text-[10px] text-[#606070]">{opt.time}</div>
                 </button>
               ))}
@@ -820,6 +833,36 @@ export function CreateStrategyWizard() {
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
+              </div>
+
+              {/* 利润回撤保护 */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#9090A0]">利润回撤保护</p>
+                <p className="text-[10px] text-[#606070] leading-relaxed">
+                  利润从近 {gridParams.profitPeakWindowDays} 天内最高点回落超过阈值时自动平仓。峰值超过 {gridParams.profitPeakWindowDays} 天不更新则自动重置基准。
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <RiskField label="回撤阈值" suffix="%">
+                    <input
+                      type="number"
+                      title="回撤阈值"
+                      value={gridParams.profitRetracePct}
+                      onChange={(e) => updateGrid('profitRetracePct', Number(e.target.value) || 50)}
+                      min={10} max={100}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    />
+                  </RiskField>
+                  <RiskField label="峰值记忆窗口" suffix="天">
+                    <input
+                      type="number"
+                      title="峰值记忆窗口"
+                      value={gridParams.profitPeakWindowDays}
+                      onChange={(e) => updateGrid('profitPeakWindowDays', Number(e.target.value) || 30)}
+                      min={1} max={365}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    />
+                  </RiskField>
+                </div>
               </div>
 
               {/* 网格可行性提示 — 实时告知用户当前配置能运行几格 */}

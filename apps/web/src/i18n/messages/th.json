@@ -40,7 +40,8 @@
     "enterEmailCode": "กรุณากรอกรหัสยืนยันอีเมล",
     "enterCode": "กรุณากรอกรหัสยืนยัน",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "วัน"
   },
   "auth": {
     "login": "เข้าสู่ระบบ",
@@ -1382,7 +1383,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "โหลดเพิ่มเติม"
+      "loadMore": "โหลดเพิ่มเติม",
+      "yes": "ใช่",
+      "no": "ไม่"
     },
     "modes": {
       "research": "Research",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "การป้องกันการย้อนกลับกำไร",
+      "gridProfitRetraceHint": "ปิดอัตโนมัติเมื่อกำไรลดลงเกินเกณฑ์จากจุดสูงสุดใน {days} วัน รีเซ็ตฐานหากไม่อัปเดตเกิน {days} วัน",
+      "gridProfitRetraceThreshold": "เกณฑ์การย้อนกลับ",
+      "gridProfitPeakWindow": "หน้าต่างความจำจุดสูงสุด",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "การเปิดสถานะต้องมีสัญญาณยืนยันอิสระอย่างน้อย 2 ตัว แนวโน้ม + โมเมนตัม + แนวรับราคาสำคัญ",
       "promptDefaultDecision": "1. ประเมินโครงสร้างตลาด 2. หาจุดบรรจบของสัญญาณ 3. ประเมินอัตราส่วนความเสี่ยง/ผลตอบแทน 4. กำหนดขนาดและจุดตัดขาดทุน",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "ตัวนับ drawdown รายวันจะรีเซ็ตอัตโนมัติเที่ยงคืน"
     },
     "research": {
       "title": "AI Research Team",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AI ไม่สามารถส่งออกรูปแบบการตัดสินใจที่ถูกต้อง",
       "fallbackAction": "Fallback action",
       "partialExecFailed": "บางส่วนล้มเหลว",
-      "llmNoResponse": "ไม่มีผลการวิเคราะห์"
+      "llmNoResponse": "ไม่มีผลการวิเคราะห์",
+      "gridPerLevelCost": "~${cost}/ระดับ",
+      "gridRiskPaused": "การเทรดหยุดชั่วคราวโดยการควบคุมความเสี่ยง",
+      "gridResumeTrading": "ดำเนินการเทรดต่อ",
+      "gridResumeSuccess": "กลยุทธ์ดำเนินการต่อแล้ว",
+      "gridResumeConfirmTitle": "ยืนยันการดำเนินการต่อ",
+      "gridResumeConfirmDesc": "กลยุทธ์นี้ถูกหยุดชั่วคราวโดยการควบคุมความเสี่ยง หลังจากดำเนินการต่อ การเทรดจะเริ่มใหม่ แต่ความเสี่ยงของตลาดยังคงมีอยู่",
+      "gridResumeWillDo": "หลังดำเนินการต่อ：",
+      "gridResumePeakReset": "รีเซ็ตจุดสูงสุดของกำไรเป็นระดับปัจจุบัน",
+      "gridResumeDailyReset": "รีเซ็ตตัวนับ P&L รายวันเป็นศูนย์",
+      "gridResumeRiskRemain": "กฎความเสี่ยงไม่เปลี่ยนแปลง — จะหยุดชั่วคราวอีกครั้งหากถูกกระตุ้น",
+      "gridResuming": "กำลังดำเนินการต่อ...",
+      "gridConfirmResume": "ยืนยัน"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

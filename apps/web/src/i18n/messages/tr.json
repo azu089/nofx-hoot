@@ -40,7 +40,8 @@
     "enterEmailCode": "Lütfen e-posta doğrulama kodunu girin",
     "enterCode": "Lütfen doğrulama kodunu girin",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "gün"
   },
   "auth": {
     "login": "Giriş Yap",
@@ -1382,7 +1383,9 @@
       "min": "min",
       "hour": "h",
       "day": "d",
-      "loadMore": "Daha fazla yükle"
+      "loadMore": "Daha fazla yükle",
+      "yes": "Evet",
+      "no": "Hayır"
     },
     "modes": {
       "research": "Research",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR Multiplier",
       "gridMaxDrawdown": "Max Drawdown",
       "gridStopLossPercent": "Stop Loss %",
+      "gridProfitRetrace": "Kâr Geri Çekilme Koruması",
+      "gridProfitRetraceHint": "Son {days} gün içindeki en yüksek noktadan eşiği aşan düşüşte otomatik kapat. {days} gün güncellenmezse temel sıfırlanır",
+      "gridProfitRetraceThreshold": "Geri Çekilme Eşiği",
+      "gridProfitPeakWindow": "Tepe Hafıza Penceresi",
       "notBoundExchange": "No exchange bound",
       "goToBind": "Go to bind",
       "selectExchangeAccount": "Select exchange account",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "Giriş için en az 2 bağımsız sinyal onayı gerekir. Trend + momentum + kilit fiyat desteği.",
       "promptDefaultDecision": "1. Piyasa yapısını değerlendir 2. Sinyal uyumunu ara 3. Risk/getiri oranını hesapla 4. Pozisyon boyutu ve zarar durdur belirle",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "Günlük düşüş sayacı gece yarısı otomatik sıfırlanır"
     },
     "research": {
       "title": "AI Research Team",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AI geçerli karar formatı üretemedi",
       "fallbackAction": "Fallback action",
       "partialExecFailed": "Kısmi başarısız",
-      "llmNoResponse": "Analiz sonucu döndürülmedi"
+      "llmNoResponse": "Analiz sonucu döndürülmedi",
+      "gridPerLevelCost": "~${cost}/seviye",
+      "gridRiskPaused": "Risk kontrolü tarafından işlem durduruldu",
+      "gridResumeTrading": "İşleme Devam Et",
+      "gridResumeSuccess": "Strateji devam ettirildi",
+      "gridResumeConfirmTitle": "İşleme Devamı Onayla",
+      "gridResumeConfirmDesc": "Bu strateji risk kontrolü tarafından duraklatıldı. Devam ettikten sonra işlem yeniden başlar, ancak piyasa riski devam eder.",
+      "gridResumeWillDo": "Devam sonrası：",
+      "gridResumePeakReset": "Kâr zirvesi mevcut seviyeye sıfırlandı",
+      "gridResumeDailyReset": "Günlük K/Z sayacı sıfırlandı",
+      "gridResumeRiskRemain": "Risk kuralları değişmez — tetiklenirse tekrar duraklatılır",
+      "gridResuming": "Devam ettiriliyor...",
+      "gridConfirmResume": "Onayla"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

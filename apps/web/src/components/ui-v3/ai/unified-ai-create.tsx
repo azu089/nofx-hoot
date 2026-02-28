@@ -213,6 +213,8 @@ export function UnifiedAiCreate() {
   const [gridLowerBound, setGridLowerBound] = useState(0);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
+  const [gridProfitRetracePct, setGridProfitRetracePct] = useState(50);
+  const [gridProfitPeakWindowDays, setGridProfitPeakWindowDays] = useState(30);
 
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
@@ -454,6 +456,8 @@ export function UnifiedAiCreate() {
           upperBound: gridUpperBound,
           lowerBound: gridLowerBound,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
+          profitRetracePct: gridProfitRetracePct,
+          profitPeakWindowDays: gridProfitPeakWindowDays,
         };
       }
 
@@ -508,7 +512,7 @@ export function UnifiedAiCreate() {
   // ── Reasoning mode label helpers ─────────────────────────────
   const getModeLabel = (key: ReasoningMode): string => {
     if (key === 'research') return t('modes.research');
-    if (key === 'solo') return '极速';  // solo 模式品牌名称：极速（单模型，不同于共识debate≥2模型）
+    if (key === 'solo') return t('modes.solo');
     if (key === 'grid') return t('modes.grid');
     return t('modes.debate');
   };
@@ -1024,6 +1028,42 @@ export function UnifiedAiCreate() {
                     aria-label={t('create.gridStopLossPercent')}
                   />
                   <span className="text-[#606070] text-xs shrink-0">%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 利润回撤保护 */}
+            <div className="space-y-2">
+              <p className="text-xs text-[#9090A0]">{t('create.gridProfitRetrace')}</p>
+              <p className="text-[10px] text-[#606070] leading-relaxed">
+                {t('create.gridProfitRetraceHint', { days: gridProfitPeakWindowDays })}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <p className="text-[10px] text-[#606070]">{t('create.gridProfitRetraceThreshold')}</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input
+                      type="number" min={10} max={100}
+                      value={gridProfitRetracePct || ''}
+                      onChange={(e) => setGridProfitRetracePct(parseInt(e.target.value) || 50)}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      aria-label={t('create.gridProfitRetraceThreshold')}
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">%</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-[#606070]">{t('create.gridProfitPeakWindow')}</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input
+                      type="number" min={1} max={365}
+                      value={gridProfitPeakWindowDays || ''}
+                      onChange={(e) => setGridProfitPeakWindowDays(parseInt(e.target.value) || 30)}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      aria-label={t('create.gridProfitPeakWindow')}
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">{t('common.days')}</span>
+                  </div>
                 </div>
               </div>
             </div>

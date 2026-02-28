@@ -40,7 +40,8 @@
     "configSaved": "設定已儲存",
     "passwordMismatch": "兩次輸入的密碼不一致",
     "enterEmailCode": "請輸入電子郵件驗證碼",
-    "enterCode": "請輸入驗證碼"
+    "enterCode": "請輸入驗證碼",
+    "days": "天"
   },
   "auth": {
     "login": "登入",
@@ -1384,7 +1385,9 @@
       "min": "分鐘",
       "hour": "小時",
       "day": "天",
-      "loadMore": "載入更多"
+      "loadMore": "載入更多",
+      "yes": "是",
+      "no": "否"
     },
     "modes": {
       "research": "深研",
@@ -1480,6 +1483,10 @@
       "gridAtrMultiplier": "ATR倍數",
       "gridMaxDrawdown": "最大回撤",
       "gridStopLossPercent": "止損比例",
+      "gridProfitRetrace": "利潤回撤保護",
+      "gridProfitRetraceHint": "利潤從近 {days} 天內最高點回落超過閾值時自動平倉。峰值超過 {days} 天不更新則自動重置基準",
+      "gridProfitRetraceThreshold": "回撤閾值",
+      "gridProfitPeakWindow": "峰值記憶窗口",
       "notBoundExchange": "未綁定交易所",
       "goToBind": "前往綁定",
       "selectExchangeAccount": "選擇交易所帳號",
@@ -1748,7 +1755,8 @@
       "promptDefaultEntry": "開倉需要至少2個獨立信號共振確認。趨勢方向+動量+關鍵價位支撐。",
       "promptDefaultDecision": "1. 判斷市場結構和趨勢方向 2. 尋找入場信號共振 3. 評估風險回報比 4. 確定倉位大小和止損",
       "gridMode": "网格模式",
-      "researchMode": "深研模式"
+      "researchMode": "深研模式",
+      "soloResumeDrawdownNote": "日內回撤計數將在次日零點自動重置"
     },
     "research": {
       "title": "AI 研究團隊",
@@ -2053,7 +2061,19 @@
       "aiFallbackWarning": "AI 未輸出有效決策格式，參數為預設值",
       "fallbackAction": "回退動作",
       "partialExecFailed": "部分執行失敗",
-      "llmNoResponse": "未返回任何分析結果"
+      "llmNoResponse": "未返回任何分析結果",
+      "gridPerLevelCost": "~${cost}/格",
+      "gridRiskPaused": "風控保護已暫停交易",
+      "gridResumeTrading": "恢復交易",
+      "gridResumeSuccess": "策略已恢復交易",
+      "gridResumeConfirmTitle": "確認恢復交易",
+      "gridResumeConfirmDesc": "當前策略因風控保護被暫停。恢復後將重新開始交易，但市場風險仍然存在。",
+      "gridResumeWillDo": "恢復後將執行：",
+      "gridResumePeakReset": "利潤峰值重置為當前水平（防止立即再次觸發）",
+      "gridResumeDailyReset": "日內損益計數器歸零",
+      "gridResumeRiskRemain": "風控規則保持不變，如再次觸發仍會暫停",
+      "gridResuming": "恢復中...",
+      "gridConfirmResume": "確認恢復"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

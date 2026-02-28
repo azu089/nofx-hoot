@@ -262,12 +262,59 @@ export class PositionsService {
     };
   }
 
+  /**
+   * 解析 exchange-only 合成持仓 ID
+   * 格式: exchange_{symbol}_{side}，其中 symbol 可含 / 和 :（如 ETH/USDT:USDT）
+   */
+  private parseExchangeOnlyId(positionId: string): { symbol: string; side: 'long' | 'short' } {
+    const withoutPrefix = positionId.slice('exchange_'.length);
+    if (withoutPrefix.endsWith('_long')) {
+      return { symbol: withoutPrefix.slice(0, -5), side: 'long' };
+    } else if (withoutPrefix.endsWith('_short')) {
+      return { symbol: withoutPrefix.slice(0, -6), side: 'short' };
+    }
+    throw new NotFoundException(`无效的持仓 ID: ${positionId}`);
+  }
+
   // 手动平仓
   async closePosition(
     userId: string,
     positionId: string,
     apiKeyId: string,
   ): Promise<PositionResponse> {
+    // 处理 exchange-only 合成持仓（DB 中无记录，symbol 含 / 和 :）
+    if (positionId.startsWith('exchange_')) {
+      const { symbol, side } = this.parseExchangeOnlyId(positionId);
+      this.logger.log(`手动平仓 exchange-only 持仓: ${symbol} ${side}`);
+
+      // 从交易所获取最新持仓数据以确认存在并获取数量
+      const exchangePositions = await this.tradingService.fetchPositions(userId, apiKeyId, symbol);
+      const ep = exchangePositions.find((p: any) => (p.side as string) === side);
+
+      if (!ep || Math.abs(parseFloat(ep.contracts || '0')) === 0) {
+        throw new NotFoundException('交易所持仓不存在或已平仓');
+      }
+
+      const amount = Math.abs(parseFloat(ep.contracts));
+      const result = await this.tradingService.closePosition(
+        userId, apiKeyId, symbol, amount, side,
+        { tradingType: 'futures' },
+      );
+
+      this.logger.log(`Exchange-only 平仓成功: ${symbol} ${side} 数量=${amount}`);
+      return {
+        id: positionId,
+        exchange: result.exchange || 'binance',
+        symbol,
+        side,
+        entryPrice: ep.entryPrice?.toString() || '0',
+        amount: amount.toString(),
+        status: 'closed',
+        exchangeOrderId: result.orderId,
+        createdAt: new Date(),
+      };
+    }
+
     // 查找持仓
     const position = await this.prisma.position.findUnique({
       where: { id: positionId },
@@ -359,32 +406,49 @@ export class PositionsService {
     }
   }
 
-  // 紧急清仓所有持仓
+  // 紧急清仓所有持仓（含 exchange-only 持仓）
   async emergencyCloseAll(
     userId: string,
     apiKeyId: string,
   ): Promise<{ closed: number; failed: number; results: PositionResponse[] }> {
-    // 获取所有活跃持仓
+    // 1. 获取 DB 活跃持仓
     const openPositions = await this.prisma.position.findMany({
-      where: {
-        userId,
-        status: 'open',
-      },
+      where: { userId, status: 'open' },
     });
 
-    if (openPositions.length === 0) {
+    // 2. 获取交易所实际持仓（用于找出 exchange-only 的仓位）
+    type ExchangeOnlyEntry = { symbol: string; side: 'long' | 'short'; contracts: number; entryPrice: number };
+    let exchangeOnlyToClose: ExchangeOnlyEntry[] = [];
+    try {
+      const allExchangePositions = await this.tradingService.fetchPositions(userId, apiKeyId);
+      const dbSymbolSideSet = new Set(openPositions.map(p => `${p.symbol}_${p.side}`));
+      exchangeOnlyToClose = allExchangePositions
+        .filter((ep: any) => !dbSymbolSideSet.has(`${ep.symbol}_${ep.side}`))
+        .map((ep: any) => ({
+          symbol: ep.symbol as string,
+          side: ep.side as 'long' | 'short',
+          contracts: Math.abs(parseFloat(ep.contracts || '0')),
+          entryPrice: parseFloat(ep.entryPrice || '0'),
+        }))
+        .filter((ep: ExchangeOnlyEntry) => ep.contracts > 0);
+    } catch (err) {
+      this.logger.warn(`紧急清仓: 获取交易所持仓失败，仅清 DB 持仓: ${(err as Error).message}`);
+    }
+
+    const totalCount = openPositions.length + exchangeOnlyToClose.length;
+    if (totalCount === 0) {
       return { closed: 0, failed: 0, results: [] };
     }
 
     this.logger.warn(
-      `紧急清仓: 用户 ${userId} 共 ${openPositions.length} 个持仓`,
+      `紧急清仓: 用户 ${userId} — DB持仓 ${openPositions.length} 个 + exchange-only ${exchangeOnlyToClose.length} 个`,
     );
 
     let closed = 0;
     let failed = 0;
     const results: PositionResponse[] = [];
 
-    // 逐个平仓
+    // 3. 逐个平仓 DB 持仓
     for (const position of openPositions) {
       try {
         const result = await this.closePosition(userId, position.id, apiKeyId);
@@ -393,7 +457,31 @@ export class PositionsService {
       } catch (error) {
         failed++;
         this.logger.error(`清仓失败 ${position.id}: ${error}`);
-        // 继续处理其他持仓
+      }
+    }
+
+    // 4. 逐个平仓 exchange-only 持仓
+    for (const ep of exchangeOnlyToClose) {
+      try {
+        const result = await this.tradingService.closePosition(
+          userId, apiKeyId, ep.symbol, ep.contracts, ep.side,
+          { tradingType: 'futures' },
+        );
+        closed++;
+        results.push({
+          id: `exchange_${ep.symbol}_${ep.side}`,
+          exchange: result.exchange || 'binance',
+          symbol: ep.symbol,
+          side: ep.side,
+          entryPrice: ep.entryPrice.toString(),
+          amount: ep.contracts.toString(),
+          status: 'closed',
+          exchangeOrderId: result.orderId,
+          createdAt: new Date(),
+        });
+      } catch (error) {
+        failed++;
+        this.logger.error(`Exchange-only 清仓失败 ${ep.symbol} ${ep.side}: ${error}`);
       }
     }
 

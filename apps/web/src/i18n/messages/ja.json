@@ -40,7 +40,8 @@
     "enterEmailCode": "メール認証コードを入力してください",
     "enterCode": "認証コードを入力してください",
     "all": "All",
-    "viewAll": "View All"
+    "viewAll": "View All",
+    "days": "日"
   },
   "auth": {
     "login": "ログイン",
@@ -1382,7 +1383,9 @@
       "min": "分",
       "hour": "時間",
       "day": "日",
-      "loadMore": "もっと見る"
+      "loadMore": "もっと見る",
+      "yes": "はい",
+      "no": "いいえ"
     },
     "modes": {
       "research": "リサーチ",
@@ -1478,6 +1481,10 @@
       "gridAtrMultiplier": "ATR倍率",
       "gridMaxDrawdown": "最大ドローダウン",
       "gridStopLossPercent": "ストップロス%",
+      "gridProfitRetrace": "利益リトレース保護",
+      "gridProfitRetraceHint": "過去 {days} 日間の最高値からの利益が閾値を超えて下落した場合、自動清算。{days} 日間更新されなかった場合、ピークをリセット",
+      "gridProfitRetraceThreshold": "リトレース閾値",
+      "gridProfitPeakWindow": "ピーク記憶ウィンドウ",
       "notBoundExchange": "取引所未連携",
       "goToBind": "連携する",
       "selectExchangeAccount": "取引所アカウント選択",
@@ -1746,7 +1753,8 @@
       "promptDefaultEntry": "エントリーには最低2つの独立シグナル確認が必要。トレンド＋モメンタム＋主要価格帯のサポート。",
       "promptDefaultDecision": "1. 市場構造とトレンドを判断 2. エントリーシグナルの共鳴を探す 3. リスク/リワード比を評価 4. ポジションサイズとストップロスを決定",
       "gridMode": "Grid Mode",
-      "researchMode": "Research Mode"
+      "researchMode": "Research Mode",
+      "soloResumeDrawdownNote": "日次ドローダウンカウンターは翌日深夜0時に自動リセットされます"
     },
     "research": {
       "title": "AIリサーチチーム",
@@ -2051,7 +2059,19 @@
       "aiFallbackWarning": "AIが有効な決定フォーマットを出力できませんでした",
       "fallbackAction": "フォールバック操作",
       "partialExecFailed": "一部実行失敗",
-      "llmNoResponse": "分析結果が返されませんでした"
+      "llmNoResponse": "分析結果が返されませんでした",
+      "gridPerLevelCost": "〜${cost}/格",
+      "gridRiskPaused": "リスク管理により取引が一時停止",
+      "gridResumeTrading": "取引を再開",
+      "gridResumeSuccess": "戦略が再開されました",
+      "gridResumeConfirmTitle": "取引再開の確認",
+      "gridResumeConfirmDesc": "リスク管理により戦略が一時停止中です。再開後は取引が再開されますが、市場リスクは残ります。",
+      "gridResumeWillDo": "再開後の処理：",
+      "gridResumePeakReset": "利益ピークを現在水準にリセット（即時再トリガー防止）",
+      "gridResumeDailyReset": "日次損益カウンターをゼロにリセット",
+      "gridResumeRiskRemain": "リスクルールは変更なし — 再びトリガーされると一時停止",
+      "gridResuming": "再開中...",
+      "gridConfirmResume": "再開を確認"
     },
     "modeInfo": {
       "soloTitle": "ソロモード",

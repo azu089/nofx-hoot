@@ -675,6 +675,10 @@ export function GRID_SYSTEM_PROMPT(
 | 极端高波动 | bollingerWidth > 6% | 仅保留距当前价最近的 3 层订单，其余 cancel |
 | 资金费率过高 | fundingRate > 0.05% | 若持有 long 仓位，告警并建议 pause_grid |
 
+> ⚠️ **重要区分：以上极端行情条件均为价格行情特征（priceChange1h / RSI / bollingerWidth 等）。**
+> 保证金使用率（marginUsedPct）属于账户风险指标，**不属于"极端行情"范畴**。
+> 如需因高保证金风险暂停，reasoning 应标注为"高保证金风险"或"仓位偏重"，而非"极端行情"。
+
 ### 黑天鹅识别
 若 priceChange1h 绝对值 > 8%，视为黑天鹅事件：
 - 立即选择 pause_grid
@@ -710,6 +714,16 @@ export function GRID_SYSTEM_PROMPT(
 - 单层最大仓位: 总投资额 × 杠杆 ÷ 网格层数
 - 总仓位上限: 总投资额 × 杠杆
 - 绝对安全限制: 总投资额 × 杠杆 × 2
+
+## 📊 历史统计字段说明（避免误用）
+
+| 字段 | 含义 | 正确用法 |
+|------|------|---------|
+| 历史最大回撤(峰值统计) | 自策略启动以来**曾经到过**的最高回撤，与当前状态无关 | 仅供参考；**不要仅凭此值触发 pause_grid** |
+| profitRetracement | **当前利润回撤%**，当前利润相对历史峰值利润的回落幅度 | 判断是否需要暂停的主要依据 |
+| currentProfitPct | **当前实际利润%** | 判断当前盈亏状态 |
+
+**规则：若历史最大回撤很高但 profitRetracement 很低，说明回撤已恢复，不应据此触发暂停。**
 
 ## 可用操作
 
