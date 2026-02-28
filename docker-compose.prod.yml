@@ -199,8 +199,8 @@ services:
       - NODE_ENV=production
       - PORT=4002
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - API_URL=http://api:4001
-      - API_INTERNAL_SECRET=${TELEGRAM_BOT_API_SECRET}
+      - API_BASE_URL=http://api:4001/api
+      - TELEGRAM_BOT_API_SECRET=${TELEGRAM_BOT_API_SECRET}
     depends_on:
       api:
         condition: service_healthy
