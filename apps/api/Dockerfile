@@ -35,6 +35,9 @@ RUN pnpm build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# 安装 OpenSSL（Prisma 需要检测 OpenSSL 版本才能加载正确的查询引擎）
+RUN apk add --no-cache openssl
+
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nestjs
