@@ -17,9 +17,10 @@ out/
 *.swp
 *.swo
 
-# 日志
+# 日志（仅排除根目录和特定路径的日志输出，不排除源码中名为logs的目录）
 *.log
-logs/
+/logs/
+apps/*/logs/*.log
 
 # 敏感文件
 *.pem
