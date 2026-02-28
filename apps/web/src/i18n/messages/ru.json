@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "Задержка данных, биржа временно недоступна",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "Не удалось загрузить данные рынка. Проверьте сеть",
     "executionFailed": "Ошибка выполнения",
     "unknownError": "Неизвестная ошибка",
-    "marginInsufficient": "Недостаточно свободной маржи (занята позициями), новые ордера невозможны"
+    "marginInsufficient": "Недостаточно свободной маржи (занята позициями), новые ордера невозможны",
+    "validationFailed": "Параметры конфигурации недействительны, пожалуйста, проверьте и повторите попытку",
+    "orderMinNotional": "Сумма ордера слишком мала (ниже минимальной номинальной стоимости биржи)",
+    "orderPrecision": "Превышена точность (слишком много десятичных знаков)",
+    "orderReduceOnly": "Допускаются только ордера на уменьшение (новые позиции запрещены)",
+    "orderMinQty": "Количество ордера ниже минимального требования биржи",
+    "orderQtyInvalid": "Недопустимое количество ордера",
+    "orderPriceInvalid": "Цена ордера вне допустимого диапазона биржи",
+    "orderPositionSide": "Неверная сторона позиции (проверьте режим хеджирования)",
+    "orderParamInvalid": "Недопустимый параметр ордера (отсутствует обязательное поле)",
+    "orderMaxCount": "Превышен лимит максимального количества ордеров на бирже",
+    "orderLotSize": "Количество ордера не соответствует требованию lot size биржи"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "Исключить монеты",
+      "sharpe": "Шарп"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Мин. уверенность",
-      "minPositionSize": "Мин. размер позиции"
+      "minPositionSize": "Мин. размер позиции",
+      "profitDrawdown": "Защита от просадки прибыли",
+      "profitDrawdownMinProfit": "Мин. порог прибыли",
+      "profitDrawdownMaxRetracement": "Макс. откат",
+      "profitDrawdownDesc": "Автоматическое закрытие при откате от пика выше порога после достижения мин. прибыли"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "Мин. соотношение R:R",
       "minConfidence": "Мин. уверенность",
       "minPositionSize": "Мин. размер позиции",
+      "profitDrawdown": "Защита прибыли",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count} продажа",
       "gridCancel": "{count} отмена",
       "gridOps": "{count} операций",
+      "gridErrMargin": "Недостаточно маржи",
+      "gridErrMarginHintActive": "{count} активных ордеров используют маржу, автозаполнение после исполнения",
+      "gridErrMarginHintWait": "Ожидание освобождения маржи",
+      "gridErrOrderId": "Недействительный ID ордера (истёк или не найден)",
+      "gridErrFailBuy": "Покупка×{count}",
+      "gridErrFailSell": "Продажа×{count}",
+      "gridErrFailCancel": "Отмена×{count}",
+      "gridErrFailOther": "Другое×{count}",
+      "gridErrPartial": "{ok} размещено · {fail} ошибок",
+      "gridErrAllFail": "Все {count} ордеров не удалось разместить",
+      "gridErrOpsFail": "{count} операций не удалось",
       "personalityBull": "Бык",
       "personalityBear": "Медведь",
       "personalityAnalyst": "Аналитик",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "Строго контролируйте частоту торговли. Открывайте позиции только при высокой вероятности.",
       "promptDefaultEntry": "Для входа требуется минимум 2 независимых подтверждающих сигнала. Тренд + импульс + ключевые уровни.",
       "promptDefaultDecision": "1. Определить структуру рынка 2. Найти совпадение сигналов 3. Оценить соотношение риск/доходность 4. Определить размер позиции и стоп-лосс",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI Research Team",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "{count} сокращений",
       "gridRange": "Диапазон сетки",
       "gridLevels": "Сделок / Уровней",
+      "gridTotalPnl": "Общий P&L",
       "gridProfit": "Реализ. P&L",
       "gridWinRate": "Доля побед",
       "gridPendingLevels": "Уровни ордеров",

@@ -52,7 +52,7 @@ export interface RiskDebateResult {
 /**
  * 风控三方辩论服务
  *
- * 对应 TradingAgents 第 4 阶段: 风控三方辩论
+ * AI 研究第 4 阶段: 风控三方辩论
  *
  * 3 个辩论角色:
  * 1. Aggressive — 支持高风险高回报，质疑保守策略
@@ -158,7 +158,7 @@ export class RiskDebateService {
 
       totalCost += response.cost;
 
-      // NoFx-aligned 详细日志: 角色观点预览
+      // 详细日志: 角色观点预览
       const riskPreview = response.content.slice(0, 200);
       this.logger.log(
         `[风控辩论] ${speaker} (Round ${roundNum}): tokens=${response.tokenUsage} 耗时=${response.latencyMs}ms\n` +
@@ -287,7 +287,7 @@ export class RiskDebateService {
       lines.push('');
     }
 
-    // G4: 注入分析师报告摘要（对齐 TradingAgents: 风控辩论者看到分析师报告）
+    // G4: 注入分析师报告摘要（风控辩论者看到分析师报告）
     // GAP-E: 放宽到 3000 字符，确保每个分析维度都有代表性内容
     if (input.analystReports) {
       lines.push('--- Analyst Reports Summary ---');

@@ -344,12 +344,12 @@ export class AiMemoryService {
     }
   }
 
-  // ========================= Reflection Loop (产品A, 对齐 TradingAgents) =========================
+  // ========================= Reflection Loop (深研模式) =========================
 
   /**
    * LLM 驱动的结构化反思循环
    *
-   * 对齐 TradingAgents reflection.py:
+   * 反思结构:
    * 1. Reasoning — 交易决策是否正确，为什么
    * 2. Improvement — 具体可改进的点
    * 3. Summary — 提炼教训（存入 BM25 记忆）

@@ -56,6 +56,7 @@ interface Position {
   margin?: number
   marginMode?: string
   marginRatio?: string  // 交易所原始保证金比率（%字符串）
+  syncSource?: 'exchange' | 'database'
 }
 
 interface ExecutionLog {
@@ -620,7 +621,12 @@ export function PositionsPageV3({
                             </td>
                             <td className="py-4 text-[#F8F8FC]">{position.size}</td>
                             <td className="py-4 text-[#F8F8FC]">${position.entryPrice.toLocaleString()}</td>
-                            <td className="py-4 text-[#F8F8FC]">${position.markPrice.toLocaleString()}</td>
+                            <td className="py-4 text-[#F8F8FC]">
+                              ${position.markPrice.toLocaleString()}
+                              {position.syncSource === 'database' && (
+                                <span className="ml-1 text-[10px] text-yellow-400/70" title={t('cachedData')}>⏱</span>
+                              )}
+                            </td>
                             <td className="py-4">
                               <div className="text-xs">
                                 <div className="text-red-400">${position.stopLoss.toLocaleString()}</div>

@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "Veri gecikmeli, borsa geçici olarak kullanılamıyor",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "Piyasa bilgisi yüklenemedi. Ağı kontrol edin",
     "executionFailed": "Yürütme başarısız",
     "unknownError": "Bilinmeyen hata",
-    "marginInsufficient": "Serbest marj yetersiz (pozisyonlar kullanıyor), yeni emir verilemez"
+    "marginInsufficient": "Serbest marj yetersiz (pozisyonlar kullanıyor), yeni emir verilemez",
+    "validationFailed": "Yapılandırma parametreleri geçersiz, lütfen kontrol edip tekrar deneyin",
+    "orderMinNotional": "Sipariş tutarı çok küçük (borsa minimum nominal değerin altında)",
+    "orderPrecision": "Hassasiyet aşıldı (miktar veya fiyatta çok fazla ondalık basamak)",
+    "orderReduceOnly": "Yalnızca azaltma emirleri kabul edilir (yeni pozisyon açılamaz)",
+    "orderMinQty": "Sipariş miktarı borsa minimumunun altında",
+    "orderQtyInvalid": "Geçersiz sipariş miktarı",
+    "orderPriceInvalid": "Sipariş fiyatı borsa izin verilen aralığın dışında",
+    "orderPositionSide": "Yanlış pozisyon yönü (hedge/tek yönlü mod ayarını kontrol edin)",
+    "orderParamInvalid": "Geçersiz sipariş parametresi (zorunlu alan eksik)",
+    "orderMaxCount": "Borsa maksimum açık sipariş limiti aşıldı",
+    "orderLotSize": "Sipariş miktarı borsa lot size gereksinimini karşılamıyor"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "Koinleri Hariç Tut",
+      "sharpe": "Sharpe"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Güven",
-      "minPositionSize": "Min Pozisyon Boyutu"
+      "minPositionSize": "Min Pozisyon Boyutu",
+      "profitDrawdown": "Kâr Geri Çekilme Koruması",
+      "profitDrawdownMinProfit": "Min Kâr Tetikleyici",
+      "profitDrawdownMaxRetracement": "Maks Geri Çekilme",
+      "profitDrawdownDesc": "Min kâra ulaştıktan sonra zirveden geri çekilme eşiği aşılırsa otomatik kapat"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "Min Risk/Ödül",
       "minConfidence": "Min Güven",
       "minPositionSize": "Min Pozisyon",
+      "profitDrawdown": "Kâr Koruması",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count} Satım",
       "gridCancel": "{count} İptal",
       "gridOps": "{count} işlem",
+      "gridErrMargin": "Yetersiz teminat",
+      "gridErrMarginHintActive": "{count} aktif emir teminat kullanıyor, işlem sonrası otomatik tamamlanacak",
+      "gridErrMarginHintWait": "Teminat serbest bırakılması bekleniyor",
+      "gridErrOrderId": "Geçersiz emir ID (süresi dolmuş veya bulunamadı)",
+      "gridErrFailBuy": "Alış×{count}",
+      "gridErrFailSell": "Satış×{count}",
+      "gridErrFailCancel": "İptal×{count}",
+      "gridErrFailOther": "Diğer×{count}",
+      "gridErrPartial": "{ok} yerleştirildi · {fail} başarısız",
+      "gridErrAllFail": "Tüm {count} emir başarısız",
+      "gridErrOpsFail": "{count} işlem başarısız",
       "personalityBull": "Boğa",
       "personalityBear": "Ayı",
       "personalityAnalyst": "Analist",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "İşlem sıklığını sıkı kontrol edin. Sadece yüksek olasılıklı fırsatlarda pozisyon açın.",
       "promptDefaultEntry": "Giriş için en az 2 bağımsız sinyal onayı gerekir. Trend + momentum + kilit fiyat desteği.",
       "promptDefaultDecision": "1. Piyasa yapısını değerlendir 2. Sinyal uyumunu ara 3. Risk/getiri oranını hesapla 4. Pozisyon boyutu ve zarar durdur belirle",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI Research Team",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "{count} pozisyon azaltma",
       "gridRange": "Grid Aralığı",
       "gridLevels": "İşlem / Seviye",
+      "gridTotalPnl": "Toplam K/Z",
       "gridProfit": "Gerçekleşen K/Z",
       "gridWinRate": "Kazanma Oranı",
       "gridPendingLevels": "Bekleyen Katman",

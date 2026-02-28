@@ -55,6 +55,101 @@ const FALLBACK_PATTERNS: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /property .+ should not exist|must be a string|must not be less than|must be an? |Validation failed|Bad Request/i, key: 'validationFailed' },
 ];
 
+// ─── 交易所订单错误翻译（Binance / OKX / CCXT 原始错误消息） ───────────
+
+/**
+ * Binance 错误码 → i18n key 映射
+ * 错误码来源: Binance API 返回 {"code":-XXXX,"msg":"..."}
+ */
+const EXCHANGE_CODE_TO_KEY: Record<number, string> = {
+  // 订单相关
+  '-1013': 'orderMinNotional',     // MIN_NOTIONAL: 最小名义价值不足
+  '-4131': 'orderMinNotional',     // MIN_NOTIONAL (USDT-M Futures)
+  '-2019': 'marginInsufficient',   // Margin is insufficient
+  '-1102': 'orderParamInvalid',    // Mandatory parameter was not sent
+  '-1111': 'orderPrecision',       // Precision is over the maximum defined
+  '-2022': 'orderReduceOnly',      // ReduceOnly Order is rejected
+  '-4164': 'orderMinQty',          // MIN_QTY: 最小数量不足
+  '-1121': 'badSymbol',            // Invalid symbol
+  '-4003': 'orderQtyInvalid',      // Quantity less than zero
+  '-4014': 'orderPriceInvalid',    // Price less than min price
+  '-4015': 'orderPriceInvalid',    // Price greater than max price
+  '-2018': 'insufficientFunds',    // Balance is insufficient
+  '-1015': 'rateLimited',          // Too many orders
+  '-4061': 'orderPositionSide',    // BOTH position side not allowed with hedgeMode
+};
+
+/**
+ * 交易所原始 msg 文本匹配 → i18n key
+ * 兜底：无错误码但有英文消息时使用
+ */
+const EXCHANGE_MSG_PATTERNS: Array<{ pattern: RegExp; key: string }> = [
+  { pattern: /notional must be no smaller than|MIN_NOTIONAL/i, key: 'orderMinNotional' },
+  { pattern: /Margin is insufficient/i, key: 'marginInsufficient' },
+  { pattern: /insufficient.*balance|Balance is insufficient/i, key: 'insufficientFunds' },
+  { pattern: /ReduceOnly.*rejected/i, key: 'orderReduceOnly' },
+  { pattern: /Precision is over/i, key: 'orderPrecision' },
+  { pattern: /Quantity.*less.*zero|qty.*invalid/i, key: 'orderQtyInvalid' },
+  { pattern: /Price.*less.*min|Price.*greater.*max/i, key: 'orderPriceInvalid' },
+  { pattern: /position side/i, key: 'orderPositionSide' },
+  { pattern: /Too many.*order|rate.?limit/i, key: 'rateLimited' },
+  { pattern: /Invalid symbol|symbol.*not.*found/i, key: 'badSymbol' },
+  { pattern: /Mandatory parameter/i, key: 'orderParamInvalid' },
+  { pattern: /MAX_NUM_ORDERS/i, key: 'orderMaxCount' },
+  { pattern: /LOT_SIZE/i, key: 'orderLotSize' },
+  { pattern: /PRICE_FILTER/i, key: 'orderPriceInvalid' },
+];
+
+/**
+ * 翻译交易所原始订单错误（适用于 timeline card 中的执行结果错误）
+ *
+ * 输入格式：
+ *   - CCXT 透传: `binanceusdm {"code":-1013,"msg":"Order's notional must be no smaller than 20..."}`
+ *   - 纯 JSON: `{"code":-2019,"msg":"Margin is insufficient."}`
+ *   - 纯文本: `InsufficientFunds: insufficient balance`
+ *
+ * @param rawError 交易所原始错误字符串
+ * @param t i18n 翻译函数 — 必须是 useTranslations('errors') 返回的
+ * @returns 翻译后的用户友好错误消息
+ */
+export function translateExchangeOrderError(
+  rawError: string | null | undefined,
+  t: (key: string) => string,
+): string {
+  if (!rawError) return t('unknownError');
+
+  // 1. 提取 Binance 错误码
+  const codeMatch = rawError.match(/"code":\s*(-?\d+)/);
+  if (codeMatch) {
+    const code = parseInt(codeMatch[1]);
+    const key = EXCHANGE_CODE_TO_KEY[code];
+    if (key) return t(key);
+  }
+
+  // 2. 提取 "msg":"..." 内容后做模式匹配
+  const msgMatch = rawError.match(/"msg"\s*:\s*"([^"]+)"/);
+  const msgText = msgMatch ? msgMatch[1] : rawError;
+
+  for (const { pattern, key } of EXCHANGE_MSG_PATTERNS) {
+    if (pattern.test(msgText)) {
+      return t(key);
+    }
+  }
+
+  // 3. 对整个原始字符串尝试通用 FALLBACK_PATTERNS
+  for (const { pattern, key } of FALLBACK_PATTERNS) {
+    if (pattern.test(rawError)) {
+      return t(key);
+    }
+  }
+
+  // 4. 无匹配 — 返回提取的 msg 或截断的原始文本
+  const displayMsg = msgMatch
+    ? msgMatch[1].slice(0, 60)
+    : rawError.replace(/^binanceusdm\s*/, '').replace(/^okx\s*/, '').slice(0, 60);
+  return displayMsg || t('unknownError');
+}
+
 /**
  * 将错误消息翻译为用户当前语言
  * @param errorMsg 后端返回的 errorMessage 字段

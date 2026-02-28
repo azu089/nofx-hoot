@@ -44,6 +44,7 @@ export function useAiConfig() {
       const res = await api.get<AiConfig>('/ai/config');
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 30000,
   });
 }
@@ -92,6 +93,7 @@ export function useAiBudget() {
       const res = await api.get<AiBudget>('/ai/budget');
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 60000,
   });
 }
@@ -105,6 +107,7 @@ export function useAiPerformance() {
       const res = await api.get<AiPerformance>('/ai/performance');
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 120000,
   });
 }
@@ -132,6 +135,7 @@ export function useResearchHistory(page: number = 1, limit: number = 10) {
       const res = await api.get<ResearchHistoryResponse>(`/ai/research/history?page=${page}&limit=${limit}`);
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 30000,
   });
 }
@@ -254,6 +258,7 @@ export function useStrategyList(page: number = 1, limit: number = 20) {
       const res = await api.get<StrategyListResponse>(`/ai/strategy?page=${page}&limit=${limit}`);
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 30000,
   });
 }
@@ -326,7 +331,7 @@ export function useDeleteResearch() {
 export function useStrategyControl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, action, body }: { id: string; action: 'start' | 'stop' | 'pause'; body?: Record<string, unknown> }) => {
+    mutationFn: async ({ id, action, body }: { id: string; action: 'start' | 'stop' | 'pause' | 'resume-grid'; body?: Record<string, unknown> }) => {
       const res = await api.post<StrategyControlResponse>(`/ai/strategy/${id}/${action}`, body || {});
       return res.data;
     },
@@ -393,6 +398,7 @@ export function useCompetition(period: string = 'weekly', page: number = 1, limi
       const res = await api.get<CompetitionResponse>(`/ai/strategy/competition?period=${period}&page=${page}&limit=${limit}`);
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 60000,
   });
 }
@@ -407,6 +413,7 @@ export function useUserPositions(status: 'open' | 'closed' | 'all' = 'all', page
       const res = await api.get<UserPositionsResponse>(`/ai/positions?status=${status}&page=${page}&limit=${limit}`);
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 15000,
   });
 }
@@ -436,6 +443,7 @@ export function useAiTimeline(page: number = 1, limit: number = 10, type: string
       const res = await api.get<TimelineResponse>(`/ai/timeline?page=${page}&limit=${limit}&type=${type}&actionsOnly=${actionsOnly}`);
       return res.data;
     },
+    enabled: api.hasToken(),
     staleTime: 15000,
   });
 }

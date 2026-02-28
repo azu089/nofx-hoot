@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "ข้อมูลล่าช้า ตลาดไม่พร้อมใช้งานชั่วคราว",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "โหลดข้อมูลตลาดล้มเหลว กรุณาตรวจสอบเครือข่าย",
     "executionFailed": "การดำเนินการล้มเหลว",
     "unknownError": "ข้อผิดพลาดที่ไม่ทราบ",
-    "marginInsufficient": "มาร์จิ้นว่างไม่เพียงพอ (ถูกใช้โดยตำแหน่ง) ไม่สามารถวางคำสั่งใหม่"
+    "marginInsufficient": "มาร์จิ้นว่างไม่เพียงพอ (ถูกใช้โดยตำแหน่ง) ไม่สามารถวางคำสั่งใหม่",
+    "validationFailed": "พารามิเตอร์การตั้งค่าไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่",
+    "orderMinNotional": "จำนวนออเดอร์น้อยเกินไป (ต่ำกว่ามูลค่าขั้นต่ำของตลาด)",
+    "orderPrecision": "ความแม่นยำเกินขีดจำกัด (ทศนิยมมากเกินไป)",
+    "orderReduceOnly": "อนุญาตเฉพาะออเดอร์ลดสถานะ (ไม่สามารถเปิดสถานะใหม่)",
+    "orderMinQty": "จำนวนออเดอร์ต่ำกว่าขั้นต่ำของตลาด",
+    "orderQtyInvalid": "จำนวนออเดอร์ไม่ถูกต้อง",
+    "orderPriceInvalid": "ราคาออเดอร์เกินช่วงที่ตลาดอนุญาต",
+    "orderPositionSide": "ทิศทางสถานะผิด (ตรวจสอบโหมด hedge/one-way)",
+    "orderParamInvalid": "พารามิเตอร์ออเดอร์ไม่ถูกต้อง (ขาดฟิลด์จำเป็น)",
+    "orderMaxCount": "เกินจำนวนออเดอร์สูงสุดของตลาด",
+    "orderLotSize": "จำนวนออเดอร์ไม่ตรงตามข้อกำหนด lot size ของตลาด"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "ยกเว้นเหรียญ",
+      "sharpe": "ชาร์ป"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "ความเชื่อมั่นขั้นต่ำ",
-      "minPositionSize": "ขนาดตำแหน่งขั้นต่ำ"
+      "minPositionSize": "ขนาดตำแหน่งขั้นต่ำ",
+      "profitDrawdown": "การป้องกันการถดถอยกำไร",
+      "profitDrawdownMinProfit": "กำไรขั้นต่ำ",
+      "profitDrawdownMaxRetracement": "อัตราถดถอยสูงสุด",
+      "profitDrawdownDesc": "ปิดอัตโนมัติเมื่อการถดถอยจากจุดสูงสุดเกินเกณฑ์หลังจากบรรลุกำไรขั้นต่ำ"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "อัตราส่วน R:R ขั้นต่ำ",
       "minConfidence": "ความเชื่อมั่นขั้นต่ำ",
       "minPositionSize": "ขนาดตำแหน่งขั้นต่ำ",
+      "profitDrawdown": "การป้องกันกำไร",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count} ขาย",
       "gridCancel": "{count} ยกเลิก",
       "gridOps": "{count} รายการ",
+      "gridErrMargin": "มาร์จิ้นไม่เพียงพอ",
+      "gridErrMarginHintActive": "{count} คำสั่งใช้มาร์จิ้นอยู่ จะเติมอัตโนมัติหลังจากดำเนินการ",
+      "gridErrMarginHintWait": "รอการปลดปล่อยมาร์จิ้น",
+      "gridErrOrderId": "ID คำสั่งไม่ถูกต้อง (หมดอายุหรือไม่พบ)",
+      "gridErrFailBuy": "ซื้อ×{count}ชั้น",
+      "gridErrFailSell": "ขาย×{count}ชั้น",
+      "gridErrFailCancel": "ยกเลิก×{count}ชั้น",
+      "gridErrFailOther": "อื่นๆ×{count}รายการ",
+      "gridErrPartial": "{ok}ชั้นสำเร็จ · {fail}ชั้นล้มเหลว",
+      "gridErrAllFail": "ทั้งหมด {count} ชั้นล้มเหลว",
+      "gridErrOpsFail": "{count} รายการล้มเหลว",
       "personalityBull": "ขาขึ้น",
       "personalityBear": "ขาลง",
       "personalityAnalyst": "นักวิเคราะห์",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "ควบคุมความถี่การเทรดอย่างเข้มงวด เปิดสถานะเฉพาะโอกาสที่มีความน่าจะเป็นสูง",
       "promptDefaultEntry": "การเปิดสถานะต้องมีสัญญาณยืนยันอิสระอย่างน้อย 2 ตัว แนวโน้ม + โมเมนตัม + แนวรับราคาสำคัญ",
       "promptDefaultDecision": "1. ประเมินโครงสร้างตลาด 2. หาจุดบรรจบของสัญญาณ 3. ประเมินอัตราส่วนความเสี่ยง/ผลตอบแทน 4. กำหนดขนาดและจุดตัดขาดทุน",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI Research Team",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "ลดขนาด {count} ครั้ง",
       "gridRange": "ช่วงกริด",
       "gridLevels": "เทรด / ระดับ",
+      "gridTotalPnl": "กำไรขาดทุนรวม",
       "gridProfit": "กำไรขาดทุนที่รับรู้แล้ว",
       "gridWinRate": "อัตราชนะ",
       "gridPendingLevels": "ชั้นคำสั่ง",

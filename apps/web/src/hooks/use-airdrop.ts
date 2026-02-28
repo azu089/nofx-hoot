@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 
 // 签到状态
 interface CheckinStatus {
@@ -39,12 +40,14 @@ interface AirdropHistoryItem {
 
 // 获取签到状态
 export function useCheckinStatus() {
+  const { isAuthenticated } = useAuth()
   return useQuery({
     queryKey: ['airdrop', 'checkin-status'],
     queryFn: async () => {
       const response = await api.get<CheckinStatus>('/airdrop/checkin/status')
       return response.data
     },
+    enabled: isAuthenticated,
   })
 }
 
@@ -65,23 +68,27 @@ export function useCheckin() {
 
 // 获取空投余额
 export function useAirdropBalance() {
+  const { isAuthenticated } = useAuth()
   return useQuery({
     queryKey: ['airdrop', 'balance'],
     queryFn: async () => {
       const response = await api.get<AirdropBalance>('/airdrop/balance')
       return response.data
     },
+    enabled: isAuthenticated,
   })
 }
 
 // 获取空投历史
 export function useAirdropHistory() {
+  const { isAuthenticated } = useAuth()
   return useQuery({
     queryKey: ['airdrop', 'history'],
     queryFn: async () => {
       const response = await api.get<AirdropHistoryItem[]>('/airdrop/history')
       return response.data
     },
+    enabled: isAuthenticated,
   })
 }
 
@@ -117,6 +124,7 @@ const FALLBACK_TASKS: TaskItem[] = [
 
 // 获取任务列表
 export function useTaskList() {
+  const { isAuthenticated } = useAuth()
   return useQuery({
     queryKey: ['airdrop', 'tasks'],
     queryFn: async () => {
@@ -125,6 +133,7 @@ export function useTaskList() {
     },
     placeholderData: FALLBACK_TASKS,
     retry: 1,
+    enabled: isAuthenticated,
   })
 }
 

@@ -96,7 +96,7 @@ export interface MultiCoinOrchestratorResult {
 /**
  * 4阶段辩论编排器
  *
- * 对齐 NoFx 完整决策流水线:
+ * 完整 AI 决策流水线:
  *   Stage 2: 投资辩论 — DebateService.runDebate()
  *     Bull vs Bear vs Analyst vs Contrarian vs RiskManager
  *     多轮辩论 + 收敛检测 → 投资方向共识
@@ -424,10 +424,10 @@ export class DebateOrchestratorService {
   /**
    * 运行多币种4阶段辩论流水线
    *
-   * 对齐 NoFx debate/engine.go: 一次辩论覆盖所有候选币，节省 80% LLM 调用
+   * 一次辩论覆盖所有候选币，节省 80% LLM 调用
    * 5 币种: 旧=5×28=140次, 新=1×28=28次
    *
-   * 共识策略: N 模型独立投票（NoFx-aligned 扁平等权设计）
+   * 共识策略: N 模型独立投票（扁平等权设计）
    * 每个模型独立分析所有币种，投出 1 票
    * 选 N 模型 = N 票，无固定角色
    */
@@ -491,7 +491,7 @@ export class DebateOrchestratorService {
         }
       }
 
-      // ============ 多模型独立投票 (NoFx-aligned 扁平等权) ============
+      // ============ 多模型独立投票（扁平等权） ============
       // 共识策略: N 个模型各独立投 1 票 = N 票（无固定角色）
       // 区别于深研策略的 5 角色辩论
       this.logger.log(

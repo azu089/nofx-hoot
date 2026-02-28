@@ -246,6 +246,18 @@ export class StrategyEngineService implements OnModuleInit {
       throw new BadRequestException('策略已在运行中');
     }
 
+    // 如果存在风控暂停状态（_riskPause），清除它
+    const riskControl = (strategy.riskControlConfig as Record<string, unknown>) || {};
+    if (riskControl._riskPause) {
+      const { _riskPause, ...cleanConfig } = riskControl;
+      void _riskPause; // 标记已使用
+      await db.aiStrategy.update({
+        where: { id: strategyId },
+        data: { riskControlConfig: cleanConfig as any },
+      });
+      this.logger.log(`[策略引擎] 清除风控暂停状态: ${strategyId}`);
+    }
+
     // 激活策略
     const updated = await db.aiStrategy.update({
       where: { id: strategyId },
@@ -253,7 +265,7 @@ export class StrategyEngineService implements OnModuleInit {
     });
 
     // 注册定时任务到 BullMQ（strategy-cycle 类型）
-    // 对齐 NoFx: 最小 3 分钟（服务端强制执行，防止过于频繁消耗 LLM 预算）
+    // 最小 3 分钟（服务端强制执行，防止过于频繁消耗 LLM 预算）
     const intervalMs = Math.max(3, strategy.intervalMinutes || 60) * 60 * 1000;
     await this.addStrategyJob(strategyId, userId, intervalMs);
 
@@ -791,7 +803,7 @@ export class StrategyEngineService implements OnModuleInit {
   }
 
   /**
-   * 启动时持仓快照 — 对齐 NoFx position_snapshot.go
+   * 启动时持仓快照
    *
    * 遍历所有活跃策略的交易所连接，对比交易所实际持仓与 DB 记录:
    * - 交易所有但 DB 无 → 创建 Position (source: 'snapshot')
@@ -955,7 +967,7 @@ export class StrategyEngineService implements OnModuleInit {
   /**
    * R2: 单用户持仓同步（可由 auto-trader 每周期调用）
    *
-   * 对齐 NoFx OrderSync — 交易所 vs DB 持仓对比:
+   * 交易所 vs DB 持仓对比:
    * - 交易所有 DB 无 → 创建 Position
    * - DB 有交易所无 → 标记 closed
    */

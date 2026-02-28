@@ -27,13 +27,13 @@ export interface CryptoNewsItem {
 }
 
 /**
- * 市场排名数据（对齐 NoFx RankingDataType: 价格涨跌幅+成交量排名）
+ * 市场排名数据（价格涨跌幅+成交量排名）
  */
 export interface MarketRankingData {
   topGainers: Array<{ symbol: string; change24h: number }>;
   topLosers: Array<{ symbol: string; change24h: number }>;
   topVolume: Array<{ symbol: string; volume24h: number }>;
-  topOI?: Array<{ symbol: string; openInterest: number }>; // 持仓量前 5（对齐 NoFx OI排名）
+  topOI?: Array<{ symbol: string; openInterest: number }>; // 持仓量前 5
   totalCoins: number;
   targetRank: { priceRank: number; volumeRank: number };
 }
@@ -564,8 +564,6 @@ export class MarketDataService implements OnModuleInit {
    * 并行获取双时间框架 OHLCV 数据
    * 产品 B 需要主时间框架（操作级别）+ 辅助时间框架（趋势级别）
    *
-   * 参考 NoFx market.GetWithTimeframes() 设计
-   *
    * @param symbol 交易对，如 'BTC/USDT'
    * @param primary 主时间框架，如 '5m'
    * @param secondary 辅助时间框架，如 '4h'
@@ -678,13 +676,13 @@ export class MarketDataService implements OnModuleInit {
     this.logger.debug(`缓存清理完成，剩余: OHLCV=${this.ohlcvCache.size} 价格=${this.priceCache.size} OI=${this.oiCache.size} 资金费率=${this.fundingRateCache.size} 订单簿=${this.orderBookCache.size} 排名=${this.rankingCache.size} 多空比=${this.longShortCache.size} Taker=${this.takerFlowCache.size} OI历史=${this.oiHistoryCache.size} 稳定币=${this.stablecoinCache.size} 期权=${this.optionsCache.size} 宏观=${this.macroCache.size} 清算=${this.liquidationCache.size} ETF=${this.etfCache.size} COT=${this.cotCache.size}`);
   }
 
-  // ========================= 市场排名数据 (对齐 NoFx 资金流+价格排名) =========================
+  // ========================= 市场排名数据 =========================
 
   private readonly rankingCache = new Map<string, { data: MarketRankingData; timestamp: number }>();
   private readonly RANKING_TTL = 5 * 60 * 1000; // 5 分钟
 
   /**
-   * 获取市场排名数据（对齐 NoFx RankingDataType）
+   * 获取市场排名数据
    *
    * 返回:
    * - topGainers: 24h 涨幅前5

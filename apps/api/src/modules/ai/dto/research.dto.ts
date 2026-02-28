@@ -79,7 +79,6 @@ export class StartResearchDto {
     maxDailyTrades?: number;
     cooldownMinutes?: number;
     circuitBreaker?: number; // 最大连续亏损次数
-    // NoFx 对齐
     btcEthMaxLeverage?: number;
     altcoinMaxLeverage?: number;
     btcEthMaxPositionValueRatio?: number;

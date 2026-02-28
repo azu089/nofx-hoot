@@ -1,7 +1,6 @@
 /**
  * LighterAdapter — Lighter DEX 适配器
  *
- * 移植自 NoFx trader/lighter/ (trader.go, account.go, trading.go, orders.go)
  *
  * Lighter V2 = ZK 永续合约 DEX
  * - 认证: walletAddress + apiKeyPrivateKey + apiKeyIndex
@@ -871,7 +870,6 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
   /**
    * 统一符号 → Lighter 符号
    * "BTC/USDT:USDT" or "BTCUSDT" → "BTC"
-   * 移植自 NoFx normalizeSymbol
    */
   private normalizeSymbol(symbol: string): string {
     let s = symbol;

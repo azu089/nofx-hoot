@@ -49,11 +49,25 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         margin: true,
         highWaterMark: true,
         leverage: true,
+        aiStrategyId: true,
       },
     });
 
     if (positions.length === 0) {
       return { checked: 0, closed: 0 };
+    }
+
+    // 批量加载关联策略的风控配置（利润回撤保护阈值）
+    const strategyIds = [...new Set(positions.map(p => p.aiStrategyId).filter(Boolean))] as string[];
+    const strategyConfigMap = new Map<string, any>();
+    if (strategyIds.length > 0) {
+      const strategies = await this.prisma.aiStrategy.findMany({
+        where: { id: { in: strategyIds } },
+        select: { id: true, riskControlConfig: true },
+      });
+      for (const s of strategies) {
+        strategyConfigMap.set(s.id, s.riskControlConfig);
+      }
     }
 
     // 按用户+APIKey 分组获取交易所持仓（批量，减少 API 调用次数）
@@ -164,19 +178,24 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           continue; // 跳过高水位检查
         }
 
-        // 盈利保护回撤检查：曾盈利 >5% 且从高水位回撤 ≥40%
-        if (currentHWM !== null && currentHWM > 5) {
+        // 盈利保护回撤检查：使用策略级配置（fallback 默认 5%/40%）
+        const rc = pos.aiStrategyId ? strategyConfigMap.get(pos.aiStrategyId) : null;
+        const pdEnabled = (rc as any)?.profitDrawdownEnabled !== false; // 默认开启
+        const pdMinProfit = (rc as any)?.profitDrawdownMinProfit || 5;
+        const pdMaxRetracement = ((rc as any)?.profitDrawdownMaxRetracement || 40) / 100;
+
+        if (pdEnabled && currentHWM !== null && currentHWM > pdMinProfit) {
           const drawdownFromPeak =
             (currentHWM - pnlPercent) / currentHWM;
 
-          if (drawdownFromPeak >= 0.4) {
+          if (drawdownFromPeak >= pdMaxRetracement) {
             this.logger.warn(
-              `[AI监控] 盈利保护触发: ${pos.symbol} ${pos.side} 高水位 ${currentHWM.toFixed(1)}%，当前 ${pnlPercent.toFixed(1)}%，回撤 ${(drawdownFromPeak * 100).toFixed(1)}%`,
+              `[AI监控] 盈利保护触发: ${pos.symbol} ${pos.side} 高水位 ${currentHWM.toFixed(1)}%，当前 ${pnlPercent.toFixed(1)}%，回撤 ${(drawdownFromPeak * 100).toFixed(1)}%（阈值 ≥${pdMinProfit}% → ${(pdMaxRetracement * 100).toFixed(0)}%）`,
             );
 
             await this.autoClosePosition(
               pos,
-              `盈利保护：从最高点 ${currentHWM.toFixed(1)}% 回撤至 ${pnlPercent.toFixed(1)}%（回撤 ${(drawdownFromPeak * 100).toFixed(0)}% ≥ 40%）`,
+              `盈利保护：从最高点 ${currentHWM.toFixed(1)}% 回撤至 ${pnlPercent.toFixed(1)}%（回撤 ${(drawdownFromPeak * 100).toFixed(0)}% ≥ ${(pdMaxRetracement * 100).toFixed(0)}%）`,
               currentPrice,
             );
             closedCount++;

@@ -147,13 +147,34 @@ export function CreateStrategyWizard() {
     lowerBound: 0,
     gridCount: 10,
     maxDrawdownPct: 15,
-    dailyLossLimitPct: 5,
+    dailyLossLimitPct: 10,
   })
 
   // ── Stop conditions ───────────────────────────
   const [maxCycles, setMaxCycles] = useState(0)
   const [profitTarget, setProfitTarget] = useState(0)
   const [maxLoss, setMaxLoss] = useState(0)
+
+  // ── 网格可行性分析 ──────────────────────────────
+  // 后端公式：每层名义值 = (totalInvestment / gridCount) × effectiveLeverage
+  // effectiveLeverage = min(userLeverage, REGIME_LEVERAGE_CAP)
+  // 最坏 regime（narrow / volatile）杠杆上限 = 2x
+  // Binance 合约最低名义值 ≈ $20
+  const gridViability = useMemo(() => {
+    const { totalInvestment, leverage, gridCount } = gridParams
+    if (!gridCount || !totalInvestment) return null
+    const MIN_NOTIONAL = 20           // Binance 合约最低名义值
+    const WORST_LEV_CAP = 2           // narrow=2x, volatile=2x（最严格 regime）
+    const effLev = Math.min(leverage, WORST_LEV_CAP)
+    // 每层名义值 = 每层保证金 × 有效杠杆
+    const perLayerNotional = (totalInvestment / gridCount) * effLev
+    // 最多可运行层数
+    const maxViableLayers = Math.floor((totalInvestment * effLev) / MIN_NOTIONAL)
+    // 让所有层都能运行所需最低投资额
+    const minInvestment = Math.ceil((gridCount * MIN_NOTIONAL) / effLev)
+    const idleLayers = Math.max(0, gridCount - maxViableLayers)
+    return { perLayerNotional, maxViableLayers, minInvestment, idleLayers, effLev }
+  }, [gridParams])
 
   // ── Filtered data ─────────────────────────────
   const filteredCoins = useMemo(() => {
@@ -800,6 +821,30 @@ export function CreateStrategyWizard() {
                   />
                 </RiskField>
               </div>
+
+              {/* 网格可行性提示 — 实时告知用户当前配置能运行几格 */}
+              {gridViability && (
+                <div className={`px-3 py-2.5 rounded-lg border text-xs ${
+                  gridViability.idleLayers === 0
+                    ? 'bg-[#22C55E]/5 border-[#22C55E]/15'
+                    : 'bg-[#F59E0B]/5 border-[#F59E0B]/15'
+                }`}>
+                  {gridViability.idleLayers === 0 ? (
+                    <span className="text-[#22C55E]">
+                      ✓ 所有 {gridParams.gridCount} 格均可运行（极端市场每格约 ${gridViability.perLayerNotional.toFixed(0)}）
+                    </span>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="text-[#F59E0B] font-medium">
+                        ⚠ 极端市场下仅 {gridViability.maxViableLayers} 格可下单，{gridViability.idleLayers} 格将空转
+                      </div>
+                      <div className="text-[#707070]">
+                        建议投入 ≥ ${gridViability.minInvestment}，或将层数减至 {gridViability.maxViableLayers} 格
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             /* 极速/共识/深研 风控参数 */

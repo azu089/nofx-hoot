@@ -6,14 +6,14 @@ import { CoinSourceConfig } from '../../types/ai.types';
 /**
  * 币种扫描服务 — 产品 B 五种币种来源模式
  *
- * 对齐 NoFx kernel/engine.go GetCandidateCoins() L414-572:
+ * 候选币种筛选逻辑:
  * 1. static: 用户手动指定币种列表
  * 2. ai: LLM 推荐（根据用户标准）
  * 3. oi_top: OI 最高 N 个（多头兴趣集中）
  * 4. oi_low: OI 最低 N 个（空头/减仓候选）
  * 5. mixed: 混合模式（ai + oi_top + oi_low + static 去重合并）
  */
-// R1: OI 最小流动性阈值（USD），对齐 NoFx minOIThresholdMillions = 15
+// R1: OI 最小流动性阈值（USD），默认 $15M
 const MIN_OI_VALUE_USD = 15_000_000;
 
 @Injectable()
@@ -79,7 +79,7 @@ export class CoinScannerService {
         result = ['BTC/USDT', 'ETH/USDT'];
     }
 
-    // 对齐 NoFx filterExcludedCoins (kernel/engine.go L549-572)
+    // 过滤排除币种
     return this.filterExcludedCoins(result, config.excludedCoins);
   }
 
@@ -146,7 +146,7 @@ Respond with ONLY a JSON array.`;
     const topN = config.maxCoins || 10;
     const oiResults = await this.fetchAllOi();
 
-    // R1: 流动性过滤 — 对齐 NoFx minOIThresholdMillions = 15
+    // R1: 流动性过滤 — OI 最小阈值 $15M
     const liquidResults = oiResults.filter((r) => r.oiValueUSD >= MIN_OI_VALUE_USD);
 
     // 按 OI 降序排序，取前 topN
@@ -161,7 +161,7 @@ Respond with ONLY a JSON array.`;
   }
 
   // ========================= OI Low 模式 =========================
-  // 对齐 NoFx kernel/engine.go L473-491
+  // OI 低流动性模式：筛选 OI 最低的币种
   // OI 最低的 N 个币种 — 减仓/空头候选
 
   private async scanOiLow(config: CoinSourceConfig): Promise<string[]> {
@@ -183,7 +183,7 @@ Respond with ONLY a JSON array.`;
   }
 
   // ========================= Mixed 模式 =========================
-  // 对齐 NoFx kernel/engine.go L493-542
+  // 混合模式：OI 高低各半
   // 混合多种来源去重合并
 
   private async scanMixed(
@@ -292,7 +292,7 @@ Respond with ONLY a JSON array.`;
   }
 
   /**
-   * 过滤排除币种 — 对齐 NoFx filterExcludedCoins (kernel/engine.go L549-572)
+   * 过滤排除币种 — 过滤排除币种
    */
   private filterExcludedCoins(coins: string[], excluded?: string[]): string[] {
     if (!excluded || excluded.length === 0) return coins;

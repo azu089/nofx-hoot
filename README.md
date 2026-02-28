@@ -308,11 +308,11 @@ Nginx 反向代理配置位于：`nginx/`
 | Phase 8.1 | DEX 接入（Hyperliquid/Lighter/Aster） | 完成 |
 | Phase 8.2 | Debate Arena 4 阶段辩论 | 完成 |
 | Phase 8.3 | AI 模块隔离 + 产品A优化 | 完成 |
-| Phase 8.4 | 产品A TradingAgents 对齐修复 | 完成 |
+| Phase 8.4 | 产品A 深研模式修复 | 完成 |
 | Phase 9.0 | 产品B多维度辩论 + Schema 增强 | 完成 |
 | Phase 9.1 | 产品B辩论流水线对齐（4→2 阶段） | 完成 |
 | Phase 9.2 | 产品B偏差修复（8 项） | 完成 |
-| Phase 10 | NoFx 网格交易 + 监控 + 执行层 | 完成 |
+| Phase 10 | 网格交易 + 监控 + 执行层 | 完成 |
 | 实盘验收 | 3 种策略全流程端到端验收 | 通过（2026-02-21） |
 
 ---

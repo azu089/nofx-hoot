@@ -34,7 +34,7 @@ export class AutoSchedulerService implements OnModuleInit {
     }
 
     // 注册回撤监控 repeatable job（每 60 秒检查一次）
-    // 参考 NoFx startDrawdownMonitor() — 独立于分析周期的高频仓位保护
+    // 独立于分析周期的高频仓位保护（每 60 秒检查）
     await this.registerDrawdownMonitor();
   }
 

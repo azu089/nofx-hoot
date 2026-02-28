@@ -1,7 +1,6 @@
 /**
  * Aster DEX — ECDSA 签名模块
  *
- * 移植自 NoFx trader/aster/trader.go sign() 方法
  *
  * 签名流程：
  *   1. JSON.stringify(params)
@@ -30,7 +29,7 @@ export function signAsterRequest(
   signerAddress: string,
   privateKey: string,
 ): { signature: string; nonce: string } {
-  // 1. 生成微秒级 nonce（移植自 NoFx genNonce）
+  // 1. 生成微秒级 nonce
   const nonce = BigInt(Date.now()) * 1000n;
 
   // 2. ABI 编码 (string, address, address, uint256)
@@ -74,7 +73,6 @@ export function signAsterRequest(
 
 /**
  * 生成微秒级 Nonce
- * 移植自 NoFx genNonce()
  */
 export function genNonce(): string {
   return (BigInt(Date.now()) * 1000n).toString();

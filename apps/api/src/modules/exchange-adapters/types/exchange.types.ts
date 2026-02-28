@@ -1,7 +1,6 @@
 /**
  * Exchange Adapters — 共享类型定义
  *
- * 移植自 NoFx trader/types/interface.go + store/exchange.go
  * 统一 CEX (CCXT) 和 DEX (Hyperliquid/Lighter/Aster) 的数据结构
  */
 
@@ -168,7 +167,7 @@ export interface OrderStatusDetail {
 // ========================= 已平仓记录 =========================
 
 /**
- * 已平仓盈亏记录（移植自 NoFx ClosedPnLRecord）
+ * 已平仓盈亏记录
  */
 export interface ClosedPnlRecord {
   symbol: string;
@@ -223,7 +222,7 @@ export interface HyperliquidCredentials {
 }
 
 /**
- * Lighter 凭证（移植自 NoFx）
+ * Lighter 凭证
  */
 export interface LighterCredentials {
   /** 钱包地址 */
@@ -237,7 +236,7 @@ export interface LighterCredentials {
 }
 
 /**
- * Aster 凭证（移植自 NoFx）
+ * Aster 凭证
  */
 export interface AsterCredentials {
   /** 主钱包地址 (user) */

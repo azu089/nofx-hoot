@@ -31,7 +31,7 @@ export interface ConsensusConfig {
 export interface ModelVote {
   modelId: string;
   decision: AiTradeDecision;
-  weight: number; // 等权 (对齐 NoFx 扁平设计)
+  weight: number; // 等权投票，所有模型相同权重
   cost: number;
   latencyMs: number;
   success: boolean;
@@ -60,14 +60,14 @@ export interface ConsensusResult {
 }
 
 /**
- * 多模型共识分析服务（共识策略，对齐 NoFx 扁平等权设计）
+ * 多模型共识分析服务（扁平等权设计）
  *
- * 工作流程（对齐 NoFx determineMultiCoinConsensus）:
+ * 工作流程:
  * 1. 遍历配置的模型列表（如 deepseek-chat, gpt-4o-mini 等）
  * 2. 每个模型独立调用 QuickAnalysisService 进行分析
  * 3. 收集每个模型的 action 判断
  * 4. 按 action 累积加权得分，最高分胜出（无门槛）
- * 5. 等权聚合（所有模型 weight=1.0，对齐 NoFx 无学习系统设计）
+ * 5. 等权聚合（所有模型 weight=1.0，无动态权重）
  */
 @Injectable()
 export class ConsensusService {
@@ -92,7 +92,7 @@ export class ConsensusService {
       `[共识] 开始: ${config.symbol}, ${models.length} 个模型参与`,
     );
 
-    // 等权: 所有模型 weight=1.0 (对齐 NoFx 扁平设计，无 Evolution Tier)
+    // 等权投票：所有模型 weight=1.0，无动态权重
     const flatWeight = 1.0;
 
     // 错开调用所有模型（每个模型间隔 500ms，避免同时触发 rate limit）
@@ -123,36 +123,28 @@ export class ConsensusService {
 
     const votes = await Promise.all(votePromises);
 
-    // 过滤成功的分析结果（confidence < 50 的视为无效，不计入共识）
+    // 过滤成功的分析结果
+    // wait/hold 是合法投票（"不交易" = 有效观点），不按 confidence 过滤
+    // 仅排除：调用失败（success=false）或权重为0的无效票
     const validVotes = votes.filter(
-      (v) => v.success && v.weight > 0 && v.decision.confidence >= 50,
+      (v) => v.success && v.weight > 0,
     );
 
-    // NoFx-aligned: 逐模型分析详情日志
+    // 逐模型分析详情日志
     for (const vote of votes) {
       if (vote.success) {
-        const isValid = vote.decision.confidence >= 50;
         this.logger.log(
-          `[共识] 分析: ${vote.modelId} → ${vote.decision.action} (confidence=${vote.decision.confidence}%${isValid ? '' : ' ⚠️无效<50%'}, leverage=${vote.decision.leverage}x, posPct=${vote.decision.positionSizePercent}%)`,
+          `[共识] 分析: ${vote.modelId} → ${vote.decision.action} (confidence=${vote.decision.confidence}%, leverage=${vote.decision.leverage}x, posPct=${vote.decision.positionSizePercent}%)`,
         );
       } else {
         this.logger.warn(`[共识] 分析失败: ${vote.modelId} - ${vote.error}`);
       }
     }
 
+    // validVotes.length === 0 仅在所有模型都调用失败时发生（过滤已移除 confidence 门槛）
     if (validVotes.length === 0) {
-      const succeededVotes = votes.filter((v) => v.success);
-      let holdReason: string;
-      if (succeededVotes.length === 0) {
-        holdReason = '模型调用均失败，默认持有';
-        this.logger.warn('[共识] 所有模型调用失败，默认 hold');
-      } else {
-        const avgConf = Math.round(
-          succeededVotes.reduce((s, v) => s + v.decision.confidence, 0) / succeededVotes.length,
-        );
-        holdReason = `模型置信度不足（${succeededVotes.length}个模型均值 ${avgConf}%），观望等待`;
-        this.logger.warn(`[共识] 模型置信度不足（均值 ${avgConf}%），默认 hold`);
-      }
+      const holdReason = '模型调用均失败，默认持有';
+      this.logger.warn('[共识] 所有模型调用失败，默认 hold');
       return this.buildDefaultResult(config.symbol, votes, Date.now() - startTime, holdReason);
     }
 
@@ -180,7 +172,7 @@ export class ConsensusService {
    * 每个模型收到所有候选币的市场数据，输出 JSON 数组（每币一个决策）。
    * 逐币加权聚合 → Record<symbol, ConsensusResult>
    *
-   * 对齐 NoFx debate/engine.go L760-932 (determineMultiCoinConsensus)
+   * 多币种共识投票：逐币聚合各模型投票
    */
   async runMultiCoinConsensus(
     config: ConsensusConfig,
@@ -293,32 +285,23 @@ export class ConsensusService {
         };
       });
 
+      // wait/hold 是合法投票，不按 confidence 过滤
       const validVotes = symbolVotes.filter(
-        (v) => v.success && v.weight > 0 && v.decision.confidence >= 50,
+        (v) => v.success && v.weight > 0,
       );
 
       if (validVotes.length === 0) {
-        const successVotes = symbolVotes.filter((v) => v.success && v.weight > 0);
+        const failedCount = symbolVotes.filter((v) => !v.success).length;
+        const missingCount = symbolVotes.filter((v) => v.success && v.weight === 0).length;
         let holdReason: string;
-        if (successVotes.length > 0) {
-          // 有模型成功调用，但信度全低于 50%
-          const avgConf = Math.round(successVotes.reduce((s, v) => s + v.decision.confidence, 0) / successVotes.length);
-          holdReason = `模型置信度不足（${successVotes.length}个模型均值 ${avgConf}%），观望等待`;
-          this.logger.warn(
-            `[多币种共识] ${symbol}: 所有 ${successVotes.length} 个有效模型信度不足 50%（均值 ${avgConf}%），默认 hold`,
-          );
+        if (failedCount > 0 && missingCount === 0) {
+          holdReason = `模型调用失败（${failedCount}/${symbolVotes.length}），默认持有`;
+        } else if (missingCount > 0 && failedCount === 0) {
+          holdReason = `模型未覆盖 ${symbol}（${missingCount}/${symbolVotes.length}），默认持有`;
         } else {
-          const failedCount = symbolVotes.filter((v) => !v.success).length;
-          const missingCount = symbolVotes.filter((v) => v.success && v.weight === 0).length;
-          if (failedCount > 0 && missingCount === 0) {
-            holdReason = `模型调用失败（${failedCount}/${symbolVotes.length}），默认持有`;
-          } else if (missingCount > 0 && failedCount === 0) {
-            holdReason = `模型未覆盖 ${symbol}（${missingCount}/${symbolVotes.length}），默认持有`;
-          } else {
-            holdReason = `无有效投票（失败${failedCount}个，未覆盖${missingCount}个），默认持有`;
-          }
-          this.logger.warn(`[多币种共识] ${symbol}: ${holdReason}`);
+          holdReason = `无有效投票（失败${failedCount}个，未覆盖${missingCount}个），默认持有`;
         }
+        this.logger.warn(`[多币种共识] ${symbol}: ${holdReason}`);
         results[symbol] = this.buildDefaultResult(symbol, symbolVotes, 0, holdReason);
       } else {
         results[symbol] = this.calculateConsensus(symbol, validVotes, symbolVotes);
@@ -334,7 +317,7 @@ export class ConsensusService {
       results[symbol].totalCost = totalCost / symbols.length;
     }
 
-    // NoFx-aligned: 逐币种共识日志
+    // 逐币种共识日志
     for (const symbol of symbols) {
       const r = results[symbol];
       this.logger.log(
@@ -562,8 +545,8 @@ export class ConsensusService {
     validVotes: ModelVote[],
     allVotes: ModelVote[],
   ): ConsensusResult {
-    // 对齐 NoFx determineMultiCoinConsensus: 按 action 直接分组（非阵营）
-    // NoFx 行为: score = sum(confidence/100), 最高 score 的 action 胜出
+    // 按 action 直接分组计票（非阵营分组）
+    // 计票规则: score = sum(confidence/100), 最高 score 的 action 胜出
     const actionData: Record<string, {
       score: number;
       votes: ModelVote[];
@@ -585,8 +568,13 @@ export class ConsensusService {
         };
       }
       const ad = actionData[action];
-      // 权重 = confidence/100（对齐 NoFx debate/engine.go L803）
-      ad.score += vote.weight * (vote.decision.confidence / 100);
+      // wait/hold 票 confidence=0 时给予 40% 的评分底线，确保"不交易"有投票权重
+      // 所有有效票参与打分，包括 hold/wait
+      const isNeutral = action === 'wait' || action === 'hold';
+      const scoringConf = isNeutral
+        ? Math.max(vote.decision.confidence, 40)
+        : vote.decision.confidence;
+      ad.score += vote.weight * (scoringConf / 100);
       ad.votes.push(vote);
       ad.totalConf += vote.decision.confidence;
       ad.totalLeverage += vote.decision.leverage > 0 ? vote.decision.leverage : 5;
@@ -601,7 +589,7 @@ export class ConsensusService {
       }
     }
 
-    // 找出得分最高的 action（对齐 NoFx: 无阵营分组，直接 maxScore 胜出）
+    // 找出得分最高的 action（无阵营分组，直接 maxScore 胜出）
     let bestAction: AiAction = 'hold';
     let maxScore = 0;
     for (const [action, ad] of Object.entries(actionData)) {
@@ -611,14 +599,34 @@ export class ConsensusService {
       }
     }
 
-    // 从胜出 action 的投票中计算参数（对齐 NoFx 简单平均 totalXxx / count）
+    // ── 交易动作最低投票数门槛（≥2 个模型同意方可开仓）──
+    // open_long/open_short/close_long/close_short 至少需要 2 个模型同意
+    // 防止单模型独断开仓（修复前 74% 的 open 决策是 1/5 独断）
+    const isTradeAction = ['open_long', 'open_short', 'close_long', 'close_short'].includes(bestAction);
+    const minTradeVotes = 2;
+    if (isTradeAction && (actionData[bestAction]?.votes.length || 0) < minTradeVotes) {
+      const origAction = bestAction;
+      const origVoteCount = actionData[bestAction]?.votes.length || 0;
+      this.logger.warn(
+        `[共识] 交易票数不足: ${origAction} 仅 ${origVoteCount}/${validVotes.length} 票 (需≥${minTradeVotes})，降级为 hold`,
+      );
+      bestAction = 'hold';
+      if (!actionData['hold']) {
+        actionData['hold'] = {
+          score: 0, votes: [], totalConf: 0, totalLeverage: 0,
+          totalPosPct: 0, totalSL: 0, totalTP: 0, slCount: 0, tpCount: 0,
+        };
+      }
+    }
+
+    // 从胜出 action 的投票中计算参数（简单平均）
     const winData = actionData[bestAction];
     const winCount = winData?.votes.length || 1;
     const winningVotes = winData?.votes || [];
 
     const avgConfidence = winData ? winData.totalConf / winCount : 0;
     let avgLeverage = winData ? winData.totalLeverage / winCount : 5;
-    // NoFx clamp: leverage [1, 20]
+    // 杠杆区间限制 [1, 20]
     avgLeverage = Math.max(1, Math.min(20, avgLeverage));
     const avgPositionSize = winData ? winData.totalPosPct / winCount : 0;
     const avgStopLoss = winData && winData.slCount > 0 ? winData.totalSL / winData.slCount : null;
@@ -654,7 +662,7 @@ export class ConsensusService {
       totalCost,
       totalLatencyMs: 0,
       sceneText,
-      // consensusScore = 胜出 action 的投票数（对齐 NoFx winning action count）
+      // consensusScore = 胜出 action 的投票数
       consensusScore: winningVotes.length,
       actionScores,
     };

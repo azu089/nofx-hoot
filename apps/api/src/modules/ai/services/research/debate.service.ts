@@ -38,7 +38,7 @@ export interface DebateConfig {
   sceneText?: string; // G2: BM25 查询文本（通常为 reportsConcat）
   judgeModel?: string; // G3: Judge 使用的深度思考模型（默认用 risk_manager 模型）
   additionalMarketData?: string; // Phase 9.0 T4: 多币种辩论额外市场数据（注入所有候选币数据）
-  skipJudge?: boolean; // Phase 9.1: true → 跳过 Judge, 用投票阶段 (Product B NoFx-aligned)
+  skipJudge?: boolean; // Phase 9.1: true → 跳过 Judge, 用投票阶段（快速模式）
   useShortPrompts?: boolean; // Phase 9.1: true → 用 TRADING_ROLE_PROMPTS 短提示词
   votingSymbols?: string[]; // Phase 9.1: 多币种投票时的 symbol 列表
   locale?: string; // AI 输出语言 locale (e.g. "zh-CN", "en", "ko")
@@ -154,7 +154,7 @@ export class DebateService {
     const startTime = Date.now();
     this.logger.log(`开始 AI 辩论: ${context.symbol} @ ${context.currentPrice}`);
 
-    // 确定最大轮数 (默认 1, 对齐 TradingAgents max_debate_rounds=1)
+    // 确定最大轮数 (默认 1)
     const maxRounds = config.maxRounds || 1;
     const effectiveMaxRounds = Math.max(1, Math.min(maxRounds, 10));
 
@@ -191,7 +191,7 @@ export class DebateService {
     }
 
     if (finalConfig.skipJudge) {
-      // ★ Phase 9.1: Product B (NoFx-aligned) — 投票阶段 + 代码共识，无 Judge
+      // ★ Phase 9.1: 快速模式 — 投票阶段 + 代码共识，无 Judge
       const votingEntries = await this.runVotingPhase(allEntries, context, finalConfig);
       const symbols = finalConfig.votingSymbols || [context.symbol];
       const multiConsensus = this.determineVotingConsensus(votingEntries, symbols);
@@ -207,7 +207,7 @@ export class DebateService {
       const totalLatencyMs = Date.now() - startTime;
 
       this.logger.log(
-        `辩论完成(NoFx投票): action=${primaryConsensus.action}, 信心=${primaryConsensus.confidence}%, ` +
+        `辩论完成(投票): action=${primaryConsensus.action}, 信心=${primaryConsensus.confidence}%, ` +
           `轮数=${lastRound}/${effectiveMaxRounds}, 投票=${votingEntries.length}, 成本=$${totalCost.toFixed(6)}, 耗时=${totalLatencyMs}ms`,
       );
 
@@ -221,7 +221,7 @@ export class DebateService {
         multiCoinConsensus: multiConsensus,
       };
     } else {
-      // ★ Product A (TradingAgents) — Judge 裁决 (原有逻辑不变)
+      // ★ 深研模式 — Judge 裁决
       const judgeResult = await this.runJudge(allEntries, context, finalConfig);
 
       const totalCost = allEntries.reduce((sum, e) => sum + e.cost, 0) + judgeResult.cost;
@@ -383,8 +383,8 @@ export class DebateService {
     // 获取所有角色
     const roles = Object.values(AI_ROLES);
 
-    // Product B (useShortPrompts=true): 顺序执行 (对齐 NoFx debate/engine.go L190-234)
-    // Product A (useShortPrompts=false): 并行执行 (对齐 TradingAgents 效率优先)
+    // 快速模式 (useShortPrompts=true): 顺序执行（后面的参与者可看到前面同轮发言）
+    // 深研模式 (useShortPrompts=false): 并行执行（效率优先）
     if (config.useShortPrompts) {
       return this.runRoundSequential(round, maxRounds, context, previousEntries, config, roles, roundStartTime);
     } else {
@@ -393,9 +393,8 @@ export class DebateService {
   }
 
   /**
-   * 顺序执行单轮辩论 (Product B / NoFx-aligned)
+   * 顺序执行单轮辩论（快速模式）
    *
-   * 对齐 NoFx debate/engine.go L190-234:
    * 同一轮内后面的参与者可以看到前面参与者同轮的发言，形成真正的"对话"。
    */
   private async runRoundSequential(
@@ -427,7 +426,7 @@ export class DebateService {
   }
 
   /**
-   * 并行执行单轮辩论 (Product A / TradingAgents)
+   * 并行执行单轮辩论（深研模式）
    */
   private async runRoundParallel(
     round: number,
@@ -471,7 +470,7 @@ export class DebateService {
     config: DebateConfig,
   ): Promise<DebateEntry | null> {
     const modelId = config.models?.[role] || this.defaultRoleModels[role];
-    // Phase 9.1: useShortPrompts → 用 TRADING_ROLE_PROMPTS 短角色描述 (Product B NoFx-aligned)
+    // Phase 9.1: useShortPrompts → 快速模式使用简短角色描述
     const rolePrompt = config.useShortPrompts
       ? (TRADING_ROLE_PROMPTS[role as AIRole] || config.rolePrompts?.[role] || DEFAULT_ROLE_PROMPTS[role])
       : (config.rolePrompts?.[role] || DEFAULT_ROLE_PROMPTS[role]);
@@ -487,8 +486,7 @@ export class DebateService {
       systemPrompt += '\n\n' + config.tradeHistoryPrompt;
     }
 
-    // G2: 角色专属 BM25 记忆检索（仅 Product A: 对齐 TradingAgents per-role 独立记忆）
-    // Product B (useShortPrompts=true): 跳过 BM25（NoFx 无 BM25，用 RecentOrders+TradingStats 替代）
+    // G2: 角色专属 BM25 记忆检索（仅深研模式启用，快速模式跳过）
     if (!config.useShortPrompts && this.memoryService && config.userId && config.sceneText) {
       try {
         const roleMemories = await this.memoryService.retrieveSimilar(
@@ -517,7 +515,7 @@ export class DebateService {
     // 构建用户消息
     let userMessage = this.buildUserMessage(context, round, maxRounds, previousEntries);
 
-    // G1: Round 1 注入分析师研究报告（仅 Product A: 对齐 TradingAgents）
+    // G1: Round 1 注入分析师研究报告（仅深研模式）
     if (!config.useShortPrompts && round === 1 && config.analystReports) {
       userMessage = `=== ANALYST RESEARCH REPORTS ===\n${config.analystReports.slice(0, 3000)}\n\n${userMessage}`;
     }
@@ -555,7 +553,7 @@ export class DebateService {
       cost: response.cost,
     };
 
-    // NoFx-aligned 详细日志: 模型名+方向+置信度+思考内容预览
+    // 逐模型分析详情日志: 模型名+方向+置信度+思考内容预览
     const reasoningPreview = (parsedArgs.reasoning || response.content || '').slice(0, 300);
     this.logger.log(
       `[辩论] ${role} (Round ${round}) - ${modelId}\n` +
@@ -772,7 +770,7 @@ export class DebateService {
   }
 
   /**
-   * Research Manager Judge 裁决 (对齐 TradingAgents research_manager.py)
+   * Research Manager Judge 裁决
    *
    * 单次 LLM 调用：读取全部分析师论据 → 做出最终投资决策
    * 替代原先的投票共识机制，由 Judge 深度综合所有观点后裁决
@@ -802,7 +800,7 @@ export class DebateService {
       }
     }
 
-    // Judge 系统提示 (对齐 TradingAgents research_manager 的裁决模式)
+    // Judge 系统提示
     let systemPrompt = `You are the Research Manager (Portfolio Manager Judge). You have received analysis from ${entries.length} specialist analysts. Your job is to:
 
 1. Carefully evaluate ALL analyst arguments — bull, bear, technical, contrarian, and risk perspectives
@@ -822,7 +820,7 @@ ${buildAnalysisOutputFormat(config.locale)}`;
       systemPrompt += '\n\n' + config.tradeHistoryPrompt;
     }
 
-    // GAP-B: Judge 角色专属 BM25 记忆 (对齐 TradingAgents invest_judge_memory)
+    // GAP-B: Judge 角色专属 BM25 记忆
     let judgeMemoryInjected = false;
     if (this.memoryService && config.userId && config.sceneText) {
       try {
@@ -861,7 +859,7 @@ ${config.additionalMarketData ? '\n' + config.additionalMarketData : ''}
 === Analyst Arguments (${entries.length} specialists) ===${analystSummary}
 Based on all analyst arguments above, make your FINAL investment decision.`;
 
-    // G3: Judge 优先使用配置的深度思考模型（对齐 TradingAgents research_manager 用 deep_think）
+    // G3: Judge 优先使用配置的深度思考模型
     const judgeModel = config.judgeModel || config.models?.[AI_ROLES.RISK_MANAGER] || this.defaultRoleModels[AI_ROLES.RISK_MANAGER];
 
     try {
@@ -910,18 +908,17 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
     }
   }
 
-  // ==================== Phase 9.1: NoFx-Aligned 投票阶段 ====================
+  // ==================== Phase 9.1: 投票阶段 ====================
 
   /**
    * 投票阶段: 辩论结束后，5 个角色各自投出 <final_vote>
-   * 对齐 NoFx debate/engine.go buildVotingSystemPrompt + buildVotingUserPrompt
    */
   private async runVotingPhase(
     allEntries: DebateEntry[],
     context: MarketContext,
     config: DebateConfig,
   ): Promise<DebateEntry[]> {
-    this.logger.log('开始投票阶段 (NoFx-aligned)');
+    this.logger.log('开始投票阶段');
     const roles = Object.values(AI_ROLES);
 
     // 构建辩论摘要 (用户 Prompt)
@@ -940,7 +937,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       ? `${votingUserPrompt}\n\n${config.additionalMarketData}`
       : votingUserPrompt;
 
-    // 顺序调用 5 个角色的投票 LLM (对齐 NoFx collectVotes: 顺序执行)
+    // 顺序调用 5 个角色的投票 LLM（顺序执行）
     const entries: DebateEntry[] = [];
     for (const role of roles) {
       try {
@@ -971,7 +968,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
           cost: response.cost,
         };
 
-        // NoFx-aligned 详细投票日志
+        // 详细投票日志
         const voteDetails = parsedVotes.map((v: any) =>
           `${v.symbol || context.symbol}: ${v.action}(${v.confidence}%) lev=${v.leverage || 'N/A'}`,
         ).join(', ');
@@ -989,7 +986,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
   }
 
   /**
-   * 修复中文标点 (对齐 NoFx fixMissingQuotes)
+   * 修复中文标点
    * 中文 LLM (DeepSeek/Qwen) 有时输出中文引号/逗号/冒号，导致 JSON.parse 失败
    */
   private fixChinesePunctuation(s: string): string {
@@ -1009,7 +1006,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
 
   /**
    * 解析 <final_vote> 标签内的 JSON 数组
-   * 对齐 NoFx parseDecisions: tag提取 → JSON解析 → 嵌入JSON → fallback关键字计数
+   * tag提取 → JSON解析 → 嵌入JSON → fallback关键字计数
    */
   private parseFinalVote(
     content: string,
@@ -1055,7 +1052,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       this.logger.warn(`${role} 兜底 JSON 解析也失败`);
     }
 
-    // BUG-6 修复: fallback 关键字计数 (对齐 NoFx fallbackParseAction)
+    // BUG-6 修复: fallback 关键字计数
     // 当所有 JSON 解析都失败时，通过关键字频率推断投票意图
     const fallback = this.fallbackParseAction(fixed, role);
     if (fallback) return [fallback];
@@ -1064,7 +1061,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
   }
 
   /**
-   * 关键字计数兜底解析 (对齐 NoFx fallbackParseAction)
+   * 关键字计数兜底解析
    * 统计 LLM 响应中 action 关键字出现次数，取最高频的作为投票
    */
   private fallbackParseAction(
@@ -1090,7 +1087,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       close_short: 0,
     };
 
-    // 统计各 action 关键字出现次数 (匹配 NoFx 的精确字符串搜索)
+    // 统计各 action 关键字出现次数
     const patterns: Record<string, string[]> = {
       open_long: ['open_long', '"buy"', '"long"', 'action": "open_long'],
       open_short: ['open_short', '"sell"', '"short"', 'action": "open_short'],
@@ -1149,7 +1146,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
   }
 
   /**
-   * 投票共识计算 (严格对齐 NoFx determineMultiCoinConsensus)
+   * 投票共识计算：多币种投票聚合
    *
    * 算法:
    * 1. 从每个投票 entry 的 arguments 中提取 per-symbol decisions
@@ -1168,7 +1165,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
     stopLoss?: number;
     takeProfit?: number;
   }> {
-    // actionData 结构 (对齐 NoFx)
+    // actionData 结构（按 symbol+action 分组累积）
     interface ActionData {
       score: number;
       totalConf: number;
@@ -1242,7 +1239,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
 
         const ad = symbolActions[symbol][action];
         let weight = (d.confidence || 0) / 100;
-        if (weight < 0.1) weight = 0.5; // NoFx: 低信心默认 0.5 权重
+        if (weight < 0.1) weight = 0.5; // 低信心默认 0.5 权重
 
         ad.score += weight;
         ad.totalConf += d.confidence || 50;
@@ -1305,7 +1302,7 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
       let avgSLPct = ad.totalSLPct / ad.count;
       let avgTPPct = ad.totalTPPct / ad.count;
 
-      // 应用限制 (对齐 NoFx)
+      // 应用参数边界限制
       if (avgLeverage < 1) avgLeverage = 5;
       if (avgLeverage > 20) avgLeverage = 20;
       if (avgPosPct < 0.1) avgPosPct = 0.2;
@@ -1465,12 +1462,12 @@ Based on all analyst arguments above, make your FINAL investment decision.`;
    * 将 vote/action 标准化为 6-action 格式
    */
   private normalizeAction(vote: string): string {
-    // 去空格、下划线、连字符后统一小写 (对齐 NoFx normalizeAction)
+    // 去空格、下划线、连字符后统一小写
     const v = vote.toLowerCase().trim();
     // 6-action 标准格式直接返回
     if (['open_long', 'open_short', 'close_long', 'close_short', 'hold', 'wait'].includes(v)) return v;
 
-    // NoFx fuzzy mapping: 12 种常见 LLM 输出变体
+    // fuzzy mapping: 12 种常见 LLM 输出变体
     const stripped = v.replace(/[\s_-]/g, ''); // "open long" / "open_long" / "open-long" → "openlong"
     const actionMap: Record<string, string> = {
       long: 'open_long',

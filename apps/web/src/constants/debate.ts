@@ -51,7 +51,7 @@ export const MODEL_COST_ESTIMATE: Record<string, number> = {
   'kimi-k2.5': 0.003,
 };
 
-// 角色 Emoji 映射 (对齐 NoFx PERS)
+// 角色 Emoji 映射
 export const PERSONALITY_EMOJIS: Record<string, string> = {
   bull: '\u{1F402}',
   bear: '\u{1F43B}',
@@ -60,7 +60,7 @@ export const PERSONALITY_EMOJIS: Record<string, string> = {
   risk_manager: '\u{1F6E1}\uFE0F',
 };
 
-// Action 配色+标签 (对齐 NoFx ACT + DecisionCard ACTION_CONFIG)
+// Action 配色+标签
 export const ACTION_CONFIG: Record<string, {
   color: string;
   bg: string;
@@ -83,14 +83,14 @@ export const RISK_RATING_COLORS: Record<string, string> = {
   EXTREME: '#DC2626',
 };
 
-// 估算总成本 (USD) — NoFx-aligned 2阶段
+// 估算总成本 (USD) — 2阶段
 export function estimateDebateCost(modelCount: number): {
   investDebate: number;
   riskDebate: number;
   consensus: number;
   total: number;
 } {
-  // NoFx-aligned: 5角色 × 3轮 = 15 次 + 投票 5 次 = 20 次 LLM 调用
+  // 深研模式: 5角色 × 3轮 = 15 次 + 投票 5 次 = 20 次 LLM 调用
   const investDebate = 20 * 0.002;
   const riskDebate = 0; // 无独立风控阶段
   const consensus = 0;  // 无独立共识阶段

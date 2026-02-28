@@ -52,6 +52,7 @@ interface Position {
   margin?: number
   marginMode?: string
   marginRatio?: string  // 交易所原始保证金比率（%字符串），直接显示
+  syncSource?: 'exchange' | 'database'
 }
 
 interface ExecutionLog {
@@ -627,7 +628,12 @@ export function MobileTradingCenter({
                       </div>
                       <div>
                         <p className="text-[#606070]">{t('markPriceLabel')}</p>
-                        <p className="font-medium">{position.markPrice.toFixed(4)}</p>
+                        <p className="font-medium">
+                          {position.markPrice.toFixed(4)}
+                          {position.syncSource === 'database' && (
+                            <span className="ml-1 text-[9px] text-yellow-400/70" title={t('cachedData')}>⏱</span>
+                          )}
+                        </p>
                       </div>
                       <div>
                         <p className="text-[#606070]">{t('liquidationPriceLabel')}</p>

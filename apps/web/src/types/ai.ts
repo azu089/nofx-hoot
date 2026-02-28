@@ -329,6 +329,9 @@ export interface StartResearchBody {
     minPositionSize?: number;
     minConfidence?: number;
     minRiskRewardRatio?: number;
+    profitDrawdownEnabled?: boolean;
+    profitDrawdownMinProfit?: number;
+    profitDrawdownMaxRetracement?: number;
   };
 }
 
@@ -362,7 +365,7 @@ export interface RiskControlConfig {
   minConfidence?: number;
   minRiskRewardRatio?: number;
   amountPerTrade?: number;
-  // NoFx 对齐新增
+  // 风控扩展字段
   maxDailyTrades?: number;
   cooldownMinutes?: number;
   circuitBreaker?: number;
@@ -371,6 +374,10 @@ export interface RiskControlConfig {
   altcoinMaxPositionValueRatio?: number;
   btcEthMaxLeverage?: number;
   altcoinMaxLeverage?: number;
+  // 利润回撤保护
+  profitDrawdownEnabled?: boolean;         // 是否开启（默认 true）
+  profitDrawdownMinProfit?: number;        // 最低盈利触发阈值 %（默认 5）
+  profitDrawdownMaxRetracement?: number;   // 从高水位最大回撤 %（默认 40）
 }
 
 export interface PromptSections {
@@ -594,7 +601,7 @@ export interface StrategyLog {
     gridSummary?: string; // Grid 操作摘要 (如 "5买/5卖")
     cost?: number;
     aiThinking?: string; // AI 思考链（DeepSeek-Reasoner / Claude 扩展思考）
-    // Grid 状态快照（对齐 NoFx saveGridDecisionRecord）
+    // Grid 状态快照
     gridSnapshot?: {
       upperPrice: number;
       lowerPrice: number;
@@ -606,6 +613,7 @@ export interface StrategyLog {
       pendingLevels: number;
       activeOrders: number;
       totalProfit: number;
+      totalPnl?: number;
       totalTrades: number;
       winRate: number;
       maxDrawdown: number;

@@ -39,17 +39,17 @@ export interface ConsensusVote {
 /**
  * 策略风控配置（对应 riskControlConfig JSON 字段）
  *
- * 对齐 NoFx RiskControlConfig (store/strategy.go:203-227):
+ * 字段分类:
  * - CODE ENFORCED: MaxPositions, PositionValueRatio, MinPositionSize, MaxMarginUsage
  * - AI GUIDED: MaxLeverage (分BTC/ETH和山寨), MinRiskRewardRatio, MinConfidence
- * - HOOT 多用户额外: maxDailyDrawdown, maxDailyTrades, cooldownMinutes, circuitBreaker
+ * - 多用户额外: maxDailyDrawdown, maxDailyTrades, cooldownMinutes, circuitBreaker
  */
 interface RiskControlConfig {
   // === HOOT 已有字段（保留） ===
   pauseUntil?: string;
   maxDailyDrawdown?: number;
-  maxPositions?: number;           // CODE ENFORCED, 默认 3 (NoFx: max_positions)
-  maxLeverage?: number;            // fallback 杠杆上限（NoFx 无单一字段）
+  maxPositions?: number;           // CODE ENFORCED, 默认 3
+  maxLeverage?: number;            // fallback 杠杆上限
   maxDailyTrades?: number;
   maxTradeAmountUSD?: number;
   allocatedCapital?: number;
@@ -59,13 +59,13 @@ interface RiskControlConfig {
   btcEthMaxPositionValueRatio?: number;   // CODE ENFORCED, 默认 5.0
   altcoinMaxPositionValueRatio?: number;  // CODE ENFORCED, 默认 1.0
 
-  // === NoFx 新增字段 ===
-  btcEthMaxLeverage?: number;      // AI GUIDED, 默认 5 (NoFx: btc_eth_max_leverage)
-  altcoinMaxLeverage?: number;     // AI GUIDED, 默认 5 (NoFx: altcoin_max_leverage)
-  minRiskRewardRatio?: number;     // AI GUIDED, 默认 1.5 (NoFx: min_risk_reward_ratio, NoFx默认3.0)
-  minConfidence?: number;          // AI GUIDED, 默认 60 (NoFx: min_confidence, NoFx默认75)
-  minPositionSize?: number;        // CODE ENFORCED, 默认 12 (NoFx: min_position_size)
-  maxMarginUsage?: number;         // CODE ENFORCED, 默认 0.9 (NoFx 有定义但未实际执行)
+  // === 杠杆与风控字段 ===
+  btcEthMaxLeverage?: number;      // AI GUIDED, 默认 5（BTC/ETH 分类杠杆）
+  altcoinMaxLeverage?: number;     // AI GUIDED, 默认 5（山寨币分类杠杆）
+  minRiskRewardRatio?: number;     // AI GUIDED, 默认 1.5（最小风险收益比）
+  minConfidence?: number;          // AI GUIDED, 默认 60（最小置信度）
+  minPositionSize?: number;        // CODE ENFORCED, 默认 12（最小仓位 USDT）
+  maxMarginUsage?: number;         // CODE ENFORCED, 默认 0.9（最大保证金使用率）
 }
 
 /** 策略指标配置（对应 indicatorConfig JSON 字段） */
@@ -123,7 +123,7 @@ interface CycleDecision {
 /**
  * 自动交易服务 — 产品 B 核心循环引擎
  *
- * 精确参考 NoFx runCycle 9 步流程:
+ * 核心 9 步循环流程:
  *
  * Step 1: 检查策略是否停止
  * Step 2: 检查是否被风控暂停
@@ -363,13 +363,14 @@ export class AutoTraderService {
         );
 
         // 记录熔断事件到策略日志
+        const pauseReason = `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`;
         await this.prisma.aiStrategyLog.create({
           data: {
             strategyId,
             symbol: 'ALL',
             decision: {
               action: 'circuit_breaker',
-              reason: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限制 $${maxDailyDrawdown}`,
+              reason: pauseReason,
               closedPnl,
               unrealizedPnl,
               totalDailyPnl,
@@ -377,6 +378,38 @@ export class AutoTraderService {
             executed: false,
           },
         });
+
+        // 风控暂停：停止策略 + 记录原因到 riskControlConfig._riskPause
+        await this.prisma.aiStrategy.update({
+          where: { id: strategyId },
+          data: {
+            isActive: false,
+            riskControlConfig: {
+              ...riskControl,
+              _riskPause: {
+                source: 'daily_drawdown',
+                reason: pauseReason,
+                pausedAt: new Date().toISOString(),
+                totalDailyPnl,
+                maxDailyDrawdown,
+              },
+            },
+          },
+        });
+
+        // 移除 BullMQ 定时任务
+        try {
+          await this.strategyEngine.removeStrategyJob(strategyId);
+        } catch { /* 忽略 */ }
+
+        // WebSocket 通知用户
+        this.gateway.sendAiStrategyStatus(userId, {
+          strategyId,
+          status: 'stopped',
+          error: pauseReason,
+        });
+
+        this.logger.warn(`[自动交易] 策略 ${strategyId} 日回撤风控暂停: ${pauseReason}`);
 
         result.errors = 1;
         return result;
@@ -422,8 +455,8 @@ export class AutoTraderService {
         },
       });
 
-      // E1: 仓位已满预筛选（对齐 NoFx enforceMaxPositions — Pre-AI 拦截，避免浪费 Token）
-      // NoFx 在调用 LLM 前先检查仓位数，满则只处理有持仓的币种（允许平仓）
+      // E1: 仓位已满预筛选（Pre-AI 拦截，避免浪费 Token）
+      // 仓位已满时，只处理有持仓的币种（允许平仓）
       // 修复: maxPositions 仅计入本策略的持仓，避免其他策略持仓误触发本策略的仓位限制
       const effectiveMaxPositions = riskControl.maxPositions ?? 3;
       const thisStrategyOpenPositions = existingPositions.filter(p => p.aiStrategyId === strategy.id);
@@ -441,7 +474,7 @@ export class AutoTraderService {
         );
       }
 
-      // 账户信息快照（对齐 NoFx Account equity 日志）
+      // 账户信息快照
       this.logger.log(
         `📊 账户快照: 配置资金=$${(riskControl.allocatedCapital || 1000).toFixed(0)} USDT | ` +
         `当前持仓=${existingPositions.length}/${effectiveMaxPositions} | ` +
@@ -545,9 +578,7 @@ export class AutoTraderService {
         `其他策略持仓=${otherPositions.length} (保证金=$${otherMargin.toFixed(2)})`,
       );
 
-      // Step 5.5: 查询最近交易记录 + 统计（替代 BM25，NoFx 轻量上下文）
-      // Step 5.5: 查询最近交易记录 + 统计
-      // 对齐 NoFx RecentOrder (9字段) + TradingStats (8字段)
+      // Step 5.5: 查询最近交易记录 + 统计（RecentOrder 9字段 + TradingStats 8字段）
       const recentPositions = await this.prisma.position.findMany({
         where: {
           userId,
@@ -593,7 +624,7 @@ export class AutoTraderService {
         };
       });
 
-      // 聚合交易统计 — 对齐 NoFx TradingStats (8字段)
+      // 聚合交易统计（TradingStats 8字段）
       // 限定最近 30 天的已平仓位，避免历史旧仓位污染 Sharpe/WinRate
       const statsLookback = new Date();
       statsLookback.setDate(statsLookback.getDate() - 30);
@@ -656,7 +687,7 @@ export class AutoTraderService {
         maxDrawdownPct: Number((maxDrawdownPct * 100).toFixed(2)),
       };
 
-      // 交易统计上下文（对齐 NoFx Trading stats 日志）
+      // 交易统计上下文
       if (tradingStats.totalTrades > 0) {
         this.logger.log(
           `📈 交易统计: ${tradingStats.totalTrades}笔, ` +
@@ -811,7 +842,7 @@ export class AutoTraderService {
             }
           }
 
-          // Debate 结果汇总（对齐 NoFx EXECUTING DEBATE CONSENSUS）
+          // Debate 结果汇总
           const debateSummaryLines = activeCandidates
             .map(sym => {
               const dr = debateResults.get(sym);
@@ -1052,8 +1083,7 @@ export class AutoTraderService {
             }
           }
 
-          // E2: 杠杆 auto-clamp（对齐 NoFx validateDecision — 分 BTC/ETH 和山寨币）
-          // NoFx 行为: btcEthMaxLeverage / altcoinMaxLeverage 分别控制
+          // E2: 杠杆 auto-clamp（分 BTC/ETH 和山寨币：btcEthMaxLeverage / altcoinMaxLeverage）
           if (decision.leverage) {
             const bs = symbol.split('/')[0]?.toUpperCase();
             const isMaj = bs === 'BTC' || bs === 'ETH';
@@ -1135,7 +1165,7 @@ export class AutoTraderService {
             continue;
           }
 
-          // === minConfidence 代码级预过滤（对齐 NoFx validateDecision confidence 检查）===
+          // === minConfidence 代码级预过滤（默认 60，用户可配置）===
           // RiskControlConfig.minConfidence 默认 60，用户可在策略 riskControlConfig 中调整
           {
             const isOpenDecision = decision.action === 'open_long' || decision.action === 'open_short';
@@ -1206,7 +1236,7 @@ export class AutoTraderService {
             positionSize: decision.positionSizePercent,
             leverage: decision.leverage,
             totalModels: models.length,
-            mode: 'quick', // Solo + Debate 都跳过 L2（对齐 NoFx: 共识机制无门槛，consensus.service 已确定 winner）
+            mode: strategy.strategyType === 'debate' ? 'consensus' : 'quick', // Solo 跳过 L2；Debate 启用 L2 兜底（需 3/5 同意）
             // 风控指标数据（Solo 由 quick-analysis 返回，Debate 由编排器市场快照提供）
             indicators: safetyIndicators as SafetyCheckInput['indicators'],
             fundingRate: safetyFundingRate,
@@ -1219,7 +1249,7 @@ export class AutoTraderService {
             takeProfitValid,  // TP 方向验证结果
             currentPrice: safetyCurrentPrice,
             strategyId, // L9 按策略独立计算持仓数
-            // 策略级风控参数（对齐 NoFx RiskControlConfig 9 字段 + HOOT 多用户额外字段）
+            // 策略级风控参数
             strategyRiskConfig: {
               maxLeverage: riskControl.maxLeverage,
               btcEthMaxLeverage: riskControl.btcEthMaxLeverage,
@@ -1237,7 +1267,7 @@ export class AutoTraderService {
 
           const safetyResult = await this.safety.checkAll(safetyInput);
 
-          // 安全检查逐层摘要（对齐 NoFx 风控检查可观测性）
+          // 安全检查逐层摘要
           const checkSummary = safetyResult.checks
             .map(c => `${c.layer}:${c.passed ? '✓' : '✗'}`)
             .join(' ');
@@ -1325,7 +1355,7 @@ export class AutoTraderService {
       // Step 8: 排序决策（平仓优先 → 开仓 → hold/wait）
       const sortedDecisions = this.sortDecisions(allDecisions);
 
-      // LOG-6: 执行顺序预览（对齐 NoFx `🔄 Execution order`）
+      // LOG-6: 执行顺序预览
       if (sortedDecisions.length > 0) {
         const orderList = sortedDecisions
           .map((d, i) => `  [${i + 1}] ${d.symbol} ${d.decision.action} (conf=${d.decision.confidence}%)`)
@@ -1366,7 +1396,7 @@ export class AutoTraderService {
         const { symbol, consensusVotes: votes } = item;
         let decision = item.decision; // R3: let 允许执行时价格刷新重算 SL/TP
 
-        // D7: 排除币种检查 — 对齐 NoFx filterExcludedCoins
+        // D7: 排除币种检查
         const excluded = riskControl.excludedCoins as string[] | undefined;
         if (excluded && excluded.length > 0) {
           const baseSymbol = symbol.split('/')[0]?.toUpperCase();
@@ -1382,8 +1412,7 @@ export class AutoTraderService {
         // hold/wait 已在安全检查之前提前分流（L785 上方），此处不再需要
 
         try {
-          // D6: positionValueRatio auto-cap（对齐 NoFx enforcePositionValueRatio — auto-cap 而非拒绝）
-          // NoFx 行为: 仓位价值超限时自动缩小到上限，不拦截交易
+          // D6: positionValueRatio auto-cap（超限时自动缩小到上限，不拦截交易）
           if (decision.action === 'open_long' || decision.action === 'open_short') {
             const baseSymbol = symbol.split('/')[0]?.toUpperCase();
             const isMajor = baseSymbol === 'BTC' || baseSymbol === 'ETH';
@@ -1402,7 +1431,7 @@ export class AutoTraderService {
             }
           }
 
-          // E4: 最小仓位检查（对齐 NoFx enforceMinPositionSize — 用户可配 minPositionSize）
+          // E4: 最小仓位检查（用户可配 minPositionSize）
           // 用户配置 > 系统硬底 ($12 山寨/$60 BTC/ETH)
           if (decision.action === 'open_long' || decision.action === 'open_short') {
             const bs = symbol.split('/')[0]?.toUpperCase();
@@ -1535,7 +1564,7 @@ export class AutoTraderService {
             }
           }
 
-          // 执行前打印动作前缀（对齐 NoFx 2空格缩进子步骤）
+          // 执行前打印动作前缀
           if (decision.action === 'open_long') {
             this.logger.log(`  📈 开多: ${symbol} (conf=${decision.confidence}%, lev=${decision.leverage}x)`);
           } else if (decision.action === 'open_short') {
@@ -1627,7 +1656,7 @@ export class AutoTraderService {
             },
           });
 
-          // LOG-7: 决策记录保存确认（对齐 NoFx `📝 Decision record saved`）
+          // LOG-7: 决策记录保存确认
           this.logger.debug(
             `📝 决策记录已保存: ${symbol} ${decision.action}`,
           );
@@ -1758,16 +1787,44 @@ export class AutoTraderService {
         },
       });
 
-      // 检查停止条件 (maxCycles)
+      // 检查停止条件 (maxCycles / profitTargetPercent / maxLossPercent)
       const stopCond = (strategy.stopConditions as StopConditionsConfig) || {};
       const maxCycles = stopCond.maxCycles || 0;
+      let shouldStop = false;
+      let stopReason = '';
+
       if (maxCycles > 0 && updatedStrategy.cycleCount >= maxCycles) {
-        this.logger.log(
-          `[自动交易] 策略 ${strategyId} 达到最大周期数 ${maxCycles}，自动停止`,
-        );
+        shouldStop = true;
+        stopReason = `达到最大周期数 ${maxCycles}`;
+      }
+
+      // 止盈/止损检查（基于策略总 PnL 与配置资金的百分比）
+      if (!shouldStop && (stopCond.profitTargetPercent || stopCond.maxLossPercent)) {
+        const allocCap = riskControl.allocatedCapital || 1000;
+        const pnlPercent = allocCap > 0 ? (sTotalPnl / allocCap) * 100 : 0;
+
+        if (stopCond.profitTargetPercent && stopCond.profitTargetPercent > 0 && pnlPercent >= stopCond.profitTargetPercent) {
+          shouldStop = true;
+          stopReason = `止盈达标: +${pnlPercent.toFixed(1)}% (目标: ${stopCond.profitTargetPercent}%)`;
+        } else if (stopCond.maxLossPercent && stopCond.maxLossPercent > 0 && pnlPercent <= -stopCond.maxLossPercent) {
+          shouldStop = true;
+          stopReason = `止损触发: ${pnlPercent.toFixed(1)}% (限额: -${stopCond.maxLossPercent}%)`;
+        }
+      }
+
+      if (shouldStop) {
+        this.logger.log(`[自动交易] 策略 ${strategyId} ${stopReason}，自动停止`);
         await db.aiStrategy.update({
           where: { id: strategyId },
           data: { isActive: false },
+        });
+
+        // 移除调度任务 + 通知用户
+        try { await this.strategyEngine.removeStrategyJob(strategyId); } catch { /* 忽略 */ }
+        this.gateway.sendAiStrategyStatus(userId, {
+          strategyId,
+          status: 'stopped',
+          error: stopReason,
         });
       }
 
@@ -1784,7 +1841,7 @@ export class AutoTraderService {
         }
       }
 
-      // LOG-8: 周期结束 Banner（增强格式，对齐 NoFx）
+      // LOG-8: 周期结束 Banner
       this.logger.log(
         `${'-'.repeat(70)}\n` +
         `✅ 周期完成: 分析=${result.analyzed}, 执行=${result.executed}, 错误=${result.errors}\n` +
@@ -1822,7 +1879,7 @@ export class AutoTraderService {
   // ========================= 决策排序 =========================
 
   /**
-   * 排序决策（精确复制 NoFx sortDecisionsByPriority）
+   * 排序决策（sortDecisionsByPriority）
    * close → open → hold/wait
    */
   private sortDecisions(
@@ -1944,24 +2001,35 @@ export class AutoTraderService {
       result.errors = gridResult.errors || 0;
       result.totalLatencyMs = Date.now() - startTime;
 
-      // 更新策略统计（Grid 分支独立更新，含交易统计同步）
-      const gridClosedPositions = await this.prisma.position.findMany({
-        where: { aiStrategyId: strategy.id, status: 'closed', realizedPnl: { not: null } },
-        select: { realizedPnl: true, margin: true },
+      // 检查风控是否在本周期中停止了策略（deactivateStrategy 只改 DB，通知由此处统一处理）
+      const freshStrategy = await this.prisma.aiStrategy.findUnique({
+        where: { id: strategy.id },
+        select: { isActive: true, gridRuntimeState: true },
       });
-      const gTotalTrades = gridClosedPositions.length;
-      const gWins = gridClosedPositions.filter((p) => Number(p.realizedPnl || 0) > 0);
-      const gWinRate = gTotalTrades > 0 ? (gWins.length / gTotalTrades) * 100 : 0;
-      const gTotalPnl = gridClosedPositions.reduce((s, p) => s + Number(p.realizedPnl || 0), 0);
+      const gridState = freshStrategy?.gridRuntimeState as { isPaused?: boolean; pauseSource?: string; pauseReason?: string } | null;
+      if (freshStrategy && !freshStrategy.isActive && gridState?.isPaused && gridState?.pauseSource === 'risk_control') {
+        // 风控触发 → 移除 BullMQ 任务 + WebSocket 通知用户
+        try {
+          await this.strategyEngine.removeStrategyJob(strategy.id);
+        } catch { /* 忽略 */ }
 
+        this.gateway.sendAiStrategyStatus(userId, {
+          strategyId: strategy.id,
+          status: 'stopped',
+          error: gridState.pauseReason || '风控保护已暂停交易',
+        });
+
+        this.logger.warn(`[网格] 策略 ${strategy.id} 风控停止，已通知用户`);
+        return result;
+      }
+
+      // 更新策略统计（Grid 分支：PnL 已由 persistGridState 同步，此处仅更新周期元数据）
+      // 网格持仓在 gridRuntimeState JSON 内，不在 position 表中，不能用 position 表计算
       await this.prisma.aiStrategy.update({
         where: { id: strategy.id },
         data: {
           lastCycleAt: new Date(),
           cycleCount: { increment: 1 },
-          totalTrades: gTotalTrades,
-          totalPnl: Number(gTotalPnl.toFixed(8)),
-          winRate: Number(gWinRate.toFixed(2)),
           ...(strategy.consecutiveFailures > 0 ? { consecutiveFailures: 0 } : {}),
         },
       });
@@ -1987,7 +2055,7 @@ export class AutoTraderService {
 
   /**
    * 连续失败处理：累加计数，≥3 次自动暂停策略
-   * 对齐 NoFx auto_trader.go handleConsecutiveFailures()
+   * 连续失败处理逻辑
    */
   private async handleCycleFailure(strategyId: string, errorMessage: string): Promise<void> {
     try {

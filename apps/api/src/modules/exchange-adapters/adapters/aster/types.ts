@@ -1,7 +1,6 @@
 /**
  * Aster DEX — 类型定义
  *
- * 移植自 NoFx trader/aster/trader.go
  * Aster API 格式类似 Binance Futures V3
  */
 

@@ -19,6 +19,7 @@ import {
   Eye,
   RotateCcw,
   Search,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useStrategyDetail, useStrategyLogs, useStrategyPnlChart, useStrategyControl, useHotUpdateConfig, useUpdateStrategy, usePreviewPrompt, useTriggerCycle } from "@/hooks/useAi";
@@ -61,6 +62,7 @@ export function AIStrategyDetailPage() {
   >(initialTab);
   const [showPauseModal, setShowPauseModal] = useState(false);
   const [showStopModal, setShowStopModal] = useState(false);
+  const [showResumeGridModal, setShowResumeGridModal] = useState(false);
   const [pauseDuration, setPauseDuration] = useState<string>("1h");
   const [timeFilter, setTimeFilter] = useState<string>("7d");
   const [voteSheetLog, setVoteSheetLog] = useState<StrategyLog | null>(null);
@@ -105,6 +107,10 @@ export function AIStrategyDetailPage() {
   const [editMinConfidence, setEditMinConfidence] = useState(0);
   const [editMinRR, setEditMinRR] = useState(0);
   const [editMinPositionSize, setEditMinPositionSize] = useState(0);
+  // 利润回撤保护
+  const [editProfitDrawdownEnabled, setEditProfitDrawdownEnabled] = useState(true);
+  const [editProfitDrawdownMinProfit, setEditProfitDrawdownMinProfit] = useState(5);
+  const [editProfitDrawdownMaxRetracement, setEditProfitDrawdownMaxRetracement] = useState(40);
   const [editMaxCycles, setEditMaxCycles] = useState(0);
   const [editProfitTarget, setEditProfitTarget] = useState(0);
   const [editMaxLoss, setEditMaxLoss] = useState(0);
@@ -128,6 +134,11 @@ export function AIStrategyDetailPage() {
   const [editCoinSearch, setEditCoinSearch] = useState('');
   const [showEditStopConditions, setShowEditStopConditions] = useState(false);
 
+  // Research 编辑 state
+  const [editResearchSymbol, setEditResearchSymbol] = useState('');
+  const [editResearchSymbolSearch, setEditResearchSymbolSearch] = useState('');
+  const [editResearchDepth, setEditResearchDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
+
   // 搜索过滤
   const filteredEditGridCoins = useMemo(() => {
     if (!editGridCoinSearch) return GRID_COINS;
@@ -139,6 +150,11 @@ export function AIStrategyDetailPage() {
     const q = editCoinSearch.toUpperCase();
     return ALL_COIN_NAMES.filter((c) => c.includes(q));
   }, [editCoinSearch]);
+  const filteredEditResearchSymbols = useMemo(() => {
+    if (!editResearchSymbolSearch) return ALL_COIN_NAMES.slice(0, 10);
+    const q = editResearchSymbolSearch.toUpperCase();
+    return ALL_COIN_NAMES.filter((c) => c.includes(q));
+  }, [editResearchSymbolSearch]);
 
   // strategyId 变化时重置日志分页
   useEffect(() => {
@@ -323,6 +339,10 @@ export function AIStrategyDetailPage() {
       setEditMinConfidence(rc.minConfidence ?? 0);
       setEditMinRR(rc.minRiskRewardRatio ?? 0);
       setEditMinPositionSize(rc.minPositionSize ?? 0);
+      // 利润回撤保护
+      setEditProfitDrawdownEnabled(rc.profitDrawdownEnabled !== false);
+      setEditProfitDrawdownMinProfit(rc.profitDrawdownMinProfit ?? 5);
+      setEditProfitDrawdownMaxRetracement(rc.profitDrawdownMaxRetracement ?? 40);
       setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
       setEditProfitTarget(strategy.stopConditions?.profitTargetPercent ?? 0);
       setEditMaxLoss(strategy.stopConditions?.maxLossPercent ?? 0);
@@ -338,6 +358,13 @@ export function AIStrategyDetailPage() {
       // 交易所
       setEditExchangeApiKeyId(strategy.exchangeApiKeyId || null);
       setEditCoinSearch('');
+      // Research 字段
+      setEditResearchSymbolSearch('');
+      if (strategy.tradingMode === 'research') {
+        const researchSymbol = cc.coins?.[0] || '';
+        setEditResearchSymbol(researchSymbol);
+        setEditResearchDepth(((strategy as unknown as Record<string, unknown>).depth as 'quick' | 'standard' | 'deep') || 'standard');
+      }
     }
     setIsEditing(true);
   };
@@ -368,15 +395,23 @@ export function AIStrategyDetailPage() {
           profitTargetPercent: editProfitTarget || undefined,
           maxLossPercent: editMaxLoss || undefined,
         },
+        riskControlConfig: {
+          ...(strategy.riskControlConfig as unknown as Record<string, unknown> || {}),
+          profitDrawdownEnabled: editProfitDrawdownEnabled,
+          profitDrawdownMinProfit: editProfitDrawdownMinProfit,
+          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement,
+        },
       };
     } else {
       // 非 Grid：提交通用 coinSourceConfig + riskControlConfig + promptSections
       body = {
         coinSourceConfig: {
           mode: editCoinMode,
-          coins: editCoinMode === 'static' || editCoinMode === 'mixed' ? editCoins : undefined,
+          coins: strategy.tradingMode === 'research'
+            ? (editResearchSymbol ? [editResearchSymbol] : undefined)
+            : (editCoinMode === 'static' || editCoinMode === 'mixed' ? editCoins : undefined),
           maxCoins: editCoinMode !== 'static' ? editMaxCoins : undefined,
-          excludedCoins: editExcludedCoins.length > 0 ? editExcludedCoins : undefined,
+          excludedCoins: strategy.tradingMode !== 'research' && editExcludedCoins.length > 0 ? editExcludedCoins : undefined,
         },
         riskControlConfig: {
           maxLeverage: editMaxLeverage,
@@ -394,6 +429,9 @@ export function AIStrategyDetailPage() {
           minConfidence: editMinConfidence || undefined,
           minPositionSize: editMinPositionSize || undefined,
           maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
+          profitDrawdownEnabled: editProfitDrawdownEnabled,
+          profitDrawdownMinProfit: editProfitDrawdownMinProfit,
+          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement,
         },
         promptSections: {
           role: editPromptRole || undefined,
@@ -416,6 +454,8 @@ export function AIStrategyDetailPage() {
             temperature: editDebateTemperature,
           },
         } : strategy.tradingMode === 'solo' ? {
+          models: [editSoloModel],
+        } : strategy.tradingMode === 'research' ? {
           models: [editSoloModel],
         } : {}),
         ...(editExchangeApiKeyId && { exchangeApiKeyId: editExchangeApiKeyId }),
@@ -474,6 +514,15 @@ export function AIStrategyDetailPage() {
 
   // Extract data
   const strategy = detail.strategy;
+  // 统一风控暂停检测
+  const gridRuntimeState = (strategy as unknown as Record<string, unknown>).gridRuntimeState as { isPaused?: boolean; pauseSource?: string; pauseReason?: string } | null;
+  const riskConfigRaw = (strategy as unknown as Record<string, unknown>).riskControlConfig as { _riskPause?: { source?: string; reason?: string; pausedAt?: string } } | null;
+  // Grid: gridRuntimeState.isPaused + pauseSource === 'risk_control'
+  const isGridRiskPaused = !!(gridRuntimeState?.isPaused && gridRuntimeState?.pauseSource === 'risk_control');
+  // Solo/Debate: riskControlConfig._riskPause
+  const isSoloDebateRiskPaused = !!riskConfigRaw?._riskPause;
+  const isRiskControlPaused = isGridRiskPaused || isSoloDebateRiskPaused;
+  const riskPauseReason = isGridRiskPaused ? gridRuntimeState?.pauseReason : riskConfigRaw?._riskPause?.reason;
   const coinSourceConfig = strategy.coinSourceConfig;
   const riskControlConfig = strategy.riskControlConfig;
   const symbols = coinSourceConfig?.coins || [];
@@ -552,6 +601,10 @@ export function AIStrategyDetailPage() {
           ) : (
             <button
               onClick={async () => {
+                if (isRiskControlPaused) {
+                  setShowResumeGridModal(true);
+                  return;
+                }
                 try {
                   await strategyControl.mutateAsync({ id: strategyId, action: 'start' });
                 } catch (err: unknown) {
@@ -633,6 +686,27 @@ export function AIStrategyDetailPage() {
         </div>
       </header>
 
+      {/* 风控暂停提示卡 */}
+      {isRiskControlPaused && (
+        <div className="mx-4 mt-3 p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl">
+          <div className="flex items-start gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-[#EF4444] mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs text-[#EF4444] font-medium">{t('detail.gridRiskPaused')}</p>
+              {riskPauseReason?.split('\n').map((line, i) => (
+                <p key={i} className={`text-[11px] mt-0.5 ${i === 0 ? 'text-[#EF4444]/80 font-medium' : 'text-[#9090A0]'}`}>{line}</p>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={() => setShowResumeGridModal(true)}
+            className="w-full py-2 text-xs font-medium bg-[#EF4444]/15 text-[#EF4444] rounded-lg hover:bg-[#EF4444]/25 active:opacity-70 transition-colors"
+          >
+            {t('detail.gridResumeTrading')}
+          </button>
+        </div>
+      )}
+
       {/* Tab 内容 */}
       <main className="pb-6">
         {/* Tab 1: 概览 */}
@@ -647,10 +721,10 @@ export function AIStrategyDetailPage() {
                 <div className="mx-4 mt-4 glass-border-glow glass-card p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <span
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center"
                       style={{ backgroundColor: modeInfo.bg }}
                     >
-                      {modeInfo.icon}
+                      <modeInfo.Icon className="w-4 h-4" style={{ color: modeInfo.color }} />
                     </span>
                     <span className="text-sm font-semibold" style={{ color: modeInfo.color }}>
                       {modeInfo.title}
@@ -933,6 +1007,10 @@ export function AIStrategyDetailPage() {
                   <h3 className="text-sm font-semibold mb-3">{t('detail.currentConfig')}</h3>
                   <div className="space-y-2.5">
                     <ConfigRow label={t('detail.configStrategyType')} value={strategy.strategyType === 'grid' ? t('detail.gridTrading') : t('detail.normalStrategy')} />
+                    {/* 交易所账户 */}
+                    {strategy.exchangeApiKeyId && (
+                      <ConfigRow label={t('create.exchangeAccount')} value={strategy.exchangeApiKeyId.slice(0, 8) + '...'} />
+                    )}
 
                     {/* Grid 策略配置 */}
                     {strategy.strategyType === 'grid' && strategy.gridConfig ? (
@@ -961,11 +1039,36 @@ export function AIStrategyDetailPage() {
                             <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? 'Yes' : 'No'} />
                           </div>
                         )}
+                        {/* LLM 模型 */}
+                        <ConfigRow
+                          label="LLM"
+                          value={MODEL_DISPLAY[(strategy.models?.[0]) as keyof typeof MODEL_DISPLAY]?.name
+                            || strategy.quickModel || '—'}
+                        />
+                        {/* 执行间隔 */}
+                        <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
+                        {/* 止停条件 */}
+                        {(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
+                          <>
+                            <div className="pt-1 border-t border-[#1E1E2E]">
+                              <p className="text-xs text-[#606070] font-medium">止停条件</p>
+                            </div>
+                            {!!strategy.stopConditions?.maxCycles && (
+                              <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
+                            )}
+                            {!!strategy.stopConditions?.profitTargetPercent && (
+                              <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
+                            )}
+                            {!!strategy.stopConditions?.maxLossPercent && (
+                              <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                            )}
+                          </>
+                        )}
                       </>;
                       })()
                     ) : (
                       <>
-                    <ConfigRow label={t('detail.configTradingMode')} value={strategy.tradingMode === 'solo' ? t('detail.soloMode') : strategy.tradingMode === 'debate' ? t('detail.debateMode') : strategy.tradingMode === 'grid' ? t('detail.gridMode') : strategy.tradingMode} />
+                    <ConfigRow label={t('detail.configTradingMode')} value={strategy.tradingMode === 'solo' ? t('detail.soloMode') : strategy.tradingMode === 'debate' ? t('detail.debateMode') : strategy.tradingMode === 'grid' ? t('detail.gridMode') : strategy.tradingMode === 'research' ? t('detail.researchMode') : strategy.tradingMode} />
                     {/* Solo 模型展示 */}
                     {strategy.tradingMode === 'solo' && (
                       <ConfigRow
@@ -974,6 +1077,23 @@ export function AIStrategyDetailPage() {
                           || MODEL_DISPLAY[(strategy.models?.[0]) as keyof typeof MODEL_DISPLAY]?.name
                           || strategy.quickModel || '—'}
                       />
+                    )}
+                    {/* Research 模型 + 深度展示 */}
+                    {strategy.tradingMode === 'research' && (
+                      <>
+                        <ConfigRow
+                          label="LLM"
+                          value={MODEL_DISPLAY[strategy.quickModel as keyof typeof MODEL_DISPLAY]?.name
+                            || MODEL_DISPLAY[(strategy.models?.[0]) as keyof typeof MODEL_DISPLAY]?.name
+                            || strategy.quickModel || '—'}
+                        />
+                        <ConfigRow
+                          label={t('create.researchDepth')}
+                          value={((strategy as unknown as Record<string, unknown>).depth === 'quick' ? t('create.quick')
+                            : (strategy as unknown as Record<string, unknown>).depth === 'deep' ? t('create.deep')
+                            : t('create.standard'))}
+                        />
+                      </>
                     )}
                     {/* Debate 模型展示 */}
                     {strategy.tradingMode === 'debate' && strategy.models && strategy.models.length > 0 && (
@@ -1033,7 +1153,7 @@ export function AIStrategyDetailPage() {
                     <ConfigRow label={t('detail.editDailyDrawdown')} value={maxDrawdown} />
                     <ConfigRow label={t('detail.maxDailyTrades')} value={riskControlConfig?.maxDailyTrades || '—'} />
                     <ConfigRow label={t('detail.cooldownTime')} value={riskControlConfig?.cooldownMinutes ? `${riskControlConfig.cooldownMinutes}min` : '—'} />
-                    {/* NoFx 高级风控字段（有值时显示） */}
+                    {/* 高级风控字段（有值时显示） */}
                     {riskControlConfig?.btcEthMaxLeverage && (
                       <ConfigRow label={t('detail.btcEthMaxLeverage')} value={`${riskControlConfig.btcEthMaxLeverage}x`} />
                     )}
@@ -1049,6 +1169,13 @@ export function AIStrategyDetailPage() {
                     {riskControlConfig?.minPositionSize && (
                       <ConfigRow label={t('detail.minPositionSize')} value={`$${riskControlConfig.minPositionSize}`} />
                     )}
+                    {/* 利润回撤保护 */}
+                    <ConfigRow
+                      label={t('detail.profitDrawdown')}
+                      value={riskControlConfig?.profitDrawdownEnabled === false
+                        ? '已关闭'
+                        : `≥${riskControlConfig?.profitDrawdownMinProfit || 5}% → ${riskControlConfig?.profitDrawdownMaxRetracement || 40}%`}
+                    />
                       </>
                     )}
                     <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
@@ -1072,8 +1199,8 @@ export function AIStrategyDetailPage() {
                   </div>
                 </div>
 
-                {/* Prompt 配置 */}
-                {strategy.promptSections && (
+                {/* Prompt 配置（仅 Solo/Debate 显示，Research 和 Grid 无 Prompt） */}
+                {strategy.promptSections && strategy.tradingMode !== 'research' && strategy.strategyType !== 'grid' && (
                   <div className="glass-border-glow glass-card p-4 space-y-3">
                     <h3 className="text-sm font-semibold mb-3">{t('detail.promptConfig')}</h3>
                     <div className="space-y-2.5">
@@ -1259,6 +1386,24 @@ export function AIStrategyDetailPage() {
                                 </button>
                               </div>
                             )}
+                            {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
+                            {(() => {
+                              const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
+                              const MIN_NOTIONAL  = 20  // Binance 合约最低名义值
+                              const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
+                              const maxViable = Math.floor((editGridInvestment * effLev) / MIN_NOTIONAL)
+                              const idleCount = Math.max(0, editGridCount - maxViable)
+                              if (idleCount === 0) return null
+                              const minInv = Math.ceil((editGridCount * MIN_NOTIONAL) / effLev)
+                              return (
+                                <div className="flex items-start gap-1 text-[11px] text-[#F59E0B]">
+                                  <span>⚠</span>
+                                  <span>
+                                    极端市场仅 {maxViable} 格可下单，{idleCount} 格将空转 · 建议资金 ≥ ${minInv}
+                                  </span>
+                                </div>
+                              )
+                            })()}
                           </div>
                         );
                       })()}
@@ -1396,6 +1541,88 @@ export function AIStrategyDetailPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* 卡片 4: Grid 止停条件（与非Grid一致） */}
+                    <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
+                      <button type="button" onClick={() => setShowEditStopConditions(!showEditStopConditions)}
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
+                          <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditStopConditions ? 'rotate-180' : ''}`} />
+                      </button>
+                      {showEditStopConditions && (
+                      <div className="px-4 pb-4 space-y-3">
+                        <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大周期</span>
+                          <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
+                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                          />
+                          <span className="text-xs text-[#606070]">次</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#9090A0] w-20 shrink-0">盈利目标</span>
+                          <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
+                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                          />
+                          <span className="text-xs text-[#606070]">%</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大亏损</span>
+                          <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
+                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                          />
+                          <span className="text-xs text-[#606070]">%</span>
+                        </div>
+                      </div>
+                      )}
+                    </div>
+
+                    {/* 卡片 5: Grid 利润回撤保护 */}
+                    <div className="rounded-xl border border-[#1E1E2E] overflow-hidden p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
+                          <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
+                        </div>
+                        <button type="button"
+                          onClick={() => setEditProfitDrawdownEnabled(!editProfitDrawdownEnabled)}
+                          className={`w-10 h-5 rounded-full transition-colors relative ${editProfitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${editProfitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+                      {editProfitDrawdownEnabled && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={1} max={50} step={1}
+                                value={editProfitDrawdownMinProfit || ''}
+                                onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              />
+                              <span className="text-[#606070] text-xs">%</span>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={10} max={80} step={5}
+                                value={editProfitDrawdownMaxRetracement || ''}
+                                onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              />
+                              <span className="text-[#606070] text-xs">%</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
+                    </div>
                   </>
                 ) : (
                 <>
@@ -1524,7 +1751,117 @@ export function AIStrategyDetailPage() {
                     </div>
                   )}
                 </div>
-                {/* 卡片 1: 交易币种 */}
+                {/* 卡片 1-R: Research 专属 — 单一交易对 + 深度选择 */}
+                {strategy.tradingMode === 'research' && (
+                  <div className="glass-border-glow glass-card p-4 space-y-4">
+                    <h3 className="text-sm font-semibold">{t('create.tradingPair')}</h3>
+
+                    {/* 币种来源 */}
+                    <div className="space-y-3">
+                      <label className="block text-sm text-[#9090A0]">{t('detail.editCoinSource')}</label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { key: 'static', label: t('detail.coinSourceManual') },
+                          { key: 'ai', label: t('detail.coinSourceAI') },
+                          { key: 'oi_top', label: t('detail.coinSourceOIHigh') },
+                          { key: 'oi_low', label: t('detail.coinSourceOILow') },
+                          { key: 'mixed', label: t('detail.coinSourceMixed') },
+                        ] as const).map(({ key, label }) => (
+                          <button key={key} type="button"
+                            onClick={() => setEditCoinMode(key)}
+                            className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${editCoinMode === key
+                              ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                              : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
+                            title={label} aria-label={label}
+                          >{label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 单一交易对选择（tag-input + 搜索，与创建表单一致） */}
+                    {(editCoinMode === 'static' || editCoinMode === 'mixed') && (
+                      <div className="space-y-3">
+                        <label className="block text-sm text-[#9090A0]">{t('create.tradingPair')}</label>
+                        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
+                          {editResearchSymbol && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs">
+                              {editResearchSymbol.split('/')[0]}
+                              <X className="w-3 h-3 cursor-pointer hover:text-white"
+                                onClick={() => setEditResearchSymbol('')}
+                              />
+                            </span>
+                          )}
+                          <div className="flex items-center flex-1 min-w-[120px]">
+                            <Search className="w-3.5 h-3.5 text-[#606070] mr-1.5 flex-shrink-0" />
+                            <input
+                              type="text"
+                              placeholder={t('create.searchCoins')}
+                              value={editResearchSymbolSearch}
+                              onChange={(e) => setEditResearchSymbolSearch(e.target.value)}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] text-[#606070]">{t('create.popular')}</span>
+                            <button type="button" onClick={() => { setEditResearchSymbol(''); setEditResearchSymbolSearch(''); }}
+                              className="px-2.5 py-1 rounded-lg text-xs bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A] transition-colors"
+                            >{t('common.clear')}</button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {filteredEditResearchSymbols.map((coinName) => {
+                              const full = `${coinName}/USDT:USDT`;
+                              const sel = editResearchSymbol === full;
+                              return (
+                                <button key={coinName} type="button"
+                                  onClick={() => { setEditResearchSymbol(full); setEditResearchSymbolSearch(''); }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                    sel ? 'bg-[#06B6D4] text-black' : 'bg-[#1E1E2E] text-[#9090A0] hover:bg-[#2A2A3A]'
+                                  }`}
+                                  aria-label={coinName} title={coinName}
+                                >{coinName}</button>
+                              );
+                            })}
+                            {editResearchSymbolSearch && filteredEditResearchSymbols.length === 0 && (
+                              <span className="text-xs text-[#606070] py-2">{t('create.notFound')}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 研究深度选择 */}
+                    <div className="space-y-3">
+                      <label className="block text-sm text-[#9090A0]">{t('create.researchDepth')}</label>
+                      <div className="flex gap-2">
+                        {([
+                          { value: 'quick' as const, time: '~1min' },
+                          { value: 'standard' as const, time: '~3min' },
+                          { value: 'deep' as const, time: '~5min' },
+                        ]).map((opt) => (
+                          <button key={opt.value} type="button"
+                            onClick={() => setEditResearchDepth(opt.value)}
+                            className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all ${
+                              editResearchDepth === opt.value
+                                ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                                : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'
+                            }`}
+                            aria-label={`${opt.value} ${opt.time}`} title={`${opt.value} ${opt.time}`}
+                          >
+                            <div className="text-sm">
+                              {opt.value === 'quick' ? t('create.quick') : opt.value === 'deep' ? t('create.deep') : t('create.standard')}
+                            </div>
+                            <div className="text-xs mt-0.5 opacity-70">{opt.time}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 卡片 1: 交易币种（Solo/Debate 多币种选择，Research 跳过） */}
+                {strategy.tradingMode !== 'research' && (
                 <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editCoins')}</h3>
                   <label className="block text-sm text-[#9090A0]">{t('detail.editCoinSource')}</label>
@@ -1645,6 +1982,7 @@ export function AIStrategyDetailPage() {
                     )}
                   </div>
                 </div>
+                )}
 
                 {/* 卡片 2: 风控参数（与创建表单对齐，全用 input 2列网格） */}
                 <div className="glass-border-glow glass-card p-4 space-y-4">
@@ -1741,9 +2079,53 @@ export function AIStrategyDetailPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* 利润回撤保护 */}
+                  <div className="pt-3 border-t border-[#1E1E2E]">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
+                        <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
+                      </div>
+                      <button type="button"
+                        onClick={() => setEditProfitDrawdownEnabled(!editProfitDrawdownEnabled)}
+                        className={`w-10 h-5 rounded-full transition-colors relative ${editProfitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
+                      >
+                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${editProfitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
+                      </button>
+                    </div>
+                    {editProfitDrawdownEnabled && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input type="number" min={1} max={50} step={1}
+                              value={editProfitDrawdownMinProfit || ''}
+                              onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                            />
+                            <span className="text-[#606070] text-xs">%</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input type="number" min={10} max={80} step={5}
+                              value={editProfitDrawdownMaxRetracement || ''}
+                              onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                            />
+                            <span className="text-[#606070] text-xs">%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
+                  </div>
                 </div>
 
-                {/* 卡片 3: Prompt 配置 (4段) */}
+                {/* 卡片 3: Prompt 配置 (4段) — Research 模式跳过 */}
+                {strategy.tradingMode !== 'research' && (
                 <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editPromptConfig')}</h3>
 
@@ -1758,9 +2140,9 @@ export function AIStrategyDetailPage() {
                         <button
                           key={key}
                           onClick={() => setEditPromptMode(key)}
-                          className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${editPromptMode === key
-                            ? 'bg-[#06B6D4]/15 border-2 border-[#06B6D4] text-[#06B6D4] shadow-[0_0_8px_rgba(6,182,212,0.12)]'
-                            : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E]'}`}
+                          className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all ${editPromptMode === key
+                            ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
+                            : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
                           title={label} aria-label={label}
                         >{label}</button>
                       ))}
@@ -1819,6 +2201,7 @@ export function AIStrategyDetailPage() {
                     {t('detail.editPreviewPrompt')}
                   </button>
                 </div>
+                )}
 
                 {/* 卡片 4: 执行配置（间隔按模式动态展示，与创建表单一致） */}
                 <div className="space-y-3">
@@ -1828,6 +2211,8 @@ export function AIStrategyDetailPage() {
                       ? [{ m: 3, l: '3m' }, { m: 5, l: '5m' }, { m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '60m' }]
                       : strategy.tradingMode === 'debate'
                       ? [{ m: 5, l: '5m' }, { m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '60m' }]
+                      : strategy.tradingMode === 'research'
+                      ? [{ m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '60m' }, { m: 240, l: '4h' }]
                       : [{ m: 15, l: '15m' }, { m: 30, l: '30m' }, { m: 60, l: '1h' }, { m: 240, l: '4h' }, { m: 1440, l: '24h' }]
                     ).map(({ m, l }) => (
                       <button key={m} type="button" onClick={() => setEditInterval(m)}
@@ -1842,19 +2227,17 @@ export function AIStrategyDetailPage() {
 
                 {/* 卡片 5: 止停条件（折叠面板，与创建表单一致） */}
                 <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
-                  <button type="button" onClick={() => {
-                    const el = document.getElementById('edit-stop-conditions');
-                    if (el) el.classList.toggle('hidden');
-                  }}
+                  <button type="button" onClick={() => setShowEditStopConditions(!showEditStopConditions)}
                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
                       <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
                     </div>
-                    <ChevronDown className="w-4 h-4 text-[#606070]" />
+                    <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditStopConditions ? 'rotate-180' : ''}`} />
                   </button>
-                  <div id="edit-stop-conditions" className="hidden px-4 pb-4 space-y-3">
+                  {showEditStopConditions && (
+                  <div className="px-4 pb-4 space-y-3">
                     <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[#9090A0] w-20 shrink-0">最大周期</span>
@@ -1878,6 +2261,7 @@ export function AIStrategyDetailPage() {
                       <span className="text-xs text-[#606070]">%</span>
                     </div>
                   </div>
+                  )}
                 </div>
                 </>
                 )}
@@ -1997,6 +2381,61 @@ export function AIStrategyDetailPage() {
                 className="flex-1 py-3 bg-[#F43F5E] text-[#F8F8FC] text-sm font-medium rounded-lg active:opacity-80 disabled:opacity-50"
               >
                 {strategyControl.isPending ? t('common.stopping') : t('detail.confirmStop')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 弹窗: 恢复风控暂停的网格策略 */}
+      {showResumeGridModal && (
+        <div className="fixed inset-0 z-50 flex items-end">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowResumeGridModal(false)}
+          />
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] animate-slide-up">
+            <h2 className="text-base font-semibold mb-3">{t('detail.gridResumeConfirmTitle')}</h2>
+            <p className="text-xs text-[#9090A0] mb-2">{riskPauseReason}</p>
+            <p className="text-xs text-[#9090A0] mb-3">{t('detail.gridResumeConfirmDesc')}</p>
+            <div className="p-2.5 bg-[#0A0A0F] rounded-lg space-y-1 mb-4">
+              <p className="text-[11px] text-[#606070]">{t('detail.gridResumeWillDo')}</p>
+              {isGridRiskPaused && (
+                <>
+                  <p className="text-xs text-[#9090A0]">• {t('detail.gridResumePeakReset')}</p>
+                  <p className="text-xs text-[#9090A0]">• {t('detail.gridResumeDailyReset')}</p>
+                </>
+              )}
+              {isSoloDebateRiskPaused && (
+                <p className="text-xs text-[#9090A0]">• {t('detail.soloResumeDrawdownNote')}</p>
+              )}
+              <p className="text-xs text-[#9090A0]">• {t('detail.gridResumeRiskRemain')}</p>
+            </div>
+            <div className="flex items-center gap-3 mb-16">
+              <button
+                onClick={() => setShowResumeGridModal(false)}
+                className="flex-1 py-3 text-sm font-medium border border-[#1E1E2E] rounded-lg active:bg-[#1E1E2E]"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    if (isGridRiskPaused) {
+                      await strategyControl.mutateAsync({ id: strategyId!, action: 'resume-grid' });
+                    } else {
+                      await strategyControl.mutateAsync({ id: strategyId!, action: 'start' });
+                    }
+                    toast.success(t('detail.gridResumeSuccess'));
+                    setShowResumeGridModal(false);
+                  } catch (err: unknown) {
+                    toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message || t('common.failed'));
+                  }
+                }}
+                disabled={strategyControl.isPending}
+                className="flex-1 py-3 bg-[#EF4444] text-white text-sm font-medium rounded-lg active:opacity-80 disabled:opacity-50"
+              >
+                {strategyControl.isPending ? t('detail.gridResuming') : t('detail.gridConfirmResume')}
               </button>
             </div>
           </div>
@@ -2173,7 +2612,16 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   } else if (logStatus === 'skipped') {
     detailText = er?.reason || log.decision?.reasoning?.slice(0, 100) || '';
   }
-  const hasDetail = detailText || log.decision?.reasoning;
+  // Grid 日志：从 decisions 数组中提取最有意义的推理（优先 adjust_grid > hold > 最长的非 cancel 推理）
+  const gridReasoning = isGrid
+    ? (gridDecisions.find(d => d.action === 'adjust_grid' && d.reasoning)?.reasoning ||
+       gridDecisions.find(d => d.action === 'hold' && d.reasoning)?.reasoning ||
+       gridDecisions
+         .filter(d => d.reasoning && d.action !== 'cancel_order')
+         .sort((a, b) => (b.reasoning?.length || 0) - (a.reasoning?.length || 0))[0]?.reasoning ||
+       '')
+    : '';
+  const hasDetail = detailText || log.decision?.reasoning || gridReasoning;
 
   return (
     <div className={`py-2.5 ${!isLast ? 'border-b border-[#1E1E2E]' : ''}`}>
@@ -2214,9 +2662,16 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
               {detailText.slice(0, 200)}
             </p>
           )}
-          {log.decision?.reasoning && (
+          {/* Solo/Debate 模式：显示 decision.reasoning */}
+          {!isGrid && log.decision?.reasoning && (
             <p className="text-[10px] text-[#9090A0]">
               {log.decision.reasoning.slice(0, 200)}
+            </p>
+          )}
+          {/* Grid 模式：显示从 decisions 中提取的市场分析推理 */}
+          {isGrid && gridReasoning && (
+            <p className="text-[10px] text-[#9090A0] leading-relaxed">
+              {gridReasoning.slice(0, 300)}
             </p>
           )}
           {log.decision?.leverage && (
@@ -2307,7 +2762,7 @@ function VoteDetailSheet({
     hold: t('detail.actionHold'), wait: t('detail.actionWait'),
   };
 
-  // 统计各 action 票数（action-based，对齐 NoFx）
+  // 统计各 action 票数
   const actionCounts: Record<string, number> = {};
   for (const v of validVotes) {
     actionCounts[v.action] = (actionCounts[v.action] || 0) + 1;
@@ -2367,7 +2822,7 @@ function VoteDetailSheet({
             </button>
           </div>
 
-          {/* 动态阶段进度指示 (有风控成本→4阶段, 否则→2阶段 NoFx) */}
+          {/* 动态阶段进度指示 (有风控成本→4阶段, 否则→2阶段) */}
           {(() => {
             const logRecord = log as unknown as Record<string, unknown>;
             const riskResult = logRecord.riskDebateResult as { totalCost?: number } | undefined;

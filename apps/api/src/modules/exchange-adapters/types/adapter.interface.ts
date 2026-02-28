@@ -1,7 +1,7 @@
 /**
  * ExchangeAdapter — 统一交易所适配器接口
  *
- * 移植自 NoFx trader/types/interface.go 的 Trader 接口
+ * 统一适配器接口
  * 所有交易所（CEX + DEX）统一实现此接口
  *
  * 实现：
@@ -25,7 +25,7 @@ import {
  * 统一交易所适配器接口
  *
  * 设计原则：
- * 1. 方法签名对齐 NoFx Go Trader 接口
+ * 1. 统一方法签名规范
  * 2. 返回类型使用强类型替代 map[string]interface{}
  * 3. 额外提供 DEX 特有方法（如 txHash）
  */
@@ -48,13 +48,11 @@ export interface ExchangeAdapter {
 
   /**
    * 获取账户余额
-   * NoFx: GetBalance() (map[string]interface{}, error)
    */
   getBalance(): Promise<ExchangeBalance>;
 
   /**
    * 获取当前持仓
-   * NoFx: GetPositions() ([]map[string]interface{}, error)
    */
   getPositions(): Promise<ExchangePosition[]>;
 
@@ -62,7 +60,6 @@ export interface ExchangeAdapter {
 
   /**
    * 开多
-   * NoFx: OpenLong(symbol string, quantity float64, leverage int) (map[string]interface{}, error)
    *
    * @param symbol 交易对 (e.g., "BTC/USDT:USDT")
    * @param quantity 数量（已经过精度处理）
@@ -72,19 +69,16 @@ export interface ExchangeAdapter {
 
   /**
    * 开空
-   * NoFx: OpenShort(symbol string, quantity float64, leverage int) (map[string]interface{}, error)
    */
   openShort(symbol: string, quantity: number, leverage: number): Promise<OrderResult>;
 
   /**
    * 平多（quantity=0 表示全平）
-   * NoFx: CloseLong(symbol string, quantity float64) (map[string]interface{}, error)
    */
   closeLong(symbol: string, quantity: number): Promise<OrderResult>;
 
   /**
    * 平空（quantity=0 表示全平）
-   * NoFx: CloseShort(symbol string, quantity float64) (map[string]interface{}, error)
    */
   closeShort(symbol: string, quantity: number): Promise<OrderResult>;
 
@@ -92,13 +86,11 @@ export interface ExchangeAdapter {
 
   /**
    * 设置杠杆
-   * NoFx: SetLeverage(symbol string, leverage int) error
    */
   setLeverage(symbol: string, leverage: number): Promise<void>;
 
   /**
    * 设置保证金模式
-   * NoFx: SetMarginMode(symbol string, isCrossMargin bool) error
    *
    * @param isCrossMargin true=全仓, false=逐仓
    */
@@ -108,7 +100,6 @@ export interface ExchangeAdapter {
 
   /**
    * 获取市场最新价格
-   * NoFx: GetMarketPrice(symbol string) (float64, error)
    */
   getMarketPrice(symbol: string): Promise<number>;
 
@@ -116,7 +107,6 @@ export interface ExchangeAdapter {
 
   /**
    * 设置止损
-   * NoFx: SetStopLoss(symbol string, positionSide string, quantity, stopPrice float64) error
    *
    * @param positionSide "long" 或 "short"
    */
@@ -124,7 +114,6 @@ export interface ExchangeAdapter {
 
   /**
    * 设置止盈
-   * NoFx: SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error
    */
   setTakeProfit(symbol: string, positionSide: string, quantity: number, takeProfitPrice: number): Promise<void>;
 
@@ -132,25 +121,21 @@ export interface ExchangeAdapter {
 
   /**
    * 取消指定交易对的所有挂单
-   * NoFx: CancelAllOrders(symbol string) error
    */
   cancelAllOrders(symbol: string): Promise<void>;
 
   /**
    * 取消止损/止盈单
-   * NoFx: CancelStopOrders(symbol string) error
    */
   cancelStopOrders(symbol: string): Promise<void>;
 
   /**
    * 获取订单状态
-   * NoFx: GetOrderStatus(symbol string, orderID string) (map[string]interface{}, error)
    */
   getOrderStatus(symbol: string, orderId: string): Promise<OrderStatusDetail>;
 
   /**
    * 获取挂单列表
-   * NoFx: GetOpenOrders(symbol string) ([]OpenOrder, error)
    */
   getOpenOrders(symbol: string): Promise<OpenOrder[]>;
 
@@ -158,7 +143,6 @@ export interface ExchangeAdapter {
 
   /**
    * 格式化数量精度
-   * NoFx: FormatQuantity(symbol string, quantity float64) (string, error)
    *
    * 按交易所要求格式化数量（小数位数、步长）
    */
@@ -173,7 +157,6 @@ export interface ExchangeAdapter {
 
   /**
    * 获取已平仓盈亏记录
-   * NoFx: GetClosedPnL(startTime time.Time, limit int) ([]ClosedPnLRecord, error)
    *
    * @param startTime 查询起始时间
    * @param limit 最大返回数量
@@ -204,7 +187,7 @@ export interface ExchangeAdapter {
 /**
  * 限价单扩展接口（用于网格交易等高级策略）
  *
- * 移植自 NoFx GridTrader 接口
+ * 限价单扩展接口（用于网格交易等高级策略）
  * 仅需要限价单功能的适配器实现此接口
  */
 export interface GridExchangeAdapter extends ExchangeAdapter {
@@ -226,7 +209,7 @@ export interface GridExchangeAdapter extends ExchangeAdapter {
 }
 
 /**
- * 限价单请求（移植自 NoFx LimitOrderRequest）
+ * 限价单请求
  */
 export interface LimitOrderRequest {
   symbol: string;
@@ -241,7 +224,7 @@ export interface LimitOrderRequest {
 }
 
 /**
- * 限价单结果（移植自 NoFx LimitOrderResult）
+ * 限价单结果
  */
 export interface LimitOrderResult {
   orderId: string;

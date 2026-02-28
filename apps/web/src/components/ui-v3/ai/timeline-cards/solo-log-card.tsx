@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Zap, Check, Clock, Shield, Pause, Grid3X3, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { ACTION_CONFIG, MODEL_DISPLAY } from '@/constants/debate';
 import { TruncatedText } from './truncated-text';
+import { translateExchangeOrderError } from '@/lib/error-translator';
 import type { TimelineSoloLog } from '@/types/ai';
 import { useTranslations } from '@/i18n/provider';
 
@@ -229,15 +230,31 @@ function getSectionColor(title: string): string {
   return '#6B7280';
 }
 
-/** 按中文/英文句号将长段落拆成视觉小段（每2句一组） */
+/** 按中文/英文句号将长段落拆成视觉小段（每2句一组，语义关键词额外断段） */
 function toParas(raw: string): string[] {
   // 只在中文句末标点后断句；英文 !? 要求前面非数字，避免拆分小数（如 576.61）
   const sentences = raw.split(/(?<=[。！？])\s*|(?<=(?<!\d)[!?])\s+/).map(s => s.trim()).filter(s => s.length > 1);
   if (sentences.length <= 1) return [raw.trim()];
+
+  // 结论/转折类关键词出现在句首时，无论当前组是否满 2 句都先断段
+  const TOPIC_BREAK = /^(因此|综上|总结|结论|建议|操作建议|风险提示|注意|综合来看|总的来说|仓位管理|网格方向|Therefore|In summary|Overall|Risk)/;
+
   const paras: string[] = [];
-  for (let i = 0; i < sentences.length; i += 2) {
-    paras.push(sentences.slice(i, i + 2).join(''));
+  let group: string[] = [];
+
+  for (const s of sentences) {
+    if (group.length > 0 && TOPIC_BREAK.test(s)) {
+      paras.push(group.join(''));
+      group = [s];
+    } else {
+      group.push(s);
+      if (group.length >= 2) {
+        paras.push(group.join(''));
+        group = [];
+      }
+    }
   }
+  if (group.length > 0) paras.push(group.join(''));
   return paras;
 }
 
@@ -355,6 +372,7 @@ interface SoloLogCardProps {
 
 export function SoloLogCard({ entry }: SoloLogCardProps) {
   const t = useTranslations('ai');
+  const te = useTranslations('errors');
   const { log, strategy } = entry;
   const d = log.decision;
   const er = log.executionResult;
@@ -366,17 +384,25 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   // 检测自动禁用日志
   const isAutoDisabled = d.action === 'auto_disabled_failure';
 
-  // Grid: 提取整体市场分析（adjust_grid 推理最详细），与下方操作详情不重复
+  // Grid: 提取整体市场分析 — 优先级：adjust_grid > hold > pause_grid > 最长的非 cancel 推理
   const gridAnalysisText = isGridLog
     ? (() => {
-        // 优先取 adjust_grid 的推理（包含市场分析）
-        const adjustReasonings = gridDecisions
+        // 1. adjust_grid 包含最完整的网格重建分析
+        const adjustR = gridDecisions
           .filter((op: any) => op.action === 'adjust_grid' && op.reasoning)
           .map((op: any) => op.reasoning);
-        if (adjustReasonings.length > 0) return adjustReasonings.join('\n\n');
-        // 降级：取最长的推理作为整体分析
-        const allR = gridDecisions.map((op: any) => op.reasoning).filter(Boolean);
-        return allR.sort((a: string, b: string) => b.length - a.length)[0] || '';
+        if (adjustR.length > 0) return adjustR.join('\n\n');
+        // 2. hold 包含完整市场判断（AI 决定不动时会详细解释为什么）
+        const holdR = gridDecisions.find((op: any) => op.action === 'hold' && op.reasoning)?.reasoning;
+        if (holdR) return holdR;
+        // 3. pause_grid 包含风险判断
+        const pauseR = gridDecisions.find((op: any) => op.action === 'pause_grid' && op.reasoning)?.reasoning;
+        if (pauseR) return pauseR;
+        // 4. 降级：取非 cancel_order 中最长的推理
+        const allR = gridDecisions
+          .filter((op: any) => op.action !== 'cancel_order' && op.reasoning)
+          .map((op: any) => op.reasoning as string);
+        return allR.sort((a, b) => b.length - a.length)[0] || '';
       })()
     : '';
   const reasoning = isGridLog
@@ -558,6 +584,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
                 <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
               </div>
+              {d.gridSnapshot.totalPnl != null && (
+                <div className="flex justify-between">
+                  <span className="text-[#606070] font-medium">{t('timeline.gridTotalPnl')}</span>
+                  <span className={`font-mono font-medium ${d.gridSnapshot.totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {d.gridSnapshot.totalPnl >= 0 ? '+' : ''}{d.gridSnapshot.totalPnl.toFixed(2)}
+                  </span>
+                </div>
+              )}
               {d.gridSnapshot.totalProfit != null && (
                 <div className="flex justify-between">
                   <span className="text-[#606070]">{t('timeline.gridProfit')}</span>
@@ -627,32 +661,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* AI 市场分析 — 模型 Logo + 分析文字 */}
+          {/* AI 市场分析 — 复用 SectionedReasoning 自动分段 */}
           {gridAnalysisText && (
-            <div className="text-xs text-[#9090A0] leading-relaxed">
-              {(() => {
-                // 优先 decision.modelId，fallback strategy.models[0]
-                const resolvedModelId = d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined);
-                if (!resolvedModelId) return null;
-                const info = MODEL_DISPLAY[resolvedModelId];
-                const name = info?.name || resolvedModelId;
-                const color = info?.color || '#9090A0';
-                return (
-                  <div className="flex items-center gap-1.5 mb-1">
-                    {info?.logo ? (
-                      <img src={info.logo} alt={name} title={name} className="w-4 h-4 rounded-full flex-shrink-0" />
-                    ) : (
-                      <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
-                        style={{ color }}>
-                        {name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="text-[10px]" style={{ color }}>{name}</span>
-                  </div>
-                );
-              })()}
-              <TruncatedText text={cleanReasoning(gridAnalysisText)} maxLines={1} />
-            </div>
+            <SectionedReasoning
+              text={gridAnalysisText}
+              modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)}
+            />
           )}
 
         </div>
@@ -769,7 +783,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <Shield className="w-3.5 h-3.5 text-[#F43F5E] flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <span className="text-[#F43F5E] font-medium">{t('common.failed')}</span>
-              <span className="text-[#606070]"> · {er.error}</span>
+              <span className="text-[#606070]"> · {translateExchangeOrderError(er.error, te)}</span>
             </div>
           </div>
         ) : isWait ? (
@@ -802,7 +816,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const plannedPlaces = gridDecisions.filter(
               (op: any) => op.action === 'place_buy_limit' || op.action === 'place_sell_limit'
             ).length;
-            const succeededPlaces = Math.max(0, plannedPlaces - failedPlaces);
+            // 跳过数（regime 限制 / minQty 不足导致的跳过，非失败也非成功）
+            const skippedOps: Array<{ action: string }> = (er as any)?.skipped || [];
+            const skippedPlaces = skippedOps.filter(
+              s => s.action === 'place_buy_limit' || s.action === 'place_sell_limit'
+            ).length;
+            const succeededPlaces = Math.max(0, plannedPlaces - failedPlaces - skippedPlaces);
             // 部分失败：有成功的单，也有失败的单
             const isPartialFailure = succeededPlaces > 0 && failedPlaces > 0;
 
@@ -817,26 +836,24 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const perLevelCost    = totalInvestment && totalLevels > 0
               ? totalInvestment / totalLevels : undefined;
 
-            // 失败类型文案
+            // 失败类型文案（i18n）
             const failedParts: string[] = [];
-            if (failedBuy > 0)    failedParts.push(`买单×${failedBuy}层`);
-            if (failedSell > 0)   failedParts.push(`卖单×${failedSell}层`);
-            if (failedCancel > 0) failedParts.push(`撤单×${failedCancel}层`);
-            if (failedOther > 0)  failedParts.push(`其他×${failedOther}项`);
+            if (failedBuy > 0)    failedParts.push(t('detail.gridErrFailBuy', { count: failedBuy }));
+            if (failedSell > 0)   failedParts.push(t('detail.gridErrFailSell', { count: failedSell }));
+            if (failedCancel > 0) failedParts.push(t('detail.gridErrFailCancel', { count: failedCancel }));
+            if (failedOther > 0)  failedParts.push(t('detail.gridErrFailOther', { count: failedOther }));
 
-            // 错误原因
+            // 错误原因（i18n）
             let reasonText: string;
             let hintText: string | null = null;
             if (isMarginErr) {
-              reasonText = '保证金不足';
+              reasonText = t('detail.gridErrMargin');
               hintText   = activeOrders > 0
-                ? `${activeOrders} 个活跃挂单正在占用保证金，等待成交后自动补挂`
-                : '等待保证金释放后自动补挂';
+                ? t('detail.gridErrMarginHintActive', { count: activeOrders })
+                : t('detail.gridErrMarginHintWait');
             } else {
-              const msgMatch = firstErrRaw.match(/"msg":"([^"]+)"/);
-              reasonText = msgMatch
-                ? msgMatch[1]
-                : firstErrRaw.replace(/^binanceusdm\s*/, '').slice(0, 60);
+              // 使用统一交易所错误翻译
+              reasonText = translateExchangeOrderError(firstErrRaw, te);
             }
 
             // 颜色方案：部分失败 → amber 警告；全部失败 → red 错误
@@ -847,12 +864,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const titleCls     = isPartialFailure ? 'text-[#F59E0B]' : 'text-[#EF4444]';
             const reasonCls    = isPartialFailure ? 'text-[#D97706]' : 'text-[#DC2626]';
 
-            // 标题文案区分三种情况
+            // 标题文案区分三种情况（i18n）
             const titleText = isPartialFailure
-              ? `${succeededPlaces}层已挂单 · ${failedPlaces}层失败`
+              ? t('detail.gridErrPartial', { ok: succeededPlaces, fail: failedPlaces })
               : failedPlaces > 0
-                ? `全部 ${failedPlaces} 层挂单均失败`
-                : `${gridErrors.length} 项操作失败`;
+                ? t('detail.gridErrAllFail', { count: failedPlaces })
+                : t('detail.gridErrOpsFail', { count: gridErrors.length });
 
             return (
               <div className={`flex items-start gap-1.5 px-2 py-2 rounded-md border text-xs ${containerCls}`}>

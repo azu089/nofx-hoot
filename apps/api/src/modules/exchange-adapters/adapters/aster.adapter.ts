@@ -1,7 +1,6 @@
 /**
  * AsterAdapter — Aster DEX 适配器
  *
- * 移植自 NoFx trader/aster/trader.go
  *
  * Aster = Binance 兼容 API 格式的去中心化永续合约 DEX
  * - 认证: userAddress + signerAddress + privateKey (ECDSA 签名)
@@ -139,7 +138,7 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
       usdtBalance?.availableBalance || '0',
     );
 
-    // crossUnPnl 可能不准确（移植自 NoFx），从持仓重新计算
+    // crossUnPnl 可能不准确，从持仓重新计算
     let unrealizedPnl = 0;
     try {
       const positions = await this.getPositions();
@@ -603,7 +602,7 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
           const qty = parseFloat(t.qty);
           const pnl = parseFloat(t.realizedPnl);
 
-          // 从 PnL 推算入场价（移植自 NoFx）
+          // 从 PnL 推算入场价
           const isSell = t.side === 'SELL';
           let side: 'long' | 'short';
           let entryPrice: number;
@@ -732,7 +731,6 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
   /**
    * 发送签名请求
-   * 移植自 NoFx trader/aster/trader.go request() + doRequest()
    */
   private async request(
     method: string,
@@ -889,7 +887,6 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
   /**
    * 按 tickSize 取整价格
-   * 移植自 NoFx roundToTickSize
    */
   private roundToTickSize(value: number, tickSize: number): number {
     if (tickSize <= 0) return value;
@@ -906,7 +903,6 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
   /**
    * 按精度位数格式化数字
-   * 移植自 NoFx formatFloatWithPrecision
    */
   private formatWithPrecision(value: number, precision: number): string {
     return value.toFixed(precision);

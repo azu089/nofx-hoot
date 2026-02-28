@@ -6,7 +6,7 @@ import { AiMemoryService } from '../memory.service';
 /**
  * 反思角色定义
  *
- * TradingAgents 原版 5 角色: bull, bear, trader, invest_judge, risk_manager
+ * 5 角色: bull, bear, trader, invest_judge, risk_manager
  * GAP-D 扩展: 加入 analyst, contrarian (HOOT 辩论独有角色)
  * 确保所有参与辩论的角色都能进行反思学习、积累 BM25 记忆
  */
@@ -78,7 +78,7 @@ export interface ReflectionResult {
 /**
  * 研究反思服务
  *
- * 对应 TradingAgents reflection.py — 交易完成后对每个角色单独反思
+ * 研究反思服务 — 交易完成后对每个角色单独反思
  *
  * 流程：
  * 1. 平仓后触发（由 ai-execution.service 调用）
@@ -86,9 +86,9 @@ export interface ReflectionResult {
  * 3. 每个反思压缩为 ≤1000 token 总结
  * 4. 存入对应角色的 BM25 记忆（role 标记在 sceneText 前缀中）
  *
- * 关键差异 vs TradingAgents：
- * - TradingAgents 每角色独立 BM25 实例 → 我们用 sceneText 前缀 [role:xxx] 区分
- * - TradingAgents 用 LangGraph 状态 → 我们从 AiResearchSession.stages 提取各角色历史
+ * 实现说明：
+ * - 每角色使用 sceneText 前缀 [role:xxx] 区分 BM25 记忆
+ * - 从 AiResearchSession.stages 提取各角色历史
  */
 @Injectable()
 export class ResearchReflectionService {
@@ -445,7 +445,7 @@ const ROLE_LABELS: Record<ReflectionRole, string> = {
 // ==================== 反思系统提示词 ====================
 
 /**
- * 对应 TradingAgents reflection_system_prompt
+ * 反思系统提示词
  */
 const REFLECTION_SYSTEM_PROMPT = `You are an expert financial analyst reviewing cryptocurrency futures trading decisions.
 

@@ -1594,6 +1594,42 @@ export class AiController {
   }
 
   /**
+   * 手动恢复风控暂停的网格策略
+   *
+   * POST /ai/strategy/:id/resume-grid
+   * 清除风控暂停，重置利润峰值为当前水平，重置日内 PnL
+   */
+  @Post('strategy/:id/resume-grid')
+  @HttpCode(HttpStatus.OK)
+  async resumeGridFromRiskControl(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    if (!userId) throw new BadRequestException('用户未认证');
+
+    // 点卡余额门控
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { pointBalance: true },
+    });
+    if (!user || Number(user.pointBalance) <= 0) {
+      throw new BadRequestException('点卡余额不足，请充值后再恢复');
+    }
+
+    // 1. 清除风控暂停状态（grid_runtime_state）
+    const result = await this.gridTrading.manualResumeFromRiskControl(id, userId);
+
+    // 2. 重新激活策略（isActive=true + 注册 BullMQ 定时任务）
+    try {
+      await this.strategyEngine.startStrategy(id, userId);
+    } catch {
+      // startStrategy 可能因"策略已在运行"而抛错，忽略
+    }
+
+    return result;
+  }
+
+  /**
    * 热更新策略配置（运行中修改，不停策略）
    *
    * PUT /ai/strategy/:id/config

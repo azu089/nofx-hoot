@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "Data tertunda, exchange tidak tersedia",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "Gagal memuat info pasar. Periksa jaringan",
     "executionFailed": "Eksekusi gagal",
     "unknownError": "Kesalahan tidak diketahui",
-    "marginInsufficient": "Margin bebas tidak mencukupi (digunakan posisi), tidak bisa order baru"
+    "marginInsufficient": "Margin bebas tidak mencukupi (digunakan posisi), tidak bisa order baru",
+    "validationFailed": "Parameter konfigurasi tidak valid, harap periksa dan coba lagi",
+    "orderMinNotional": "Jumlah order terlalu kecil (di bawah nilai nominal minimum bursa)",
+    "orderPrecision": "Presisi berlebih (terlalu banyak desimal pada kuantitas atau harga)",
+    "orderReduceOnly": "Hanya order pengurangan yang diizinkan (tidak bisa buka posisi baru)",
+    "orderMinQty": "Kuantitas order di bawah minimum bursa",
+    "orderQtyInvalid": "Kuantitas order tidak valid",
+    "orderPriceInvalid": "Harga order di luar rentang yang diizinkan bursa",
+    "orderPositionSide": "Arah posisi salah (periksa pengaturan mode hedge/one-way)",
+    "orderParamInvalid": "Parameter order tidak valid (field wajib hilang)",
+    "orderMaxCount": "Melebihi batas maksimum order terbuka di bursa",
+    "orderLotSize": "Kuantitas order tidak memenuhi persyaratan lot size bursa"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "Kecualikan Koin",
+      "sharpe": "Sharpe"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Kepercayaan",
-      "minPositionSize": "Min Ukuran Posisi"
+      "minPositionSize": "Min Ukuran Posisi",
+      "profitDrawdown": "Perlindungan Drawdown Profit",
+      "profitDrawdownMinProfit": "Profit Minimum",
+      "profitDrawdownMaxRetracement": "Retracement Maksimum",
+      "profitDrawdownDesc": "Tutup otomatis saat retracement dari puncak melebihi ambang setelah mencapai profit minimum"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "Min Rasio R:R",
       "minConfidence": "Min Kepercayaan",
       "minPositionSize": "Min Ukuran Posisi",
+      "profitDrawdown": "Perlindungan Profit",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count} Jual",
       "gridCancel": "{count} Batal",
       "gridOps": "{count} operasi",
+      "gridErrMargin": "Margin tidak cukup",
+      "gridErrMarginHintActive": "{count} pesanan aktif menggunakan margin, otomatis terisi setelah eksekusi",
+      "gridErrMarginHintWait": "Menunggu margin dilepaskan",
+      "gridErrOrderId": "ID pesanan tidak valid (kedaluwarsa atau tidak ditemukan)",
+      "gridErrFailBuy": "Beli×{count}",
+      "gridErrFailSell": "Jual×{count}",
+      "gridErrFailCancel": "Batal×{count}",
+      "gridErrFailOther": "Lainnya×{count}",
+      "gridErrPartial": "{ok} berhasil · {fail} gagal",
+      "gridErrAllFail": "Semua {count} pesanan gagal",
+      "gridErrOpsFail": "{count} operasi gagal",
       "personalityBull": "Bullish",
       "personalityBear": "Bearish",
       "personalityAnalyst": "Analis",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "Kontrol ketat frekuensi trading. Hanya buka posisi saat peluang probabilitas tinggi.",
       "promptDefaultEntry": "Pembukaan memerlukan minimal 2 konfirmasi sinyal independen. Tren + momentum + support harga kunci.",
       "promptDefaultDecision": "1. Evaluasi struktur pasar 2. Cari konfluensi sinyal 3. Evaluasi rasio risiko/reward 4. Tentukan ukuran posisi dan stop loss",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI Research Team",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "{count} pengurangan",
       "gridRange": "Rentang Grid",
       "gridLevels": "Transaksi / Level",
+      "gridTotalPnl": "Total P&L",
       "gridProfit": "P&L Terealisasi",
       "gridWinRate": "Rasio Menang",
       "gridPendingLevels": "Level Tertunda",

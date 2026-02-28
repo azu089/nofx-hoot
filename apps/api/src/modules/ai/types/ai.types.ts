@@ -66,7 +66,7 @@ export interface DualTimeframeContext extends MarketContext {
 // ========================= 产品 A: 研究团队类型 =========================
 
 /**
- * TradingAgents 投资辩论状态
+ * 投资辩论状态
  */
 export interface InvestDebateState {
   bullHistory: string;
@@ -77,7 +77,7 @@ export interface InvestDebateState {
 }
 
 /**
- * TradingAgents 风控三方辩论状态
+ * 风控三方辩论状态
  */
 export interface RiskDebateState {
   aggressiveHistory: string;
@@ -133,7 +133,7 @@ export interface ResearchResult {
 // ========================= 产品 B: 自动交易类型 =========================
 
 /**
- * 币种来源配置（参考 NoFx CoinSourceConfig）
+ * 币种来源配置
  */
 export interface CoinSourceConfig {
   mode: 'static' | 'manual' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
@@ -178,7 +178,7 @@ export interface RiskControlConfig {
   circuitBreaker: number;
   maxTradeAmountUSD?: number; // 单笔交易金额上限（USDT），不设则由 AI + 余额自动计算
   allocatedCapital?: number; // AI 资金池上限（USDT），仓位百分比基于此值计算而非交易所全部余额
-  // 对齐 NoFx RiskControlConfig (store/strategy.go):
+  // 仓位价值比例控制:
   btcEthMaxPositionValueRatio?: number;  // BTC/ETH 仓位价值倍数上限，默认 5.0
   altcoinMaxPositionValueRatio?: number; // 山寨币仓位价值倍数上限，默认 1.0
   excludedCoins?: string[]; // 排除币种列表（不开仓）

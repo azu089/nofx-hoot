@@ -126,7 +126,7 @@ export class UpdateAiConfigDto {
   @IsString()
   exchangeApiKeyId?: string; // 关联的交易所 API Key ID
 
-  // NoFx 风控参数对齐（3 个新增字段）
+  // 风控参数扩展字段
 
   @IsOptional()
   @IsNumber()

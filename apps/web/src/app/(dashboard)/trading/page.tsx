@@ -569,6 +569,7 @@ export default function TradingPage() {
           margin: parseFloat(p.margin || '0'),
           marginMode: p.marginMode || 'cross',
           source: p.source,
+          syncSource: 'database' as const, // 未同步时标记为缓存
         };
       });
 

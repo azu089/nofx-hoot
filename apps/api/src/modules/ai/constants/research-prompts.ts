@@ -1,5 +1,5 @@
 /**
- * 产品A (AI Research / TradingAgents port) — 提示词与辩论配置
+ * 深研模式 — AI 提示词与辩论配置
  *
  * 包含:
  * - 5角色辩论系统提示词 (DEFAULT_ROLE_PROMPTS)

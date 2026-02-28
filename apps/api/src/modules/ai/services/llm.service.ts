@@ -417,12 +417,13 @@ export class LLMService {
       let response: OpenAI.Chat.Completions.ChatCompletion | undefined;
       let lastError: Error | undefined;
 
-      // Gemini 2.5 系列为内置思考模型，thinking tokens 计入 max_tokens 配额
+      // Gemini 2.5/3 系列为内置思考模型，thinking tokens 计入 max_tokens 配额
       // 若不保留足够空间，thinking 结束后无 token 可输出 JSON，导致 SafeFallback
-      // 最低保障 6000 tokens（thinking ~2000-3000 + 结构化输出 ~1000-2000）
+      // 最低保障 12000 tokens（thinking ~4000-6000 + 结构化输出 ~2000-3000）
+      // 6000 导致 ~33% 解析失败率，增大至 12000
       const isThinkingModel = effectiveModelId.startsWith('gemini-2.5') || effectiveModelId.startsWith('gemini-3');
       const actualMaxTokens = isThinkingModel
-        ? Math.max(options?.maxTokens ?? 1000, 6000)
+        ? Math.max(options?.maxTokens ?? 1000, 12000)
         : options?.maxTokens ?? 1000;
 
       for (let attempt = 1; attempt <= 3; attempt++) {

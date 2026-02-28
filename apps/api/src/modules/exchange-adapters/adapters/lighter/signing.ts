@@ -4,7 +4,6 @@
  * Lighter 使用 ZK 链签名（TxClient），需要原生签名库支持。
  * 本模块定义签名接口，实际签名由外部模块（lighter-sdk）提供。
  *
- * 移植自 NoFx trader/lighter/trading.go 的 TxClient 调用
  *
  * 设计：
  *   LighterTxSigner 接口 — 可插拔签名模块
@@ -154,7 +153,6 @@ export class PlaceholderLighterSigner implements LighterTxSigner {
 
 /**
  * Float64 → PriceX18 转换
- * 移植自 NoFx lighter.Float64ToPriceX18
  *
  * @param price 浮点价格
  * @returns X18 格式的价格（BigInt）
@@ -171,7 +169,6 @@ export function floatToPriceX18(price: number): bigint {
 
 /**
  * 数量 → 基础数量（乘以 10^sizeDecimals）
- * 移植自 NoFx trading.go baseAmountScaled 计算
  *
  * @param quantity 浮点数量
  * @param sizeDecimals 精度位数
@@ -187,7 +184,6 @@ export function quantityToBaseAmount(
 
 /**
  * EIP-55 校验和地址转换
- * 移植自 NoFx types.go ToChecksumAddress
  *
  * @param address 小写或混合大小写地址
  * @returns EIP-55 校验和格式地址

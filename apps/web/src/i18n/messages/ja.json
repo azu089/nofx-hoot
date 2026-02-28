@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "データ遅延、取引所一時利用不可",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "市場情報の取得に失敗。ネットワークを確認してください",
     "executionFailed": "実行失敗",
     "unknownError": "不明なエラー",
-    "marginInsufficient": "有効証拠金不足（建玉が占有中）、新規注文不可"
+    "marginInsufficient": "有効証拠金不足（建玉が占有中）、新規注文不可",
+    "validationFailed": "設定パラメータが無効です。確認して再試行してください",
+    "orderMinNotional": "注文金額が不足（取引所の最小想定元本を下回っています）",
+    "orderPrecision": "精度超過（数量または価格の小数桁数が多すぎます）",
+    "orderReduceOnly": "減少のみ注文が拒否されました（新規ポジション不可）",
+    "orderMinQty": "注文数量が取引所の最小要件を下回っています",
+    "orderQtyInvalid": "注文数量が無効です",
+    "orderPriceInvalid": "注文価格が取引所の許容範囲外です",
+    "orderPositionSide": "ポジション方向エラー（ヘッジ/片方向モードを確認）",
+    "orderParamInvalid": "注文パラメータ無効（必須フィールド不足）",
+    "orderMaxCount": "取引所の最大注文数制限を超過",
+    "orderLotSize": "注文数量が取引所のロットサイズ要件を満たしていません"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "本日",
       "winRate": "勝率",
       "todayPnl": "本日損益",
-      "excludeCoins": "除外通貨"
+      "excludeCoins": "除外通貨",
+      "sharpe": "シャープ"
     },
     "create": {
       "title": "AI戦略を作成",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "コンセンサス",
       "nameSolo": "ソロ",
       "minConfidence": "最低信頼度",
-      "minPositionSize": "最小ポジションサイズ"
+      "minPositionSize": "最小ポジションサイズ",
+      "profitDrawdown": "利益ドローダウン保護",
+      "profitDrawdownMinProfit": "最低利益トリガー",
+      "profitDrawdownMaxRetracement": "最大リトレースメント",
+      "profitDrawdownDesc": "最低利益到達後、ピークからのリトレースメントが閾値を超えると自動決済"
     },
     "detail": {
       "strategyNotFound": "戦略が見つかりません",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "最小リスク報酬比",
       "minConfidence": "最小信頼度",
       "minPositionSize": "最小ポジションサイズ",
+      "profitDrawdown": "利益保護",
       "executionCycle": "実行サイクル",
       "promptConfig": "プロンプト設定",
       "promptAggressive": "積極モード",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count}売り",
       "gridCancel": "{count}キャンセル",
       "gridOps": "{count}操作",
+      "gridErrMargin": "証拠金不足",
+      "gridErrMarginHintActive": "{count} 件の注文が証拠金を使用中、約定後に自動補充",
+      "gridErrMarginHintWait": "証拠金の解放を待っています",
+      "gridErrOrderId": "注文IDが無効（期限切れまたは存在しない）",
+      "gridErrFailBuy": "買い×{count}層",
+      "gridErrFailSell": "売り×{count}層",
+      "gridErrFailCancel": "取消×{count}層",
+      "gridErrFailOther": "その他×{count}件",
+      "gridErrPartial": "{ok}層発注済 · {fail}層失敗",
+      "gridErrAllFail": "全 {count} 層の発注に失敗",
+      "gridErrOpsFail": "{count} 件の操作が失敗",
       "personalityBull": "強気派",
       "personalityBear": "弱気派",
       "personalityAnalyst": "アナリスト",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "取引頻度を厳密に管理。高確率のチャンスでのみポジションを取ります。",
       "promptDefaultEntry": "エントリーには最低2つの独立シグナル確認が必要。トレンド＋モメンタム＋主要価格帯のサポート。",
       "promptDefaultDecision": "1. 市場構造とトレンドを判断 2. エントリーシグナルの共鳴を探す 3. リスク/リワード比を評価 4. ポジションサイズとストップロスを決定",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AIリサーチチーム",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "{count}回ポジション縮小",
       "gridRange": "グリッド範囲",
       "gridLevels": "約定回数/グリッド数",
+      "gridTotalPnl": "総損益",
       "gridProfit": "実現損益",
       "gridWinRate": "勝率",
       "gridPendingLevels": "指値層",

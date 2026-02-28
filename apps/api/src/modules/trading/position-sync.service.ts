@@ -157,7 +157,7 @@ export class PositionSyncService {
           `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到`,
         );
 
-        // 返回数据库数据
+        // 返回数据库数据（markPrice/unrealizedPnl 可能已被 drawdown-monitor 定期更新）
         // 若 DB leverage=1（可能是早期 CCXT bug 写入的错误值），尝试从 margin/notional 反推真实杠杆
         const dbNotional = new Decimal(dbPos.amount.toString()).times(dbPos.entryPrice.toString());
         let effectiveLeverage = dbPos.leverage || 1;
@@ -168,25 +168,33 @@ export class PositionSyncService {
             if (derived > 1 && derived <= 200) effectiveLeverage = derived;
           }
         }
+        // 优先使用 DB 中的 markPrice（由 drawdown-monitor 定期同步），fallback 到 entryPrice
+        const dbMarkPrice = dbPos.markPrice ? dbPos.markPrice.toString() : dbPos.entryPrice.toString();
+        const dbUnrealizedPnl = dbPos.unrealizedPnl ? dbPos.unrealizedPnl.toString() : (dbPos.pnl?.toString() || '0');
+        const dbLiquidationPrice = dbPos.liquidationPrice ? dbPos.liquidationPrice.toString() : '0';
+        // 从 unrealizedPnl 和 margin 估算 ROE
+        const dbMarginVal = parseFloat(dbPos.margin?.toString() || '0');
+        const dbPnlVal = parseFloat(dbUnrealizedPnl);
+        const dbRoe = dbMarginVal > 0 ? (dbPnlVal / dbMarginVal) * 100 : 0;
         syncedPositions.push({
           id: dbPos.id,
           symbol: dbPos.symbol,
           side: dbPos.side,
           entryPrice: dbPos.entryPrice.toString(),
-          markPrice: dbPos.entryPrice.toString(), // 没有实时价格
-          liquidationPrice: '0',
+          markPrice: dbMarkPrice,
+          liquidationPrice: dbLiquidationPrice,
           amount: dbPos.amount.toString(),
           notionalValue: dbNotional.toString(),
           margin: dbPos.margin?.toString() || '0',
           leverage: effectiveLeverage,
           marginMode: dbPos.marginMode || 'cross',
-          unrealizedPnl: dbPos.pnl?.toString() || '0',
-          roe: '0',
+          unrealizedPnl: dbUnrealizedPnl,
+          roe: dbRoe.toFixed(2),
           status: dbPos.status,
           tradingType: dbPos.tradingType || 'spot',
           strategyName: resolveStrategyName(dbPos.aiStrategy?.name, dbPos.subscription?.strategy?.name, dbPos.source, dbPos.symbol),
           createdAt: dbPos.createdAt,
-          syncedAt: new Date(),
+          syncedAt: dbPos.lastSyncAt || new Date(),
           syncSource: 'database',
         });
       }

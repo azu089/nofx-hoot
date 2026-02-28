@@ -130,7 +130,7 @@ export class ResearchCycleService implements OnModuleInit {
       `interval=${params.intervalMinutes}min, maxCycles=${params.maxCycles}`,
     );
 
-    // 2. 注册 BullMQ repeatable job（最小 3 分钟，对齐 NoFx）
+    // 2. 注册 BullMQ repeatable job（最小 3 分钟）
     const intervalMs = Math.max(3, params.intervalMinutes) * 60 * 1000;
     await this.autoQueue.add(
       'research-cycle',

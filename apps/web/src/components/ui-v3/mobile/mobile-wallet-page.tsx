@@ -615,6 +615,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       const response = await api.get<{ items: ApiKeyData[]; total: number }>('/api-keys')
       return response.data?.items || []
     },
+    enabled: isAuthenticated,
   })
 
   // 交易所 logo 映射

@@ -1,7 +1,6 @@
 /**
  * Lighter DEX — 类型定义
  *
- * 移植自 NoFx trader/lighter/types.go
  * Lighter V2 REST API 响应结构
  */
 

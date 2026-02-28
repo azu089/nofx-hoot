@@ -1001,6 +1001,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "데이터 지연, 거래소 일시 사용 불가",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1325,7 +1326,18 @@
     "marketInfoFailed": "시장 정보 로드 실패. 네트워크를 확인하세요",
     "executionFailed": "실행 실패",
     "unknownError": "알 수 없는 오류",
-    "marginInsufficient": "가용 증거금 부족(포지션 점유), 신규 주문 불가"
+    "marginInsufficient": "가용 증거금 부족(포지션 점유), 신규 주문 불가",
+    "validationFailed": "설정 파라미터가 유효하지 않습니다. 확인 후 다시 시도하세요",
+    "orderMinNotional": "주문 금액 부족 (거래소 최소 명목가치 미달)",
+    "orderPrecision": "정밀도 초과 (수량 또는 가격 소수점 자릿수 초과)",
+    "orderReduceOnly": "감소 전용 주문만 허용 (신규 포지션 불가)",
+    "orderMinQty": "주문 수량이 거래소 최소 요구량 미달",
+    "orderQtyInvalid": "유효하지 않은 주문 수량",
+    "orderPriceInvalid": "주문 가격이 거래소 허용 범위 초과",
+    "orderPositionSide": "포지션 방향 오류 (헤지/단방향 모드 확인)",
+    "orderParamInvalid": "주문 매개변수 무효 (필수 필드 누락)",
+    "orderMaxCount": "거래소 최대 주문 수 제한 초과",
+    "orderLotSize": "주문 수량이 거래소 로트 사이즈 요건 미충족"
   },
   "ai": {
     "common": {
@@ -1415,7 +1427,8 @@
       "today": "오늘",
       "winRate": "승률",
       "todayPnl": "오늘 PnL",
-      "excludeCoins": "제외 코인"
+      "excludeCoins": "제외 코인",
+      "sharpe": "샤프"
     },
     "create": {
       "title": "AI 전략 생성",
@@ -1526,7 +1539,11 @@
       "nameConsensus": "컨센서스",
       "nameSolo": "솔로",
       "minConfidence": "최소 신뢰도",
-      "minPositionSize": "최소 포지션 크기"
+      "minPositionSize": "최소 포지션 크기",
+      "profitDrawdown": "수익 하락 보호",
+      "profitDrawdownMinProfit": "최소 수익 트리거",
+      "profitDrawdownMaxRetracement": "최대 되돌림 비율",
+      "profitDrawdownDesc": "최소 수익 도달 후 고점 대비 되돌림이 설정 비율을 초과하면 자동 청산"
     },
     "detail": {
       "strategyNotFound": "전략을 찾을 수 없습니다",
@@ -1582,6 +1599,7 @@
       "minRiskRewardRatio": "최소 위험/보상 비율",
       "minConfidence": "최소 신뢰도",
       "minPositionSize": "최소 포지션 크기",
+      "profitDrawdown": "수익 보호",
       "executionCycle": "실행 사이클",
       "promptConfig": "프롬프트 설정",
       "promptAggressive": "공격적 모드",
@@ -1699,6 +1717,17 @@
       "gridSell": "{count}매도",
       "gridCancel": "{count}취소",
       "gridOps": "{count}건",
+      "gridErrMargin": "증거금 부족",
+      "gridErrMarginHintActive": "{count}개 활성 주문이 증거금 사용 중, 체결 후 자동 보충",
+      "gridErrMarginHintWait": "증거금 해제 대기 중",
+      "gridErrOrderId": "주문 ID 무효 (만료 또는 존재하지 않음)",
+      "gridErrFailBuy": "매수×{count}층",
+      "gridErrFailSell": "매도×{count}층",
+      "gridErrFailCancel": "취소×{count}층",
+      "gridErrFailOther": "기타×{count}건",
+      "gridErrPartial": "{ok}층 주문 완료 · {fail}층 실패",
+      "gridErrAllFail": "전체 {count}층 주문 실패",
+      "gridErrOpsFail": "{count}건 작업 실패",
       "personalityBull": "강세파",
       "personalityBear": "약세파",
       "personalityAnalyst": "분석가",
@@ -1716,7 +1745,8 @@
       "promptDefaultFrequency": "거래 빈도를 엄격히 관리합니다. 높은 확률의 기회에서만 포지션을 오픈합니다.",
       "promptDefaultEntry": "진입 시 최소 2개 독립 신호 확인이 필요합니다. 추세 + 모멘텀 + 주요 가격대 지지.",
       "promptDefaultDecision": "1. 시장 구조와 추세 판단 2. 진입 신호 공명 탐색 3. 위험/보상 비율 평가 4. 포지션 규모와 손절 설정",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI 리서치 팀",
@@ -1967,6 +1997,7 @@
       "gridExecReduce": "{count}회 포지션 축소",
       "gridRange": "그리드 범위",
       "gridLevels": "체결 횟수/레벨수",
+      "gridTotalPnl": "총 손익",
       "gridProfit": "실현 손익",
       "gridWinRate": "승률",
       "gridPendingLevels": "대기 레벨",

@@ -6,6 +6,7 @@ import {
   ACTION_CONFIG,
   MODEL_DISPLAY,
 } from '@/constants/debate';
+import { translateExchangeOrderError } from '@/lib/error-translator';
 import type { TimelineDebateLog, StrategyLogVote } from '@/types/ai';
 import { useTranslations } from '@/i18n/provider';
 
@@ -189,6 +190,7 @@ interface DebateLogCardProps {
 
 export function DebateLogCard({ entry }: DebateLogCardProps) {
   const t = useTranslations('ai');
+  const te = useTranslations('errors');
   const { log, strategy } = entry;
   const d = log.decision;
   const er = log.executionResult;
@@ -348,7 +350,7 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
             <Shield className="w-3.5 h-3.5 text-[#F43F5E] flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <span className="text-[#F43F5E] font-medium">{t('common.failed')}</span>
-              <span className="text-[#606070]"> · {er.error}</span>
+              <span className="text-[#606070]"> · {translateExchangeOrderError(er.error, te)}</span>
             </div>
           </div>
         ) : isWait ? (

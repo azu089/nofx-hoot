@@ -6,6 +6,37 @@
 
 ---
 
+## [2026-02-28] 网格策略 — 配置变更自动重建 + 小资金仓位适配
+
+**状态**: 已完成
+
+### 背景
+
+用户从前端修改网格参数（层数、杠杆等）后重启策略，新配置不生效。原因：`runGridCycle` 检测到 `existingState` 非空就跳过 `initializeGrid`，修改参数毫无意义。
+
+### 变更清单
+
+**1. 配置变更自动检测 + 重建（核心修复）**
+- 文件：`apps/api/src/modules/ai/services/trading/grid-trading.service.ts`
+- `detectGridConfigChange()` — 对比 gridConfig vs gridRuntimeState 的 5 个关键参数（层数、杠杆、投资额、方向、分布）
+- `cleanupExistingOrders()` — 变更前取消交易所所有挂单
+- 在 `runGridCycle` Step 1.5 插入检测：配置不一致 → 清理挂单 → 清空内存/DB 状态 → 下一步自动触发 `initializeGrid`
+- 用户操作：前端改参数 → 点运行 → 自动重建，无需手动清 DB
+
+**2. 小资金仓位限额适配**
+- `REGIME_POSITION_PCT` 常量：narrow/volatile 从 40% → 60%
+- 原因：$100 投入在 narrow/volatile 下仅允许 $80（含杠杆），扣除各格分配后低于 Binance $20 最低限额
+
+### 验证
+- `pnpm --filter api exec tsc --noEmit` 无报错
+
+### 回滚
+```bash
+git checkout apps/api/src/modules/ai/services/trading/grid-trading.service.ts
+```
+
+---
+
 ## [2026-02-28] 上线准备 — 补全密钥脚本 + SSL 域名 + 生产环境变量 + Sentry 集成
 
 **状态**: 已完成
@@ -300,7 +331,7 @@ pnpm --filter api exec tsc --noEmit  # 零报错 ✅
 
 ---
 
-## [2026-02-16] Phase 10: NoFx 网格交易 + 监控 + 执行层补齐
+## [2026-02-16] Phase 10: 网格交易 + 监控 + 执行层补齐
 
 **变更文件**: 8 个，新增代码约 1,000 行
 
@@ -338,7 +369,7 @@ pnpm --filter api exec tsc --noEmit  # 零报错 ✅
 
 ### 8 项偏差修复（D1-D7+D10）
 - D1: 硬币扫描器 OI 模式批间延迟 500ms（防 Binance rate limit）
-- D2: 辩论轮次角色标签对齐 NoFx TRADING_ROLE_PROMPTS
+- D2: 辩论轮次角色标签统一
 - D3: `positionPct` 范围校验 `0.1-1.0 → clamp(0.1, 1.0)`
 - D4: `determineVotingConsensus` 加权平均参数计算修正
 - D5: SL/TP 方向感知转换（做多/做空不同公式）
@@ -348,7 +379,7 @@ pnpm --filter api exec tsc --noEmit  # 零报错 ✅
 
 ---
 
-## [2026-02-16] Phase 9.1: 产品B辩论流水线对齐 NoFx
+## [2026-02-16] Phase 9.1: 产品B辩论流水线优化
 
 **变更文件**: 约 6 个
 
@@ -374,7 +405,7 @@ pnpm --filter api exec tsc --noEmit  # 零报错 ✅
 
 ---
 
-## [2026-02-16] Phase 8.4: 产品A TradingAgents 对齐修复
+## [2026-02-16] Phase 8.4: 产品A 深研模式修复
 
 **变更文件**: `research-pipeline.service.ts`, `debate.service.ts`, `risk-debate.service.ts`
 
@@ -469,7 +500,7 @@ pnpm --filter api exec tsc --noEmit  # 零报错 ✅
 
 **新增文件**: 42 个，共 21,434 行代码
 
-### 产品A — 研究团队（TradingAgents 对标）
+### 产品A — 研究团队（深研模式）
 - 5 阶段研究管线: 市场数据 → 5 个分析师 → AI 辩论 → 风控审查 → 最终决策
 - 5 位分析师: 技术(RSI/MACD/BB) / 基本面(PE/PS/TVL) / 情绪(社媒情绪) / 量价(OI/资金费率) / 新闻(事件驱动)
 - BM25 加权记忆淘汰: 亏损记忆优先淘汰，盈利记忆保留更久

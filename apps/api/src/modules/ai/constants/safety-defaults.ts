@@ -1,7 +1,7 @@
 /**
  * AI 安全层默认值（系统级护栏）
  *
- * 对齐 NoFx RiskControlConfig (store/strategy.go:203-227):
+ * 系统级指标阈值（不暴露给用户的 RSI/ATR/资金费率默认值）：
  * - 用户可配的 9 个核心风控参数在 RiskControlConfig 接口中定义
  * - 本文件仅包含不暴露给用户的指标阈值 (RSI/ATR/资金费率)
  * - 用户未配置时，使用这些系统默认值
@@ -29,7 +29,7 @@ export const AI_SAFETY_DEFAULTS = {
   priceChange1hHigh: 5.0, // |1h涨跌| > 5% → 软警告（不拦截）
 
   // ── R:R 系统默认下限（用户可在策略 riskControlConfig.minRiskRewardRatio 覆盖） ──
-  // NoFx 默认 3.0 → 加密短周期折中 2.0（策略可通过 strategyRiskConfig.minRiskRewardRatio 单独降低）
+  // 默认 3.0 偏保守 → 加密短周期折中为 2.0（策略可通过 strategyRiskConfig.minRiskRewardRatio 单独降低）
   minRiskRewardRatio: 2.0,
 
   // ── L2: 共识（仅 Research 模式使用，Solo/Debate 跳过 L2） ──
@@ -39,7 +39,7 @@ export const AI_SAFETY_DEFAULTS = {
   defaultLeverage: 5, // AI 未指定杠杆时的默认值
   defaultPositionSizeUSD: 50, // AI 未指定仓位时的默认值
 
-  // ── 仓位价值比约束（D6 auto-cap 默认值，对齐 NoFx enforcePositionValueRatio） ──
+  // ── 仓位价值比约束（D6 auto-cap 默认值） ──
   btcEthMaxRatio: 5.0, // BTC/ETH: position ≤ equity × 5.0
   altMaxRatio: 1.0, // 山寨币: position ≤ equity × 1.0
 

@@ -230,7 +230,7 @@ export function Page({ embedded }: PageProps = {}) {
                         <div className="text-[#F8F8FC] font-medium text-xs font-mono">{winRate.toFixed(1)}%</div>
                       </div>
                       <div>
-                        <div className="text-[#606070] text-[10px] mb-0.5">Sharpe</div>
+                        <div className="text-[#606070] text-[10px] mb-0.5">{t('list.sharpe')}</div>
                         <div className="text-[#F8F8FC] font-medium text-xs font-mono">{sharpe.toFixed(2)}</div>
                       </div>
                     </div>

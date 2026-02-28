@@ -64,7 +64,7 @@ export type AiSource = 'ai_research' | 'ai_strategy';
  *
  * Phase 8.1 重构: ccxt.Exchange → ExchangeAdapter 统一接口
  *
- * 参考 NoFx auto_trader.go 设计：
+ * 核心设计：
  * - 3 个代码强制风控（MaxPositions, MinPositionSize, PositionValueRatio）
  * - 余额适配公式
  * - 决策排序（平仓优先）
@@ -151,7 +151,6 @@ export class AiExecutionService {
 
   /**
    * 统一入口：执行 AI 决策
-   * 对应 NoFx executeDecisionWithRecord
    */
   async executeDecision(
     userId: string,
@@ -211,7 +210,6 @@ export class AiExecutionService {
 
   /**
    * 开仓
-   * 对应 NoFx executeOpenLongWithRecord / executeOpenShortWithRecord
    */
   private async openPosition(
     adapter: ExchangeAdapter,
@@ -305,7 +303,7 @@ export class AiExecutionService {
       positionSizeUSD, availableBalance, symbol,
     );
 
-    // 5. 余额适配（NoFx 精确公式）
+    // 5. 余额适配（防止下单超出可用资金）
     const adaptedSize = this.adaptPositionToBalance(
       availableBalance, cappedSize, leverage,
     );
@@ -579,7 +577,6 @@ export class AiExecutionService {
 
   /**
    * 平仓（FIFO — 先开先平）
-   * 对应 NoFx executeCloseLongWithRecord / executeCloseShortWithRecord
    */
   private async closePosition(
     adapter: ExchangeAdapter,
@@ -720,7 +717,7 @@ export class AiExecutionService {
     }
 
     // 仅产品 A (ai_research) 存储 BM25 记忆
-    // 产品 B (ai_strategy) 不使用 BM25（NoFx 有意的无状态设计）
+    // 产品 B (ai_strategy) 不使用 BM25（快速模式无状态设计）
     if (source === 'ai_research') {
       try {
         const marginVal = Number(position.margin);
@@ -777,11 +774,11 @@ export class AiExecutionService {
     };
   }
 
-  // ========================= NoFx 余额适配公式 =========================
+  // ========================= 余额适配公式 =========================
 
   /**
    * 余额适配
-   * 精确复制 NoFx 公式:
+   * 公式:
    *   marginFactor = 1.01 / leverage + 0.001
    *   maxAffordable = availableBalance / marginFactor
    *   if positionSizeUSD > maxAffordable: return maxAffordable * 0.98
@@ -805,7 +802,7 @@ export class AiExecutionService {
     return positionSizeUSD;
   }
 
-  // ========================= 决策排序（NoFx sortDecisionsByPriority） =========================
+  // ========================= 决策排序 =========================
 
   /**
    * 排序决策：平仓(1) → 开仓(2) → hold/wait(3)
@@ -820,7 +817,7 @@ export class AiExecutionService {
     return [...decisions].sort((a, b) => priority(a.action) - priority(b.action));
   }
 
-  // ========================= 3 个代码强制风控（NoFx 风格） =========================
+  // ========================= 3 个代码强制风控 =========================
 
   /**
    * 最大持仓数检查

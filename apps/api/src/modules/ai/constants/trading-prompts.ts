@@ -1,5 +1,5 @@
 /**
- * 产品B (AI Auto Trading / NoFx port) — 提示词与格式化工具
+ * 快速交易模式 — AI 提示词与格式化工具
  *
  * 包含:
  * - 快速模式系统提示 (QUICK_MODE_SYSTEM_PROMPT)
@@ -71,7 +71,7 @@ export function formatMarketDataPrompt(data: {
       lines.push(`唐奇安中轨(Donchian Mid): ${ind.donchianMid?.toFixed(2) || 'N/A'}`);
       lines.push(`唐奇安下轨(Donchian Lower): ${ind.donchianLower?.toFixed(2) || 'N/A'}`);
     }
-    // 指标趋势序列（对齐 NoFx 时间序列数组，让 AI 感知动量方向）
+    // 指标趋势序列（时间序列数组，让 AI 感知动量方向）
     if (ind.rsiSeries && ind.rsiSeries.length > 0) {
       lines.push(`RSI(14) trend [${ind.rsiSeries.length} bars, oldest→latest]: ${ind.rsiSeries.join(', ')}`);
     }
@@ -97,7 +97,7 @@ export function formatMarketDataPrompt(data: {
     }
   }
 
-  // 市场排名（对齐 NoFx RankingDataType）
+  // 市场排名（币种市场排名数据）
   if (data.marketRanking) {
     const r = data.marketRanking;
     lines.push('', '--- Market Ranking ---');
@@ -115,7 +115,7 @@ export function formatMarketDataPrompt(data: {
         lines.push(`Target Volume Rank: #${r.targetRank.volumeRank}/${r.totalCoins}`);
       }
     }
-    // OI 排名（对齐 NoFx OI 持仓量排名）
+    // OI 排名（OI 持仓量排名）
     if (r.topOI && r.topOI.length > 0) {
       lines.push('Top OI: ' + r.topOI
         .map(o => `${o.symbol.split('/')[0]} $${(o.openInterest / 1e9).toFixed(2)}B`)
@@ -238,7 +238,7 @@ export function formatSafetyWarnings(warnings: string[]): string {
   return lines.join('\n');
 }
 
-// ==================== 快速模式系统提示（对齐 NoFx prompt_builder.go） ====================
+// ==================== 快速模式系统提示 ====================
 
 /**
  * 快速模式系统提示（已被 PromptBuilder 8-section 替代，保留做 fallback）
@@ -392,8 +392,8 @@ export const EVOLUTION_TIER_PROMPTS: Record<number, string> = {
   3: '=== EVOLUTION CONTEXT ===\nRecent trading performance is EXCELLENT (Sharpe Ratio: {sharpe}). You may trade more aggressively:\n- Accept setups with confidence ≥ 55 (normally ≥ 65)\n- Allow slightly larger position sizes (up to 8% of portfolio)\n- Consider taking additional setups you would normally skip',
 };
 
-// ==================== NoFx-Aligned 短角色提示词 (Product B 辩论专用) ====================
-// 对齐 NoFx debate/engine.go getPersonalityDescription()
+// ==================== 短角色提示词（快速模式辩论专用） ====================
+// 
 // Product B 已有 8-section PromptBuilder 提供完整交易上下文，
 // 角色提示只需定义性格倾向 (~3 行)。
 
@@ -413,7 +413,7 @@ export const PERSONALITY_EMOJIS: Record<AIRole, string> = {
   [AI_ROLES.RISK_MANAGER]: '🛡️',
 };
 
-// ==================== 投票阶段输出格式 (对齐 NoFx <final_vote>) ====================
+// ==================== 投票阶段输出格式 ====================
 
 /**
  * 构建投票输出格式（支持动态语言）
@@ -452,11 +452,11 @@ export function buildVotingOutputFormat(locale?: string): string {
 /** 默认投票输出格式（向后兼容，使用 zh-CN） */
 export const VOTING_OUTPUT_FORMAT = buildVotingOutputFormat('zh-CN');
 
-// ==================== 投票阶段 Prompt 构建 (对齐 NoFx buildVotingSystemPrompt) ====================
+// ==================== 投票阶段 Prompt 构建 ====================
 
 /**
  * 构建投票阶段系统提示词
- * 对齐 NoFx debate/engine.go buildVotingSystemPrompt()
+ * 
  *
  * @param role AI 角色
  * @param basePrompt 基础 prompt（PromptBuilder 8-section 输出）
@@ -499,7 +499,7 @@ ${basePrompt}`;
 
 /**
  * 构建投票阶段用户提示词（辩论摘要）
- * 对齐 NoFx debate/engine.go buildVotingUserPrompt()
+ * 
  */
 export function buildVotingUserPrompt(
   allEntries: Array<{
@@ -533,11 +533,11 @@ export function buildVotingUserPrompt(
   return lines.join('\n');
 }
 
-// ==================== 网格交易 AI 提示词（对齐 NoFx grid_engine.go） ====================
+// ==================== 网格交易 AI 提示词 ====================
 
 /**
  * 网格交易 AI 上下文类型
- * 对齐 NoFx grid_engine.go GridContext
+ * 
  */
 export interface GridContext {
   symbol: string;
@@ -631,13 +631,13 @@ export interface GridContext {
   profitRetracement: number;   // 从峰值回撤%（0 = 仍在峰值，50 = 利润已回撤一半）
   marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
-  // K线历史（最近30根1h蜡烛，对齐NoFx candle history）
+  // K线历史（最近30根1h蜡烛，K线历史数据）
   ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
 }
 
 /**
  * 网格交易系统提示词
- * 对齐 NoFx grid_engine.go buildGridSystemPrompt()
+ * 
  */
 export function GRID_SYSTEM_PROMPT(
   symbol: string,
@@ -716,9 +716,9 @@ export function GRID_SYSTEM_PROMPT(
 每次决策返回一个 JSON 数组，包含以下操作：
 
 - **place_buy_limit**: 放置限价买单
-  \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号,"reasoning":"原因"}\`
+  \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"reasoning":"原因"}\`
 - **place_sell_limit**: 放置限价卖单
-  \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号,"reasoning":"原因"}\`
+  \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"reasoning":"原因"}\`
 - **cancel_order**: 取消订单
   \`{"action":"cancel_order","orderId":"订单ID","reasoning":"原因"}\`
 - **pause_grid**: 暂停网格
@@ -739,7 +739,7 @@ export function GRID_SYSTEM_PROMPT(
 只输出 JSON 数组，不要其他文字：
 \`\`\`json
 [
-  {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":3,"reasoning":"价格接近支撑位"},
+  {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"价格接近第4层支撑位"},
   {"action":"cancel_order","orderId":"xxx","reasoning":"价格已远离该层级"}
 ]
 \`\`\`
@@ -748,7 +748,7 @@ export function GRID_SYSTEM_PROMPT(
 
 /**
  * 构建网格交易用户提示词
- * 对齐 NoFx grid_engine.go buildGridUserPrompt()
+ * 
  */
 export function buildGridUserPrompt(ctx: GridContext): string {
   const lines: string[] = [];
@@ -800,14 +800,14 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
-  lines.push('序号 | 价格 | 方向 | 数量 | 状态 | 盈亏 | 订单ID');
+  lines.push('层号(从1开始) | 价格 | 方向 | 数量 | 状态 | 盈亏 | 订单ID');
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
     const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '已成交' : '已取消';
     // Fix-4: 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
-    lines.push(`${String(i).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr} | ${orderIdStr}`);
+    lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr} | ${orderIdStr}`);
   }
 
   // Section 6: 账户状态
@@ -870,7 +870,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`持仓量变化: ${ctx.oiChange1h >= 0 ? '+' : ''}${ctx.oiChange1h.toFixed(2)}% ${oiDir} ${oiInterpretation}`);
   }
 
-  // Section 9: K线历史（最近30根1h蜡烛，对齐NoFx candle history）
+  // Section 9: K线历史（最近30根1h蜡烛，K线历史数据）
   if (ctx.ohlcv && ctx.ohlcv.length > 0) {
     lines.push('');
     lines.push(`--- K线历史 (1h×${ctx.ohlcv.length}，最旧→最新) ---`);

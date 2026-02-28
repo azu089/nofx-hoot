@@ -7,7 +7,6 @@
  *
  * 从 ai-execution.service.ts 提取并统一化
  *
- * NoFx 参考: trader/binance/futures.go
  */
 
 import * as ccxt from 'ccxt';
@@ -152,68 +151,49 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     this.exchange = new ExchangeClass(options);
 
-    // 显式加载期货市场（带容错，最多 3 次重试）
+    // 市场数据加载策略：缓存优先 → 网络回退
+    // 原因：loadMarkets() 调用 exchangeInfo（60s超时 × 3次 = 最坏3分钟阻塞）
+    // 优化：优先用 MarketDataService 已定期刷新的本地缓存（< 2h 视为新鲜），直接跳过网络请求
+    const cacheFile = '/tmp/binance_exchangeinfo.json';
     let marketsLoaded = false;
     let lastLoadError: string = '';
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await this.exchange.loadMarkets();
-        marketsLoaded = true;
-        break;
-      } catch (e: any) {
-        lastLoadError = e.message;
-        this.logger.warn(`加载市场数据失败(${attempt}/3): ${e.message}`);
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 3000 * attempt));
+
+    // Step 1：优先从本地缓存加载（2小时内有效）
+    if (this.exchangeType === 'binance') {
+      marketsLoaded = this.tryLoadMarketsFromCache(cacheFile, 2);
+      if (marketsLoaded) {
+        this.logger.debug(`[CcxtAdapter] 使用本地缓存市场数据（优先策略，无网络请求）`);
+      }
+    }
+
+    // Step 2：缓存不可用时走网络（最多 2 次重试，延迟缩短）
+    if (!marketsLoaded) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await this.exchange.loadMarkets();
+          marketsLoaded = true;
+          break;
+        } catch (e: any) {
+          lastLoadError = e.message;
+          this.logger.warn(`加载市场数据失败(${attempt}/2): ${e.message}`);
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000));
+          }
         }
       }
     }
 
-    // 降级：从 MarketDataService 共享的本地缓存文件加载（适用于 VPN/网络阻断场景）
+    // Step 3：网络也失败，使用宽松缓存（48h内均可用）
     if (!marketsLoaded) {
-      const cacheFile = '/tmp/binance_exchangeinfo.json';
-      try {
-        if (fs.existsSync(cacheFile)) {
-          const stat = fs.statSync(cacheFile);
-          const ageHours = (Date.now() - stat.mtimeMs) / 3600000;
-          if (ageHours <= 48) {
-            const raw = fs.readFileSync(cacheFile, 'utf-8');
-            const data = JSON.parse(raw);
-            if (data.symbols && data.symbols.length >= 100) {
-              const ex = this.exchange as any;
-              if (typeof ex.parseMarkets === 'function') {
-                const markets = ex.parseMarkets(data.symbols);
-                this.exchange.setMarkets(markets);
-              } else {
-                const marketDict: Record<string, any> = {};
-                for (const s of data.symbols) {
-                  const sym = `${s.baseAsset}/${s.quoteAsset}:${s.marginAsset || s.quoteAsset}`;
-                  marketDict[sym] = {
-                    id: s.symbol, symbol: sym,
-                    base: s.baseAsset, quote: s.quoteAsset,
-                    baseId: s.baseAsset, quoteId: s.quoteAsset,
-                    active: s.status === 'TRADING',
-                    type: 'swap', spot: false, future: true, linear: true,
-                    info: s,
-                    precision: { amount: s.quantityPrecision, price: s.pricePrecision },
-                    limits: { amount: { min: undefined, max: undefined }, price: { min: undefined, max: undefined } },
-                  };
-                }
-                this.exchange.setMarkets(Object.values(marketDict));
-              }
-              marketsLoaded = true;
-              this.logger.warn(`[CcxtAdapter] loadMarkets 网络失败，已从本地缓存加载市场数据 (${ageHours.toFixed(1)}h 前)`);
-            }
-          }
-        }
-      } catch (cacheErr: any) {
-        this.logger.warn(`[CcxtAdapter] 从本地缓存加载失败: ${cacheErr.message}`);
+      marketsLoaded = this.tryLoadMarketsFromCache(cacheFile, 48);
+      if (marketsLoaded) {
+        this.logger.warn(`[CcxtAdapter] loadMarkets 网络失败，已降级到本地缓存`);
       }
     }
 
     if (!marketsLoaded) {
       throw new Error(
-        `${this.exchangeType} loadMarkets 失败(3次): ${lastLoadError}`,
+        `${this.exchangeType} loadMarkets 失败: ${lastLoadError}`,
       );
     }
   }
@@ -685,6 +665,51 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   // ========================= 内部辅助 =========================
+
+  /**
+   * 尝试从本地缓存文件加载市场数据。
+   * exchangeInfo 是结构性数据（精度/最小量/合约规格），Binance 极少变更，缓存安全。
+   * @param cacheFile 缓存文件路径
+   * @param maxAgeHours 最大允许缓存年龄（小时）
+   * @returns 是否加载成功
+   */
+  private tryLoadMarketsFromCache(cacheFile: string, maxAgeHours: number): boolean {
+    try {
+      if (!fs.existsSync(cacheFile)) return false;
+      const stat = fs.statSync(cacheFile);
+      const ageHours = (Date.now() - stat.mtimeMs) / 3600000;
+      if (ageHours > maxAgeHours) return false;
+
+      const raw = fs.readFileSync(cacheFile, 'utf-8');
+      const data = JSON.parse(raw);
+      if (!data.symbols || data.symbols.length < 100) return false;
+
+      const ex = this.exchange as any;
+      if (typeof ex.parseMarkets === 'function') {
+        const markets = ex.parseMarkets(data.symbols);
+        this.exchange!.setMarkets(markets);
+      } else {
+        const marketDict: Record<string, any> = {};
+        for (const s of data.symbols) {
+          const sym = `${s.baseAsset}/${s.quoteAsset}:${s.marginAsset || s.quoteAsset}`;
+          marketDict[sym] = {
+            id: s.symbol, symbol: sym,
+            base: s.baseAsset, quote: s.quoteAsset,
+            baseId: s.baseAsset, quoteId: s.quoteAsset,
+            active: s.status === 'TRADING',
+            type: 'swap', spot: false, future: true, linear: true,
+            info: s,
+            precision: { amount: s.quantityPrecision, price: s.pricePrecision },
+            limits: { amount: { min: undefined, max: undefined }, price: { min: undefined, max: undefined } },
+          };
+        }
+        this.exchange!.setMarkets(Object.values(marketDict));
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   private mapOrderResult(order: ccxt.Order): OrderResult {
     return {

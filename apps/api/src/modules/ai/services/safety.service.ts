@@ -37,12 +37,12 @@ export interface SafetyCheckInput {
   currentPrice?: number; // 当前价格，用于 L9 regime 感知 R:R 计算
   priceChange1h?: number; // 近1h价格变化率（%），用于 L9 黑天鹅检测（ATR 滞后补偿）
   strategyId?: string; // AI策略ID，用于 L9 按策略独立计算持仓数
-  // 策略级风控参数（对齐 NoFx RiskControlConfig，优先于 aiConfig 全局默认值）
+  // 策略级风控参数（优先于 aiConfig 全局默认值）
   strategyRiskConfig?: {
     maxLeverage?: number;
-    btcEthMaxLeverage?: number;      // NoFx: 分类杠杆（BTC/ETH）
-    altcoinMaxLeverage?: number;     // NoFx: 分类杠杆（山寨币）
-    minRiskRewardRatio?: number;     // NoFx: 最小风险收益比
+    btcEthMaxLeverage?: number;      // 分类杠杆（BTC/ETH）
+    altcoinMaxLeverage?: number;     // 分类杠杆（山寨币）
+    minRiskRewardRatio?: number;     // 最小风险收益比
     maxPositions?: number;
     maxDailyTrades?: number;
     cooldownMinutes?: number;
@@ -91,8 +91,7 @@ export class SafetyService {
    * 硬拦截层: L1(结构), L2(共识), L4(仓位/杠杆), L5(熔断), L6(冷却), L8(极端资金费率), L9(ATR极端+R:R+持仓冲突)
    * 软警告层: L3(RSI), L7(Drawdown), L10(流动性)
    *
-   * 设计参考: NoFx 原项目仅在 validateDecision() 中做 action/leverage/positionSize/R:R 验证，
-   * RSI/ATR/Drawdown 等均无代码级拦截。HOOT 将 L3/L7 改为软警告以对齐此设计。
+   * 设计决策: L3/L7 为软警告，不硬拦截 RSI/ATR/Drawdown，由 AI 自主评估。
    *
    * 平仓动作（close_long/close_short）跳过 L2/L3/L5/L6 检查
    */
@@ -398,9 +397,8 @@ export class SafetyService {
   /**
    * L3: 基于技术指标的软警告（不拦截，仅注入提示）
    *
-   * 设计决策: NoFx/TradingAgents 原项目均无 RSI 代码级拦截，
-   * AI 看到 RSI 数据后应自主决策。硬拦截剥夺了 AI 在强趋势
-   * 延续场景下正确交易的能力。改为软警告，让 AI 看到警告后自行判断。
+   * 设计决策: RSI 无代码级硬拦截，AI 看到数据后自主决策。
+   * 硬拦截剥夺了 AI 在强趋势延续场景下正确交易的能力。改为软警告，让 AI 自行判断。
    */
   private checkL3(input: SafetyCheckInput): SafetyLayerResult & { warning?: string } {
     const direction = input.direction.toLowerCase();
@@ -476,7 +474,7 @@ export class SafetyService {
       }
     }
 
-    // 检查杠杆（对齐 NoFx: 分 BTC/ETH 和山寨币，策略级优先 → aiConfig → 默认）
+    // 检查杠杆（分 BTC/ETH 和山寨币，策略级优先 → aiConfig → 默认）
     if (input.leverage) {
       const bs = input.symbol.split('/')[0]?.toUpperCase();
       const isMaj = bs === 'BTC' || bs === 'ETH';
@@ -563,13 +561,14 @@ export class SafetyService {
       input.strategyRiskConfig?.maxDailyDrawdown ??
       (aiConfig.maxDailyDrawdown ? Number(aiConfig.maxDailyDrawdown) : 100);
 
-    // 3a. 查询今日已平仓 AI 交易的实现盈亏
+    // 3a. 查询今日已平仓 AI 交易的实现盈亏（按策略独立计算）
     const closedPositions = await this.prisma.position.findMany({
       where: {
         userId: input.userId,
         source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
         status: 'closed',
         closedAt: { gte: todayStart },
+        ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
       },
       select: { realizedPnl: true },
     });
@@ -578,12 +577,13 @@ export class SafetyService {
       0,
     );
 
-    // 3b. 查询未平仓 AI 持仓的浮动盈亏
+    // 3b. 查询未平仓 AI 持仓的浮动盈亏（按策略独立计算）
     const openPositions = await this.prisma.position.findMany({
       where: {
         userId: input.userId,
         source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
         status: 'open',
+        ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
       },
       select: { unrealizedPnl: true },
     });
@@ -598,7 +598,7 @@ export class SafetyService {
     if (totalDailyPnl < -maxDailyDrawdown) {
       return {
         passed: false,
-        detail: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限额 $${maxDailyDrawdown}`,
+        detail: `日回撤 $${Math.abs(totalDailyPnl).toFixed(2)} 超过限额 $${maxDailyDrawdown}${input.strategyId ? ' (本策略)' : ''}`,
       };
     }
 
@@ -697,8 +697,7 @@ export class SafetyService {
   /**
    * L7: Drawdown 保护（软警告，不拦截）
    *
-   * 设计决策: NoFx/TradingAgents 原项目均无 Drawdown 代码级拦截。
-   * 某一持仓亏损严重不代表其他品种也不能交易。
+   * 设计决策: Drawdown 无代码级硬拦截。某一持仓亏损严重不代表其他品种也不能交易。
    * 改为软警告，让 AI 看到当前持仓回撤情况后自行判断。
    */
   private async checkL7(input: SafetyCheckInput): Promise<SafetyLayerResult & { warning?: string }> {
@@ -851,7 +850,7 @@ export class SafetyService {
           };
         }
 
-        // 波动率异常 → 软警告（NoFx 原项目无 ATR 代码级检查，AI 应自主评估）
+        // 波动率异常 → 软警告（ATR 无代码级硬拦截，AI 自主评估）
         if (!isClose && atrRatio > AI_SAFETY_DEFAULTS.atrAnomalyRatio) {
           // 不拦截，仅记录警告，让 AI 在 prompt 中看到波动率信息后自行决策
           this.logger.warn(
@@ -941,22 +940,21 @@ export class SafetyService {
         };
       }
 
-      // 4. 开仓动作：SL/TP 强制验证 + 方向检查 + R:R 检查
-      // （对齐 NoFx validateDecision，仅对 open_long/open_short 执行）
+      // 4. 开仓动作：SL/TP 强制验证 + 方向检查 + R:R 检查（仅对 open_long/open_short 执行）
       const isOpenAction = input.action === 'open_long' || input.action === 'open_short';
       if (isOpenAction) {
-        // 4a. 强制要求 SL 存在（对齐 NoFx: StopLoss<=0 → 硬拒绝）
+        // 4a. 强制要求 SL 存在（StopLoss<=0 → 硬拒绝）
         if (!input.stopLossPercent || input.stopLossPercent <= 0) {
           return {
             passed: false,
-            detail: '开仓必须提供止损价格，SL 未设置或无效 (对齐 NoFx validateDecision)',
+            detail: '开仓必须提供止损价格，SL 未设置或无效',
           };
         }
-        // 4b. 强制要求 TP 存在（对齐 NoFx: TakeProfit<=0 → 硬拒绝）
+        // 4b. 强制要求 TP 存在（TakeProfit<=0 → 硬拒绝）
         if (!input.takeProfitPercent || input.takeProfitPercent <= 0) {
           return {
             passed: false,
-            detail: '开仓必须提供止盈价格，TP 未设置或无效 (对齐 NoFx validateDecision)',
+            detail: '开仓必须提供止盈价格，TP 未设置或无效',
           };
         }
         // 4c. 方向性验证（open_long: SL<price,TP>price; open_short: SL>price,TP<price）
@@ -972,7 +970,7 @@ export class SafetyService {
             detail: `止盈方向错误: ${input.action} 时 TP 应在当前价格的${input.action === 'open_long' ? '上方' : '下方'}`,
           };
         }
-        // 4d. 风险收益比（对齐 NoFx: riskRewardRatio < minRiskRewardRatio → 硬拒绝）
+        // 4d. 风险收益比（riskRewardRatio < minRiskRewardRatio → 硬拒绝）
         const riskRewardRatio = input.takeProfitPercent / input.stopLossPercent;
         const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
           ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;

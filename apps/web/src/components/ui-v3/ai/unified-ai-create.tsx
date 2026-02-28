@@ -18,6 +18,7 @@ import {
   Zap,
   MessageSquare,
   X,
+  TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -197,6 +198,10 @@ export function UnifiedAiCreate() {
   const [minPositionSize, setMinPositionSize] = useState(100);
   // 日亏损上限（单位：$，直接金额，非百分比）
   const [maxDailyDrawdownDollar, setMaxDailyDrawdownDollar] = useState(500);
+  // 利润回撤保护
+  const [profitDrawdownEnabled, setProfitDrawdownEnabled] = useState(true);
+  const [profitDrawdownMinProfit, setProfitDrawdownMinProfit] = useState(5);
+  const [profitDrawdownMaxRetracement, setProfitDrawdownMaxRetracement] = useState(40);
 
   // ── Grid-specific ─────────────────────────────
   const [gridSymbol, setGridSymbol] = useState('BTC');
@@ -381,6 +386,9 @@ export function UnifiedAiCreate() {
             minPositionSize,
             minConfidence: customParams.minConfidence,
             minRiskRewardRatio: customParams.minRR,
+            profitDrawdownEnabled,
+            profitDrawdownMinProfit,
+            profitDrawdownMaxRetracement,
           },
         });
         router.push(`/ai/research/${result.sessionId}`);
@@ -430,6 +438,9 @@ export function UnifiedAiCreate() {
           circuitBreaker: customParams.circuitBreaker,
           btcEthMaxPositionValueRatio: customParams.btcEthMaxPositionValueRatio,
           altcoinMaxPositionValueRatio: customParams.altcoinMaxPositionValueRatio,
+          profitDrawdownEnabled,
+          profitDrawdownMinProfit,
+          profitDrawdownMaxRetracement,
         },
         intervalMinutes: mins,
         ...(exchangeApiKeyId && { exchangeApiKeyId }),
@@ -948,6 +959,24 @@ export function UnifiedAiCreate() {
                       </button>
                     </div>
                   )}
+                  {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
+                  {(() => {
+                    const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
+                    const MIN_NOTIONAL  = 20  // Binance 合约最低名义值
+                    const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
+                    const maxViable = Math.floor((gridInvestment * effLev) / MIN_NOTIONAL)
+                    const idleCount = Math.max(0, gridCount - maxViable)
+                    if (idleCount === 0) return null
+                    const minInv = Math.ceil((gridCount * MIN_NOTIONAL) / effLev)
+                    return (
+                      <div className="flex items-start gap-1 text-[11px] text-[#F59E0B]">
+                        <span>⚠</span>
+                        <span>
+                          极端市场仅 {maxViable} 格可下单，{idleCount} 格将空转 · 建议资金 ≥ ${minInv}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </div>
               );
             })()}
@@ -1250,6 +1279,49 @@ export function UnifiedAiCreate() {
                       />
                     </div>
                   </div>
+                </div>
+
+                {/* 利润回撤保护 */}
+                <div className="pt-3 border-t border-[#1E1E2E]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
+                      <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
+                    </div>
+                    <button type="button"
+                      onClick={() => setProfitDrawdownEnabled(!profitDrawdownEnabled)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${profitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
+                    >
+                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${profitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                  {profitDrawdownEnabled && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                          <input type="number" min={1} max={50} step={1}
+                            value={profitDrawdownMinProfit || ''}
+                            onChange={(e) => setProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                          />
+                          <span className="text-[#606070] text-xs">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                          <input type="number" min={10} max={80} step={5}
+                            value={profitDrawdownMaxRetracement || ''}
+                            onChange={(e) => setProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                          />
+                          <span className="text-[#606070] text-xs">%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
                 </div>
               </div>
             )}

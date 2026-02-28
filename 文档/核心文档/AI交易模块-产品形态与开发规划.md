@@ -11,7 +11,7 @@ HOOT AI 交易模块包含两个独立产品，分别移植自两个开源项目
 
 | | 产品 A：AI 研究团队 | 产品 B：AI 自动交易 |
 |---|---|---|
-| **来源** | TradingAgents (Apache-2.0) | NoFx (AGPL-3.0，仅参考架构) |
+| **模式** | 深研模式 | 快速交易模式 |
 | **核心能力** | 多智能体深度研究 → 决策 | 策略配置 → 自动循环交易 |
 | **触发方式** | 用户手动触发 | 自动周期运行 |
 | **适合人群** | 想看 AI 怎么分析的用户 | 想让 AI 自动赚钱的用户 |
@@ -20,7 +20,7 @@ HOOT AI 交易模块包含两个独立产品，分别移植自两个开源项目
 
 ## 二、源项目事实（不可修改的基准）
 
-### TradingAgents 原始实现
+### 深研模式原始实现
 
 - **架构**: Python + LangGraph，7 个 AI agent，5 阶段流水线
 - **使用方式**: CLI 手动触发，每次分析一个股票
@@ -31,7 +31,7 @@ HOOT AI 交易模块包含两个独立产品，分别移植自两个开源项目
 - **记忆**: BM25 per-agent 历史检索
 - **反思**: 交易后反思，存入记忆
 
-### NoFx 原始实现
+### 快速交易模式实现
 
 - **架构**: Go (Gin) + React，严格分策略设计
 - **Strategy = AI 的"宪法"**: 用户配置币种来源、指标、风控、自定义 Prompt
@@ -93,7 +93,7 @@ HOOT AI 交易模块包含两个独立产品，分别移植自两个开源项目
 交易完成后 → AI 反思（复盘本次决策质量）→ 存入记忆库
 ```
 
-### 3.2 从 TradingAgents 移植的功能
+### 3.2 深研模式核心功能
 
 | 功能 | 原始实现 | HOOT 实现 |
 |------|---------|----------|
@@ -189,9 +189,9 @@ AI 自动循环运行（每个周期）：
   └─ 查看策略性能统计（胜率、Sharpe、最大回撤）
 ```
 
-### 4.2 从 NoFx 移植的功能
+### 4.2 快速交易模式核心功能
 
-| 功能 | NoFx 原始实现 | HOOT 实现 |
+| 功能 | 快速模式原设计 | HOOT 实现 |
 |------|-------------|----------|
 | 策略配置体系 | StrategyConfig（20+ 字段） | AI 策略配置表 |
 | 币种来源系统 | static/ai500/oi_top/mixed | 手动/AI推荐/OI排行 |
@@ -207,7 +207,7 @@ AI 自动循环运行（每个周期）：
 | Grid 网格交易 | grid_trading 策略类型 | 新增 Grid 模式 |
 | 策略市场 | 用户发布/订阅 | 扩展现有策略市场 |
 
-### 4.3 Debate 模式的共识投票机制（来自 NoFx）
+### 4.3 Debate 模式的共识投票机制
 
 ```
 示例：3 个 AI 对 BTC 的决策
@@ -301,9 +301,9 @@ AI-3（分析性格）: open_long   置信度=70  杠杆=8   仓位=25%
 | research-analysts.service.ts | A | 4 类分析师（基本面/情绪/新闻/技术） |
 | research-reflection.service.ts | A | 交易后反思机制 |
 | ai-strategy.service.ts | B | AI 策略 CRUD + 配置管理 |
-| auto-trader.service.ts | B | 自动交易循环（来自 NoFx auto_trader） |
-| consensus.service.ts | B | 多币种加权投票共识（来自 NoFx debate） |
-| grid-trading.service.ts | B | Grid 网格交易（来自 NoFx grid_trading） |
+| auto-trader.service.ts | B | AI 自动交易循环 |
+| consensus.service.ts | B | 多币种加权投票共识 |
+| grid-trading.service.ts | B | Grid 网格交易 |
 | ai-execution.service.ts | 共享 | AI 交易直接执行（不走队列，调 CCXT） |
 
 ---
@@ -398,7 +398,7 @@ AI 交易（本模块）：
 ### Phase 2：产品 A 后端（AI 研究团队）
 
 1. 新建 `research.service.ts`（5 阶段流水线编排）
-2. 新建 4 类分析师 prompt（从 TradingAgents 移植）
+2. 新建 4 类分析师 prompt
 3. 新建反思机制
 4. 接入 ai-execution.service 执行交易
 5. WebSocket 推送研究进度
@@ -408,8 +408,8 @@ AI 交易（本模块）：
 
 1. 新建 `ai-strategy.service.ts`（策略 CRUD）
 2. 新建 `auto-trader.service.ts`（自动循环）
-3. 新建 `consensus.service.ts`（多币种投票共识，从 NoFx 移植）
-4. 新建 `grid-trading.service.ts`（网格交易，从 NoFx 移植）
+3. 新建 `consensus.service.ts`（多币种投票共识）
+4. 新建 `grid-trading.service.ts`（网格交易）
 5. 策略市场（扩展现有策略市场支持 AI 策略）
 6. 竞赛排行榜
 7. API 端点：策略管理、启停控制、状态查询
@@ -443,5 +443,5 @@ AI 交易（本模块）：
 | 目录 | 说明 |
 |------|------|
 | `v2-dev/backend/modules/ai/` | 可复用的 AI 后端服务（24 个文件） |
-| `v2-dev/reference/TradingAgents/` | TradingAgents 完整源码（Apache-2.0，可参考移植） |
-| `v2-dev/reference/nofx/` | NoFx 完整源码（AGPL-3.0，仅参考架构，不复制代码） |
+| `v2-dev/reference/deep-research/` | 深研模式参考源码 |
+| `v2-dev/reference/auto-trader/` | 快速交易模式参考源码 |

@@ -11,7 +11,7 @@ import { parseDecisions, extractReasoning } from '../../utils/decision-parser';
 
 /**
  * 最近交易记录（替代 BM25 记忆，轻量上下文）
- * 对齐 NoFx RecentOrder (kernel/engine.go L94-105): 9 字段
+ * 近期交易记录：9 字段
  */
 export interface RecentTrade {
   symbol: string;
@@ -27,7 +27,7 @@ export interface RecentTrade {
 
 /**
  * 交易统计（聚合数据）
- * 对齐 NoFx TradingStats (kernel/engine.go L83-92): 8 字段
+ * 交易统计：8 字段
  */
 export interface TradingStats {
   totalTrades: number;
@@ -164,7 +164,7 @@ export class QuickAnalysisService {
       // 多币种模式: 市场数据已由调用方预构建
       marketDataPrompt = config.precomputedMarketData;
     } else {
-      // 1. 获取市场数据 + 市场排名 + 增强数据（并行，对齐 NoFx RankingDataType）
+      // 1. 获取市场数据 + 市场排名 + 增强数据（并行）
       const [marketData, marketRanking, enhancedData] = await Promise.all([
         this.fetchMarketData(config),
         this.marketData.fetchMarketRanking(config.symbol).catch(() => null),
@@ -187,7 +187,7 @@ export class QuickAnalysisService {
 
       // 3. 最近交易上下文 + 历史（通过 userPromptCtx 传入 PromptBuilder，此处无需额外格式化）
 
-      // 5. 获取现有持仓（对齐 NoFx: 无 Evolution Tier，扁平等权设计）
+      // 5. 获取现有持仓（扁平等权设计，无动态权重）
       existingPositions = await this.getExistingPositions(config.userId, config.symbol);
 
       // 追加指标趋势序列（供 AI 感知 RSI/MACD 动量方向）
@@ -384,7 +384,7 @@ export class QuickAnalysisService {
 
   /**
    * 格式化最近交易记录为 prompt 文本
-   * 参考 NoFx formatRecentTradesZH 设计
+   * 将最近交易列表格式化为中文 prompt 文本
    */
   private formatRecentTrades(
     recentTrades?: RecentTrade[],
@@ -473,7 +473,7 @@ export class QuickAnalysisService {
           entryPrice: true,
           amount: true,
           unrealizedPnl: true,
-          highWaterMark: true, // 对齐 NoFx PeakPnLPct
+          highWaterMark: true, // 利润峰值，用于回撤保护
           margin: true,
           leverage: true,
         },

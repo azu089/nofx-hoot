@@ -49,7 +49,7 @@ export interface AnalystContext {
 /**
  * 加密货币分析师服务
  *
- * 对应 TradingAgents 第 1 阶段: 4-5 位专业分析师并行研究
+ * AI 研究第 1 阶段: 4-5 位专业分析师并行研究
  * 每位分析师 = 1 次 LLM 调用，使用 quick_think 模型
  *
  * 5 位分析师:
@@ -186,7 +186,6 @@ export class CryptoAnalystsService {
   /**
    * 1. Market Analyst — 市场结构与价格行为分析
    *
-   * 对应 TradingAgents market_analyst.py
    * 关注: 趋势方向、价格结构、K 线形态、关键价位
    */
   private async analyzeMarket(
@@ -230,7 +229,6 @@ ${langInst}`;
   /**
    * 2. Technical Analyst — 4 维技术指标深度分析
    *
-   * 对应 TradingAgents 中 technical 维度 + v2-dev ANALYST 角色
    * 关注: 趋势/动量/波动率/成交量 4 维度交叉验证
    */
   private async analyzeTechnical(
@@ -305,7 +303,6 @@ ${langInst}`;
   /**
    * 3. Fundamentals Analyst — 衍生品与链上数据分析
    *
-   * 对应 TradingAgents fundamentals_analyst.py（加密货币改版）
    * 关注: OI 变化、资金费率、合约数据、清算风险
    */
   private async analyzeFundamentals(
@@ -359,7 +356,6 @@ ${langInst}`;
   /**
    * 4. News Analyst — 市场新闻与事件影响分析
    *
-   * 对应 TradingAgents news_analyst.py
    * 数据源: CryptoPanic API (免费, 结构化新闻 + 情绪标签)
    * 降级: API 不可用时 fallback 到 LLM 内置知识（标注 [stale data]）
    */
@@ -443,7 +439,6 @@ Based on the above${hasRealNews ? ' real-time news' : ' (limited to your trainin
   /**
    * 5. Sentiment Analyst — 市场情绪与逆向信号分析
    *
-   * 对应 TradingAgents social_media_analyst.py（加密货币改版）
    * 关注: 恐惧贪婪指数推断、极端情绪检测、逆向机会
    */
   private async analyzeSentiment(

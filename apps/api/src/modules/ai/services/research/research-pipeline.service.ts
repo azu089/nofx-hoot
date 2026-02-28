@@ -44,7 +44,7 @@ export interface ResearchConfig {
     maxDailyTrades?: number;
     cooldownMinutes?: number;
     circuitBreaker?: number;
-    // === NoFx 对齐字段 ===
+    // === 杠杆与风控字段 ===
     btcEthMaxLeverage?: number;         // AI GUIDED + CODE ENFORCED, 默认 5
     altcoinMaxLeverage?: number;        // AI GUIDED + CODE ENFORCED, 默认 5
     btcEthMaxPositionValueRatio?: number;   // CODE ENFORCED, 默认 5.0
@@ -88,7 +88,7 @@ const DEPTH_CONFIG: Record<ResearchDepth, {
 /**
  * 研究流水线服务（产品 A 核心）
  *
- * 对应 TradingAgents 5 阶段流水线:
+ * AI 研究 5 阶段流水线:
  *
  * Stage 1: 分析师并行研究（4-5 个分析师）
  * Stage 2: 投资辩论（Bull vs Bear，Research Manager 裁决）
@@ -294,9 +294,9 @@ export class ResearchPipelineService {
 
           const debateConfig: DebateConfig = {
             apiKeys: config.llmApiKeys,
-            maxRounds: depthCfg.investDebateRounds, // 1轮辩论 + Judge裁决（对齐 TradingAgents）
+            maxRounds: depthCfg.investDebateRounds, // 1轮辩论 + Judge裁决
             memoryPrompt,
-            // G1-G3: 对齐 TradingAgents 配置
+            // G1-G3: 辩论增强配置
             analystReports: reportsConcat,   // G1: 分析师报告注入辩论
             userId,                          // G2: 角色专属 BM25 记忆
             sceneText: reportsConcat,        // G2: BM25 查询文本
@@ -329,7 +329,7 @@ export class ResearchPipelineService {
       const stage3 = await this.runStage(3, '交易员提案', async () => {
         const reportsText = this.formatReportsForTrader(reports);
 
-        // GAP-A: 对齐 TradingAgents trader.py — Trader 有独立 BM25 记忆
+        // GAP-A: Trader 有独立 BM25 记忆
         let traderMemoryPrompt = '';
         try {
           const traderMemories = await this.memory.retrieveSimilar(
@@ -580,7 +580,7 @@ Generate your final transaction proposal.${buildUserMessageLanguageReminder(conf
             };
           })(),
           mode: 'quick', // Research 无多模型投票，始终跳过 L2 共识检查
-          // 传入策略级风控参数（用户在深研创建时配置，含 NoFx 对齐字段）
+          // 传入策略级风控参数（用户在深研创建时配置）
           strategyRiskConfig: config.riskControlConfig ? {
             maxLeverage: config.riskControlConfig.maxLeverage,
             btcEthMaxLeverage: config.riskControlConfig.btcEthMaxLeverage,
@@ -640,7 +640,7 @@ Generate your final transaction proposal.${buildUserMessageLanguageReminder(conf
           });
         }
 
-        // ===== CODE ENFORCED 执行层检查（对齐 NoFx auto-trader E2/D6/E4）=====
+        // ===== CODE ENFORCED 执行层检查（E2/D6/E4）=====
         // 这些检查在 safety check 之后、execution 之前执行
         // 深研有自己的思考流程，但执行层风控与 auto-trader 保持一致
         const rc = config.riskControlConfig || {};

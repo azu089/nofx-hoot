@@ -1,5 +1,5 @@
 /**
- * Prompt 构建器 — 移植自 NoFx kernel/engine.go BuildSystemPrompt + BuildUserPrompt
+ * AI 交易提示词构建器 — 8-section 结构化提示词系统
  *
  * 替代 QUICK_MODE_SYSTEM_PROMPT 扁平 Prompt，实现 8-section 结构化系统:
  *
@@ -13,7 +13,7 @@
  * Section 7: Entry Standards + Output Format
  * + Custom Prompt (strategy.promptSections.custom)
  *
- * User Prompt 9 个动态段落（对齐 NoFx BuildUserPrompt）
+ * User Prompt 9 个动态段落
  */
 
 import { Injectable } from '@nestjs/common';
@@ -37,11 +37,11 @@ export interface PromptConfig {
   riskControl?: {
     maxPositions?: number;
     maxLeverage?: number;
-    btcEthMaxLeverage?: number;      // NoFx: BTC/ETH 杠杆上限（AI GUIDED）
-    altcoinMaxLeverage?: number;     // NoFx: 山寨币杠杆上限（AI GUIDED）
-    minRiskRewardRatio?: number;     // NoFx: 最低风险收益比（AI GUIDED）
-    minConfidence?: number;          // NoFx: 最低信心度（AI GUIDED）
-    minPositionSize?: number;        // NoFx: 最小仓位（CODE ENFORCED）
+    btcEthMaxLeverage?: number;      // BTC/ETH 杠杆上限（AI GUIDED）
+    altcoinMaxLeverage?: number;     // 山寨币杠杆上限（AI GUIDED）
+    minRiskRewardRatio?: number;     // 最低风险收益比（AI GUIDED）
+    minConfidence?: number;          // 最低信心度（AI GUIDED）
+    minPositionSize?: number;        // 最小仓位（CODE ENFORCED）
     maxDailyDrawdown?: number;
     allocatedCapital?: number;
     maxDailyTrades?: number;   // 每日最大交易次数（L5 强制）
@@ -73,7 +73,7 @@ export interface UserPromptContext {
   balance?: number;
   marginUsage?: number;
   positionCount?: number;
-  /** 最近平仓记录 — 对齐 NoFx RecentOrder 9字段 */
+  /** 最近平仓记录：9 字段 */
   recentTrades?: Array<{
     symbol: string;
     side: string;
@@ -84,7 +84,7 @@ export interface UserPromptContext {
     holdDuration?: string;
     closedAt: string;
   }>;
-  /** 交易统计 — 对齐 NoFx TradingStats 8字段 */
+  /** 交易统计：8 字段 */
   tradingStats?: {
     totalTrades: number;
     winRate: number;
@@ -235,7 +235,7 @@ export class PromptBuilderService {
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }
 
-    // [3] Recent Trades — 对齐 NoFx RecentOrder 格式
+    // [3] Recent Trades
     if (ctx.recentTrades && ctx.recentTrades.length > 0) {
       lines.push('');
       lines.push('=== Recent Closed Trades (last 5) ===');
@@ -249,7 +249,7 @@ export class PromptBuilderService {
       }
     }
 
-    // [4] Trading Stats — 对齐 NoFx TradingStats 8字段
+    // [4] Trading Stats
     if (ctx.tradingStats && ctx.tradingStats.totalTrades > 0) {
       const s = ctx.tradingStats;
       lines.push('');
@@ -559,6 +559,6 @@ FORMAT RULES — violations cause parse failure:
 8. R/R ratio MUST be >= minimum in Hard Constraints
 9. "reasoning" field: cite ≥2 specific indicators (e.g. "RSI(14) at 42", "MACD histogram negative", "$95,000 support")
 10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent (≥3 sentences, no "same as BTC")
-11. confidence < 50 → use action="wait", confidence=0, leverage=1, positionSizePercent=0`;
+11. confidence < 50 → use action="wait", leverage=1, positionSizePercent=0 (keep your actual confidence value, do NOT force it to 0)`;
   }
 }

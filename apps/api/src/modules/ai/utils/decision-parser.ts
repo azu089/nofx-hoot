@@ -1,5 +1,5 @@
 /**
- * JSON 鲁棒解析器 — 移植自 NoFx kernel/engine.go + debate/engine.go
+ * JSON 鲁棒解析器 — 多层回退解析 AI 决策输出
  *
  * 6 层回退解析 + 中文标点修复 + 决策验证 + 安全兜底。
  * 降低 AI 输出解析失败率，减少 token 浪费。
@@ -50,7 +50,7 @@ const VALID_ACTIONS: Set<string> = new Set([
   'wait',
 ]);
 
-/** Action 别名映射（NoFx normalizeAction） */
+/** Action 别名映射（标准化动作名称） */
 const ACTION_ALIASES: Record<string, AiAction> = {
   long: 'open_long',
   openlong: 'open_long',
@@ -65,7 +65,7 @@ const ACTION_ALIASES: Record<string, AiAction> = {
 // ========================= 中文标点修复 =========================
 
 /**
- * 修复中文全角标点 → ASCII 等价物（NoFx fixMissingQuotes: 15 种替换）
+ * 修复中文全角标点 → ASCII 等价物（15 种替换）
  */
 function fixChinesePunctuation(s: string): string {
   return s
@@ -101,7 +101,7 @@ function removeInvisible(s: string): string {
 // ========================= 格式校验 =========================
 
 /**
- * 验证 JSON 格式（NoFx validateJSONFormat）
+ * 验证 JSON 格式
  *
  * 规则:
  * 1. 必须以 [{ 开头
@@ -145,7 +145,7 @@ function validateJSONFormat(jsonStr: string): string | null {
 // ========================= Action 规范化 =========================
 
 /**
- * 规范化 action 名称（NoFx normalizeAction）
+ * 规范化 action 名称
  */
 function normalizeAction(action: string): AiAction {
   const normalized = action.toLowerCase().trim().replace(/[\s-]/g, '_');
@@ -182,7 +182,7 @@ interface RawDecision {
 /**
  * 解析 AI 原始输出 → AiTradeDecision[]
  *
- * 6 层回退管线（对齐 NoFx extractDecisions）:
+ * 6 层回退管线（递进式解析）:
  *   L1: <decision> XML 标签
  *   L2: ```json 代码围栏
  *   L3: 裸 JSON 数组 [...]
@@ -398,7 +398,7 @@ export interface ValidationResult {
 }
 
 /**
- * 验证单个决策（对齐 NoFx validateDecision）
+ * 验证单个决策
  *
  * 规则:
  * - action 合法性
@@ -533,7 +533,7 @@ function buildWaitDecision(
 }
 
 /**
- * 回退解析 — 统计 action 关键词出现频率（NoFx fallbackParseAction）
+ * 回退解析 — 统计 action 关键词出现频率
  */
 function fallbackParseAction(response: string): AiAction {
   const lower = response.toLowerCase();

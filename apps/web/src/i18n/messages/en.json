@@ -996,6 +996,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "Delayed data, exchange unavailable",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1321,7 +1322,17 @@
     "executionFailed": "Execution failed",
     "unknownError": "Unknown error",
     "marginInsufficient": "Insufficient free margin (used by open positions), cannot place new orders",
-    "validationFailed": "Invalid configuration, please check and retry"
+    "validationFailed": "Invalid configuration, please check and retry",
+    "orderMinNotional": "Order amount too small (below exchange minimum notional value)",
+    "orderPrecision": "Precision exceeded (too many decimal places in quantity or price)",
+    "orderReduceOnly": "Reduce-only order rejected (new positions not allowed)",
+    "orderMinQty": "Order quantity below exchange minimum",
+    "orderQtyInvalid": "Invalid order quantity",
+    "orderPriceInvalid": "Order price outside exchange allowed range",
+    "orderPositionSide": "Wrong position side (check hedge/one-way mode setting)",
+    "orderParamInvalid": "Invalid order parameter (missing required field)",
+    "orderMaxCount": "Exceeded exchange maximum open orders limit",
+    "orderLotSize": "Order quantity doesn't meet exchange lot size requirement"
   },
   "ai": {
     "common": {
@@ -1411,7 +1422,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "Exclude Coins",
+      "sharpe": "Sharpe"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1522,7 +1534,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Confidence",
-      "minPositionSize": "Min Position Size"
+      "minPositionSize": "Min Position Size",
+      "profitDrawdown": "Profit Drawdown Protection",
+      "profitDrawdownMinProfit": "Min Profit Trigger",
+      "profitDrawdownMaxRetracement": "Max Retracement",
+      "profitDrawdownDesc": "Auto-close when retracement from peak exceeds threshold after reaching min profit"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1559,6 +1575,7 @@
       "soloMode": "Solo Mode",
       "debateMode": "Consensus Mode",
       "gridMode": "Grid Mode",
+      "researchMode": "Research Mode",
       "coinSource": "Coin Source",
       "coinSourceManual": "Manual",
       "coinSourceAI": "AI Picks",
@@ -1579,6 +1596,7 @@
       "minRiskRewardRatio": "Min Risk/Reward",
       "minConfidence": "Min Confidence",
       "minPositionSize": "Min Position Size",
+      "profitDrawdown": "Profit Protection",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1696,6 +1714,17 @@
       "gridSell": "{count} Sell",
       "gridCancel": "{count} Cancel",
       "gridOps": "{count} ops",
+      "gridErrMargin": "Insufficient margin",
+      "gridErrMarginHintActive": "{count} active orders using margin, will auto-fill after execution",
+      "gridErrMarginHintWait": "Waiting for margin to be released",
+      "gridErrOrderId": "Invalid order ID (expired or not found)",
+      "gridErrFailBuy": "Buy×{count}",
+      "gridErrFailSell": "Sell×{count}",
+      "gridErrFailCancel": "Cancel×{count}",
+      "gridErrFailOther": "Other×{count}",
+      "gridErrPartial": "{ok} placed · {fail} failed",
+      "gridErrAllFail": "All {count} orders failed",
+      "gridErrOpsFail": "{count} operations failed",
       "personalityBull": "Bull",
       "personalityBear": "Bear",
       "personalityAnalyst": "Analyst",
@@ -1963,6 +1992,7 @@
       "gridExecReduce": "Reduced {count}",
       "gridRange": "Grid Range",
       "gridLevels": "Trades / Levels",
+      "gridTotalPnl": "Total P&L",
       "gridProfit": "Realized P&L",
       "gridWinRate": "Win Rate",
       "gridPendingLevels": "Pending Levels",

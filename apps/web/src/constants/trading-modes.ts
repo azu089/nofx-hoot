@@ -6,12 +6,14 @@
  */
 
 import { MODEL_DISPLAY } from './debate';
+import type { LucideIcon } from 'lucide-react';
+import { Zap, MessageSquare, Grid3X3, FlaskConical } from 'lucide-react';
 
 type TFunc = (key: string, params?: Record<string, string | number>) => string;
 
 export interface TradingModeInfo {
   title: string;
-  icon: string;
+  Icon: LucideIcon;
   color: string;
   bg: string;
   description: string;
@@ -22,24 +24,31 @@ export function getTradingModeInfo(t: TFunc): Record<string, TradingModeInfo> {
   return {
     solo: {
       title: t('modeInfo.soloTitle'),
-      icon: '\u26A1',
+      Icon: Zap,
       color: '#F59E0B',
       bg: 'rgba(245,158,11,0.15)',
       description: t('modeInfo.soloDesc'),
     },
     debate: {
       title: t('modeInfo.debateTitle'),
-      icon: '\u{1F91D}',
+      Icon: MessageSquare,
       color: '#8B5CF6',
       bg: 'rgba(139,92,246,0.15)',
       description: t('modeInfo.debateDesc'),
     },
     grid: {
       title: t('modeInfo.gridTitle'),
-      icon: '\u{1F4CA}',
+      Icon: Grid3X3,
       color: '#10B981',
       bg: 'rgba(16,185,129,0.15)',
       description: t('modeInfo.gridDesc'),
+    },
+    research: {
+      title: t('modeInfo.researchTitle'),
+      Icon: FlaskConical,
+      color: '#06B6D4',
+      bg: 'rgba(6,182,212,0.15)',
+      description: t('modeInfo.researchDesc'),
     },
   };
 }

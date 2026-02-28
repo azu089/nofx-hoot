@@ -1003,6 +1003,7 @@
     "unrealizedPnlLabel": "未實現盈亏",
     "entryPriceLabel": "开倉價格",
     "markPriceLabel": "标记價格",
+    "cachedData": "數據延遲，交易所暫不可用",
     "liquidationPriceLabel": "强平價格",
     "investmentReturn": "投资回报率",
     "amountPerTradeLabel": "单笔金额",
@@ -1327,7 +1328,18 @@
     "marketInfoFailed": "取得市場資訊失敗，請檢查網路",
     "executionFailed": "執行失敗",
     "unknownError": "未知錯誤",
-    "marginInsufficient": "可用保證金不足（倉位占用），無法掛新訂單"
+    "marginInsufficient": "可用保證金不足（倉位占用），無法掛新訂單",
+    "validationFailed": "配置參數不合法，請檢查後重試",
+    "orderMinNotional": "訂單金額不足（低於交易所最小名義價值要求）",
+    "orderPrecision": "精度超限（數量或價格小數位數過多）",
+    "orderReduceOnly": "僅允許減倉訂單（當前不允許開新倉）",
+    "orderMinQty": "下單數量低於交易所最小要求",
+    "orderQtyInvalid": "下單數量無效",
+    "orderPriceInvalid": "下單價格超出交易所允許範圍",
+    "orderPositionSide": "持倉方向錯誤（請檢查雙向/單向持倉模式）",
+    "orderParamInvalid": "訂單參數無效（缺少必要欄位）",
+    "orderMaxCount": "超過交易所最大掛單數量限制",
+    "orderLotSize": "下單數量不符合交易所最小步長要求"
   },
   "ai": {
     "common": {
@@ -1417,7 +1429,8 @@
       "today": "今日",
       "winRate": "勝率",
       "todayPnl": "今日盈虧",
-      "excludeCoins": "排除幣種"
+      "excludeCoins": "排除幣種",
+      "sharpe": "夏普"
     },
     "create": {
       "title": "建立 AI 策略",
@@ -1528,7 +1541,11 @@
       "nameConsensus": "共識",
       "nameSolo": "極速",
       "minConfidence": "最低置信度",
-      "minPositionSize": "最小持倉"
+      "minPositionSize": "最小持倉",
+      "profitDrawdown": "利潤回撤保護",
+      "profitDrawdownMinProfit": "最低盈利觸發",
+      "profitDrawdownMaxRetracement": "最大回撤比例",
+      "profitDrawdownDesc": "持倉盈利達到觸發值後，若從高點回撤超過設定比例，自動平倉保護利潤"
     },
     "detail": {
       "strategyNotFound": "策略不存在",
@@ -1584,6 +1601,7 @@
       "minRiskRewardRatio": "最低風險收益比",
       "minConfidence": "最低信心度",
       "minPositionSize": "最小倉位",
+      "profitDrawdown": "利潤回撤保護",
       "executionCycle": "執行週期",
       "promptConfig": "Prompt 配置",
       "promptAggressive": "激進模式",
@@ -1667,7 +1685,7 @@
       "timeFilterAll": "全部",
       "pnlChart": "{filter} AI盈虧",
       "pnl": "AI盈虧",
-      "sharpe": "Sharpe",
+      "sharpe": "夏普",
       "trades": "交易",
       "analyzed": "分析 {count} 幣種, 執行 {executed} 筆, 費用",
       "configStrategyType": "策略類型",
@@ -1701,6 +1719,17 @@
       "gridSell": "{count}賣",
       "gridCancel": "撤{count}",
       "gridOps": "{count}操作",
+      "gridErrMargin": "保證金不足",
+      "gridErrMarginHintActive": "{count} 個活躍掛單正在佔用保證金，等待成交後自動補掛",
+      "gridErrMarginHintWait": "等待保證金釋放後自動補掛",
+      "gridErrOrderId": "訂單ID無效（已過期或不存在）",
+      "gridErrFailBuy": "買單×{count}層",
+      "gridErrFailSell": "賣單×{count}層",
+      "gridErrFailCancel": "撤單×{count}層",
+      "gridErrFailOther": "其他×{count}項",
+      "gridErrPartial": "{ok}層已掛單 · {fail}層失敗",
+      "gridErrAllFail": "全部 {count} 層掛單均失敗",
+      "gridErrOpsFail": "{count} 項操作失敗",
       "personalityBull": "多頭派",
       "personalityBear": "空頭派",
       "personalityAnalyst": "分析師",
@@ -1718,7 +1747,8 @@
       "promptDefaultFrequency": "嚴格控制交易頻率。只在出現高概率機會時才開倉。寧可錯過機會，也不要頻繁交易。",
       "promptDefaultEntry": "開倉需要至少2個獨立信號共振確認。趨勢方向+動量+關鍵價位支撐。",
       "promptDefaultDecision": "1. 判斷市場結構和趨勢方向 2. 尋找入場信號共振 3. 評估風險回報比 4. 確定倉位大小和止損",
-      "gridMode": "网格模式"
+      "gridMode": "网格模式",
+      "researchMode": "深研模式"
     },
     "research": {
       "title": "AI 研究團隊",
@@ -1969,7 +1999,8 @@
       "gridExecReduce": "減倉{count}次",
       "gridRange": "網格範圍",
       "gridLevels": "成交次數/總層",
-      "gridProfit": "實現盈虧",
+      "gridTotalPnl": "總盈虧",
+      "gridProfit": "已實現盈虧",
       "gridWinRate": "勝率",
       "gridPendingLevels": "掛單層",
       "gridActiveOrders": "活躍訂單",

@@ -1002,6 +1002,7 @@
     "unrealizedPnlLabel": "Unrealized P&L",
     "entryPriceLabel": "Entry Price",
     "markPriceLabel": "Mark Price",
+    "cachedData": "Dữ liệu chậm, sàn giao dịch tạm không khả dụng",
     "liquidationPriceLabel": "Liq. Price",
     "investmentReturn": "ROI",
     "amountPerTradeLabel": "Amount/Trade",
@@ -1326,7 +1327,18 @@
     "marketInfoFailed": "Tải thông tin thị trường thất bại. Kiểm tra mạng",
     "executionFailed": "Thực thi thất bại",
     "unknownError": "Lỗi không xác định",
-    "marginInsufficient": "Ký quỹ tự do không đủ (bị vị thế chiếm dụng), không thể đặt lệnh mới"
+    "marginInsufficient": "Ký quỹ tự do không đủ (bị vị thế chiếm dụng), không thể đặt lệnh mới",
+    "validationFailed": "Tham số cấu hình không hợp lệ, vui lòng kiểm tra và thử lại",
+    "orderMinNotional": "Số tiền lệnh quá nhỏ (thấp hơn giá trị danh nghĩa tối thiểu)",
+    "orderPrecision": "Độ chính xác vượt quá (quá nhiều chữ số thập phân)",
+    "orderReduceOnly": "Chỉ cho phép lệnh giảm vị thế (không cho mở vị thế mới)",
+    "orderMinQty": "Số lượng lệnh thấp hơn yêu cầu tối thiểu của sàn",
+    "orderQtyInvalid": "Số lượng lệnh không hợp lệ",
+    "orderPriceInvalid": "Giá lệnh ngoài phạm vi cho phép của sàn",
+    "orderPositionSide": "Sai hướng vị thế (kiểm tra chế độ hedge/one-way)",
+    "orderParamInvalid": "Tham số lệnh không hợp lệ (thiếu trường bắt buộc)",
+    "orderMaxCount": "Vượt quá giới hạn số lệnh mở tối đa của sàn",
+    "orderLotSize": "Số lượng lệnh không đáp ứng yêu cầu lot size của sàn"
   },
   "ai": {
     "common": {
@@ -1416,7 +1428,8 @@
       "today": "Today",
       "winRate": "Win Rate",
       "todayPnl": "Today PnL",
-      "excludeCoins": "Exclude Coins"
+      "excludeCoins": "Loại trừ coin",
+      "sharpe": "Sharpe"
     },
     "create": {
       "title": "Create AI Strategy",
@@ -1527,7 +1540,11 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Độ tin cậy tối thiểu",
-      "minPositionSize": "Kích thước vị thế tối thiểu"
+      "minPositionSize": "Kích thước vị thế tối thiểu",
+      "profitDrawdown": "Bảo vệ lợi nhuận",
+      "profitDrawdownMinProfit": "Lợi nhuận tối thiểu",
+      "profitDrawdownMaxRetracement": "Tỷ lệ thoái lui tối đa",
+      "profitDrawdownDesc": "Tự động đóng khi thoái lui từ đỉnh vượt ngưỡng sau khi đạt lợi nhuận tối thiểu"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
@@ -1583,6 +1600,7 @@
       "minRiskRewardRatio": "Tỷ lệ R:R tối thiểu",
       "minConfidence": "Độ tin cậy tối thiểu",
       "minPositionSize": "Kích thước vị thế tối thiểu",
+      "profitDrawdown": "Bảo vệ lợi nhuận",
       "executionCycle": "Execution Cycle",
       "promptConfig": "Prompt Config",
       "promptAggressive": "Aggressive Mode",
@@ -1700,6 +1718,17 @@
       "gridSell": "{count} bán",
       "gridCancel": "{count} hủy",
       "gridOps": "{count} lệnh",
+      "gridErrMargin": "Không đủ ký quỹ",
+      "gridErrMarginHintActive": "{count} lệnh đang sử dụng ký quỹ, sẽ tự động bổ sung sau khi khớp",
+      "gridErrMarginHintWait": "Đang chờ giải phóng ký quỹ",
+      "gridErrOrderId": "ID lệnh không hợp lệ (hết hạn hoặc không tồn tại)",
+      "gridErrFailBuy": "Mua×{count}",
+      "gridErrFailSell": "Bán×{count}",
+      "gridErrFailCancel": "Hủy×{count}",
+      "gridErrFailOther": "Khác×{count}",
+      "gridErrPartial": "{ok} đã đặt · {fail} thất bại",
+      "gridErrAllFail": "Tất cả {count} lệnh đều thất bại",
+      "gridErrOpsFail": "{count} thao tác thất bại",
       "personalityBull": "Phe tăng",
       "personalityBear": "Phe giảm",
       "personalityAnalyst": "Phân tích",
@@ -1717,7 +1746,8 @@
       "promptDefaultFrequency": "Kiểm soát chặt tần suất giao dịch. Chỉ mở vị thế khi cơ hội xác suất cao.",
       "promptDefaultEntry": "Mở vị thế cần ít nhất 2 tín hiệu xác nhận độc lập. Xu hướng + momentum + hỗ trợ giá chính.",
       "promptDefaultDecision": "1. Đánh giá cấu trúc thị trường 2. Tìm điểm hội tụ tín hiệu 3. Đánh giá tỷ lệ rủi ro/lợi nhuận 4. Xác định kích thước vị thế và cắt lỗ",
-      "gridMode": "Grid Mode"
+      "gridMode": "Grid Mode",
+      "researchMode": "Research Mode"
     },
     "research": {
       "title": "AI Research Team",
@@ -1968,6 +1998,7 @@
       "gridExecReduce": "Giảm {count} lần",
       "gridRange": "Phạm vi lưới",
       "gridLevels": "Giao dịch / Cấp",
+      "gridTotalPnl": "Tổng lãi/lỗ",
       "gridProfit": "Lãi/lỗ đã thực hiện",
       "gridWinRate": "Tỷ lệ thắng",
       "gridPendingLevels": "Tầng chờ",
