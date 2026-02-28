@@ -49,7 +49,17 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     // 启动时加载所有活跃持仓
-    await this.loadActivePositions();
+    try {
+      await this.loadActivePositions();
+    } catch (err) {
+      const code = (err as any)?.code;
+      if (code === 'P2022' || code === 'P2021' || code === 'P1001') {
+        // P2022: 列不存在（迁移未运行）P2021: 表不存在 P1001: DB 连接失败 — 跳过，不影响启动
+        this.logger.warn(`[onModuleInit] 加载持仓跳过（迁移尚未完成）: ${(err as Error).message}`);
+      } else {
+        throw err;
+      }
+    }
     // 启动监控循环
     this.startMonitoring();
   }
