@@ -90,7 +90,7 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=https://api.hoot.cool
+        - NEXT_PUBLIC_API_URL=https://api.hoot.cool/api
         - NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN:-}
         - NEXT_PUBLIC_TG_BOT_USERNAME=HootCool_bot
     container_name: hoot-web
@@ -100,7 +100,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - NEXT_PUBLIC_API_URL=https://api.hoot.cool
+      - NEXT_PUBLIC_API_URL=https://api.hoot.cool/api
       - NEXT_PUBLIC_SITE_URL=https://hoot.cool
     depends_on:
       api:
