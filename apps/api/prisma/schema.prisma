@@ -2,7 +2,8 @@
 // 基于开发顺序.md Phase 3.1 设计
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

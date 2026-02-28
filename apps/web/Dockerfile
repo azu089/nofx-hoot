@@ -12,7 +12,7 @@ RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
 COPY package.json pnpm-lock.yaml* ./
 
 # 安装依赖
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # 阶段2: 构建
 FROM node:20-alpine AS builder
@@ -23,6 +23,9 @@ RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
 # 复制依赖
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# 删除 pnpm-workspace.yaml（避免 pnpm 10.x 报 packages field missing 错误）
+RUN rm -f pnpm-workspace.yaml
 
 # 设置构建时环境变量
 ARG NEXT_PUBLIC_API_URL
