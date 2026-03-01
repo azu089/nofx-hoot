@@ -983,12 +983,12 @@ export class GridTradingService {
         const decisions = this.parseGridDecisions(response.content);
 
         // 执行决策（收集每条执行结果，供日志记录）
-        const execResults: Array<{ action: string; success: boolean; skipped?: boolean; error?: string }> = [];
+        const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         for (const d of decisions) {
           try {
-            const executed = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
-            if (executed && d.action.includes('place_')) trades++;
-            execResults.push({ action: d.action, success: true, skipped: !executed });
+            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
+            if (result.executed && d.action.includes('place_')) trades++;
+            execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);
@@ -1019,13 +1019,28 @@ export class GridTradingService {
             ? ` | 失败原因: ${uniqueCategories.join('、')}`
             : '';
 
+          // 检测是否全部因 MIN_NOTIONAL（每层资金不足）被拦截
+          const skippedReasons = execResults
+            .filter(r => r.success && r.skipped && r.skipReason)
+            .map(r => r.skipReason!);
+          const allSkippedForNotional =
+            skippedReasons.length > 0 &&
+            skippedReasons.length === placeActions.length &&
+            skippedReasons.every(r => r.includes('每层资金不足'));
+          const notionalSuffix = allSkippedForNotional
+            ? ` | ${skippedReasons[0]}`
+            : '';
+
           // 区分：有真实交易所错误 = 执行失败；全部是内部拦截（skipped）= 空转
           const hasExchangeErrors = failedErrors.length > 0;
           const logAction = hasExchangeErrors ? 'grid_exec_failed' : 'grid_idle';
           const logTitle = hasExchangeErrors
             ? `执行失败: AI 建议 ${placeActions.length} 笔下单，全部被交易所拒绝`
-            : `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功`;
+            : allSkippedForNotional
+              ? `网格空转: ${skippedReasons[0]}`
+              : `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功`;
           const summaryPrefix = hasExchangeErrors ? '执行失败' : '空转';
+          const fullReasonSuffix = allSkippedForNotional ? notionalSuffix : reasonSuffix;
 
           await this.prisma.aiStrategyLog.create({
             data: {
@@ -1034,8 +1049,9 @@ export class GridTradingService {
               decision: {
                 action: logAction,
                 reasoning: logTitle +
-                  ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)${reasonSuffix}`,
-                gridSummary: `${summaryPrefix}/${placeActions.length}笔未执行${reasonSuffix}`,
+                  (allSkippedForNotional ? '' : ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)`) +
+                  fullReasonSuffix,
+                gridSummary: `${summaryPrefix}/${placeActions.length}笔未执行${fullReasonSuffix}`,
                 gridSnapshot: {
                   regime: state.currentRegime,
                   effectiveLeverage: state.effectiveLeverage,
@@ -1589,7 +1605,7 @@ export class GridTradingService {
   }
 
   /** 执行单条网格决策 */
-  /** @returns true=操作已执行, false=被跳过/拦截（如仓位限制） */
+  /** @returns { executed: true } = 操作已执行, { executed: false, skipReason? } = 被跳过/拦截 */
   private async executeGridDecision(
     state: GridState,
     decision: GridDecision,
@@ -1598,7 +1614,7 @@ export class GridTradingService {
     apiKeyId: string,
     useMakerOnly = false,
     currentPrice?: number,
-  ): Promise<boolean> {
+  ): Promise<{ executed: boolean; skipReason?: string }> {
     const { action } = decision;
 
     const aiLevel = decision.level_index ?? decision.level;
@@ -1609,7 +1625,7 @@ export class GridTradingService {
       case 'place_sell_limit':
         if (!isGridAdapter(adapter)) {
           this.logger.warn(`[网格] 适配器不支持限价单, adapter类型=${adapter.constructor.name}`);
-          return false;
+          return { executed: false };
         }
         return await this.placeGridLimitOrder(
           state,
@@ -1716,13 +1732,13 @@ export class GridTradingService {
 
       case 'hold':
         // 不操作
-        return true;
+        return { executed: true };
 
       default:
         this.logger.debug(`[网格] 未知 AI 动作: ${action}`);
-        return true;
+        return { executed: true };
     }
-    return true;
+    return { executed: true };
   }
 
   /**
@@ -1777,7 +1793,7 @@ export class GridTradingService {
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
     useMakerOnly = false,
-  ): Promise<boolean> {
+  ): Promise<{ executed: boolean; skipReason?: string }> {
     // Prompt 中 level 从 1 开始（用户友好），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
     const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
@@ -1811,7 +1827,7 @@ export class GridTradingService {
 
     if (price <= 0 || quantity <= 0) {
       this.logger.warn(`[网格] 跳过下单: price=${price}, quantity=${quantity} (level=${levelIndex})`);
-      return false;
+      return { executed: false };
     }
 
     // Step 1: 仓位上限检查（使用 effectiveLeverage 代替 leverage）
@@ -1838,7 +1854,7 @@ export class GridTradingService {
       const absoluteMax = state.totalInvestment * leverage * POSITION_SAFETY_MULTIPLIER;
       if (positionValue > absoluteMax) {
         this.logger.warn(`[网格] 仓位超安全上限，跳过: ${positionValue.toFixed(2)} > ${absoluteMax.toFixed(2)}`);
-        return false;
+        return { executed: false };
       }
     }
 
@@ -1867,7 +1883,7 @@ export class GridTradingService {
       this.logger.debug(
         `[网格] 跳过下单: 数量 ${finalQty} < 最小 ${minQty} (原始=${quantity.toFixed(6)}, level=${levelIndex})`,
       );
-      return false;
+      return { executed: false };
     }
     // 最小名义价值预检：直接使用交易所真实值（SOL=$5, ETH=$20, BTC=$100）
     const MIN_NOTIONAL = exchangeMinNotional > 0 ? exchangeMinNotional : 5;
@@ -1884,12 +1900,20 @@ export class GridTradingService {
       notional = snappedNotional;
     }
     if (notional < MIN_NOTIONAL) {
+      const coinSymbol = state.symbol.replace(/USDT.*/, '').replace(/\/.*/, '');
+      const perLevelNotional = (state.totalInvestment / state.gridLines.length) * leverage;
+      const recommendedLevels = Math.floor((state.totalInvestment * leverage) / MIN_NOTIONAL);
+      const recommendedInvestment = Math.ceil((MIN_NOTIONAL * state.gridLines.length) / leverage);
+      const skipReason =
+        `每层资金不足: 每层约 $${perLevelNotional.toFixed(2)}，` +
+        `低于 ${coinSymbol} 最低下单额 $${MIN_NOTIONAL.toFixed(0)} | ` +
+        `建议: 减少层数(${state.gridLines.length}→${recommendedLevels})` +
+        `或增加投资额($${state.totalInvestment}→$${recommendedInvestment})`;
       this.logger.warn(
         `[网格] 跳过下单: notional $${notional.toFixed(2)} < 交易所最低 $${MIN_NOTIONAL}` +
-        ` (level=${levelIndex}, qty=${finalQty}, price=${price})` +
-        ` | 建议: 减少层数或增加投资额`,
+        ` (level=${levelIndex}, qty=${finalQty}, price=${price}) | ${skipReason}`,
       );
-      return false;
+      return { executed: false, skipReason };
     }
 
     // Step 3: 下单（单向持仓模式不传 positionSide，避免 Binance -4061）
@@ -1919,7 +1943,7 @@ export class GridTradingService {
     }
 
     this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${levelIndex}, orderId=${result.orderId})`);
-    return true;
+    return { executed: true };
   }
 
   // ========================= 方向性平仓 =========================
@@ -2557,7 +2581,7 @@ export class GridTradingService {
     cost: number,
     state?: GridState,
     thinking?: string,
-    execResults?: Array<{ action: string; success: boolean; skipped?: boolean; error?: string }>,
+    execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
