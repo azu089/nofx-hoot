@@ -811,8 +811,8 @@ export function UnifiedAiCreate() {
               </div>
             )}
 
-            {/* Excluded coins */}
-            <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
+            {/* Excluded coins — 仅在自动选币模式下显示 */}
+            {coinSource !== 'manual' && <div className="rounded-xl border border-[#1E1E2E] overflow-hidden">
               <button type="button" onClick={() => setShowExcludedCoins(!showExcludedCoins)}
                 className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
                 aria-label={t('create.excludeCoins')} title={t('create.excludeCoins')}
@@ -840,7 +840,7 @@ export function UnifiedAiCreate() {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
           </>
         )}
 
