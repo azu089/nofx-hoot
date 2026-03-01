@@ -1828,13 +1828,21 @@ export class GridTradingService {
 
     // Step 2: 格式化数量 + 最小下单量检查
     const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
-    const finalQty = parseFloat(formattedQty);
+    let finalQty = parseFloat(formattedQty);
     // 获取交易所最小下单量（minQuantity），防止发送低于 MIN_QTY 的订单被拒
     let minQty = 0;
     try {
       const precision = await adapter.getMarketPrecision(state.symbol);
       minQty = precision.minQuantity ?? 0;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
+    // floor 取整可能导致 finalQty=0（如 BTC 0.000914 → 0）
+    // 当原始数量 >= minQty 的 80% 时，snap up 到 minQty，避免因精度丢失空转
+    if (finalQty <= 0 && minQty > 0 && quantity >= minQty * 0.8) {
+      this.logger.debug(
+        `[网格] 数量向上取整: 原始=${quantity.toFixed(6)} → minQty=${minQty} (level=${levelIndex})`,
+      );
+      finalQty = minQty;
+    }
     if (finalQty <= 0 || (minQty > 0 && finalQty < minQty)) {
       this.logger.debug(
         `[网格] 跳过下单: 数量 ${finalQty} < 最小 ${minQty} (原始=${quantity.toFixed(6)}, level=${levelIndex})`,
