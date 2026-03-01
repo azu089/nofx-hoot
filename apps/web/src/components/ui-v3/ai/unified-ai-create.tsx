@@ -971,7 +971,8 @@ export function UnifiedAiCreate() {
                   {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
                   {(() => {
                     const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
-                    const MIN_NOTIONAL  = 20  // Binance 合约最低名义值
+                    const _base = gridSymbol.split('/')[0].toUpperCase()
+                    const MIN_NOTIONAL = _base === 'BTC' ? 100 : _base === 'ETH' ? 20 : 5
                     const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
                     const maxViable = Math.floor((gridInvestment * effLev) / MIN_NOTIONAL)
                     const idleCount = Math.max(0, gridCount - maxViable)

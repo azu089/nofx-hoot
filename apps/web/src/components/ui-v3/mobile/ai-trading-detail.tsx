@@ -69,6 +69,9 @@ export function AIStrategyDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [showPromptPreview, setShowPromptPreview] = useState(false);
 
+  // 策略名称编辑
+  const [editName, setEditName] = useState('');
+
   // 编辑表单 state
   const [editCoinMode, setEditCoinMode] = useState<CoinSourceConfig['mode']>('static');
   const [editCoins, setEditCoins] = useState<string[]>([]);
@@ -293,6 +296,7 @@ export function AIStrategyDetailPage() {
 
   // 进入编辑模式 — 从当前策略配置填充表单
   const enterEditMode = () => {
+    setEditName(strategy?.name || '');
     if (strategy?.strategyType === 'grid' && strategy.gridConfig) {
       // Grid 策略加载 gridConfig
       const gc = strategy.gridConfig as GridConfig;
@@ -376,6 +380,7 @@ export function AIStrategyDetailPage() {
     if (strategy.strategyType === 'grid') {
       // Grid 策略：提交 gridConfig + intervalMinutes
       body = {
+        ...(editName.trim() && editName.trim() !== strategy.name ? { name: editName.trim() } : {}),
         gridConfig: {
           ...(strategy.gridConfig as GridConfig),
           symbol: editGridSymbol ? `${editGridSymbol}/USDT:USDT` : (strategy.gridConfig as GridConfig)?.symbol,
@@ -405,6 +410,7 @@ export function AIStrategyDetailPage() {
     } else {
       // 非 Grid：提交通用 coinSourceConfig + riskControlConfig + promptSections
       body = {
+        ...(editName.trim() && editName.trim() !== strategy.name ? { name: editName.trim() } : {}),
         coinSourceConfig: {
           mode: editCoinMode,
           coins: strategy.tradingMode === 'research'
@@ -1253,6 +1259,19 @@ export function AIStrategyDetailPage() {
             ) : (
               /* ── 编辑模式 ── */
               <>
+                {/* 策略名称（所有策略类型通用） */}
+                <div className="space-y-2">
+                  <label className="block text-sm text-[#9090A0]">{t('create.strategyName')}</label>
+                  <input
+                    type="text"
+                    placeholder={t('create.strategyNamePlaceholder')}
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-4 py-3 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] transition-colors"
+                    aria-label={t('create.strategyName')}
+                  />
+                </div>
+
                 {strategy.strategyType === 'grid' ? (
                   /* ── Grid 专属编辑 ── */
                   <>
@@ -1389,7 +1408,8 @@ export function AIStrategyDetailPage() {
                             {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
                             {(() => {
                               const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
-                              const MIN_NOTIONAL  = 20  // Binance 合约最低名义值
+                              const _base = editGridSymbol.split('/')[0].toUpperCase()
+                              const MIN_NOTIONAL = _base === 'BTC' ? 100 : _base === 'ETH' ? 20 : 5
                               const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
                               const maxViable = Math.floor((editGridInvestment * effLev) / MIN_NOTIONAL)
                               const idleCount = Math.max(0, editGridCount - maxViable)
