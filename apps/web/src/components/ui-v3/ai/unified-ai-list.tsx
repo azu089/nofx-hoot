@@ -17,6 +17,8 @@ import {
   useStopResearchCycling,
   usePauseResearchCycling,
   useResumeResearchCycling,
+  useAiConfig,
+  useUpdateAiConfig,
 } from '@/hooks/useAi';
 import type { ResearchSession, AiStrategyWithPnl, AiStrategy } from '@/types/ai';
 import { AiTimeline } from './ai-timeline';
@@ -461,6 +463,8 @@ export function UnifiedAiList() {
   const { data: researchData, isLoading: loadingResearch, error: researchError, refetch: refetchResearch } = useResearchHistory(1, 20);
   const { data: strategyData, isLoading: loadingStrategies, error: strategyError, refetch: refetchStrategies } = useStrategyList(1, 50);
   const strategyControl = useStrategyControl();
+  const { data: aiConfig } = useAiConfig();
+  const updateAiConfig = useUpdateAiConfig();
   const deleteStrategy = useDeleteStrategy();
   const deleteResearch = useDeleteResearch();
   const stopCycling = useStopResearchCycling();
@@ -548,6 +552,10 @@ export function UnifiedAiList() {
   ) => {
     try {
       setActionError(null);
+      // 启动前确保 AI 模块已开启（新用户默认 isEnabled=false）
+      if (action === 'start' && !aiConfig?.isEnabled) {
+        await updateAiConfig.mutateAsync({ isEnabled: true });
+      }
       await strategyControl.mutateAsync({ id, action });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('wizard.actionFailed');
