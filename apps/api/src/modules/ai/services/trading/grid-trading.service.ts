@@ -1845,11 +1845,13 @@ export class GridTradingService {
     // Step 2: 格式化数量 + 最小下单量检查
     const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
     let finalQty = parseFloat(formattedQty);
-    // 获取交易所最小下单量（minQuantity），防止发送低于 MIN_QTY 的订单被拒
+    // 获取交易所最小下单量 + 最小名义价值（从 exchangeInfo 缓存读取，避免 Binance 拒单）
     let minQty = 0;
+    let exchangeMinNotional = 0;
     try {
       const precision = await adapter.getMarketPrecision(state.symbol);
       minQty = precision.minQuantity ?? 0;
+      exchangeMinNotional = precision.minNotional ?? 0;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
     // floor 取整可能导致 finalQty=0（如 BTC 0.000914 → 0）
     // 当原始数量 >= minQty 的 80% 时，snap up 到 minQty，避免因精度丢失空转
@@ -1865,12 +1867,15 @@ export class GridTradingService {
       );
       return false;
     }
-    // 最小名义价值预检（Binance 合约要求 notional ≥ $20，避免 -4164 错误）
-    const MIN_NOTIONAL = 20;
+    // 最小名义价值预检：优先使用交易所真实值，fallback 到 $20
+    // Binance BTCUSDT 合约 min notional = $100（-4131）；其他对一般为 $5~$20
+    const MIN_NOTIONAL = Math.max(exchangeMinNotional, 20);
     const notional = finalQty * price;
     if (notional < MIN_NOTIONAL) {
-      this.logger.debug(
-        `[网格] 跳过下单: notional ${notional.toFixed(2)} < $${MIN_NOTIONAL} (level=${levelIndex})`,
+      this.logger.warn(
+        `[网格] 跳过下单: notional $${notional.toFixed(2)} < 交易所最低 $${MIN_NOTIONAL}` +
+        ` (level=${levelIndex}, qty=${finalQty}, price=${price})` +
+        ` | 建议: 减少层数或增加投资额`,
       );
       return false;
     }
