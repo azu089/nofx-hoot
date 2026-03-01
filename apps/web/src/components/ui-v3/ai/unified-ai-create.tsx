@@ -389,8 +389,8 @@ export function UnifiedAiCreate() {
             minConfidence: customParams.minConfidence,
             minRiskRewardRatio: customParams.minRR,
             profitDrawdownEnabled,
-            profitDrawdownMinProfit,
-            profitDrawdownMaxRetracement,
+            profitDrawdownMinProfit: profitDrawdownMinProfit || 5,
+            profitDrawdownMaxRetracement: profitDrawdownMaxRetracement || 40,
           },
         });
         router.push(`/ai/research/${result.sessionId}`);
@@ -441,8 +441,8 @@ export function UnifiedAiCreate() {
           btcEthMaxPositionValueRatio: customParams.btcEthMaxPositionValueRatio,
           altcoinMaxPositionValueRatio: customParams.altcoinMaxPositionValueRatio,
           profitDrawdownEnabled,
-          profitDrawdownMinProfit,
-          profitDrawdownMaxRetracement,
+          profitDrawdownMinProfit: profitDrawdownMinProfit || 5,
+          profitDrawdownMaxRetracement: profitDrawdownMaxRetracement || 40,
         },
         intervalMinutes: mins,
         ...(exchangeApiKeyId && { exchangeApiKeyId }),
@@ -456,8 +456,8 @@ export function UnifiedAiCreate() {
           upperBound: gridUpperBound,
           lowerBound: gridLowerBound,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
-          profitRetracePct: gridProfitRetracePct,
-          profitPeakWindowDays: gridProfitPeakWindowDays,
+          profitRetracePct: gridProfitRetracePct || 50,
+          profitPeakWindowDays: gridProfitPeakWindowDays || 30,
         };
       }
 
@@ -911,7 +911,7 @@ export function UnifiedAiCreate() {
               </div>
             </div>
 
-            {/* 配置后果预览：实时展示强平距离、每层保证金、风险等级 */}
+            {/* 配置后果预览：实时展示每层保证金耗尽距离、风险等级 */}
             {(() => {
               const safeCount = Math.max(gridCount, 1);
               const safeLeverage = Math.max(gridLeverage, 1);
@@ -938,8 +938,8 @@ export function UnifiedAiCreate() {
                       每层保证金{' '}
                       <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
                       <span className="text-[#404060] mx-1.5">·</span>
-                      强平距离{' '}
-                      <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 触发
+                      单格保证金{' '}
+                      <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 耗尽
                     </span>
                     <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
                   </div>
@@ -952,7 +952,7 @@ export function UnifiedAiCreate() {
                   {showRec && (
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-[#606070]">
-                        💡 ${gridInvestment} 建议 {rec.leverage}x · {rec.count}格，强平距离 &gt;{Math.floor(100 / rec.leverage)}%
+                        💡 ${gridInvestment} 建议 {rec.leverage}x · {rec.count}格，单格余量 &gt;{Math.floor(100 / rec.leverage)}%
                       </span>
                       <button
                         type="button"
@@ -1045,7 +1045,7 @@ export function UnifiedAiCreate() {
                     <input
                       type="number" min={10} max={100}
                       value={gridProfitRetracePct || ''}
-                      onChange={(e) => setGridProfitRetracePct(parseInt(e.target.value) || 50)}
+                      onChange={(e) => { const v = parseInt(e.target.value); setGridProfitRetracePct(isNaN(v) ? 0 : v); }}
                       className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                       aria-label={t('create.gridProfitRetraceThreshold')}
                     />
@@ -1058,7 +1058,7 @@ export function UnifiedAiCreate() {
                     <input
                       type="number" min={1} max={365}
                       value={gridProfitPeakWindowDays || ''}
-                      onChange={(e) => setGridProfitPeakWindowDays(parseInt(e.target.value) || 30)}
+                      onChange={(e) => { const v = parseInt(e.target.value); setGridProfitPeakWindowDays(isNaN(v) ? 0 : v); }}
                       className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                       aria-label={t('create.gridProfitPeakWindow')}
                     />
@@ -1342,7 +1342,7 @@ export function UnifiedAiCreate() {
                         <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                           <input type="number" min={1} max={50} step={1}
                             value={profitDrawdownMinProfit || ''}
-                            onChange={(e) => setProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                            onChange={(e) => { const v = parseFloat(e.target.value); setProfitDrawdownMinProfit(isNaN(v) ? 0 : v); }}
                             className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                           />
                           <span className="text-[#606070] text-xs">%</span>
@@ -1353,7 +1353,7 @@ export function UnifiedAiCreate() {
                         <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                           <input type="number" min={10} max={80} step={5}
                             value={profitDrawdownMaxRetracement || ''}
-                            onChange={(e) => setProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                            onChange={(e) => { const v = parseFloat(e.target.value); setProfitDrawdownMaxRetracement(isNaN(v) ? 0 : v); }}
                             className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                           />
                           <span className="text-[#606070] text-xs">%</span>

@@ -45,6 +45,7 @@ interface MobileReferralPageProps {
   }
   myReferrals?: Referral[]
   leaderboard?: LeaderboardUser[]
+  bindSection?: React.ReactNode
 }
 
 const defaultReferrals: Referral[] = []
@@ -60,7 +61,8 @@ export function MobileReferralPage({
     thisMonth: 156.78
   },
   myReferrals = defaultReferrals,
-  leaderboard = defaultLeaderboard
+  leaderboard = defaultLeaderboard,
+  bindSection,
 }: MobileReferralPageProps) {
   const t = useTranslations('referral')
   const [copied, setCopied] = useState(false)
@@ -139,6 +141,9 @@ export function MobileReferralPage({
       </div>
 
       <div className="px-4 pt-6 space-y-4">
+        {/* 绑定上级入口（由父组件注入） */}
+        {bindSection}
+
         {/* 统计卡片 - 合并为一个卡片 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent" />

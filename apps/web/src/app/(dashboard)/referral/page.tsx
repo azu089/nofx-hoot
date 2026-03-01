@@ -1,15 +1,42 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { ReferralPageV3 } from '@/components/ui-v3/referral/referral-page-v3';
 import { MobileReferralPage } from '@/components/ui-v3/mobile/mobile-referral-page';
+import { UserPlus, Check } from 'lucide-react';
 
 export default function ReferralPage() {
   const router = useRouter();
+
+  // 绑定上级邀请码状态
+  const [bindCode, setBindCode] = useState('');
+  const [bindStatus, setBindStatus] = useState<'idle' | 'success' | 'already'>('idle');
+  const [isBinding, setIsBinding] = useState(false);
+
+  const handleBindUpline = async () => {
+    const code = bindCode.trim().toUpperCase();
+    if (!code) return;
+    setIsBinding(true);
+    try {
+      await api.post('/referral/bind', { inviteCode: code });
+      setBindStatus('success');
+      toast.success('已成功绑定上级');
+    } catch (e: any) {
+      const msg: string = e?.response?.data?.message || '';
+      if (msg.includes('已绑定')) {
+        setBindStatus('already');
+      } else {
+        toast.error(msg || '绑定失败，请检查邀请码是否正确');
+      }
+    } finally {
+      setIsBinding(false);
+    }
+  };
+
   // 获取邀请码
   const { data: inviteCodeData } = useQuery({
     queryKey: ['referral', 'invite-code'],
@@ -89,10 +116,47 @@ export default function ReferralPage() {
     }));
   }, [inviteesData]);
 
+  // 绑定上级邀请码卡片（未绑定时显示，已绑定时替换为成功提示）
+  const bindUplineSection = bindStatus === 'success' || bindStatus === 'already' ? (
+    <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-[#10B981]/10 border border-[#10B981]/20 rounded-xl">
+      <Check className="w-4 h-4 text-[#10B981] flex-shrink-0" />
+      <span className="text-sm text-[#10B981]">
+        {bindStatus === 'success' ? '已成功绑定上级，返佣关系已建立' : '您已绑定上级邀请码'}
+      </span>
+    </div>
+  ) : (
+    <div className="mb-4 p-4 bg-[#12121A] border border-[#1E1E2E] rounded-xl">
+      <div className="flex items-center gap-2 mb-3">
+        <UserPlus className="w-4 h-4 text-[#06B6D4]" />
+        <span className="text-sm font-medium text-[#F8F8FC]">绑定上级邀请码</span>
+        <span className="text-xs text-[#606070]">（每个账号只能绑定一次）</span>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={bindCode}
+          onChange={(e) => setBindCode(e.target.value.toUpperCase())}
+          placeholder="输入上级的邀请码"
+          maxLength={12}
+          className="flex-1 px-3 py-2 text-sm bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg text-[#F8F8FC] placeholder-[#606070] focus:outline-none focus:border-[#06B6D4]/50"
+        />
+        <button
+          type="button"
+          onClick={handleBindUpline}
+          disabled={isBinding || !bindCode.trim()}
+          className="px-4 py-2 text-sm bg-[#06B6D4]/15 text-[#06B6D4] rounded-lg hover:bg-[#06B6D4]/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {isBinding ? '绑定中…' : '确认绑定'}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      {/* 桌面端 */}
+      {/* 桌面端 — 绑定卡片在页面内容上方 */}
       <div className="hidden md:block">
+        {bindUplineSection}
         <ReferralPageV3
           referralCode={inviteCodeData?.inviteCode}
           earnings={earnings}
@@ -116,7 +180,7 @@ export default function ReferralPage() {
         />
       </div>
 
-      {/* 移动端 */}
+      {/* 移动端 — 绑定卡片通过 prop 注入组件内部（导航栏下方、统计卡上方） */}
       <div className="block md:hidden">
         <MobileReferralPage
           onBack={() => router.back()}
@@ -124,6 +188,7 @@ export default function ReferralPage() {
           earnings={earnings}
           myReferrals={myReferrals}
           leaderboard={leaderboardData}
+          bindSection={bindUplineSection}
         />
       </div>
     </>

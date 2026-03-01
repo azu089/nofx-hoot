@@ -854,11 +854,18 @@ export class AuthService implements OnModuleDestroy {
     const telegramId = String(tgUser.id);
     const telegramUsername = tgUser.username || null;
 
+    // 从 initData 提取 start_param（深度链接邀请码）
+    // 格式：?startapp=ref_XXXXXX → start_param=ref_XXXXXX → 邀请码=XXXXXX
+    const params = new URLSearchParams(initData);
+    const startParam = params.get('start_param');
+    const referralCode = startParam?.startsWith('ref_') ? startParam.slice(4) : undefined;
+
     // 复用 TG 登录逻辑（查找/创建用户 + 发放空投 + JWT）
     return this.loginByTelegram({
       telegramId,
       telegramUsername: telegramUsername || undefined,
       firstName: tgUser.first_name,
+      referralCode,
     });
   }
 
