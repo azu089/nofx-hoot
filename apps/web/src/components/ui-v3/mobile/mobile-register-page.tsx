@@ -90,9 +90,7 @@ export function MobileRegisterPage({
       newErrors.confirmPassword = tErrors('passwordMismatch')
     }
 
-    if (!referralCode?.trim()) {
-      newErrors.referralCode = tErrors('inviteCodeRequired')
-    }
+    // 邀请码选填，不做强制校验
 
     if (!agreedToTerms) {
       newErrors.terms = tErrors('termsRequired')

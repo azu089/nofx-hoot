@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useWallet } from '@/hooks/useWallet';
@@ -12,7 +12,10 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register, walletLogin, telegramWebAppLogin, isAuthenticated, isLoading } = useAuth();
+  // 从 URL ?ref= 或 ?inviteCode= 读取邀请码（TG Bot / 分享链接自动填入）
+  const defaultReferralCode = searchParams.get('ref') || searchParams.get('inviteCode') || '';
   const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -114,6 +117,7 @@ export default function RegisterPage() {
           onWalletConnect={() => setShowWalletModal(true)}
           onTelegramLogin={handleTelegramLogin}
           onLogin={() => router.push('/login?method=email')}
+          defaultReferralCode={defaultReferralCode}
         />
         <WalletConnectModal
           isOpen={showWalletModal}
@@ -130,6 +134,7 @@ export default function RegisterPage() {
           onWalletConnect={() => setShowWalletModal(true)}
           onTelegramLogin={handleTelegramLogin}
           onLogin={() => router.push('/login?method=email')}
+          defaultReferralCode={defaultReferralCode}
         />
         <MobileWalletConnectModal
           isOpen={showWalletModal}

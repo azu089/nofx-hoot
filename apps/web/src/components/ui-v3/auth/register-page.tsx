@@ -99,10 +99,7 @@ export function RegisterPage({
       newErrors.confirmPassword = tErrors('passwordMismatch')
     }
 
-    // Referral code validation（必填）
-    if (!formData.referralCode?.trim()) {
-      newErrors.referralCode = tErrors('inviteCodeRequired')
-    }
+    // Referral code validation（选填，填写时不做额外格式校验）
 
     // Terms validation
     if (!formData.acceptTerms) {
