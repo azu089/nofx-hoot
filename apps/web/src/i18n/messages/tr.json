@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "Şifre belirleyin (≥8 karakter, büyük+küçük+rakam)",
+    "sendCode": "Kod Gönder",
+    "verificationSentTo": "Kod {email} adresine gönderildi",
+    "verificationSent": "Kod gönderildi, e-postanızı kontrol edin",
+    "resendCode": "Yeniden Gönder",
+    "resendAfter": "{seconds}s sonra yeniden gönder",
+    "bindSuccess": "E-posta başarıyla bağlandı!",
+    "enterEmailAddress": "E-posta adresi girin"
   },
   "dashboard": {
     "title": "Kontrol Paneli",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "Yanlış pozisyon yönü (hedge/tek yönlü mod ayarını kontrol edin)",
     "orderParamInvalid": "Geçersiz sipariş parametresi (zorunlu alan eksik)",
     "orderMaxCount": "Borsa maksimum açık sipariş limiti aşıldı",
-    "orderLotSize": "Sipariş miktarı borsa lot size gereksinimini karşılamıyor"
+    "orderLotSize": "Sipariş miktarı borsa lot size gereksinimini karşılamıyor",
+    "sessionExpired": "Oturum süresi doldu, çıkış yapıp tekrar giriş yapın",
+    "bindFailed": "Bağlama başarısız, lütfen tekrar deneyin",
+    "verifyFailed": "Doğrulama başarısız, kodu kontrol edin",
+    "sendFailed": "Gönderme başarısız, tekrar deneyin"
   },
   "ai": {
     "common": {

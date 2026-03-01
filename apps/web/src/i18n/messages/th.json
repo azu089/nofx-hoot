@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "ตั้งรหัสผ่าน (≥8 ตัว มีตัวใหญ่+เล็ก+ตัวเลข)",
+    "sendCode": "ส่งรหัส",
+    "verificationSentTo": "ส่งรหัสไปที่ {email} แล้ว",
+    "verificationSent": "ส่งรหัสแล้ว กรุณาตรวจสอบอีเมล",
+    "resendCode": "ส่งอีกครั้ง",
+    "resendAfter": "ส่งใหม่ใน {seconds}s",
+    "bindSuccess": "ผูกอีเมลสำเร็จ!",
+    "enterEmailAddress": "ป้อนที่อยู่อีเมล"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "ทิศทางสถานะผิด (ตรวจสอบโหมด hedge/one-way)",
     "orderParamInvalid": "พารามิเตอร์ออเดอร์ไม่ถูกต้อง (ขาดฟิลด์จำเป็น)",
     "orderMaxCount": "เกินจำนวนออเดอร์สูงสุดของตลาด",
-    "orderLotSize": "จำนวนออเดอร์ไม่ตรงตามข้อกำหนด lot size ของตลาด"
+    "orderLotSize": "จำนวนออเดอร์ไม่ตรงตามข้อกำหนด lot size ของตลาด",
+    "sessionExpired": "เซสชันหมดอายุ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่",
+    "bindFailed": "ผูกล้มเหลว กรุณาลองใหม่",
+    "verifyFailed": "ยืนยันล้มเหลว กรุณาตรวจสอบรหัส",
+    "sendFailed": "ส่งล้มเหลว กรุณาลองใหม่"
   },
   "ai": {
     "common": {

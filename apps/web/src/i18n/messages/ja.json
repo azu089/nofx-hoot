@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "パスワード設定（≥8文字、大小文字+数字）",
+    "sendCode": "コードを送信",
+    "verificationSentTo": "コードを {email} に送信しました",
+    "verificationSent": "コードを送信しました。メールをご確認ください",
+    "resendCode": "再送信",
+    "resendAfter": "{seconds}秒後に再送",
+    "bindSuccess": "メールアドレスのバインドが完了しました！",
+    "enterEmailAddress": "メールアドレスを入力"
   },
   "dashboard": {
     "title": "ダッシュボード",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "ポジション方向エラー（ヘッジ/片方向モードを確認）",
     "orderParamInvalid": "注文パラメータ無効（必須フィールド不足）",
     "orderMaxCount": "取引所の最大注文数制限を超過",
-    "orderLotSize": "注文数量が取引所のロットサイズ要件を満たしていません"
+    "orderLotSize": "注文数量が取引所のロットサイズ要件を満たしていません",
+    "sessionExpired": "セッションが期限切れです。ログアウトして再ログインしてください",
+    "bindFailed": "バインドに失敗しました。再試行してください",
+    "verifyFailed": "認証に失敗しました。コードを確認してください",
+    "sendFailed": "送信に失敗しました。再試行してください"
   },
   "ai": {
     "common": {

@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "Atur kata sandi (≥8 karakter, besar+kecil+angka)",
+    "sendCode": "Kirim Kode",
+    "verificationSentTo": "Kode dikirim ke {email}",
+    "verificationSent": "Kode terkirim, periksa email Anda",
+    "resendCode": "Kirim Ulang",
+    "resendAfter": "Kirim ulang dalam {seconds}d",
+    "bindSuccess": "Email berhasil diikat!",
+    "enterEmailAddress": "Masukkan alamat email"
   },
   "dashboard": {
     "title": "Dasbor",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "Arah posisi salah (periksa pengaturan mode hedge/one-way)",
     "orderParamInvalid": "Parameter order tidak valid (field wajib hilang)",
     "orderMaxCount": "Melebihi batas maksimum order terbuka di bursa",
-    "orderLotSize": "Kuantitas order tidak memenuhi persyaratan lot size bursa"
+    "orderLotSize": "Kuantitas order tidak memenuhi persyaratan lot size bursa",
+    "sessionExpired": "Sesi berakhir, silakan keluar dan masuk kembali",
+    "bindFailed": "Gagal mengikat, coba lagi",
+    "verifyFailed": "Verifikasi gagal, periksa kodenya",
+    "sendFailed": "Gagal mengirim, coba lagi"
   },
   "ai": {
     "common": {

@@ -122,7 +122,15 @@
     "regenerateCode": "重新生成",
     "openBot": "打开 Bot",
     "bindTip": "绑定后可通过 Telegram 接收交易通知",
-    "web3Wallet": "Web3 钱包"
+    "web3Wallet": "Web3 钱包",
+    "setPasswordHint": "设置密码（≥8位，含大小写字母+数字）",
+    "sendCode": "发送验证码",
+    "verificationSentTo": "验证码已发送至 {email}",
+    "verificationSent": "验证码已发送，请查收邮件",
+    "resendCode": "重新发送",
+    "resendAfter": "{seconds}s 后重发",
+    "bindSuccess": "邮箱绑定成功！",
+    "enterEmailAddress": "输入邮箱地址"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1363,7 +1371,11 @@
     "orderPositionSide": "持仓方向错误（请检查双向/单向持仓模式）",
     "orderParamInvalid": "订单参数无效（缺少必要字段）",
     "orderMaxCount": "超过交易所最大挂单数量限制",
-    "orderLotSize": "下单数量不符合交易所最小步长要求"
+    "orderLotSize": "下单数量不符合交易所最小步长要求",
+    "sessionExpired": "登录已过期，请退出重新登录",
+    "bindFailed": "绑定失败，请重试",
+    "verifyFailed": "验证失败，请检查验证码",
+    "sendFailed": "发送失败，请重试"
   },
   "ai": {
     "common": {

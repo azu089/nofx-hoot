@@ -122,7 +122,15 @@
     "regenerateCode": "重新生成",
     "openBot": "打开 Bot",
     "bindTip": "綁定后可通过 Telegram 接收交易通知",
-    "web3Wallet": "Web3 錢包"
+    "web3Wallet": "Web3 錢包",
+    "setPasswordHint": "設定密碼（≥8位，含大小寫字母+數字）",
+    "sendCode": "發送驗證碼",
+    "verificationSentTo": "驗證碼已發送至 {email}",
+    "verificationSent": "驗證碼已發送，請查收郵件",
+    "resendCode": "重新發送",
+    "resendAfter": "{seconds}s 後重發",
+    "bindSuccess": "郵箱綁定成功！",
+    "enterEmailAddress": "輸入郵箱地址"
   },
   "dashboard": {
     "title": "儀表板",
@@ -1367,7 +1375,11 @@
     "orderPositionSide": "持倉方向錯誤（請檢查雙向/單向持倉模式）",
     "orderParamInvalid": "訂單參數無效（缺少必要欄位）",
     "orderMaxCount": "超過交易所最大掛單數量限制",
-    "orderLotSize": "下單數量不符合交易所最小步長要求"
+    "orderLotSize": "下單數量不符合交易所最小步長要求",
+    "sessionExpired": "登入已過期，請退出重新登入",
+    "bindFailed": "綁定失敗，請重試",
+    "verifyFailed": "驗證失敗，請檢查驗證碼",
+    "sendFailed": "發送失敗，請重試"
   },
   "ai": {
     "common": {

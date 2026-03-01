@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "Установите пароль (≥8 символов, верхний+нижний+цифра)",
+    "sendCode": "Отправить код",
+    "verificationSentTo": "Код отправлен на {email}",
+    "verificationSent": "Код отправлен, проверьте электронную почту",
+    "resendCode": "Отправить снова",
+    "resendAfter": "Повторно через {seconds}с",
+    "bindSuccess": "Электронная почта успешно привязана!",
+    "enterEmailAddress": "Введите адрес эл. почты"
   },
   "dashboard": {
     "title": "Панель управления",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "Неверная сторона позиции (проверьте режим хеджирования)",
     "orderParamInvalid": "Недопустимый параметр ордера (отсутствует обязательное поле)",
     "orderMaxCount": "Превышен лимит максимального количества ордеров на бирже",
-    "orderLotSize": "Количество ордера не соответствует требованию lot size биржи"
+    "orderLotSize": "Количество ордера не соответствует требованию lot size биржи",
+    "sessionExpired": "Сессия истекла, выйдите и войдите снова",
+    "bindFailed": "Привязка не удалась, повторите попытку",
+    "verifyFailed": "Проверка не удалась, проверьте код",
+    "sendFailed": "Отправка не удалась, повторите попытку"
   },
   "ai": {
     "common": {

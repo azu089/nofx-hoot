@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "Set password (≥8 chars, upper + lower + number)",
+    "sendCode": "Send Code",
+    "verificationSentTo": "Code sent to {email}",
+    "verificationSent": "Code sent, please check your email",
+    "resendCode": "Resend",
+    "resendAfter": "Resend in {seconds}s",
+    "bindSuccess": "Email bound successfully!",
+    "enterEmailAddress": "Enter email address"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1350,7 +1358,11 @@
     "orderPositionSide": "Wrong position side (check hedge/one-way mode setting)",
     "orderParamInvalid": "Invalid order parameter (missing required field)",
     "orderMaxCount": "Exceeded exchange maximum open orders limit",
-    "orderLotSize": "Order quantity doesn't meet exchange lot size requirement"
+    "orderLotSize": "Order quantity doesn't meet exchange lot size requirement",
+    "sessionExpired": "Session expired, please log out and log in again",
+    "bindFailed": "Binding failed, please try again",
+    "verifyFailed": "Verification failed, please check the code",
+    "sendFailed": "Send failed, please try again"
   },
   "ai": {
     "common": {

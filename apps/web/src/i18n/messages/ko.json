@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "비밀번호 설정（≥8자, 대소문자+숫자）",
+    "sendCode": "코드 전송",
+    "verificationSentTo": "{email}으로 코드를 전송했습니다",
+    "verificationSent": "코드가 전송되었습니다. 이메일을 확인하세요",
+    "resendCode": "재전송",
+    "resendAfter": "{seconds}초 후 재전송",
+    "bindSuccess": "이메일이 성공적으로 연결되었습니다!",
+    "enterEmailAddress": "이메일 주소 입력"
   },
   "dashboard": {
     "title": "대시보드",
@@ -1365,7 +1373,11 @@
     "orderPositionSide": "포지션 방향 오류 (헤지/단방향 모드 확인)",
     "orderParamInvalid": "주문 매개변수 무효 (필수 필드 누락)",
     "orderMaxCount": "거래소 최대 주문 수 제한 초과",
-    "orderLotSize": "주문 수량이 거래소 로트 사이즈 요건 미충족"
+    "orderLotSize": "주문 수량이 거래소 로트 사이즈 요건 미충족",
+    "sessionExpired": "세션이 만료되었습니다. 로그아웃 후 다시 로그인하세요",
+    "bindFailed": "연결에 실패했습니다. 다시 시도하세요",
+    "verifyFailed": "인증에 실패했습니다. 코드를 확인하세요",
+    "sendFailed": "전송에 실패했습니다. 다시 시도하세요"
   },
   "ai": {
     "common": {

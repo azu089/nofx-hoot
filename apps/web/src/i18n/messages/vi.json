@@ -122,7 +122,15 @@
     "regenerateCode": "Regenerate",
     "openBot": "Open Bot",
     "bindTip": "Receive trading notifications via Telegram after binding",
-    "web3Wallet": "Web3 Wallet"
+    "web3Wallet": "Web3 Wallet",
+    "setPasswordHint": "Đặt mật khẩu (≥8 ký tự, hoa+thường+số)",
+    "sendCode": "Gửi mã",
+    "verificationSentTo": "Mã đã gửi tới {email}",
+    "verificationSent": "Mã đã gửi, vui lòng kiểm tra email",
+    "resendCode": "Gửi lại",
+    "resendAfter": "Gửi lại sau {seconds}s",
+    "bindSuccess": "Liên kết email thành công!",
+    "enterEmailAddress": "Nhập địa chỉ email"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1366,7 +1374,11 @@
     "orderPositionSide": "Sai hướng vị thế (kiểm tra chế độ hedge/one-way)",
     "orderParamInvalid": "Tham số lệnh không hợp lệ (thiếu trường bắt buộc)",
     "orderMaxCount": "Vượt quá giới hạn số lệnh mở tối đa của sàn",
-    "orderLotSize": "Số lượng lệnh không đáp ứng yêu cầu lot size của sàn"
+    "orderLotSize": "Số lượng lệnh không đáp ứng yêu cầu lot size của sàn",
+    "sessionExpired": "Phiên đăng nhập hết hạn, vui lòng đăng xuất và đăng nhập lại",
+    "bindFailed": "Liên kết thất bại, vui lòng thử lại",
+    "verifyFailed": "Xác minh thất bại, vui lòng kiểm tra mã",
+    "sendFailed": "Gửi thất bại, vui lòng thử lại"
   },
   "ai": {
     "common": {
