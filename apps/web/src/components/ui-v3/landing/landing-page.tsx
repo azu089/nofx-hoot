@@ -68,6 +68,17 @@ const exchanges = [
   { name: 'Gate', logo: '/icons/exchanges/gate.webp' },
 ]
 
+// AI 提供商 - 7大顶尖模型
+const aiProviders = [
+  { name: 'OpenAI', model: 'GPT-4o Mini', logo: '/icons/llm/openai.png' },
+  { name: 'Anthropic', model: 'Claude Haiku', logo: '/icons/llm/anthropic.png' },
+  { name: 'DeepSeek', model: 'R1 & Chat', logo: '/icons/llm/deepseek.png' },
+  { name: 'Google', model: 'Gemini Flash', logo: '/icons/llm/google.png' },
+  { name: 'Alibaba', model: 'Qwen 3.5', logo: '/icons/llm/alibaba.png' },
+  { name: 'xAI', model: 'Grok 4', logo: '/icons/llm/xai.png' },
+  { name: 'Moonshot', model: 'Kimi K2', logo: '/icons/llm/moonshot.png' },
+]
+
 export function LandingPage({
   onStartTrading,
   onWatchDemo,
@@ -215,29 +226,96 @@ export function LandingPage({
             </button>
           </div>
 
-          {/* Exchange Logos */}
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <span className="text-sm text-[#606070]">{t('supportedExchanges')}</span>
-            {exchanges.map((exchange) => (
-              <div
-                key={exchange.name}
-                className="w-10 h-10 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
-                title={exchange.name}
-              >
-                <Image
-                  src={exchange.logo}
-                  alt={exchange.name}
-                  width={40}
-                  height={40}
-                  className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
-                />
-              </div>
-            ))}
+          {/* Exchange Logos — 3×2 对称网格 */}
+          <div className="text-center">
+            <span className="text-xs text-[#606070] block mb-3">{t('supportedExchanges')}</span>
+            <div className="grid grid-cols-3 gap-3 w-fit mx-auto">
+              {exchanges.map((exchange) => (
+                <div
+                  key={exchange.name}
+                  className="w-14 h-14 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
+                  title={exchange.name}
+                >
+                  <Image
+                    src={exchange.logo}
+                    alt={exchange.name}
+                    width={56}
+                    height={56}
+                    className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Hero 关键数字 */}
+          <div className="grid grid-cols-3 gap-4 mt-6 max-w-xs mx-auto">
+            <div className="text-center">
+              <div className="text-lg font-bold text-[#06B6D4]">1000+</div>
+              <div className="text-xs text-[#606070]">{t('activeUsers')}</div>
+            </div>
+            <div className="text-center border-x border-[#1E1E2E]">
+              <div className="text-lg font-bold text-[#06B6D4]">6</div>
+              <div className="text-xs text-[#606070]">{t('bigExchanges')}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-bold text-[#06B6D4]">7×24h</div>
+              <div className="text-xs text-[#606070]">{t('autoRun')}</div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 2. 社会证明轮播 */}
+      {/* 2. AI 多模型展示区 */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">
+              <span className="bg-gradient-to-r from-[#F8F8FC] to-[#06B6D4] bg-clip-text text-transparent">
+                {t('poweredByAI')}
+              </span>
+            </h2>
+            <p className="text-[#9090A0] text-sm sm:text-base">{t('poweredByAIDesc')}</p>
+          </div>
+
+          {/* AI Provider Logos — 纯图标，无文字 */}
+          <div className="flex flex-wrap justify-center gap-4 mb-10">
+            {aiProviders.map((provider) => (
+              <div
+                key={provider.name}
+                title={provider.name}
+                className="w-14 h-14 rounded-2xl overflow-hidden bg-[#1A1A24] border border-[#1E1E2E] hover:border-[#06B6D4]/40 hover:scale-110 transition-all"
+              >
+                <Image
+                  src={provider.logo}
+                  alt={provider.name}
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* 指标卡 */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-4 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
+              <div className="text-xl font-bold text-[#06B6D4] mb-1">7</div>
+              <div className="text-xs text-[#9090A0]">{t('aiModels')}</div>
+            </div>
+            <div className="p-4 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
+              <Bot className="w-5 h-5 text-[#06B6D4] mx-auto mb-1" />
+              <div className="text-xs text-[#9090A0]">{t('debateConsensus')}</div>
+            </div>
+            <div className="p-4 rounded-xl bg-[#12121A] border border-[#1E1E2E] text-center">
+              <div className="text-xl font-bold text-[#06B6D4] mb-1">200万</div>
+              <div className="text-xs text-[#9090A0]">{t('maxContext')}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. 社会证明轮播 */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <div className="relative">
@@ -442,26 +520,28 @@ export function LandingPage({
             </h2>
           </div>
 
-          {/* Exchange Logos */}
-          <div className="flex items-center justify-center gap-6 flex-wrap mb-12">
-            <span className="text-sm text-[#606070] w-full text-center mb-4">
+          {/* Exchange Logos — 3×2 对称网格 */}
+          <div className="text-center mb-12">
+            <span className="text-sm text-[#606070] block mb-6">
               {t('supportMainExchanges')}
             </span>
-            {exchanges.map((exchange) => (
-              <div
-                key={exchange.name}
-                className="w-14 h-14 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
-                title={exchange.name}
-              >
-                <Image
-                  src={exchange.logo}
-                  alt={exchange.name}
-                  width={56}
-                  height={56}
-                  className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
-                />
-              </div>
-            ))}
+            <div className="grid grid-cols-3 gap-4 w-fit mx-auto">
+              {exchanges.map((exchange) => (
+                <div
+                  key={exchange.name}
+                  className="w-14 h-14 rounded-xl overflow-hidden bg-[#1E1E2E] flex items-center justify-center hover:scale-110 transition-transform"
+                  title={exchange.name}
+                >
+                  <Image
+                    src={exchange.logo}
+                    alt={exchange.name}
+                    width={56}
+                    height={56}
+                    className="w-full h-full object-contain opacity-80 hover:opacity-100 transition-opacity"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Security Features */}

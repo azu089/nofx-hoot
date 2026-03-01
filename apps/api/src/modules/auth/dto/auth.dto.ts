@@ -21,9 +21,10 @@ export class RegisterDto {
   @MaxLength(32)
   nickname?: string;
 
-  @IsString({ message: '邀请码不能为空' })
+  @IsOptional()
+  @IsString()
   @MaxLength(32)
-  inviteCode: string;
+  inviteCode?: string;
 }
 
 // 登录 DTO

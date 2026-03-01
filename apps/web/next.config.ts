@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
 
   // 图片优化配置
   images: {
+    // 生产环境图片优化服务容易超时（504），对本地静态资源关闭优化
+    // 本地 public/ 目录的图片（icon、exchange logo 等）已是 webp，无需再优化
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
