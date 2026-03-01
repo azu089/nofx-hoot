@@ -66,6 +66,7 @@ export function MobileSettingsPage({
   const t = useTranslations('settings');
   const tCommon = useTranslations('common');
   const tAuth = useTranslations('auth');
+  const tErrors = useTranslations('errors');
   const { user, updateUser, sendVerificationCode, verifyEmail } = useAuth();
 
   // 从 i18n 配置获取语言列表
@@ -118,22 +119,21 @@ export function MobileSettingsPage({
   const validateBindPassword = (v: string): boolean =>
     v.length >= 8 && /[A-Z]/.test(v) && /[a-z]/.test(v) && /[0-9]/.test(v);
 
-  // 将后端英文错误翻译为中文
+  // 将后端英文错误翻译（跟随系统语言）
   const translateError = (msg: string): string => {
-    if (msg === 'Unauthorized' || msg.includes('unauthorized')) return '登录已过期，请退出重新登录';
-    if (msg.includes('邮箱已被')) return msg;
-    return msg || '操作失败，请重试';
+    if (msg === 'Unauthorized' || msg.toLowerCase().includes('unauthorized')) return tErrors('sessionExpired');
+    return msg || tErrors('unknownError');
   };
 
   // Step 1: 提交邮箱 + 密码，调用 /auth/bind/email，成功后进入 Step 2
   const handleEmailBindStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailBindEmail || !emailBindPassword) {
-      toast.error('请填写邮箱和密码');
+      toast.error(`${tErrors('emailRequired')} / ${tErrors('passwordRequired')}`);
       return;
     }
     if (!validateBindPassword(emailBindPassword)) {
-      toast.error('密码至少8位，且包含大写字母、小写字母和数字');
+      toast.error(`${tErrors('invalidPassword')} · ${tErrors('passwordTooWeak')}`);
       return;
     }
     setEmailBindLoading(true);
@@ -141,9 +141,9 @@ export function MobileSettingsPage({
       await api.post('/auth/bind/email', { email: emailBindEmail, password: emailBindPassword });
       setEmailBindStep(2);
       setEmailBindCountdown(60);
-      toast.success('验证码已发送，请查收邮件');
+      toast.success(t('verificationSent'));
     } catch (err) {
-      toast.error(translateError(err instanceof Error ? err.message : ''));
+      toast.error(translateError(err instanceof Error ? err.message : tErrors('bindFailed')));
     } finally {
       setEmailBindLoading(false);
     }
@@ -153,16 +153,16 @@ export function MobileSettingsPage({
   const handleEmailVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (emailBindCode.length !== 6) {
-      toast.error('请输入6位验证码');
+      toast.error(tCommon('enterEmailCode'));
       return;
     }
     setEmailBindLoading(true);
     try {
       await verifyEmail(emailBindEmail, emailBindCode);
-      toast.success('邮箱绑定成功！');
+      toast.success(t('bindSuccess'));
       setIsEmailBindModalOpen(false);
     } catch (err) {
-      toast.error(translateError(err instanceof Error ? err.message : '验证失败，请检查验证码'));
+      toast.error(translateError(err instanceof Error ? err.message : tErrors('verifyFailed')));
     } finally {
       setEmailBindLoading(false);
     }
@@ -174,9 +174,9 @@ export function MobileSettingsPage({
     try {
       await sendVerificationCode(emailBindEmail);
       setEmailBindCountdown(60);
-      toast.success('验证码已重新发送');
+      toast.success(t('verificationSent'));
     } catch (err) {
-      toast.error(translateError(err instanceof Error ? err.message : '发送失败'));
+      toast.error(translateError(err instanceof Error ? err.message : tErrors('sendFailed')));
     }
   };
 
@@ -648,7 +648,7 @@ export function MobileSettingsPage({
           <div className="relative w-full max-w-md bg-[#12121A] rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-white">
-                {emailBindStep === 1 ? '绑定邮箱' : '验证邮箱'}
+                {emailBindStep === 1 ? t('bindEmail') : tAuth('verifyEmail')}
               </h2>
               <button
                 type="button"
@@ -662,13 +662,13 @@ export function MobileSettingsPage({
 
             {emailBindStep === 1 ? (
               <form onSubmit={handleEmailBindStep1} className="space-y-4">
-                <p className="text-xs text-[#94A3B8]">绑定邮箱后可获得 +15 HOOT 奖励，并可通过邮箱登录账户</p>
+                <p className="text-xs text-[#94A3B8]">{t('bindEmailReward', { reward: BIND_REWARDS.email })}</p>
                 <input
                   type="email"
                   value={emailBindEmail}
                   onChange={(e) => setEmailBindEmail(e.target.value)}
                   className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
-                  placeholder="输入邮箱地址"
+                  placeholder={t('enterEmailAddress')}
                   autoComplete="email"
                 />
                 <input
@@ -676,7 +676,7 @@ export function MobileSettingsPage({
                   value={emailBindPassword}
                   onChange={(e) => setEmailBindPassword(e.target.value)}
                   className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
-                  placeholder="设置密码（≥8位含大小写字母+数字）"
+                  placeholder={t('setPasswordHint')}
                   autoComplete="new-password"
                 />
                 <div className="flex gap-3 pt-2">
@@ -685,20 +685,20 @@ export function MobileSettingsPage({
                     onClick={() => setIsEmailBindModalOpen(false)}
                     className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-white font-medium hover:bg-[#1A1A24]"
                   >
-                    取消
+                    {tCommon('cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={emailBindLoading || !emailBindEmail || !emailBindPassword}
                     className="flex-1 py-3 rounded-xl bg-[#8B5CF6] text-sm text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {emailBindLoading ? '发送中...' : '发送验证码'}
+                    {emailBindLoading ? tCommon('loading') : t('sendCode')}
                   </button>
                 </div>
               </form>
             ) : (
               <form onSubmit={handleEmailVerify} className="space-y-4">
-                <p className="text-xs text-[#94A3B8]">验证码已发送至 <span className="text-white">{emailBindEmail}</span></p>
+                <p className="text-xs text-[#94A3B8]">{t('verificationSentTo', { email: emailBindEmail })}</p>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -706,7 +706,7 @@ export function MobileSettingsPage({
                   value={emailBindCode}
                   onChange={(e) => setEmailBindCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white text-center tracking-[0.5em] placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
-                  placeholder="请输入6位验证码"
+                  placeholder={tCommon('enterEmailCode')}
                   autoComplete="one-time-code"
                 />
                 <div className="flex gap-3 pt-2">
@@ -716,14 +716,14 @@ export function MobileSettingsPage({
                     disabled={emailBindCountdown > 0}
                     className="flex-1 py-3 rounded-xl border border-[#1E1E2E] text-sm text-[#94A3B8] font-medium hover:bg-[#1A1A24] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {emailBindCountdown > 0 ? `${emailBindCountdown}s 后重发` : '重新发送'}
+                    {emailBindCountdown > 0 ? t('resendAfter', { seconds: emailBindCountdown }) : t('resendCode')}
                   </button>
                   <button
                     type="submit"
                     disabled={emailBindLoading || emailBindCode.length !== 6}
                     className="flex-1 py-3 rounded-xl bg-[#8B5CF6] text-sm text-white font-medium hover:bg-[#7C3AED] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {emailBindLoading ? '验证中...' : '验证'}
+                    {emailBindLoading ? tCommon('loading') : tCommon('confirm')}
                   </button>
                 </div>
               </form>
