@@ -41,6 +41,11 @@ temp/
 
 # 开发截图和调试产物
 *.png
+# 但保留 public 目录下的图标资源
+!apps/web/public/**/*.png
+!apps/web/public/**/*.jpg
+!apps/web/public/**/*.jpeg
+!apps/web/public/**/*.webp
 .playwright-mcp/
 
 # pnpm
