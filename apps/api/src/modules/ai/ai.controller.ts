@@ -1421,10 +1421,23 @@ export class AiController {
     });
     const todayPnl = todayPositions.reduce((sum, p) => sum + Number(p.realizedPnl || 0), 0);
 
-    // 如果是网格策略，附加网格状态
-    let gridState: GridState | null = null;
+    // 如果是网格策略，附加网格状态（将原始字段转换为前端期望的格式）
+    let gridState: object | null = null;
     if (strategy.strategyType === 'grid') {
-      gridState = await this.gridTrading.getGridState(id);
+      const rawState = await this.gridTrading.getGridState(id);
+      if (rawState) {
+        gridState = {
+          activeOrders: Object.keys(rawState.orderBook).length,
+          filledOrders: rawState.gridLines.filter(l => l.state === 'filled').length,
+          gridLevels: rawState.gridLines.length,
+          upperPrice: rawState.upperPrice,
+          lowerPrice: rawState.lowerPrice,
+          gridSpacing: rawState.gridSpacing,
+          totalInvestment: rawState.totalInvestment,
+          leverage: rawState.leverage,
+          isInitialized: rawState.isInitialized,
+        };
+      }
     }
 
     return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), gridState };
