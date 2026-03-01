@@ -6,8 +6,13 @@ import { isRtlLocale } from "@/i18n/config";
 
 
 export const metadata: Metadata = {
-  title: "Hoot - AI 量化交易平台",
-  description: "Hoot - 智能量化交易，自动化投资策略",
+  title: {
+    default: "HOOT | Trade Smarter with AI",
+    template: "%s | HOOT",
+  },
+  description:
+    "Trade smarter with HOOT — AI-powered quantitative strategies, automated signals, and intelligent portfolio management for crypto markets.",
+  keywords: ["crypto trading", "AI trading", "quantitative trading", "automated trading", "HOOT"],
   icons: {
     icon: "/icons/hoot/logo.png",
     apple: "/icons/hoot/logo.png",
