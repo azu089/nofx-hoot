@@ -176,10 +176,10 @@
       "inviteFriends": "Invite"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 Welcome to HOOT — AI-powered smart quantitative trading platform",
-      "aiStrategy": "🤖 Three AI strategies live: Research · Consensus · Solo, start with one click",
-      "security": "🔒 Your API Keys are AES-256-GCM encrypted, trade with confidence",
-      "referral": "🎁 Invite friends to join, both earn trading fee rebates"
+      "welcome": "🤖 AI monitors the market 24/7 — Research · Consensus · Solo · Grid, launch smart trading in one click",
+      "aiStrategy": "🔒 Zero custody — API has no withdrawal access, your funds stay in your own exchange account",
+      "security": "🎁 Sign up and get 20 HOOT + free AI strategies, zero fees on losses",
+      "referral": "🔥 Invite friends, both earn 15 HOOT. Pro members pay only 20% trading fee"
     }
   },
   "wallet": {
@@ -1395,6 +1395,7 @@
       "min": "min",
       "hour": "h",
       "day": "d",
+      "days": "days",
       "loadMore": "Load more",
       "yes": "Yes",
       "no": "No"

@@ -181,10 +181,10 @@
       "inviteFriends": "邀請"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 歡迎來到 HOOT — AI 驅動的智能量化交易平台",
-      "aiStrategy": "🤖 三大 AI 策略已上線：深研 · 共識 · 極速，一鍵啟動",
-      "security": "🔒 您的 API Key 使用 AES-256-GCM 加密存儲，安全無憂",
-      "referral": "🎁 邀請好友加入，雙方均可獲得交易手續費返佣"
+      "welcome": "🤖 AI 替你盯盤 24/7 — 深研·共識·極速·網格多種模式，一鍵啟動智能交易",
+      "aiStrategy": "🔒 資金零託管 — API 無提現權限，資金始終在你自己的交易所帳戶",
+      "security": "🎁 註冊即送 20 HOOT + 免費體驗 AI 策略，虧損零費用",
+      "referral": "🔥 邀請好友各得 15 HOOT，Pro 會員交易費低至 20%"
     }
   },
   "wallet": {
@@ -1412,6 +1412,7 @@
       "min": "分鐘",
       "hour": "小時",
       "day": "天",
+      "days": "天",
       "loadMore": "載入更多",
       "yes": "是",
       "no": "否"

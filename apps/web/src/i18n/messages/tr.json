@@ -181,10 +181,10 @@
       "inviteFriends": "Davet"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 HOOT'a hoş geldiniz — AI destekli akıllı kantitatif ticaret platformu",
-      "aiStrategy": "🤖 Üç AI stratejisi aktif: Araştırma · Konsensüs · Solo, tek tıkla başlayın",
-      "security": "🔒 API Anahtarlarınız AES-256-GCM şifreli, güvenle işlem yapın",
-      "referral": "🎁 Arkadaşlarınızı davet edin, her ikiniz de işlem ücreti indirimi kazanın"
+      "welcome": "🤖 AI piyasayı 7/24 izliyor — Research · Consensus · Solo · Grid, tek tıkla akıllı ticarete başlayın",
+      "aiStrategy": "🔒 Sıfır saklama — API'nin çekim yetkisi yok, fonlarınız her zaman kendi borsa hesabınızda",
+      "security": "🎁 Kaydolun ve 20 HOOT kazanın + ücretsiz AI stratejileri, zararda sıfır ücret",
+      "referral": "🔥 Arkadaşlarınızı davet edin, her ikiniz 15 HOOT kazanın. Pro üyeler yalnızca %20 işlem ücreti öder"
     }
   },
   "wallet": {
@@ -1410,6 +1410,7 @@
       "min": "min",
       "hour": "h",
       "day": "d",
+      "days": "gün",
       "loadMore": "Daha fazla yükle",
       "yes": "Evet",
       "no": "Hayır"

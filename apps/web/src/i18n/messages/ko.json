@@ -181,10 +181,10 @@
       "inviteFriends": "초대"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 HOOT에 오신 것을 환영합니다 — AI 기반 스마트 퀀트 트레이딩 플랫폼",
-      "aiStrategy": "🤖 3가지 AI 전략 가동 중: 리서치 · 컨센서스 · 솔로, 원클릭 시작",
-      "security": "🔒 API 키는 AES-256-GCM 암호화로 안전하게 보관",
-      "referral": "🎁 친구를 초대하면 양쪽 모두 거래 수수료 리베이트 획득"
+      "welcome": "🤖 AI가 24시간 시장을 모니터링 — 리서치·컨센서스·솔로·그리드, 원클릭으로 스마트 트레이딩 시작",
+      "aiStrategy": "🔒 자금 제로 수탁 — API에 출금 권한 없음, 자금은 항상 본인 거래소 계정에",
+      "security": "🎁 가입 시 20 HOOT 지급 + AI 전략 무료 체험, 손실 시 수수료 제로",
+      "referral": "🔥 친구 초대 시 양쪽 모두 15 HOOT 획득, Pro 회원 거래 수수료 단 20%"
     }
   },
   "wallet": {
@@ -1410,6 +1410,7 @@
       "min": "분",
       "hour": "시간",
       "day": "일",
+      "days": "일",
       "loadMore": "더 보기",
       "yes": "예",
       "no": "아니요"

@@ -181,10 +181,10 @@
       "inviteFriends": "Mời"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 Chào mừng đến HOOT — Nền tảng giao dịch lượng tử thông minh AI",
-      "aiStrategy": "🤖 Ba chiến lược AI đang hoạt động: Research · Consensus · Solo, khởi động một chạm",
-      "security": "🔒 API Key được mã hóa AES-256-GCM, giao dịch an tâm",
-      "referral": "🎁 Mời bạn bè tham gia, cả hai cùng nhận giảm phí giao dịch"
+      "welcome": "🤖 AI giám sát thị trường 24/7 — Research · Consensus · Solo · Grid, khởi chạy giao dịch thông minh chỉ với một cú nhấp",
+      "aiStrategy": "🔒 Không giữ tài sản — API không có quyền rút tiền, tài sản luôn nằm trong tài khoản sàn của bạn",
+      "security": "🎁 Đăng ký nhận 20 HOOT + trải nghiệm miễn phí chiến lược AI, thua lỗ không mất phí",
+      "referral": "🔥 Mời bạn bè, cả hai cùng nhận 15 HOOT. Thành viên Pro chỉ trả 20% phí giao dịch"
     }
   },
   "wallet": {
@@ -1411,6 +1411,7 @@
       "min": "min",
       "hour": "h",
       "day": "d",
+      "days": "ngày",
       "loadMore": "Tải thêm",
       "yes": "Có",
       "no": "Không"

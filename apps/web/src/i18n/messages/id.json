@@ -181,10 +181,10 @@
       "inviteFriends": "Undang"
     },
     "defaultAnnouncements": {
-      "welcome": "🎉 Selamat datang di HOOT — Platform trading kuantitatif cerdas bertenaga AI",
-      "aiStrategy": "🤖 Tiga strategi AI aktif: Research · Consensus · Solo, mulai dengan satu klik",
-      "security": "🔒 API Key Anda dienkripsi AES-256-GCM, trading dengan percaya diri",
-      "referral": "🎁 Undang teman bergabung, keduanya mendapat potongan biaya trading"
+      "welcome": "🤖 AI memantau pasar 24/7 — Research · Consensus · Solo · Grid, mulai trading cerdas dengan satu klik",
+      "aiStrategy": "🔒 Tanpa kustodi — API tidak memiliki akses penarikan, dana Anda selalu di akun exchange Anda",
+      "security": "🎁 Daftar dan dapatkan 20 HOOT + strategi AI gratis, tanpa biaya saat rugi",
+      "referral": "🔥 Undang teman, keduanya dapat 15 HOOT. Anggota Pro hanya bayar 20% biaya trading"
     }
   },
   "wallet": {
@@ -1410,6 +1410,7 @@
       "min": "min",
       "hour": "h",
       "day": "d",
+      "days": "hari",
       "loadMore": "Muat lebih banyak",
       "yes": "Ya",
       "no": "Tidak"
