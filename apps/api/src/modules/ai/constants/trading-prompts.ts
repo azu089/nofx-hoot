@@ -750,7 +750,10 @@ export function GRID_SYSTEM_PROMPT(
 
 ## 输出格式
 
-只输出 JSON 数组，不要其他文字：
+**第一步**：输出整体市场判断，使用 <analysis> 标签包裹（40-80字），让用户看懂操作依据：
+<analysis>当前价格处于xxx状态，xxx指标显示xxx，市场形态xxx，本轮策略：xxx<\/analysis>
+
+**第二步**：输出 JSON 操作数组：
 \`\`\`json
 [
   {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"价格接近第4层支撑位"},

@@ -979,8 +979,10 @@ export class GridTradingService {
           { temperature: 0.3, maxTokens: 1500 },
         );
 
-        // 解析 AI 决策
+        // 解析 AI 决策，同时提取整体市场分析（<analysis>...</analysis>）
         const decisions = this.parseGridDecisions(response.content);
+        const analysisMatch = response.content.match(/<analysis>([\s\S]*?)<\/analysis>/);
+        const marketAnalysis = analysisMatch ? analysisMatch[1].trim() : undefined;
 
         // 执行决策（收集每条执行结果，供日志记录）
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
@@ -1006,7 +1008,7 @@ export class GridTradingService {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined,
+            hasIssues ? execResults : undefined, marketAnalysis,
           );
         }
 
@@ -2582,6 +2584,7 @@ export class GridTradingService {
     state?: GridState,
     thinking?: string,
     execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
+    marketAnalysis?: string,
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
@@ -2649,7 +2652,8 @@ export class GridTradingService {
           decision: {
             action: decisions[0]?.action ?? 'grid_cycle',
             gridSummary,
-            reasoning: decisions[0]?.reasoning || '',
+            // 优先使用整体市场分析，回退到第一条操作的 reasoning
+            reasoning: marketAnalysis || decisions[0]?.reasoning || '',
             decisions,
             cost,
             ...(thinking && { aiThinking: thinking }),
