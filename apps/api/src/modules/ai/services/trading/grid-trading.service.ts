@@ -1867,9 +1867,9 @@ export class GridTradingService {
       );
       return false;
     }
-    // 最小名义价值预检：优先使用交易所真实值，fallback 到 $20
-    // Binance BTCUSDT 合约 min notional = $100（-4131）；其他对一般为 $5~$20
-    const MIN_NOTIONAL = Math.max(exchangeMinNotional, 20);
+    // 最小名义价值预检：直接使用交易所真实值（SOL=$5, ETH=$20, BTC=$100）
+    // 不做 Math.max 兜底，避免将 SOL 的 $5 误提高到 $20
+    const MIN_NOTIONAL = exchangeMinNotional > 0 ? exchangeMinNotional : 5;
     const notional = finalQty * price;
     if (notional < MIN_NOTIONAL) {
       this.logger.warn(
