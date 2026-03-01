@@ -999,7 +999,7 @@ export function AIStrategyDetailPage() {
 
         {/* Tab 3: 配置 */}
         {activeTab === "config" && (
-          <div className={`p-4 space-y-4 ${isEditing ? 'pb-24' : ''}`}>
+          <div className={`p-4 space-y-4 ${isEditing ? 'pb-20' : ''}`}>
             {!isEditing ? (
               /* ── 阅读模式 ── */
               <>
@@ -1031,7 +1031,7 @@ export function AIStrategyDetailPage() {
                             <ConfigRow label={t('detail.filledOrders')} value={detail.gridState.filledOrders} />
                             <ConfigRow label={t('detail.gridLevels')} value={detail.gridState.gridLevels} />
                             {detail.gridState.upperPrice && detail.gridState.lowerPrice && (
-                              <ConfigRow label={t('detail.configActualRange')} value={`${detail.gridState.lowerPrice} - ${detail.gridState.upperPrice}`} />
+                              <ConfigRow label={t('detail.configActualRange')} value={`${Number(detail.gridState.lowerPrice).toFixed(2)} - ${Number(detail.gridState.upperPrice).toFixed(2)}`} />
                             )}
                             {detail.gridState.gridSpacing && (
                               <ConfigRow label={t('detail.gridSpacing')} value={`$${detail.gridState.gridSpacing.toFixed(2)}`} />
@@ -1048,7 +1048,7 @@ export function AIStrategyDetailPage() {
                         {/* 执行间隔 */}
                         <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
                         {/* 止停条件 */}
-                        {(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
+                        {!!(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
                           <>
                             <div className="pt-1 border-t border-[#1E1E2E]">
                               <p className="text-xs text-[#606070] font-medium">{t('create.stopConditions')}</p>
@@ -1176,24 +1176,24 @@ export function AIStrategyDetailPage() {
                         ? '已关闭'
                         : `≥${riskControlConfig?.profitDrawdownMinProfit || 5}% → ${riskControlConfig?.profitDrawdownMaxRetracement || 40}%`}
                     />
-                      </>
-                    )}
-                    <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
-                    {/* 止停条件（有值时显示） */}
-                    {(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
-                      <>
-                        <div className="pt-1 border-t border-[#1E1E2E]">
-                          <p className="text-xs text-[#606070] font-medium">止停条件</p>
-                        </div>
-                        {!!strategy.stopConditions?.maxCycles && (
-                          <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
-                        )}
-                        {!!strategy.stopConditions?.profitTargetPercent && (
-                          <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
-                        )}
-                        {!!strategy.stopConditions?.maxLossPercent && (
-                          <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
-                        )}
+                      <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
+                      {/* 止停条件（有值时显示） */}
+                      {!!(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
+                        <>
+                          <div className="pt-1 border-t border-[#1E1E2E]">
+                            <p className="text-xs text-[#606070] font-medium">止停条件</p>
+                          </div>
+                          {!!strategy.stopConditions?.maxCycles && (
+                            <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
+                          )}
+                          {!!strategy.stopConditions?.profitTargetPercent && (
+                            <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
+                          )}
+                          {!!strategy.stopConditions?.maxLossPercent && (
+                            <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                          )}
+                        </>
+                      )}
                       </>
                     )}
                   </div>
