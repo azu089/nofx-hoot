@@ -1848,10 +1848,12 @@ export class GridTradingService {
     // 获取交易所最小下单量 + 最小名义价值（从 exchangeInfo 缓存读取，避免 Binance 拒单）
     let minQty = 0;
     let exchangeMinNotional = 0;
+    let stepSize = 0;
     try {
       const precision = await adapter.getMarketPrecision(state.symbol);
       minQty = precision.minQuantity ?? 0;
       exchangeMinNotional = precision.minNotional ?? 0;
+      stepSize = precision.stepSize ?? 0;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
     // floor 取整可能导致 finalQty=0（如 BTC 0.000914 → 0）
     // 当原始数量 >= minQty 的 80% 时，snap up 到 minQty，避免因精度丢失空转
@@ -1868,9 +1870,19 @@ export class GridTradingService {
       return false;
     }
     // 最小名义价值预检：直接使用交易所真实值（SOL=$5, ETH=$20, BTC=$100）
-    // 不做 Math.max 兜底，避免将 SOL 的 $5 误提高到 $20
     const MIN_NOTIONAL = exchangeMinNotional > 0 ? exchangeMinNotional : 5;
-    const notional = finalQty * price;
+    let notional = finalQty * price;
+    // 名义值 snap-up：floor 取整后 notional 略低于最低要求（如 $4.96 < $5）
+    // 当缺口 < 10%（即在最低值的 90%-100% 之间）时，qty 加一个步长补足
+    if (notional < MIN_NOTIONAL && notional >= MIN_NOTIONAL * 0.9 && stepSize > 0) {
+      const snappedQty = parseFloat((finalQty + stepSize).toFixed(8));
+      const snappedNotional = snappedQty * price;
+      this.logger.debug(
+        `[网格] 名义值snap-up: ${finalQty}→${snappedQty}, notional $${notional.toFixed(2)}→$${snappedNotional.toFixed(2)} (level=${levelIndex})`,
+      );
+      finalQty = snappedQty;
+      notional = snappedNotional;
+    }
     if (notional < MIN_NOTIONAL) {
       this.logger.warn(
         `[网格] 跳过下单: notional $${notional.toFixed(2)} < 交易所最低 $${MIN_NOTIONAL}` +
