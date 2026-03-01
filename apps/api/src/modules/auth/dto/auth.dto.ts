@@ -44,6 +44,7 @@ export class LoginResponse {
   expiresIn?: number;
   user: {
     id: string;
+    uid?: number;
     email?: string | null;
     nickname?: string | null;
     walletAddress?: string | null;
@@ -68,6 +69,7 @@ export class TokenPairResponse {
   expiresIn: number; // access token 过期时间（秒）
   user?: {
     id: string;
+    uid?: number;
     email?: string | null;
     nickname?: string | null;
     walletAddress?: string | null;
@@ -91,6 +93,7 @@ export class UpdateProfileDto {
 // 用户信息响应
 export class UserResponse {
   id: string;
+  uid?: number;
   email?: string | null;
   nickname?: string | null;
   createdAt?: Date;

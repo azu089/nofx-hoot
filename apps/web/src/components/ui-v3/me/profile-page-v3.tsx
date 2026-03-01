@@ -19,6 +19,7 @@ import {
 interface ProfilePageV3Props {
   user?: {
     id: string
+    uid?: number
     username: string
     email: string
     memberSince: string
@@ -47,16 +48,13 @@ export function ProfilePageV3({
 }: ProfilePageV3Props) {
   const [copied, setCopied] = useState(false)
 
-  // 截断 UID 显示（行业标准：前6后4）
-  const truncateId = (id: string) => {
-    if (id.length <= 12) return id
-    return `${id.slice(0, 6)}...${id.slice(-4)}`
-  }
+  // 显示用户 ID（优先使用短数字 uid）
+  const displayId = user.uid ? String(user.uid) : user.id.slice(0, 8)
 
   // 复制 ID 到剪贴板
   const handleCopyId = async () => {
     try {
-      await navigator.clipboard.writeText(user.id)
+      await navigator.clipboard.writeText(user.uid ? String(user.uid) : user.id)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
@@ -184,7 +182,7 @@ export function ProfilePageV3({
                 onClick={handleCopyId}
                 className="flex items-center gap-1.5 text-[#606070] text-xs mt-1 hover:text-[#9090A0] transition-colors"
               >
-                <span>ID: {truncateId(user.id)}</span>
+                <span>ID: {displayId}</span>
                 {copied ? (
                   <>
                     <Check className="w-3 h-3 text-[#10B981]" />

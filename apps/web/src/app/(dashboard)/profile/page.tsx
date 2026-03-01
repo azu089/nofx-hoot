@@ -36,6 +36,7 @@ export default function ProfilePage() {
     queryFn: async () => {
       const response = await api.get<{
         id: string;
+        uid?: number;
         email: string;
         nickname: string;
         vipLevel: number;
@@ -57,6 +58,7 @@ export default function ProfilePage() {
     if (!profile) return undefined;
     return {
       id: profile.id,
+      uid: profile.uid,
       username: profile.nickname || profile.email.split('@')[0],
       email: profile.email,
       memberSince: new Date(profile.createdAt).toLocaleDateString('zh-CN'),

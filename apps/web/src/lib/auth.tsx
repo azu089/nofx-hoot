@@ -5,6 +5,7 @@ import { api } from './api';
 
 interface User {
   id: string;
+  uid?: number;
   email: string;
   nickname: string;
   telegramId?: string;
