@@ -350,7 +350,7 @@ bot.command('start', async (ctx) => {
     // 如果是来自 Web App 登录跳转，发送 webApp 按钮打开 Mini App（确保 initData 注入自动登录）
     if (isWebLoginFlow) {
       const enterAppKeyboard = new InlineKeyboard()
-        .webApp(lang === 'zh' ? '🚀 打开 HOOT App' : '🚀 Open HOOT App', WEB_APP_URL + '/login');
+        .webApp(lang === 'zh' ? '🚀 打开 HOOT App' : '🚀 Open HOOT App', WEB_APP_URL);
 
       const loginSuccessMsg = result.isNewUser
         ? (lang === 'zh'
@@ -525,14 +525,18 @@ async function handleInvite(ctx: MyContext, telegramId: string) {
 
     const botUsername = ctx.me?.username || 'HootBot';
     const botDeepLink = `https://t.me/${botUsername}?start=ref_${info.inviteCode}`;
-    const botShareText = lang === 'zh'
+    // 文字在上、链接在下（行业标准）：不用 url 参数，把文字+链接都放进 text 参数
+    const botShareFullText = lang === 'zh'
       ? `🦉 加入 HOOT，通过 Bot 自动交易赚取收益！\n${botDeepLink}`
-      : `🦉 Join HOOT and earn with automated trading!\n${botDeepLink}`;
+      : `🦉 Join HOOT — earn with automated trading!\n${botDeepLink}`;
+    const inviteLinkShareText = lang === 'zh'
+      ? `🦉 加入 HOOT，通过 Bot 自动交易赚取收益！\n${info.inviteLink}`
+      : `🦉 Join HOOT — earn with automated trading!\n${info.inviteLink}`;
 
     const inviteKeyboard = new InlineKeyboard()
-      .url(msg.invite.share, `https://t.me/share/url?url=${encodeURIComponent(info.inviteLink)}&text=${encodeURIComponent(msg.invite.shareText)}`)
+      .url(msg.invite.share, `https://t.me/share/url?text=${encodeURIComponent(inviteLinkShareText)}`)
       .row()
-      .url(msg.invite.shareBot, `https://t.me/share/url?url=${encodeURIComponent(botDeepLink)}&text=${encodeURIComponent(botShareText)}`)
+      .url(msg.invite.shareBot, `https://t.me/share/url?text=${encodeURIComponent(botShareFullText)}`)
       .row()
       .text(msg.invite.copyCode, `copy_invite_${info.inviteCode}`);
 
@@ -1464,12 +1468,12 @@ async function setupBotMenu() {
       { command: 'help', description: 'Help / 帮助' },
     ]);
 
-    // 设置左下角菜单按钮为 WebApp（直接打开登录/Dashboard 页面，确保 initData 注入）
+    // 设置左下角菜单按钮为 WebApp（根页自动处理 TG 登录，用户直接进入 Dashboard）
     await bot.api.setChatMenuButton({
       menu_button: {
         type: 'web_app',
         text: '🦉 HOOT',
-        web_app: { url: WEB_APP_URL + '/login' },
+        web_app: { url: WEB_APP_URL },
       },
     });
 

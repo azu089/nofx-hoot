@@ -84,48 +84,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // TG Mini App 静默自动登录
-    // telegram-web-app.js 已通过 beforeInteractive 在 React 水合前加载完毕，
-    // 因此此处可直接读取 window.Telegram.WebApp（含 initData）
-    // 覆盖所有平台：Telegram Web（URL hash 解析）+ 原生 App（native bridge）
+    // ── TG Mini App 静默自动登录 ──────────────────────────────────────────────
+    // telegram-web-app.js 使用 beforeInteractive 加载，此处 window.Telegram.WebApp 已存在。
+    // 但原生客户端（Mac / iOS / Android）通过 native bridge 异步注入 initData，
+    // 需要轮询等待，最长 3 秒（每 100ms × 30 次）。
     type TgWebApp = { initData?: string; ready?: () => void };
+
     const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 
-    if (!tgWebApp?.initData) {
-      // 非 TG 环境 或 initData 为空（普通浏览器），直接显示登录页
+    if (tgWebApp === undefined) {
+      // Telegram SDK 未加载（极少数情况，beforeInteractive 失败），直接显示登录页
       setIsLoading(false);
       return;
     }
 
-    // 通知 Telegram 客户端页面已准备好
-    tgWebApp.ready?.();
-
-    api
-      .post<{ accessToken: string; refreshToken?: string; user: User }>(
-        '/auth/telegram/webapp-login',
-        { initData: tgWebApp.initData },
-      )
-      .then((response) => {
-        const { accessToken, refreshToken: rt, user: userData } = response.data;
-        setToken(accessToken);
-        setUser(userData);
-        api.setToken(accessToken);
-        localStorage.setItem(TOKEN_KEY, accessToken);
-        localStorage.setItem(USER_KEY, JSON.stringify(userData));
-        if (rt) {
-          localStorage.setItem('hoot_refresh_token', rt);
-        }
-        setAuthCookie(accessToken);
-      })
-      .catch((err: unknown) => {
-        // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
-        const errMsg = err instanceof Error ? err.message : '自动登录失败';
-        console.error('[TG Mini App 自动登录失败]', errMsg);
-        setTgAutoLoginError(errMsg);
-      })
-      .finally(() => {
+    // SDK 已加载（在 Telegram 环境中），等待 initData 就绪
+    const doTgLogin = () => {
+      const initData = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
+      if (!initData) {
         setIsLoading(false);
-      });
+        return;
+      }
+      // 通知 Telegram 客户端页面已准备好
+      (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.ready?.();
+      api
+        .post<{ accessToken: string; refreshToken?: string; user: User }>(
+          '/auth/telegram/webapp-login',
+          { initData },
+        )
+        .then((response) => {
+          const { accessToken, refreshToken: rt, user: userData } = response.data;
+          setToken(accessToken);
+          setUser(userData);
+          api.setToken(accessToken);
+          localStorage.setItem(TOKEN_KEY, accessToken);
+          localStorage.setItem(USER_KEY, JSON.stringify(userData));
+          if (rt) {
+            localStorage.setItem('hoot_refresh_token', rt);
+          }
+          setAuthCookie(accessToken);
+        })
+        .catch((err: unknown) => {
+          // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
+          const errMsg = err instanceof Error ? err.message : '自动登录失败';
+          console.error('[TG Mini App 自动登录失败]', errMsg);
+          setTgAutoLoginError(errMsg);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    };
+
+    // initData 已立即就绪（Telegram Web 场景，从 URL hash 解析）
+    if (tgWebApp.initData) {
+      doTgLogin();
+      return;
+    }
+
+    // initData 尚未就绪（原生 App native bridge 异步注入），轮询等待
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30; // 30 × 100ms = 3 秒
+
+    const pollForInitData = () => {
+      const data = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
+      if (data) {
+        doTgLogin();
+        return;
+      }
+      attempts++;
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(pollForInitData, 100);
+      } else {
+        // 3 秒仍无 initData，认为不在正式 Mini App 上下文（如测试/开发链接）
+        setIsLoading(false);
+      }
+    };
+
+    pollForInitData();
   }, []);
 
   const login = async (email: string, password: string) => {
