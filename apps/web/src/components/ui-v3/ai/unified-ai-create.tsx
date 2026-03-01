@@ -150,7 +150,7 @@ export function UnifiedAiCreate() {
   const createStrategy = useCreateStrategy();
   const strategyControl = useStrategyControl();
   const { data: aiConfig } = useAiConfig();
-  useUpdateAiConfig(); // 保留 hook 调用以维持订阅，暂不使用返回值
+  const updateAiConfig = useUpdateAiConfig();
   const appLocale = useLocale();
   useAiLocaleSync(appLocale);
   // ── Strategy mode selection ─────────────────────
@@ -491,6 +491,11 @@ export function UnifiedAiCreate() {
         profitTargetPercent: profitTarget || 0,
         maxLossPercent: maxLoss || 0,
       };
+
+      // 确保 AI 模块已启用（新用户默认 isEnabled=false，不启用无法 start 策略）
+      if (!aiConfig?.isEnabled) {
+        await updateAiConfig.mutateAsync({ isEnabled: true });
+      }
 
       const result = await createStrategy.mutateAsync(body as CreateStrategyBody);
 
