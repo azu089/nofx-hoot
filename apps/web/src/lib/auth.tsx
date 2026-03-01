@@ -85,93 +85,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // TG Mini App 静默自动登录
+    // telegram-web-app.js 已通过 beforeInteractive 在 React 水合前加载完毕，
+    // 因此此处可直接读取 window.Telegram.WebApp（含 initData）
+    // 覆盖所有平台：Telegram Web（URL hash 解析）+ 原生 App（native bridge）
     type TgWebApp = { initData?: string; ready?: () => void };
+    const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 
-    // 判断是否在 Telegram 环境：URL hash 或 search 中含有 tgWebAppData（Telegram Web 特征）
-    const hasTgWebAppData =
-      window.location.hash.includes('tgWebAppData') ||
-      window.location.search.includes('tgWebAppData');
-    const inTgNative = !!(window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
-
-    if (!hasTgWebAppData && !inTgNative) {
-      // 普通浏览器，直接显示登录页
+    if (!tgWebApp?.initData) {
+      // 非 TG 环境 或 initData 为空（普通浏览器），直接显示登录页
       setIsLoading(false);
       return;
     }
 
-    const doTgLogin = () => {
-      const initData = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
-      if (!initData) {
-        setIsLoading(false);
-        return;
-      }
-      // 通知 Telegram 客户端页面已准备好
-      (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.ready?.();
-      api
-        .post<{ accessToken: string; refreshToken?: string; user: User }>(
-          '/auth/telegram/webapp-login',
-          { initData },
-        )
-        .then((response) => {
-          const { accessToken, refreshToken: rt, user: userData } = response.data;
-          setToken(accessToken);
-          setUser(userData);
-          api.setToken(accessToken);
-          localStorage.setItem(TOKEN_KEY, accessToken);
-          localStorage.setItem(USER_KEY, JSON.stringify(userData));
-          if (rt) {
-            localStorage.setItem('hoot_refresh_token', rt);
-          }
-          setAuthCookie(accessToken);
-        })
-        .catch((err: unknown) => {
-          // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
-          const errMsg = err instanceof Error ? err.message : '自动登录失败';
-          console.error('[TG Mini App 自动登录失败]', errMsg);
-          setTgAutoLoginError(errMsg);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    };
+    // 通知 Telegram 客户端页面已准备好
+    tgWebApp.ready?.();
 
-    // 轮询等待 window.Telegram.WebApp 可用（Telegram Web 需等待 telegram-web-app.js 脚本加载）
-    // 最长等待 3 秒（每 100ms 检测一次，共 30 次）
-    let attempts = 0;
-    const MAX_ATTEMPTS = 30;
-
-    const waitForTgSdk = () => {
-      const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
-
-      if (tgWebApp?.initData) {
-        // SDK 已加载且 initData 就绪，直接登录
-        doTgLogin();
-        return;
-      }
-
-      if (tgWebApp !== undefined) {
-        // SDK 已加载但 initData 暂时为空（原生 TG 可能延迟注入）
-        // 继续等待一轮，超出则放弃
-        attempts++;
-        if (attempts < MAX_ATTEMPTS) {
-          setTimeout(waitForTgSdk, 100);
-        } else {
-          setIsLoading(false);
+    api
+      .post<{ accessToken: string; refreshToken?: string; user: User }>(
+        '/auth/telegram/webapp-login',
+        { initData: tgWebApp.initData },
+      )
+      .then((response) => {
+        const { accessToken, refreshToken: rt, user: userData } = response.data;
+        setToken(accessToken);
+        setUser(userData);
+        api.setToken(accessToken);
+        localStorage.setItem(TOKEN_KEY, accessToken);
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        if (rt) {
+          localStorage.setItem('hoot_refresh_token', rt);
         }
-        return;
-      }
-
-      // SDK 尚未加载（Telegram Web 场景）
-      attempts++;
-      if (attempts < MAX_ATTEMPTS) {
-        setTimeout(waitForTgSdk, 100);
-      } else {
-        // 超时：认为不在 TG 环境
+        setAuthCookie(accessToken);
+      })
+      .catch((err: unknown) => {
+        // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
+        const errMsg = err instanceof Error ? err.message : '自动登录失败';
+        console.error('[TG Mini App 自动登录失败]', errMsg);
+        setTgAutoLoginError(errMsg);
+      })
+      .finally(() => {
         setIsLoading(false);
-      }
-    };
-
-    waitForTgSdk();
+      });
   }, []);
 
   const login = async (email: string, password: string) => {

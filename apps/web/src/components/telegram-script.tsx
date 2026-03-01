@@ -1,30 +1,22 @@
-'use client';
-
 import Script from 'next/script';
-import { useEffect, useState } from 'react';
 
 /**
- * 仅在 Telegram Mini App 环境中加载 TG WebApp SDK。
- * 检测方式：URL hash 或 search 参数中包含 tgWebAppData。
- * 非 TG 环境不发起请求，避免 ERR_TUNNEL_CONNECTION_FAILED 控制台错误。
+ * 无条件加载 Telegram WebApp SDK。
+ * 使用 beforeInteractive 确保脚本在 React 水合前执行，
+ * 使 window.Telegram.WebApp（含 initData）在任何 JS 代码运行前就绪。
+ *
+ * 覆盖所有平台：
+ *   - Telegram Web (web.telegram.org)：脚本从 URL hash 中解析 initData
+ *   - Native Telegram（iOS / Android / macOS）：脚本通过 native bridge 获取 initData
+ *
+ * 注意：非 TG 环境下 window.Telegram.WebApp.initData 为空字符串，
+ * auth.tsx 会检测到空值并跳过自动登录，无副作用。
  */
 export function TelegramScript() {
-  const [isTg, setIsTg] = useState(false);
-
-  useEffect(() => {
-    const hash = window.location.hash;
-    const search = window.location.search;
-    if (hash.includes('tgWebAppData') || search.includes('tgWebAppData')) {
-      setIsTg(true);
-    }
-  }, []);
-
-  if (!isTg) return null;
-
   return (
     <Script
       src="https://telegram.org/js/telegram-web-app.js"
-      strategy="afterInteractive"
+      strategy="beforeInteractive"
     />
   );
 }
