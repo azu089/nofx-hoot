@@ -71,14 +71,16 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       subtitleKey: 'carousel.autoTradeSubtitle',
       descriptionKey: 'carousel.autoTradeDesc',
       gradient: 'from-teal-500/20 to-violet-500/20',
-      ctaKey: 'carousel.autoTradeCta'
+      ctaKey: 'carousel.autoTradeCta',
+      path: '/ai/create'
     },
     {
       titleKey: 'carousel.newFeature',
       subtitleKey: 'carousel.aiRebalancing',
       descriptionKey: 'carousel.aiRebalancingDesc',
       gradient: 'from-purple-500/20 to-cyan-500/20',
-      ctaKey: 'carousel.tryNow'
+      ctaKey: 'carousel.tryNow',
+      path: '/ai'
     },
     {
       type: 'standard',
@@ -86,7 +88,8 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       subtitleKey: 'carousel.gridTradingPro',
       descriptionKey: 'carousel.gridTradingDesc',
       gradient: 'from-emerald-500/20 to-cyan-500/20',
-      ctaKey: 'carousel.viewDetails'
+      ctaKey: 'carousel.viewDetails',
+      path: '/strategies'
     },
     {
       type: 'standard',
@@ -94,7 +97,8 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       subtitleKey: 'carousel.earnReward',
       descriptionKey: 'carousel.inviteDesc',
       gradient: 'from-orange-500/20 to-red-500/20',
-      ctaKey: 'carousel.inviteNow'
+      ctaKey: 'carousel.inviteNow',
+      path: '/referral'
     },
     {
       type: 'standard',
@@ -102,7 +106,8 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       subtitleKey: 'carousel.onlineAlways',
       descriptionKey: 'carousel.supportDesc',
       gradient: 'from-blue-500/20 to-indigo-500/20',
-      ctaKey: 'carousel.contactSupport'
+      ctaKey: 'carousel.contactSupport',
+      path: '/help'
     }
   ]
 
@@ -199,7 +204,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
                         <p className="text-[#9090A0] text-xs mb-3">
                           {t(slide.descriptionKey)}
                         </p>
-                        <button type="button" className="bg-[#06B6D4] text-black px-4 py-1.5 rounded-lg font-medium text-xs">
+                        <button type="button" onClick={() => onNavigate?.(slide.path)} className="bg-[#06B6D4] text-black px-4 py-1.5 rounded-lg font-medium text-xs">
                           {t(slide.ctaKey)}
                         </button>
                       </div>

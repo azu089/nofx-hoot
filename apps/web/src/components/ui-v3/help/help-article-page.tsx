@@ -8,6 +8,14 @@ import {
   CreditCard,
   Shield,
   Receipt,
+  Brain,
+  Wallet,
+  Coins,
+  Users,
+  Send,
+  Microscope,
+  ShieldCheck,
+  Grid3X3,
   ChevronRight,
   AlertCircle,
   CheckCircle2,
@@ -27,11 +35,20 @@ interface HelpArticlePageProps {
 // 文章图标映射
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'getting-started': BookOpen,
+  'ai-trading': Brain,
+  'ai-research': Microscope,
   'api-keys': Key,
+  'wallet-funds': Wallet,
+  'hoot-token': Coins,
+  'invite-earn': Users,
+  'billing-security': ShieldCheck,
+  'tg-bot': Send,
+  'grid-trading': Grid3X3,
+  // 旧slug兼容
   'strategies': TrendingUp,
   'deposits-withdrawals': CreditCard,
   'security': Shield,
-  'billing': Receipt
+  'billing': Receipt,
 }
 
 // 旧版 defaultArticles 保留作为 fallback（已移至 help-content.ts）

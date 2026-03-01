@@ -79,6 +79,15 @@ export class TokenPairResponse {
   isNewUser?: boolean;
 }
 
+// 更新用户资料 DTO
+export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(3, { message: '用户名至少3个字符' })
+  @MaxLength(20, { message: '用户名最多20个字符' })
+  nickname?: string;
+}
+
 // 用户信息响应
 export class UserResponse {
   id: string;

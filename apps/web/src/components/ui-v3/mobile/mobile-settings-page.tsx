@@ -25,6 +25,7 @@ import { localeNames } from "@/i18n/config";
 import { useTheme } from "@/lib/theme";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 // 绑定奖励配置
 const BIND_REWARDS = {
@@ -64,6 +65,7 @@ export function MobileSettingsPage({
   const t = useTranslations('settings');
   const tCommon = useTranslations('common');
   const tAuth = useTranslations('auth');
+  const { user, updateUser } = useAuth();
 
   // 从 i18n 配置获取语言列表
   const languages = locales.map(code => ({
@@ -72,10 +74,11 @@ export function MobileSettingsPage({
     flag: localeNames[code].flag
   }));
 
-  // States
-  const [email] = React.useState("user@example.com");
-  const [username, setUsername] = React.useState("CryptoTrader_Pro");
+  // States — 从 auth context 获取真实用户信息
+  const email = user?.email || "";
+  const username = user?.nickname || "";
   const [newUsername, setNewUsername] = React.useState("");
+  const [isSavingUsername, setIsSavingUsername] = React.useState(false);
   const [pushNotifications, setPushNotifications] = React.useState(true);
   const [emailNotifications, setEmailNotifications] = React.useState(true);
   const [tradingAlerts, setTradingAlerts] = React.useState(true);
@@ -107,12 +110,23 @@ export function MobileSettingsPage({
     }
   };
 
-  const handleUsernameSubmit = (e: React.FormEvent) => {
+  const handleUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newUsername.trim() && newUsername.trim().length >= 3) {
-      setUsername(newUsername.trim());
+    const trimmed = newUsername.trim();
+    if (!trimmed || trimmed.length < 3) return;
+
+    setIsSavingUsername(true);
+    try {
+      await api.patch('/auth/profile', { nickname: trimmed });
+      // 同步更新 auth context + localStorage
+      updateUser({ nickname: trimmed });
+      toast.success('用户名已保存');
       setIsUsernameModalOpen(false);
       setNewUsername("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '保存失败，请稍后重试');
+    } finally {
+      setIsSavingUsername(false);
     }
   };
 
@@ -471,7 +485,7 @@ export function MobileSettingsPage({
                   type="submit"
                   className="flex-1 py-3 rounded-xl bg-cyan-500 text-sm text-white font-medium hover:bg-cyan-600"
                 >
-                  {tCommon('confirm')}
+                  {tCommon('save')}
                 </button>
               </div>
             </form>
@@ -520,10 +534,10 @@ export function MobileSettingsPage({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newUsername.trim() || newUsername.trim().length < 3}
+                  disabled={!newUsername.trim() || newUsername.trim().length < 3 || isSavingUsername}
                   className="flex-1 py-3 rounded-xl bg-purple-500 text-sm text-white font-medium hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {tCommon('confirm')}
+                  {isSavingUsername ? '...' : tCommon('save')}
                 </button>
               </div>
             </form>

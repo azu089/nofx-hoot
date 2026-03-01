@@ -2,21 +2,19 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { api } from './api';
+import { useAuth } from './auth';
 import {
   isTelegramWebApp,
-  getTelegramInitData,
   getTelegramWebApp,
-  getTelegramStartParam,
   initTelegramWebApp,
 } from './telegram';
 
 interface TelegramContextType {
   /** 是否在 TG Mini App 环境中 */
   isTelegram: boolean;
-  /** TG WebApp 登录是否完成 */
+  /** TG WebApp 初始化是否完成（= AuthProvider 加载完成） */
   isReady: boolean;
-  /** 登录错误信息 */
+  /** 登录错误信息（来自 AuthProvider） */
   error: string | null;
 }
 
@@ -26,77 +24,20 @@ const TelegramContext = createContext<TelegramContextType>({
   error: null,
 });
 
-const TOKEN_KEY = 'hoot_token';
-const USER_KEY = 'hoot_user';
-
 export function TelegramProvider({ children }: { children: ReactNode }) {
   const [isTelegram, setIsTelegram] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
+  // 使用 AuthProvider 的状态（TG 自动登录由 AuthProvider 统一处理）
+  const { isLoading: authLoading, tgAutoLoginError } = useAuth();
+
+  // TG 环境检测 + UI 初始化（仅首次挂载执行一次）
   useEffect(() => {
-    // 检测 TG 环境
-    if (!isTelegramWebApp()) {
-      setIsReady(true); // 非 TG 环境直接就绪
-      return;
-    }
-
+    if (!isTelegramWebApp()) return;
     setIsTelegram(true);
-
-    // 初始化 TG WebApp UI（展开 + 颜色 + ready）
-    initTelegramWebApp();
-
-    // 如果已经有 token（之前登录过），直接就绪
-    const existingToken = localStorage.getItem(TOKEN_KEY);
-    if (existingToken) {
-      api.setToken(existingToken);
-      setIsReady(true);
-      return;
-    }
-
-    // 用 initData 自动登录
-    const initData = getTelegramInitData();
-    if (!initData) {
-      setError('无法获取 Telegram 认证数据');
-      setIsReady(true);
-      return;
-    }
-
-    (async () => {
-      try {
-        const response = await api.post<{
-          accessToken: string;
-          user: {
-            id: string;
-            email?: string | null;
-            nickname?: string | null;
-            telegramId?: string | null;
-          };
-          isNewUser?: boolean;
-        }>('/auth/telegram/webapp-login', { initData });
-
-        const { accessToken, user } = response.data;
-
-        // 存储认证信息（与 AuthProvider 共享）
-        localStorage.setItem(TOKEN_KEY, accessToken);
-        localStorage.setItem(USER_KEY, JSON.stringify(user));
-        api.setToken(accessToken);
-
-        setIsReady(true);
-
-        // 如果当前在登录/注册页，跳转到 dashboard
-        if (pathname === '/login' || pathname === '/register' || pathname === '/') {
-          router.replace('/dashboard');
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '自动登录失败';
-        setError(message);
-        setIsReady(true);
-      }
-    })();
-  }, [pathname, router]);
+    initTelegramWebApp(); // expand + 主题色 + ready()
+  }, []);
 
   // TG BackButton 路由返回
   useEffect(() => {
@@ -109,7 +50,6 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       router.back();
     };
 
-    // 在非首页显示返回按钮
     const isHomePage = pathname === '/dashboard' || pathname === '/';
     if (isHomePage) {
       tg.BackButton.hide();
@@ -123,8 +63,11 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
     };
   }, [isTelegram, pathname, router]);
 
+  // isReady = AuthProvider 加载完成
+  const isReady = !authLoading;
+
   return (
-    <TelegramContext.Provider value={{ isTelegram, isReady, error }}>
+    <TelegramContext.Provider value={{ isTelegram, isReady, error: tgAutoLoginError }}>
       {children}
     </TelegramContext.Provider>
   );

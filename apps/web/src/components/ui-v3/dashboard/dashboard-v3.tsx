@@ -11,7 +11,7 @@ interface DashboardV3Props {
 }
 
 // 轮播组件
-function Carousel() {
+function Carousel({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const t = useTranslations('dashboard')
@@ -23,7 +23,8 @@ function Carousel() {
       descriptionKey: 'carousel.autoTradeDesc',
       gradient: 'from-teal-500/20 to-violet-500/20',
       iconBg: 'bg-teal-500/20',
-      ctaKey: 'carousel.autoTradeCta'
+      ctaKey: 'carousel.autoTradeCta',
+      path: '/ai/create'
     },
     {
       titleKey: 'carousel.newFeature',
@@ -31,7 +32,8 @@ function Carousel() {
       descriptionKey: 'carousel.aiRebalancingDesc',
       gradient: 'from-purple-500/20 to-cyan-500/20',
       iconBg: 'bg-purple-500/20',
-      ctaKey: 'carousel.tryNow'
+      ctaKey: 'carousel.tryNow',
+      path: '/ai'
     },
     {
       type: 'standard',
@@ -40,7 +42,8 @@ function Carousel() {
       descriptionKey: 'carousel.gridTradingDesc',
       gradient: 'from-emerald-500/20 to-cyan-500/20',
       iconBg: 'bg-emerald-500/20',
-      ctaKey: 'carousel.viewDetails'
+      ctaKey: 'carousel.viewDetails',
+      path: '/strategies'
     },
     {
       type: 'standard',
@@ -49,7 +52,8 @@ function Carousel() {
       descriptionKey: 'carousel.inviteDesc',
       gradient: 'from-orange-500/20 to-red-500/20',
       iconBg: 'bg-orange-500/20',
-      ctaKey: 'carousel.inviteNow'
+      ctaKey: 'carousel.inviteNow',
+      path: '/referral'
     },
     {
       type: 'standard',
@@ -58,7 +62,8 @@ function Carousel() {
       descriptionKey: 'carousel.supportDesc',
       gradient: 'from-blue-500/20 to-indigo-500/20',
       iconBg: 'bg-blue-500/20',
-      ctaKey: 'carousel.contactSupport'
+      ctaKey: 'carousel.contactSupport',
+      path: '/help'
     }
   ]
 
@@ -100,7 +105,7 @@ function Carousel() {
                   <p className="text-[#9090A0] text-sm mb-4 max-w-md">
                     {t(slide.descriptionKey)}
                   </p>
-                  <button type="button" className="bg-[#06B6D4] hover:bg-[#06B6D4]/80 text-black px-5 py-2 rounded-lg font-medium transition-colors text-sm">
+                  <button type="button" onClick={() => onNavigate?.(slide.path)} className="bg-[#06B6D4] hover:bg-[#06B6D4]/80 text-black px-5 py-2 rounded-lg font-medium transition-colors text-sm">
                     {t(slide.ctaKey)}
                   </button>
                 </div>
@@ -461,7 +466,7 @@ export function DashboardV3({ onNavigate }: DashboardV3Props) {
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] p-4 md:p-6">
       <div className="max-w-5xl mx-auto space-y-5">
         {/* 轮播图 */}
-        <Carousel />
+        <Carousel onNavigate={onNavigate} />
 
         {/* 跑马灯公告 */}
         <Marquee

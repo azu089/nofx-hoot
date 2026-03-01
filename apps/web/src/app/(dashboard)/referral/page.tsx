@@ -119,7 +119,7 @@ export default function ReferralPage() {
       {/* 移动端 */}
       <div className="block md:hidden">
         <MobileReferralPage
-          onBack={() => router.push('/profile')}
+          onBack={() => router.back()}
           referralCode={inviteCodeData?.inviteCode}
           earnings={earnings}
           myReferrals={myReferrals}

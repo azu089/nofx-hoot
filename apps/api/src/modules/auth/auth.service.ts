@@ -24,6 +24,7 @@ import {
   LoginDto,
   LoginResponse,
   UserResponse,
+  UpdateProfileDto,
 } from './dto/auth.dto';
 import { BindTelegramDto, TelegramLoginDto } from './dto/telegram.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
@@ -345,15 +346,19 @@ export class AuthService implements OnModuleDestroy {
   }
 
   // 验证邮箱
-  async verifyEmail(email: string, code: string): Promise<{ message: string }> {
+  async verifyEmail(
+    email: string,
+    code: string,
+  ): Promise<{ message: string; accessToken: string; refreshToken: string; user: { id: string; email: string; nickname: string } }> {
     const user = await this.prisma.user.findUnique({
       where: { email },
       select: {
         id: true,
+        email: true,
+        nickname: true,
         emailVerified: true,
         verificationCode: true,
         verificationExpiry: true,
-        nickname: true,
         telegramId: true,
         walletAddress: true,
       },
@@ -414,19 +419,34 @@ export class AuthService implements OnModuleDestroy {
 
     this.logger.log(`邮箱验证成功: ${email}`);
 
+    // 验证成功后自动颁发 Token，免去再次手动登录
+    const tokenPair = await this.generateTokenPair(user.id, email);
+
     const reward = isBindEmail ? 10 : 20;
-    return { message: `邮箱验证成功，获得 ${reward} HOOT 空投奖励！` };
+    return {
+      message: `邮箱验证成功，获得 ${reward} HOOT 空投奖励！`,
+      accessToken: tokenPair.accessToken,
+      refreshToken: tokenPair.refreshToken,
+      user: {
+        id: user.id,
+        email: user.email ?? email,
+        nickname: user.nickname ?? email.split('@')[0],
+      },
+    };
   }
 
   // 登录（含防暴力破解）
   async login(dto: LoginDto, ip?: string): Promise<LoginResponse> {
-    // 检查账户是否被锁定
-    if (await this.isLoginLocked(`email:${dto.email}`)) {
+    // 并行检查账户和 IP 锁定状态（节省一次串行 Redis 往返）
+    const [emailLocked, ipLocked] = await Promise.all([
+      this.isLoginLocked(`email:${dto.email}`),
+      ip ? this.isLoginLocked(`ip:${ip}`) : Promise.resolve(false),
+    ]);
+
+    if (emailLocked) {
       throw new UnauthorizedException('账户因多次登录失败已被临时锁定，请 30 分钟后重试');
     }
-
-    // 检查 IP 是否被锁定
-    if (ip && await this.isLoginLocked(`ip:${ip}`)) {
+    if (ipLocked) {
       throw new UnauthorizedException('此 IP 因频繁失败已被临时锁定，请稍后重试');
     }
 
@@ -449,14 +469,12 @@ export class AuthService implements OnModuleDestroy {
       throw new UnauthorizedException('邮箱或密码错误');
     }
 
-    // 登录成功，清除失败记录
-    await this.clearLoginFailures(dto.email);
-
-    // 审计日志
-    await this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip);
-
-    // 生成 Token 对（Access Token 15min + Refresh Token 7天）
-    const tokenPair = await this.generateTokenPair(user.id, user.email, ip);
+    // 登录成功：并行执行清除失败记录 + 审计日志 + 生成 Token
+    const [, , tokenPair] = await Promise.all([
+      this.clearLoginFailures(dto.email),
+      this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip),
+      this.generateTokenPair(user.id, user.email, ip),
+    ]);
 
     return {
       ...tokenPair,
@@ -509,6 +527,34 @@ export class AuthService implements OnModuleDestroy {
       subscriptionTier,
       vipLevel: subscriptionTier === 'premium' ? 1 : 0,
     };
+  }
+
+  // ===== 用户资料更新 =====
+
+  // 更新用户资料（昵称等）
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<{ nickname: string }> {
+    const updateData: Record<string, string> = {};
+
+    if (dto.nickname !== undefined) {
+      updateData.nickname = dto.nickname.trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('没有需要更新的字段');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: { nickname: true },
+    });
+
+    // 审计日志
+    await this.logAudit(userId, 'user', 'update_profile', 'user', userId, `更新资料: ${JSON.stringify(updateData)}`);
+
+    this.logger.log(`用户资料已更新: ${userId}`);
+
+    return { nickname: user.nickname ?? '' };
   }
 
   // ===== Telegram 相关 =====

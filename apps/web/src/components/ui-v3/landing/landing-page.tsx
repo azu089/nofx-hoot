@@ -24,6 +24,7 @@ import {
 import Image from 'next/image'
 import { useFeaturedStrategies, formatReturn, getRiskDisplay } from '@/hooks/useStrategies'
 import { useTranslations } from '@/i18n/provider'
+import { LanguageSelector } from '@/components/ui-v3/shared/language-selector'
 
 interface LandingPageProps {
   onStartTrading?: () => void
@@ -70,13 +71,13 @@ const exchanges = [
 
 // AI 提供商 - 7大顶尖模型
 const aiProviders = [
-  { name: 'OpenAI', model: 'GPT-4o Mini', logo: '/icons/llm/openai.png' },
-  { name: 'Anthropic', model: 'Claude Haiku', logo: '/icons/llm/anthropic.png' },
-  { name: 'DeepSeek', model: 'R1 & Chat', logo: '/icons/llm/deepseek.png' },
-  { name: 'Google', model: 'Gemini Flash', logo: '/icons/llm/google.png' },
-  { name: 'Alibaba', model: 'Qwen 3.5', logo: '/icons/llm/alibaba.png' },
-  { name: 'xAI', model: 'Grok 4', logo: '/icons/llm/xai.png' },
-  { name: 'Moonshot', model: 'Kimi K2', logo: '/icons/llm/moonshot.png' },
+  { name: 'OpenAI', model: 'GPT-4o Mini', logo: '/icons/llm/openai.svg' },
+  { name: 'Anthropic', model: 'Claude Haiku', logo: '/icons/llm/anthropic.svg' },
+  { name: 'DeepSeek', model: 'R1 & Chat', logo: '/icons/llm/deepseek.svg' },
+  { name: 'Google', model: 'Gemini Flash', logo: '/icons/llm/google.svg' },
+  { name: 'Alibaba', model: 'Qwen 3.5', logo: '/icons/llm/alibaba.svg' },
+  { name: 'xAI', model: 'Grok 4', logo: '/icons/llm/xai.svg' },
+  { name: 'Moonshot', model: 'Kimi K2', logo: '/icons/llm/moonshot.svg' },
 ]
 
 export function LandingPage({
@@ -169,6 +170,11 @@ export function LandingPage({
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] overflow-hidden">
+      {/* 语言选择器 — 固定右上角 */}
+      <div className="fixed top-4 right-4 z-50">
+        <LanguageSelector />
+      </div>
+
       {/* 1. Hero 区域 */}
       <section className="relative min-h-[70vh] flex items-center justify-center px-4 sm:px-6 lg:px-8 pt-12 pb-8">
         {/* Background Effects */}

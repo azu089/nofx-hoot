@@ -23,14 +23,14 @@ export const RISK_ROLE_COLORS: Record<string, string> = {
 
 // 模型显示名 (镜像后端 AI_MODELS)
 export const MODEL_DISPLAY: Record<string, { name: string; provider: string; color: string; logo: string }> = {
-  'deepseek-chat': { name: 'DeepSeek Chat', provider: 'DeepSeek', color: '#3B82F6', logo: '/icons/llm/deepseek.png' },
-  'deepseek-reasoner': { name: 'DeepSeek R1', provider: 'DeepSeek', color: '#1D4ED8', logo: '/icons/llm/deepseek.png' },
-  'gpt-4o-mini': { name: 'GPT-4o Mini', provider: 'OpenAI', color: '#10B981', logo: '/icons/llm/openai.png' },
-  'claude-haiku-4-5-20251001': { name: 'Claude Haiku 4.5', provider: 'Anthropic', color: '#D97706', logo: '/icons/llm/anthropic.png' },
-  'gemini-2.5-flash': { name: 'Gemini 2.5 Flash', provider: 'Google', color: '#6366F1', logo: '/icons/llm/google.png' },
-  'qwen3.5-plus': { name: 'Qwen 3.5 Plus', provider: 'Alibaba', color: '#EC4899', logo: '/icons/llm/alibaba.png' },
-  'grok-4-fast': { name: 'Grok 4 Fast', provider: 'xAI', color: '#F43F5E', logo: '/icons/llm/xai.png' },
-  'kimi-k2.5': { name: 'Kimi K2.5', provider: 'Moonshot', color: '#8B5CF6', logo: '/icons/llm/moonshot.png' },
+  'deepseek-chat': { name: 'DeepSeek Chat', provider: 'DeepSeek', color: '#3B82F6', logo: '/icons/llm/deepseek.svg' },
+  'deepseek-reasoner': { name: 'DeepSeek R1', provider: 'DeepSeek', color: '#1D4ED8', logo: '/icons/llm/deepseek.svg' },
+  'gpt-4o-mini': { name: 'GPT-4o Mini', provider: 'OpenAI', color: '#10B981', logo: '/icons/llm/openai.svg' },
+  'claude-haiku-4-5-20251001': { name: 'Claude Haiku 4.5', provider: 'Anthropic', color: '#D97706', logo: '/icons/llm/anthropic.svg' },
+  'gemini-2.5-flash': { name: 'Gemini 2.5 Flash', provider: 'Google', color: '#6366F1', logo: '/icons/llm/google.svg' },
+  'qwen3.5-plus': { name: 'Qwen 3.5 Plus', provider: 'Alibaba', color: '#EC4899', logo: '/icons/llm/alibaba.svg' },
+  'grok-4-fast': { name: 'Grok 4 Fast', provider: 'xAI', color: '#F43F5E', logo: '/icons/llm/xai.svg' },
+  'kimi-k2.5': { name: 'Kimi K2.5', provider: 'Moonshot', color: '#8B5CF6', logo: '/icons/llm/moonshot.svg' },
 };
 
 // 默认 Debate 模型列表

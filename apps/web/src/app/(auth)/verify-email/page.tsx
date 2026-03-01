@@ -37,8 +37,8 @@ function VerifyEmailContent() {
   };
 
   const handleSuccess = () => {
-    // 验证成功后跳转到登录页
-    router.push('/login?verified=true');
+    // 验证成功后直接进入仪表盘（verifyEmail 已自动写入登录态）
+    router.replace('/dashboard');
   };
 
   const handleBack = () => {

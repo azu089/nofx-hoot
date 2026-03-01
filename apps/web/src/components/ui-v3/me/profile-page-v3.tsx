@@ -37,10 +37,10 @@ export function ProfilePageV3({
     username: 'CryptoTrader_Pro',
     email: 'use***@example.com',
     memberSince: '2023.3.15',
-    vipLevel: 12,
-    subscriptionTier: 'premium'
+    vipLevel: 0,
+    subscriptionTier: 'basic' as const
   },
-  unreadNotifications = 3,
+  unreadNotifications = 0,
   appVersion = 'v1.19.0',
   onNavigate,
   onLogout

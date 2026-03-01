@@ -536,3 +536,21 @@ input:-webkit-autofill:active {
   border-color: rgba(6, 182, 212, 0.2) !important;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/* ========== RTL 阿拉伯语适配 ========== */
+
+/* 文本基础方向 */
+[dir="rtl"] { text-align: right; }
+
+/* 跑马灯渐变反向（marquee-container） */
+[dir="rtl"] .marquee-container {
+  -webkit-mask-image: linear-gradient(to left, transparent, black 3%, black 97%, transparent);
+  mask-image: linear-gradient(to left, transparent, black 3%, black 97%, transparent);
+}
+
+/* 数字/价格区域保持 LTR（交易数据不能镜像） */
+[dir="rtl"] .num-ltr {
+  direction: ltr;
+  unicode-bidi: embed;
+  display: inline-block;
+}

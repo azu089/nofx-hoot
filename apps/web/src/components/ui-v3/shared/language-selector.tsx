@@ -36,7 +36,7 @@ export function LanguageSelector({ className = '' }: { className?: string }) {
   const current = localeNames[locale];
 
   return (
-    <div ref={ref} className={`relative ${className}`}>
+    <div dir="ltr" ref={ref} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(!open)}

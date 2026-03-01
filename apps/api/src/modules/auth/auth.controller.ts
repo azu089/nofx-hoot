@@ -1,10 +1,10 @@
-import { Controller, Post, Get, Body, Param, Delete, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Delete, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { TelegramBotGuard } from '../../common/guards/telegram-bot.guard';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, RefreshTokenDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, RefreshTokenDto, UpdateProfileDto } from './dto/auth.dto';
 import {
   BindTelegramDto,
   TelegramLoginDto,
@@ -184,5 +184,14 @@ export class AuthController {
   @Get('profile')
   async getFullProfile(@CurrentUser() user: { id: string }) {
     return this.authService.getFullProfile(user.id);
+  }
+
+  // 更新用户资料（昵称等）
+  @Patch('profile')
+  async updateProfile(
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.id, dto);
   }
 }

@@ -6,8 +6,13 @@ import {
   Search,
   BookOpen,
   Key,
-  TrendingUp,
-  Shield,
+  Brain,
+  Wallet,
+  Coins,
+  Users,
+  Microscope,
+  ShieldCheck,
+  CreditCard,
   Mail,
   MessageCircle,
   ChevronDown
@@ -21,9 +26,13 @@ interface FAQItem {
 
 const quickAccessConfig = [
   { icon: BookOpen, titleKey: 'quickLinksData.gettingStarted', slug: 'getting-started' },
+  { icon: Brain, titleKey: 'quickLinksData.aiTrading', slug: 'ai-trading' },
+  { icon: Microscope, titleKey: 'quickLinksData.aiResearch', slug: 'ai-research' },
   { icon: Key, titleKey: 'quickLinksData.apiKeys', slug: 'api-keys' },
-  { icon: TrendingUp, titleKey: 'quickLinksData.strategies', slug: 'strategies' },
-  { icon: Shield, titleKey: 'quickLinksData.security', slug: 'security' },
+  { icon: Wallet, titleKey: 'quickLinksData.walletFunds', slug: 'wallet-funds' },
+  { icon: Coins, titleKey: 'quickLinksData.hootToken', slug: 'hoot-token' },
+  { icon: Users, titleKey: 'quickLinksData.inviteEarn', slug: 'invite-earn' },
+  { icon: ShieldCheck, titleKey: 'quickLinksData.billingSecurity', slug: 'billing-security' },
 ]
 
 const faqItemsConfig: FAQItem[] = [
@@ -31,6 +40,12 @@ const faqItemsConfig: FAQItem[] = [
   { questionKey: 'faqItems.q2', answerKey: 'faqItems.a2' },
   { questionKey: 'faqItems.q3', answerKey: 'faqItems.a3' },
   { questionKey: 'faqItems.q4', answerKey: 'faqItems.a4' },
+  { questionKey: 'faqItems.q5', answerKey: 'faqItems.a5' },
+  { questionKey: 'faqItems.q6', answerKey: 'faqItems.a6' },
+  { questionKey: 'faqItems.q7', answerKey: 'faqItems.a7' },
+  { questionKey: 'faqItems.q8', answerKey: 'faqItems.a8' },
+  { questionKey: 'faqItems.q9', answerKey: 'faqItems.a9' },
+  { questionKey: 'faqItems.q10', answerKey: 'faqItems.a10' },
 ]
 
 interface MobileHelpPageProps {
@@ -89,7 +104,7 @@ export function MobileHelpPage({ onBack, onNavigate }: MobileHelpPageProps) {
 
         {/* 快速入口 */}
         <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
-          <div className="grid grid-cols-4 divide-x divide-[#1E1E2E]/50">
+          <div className="grid grid-cols-4">
             {quickAccessConfig.map((item) => {
               const Icon = item.icon
               return (

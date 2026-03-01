@@ -9,6 +9,12 @@ import {
   CreditCard,
   Shield,
   Receipt,
+  Brain,
+  Wallet,
+  Coins,
+  Users,
+  Microscope,
+  ShieldCheck,
   ChevronDown,
   ChevronUp,
   Mail,
@@ -39,42 +45,14 @@ interface HelpCenterPageProps {
 }
 
 const quickLinksConfig: QuickLink[] = [
-  {
-    id: 'getting-started',
-    titleKey: 'quickLinksData.gettingStarted',
-    descKey: 'quickLinksData.gettingStartedDesc',
-    icon: BookOpen
-  },
-  {
-    id: 'api-keys',
-    titleKey: 'quickLinksData.apiKeys',
-    descKey: 'quickLinksData.apiKeysDesc',
-    icon: Key
-  },
-  {
-    id: 'strategies',
-    titleKey: 'quickLinksData.strategies',
-    descKey: 'quickLinksData.strategiesDesc',
-    icon: TrendingUp
-  },
-  {
-    id: 'deposits-withdrawals',
-    titleKey: 'quickLinksData.depositsWithdrawals',
-    descKey: 'quickLinksData.depositsWithdrawalsDesc',
-    icon: CreditCard
-  },
-  {
-    id: 'security',
-    titleKey: 'quickLinksData.security',
-    descKey: 'quickLinksData.securityDesc',
-    icon: Shield
-  },
-  {
-    id: 'billing',
-    titleKey: 'quickLinksData.billing',
-    descKey: 'quickLinksData.billingDesc',
-    icon: Receipt
-  }
+  { id: 'getting-started', titleKey: 'quickLinksData.gettingStarted', descKey: 'quickLinksData.gettingStartedDesc', icon: BookOpen },
+  { id: 'ai-trading', titleKey: 'quickLinksData.aiTrading', descKey: 'quickLinksData.aiTradingDesc', icon: Brain },
+  { id: 'ai-research', titleKey: 'quickLinksData.aiResearch', descKey: 'quickLinksData.aiResearchDesc', icon: Microscope },
+  { id: 'api-keys', titleKey: 'quickLinksData.apiKeys', descKey: 'quickLinksData.apiKeysDesc', icon: Key },
+  { id: 'wallet-funds', titleKey: 'quickLinksData.walletFunds', descKey: 'quickLinksData.walletFundsDesc', icon: Wallet },
+  { id: 'hoot-token', titleKey: 'quickLinksData.hootToken', descKey: 'quickLinksData.hootTokenDesc', icon: Coins },
+  { id: 'invite-earn', titleKey: 'quickLinksData.inviteEarn', descKey: 'quickLinksData.inviteEarnDesc', icon: Users },
+  { id: 'billing-security', titleKey: 'quickLinksData.billingSecurity', descKey: 'quickLinksData.billingSecurityDesc', icon: ShieldCheck },
 ]
 
 const faqItemsConfig: FAQItem[] = [
@@ -85,7 +63,9 @@ const faqItemsConfig: FAQItem[] = [
   { id: '5', questionKey: 'faqItems.q5', answerKey: 'faqItems.a5' },
   { id: '6', questionKey: 'faqItems.q6', answerKey: 'faqItems.a6' },
   { id: '7', questionKey: 'faqItems.q7', answerKey: 'faqItems.a7' },
-  { id: '8', questionKey: 'faqItems.q8', answerKey: 'faqItems.a8' }
+  { id: '8', questionKey: 'faqItems.q8', answerKey: 'faqItems.a8' },
+  { id: '9', questionKey: 'faqItems.q9', answerKey: 'faqItems.a9' },
+  { id: '10', questionKey: 'faqItems.q10', answerKey: 'faqItems.a10' }
 ]
 
 export function HelpCenterPage({

@@ -35,7 +35,7 @@ export function MobileProfilePage({
     id: 'USR20230315001',
     username: 'CryptoTrader_Pro',
     email: 'use***@example.com',
-    subscriptionTier: 'premium'
+    subscriptionTier: 'basic' as const
   },
   unreadNotifications = 3,
   appVersion = 'v1.19.0',
