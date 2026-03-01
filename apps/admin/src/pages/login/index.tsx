@@ -27,6 +27,8 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [requireTotp, setRequireTotp] = useState(false);
   const [accountLocked, setAccountLocked] = useState<string | null>(null);
+  // 第一步凭据暂存，用于第二步带上
+  const [savedCredentials, setSavedCredentials] = useState<{ username: string; password: string } | null>(null);
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -52,8 +54,8 @@ export const LoginPage = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: values.username,
-          password: values.password,
+          username: savedCredentials?.username ?? values.username,
+          password: savedCredentials?.password ?? values.password,
           totpCode: values.totpCode,
         }),
       });
@@ -74,6 +76,8 @@ export const LoginPage = () => {
 
       // 检查是否需要两步验证
       if (data.requireTotp) {
+        // 保存第一步凭据，供第二步提交时使用
+        setSavedCredentials({ username: values.username, password: values.password });
         setRequireTotp(true);
         message.info('请输入 Google Authenticator 验证码');
         return;
@@ -110,6 +114,7 @@ export const LoginPage = () => {
   // 重置两步验证状态
   const handleBack = () => {
     setRequireTotp(false);
+    setSavedCredentials(null);
     form.setFieldValue('totpCode', undefined);
   };
 
