@@ -171,7 +171,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
         <div className="flex items-center justify-between px-4 h-14">
           <div className="w-10" />
           <h1 className="text-base font-semibold text-white">{tNav('home')}</h1>
-          <button type="button" className="relative w-10 h-10 flex items-center justify-center" aria-label={t('announcement')}>
+          <button type="button" className="relative w-10 h-10 flex items-center justify-center" aria-label={t('announcement')} onClick={() => onNavigate?.('/notifications')}>
             <Bell className="w-5 h-5 text-[#9090A0]" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#06B6D4] rounded-full" />
           </button>
