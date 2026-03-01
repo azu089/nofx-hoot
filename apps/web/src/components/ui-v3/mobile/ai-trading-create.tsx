@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useCreateStrategy, useStrategyControl, useStartResearch } from '@/hooks/useAi'
+import { useCreateStrategy, useStrategyControl, useStartResearch, useUpdateAiConfig } from '@/hooks/useAi'
 import type { CreateStrategyBody } from '@/types/ai'
 import { MODEL_DISPLAY, DEFAULT_DEBATE_MODELS } from '@/constants/debate'
 import { ExchangeKeySelector } from '@/components/ui-v3/ai/exchange-key-selector'
@@ -93,6 +93,7 @@ export function CreateStrategyWizard() {
   const startResearch = useStartResearch()
   const createStrategy = useCreateStrategy()
   const strategyControl = useStrategyControl()
+  const updateAiConfig = useUpdateAiConfig()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // ── Mode ──────────────────────────────────────
@@ -339,6 +340,9 @@ export function CreateStrategyWizard() {
           profitPeakWindowDays: gridParams.profitPeakWindowDays,
         }
       }
+
+      // 确保 AI 模块已启用（首次创建策略时 isEnabled 可能为 false）
+      await updateAiConfig.mutateAsync({ isEnabled: true })
 
       const result = await createStrategy.mutateAsync(body as unknown as CreateStrategyBody)
 
