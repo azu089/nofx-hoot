@@ -273,14 +273,10 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
     const color = info?.color || '#9090A0';
     return (
       <div className="flex items-center gap-1.5 mb-1.5">
-        {info?.logo ? (
-          <img src={info.logo} alt={name} title={name} className="w-4 h-4 rounded-full flex-shrink-0" />
-        ) : (
-          <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
-            style={{ color }}>
-            {name.charAt(0).toUpperCase()}
-          </span>
-        )}
+        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
+          style={{ backgroundColor: color }}>
+          {name.charAt(0).toUpperCase()}
+        </span>
         <span className="text-[10px]" style={{ color }}>{name}</span>
       </div>
     );

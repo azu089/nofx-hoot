@@ -896,13 +896,12 @@ export function ResearchDetailPage() {
                 <div className="flex items-center gap-1.5 mb-2">
                   {aiConfig.models.map((m: string) => {
                     const info = MODEL_DISPLAY[m];
-                    const logo = info?.logo;
                     const name = info?.name || m;
-                    return logo ? (
-                      <img key={m} src={logo} alt={name} title={name} className="w-6 h-6 rounded-full object-cover" />
-                    ) : (
-                      <span key={m} title={name} className="w-6 h-6 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[10px] text-[#9090A0]">
-                        {name.charAt(0)}
+                    const color = info?.color || '#9090A0';
+                    return (
+                      <span key={m} title={name} className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{ backgroundColor: color }}>
+                        {name.charAt(0).toUpperCase()}
                       </span>
                     );
                   })}
