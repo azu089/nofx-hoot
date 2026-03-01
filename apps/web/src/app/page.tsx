@@ -24,9 +24,9 @@ export default function Home() {
     }
   }, [isLoading, tgAutoLoginError, router])
 
-  // 加载中（含 TG 自动登录进行中）→ 全屏 HOOT loading 画面
-  // TG 用户会在此等待自动登录完成，完全不会看到登录页
-  if (isLoading) {
+  // 加载中 / 已认证（等待跳转）/ TG 错误（等待跳转） → 全屏 HOOT loading 画面
+  // 覆盖所有 TG 场景：自动登录中 / 跳转前 → 用户永远不会看到 Landing Page
+  if (isLoading || isAuthenticated || tgAutoLoginError) {
     return (
       <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
         <div className="flex flex-col items-center gap-6">
@@ -43,7 +43,7 @@ export default function Home() {
     )
   }
 
-  // 未认证且非 TG 环境 → 显示 Landing Page
+  // 未认证且确认非 TG 环境 → 显示 Landing Page
   return (
     <LandingPage
       onLogin={() => router.push('/login')}

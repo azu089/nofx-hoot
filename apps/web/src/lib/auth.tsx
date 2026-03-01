@@ -53,15 +53,67 @@ function clearAuthCookie() {
   document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
 }
 
+/**
+ * 从 URL hash 或 query string 中提取 tgWebAppData（initData 原始字符串）。
+ * Telegram 所有平台（Desktop / iOS / Android / Web）打开 Mini App 时，
+ * 均会在 URL 中携带这个参数，无需任何 CDN 脚本。
+ *
+ * 格式示例：
+ *   hash:  #tgWebAppData=query_id%3D...%26user%3D...&tgWebAppVersion=8
+ *   query: ?tgWebAppData=query_id%3D...%26user%3D...&tgWebAppVersion=8
+ */
+function getTgInitDataFromUrl(): string | undefined {
+  // hash 优先（Telegram Desktop、iOS、Android 均使用 hash 格式）
+  const hash = window.location.hash;
+  if (hash.includes('tgWebAppData')) {
+    try {
+      const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+      const data = params.get('tgWebAppData');
+      if (data) return data;
+    } catch {
+      // 忽略解析错误
+    }
+  }
+
+  // query string 备选（部分 Telegram Web 版本）
+  const search = window.location.search;
+  if (search.includes('tgWebAppData')) {
+    try {
+      const params = new URLSearchParams(search);
+      const data = params.get('tgWebAppData');
+      if (data) return data;
+    } catch {
+      // 忽略解析错误
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * 判断当前是否处于 Telegram Mini App 环境。
+ * 不依赖 CDN 脚本，通过原生 bridge 对象 / URL 参数检测。
+ */
+function isTelegramEnv(): boolean {
+  const url = window.location.href;
+  // URL 中含有任意 tgWebApp 参数（最可靠）
+  if (url.includes('tgWebApp')) return true;
+  // 原生 Telegram WebView 注入了 TelegramWebviewProxy（Desktop/iOS/Android）
+  if ((window as { TelegramWebviewProxy?: unknown }).TelegramWebviewProxy) return true;
+  // CDN 脚本已加载（部分场景）
+  if ((window as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp) return true;
+  return false;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tgAutoLoginError, setTgAutoLoginError] = useState<string | null>(null);
 
-  // 在客户端挂载后从 localStorage 读取认证状态，或在 TG Mini App 环境中静默自动登录
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
   useEffect(() => {
+    // ── Step 1: 读取本地缓存 ────────────────────────────────────────────────
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
 
@@ -69,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(storedToken);
       api.setToken(storedToken);
     }
-
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
@@ -79,66 +130,92 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (storedToken) {
-      // 已有本地 token，直接标记加载完成
       setIsLoading(false);
       return;
     }
 
-    // ── TG Mini App 静默自动登录 ──────────────────────────────────────────────
-    // 使用 @tma.js/sdk 的 retrieveRawInitData() 直接从 URL 参数读取 initData，
-    // 不依赖 telegram.org CDN 脚本。支持 Telegram Web / 原生 iOS / Android / Mac 客户端。
-    let initDataRaw: string | undefined;
-    try {
-      // 动态导入避免 SSR 报错（@tma.js/sdk 需要 window 对象）
-      const { retrieveRawInitData } = require('@tma.js/sdk') as {
-        retrieveRawInitData: () => string | undefined;
-      };
-      initDataRaw = retrieveRawInitData();
-    } catch {
-      // 非 TG 环境，或 URL 中不含 tgWebAppData，正常显示登录页
-      setIsLoading(false);
-      return;
-    }
+    // ── Step 2: TG Mini App 静默自动登录 ────────────────────────────────────
+    // 方法1：直接从 URL hash/query 读取 tgWebAppData（所有平台通用，无 CDN 依赖）
+    let initDataRaw = getTgInitDataFromUrl();
 
+    // 方法2：CDN 脚本已加载时，从 window.Telegram.WebApp.initData 读取
     if (!initDataRaw) {
-      // SDK 调用成功但无 initData（普通浏览器直接访问应用 URL）
+      initDataRaw =
+        (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData ||
+        undefined;
+    }
+
+    // 不在 Telegram 环境 → 直接显示正常页面
+    if (!initDataRaw && !isTelegramEnv()) {
       setIsLoading(false);
       return;
     }
 
-    // 通知 Telegram 客户端页面已准备好（如果原生 bridge 已注入则生效）
-    try {
-      (window as { Telegram?: { WebApp?: { ready?: () => void } } }).Telegram?.WebApp?.ready?.();
-    } catch {
-      // 忽略（原生 bridge 未注入时正常）
+    // ── Step 3: 已确认在 TG 环境，但 initData 暂不可用 ──────────────────────
+    // 部分原生客户端通过 native bridge 异步注入，最长等待 3 秒
+    const doTgLogin = (data: string) => {
+      // 通知 Telegram 客户端页面已准备好（如果 CDN SDK 已加载）
+      try {
+        (window as { Telegram?: { WebApp?: { ready?: () => void } } }).Telegram?.WebApp?.ready?.();
+      } catch {
+        // 忽略
+      }
+
+      api
+        .post<{ accessToken: string; refreshToken?: string; user: User }>(
+          '/auth/telegram/webapp-login',
+          { initData: data },
+        )
+        .then((response) => {
+          const { accessToken, refreshToken: rt, user: userData } = response.data;
+          setToken(accessToken);
+          setUser(userData);
+          api.setToken(accessToken);
+          localStorage.setItem(TOKEN_KEY, accessToken);
+          localStorage.setItem(USER_KEY, JSON.stringify(userData));
+          if (rt) localStorage.setItem('hoot_refresh_token', rt);
+          setAuthCookie(accessToken);
+        })
+        .catch((err: unknown) => {
+          const errMsg = err instanceof Error ? err.message : '自动登录失败';
+          console.error('[TG Mini App 自动登录失败]', errMsg);
+          setTgAutoLoginError(errMsg);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    };
+
+    if (initDataRaw) {
+      // 已有 initData，直接登录
+      doTgLogin(initDataRaw);
+      return;
     }
 
-    api
-      .post<{ accessToken: string; refreshToken?: string; user: User }>(
-        '/auth/telegram/webapp-login',
-        { initData: initDataRaw },
-      )
-      .then((response) => {
-        const { accessToken, refreshToken: rt, user: userData } = response.data;
-        setToken(accessToken);
-        setUser(userData);
-        api.setToken(accessToken);
-        localStorage.setItem(TOKEN_KEY, accessToken);
-        localStorage.setItem(USER_KEY, JSON.stringify(userData));
-        if (rt) {
-          localStorage.setItem('hoot_refresh_token', rt);
-        }
-        setAuthCookie(accessToken);
-      })
-      .catch((err: unknown) => {
-        // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
-        const errMsg = err instanceof Error ? err.message : '自动登录失败';
-        console.error('[TG Mini App 自动登录失败]', errMsg);
-        setTgAutoLoginError(errMsg);
-      })
-      .finally(() => {
+    // 在 TG 环境但 initData 尚未就绪 → 轮询等待（最长 3 秒）
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30; // 30 × 100ms = 3 秒
+
+    const poll = () => {
+      const data =
+        getTgInitDataFromUrl() ||
+        (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp?.initData;
+
+      if (data) {
+        doTgLogin(data);
+        return;
+      }
+      attempts++;
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(poll, 100);
+      } else {
+        // 3 秒仍无 initData，提示用户手动登录
+        setTgAutoLoginError('Telegram 初始化超时，请关闭后重新打开');
         setIsLoading(false);
-      });
+      }
+    };
+
+    poll();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -157,30 +234,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem(TOKEN_KEY, accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    if (rt) {
-      localStorage.setItem('hoot_refresh_token', rt);
-    }
-    // 同步写入 cookie，供 Next.js Middleware 路由守卫使用
+    if (rt) localStorage.setItem('hoot_refresh_token', rt);
     setAuthCookie(accessToken);
   };
 
   const register = async (email: string, password: string, nickname?: string, inviteCode?: string) => {
     await api.post('/auth/register', { email, password, nickname, inviteCode });
-    // 注册后不自动登录，需要先验证邮箱
   };
 
   const logout = async () => {
-    // 先通知后端撤销所有 refresh token（忽略失败，本地状态照常清除）
     try {
       await api.post('/auth/logout', {});
     } catch {
-      // 即使后端调用失败，也要清除本地状态
+      // 忽略失败
     }
-
     setToken(null);
     setUser(null);
     api.clearAllTokens();
-    // 同步清除 cookie，确保 Next.js Middleware 立即生效
     clearAuthCookie();
   };
 
@@ -196,22 +266,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: User;
     }>('/auth/verify-email', { email, code });
 
-    // 验证成功后自动写入登录态，不再需要手动登录
     const { accessToken, refreshToken: rt, user: userData } = response.data;
     setToken(accessToken);
     setUser(userData);
     api.setToken(accessToken);
     localStorage.setItem(TOKEN_KEY, accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    if (rt) {
-      localStorage.setItem('hoot_refresh_token', rt);
-    }
+    if (rt) localStorage.setItem('hoot_refresh_token', rt);
     setAuthCookie(accessToken);
   };
 
-  /**
-   * TG WebApp 登录：传入 Telegram Mini App initData，后端验签后返回 JWT
-   */
   const telegramWebAppLogin = async (initData: string) => {
     const response = await api.post<{
       accessToken: string;
@@ -226,15 +290,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.setToken(accessToken);
     localStorage.setItem(TOKEN_KEY, accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    if (rt) {
-      localStorage.setItem('hoot_refresh_token', rt);
-    }
+    if (rt) localStorage.setItem('hoot_refresh_token', rt);
     setAuthCookie(accessToken);
   };
 
-  /**
-   * 更新本地用户状态（例如修改昵称后同步到 context + localStorage）
-   */
   const updateUser = (updates: Partial<User>) => {
     setUser((prev) => {
       if (!prev) return prev;
@@ -244,20 +303,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  /**
-   * 钱包登录完成后写入认证状态
-   * 由 useWallet.walletLogin 完成 nonce→签名→后端验证后调用
-   */
   const walletLogin = (accessToken: string, userData: User, refreshToken?: string) => {
     setToken(accessToken);
     setUser(userData);
     api.setToken(accessToken);
     localStorage.setItem(TOKEN_KEY, accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(userData));
-    if (refreshToken) {
-      localStorage.setItem('hoot_refresh_token', refreshToken);
-    }
-    // 同步写入 cookie，供 Next.js Middleware 路由守卫使用
+    if (refreshToken) localStorage.setItem('hoot_refresh_token', refreshToken);
     setAuthCookie(accessToken);
   };
 
