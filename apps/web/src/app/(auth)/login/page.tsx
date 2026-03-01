@@ -42,6 +42,19 @@ export default function LoginPage() {
     }
   }, [mounted, tgAutoLoginError]);
 
+  // [临时诊断] 挂载后显示 TG 环境状态，帮助排查 initData 问题
+  useEffect(() => {
+    if (!mounted) return;
+    const tgWA = (window as { Telegram?: { WebApp?: { initData?: string; version?: string } } }).Telegram?.WebApp;
+    const status = tgWA === undefined
+      ? 'NO_TG (普通浏览器)'
+      : tgWA.initData
+        ? `HAS_INIT_DATA (v${tgWA.version ?? '?'})`
+        : `EMPTY_INIT_DATA (v${tgWA.version ?? '?'})`;
+    toast.info(`[TG Debug] ${status}`, { duration: 8000 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
   const handleLogin = async (email: string, password: string) => {
     try {
       await login(email, password);
