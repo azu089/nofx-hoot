@@ -26,6 +26,7 @@ import { useTheme } from "@/lib/theme";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useCallback } from "react";
 
 // 绑定奖励配置
@@ -46,6 +47,7 @@ interface MobileSettingsPageProps {
   bindingStatus?: BindingStatus
   onBindTelegram?: () => void
   onBindWallet?: () => void
+  onEmailBound?: () => void
 }
 
 export function MobileSettingsPage({
@@ -56,7 +58,8 @@ export function MobileSettingsPage({
     email: { bound: true, address: 'user@example.com', verified: true }
   },
   onBindTelegram,
-  onBindWallet
+  onBindWallet,
+  onEmailBound,
 }: MobileSettingsPageProps) {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = React.useState(false);
   const [isUsernameModalOpen, setIsUsernameModalOpen] = React.useState(false);
@@ -68,6 +71,7 @@ export function MobileSettingsPage({
   const tAuth = useTranslations('auth');
   const tErrors = useTranslations('errors');
   const { user, updateUser, sendVerificationCode, verifyEmail } = useAuth();
+  const queryClient = useQueryClient();
 
   // 从 i18n 配置获取语言列表
   const languages = locales.map(code => ({
@@ -161,6 +165,7 @@ export function MobileSettingsPage({
       await verifyEmail(emailBindEmail, emailBindCode);
       toast.success(t('bindSuccess'));
       setIsEmailBindModalOpen(false);
+      onEmailBound?.();
     } catch (err) {
       toast.error(translateError(err instanceof Error ? err.message : tErrors('verifyFailed')));
     } finally {
@@ -212,6 +217,8 @@ export function MobileSettingsPage({
       await api.patch('/auth/profile', { nickname: trimmed });
       // 同步更新 auth context + localStorage
       updateUser({ nickname: trimmed });
+      // 刷新"我的"页面缓存
+      queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
       toast.success('用户名已保存');
       setIsUsernameModalOpen(false);
       setNewUsername("");

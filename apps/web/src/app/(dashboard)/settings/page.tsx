@@ -122,6 +122,7 @@ export default function SettingsPage() {
           bindingStatus={mergedBindingStatus}
           onBindTelegram={handleBindTelegram}
           onBindWallet={handleBindWallet}
+          onEmailBound={() => fetchProfile().catch(() => {})}
         />
       </div>
 
