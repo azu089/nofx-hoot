@@ -29,6 +29,8 @@ interface AuthContextType {
   walletLogin: (accessToken: string, user: User, refreshToken?: string) => void;
   /** TG WebApp 登录：用 Telegram Mini App 的 initData 直接登录/注册 */
   telegramWebAppLogin: (initData: string) => Promise<void>;
+  /** 更新本地用户状态（保存资料后刷新 context + localStorage） */
+  updateUser: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,10 +86,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // TG Mini App 静默自动登录
     type TgWebApp = { initData?: string; ready?: () => void };
-    const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 
-    // 通知 Telegram 客户端页面已准备好（部分 Telegram 版本在此之后才完成 initData 注入）
-    tgWebApp?.ready?.();
+    // 判断是否在 Telegram 环境：URL hash 或 search 中含有 tgWebAppData（Telegram Web 特征）
+    const hasTgWebAppData =
+      window.location.hash.includes('tgWebAppData') ||
+      window.location.search.includes('tgWebAppData');
+    const inTgNative = !!(window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
+
+    if (!hasTgWebAppData && !inTgNative) {
+      // 普通浏览器，直接显示登录页
+      setIsLoading(false);
+      return;
+    }
 
     const doTgLogin = () => {
       const initData = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
@@ -95,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         return;
       }
+      // 通知 Telegram 客户端页面已准备好
+      (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.ready?.();
       api
         .post<{ accessToken: string; refreshToken?: string; user: User }>(
           '/auth/telegram/webapp-login',
@@ -123,21 +135,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
     };
 
-    if (tgWebApp?.initData) {
-      // initData 已就绪，直接登录
-      doTgLogin();
-      return;
-    }
+    // 轮询等待 window.Telegram.WebApp 可用（Telegram Web 需等待 telegram-web-app.js 脚本加载）
+    // 最长等待 3 秒（每 100ms 检测一次，共 30 次）
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30;
 
-    if (tgWebApp !== undefined) {
-      // 在 Telegram 环境内但 initData 暂时为空（Telegram Desktop 偶发延迟注入）
-      // 等待 150ms 再尝试一次
-      setTimeout(doTgLogin, 150);
-      return;
-    }
+    const waitForTgSdk = () => {
+      const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 
-    // 不在 Telegram 环境内
-    setIsLoading(false);
+      if (tgWebApp?.initData) {
+        // SDK 已加载且 initData 就绪，直接登录
+        doTgLogin();
+        return;
+      }
+
+      if (tgWebApp !== undefined) {
+        // SDK 已加载但 initData 暂时为空（原生 TG 可能延迟注入）
+        // 继续等待一轮，超出则放弃
+        attempts++;
+        if (attempts < MAX_ATTEMPTS) {
+          setTimeout(waitForTgSdk, 100);
+        } else {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // SDK 尚未加载（Telegram Web 场景）
+      attempts++;
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(waitForTgSdk, 100);
+      } else {
+        // 超时：认为不在 TG 环境
+        setIsLoading(false);
+      }
+    };
+
+    waitForTgSdk();
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -188,7 +222,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyEmail = async (email: string, code: string) => {
-    await api.post('/auth/verify-email', { email, code });
+    const response = await api.post<{
+      message: string;
+      accessToken: string;
+      refreshToken: string;
+      user: User;
+    }>('/auth/verify-email', { email, code });
+
+    // 验证成功后自动写入登录态，不再需要手动登录
+    const { accessToken, refreshToken: rt, user: userData } = response.data;
+    setToken(accessToken);
+    setUser(userData);
+    api.setToken(accessToken);
+    localStorage.setItem(TOKEN_KEY, accessToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(userData));
+    if (rt) {
+      localStorage.setItem('hoot_refresh_token', rt);
+    }
+    setAuthCookie(accessToken);
   };
 
   /**
@@ -212,6 +263,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('hoot_refresh_token', rt);
     }
     setAuthCookie(accessToken);
+  };
+
+  /**
+   * 更新本地用户状态（例如修改昵称后同步到 context + localStorage）
+   */
+  const updateUser = (updates: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   /**
@@ -246,6 +309,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verifyEmail,
         walletLogin,
         telegramWebAppLogin,
+        updateUser,
       }}
     >
       {children}
