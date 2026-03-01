@@ -38,9 +38,9 @@ interface MembershipStatus {
 }
 
 interface WalletBalance {
-  usdtBalance: string;
-  hootBalance: string;
-  pointBalance: string;
+  usdt: string;
+  hoot: string;
+  point: string;
 }
 
 export default function SubscriptionPageRoute() {
@@ -119,7 +119,7 @@ export default function SubscriptionPageRoute() {
           currentPeriodEnd={currentPeriodEnd}
           isMember={membershipStatus?.isMember || false}
           daysRemaining={membershipStatus?.currentPlan?.daysRemaining}
-          usdtBalance={walletBalance?.usdtBalance}
+          usdtBalance={walletBalance?.usdt}
           tier={membershipStatus?.tier || 'free'}
           gasFeeRate={membershipStatus?.gasFeeRate || '0.25'}
           maxStrategies={membershipStatus?.maxStrategies || 2}
@@ -137,7 +137,7 @@ export default function SubscriptionPageRoute() {
           currentPeriodEnd={currentPeriodEnd}
           isMember={membershipStatus?.isMember || false}
           daysRemaining={membershipStatus?.currentPlan?.daysRemaining}
-          usdtBalance={walletBalance?.usdtBalance}
+          usdtBalance={walletBalance?.usdt}
           tier={membershipStatus?.tier || 'free'}
           gasFeeRate={membershipStatus?.gasFeeRate || '0.25'}
           maxStrategies={membershipStatus?.maxStrategies || 2}

@@ -81,7 +81,7 @@ export function WalletPageV3({
   const { data: balanceData } = useQuery({
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
-      const response = await api.get<{ usdtBalance: string; hootBalance: string; pointBalance: string }>('/wallet/balance')
+      const response = await api.get<{ usdt: string; hoot: string; point: string }>('/wallet/balance')
       return response.data
     },
     enabled: isAuthenticated,
@@ -129,7 +129,7 @@ export function WalletPageV3({
     const result: Asset[] = []
 
     // USDT - 始终显示
-    const usdtBalance = parseFloat(balanceData?.usdtBalance || '0')
+    const usdtBalance = parseFloat(balanceData?.usdt || '0')
     result.push({
       id: 'usdt',
       name: 'USDT',
@@ -140,7 +140,7 @@ export function WalletPageV3({
     })
 
     // HOOT（可用）= 总额 - 锁定，涵盖所有来源（兑换/充值/已释放空投）
-    const hootBalance = parseFloat(balanceData?.hootBalance || '0')
+    const hootBalance = parseFloat(balanceData?.hoot || '0')
     const lockedHoot = parseFloat(airdropData?.lockedBalance || '0')
     const usableHoot = Math.max(0, hootBalance - lockedHoot)
 
@@ -168,7 +168,7 @@ export function WalletPageV3({
     })
 
     // 点卡 - 始终显示
-    const pointBalance = parseFloat(balanceData?.pointBalance || '0')
+    const pointBalance = parseFloat(balanceData?.point || '0')
     result.push({
       id: 'point',
       name: '点卡',

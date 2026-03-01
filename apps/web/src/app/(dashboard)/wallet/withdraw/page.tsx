@@ -18,9 +18,9 @@ export default function WithdrawPage() {
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
       const response = await api.get<{
-        usdtBalance: string;
-        hootBalance: string;
-        pointBalance: string;
+        usdt: string;
+        hoot: string;
+        point: string;
       }>('/wallet/balance');
       return response.data;
     },
@@ -97,7 +97,7 @@ export default function WithdrawPage() {
     router.push('/wallet');
   };
 
-  const usdtBalance = parseFloat(balance?.usdtBalance || '0');
+  const usdtBalance = parseFloat(balance?.usdt || '0');
 
   return (
     <>

@@ -52,9 +52,9 @@ export default function DepositPage() {
     queryKey: ['wallet', 'balance'],
     queryFn: async () => {
       const response = await api.get<{
-        usdtBalance: string;
-        hootBalance: string;
-        pointBalance: string;
+        usdt: string;
+        hoot: string;
+        point: string;
       }>('/wallet/balance');
       return response.data;
     },
@@ -117,7 +117,7 @@ export default function DepositPage() {
     status: (d.status === 'confirmed' ? 'completed' : d.status === 'pending' ? 'pending' : 'failed') as 'completed' | 'pending' | 'failed',
   })) || [];
 
-  const balance = parseFloat(walletBalance?.usdtBalance || '0');
+  const balance = parseFloat(walletBalance?.usdt || '0');
 
   return (
     <>
