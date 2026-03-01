@@ -79,18 +79,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // TG Mini App 静默自动登录：
-    // 若无本地 token 且在 TG Mini App 环境中（initData 存在），自动完成登录
-    // 这是行业标准做法，类似微信小程序静默登录，无需用户点击登录按钮
-    const tgWebApp = (
-      window as { Telegram?: { WebApp?: { initData?: string } } }
-    ).Telegram?.WebApp;
+    // TG Mini App 静默自动登录
+    type TgWebApp = { initData?: string; ready?: () => void };
+    const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
 
-    if (tgWebApp?.initData) {
+    // 通知 Telegram 客户端页面已准备好（部分 Telegram 版本在此之后才完成 initData 注入）
+    tgWebApp?.ready?.();
+
+    const doTgLogin = () => {
+      const initData = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
+      if (!initData) {
+        setIsLoading(false);
+        return;
+      }
       api
         .post<{ accessToken: string; refreshToken?: string; user: User }>(
           '/auth/telegram/webapp-login',
-          { initData: tgWebApp.initData },
+          { initData },
         )
         .then((response) => {
           const { accessToken, refreshToken: rt, user: userData } = response.data;
@@ -105,15 +110,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthCookie(accessToken);
         })
         .catch(() => {
-          // 静默失败：initData 无效或过期，降级显示正常登录页面，不报错
+          // 静默失败：initData 无效或过期，降级显示正常登录页面
         })
         .finally(() => {
           setIsLoading(false);
         });
-      return; // 异步处理，由 finally 负责 setIsLoading(false)
+    };
+
+    if (tgWebApp?.initData) {
+      // initData 已就绪，直接登录
+      doTgLogin();
+      return;
     }
 
-    // 标记加载完成
+    if (tgWebApp !== undefined) {
+      // 在 Telegram 环境内但 initData 暂时为空（Telegram Desktop 偶发延迟注入）
+      // 等待 150ms 再尝试一次
+      setTimeout(doTgLogin, 150);
+      return;
+    }
+
+    // 不在 Telegram 环境内
     setIsLoading(false);
   }, []);
 

@@ -776,11 +776,11 @@ export class AuthService implements OnModuleDestroy {
       throw new UnauthorizedException('initData 签名验证失败');
     }
 
-    // 检查 auth_date 时效（5 分钟内有效）
+    // 检查 auth_date 时效（1 小时内有效）
     const authDate = parseInt(params.get('auth_date') || '0', 10);
     const now = Math.floor(Date.now() / 1000);
-    if (now - authDate > 300) {
-      throw new UnauthorizedException('initData 已过期');
+    if (now - authDate > 3600) {
+      throw new UnauthorizedException('initData 已过期，请重新打开应用');
     }
 
     // 解析用户信息
