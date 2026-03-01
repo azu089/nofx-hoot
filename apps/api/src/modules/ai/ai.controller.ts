@@ -462,13 +462,17 @@ export class AiController {
       throw new BadRequestException('最多同时运行 3 个研究任务，请等待现有任务完成');
     }
 
-    // 获取用户 AI 配置
-    const aiConfig = await this.prisma.aiConfig.findUnique({
+    // 获取或自动初始化 AI 配置（新用户自动启用，被管理员禁用则拒绝）
+    let aiConfig = await this.prisma.aiConfig.findUnique({
       where: { userId },
     });
 
-    if (!aiConfig || !aiConfig.isEnabled) {
-      throw new BadRequestException('请先启用 AI 模块并配置 LLM API Keys');
+    if (!aiConfig) {
+      aiConfig = await this.prisma.aiConfig.create({
+        data: { userId, isEnabled: true },
+      });
+    } else if (!aiConfig.isEnabled) {
+      throw new BadRequestException('AI 模块已被禁用，请联系客服');
     }
 
     // 双轨制 Key 解析：先解密用户自备 Key，再回退平台默认
@@ -1470,13 +1474,21 @@ export class AiController {
   async startStrategy(@Param('id') id: string, @CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
-    // 验证用户有 AI 配置和 API Key
-    const aiConfig = await this.prisma.aiConfig.findUnique({
+    // 获取或自动初始化 AI 配置
+    // 新用户没有 aiConfig 记录时，自动创建并启用（用户主动启动策略即表示同意使用 AI）
+    // 若管理员已明确将 isEnabled 设为 false，则拒绝（不覆盖管理员操作）
+    let aiConfig = await this.prisma.aiConfig.findUnique({
       where: { userId },
     });
 
-    if (!aiConfig || !aiConfig.isEnabled) {
-      throw new BadRequestException('请先启用 AI 模块');
+    if (!aiConfig) {
+      // 新用户：自动创建配置，isEnabled=true
+      aiConfig = await this.prisma.aiConfig.create({
+        data: { userId, isEnabled: true },
+      });
+    } else if (!aiConfig.isEnabled) {
+      // 管理员已禁用该账号的 AI 模块
+      throw new BadRequestException('AI 模块已被禁用，请联系客服');
     }
 
     // 双轨制 Key 检查
