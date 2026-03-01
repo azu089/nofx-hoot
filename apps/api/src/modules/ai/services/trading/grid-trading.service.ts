@@ -202,6 +202,7 @@ type ExchangeErrorCategory =
   | '网络问题'   // fetch failed / timeout / ECONNREFUSED
   | 'API限流'   // -1003 / 429 / too many requests
   | '风控限制'   // -2019 保证金不足 / -4161 杠杆限制 / -2018 资金不足
+  | '数量不足'   // -4164 min notional / -4003 qty too small / -1111 precision
   | '认证失败'   // Invalid API key / signature error
   | '交易所拒绝'; // 其他交易所错误
 
@@ -232,15 +233,21 @@ function classifyExchangeError(e: any): ExchangeErrorCategory {
     msg.includes('429')
   ) return 'API限流';
 
+  // 数量/精度不足（必须在风控前检测，避免被 insufficient 误归类）
+  if (
+    msg.includes('-4164') || msg.includes('min notional') ||
+    msg.includes('-4003') || msg.includes('quantity less') ||
+    msg.includes('-1111') || msg.includes('precision is over the maximum') ||
+    msg.includes('lot_size') || msg.includes('lot size') ||
+    msg.includes('filter failure') && msg.includes('lot')
+  ) return '数量不足';
+
   // 风控/保证金/仓位限制
   if (
     msg.includes('-2019') || msg.includes('margin is insufficient') ||
     msg.includes('-4161') || msg.includes('leverage reduction is not supported') ||
     msg.includes('-2018') || msg.includes('insufficient') ||
-    msg.includes('-4003') || msg.includes('quantity less') ||
-    msg.includes('-4164') || msg.includes('min notional') ||
-    msg.includes('-1111') || msg.includes('precision') ||
-    msg.includes('position') && msg.includes('side') ||
+    (msg.includes('position') && msg.includes('side')) ||
     msg.includes('maximum')
   ) return '风控限制';
 
@@ -1003,23 +1010,32 @@ export class GridTradingService {
           );
         }
 
-        // 空转时额外写一条前端可见的空转日志（用户能看到原因）
+        // 写一条前端可见的日志（空转 or 执行失败）
         if (noneExecuted) {
-          // 汇总错误类别（去重），帮助用户快速定位原因
+          // 汇总错误类别（去重）
           const failedErrors = execResults.filter(r => !r.success && r.error).map(r => r.error!);
           const uniqueCategories = [...new Set(failedErrors.map(e => e.match(/^\[([^\]]+)\]/)?.[1] ?? '交易所拒绝'))];
           const reasonSuffix = uniqueCategories.length > 0
             ? ` | 失败原因: ${uniqueCategories.join('、')}`
             : '';
+
+          // 区分：有真实交易所错误 = 执行失败；全部是内部拦截（skipped）= 空转
+          const hasExchangeErrors = failedErrors.length > 0;
+          const logAction = hasExchangeErrors ? 'grid_exec_failed' : 'grid_idle';
+          const logTitle = hasExchangeErrors
+            ? `执行失败: AI 建议 ${placeActions.length} 笔下单，全部被交易所拒绝`
+            : `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功`;
+          const summaryPrefix = hasExchangeErrors ? '执行失败' : '空转';
+
           await this.prisma.aiStrategyLog.create({
             data: {
               strategyId,
               symbol: state.symbol,
               decision: {
-                action: 'grid_idle',
-                reasoning: `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功` +
+                action: logAction,
+                reasoning: logTitle +
                   ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)${reasonSuffix}`,
-                gridSummary: `空转/${placeActions.length}笔未执行${reasonSuffix}`,
+                gridSummary: `${summaryPrefix}/${placeActions.length}笔未执行${reasonSuffix}`,
                 gridSnapshot: {
                   regime: state.currentRegime,
                   effectiveLeverage: state.effectiveLeverage,
@@ -2621,6 +2637,10 @@ export class GridTradingService {
   /** 检测 gridConfig 关键参数是否与运行中的 state 不一致，返回变更描述 or null */
   private detectGridConfigChange(state: GridState, config: GridConfig): string | null {
     const diffs: string[] = [];
+    // 交易对变更 — 必须首位检测，symbol 改变整个网格必须重建
+    if (config.symbol && config.symbol !== state.symbol) {
+      diffs.push(`交易对 ${state.symbol}→${config.symbol}`);
+    }
     if (config.gridCount && config.gridCount !== state.gridLines.length) {
       diffs.push(`层数 ${state.gridLines.length}→${config.gridCount}`);
     }
