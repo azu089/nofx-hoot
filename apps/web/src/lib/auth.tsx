@@ -18,6 +18,8 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /** TG Mini App 自动登录失败的错误信息（非空时可在 UI 上展示） */
+  tgAutoLoginError: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, nickname?: string, inviteCode?: string) => Promise<void>;
   logout: () => Promise<void> | void;
@@ -53,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [tgAutoLoginError, setTgAutoLoginError] = useState<string | null>(null);
 
   // 在客户端挂载后从 localStorage 读取认证状态，或在 TG Mini App 环境中静默自动登录
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
@@ -109,8 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           setAuthCookie(accessToken);
         })
-        .catch(() => {
-          // 静默失败：initData 无效或过期，降级显示正常登录页面
+        .catch((err: unknown) => {
+          // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
+          const errMsg = err instanceof Error ? err.message : '自动登录失败';
+          console.error('[TG Mini App 自动登录失败]', errMsg);
+          setTgAutoLoginError(errMsg);
         })
         .finally(() => {
           setIsLoading(false);
@@ -232,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         isLoading,
         isAuthenticated: !!token,
+        tgAutoLoginError,
         login,
         register,
         logout,

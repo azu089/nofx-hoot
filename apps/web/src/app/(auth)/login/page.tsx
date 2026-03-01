@@ -13,7 +13,7 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, walletLogin, telegramWebAppLogin, isAuthenticated, isLoading } = useAuth();
+  const { login, walletLogin, telegramWebAppLogin, isAuthenticated, isLoading, tgAutoLoginError } = useAuth();
   const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -34,6 +34,13 @@ export default function LoginPage() {
       router.push('/dashboard');
     }
   }, [mounted, isLoading, isAuthenticated, router]);
+
+  // TG Mini App 自动登录失败时显示错误提示
+  useEffect(() => {
+    if (mounted && tgAutoLoginError) {
+      toast.error(`Telegram 登录失败: ${tgAutoLoginError}`);
+    }
+  }, [mounted, tgAutoLoginError]);
 
   const handleLogin = async (email: string, password: string) => {
     try {

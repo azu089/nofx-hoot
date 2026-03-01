@@ -347,11 +347,10 @@ bot.command('start', async (ctx) => {
 
     const nickname = result.user.nickname || username || (lang === 'zh' ? '用户' : 'User');
 
-    // 如果是来自 Web App 登录跳转，优先发送携带 token 的「进入 App」按钮
+    // 如果是来自 Web App 登录跳转，发送 webApp 按钮打开 Mini App（确保 initData 注入自动登录）
     if (isWebLoginFlow) {
-      const callbackUrl = `${WEB_APP_URL}/auth/callback?token=${result.accessToken}`;
       const enterAppKeyboard = new InlineKeyboard()
-        .url(lang === 'zh' ? '🚀 进入 HOOT App' : '🚀 Enter HOOT App', callbackUrl);
+        .webApp(lang === 'zh' ? '🚀 打开 HOOT App' : '🚀 Open HOOT App', WEB_APP_URL + '/login');
 
       const loginSuccessMsg = result.isNewUser
         ? (lang === 'zh'
@@ -1465,12 +1464,12 @@ async function setupBotMenu() {
       { command: 'help', description: 'Help / 帮助' },
     ]);
 
-    // 设置左下角菜单按钮为 WebApp
+    // 设置左下角菜单按钮为 WebApp（直接打开登录/Dashboard 页面，确保 initData 注入）
     await bot.api.setChatMenuButton({
       menu_button: {
         type: 'web_app',
         text: '🦉 HOOT',
-        web_app: { url: WEB_APP_URL },
+        web_app: { url: WEB_APP_URL + '/login' },
       },
     });
 
