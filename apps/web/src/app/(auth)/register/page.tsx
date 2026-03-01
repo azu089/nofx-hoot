@@ -77,8 +77,9 @@ export default function RegisterPage() {
   };
 
   const handleTelegramLogin = async () => {
-    // 在 TG Mini App 内时，直接用 initData 完成登录/注册
     const tgWebApp = (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp;
+
+    // 情况1：在 TG Mini App 内（initData 已注入）→ 直接静默登录/注册
     if (tgWebApp?.initData) {
       try {
         await telegramWebAppLogin(tgWebApp.initData);
@@ -88,10 +89,16 @@ export default function RegisterPage() {
       }
       return;
     }
-    // 普通浏览器降级：引导去 TG Bot 触发登录
-    // 使用 location.href 而非 window.open，避免移动端弹窗拦截器静默阻止
+
+    // 情况2：在 Telegram 内但 initData 为空（Mini App 未正确启动）
+    if (tgWebApp !== undefined) {
+      toast.error('请关闭后重新从 Telegram Bot 菜单中打开应用');
+      return;
+    }
+
+    // 情况3：普通浏览器 → 跳转到 Mini App 链接（而非 Bot 起始页）
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
-    window.location.href = `https://t.me/${botUsername}?start=register`;
+    window.location.href = `https://t.me/${botUsername}/app`;
   };
 
   // 服务端和客户端首次渲染保持一致（都显示 loading）
