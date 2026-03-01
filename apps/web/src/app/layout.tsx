@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
-import { TelegramScript } from "@/components/telegram-script";
+import { cookies } from "next/headers";
+import { isRtlLocale } from "@/i18n/config";
 
 
 export const metadata: Metadata = {
@@ -19,19 +20,20 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const locale = cookieStore.get("NEXT_LOCALE")?.value || "zh-CN";
+  const dir = isRtlLocale(locale) ? "rtl" : "ltr";
   return (
-    <html lang="zh-CN" className="dark" suppressHydrationWarning>
+    <html lang={locale} dir={dir} className="dark" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <meta name="google" content="notranslate" />
         <meta name="theme-color" content="#06B6D4" />
-        {/* Telegram WebApp SDK — 仅在 TG Mini App 环境中条件加载 */}
-        <TelegramScript />
       </head>
       <body
         className="font-sans antialiased bg-[#0A0A0F] text-[#F8F8FC]"

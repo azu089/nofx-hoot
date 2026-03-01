@@ -85,82 +85,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // ── TG Mini App 静默自动登录 ──────────────────────────────────────────────
-    // telegram-web-app.js 使用 beforeInteractive 加载，此处 window.Telegram.WebApp 已存在。
-    // 但原生客户端（Mac / iOS / Android）通过 native bridge 异步注入 initData，
-    // 需要轮询等待，最长 3 秒（每 100ms × 30 次）。
-    type TgWebApp = { initData?: string; ready?: () => void };
-
-    const tgWebApp = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp;
-
-    if (tgWebApp === undefined) {
-      // Telegram SDK 未加载（极少数情况，beforeInteractive 失败），直接显示登录页
+    // 使用 @tma.js/sdk 的 retrieveRawInitData() 直接从 URL 参数读取 initData，
+    // 不依赖 telegram.org CDN 脚本。支持 Telegram Web / 原生 iOS / Android / Mac 客户端。
+    let initDataRaw: string | undefined;
+    try {
+      // 动态导入避免 SSR 报错（@tma.js/sdk 需要 window 对象）
+      const { retrieveRawInitData } = require('@tma.js/sdk') as {
+        retrieveRawInitData: () => string | undefined;
+      };
+      initDataRaw = retrieveRawInitData();
+    } catch {
+      // 非 TG 环境，或 URL 中不含 tgWebAppData，正常显示登录页
       setIsLoading(false);
       return;
     }
 
-    // SDK 已加载（在 Telegram 环境中），等待 initData 就绪
-    const doTgLogin = () => {
-      const initData = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
-      if (!initData) {
-        setIsLoading(false);
-        return;
-      }
-      // 通知 Telegram 客户端页面已准备好
-      (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.ready?.();
-      api
-        .post<{ accessToken: string; refreshToken?: string; user: User }>(
-          '/auth/telegram/webapp-login',
-          { initData },
-        )
-        .then((response) => {
-          const { accessToken, refreshToken: rt, user: userData } = response.data;
-          setToken(accessToken);
-          setUser(userData);
-          api.setToken(accessToken);
-          localStorage.setItem(TOKEN_KEY, accessToken);
-          localStorage.setItem(USER_KEY, JSON.stringify(userData));
-          if (rt) {
-            localStorage.setItem('hoot_refresh_token', rt);
-          }
-          setAuthCookie(accessToken);
-        })
-        .catch((err: unknown) => {
-          // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
-          const errMsg = err instanceof Error ? err.message : '自动登录失败';
-          console.error('[TG Mini App 自动登录失败]', errMsg);
-          setTgAutoLoginError(errMsg);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    };
-
-    // initData 已立即就绪（Telegram Web 场景，从 URL hash 解析）
-    if (tgWebApp.initData) {
-      doTgLogin();
+    if (!initDataRaw) {
+      // SDK 调用成功但无 initData（普通浏览器直接访问应用 URL）
+      setIsLoading(false);
       return;
     }
 
-    // initData 尚未就绪（原生 App native bridge 异步注入），轮询等待
-    let attempts = 0;
-    const MAX_ATTEMPTS = 30; // 30 × 100ms = 3 秒
+    // 通知 Telegram 客户端页面已准备好（如果原生 bridge 已注入则生效）
+    try {
+      (window as { Telegram?: { WebApp?: { ready?: () => void } } }).Telegram?.WebApp?.ready?.();
+    } catch {
+      // 忽略（原生 bridge 未注入时正常）
+    }
 
-    const pollForInitData = () => {
-      const data = (window as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp?.initData;
-      if (data) {
-        doTgLogin();
-        return;
-      }
-      attempts++;
-      if (attempts < MAX_ATTEMPTS) {
-        setTimeout(pollForInitData, 100);
-      } else {
-        // 3 秒仍无 initData，认为不在正式 Mini App 上下文（如测试/开发链接）
+    api
+      .post<{ accessToken: string; refreshToken?: string; user: User }>(
+        '/auth/telegram/webapp-login',
+        { initData: initDataRaw },
+      )
+      .then((response) => {
+        const { accessToken, refreshToken: rt, user: userData } = response.data;
+        setToken(accessToken);
+        setUser(userData);
+        api.setToken(accessToken);
+        localStorage.setItem(TOKEN_KEY, accessToken);
+        localStorage.setItem(USER_KEY, JSON.stringify(userData));
+        if (rt) {
+          localStorage.setItem('hoot_refresh_token', rt);
+        }
+        setAuthCookie(accessToken);
+      })
+      .catch((err: unknown) => {
+        // initData 无效或过期，降级显示正常登录页面，并暴露错误信息方便调试
+        const errMsg = err instanceof Error ? err.message : '自动登录失败';
+        console.error('[TG Mini App 自动登录失败]', errMsg);
+        setTgAutoLoginError(errMsg);
+      })
+      .finally(() => {
         setIsLoading(false);
-      }
-    };
-
-    pollForInitData();
+      });
   }, []);
 
   const login = async (email: string, password: string) => {
