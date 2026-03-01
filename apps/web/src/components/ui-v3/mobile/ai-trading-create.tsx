@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { ArrowLeft, Check, ChevronDown } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCreateStrategy, useStrategyControl, useStartResearch } from '@/hooks/useAi'
@@ -585,15 +586,22 @@ export function CreateStrategyWizard() {
                   <div className="flex items-center -space-x-2">
                     {debateModels.slice(0, 4).map((id) => {
                       const m = MODEL_DISPLAY[id]
-                      return (
+                      return m?.logo ? (
+                        <Image
+                          key={id}
+                          src={m.logo}
+                          alt={m.name}
+                          width={24}
+                          height={24}
+                          className="w-6 h-6 rounded-full border-2 border-[#12121A] object-cover"
+                          title={m.name}
+                        />
+                      ) : (
                         <div
                           key={id}
-                          className="w-6 h-6 rounded-full border-2 border-[#12121A] flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
-                          style={{ backgroundColor: m?.color || '#1E1E2E' }}
+                          className="w-6 h-6 rounded-full border-2 border-[#12121A] bg-[#1E1E2E]"
                           title={m?.name}
-                        >
-                          {(m?.name || id).charAt(0).toUpperCase()}
-                        </div>
+                        />
                       )
                     })}
                   </div>
@@ -621,12 +629,13 @@ export function CreateStrategyWizard() {
                         <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
                           {sel && <Check className="w-3 h-3 text-white" />}
                         </div>
-                        <div
-                          className="w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                          style={{ backgroundColor: info.color }}
-                        >
-                          {info.name.charAt(0).toUpperCase()}
-                        </div>
+                        <Image
+                          src={info.logo}
+                          alt={info.name}
+                          width={22}
+                          height={22}
+                          className="w-5.5 h-5.5 rounded-lg object-cover flex-shrink-0"
+                        />
                         <div className="flex-1 text-left min-w-0">
                           <span className="text-sm text-[#F8F8FC]">{info.name}</span>
                           <span className="text-xs text-[#606070] ml-2">{info.provider}</span>
@@ -648,12 +657,17 @@ export function CreateStrategyWizard() {
                 title="选择模型"
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: selectedModelInfo?.color || '#1E1E2E' }}
-                  >
-                    {(selectedModelInfo?.name || selectedModel).charAt(0).toUpperCase()}
-                  </div>
+                  {selectedModelInfo?.logo ? (
+                    <Image
+                      src={selectedModelInfo.logo}
+                      alt={selectedModelInfo.name}
+                      width={24}
+                      height={24}
+                      className="w-6 h-6 rounded-lg object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-lg bg-[#1E1E2E] flex-shrink-0" />
+                  )}
                   <span className="text-sm text-[#F8F8FC]">
                     {selectedModelInfo?.name || selectedModel}
                   </span>
@@ -676,12 +690,13 @@ export function CreateStrategyWizard() {
                         aria-label={info.name}
                         title={info.name}
                       >
-                        <div
-                          className="w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                          style={{ backgroundColor: info.color }}
-                        >
-                          {info.name.charAt(0).toUpperCase()}
-                        </div>
+                        <Image
+                          src={info.logo}
+                          alt={info.name}
+                          width={22}
+                          height={22}
+                          className="w-5.5 h-5.5 rounded-lg object-cover flex-shrink-0"
+                        />
                         <div className="flex-1 text-left min-w-0">
                           <span className="text-sm text-[#F8F8FC]">{info.name}</span>
                           <span className="text-xs text-[#606070] ml-2">{info.provider}</span>

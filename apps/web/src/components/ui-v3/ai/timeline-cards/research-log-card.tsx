@@ -336,10 +336,13 @@ export function ResearchLogCard({ entry }: ResearchLogCardProps) {
                 const info = MODEL_DISPLAY[modelId];
                 const name = info?.name || modelId;
                 const color = info?.color || '#9090A0';
-                return (
+                return info?.logo ? (
+                  <img key={i} src={info.logo} alt={name} title={name}
+                    className="w-5 h-5 rounded-full border border-[#12121A]" />
+                ) : (
                   <span key={i}
-                    className="w-5 h-5 rounded-full border border-[#12121A] flex items-center justify-center text-[8px] font-bold text-white"
-                    style={{ backgroundColor: color }} title={name}>
+                    className="w-5 h-5 rounded-full bg-[#1E1E2E] border border-[#12121A] flex items-center justify-center text-[8px] font-bold"
+                    style={{ color }} title={name}>
                     {name.charAt(0).toUpperCase()}
                   </span>
                 );
@@ -634,10 +637,13 @@ function StageAccordion({
                 const info = MODEL_DISPLAY[modelId];
                 const name = info?.name || modelId;
                 const color = info?.color || '#9090A0';
-                return (
+                return info?.logo ? (
+                  <img key={i} src={info.logo} alt={name} title={name}
+                    className="w-4 h-4 rounded-full border border-[#12121A]" />
+                ) : (
                   <span key={i}
-                    className="w-4 h-4 rounded-full border border-[#12121A] flex items-center justify-center text-[7px] font-bold text-white"
-                    style={{ backgroundColor: color }} title={name}>
+                    className="w-4 h-4 rounded-full bg-[#1E1E2E] border border-[#12121A] flex items-center justify-center text-[7px] font-bold"
+                    style={{ color }} title={name}>
                     {name.charAt(0).toUpperCase()}
                   </span>
                 );
@@ -671,10 +677,15 @@ function StageAccordion({
                   const color = info?.color || '#9090A0';
                   return (
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
-                        style={{ backgroundColor: color }}>
-                        {name.charAt(0).toUpperCase()}
-                      </span>
+                      {info?.logo ? (
+                        <img src={info.logo} alt={name} title={name}
+                          className="w-4 h-4 rounded-full flex-shrink-0" />
+                      ) : (
+                        <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+                          style={{ color }}>
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
                       <span className="text-[10px]" style={{ color }}>{name}</span>
                     </div>
                   );

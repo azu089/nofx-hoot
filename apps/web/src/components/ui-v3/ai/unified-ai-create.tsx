@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import {
   ArrowLeft,
   ChevronDown,
@@ -1085,12 +1086,11 @@ export function UnifiedAiCreate() {
                 aria-label={t('create.selectModel')} title={t('create.selectModel')}
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: MODEL_DISPLAY[selectedModel]?.color ?? '#64748B' }}
-                  >
-                    {(MODEL_DISPLAY[selectedModel]?.name ?? selectedModel).charAt(0).toUpperCase()}
-                  </div>
+                  {MODEL_DISPLAY[selectedModel]?.logo ? (
+                    <Image src={MODEL_DISPLAY[selectedModel].logo} alt={MODEL_DISPLAY[selectedModel].name} width={28} height={28} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: MODEL_DISPLAY[selectedModel]?.color ?? '#64748B' }} />
+                  )}
                   <div>
                     <div className="text-sm font-medium text-[#F8F8FC]">{MODEL_DISPLAY[selectedModel]?.name ?? selectedModel}</div>
                     <div className="text-xs text-[#606070]">{MODEL_DISPLAY[selectedModel]?.provider ?? ''}</div>
@@ -1111,12 +1111,11 @@ export function UnifiedAiCreate() {
                           sel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'
                         }`}
                       >
-                        <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                          style={{ backgroundColor: info.color }}
-                        >
-                          {info.name.charAt(0).toUpperCase()}
-                        </div>
+                        {info.logo ? (
+                          <Image src={info.logo} alt={info.name} width={28} height={28} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-lg flex-shrink-0" style={{ backgroundColor: info.color }} />
+                        )}
                         <div className="flex-1 text-left">
                           <div className={`text-sm font-medium ${sel ? 'text-[#06B6D4]' : 'text-[#F8F8FC]'}`}>{info.name}</div>
                           <div className="text-xs text-[#606070]">{info.provider}</div>
@@ -1144,13 +1143,11 @@ export function UnifiedAiCreate() {
                 <div className="flex items-center -space-x-2">
                   {debateModels.map((id) => {
                     const m = MODEL_DISPLAY[id];
-                    return (
-                      <div key={id}
-                        className="w-7 h-7 rounded-full border-2 border-[#12121A] flex items-center justify-center text-[10px] font-bold text-white"
-                        style={{ backgroundColor: m?.color || '#1E1E2E' }} title={m?.name}>
-                        {(m?.name || id).charAt(0).toUpperCase()}
-                      </div>
-                    );
+                    return m?.logo
+                      ? <Image key={id} src={m.logo} alt={m.name} width={28} height={28}
+                          className="w-7 h-7 rounded-full border-2 border-[#12121A] object-cover" title={m.name} />
+                      : <div key={id} className="w-7 h-7 rounded-full border-2 border-[#12121A]"
+                          style={{ backgroundColor: m?.color || '#1E1E2E' }} title={m?.name} />;
                   })}
                 </div>
                 <ChevronDown className={`w-5 h-5 text-[#606070] transition-transform ${showModelListDropdown ? 'rotate-180' : ''}`} />
@@ -1172,12 +1169,8 @@ export function UnifiedAiCreate() {
                         <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${sel ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}>
                           {sel && <Check className="w-3 h-3 text-[#F8F8FC]" />}
                         </div>
-                        <div
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-                          style={{ backgroundColor: info.color }}
-                        >
-                          {info.name.charAt(0).toUpperCase()}
-                        </div>
+                        <Image src={info.logo} alt={info.name} width={24} height={24}
+                          className="w-6 h-6 rounded-lg object-cover flex-shrink-0" />
                         <div className="flex-1 min-w-0 text-left">
                           <span className="text-sm text-[#F8F8FC]">{info.name}</span>
                           <span className="text-xs text-[#606070] ml-2">{info.provider}</span>

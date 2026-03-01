@@ -473,10 +473,15 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
       <div className="pb-2">
         {/* 模型标识行 */}
         <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
-            style={{ backgroundColor: modelColor }}>
-            {modelName.charAt(0).toUpperCase()}
-          </span>
+          {modelInfo?.logo ? (
+            <img src={modelInfo.logo} alt={modelName} title={modelName}
+              className="w-4 h-4 rounded-full flex-shrink-0" />
+          ) : (
+            <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+              style={{ color: modelColor }}>
+              {modelName.charAt(0).toUpperCase()}
+            </span>
+          )}
           <span className="text-[10px]" style={{ color: modelColor }}>{modelName}</span>
         </div>
         {vote.reasoning ? (

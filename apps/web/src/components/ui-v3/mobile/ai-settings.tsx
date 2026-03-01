@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   ArrowLeft,
   ChevronRight,
@@ -18,13 +19,13 @@ import { useLocale } from 'next-intl';
 // ── Provider list ────────────────────────────────────────────────
 
 const LLM_PROVIDERS = [
-  { key: 'deepseek', label: 'DeepSeek', color: '#3B82F6', initial: 'D', placeholder: 'sk-...', recommended: true },
-  { key: 'openai', label: 'OpenAI', color: '#10B981', initial: 'O', placeholder: 'sk-...' },
-  { key: 'anthropic', label: 'Claude', color: '#D97706', initial: 'C', placeholder: 'sk-ant-...' },
-  { key: 'gemini', label: 'Gemini', color: '#6366F1', initial: 'G', placeholder: 'AIza...' },
-  { key: 'qwen', label: 'Qwen', color: '#EC4899', initial: 'Q', placeholder: 'sk-...' },
-  { key: 'grok', label: 'Grok', color: '#F43F5E', initial: 'X', placeholder: 'xai-...' },
-  { key: 'kimi', label: 'Kimi', color: '#8B5CF6', initial: 'K', placeholder: 'sk-...' },
+  { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.svg', placeholder: 'sk-...', recommended: true },
+  { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.svg', placeholder: 'sk-...' },
+  { key: 'anthropic', label: 'Claude', logo: '/icons/llm/anthropic.svg', placeholder: 'sk-ant-...' },
+  { key: 'gemini', label: 'Gemini', logo: '/icons/llm/google.svg', placeholder: 'AIza...' },
+  { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.svg', placeholder: 'sk-...' },
+  { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.svg', placeholder: 'xai-...' },
+  { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.svg', placeholder: 'sk-...' },
 ] as const;
 
 // ── Main ─────────────────────────────────────────────────────────
@@ -110,11 +111,8 @@ export function AiSettingsPage() {
                     isExpanded ? 'bg-[#1E1E2E]/10' : ''
                   }`}
                 >
-                  <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-bold text-white text-sm"
-                    style={{ backgroundColor: provider.color }}
-                  >
-                    {provider.initial}
+                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1E1E2E]/40">
+                    <Image src={provider.logo} alt={provider.label} width={36} height={36} className="h-full w-full object-contain" />
                   </div>
                   <span className="flex-1 text-left text-sm font-medium text-[#F8F8FC]">
                     {provider.label}

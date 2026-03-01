@@ -71,13 +71,13 @@ const exchanges = [
 
 // AI 提供商 - 7大顶尖模型
 const aiProviders = [
-  { name: 'OpenAI', model: 'GPT-4o Mini', color: '#10B981', initial: 'O' },
-  { name: 'Anthropic', model: 'Claude Haiku', color: '#D97706', initial: 'C' },
-  { name: 'DeepSeek', model: 'R1 & Chat', color: '#3B82F6', initial: 'D' },
-  { name: 'Google', model: 'Gemini Flash', color: '#6366F1', initial: 'G' },
-  { name: 'Alibaba', model: 'Qwen 3.5', color: '#EC4899', initial: 'Q' },
-  { name: 'xAI', model: 'Grok 4', color: '#F43F5E', initial: 'X' },
-  { name: 'Moonshot', model: 'Kimi K2', color: '#8B5CF6', initial: 'K' },
+  { name: 'OpenAI', model: 'GPT-4o Mini', logo: '/icons/llm/openai.svg' },
+  { name: 'Anthropic', model: 'Claude Haiku', logo: '/icons/llm/anthropic.svg' },
+  { name: 'DeepSeek', model: 'R1 & Chat', logo: '/icons/llm/deepseek.svg' },
+  { name: 'Google', model: 'Gemini Flash', logo: '/icons/llm/google.svg' },
+  { name: 'Alibaba', model: 'Qwen 3.5', logo: '/icons/llm/alibaba.svg' },
+  { name: 'xAI', model: 'Grok 4', logo: '/icons/llm/xai.svg' },
+  { name: 'Moonshot', model: 'Kimi K2', logo: '/icons/llm/moonshot.svg' },
 ]
 
 export function LandingPage({
@@ -284,16 +284,21 @@ export function LandingPage({
             <p className="text-[#9090A0] text-sm sm:text-base">{t('poweredByAIDesc')}</p>
           </div>
 
-          {/* AI Provider Icons — 颜色首字母 */}
+          {/* AI Provider Logos — 纯图标，无文字 */}
           <div className="flex flex-wrap justify-center gap-4 mb-10">
             {aiProviders.map((provider) => (
               <div
                 key={provider.name}
                 title={provider.name}
-                className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-xl border border-[#1E1E2E] hover:border-[#06B6D4]/40 hover:scale-110 transition-all"
-                style={{ backgroundColor: provider.color }}
+                className="w-14 h-14 rounded-2xl overflow-hidden bg-[#1A1A24] border border-[#1E1E2E] hover:border-[#06B6D4]/40 hover:scale-110 transition-all"
               >
-                {provider.initial}
+                <Image
+                  src={provider.logo}
+                  alt={provider.name}
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-cover"
+                />
               </div>
             ))}
           </div>
