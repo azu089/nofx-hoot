@@ -114,11 +114,26 @@ export function MobileSettingsPage({
     setIsEmailBindModalOpen(true);
   }, []);
 
+  // 密码强度校验（与注册页一致：≥8位，含大写、小写、数字）
+  const validateBindPassword = (v: string): boolean =>
+    v.length >= 8 && /[A-Z]/.test(v) && /[a-z]/.test(v) && /[0-9]/.test(v);
+
+  // 将后端英文错误翻译为中文
+  const translateError = (msg: string): string => {
+    if (msg === 'Unauthorized' || msg.includes('unauthorized')) return '登录已过期，请退出重新登录';
+    if (msg.includes('邮箱已被')) return msg;
+    return msg || '操作失败，请重试';
+  };
+
   // Step 1: 提交邮箱 + 密码，调用 /auth/bind/email，成功后进入 Step 2
   const handleEmailBindStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailBindEmail || !emailBindPassword) {
       toast.error('请填写邮箱和密码');
+      return;
+    }
+    if (!validateBindPassword(emailBindPassword)) {
+      toast.error('密码至少8位，且包含大写字母、小写字母和数字');
       return;
     }
     setEmailBindLoading(true);
@@ -128,7 +143,7 @@ export function MobileSettingsPage({
       setEmailBindCountdown(60);
       toast.success('验证码已发送，请查收邮件');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '绑定失败，请重试');
+      toast.error(translateError(err instanceof Error ? err.message : ''));
     } finally {
       setEmailBindLoading(false);
     }
@@ -147,7 +162,7 @@ export function MobileSettingsPage({
       toast.success('邮箱绑定成功！');
       setIsEmailBindModalOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '验证失败，请检查验证码');
+      toast.error(translateError(err instanceof Error ? err.message : '验证失败，请检查验证码'));
     } finally {
       setEmailBindLoading(false);
     }
@@ -161,7 +176,7 @@ export function MobileSettingsPage({
       setEmailBindCountdown(60);
       toast.success('验证码已重新发送');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '发送失败');
+      toast.error(translateError(err instanceof Error ? err.message : '发送失败'));
     }
   };
 
@@ -661,7 +676,7 @@ export function MobileSettingsPage({
                   value={emailBindPassword}
                   onChange={(e) => setEmailBindPassword(e.target.value)}
                   className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder:text-[#94A3B8] focus:outline-none focus:border-purple-500/50"
-                  placeholder="设置登录密码（至少6位）"
+                  placeholder="设置密码（≥8位含大小写字母+数字）"
                   autoComplete="new-password"
                 />
                 <div className="flex gap-3 pt-2">

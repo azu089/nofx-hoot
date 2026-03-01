@@ -31,7 +31,17 @@ function getLocaleFromCookie(): string {
 }
 
 // 公开端点前缀（无需 token 即可访问）
+// 公开前缀：无需 token 即可访问
 const PUBLIC_PREFIXES = ['/auth/', '/market/', '/config/'];
+
+// 虽然路径前缀在 PUBLIC_PREFIXES 中，但这些具体端点仍需认证（触发 401 自动续期）
+const PROTECTED_PREFIXES = [
+  '/auth/bind/',              // 绑定邮箱/钱包
+  '/auth/logout',             // 登出
+  '/auth/profile',            // 用户资料
+  '/auth/change-password',    // 修改密码
+  '/auth/telegram/bind-code', // 生成 TG 绑定码
+];
 
 class ApiClient {
   private baseUrl: string;
@@ -153,7 +163,8 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const isPublic = PUBLIC_PREFIXES.some(p => endpoint.startsWith(p));
+    const isPublic = PUBLIC_PREFIXES.some(p => endpoint.startsWith(p))
+      && !PROTECTED_PREFIXES.some(p => endpoint.startsWith(p));
 
     // 短路 1：auth 已失败（token 过期 + refresh 失败），非公开请求直接拦截，不再发网络请求
     if (this.authFailed && !isPublic) {
