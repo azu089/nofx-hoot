@@ -1,4 +1,4 @@
-// 支持的语言列表（10种语言）
+// 支持的语言列表（11种语言）
 export const locales = [
   'zh-CN',  // 简体中文
   'en',     // 英语
@@ -10,11 +10,18 @@ export const locales = [
   'id',     // 印尼语
   'th',     // 泰语
   'tr',     // 土耳其语
+  'ar',     // 阿拉伯语（RTL）
 ] as const;
 export type Locale = (typeof locales)[number];
 
 // 默认语言
 export const defaultLocale: Locale = 'zh-CN';
+
+// RTL 语言列表
+export const rtlLocales: readonly string[] = ['ar'];
+
+// 判断是否为 RTL 语言
+export const isRtlLocale = (locale: string): boolean => rtlLocales.includes(locale);
 
 // 语言显示名称和国旗
 export const localeNames: Record<Locale, { name: string; flag: string; nativeName: string }> = {
@@ -28,6 +35,7 @@ export const localeNames: Record<Locale, { name: string; flag: string; nativeNam
   'id': { name: 'Bahasa Indonesia', flag: '🇮🇩', nativeName: 'Bahasa Indonesia' },
   'th': { name: 'ไทย', flag: '🇹🇭', nativeName: 'ภาษาไทย' },
   'tr': { name: 'Türkçe', flag: '🇹🇷', nativeName: 'Türkçe' },
+  'ar': { name: 'العربية', flag: '🇸🇦', nativeName: 'العربية' },
 };
 
 // 语言检测优先级
