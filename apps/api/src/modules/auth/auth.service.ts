@@ -213,6 +213,22 @@ export class AuthService implements OnModuleDestroy {
   // ===== 审计日志 =====
 
   // 记录审计日志
+  /**
+   * 新用户注册后初始化 AI 配置（isEnabled=true，使用默认值）
+   * 失败不阻断注册流程
+   */
+  private async initAiConfig(userId: string): Promise<void> {
+    try {
+      await this.prisma.aiConfig.upsert({
+        where: { userId },
+        create: { userId, isEnabled: true },
+        update: {}, // 已存在则不覆盖
+      });
+    } catch (error) {
+      this.logger.warn(`初始化 AI 配置失败: ${userId}, ${error.message}`);
+    }
+  }
+
   private async logAudit(
     actorId: string,
     actorType: string,
@@ -278,6 +294,7 @@ export class AuthService implements OnModuleDestroy {
       },
       select: {
         id: true,
+        uid: true,
         email: true,
         nickname: true,
         createdAt: true,
@@ -297,6 +314,9 @@ export class AuthService implements OnModuleDestroy {
 
     // 审计日志
     await this.logAudit(user.id, 'user', 'register', 'user', user.id, `邮箱注册: ${dto.email}, 邀请码: ${dto.inviteCode}`);
+
+    // 初始化 AI 配置（新用户默认可直接使用 AI 功能）
+    await this.initAiConfig(user.id);
 
     // 发送验证码（邮箱注册必定有 email）
     if (user.email) {
@@ -480,6 +500,7 @@ export class AuthService implements OnModuleDestroy {
       ...tokenPair,
       user: {
         id: user.id,
+        uid: user.uid,
         email: user.email,
         nickname: user.nickname,
       },
@@ -492,6 +513,7 @@ export class AuthService implements OnModuleDestroy {
       where: { id: userId },
       select: {
         id: true,
+        uid: true,
         email: true,
         nickname: true,
         createdAt: true,
@@ -723,6 +745,9 @@ export class AuthService implements OnModuleDestroy {
       // 审计日志
       await this.logAudit(user.id, 'user', 'register', 'user', user.id, `TG 注册: ${dto.telegramId}`);
 
+      // 初始化 AI 配置
+      await this.initAiConfig(user.id);
+
       // 发放注册空投 (+20 HOOT) - 与邮箱/钱包注册一致
       try {
         await this.airdropService.grantRegisterAirdrop(user.id);
@@ -758,6 +783,7 @@ export class AuthService implements OnModuleDestroy {
       where: { id: user.id },
       select: {
         id: true,
+        uid: true,
         email: true,
         nickname: true,
         usdtBalance: true,
@@ -776,6 +802,7 @@ export class AuthService implements OnModuleDestroy {
       ...tokenPair,
       user: {
         id: u.id,
+        uid: freshUser?.uid ?? user.uid,
         email: u.email,
         nickname: u.nickname,
         usdtBalance: freshUser?.usdtBalance?.toString() || '0',
@@ -949,6 +976,9 @@ export class AuthService implements OnModuleDestroy {
       // 审计日志
       await this.logAudit(user.id, 'user', 'register', 'user', user.id, `钱包注册: ${address}`);
 
+      // 初始化 AI 配置
+      await this.initAiConfig(user.id);
+
       // 发放钱包注册空投 (+100 HOOT)
       try {
         await this.airdropService.grantRegisterAirdrop(user.id);
@@ -968,6 +998,7 @@ export class AuthService implements OnModuleDestroy {
       ...tokenPair,
       user: {
         id: user.id,
+        uid: user.uid,
         email: user.email,
         nickname: user.nickname,
         walletAddress: user.walletAddress,
@@ -1108,6 +1139,7 @@ export class AuthService implements OnModuleDestroy {
       where: { id: userId },
       select: {
         id: true,
+        uid: true,
         email: true,
         emailVerified: true,
         nickname: true,
