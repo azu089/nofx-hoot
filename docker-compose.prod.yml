@@ -142,7 +142,7 @@ services:
       context: ./apps/admin
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=https://api.hoot.cool
+        - VITE_API_URL=https://api.hoot.cool/api
     container_name: hoot-admin
     restart: unless-stopped
     environment:
