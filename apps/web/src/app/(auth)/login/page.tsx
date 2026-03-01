@@ -13,7 +13,7 @@ import { MobileWalletConnectModal } from '@/components/ui-v3/mobile/mobile-walle
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, walletLogin, isAuthenticated, isLoading } = useAuth();
+  const { login, walletLogin, telegramWebAppLogin, isAuthenticated, isLoading } = useAuth();
   const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -77,9 +77,19 @@ export default function LoginPage() {
     throw new Error('移动端钱包登录正在接入，请使用桌面端或邮箱登录');
   };
 
-  const handleTelegramLogin = () => {
-    // KNOWN-LIMITATION: TG 登录待 Privy/TG WebApp 集成，当前跳转 Bot
-    // 临时方案：跳转到 TG Bot
+  const handleTelegramLogin = async () => {
+    // 在 TG Mini App 内时，直接用 initData 完成静默登录
+    const tgWebApp = (window as { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp;
+    if (tgWebApp?.initData) {
+      try {
+        await telegramWebAppLogin(tgWebApp.initData);
+        router.push('/dashboard');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Telegram 登录失败，请重试');
+      }
+      return;
+    }
+    // 普通浏览器降级：引导去 TG Bot 触发登录
     // 使用 location.href 而非 window.open，避免移动端弹窗拦截器静默阻止
     const botUsername = process.env.NEXT_PUBLIC_TG_BOT_USERNAME || 'HootQuantBot';
     window.location.href = `https://t.me/${botUsername}?start=login`;
