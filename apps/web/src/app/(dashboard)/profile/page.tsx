@@ -31,7 +31,7 @@ export default function ProfilePage() {
   }, []);
 
   // 获取用户详情
-  const { data: profile } = useQuery({
+  const { data: profile, isLoading: profileLoading, isFetching: profileFetching } = useQuery({
     queryKey: ['user', 'profile'],
     queryFn: async () => {
       const response = await api.get<{
@@ -111,6 +111,18 @@ export default function ProfilePage() {
     logout();
     router.push('/login');
   };
+
+  // 加载中或后台刷新中 — 显示骨架屏，避免显示旧缓存（uid 闪烁问题）
+  if (profileLoading || profileFetching) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#9090A0]">加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -33,14 +33,7 @@ interface ProfilePageV3Props {
 }
 
 export function ProfilePageV3({
-  user = {
-    id: 'USR20230315001',
-    username: 'CryptoTrader_Pro',
-    email: 'use***@example.com',
-    memberSince: '2023.3.15',
-    vipLevel: 0,
-    subscriptionTier: 'basic' as const
-  },
+  user,
   unreadNotifications = 0,
   appVersion = 'v1.19.0',
   onNavigate,
@@ -48,13 +41,16 @@ export function ProfilePageV3({
 }: ProfilePageV3Props) {
   const [copied, setCopied] = useState(false)
 
-  // 显示用户 ID（优先使用短数字 uid）
-  const displayId = user.uid ? String(user.uid) : user.id.slice(0, 8)
+  // user 未加载时不渲染
+  if (!user) return null
+
+  // 显示用户 ID（USR + 数字格式）
+  const displayId = user.uid ? String(100000 + user.uid) : user.id.slice(0, 8)
 
   // 复制 ID 到剪贴板
   const handleCopyId = async () => {
     try {
-      await navigator.clipboard.writeText(user.uid ? String(user.uid) : user.id)
+      await navigator.clipboard.writeText(displayId)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {

@@ -32,13 +32,8 @@ interface MobileProfilePageProps {
 }
 
 export function MobileProfilePage({
-  user = {
-    id: 'USR20230315001',
-    username: 'CryptoTrader_Pro',
-    email: 'use***@example.com',
-    subscriptionTier: 'basic' as const
-  },
-  unreadNotifications = 3,
+  user,
+  unreadNotifications = 0,
   appVersion = 'v1.19.0',
   onNavigate,
   onLogout
@@ -47,13 +42,16 @@ export function MobileProfilePage({
   const tCommon = useTranslations('common')
   const [copied, setCopied] = useState(false)
 
-  // 显示用户 ID（优先使用短数字 uid）
-  const displayId = user.uid ? String(user.uid) : user.id.slice(0, 8)
+  // user 未加载时不渲染
+  if (!user) return null
+
+  // 显示用户 ID（uid + 100000 偏移，避免显示个位数；无 uid 时用 UUID 前 8 位）
+  const displayId = user.uid ? String(100000 + user.uid) : user.id.slice(0, 8)
 
   // 复制 ID 到剪贴板
   const handleCopyId = async () => {
     try {
-      await navigator.clipboard.writeText(user.uid ? String(user.uid) : user.id)
+      await navigator.clipboard.writeText(displayId)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
@@ -149,7 +147,7 @@ export function MobileProfilePage({
   ]
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-24">
+    <div className="min-h-screen bg-[#0A0A0F] pb-20">
       {/* Header - 标题 */}
       <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-center px-4 h-14">
