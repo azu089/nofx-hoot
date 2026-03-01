@@ -37,7 +37,7 @@ const MAX_LOGIN_ATTEMPTS = 5; // 最大登录尝试次数
 const ACCOUNT_LOCK_TTL = 30 * 60; // 锁定30分钟
 
 // Token TTL 常量
-const ACCESS_TOKEN_TTL = 15 * 60; // 15分钟（秒）
+const ACCESS_TOKEN_TTL = 2 * 60 * 60; // 2小时（秒）
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7天（秒）
 
 @Injectable()
