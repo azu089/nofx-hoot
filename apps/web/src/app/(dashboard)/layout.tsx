@@ -126,13 +126,13 @@ export default function DashboardLayout({
         <div className="hidden md:block md:ml-60 flex-1">
           {children}
         </div>
-        {/* 移动端：使用固定高度容器，底部留出导航栏空间 */}
-        <div className="md:hidden w-full h-[calc(100vh-64px)] overflow-y-auto">
+        {/* 移动端：底部留出导航栏 + safe-area 空间（64px nav + safe-area-inset-bottom） */}
+        <div className="md:hidden w-full h-[calc(100vh-64px)] overflow-y-auto pb-[env(safe-area-inset-bottom,0px)]">
           {children}
         </div>
 
         {/* Mobile Bottom Navigation - 仅在移动端显示 */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A]/95 backdrop-blur-lg border-t border-[#1E1E2E] z-50">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A]/95 backdrop-blur-lg border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)]">
           <nav className="flex items-center justify-around h-16 px-2">
             {navItems.map((item) => {
               const Icon = item.icon;
