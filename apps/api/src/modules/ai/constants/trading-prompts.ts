@@ -260,7 +260,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 重要: 低波动不等于不交易。BTC/ETH 在平静期 ATR14/Price 通常在 0.3-1.0%，属于 ranging 状态，仍应积极寻找交易机会。
 
 ## Section 2: 账户与持仓评估
-1. 保证金使用率 > 30% → 不开新仓
+1. 保证金使用率仅供参考（在 reasoning 中提示风险等级即可，**不作为拒绝开仓的依据**）
 2. 当前持仓 PnL% = (unrealizedPnl / margin) × 100（不要混淆美元值和百分比）
 3. PeakPnL% = 历史最高未实现盈亏百分比（由系统追踪）
 4. 杠杆放大效应: 3x 杠杆下，价格涨1% → 持仓盈亏约3%
@@ -675,11 +675,11 @@ export function GRID_SYSTEM_PROMPT(
 | 单边快速上涨 | priceChange1h > 6% 且 RSI > 70 | cancel_all_orders + pause_grid，暂停所有卖单 |
 | 单边快速下跌 | priceChange1h < -6% 且 RSI < 30 | cancel_all_orders + pause_grid，暂停所有买单 |
 | 极端高波动 | bollingerWidth > 6% | 仅保留距当前价最近的 3 层订单，其余 cancel |
-| 资金费率过高 | fundingRate > 0.05% | 若持有 long 仓位，告警并建议 pause_grid |
+| 资金费率过高 | fundingRate > 0.05% | 在 reasoning 中提示风险即可，**不要暂停网格** |
 
-> ⚠️ **重要区分：以上极端行情条件均为价格行情特征（priceChange1h / RSI / bollingerWidth 等）。**
-> 保证金使用率（marginUsedPct）属于账户风险指标，**不属于"极端行情"范畴**。
-> 如需因高保证金风险暂停，reasoning 应标注为"高保证金风险"或"仓位偏重"，而非"极端行情"。
+> ⚠️ **保证金使用率（marginUsedPct）仅供参考，不作为暂停/干预依据。**
+> 无论 marginUsedPct 多高，**都不要因此 pause_grid 或停止下单**。仅在 reasoning 中提示风险等级即可。
+> 网格策略的保证金使用率天然较高（多层挂单），这是正常现象。
 
 ### 黑天鹅识别
 若 priceChange1h 绝对值 > 8%，视为黑天鹅事件：
@@ -791,7 +791,7 @@ export function GRID_SYSTEM_PROMPT(
 
 \`\`\`json
 {
-  "analysis": "当前价格处于震荡区间，RSI=52中性，MACD零轴附近，网格覆盖良好，本轮补充低层买单维持做市",
+  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层覆盖良好，上方第15-18层卖单有望成交。本轮补全第3、5、7层缺失买单，保持网格对称做市。",
   "actions": [
     {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"低位支撑补单"},
     {"action":"cancel_order","orderId":"xxx","reasoning":"远离层级撤单"}
@@ -799,11 +799,14 @@ export function GRID_SYSTEM_PROMPT(
 }
 \`\`\`
 
-- analysis：**必须 40-80 字，禁止少于 30 字**。必须同时包含：①当前价格数值 ②至少一个指标的具体数值（RSI=xx / ATR=xx / BB宽=x%） ③本轮主要操作及原因
-  - 禁止示例（太短无数据）："范围过宽，缩窄聚焦" / "高保证金风险" / "维持现状"
-  - 正确示例："价格84.2，RSI=48偏空，ATR(1h)=1.8，原范围$70~$96宽$26超ATR×16，缩窄至$77~$93聚焦当前波动区间"
+- analysis 字段是 AI 的**完整思考过程**，直接展示给用户，必须包含以下全部要素，**最少 60 字，禁止少于 40 字**：
+  ① 当前价格 + 在网格中的相对位置（如"接近上边界"、"处于中部"）
+  ② 关键指标数值：RSI=xx、ATR(1h)=xx、BB宽=x%（至少写两个具体数值）
+  ③ 市场形态判断（震荡/趋势/高波动）
+  ④ 本轮决策逻辑：为什么这样操作
+  - 严禁输出纯标签（禁止："价格接近上边界" / "高保证金风险" / "维持现状"）
 - actions：操作数组，无需操作时输出空数组 []
-- 每个 action 的 reasoning：≤15字的**简短标签**，只说这一笔的具体原因（如"低位支撑补单"、"触及阻力位"），**不要重复 analysis 的内容**
+- 每个 action 的 reasoning：≤15字简短标签，只说这一笔原因，不重复 analysis
 `;
 }
 
