@@ -695,7 +695,14 @@ export function GRID_SYSTEM_PROMPT(
    - 例：当前价 0.0956，卖单在 0.097（差 1.5%）→ hold，不 cancel
    - 例：当前价 0.0956，卖单在 0.12（差 25%）→ 可以 cancel+replace
 
-3. **adjust_grid 限制**：只有价格持续偏离网格中心超过 30% 才可调整网格边界，否则 hold。
+3. **adjust_grid 触发条件**（满足以下任一即可调整边界）：
+   a. 价格已接近网格边界（距上界或下界 < 10% 的网格范围），且该侧层级大部分已成交
+      → 重新居中：lowerPrice = currentPrice - rangeWidth/2，upperPrice = currentPrice + rangeWidth/2
+   b. 范围过宽：rangeWidth > ATR(14)[1h] × 16，大量层级无法触及，资金利用率低
+      → 缩窄至 currentPrice ± ATR(14)[1h] × 6（使范围聚焦在当前实际波动区间）
+   c. 市场波动率收缩：Bollinger宽度 < 2%，且当前网格范围超过 bollingerUpper-bollingerLower 的 4 倍
+      → 缩窄至 bollingerLower × 0.95 ~ bollingerUpper × 1.05
+   不满足以上任一 → hold，不要随意调整。
 
 ## 决策规则
 
