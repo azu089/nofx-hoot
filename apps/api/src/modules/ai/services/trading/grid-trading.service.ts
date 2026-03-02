@@ -839,7 +839,6 @@ export class GridTradingService {
           `保护规则: 从最高点回撤超过 ${maxDrawdownPct}% 时紧急平仓\n` +
           `实际情况: 当前回撤 ${drawdown.toFixed(1)}%`);
         await this.persistGridState(strategyId, state);
-        await this.deactivateStrategy(strategyId);
         return { trades: 0, errors: 0 };
       }
     }
@@ -890,7 +889,6 @@ export class GridTradingService {
           // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
           await this.emergencyExit(state, userId, apiKeyId, profitReason);
           await this.persistGridState(strategyId, state);
-          await this.deactivateStrategy(strategyId);
           return { trades: 0, errors: 0 };
         }
       }
@@ -934,7 +932,6 @@ export class GridTradingService {
         // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
         await this.emergencyExit(state, userId, apiKeyId, dailyReason);
         await this.persistGridState(strategyId, state);
-        await this.deactivateStrategy(strategyId);
         return { trades: 0, errors: 0 };
       }
     }
@@ -1086,7 +1083,6 @@ export class GridTradingService {
           await this.emergencyExit(state, userId, apiKeyId,
             `1H 极端行情: 价格${dir} ${Math.abs(context.priceChange1h).toFixed(1)}% ≥ ${maxHourlyChangePct}%，紧急平仓退出`);
           await this.persistGridState(strategyId, state);
-          await this.deactivateStrategy(strategyId);
           return { trades: 0, errors: 0 };
         }
         // --- 单边快速行情：≥6% + RSI 确认，取消订单并暂停（不强平，可手动恢复）---
@@ -1106,7 +1102,6 @@ export class GridTradingService {
           state.pauseSource = 'risk_control';
           state.pauseReason = `单边快速行情\n保护规则: 1H 价格变化超过 6% 且 RSI 超出合理区间时暂停\n实际情况: 1H ${dir}`;
           await this.persistGridState(strategyId, state);
-          await this.deactivateStrategy(strategyId);
           return { trades: 0, errors: 0 };
         }
 
@@ -1133,8 +1128,9 @@ export class GridTradingService {
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);
-            this.logger.warn(`[网格] 执行决策失败: ${d.action} [${errCategory}] - ${e.message}`);
-            execResults.push({ action: d.action, success: false, error: `[${errCategory}] ${e.message}` });
+            const rawCode = e?.code ?? e?.id ?? '';
+            this.logger.warn(`[网格] 执行决策失败: ${d.action} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
+            execResults.push({ action: d.action, success: false, error: `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}` });
           }
         }
 
@@ -1998,6 +1994,28 @@ export class GridTradingService {
       return { executed: false };
     }
 
+    // Step 0.5: 聚合保证金预检 — 防止 Binance -2019 margin insufficient
+    // 统计所有挂单(pending) + 已成交持仓(filled) + 本次新单 的估算保证金合计
+    // 若超过 totalInvestment（用户设定的最大资金），跳过本次下单
+    {
+      const leverage0 = state.effectiveLeverage || state.leverage;
+      const pendingMargin = state.gridLines
+        .filter(l => l.state === 'pending' && l.orderQuantity > 0)
+        .reduce((s, l) => s + (l.orderQuantity * price) / leverage0, 0);
+      const filledMargin = state.gridLines
+        .filter(l => l.state === 'filled' && l.positionSize > 0)
+        .reduce((s, l) => s + (l.positionSize * price) / leverage0, 0);
+      const newOrderMargin = (quantity * price) / leverage0;
+      const totalEstimated = pendingMargin + filledMargin + newOrderMargin;
+      // 允许 10% 缓冲（应对挂单与实际冻结的小幅差异）
+      if (totalEstimated > state.totalInvestment * 1.1) {
+        const skipReason =
+          `聚合保证金超限: 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)} + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${(state.totalInvestment * 1.1).toFixed(2)}`;
+        this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+        return { executed: false, skipReason };
+      }
+    }
+
     // Step 1: 仓位上限检查（使用 effectiveLeverage 代替 leverage）
     const leverage = state.effectiveLeverage || state.leverage; // fallback 兼容旧数据
     if (price > 0 && state.totalInvestment > 0) {
@@ -2675,19 +2693,6 @@ export class GridTradingService {
   }
 
   // ========================= 持久化 =========================
-
-  /** 风控触发时停止策略（isActive=false），使 UI 显示"已停止" */
-  private async deactivateStrategy(strategyId: string): Promise<void> {
-    try {
-      await this.prisma.aiStrategy.update({
-        where: { id: strategyId },
-        data: { isActive: false },
-      });
-      this.logger.warn(`[网格] 风控触发，策略已停止: ${strategyId}`);
-    } catch (error: any) {
-      this.logger.warn(`[网格] 停止策略失败 ${strategyId}: ${error.message}`);
-    }
-  }
 
   private async persistGridState(strategyId: string, state: GridState): Promise<void> {
     try {

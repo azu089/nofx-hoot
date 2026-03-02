@@ -672,20 +672,14 @@ export function GRID_SYSTEM_PROMPT(
 
 | 信号 | 条件 | 必须动作 |
 |------|------|---------|
-| 单边快速上涨 | priceChange1h > 6% 且 RSI > 70 | cancel_all_orders + pause_grid，暂停所有卖单 |
-| 单边快速下跌 | priceChange1h < -6% 且 RSI < 30 | cancel_all_orders + pause_grid，暂停所有买单 |
 | 极端高波动 | bollingerWidth > 6% | 仅保留距当前价最近的 3 层订单，其余 cancel |
 | 资金费率过高 | fundingRate > 0.05% | 在 reasoning 中提示风险即可，**不要暂停网格** |
+
+> ⚠️ **1H 价格变化 > 6% 或 > 10% 的极端行情由系统代码层自动处理（取消订单+暂停），AI 无需也不应干预。**
 
 > ⚠️ **保证金使用率（marginUsedPct）仅供参考，不作为暂停/干预依据。**
 > 无论 marginUsedPct 多高，**都不要因此 pause_grid 或停止下单**。仅在 reasoning 中提示风险等级即可。
 > 网格策略的保证金使用率天然较高（多层挂单），这是正常现象。
-
-### 黑天鹅识别
-若 priceChange1h 绝对值 > 8%，视为黑天鹅事件：
-- 立即选择 pause_grid
-- 不再放置新订单
-- 等待市场稳定（priceChange1h < 3%）后再 resume_grid
 
 ## ⚠️ 三条铁律（违反即错误决策）
 
@@ -920,7 +914,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`启动权益: ${ctx.startEquity.toFixed(2)} USDT`);
   lines.push(`当前盈利: ${ctx.currentProfitPct >= 0 ? '+' : ''}${ctx.currentProfitPct.toFixed(2)}%`);
   if (ctx.peakProfitPct > 0) {
-    const retraceWarn = ctx.profitRetracement >= 40 ? ' ⚠️回撤过大，考虑暂停保护利润' : ctx.profitRetracement >= 25 ? ' ⚠️注意回撤' : '';
+    const retraceWarn = ctx.profitRetracement >= 70 ? ' ⚠️利润大幅回撤，注意风险' : ctx.profitRetracement >= 50 ? ' ⚠️注意回撤' : '';
     lines.push(`历史峰值: +${ctx.peakProfitPct.toFixed(2)}% | 峰值回撤: ${ctx.profitRetracement.toFixed(1)}%${retraceWarn}`);
   } else {
     lines.push('历史峰值: 暂无 (策略尚未盈利)');
