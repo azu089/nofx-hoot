@@ -2144,6 +2144,26 @@ export class GridTradingService {
       }
     }
 
+    // Step 1.5: 价格偏差保护（Binance PERCENT_PRICE 过滤器，因品种约 5~10%）
+    // 卖单价格过低 / 买单价格过高时，Binance 会以 -4074 拒单，提前过滤避免无效请求
+    const marketPrice = state.lastPrice;
+    if (marketPrice > 0) {
+      const SELL_DEVIATION_LIMIT = 0.05; // 卖单不低于市价 5%（SOL 实测 Binance 限制约 5.5%）
+      const BUY_DEVIATION_LIMIT  = 0.10; // 买单不高于市价 10%
+      if (side === 'sell' && price < marketPrice * (1 - SELL_DEVIATION_LIMIT)) {
+        const devPct = ((marketPrice - price) / marketPrice * 100).toFixed(1);
+        const skipReason = `卖单价格偏低: ${price.toFixed(4)} 低于市价 ${devPct}%（Binance PERCENT_PRICE 限制约 5.5%）`;
+        this.logger.warn(`[网格] 价格偏差跳过: SELL level=${levelIndex} price=${price.toFixed(4)} 低于市价 ${marketPrice.toFixed(4)} 达 ${devPct}%`);
+        return { executed: false, skipReason };
+      }
+      if (side === 'buy' && price > marketPrice * (1 + BUY_DEVIATION_LIMIT)) {
+        const devPct = ((price - marketPrice) / marketPrice * 100).toFixed(1);
+        const skipReason = `买单价格偏高: ${price.toFixed(4)} 高于市价 ${devPct}%（Binance PERCENT_PRICE 限制约 10%）`;
+        this.logger.warn(`[网格] 价格偏差跳过: BUY level=${levelIndex} price=${price.toFixed(4)} 高于市价 ${marketPrice.toFixed(4)} 达 ${devPct}%`);
+        return { executed: false, skipReason };
+      }
+    }
+
     // Step 2: 格式化数量 + 最小下单量检查
     const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
     let finalQty = parseFloat(formattedQty);
