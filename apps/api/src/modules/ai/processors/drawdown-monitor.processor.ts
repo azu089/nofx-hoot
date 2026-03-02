@@ -20,6 +20,9 @@ import { isSameSymbol } from '../../../common/utils/symbol.util';
 export class DrawdownMonitorProcessor extends WorkerHost {
   private readonly logger = new Logger(DrawdownMonitorProcessor.name);
 
+  /** 分批止盈阶段追踪（内存，重启清零，不影响正确性） */
+  private readonly scaleOutMap = new Map<string, { stage: 0 | 1 | 2; originalAmount: number }>();
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => TradingService))
@@ -161,6 +164,13 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           });
         }
 
+        // 分批止盈检查（pnlPercent ≥ +3% 时触发；全平后 continue 跳过追踪止损）
+        const scaledOut = await this.checkScaleOut(pos, pnlPercent, currentPrice);
+        if (scaledOut) {
+          closedCount++;
+          continue;
+        }
+
         // 绝对亏损保护：不依赖高水位，当前亏损超过阈值直接平仓
         // 高杠杆（≥5x）收紧到 -20%，低杠杆维持 -30%（减少高杠杆滑动窗口风险）
         const lev = (pos as any).leverage ?? 1;
@@ -181,8 +191,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         // 盈利保护回撤检查：使用策略级配置（fallback 默认 5%/40%）
         const rc = pos.aiStrategyId ? strategyConfigMap.get(pos.aiStrategyId) : null;
         const pdEnabled = (rc as any)?.profitDrawdownEnabled !== false; // 默认开启
-        const pdMinProfit = (rc as any)?.profitDrawdownMinProfit || 5;
-        const pdMaxRetracement = ((rc as any)?.profitDrawdownMaxRetracement || 40) / 100;
+        const pdMinProfit = (rc as any)?.profitDrawdownMinProfit ?? 2;   // 默认 2%（对齐 nofx，降低触发门槛）
+        const pdMaxRetracement = ((rc as any)?.profitDrawdownMaxRetracement ?? 30) / 100; // 默认 30%（对齐 nofx，原 40%）
 
         if (pdEnabled && currentHWM !== null && currentHWM > pdMinProfit) {
           const drawdownFromPeak =
@@ -215,6 +225,86 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     }
 
     return { checked: positions.length, closed: closedCount };
+  }
+
+  /**
+   * 分批止盈检测（对齐 nofx scale-out）
+   * 阶段：+3%→平 33%、+5%→平至原 50%、+8%→全平
+   * @returns true = 已全部平仓，应 continue 跳过后续止损检查
+   */
+  private async checkScaleOut(
+    pos: {
+      id: string;
+      userId: string;
+      apiKeyId: string | null;
+      symbol: string;
+      side: string;
+      amount: any;
+    },
+    pnlPercent: number,
+    currentPrice: number,
+  ): Promise<boolean> {
+    if (pnlPercent < 3 || !pos.apiKeyId) return false;
+
+    const existing = this.scaleOutMap.get(pos.id);
+    const entry = existing ?? { stage: 0 as const, originalAmount: Number(pos.amount) };
+    if (!existing) this.scaleOutMap.set(pos.id, entry);
+
+    const orig = entry.originalAmount;
+    let closeQty = 0;
+    let newStage: 0 | 1 | 2 | 3 = entry.stage;
+
+    if (entry.stage === 0 && pnlPercent >= 3) {
+      closeQty = orig * 0.33;
+      newStage = 1;
+    } else if (entry.stage === 1 && pnlPercent >= 5) {
+      closeQty = orig * 0.17; // 原仓 50% - 已平 33% = 再平 17%
+      newStage = 2;
+    } else if (entry.stage === 2 && pnlPercent >= 8) {
+      closeQty = Number(pos.amount); // 剩余全部
+      newStage = 3;
+    }
+
+    if (closeQty <= 0) return false;
+
+    this.logger.log(
+      `[AI监控] 分批止盈: ${pos.symbol} ${pos.side} stage ${entry.stage}→${newStage} 平仓 ${closeQty.toFixed(4)} (pnl=${pnlPercent.toFixed(2)}%)`,
+    );
+
+    try {
+      const config: TradingConfig = {
+        tradingType: 'futures',
+        leverage: 1,
+        marginMode: 'cross',
+        slippageTolerance: 0.5,
+        maxRetries: 2,
+        retryDelayMs: 1000,
+      };
+      const closeSide = pos.side === 'long' ? 'sell' : 'buy';
+      await this.tradingService.executeOrder(
+        pos.userId, pos.apiKeyId, pos.symbol, closeSide as 'buy' | 'sell', closeQty, config,
+      );
+
+      if (newStage === 3) {
+        await this.prisma.position.update({
+          where: { id: pos.id },
+          data: {
+            status: 'closed',
+            closedAt: new Date(),
+            closeReason: 'scale_out_complete',
+            exitPrice: new Decimal(currentPrice),
+          },
+        });
+        this.scaleOutMap.delete(pos.id);
+        return true; // 全部平仓
+      } else {
+        entry.stage = newStage as 0 | 1 | 2;
+        return false; // 部分平仓，继续持有
+      }
+    } catch (e: any) {
+      this.logger.warn(`[AI监控] 分批止盈执行失败(stage=${entry.stage}不推进，下轮重试): ${e.message}`);
+      return false;
+    }
   }
 
   /**

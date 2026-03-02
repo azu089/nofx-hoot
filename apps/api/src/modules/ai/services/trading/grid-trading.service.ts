@@ -1026,6 +1026,28 @@ export class GridTradingService {
               `本批利润 ${profitDelta >= 0 ? '+' : ''}${profitDelta.toFixed(4)} USDT | ` +
               `累计 +${state.totalProfit.toFixed(2)} USDT`,
             );
+            // 新成交格线 → 在交易所挂止损单（兜底：API 宕机时止损仍可触发）
+            if (stopLossPct > 0) {
+              for (const line of filledLines) {
+                if (line.state !== 'filled' || line.positionEntry <= 0 || line.positionSize <= 0) continue;
+                try {
+                  // syncOrderFills 后 side 已翻转：'sell' = 原BUY成交(持多头)，'buy' = 原SELL成交(持空头)
+                  const isLong = line.side === 'sell';
+                  const positionSide = isLong ? 'long' : 'short';
+                  const stopPrice = isLong
+                    ? line.positionEntry * (1 - stopLossPct / 100)
+                    : line.positionEntry * (1 + stopLossPct / 100);
+                  await (adapter as GridExchangeAdapter).setStopLoss(
+                    state.symbol, positionSide, line.positionSize, stopPrice,
+                  );
+                  this.logger.log(
+                    `[网格] 交易所止损单: level=${line.index} ${positionSide} entry=${line.positionEntry.toFixed(4)} stop=${stopPrice.toFixed(4)}`,
+                  );
+                } catch (e: any) {
+                  this.logger.warn(`[网格] 设置交易所止损单失败(非致命，软件止损兜底): ${e.message}`);
+                }
+              }
+            }
             const reversePlaced = await this.placeReverseOrders(
               state, filledLines, adapter as GridExchangeAdapter,
               gridConfig?.useMakerOnly ?? false,
@@ -1036,6 +1058,15 @@ export class GridTradingService {
 
         // 执行逐层止损（在 AI 决策之前，adapter 已就绪）
         if (state._pendingStopLoss?.length && isGridAdapter(adapter)) {
+          // 软件市价止损前：先撤销交易所止损单，避免软件平仓后交易所止损单重复触发
+          if (stopLossPct > 0) {
+            try {
+              await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+              this.logger.log('[网格] 软件止损前：已撤销交易所止损单');
+            } catch (e: any) {
+              this.logger.warn(`[网格] 撤销交易所止损单失败(忽略，继续软件止损): ${e.message}`);
+            }
+          }
           for (const idx of state._pendingStopLoss) {
             const line = state.gridLines[idx];
             if (!line || line.state !== 'filled') continue;
