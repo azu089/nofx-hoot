@@ -158,6 +158,9 @@ export interface GridState {
 
   // 逐层止损临时标记（不持久化，_前缀表示运行时临时字段）
   _pendingStopLoss?: number[];  // 需要止损的格线 index 数组
+
+  // 实时可用保证金（每轮从交易所更新，供 placeGridLimitOrder 精确预检）
+  availableBalance: number;
 }
 
 /** AI 返回的网格决策 */
@@ -620,6 +623,7 @@ export class GridTradingService {
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
       userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
+      availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
     };
 
     this.gridStates.set(strategyId, state);
@@ -871,7 +875,7 @@ export class GridTradingService {
       }
     }
     const profitRetracePct = gridConfig?.profitRetracePct ?? 50;
-    const profitProtectMinPct = gridConfig?.profitProtectMinPct ?? 1;
+    const profitProtectMinPct = gridConfig?.profitProtectMinPct ?? 3; // 默认需要峰值盈利达到 3% 才激活保护（避免 +1% 小利润被正常回调误触发）
     if (equityFetched && state.startEquity > 0 && state.peakProfitPct >= profitProtectMinPct) {
       const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
       if (state.peakProfitPct > 0) {
@@ -929,8 +933,8 @@ export class GridTradingService {
           `日内亏损保护触发\n` +
           `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时平仓退出\n` +
           `实际情况: 今日已亏损 ${dailyLossPct.toFixed(1)}%（$${Math.abs(state.dailyPnl).toFixed(2)}）`;
-        // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
-        await this.emergencyExit(state, userId, apiKeyId, dailyReason);
+        // 软暂停：撤单但不平仓（对齐 nofx dailyLoss 行为，避免浮亏变实亏，持仓等待价格恢复）
+        await this.softPauseGrid(state, userId, apiKeyId, dailyReason);
         await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
       }
@@ -1550,6 +1554,7 @@ export class GridTradingService {
       const balance = await adapter.getBalance();
       totalEquity = balance.totalEquity;
       availableBalance = balance.availableBalance;
+      state.availableBalance = availableBalance; // 同步到 state，供 placeGridLimitOrder 精确预检
       unrealizedPnl = balance.unrealizedPnl;
       marginUsedPct = balance.marginUsedPct ?? 0;
 
@@ -1994,25 +1999,36 @@ export class GridTradingService {
       return { executed: false };
     }
 
-    // Step 0.5: 聚合保证金预检 — 防止 Binance -2019 margin insufficient
-    // 统计所有挂单(pending) + 已成交持仓(filled) + 本次新单 的估算保证金合计
-    // 若超过 totalInvestment（用户设定的最大资金），跳过本次下单
+    // Step 0.5: 保证金预检 — 防止 Binance -2019 margin insufficient
     {
       const leverage0 = state.effectiveLeverage || state.leverage;
-      const pendingMargin = state.gridLines
-        .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-        .reduce((s, l) => s + (l.orderQuantity * price) / leverage0, 0);
-      const filledMargin = state.gridLines
-        .filter(l => l.state === 'filled' && l.positionSize > 0)
-        .reduce((s, l) => s + (l.positionSize * price) / leverage0, 0);
       const newOrderMargin = (quantity * price) / leverage0;
-      const totalEstimated = pendingMargin + filledMargin + newOrderMargin;
-      // 允许 10% 缓冲（应对挂单与实际冻结的小幅差异）
-      if (totalEstimated > state.totalInvestment * 1.1) {
-        const skipReason =
-          `聚合保证金超限: 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)} + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${(state.totalInvestment * 1.1).toFixed(2)}`;
-        this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-        return { executed: false, skipReason };
+
+      if (state.availableBalance > 5) {
+        // 优先路径：直接用交易所返回的可用余额做精确判断（每轮 buildGridContext 更新）
+        if (newOrderMargin > state.availableBalance * 0.9) {
+          const skipReason =
+            `可用保证金不足: 新单需 $${newOrderMargin.toFixed(2)},` +
+            ` 实际可用 $${state.availableBalance.toFixed(2)}(90%阈值 $${(state.availableBalance * 0.9).toFixed(2)})`;
+          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+          return { executed: false, skipReason };
+        }
+      } else {
+        // 兜底路径：availableBalance 未获取时，退回聚合估算逻辑
+        const pendingMargin = state.gridLines
+          .filter(l => l.state === 'pending' && l.orderQuantity > 0)
+          .reduce((s, l) => s + (l.orderQuantity * price) / leverage0, 0);
+        const filledMargin = state.gridLines
+          .filter(l => l.state === 'filled' && l.positionSize > 0)
+          .reduce((s, l) => s + (l.positionSize * price) / leverage0, 0);
+        const totalEstimated = pendingMargin + filledMargin + newOrderMargin;
+        if (totalEstimated > state.totalInvestment * 1.1) {
+          const skipReason =
+            `聚合保证金超限(兜底): 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)}` +
+            ` + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${(state.totalInvestment * 1.1).toFixed(2)}`;
+          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+          return { executed: false, skipReason };
+        }
       }
     }
 
@@ -2126,6 +2142,13 @@ export class GridTradingService {
       level.orderId = result.orderId;
       level.orderQuantity = finalQty;
       state.orderBook[result.orderId] = levelIndex;
+
+      // 下单成功：从可用余额中扣除本单保证金（防止同轮次重复占用）
+      if (state.availableBalance > 0) {
+        const leverage0 = state.effectiveLeverage || state.leverage;
+        const usedMargin = (finalQty * price) / leverage0;
+        state.availableBalance = Math.max(0, state.availableBalance - usedMargin);
+      }
     }
 
     this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${levelIndex}, orderId=${result.orderId})`);
@@ -2228,6 +2251,49 @@ export class GridTradingService {
       }
     }
     state.orderBook = {};
+  }
+
+  /**
+   * 软暂停：只取消挂单，不平仓（对齐 nofx dailyLoss 行为）
+   * 适用于日内亏损等可能自然恢复的场景，避免把浮亏变实亏
+   */
+  private async softPauseGrid(
+    state: GridState,
+    userId: string,
+    apiKeyId: string,
+    reason: string,
+  ): Promise<void> {
+    this.logger.warn(`[网格] 软暂停（取消挂单/保留持仓）: ${reason}`);
+
+    if (!this.adapterFactory) {
+      state.isPaused = true;
+      state.pauseSource = 'risk_control';
+      state.pauseReason = reason;
+      return;
+    }
+
+    let adapter: ExchangeAdapter | null = null;
+    try {
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      await adapter.cancelAllOrders(state.symbol);
+    } catch (e: any) {
+      this.logger.warn(`[网格] 软暂停撤单失败（忽略继续暂停）: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+    }
+
+    // 清理本地挂单状态
+    for (const line of state.gridLines) {
+      if (line.state === 'pending') {
+        line.state = 'empty';
+        line.orderId = undefined;
+      }
+    }
+    state.orderBook = {};
+
+    state.isPaused = true;
+    state.pauseSource = 'risk_control';
+    state.pauseReason = reason;
   }
 
   // ========================= 燃油费结算 =========================
