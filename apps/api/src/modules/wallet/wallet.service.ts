@@ -432,8 +432,9 @@ export class WalletService {
       // 增加目标资产
       await this.updateBalance(tx, userId, toAsset, toAmount);
 
-      // 记录交易
-      const uniqueOrderId = `exchange_${userId}_${Date.now()}_${uuidv4().slice(0, 8)}`;
+      // 记录交易（双向：扣出 + 入账各一条）
+      const exchangeRemark = `兑换 ${fromAmount} ${fromAsset} -> ${toAmount.toFixed(8)} ${toAsset}`;
+      const fromOrderId = `exchange_${userId}_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
       await tx.transaction.create({
         data: {
@@ -441,9 +442,24 @@ export class WalletService {
           type: 'exchange',
           asset: fromAsset,
           amount: fromAmount.negated(),
-          uniqueOrderId,
+          uniqueOrderId: fromOrderId,
           status: 'completed',
-          remark: `兑换 ${fromAmount} ${fromAsset} -> ${toAmount.toFixed(8)} ${toAsset}`,
+          remark: exchangeRemark,
+        },
+      });
+
+      // 入账侧记录
+      const toOrderId = `exchange_${userId}_${Date.now()}_${uuidv4().slice(0, 8)}`;
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'exchange',
+          asset: toAsset,
+          amount: toAmount,
+          uniqueOrderId: toOrderId,
+          status: 'completed',
+          remark: exchangeRemark,
         },
       });
     });

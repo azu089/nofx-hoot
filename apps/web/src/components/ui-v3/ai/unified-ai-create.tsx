@@ -463,7 +463,7 @@ export function UnifiedAiCreate() {
       if (isGrid) {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
-          gridCount, totalInvestment: gridInvestment, leverage: gridLeverage,
+          gridCount: gridCount || 10, totalInvestment: gridInvestment || 1000, leverage: gridLeverage || 1,
           // 百分比 → 绝对价格；留空(0) → 发送 0 → 后端 AI 决策
           upperBound: (gridCurrentPrice > 0 && gridUpperPct > 0)
             ? +(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(6) : 0,

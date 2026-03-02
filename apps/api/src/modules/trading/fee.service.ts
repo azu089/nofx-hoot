@@ -208,6 +208,19 @@ export class FeeService {
         },
       });
 
+      // 同步写入 Transaction 表（前端历史账单统一从 Transaction 查询）
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'gas_fee',
+          asset: 'POINT',
+          amount: actualDeduction.negated(),
+          uniqueOrderId,
+          status: 'completed',
+          remark: `燃油费 · 盈利${profit} · 费率${feeRate}`,
+        },
+      });
+
       this.logger.log(
         `燃油费已扣除: 用户 ${userId} 点卡扣除 ${actualDeduction} USDT`,
       );

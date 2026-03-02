@@ -366,6 +366,34 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
   );
 }
 
+/** AI 推理链展开区块（DeepSeek 扩展思考 / 链式推理） */
+function GridThinkingChain({ text, t }: { text: string; t: TFunc }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  const preview = text.slice(0, 60).replace(/\n/g, ' ');
+  return (
+    <div className="border-t border-[#1E1E2E]/60 pt-2 mt-1">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+        className="w-full flex items-center gap-1.5 text-[10px] text-[#606070] hover:text-[#9090A0] transition-colors"
+      >
+        <span className="w-3 h-3 rounded-sm bg-[#1E1E2E] flex items-center justify-center text-[7px] font-bold text-[#8B5CF6] flex-shrink-0">λ</span>
+        <span className="text-[#4A5568] font-medium">{t('timeline.gridThinking')}</span>
+        <span className="flex-1 text-left truncate text-[#3A3A5A]">{!expanded ? preview + '…' : ''}</span>
+        {expanded ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 pl-3 border-l-2 border-[#2E2E4E] space-y-1.5 max-h-[200px] overflow-y-auto">
+          {text.split('\n').filter(l => l.trim()).map((line, i) => (
+            <p key={i} className="text-xs text-[#7070A0] leading-relaxed">{line.trim()}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface SoloLogCardProps {
   entry: TimelineSoloLog;
 }
@@ -384,27 +412,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   // 检测自动禁用日志
   const isAutoDisabled = d.action === 'auto_disabled_failure';
 
-  // Grid: 提取整体市场分析 — 优先级：adjust_grid > hold > pause_grid > 全部推理拼接
+  // Grid: 整体市场分析 — 优先使用后端存储的 analysis 字段（d.reasoning），避免与操作级 reasoning 重复
   const gridAnalysisText = isGridLog
     ? (() => {
-        // 1. adjust_grid 包含最完整的网格重建分析（含 EMA/Regime 依据）
-        const adjustR = gridDecisions
-          .filter((op: any) => op.action === 'adjust_grid' && op.reasoning)
-          .map((op: any) => op.reasoning);
-        if (adjustR.length > 0) return adjustR.join('\n\n');
-        // 2. hold 包含完整市场判断（AI 决定不动时会详细解释为什么）
+        // 1. 优先使用整体 analysis（后端已将 AI 的 analysis 字段存为 d.reasoning）
+        if (d.reasoning && typeof d.reasoning === 'string' && d.reasoning.length > 10) return d.reasoning;
+        // 2. 降级：从 actions 中提取（兼容旧日志）
+        const adjustR = gridDecisions.find((op: any) => op.action === 'adjust_grid' && op.reasoning)?.reasoning;
+        if (adjustR) return adjustR;
         const holdR = gridDecisions.find((op: any) => op.action === 'hold' && op.reasoning)?.reasoning;
         if (holdR) return holdR;
-        // 3. pause_grid 包含风险判断
-        const pauseR = gridDecisions.find((op: any) => op.action === 'pause_grid' && op.reasoning)?.reasoning;
-        if (pauseR) return pauseR;
-        // 4. 降级：拼接所有非空推理（cancel_order 也包含市场判断，不应排除）
-        //    去重后取最长的前3条，给出完整操作背景
-        const allR = gridDecisions
-          .filter((op: any) => op.reasoning)
-          .map((op: any) => op.reasoning as string);
-        const unique = [...new Set(allR)].sort((a, b) => b.length - a.length).slice(0, 3);
-        return unique.join('\n') || '';
+        return '';
       })()
     : '';
   const reasoning = isGridLog
@@ -655,20 +673,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* AI 思考链（DeepSeek-Reasoner / Claude 扩展思考） */}
-          {d.aiThinking && (
-            <div className="text-[10px] text-[#606070] leading-relaxed border-l-2 border-[#2E2E3E] pl-2">
-              <span className="text-[#4A4A5A] text-[9px]">{t('timeline.gridThinking')} · </span>
-              <TruncatedText text={d.aiThinking as string} maxLines={3} />
-            </div>
-          )}
-
-          {/* AI 市场分析 — 复用 SectionedReasoning 自动分段 */}
-          {gridAnalysisText && (
+          {/* AI 市场分析 — 复用 SectionedReasoning 自动分段（带 AI logo） */}
+          {(gridAnalysisText || (!gridAnalysisText && d.aiThinking)) && (
             <SectionedReasoning
-              text={gridAnalysisText}
+              text={gridAnalysisText || (d.aiThinking as string)}
               modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)}
             />
+          )}
+
+          {/* AI 推理链（DeepSeek-Reasoner 扩展思考）— 在分析下方可展开 */}
+          {d.aiThinking && gridAnalysisText && (
+            <GridThinkingChain text={d.aiThinking as string} t={t} />
           )}
 
         </div>
@@ -710,9 +725,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {op.level_index != null && (
                         <span className="text-[#606070]">L{op.level_index}</span>
                       )}
-                      {op.reasoning && (
+                      {op.reasoning && !gridAnalysisText?.includes(op.reasoning) && (
                         <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
-                          {op.reasoning}
+                          {String(op.reasoning).slice(0, 30)}
                         </span>
                       )}
                     </div>
@@ -775,9 +790,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             {er?.amount && <span className="text-[#606070] font-mono">×{er.amount}</span>}
             {er?.positionId && (
               <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
-            )}
-            {d.cost != null && d.cost > 0 && (
-              <span className="text-[#3A3A5A] ml-auto">·${d.cost < 0.01 ? d.cost.toFixed(4) : d.cost.toFixed(3)}</span>
             )}
           </div>
         ) : er?.error ? (

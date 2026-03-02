@@ -109,11 +109,11 @@ export class DepositAddressResponse {
 // 查询参数
 export class TransactionQueryDto {
   @IsOptional()
-  @IsIn(['deposit', 'withdraw', 'fee', 'reward', 'referral'])
+  @IsIn(['deposit', 'withdraw', 'fee', 'reward', 'referral', 'exchange', 'membership', 'gas_fee'])
   type?: string;
 
   @IsOptional()
-  @IsIn(SUPPORTED_ASSETS)
+  @IsIn([...SUPPORTED_ASSETS, 'POINT'])
   asset?: string;
 
   @IsOptional()

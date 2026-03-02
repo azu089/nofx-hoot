@@ -313,8 +313,8 @@ export function CreateStrategyWizard() {
           indicators: ['EMA:20,50', 'MACD', 'RSI:14', 'ATR:14'],
         },
         riskControlConfig: {
-          allocatedCapital: isGrid ? gridParams.totalInvestment : riskParams.allocatedCapital,
-          maxLeverage: isGrid ? gridParams.leverage : riskParams.maxLeverage,
+          allocatedCapital: isGrid ? (gridParams.totalInvestment || 100) : riskParams.allocatedCapital,
+          maxLeverage: isGrid ? (gridParams.leverage || 1) : (riskParams.maxLeverage || 1),
           maxDailyDrawdown: riskParams.maxDailyDrawdown,
           minConfidence: riskParams.minConfidence,
           minRiskRewardRatio: riskParams.minRiskRewardRatio,
@@ -342,18 +342,18 @@ export function CreateStrategyWizard() {
       if (isGrid) {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
-          gridCount: gridParams.gridCount,
-          totalInvestment: gridParams.totalInvestment,
-          leverage: gridParams.leverage,
+          gridCount: gridParams.gridCount || 10,
+          totalInvestment: gridParams.totalInvestment || 100,
+          leverage: gridParams.leverage || 1,
           // 百分比 → 绝对价格换算；留空(0) → 发送 0 → 后端 AI 决策
           upperBound: (gridCurrentPrice > 0 && gridParams.upperPct > 0)
             ? +(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(6) : 0,
           lowerBound: (gridCurrentPrice > 0 && gridParams.lowerPct > 0)
             ? +(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(6) : 0,
-          maxDrawdownPct: gridParams.maxDrawdownPct,
-          dailyLossLimitPct: gridParams.dailyLossLimitPct,
-          profitRetracePct: gridParams.profitRetracePct,
-          profitPeakWindowDays: gridParams.profitPeakWindowDays,
+          maxDrawdownPct: gridParams.maxDrawdownPct || 5,
+          dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
+          profitRetracePct: gridParams.profitRetracePct || 50,
+          profitPeakWindowDays: gridParams.profitPeakWindowDays || 30,
         }
       }
 
@@ -780,7 +780,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="杠杆"
                     value={gridParams.leverage}
-                    onChange={(e) => updateGrid('leverage', Number(e.target.value) || 1)}
+                    onChange={(e) => updateGrid('leverage', Number(e.target.value) || 0)}
                     min={1} max={20}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -830,7 +830,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="格数"
                     value={gridParams.gridCount}
-                    onChange={(e) => updateGrid('gridCount', Number(e.target.value) || 5)}
+                    onChange={(e) => updateGrid('gridCount', Number(e.target.value) || 0)}
                     min={2} max={100}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -840,7 +840,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="最大回撤"
                     value={gridParams.maxDrawdownPct}
-                    onChange={(e) => updateGrid('maxDrawdownPct', Number(e.target.value) || 5)}
+                    onChange={(e) => updateGrid('maxDrawdownPct', Number(e.target.value) || 0)}
                     min={1} max={50}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -852,7 +852,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="日亏损限制"
                     value={gridParams.dailyLossLimitPct}
-                    onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 1)}
+                    onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
                     min={1} max={20}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -881,7 +881,7 @@ export function CreateStrategyWizard() {
                       type="number"
                       title="回撤阈值"
                       value={gridParams.profitRetracePct}
-                      onChange={(e) => updateGrid('profitRetracePct', Number(e.target.value) || 50)}
+                      onChange={(e) => updateGrid('profitRetracePct', Number(e.target.value) || 0)}
                       min={10} max={100}
                       className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                     />
@@ -891,7 +891,7 @@ export function CreateStrategyWizard() {
                       type="number"
                       title="峰值记忆窗口"
                       value={gridParams.profitPeakWindowDays}
-                      onChange={(e) => updateGrid('profitPeakWindowDays', Number(e.target.value) || 30)}
+                      onChange={(e) => updateGrid('profitPeakWindowDays', Number(e.target.value) || 0)}
                       min={1} max={365}
                       className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                     />
@@ -942,7 +942,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="最大杠杆"
                     value={riskParams.maxLeverage}
-                    onChange={(e) => updateRisk('maxLeverage', Number(e.target.value) || 1)}
+                    onChange={(e) => updateRisk('maxLeverage', Number(e.target.value) || 0)}
                     min={1} max={20}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -964,7 +964,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="最低置信度"
                     value={riskParams.minConfidence}
-                    onChange={(e) => updateRisk('minConfidence', Number(e.target.value) || 50)}
+                    onChange={(e) => updateRisk('minConfidence', Number(e.target.value) || 0)}
                     min={50} max={95}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -976,7 +976,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="最低盈亏比"
                     value={riskParams.minRiskRewardRatio}
-                    onChange={(e) => updateRisk('minRiskRewardRatio', Number(e.target.value) || 1)}
+                    onChange={(e) => updateRisk('minRiskRewardRatio', Number(e.target.value) || 0)}
                     min={1} max={10} step={0.5}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
@@ -998,7 +998,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="每日最大交易次数"
                     value={riskParams.maxDailyTrades}
-                    onChange={(e) => updateRisk('maxDailyTrades', Number(e.target.value) || 1)}
+                    onChange={(e) => updateRisk('maxDailyTrades', Number(e.target.value) || 0)}
                     min={1} max={100}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />

@@ -423,8 +423,8 @@ export function AIStrategyDetailPage() {
         riskControlConfig: {
           ...(strategy.riskControlConfig as unknown as Record<string, unknown> || {}),
           profitDrawdownEnabled: editProfitDrawdownEnabled,
-          profitDrawdownMinProfit: editProfitDrawdownMinProfit,
-          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement,
+          profitDrawdownMinProfit: editProfitDrawdownMinProfit || 5,
+          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement || 40,
         },
       };
     } else {
@@ -456,8 +456,8 @@ export function AIStrategyDetailPage() {
           minPositionSize: editMinPositionSize || undefined,
           maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
           profitDrawdownEnabled: editProfitDrawdownEnabled,
-          profitDrawdownMinProfit: editProfitDrawdownMinProfit,
-          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement,
+          profitDrawdownMinProfit: editProfitDrawdownMinProfit || 5,
+          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement || 40,
         },
         promptSections: {
           role: editPromptRole || undefined,
@@ -1047,7 +1047,13 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
                         <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
-                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound) ? 'AI 自动决定' : `$${gc.lowerBound} - $${gc.upperBound}`} />
+                        <ConfigRow label={t('detail.configPriceBounds')} value={
+                          gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound)
+                            ? (detail?.gridState?.upperPrice && detail?.gridState?.lowerPrice
+                                ? `AI 自动 · $${Number(detail.gridState.lowerPrice).toFixed(2)} ~ $${Number(detail.gridState.upperPrice).toFixed(2)}`
+                                : 'AI 自动决定（等待初始化）')
+                            : `$${gc.lowerBound} ~ $${gc.upperBound}`
+                        } />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         {detail.gridState && (
@@ -1655,7 +1661,7 @@ export function AIStrategyDetailPage() {
                             <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={1} max={50} step={1}
                                 value={editProfitDrawdownMinProfit || ''}
-                                onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                                onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 0)}
                                 className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                               />
                               <span className="text-[#606070] text-xs">%</span>
@@ -1666,7 +1672,7 @@ export function AIStrategyDetailPage() {
                             <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={10} max={80} step={5}
                                 value={editProfitDrawdownMaxRetracement || ''}
-                                onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                                onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 0)}
                                 className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                               />
                               <span className="text-[#606070] text-xs">%</span>
@@ -2154,7 +2160,7 @@ export function AIStrategyDetailPage() {
                           <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input type="number" min={1} max={50} step={1}
                               value={editProfitDrawdownMinProfit || ''}
-                              onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 5)}
+                              onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 0)}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                             />
                             <span className="text-[#606070] text-xs">%</span>
@@ -2165,7 +2171,7 @@ export function AIStrategyDetailPage() {
                           <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input type="number" min={10} max={80} step={5}
                               value={editProfitDrawdownMaxRetracement || ''}
-                              onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 40)}
+                              onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 0)}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                             />
                             <span className="text-[#606070] text-xs">%</span>

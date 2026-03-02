@@ -52,7 +52,7 @@ interface AssetItem {
 
 interface TransactionItem {
   id: string
-  type: 'deposit' | 'withdraw' | 'exchange'
+  type: 'deposit' | 'withdraw' | 'exchange' | 'membership' | 'gas_fee' | 'fee' | 'reward' | 'referral'
   asset: string
   amount: string
   status: 'completed' | 'pending' | 'failed' | 'refunded' | 'cancelled' | 'processing'
@@ -170,8 +170,8 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   const [showTypeFilter, setShowTypeFilter] = useState(false)
   const [showAssetFilter, setShowAssetFilter] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'exchange'>('all')
-  const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT' | 'GAS'>('all')
+  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'exchange' | 'membership' | 'gas_fee'>('all')
+  const [txAssetFilter, setTxAssetFilter] = useState<'all' | 'USDT' | 'HOOT' | 'POINT'>('all')
   // 默认显示本月
   const [dateRange, setDateRange] = useState(() => {
     const now = new Date()
@@ -225,14 +225,16 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     { value: 'all', label: t('allTypes') },
     { value: 'deposit', label: t('deposit') },
     { value: 'withdraw', label: t('withdraw') },
-    { value: 'exchange', label: t('exchange') }
+    { value: 'exchange', label: t('exchange') },
+    { value: 'membership', label: t('membership') },
+    { value: 'gas_fee', label: t('gasFeeType') },
   ]
 
   const assetFilterOptions = [
     { value: 'all', label: t('allAssets') },
     { value: 'USDT', label: 'USDT' },
     { value: 'HOOT', label: 'HOOT' },
-    { value: 'GAS', label: t('gasCard') }
+    { value: 'POINT', label: t('gasCard') },
   ]
 
   const getTypeLabel = (value: string) => typeFilterOptions.find(o => o.value === value)?.label || t('allTypes')
@@ -543,16 +545,21 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   // 交易历史数据 - 从真实 API 获取
   const transactions = useMemo<TransactionItem[]>(() => {
     if (!transactionsData?.items) return []
-    return transactionsData.items.map(tx => ({
-      id: tx.id,
-      type: tx.type as TransactionItem['type'],
-      asset: tx.asset,
-      amount: tx.type === 'withdraw' ? `-${parseFloat(tx.amount).toFixed(2)}` : `+${parseFloat(tx.amount).toFixed(2)}`,
-      status: tx.status as TransactionItem['status'],
-      remark: tx.remark,
-      time: new Date(tx.createdAt).toLocaleString('zh-CN'),
-      trend: tx.type === 'withdraw' ? 'down' as const : 'up' as const,
-    }))
+    return transactionsData.items.map(tx => {
+      const numAmount = parseFloat(tx.amount)
+      const isPositive = numAmount >= 0
+      const absAmount = Math.abs(numAmount).toFixed(2)
+      return {
+        id: tx.id,
+        type: tx.type as TransactionItem['type'],
+        asset: tx.asset,
+        amount: isPositive ? `+${absAmount}` : `-${absAmount}`,
+        status: tx.status as TransactionItem['status'],
+        remark: tx.remark,
+        time: new Date(tx.createdAt).toLocaleString('zh-CN'),
+        trend: isPositive ? 'up' as const : 'down' as const,
+      }
+    })
   }, [transactionsData])
 
   // 计算总余额
@@ -568,7 +575,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   // 筛选交易记录
   const filteredTransactions = transactions.filter(tx => {
     const matchesType = txTypeFilter === 'all' || tx.type === txTypeFilter
-    const matchesAsset = txAssetFilter === 'all' || tx.asset.includes(txAssetFilter)
+    const matchesAsset = txAssetFilter === 'all' || tx.asset === txAssetFilter
 
     // 时间过滤
     let matchesDate = true
@@ -590,6 +597,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       case 'deposit': return t('deposit')
       case 'withdraw': return t('withdraw')
       case 'exchange': return t('exchange')
+      case 'membership': return t('membership')
+      case 'gas_fee': return t('gasFeeType')
+      case 'fee': return t('fee')
+      case 'reward': return t('reward')
+      case 'referral': return t('referral')
       default: return type
     }
   }
@@ -691,6 +703,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
   const getAssetIcon = (asset: string) => {
     if (asset.includes('USDT')) return '/icons/usdt.svg'
     if (asset.includes('HOOT')) return '/icons/hoot/token.png'
+    if (asset === 'POINT') return '/icons/gas-card.svg'
     return null
   }
 
