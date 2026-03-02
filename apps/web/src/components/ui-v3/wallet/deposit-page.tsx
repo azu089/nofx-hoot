@@ -45,10 +45,10 @@ interface DepositPageProps {
 }
 
 const defaultNetworks: Network[] = [
-  { id: 'trc20', name: 'TRC20', symbol: 'TRON', icon: '/icons/networks/tron.svg', confirmations: 20, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
-  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', icon: '/icons/networks/ethereum.svg', confirmations: 12, estimatedTime: '约 5 分钟', minDeposit: 10, fee: 0 },
-  { id: 'bep20', name: 'BEP20', symbol: 'BSC', icon: '/icons/networks/bsc.svg', confirmations: 15, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
-  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.svg', confirmations: 128, estimatedTime: '约 3 分钟', minDeposit: 1, fee: 0 },
+  { id: 'trc20', name: 'TRC20', symbol: 'TRON', icon: '/icons/networks/tron.png', confirmations: 20, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
+  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', icon: '/icons/networks/ethereum.png', confirmations: 12, estimatedTime: '约 5 分钟', minDeposit: 10, fee: 0 },
+  { id: 'bep20', name: 'BEP20', symbol: 'BSC', icon: '/icons/networks/bsc.png', confirmations: 15, estimatedTime: '约 1 分钟', minDeposit: 1, fee: 0 },
+  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.png', confirmations: 128, estimatedTime: '约 3 分钟', minDeposit: 1, fee: 0 },
 ]
 
 const defaultRecentDeposits: NonNullable<DepositPageProps['recentDeposits']> = []

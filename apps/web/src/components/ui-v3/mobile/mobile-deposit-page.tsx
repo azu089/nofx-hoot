@@ -15,10 +15,10 @@ interface NetworkInfo {
 }
 
 const networks: NetworkInfo[] = [
-  { name: 'TRC20', icon: '/icons/networks/tron.svg', fee: '0', time: '约 1 分钟' },
-  { name: 'ERC20', icon: '/icons/networks/ethereum.svg', fee: '0', time: '约 5 分钟' },
-  { name: 'BEP20', icon: '/icons/networks/bsc.svg', fee: '0', time: '约 1 分钟' },
-  { name: 'Polygon', icon: '/icons/networks/polygon.svg', fee: '0', time: '约 3 分钟' },
+  { name: 'TRC20', icon: '/icons/networks/tron.png', fee: '0', time: '约 1 分钟' },
+  { name: 'ERC20', icon: '/icons/networks/ethereum.png', fee: '0', time: '约 5 分钟' },
+  { name: 'BEP20', icon: '/icons/networks/bsc.png', fee: '0', time: '约 1 分钟' },
+  { name: 'Polygon', icon: '/icons/networks/polygon.png', fee: '0', time: '约 3 分钟' },
 ]
 
 interface DepositRecord {

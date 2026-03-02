@@ -97,6 +97,10 @@ export class GetDepositAddressDto {
   @IsOptional()
   @IsString()
   refresh?: string;
+
+  @IsOptional()
+  @IsString()
+  locale?: string; // 前端自动传递的语言参数，后端忽略
 }
 
 // 充值地址响应

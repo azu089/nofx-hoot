@@ -43,10 +43,10 @@ interface WithdrawPageProps {
 }
 
 const defaultNetworks: Network[] = [
-  { id: 'trc20', name: 'TRC20', symbol: 'TRON', icon: '/icons/networks/tron.svg', fee: 1, minWithdraw: 10, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
-  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', icon: '/icons/networks/ethereum.svg', fee: 15, minWithdraw: 50, maxWithdraw: 50000, estimatedTime: '约 5-30 分钟' },
-  { id: 'bep20', name: 'BEP20', symbol: 'BSC', icon: '/icons/networks/bsc.svg', fee: 0.5, minWithdraw: 10, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
-  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.svg', fee: 0.1, minWithdraw: 5, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
+  { id: 'trc20', name: 'TRC20', symbol: 'TRON', icon: '/icons/networks/tron.png', fee: 1, minWithdraw: 10, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
+  { id: 'erc20', name: 'ERC20', symbol: 'Ethereum', icon: '/icons/networks/ethereum.png', fee: 15, minWithdraw: 50, maxWithdraw: 50000, estimatedTime: '约 5-30 分钟' },
+  { id: 'bep20', name: 'BEP20', symbol: 'BSC', icon: '/icons/networks/bsc.png', fee: 0.5, minWithdraw: 10, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
+  { id: 'polygon', name: 'Polygon', symbol: 'MATIC', icon: '/icons/networks/polygon.png', fee: 0.1, minWithdraw: 5, maxWithdraw: 50000, estimatedTime: '约 1-5 分钟' },
 ]
 
 const defaultRecentWithdrawals = [
