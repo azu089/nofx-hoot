@@ -706,6 +706,31 @@ export function GRID_SYSTEM_PROMPT(
 
 ## 决策规则
 
+### 【第一步，每轮必做】范围适配度检查
+
+每轮开始时，先用以下逻辑判断当前网格范围是否仍然适合市场，**不合适则立即 adjust_grid，不要做其他操作**：
+
+  变量定义（从技术指标中读取）：
+  - rangeWidth = upperPrice - lowerPrice
+  - atr1h = ATR(14)[1h]（技术指标区"ATR(14)[1h]"的数值）
+  - bollingerBandWidth = bollingerUpper - bollingerLower（价格绝对值，非百分比）
+
+  判断规则：
+  1. 范围过宽：rangeWidth 大于 atr1h 乘以 16
+     → 大量层级无法触及，资金空转
+     → 立即 adjust_grid：新下界 = currentPrice - atr1h×6, 新上界 = currentPrice + atr1h×6
+
+  2. 波动率收缩：Bollinger宽度(%) 小于 2% 且 rangeWidth 大于 bollingerBandWidth×4
+     → 范围远超实际振幅，网格无效
+     → 立即 adjust_grid：新下界 = bollingerLower×0.95, 新上界 = bollingerUpper×1.05
+
+  3. 价格偏向一侧：currentPrice 小于 lowerPrice + rangeWidth×0.1，
+     或 currentPrice 大于 upperPrice - rangeWidth×0.1
+     → 一侧层级快耗尽，另一侧闲置
+     → 立即 adjust_grid 重新居中：新下界 = currentPrice - rangeWidth/2, 新上界 = currentPrice + rangeWidth/2
+
+  以上三条都不满足 → 跳过范围检查，继续执行下方的挂单逻辑
+
 ### 网格运行原则
 - 价格在网格范围内时：维持正常网格运作，已成交层级翻转方向
 - 价格接近边界时：适当减少边界附近的订单密度
@@ -763,14 +788,15 @@ export function GRID_SYSTEM_PROMPT(
 {
   "analysis": "当前价格处于震荡区间，RSI=52中性，MACD零轴附近，网格覆盖良好，本轮补充低层买单维持做市",
   "actions": [
-    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"价格接近第4层支撑位"},
-    {"action":"cancel_order","orderId":"xxx","reasoning":"价格已远离该层级"}
+    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"低位支撑补单"},
+    {"action":"cancel_order","orderId":"xxx","reasoning":"远离层级撤单"}
   ]
 }
 \`\`\`
 
-- analysis：40-80字的整体市场判断，说明当前指标状态和本轮操作依据，用户将直接看到此内容
+- analysis：40-80字的整体市场判断，说明当前指标状态和本轮操作的整体逻辑，用户将直接看到此内容
 - actions：操作数组，无需操作时输出空数组 []
+- 每个 action 的 reasoning：≤15字的**简短标签**，只说这一笔的具体原因（如"低位支撑补单"、"触及阻力位"），**不要重复 analysis 的内容**
 `;
 }
 
