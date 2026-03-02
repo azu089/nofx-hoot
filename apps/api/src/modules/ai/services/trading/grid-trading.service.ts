@@ -11,6 +11,7 @@ import {
   isGridAdapter,
   LimitOrderRequest,
 } from '../../../exchange-adapters/types/adapter.interface';
+import { ExchangeBalance } from '../../../exchange-adapters/types/exchange.types';
 import {
   GRID_SYSTEM_PROMPT,
   buildGridUserPrompt,
@@ -800,14 +801,16 @@ export class GridTradingService {
       }
     }
 
-    // Step 3: 最大回撤检查（同时预取持仓快照，供 Step 8 buildGridContext 复用）
+    // Step 3: 最大回撤检查（同时预取余额+持仓快照，供 Step 8 buildGridContext 复用，避免重复 API 调用）
     let currentEquity = state.peakEquity;
     let equityFetched = false;      // 只有真实获取权益成功才设为 true，失败时不更新 dailyPnl
     let livePositions: any[] | undefined; // 持仓快照，传给 buildGridContext 避免重复调用
+    let liveBalance: ExchangeBalance | undefined; // 余额快照，传给 buildGridContext 避免重复调用
     if (this.adapterFactory && apiKeyId) {
       try {
         const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
         const balance = await adapter.getBalance();
+        liveBalance = balance;       // 保存余额快照，Step 8 buildGridContext 直接复用
         currentEquity = balance.totalEquity;
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
@@ -1112,8 +1115,8 @@ export class GridTradingService {
           }
         }
 
-        // 构建 AI 上下文（传入 Step 3 预取的持仓快照，避免重复 API 调用）
-        const context = await this.buildGridContext(state, adapter, currentPrice, livePositions);
+        // 构建 AI 上下文（传入 Step 3 预取的余额+持仓快照，避免重复 API 调用）
+        const context = await this.buildGridContext(state, adapter, currentPrice, livePositions, liveBalance);
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
         const filledAll = state.gridLines.filter(l => l.state === 'filled');
@@ -1596,6 +1599,7 @@ export class GridTradingService {
     adapter: ExchangeAdapter,
     currentPrice: number,
     prefetchedPositions?: any[], // Step 3 已预取的持仓，避免重复 API 调用
+    prefetchedBalance?: ExchangeBalance, // Step 3 已预取的余额，避免重复 API 调用
   ): Promise<GridContext> {
     // 双周期 OHLCV 并行拉取（不增加串行等待时间）
     const [ohlcvFastRaw, ohlcvSlowRaw] = await Promise.all([
@@ -1634,7 +1638,8 @@ export class GridTradingService {
     let positionShort: GridContext['positionShort'];
 
     try {
-      const balance = await adapter.getBalance();
+      // 优先使用 Step 3 预取的余额快照，避免重复 API 调用（节省 ~1s）
+      const balance = prefetchedBalance ?? await adapter.getBalance();
       totalEquity = balance.totalEquity;
       availableBalance = balance.availableBalance;
       state.availableBalance = availableBalance; // 同步到 state，供 placeGridLimitOrder 精确预检
