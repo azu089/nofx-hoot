@@ -209,8 +209,19 @@ export function UnifiedAiCreate() {
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
   const [gridLeverage, setGridLeverage] = useState(1);
-  const [gridUpperBound, setGridUpperBound] = useState(0);
-  const [gridLowerBound, setGridLowerBound] = useState(0);
+  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = AI 自动决策
+  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = AI 自动决策
+
+  // 网格交易对实时价格
+  const [gridCurrentPrice, setGridCurrentPrice] = useState(0);
+  useEffect(() => {
+    if (reasoningMode !== 'grid' || !gridSymbol) return;
+    const sym = `${gridSymbol}USDT`;
+    fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`)
+      .then(r => r.json())
+      .then(d => setGridCurrentPrice(parseFloat(d.price) || 0))
+      .catch(() => {});
+  }, [reasoningMode, gridSymbol]);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
   const [gridProfitRetracePct, setGridProfitRetracePct] = useState(50);
@@ -453,8 +464,11 @@ export function UnifiedAiCreate() {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
           gridCount, totalInvestment: gridInvestment, leverage: gridLeverage,
-          upperBound: gridUpperBound,
-          lowerBound: gridLowerBound,
+          // 百分比 → 绝对价格；留空(0) → 发送 0 → 后端 AI 决策
+          upperBound: (gridCurrentPrice > 0 && gridUpperPct > 0)
+            ? +(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(6) : 0,
+          lowerBound: (gridCurrentPrice > 0 && gridLowerPct > 0)
+            ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
           profitRetracePct: gridProfitRetracePct || 50,
           profitPeakWindowDays: gridProfitPeakWindowDays || 30,
@@ -993,28 +1007,42 @@ export function UnifiedAiCreate() {
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <p className="text-xs text-[#9090A0]">{t('create.gridUpperBound')}</p>
+                <p className="text-xs text-[#9090A0]">上偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <span className="text-[#606070] text-xs shrink-0">$</span>
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0}
-                    value={gridUpperBound || ''} placeholder="0"
-                    onChange={(e) => setGridUpperBound(parseFloat(e.target.value) || 0)}
-                    aria-label={t('create.gridUpperBound')}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
+                    value={gridUpperPct || ''} placeholder="AI自动"
+                    onChange={(e) => setGridUpperPct(parseFloat(e.target.value) || 0)}
+                    aria-label="上偏移百分比"
                   />
+                  <span className="text-[#606070] text-xs shrink-0">%</span>
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-[#9090A0]">{t('create.gridLowerBound')}</p>
+                <p className="text-xs text-[#9090A0]">下偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <span className="text-[#606070] text-xs shrink-0">$</span>
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0}
-                    value={gridLowerBound || ''} placeholder="0"
-                    onChange={(e) => setGridLowerBound(parseFloat(e.target.value) || 0)}
-                    aria-label={t('create.gridLowerBound')}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
+                    value={gridLowerPct || ''} placeholder="AI自动"
+                    onChange={(e) => setGridLowerPct(parseFloat(e.target.value) || 0)}
+                    aria-label="下偏移百分比"
                   />
+                  <span className="text-[#606070] text-xs shrink-0">%</span>
                 </div>
               </div>
             </div>
+            {/* 实时换算预览 */}
+            {gridCurrentPrice > 0 && (
+              <div className="flex items-center justify-between text-[10px] text-[#606070] px-1 -mt-1">
+                {gridUpperPct > 0 && gridLowerPct > 0 ? (
+                  <>
+                    <span>≈ ${(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(2)}</span>
+                    <span>当前: ${gridCurrentPrice.toFixed(2)}</span>
+                    <span>≈ ${(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(2)}</span>
+                  </>
+                ) : (
+                  <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空由AI自动决定范围</span>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">{t('create.gridMaxDrawdown')}</p>

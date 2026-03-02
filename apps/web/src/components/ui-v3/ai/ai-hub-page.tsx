@@ -12,7 +12,7 @@ export function AiHubPage() {
   const t = useTranslations('aiHub');
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] pb-24 md:pb-6">
+    <div className="min-h-screen bg-[#0A0A0F] pb-20 md:pb-6">
       {/* Mobile Header — 与资产页对齐 */}
       <div className="md:hidden sticky top-0 z-30 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
         <div className="flex items-center justify-center px-4 h-14">

@@ -277,7 +277,7 @@ export function MobileAirdropPage({
       </div>
 
       {/* Tab 内容 */}
-      <div className="px-4 mt-4 pb-24">
+      <div className="px-4 mt-4 pb-20">
         {activeTab === 'tasks' ? (
           <div className="space-y-3">
             {tasks && tasks.length > 0 ? (

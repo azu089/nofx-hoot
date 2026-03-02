@@ -153,14 +153,25 @@ export function CreateStrategyWizard() {
   const [gridParams, setGridParams] = useState({
     totalInvestment: 1000,  // 资金上限（$），对应后端 gridConfig.totalInvestment
     leverage: 1,
-    upperBound: 0,
-    lowerBound: 0,
+    upperPct: 0,            // 上偏移百分比，0 = AI 自动决策
+    lowerPct: 0,            // 下偏移百分比，0 = AI 自动决策
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
     profitRetracePct: 50,       // 利润峰值回撤保护阈值（默认 50%）
     profitPeakWindowDays: 30,   // 利润峰值滚动窗口天数（默认 30）
   })
+
+  // ── 网格交易对实时价格 ─────────────────────────────
+  const [gridCurrentPrice, setGridCurrentPrice] = useState(0)
+  useEffect(() => {
+    if (mode !== 'grid' || !gridSymbol) return
+    const sym = `${gridSymbol}USDT`
+    fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`)
+      .then(r => r.json())
+      .then(d => setGridCurrentPrice(parseFloat(d.price) || 0))
+      .catch(() => {})
+  }, [mode, gridSymbol])
 
   // ── Stop conditions ───────────────────────────
   const [maxCycles, setMaxCycles] = useState(0)
@@ -175,7 +186,9 @@ export function CreateStrategyWizard() {
   const gridViability = useMemo(() => {
     const { totalInvestment, leverage, gridCount } = gridParams
     if (!gridCount || !totalInvestment) return null
-    const MIN_NOTIONAL = 20           // Binance 合约最低名义值
+    // 按交易对读取真实最低名义价值（Binance USDT-M：BTC=$100, ETH=$20, 其他=$5）
+    const base = selectedSymbol.split('/')[0].toUpperCase()
+    const MIN_NOTIONAL = base === 'BTC' ? 100 : base === 'ETH' ? 20 : 5
     const WORST_LEV_CAP = 2           // narrow=2x, volatile=2x（最严格 regime）
     const effLev = Math.min(leverage, WORST_LEV_CAP)
     // 每层名义值 = 每层保证金 × 有效杠杆
@@ -186,7 +199,7 @@ export function CreateStrategyWizard() {
     const minInvestment = Math.ceil((gridCount * MIN_NOTIONAL) / effLev)
     const idleLayers = Math.max(0, gridCount - maxViableLayers)
     return { perLayerNotional, maxViableLayers, minInvestment, idleLayers, effLev }
-  }, [gridParams])
+  }, [gridParams, selectedSymbol])
 
   // ── Filtered data ─────────────────────────────
   const filteredCoins = useMemo(() => {
@@ -332,8 +345,11 @@ export function CreateStrategyWizard() {
           gridCount: gridParams.gridCount,
           totalInvestment: gridParams.totalInvestment,
           leverage: gridParams.leverage,
-          upperBound: gridParams.upperBound,
-          lowerBound: gridParams.lowerBound,
+          // 百分比 → 绝对价格换算；留空(0) → 发送 0 → 后端 AI 决策
+          upperBound: (gridCurrentPrice > 0 && gridParams.upperPct > 0)
+            ? +(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(6) : 0,
+          lowerBound: (gridCurrentPrice > 0 && gridParams.lowerPct > 0)
+            ? +(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridParams.maxDrawdownPct,
           dailyLossLimitPct: gridParams.dailyLossLimitPct,
           profitRetracePct: gridParams.profitRetracePct,
@@ -771,29 +787,43 @@ export function CreateStrategyWizard() {
                 </RiskField>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <RiskField label="价格上限" suffix="$" prefix>
+                <RiskField label="上偏移" suffix="%">
                   <input
                     type="number"
-                    title="价格上限"
-                    value={gridParams.upperBound || ''}
-                    onChange={(e) => updateGrid('upperBound', Number(e.target.value) || 0)}
-                    min={0}
-                    placeholder="自动"
+                    title="上偏移百分比"
+                    value={gridParams.upperPct || ''}
+                    onChange={(e) => updateGrid('upperPct', Number(e.target.value) || 0)}
+                    min={0} max={50}
+                    placeholder="AI自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
-                <RiskField label="价格下限" suffix="$" prefix>
+                <RiskField label="下偏移" suffix="%">
                   <input
                     type="number"
-                    title="价格下限"
-                    value={gridParams.lowerBound || ''}
-                    onChange={(e) => updateGrid('lowerBound', Number(e.target.value) || 0)}
-                    min={0}
-                    placeholder="自动"
+                    title="下偏移百分比"
+                    value={gridParams.lowerPct || ''}
+                    onChange={(e) => updateGrid('lowerPct', Number(e.target.value) || 0)}
+                    min={0} max={50}
+                    placeholder="AI自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
               </div>
+              {/* 实时换算预览 */}
+              {gridCurrentPrice > 0 && (
+                <div className="flex items-center justify-between text-[10px] text-[#606070] px-1 -mt-1">
+                  {gridParams.upperPct > 0 && gridParams.lowerPct > 0 ? (
+                    <>
+                      <span>≈ ${(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(2)}</span>
+                      <span>当前: ${gridCurrentPrice.toFixed(2)}</span>
+                      <span>≈ ${(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(2)}</span>
+                    </>
+                  ) : (
+                    <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空由AI自动决定范围</span>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="格数" suffix="格">
                   <input

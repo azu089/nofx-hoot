@@ -622,6 +622,7 @@ export interface StrategyLog {
       dailyPnl: number;
       breakoutLevel: string;
       lastPrice: number;
+      rangeSource?: string;  // 网格范围来源: 'AI决策' | 'ATR×5' | '用户指定' | '±8%兜底' 等
     };
     // auto_disabled_failure 格式
     reason?: string;

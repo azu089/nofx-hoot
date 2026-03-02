@@ -39,7 +39,7 @@ export function MobileExchangesPage({ onBack, exchanges = defaultExchanges }: Mo
       </div>
 
       {/* 交易所列表 */}
-      <div className="px-4 mt-4 pb-24 space-y-3">
+      <div className="px-4 mt-4 pb-20 space-y-3">
         {exchanges.map((exchange) => (
           <div
             key={exchange.id}

@@ -37,11 +37,16 @@ export class AdminService {
     const where: Prisma.UserWhereInput = {};
 
     if (search) {
+      // 支持按 UID 搜索（输入纯数字或 USR 前缀）
+      const uidSearch = search.replace(/^USR/i, '');
+      const uidNum = parseInt(uidSearch, 10);
+
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
         { nickname: { contains: search, mode: 'insensitive' } },
         { telegramUsername: { contains: search, mode: 'insensitive' } },
         { walletAddress: { contains: search, mode: 'insensitive' } },
+        ...(Number.isFinite(uidNum) ? [{ uid: uidNum }] : []),
       ];
     }
 
@@ -66,6 +71,7 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
+          uid: true,
           email: true,
           nickname: true,
           telegramId: true,

@@ -36,6 +36,7 @@ import { adminApi } from '@/lib/admin-auth';
 
 interface UserItem {
   id: string;
+  uid?: number;
   email: string;
   nickname: string;
   status: string;
@@ -159,6 +160,7 @@ function UserDetailDialog({
               {/* 基本信息 */}
               <div className="space-y-2 text-sm">
                 {[
+                  ['UID', user.uid ? `USR${user.uid}` : '-'],
                   ['邮箱', user.email],
                   ['昵称', user.nickname || '-'],
                   ['状态', <AdminStatusBadge key="s" status={user.status} />],
@@ -345,6 +347,16 @@ function UserListTab() {
 
   const columns: AdminColumn<UserItem>[] = [
     {
+      key: 'uid',
+      title: 'UID',
+      width: '100px',
+      render: (row) => (
+        <span className="font-mono text-cyan-400 text-xs">
+          {row.uid ? `USR${row.uid}` : '-'}
+        </span>
+      ),
+    },
+    {
       key: 'email',
       title: '邮箱',
       render: (row) => <span className="text-white">{row.email}</span>,
@@ -434,7 +446,7 @@ function UserListTab() {
         value={search}
         onChange={setSearch}
         onSearch={refetch}
-        placeholder="搜索邮箱、昵称..."
+        placeholder="搜索 UID、邮箱、昵称..."
       />
 
       {loading && !items.length ? (

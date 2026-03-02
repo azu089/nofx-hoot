@@ -348,7 +348,7 @@ export function MobileStrategiesV3({
       </div>
 
       {/* Strategy Cards */}
-      <div className="p-4 space-y-3 pb-24">
+      <div className="p-4 space-y-3 pb-20">
         {filteredStrategies.map((strategy) => (
           <div
             key={strategy.id}

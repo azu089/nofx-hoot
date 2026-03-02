@@ -179,7 +179,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
       </div>
 
       {/* Content */}
-      <div className="px-4 py-4 space-y-4 pb-24">
+      <div className="px-4 py-4 space-y-4 pb-20">
         {/* Carousel */}
         <div className="relative">
           <div

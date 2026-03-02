@@ -11,7 +11,13 @@ import {
   isGridAdapter,
   LimitOrderRequest,
 } from '../../../exchange-adapters/types/adapter.interface';
-import { GRID_SYSTEM_PROMPT, buildGridUserPrompt, type GridContext } from '../../constants/trading-prompts';
+import {
+  GRID_SYSTEM_PROMPT,
+  buildGridUserPrompt,
+  GRID_RANGE_SYSTEM_PROMPT,
+  buildGridRangeUserPrompt,
+  type GridContext,
+} from '../../constants/trading-prompts';
 
 // ========================= 类型定义 =========================
 
@@ -329,6 +335,8 @@ export class GridTradingService {
     // Step 1: 计算边界（初始化为 ±8% 兜底，后续可被更精确算法覆盖）
     let upperPrice: number = currentPrice * 1.08;
     let lowerPrice: number = currentPrice * 0.92;
+    let rangeSource = '±8%兜底';          // 追踪范围决策来源
+    let rangeReasoning = '';               // AI 给出的理由
 
     if (useATRBounds && this.indicators) {
       // ATR 自动边界
@@ -343,46 +351,144 @@ export class GridTradingService {
         const halfRange = atr * mult;
         upperPrice = currentPrice + halfRange;
         lowerPrice = currentPrice - halfRange;
+        rangeSource = `ATR×${mult}`;
       } else {
         // ATR 计算失败，使用 ±8% 兜底（原方案 ±1.5% 过窄）
         upperPrice = currentPrice * 1.08;
         lowerPrice = currentPrice * 0.92;
+        rangeSource = '±8%兜底';
       }
     } else if (config.upperBound && config.lowerBound) {
       upperPrice = config.upperBound;
       lowerPrice = config.lowerBound;
+      rangeSource = '用户指定';
     } else {
-      // 用户未填写边界：自动用 ATR 计算最优宽度（ATR×5 ≈ 2-3天波幅，避免行情轻易突破）
-      let autoRangeSet = false;
-      if (this.indicators) {
+      // 用户未填写边界 → 让 AI 根据市场数据决策最优范围
+      let aiRangeSet = false;
+
+      if (this.llm && this.indicators && this.marketData) {
         try {
-          const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '4h', 20);
-          const highs = ohlcvRaw.map((c: any) => Number(c[2]));
-          const lows = ohlcvRaw.map((c: any) => Number(c[3]));
-          const closes = ohlcvRaw.map((c: any) => Number(c[4]));
-          const atr = this.indicators.calculateATR(highs, lows, closes, 14);
-          if (atr && atr > 0) {
-            const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
-            upperPrice = currentPrice + halfRange;
-            lowerPrice = currentPrice - halfRange;
-            autoRangeSet = true;
+          // 收集市场数据（1h + 5m 并行拉取）
+          const [ohlcv1hRaw, ohlcv5mRaw] = await Promise.all([
+            this.marketData.fetchOHLCV(symbol, '1h', 50),
+            this.marketData.fetchOHLCV(symbol, '5m', 30),
+          ]);
+
+          const mapOHLCV = (raw: any[]): OHLCV[] => raw.map((c: any) => ({
+            timestamp: c[0], open: Number(c[1]), high: Number(c[2]),
+            low: Number(c[3]), close: Number(c[4]), volume: Number(c[5]),
+          }));
+
+          const ohlcv1h = mapOHLCV(ohlcv1hRaw);
+          const ohlcv5m = mapOHLCV(ohlcv5mRaw);
+
+          const ind1h = this.indicators.calculateAll(ohlcv1h);
+          const ind5m = this.indicators.calculateAll(ohlcv5m);
+
+          // 24h 高低价
+          const last24 = ohlcv1h.slice(-24);
+          const high24h = Math.max(...last24.map(c => c.high));
+          const low24h = Math.min(...last24.map(c => c.low));
+
+          // 价格变动
+          const priceChange1h = ohlcv1h.length >= 2
+            ? ((currentPrice - ohlcv1h[ohlcv1h.length - 2].close) / ohlcv1h[ohlcv1h.length - 2].close) * 100
+            : 0;
+          const priceChange4h = ohlcv1h.length >= 5
+            ? ((currentPrice - ohlcv1h[ohlcv1h.length - 5].close) / ohlcv1h[ohlcv1h.length - 5].close) * 100
+            : 0;
+
+          // 布林带宽度
+          const bbUpper = ind5m.bollingerBands?.upper ?? currentPrice;
+          const bbMiddle = ind5m.bollingerBands?.middle ?? currentPrice;
+          const bbLower = ind5m.bollingerBands?.lower ?? currentPrice;
+          const bbWidth = bbMiddle > 0 ? ((bbUpper - bbLower) / bbMiddle) * 100 : 0;
+
+          // 调用 AI 决策范围
+          const rangeResp = await this.llm.chat(
+            config.modelId || 'deepseek-chat',
+            GRID_RANGE_SYSTEM_PROMPT(symbol, gridCount, totalInvestment, leverage),
+            buildGridRangeUserPrompt({
+              currentPrice,
+              atr14_1h: ind1h.atr ?? 0,
+              atr14_5m: ind5m.atr ?? 0,
+              high24h,
+              low24h,
+              rsi14: ind5m.rsi ?? 50,
+              bollingerUpper: bbUpper,
+              bollingerLower: bbLower,
+              bollingerWidth: bbWidth,
+              priceChange1h,
+              priceChange4h,
+              ohlcv30: ohlcv1h.slice(-30).map(c => ({
+                open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+              })),
+            }),
+            apiKeys,
+            { temperature: 0.3, maxTokens: 500 },
+          );
+
+          // 解析 AI 响应（容错：去 markdown 反引号 + 提取 JSON 对象）
+          const cleanContent = rangeResp.content
+            .replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+          const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error('AI 响应中未找到 JSON 对象');
+          const parsed = JSON.parse(jsonMatch[0]);
+
+          if (parsed.upperPrice > parsed.lowerPrice &&
+              parsed.upperPrice > currentPrice &&
+              parsed.lowerPrice < currentPrice) {
+            upperPrice = parsed.upperPrice;
+            lowerPrice = parsed.lowerPrice;
+            aiRangeSet = true;
+            rangeSource = 'AI决策';
+            rangeReasoning = parsed.reasoning || '';
+            const rangePct = ((upperPrice - lowerPrice) / currentPrice * 100).toFixed(1);
             this.logger.log(
-              `[网格] 自动宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}): 当前价=${currentPrice.toFixed(2)}, ` +
-              `ATR(4H,14)=${atr.toFixed(2)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+              `[网格] AI 决策范围: ${lowerPrice.toFixed(2)} ~ ${upperPrice.toFixed(2)} ` +
+              `(总幅 ${rangePct}%) 理由: ${parsed.reasoning || '无'}`,
             );
+          } else {
+            this.logger.warn(`[网格] AI 返回无效范围: upper=${parsed.upperPrice}, lower=${parsed.lowerPrice}, 使用兜底`);
           }
-        } catch (_e) {
-          // ATR 获取失败，使用百分比兜底
+        } catch (e: any) {
+          this.logger.warn(`[网格] AI 范围决策失败，使用 ATR 兜底: ${e.message}`);
         }
       }
-      if (!autoRangeSet) {
-        // 兜底：固定 ±8%（原方案 ±1.5% 过窄，改为 ±8% 更合理）
-        upperPrice = currentPrice * 1.08;
-        lowerPrice = currentPrice * 0.92;
-        this.logger.log(
-          `[网格] 自动宽度 (±8% 兜底): 当前价=${currentPrice.toFixed(2)}, ` +
-          `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
-        );
+
+      // 兜底：ATR×5 + ±8%
+      if (!aiRangeSet) {
+        let atrFallbackSet = false;
+        if (this.indicators) {
+          try {
+            const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '4h', 20);
+            const highs = ohlcvRaw.map((c: any) => Number(c[2]));
+            const lows = ohlcvRaw.map((c: any) => Number(c[3]));
+            const closes = ohlcvRaw.map((c: any) => Number(c[4]));
+            const atr = this.indicators.calculateATR(highs, lows, closes, 14);
+            if (atr && atr > 0) {
+              const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
+              upperPrice = currentPrice + halfRange;
+              lowerPrice = currentPrice - halfRange;
+              atrFallbackSet = true;
+              rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}兜底`;
+              this.logger.log(
+                `[网格] 兜底宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}): 当前价=${currentPrice.toFixed(2)}, ` +
+                `ATR(4H,14)=${atr.toFixed(2)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+              );
+            }
+          } catch (_e) {
+            // ATR 获取失败
+          }
+        }
+        if (!atrFallbackSet) {
+          upperPrice = currentPrice * 1.08;
+          lowerPrice = currentPrice * 0.92;
+          this.logger.log(
+            `[网格] 兜底宽度 (±8%): 当前价=${currentPrice.toFixed(2)}, ` +
+            `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+          );
+        }
       }
     }
 
@@ -520,6 +626,37 @@ export class GridTradingService {
         `范围 ${lowerPrice.toFixed(2)}-${upperPrice.toFixed(2)}, 间距 ${gridSpacing.toFixed(2)}, ` +
         `每格 $${(totalInvestment / gridCount).toFixed(2)}, 当前价 ${currentPrice}`,
     );
+
+    // 写入策略日志，让用户在前端能看到初始化信息（含 AI 范围决策）
+    const rangePctTotal = ((upperPrice - lowerPrice) / currentPrice * 100).toFixed(1);
+    await this.prisma.aiStrategyLog.create({
+      data: {
+        strategyId,
+        symbol,
+        decision: {
+          action: 'grid_initialized',
+          gridSummary: `初始化/${gridCount}格`,
+          reasoning: `网格初始化完成 [${rangeSource}]` +
+            `\n范围: $${lowerPrice.toFixed(2)} ~ $${upperPrice.toFixed(2)} (${rangePctTotal}%)` +
+            `\n间距: $${gridSpacing.toFixed(4)}, 每格 $${(totalInvestment / gridCount).toFixed(2)}` +
+            `\n当前价: $${currentPrice.toFixed(4)}` +
+            (rangeReasoning ? `\nAI理由: ${rangeReasoning}` : ''),
+          gridSnapshot: {
+            upperPrice,
+            lowerPrice,
+            gridSpacing,
+            direction,
+            totalLevels: gridCount,
+            totalInvestment,
+            lastPrice: currentPrice,
+            rangeSource,
+          },
+        } as any,
+        executed: true,
+      },
+    }).catch((e) => {
+      this.logger.warn(`[网格] 初始化日志写入失败: ${e.message}`);
+    });
 
     return state;
   }

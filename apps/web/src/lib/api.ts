@@ -36,6 +36,7 @@ const PUBLIC_PREFIXES = ['/auth/', '/market/', '/config/'];
 
 // 虽然路径前缀在 PUBLIC_PREFIXES 中，但这些具体端点仍需认证（触发 401 自动续期）
 const PROTECTED_PREFIXES = [
+  '/auth/me',                 // 获取当前用户信息
   '/auth/bind/',              // 绑定邮箱/钱包
   '/auth/logout',             // 登出
   '/auth/profile',            // 用户资料

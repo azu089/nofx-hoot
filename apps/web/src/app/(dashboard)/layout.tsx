@@ -126,14 +126,14 @@ export default function DashboardLayout({
         <div className="hidden md:block md:ml-60 flex-1">
           {children}
         </div>
-        {/* 移动端：底部留出导航栏 + safe-area 空间（64px nav + safe-area-inset-bottom） */}
-        <div className="md:hidden w-full h-[calc(100vh-64px)] overflow-y-auto pb-[env(safe-area-inset-bottom,0px)]">
+        {/* 移动端：顶部 safe-area + 底部留出导航栏空间（56px nav + safe-area-inset-bottom） */}
+        <div className="md:hidden w-full h-[calc(100vh-56px)] overflow-y-auto pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
           {children}
         </div>
 
-        {/* Mobile Bottom Navigation - 仅在移动端显示 */}
+        {/* Mobile Bottom Navigation - 仅在移动端显示（行业标准 56px 高度） */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A]/95 backdrop-blur-lg border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)]">
-          <nav className="flex items-center justify-around h-16 px-2">
+          <nav className="flex items-center justify-around h-14">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'ai'
@@ -148,8 +148,8 @@ export default function DashboardLayout({
                     isActive ? 'text-cyan-400' : 'text-[#9090A0]'
                   }`}
                 >
-                  <Icon size={22} />
-                  <span className="text-xs mt-1 font-medium">{item.label}</span>
+                  <Icon size={20} />
+                  <span className="text-[11px] mt-0.5 font-medium">{item.label}</span>
                 </Link>
               );
             })}

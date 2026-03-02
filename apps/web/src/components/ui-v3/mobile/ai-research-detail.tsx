@@ -1122,7 +1122,7 @@ export function ResearchDetailPage() {
 
         {/* ===== 配置 Tab ===== */}
         {campaignTab === 'config' && (
-          <div className={`p-4 space-y-4 ${isEditingConfig ? 'pb-24' : ''}`}>
+          <div className={`p-4 space-y-4 ${isEditingConfig ? 'pb-20' : ''}`}>
             {!isEditingConfig ? (
               /* ── 阅读模式 ── */
               <>

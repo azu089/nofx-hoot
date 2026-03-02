@@ -740,7 +740,7 @@ export function UnifiedAiList() {
       </div>
 
       {/* 列表内容 */}
-      <div className="px-4 pb-24 space-y-3">
+      <div className="px-4 pb-20 space-y-3">
         {/* 时间线视图 */}
         {viewMode === 'timeline' ? (
           <AiTimeline key={filter} filter={filter} />

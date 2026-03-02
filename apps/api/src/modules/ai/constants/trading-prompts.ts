@@ -907,3 +907,91 @@ export function buildGridUserPrompt(ctx: GridContext): string {
 
   return lines.join('\n');
 }
+
+// ─────────────────────────────────────────────────────────────
+// 网格初始范围决策 Prompt（用于 initializeGrid 时 AI 自动决定上下界）
+// ─────────────────────────────────────────────────────────────
+
+export function GRID_RANGE_SYSTEM_PROMPT(
+  symbol: string,
+  gridCount: number,
+  totalInvestment: number,
+  leverage: number,
+): string {
+  return `你是一个专业的网格交易范围规划师。根据市场数据和策略参数，确定最优的网格上下界。
+
+## 策略参数
+- 交易对: ${symbol}
+- 网格层数: ${gridCount}
+- 总投资额: ${totalInvestment} USDT
+- 最大杠杆: ${leverage}x（杠杆是最大允许值，不是必须用满）
+
+## 决策原则
+1. **每层利润**：每层间距产生的利润应 ≥ 手续费（0.05%×2）的 3 倍，即每层间距 ≥ 当前价的 0.3%
+2. **不宜过宽**：范围过宽导致大部分层级远离当前价，永远无法成交，资金利用率低
+3. **不宜过窄**：范围过窄导致价格频繁突破边界，网格失效
+4. **本金适配**：小本金（<500U）宜窄范围高频交易；大本金（>5000U）可适当放宽
+5. **市场适配**：低波动时缩窄范围提高成交率；高波动时适当放宽避免频繁突破
+6. **覆盖近期价格区间**：范围应包含近期高低点，但不过度外扩
+
+## 参考指标
+- ATR(1h) × 1~3 可作为半幅参考（不要用 5 倍，太宽）
+- 布林带上下轨提供了当前波动的自然边界
+- 24h 高低点是短期价格活动区间
+
+## 输出要求
+只输出一个 JSON 对象（不要 markdown 代码块，不要其他文字）：
+{"upperPrice": 数字, "lowerPrice": 数字, "reasoning": "50字以内的中文理由"}`;
+}
+
+export interface GridRangePromptData {
+  currentPrice: number;
+  atr14_1h: number;
+  atr14_5m: number;
+  high24h: number;
+  low24h: number;
+  rsi14: number;
+  bollingerUpper: number;
+  bollingerLower: number;
+  bollingerWidth: number;
+  priceChange1h: number;
+  priceChange4h: number;
+  ohlcv30: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
+}
+
+export function buildGridRangeUserPrompt(data: GridRangePromptData): string {
+  const lines: string[] = [];
+
+  lines.push('--- 市场数据 ---');
+  lines.push(`当前价格: ${data.currentPrice.toFixed(4)}`);
+  lines.push(`1H 价格变动: ${data.priceChange1h >= 0 ? '+' : ''}${data.priceChange1h.toFixed(2)}%`);
+  lines.push(`4H 价格变动: ${data.priceChange4h >= 0 ? '+' : ''}${data.priceChange4h.toFixed(2)}%`);
+  lines.push(`24H 高: ${data.high24h.toFixed(4)}  低: ${data.low24h.toFixed(4)}  振幅: ${((data.high24h - data.low24h) / data.currentPrice * 100).toFixed(2)}%`);
+
+  lines.push('');
+  lines.push('--- 技术指标 ---');
+  lines.push(`ATR(14)[1h]: ${data.atr14_1h.toFixed(4)}  (占价格 ${(data.atr14_1h / data.currentPrice * 100).toFixed(2)}%)`);
+  lines.push(`ATR(14)[5m]: ${data.atr14_5m.toFixed(4)}`);
+  lines.push(`RSI(14): ${data.rsi14.toFixed(1)}`);
+  lines.push(`布林带: 上轨 ${data.bollingerUpper.toFixed(4)} | 下轨 ${data.bollingerLower.toFixed(4)} | 带宽 ${data.bollingerWidth.toFixed(2)}%`);
+
+  // K线历史
+  if (data.ohlcv30 && data.ohlcv30.length > 0) {
+    lines.push('');
+    lines.push(`--- K线历史 (1h×${data.ohlcv30.length}，最旧→最新) ---`);
+    lines.push('# 开      高      低      收      量');
+    data.ohlcv30.forEach((c, i) => {
+      const idx = String(i + 1).padStart(2, ' ');
+      lines.push(
+        `${idx} ${c.open.toFixed(2).padStart(8)} ${c.high.toFixed(2).padStart(8)} ` +
+        `${c.low.toFixed(2).padStart(8)} ${c.close.toFixed(2).padStart(8)} ` +
+        `${c.volume.toFixed(1).padStart(10)}`,
+      );
+    });
+  }
+
+  lines.push('');
+  lines.push('请根据以上数据，输出最优网格上下界 JSON。');
+
+  return lines.join('\n');
+}

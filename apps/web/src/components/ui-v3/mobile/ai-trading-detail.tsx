@@ -102,9 +102,10 @@ export function AIStrategyDetailPage() {
   const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridInterval, setEditGridInterval] = useState(60);
-  const [editGridUpperBound, setEditGridUpperBound] = useState(0);
-  const [editGridLowerBound, setEditGridLowerBound] = useState(0);
+  const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = AI 自动
+  const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = AI 自动
   const [editGridModel, setEditGridModel] = useState('deepseek-chat');
+  const [editGridCurrentPrice, setEditGridCurrentPrice] = useState(0);
 
   // 创建表单对齐：高级风控 + 止停条件
   const [editMinConfidence, setEditMinConfidence] = useState(0);
@@ -306,8 +307,24 @@ export function AIStrategyDetailPage() {
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridInterval(strategy?.intervalMinutes || 60);
-      setEditGridUpperBound(gc.upperBound || 0);
-      setEditGridLowerBound(gc.lowerBound || 0);
+      // 从 gridState 反算百分比（用上下界中点估算当前价）
+      const liveUpper = detail?.gridState?.upperPrice;
+      const liveLower = detail?.gridState?.lowerPrice;
+      if (liveUpper && liveLower) {
+        const midPrice = (Number(liveUpper) + Number(liveLower)) / 2;
+        setEditGridUpperPct(Math.round((Number(liveUpper) / midPrice - 1) * 100));
+        setEditGridLowerPct(Math.round((1 - Number(liveLower) / midPrice) * 100));
+        setEditGridCurrentPrice(midPrice);
+      } else {
+        setEditGridUpperPct(0);
+        setEditGridLowerPct(0);
+      }
+      // 获取实时价格
+      const rawSymbol = gc.symbol?.split('/')[0] || 'BTC';
+      fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${rawSymbol}USDT`)
+        .then(r => r.json())
+        .then(d => { const p = parseFloat(d.price); if (p > 0) setEditGridCurrentPrice(p); })
+        .catch(() => {});
       setEditGridModel((strategy.models && strategy.models[0]) || strategy.quickModel || 'deepseek-chat');
       setEditGridCoinSearch('');
       setShowEditGridModelDropdown(false);
@@ -389,8 +406,11 @@ export function AIStrategyDetailPage() {
           gridCount: editGridCount,
           maxDrawdownPct: editGridMaxDrawdown,
           stopLossPct: editGridStopLoss,
-          upperBound: editGridUpperBound || undefined,
-          lowerBound: editGridLowerBound || undefined,
+          // 百分比 → 绝对价格；留空(0) → undefined → 后端保持原配置或 AI 决策
+          upperBound: (editGridCurrentPrice > 0 && editGridUpperPct > 0)
+            ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : undefined,
+          lowerBound: (editGridCurrentPrice > 0 && editGridLowerPct > 0)
+            ? +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6) : undefined,
         },
         models: [editGridModel],
         intervalMinutes: editGridInterval,
@@ -1027,7 +1047,7 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
                         <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
-                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound) ? `ATR ${gc.atrMultiplier || 5}x` : `${gc.lowerBound} - ${gc.upperBound}`} />
+                        <ConfigRow label={t('detail.configPriceBounds')} value={gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound) ? 'AI 自动决定' : `$${gc.lowerBound} - $${gc.upperBound}`} />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         {detail.gridState && (
@@ -1428,38 +1448,51 @@ export function AIStrategyDetailPage() {
                         );
                       })()}
 
-                      {/* 上边界 + 下边界 — 两列输入 */}
+                      {/* 上偏移 + 下偏移 — 百分比输入 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <p className="text-xs text-[#9090A0]">{t('detail.editGridUpperBound')}</p>
+                          <p className="text-xs text-[#9090A0]">上偏移</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <span className="text-[#606070] text-xs shrink-0">$</span>
                             <input
-                              type="number" min={0} step={0.01}
-                              value={editGridUpperBound || ''}
-                              onChange={(e) => setEditGridUpperBound(parseFloat(e.target.value) || 0)}
-                              placeholder="0"
-                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                              aria-label={t('detail.editGridUpperBound')}
+                              type="number" min={0} max={50}
+                              value={editGridUpperPct || ''}
+                              onChange={(e) => setEditGridUpperPct(parseFloat(e.target.value) || 0)}
+                              placeholder="AI自动"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                              aria-label="上偏移百分比"
                             />
+                            <span className="text-[#606070] text-xs shrink-0">%</span>
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-[#9090A0]">{t('detail.editGridLowerBound')}</p>
+                          <p className="text-xs text-[#9090A0]">下偏移</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <span className="text-[#606070] text-xs shrink-0">$</span>
                             <input
-                              type="number" min={0} step={0.01}
-                              value={editGridLowerBound || ''}
-                              onChange={(e) => setEditGridLowerBound(parseFloat(e.target.value) || 0)}
-                              placeholder="0"
-                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                              aria-label={t('detail.editGridLowerBound')}
+                              type="number" min={0} max={50}
+                              value={editGridLowerPct || ''}
+                              onChange={(e) => setEditGridLowerPct(parseFloat(e.target.value) || 0)}
+                              placeholder="AI自动"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                              aria-label="下偏移百分比"
                             />
+                            <span className="text-[#606070] text-xs shrink-0">%</span>
                           </div>
                         </div>
                       </div>
-                      <p className="text-[10px] text-[#606070]">边界设为 0 则保持原有配置</p>
+                      {/* 实时换算预览 */}
+                      {editGridCurrentPrice > 0 && (
+                        <div className="flex items-center justify-between text-[10px] text-[#606070] px-1 -mt-1">
+                          {editGridUpperPct > 0 && editGridLowerPct > 0 ? (
+                            <>
+                              <span>≈ ${(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(2)}</span>
+                              <span>当前: ${editGridCurrentPrice.toFixed(2)}</span>
+                              <span>≈ ${(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(2)}</span>
+                            </>
+                          ) : (
+                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空由AI自动决定范围</span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 卡片 2: 风控 + 运行参数 */}
@@ -2584,7 +2617,7 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   // Grid 日志结构: { decisions: [{action, ...}] }, Solo/Debate: { action, confidence, ... }
   const gridDecisions = isGrid ? (log.decision?.decisions as Array<{ action: string; reasoning?: string }> || []) : [];
   const action = isGrid
-    ? (gridDecisions[0]?.action || 'grid')
+    ? (gridDecisions[0]?.action || log.decision?.action || 'grid')
     : (log.decision?.action || 'hold');
   const ac = ACTION_CONFIG[action];
   const actionKeyMap: Record<string, string> = {
@@ -2593,7 +2626,7 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
     hold: 'detail.actionHold', wait: 'detail.actionWait',
   };
   const gridActionLabels: Record<string, string> = {
-    adjust_grid: '调整网格', place_buy_limit: '挂买单', place_sell_limit: '挂卖单',
+    grid_initialized: '网格初始化', adjust_grid: '调整网格', place_buy_limit: '挂买单', place_sell_limit: '挂卖单',
     cancel_order: '撤单', rebalance: '再平衡', emergency_exit: '紧急退出', hold: '持有',
   };
   const label = isGrid
@@ -2633,8 +2666,13 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
     detailText = er?.reason || log.decision?.reasoning?.slice(0, 100) || '';
   }
   // Grid 日志：从 decisions 数组中提取最有意义的推理（优先 adjust_grid > hold > 全部拼接）
+  // 特殊：grid_initialized 日志的 reasoning 在顶层（不在 decisions 数组中）
   const gridReasoning = isGrid
     ? (() => {
+        // grid_initialized 等顶层 action 直接用顶层 reasoning
+        if (gridDecisions.length === 0 && log.decision?.reasoning) {
+          return log.decision.reasoning;
+        }
         const adjustR = gridDecisions.find(d => d.action === 'adjust_grid' && d.reasoning)?.reasoning;
         if (adjustR) return adjustR;
         const holdR = gridDecisions.find(d => d.action === 'hold' && d.reasoning)?.reasoning;
@@ -2694,9 +2732,18 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
           )}
           {/* Grid 模式：显示从 decisions 中提取的市场分析推理 */}
           {isGrid && gridReasoning && (
-            <p className="text-[10px] text-[#9090A0] leading-relaxed">
-              {gridReasoning.slice(0, 300)}
+            <p className="text-[10px] text-[#9090A0] leading-relaxed whitespace-pre-line">
+              {gridReasoning.slice(0, 400)}
             </p>
+          )}
+          {/* Grid 初始化日志：显示网格范围快照 */}
+          {isGrid && log.decision?.gridSnapshot?.rangeSource && (
+            <div className="flex items-center gap-2 text-[10px] text-[#06B6D4]">
+              <span>范围来源: {log.decision.gridSnapshot.rangeSource}</span>
+              {log.decision.gridSnapshot.upperPrice && log.decision.gridSnapshot.lowerPrice && (
+                <span>${Number(log.decision.gridSnapshot.lowerPrice).toFixed(2)} ~ ${Number(log.decision.gridSnapshot.upperPrice).toFixed(2)}</span>
+              )}
+            </div>
           )}
           {log.decision?.leverage && (
             <p className="text-[10px] text-[#9090A0]">
