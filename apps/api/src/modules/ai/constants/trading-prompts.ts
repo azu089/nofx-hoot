@@ -750,16 +750,20 @@ export function GRID_SYSTEM_PROMPT(
 
 ## 输出格式
 
-**第一步**：输出整体市场判断，使用 <analysis> 标签包裹（40-80字），让用户看懂操作依据：
-<analysis>当前价格处于xxx状态，xxx指标显示xxx，市场形态xxx，本轮策略：xxx<\/analysis>
+必须输出一个 JSON 对象，包含 analysis 和 actions 两个字段：
 
-**第二步**：输出 JSON 操作数组：
 \`\`\`json
-[
-  {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"价格接近第4层支撑位"},
-  {"action":"cancel_order","orderId":"xxx","reasoning":"价格已远离该层级"}
-]
+{
+  "analysis": "当前价格处于震荡区间，RSI=52中性，MACD零轴附近，网格覆盖良好，本轮补充低层买单维持做市",
+  "actions": [
+    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"价格接近第4层支撑位"},
+    {"action":"cancel_order","orderId":"xxx","reasoning":"价格已远离该层级"}
+  ]
+}
 \`\`\`
+
+- analysis：40-80字的整体市场判断，说明当前指标状态和本轮操作依据，用户将直接看到此内容
+- actions：操作数组，无需操作时输出空数组 []
 `;
 }
 

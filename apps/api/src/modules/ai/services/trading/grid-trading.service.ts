@@ -1116,10 +1116,8 @@ export class GridTradingService {
           { temperature: 0.3, maxTokens: 1500 },
         );
 
-        // 解析 AI 决策，同时提取整体市场分析（<analysis>...</analysis>）
-        const decisions = this.parseGridDecisions(response.content);
-        const analysisMatch = response.content.match(/<analysis>([\s\S]*?)<\/analysis>/);
-        const marketAnalysis = analysisMatch ? analysisMatch[1].trim() : undefined;
+        // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
+        const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
         // 执行决策（收集每条执行结果，供日志记录）
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
@@ -1713,33 +1711,59 @@ export class GridTradingService {
     };
   }
 
-  /** 解析 AI 返回的 JSON 决策数组 */
-  private parseGridDecisions(content: string): GridDecision[] {
+  /** 解析 AI 返回的 JSON，支持新格式 {analysis, actions} 和旧格式 [...] */
+  private parseGridDecisions(content: string): { decisions: GridDecision[]; analysis?: string } {
     try {
-      // 优先提取 ```json ... ``` 代码块，回退到贪婪正则匹配第一个完整数组
+      // 优先提取 ```json ... ``` 代码块
       let jsonStr: string | null = null;
-      const codeBlockMatch = content.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+      const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1];
+        jsonStr = codeBlockMatch[1].trim();
       } else {
-        // 贪婪匹配：找到最后一个 ] 位置，保证数组完整
-        const start = content.indexOf('[');
-        const end = content.lastIndexOf(']');
-        if (start !== -1 && end > start) jsonStr = content.slice(start, end + 1);
+        // 尝试匹配 JSON 对象 {...}
+        const objStart = content.indexOf('{');
+        const objEnd = content.lastIndexOf('}');
+        if (objStart !== -1 && objEnd > objStart) {
+          jsonStr = content.slice(objStart, objEnd + 1);
+        } else {
+          // 回退：匹配 JSON 数组 [...]
+          const arrStart = content.indexOf('[');
+          const arrEnd = content.lastIndexOf(']');
+          if (arrStart !== -1 && arrEnd > arrStart) jsonStr = content.slice(arrStart, arrEnd + 1);
+        }
       }
-      if (!jsonStr) return [];
+      if (!jsonStr) return { decisions: [] };
+
       const parsed = JSON.parse(jsonStr);
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .filter((d: any) => d && d.action)
-        .map((d: any) => {
-          // 统一字段名：AI 返回 orderId，代码内部使用 order_id
-          if (d.orderId && !d.order_id) d.order_id = d.orderId;
-          return d as GridDecision;
-        });
+
+      // 新格式：{ analysis: string, actions: [...] }
+      if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') {
+        const analysis: string | undefined = typeof parsed.analysis === 'string' ? parsed.analysis.trim() : undefined;
+        const rawActions = Array.isArray(parsed.actions) ? parsed.actions : [];
+        const decisions = rawActions
+          .filter((d: any) => d && d.action)
+          .map((d: any) => {
+            if (d.orderId && !d.order_id) d.order_id = d.orderId;
+            return d as GridDecision;
+          });
+        return { decisions, analysis };
+      }
+
+      // 旧格式：[...]
+      if (Array.isArray(parsed)) {
+        const decisions = parsed
+          .filter((d: any) => d && d.action)
+          .map((d: any) => {
+            if (d.orderId && !d.order_id) d.order_id = d.orderId;
+            return d as GridDecision;
+          });
+        return { decisions };
+      }
+
+      return { decisions: [] };
     } catch (e: any) {
       this.logger.warn(`[网格] AI 决策解析失败: ${e.message}`);
-      return [];
+      return { decisions: [] };
     }
   }
 
