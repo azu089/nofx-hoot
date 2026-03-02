@@ -635,6 +635,10 @@ export interface GridContext {
   ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
   // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
   userLockedRange?: boolean;
+  stopLossPct?: number;        // 单格止损阈值%（0或undefined=未启用）
+  gridSkewLevel?: 'none' | 'light' | 'severe';
+  gridSkewBuyFilled?: number;   // 持多头格线数（side='sell'）
+  gridSkewSellFilled?: number;  // 持空头格线数（side='buy'）
 }
 
 /**
@@ -680,6 +684,14 @@ export function GRID_SYSTEM_PROMPT(
 > ⚠️ **保证金使用率（marginUsedPct）仅供参考，不作为暂停/干预依据。**
 > 无论 marginUsedPct 多高，**都不要因此 pause_grid 或停止下单**。仅在 reasoning 中提示风险等级即可。
 > 网格策略的保证金使用率天然较高（多层挂单），这是正常现象。
+
+## 🔄 网格倾斜处置规则
+
+| 倾斜等级 | 判断条件 | AI 动作 |
+|---------|---------|---------|
+| 无倾斜 | 两侧均衡 | 正常操作 |
+| 轻度（light） | 重侧 ≥ 2× 轻侧 | reasoning 提示，可考虑 adjust_grid 居中 |
+| 严重（severe） | 重侧 ≥ 5× 轻侧，或轻侧为0且重侧≥3 | 系统已自动注入 adjust_grid，AI 不要重复输出 |
 
 ## ⚠️ 三条铁律（违反即错误决策）
 
@@ -758,24 +770,29 @@ export function GRID_SYSTEM_PROMPT(
 
 ## 可用操作
 
+每个操作必须包含 **confidence** 字段（0-100 整数），表示对执行该操作的确信度：
+- ≥ 60：正常执行
+- 40-59：低置信，系统会跳过（不执行，仅记录日志）
+- < 40：不应输出
+
 每次决策返回一个 JSON 数组，包含以下操作：
 
 - **place_buy_limit**: 放置限价买单
-  \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"reasoning":"原因"}\`
+  \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
 - **place_sell_limit**: 放置限价卖单
-  \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"reasoning":"原因"}\`
+  \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
 - **cancel_order**: 取消订单
-  \`{"action":"cancel_order","orderId":"订单ID","reasoning":"原因"}\`
+  \`{"action":"cancel_order","orderId":"订单ID","confidence":90,"reasoning":"原因"}\`
 - **pause_grid**: 暂停网格
-  \`{"action":"pause_grid","reasoning":"原因"}\`
+  \`{"action":"pause_grid","confidence":80,"reasoning":"原因"}\`
 - **resume_grid**: 恢复网格
-  \`{"action":"resume_grid","reasoning":"原因"}\`
+  \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
 - **adjust_grid**: 调整网格参数（触发重建）
-  \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"reasoning":"原因"}\`
+  \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"confidence":85,"reasoning":"原因"}\`
 - **hold**: 保持当前状态不变
-  \`{"action":"hold","reasoning":"原因"}\`
+  \`{"action":"hold","confidence":70,"reasoning":"原因"}\`
 - **cancel_all_orders**: 取消该交易对所有挂单（慎用）
-  \`{"action":"cancel_all_orders","reasoning":"原因"}\`
+  \`{"action":"cancel_all_orders","confidence":80,"reasoning":"原因"}\`
   ⚠️ 限制：仅在网格严重偏移（价格偏离中心 > 40%）或需要完全重置时使用。
   取消后必须在同一响应中附加 adjust_grid 或 place_buy_limit/place_sell_limit 操作重建挂单。
 
@@ -787,8 +804,8 @@ export function GRID_SYSTEM_PROMPT(
 {
   "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层覆盖良好，上方第15-18层卖单有望成交。本轮补全第3、5、7层缺失买单，保持网格对称做市。",
   "actions": [
-    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"reasoning":"低位支撑补单"},
-    {"action":"cancel_order","orderId":"xxx","reasoning":"远离层级撤单"}
+    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"confidence":80,"reasoning":"低位支撑补单"},
+    {"action":"cancel_order","orderId":"xxx","confidence":90,"reasoning":"远离层级撤单"}
   ]
 }
 \`\`\`
@@ -850,6 +867,24 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false（AI可自主调整范围）'}`);
+  if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
+    lines.push(`逐层止损阈值: ${ctx.stopLossPct}%（单格偏离入场价 ≥ ${ctx.stopLossPct}% 时强制平仓）`);
+  }
+  if (ctx.gridSkewLevel && ctx.gridSkewLevel !== 'none') {
+    const heavy = (ctx.gridSkewBuyFilled ?? 0) >= (ctx.gridSkewSellFilled ?? 0) ? '多头' : '空头';
+    const light = heavy === '多头' ? '空头' : '多头';
+    const hCount = heavy === '多头' ? ctx.gridSkewBuyFilled : ctx.gridSkewSellFilled;
+    const lCount = heavy === '多头' ? ctx.gridSkewSellFilled : ctx.gridSkewBuyFilled;
+    const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
+    lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
+    if (ctx.gridSkewLevel === 'severe') {
+      lines.push('  → 系统已自动注入 adjust_grid，AI 无需重复输出 adjust_grid');
+    } else {
+      lines.push('  → 建议考虑 adjust_grid 重新居中');
+    }
+  } else {
+    lines.push(`网格倾斜: 均衡`);
+  }
   // 预计算每层推荐数量（避免 AI 自行估算导致误差）
   const suggestedQtyPerLevel = ctx.currentPrice > 0 && ctx.levels.length > 0
     ? (ctx.totalInvestment / ctx.levels.length * ctx.leverage) / ctx.currentPrice

@@ -161,6 +161,8 @@ export interface GridState {
 
   // 实时可用保证金（每轮从交易所更新，供 placeGridLimitOrder 精确预检）
   availableBalance: number;
+  // 单格止损阈值%（从 GridConfig 复制，供 buildGridContext 使用）
+  stopLossPct: number;
 }
 
 /** AI 返回的网格决策 */
@@ -624,6 +626,7 @@ export class GridTradingService {
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
       userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
+      stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
     };
 
     this.gridStates.set(strategyId, state);
@@ -712,6 +715,8 @@ export class GridTradingService {
         state.makerFeeRate ??= DEFAULT_MAKER_FEE_RATE;
         // 兼容旧数据：effectiveLeverage 不存在时 fallback 到 leverage
         state.effectiveLeverage ??= state.leverage;
+        // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
+        state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
         // 从 DB 恢复，需要 reconcile
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
       }
@@ -1110,6 +1115,25 @@ export class GridTradingService {
         // 构建 AI 上下文（传入 Step 3 预取的持仓快照，避免重复 API 调用）
         const context = await this.buildGridContext(state, adapter, currentPrice, livePositions);
 
+        // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
+        const filledAll = state.gridLines.filter(l => l.state === 'filled');
+        const skewBuy = filledAll.filter(l => l.side === 'sell').length; // 持多头（原buy成交，side已翻转为sell）
+        const skewSell = filledAll.filter(l => l.side === 'buy').length; // 持空头（原sell成交，side已翻转为buy）
+        const skewTotal = skewBuy + skewSell;
+        let skewLevel: 'none' | 'light' | 'severe' = 'none';
+        if (skewTotal >= 3) {
+          const heavy = Math.max(skewBuy, skewSell);
+          const light = Math.min(skewBuy, skewSell);
+          if (light === 0 || heavy >= 5 * light) skewLevel = 'severe';
+          else if (heavy >= 2 * light) skewLevel = 'light';
+        }
+        (context as any).gridSkewLevel = skewLevel;
+        (context as any).gridSkewBuyFilled = skewBuy;
+        (context as any).gridSkewSellFilled = skewSell;
+        if (skewLevel !== 'none') {
+          this.logger.warn(`[网格] 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
+        }
+
         // Step 5.5: 1H 价格变化代码层硬检查（A1/A2 提升为硬规则，防止 AI 漏判）
         // --- 黑天鹅级别：≥10%，直接 emergencyExit 平仓 ---
         const maxHourlyChangePct = gridConfig?.maxHourlyChangePct ?? DEFAULT_MAX_HOURLY_CHANGE_PCT;
@@ -1153,9 +1177,37 @@ export class GridTradingService {
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
+        // Fix-A: 严重倾斜时代码层注入 adjust_grid（优先于 AI 决策执行）
+        if (skewLevel === 'severe' && !state.userLockedRange && !state.isPaused) {
+          const rangeWidth = state.upperPrice - state.lowerPrice;
+          const newLower = parseFloat((currentPrice - rangeWidth / 2).toFixed(8));
+          const newUpper = parseFloat((currentPrice + rangeWidth / 2).toFixed(8));
+          decisions.unshift({
+            symbol: state.symbol,
+            action: 'adjust_grid',
+            upperPrice: newUpper,
+            lowerPrice: newLower,
+            confidence: 95,
+            reasoning: `[代码层] 严重倾斜自动居中: 多${skewBuy}格 vs 空${skewSell}格`,
+          });
+          this.logger.warn(`[网格] 严重倾斜自动注入 adjust_grid: ${newLower.toFixed(4)}~${newUpper.toFixed(4)}`);
+        }
+
+        // Fix-B: confidence 过滤（未提供 confidence 的决策默认通过，兼容旧格式）
+        const CONFIDENCE_THRESHOLD = 40;
+        const filteredDecisions = decisions.filter(d => {
+          if (d.action === 'hold') return true;
+          if (d.confidence === undefined) return true;
+          if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
+          this.logger.warn(
+            `[网格] 低置信决策跳过: action=${d.action} confidence=${d.confidence} reasoning=${d.reasoning}`,
+          );
+          return false;
+        });
+
         // 执行决策（收集每条执行结果，供日志记录）
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
-        for (const d of decisions) {
+        for (const d of filteredDecisions) {
           try {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
             if (result.executed && d.action.includes('place_')) trades++;
@@ -1745,6 +1797,7 @@ export class GridTradingService {
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       })),
       userLockedRange: state.userLockedRange ?? false,
+      stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
     };
   }
 
@@ -2471,15 +2524,15 @@ export class GridTradingService {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
 
-    // 倾斜检测（网格严重偏斜时触发）
+    // 倾斜检测（瞬时批次，仅供调试参考；全局倾斜检测已移至主循环 Fix-A）
     // line.side 在 syncOrderFills 中已翻转：原 buy 成交 → side 变 sell；原 sell 成交 → side 变 buy
     if (filledLines.length >= 3) {
       const buyFilled = filledLines.filter(l => l.side === 'sell').length; // 原 buy 成交
       const sellFilled = filledLines.filter(l => l.side === 'buy').length; // 原 sell 成交
       const skew = Math.abs(buyFilled - sellFilled);
       if (skew >= 3 || (buyFilled === 0 && sellFilled > 0) || (sellFilled === 0 && buyFilled > 0)) {
-        this.logger.warn(
-          `[网格] 网格倾斜: buy_filled=${buyFilled}, sell_filled=${sellFilled}，单向聚集 ${skew} 格（可能需要调整边界）`,
+        this.logger.debug(
+          `[网格] 批次倾斜(瞬时): buy_filled=${buyFilled}, sell_filled=${sellFilled}，单向聚集 ${skew} 格`,
         );
       }
     }
