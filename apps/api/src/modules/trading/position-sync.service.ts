@@ -86,8 +86,8 @@ export class PositionSyncService {
   ): Promise<SyncedPosition[]> {
     this.logger.log(`开始同步用户 ${userId} 的持仓数据`);
 
-    // 1. 从交易所获取持仓
-    const exchangePositions = await this.fetchExchangePositions(
+    // 1. 从交易所获取持仓（success=false 表示 API 失败，此时不执行自动平仓，避免误关仓）
+    const { success: exchangeSuccess, positions: exchangePositions } = await this.fetchExchangePositions(
       userId,
       apiKeyId,
     );
@@ -152,51 +152,67 @@ export class PositionSyncService {
           syncSource: 'exchange',
         });
       } else {
-        // 交易所没有此持仓，可能已被平仓
-        this.logger.warn(
-          `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到`,
-        );
-
-        // 返回数据库数据（markPrice/unrealizedPnl 可能已被 drawdown-monitor 定期更新）
-        // 若 DB leverage=1（可能是早期 CCXT bug 写入的错误值），尝试从 margin/notional 反推真实杠杆
-        const dbNotional = new Decimal(dbPos.amount.toString()).times(dbPos.entryPrice.toString());
-        let effectiveLeverage = dbPos.leverage || 1;
-        if (effectiveLeverage <= 1 && dbPos.margin) {
-          const dbMargin = new Decimal(dbPos.margin.toString());
-          if (dbMargin.gt(0) && dbNotional.gt(0)) {
-            const derived = Math.round(dbNotional.div(dbMargin).toNumber());
-            if (derived > 1 && derived <= 200) effectiveLeverage = derived;
+        if (exchangeSuccess) {
+          // 交易所接口正常，但持仓不存在 → 已被平仓（风控/止损/手动平仓）
+          // 自动关闭 DB 记录，使前端持仓页面正确清除
+          const finalClosePrice = dbPos.markPrice ?? dbPos.entryPrice;
+          const finalPnl = dbPos.unrealizedPnl ?? dbPos.pnl ?? new Decimal(0);
+          this.logger.warn(
+            `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到，自动标记为已平仓 closePrice=${finalClosePrice} pnl=${finalPnl}`,
+          );
+          await this.prisma.position.update({
+            where: { id: dbPos.id },
+            data: {
+              status: 'closed',
+              closedAt: new Date(),
+              closePrice: finalClosePrice,
+              pnl: finalPnl,
+            },
+          });
+          // 不加入 syncedPositions，持仓已关闭
+        } else {
+          // 交易所接口调用失败（网络/认证等），不执行自动平仓，降级返回 DB 数据
+          this.logger.warn(
+            `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到（交易所接口失败，跳过自动平仓，返回 DB 数据）`,
+          );
+          // 若 DB leverage=1（可能是早期 CCXT bug 写入的错误值），尝试从 margin/notional 反推真实杠杆
+          const dbNotional = new Decimal(dbPos.amount.toString()).times(dbPos.entryPrice.toString());
+          let effectiveLeverage = dbPos.leverage || 1;
+          if (effectiveLeverage <= 1 && dbPos.margin) {
+            const dbMargin = new Decimal(dbPos.margin.toString());
+            if (dbMargin.gt(0) && dbNotional.gt(0)) {
+              const derived = Math.round(dbNotional.div(dbMargin).toNumber());
+              if (derived > 1 && derived <= 200) effectiveLeverage = derived;
+            }
           }
+          const dbMarkPrice = dbPos.markPrice ? dbPos.markPrice.toString() : dbPos.entryPrice.toString();
+          const dbUnrealizedPnl = dbPos.unrealizedPnl ? dbPos.unrealizedPnl.toString() : (dbPos.pnl?.toString() || '0');
+          const dbLiquidationPrice = dbPos.liquidationPrice ? dbPos.liquidationPrice.toString() : '0';
+          const dbMarginVal = parseFloat(dbPos.margin?.toString() || '0');
+          const dbPnlVal = parseFloat(dbUnrealizedPnl);
+          const dbRoe = dbMarginVal > 0 ? (dbPnlVal / dbMarginVal) * 100 : 0;
+          syncedPositions.push({
+            id: dbPos.id,
+            symbol: dbPos.symbol,
+            side: dbPos.side,
+            entryPrice: dbPos.entryPrice.toString(),
+            markPrice: dbMarkPrice,
+            liquidationPrice: dbLiquidationPrice,
+            amount: dbPos.amount.toString(),
+            notionalValue: dbNotional.toString(),
+            margin: dbPos.margin?.toString() || '0',
+            leverage: effectiveLeverage,
+            marginMode: dbPos.marginMode || 'cross',
+            unrealizedPnl: dbUnrealizedPnl,
+            roe: dbRoe.toFixed(2),
+            status: dbPos.status,
+            tradingType: dbPos.tradingType || 'spot',
+            strategyName: resolveStrategyName(dbPos.aiStrategy?.name, dbPos.subscription?.strategy?.name, dbPos.source, dbPos.symbol),
+            createdAt: dbPos.createdAt,
+            syncedAt: dbPos.lastSyncAt || new Date(),
+            syncSource: 'database',
+          });
         }
-        // 优先使用 DB 中的 markPrice（由 drawdown-monitor 定期同步），fallback 到 entryPrice
-        const dbMarkPrice = dbPos.markPrice ? dbPos.markPrice.toString() : dbPos.entryPrice.toString();
-        const dbUnrealizedPnl = dbPos.unrealizedPnl ? dbPos.unrealizedPnl.toString() : (dbPos.pnl?.toString() || '0');
-        const dbLiquidationPrice = dbPos.liquidationPrice ? dbPos.liquidationPrice.toString() : '0';
-        // 从 unrealizedPnl 和 margin 估算 ROE
-        const dbMarginVal = parseFloat(dbPos.margin?.toString() || '0');
-        const dbPnlVal = parseFloat(dbUnrealizedPnl);
-        const dbRoe = dbMarginVal > 0 ? (dbPnlVal / dbMarginVal) * 100 : 0;
-        syncedPositions.push({
-          id: dbPos.id,
-          symbol: dbPos.symbol,
-          side: dbPos.side,
-          entryPrice: dbPos.entryPrice.toString(),
-          markPrice: dbMarkPrice,
-          liquidationPrice: dbLiquidationPrice,
-          amount: dbPos.amount.toString(),
-          notionalValue: dbNotional.toString(),
-          margin: dbPos.margin?.toString() || '0',
-          leverage: effectiveLeverage,
-          marginMode: dbPos.marginMode || 'cross',
-          unrealizedPnl: dbUnrealizedPnl,
-          roe: dbRoe.toFixed(2),
-          status: dbPos.status,
-          tradingType: dbPos.tradingType || 'spot',
-          strategyName: resolveStrategyName(dbPos.aiStrategy?.name, dbPos.subscription?.strategy?.name, dbPos.source, dbPos.symbol),
-          createdAt: dbPos.createdAt,
-          syncedAt: dbPos.lastSyncAt || new Date(),
-          syncSource: 'database',
-        });
       }
     }
 
@@ -240,15 +256,16 @@ export class PositionSyncService {
   /**
    * 从交易所获取持仓数据
    * 使用 AdapterFactoryService (CcxtAdapter) — binance 自动映射 binanceusdm
+   * 返回 success 标志，用于区分"真正空仓"与"API调用失败"
    */
   private async fetchExchangePositions(
     userId: string,
     apiKeyId: string,
-  ): Promise<ExchangePosition[]> {
+  ): Promise<{ success: boolean; positions: ExchangePosition[] }> {
     try {
       if (!this.adapterFactory) {
         this.logger.warn('AdapterFactoryService 未注入，无法同步交易所持仓');
-        return [];
+        return { success: false, positions: [] };
       }
 
       const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
@@ -256,31 +273,34 @@ export class PositionSyncService {
 
       this.logger.log(`交易所返回 ${positions.length} 个持仓`);
 
-      return positions.map((pos) => {
-        const notionalValue = pos.quantity * pos.markPrice;
-        const margin = pos.margin > 0 ? pos.margin : notionalValue / (pos.leverage || 1);
-        const roe = margin > 0 ? pos.unrealizedPnl / margin : 0;
+      return {
+        success: true,
+        positions: positions.map((pos) => {
+          const notionalValue = pos.quantity * pos.markPrice;
+          const margin = pos.margin > 0 ? pos.margin : notionalValue / (pos.leverage || 1);
+          const roe = margin > 0 ? pos.unrealizedPnl / margin : 0;
 
-        return {
-          symbol: pos.symbol,
-          side: pos.side,
-          entryPrice: pos.entryPrice,
-          markPrice: pos.markPrice,
-          amount: pos.quantity,
-          leverage: pos.leverage,
-          margin,
-          // 直接透传交易所原始 marginRatio，不重算
-          marginRatio: pos.marginRatio,
-          marginMode: pos.marginMode,
-          unrealizedPnl: pos.unrealizedPnl,
-          roe,
-          liquidationPrice: pos.liquidationPrice || 0,
-          notionalValue,
-        };
-      });
+          return {
+            symbol: pos.symbol,
+            side: pos.side,
+            entryPrice: pos.entryPrice,
+            markPrice: pos.markPrice,
+            amount: pos.quantity,
+            leverage: pos.leverage,
+            margin,
+            // 直接透传交易所原始 marginRatio，不重算
+            marginRatio: pos.marginRatio,
+            marginMode: pos.marginMode,
+            unrealizedPnl: pos.unrealizedPnl,
+            roe,
+            liquidationPrice: pos.liquidationPrice || 0,
+            notionalValue,
+          };
+        }),
+      };
     } catch (error: any) {
       this.logger.error(`获取交易所持仓失败: ${error.message}`);
-      return [];
+      return { success: false, positions: [] };
     }
   }
 
