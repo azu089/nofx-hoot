@@ -633,6 +633,8 @@ export interface GridContext {
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
   // K线历史（最近30根1h蜡烛，K线历史数据）
   ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
+  // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
+  userLockedRange?: boolean;
 }
 
 /**
@@ -707,6 +709,9 @@ export function GRID_SYSTEM_PROMPT(
 ## 决策规则
 
 ### 【第一步，每轮必做】范围适配度检查
+
+⚠️ 前置判断：若用户锁定了范围（userLockedRange=true），**跳过本节所有检查，直接进入第二步**。
+只有 userLockedRange=false（用户填 0，交由 AI 自决）时才执行以下检查。
 
 每轮开始时，先用以下逻辑判断当前网格范围是否仍然适合市场，**不合适则立即 adjust_grid，不要做其他操作**：
 
@@ -845,6 +850,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false（AI可自主调整范围）'}`);
   // 预计算每层推荐数量（避免 AI 自行估算导致误差）
   const suggestedQtyPerLevel = ctx.currentPrice > 0 && ctx.levels.length > 0
     ? (ctx.totalInvestment / ctx.levels.length * ctx.leverage) / ctx.currentPrice

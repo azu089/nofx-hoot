@@ -153,6 +153,9 @@ export interface GridState {
   // 动态杠杆（Regime 联动）
   effectiveLeverage: number;  // 当前生效杠杆 = min(leverage, regimeCap)，运行时由市场状态压低
 
+  // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
+  userLockedRange: boolean;
+
   // 逐层止损临时标记（不持久化，_前缀表示运行时临时字段）
   _pendingStopLoss?: number[];  // 需要止损的格线 index 数组
 }
@@ -616,6 +619,7 @@ export class GridTradingService {
       lastEquity: initialEquity,
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
+      userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
     };
 
     this.gridStates.set(strategyId, state);
@@ -1708,6 +1712,7 @@ export class GridTradingService {
       ohlcv: ohlcvHourly.slice(-30).map(c => ({
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       })),
+      userLockedRange: state.userLockedRange ?? false,
     };
   }
 
