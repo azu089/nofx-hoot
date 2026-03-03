@@ -100,10 +100,18 @@ export interface AsterSymbolInfo {
   filters: AsterFilter[];
 }
 
+export interface AsterPercentPriceFilter {
+  filterType: 'PERCENT_PRICE';
+  multiplierDown: string;
+  multiplierUp: string;
+  multiplierDecimal: string;
+}
+
 export type AsterFilter =
   | AsterPriceFilter
   | AsterLotSizeFilter
   | AsterMinNotionalFilter
+  | AsterPercentPriceFilter
   | AsterOtherFilter;
 
 export interface AsterPriceFilter {
@@ -140,6 +148,8 @@ export interface AsterPrecisionInfo {
   stepSize: number;
   minQty: number;
   minNotional: number;
+  percentPriceDown?: number;
+  percentPriceUp?: number;
 }
 
 // ========================= 适配器配置 =========================

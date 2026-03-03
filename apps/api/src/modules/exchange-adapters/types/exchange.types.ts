@@ -205,6 +205,10 @@ export interface MarketPrecision {
   stepSize?: number;
   /** 价格步长 */
   tickSize?: number;
+  /** PERCENT_PRICE 下限倍数（如 0.95 = 不低于标记价 95%） */
+  percentPriceDown?: number;
+  /** PERCENT_PRICE 上限倍数（如 1.05 = 不高于标记价 105%） */
+  percentPriceUp?: number;
 }
 
 // ========================= DEX 凭证 =========================

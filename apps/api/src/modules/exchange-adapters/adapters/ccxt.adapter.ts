@@ -583,6 +583,21 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       market?.limits?.amount?.min ||
       0.001;
 
+    // 提取 PERCENT_PRICE 过滤器（Binance 合约特有，限制订单价格偏离标记价范围）
+    let percentPriceDown: number | undefined;
+    let percentPriceUp: number | undefined;
+    if (market.info?.filters && Array.isArray(market.info.filters)) {
+      const ppf = (market.info.filters as any[]).find(
+        (f: any) => f.filterType === 'PERCENT_PRICE',
+      );
+      if (ppf) {
+        const d = parseFloat(ppf.multiplierDown);
+        const u = parseFloat(ppf.multiplierUp);
+        if (d > 0 && d < 10) percentPriceDown = d;
+        if (u > 0 && u < 100) percentPriceUp = u;
+      }
+    }
+
     return {
       symbol,
       pricePrecision:
@@ -597,6 +612,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
           ? Math.pow(10, -market.precision.price)
           : 0.01,
       stepSize,
+      percentPriceDown,
+      percentPriceUp,
     };
   }
 

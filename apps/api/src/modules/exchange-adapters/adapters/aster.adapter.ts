@@ -578,6 +578,8 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
       minNotional: prec.minNotional,
       tickSize: prec.tickSize,
       stepSize: prec.stepSize,
+      percentPriceDown: prec.percentPriceDown,
+      percentPriceUp: prec.percentPriceUp,
     };
   }
 
@@ -826,6 +828,8 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
       let stepSize = 0;
       let minQty = 0;
       let minNotional = 0;
+      let percentPriceDown: number | undefined;
+      let percentPriceUp: number | undefined;
 
       for (const filter of sym.filters) {
         if (filter.filterType === 'PRICE_FILTER') {
@@ -835,6 +839,11 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
           minQty = parseFloat((filter as any).minQty) || 0;
         } else if (filter.filterType === 'MIN_NOTIONAL') {
           minNotional = parseFloat((filter as any).notional) || 0;
+        } else if (filter.filterType === 'PERCENT_PRICE') {
+          const d = parseFloat((filter as any).multiplierDown);
+          const u = parseFloat((filter as any).multiplierUp);
+          if (d > 0 && d < 10) percentPriceDown = d;
+          if (u > 0 && u < 100) percentPriceUp = u;
         }
       }
 
@@ -846,6 +855,8 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
         stepSize,
         minQty,
         minNotional,
+        percentPriceDown,
+        percentPriceUp,
       });
     }
 

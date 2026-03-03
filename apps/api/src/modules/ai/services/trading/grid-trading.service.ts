@@ -2078,12 +2078,26 @@ export class GridTradingService {
           .filter(l => l.state === 'filled' && l.positionSize > 0)
           .reduce((s, l) => s + (l.positionSize * price) / leverage0, 0);
         const totalEstimated = pendingMargin + filledMargin + newOrderMargin;
-        if (totalEstimated > state.totalInvestment * 1.1) {
-          const skipReason =
-            `聚合保证金超限(兜底): 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)}` +
-            ` + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${(state.totalInvestment * 1.1).toFixed(2)}`;
-          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-          return { executed: false, skipReason };
+        const marginLimit = state.totalInvestment * 1.1;
+        if (totalEstimated > marginLimit) {
+          // 尝试削减数量适配剩余保证金空间（与优先路径 L2054 对齐，避免 all-or-nothing 拒绝）
+          const remainingMargin = Math.max(0, marginLimit - pendingMargin - filledMargin);
+          const maxQtyForMargin = (remainingMargin * leverage0) / price;
+          const cappedNotional = maxQtyForMargin * price;
+          if (cappedNotional < EARLY_MIN_NOTIONAL) {
+            // 削减后仍低于最小下单额 — 真正保证金不足
+            const skipReason =
+              `聚合保证金超限(兜底): 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)}` +
+              ` + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${marginLimit.toFixed(2)}` +
+              `，削减后名义值 $${cappedNotional.toFixed(2)} < 最低 $${EARLY_MIN_NOTIONAL}`;
+            this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+            return { executed: false, skipReason };
+          }
+          this.logger.debug(
+            `[网格] 兜底保证金适配: qty ${quantity.toFixed(4)} → ${maxQtyForMargin.toFixed(4)}` +
+            ` (剩余保证金 $${remainingMargin.toFixed(2)}, level=${levelIndex})`,
+          );
+          quantity = maxQtyForMargin;
         }
       }
     }
@@ -2117,39 +2131,50 @@ export class GridTradingService {
       }
     }
 
-    // Step 1.5: 价格偏差保护（Binance PERCENT_PRICE 过滤器，因品种约 5~10%）
-    // 卖单价格过低 / 买单价格过高时，Binance 会以 -4074 拒单，提前过滤避免无效请求
-    const marketPrice = state.lastPrice;
-    if (marketPrice > 0) {
-      const SELL_DEVIATION_LIMIT = 0.05; // 卖单不低于市价 5%（SOL 实测 Binance 限制约 5.5%）
-      const BUY_DEVIATION_LIMIT  = 0.10; // 买单不高于市价 10%
-      if (side === 'sell' && price < marketPrice * (1 - SELL_DEVIATION_LIMIT)) {
-        const devPct = ((marketPrice - price) / marketPrice * 100).toFixed(1);
-        const skipReason = `卖单价格偏低: ${price.toFixed(4)} 低于市价 ${devPct}%（Binance PERCENT_PRICE 限制约 5.5%）`;
-        this.logger.warn(`[网格] 价格偏差跳过: SELL level=${levelIndex} price=${price.toFixed(4)} 低于市价 ${marketPrice.toFixed(4)} 达 ${devPct}%`);
-        return { executed: false, skipReason };
-      }
-      if (side === 'buy' && price > marketPrice * (1 + BUY_DEVIATION_LIMIT)) {
-        const devPct = ((price - marketPrice) / marketPrice * 100).toFixed(1);
-        const skipReason = `买单价格偏高: ${price.toFixed(4)} 高于市价 ${devPct}%（Binance PERCENT_PRICE 限制约 10%）`;
-        this.logger.warn(`[网格] 价格偏差跳过: BUY level=${levelIndex} price=${price.toFixed(4)} 高于市价 ${marketPrice.toFixed(4)} 达 ${devPct}%`);
-        return { executed: false, skipReason };
-      }
-    }
-
-    // Step 2: 格式化数量 + 最小下单量检查
+    // Step 2: 格式化数量 + 最小下单量检查 + 获取交易所精度信息
     const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
     let finalQty = parseFloat(formattedQty);
-    // 获取交易所最小下单量 + 最小名义价值（从 exchangeInfo 缓存读取，避免 Binance 拒单）
     let minQty = 0;
     let exchangeMinNotional = 0;
     let stepSize = 0;
+    let percentPriceDown: number | undefined;
+    let percentPriceUp: number | undefined;
     try {
       const precision = await adapter.getMarketPrecision(state.symbol);
       minQty = precision.minQuantity ?? 0;
       exchangeMinNotional = precision.minNotional ?? 0;
       stepSize = precision.stepSize ?? 0;
+      percentPriceDown = precision.percentPriceDown;
+      percentPriceUp = precision.percentPriceUp;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
+
+    // Step 2.5: 价格偏差保护（动态读取交易所 PERCENT_PRICE，替代硬编码）
+    // Binance PERCENT_PRICE 因品种而异（如 multiplierDown=0.95 表示不低于标记价×0.95）
+    // 加 2% 安全余量：lastPrice ≠ markPrice，防止下单瞬间标记价微移导致被拒
+    const marketPrice = state.lastPrice;
+    if (marketPrice > 0) {
+      const sellFloor = percentPriceDown
+        ? marketPrice * percentPriceDown * 1.02   // 动态值 + 2% 安全余量（向上收紧）
+        : marketPrice * 0.95;                      // 无数据时回退默认 5%
+      const buyCeiling = percentPriceUp
+        ? marketPrice * percentPriceUp * 0.98     // 动态值 - 2% 安全余量（向下收紧）
+        : marketPrice * 1.10;                      // 无数据时回退默认 10%
+
+      if (side === 'sell' && price < sellFloor) {
+        const devPct = ((marketPrice - price) / marketPrice * 100).toFixed(1);
+        const limitPct = percentPriceDown ? ((1 - percentPriceDown) * 100).toFixed(1) : '5.0';
+        const skipReason = `卖单价格偏低: ${price.toFixed(4)} 低于市价 ${devPct}%（交易所限制约 ${limitPct}%）`;
+        this.logger.warn(`[网格] 价格偏差跳过: SELL level=${levelIndex} price=${price.toFixed(4)} < floor=${sellFloor.toFixed(4)} (market=${marketPrice.toFixed(4)}, ppDown=${percentPriceDown ?? 'N/A'})`);
+        return { executed: false, skipReason };
+      }
+      if (side === 'buy' && price > buyCeiling) {
+        const devPct = ((price - marketPrice) / marketPrice * 100).toFixed(1);
+        const limitPct = percentPriceUp ? ((percentPriceUp - 1) * 100).toFixed(1) : '10.0';
+        const skipReason = `买单价格偏高: ${price.toFixed(4)} 高于市价 ${devPct}%（交易所限制约 ${limitPct}%）`;
+        this.logger.warn(`[网格] 价格偏差跳过: BUY level=${levelIndex} price=${price.toFixed(4)} > ceiling=${buyCeiling.toFixed(4)} (market=${marketPrice.toFixed(4)}, ppUp=${percentPriceUp ?? 'N/A'})`);
+        return { executed: false, skipReason };
+      }
+    }
     // floor 取整可能导致 finalQty=0（如 BTC 0.000914 → 0）
     // 当原始数量 >= minQty 的 80% 时，snap up 到 minQty，避免因精度丢失空转
     if (finalQty <= 0 && minQty > 0 && quantity >= minQty * 0.8) {
