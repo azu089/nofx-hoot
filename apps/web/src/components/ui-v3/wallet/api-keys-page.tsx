@@ -135,7 +135,7 @@ export function ApiKeysPage() {
 
   // 创建 API Key
   const createMutation = useMutation({
-    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string; authType?: string; walletAddress?: string }) => {
+    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string; passphrase?: string; authType?: string; walletAddress?: string }) => {
       const response = await api.post('/api-keys', data)
       return response.data as ApiKeyResponse
     },
@@ -362,6 +362,7 @@ export function ApiKeysPage() {
       label: formData.label || getExchangeName(selectedExchange),
       apiKey: formData.apiKey,
       apiSecret: formData.secretKey,
+      ...(formData.passphrase ? { passphrase: formData.passphrase } : {}),
     })
   }
 

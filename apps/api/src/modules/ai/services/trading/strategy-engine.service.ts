@@ -462,52 +462,35 @@ export class StrategyEngineService implements OnModuleInit {
       ...(includeGrid ? gridIds : []),
     ];
 
-    // actionsOnly: 过滤掉 wait/hold 日志
+    // 注意：不在 DB 层做 JSON path 过滤（部分 PostgreSQL 版本会报错），代码层过滤
     const logBaseWhere: any = { strategyId: { in: logStrategyIds } };
-    const logActionWhere: any = actionsOnly
-      ? {
-          strategyId: { in: logStrategyIds },
-          AND: [
-            { decision: { path: ['action'], not: 'wait' } },
-            { decision: { path: ['action'], not: 'hold' } },
-          ],
-        }
-      : logBaseWhere;
+    const researchBaseWhere: any = {
+      userId,
+      OR: [
+        { rootSessionId: null, campaignStatus: null },
+        { rootSessionId: { not: null } },
+      ],
+    };
 
     const [logs, logTotal, logTotalAll, sessions, sessionTotal, sessionTotalAll] = await Promise.all([
       logStrategyIds.length > 0
         ? db.aiStrategyLog.findMany({
-            where: logActionWhere,
+            where: logBaseWhere,
             orderBy: { createdAt: 'desc' },
-            take: limit * 2,
+            take: limit * 5, // 多取，代码层过滤后截取
           })
         : Promise.resolve([]),
       logStrategyIds.length > 0
-        ? db.aiStrategyLog.count({ where: logActionWhere })
+        ? db.aiStrategyLog.count({ where: logBaseWhere })
         : Promise.resolve(0),
-      logStrategyIds.length > 0 && actionsOnly
+      logStrategyIds.length > 0
         ? db.aiStrategyLog.count({ where: logBaseWhere })
         : Promise.resolve(0),
       includeResearch
         ? db.aiResearchSession.findMany({
-            where: {
-              userId,
-              OR: [
-                // 单次研究（无根会话、无 campaignStatus）
-                { rootSessionId: null, campaignStatus: null },
-                // 循环子会话（有实际 pipeline 结果）
-                { rootSessionId: { not: null } },
-              ],
-              // actionsOnly: 过滤掉 finalDecision.action = wait/hold 的研究记录
-              ...(actionsOnly ? {
-                AND: [
-                  { finalDecision: { path: ['action'], not: 'wait' } },
-                  { finalDecision: { path: ['action'], not: 'hold' } },
-                ],
-              } : {}),
-            },
+            where: researchBaseWhere,
             orderBy: { createdAt: 'desc' },
-            take: limit * 2,
+            take: limit * 5, // 多取，代码层过滤后截取
             select: {
               id: true, symbol: true, depth: true, status: true,
               autoExecute: true, finalDecision: true, executedTradeId: true,
@@ -517,33 +500,11 @@ export class StrategyEngineService implements OnModuleInit {
           })
         : Promise.resolve([]),
       includeResearch
-        ? db.aiResearchSession.count({
-            where: {
-              userId,
-              OR: [
-                { rootSessionId: null, campaignStatus: null },
-                { rootSessionId: { not: null } },
-              ],
-              ...(actionsOnly ? {
-                AND: [
-                  { finalDecision: { path: ['action'], not: 'wait' } },
-                  { finalDecision: { path: ['action'], not: 'hold' } },
-                ],
-              } : {}),
-            },
-          })
+        ? db.aiResearchSession.count({ where: researchBaseWhere })
         : Promise.resolve(0),
       // 获取 research 未过滤总数（用于计算 skippedCount）
-      includeResearch && actionsOnly
-        ? db.aiResearchSession.count({
-            where: {
-              userId,
-              OR: [
-                { rootSessionId: null, campaignStatus: null },
-                { rootSessionId: { not: null } },
-              ],
-            },
-          })
+      includeResearch
+        ? db.aiResearchSession.count({ where: researchBaseWhere })
         : Promise.resolve(0),
     ]);
 
@@ -553,6 +514,12 @@ export class StrategyEngineService implements OnModuleInit {
     for (const log of logs as any[]) {
       const meta = strategyMap.get(log.strategyId);
       if (!meta) continue;
+      // actionsOnly 代码层过滤（替代 DB JSON path 过滤，避免 PostgreSQL 版本兼容性问题）
+      if (actionsOnly) {
+        const dec = (log.decision as Record<string, any>) || {};
+        const act = dec.action || '';
+        if (act === 'wait' || act === 'hold') continue;
+      }
       const entryType = (meta as any).strategyType === 'grid' ? 'grid_log'
         : meta.tradingMode === 'debate' ? 'debate_log' : 'solo_log';
       merged.push({
@@ -566,6 +533,12 @@ export class StrategyEngineService implements OnModuleInit {
     }
 
     for (const session of sessions as any[]) {
+      // actionsOnly 代码层过滤研究会话
+      if (actionsOnly) {
+        const fd = (session.finalDecision as Record<string, any>) || {};
+        const act = fd.action || '';
+        if (act === 'wait' || act === 'hold') continue;
+      }
       merged.push({
         createdAt: new Date(session.createdAt),
         entry: {

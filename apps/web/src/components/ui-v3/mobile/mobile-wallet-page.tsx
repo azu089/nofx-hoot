@@ -385,7 +385,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
   // 创建 API Key mutation
   const createApiKeyMutation = useMutation({
-    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string }) => {
+    mutationFn: async (data: { exchange: string; label: string; apiKey: string; apiSecret: string; passphrase?: string }) => {
       const response = await api.post('/api-keys', data)
       return response.data as { id: string; exchange: string; label: string; maskedKey?: string }
     },
@@ -420,6 +420,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       label: formData.label || `${selectedExchange} ${t('account')}`,
       apiKey: formData.apiKey,
       apiSecret: formData.secretKey,
+      ...(formData.passphrase ? { passphrase: formData.passphrase } : {}),
     })
   }
 
