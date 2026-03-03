@@ -2229,7 +2229,8 @@ export class GridTradingService {
     }
 
     // Step 3: 下单（单向持仓模式不传 positionSide，避免 Binance -4061）
-    const clientId = level ? `grid-${levelIndex}-${Date.now()}` : undefined;
+    // OKX 要求 clOrdId 纯字母数字（无连字符），格式 g{idx}t{ts}，最长 17 字符
+    const clientId = level ? `g${levelIndex}t${Date.now()}` : undefined;
 
     const result = await adapter.placeLimitOrder({
       symbol: state.symbol,
@@ -2607,7 +2608,8 @@ export class GridTradingService {
         const finalQty = Number(formattedQty);
         if (finalQty <= 0) continue;
 
-        const clientId = `grid-rev-${targetIdx}-${Date.now()}`;
+        // OKX 要求 clOrdId 纯字母数字（无连字符），格式 gr{idx}t{ts}，最长 18 字符
+        const clientId = `gr${targetIdx}t${Date.now()}`;
 
         const result = await adapter.placeLimitOrder({
           symbol: state.symbol,

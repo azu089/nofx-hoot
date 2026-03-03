@@ -20,10 +20,9 @@ import {
   Radio,
   Typography,
   Alert,
-  Modal,
   Spin,
 } from 'antd';
-import { useMessage } from '../../hooks';
+import { useMessage, useModal } from '../../hooks';
 import {
   SaveOutlined,
   ExclamationCircleOutlined,
@@ -47,6 +46,7 @@ interface UserDetail {
 
 export const UserEdit = () => {
   const message = useMessage();
+  const modal = useModal();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [form] = Form.useForm();
@@ -118,7 +118,7 @@ export const UserEdit = () => {
     const assetLabel = assetLabels[assetType];
     const actionLabel = adjustType === 'add' ? '增加' : '减少';
 
-    Modal.confirm({
+    modal.confirm({
       title: '确认资产调整',
       icon: <ExclamationCircleOutlined />,
       content: (
@@ -165,7 +165,7 @@ export const UserEdit = () => {
   // 重置密码
   const handleResetPassword = () => {
     if (!id || !user) return;
-    Modal.confirm({
+    modal.confirm({
       title: '确认重置密码',
       icon: <ExclamationCircleOutlined />,
       content: `确定要重置用户 ${user.nickname || user.email} 的密码吗？新密码将显示一次。`,
@@ -179,7 +179,7 @@ export const UserEdit = () => {
             {}
           );
           if (result.newPassword) {
-            Modal.success({
+            modal.success({
               title: '密码已重置',
               content: (
                 <div>
