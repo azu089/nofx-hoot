@@ -58,6 +58,29 @@ const FALLBACK_PATTERNS: Array<{ pattern: RegExp; key: string }> = [
 // ─── 交易所订单错误翻译（Binance / OKX / CCXT 原始错误消息） ───────────
 
 /**
+ * OKX 错误码 → i18n key 映射
+ * OKX 错误格式: {"code":"1","data":[{"sCode":"51000","sMsg":"Parameter xxx error",...}],...}
+ * 注意：OKX 将具体错误放在 data[0].sCode / data[0].sMsg，顶层 code 固定为 "1"
+ */
+const OKX_SCODE_TO_KEY: Record<string, string> = {
+  '51000': 'orderParamInvalid',     // Parameter xxx error（如 clOrdId 格式不对）
+  '51001': 'badSymbol',             // Instrument does not exist
+  '51002': 'badSymbol',             // Instrument ID does not exist
+  '51004': 'orderMinNotional',      // Order amount below minimum
+  '51006': 'orderPriceInvalid',     // Order price error
+  '51008': 'insufficientFunds',     // Insufficient balance
+  '51010': 'insufficientFunds',     // Account balance is not enough
+  '51020': 'marginInsufficient',    // Margin not enough
+  '51100': 'orderMaxCount',         // Trade count exceeds the limit
+  '51116': 'orderMinQty',           // Order quantity too small
+  '51131': 'orderMinNotional',      // Order amount less than minimum
+  '50001': 'authFailed',            // Authentication failed
+  '50011': 'rateLimited',           // Rate limit reached
+  '50013': 'exchangeUnavailable',   // System busy
+  '58350': 'insufficientFunds',     // Insufficient funds
+};
+
+/**
  * Binance 错误码 → i18n key 映射
  * 错误码来源: Binance API 返回 {"code":-XXXX,"msg":"..."}
  */
@@ -118,12 +141,29 @@ export function translateExchangeOrderError(
 ): string {
   if (!rawError) return t('unknownError');
 
-  // 1. 提取 Binance 错误码
+  // 1. 提取 Binance 错误码（负数）
   const codeMatch = rawError.match(/"code":\s*(-?\d+)/);
   if (codeMatch) {
     const code = parseInt(codeMatch[1]);
     const key = EXCHANGE_CODE_TO_KEY[code];
     if (key) return t(key);
+  }
+
+  // 1.5. OKX 错误：从 data[].sCode 提取
+  // 格式: {"code":"1","data":[{"sCode":"51000","sMsg":"Parameter clOrdId error",...}],...}
+  const sCodeMatch = rawError.match(/"sCode"\s*:\s*"(\d+)"/);
+  if (sCodeMatch) {
+    const sCode = sCodeMatch[1];
+    const sMsgMatch = rawError.match(/"sMsg"\s*:\s*"([^"]*)"/);
+    const sMsg = sMsgMatch ? sMsgMatch[1] : '';
+    const okxKey = OKX_SCODE_TO_KEY[sCode];
+    if (okxKey) return t(okxKey);
+    // 无精确映射 — 尝试用 sMsg 做模式匹配
+    for (const { pattern, key } of EXCHANGE_MSG_PATTERNS) {
+      if (sMsg && pattern.test(sMsg)) return t(key);
+    }
+    // sMsg 非空则显示截断文本，否则继续
+    if (sMsg) return sMsg.slice(0, 60);
   }
 
   // 2. 提取 "msg":"..." 内容后做模式匹配
@@ -142,6 +182,13 @@ export function translateExchangeOrderError(
       return t(key);
     }
   }
+
+  // 3.5. 后端分类前缀兜底（来自 classifyExchangeError() 添加的中文标签）
+  if (/\[认证失败\]/.test(rawError)) return t('authFailed');
+  if (/\[API限流\]/.test(rawError)) return t('rateLimited');
+  if (/\[网络问题\]/.test(rawError)) return t('networkError');
+  if (/\[风控限制\]/.test(rawError)) return t('exchangeRestricted');
+  if (/\[交易所拒绝\]/.test(rawError)) return t('invalidOrder');
 
   // 4. 无匹配 — 返回提取的 msg 或截断的原始文本
   const displayMsg = msgMatch
