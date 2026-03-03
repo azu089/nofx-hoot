@@ -2110,7 +2110,9 @@
       "blockedByE4": "Min Position",
       "blockedByR4": "Liquidity",
       "blockedByHasPosition": "Position Exists",
-      "gridIdle": "Idle"
+      "gridIdle": "Idle",
+      "marginInsufficient": "Margin Insufficient",
+      "pendingOrdersHint": "active orders are occupying margin, will re-place after fills"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

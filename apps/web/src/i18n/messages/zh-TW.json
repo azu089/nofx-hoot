@@ -2127,7 +2127,9 @@
       "blockedByE4": "最小倉位",
       "blockedByR4": "流動性",
       "blockedByHasPosition": "已有倉位",
-      "gridIdle": "空轉"
+      "gridIdle": "空轉",
+      "marginInsufficient": "保證金不足",
+      "pendingOrdersHint": "個活躍掛單正在佔用保證金，等待成交後自動補掛"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

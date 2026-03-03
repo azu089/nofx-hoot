@@ -2125,7 +2125,9 @@
       "blockedByE4": "ขนาดขั้นต่ำ",
       "blockedByR4": "สภาพคล่อง",
       "blockedByHasPosition": "มีตำแหน่งอยู่แล้ว",
-      "gridIdle": "ว่าง"
+      "gridIdle": "ว่าง",
+      "marginInsufficient": "มาร์จิ้นไม่เพียงพอ",
+      "pendingOrdersHint": "คำสั่งซื้อขายกำลังใช้มาร์จิ้น จะวางใหม่อัตโนมัติหลังจากจับคู่"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

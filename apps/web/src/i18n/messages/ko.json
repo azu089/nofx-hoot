@@ -2125,7 +2125,9 @@
       "blockedByE4": "최소 포지션",
       "blockedByR4": "유동성",
       "blockedByHasPosition": "포지션 있음",
-      "gridIdle": "대기"
+      "gridIdle": "대기",
+      "marginInsufficient": "증거금 부족",
+      "pendingOrdersHint": "개의 활성 주문이 증거금을 점유 중, 체결 후 자동 재주문"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",

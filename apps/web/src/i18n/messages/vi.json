@@ -2126,7 +2126,9 @@
       "blockedByE4": "Vị thế tối thiểu",
       "blockedByR4": "Thanh khoản",
       "blockedByHasPosition": "Đã có vị thế",
-      "gridIdle": "Không hoạt động"
+      "gridIdle": "Không hoạt động",
+      "marginInsufficient": "Không đủ ký quỹ",
+      "pendingOrdersHint": "lệnh đang chiếm dụng ký quỹ, sẽ tự đặt lại sau khi khớp"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

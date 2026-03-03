@@ -2125,7 +2125,9 @@
       "blockedByE4": "Posisi Minimum",
       "blockedByR4": "Likuiditas",
       "blockedByHasPosition": "Ada Posisi",
-      "gridIdle": "Tidak aktif"
+      "gridIdle": "Tidak aktif",
+      "marginInsufficient": "Margin Tidak Cukup",
+      "pendingOrdersHint": "pesanan aktif sedang menggunakan margin, akan ditempatkan ulang setelah terisi"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -2123,7 +2123,9 @@
       "blockedByE4": "最小仓位",
       "blockedByR4": "流动性",
       "blockedByHasPosition": "已有持仓",
-      "gridIdle": "空转"
+      "gridIdle": "空转",
+      "marginInsufficient": "保证金不足",
+      "pendingOrdersHint": "个活跃挂单正在占用保证金，等待成交后自动补挂"
     },
     "modeInfo": {
       "soloTitle": "极速模式",

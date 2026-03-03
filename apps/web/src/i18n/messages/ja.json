@@ -2125,7 +2125,9 @@
       "blockedByE4": "最小ポジション",
       "blockedByR4": "流動性",
       "blockedByHasPosition": "ポジションあり",
-      "gridIdle": "アイドル"
+      "gridIdle": "アイドル",
+      "marginInsufficient": "証拠金不足",
+      "pendingOrdersHint": "件のアクティブ注文が証拠金を占用しています。約定後に自動補充されます"
     },
     "modeInfo": {
       "soloTitle": "ソロモード",

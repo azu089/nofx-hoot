@@ -2125,7 +2125,9 @@
       "blockedByE4": "Мин. позиция",
       "blockedByR4": "Ликвидность",
       "blockedByHasPosition": "Позиция существует",
-      "gridIdle": "Простой"
+      "gridIdle": "Простой",
+      "marginInsufficient": "Недостаточно маржи",
+      "pendingOrdersHint": "активных ордеров занимают маржу, будут перевыставлены после исполнения"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

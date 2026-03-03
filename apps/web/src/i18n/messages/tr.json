@@ -2125,7 +2125,9 @@
       "blockedByE4": "Min. Pozisyon",
       "blockedByR4": "Likidite",
       "blockedByHasPosition": "Pozisyon Var",
-      "gridIdle": "Boşta"
+      "gridIdle": "Boşta",
+      "marginInsufficient": "Yetersiz Marj",
+      "pendingOrdersHint": "aktif emir marjı kullanıyor, dolum sonrası otomatik yeniden yerleştirilecek"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

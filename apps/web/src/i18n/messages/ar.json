@@ -2106,7 +2106,9 @@
       "blockedByE4": "أدنى مركز",
       "blockedByR4": "السيولة",
       "blockedByHasPosition": "يوجد مركز",
-      "gridIdle": "خامل"
+      "gridIdle": "خامل",
+      "marginInsufficient": "هامش غير كافٍ",
+      "pendingOrdersHint": "أوامر نشطة تشغل الهامش، سيتم إعادة الطلب تلقائياً بعد التنفيذ"
     },
     "modeInfo": {
       "soloTitle": "الوضع الفردي",
