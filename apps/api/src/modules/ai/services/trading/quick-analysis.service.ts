@@ -108,6 +108,12 @@ export interface QuickAnalysisResult {
   currentPrice?: number;
   /** 24h 成交量 USD，供 safety.service L10 流动性检查 */
   volume24h?: number;
+  /** 发给 AI 的系统提示词（日志透明化用） */
+  systemPrompt?: string;
+  /** 发给 AI 的用户消息（含账户状态 + 市场数据 + K线，日志透明化用） */
+  userPrompt?: string;
+  /** DeepSeek-Reasoner reasoning_content（日志透明化用） */
+  aiThinking?: string;
 }
 
 /**
@@ -325,6 +331,9 @@ export class QuickAnalysisService {
       fundingRate: safetyFundingRate,
       currentPrice: safetyCurrentPrice,
       volume24h: safetyVolume24h,
+      systemPrompt,
+      userPrompt: userMessage,
+      aiThinking: response.thinking,
     };
   }
 

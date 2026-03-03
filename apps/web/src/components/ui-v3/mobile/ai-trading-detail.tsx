@@ -15,13 +15,12 @@ import {
   Loader2,
   Play,
   Pencil,
-  Eye,
   RotateCcw,
   Search,
   ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useStrategyDetail, useStrategyLogs, useStrategyPnlChart, useStrategyControl, useHotUpdateConfig, useUpdateStrategy, usePreviewPrompt, useTriggerCycle } from "@/hooks/useAi";
+import { useStrategyDetail, useStrategyLogs, useStrategyPnlChart, useStrategyControl, useHotUpdateConfig, useUpdateStrategy, useTriggerCycle } from "@/hooks/useAi";
 import { useStrategySocket, useDecisionStream, type StrategyDecisionEvent } from "@/hooks/useSocket";
 import { useTranslations } from "@/i18n/provider";
 import { useQueryClient } from "@tanstack/react-query";
@@ -66,8 +65,6 @@ export function AIStrategyDetailPage() {
   const [timeFilter, setTimeFilter] = useState<string>("7d");
   const [voteSheetLog, setVoteSheetLog] = useState<StrategyLog | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [showPromptPreview, setShowPromptPreview] = useState(false);
-
   // 策略名称编辑
   const [editName, setEditName] = useState('');
 
@@ -173,7 +170,6 @@ export function AIStrategyDetailPage() {
   const strategyControl = useStrategyControl();
   const hotUpdateConfig = useHotUpdateConfig();
   const updateStrategy = useUpdateStrategy();
-  const previewPrompt = usePreviewPrompt();
   const triggerCycle = useTriggerCycle();
   const queryClient = useQueryClient();
 
@@ -487,31 +483,6 @@ export function AIStrategyDetailPage() {
   };
 
   const isSaving = hotUpdateConfig.isPending || updateStrategy.isPending;
-
-  // Prompt 预览
-  const handlePreviewPrompt = async () => {
-    try {
-      await previewPrompt.mutateAsync({
-        promptSections: {
-          role: editPromptRole || undefined,
-          mode: editPromptMode,
-          custom: editPromptCustom || undefined,
-          tradingFrequency: editPromptTradingFrequency || undefined,
-          entryStandards: editPromptEntryStandards || undefined,
-        },
-        riskControlConfig: {
-          maxPositions: editMaxPositions,
-          maxLeverage: editMaxLeverage,
-          maxDailyDrawdown: editMaxDailyDrawdown,
-          allocatedCapital: editAllocatedCapital,
-        },
-        intervalMinutes: editInterval,
-      });
-      setShowPromptPreview(true);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('common.failed'));
-    }
-  };
 
   // 常用币种列表（编辑用）
   const POPULAR_COINS = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT', 'BNB/USDT:USDT', 'XRP/USDT:USDT', 'DOGE/USDT:USDT', 'ADA/USDT:USDT', 'AVAX/USDT:USDT', 'LINK/USDT:USDT', 'SUI/USDT:USDT', 'PEPE/USDT:USDT', 'WIF/USDT:USDT'];
@@ -2082,6 +2053,14 @@ export function AIStrategyDetailPage() {
                 <div className="glass-border-glow glass-card p-4 space-y-3">
                   <h3 className="text-sm font-semibold">{t('detail.editPromptConfig')}</h3>
 
+                  {/* 系统能力说明（与创建页一致） */}
+                  <div className="bg-[#06B6D4]/5 border border-[#06B6D4]/15 rounded-lg px-3 py-2.5">
+                    <p className="text-[11px] text-[#06B6D4]/80 leading-relaxed">
+                      {t('create.customInstructionsInfo')}
+                    </p>
+                  </div>
+
+                  {/* AI 交易风格 */}
                   <div>
                     <p className="text-xs text-[#606070] mb-2">{t('detail.editTradingStyle')}</p>
                     <div className="flex gap-2">
@@ -2102,23 +2081,23 @@ export function AIStrategyDetailPage() {
                     </div>
                   </div>
 
-                  {/* 4 段可折叠 Prompt 编辑器 */}
+                  {/* 4 段可折叠 Prompt 编辑器（标签与创建页保持一致） */}
                   {(() => {
                     const promptSections: Array<{
                       id: string; label: string;
                       value: string; setter: (v: string) => void;
                       defaultVal: string; maxLen: number; placeholder: string;
                     }> = [
-                      { id: 'role', label: `${t('detail.editPromptSection', { n: '1' })}: ${t('detail.roleDefinition')}`, value: editPromptRole, setter: setEditPromptRole, defaultVal: t('detail.promptDefaultRole'), maxLen: 300, placeholder: t('detail.promptDefaultRole') },
-                      { id: 'frequency', label: `${t('detail.editPromptSection', { n: '2' })}: ${t('detail.tradingFrequency')}`, value: editPromptTradingFrequency, setter: setEditPromptTradingFrequency, defaultVal: t('detail.promptDefaultFrequency'), maxLen: 300, placeholder: t('detail.promptDefaultFrequency') },
-                      { id: 'entry', label: `${t('detail.editPromptSection', { n: '3' })}: ${t('detail.entryStandards')}`, value: editPromptEntryStandards, setter: setEditPromptEntryStandards, defaultVal: t('detail.promptDefaultEntry'), maxLen: 300, placeholder: t('detail.promptDefaultEntry') },
-                      { id: 'decision', label: `${t('detail.editPromptSection', { n: '4' })}: ${t('detail.decisionProcess')}`, value: editPromptCustom, setter: setEditPromptCustom, defaultVal: t('detail.promptDefaultDecision'), maxLen: 500, placeholder: t('detail.promptDefaultDecision') },
+                      { id: 'role', label: t('create.promptRole'), value: editPromptRole, setter: setEditPromptRole, defaultVal: t('detail.promptDefaultRole'), maxLen: 300, placeholder: t('detail.promptDefaultRole') },
+                      { id: 'frequency', label: t('create.promptFrequency'), value: editPromptTradingFrequency, setter: setEditPromptTradingFrequency, defaultVal: t('detail.promptDefaultFrequency'), maxLen: 300, placeholder: t('detail.promptDefaultFrequency') },
+                      { id: 'entry', label: t('create.promptEntry'), value: editPromptEntryStandards, setter: setEditPromptEntryStandards, defaultVal: t('detail.promptDefaultEntry'), maxLen: 300, placeholder: t('detail.promptDefaultEntry') },
+                      { id: 'decision', label: t('create.promptDecision'), value: editPromptCustom, setter: setEditPromptCustom, defaultVal: t('detail.promptDefaultDecision'), maxLen: 500, placeholder: t('detail.promptDefaultDecision') },
                     ];
                     return promptSections.map((sec) => (
                       <details key={sec.id} className="group">
-                        <summary className="flex items-center justify-between cursor-pointer text-xs text-[#9090A0] hover:text-[#F8F8FC] py-1">
+                        <summary className="flex items-center justify-between cursor-pointer list-none text-xs text-[#9090A0] py-1.5 select-none">
                           <span>{sec.label}</span>
-                          <ChevronDown className="w-3 h-3 group-open:rotate-180 transition-transform" />
+                          <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
                         </summary>
                         <div className="mt-2 space-y-1.5">
                           <textarea
@@ -2127,32 +2106,25 @@ export function AIStrategyDetailPage() {
                             maxLength={sec.maxLen}
                             rows={3}
                             placeholder={sec.placeholder}
-                            className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-lg p-2 text-xs text-[#F8F8FC] placeholder-[#606070] resize-none focus:outline-none focus:border-[#06B6D4]"
+                            className="w-full px-3 py-2 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl text-sm text-[#F8F8FC] placeholder:text-[#606070] focus:outline-none focus:border-[#06B6D4] resize-none"
                           />
                           <div className="flex items-center justify-between">
                             <p className="text-[10px] text-[#606070]">{sec.value.length}/{sec.maxLen}</p>
-                            <button
-                              onClick={() => sec.setter(sec.defaultVal)}
-                              className="flex items-center gap-1 text-[10px] text-[#606070] hover:text-[#9090A0]"
-                              title={t('detail.editResetDefault')} aria-label={t('detail.editResetDefault')}
-                            >
-                              <RotateCcw className="w-3 h-3" /> {t('detail.editResetDefault')}
-                            </button>
+                            {sec.value ? (
+                              <button
+                                onClick={() => sec.setter('')}
+                                className="flex items-center gap-1 text-[10px] text-[#606070] hover:text-[#06B6D4] transition-colors"
+                                title={t('common.clear')} aria-label={t('common.clear')}
+                              >
+                                <X className="w-3 h-3" />{t('common.clear')}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </details>
                     ));
                   })()}
 
-                  <button
-                    onClick={handlePreviewPrompt}
-                    disabled={previewPrompt.isPending}
-                    className="w-full py-2 text-xs font-medium text-[#06B6D4] bg-[#06B6D4]/10 border border-[#06B6D4]/30 rounded-lg active:opacity-70 disabled:opacity-50 flex items-center justify-center gap-1"
-                    title={t('detail.editPreviewPrompt')} aria-label={t('detail.editPreviewPrompt')}
-                  >
-                    {previewPrompt.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
-                    {t('detail.editPreviewPrompt')}
-                  </button>
                 </div>
                 )}
 
@@ -2395,17 +2367,7 @@ export function AIStrategyDetailPage() {
         </div>
       )}
 
-      {/* 弹窗3: Prompt 预览 */}
-      {showPromptPreview && previewPrompt.data && (
-        <PromptPreviewSheet
-          systemPrompt={previewPrompt.data.systemPrompt}
-          sections={previewPrompt.data.sections}
-          estimatedTokens={previewPrompt.data.estimatedTokens}
-          onClose={() => setShowPromptPreview(false)}
-        />
-      )}
-
-      {/* 弹窗4: Debate 多模型投票详情 */}
+      {/* 弹窗3: Debate 多模型投票详情 */}
       {voteSheetLog && (
         <VoteDetailSheet
           log={voteSheetLog}
@@ -2526,8 +2488,19 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
     hold: 'detail.actionHold', wait: 'detail.actionWait',
   };
   const gridActionLabels: Record<string, string> = {
-    grid_initialized: '网格初始化', adjust_grid: '调整网格', place_buy_limit: '挂买单', place_sell_limit: '挂卖单',
-    cancel_order: '撤单', rebalance: '再平衡', emergency_exit: '紧急退出', hold: '持有',
+    grid_initialized: t('timeline.gridInitialized'), adjust_grid: t('timeline.gridAdjust'),
+    place_buy_limit: t('timeline.gridPlaceBuy'), place_sell_limit: t('timeline.gridPlaceSell'),
+    cancel_order: t('timeline.gridCancel'), rebalance: t('timeline.gridRebalance'),
+    emergency_exit: t('timeline.gridEmergencyExit'), hold: t('detail.actionHold'),
+    exit_all: t('timeline.gridExitAll'), reduce_exposure: t('timeline.gridReduce'),
+    pause_grid: t('timeline.gridPause'), cancel_all_orders: t('timeline.gridExitAll'),
+  };
+  const BLOCKED_BY_I18N: Record<string, string> = {
+    L1: 'timeline.blockedByL1', L2: 'timeline.blockedByL2', L4: 'timeline.blockedByL4',
+    L5: 'timeline.blockedByL5', L6: 'timeline.blockedByL6', L8: 'timeline.blockedByL8',
+    L9: 'timeline.blockedByL9', E4: 'timeline.blockedByE4', R4: 'timeline.blockedByR4',
+    safety: 'timeline.blockedBySafety', risk_debate: 'timeline.blockedByRisk',
+    has_position: 'timeline.blockedByHasPosition',
   };
   const label = isGrid
     ? (log.decision?.gridSummary || (gridActionLabels[action] || action) + (gridDecisions.length > 1 ? ` +${gridDecisions.length - 1}` : ''))
@@ -2556,10 +2529,11 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   // 详情文本
   let detailText = '';
   if (logStatus === 'executed' && er?.orderId) {
-    detailText = `orderId: ${er.orderId}`;
+    detailText = t('timeline.orderId', { id: er.orderId });
     if (er.price) detailText = `$${er.price} | ${detailText}`;
   } else if (logStatus === 'blocked') {
-    detailText = `${er?.blockedBy || '—'}: ${er?.reason || ''}`;
+    const blockedLabel = er?.blockedBy ? (BLOCKED_BY_I18N[er.blockedBy] ? t(BLOCKED_BY_I18N[er.blockedBy]) : er.blockedBy) : '—';
+    detailText = `${blockedLabel}: ${er?.reason || ''}`;
   } else if (logStatus === 'failed') {
     detailText = er?.error || er?.reason || '';
   } else if (logStatus === 'skipped') {
@@ -2666,52 +2640,6 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-
-// Prompt 预览底部弹窗
-function PromptPreviewSheet({ systemPrompt, sections, estimatedTokens, onClose }: {
-  systemPrompt: string; sections: string[]; estimatedTokens: number; onClose: () => void;
-}) {
-  const t = useTranslations('ai');
-  const costEstimate = (estimatedTokens / 1000 * 0.003).toFixed(4); // 粗略估算
-  return (
-    <div className="fixed inset-0 z-50 flex items-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-h-[85vh] overflow-y-auto bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl animate-slide-up">
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 bg-[#2B3139] rounded-full" />
-        </div>
-        <div className="px-6 pb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">{t('detail.promptPreview')}</h2>
-            <button onClick={onClose} title={t('common.collapse')} aria-label={t('common.collapse')} className="p-2 -mr-2 active:opacity-70">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <pre className="text-xs text-[#9090A0] bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl p-4 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-[60vh] overflow-y-auto">
-            {systemPrompt.split('\n').map((line, i) => (
-              <span key={i}>
-                {line.startsWith('## ') ? <span className="text-[#06B6D4] font-semibold">{line}</span> : line}
-                {'\n'}
-              </span>
-            ))}
-          </pre>
-
-          <div className="flex items-center justify-between text-xs text-[#606070]">
-            <span>{t('detail.promptSections', { count: sections.length })}</span>
-            <span>{t('detail.promptTokens', { tokens: estimatedTokens.toLocaleString(), cost: costEstimate })}</span>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="w-full py-3 text-sm font-medium border border-[#1E1E2E] rounded-lg active:bg-[#1E1E2E]"
-            title={t('common.collapse')} aria-label={t('common.collapse')}
-          >{t('common.collapse')}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // 多模型投票详情 BottomSheet（Debate 模式）
 function VoteDetailSheet({

@@ -56,6 +56,8 @@ export interface SafetyCheckResult {
   blockedBy: string | null; // 被哪一层拦截: "L1", "L2", etc.
   blockedReason: string | null;
   warnings: string[]; // 软警告（不拦截，但注入 prompt）
+  adjustedPositionSizePct?: number; // L4 positionSize 削减后的百分比（调用方应用于 decision）
+  adjustedLeverage?: number;        // L4 杠杆削减后的值（调用方应用于 decision）
   checks: Array<{
     layer: string;
     name: string;
@@ -67,6 +69,8 @@ export interface SafetyCheckResult {
 interface SafetyLayerResult {
   passed: boolean;
   detail: string;
+  clippedPositionSizePct?: number; // L4 positionSize 削减时携带新值
+  clippedLeverage?: number;        // L4 杠杆削减时携带新值
 }
 
 // ========================= 服务实现 =========================
@@ -104,6 +108,8 @@ export class SafetyService {
     const warnings: string[] = [];
     let blockedBy: string | null = null;
     let blockedReason: string | null = null;
+    let adjustedPositionSizePct: number | undefined;
+    let adjustedLeverage: number | undefined;
     const isClose = this.isCloseAction(input);
 
     // L1: 结构化输出验证
@@ -182,6 +188,12 @@ export class SafetyService {
       if (!l4.passed && !blockedBy) {
         blockedBy = 'L4';
         blockedReason = l4.detail;
+      }
+      if (l4.clippedPositionSizePct !== undefined) {
+        adjustedPositionSizePct = l4.clippedPositionSizePct;
+      }
+      if (l4.clippedLeverage !== undefined) {
+        adjustedLeverage = l4.clippedLeverage;
       }
     }
 
@@ -292,6 +304,8 @@ export class SafetyService {
       blockedBy,
       blockedReason,
       warnings,
+      adjustedPositionSizePct,
+      adjustedLeverage,
       checks,
     };
 
@@ -464,17 +478,22 @@ export class SafetyService {
       };
     }
 
-    // 检查仓位大小
+    // 对齐 nofx：仓位% 和杠杆超限时均自动削减，不拒绝
+    // 只有非法值（leverage=0, positionSize≤0）才拒绝
+    let clippedPositionSizePct: number | undefined;
+    let clippedLeverage: number | undefined;
+    const clipDetails: string[] = [];
+
+    // 检查仓位百分比（超限 → clip，不拒绝）
     if (input.positionSize && aiConfig.maxPositionSize) {
-      if (input.positionSize > Number(aiConfig.maxPositionSize)) {
-        return {
-          passed: false,
-          detail: `仓位超限: ${input.positionSize}% > ${aiConfig.maxPositionSize}%`,
-        };
+      const maxPct = Number(aiConfig.maxPositionSize);
+      if (input.positionSize > maxPct) {
+        clippedPositionSizePct = maxPct;
+        clipDetails.push(`positionSize ${input.positionSize}%→${maxPct}%`);
       }
     }
 
-    // 检查杠杆（分 BTC/ETH 和山寨币，策略级优先 → aiConfig → 默认）
+    // 检查杠杆（超限 → clip，不拒绝；对齐 nofx Leverage Fallback）
     if (input.leverage) {
       const bs = input.symbol.split('/')[0]?.toUpperCase();
       const isMaj = bs === 'BTC' || bs === 'ETH';
@@ -482,11 +501,18 @@ export class SafetyService {
         ? (input.strategyRiskConfig?.btcEthMaxLeverage ?? input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null))
         : (input.strategyRiskConfig?.altcoinMaxLeverage ?? input.strategyRiskConfig?.maxLeverage ?? (aiConfig.maxLeverage ? Number(aiConfig.maxLeverage) : null));
       if (effectiveMaxLeverage && input.leverage > effectiveMaxLeverage) {
-        return {
-          passed: false,
-          detail: `杠杆超限: ${input.leverage}x > ${effectiveMaxLeverage}x (${isMaj ? 'BTC/ETH' : 'altcoin'})`,
-        };
+        clippedLeverage = effectiveMaxLeverage;
+        clipDetails.push(`leverage ${input.leverage}x→${effectiveMaxLeverage}x (${isMaj ? 'BTC/ETH' : 'altcoin'})`);
       }
+    }
+
+    if (clipDetails.length > 0) {
+      return {
+        passed: true,
+        detail: `[L4 自动削减] ${clipDetails.join(', ')}`,
+        clippedPositionSizePct,
+        clippedLeverage,
+      };
     }
 
     return {

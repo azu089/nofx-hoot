@@ -35,7 +35,7 @@ export default function Home() {
             alt="HOOT"
             width={80}
             height={80}
-            className="rounded-2xl"
+            className="rounded-full"
           />
           <div className="w-10 h-10 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
         </div>

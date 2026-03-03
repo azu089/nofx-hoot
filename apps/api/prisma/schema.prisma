@@ -2037,6 +2037,9 @@ model AiStrategyLog {
   executed        Boolean  @default(false)
   executionResult Json?    @map("execution_result") // { orderId, price, amount, error? }
   debateSessionId String?  @map("debate_session_id") // 关联辩论会话 (debate 模式)
+  rawResponse     String?  @map("raw_response")     @db.Text // LLM 原始输出
+  systemPrompt    String?  @map("system_prompt")    @db.Text // 发给 AI 的系统提示词
+  userPrompt      String?  @map("user_prompt")      @db.Text // 发给 AI 的用户消息（含市场数据）
   createdAt       DateTime @default(now()) @map("created_at")
 
   strategy        AiStrategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)

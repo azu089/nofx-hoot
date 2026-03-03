@@ -764,6 +764,11 @@ export class AutoTraderService {
         cost: number;
         consensusScore: number; // 共识得分 (0-5)，Solo=5
         consensusVotes?: ConsensusVote[]; // Debate 模式: 各模型投票详情
+        // 日志透明化：Solo 模式携带 prompt 数据
+        rawResponse?: string;
+        systemPrompt?: string;
+        userPrompt?: string;
+        aiThinking?: string;
       }> = [];
 
       // Phase 9.0 T4: Debate 模式 — 一次辩论覆盖所有候选币（节省 80% LLM 调用）
@@ -1003,6 +1008,11 @@ export class AutoTraderService {
           let cost = 0;
           let debateConsensusScore = models.length; // Solo 模式默认满分 = 模型数（跳过 L2 共识检查）
           let consensusVotes: ConsensusVote[] | undefined; // Debate 模式各模型投票详情
+          // Solo 模式日志透明化：保存 prompt 数据，供后续 aiStrategyLog.create 写入
+          let _logRawResponse: string | undefined;
+          let _logSystemPrompt: string | undefined;
+          let _logUserPrompt: string | undefined;
+          let _logAiThinking: string | undefined;
 
           // R4: 提前获取订单簿数据供 AI 决策参考
           let symbolLiquidityData: QuickAnalysisConfig['liquidityData'];
@@ -1105,6 +1115,11 @@ export class AutoTraderService {
             safetyFundingRate = analysisResult.fundingRate;
             safetyCurrentPrice = analysisResult.currentPrice;
             safetyVolume24h = analysisResult.volume24h;
+            // 日志透明化：存储 prompt 数据供后续写入 DB
+            _logRawResponse = analysisResult.rawResponse;
+            _logSystemPrompt = analysisResult.systemPrompt;
+            _logUserPrompt = analysisResult.userPrompt;
+            _logAiThinking = analysisResult.aiThinking;
             this.logger.log(
               `⏱️ [${symbol}] AI 响应耗时 ${_soloDurationSec}s → ${decision.action} (conf=${decision.confidence}%, lev=${decision.leverage}x, pos=${decision.positionSizePercent}%)\n` +
               `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'} 成本=$${cost.toFixed(6)}\n` +
@@ -1164,9 +1179,13 @@ export class AutoTraderService {
                   reasoning: decision.reasoning,
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(consensusVotes ? { votes: consensusVotes } : {}),
+                  ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
                 } as unknown as Prisma.InputJsonValue,
                 executed: false,
                 executionResult: { skipped: true, reason: decision.action },
+                rawResponse: _logRawResponse,
+                systemPrompt: _logSystemPrompt,
+                userPrompt: _logUserPrompt,
               },
             });
             this.gateway.sendAiDecision(userId, {
@@ -1306,6 +1325,20 @@ export class AutoTraderService {
 
           const safetyResult = await this.safety.checkAll(safetyInput);
 
+          // L4 自动削减：对齐 nofx Leverage Fallback，positionSize 和杠杆超限均 clip 不拒绝
+          if (safetyResult.adjustedPositionSizePct !== undefined || safetyResult.adjustedLeverage !== undefined) {
+            const clips: string[] = [];
+            if (safetyResult.adjustedPositionSizePct !== undefined) {
+              clips.push(`positionSize ${decision.positionSizePercent}%→${safetyResult.adjustedPositionSizePct}%`);
+              decision = { ...decision, positionSizePercent: safetyResult.adjustedPositionSizePct };
+            }
+            if (safetyResult.adjustedLeverage !== undefined) {
+              clips.push(`leverage ${decision.leverage}x→${safetyResult.adjustedLeverage}x`);
+              decision = { ...decision, leverage: safetyResult.adjustedLeverage };
+            }
+            this.logger.warn(`[风控-L4] ${symbol} 自动削减: ${clips.join(', ')}`);
+          }
+
           // 安全检查逐层摘要
           const checkSummary = safetyResult.checks
             .map(c => `${c.layer}:${c.passed ? '✓' : '✗'}`)
@@ -1347,6 +1380,7 @@ export class AutoTraderService {
                   reasoning: decision.reasoning,
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(consensusVotes ? { votes: consensusVotes } : {}),
+                  ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
                 } as unknown as Prisma.InputJsonValue,
                 executed: false,
                 executionResult: {
@@ -1354,6 +1388,9 @@ export class AutoTraderService {
                   blockedBy: safetyResult.blockedBy,
                   reason: safetyResult.blockedReason,
                 },
+                rawResponse: _logRawResponse,
+                systemPrompt: _logSystemPrompt,
+                userPrompt: _logUserPrompt,
               },
             });
 
@@ -1375,7 +1412,14 @@ export class AutoTraderService {
             continue;
           }
 
-          allDecisions.push({ symbol, decision, passed: true, cost, consensusScore: debateConsensusScore, consensusVotes });
+          allDecisions.push({
+            symbol, decision, passed: true, cost,
+            consensusScore: debateConsensusScore, consensusVotes,
+            rawResponse: _logRawResponse,
+            systemPrompt: _logSystemPrompt,
+            userPrompt: _logUserPrompt,
+            aiThinking: _logAiThinking,
+          });
         } catch (error) {
           result.errors++;
           this.logger.error(
@@ -1432,7 +1476,7 @@ export class AutoTraderService {
           break;
         }
 
-        const { symbol, consensusVotes: votes } = item;
+        const { symbol, consensusVotes: votes, rawResponse: itemRawResponse, systemPrompt: itemSystemPrompt, userPrompt: itemUserPrompt, aiThinking: itemAiThinking } = item;
         let decision = item.decision; // R3: let 允许执行时价格刷新重算 SL/TP
 
         // D7: 排除币种检查
@@ -1683,6 +1727,7 @@ export class AutoTraderService {
                 reasoning: decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(votes ? { votes } : {}),
+                ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
               } as unknown as Prisma.InputJsonValue,
               executed: execResult.success,
               executionResult: {
@@ -1692,6 +1737,9 @@ export class AutoTraderService {
                 amount: execResult.amount,
                 error: execResult.error,
               },
+              rawResponse: itemRawResponse,
+              systemPrompt: itemSystemPrompt,
+              userPrompt: itemUserPrompt,
             },
           });
 
@@ -1937,6 +1985,10 @@ export class AutoTraderService {
       cost: number;
       consensusScore: number;
       consensusVotes?: ConsensusVote[];
+      rawResponse?: string;
+      systemPrompt?: string;
+      userPrompt?: string;
+      aiThinking?: string;
     }>,
   ): typeof decisions {
     const priority = (action: AiAction): number => {

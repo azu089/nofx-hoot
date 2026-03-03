@@ -632,6 +632,10 @@ export interface StrategyLog {
     error?: string;
   } | null;
   createdAt: string;
+  // 日志透明化字段（Solo 模式）
+  rawResponse?: string;   // LLM 原始输出
+  systemPrompt?: string;  // 发给 AI 的系统提示词
+  userPrompt?: string;    // 发给 AI 的用户消息（含市场数据快照）
 }
 
 export interface StrategyLogsResponse {

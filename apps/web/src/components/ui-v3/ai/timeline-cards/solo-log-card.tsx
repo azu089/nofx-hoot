@@ -107,6 +107,25 @@ const GRID_ACTION_I18N: Record<string, { key: string; color: string }> = {
   reduce_exposure: { key: 'timeline.gridReduce', color: '#F59E0B' },
   hold: { key: 'detail.actionHold', color: '#64748B' },
   cancel_all_orders: { key: 'timeline.gridExitAll', color: '#F43F5E' },
+  grid_initialized: { key: 'timeline.gridInitialized', color: '#06B6D4' },
+  rebalance: { key: 'timeline.gridRebalance', color: '#8B5CF6' },
+  emergency_exit: { key: 'timeline.gridEmergencyExit', color: '#F43F5E' },
+};
+
+/** blockedBy 代码 → i18n key 映射 */
+const BLOCKED_BY_I18N: Record<string, string> = {
+  L1: 'timeline.blockedByL1',
+  L2: 'timeline.blockedByL2',
+  L4: 'timeline.blockedByL4',
+  L5: 'timeline.blockedByL5',
+  L6: 'timeline.blockedByL6',
+  L8: 'timeline.blockedByL8',
+  L9: 'timeline.blockedByL9',
+  E4: 'timeline.blockedByE4',
+  R4: 'timeline.blockedByR4',
+  safety: 'timeline.blockedBySafety',
+  risk_debate: 'timeline.blockedByRisk',
+  has_position: 'timeline.blockedByHasPosition',
 };
 
 /** Grid 方向 — i18n key 映射 */
@@ -449,6 +468,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   // Grid: 折叠状态
   const [showGridOps, setShowGridOps] = useState(false);
 
+  // 日志透明化：折叠状态
+  const [showUserPrompt, setShowUserPrompt] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+
   return (
     <div className="glass-border-glow glass-card p-4 space-y-3">
       {/* === 标题行 === */}
@@ -723,7 +747,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         <span className="font-mono text-[#9090A0]">x{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
                       {op.level_index != null && (
-                        <span className="text-[#606070]">L{op.level_index}</span>
+                        <span className="text-[#606070]">{t('timeline.gridLayer', { layer: op.level_index })}</span>
                       )}
                       {op.reasoning && !gridAnalysisText?.includes(op.reasoning) && (
                         <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
@@ -737,6 +761,75 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
         </>
+      )}
+
+      {/* === 日志透明化：判断依据 / AI思考 / 系统提示词 === */}
+      {(log.userPrompt || d.aiThinking || log.systemPrompt) && (
+        <div className="space-y-1 border-t border-[#1E1E2E] pt-2">
+
+          {/* 📥 判断依据 (userPrompt) */}
+          {log.userPrompt && (
+            <div>
+              <button
+                onClick={() => setShowUserPrompt(!showUserPrompt)}
+                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
+              >
+                <span style={{ color: '#60A5FA' }}>📥 {t('timeline.inputPromptLabel')}</span>
+                <span className="text-[#606070]">{showUserPrompt ? t('common.collapse') : t('common.expand')}</span>
+              </button>
+              {showUserPrompt && (
+                <div
+                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
+                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
+                >
+                  {log.userPrompt}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 🧠 AI 思考过程 (aiThinking) */}
+          {d.aiThinking && (
+            <div>
+              <button
+                onClick={() => setShowThinking(!showThinking)}
+                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
+              >
+                <span style={{ color: '#F0B90B' }}>🧠 {t('timeline.aiThinkingLabel')}</span>
+                <span className="text-[#606070]">{showThinking ? t('common.collapse') : t('common.expand')}</span>
+              </button>
+              {showThinking && (
+                <div
+                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
+                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
+                >
+                  {d.aiThinking}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ⚙️ 系统提示词 (systemPrompt) */}
+          {log.systemPrompt && (
+            <div>
+              <button
+                onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
+              >
+                <span style={{ color: '#A78BFA' }}>⚙️ {t('timeline.systemPromptLabel')}</span>
+                <span className="text-[#606070]">{showSystemPrompt ? t('common.collapse') : t('common.expand')}</span>
+              </button>
+              {showSystemPrompt && (
+                <div
+                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
+                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
+                >
+                  {log.systemPrompt}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* === 执行状态 === */}
@@ -754,7 +847,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <Shield className="w-3.5 h-3.5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <span className="text-[#F59E0B] font-medium">{t('timeline.blocked')}</span>
-              {er.blockedBy && <span className="text-[#606070]"> ({er.blockedBy})</span>}
+              {er.blockedBy && <span className="text-[#606070]"> ({BLOCKED_BY_I18N[er.blockedBy] ? t(BLOCKED_BY_I18N[er.blockedBy]) : er.blockedBy})</span>}
               {er.reason && <span className="text-[#606070]"> · {er.reason}</span>}
             </div>
           </div>

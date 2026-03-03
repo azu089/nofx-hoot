@@ -779,7 +779,7 @@ export function LandingPage({
                 alt="Hoot"
                 width={32}
                 height={32}
-                className="mr-2 object-contain"
+                className="mr-2 rounded-full object-contain"
               />
               <span className="text-xl font-bold text-[#F8F8FC]">Hoot</span>
             </div>
