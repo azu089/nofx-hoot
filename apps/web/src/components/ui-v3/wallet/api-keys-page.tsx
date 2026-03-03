@@ -845,8 +845,8 @@ export function ApiKeysPage() {
                     </div>
                   </div>
 
-                  {/* Passphrase (for OKX) */}
-                  {selectedExchange === 'okx' && (
+                  {/* Passphrase (for OKX / Bitget) */}
+                  {(selectedExchange === 'okx' || selectedExchange === 'bitget') && (
                     <div>
                       <label htmlFor="add-passphrase" className="text-sm text-[#9090A0] block mb-1">Passphrase *</label>
                       <input
@@ -1017,8 +1017,8 @@ export function ApiKeysPage() {
                   <p className="text-xs text-[#606070] mt-1">更新密钥时需同时填写 API Key 和 Secret Key</p>
                 </div>
 
-                {/* Passphrase (for OKX) - 后端暂不支持 passphrase */}
-                {selectedApiKey?.exchange === 'okx' && (
+                {/* Passphrase (for OKX / Bitget) */}
+                {(selectedApiKey?.exchange === 'okx' || selectedApiKey?.exchange === 'bitget') && (
                   <div>
                     <label htmlFor="edit-passphrase" className="text-sm text-[#9090A0] block mb-1">Passphrase（留空则不更新）</label>
                     <input

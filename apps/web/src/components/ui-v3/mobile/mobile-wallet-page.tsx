@@ -282,11 +282,12 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
   // 更新 API Key mutation
   const updateApiKeyMutation = useMutation({
-    mutationFn: async (data: { id: string; label?: string; apiKey?: string; apiSecret?: string }) => {
+    mutationFn: async (data: { id: string; label?: string; apiKey?: string; apiSecret?: string; passphrase?: string }) => {
       const response = await api.patch(`/api-keys/${data.id}`, {
         label: data.label,
         apiKey: data.apiKey || undefined,
         apiSecret: data.apiSecret || undefined,
+        passphrase: data.passphrase || undefined,
       })
       return response.data
     },
@@ -306,7 +307,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     if (!selectedApiKey) return
 
     // 构建更新数据，只包含有值的字段
-    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string } = {
+    const updateData: { id: string; label?: string; apiKey?: string; apiSecret?: string; passphrase?: string } = {
       id: selectedApiKey.id,
     }
 
@@ -319,6 +320,11 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     if (editFormData.apiKey && editFormData.secretKey) {
       updateData.apiKey = editFormData.apiKey
       updateData.apiSecret = editFormData.secretKey
+    }
+
+    // passphrase 有值时才更新（OKX / Bitget）
+    if (editFormData.passphrase) {
+      updateData.passphrase = editFormData.passphrase
     }
 
     updateApiKeyMutation.mutate(updateData)
@@ -1535,7 +1541,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   </div>
                 </div>
 
-                {selectedExchange === 'okx' && (
+                {(selectedExchange === 'okx' || selectedExchange === 'bitget') && (
                   <div>
                     <label htmlFor="mobile-add-passphrase" className="text-sm text-[#94A3B8] block mb-1">Passphrase *</label>
                     <input
@@ -1742,6 +1748,21 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   </button>
                 </div>
               </div>
+
+              {(selectedApiKey.exchange === 'okx' || selectedApiKey.exchange === 'bitget') && (
+                <div>
+                  <label htmlFor="mobile-edit-passphrase" className="text-sm text-[#94A3B8] block mb-1">Passphrase（留空则不更新）</label>
+                  <input
+                    id="mobile-edit-passphrase"
+                    type="password"
+                    value={editFormData.passphrase}
+                    onChange={(e) => setEditFormData({ ...editFormData, passphrase: e.target.value })}
+                    placeholder="输入新的 Passphrase"
+                    autoComplete="off"
+                    className="w-full px-4 py-3 rounded-lg bg-[#1E1E2E] border border-[#2A2A3A] text-white placeholder-[#64748B] focus:outline-none focus:border-[#06B6D4]"
+                  />
+                </div>
+              )}
 
               <div>
                 <label htmlFor="mobile-edit-label" className="text-sm text-[#94A3B8] block mb-1">{t('labelName')}</label>
