@@ -1242,32 +1242,33 @@ export class GridTradingService {
           // 汇总错误类别（去重）
           const failedErrors = execResults.filter(r => !r.success && r.error).map(r => r.error!);
           const uniqueCategories = [...new Set(failedErrors.map(e => e.match(/^\[([^\]]+)\]/)?.[1] ?? '交易所拒绝'))];
-          const reasonSuffix = uniqueCategories.length > 0
-            ? ` | 失败原因: ${uniqueCategories.join('、')}`
-            : '';
 
-          // 检测是否全部因 MIN_NOTIONAL（每层资金不足）被拦截
+          // 汇总所有 skip 原因（去重，取第一条作为代表）
           const skippedReasons = execResults
             .filter(r => r.success && r.skipped && r.skipReason)
             .map(r => r.skipReason!);
-          const allSkippedForNotional =
-            skippedReasons.length > 0 &&
-            skippedReasons.length === placeActions.length &&
-            skippedReasons.every(r => r.includes('每层资金不足'));
-          const notionalSuffix = allSkippedForNotional
-            ? ` | ${skippedReasons[0]}`
-            : '';
+          const allSkipped = skippedReasons.length > 0 && skippedReasons.length === placeActions.length;
+          // 提取关键词作为用户可见摘要（如"保证金不足"、"每层资金不足"、"价格偏低"等）
+          const uniqueSkipKeywords = [...new Set(skippedReasons.map(r => {
+            if (r.includes('保证金不足')) return '保证金不足';
+            if (r.includes('每层资金不足')) return '每层资金不足';
+            if (r.includes('价格偏低')) return '卖单价格偏低';
+            if (r.includes('价格偏高')) return '买单价格偏高';
+            return r.split(':')[0]; // 取冒号前作为关键词
+          }))];
 
           // 区分：有真实交易所错误 = 执行失败；全部是内部拦截（skipped）= 空转
           const hasExchangeErrors = failedErrors.length > 0;
           const logAction = hasExchangeErrors ? 'grid_exec_failed' : 'grid_idle';
           const logTitle = hasExchangeErrors
             ? `执行失败: AI 建议 ${placeActions.length} 笔下单，全部被交易所拒绝`
-            : allSkippedForNotional
-              ? `网格空转: ${skippedReasons[0]}`
+            : allSkipped
+              ? `网格空转: ${uniqueSkipKeywords.join('、')}`
               : `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功`;
           const summaryPrefix = hasExchangeErrors ? '执行失败' : '空转';
-          const fullReasonSuffix = allSkippedForNotional ? notionalSuffix : reasonSuffix;
+          const fullReasonSuffix = hasExchangeErrors
+            ? (uniqueCategories.length > 0 ? ` | 失败原因: ${uniqueCategories.join('、')}` : '')
+            : (allSkipped ? ` | ${uniqueSkipKeywords.join('、')}` : '');
 
           await this.prisma.aiStrategyLog.create({
             data: {
@@ -1276,7 +1277,7 @@ export class GridTradingService {
               decision: {
                 action: logAction,
                 reasoning: logTitle +
-                  (allSkippedForNotional ? '' : ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)`) +
+                  (allSkipped ? '' : ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)`) +
                   fullReasonSuffix,
                 gridSummary: `${summaryPrefix}/${placeActions.length}笔未执行${fullReasonSuffix}`,
                 gridSnapshot: {
@@ -2088,19 +2089,31 @@ export class GridTradingService {
       return { executed: false };
     }
 
-    // Step 0.5: 保证金预检 — 防止 Binance -2019 margin insufficient
+    // Step 0.5: 保证金预检 — 参照 nofx: 削减数量适配可用保证金（而非直接拒绝）
     {
       const leverage0 = state.effectiveLeverage || state.leverage;
       const newOrderMargin = (quantity * price) / leverage0;
+      const EARLY_MIN_NOTIONAL = 5; // 保守下限（Step 2 有精确值，此处仅做快速判断）
 
       if (state.availableBalance > 5) {
         // 优先路径：直接用交易所返回的可用余额做精确判断（每轮 buildGridContext 更新）
         if (newOrderMargin > state.availableBalance * 0.9) {
-          const skipReason =
-            `可用保证金不足: 新单需 $${newOrderMargin.toFixed(2)},` +
-            ` 实际可用 $${state.availableBalance.toFixed(2)}(90%阈值 $${(state.availableBalance * 0.9).toFixed(2)})`;
-          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-          return { executed: false, skipReason };
+          // nofx 做法: 削减 qty 适配可用保证金，不直接拒绝
+          const maxQtyForMargin = (state.availableBalance * 0.9 * leverage0) / price;
+          const cappedNotional = maxQtyForMargin * price;
+          if (cappedNotional < EARLY_MIN_NOTIONAL) {
+            // 削减后仍低于最小下单额 — 真正资金不足，此时才拒绝
+            const skipReason =
+              `保证金不足: 可用 $${state.availableBalance.toFixed(2)},` +
+              ` 削减后名义值 $${cappedNotional.toFixed(2)} < 最低 $${EARLY_MIN_NOTIONAL}`;
+            this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+            return { executed: false, skipReason };
+          }
+          this.logger.debug(
+            `[网格] 保证金适配: qty ${quantity.toFixed(4)} → ${maxQtyForMargin.toFixed(4)}` +
+            ` (可用 $${state.availableBalance.toFixed(2)}, 需 $${newOrderMargin.toFixed(2)}, level=${levelIndex})`,
+          );
+          quantity = maxQtyForMargin;
         }
       } else {
         // 兜底路径：availableBalance 未获取时，退回聚合估算逻辑
