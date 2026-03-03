@@ -1384,7 +1384,8 @@
     "sessionExpired": "登入已過期，請退出重新登入",
     "bindFailed": "綁定失敗，請重試",
     "verifyFailed": "驗證失敗，請檢查驗證碼",
-    "sendFailed": "發送失敗，請重試"
+    "sendFailed": "發送失敗，請重試",
+    "okxAccountMode": "OKX賬戶模式不支援合約交易，請在OKX App設定→帳戶模式中切換至「單幣種保證金」"
   },
   "ai": {
     "common": {

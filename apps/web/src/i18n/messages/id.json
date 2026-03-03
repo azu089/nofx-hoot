@@ -1382,7 +1382,8 @@
     "sessionExpired": "Sesi berakhir, silakan keluar dan masuk kembali",
     "bindFailed": "Gagal mengikat, coba lagi",
     "verifyFailed": "Verifikasi gagal, periksa kodenya",
-    "sendFailed": "Gagal mengirim, coba lagi"
+    "sendFailed": "Gagal mengirim, coba lagi",
+    "okxAccountMode": "Akun OKX tidak mendukung perdagangan kontrak. Beralih ke 'Margin satu mata uang' di Pengaturan OKX App → Mode Akun"
   },
   "ai": {
     "common": {

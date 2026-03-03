@@ -1367,7 +1367,8 @@
     "sessionExpired": "Session expired, please log out and log in again",
     "bindFailed": "Binding failed, please try again",
     "verifyFailed": "Verification failed, please check the code",
-    "sendFailed": "Send failed, please try again"
+    "sendFailed": "Send failed, please try again",
+    "okxAccountMode": "OKX account mode doesn't support futures. Switch to 'Single-currency margin' in OKX App Settings → Account Mode"
   },
   "ai": {
     "common": {

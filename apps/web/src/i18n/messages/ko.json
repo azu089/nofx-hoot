@@ -1382,7 +1382,8 @@
     "sessionExpired": "세션이 만료되었습니다. 로그아웃 후 다시 로그인하세요",
     "bindFailed": "연결에 실패했습니다. 다시 시도하세요",
     "verifyFailed": "인증에 실패했습니다. 코드를 확인하세요",
-    "sendFailed": "전송에 실패했습니다. 다시 시도하세요"
+    "sendFailed": "전송에 실패했습니다. 다시 시도하세요",
+    "okxAccountMode": "OKX 계정이 선물 거래를 지원하지 않습니다. OKX App 설정 → 계정 모드에서 '단일 통화 마진'으로 전환하세요"
   },
   "ai": {
     "common": {

@@ -209,12 +209,13 @@ const DEFAULT_STOP_LOSS_PCT = 5;
 
 /** 交易所错误类型枚举 */
 type ExchangeErrorCategory =
-  | '网络问题'   // fetch failed / timeout / ECONNREFUSED
-  | 'API限流'   // -1003 / 429 / too many requests
-  | '风控限制'   // -2019 保证金不足 / -4161 杠杆限制 / -2018 资金不足
-  | '数量不足'   // -4164 min notional / -4003 qty too small / -1111 precision
-  | '认证失败'   // Invalid API key / signature error
-  | '交易所拒绝'; // 其他交易所错误
+  | '网络问题'      // fetch failed / timeout / ECONNREFUSED
+  | 'API限流'      // -1003 / 429 / too many requests
+  | '风控限制'      // -2019 保证金不足 / -4161 杠杆限制 / -2018 资金不足
+  | '数量不足'      // -4164 min notional / -4003 qty too small / -1111 precision
+  | '认证失败'      // Invalid API key / signature error
+  | '账户配置错误'   // OKX 51010：账户模式不支持合约交易，需用户手动开通
+  | '交易所拒绝';   // 其他交易所错误
 
 /**
  * 分类交易所错误，用于日志中明确标注失败原因
@@ -228,6 +229,13 @@ function classifyExchangeError(e: any): ExchangeErrorCategory {
     } catch {
       // 忽略解析失败，code 保持 undefined
     }
+  }
+
+  // OKX 账户模式不支持合约交易（最高优先级，精确匹配）
+  // sCode:51010 "You can't complete this request under your current account mode"
+  if (msg.includes('"scode":"51010"') || msg.includes('"scode": "51010"') ||
+      msg.includes("account mode")) {
+    return '账户配置错误';
   }
 
   // 网络/连接问题
@@ -1173,7 +1181,14 @@ export class GridTradingService {
 
         // 执行决策（收集每条执行结果，供日志记录）
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
+        let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         for (const d of filteredDecisions) {
+          // 账户配置错误已确认（如 OKX 51010）→ 跳过后续下单，避免刷屏重试
+          if (accountConfigError) {
+            execResults.push({ action: d.action, success: false, error: accountConfigError });
+            errors++;
+            continue;
+          }
           try {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
             if (result.executed && d.action.includes('place_')) trades++;
@@ -1183,7 +1198,13 @@ export class GridTradingService {
             const errCategory = classifyExchangeError(e);
             const rawCode = e?.code ?? e?.id ?? '';
             this.logger.warn(`[网格] 执行决策失败: ${d.action} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
-            execResults.push({ action: d.action, success: false, error: `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}` });
+            const errEntry = `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}`;
+            execResults.push({ action: d.action, success: false, error: errEntry });
+            // 账户配置错误（如 OKX 51010）是持久性错误，后续订单无需再试
+            if (errCategory === '账户配置错误') {
+              accountConfigError = errEntry;
+              this.logger.error(`[网格] 账户配置错误（如 OKX 未开通合约交易），本轮停止下单: ${e.message}`);
+            }
           }
         }
 

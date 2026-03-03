@@ -1383,7 +1383,8 @@
     "sessionExpired": "Phiên đăng nhập hết hạn, vui lòng đăng xuất và đăng nhập lại",
     "bindFailed": "Liên kết thất bại, vui lòng thử lại",
     "verifyFailed": "Xác minh thất bại, vui lòng kiểm tra mã",
-    "sendFailed": "Gửi thất bại, vui lòng thử lại"
+    "sendFailed": "Gửi thất bại, vui lòng thử lại",
+    "okxAccountMode": "Tài khoản OKX không hỗ trợ giao dịch hợp đồng. Vui lòng chuyển sang 'Ký quỹ đơn tiền tệ' trong Cài đặt OKX App → Chế độ tài khoản"
   },
   "ai": {
     "common": {

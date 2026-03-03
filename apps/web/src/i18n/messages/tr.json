@@ -1382,7 +1382,8 @@
     "sessionExpired": "Oturum süresi doldu, çıkış yapıp tekrar giriş yapın",
     "bindFailed": "Bağlama başarısız, lütfen tekrar deneyin",
     "verifyFailed": "Doğrulama başarısız, kodu kontrol edin",
-    "sendFailed": "Gönderme başarısız, tekrar deneyin"
+    "sendFailed": "Gönderme başarısız, tekrar deneyin",
+    "okxAccountMode": "OKX hesabı sözleşme ticaretini desteklemiyor. OKX App Ayarları → Hesap Modunda 'Tek para birimi marjı'na geçin"
   },
   "ai": {
     "common": {

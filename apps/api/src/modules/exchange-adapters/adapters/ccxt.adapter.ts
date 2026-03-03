@@ -389,12 +389,25 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const exchangeId = (ex.id ?? '').toLowerCase();
 
     if (exchangeId === 'okx') {
-      // OKX 对冲模式：需要 posSide，不支持 reduceOnly
+      // OKX 止损：优先单向持仓模式（reduceOnly，不带 posSide）
+      // 若失败 (51015/51017) 则回退到对冲持仓模式（带 posSide: long/short）
       const params: Record<string, any> = {
         triggerPrice: stopPrice,
-        posSide: positionSide === 'long' ? 'long' : 'short',
+        reduceOnly: true,  // 单向持仓模式
       };
-      await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+      try {
+        await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+      } catch (e: any) {
+        const eMsgLower = (e.message ?? '').toLowerCase();
+        if (eMsgLower.includes('51015') || eMsgLower.includes('51017') || eMsgLower.includes('possid')) {
+          // 对冲持仓模式：必须指定 posSide
+          delete params.reduceOnly;
+          params.posSide = positionSide === 'long' ? 'long' : 'short';
+          await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+        } else {
+          throw e;
+        }
+      }
 
     } else if (exchangeId === 'bybit') {
       // Bybit 线性永续：positionIdx 区分单向/对冲
@@ -427,11 +440,23 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const exchangeId = (ex.id ?? '').toLowerCase();
 
     if (exchangeId === 'okx') {
+      // OKX 止盈：同止损，优先单向持仓模式，失败回退到对冲模式
       const params: Record<string, any> = {
         triggerPrice: takeProfitPrice,
-        posSide: positionSide === 'long' ? 'long' : 'short',
+        reduceOnly: true,
       };
-      await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+      try {
+        await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+      } catch (e: any) {
+        const eMsgLower = (e.message ?? '').toLowerCase();
+        if (eMsgLower.includes('51015') || eMsgLower.includes('51017') || eMsgLower.includes('possid')) {
+          delete params.reduceOnly;
+          params.posSide = positionSide === 'long' ? 'long' : 'short';
+          await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+        } else {
+          throw e;
+        }
+      }
 
     } else if (exchangeId === 'bybit') {
       const params: Record<string, any> = {

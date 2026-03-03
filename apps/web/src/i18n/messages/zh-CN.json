@@ -1380,7 +1380,8 @@
     "sessionExpired": "登录已过期，请退出重新登录",
     "bindFailed": "绑定失败，请重试",
     "verifyFailed": "验证失败，请检查验证码",
-    "sendFailed": "发送失败，请重试"
+    "sendFailed": "发送失败，请重试",
+    "okxAccountMode": "OKX账户模式不支持合约交易，请在OKX App设置→账户模式中切换至「单币种保证金」"
   },
   "ai": {
     "common": {

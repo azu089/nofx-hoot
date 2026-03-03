@@ -69,7 +69,7 @@ const OKX_SCODE_TO_KEY: Record<string, string> = {
   '51004': 'orderMinNotional',      // Order amount below minimum
   '51006': 'orderPriceInvalid',     // Order price error
   '51008': 'insufficientFunds',     // Insufficient balance
-  '51010': 'insufficientFunds',     // Account balance is not enough
+  '51010': 'okxAccountMode',         // You can't complete this under your current account mode（账户未开通合约）
   '51020': 'marginInsufficient',    // Margin not enough
   '51100': 'orderMaxCount',         // Trade count exceeds the limit
   '51116': 'orderMinQty',           // Order quantity too small
