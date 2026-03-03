@@ -221,7 +221,14 @@ type ExchangeErrorCategory =
  */
 function classifyExchangeError(e: any): ExchangeErrorCategory {
   const msg = (e?.message ?? '').toLowerCase();
-  const code = e?.code ?? (typeof e === 'object' ? JSON.parse(msg.match(/\{[^}]+\}/)?.[0] ?? '{}')?.code : undefined);
+  let code: number | string | undefined = e?.code;
+  if (code === undefined && typeof e === 'object') {
+    try {
+      code = JSON.parse(msg.match(/\{[^}]+\}/)?.[0] ?? '{}')?.code;
+    } catch {
+      // 忽略解析失败，code 保持 undefined
+    }
+  }
 
   // 网络/连接问题
   if (
