@@ -1155,7 +1155,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             </p>
                           </div>
                           <div className="flex items-center justify-between mt-1">
-                            <p className="text-sm text-[#94A3B8]">{tx.asset}</p>
+                            <p className="text-sm text-[#94A3B8]">{getAssetLabel(tx.asset)}</p>
                             <div className="flex items-center gap-1">
                               {statusInfo.icon}
                               <span className={`text-xs ${statusInfo.color}`}>

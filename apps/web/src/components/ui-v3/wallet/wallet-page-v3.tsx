@@ -691,7 +691,7 @@ export function WalletPageV3({
                                       <span className="text-[10px] font-bold text-[#06B6D4]">{tx.asset.charAt(0)}</span>
                                     )}
                                   </div>
-                                  <span className="font-medium text-[#9090A0]">{tx.asset}</span>
+                                  <span className="font-medium text-[#9090A0]">{getAssetLabel(tx.asset)}</span>
                                 </div>
                               </td>
                               <td className="py-4">
