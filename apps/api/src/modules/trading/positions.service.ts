@@ -674,20 +674,13 @@ export class PositionsService {
     }
 
     // === 来源 2: AiStrategyLog（AI 产品 B 策略日志）===
+    // 注意：不在 DB 层做 JSON path 过滤（部分 PostgreSQL 版本会报错），改为取回后在代码里过滤
     const aiLogs = await this.prisma.aiStrategyLog.findMany({
       where: {
         strategy: { userId },
-        ...(actionsOnly ? {
-          NOT: {
-            OR: [
-              { decision: { path: ['action'], equals: 'wait' } },
-              { decision: { path: ['action'], equals: 'hold' } },
-            ],
-          },
-        } : {}),
       },
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: limit * 3, // 多取一些，代码过滤后再截取
       include: { strategy: { select: { name: true, coinSourceConfig: true } } },
     });
 
@@ -700,6 +693,9 @@ export class PositionsService {
       // 兼容旧 Grid 日志（无 action 字段但有 decisions 数组）
       const isGridLog = Array.isArray(decision.decisions);
       const actionStr = decision.action || (isGridLog ? 'adjust_grid' : 'unknown');
+
+      // actionsOnly 过滤：wait/hold 跳过（在代码层处理，避免 DB JSON path 兼容性问题）
+      if (actionsOnly && (actionStr === 'wait' || actionStr === 'hold')) continue;
       const isOpen = actionStr.startsWith('open');
       const isClose = actionStr.startsWith('close');
       // symbol 回退: 日志字段 → 策略的第一个 coin
