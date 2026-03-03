@@ -1435,13 +1435,13 @@ export function UnifiedAiCreate() {
       <div className="fixed bottom-16 left-0 right-0 md:bottom-0 md:left-60 bg-[#0A0A0F]/95 backdrop-blur-lg border-t border-[#1E1E2E] px-4 py-3 z-20">
         <div className="flex gap-2">
           <button type="button" onClick={() => handleSubmit(true)} disabled={isSubmitting}
-            className={`flex-1 py-2.5 text-sm bg-[#12121A] hover:bg-[#1E1E2E] text-[#9090A0] font-medium rounded-lg border border-[#1E1E2E] transition-colors ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex-1 py-2.5 text-sm bg-[#12121A] hover:bg-[#1E1E2E] text-[#9090A0] font-medium rounded-lg border border-[#1E1E2E] transition-all duration-100 select-none ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98] active:opacity-80'}`}
             aria-label={t('create.saveOnly')} title={t('create.saveOnly')}
           >
             {isSubmitting ? t('common.saving') : t('create.saveOnly')}
           </button>
           <button type="button" onClick={() => handleSubmit(false)} disabled={isSubmitting}
-            className={`flex-[2] py-2.5 text-sm bg-[#06B6D4] hover:bg-[#0891B2] text-[#F8F8FC] font-semibold rounded-lg transition-colors ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex-[2] py-2.5 text-sm bg-[#06B6D4] hover:bg-[#0891B2] text-[#F8F8FC] font-semibold rounded-lg transition-all duration-100 select-none ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98] active:opacity-80'}`}
             aria-label={t('create.saveAndStart')} title={t('create.saveAndStart')}
           >
             {isSubmitting ? t('common.creating') : t('create.saveAndStart')}

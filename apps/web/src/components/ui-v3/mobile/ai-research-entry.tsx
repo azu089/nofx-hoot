@@ -506,7 +506,7 @@ export function AIResearchPage({ embedded, creationOnly }: AIResearchPageProps =
           <button
             onClick={handleStartResearch}
             disabled={startResearch.isPending}
-            className="w-full bg-cyan-500 hover:bg-cyan-600 text-[#F8F8FC] font-semibold py-4 rounded-xl transition-colors shadow-lg shadow-[#06B6D4]/20 disabled:opacity-50"
+            className="w-full bg-cyan-500 hover:bg-cyan-600 text-[#F8F8FC] font-semibold py-4 rounded-xl transition-all duration-100 select-none shadow-lg shadow-[#06B6D4]/20 disabled:opacity-50 enabled:active:scale-[0.98] enabled:active:opacity-80"
             aria-label={t('research.startResearch')}
             title={t('research.startResearch')}
           >

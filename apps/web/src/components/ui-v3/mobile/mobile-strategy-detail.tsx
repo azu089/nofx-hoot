@@ -373,7 +373,7 @@ export function MobileStrategyDetail({
         <button
           type="button"
           onClick={() => onUseStrategy?.(strategy.id)}
-          className="w-full py-3 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+          className="w-full py-3 bg-gradient-to-r from-[#06B6D4] to-[#0891B2] text-white font-semibold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] active:opacity-80 transition-all duration-100 select-none shadow-[0_0_20px_rgba(6,182,212,0.3)]"
         >
           <Play className="w-5 h-5" />
           {strategy.isSubscribed ? '已订阅' : '立即使用'}

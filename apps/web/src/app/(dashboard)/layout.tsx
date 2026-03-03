@@ -133,7 +133,7 @@ export default function DashboardLayout({
 
         {/* Mobile Bottom Navigation - 仅在移动端显示（行业标准 56px 高度） */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A]/95 backdrop-blur-lg border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)]">
-          <nav className="flex items-center justify-around h-14">
+          <nav className="flex items-center justify-around h-14 select-none">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.id === 'ai'
@@ -144,7 +144,7 @@ export default function DashboardLayout({
                 <Link
                   key={item.id}
                   href={item.href}
-                  className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+                  className={`flex flex-col items-center justify-center flex-1 h-full transition-all duration-100 active:opacity-50 active:scale-90 ${
                     isActive ? 'text-cyan-400' : 'text-[#9090A0]'
                   }`}
                 >

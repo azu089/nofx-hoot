@@ -1032,8 +1032,8 @@ export function CreateStrategyWizard() {
             type="button"
             onClick={() => handleSubmit(false)}
             disabled={isSubmitting}
-            className={`w-full py-4 bg-[#06B6D4] hover:bg-[#0891B2] text-white font-semibold rounded-xl transition-colors ${
-              isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+            className={`w-full py-4 bg-[#06B6D4] hover:bg-[#0891B2] text-white font-semibold rounded-xl transition-all duration-100 select-none ${
+              isSubmitting ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98] active:opacity-80'
             }`}
             aria-label="保存并启动"
             title="保存并启动"
@@ -1044,8 +1044,8 @@ export function CreateStrategyWizard() {
             type="button"
             onClick={() => handleSubmit(true)}
             disabled={isSubmitting}
-            className={`w-full py-3 bg-[#12121A] hover:bg-[#1A1A24] text-[#94A3B8] font-medium rounded-xl border border-[#1E1E2E] transition-colors ${
-              isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+            className={`w-full py-3 bg-[#12121A] hover:bg-[#1A1A24] text-[#94A3B8] font-medium rounded-xl border border-[#1E1E2E] transition-all duration-100 select-none ${
+              isSubmitting ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98] active:opacity-80'
             }`}
             aria-label="仅保存"
             title="仅保存"

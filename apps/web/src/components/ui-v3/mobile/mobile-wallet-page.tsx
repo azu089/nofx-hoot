@@ -785,7 +785,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/deposit')}
                   aria-label={t('deposit')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 text-white rounded-xl text-sm font-medium transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#06B6D4] hover:bg-[#06B6D4]/90 active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
                 >
                   <ArrowUpRight className="w-4 h-4" />
                   {t('deposit')}
@@ -794,7 +794,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/withdraw')}
                   aria-label={t('withdraw')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-xl text-sm font-medium transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
                 >
                   <ArrowDownLeft className="w-4 h-4" />
                   {t('withdraw')}
@@ -803,7 +803,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   type="button"
                   onClick={() => onNavigate?.('/wallet/exchange')}
                   aria-label={t('exchange')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] text-white rounded-xl text-sm font-medium transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#1E1E2E] border border-[#2A2A3A] hover:border-[#06B6D4] active:scale-[0.97] active:opacity-80 text-white rounded-xl text-sm font-medium transition-all duration-100 select-none"
                 >
                   <ArrowLeftRight className="w-4 h-4" />
                   {t('exchange')}

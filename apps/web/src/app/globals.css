@@ -126,6 +126,31 @@
   }
 }
 
+/* ========== 移动端点击延迟优化（行业标准做法） ==========
+   问题：iOS Safari 对可交互元素有 300ms 双击判定等待
+   方案：
+   1. touch-action: manipulation — 禁用双击缩放判定，消除 300ms 延迟
+   2. -webkit-tap-highlight-color: transparent — 消除 iOS 灰色高亮闪烁
+   3. user-select: none on 按钮/链接 — 防止长按弹出文本选择菜单
+   参考: web.dev/articles/mobile-touchandmouse, MDN touch-action
+   ========== */
+a,
+button,
+[role="button"],
+input[type="submit"],
+input[type="button"],
+input[type="reset"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* 底部导航和卡片内按钮：防止长按触发文本选择 */
+nav a,
+nav button {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* Hoot 主题变量 */
 :root {
   --hoot-bg-deep: #0A0A0F;
