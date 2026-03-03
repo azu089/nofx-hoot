@@ -165,9 +165,10 @@ export function CreateStrategyWizard() {
   useEffect(() => {
     if (mode !== 'grid' || !gridSymbol) return
     const sym = `${gridSymbol}USDT`
-    fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`)
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api'
+    fetch(`${apiBase}/market/price?symbol=${sym}`)
       .then(r => r.json())
-      .then(d => setGridCurrentPrice(parseFloat(d.price) || 0))
+      .then(d => setGridCurrentPrice(parseFloat(d.data?.price) || 0))
       .catch(() => {})
   }, [mode, gridSymbol])
 

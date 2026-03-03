@@ -312,9 +312,10 @@ export function AIStrategyDetailPage() {
       }
       // 获取实时价格
       const rawSymbol = gc.symbol?.split('/')[0] || 'BTC';
-      fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${rawSymbol}USDT`)
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api';
+      fetch(`${apiBase}/market/price?symbol=${rawSymbol}USDT`)
         .then(r => r.json())
-        .then(d => { const p = parseFloat(d.price); if (p > 0) setEditGridCurrentPrice(p); })
+        .then(d => { const p = parseFloat(d.data?.price); if (p > 0) setEditGridCurrentPrice(p); })
         .catch(() => {});
       setEditGridModel((strategy.models && strategy.models[0]) || strategy.quickModel || 'deepseek-chat');
       setEditGridCoinSearch('');

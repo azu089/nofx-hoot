@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Headers } from '@nestjs/common';
+import { Controller, Get, Query, Headers, BadRequestException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { MarketService } from './market.service';
@@ -23,6 +23,18 @@ export class MarketController {
       data: prices,
       updatedAt: new Date(),
     };
+  }
+
+  /**
+   * 获取单个合约币种最新价格（公开接口，避免前端直连 Binance 触发 CSP 问题）
+   * GET /market/price?symbol=SOLUSDT
+   */
+  @Public()
+  @Get('price')
+  async getSymbolPrice(@Query('symbol') symbol?: string) {
+    if (!symbol) throw new BadRequestException('symbol is required');
+    const price = await this.marketService.getSymbolPrice(symbol);
+    return { code: 0, message: 'success', data: { symbol, price } };
   }
 
   /**

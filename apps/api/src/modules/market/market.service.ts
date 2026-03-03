@@ -317,6 +317,30 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 获取单个合约币种的最新价格（供前端调用，避免前端直连 Binance 违反 CSP）
+   * 优先读 WebSocket 缓存，缓存无则调 Binance Futures REST API
+   */
+  async getSymbolPrice(symbol: string): Promise<number> {
+    const sym = symbol.toUpperCase();
+    // 1. WebSocket 缓存（实时，最优先）
+    const cached = this.binancePrices.get(sym);
+    if (cached) return cached.price;
+
+    // 2. 调 Binance Futures REST（服务端没有 CSP 限制）
+    try {
+      const resp = await fetch(
+        `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`,
+      );
+      const data = await resp.json() as { price?: string };
+      const price = parseFloat(data.price ?? '0');
+      if (price > 0) return price;
+    } catch {
+      // 忽略，返回 0
+    }
+    return 0;
+  }
+
+  /**
    * 获取行业新闻
    */
   async getNews(limit = 10): Promise<CryptoNews[]> {
