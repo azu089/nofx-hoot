@@ -27,6 +27,7 @@ export const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [requireTotp, setRequireTotp] = useState(false);
   const [accountLocked, setAccountLocked] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState(false);
   // 第一步凭据暂存，用于第二步带上
   const [savedCredentials, setSavedCredentials] = useState<{ username: string; password: string } | null>(null);
   const [form] = Form.useForm();
@@ -137,14 +138,32 @@ export const LoginPage = () => {
       >
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Space align="center">
-            <img
-              src="/logo.png"
-              alt="HOOT"
-              style={{ width: 48, height: 48, borderRadius: 8 }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
+            {logoError ? (
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 20,
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  flexShrink: 0,
+                }}
+              >
+                H
+              </div>
+            ) : (
+              <img
+                src="/logo.png"
+                alt="HOOT"
+                style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
+                onError={() => setLogoError(true)}
+              />
+            )}
             <Title level={2} style={{ margin: 0, color: '#06B6D4' }}>
               HOOT Admin
             </Title>

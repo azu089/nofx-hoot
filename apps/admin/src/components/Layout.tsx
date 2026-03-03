@@ -151,6 +151,7 @@ const menuItems = [
 export const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
@@ -179,14 +180,32 @@ export const AdminLayout = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img
-            src="/logo.png"
-            alt="HOOT"
-            style={{ width: 32, height: 32, borderRadius: 8 }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+          {logoError ? (
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #06B6D4, #0891B2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 14,
+                fontWeight: 'bold',
+                color: '#fff',
+                flexShrink: 0,
+              }}
+            >
+              H
+            </div>
+          ) : (
+            <img
+              src="/logo.png"
+              alt="HOOT"
+              style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
+              onError={() => setLogoError(true)}
+            />
+          )}
           {(!collapsed || isMobile) && (
             <span style={{ marginLeft: 12, fontWeight: 'bold', fontSize: 18, color: '#fff' }}>
               HOOT
