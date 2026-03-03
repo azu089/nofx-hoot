@@ -45,9 +45,6 @@ export interface GridConfig {
   directionalCloseOnBreakout?: boolean; // 突破上界时平 short、突破下界时平 long（默认 true）
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
-  profitRetracePct?: number;     // 利润峰值回撤触发阈值（默认 50%）：回撤 ≥ 此值时暂停网格
-  profitProtectMinPct?: number;  // 触发保护所需最低盈利%（默认 1%）：低于此值不启动保护
-  profitPeakWindowDays?: number; // 利润峰值滚动窗口天数（默认 30）：超出此天数的历史峰值自动过期，以当前利润为新起点
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
 }
 
@@ -142,10 +139,8 @@ export interface GridState {
   // 燃油费结算（点卡扣费基准）
   chargedProfit: number;    // 已结算扣费的利润累计，防止重复扣费
 
-  // 利润峰值追踪（保护盈利不被单边行情带走）
+  // 策略权益追踪
   startEquity: number;      // 策略启动时的账户权益，永不变更（用于计算策略总收益率）
-  peakProfitPct: number;   // 相对 startEquity 的历史最高盈利%（触发利润回撤保护）
-  peakProfitSetAt?: string; // 上次更新峰值的时间 ISO 字符串，用于滚动窗口过期检测
   lastEquity: number;       // 最近一次成功获取的账户权益（用于计算总盈亏）
 
   // OI 持仓量追踪（用于计算周期间变化，区分真假突破）
@@ -621,7 +616,6 @@ export class GridTradingService {
       chargedProfit: 0,
 
       startEquity: initialEquity,
-      peakProfitPct: 0,
       lastEquity: initialEquity,
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
@@ -748,6 +742,19 @@ export class GridTradingService {
       }
     }
 
+    // 每轮从 gridConfig 重新评估 userLockedRange（参照 nofx: 不持久化锁定标志，每次读配置）
+    // 用户在前端清空上下界 → upperBound=0, lowerBound=0 → 应解锁
+    if (gridConfig) {
+      const configHasManualBounds = !!(gridConfig.upperBound && gridConfig.lowerBound);
+      if (state.userLockedRange !== configHasManualBounds) {
+        this.logger.log(
+          `[网格] userLockedRange 重新评估: ${state.userLockedRange} → ${configHasManualBounds}` +
+            ` (upperBound=${gridConfig.upperBound}, lowerBound=${gridConfig.lowerBound})`,
+        );
+        state.userLockedRange = configHasManualBounds;
+      }
+    }
+
     let currentPrice: number;
     try {
       currentPrice = await this.getCurrentPrice(state.symbol);
@@ -852,57 +859,6 @@ export class GridTradingService {
           `实际情况: 当前回撤 ${drawdown.toFixed(1)}%`);
         await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
-      }
-    }
-
-    // 更新利润峰值（相对策略启动权益）
-    if (equityFetched && state.startEquity > 0 && currentEquity > 0) {
-      const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
-      if (currentProfitPct > state.peakProfitPct) {
-        state.peakProfitPct = currentProfitPct;
-        state.peakProfitSetAt = new Date().toISOString(); // 记录峰值时间（用于滚动窗口过期检测）
-      }
-    }
-
-    // Step 3.5: 利润峰值回撤保护（防止盈利被单边行情带走）
-    // 滚动窗口：峰值超过 N 天未更新，重置为当前利润（防止历史高峰永久卡位）
-    if (equityFetched && state.startEquity > 0 && currentEquity > 0) {
-      const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
-      const profitPeakWindowDays = gridConfig?.profitPeakWindowDays ?? 30;
-      if (profitPeakWindowDays > 0 && state.peakProfitSetAt && state.peakProfitPct > 0) {
-        const peakAgeMs = Date.now() - new Date(state.peakProfitSetAt).getTime();
-        const peakAgeDays = peakAgeMs / (1000 * 3600 * 24);
-        if (peakAgeDays > profitPeakWindowDays) {
-          this.logger.log(
-            `[网格] 利润峰值滚动窗口到期 (${peakAgeDays.toFixed(1)}天 > ${profitPeakWindowDays}天)，` +
-            `峰值从 +${state.peakProfitPct.toFixed(2)}% 重置为当前 ${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}%`,
-          );
-          state.peakProfitPct = Math.max(currentProfitPct, 0); // 重置，亏损时归零（不用负数起点）
-          state.peakProfitSetAt = new Date().toISOString();
-        }
-      }
-    }
-    const profitRetracePct = gridConfig?.profitRetracePct ?? 50;
-    const profitProtectMinPct = gridConfig?.profitProtectMinPct ?? 3; // 默认需要峰值盈利达到 3% 才激活保护（避免 +1% 小利润被正常回调误触发）
-    if (equityFetched && state.startEquity > 0 && state.peakProfitPct >= profitProtectMinPct) {
-      const currentProfitPct = (currentEquity - state.startEquity) / state.startEquity * 100;
-      if (state.peakProfitPct > 0) {
-        const retracement = (state.peakProfitPct - currentProfitPct) / state.peakProfitPct * 100;
-        if (retracement >= profitRetracePct) {
-          // 生成用户可读的暂停原因
-          const profitLostDesc = currentProfitPct < 0
-            ? `利润已全部回吐并转为亏损 ${currentProfitPct.toFixed(2)}%`
-            : `利润从 +${state.peakProfitPct.toFixed(2)}% 回落至 +${currentProfitPct.toFixed(2)}%`;
-          const profitReason =
-            `利润保护触发\n` +
-            `保护规则: 利润从最高点回落超过 ${profitRetracePct}% 时平仓退出\n` +
-            `实际情况: 利润最高 +${state.peakProfitPct.toFixed(2)}% → 现在 ${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}%\n` +
-            profitLostDesc;
-          // 调用 emergencyExit：撤销所有挂单 + 平掉所有持仓，防止策略停止后仓位无人看守
-          await this.emergencyExit(state, userId, apiKeyId, profitReason);
-          await this.persistGridState(strategyId, state);
-          return { trades: 0, errors: 0 };
-        }
       }
     }
 
@@ -1015,7 +971,7 @@ export class GridTradingService {
       this.logger.log(
         `[网格] ▶ ${state.symbol} | 价格=${currentPrice} | 市场=${state.currentRegime} | ` +
         `日内=${state.dailyPnl >= 0 ? '+' : ''}${state.dailyPnl.toFixed(2)} USDT | ` +
-        `策略收益=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% (峰值+${state.peakProfitPct.toFixed(2)}%) | ` +
+        `策略收益=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% | ` +
         `挂单=${activeOrders} 累计=${state.totalProfit.toFixed(2)} USDT`,
       );
     }
@@ -1254,7 +1210,10 @@ export class GridTradingService {
             if (r.includes('每层资金不足')) return '每层资金不足';
             if (r.includes('价格偏低')) return '卖单价格偏低';
             if (r.includes('价格偏高')) return '买单价格偏高';
-            return r.split(':')[0]; // 取冒号前作为关键词
+            if (r.includes('仓位超安全上限')) return '仓位超限';
+            if (r.includes('数量不足')) return '数量不足';
+            if (r.includes('聚合保证金超限')) return '保证金超限';
+            return r.split(':')[0];
           }))];
 
           // 区分：有真实交易所错误 = 执行失败；全部是内部拦截（skipped）= 空转
@@ -1342,7 +1301,7 @@ export class GridTradingService {
       this.logger.log(
         `[网格] ◀ ${state.symbol} | 本轮=${trades}笔${errors > 0 ? ` 错误=${errors}` : ' ✓'} | ` +
         `日内=${state.dailyPnl >= 0 ? '+' : ''}${state.dailyPnl.toFixed(2)} / ` +
-        `策略=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% 峰值=+${state.peakProfitPct.toFixed(2)}% | ` +
+        `策略=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% | ` +
         `市场=${state.currentRegime} 方向=${state.currentDirection}`,
       );
     }
@@ -1789,13 +1748,8 @@ export class GridTradingService {
         longLower: state.longBoxLower,
       } : undefined,
       currentDirection: state.currentDirection,
-      // 利润峰值追踪（盈利保护上下文）
       startEquity: state.startEquity,
-      peakProfitPct: state.peakProfitPct,
       currentProfitPct: state.startEquity > 0 ? (totalEquity - state.startEquity) / state.startEquity * 100 : 0,
-      profitRetracement: (state.peakProfitPct > 0 && state.startEquity > 0)
-        ? Math.max(0, (state.peakProfitPct - (totalEquity - state.startEquity) / state.startEquity * 100) / state.peakProfitPct * 100)
-        : 0,
       marginUsedPct,
       oiChange1h,
       // K线历史（最近30根1h蜡烛，供AI判断趋势/支撑阻力）
@@ -1883,8 +1837,9 @@ export class GridTradingService {
       case 'place_buy_limit':
       case 'place_sell_limit':
         if (!isGridAdapter(adapter)) {
-          this.logger.warn(`[网格] 适配器不支持限价单, adapter类型=${adapter.constructor.name}`);
-          return { executed: false };
+          const skipReason = `适配器不支持限价单`;
+          this.logger.warn(`[网格] ${skipReason}, adapter类型=${adapter.constructor.name}`);
+          return { executed: false, skipReason };
         }
         return await this.placeGridLimitOrder(
           state,
@@ -2003,7 +1958,7 @@ export class GridTradingService {
   /**
    * 用户手动解除风控暂停
    * - 清除 isPaused / pauseSource / pauseReason
-   * - 重置 peakProfitPct 为当前收益率（防止立即重新触发）
+   * - 重置最大回撤峰值（防止立即重新触发）
    * - 重置 dailyPnl（日内亏损保护也需要重置）
    */
   async manualResumeFromRiskControl(
@@ -2022,20 +1977,18 @@ export class GridTradingService {
       throw new BadRequestException('策略未处于风控暂停状态');
     }
 
-    // 重置峰值到基准线（防止立即重新触发利润回撤 / 最大回撤保护）
-    // 不使用 peakEquity（历史峰值），而是回到 startEquity 重新计算
+    // 重置峰值到基准线（防止立即重新触发最大回撤保护）
     state.isPaused = false;
     state.pauseSource = undefined;
     state.pauseReason = undefined;
     state.peakEquity = state.startEquity;   // 回撤检测从基准重新开始
-    state.peakProfitPct = 0;                // 利润回撤保护禁用直到新利润积累 ≥ 1%
     state.maxDrawdown = 0;                  // 历史最大回撤归零
     state.dailyPnl = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
 
     await this.persistGridState(strategyId, state);
 
-    // 同步更新内存缓存，防止下个周期从 gridStates Map 读到旧的 peakEquity/peakProfitPct
+    // 同步更新内存缓存，防止下个周期从 gridStates Map 读到旧的 peakEquity
     this.gridStates.set(strategyId, state);
 
     this.logger.log(`[网格] 用户手动恢复风控暂停: ${strategyId}, 峰值/回撤已归零（从基准重新开始）`);
@@ -2085,8 +2038,9 @@ export class GridTradingService {
     const price = (level && level.price > 0) ? level.price : (decision.price ?? 0);
 
     if (price <= 0 || quantity <= 0) {
-      this.logger.warn(`[网格] 跳过下单: price=${price}, quantity=${quantity} (level=${levelIndex})`);
-      return { executed: false };
+      const skipReason = `无效参数: price=${price}, quantity=${quantity}`;
+      this.logger.warn(`[网格] 跳过下单: ${skipReason} (level=${levelIndex})`);
+      return { executed: false, skipReason };
     }
 
     // Step 0.5: 保证金预检 — 参照 nofx: 削减数量适配可用保证金（而非直接拒绝）
@@ -2157,8 +2111,9 @@ export class GridTradingService {
       const positionValue = quantity * price;
       const absoluteMax = state.totalInvestment * leverage * POSITION_SAFETY_MULTIPLIER;
       if (positionValue > absoluteMax) {
-        this.logger.warn(`[网格] 仓位超安全上限，跳过: ${positionValue.toFixed(2)} > ${absoluteMax.toFixed(2)}`);
-        return { executed: false };
+        const skipReason = `仓位超安全上限: $${positionValue.toFixed(2)} > $${absoluteMax.toFixed(2)}`;
+        this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+        return { executed: false, skipReason };
       }
     }
 
@@ -2204,10 +2159,11 @@ export class GridTradingService {
       finalQty = minQty;
     }
     if (finalQty <= 0 || (minQty > 0 && finalQty < minQty)) {
+      const skipReason = `数量不足: ${finalQty} < 最小 ${minQty}`;
       this.logger.debug(
-        `[网格] 跳过下单: 数量 ${finalQty} < 最小 ${minQty} (原始=${quantity.toFixed(6)}, level=${levelIndex})`,
+        `[网格] 跳过下单: ${skipReason} (原始=${quantity.toFixed(6)}, level=${levelIndex})`,
       );
-      return { executed: false };
+      return { executed: false, skipReason };
     }
     // 最小名义价值预检：直接使用交易所真实值（SOL=$5, ETH=$20, BTC=$100）
     const MIN_NOTIONAL = exchangeMinNotional > 0 ? exchangeMinNotional : 5;
@@ -2921,7 +2877,6 @@ export class GridTradingService {
       if (state && state.isInitialized) {
         // 向后兼容：旧版状态可能缺少新字段
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
-        if (state.peakProfitPct === undefined) state.peakProfitPct = 0;
         if (state.lastOI === undefined) state.lastOI = 0;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
         this.gridStates.set(strategyId, state);
@@ -2990,9 +2945,7 @@ export class GridTradingService {
           : undefined,
         breakoutLevel: state.breakoutLevel,
         lastPrice: state.lastPrice,
-        // 利润峰值追踪
         startEquity: state.startEquity,
-        peakProfitPct: state.peakProfitPct,
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
@@ -3088,6 +3041,28 @@ export class GridTradingService {
     const cached = this.gridStates.get(strategyId);
     if (cached) return cached;
     return this.loadGridState(strategyId);
+  }
+
+  /**
+   * 外部触发止盈/止损/最大周期退出：
+   * 取消所有挂单 → 平所有持仓 → 结算燃油费 → 标记 isPaused
+   * 调用方负责将 isActive 设为 false 并移除 BullMQ 任务
+   */
+  async stopGridForCondition(
+    strategyId: string,
+    userId: string,
+    apiKeyId: string,
+    reason: string,
+  ): Promise<void> {
+    const state = await this.getGridState(strategyId);
+    if (!state) {
+      this.logger.warn(`[网格] stopGridForCondition: 未找到 ${strategyId} 的状态，跳过平仓`);
+      return;
+    }
+    // 复用 emergencyExit：取消挂单 + 平仓 + 结算燃油费 + 设置 isPaused/pauseSource/pauseReason
+    await this.emergencyExit(state, userId, apiKeyId, reason);
+    await this.persistGridState(strategyId, state);
+    this.logger.log(`[网格] stopGridForCondition 完成: ${strategyId} | ${reason}`);
   }
 
   async closeGrid(strategyId: string): Promise<void> {

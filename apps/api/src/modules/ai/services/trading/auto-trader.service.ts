@@ -2034,6 +2034,47 @@ export class AutoTraderService {
         },
       });
 
+      // 网格策略停止条件检查（maxCycles / profitTargetPercent / maxLossPercent）
+      const gridStopCond = (strategy.stopConditions as StopConditionsConfig) || {};
+      const newCycleCount = (strategy.cycleCount || 0) + 1;
+      let gridShouldStop = false;
+      let gridStopReason = '';
+
+      if (gridStopCond.maxCycles && gridStopCond.maxCycles > 0 && newCycleCount >= gridStopCond.maxCycles) {
+        gridShouldStop = true;
+        gridStopReason = `达到最大周期数 ${gridStopCond.maxCycles}`;
+      }
+
+      if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
+        const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
+        if (gridStateForStop) {
+          const allocCap = riskControl.allocatedCapital || 1000;
+          const pnlPct = allocCap > 0 ? (gridStateForStop.totalProfit / allocCap) * 100 : 0;
+          if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
+            gridShouldStop = true;
+            gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;
+          } else if (gridStopCond.maxLossPercent && gridStopCond.maxLossPercent > 0 && pnlPct <= -gridStopCond.maxLossPercent) {
+            gridShouldStop = true;
+            gridStopReason = `止损触发: ${pnlPct.toFixed(1)}% (限额: -${gridStopCond.maxLossPercent}%)`;
+          }
+        }
+      }
+
+      if (gridShouldStop) {
+        this.logger.log(`[网格] 策略 ${strategy.id} 触发停止条件: ${gridStopReason}`);
+        // 平仓 + 结算燃油费（内部调 emergencyExit）
+        await this.gridTrading.stopGridForCondition(strategy.id, userId, apiKeyId, gridStopReason);
+        // 停用策略
+        await this.prisma.aiStrategy.update({ where: { id: strategy.id }, data: { isActive: false } });
+        try { await this.strategyEngine.removeStrategyJob(strategy.id); } catch { /* 忽略 */ }
+        this.gateway.sendAiStrategyStatus(userId, {
+          strategyId: strategy.id,
+          status: 'stopped',
+          error: gridStopReason,
+        });
+        return result;
+      }
+
       // 推送状态
       this.gateway.sendAiStrategyStatus(userId, {
         strategyId: strategy.id,
