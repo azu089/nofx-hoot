@@ -269,9 +269,13 @@ function classifyExchangeError(e: any): ExchangeErrorCategory {
   ) return '数量不足';
 
   // 保证金/余额不足（用户能理解的直接原因）
+  // 包含 CCXT 封装的 InsufficientFunds 类名、Binance 错误码及常见英文表述
   if (
     msg.includes('-2019') || msg.includes('margin is insufficient') ||
-    msg.includes('-2018') || msg.includes('insufficient balance')
+    msg.includes('-2018') || msg.includes('insufficient balance') ||
+    e?.constructor?.name === 'InsufficientFunds' ||
+    msg.includes('insufficientfunds') ||
+    (msg.includes('insufficient') && (msg.includes('margin') || msg.includes('balance') || msg.includes('fund')))
   ) return '保证金不足';
 
   // 风控/杠杆/仓位限制
@@ -1276,6 +1280,7 @@ export class GridTradingService {
                   regime: state.currentRegime,
                   effectiveLeverage: state.effectiveLeverage,
                   filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
+                  pendingLevels: state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0).length,
                   totalInvestment: state.totalInvestment,
                   lastPrice: state.lastPrice,
                 },

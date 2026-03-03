@@ -513,8 +513,52 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         </div>
       )}
 
+      {/* === 网格执行失败 / 空转 — 专属展示（不走 AI 对话框路径） === */}
+      {isGridEntry && !isGridLog && !isAutoDisabled && (() => {
+        // 从 reasoning 提取失败原因标签（格式："... | 失败原因: X"）
+        const raw = d.reasoning || d.reason || '';
+        const categoryMatch = raw.match(/失败原因[:：]\s*(.+?)(\s*$|,|，)/);
+        const category = categoryMatch?.[1]?.trim() || '';
+        const isMarginInsufficient = category.includes('保证金不足') || raw.includes('保证金不足') || raw.includes('insufficient');
+        const pendingCount = d.gridSnapshot?.pendingLevels ?? 0;
+        const isIdle = d.action === 'grid_idle';
+
+        return (
+          <div className="space-y-2">
+            {/* 核心原因标签 */}
+            <div className="flex items-center gap-2">
+              {isIdle ? (
+                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#94A3B8]/10 text-[#94A3B8]">
+                  {t('timeline.gridIdle')}
+                </span>
+              ) : isMarginInsufficient ? (
+                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#F59E0B]/10 text-[#F59E0B]">
+                  {t('timeline.marginInsufficient') || '保证金不足'}
+                </span>
+              ) : category ? (
+                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#EF4444]/10 text-[#EF4444]">
+                  {category}
+                </span>
+              ) : null}
+            </div>
+            {/* 简短说明（非 AI 对话框格式） */}
+            {raw && (
+              <p className="text-xs text-[#606070] leading-relaxed">
+                {raw.split('|')[0].trim()}
+              </p>
+            )}
+            {/* 保证金不足时：补充提示 */}
+            {isMarginInsufficient && pendingCount > 0 && (
+              <p className="text-xs text-[#505060] leading-relaxed">
+                {pendingCount} {t('timeline.pendingOrdersHint') || `个活跃挂单正在占用保证金，等待成交后自动补挂`}
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* === 普通 Solo: 决策 + 参数（wait/hold 由底部状态栏表达，此处不重复） === */}
-      {!isGridLog && !isAutoDisabled && (
+      {!isGridLog && !isAutoDisabled && !(isGridEntry && !isGridLog) && (
         <div className="space-y-2">
           {(action === 'open_long' || action === 'open_short'
             || action === 'close_long' || action === 'close_short') && (
