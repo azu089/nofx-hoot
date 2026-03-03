@@ -166,7 +166,7 @@ export function MobileRegisterPage({
                 />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">{t('joinHoot')}</h1>
+            <h1 className="text-2xl font-bold text-[#06B6D4] mb-2">{t('joinHoot')}</h1>
           </div>
 
           {/* 表单 */}

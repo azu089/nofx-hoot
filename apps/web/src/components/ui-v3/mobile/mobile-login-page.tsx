@@ -83,7 +83,7 @@ export function MobileLoginPage({
               />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">HOOT</h1>
+          <h1 className="text-3xl font-bold text-[#06B6D4]">HOOT</h1>
         </div>
 
         <div className="space-y-5">

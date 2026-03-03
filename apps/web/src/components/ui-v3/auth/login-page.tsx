@@ -69,7 +69,7 @@ export function LoginPage({
                 />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-[#F8F8FC]">{t('welcomeBack')}</h1>
+            <h1 className="text-2xl font-bold text-[#06B6D4]">{t('welcomeBack')}</h1>
           </div>
 
           <div className="space-y-5">

@@ -126,7 +126,7 @@ export function PwaInstallPrompt() {
 
           {/* 文案 */}
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-white mb-1">安装 HOOT 应用</h3>
+            <h3 className="text-sm font-bold text-[#06B6D4] mb-1">安装 HOOT 应用</h3>
             <p className="text-xs text-[#9090A0] leading-relaxed">
               {isIOS
                 ? '点击下方 Safari 分享按钮，选择「添加到主屏幕」'

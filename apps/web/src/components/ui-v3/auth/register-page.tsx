@@ -167,7 +167,7 @@ export function RegisterPage({
                 />
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-[#F8F8FC]">
+            <h1 className="text-2xl font-bold text-[#06B6D4]">
               {t('joinHoot')}
             </h1>
           </div>
