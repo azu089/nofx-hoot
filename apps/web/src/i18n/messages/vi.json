@@ -2125,7 +2125,8 @@
       "blockedByL9": "Giới hạn cứng",
       "blockedByE4": "Vị thế tối thiểu",
       "blockedByR4": "Thanh khoản",
-      "blockedByHasPosition": "Đã có vị thế"
+      "blockedByHasPosition": "Đã có vị thế",
+      "gridIdle": "Không hoạt động"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

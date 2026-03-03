@@ -2124,7 +2124,8 @@
       "blockedByL9": "Batas Keras",
       "blockedByE4": "Posisi Minimum",
       "blockedByR4": "Likuiditas",
-      "blockedByHasPosition": "Ada Posisi"
+      "blockedByHasPosition": "Ada Posisi",
+      "gridIdle": "Tidak aktif"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

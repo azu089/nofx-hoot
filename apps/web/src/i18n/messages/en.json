@@ -2109,7 +2109,8 @@
       "blockedByL9": "Hard Limit",
       "blockedByE4": "Min Position",
       "blockedByR4": "Liquidity",
-      "blockedByHasPosition": "Position Exists"
+      "blockedByHasPosition": "Position Exists",
+      "gridIdle": "Idle"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -2122,7 +2122,8 @@
       "blockedByL9": "硬限制",
       "blockedByE4": "最小仓位",
       "blockedByR4": "流动性",
-      "blockedByHasPosition": "已有持仓"
+      "blockedByHasPosition": "已有持仓",
+      "gridIdle": "空转"
     },
     "modeInfo": {
       "soloTitle": "极速模式",

@@ -2124,7 +2124,8 @@
       "blockedByL9": "하드 제한",
       "blockedByE4": "최소 포지션",
       "blockedByR4": "유동성",
-      "blockedByHasPosition": "포지션 있음"
+      "blockedByHasPosition": "포지션 있음",
+      "gridIdle": "대기"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",

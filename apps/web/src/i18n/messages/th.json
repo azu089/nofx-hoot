@@ -2124,7 +2124,8 @@
       "blockedByL9": "ข้อจำกัดถาวร",
       "blockedByE4": "ขนาดขั้นต่ำ",
       "blockedByR4": "สภาพคล่อง",
-      "blockedByHasPosition": "มีตำแหน่งอยู่แล้ว"
+      "blockedByHasPosition": "มีตำแหน่งอยู่แล้ว",
+      "gridIdle": "ว่าง"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

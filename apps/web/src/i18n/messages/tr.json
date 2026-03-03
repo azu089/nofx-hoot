@@ -2124,7 +2124,8 @@
       "blockedByL9": "Sert Limit",
       "blockedByE4": "Min. Pozisyon",
       "blockedByR4": "Likidite",
-      "blockedByHasPosition": "Pozisyon Var"
+      "blockedByHasPosition": "Pozisyon Var",
+      "gridIdle": "Boşta"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

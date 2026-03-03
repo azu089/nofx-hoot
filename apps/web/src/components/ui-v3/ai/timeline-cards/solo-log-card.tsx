@@ -1028,6 +1028,18 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 : d.gridSummary ? <span className="text-[#9090A0]"> · {d.gridSummary}</span> : null;
             })()}
           </div>
+        ) : isGridEntry && d.action === 'grid_exec_failed' ? (
+          // 网格执行失败日志（全部下单被交易所拒绝）— 状态栏仅显示标签，详情已在主区域展示，不重复
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#EF4444]/5 border border-[#EF4444]/15 text-xs">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
+            <span className="text-[#EF4444] font-medium">{t('common.failed')}</span>
+          </div>
+        ) : isGridEntry && d.action === 'grid_idle' ? (
+          // 网格空转日志（被内部规则拦截，未到达交易所）— 状态栏仅显示标签，详情已在主区域展示
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#94A3B8]/5 text-xs">
+            <Pause className="w-3.5 h-3.5 text-[#94A3B8]" />
+            <span className="text-[#94A3B8] font-medium">{t('timeline.gridIdle')}</span>
+          </div>
         ) : (
           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#606070]/5 text-xs">
             <Clock className="w-3.5 h-3.5 text-[#606070] flex-shrink-0 mt-0.5" />

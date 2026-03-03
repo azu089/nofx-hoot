@@ -2124,7 +2124,8 @@
       "blockedByL9": "ハード制限",
       "blockedByE4": "最小ポジション",
       "blockedByR4": "流動性",
-      "blockedByHasPosition": "ポジションあり"
+      "blockedByHasPosition": "ポジションあり",
+      "gridIdle": "アイドル"
     },
     "modeInfo": {
       "soloTitle": "ソロモード",

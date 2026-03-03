@@ -2124,7 +2124,8 @@
       "blockedByL9": "Жёсткий лимит",
       "blockedByE4": "Мин. позиция",
       "blockedByR4": "Ликвидность",
-      "blockedByHasPosition": "Позиция существует"
+      "blockedByHasPosition": "Позиция существует",
+      "gridIdle": "Простой"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

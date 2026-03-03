@@ -2126,7 +2126,8 @@
       "blockedByL9": "硬限制",
       "blockedByE4": "最小倉位",
       "blockedByR4": "流動性",
-      "blockedByHasPosition": "已有倉位"
+      "blockedByHasPosition": "已有倉位",
+      "gridIdle": "空轉"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

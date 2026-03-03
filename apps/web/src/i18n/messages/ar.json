@@ -2105,7 +2105,8 @@
       "blockedByL9": "الحد الصارم",
       "blockedByE4": "أدنى مركز",
       "blockedByR4": "السيولة",
-      "blockedByHasPosition": "يوجد مركز"
+      "blockedByHasPosition": "يوجد مركز",
+      "gridIdle": "خامل"
     },
     "modeInfo": {
       "soloTitle": "الوضع الفردي",

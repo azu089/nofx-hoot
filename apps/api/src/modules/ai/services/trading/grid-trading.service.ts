@@ -211,7 +211,8 @@ const DEFAULT_STOP_LOSS_PCT = 5;
 type ExchangeErrorCategory =
   | '网络问题'      // fetch failed / timeout / ECONNREFUSED
   | 'API限流'      // -1003 / 429 / too many requests
-  | '风控限制'      // -2019 保证金不足 / -4161 杠杆限制 / -2018 资金不足
+  | '保证金不足'    // -2019 Margin is insufficient / -2018 insufficient balance
+  | '风控限制'      // -4161 杠杆限制 / position side / maximum position
   | '数量不足'      // -4164 min notional / -4003 qty too small / -1111 precision
   | '认证失败'      // Invalid API key / signature error
   | '账户配置错误'   // OKX 51010：账户模式不支持合约交易，需用户手动开通
@@ -267,11 +268,15 @@ function classifyExchangeError(e: any): ExchangeErrorCategory {
     msg.includes('filter failure') && msg.includes('lot')
   ) return '数量不足';
 
-  // 风控/保证金/仓位限制
+  // 保证金/余额不足（用户能理解的直接原因）
   if (
     msg.includes('-2019') || msg.includes('margin is insufficient') ||
+    msg.includes('-2018') || msg.includes('insufficient balance')
+  ) return '保证金不足';
+
+  // 风控/杠杆/仓位限制
+  if (
     msg.includes('-4161') || msg.includes('leverage reduction is not supported') ||
-    msg.includes('-2018') || msg.includes('insufficient') ||
     (msg.includes('position') && msg.includes('side')) ||
     msg.includes('maximum')
   ) return '风控限制';
