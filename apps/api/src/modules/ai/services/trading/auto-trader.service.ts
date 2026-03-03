@@ -379,6 +379,13 @@ export class AutoTraderService {
           },
         });
 
+        // 平仓：关闭该策略所有持仓，盈利部分在 closePosition 内自动扣燃油费
+        try {
+          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
+        } catch (e: any) {
+          this.logger.error(`[自动交易] 日回撤熔断平仓失败(继续停策略): ${e.message}`);
+        }
+
         // 风控暂停：停止策略 + 记录原因到 riskControlConfig._riskPause
         await this.prisma.aiStrategy.update({
           where: { id: strategyId },
@@ -538,6 +545,38 @@ export class AutoTraderService {
               executed: false,
             },
           }).catch(() => {});
+
+          // 平仓 + 扣燃油费
+          try {
+            await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
+          } catch (e: any) {
+            this.logger.error(`[自动交易] 日回撤熔断（实时）平仓失败(继续停策略): ${e.message}`);
+          }
+
+          // 本检查点之前的 DB 快照检查未触发，需在此处补全停策略逻辑
+          await this.prisma.aiStrategy.update({
+            where: { id: strategyId },
+            data: {
+              isActive: false,
+              riskControlConfig: {
+                ...riskControl,
+                _riskPause: {
+                  source: 'daily_drawdown_live',
+                  reason: `日回撤实时校验 $${Math.abs(liveTotalDailyPnl).toFixed(2)} > 限制 $${maxDailyDrawdown}`,
+                  pausedAt: new Date().toISOString(),
+                  liveTotalDailyPnl,
+                  maxDailyDrawdown,
+                },
+              },
+            },
+          });
+          try { await this.strategyEngine.removeStrategyJob(strategyId); } catch { /* 忽略 */ }
+          this.gateway.sendAiStrategyStatus(userId, {
+            strategyId,
+            status: 'stopped',
+            error: `日回撤熔断（实时）: $${Math.abs(liveTotalDailyPnl).toFixed(2)} 超限`,
+          });
+
           result.errors = 1;
           return result;
         }
@@ -1814,6 +1853,14 @@ export class AutoTraderService {
 
       if (shouldStop) {
         this.logger.log(`[自动交易] 策略 ${strategyId} ${stopReason}，自动停止`);
+
+        // 平仓 + 结算燃油费（closePosition 内部：平仓后按实际盈利扣费，幂等）
+        try {
+          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, effectiveExchangeApiKeyId);
+        } catch (e: any) {
+          this.logger.error(`[自动交易] 停止条件平仓失败(继续停策略): ${e.message}`);
+        }
+
         await db.aiStrategy.update({
           where: { id: strategyId },
           data: { isActive: false },

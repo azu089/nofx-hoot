@@ -774,6 +774,56 @@ export class AiExecutionService {
     };
   }
 
+  /**
+   * 批量平仓：关闭该策略所有开放持仓
+   * 用于止盈/止损/风控熔断时，确保持仓被实际平掉而非仅停止策略
+   * 内部复用 closePosition()：FIFO 平仓 + 盈利时自动扣燃油费
+   */
+  async closeAllStrategyPositions(
+    userId: string,
+    strategyId: string,
+    apiKeyId: string,
+  ): Promise<void> {
+    const openPositions = await this.prisma.position.findMany({
+      where: {
+        userId,
+        aiStrategyId: strategyId,
+        status: 'open',
+        source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
+      },
+      select: { id: true, symbol: true, side: true },
+      orderBy: { createdAt: 'asc' }, // FIFO
+    });
+
+    if (openPositions.length === 0) {
+      this.logger.log(`[AI执行] 策略 ${strategyId} 无开放持仓，跳过批量平仓`);
+      return;
+    }
+
+    this.logger.log(`[AI执行] 批量平仓启动: 策略 ${strategyId} 共 ${openPositions.length} 笔持仓`);
+
+    let adapter: ExchangeAdapter | null = null;
+    try {
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      for (const pos of openPositions) {
+        try {
+          const r = await this.closePosition(adapter, userId, pos.symbol, pos.side as 'long' | 'short', 'ai_strategy');
+          if (r.success) {
+            this.logger.log(`[AI执行] 批量平仓 ✅ ${pos.symbol} ${pos.side} pnl=${r.pnl != null ? r.pnl.toFixed(4) : 'N/A'}`);
+          } else {
+            this.logger.warn(`[AI执行] 批量平仓失败: ${pos.symbol} ${pos.side} - ${r.error}`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[AI执行] 批量平仓单笔异常: ${pos.symbol} ${pos.side} - ${e.message}`);
+        }
+      }
+    } catch (e: any) {
+      this.logger.error(`[AI执行] 批量平仓 adapter 创建失败: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+    }
+  }
+
   // ========================= 余额适配公式 =========================
 
   /**
