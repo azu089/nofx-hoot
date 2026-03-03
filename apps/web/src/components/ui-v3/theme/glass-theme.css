@@ -368,3 +368,66 @@
   border-color: rgba(6, 182, 212, 0.25);
   color: #22D3EE;
 }
+
+/* ============================================
+   10. 移动端性能优化
+   ============================================ */
+/* 移动端 GPU 无法高效处理大量 backdrop-filter + 无限动画，
+   用实色背景替代模糊，禁用消耗大的动画。 */
+
+@media (max-width: 768px) {
+  /* 背景光斑：移除 filter: blur(100px)，用低成本渐变替代 */
+  .glass-bg::before {
+    filter: none;
+    background: radial-gradient(circle, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+  }
+  .glass-bg::after {
+    filter: none;
+    background: radial-gradient(circle, rgba(6, 182, 212, 0.04) 0%, transparent 60%);
+  }
+
+  /* glass-card-hero：移除 blur + 呼吸动画 */
+  .glass-card-hero {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 26, 0.88);
+    animation: none;
+    box-shadow: 0 0 30px rgba(6, 182, 212, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  /* glass-card-primary：移除 blur */
+  .glass-card-primary {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 26, 0.85);
+  }
+
+  /* glass-card-hd：移除超清 blur(72px) */
+  .glass-card-hd,
+  .glass-card-hd-animated {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 26, 0.85);
+  }
+
+  /* glass-card-subtle：移除 blur */
+  .glass-card-subtle {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 26, 0.70);
+  }
+
+  /* 按钮：移除 blur */
+  .glass-btn-secondary,
+  .glass-btn-accent {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* 输入框：移除 blur */
+  .glass-input {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(18, 18, 26, 0.80);
+  }
+}

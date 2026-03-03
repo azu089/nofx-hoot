@@ -554,3 +554,82 @@ input:-webkit-autofill:active {
   unicode-bidi: embed;
   display: inline-block;
 }
+
+/* ========== 移动端性能优化 ========== */
+/* 核心问题：backdrop-filter: blur(72px) 在移动端 GPU 非常昂贵，
+   185+ 个 glass-card 同时模糊合成导致点击延迟和滚动卡顿。
+   方案：移动端用半透明实色背景替代 blur，禁用 infinite 动画。 */
+
+@media (max-width: 768px) {
+  /* 1. glass-card：移除 backdrop-filter，用实色背景替代 */
+  .glass-card {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: rgba(18, 18, 26, 0.85) !important;
+  }
+
+  /* 2. glass-border-glow：禁用流动动画（保留静态边框） */
+  .glass-border-glow::after {
+    animation: none !important;
+    background: rgba(6, 182, 212, 0.10) !important;
+    background-size: 100% 100% !important;
+  }
+
+  /* 3. glow-card：禁用三重呼吸动画 */
+  .glow-card {
+    animation: none !important;
+  }
+  .glow-card::before,
+  .glow-card::after {
+    animation: none !important;
+    opacity: 0.6 !important;
+  }
+
+  /* 4. glass-card-animated：禁用旋转边框动画 */
+  .glass-card-animated {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: rgba(18, 18, 26, 0.85) !important;
+  }
+  .glass-card-animated::before {
+    animation: none !important;
+    background: rgba(6, 182, 212, 0.12) !important;
+  }
+
+  /* 5. 内联 backdrop-filter 降级（Tailwind 类） */
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* 6. 大型 filter blur 光晕降级（所有页面的背景装饰光晕元素）
+     移动端 GPU 内存不足时，filter:blur(100px+) + mix-blend-multiply 会导致
+     整个图层渲染为黑色（iOS/Android 通病）。
+     这些元素是纯装饰性的，直接隐藏，页面内容完全不受影响。
+     影响范围：Landing、Login、Register、VerifyEmail 页面 */
+  .blur-\[100px\],
+  .blur-\[128px\],
+  .blur-\[150px\],
+  .blur-\[200px\] {
+    display: none !important;
+  }
+
+  /* 7. mix-blend-multiply 在深色背景上渲染为全黑 — 移动端改为 normal（安全兜底）
+     全站 mix-blend-multiply 仅用于以上背景光晕元素，此规则为双重保险 */
+  .mix-blend-multiply {
+    mix-blend-mode: normal !important;
+  }
+}
+
+/* ========== prefers-reduced-motion 无障碍降级 ========== */
+@media (prefers-reduced-motion: reduce) {
+  .glass-border-glow::after,
+  .glass-card-animated::before,
+  .glow-card,
+  .glow-card::before,
+  .glow-card::after,
+  .animate-marquee,
+  .animate-scan {
+    animation: none !important;
+  }
+}
