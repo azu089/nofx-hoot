@@ -2,8 +2,9 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { TradingService, TradingConfig } from '../../trading/trading.service';
+import { TradingService } from '../../trading/trading.service';
 import { AdapterFactoryService } from '../../exchange-adapters/adapter-factory.service';
+import { ExchangeAdapter } from '../../exchange-adapters/types/adapter.interface';
 import { Decimal } from '@prisma/client/runtime/library';
 import { isSameSymbol } from '../../../common/utils/symbol.util';
 
@@ -249,19 +250,21 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       `[AI监控] 分批止盈: ${pos.symbol} ${pos.side} stage ${entry.stage}→${newStage} 平仓 ${closeQty.toFixed(4)} (pnl=${pnlPercent.toFixed(2)}%)`,
     );
 
+    if (!this.adapterFactory) {
+      this.logger.warn('[AI监控] 分批止盈: adapterFactory 未注入，跳过');
+      return false;
+    }
+
+    let adapter: ExchangeAdapter | undefined;
     try {
-      const config: TradingConfig = {
-        tradingType: 'futures',
-        leverage: 1,
-        marginMode: 'cross',
-        slippageTolerance: 0.5,
-        maxRetries: 2,
-        retryDelayMs: 1000,
-      };
-      const closeSide = pos.side === 'long' ? 'sell' : 'buy';
-      await this.tradingService.executeOrder(
-        pos.userId, pos.apiKeyId, pos.symbol, closeSide as 'buy' | 'sell', closeQty, config,
-      );
+      // 直接使用 adapter.closeLong/closeShort（传入 SOL 数量），
+      // 避免 tradingService.executeOrder 把数量当 USDT 再除以价格导致下单量缩水 100x
+      adapter = await this.adapterFactory.createAdapter(pos.userId, pos.apiKeyId);
+      if (pos.side === 'long') {
+        await adapter.closeLong(pos.symbol, closeQty);
+      } else {
+        await adapter.closeShort(pos.symbol, closeQty);
+      }
 
       if (newStage === 3) {
         await this.prisma.position.update({
@@ -282,6 +285,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     } catch (e: any) {
       this.logger.warn(`[AI监控] 分批止盈执行失败(stage=${entry.stage}不推进，下轮重试): ${e.message}`);
       return false;
+    } finally {
+      await adapter?.dispose?.();
     }
   }
 
@@ -303,27 +308,25 @@ export class DrawdownMonitorProcessor extends WorkerHost {
   ): Promise<void> {
     if (!pos.apiKeyId) return;
 
-    const closeSide = pos.side === 'long' ? 'sell' : 'buy';
-    const config: TradingConfig = {
-      tradingType: 'futures',
-      leverage: 1,
-      marginMode: 'cross',
-      slippageTolerance: 0.5,
-      maxRetries: 2,
-      retryDelayMs: 1000,
-    };
+    if (!this.adapterFactory) {
+      this.logger.warn('[AI监控] 自动平仓: adapterFactory 未注入，跳过');
+      return;
+    }
 
+    let adapter: ExchangeAdapter | undefined;
     try {
-      const result = await this.tradingService.executeOrder(
-        pos.userId,
-        pos.apiKeyId,
-        pos.symbol,
-        closeSide as 'buy' | 'sell',
-        parseFloat(pos.amount.toString()),
-        config,
-      );
+      // 直接使用 adapter.closeLong/closeShort（传入 SOL 数量），
+      // 避免 tradingService.executeOrder 把数量当 USDT 再除以价格导致只平一小部分
+      adapter = await this.adapterFactory.createAdapter(pos.userId, pos.apiKeyId);
+      const closeAmount = parseFloat(pos.amount.toString());
+      let result;
+      if (pos.side === 'long') {
+        result = await adapter.closeLong(pos.symbol, closeAmount);
+      } else {
+        result = await adapter.closeShort(pos.symbol, closeAmount);
+      }
 
-      const exitPrice = result.price || currentPrice;
+      const exitPrice = result.avgPrice || currentPrice;
       const entryPrice = parseFloat(pos.entryPrice.toString());
       const amount = parseFloat(pos.amount.toString());
       let pnl: number;
@@ -355,6 +358,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       this.logger.error(
         `[AI监控] 自动平仓失败: ${pos.id} ${pos.symbol} - ${error.message}`,
       );
+    } finally {
+      await adapter?.dispose?.();
     }
   }
 

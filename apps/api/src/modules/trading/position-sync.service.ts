@@ -136,7 +136,18 @@ export class PositionSyncService {
           amount: exchangePos.amount.toString(),
           notionalValue: exchangePos.notionalValue.toString(),
           margin: exchangePos.margin.toString(),
-          leverage: exchangePos.leverage,
+          // Binance 全仓模式下 API 有时返回 leverage=1（误差），若 margin/notional 显示更高则反推
+          leverage: (() => {
+            const raw = exchangePos.leverage;
+            if (raw > 1) return raw;
+            const n = exchangePos.notionalValue;
+            const m = exchangePos.margin;
+            if (m > 0 && n > 0) {
+              const derived = Math.round(n / m);
+              if (derived > 1 && derived <= 200) return derived;
+            }
+            return raw || 1;
+          })(),
           marginMode: exchangePos.marginMode,
           // 交易所原始 marginRatio（小数形式 × 100 → 百分比字符串）
           marginRatio: exchangePos.marginRatio != null
@@ -233,7 +244,17 @@ export class PositionSyncService {
           amount: ep.amount.toString(),
           notionalValue: ep.notionalValue.toString(),
           margin: ep.margin.toString(),
-          leverage: ep.leverage,
+          leverage: (() => {
+            const raw = ep.leverage;
+            if (raw > 1) return raw;
+            const n = ep.notionalValue;
+            const m = ep.margin;
+            if (m > 0 && n > 0) {
+              const derived = Math.round(n / m);
+              if (derived > 1 && derived <= 200) return derived;
+            }
+            return raw || 1;
+          })(),
           marginMode: ep.marginMode,
           marginRatio: ep.marginRatio != null
             ? (ep.marginRatio * 100).toFixed(2)
@@ -327,8 +348,16 @@ export class PositionSyncService {
         // 基础数据
         entryPrice: new Decimal(exchangePos.entryPrice),
         amount: new Decimal(exchangePos.amount),
-        // 仅当交易所返回正数杠杆时才更新（>0 兼容实际杠杆为 1x 的情况，> 0 排除无效值 0）
-        ...(exchangePos.leverage > 0 && { leverage: exchangePos.leverage }),
+        // 交易所返回杠杆，若 <= 1 但 margin/notional 显示更高则反推真实杠杆再存储
+        ...(() => {
+          const raw = exchangePos.leverage;
+          if (raw > 1) return { leverage: raw };
+          if (margin.gt(0) && notional.gt(0)) {
+            const derived = Math.round(notional.div(margin).toNumber());
+            if (derived > 1 && derived <= 200) return { leverage: derived };
+          }
+          return raw > 0 ? { leverage: raw } : {};
+        })(),
         margin: margin,
         marginMode: exchangePos.marginMode,
         tradingType: 'futures',
