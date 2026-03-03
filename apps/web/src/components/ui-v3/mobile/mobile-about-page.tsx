@@ -88,7 +88,7 @@ export function MobileAboutPage({ onBack, onNavigate }: MobileAboutPageProps) {
             {/* Logo */}
             <div className="w-20 h-20">
               <Image
-                src="/icons/hoot/logo.png"
+                src="/icons/hoot/token.png"
                 alt="Hoot Logo"
                 width={80}
                 height={80}

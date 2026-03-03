@@ -180,7 +180,7 @@ export function VerifyEmailPage({
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
               <Image
-                src="/icons/hoot/logo.png"
+                src="/icons/hoot/token.png"
                 alt="HOOT"
                 width={80}
                 height={80}

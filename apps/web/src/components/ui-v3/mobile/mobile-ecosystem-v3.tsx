@@ -161,7 +161,7 @@ export function MobileEcosystemV3({
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
                   <Image
-                    src="/icons/hoot/logo.png"
+                    src="/icons/hoot/token.png"
                     alt="HOOT"
                     width={48}
                     height={48}

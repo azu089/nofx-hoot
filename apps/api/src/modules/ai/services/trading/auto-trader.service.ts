@@ -1569,24 +1569,27 @@ export class AutoTraderService {
           }
 
           // R3: 执行时价格刷新 — 用最新价格重算 SL/TP（辩论耗时 30-60s，价格可能偏移 1-2%）
+          // freshPrice 同时传给 executeDecision，避免执行层重复调用 getMarketPrice
+          let freshPrice: number | undefined;
           if (decision.stopLossPct && decision.takeProfitPct) {
             try {
-              const freshPrice = await this.marketData.fetchCurrentPrice(symbol);
-              if (freshPrice > 0) {
+              const price = await this.marketData.fetchCurrentPrice(symbol);
+              if (price > 0) {
+                freshPrice = price;
                 const isLongDir = decision.action === 'open_long';
                 const oldSL = decision.stopLoss;
                 const oldTP = decision.takeProfit;
                 decision = {
                   ...decision,
                   stopLoss: isLongDir
-                    ? Math.round(freshPrice * (1 - decision.stopLossPct) * 100) / 100
-                    : Math.round(freshPrice * (1 + decision.stopLossPct) * 100) / 100,
+                    ? Math.round(price * (1 - decision.stopLossPct) * 100) / 100
+                    : Math.round(price * (1 + decision.stopLossPct) * 100) / 100,
                   takeProfit: isLongDir
-                    ? Math.round(freshPrice * (1 + decision.takeProfitPct) * 100) / 100
-                    : Math.round(freshPrice * (1 - decision.takeProfitPct) * 100) / 100,
+                    ? Math.round(price * (1 + decision.takeProfitPct) * 100) / 100
+                    : Math.round(price * (1 - decision.takeProfitPct) * 100) / 100,
                 };
                 this.logger.log(
-                  `[R3] ${symbol} 价格刷新: SL ${oldSL}→${decision.stopLoss}, TP ${oldTP}→${decision.takeProfit} (freshPrice=$${freshPrice})`,
+                  `[R3] ${symbol} 价格刷新: SL ${oldSL}→${decision.stopLoss}, TP ${oldTP}→${decision.takeProfit} (freshPrice=$${price})`,
                 );
               }
             } catch (e: any) {
@@ -1675,6 +1678,7 @@ export class AutoTraderService {
               reasoning: decision.reasoning,
               maxTradeAmountUSD: riskControl.maxTradeAmountUSD,
               allocatedCapital: riskControl.allocatedCapital,
+              currentPrice: freshPrice,  // R3 已刷新的价格，避免执行层重复 getMarketPrice
             },
             'ai_strategy',
             strategyId,
@@ -2147,8 +2151,12 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          const allocCap = riskControl.allocatedCapital || 1000;
-          const pnlPct = allocCap > 0 ? (gridStateForStop.totalProfit / allocCap) * 100 : 0;
+          // 与页面显示保持一致：优先用权益法（startEquity/lastEquity），回退到已实现利润法
+          const pnlPct = (gridStateForStop.startEquity > 0 && gridStateForStop.lastEquity && gridStateForStop.lastEquity > 0)
+            ? (gridStateForStop.lastEquity - gridStateForStop.startEquity) / gridStateForStop.startEquity * 100
+            : (riskControl.allocatedCapital || 0) > 0
+              ? (gridStateForStop.totalProfit / (riskControl.allocatedCapital || 1000)) * 100
+              : 0;
           if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;
             gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;

@@ -158,7 +158,7 @@ export function ProfilePageV3({
             {/* Avatar */}
             <div className="relative flex-shrink-0">
               <div className="w-16 h-16 rounded-full overflow-hidden">
-                <Image src="/icons/hoot/logo.png" alt="Hoot" width={64} height={64} className="w-full h-full object-contain" />
+                <Image src="/icons/hoot/token.png" alt="Hoot" width={64} height={64} className="w-full h-full object-contain" />
               </div>
             </div>
 

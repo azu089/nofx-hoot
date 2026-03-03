@@ -459,7 +459,7 @@ export default function PreviewPage() {
               <div className="fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-60 bg-[#12121A] border-r border-[#1E1E2E] z-40">
                 {/* Logo */}
                 <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-                  <Image src="/icons/hoot/logo.png" alt="Hoot" width={32} height={32} className="object-contain" />
+                  <Image src="/icons/hoot/token.png" alt="Hoot" width={32} height={32} className="object-contain" />
                   <h1 className="text-2xl font-bold text-[#F8F8FC]">Hoot</h1>
                 </div>
 

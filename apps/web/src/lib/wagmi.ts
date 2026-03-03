@@ -28,13 +28,13 @@ export const config = createConfig({
         name: 'HOOT',
         description: 'AI 量化交易平台',
         url: 'https://hoot.io',
-        icons: ['/icons/hoot/logo.png'],
+        icons: ['/icons/hoot/token.png'],
       },
     }),
     // Coinbase Wallet
     coinbaseWallet({
       appName: 'HOOT',
-      appLogoUrl: '/icons/hoot/logo.png',
+      appLogoUrl: '/icons/hoot/token.png',
     }),
   ],
   storage: createStorage({

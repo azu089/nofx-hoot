@@ -31,7 +31,7 @@ export default function Home() {
       <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
         <div className="flex flex-col items-center gap-6">
           <Image
-            src="/icons/hoot/logo.png"
+            src="/icons/hoot/token.png"
             alt="HOOT"
             width={80}
             height={80}

@@ -73,7 +73,7 @@ export function MobileLoginPage({
           <div className="mb-4">
             <div className="w-24 h-24 rounded-full overflow-hidden">
               <Image
-                src="/icons/hoot/logo.png?v=2"
+                src="/icons/hoot/token.png"
                 alt="HOOT"
                 width={96}
                 height={96}

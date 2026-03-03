@@ -28,6 +28,7 @@ export interface AiDecision {
   maxTradeAmountUSD?: number; // 单笔交易金额上限（来自策略 riskControlConfig）
   allocatedCapital?: number; // AI 资金池上限（USDT），百分比计算基于此值而非交易所全部余额
   maxPositionPct?: number;   // R4: 百分比判定阈值（默认 20），来自策略 riskControlConfig.maxPositionPct
+  currentPrice?: number;     // 可选：R3 已获取的最新价格，避免 executeDecision 内重复 getMarketPrice 调用
 }
 
 /**
@@ -90,7 +91,7 @@ export class AiExecutionService {
     label: string,
     fn: () => Promise<T>,
     maxRetries: number = 3,
-    delayMs: number = 2000,
+    delayMs: number = 1000,
   ): Promise<T> {
     let lastError: Error = new Error(`${label} failed`);
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -322,42 +323,57 @@ export class AiExecutionService {
       this.logger.warn(`取消已有订单失败(非致命): ${e.message}`);
     }
 
-    // 8. 设置杠杆（3次重试，失败则查询实际杠杆）
+    // 8. 设置杠杆（参照 nofx：先查当前杠杆，已匹配则跳过 API 调用）
     let actualLeverage = leverage;
-    for (let levAttempt = 1; levAttempt <= 3; levAttempt++) {
-      try {
-        await adapter.setLeverage(futuresSymbol, leverage);
-        break;
-      } catch (e: any) {
-        if (e.message?.includes('No need to change leverage')) break; // 已是目标杠杆
-        this.logger.warn(`[AI执行] 设置杠杆失败(${levAttempt}/3): ${e.message}`);
-        if (levAttempt === 3) {
-          // 查询当前实际杠杆
+    try {
+      const positions = await adapter.getPositions();
+      const existing = positions.find((p: any) => p.symbol === futuresSymbol);
+      if (existing?.leverage && existing.leverage === leverage) {
+        this.logger.log(`[AI执行] 杠杆已是 ${leverage}x，跳过设置`);
+        // actualLeverage 已正确，无需调用 setLeverage
+      } else {
+        // 杠杆不匹配或无持仓，调用 setLeverage
+        for (let levAttempt = 1; levAttempt <= 3; levAttempt++) {
           try {
-            const positions = await adapter.getPositions();
-            const existing = positions.find((p: any) => p.symbol === futuresSymbol);
-            if (existing?.leverage) {
-              actualLeverage = existing.leverage;
-              this.logger.warn(`[AI执行] 使用交易所实际杠杆: ${actualLeverage}x (请求 ${leverage}x)`);
+            await adapter.setLeverage(futuresSymbol, leverage);
+            break;
+          } catch (e: any) {
+            if (e.message?.includes('No need to change leverage')) break; // 交易所已是目标杠杆
+            this.logger.warn(`[AI执行] 设置杠杆失败(${levAttempt}/3): ${e.message}`);
+            if (levAttempt === 3) {
+              if (existing?.leverage) {
+                actualLeverage = existing.leverage;
+                this.logger.warn(`[AI执行] 使用交易所实际杠杆: ${actualLeverage}x (请求 ${leverage}x)`);
+              }
             }
-          } catch (_) {
-            this.logger.error(`[AI执行] 无法获取实际杠杆，使用请求值 ${leverage}x`);
+            if (levAttempt < 3) await new Promise(r => setTimeout(r, 1000));
           }
         }
-        if (levAttempt < 3) await new Promise(r => setTimeout(r, 1000));
+      }
+    } catch (_) {
+      // getPositions 失败，降级到直接调用 setLeverage（原有流程）
+      for (let levAttempt = 1; levAttempt <= 3; levAttempt++) {
+        try {
+          await adapter.setLeverage(futuresSymbol, leverage);
+          break;
+        } catch (e: any) {
+          if (e.message?.includes('No need to change leverage')) break;
+          this.logger.warn(`[AI执行] 设置杠杆失败(${levAttempt}/3): ${e.message}`);
+          if (levAttempt < 3) await new Promise(r => setTimeout(r, 1000));
+        }
       }
     }
-    // 8b. 设置保证金模式（交易所偶发 -4046/-4048 错误需重试）
+    // 8b. 设置保证金模式（参照 nofx：常见错误为"已有持仓无法切换"，直接 warn 继续，不重试）
     try {
-      await this.retryCall('setMarginMode', () => adapter.setMarginMode(futuresSymbol, true), 3, 2000);
+      await adapter.setMarginMode(futuresSymbol, true);
     } catch (e: any) {
-      this.logger.warn(`设置保证金模式失败(可忽略): ${e.message}`);
+      this.logger.warn(`[AI执行] 设置保证金模式跳过: ${e.message}`);
     }
 
-    // 9. 获取当前价格并计算下单数量
-    const currentPrice = await this.retryCall('getMarketPrice', () =>
-      adapter.getMarketPrice(futuresSymbol),
-    );
+    // 9. 获取当前价格并计算下单数量（优先复用 R3 已刷新的价格，避免重复 API 调用）
+    const currentPrice = (decision.currentPrice && decision.currentPrice > 0)
+      ? decision.currentPrice
+      : await this.retryCall('getMarketPrice', () => adapter.getMarketPrice(futuresSymbol));
     const rawQuantity = adaptedSize / currentPrice;
     const formattedQty = await adapter.formatQuantity(futuresSymbol, rawQuantity);
     const quantity = parseFloat(formattedQty);

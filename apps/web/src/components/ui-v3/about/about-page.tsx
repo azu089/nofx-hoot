@@ -95,7 +95,7 @@ export function AboutPage({
           {/* Logo */}
           <div className="w-24 h-24 mx-auto mb-4">
             <Image
-              src="/icons/hoot/logo.png"
+              src="/icons/hoot/token.png"
               alt="Hoot"
               width={96}
               height={96}

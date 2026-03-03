@@ -775,7 +775,7 @@ export function LandingPage({
           <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-[#1E1E2E]">
             <div className="flex items-center mb-4 md:mb-0">
               <Image
-                src="/icons/hoot/logo.png"
+                src="/icons/hoot/token.png"
                 alt="Hoot"
                 width={32}
                 height={32}

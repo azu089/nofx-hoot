@@ -55,7 +55,8 @@
       "Bash(PGPASSWORD=quantfi_password psql -h localhost -p 5433 -U quantfi_user -d quantfi_db -c \"\nSELECT \n  id,\n  \\\\\"strategyId\\\\\",\n  symbol,\n  decision::json->>'action' as action,\n  decision::json->>'gridSummary' as grid_summary,\n  decision::json->>'cost' as cost,\n  decision::json->'gridSnapshot' as grid_snapshot,\n  executed,\n  \\\\\"createdAt\\\\\"\nFROM \\\\\"AiStrategyLog\\\\\"\nWHERE symbol IS NOT NULL\nORDER BY \\\\\"createdAt\\\\\" DESC\nLIMIT 15;\n\" 2>&1)",
       "Bash(pnpm --filter api exec tsc --noEmit 2>&1 | head -40)",
       "Bash(pnpm --filter web exec tsc --noEmit 2>&1 | head -40)",
-      "Bash(code --list-extensions | grep -i claude)"
+      "Bash(code --list-extensions | grep -i claude)",
+      "Bash(sshpass -p 'jia1212.JIA' ssh -o StrictHostKeyChecking=no root@139.59.254.219 'docker logs hoot-api --tail 100 2>&1 | grep -E \"\"风控|stopLoss|止损|平仓|closePosition|STOP|stop|position|SOL\"\" | tail -50')"
     ],
     "defaultMode": "bypassPermissions"
   },

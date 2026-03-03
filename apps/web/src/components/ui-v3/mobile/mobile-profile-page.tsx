@@ -163,7 +163,7 @@ export function MobileProfilePage({
             <div className="relative flex-shrink-0">
               <div className="w-16 h-16 rounded-full overflow-hidden">
                 <Image
-                  src="/icons/hoot/logo.png"
+                  src="/icons/hoot/token.png"
                   alt="Avatar"
                   width={64}
                   height={64}

@@ -181,7 +181,7 @@ export function MobileVerifyEmailPage({
         <div className="flex justify-center mb-6">
           <div className="w-20 h-20">
             <Image
-              src="/icons/hoot/logo.png?v=2"
+              src="/icons/hoot/token.png"
               alt="HOOT"
               width={80}
               height={80}
