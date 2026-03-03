@@ -71,13 +71,13 @@ export function MobileLoginPage({
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="mb-4">
-            <div className="w-24 h-24">
+            <div className="w-24 h-24 rounded-full overflow-hidden">
               <Image
                 src="/icons/hoot/logo.png?v=2"
                 alt="HOOT"
                 width={96}
                 height={96}
-                className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                className="w-full h-full object-cover drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
                 priority
                 unoptimized
               />

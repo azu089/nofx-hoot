@@ -14,8 +14,8 @@ export const metadata: Metadata = {
     "Trade smarter with HOOT — AI-powered quantitative strategies, automated signals, and intelligent portfolio management for crypto markets.",
   keywords: ["crypto trading", "AI trading", "quantitative trading", "automated trading", "HOOT"],
   icons: {
-    icon: "/icons/hoot/token.png",
-    apple: "/icons/hoot/token.png",
+    icon: "/icons/hoot/logo.png",
+    apple: "/icons/hoot/logo.png",
   },
   manifest: "/manifest.json",
   appleWebApp: {
