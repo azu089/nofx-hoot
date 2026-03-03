@@ -453,7 +453,7 @@ nav button {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: rgba(6, 182, 212, 0.12);
+  background: rgba(6, 182, 212, 0.30);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -472,11 +472,11 @@ nav button {
     90deg,
     transparent 0%,
     transparent 10%,
-    rgba(6, 182, 212, 0.08) 20%,
-    rgba(34, 211, 238, 0.2) 30%,
-    rgba(34, 211, 238, 0.28) 50%,
-    rgba(34, 211, 238, 0.2) 70%,
-    rgba(6, 182, 212, 0.08) 80%,
+    rgba(6, 182, 212, 0.25) 20%,
+    rgba(34, 211, 238, 0.65) 30%,
+    rgba(34, 211, 238, 0.90) 50%,
+    rgba(34, 211, 238, 0.65) 70%,
+    rgba(6, 182, 212, 0.25) 80%,
     transparent 90%,
     transparent 100%
   );
@@ -485,7 +485,7 @@ nav button {
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: border-flow 12s ease-in-out infinite;
+  animation: border-flow 4s linear infinite;
   pointer-events: none;
 }
 
