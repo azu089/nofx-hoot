@@ -347,7 +347,6 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 
 以下是交易经验参考（非强制，由你自主判断）:
 - PnL% 是 unrealizedPnl/margin（已含杠杆），不要与价格变动百分比混淆
-- PeakPnL 反映历史最佳，可辅助判断利润回撤程度
 
 {EVOLUTION_CONTEXT}
 
@@ -624,11 +623,8 @@ export interface GridContext {
     longLower: number;
   };
   currentDirection: string;
-  // 利润峰值追踪（保护盈利不被单边行情带走）
   startEquity: number;          // 策略启动时权益
-  peakProfitPct: number;       // 历史最高盈利%（相对启动权益）
   currentProfitPct: number;    // 当前盈利%（相对启动权益）
-  profitRetracement: number;   // 从峰值回撤%（0 = 仍在峰值，50 = 利润已回撤一半）
   marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
   // K线历史（最近30根1h蜡烛，K线历史数据）
@@ -763,10 +759,9 @@ export function GRID_SYSTEM_PROMPT(
 | 字段 | 含义 | 正确用法 |
 |------|------|---------|
 | 历史最大回撤(峰值统计) | 自策略启动以来**曾经到过**的最高回撤，与当前状态无关 | 仅供参考；**不要仅凭此值触发 pause_grid** |
-| profitRetracement | **当前利润回撤%**，当前利润相对历史峰值利润的回落幅度 | 判断是否需要暂停的主要依据 |
 | currentProfitPct | **当前实际利润%** | 判断当前盈亏状态 |
 
-**规则：若历史最大回撤很高但 profitRetracement 很低，说明回撤已恢复，不应据此触发暂停。**
+**规则：历史最大回撤是峰值统计，当前状态已恢复则不应据此触发暂停。**
 
 ## 可用操作
 
@@ -943,17 +938,11 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`交易次数: ${ctx.totalTrades} | 胜率: ${winRate}%`);
   lines.push(`最大回撤: ${ctx.maxDrawdown.toFixed(2)}%`);
 
-  // Section 8: 利润峰值追踪（防利润回撤核心指标）
+  // Section 8: 策略盈利状态
   lines.push('');
-  lines.push('--- 策略盈利追踪（相对策略启动权益） ---');
+  lines.push('--- 策略盈利状态 ---');
   lines.push(`启动权益: ${ctx.startEquity.toFixed(2)} USDT`);
   lines.push(`当前盈利: ${ctx.currentProfitPct >= 0 ? '+' : ''}${ctx.currentProfitPct.toFixed(2)}%`);
-  if (ctx.peakProfitPct > 0) {
-    const retraceWarn = ctx.profitRetracement >= 70 ? ' ⚠️利润大幅回撤，注意风险' : ctx.profitRetracement >= 50 ? ' ⚠️注意回撤' : '';
-    lines.push(`历史峰值: +${ctx.peakProfitPct.toFixed(2)}% | 峰值回撤: ${ctx.profitRetracement.toFixed(1)}%${retraceWarn}`);
-  } else {
-    lines.push('历史峰值: 暂无 (策略尚未盈利)');
-  }
   if (ctx.oiChange1h !== undefined && ctx.oiChange1h !== 0) {
     const oiDir = ctx.oiChange1h > 0 ? '↑新开仓增加' : '↓平仓减少';
     const oiInterpretation = ctx.oiChange1h > 2

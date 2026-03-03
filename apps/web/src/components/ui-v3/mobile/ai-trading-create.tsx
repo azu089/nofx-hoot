@@ -158,8 +158,6 @@ export function CreateStrategyWizard() {
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
-    profitRetracePct: 50,       // 利润峰值回撤保护阈值（默认 50%）
-    profitPeakWindowDays: 30,   // 利润峰值滚动窗口天数（默认 30）
   })
 
   // ── 网格交易对实时价格 ─────────────────────────────
@@ -352,8 +350,6 @@ export function CreateStrategyWizard() {
             ? +(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridParams.maxDrawdownPct || 5,
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
-          profitRetracePct: gridParams.profitRetracePct || 50,
-          profitPeakWindowDays: gridParams.profitPeakWindowDays || 30,
         }
       }
 
@@ -835,10 +831,10 @@ export function CreateStrategyWizard() {
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
-                <RiskField label="最大回撤" suffix="%">
+                <RiskField label="峰值回撤" suffix="%">
                   <input
                     type="number"
-                    title="最大回撤"
+                    title="峰值回撤"
                     value={gridParams.maxDrawdownPct}
                     onChange={(e) => updateGrid('maxDrawdownPct', Number(e.target.value) || 0)}
                     min={1} max={50}
@@ -867,36 +863,6 @@ export function CreateStrategyWizard() {
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
-              </div>
-
-              {/* 利润回撤保护 */}
-              <div className="space-y-1.5">
-                <p className="text-xs text-[#9090A0]">利润回撤保护</p>
-                <p className="text-[10px] text-[#606070] leading-relaxed">
-                  利润从近 {gridParams.profitPeakWindowDays} 天内最高点回落超过阈值时自动平仓。峰值超过 {gridParams.profitPeakWindowDays} 天不更新则自动重置基准。
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <RiskField label="回撤阈值" suffix="%">
-                    <input
-                      type="number"
-                      title="回撤阈值"
-                      value={gridParams.profitRetracePct}
-                      onChange={(e) => updateGrid('profitRetracePct', Number(e.target.value) || 0)}
-                      min={10} max={100}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                    />
-                  </RiskField>
-                  <RiskField label="峰值记忆窗口" suffix="天">
-                    <input
-                      type="number"
-                      title="峰值记忆窗口"
-                      value={gridParams.profitPeakWindowDays}
-                      onChange={(e) => updateGrid('profitPeakWindowDays', Number(e.target.value) || 0)}
-                      min={1} max={365}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                    />
-                  </RiskField>
-                </div>
               </div>
 
               {/* 网格可行性提示 — 实时告知用户当前配置能运行几格 */}

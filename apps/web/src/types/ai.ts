@@ -329,9 +329,6 @@ export interface StartResearchBody {
     minPositionSize?: number;
     minConfidence?: number;
     minRiskRewardRatio?: number;
-    profitDrawdownEnabled?: boolean;
-    profitDrawdownMinProfit?: number;
-    profitDrawdownMaxRetracement?: number;
   };
 }
 
@@ -374,10 +371,6 @@ export interface RiskControlConfig {
   altcoinMaxPositionValueRatio?: number;
   btcEthMaxLeverage?: number;
   altcoinMaxLeverage?: number;
-  // 利润回撤保护
-  profitDrawdownEnabled?: boolean;         // 是否开启（默认 true）
-  profitDrawdownMinProfit?: number;        // 最低盈利触发阈值 %（默认 5）
-  profitDrawdownMaxRetracement?: number;   // 从高水位最大回撤 %（默认 40）
 }
 
 export interface PromptSections {
@@ -399,8 +392,6 @@ export interface GridConfig {
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
-  profitRetracePct?: number;        // 利润峰值回撤保护阈值（默认 50%）
-  profitPeakWindowDays?: number;    // 利润峰值滚动窗口天数（默认 30）
 }
 
 export interface IndicatorConfig {

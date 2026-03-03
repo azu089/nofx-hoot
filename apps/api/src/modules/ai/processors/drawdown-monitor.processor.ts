@@ -60,7 +60,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       return { checked: 0, closed: 0 };
     }
 
-    // 批量加载关联策略的风控配置（利润回撤保护阈值）
+    // 批量加载关联策略的风控配置
     const strategyIds = [...new Set(positions.map(p => p.aiStrategyId).filter(Boolean))] as string[];
     const strategyConfigMap = new Map<string, any>();
     if (strategyIds.length > 0) {
@@ -188,29 +188,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           continue; // 跳过高水位检查
         }
 
-        // 盈利保护回撤检查：使用策略级配置（fallback 默认 5%/40%）
-        const rc = pos.aiStrategyId ? strategyConfigMap.get(pos.aiStrategyId) : null;
-        const pdEnabled = (rc as any)?.profitDrawdownEnabled !== false; // 默认开启
-        const pdMinProfit = (rc as any)?.profitDrawdownMinProfit ?? 2;   // 默认 2%（对齐 nofx，降低触发门槛）
-        const pdMaxRetracement = ((rc as any)?.profitDrawdownMaxRetracement ?? 30) / 100; // 默认 30%（对齐 nofx，原 40%）
-
-        if (pdEnabled && currentHWM !== null && currentHWM > pdMinProfit) {
-          const drawdownFromPeak =
-            (currentHWM - pnlPercent) / currentHWM;
-
-          if (drawdownFromPeak >= pdMaxRetracement) {
-            this.logger.warn(
-              `[AI监控] 盈利保护触发: ${pos.symbol} ${pos.side} 高水位 ${currentHWM.toFixed(1)}%，当前 ${pnlPercent.toFixed(1)}%，回撤 ${(drawdownFromPeak * 100).toFixed(1)}%（阈值 ≥${pdMinProfit}% → ${(pdMaxRetracement * 100).toFixed(0)}%）`,
-            );
-
-            await this.autoClosePosition(
-              pos,
-              `盈利保护：从最高点 ${currentHWM.toFixed(1)}% 回撤至 ${pnlPercent.toFixed(1)}%（回撤 ${(drawdownFromPeak * 100).toFixed(0)}% ≥ ${(pdMaxRetracement * 100).toFixed(0)}%）`,
-              currentPrice,
-            );
-            closedCount++;
-          }
-        }
+        // 注：利润回撤保护已删除（与最大回撤保护功能重复），仅保留止损检查
       } catch (error) {
         this.logger.warn(
           `[AI监控] 检查持仓 ${pos.id} 出错: ${error.message}`,

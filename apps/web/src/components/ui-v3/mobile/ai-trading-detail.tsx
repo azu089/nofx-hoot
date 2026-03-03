@@ -7,7 +7,6 @@ import {
   Pause,
   Square,
   TrendingUp,
-  TrendingDown,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -111,10 +110,6 @@ export function AIStrategyDetailPage() {
   const [editMinConfidence, setEditMinConfidence] = useState(0);
   const [editMinRR, setEditMinRR] = useState(0);
   const [editMinPositionSize, setEditMinPositionSize] = useState(0);
-  // 利润回撤保护
-  const [editProfitDrawdownEnabled, setEditProfitDrawdownEnabled] = useState(true);
-  const [editProfitDrawdownMinProfit, setEditProfitDrawdownMinProfit] = useState(5);
-  const [editProfitDrawdownMaxRetracement, setEditProfitDrawdownMaxRetracement] = useState(40);
   const [editMaxCycles, setEditMaxCycles] = useState(0);
   const [editProfitTarget, setEditProfitTarget] = useState(0);
   const [editMaxLoss, setEditMaxLoss] = useState(0);
@@ -360,10 +355,6 @@ export function AIStrategyDetailPage() {
       setEditMinConfidence(rc.minConfidence ?? 0);
       setEditMinRR(rc.minRiskRewardRatio ?? 0);
       setEditMinPositionSize(rc.minPositionSize ?? 0);
-      // 利润回撤保护
-      setEditProfitDrawdownEnabled(rc.profitDrawdownEnabled !== false);
-      setEditProfitDrawdownMinProfit(rc.profitDrawdownMinProfit ?? 5);
-      setEditProfitDrawdownMaxRetracement(rc.profitDrawdownMaxRetracement ?? 40);
       setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
       setEditProfitTarget(strategy.stopConditions?.profitTargetPercent ?? 0);
       setEditMaxLoss(strategy.stopConditions?.maxLossPercent ?? 0);
@@ -422,9 +413,6 @@ export function AIStrategyDetailPage() {
         },
         riskControlConfig: {
           ...(strategy.riskControlConfig as unknown as Record<string, unknown> || {}),
-          profitDrawdownEnabled: editProfitDrawdownEnabled,
-          profitDrawdownMinProfit: editProfitDrawdownMinProfit || 5,
-          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement || 40,
         },
       };
     } else {
@@ -455,9 +443,6 @@ export function AIStrategyDetailPage() {
           minConfidence: editMinConfidence || undefined,
           minPositionSize: editMinPositionSize || undefined,
           maxMarginUsage: strategy?.riskControlConfig?.maxMarginUsage,
-          profitDrawdownEnabled: editProfitDrawdownEnabled,
-          profitDrawdownMinProfit: editProfitDrawdownMinProfit || 5,
-          profitDrawdownMaxRetracement: editProfitDrawdownMaxRetracement || 40,
         },
         promptSections: {
           role: editPromptRole || undefined,
@@ -1201,13 +1186,6 @@ export function AIStrategyDetailPage() {
                     {riskControlConfig?.minPositionSize && (
                       <ConfigRow label={t('detail.minPositionSize')} value={`$${riskControlConfig.minPositionSize}`} />
                     )}
-                    {/* 利润回撤保护 */}
-                    <ConfigRow
-                      label={t('detail.profitDrawdown')}
-                      value={riskControlConfig?.profitDrawdownEnabled === false
-                        ? '已关闭'
-                        : `≥${riskControlConfig?.profitDrawdownMinProfit || 5}% → ${riskControlConfig?.profitDrawdownMaxRetracement || 40}%`}
-                    />
                       <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
                       {/* 止停条件（有值时显示） */}
                       {!!(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
@@ -1505,7 +1483,7 @@ export function AIStrategyDetailPage() {
                     <div className="glass-border-glow glass-card p-4 space-y-3">
                       <h3 className="text-sm font-semibold">{t('detail.editGridRiskControl')}</h3>
 
-                      {/* 最大回撤 + 止损比例 — 两列输入 */}
+                      {/* 峰值回撤 + 单格止损 — 两列输入 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <p className="text-xs text-[#9090A0]">{t('detail.editGridMaxDrawdown')}</p>
@@ -1640,48 +1618,6 @@ export function AIStrategyDetailPage() {
                       )}
                     </div>
 
-                    {/* 卡片 5: Grid 利润回撤保护 */}
-                    <div className="rounded-xl border border-[#1E1E2E] overflow-hidden p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
-                          <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
-                        </div>
-                        <button type="button"
-                          onClick={() => setEditProfitDrawdownEnabled(!editProfitDrawdownEnabled)}
-                          className={`w-10 h-5 rounded-full transition-colors relative ${editProfitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
-                        >
-                          <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${editProfitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
-                        </button>
-                      </div>
-                      {editProfitDrawdownEnabled && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
-                            <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                              <input type="number" min={1} max={50} step={1}
-                                value={editProfitDrawdownMinProfit || ''}
-                                onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 0)}
-                                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                              />
-                              <span className="text-[#606070] text-xs">%</span>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
-                            <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                              <input type="number" min={10} max={80} step={5}
-                                value={editProfitDrawdownMaxRetracement || ''}
-                                onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 0)}
-                                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                              />
-                              <span className="text-[#606070] text-xs">%</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
-                    </div>
                   </>
                 ) : (
                 <>
@@ -2139,48 +2075,6 @@ export function AIStrategyDetailPage() {
                     </div>
                   </div>
 
-                  {/* 利润回撤保护 */}
-                  <div className="pt-3 border-t border-[#1E1E2E]">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
-                        <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
-                      </div>
-                      <button type="button"
-                        onClick={() => setEditProfitDrawdownEnabled(!editProfitDrawdownEnabled)}
-                        className={`w-10 h-5 rounded-full transition-colors relative ${editProfitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${editProfitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    {editProfitDrawdownEnabled && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
-                          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <input type="number" min={1} max={50} step={1}
-                              value={editProfitDrawdownMinProfit || ''}
-                              onChange={(e) => setEditProfitDrawdownMinProfit(parseFloat(e.target.value) || 0)}
-                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                            />
-                            <span className="text-[#606070] text-xs">%</span>
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
-                          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <input type="number" min={10} max={80} step={5}
-                              value={editProfitDrawdownMaxRetracement || ''}
-                              onChange={(e) => setEditProfitDrawdownMaxRetracement(parseFloat(e.target.value) || 0)}
-                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                            />
-                            <span className="text-[#606070] text-xs">%</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
-                  </div>
                 </div>
 
                 {/* 卡片 3: Prompt 配置 (4段) — Research 模式跳过 */}

@@ -18,7 +18,6 @@ import {
   Zap,
   MessageSquare,
   X,
-  TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -198,11 +197,6 @@ export function UnifiedAiCreate() {
   const [minPositionSize, setMinPositionSize] = useState(100);
   // 日亏损上限（单位：$，直接金额，非百分比）
   const [maxDailyDrawdownDollar, setMaxDailyDrawdownDollar] = useState(500);
-  // 利润回撤保护
-  const [profitDrawdownEnabled, setProfitDrawdownEnabled] = useState(true);
-  const [profitDrawdownMinProfit, setProfitDrawdownMinProfit] = useState(5);
-  const [profitDrawdownMaxRetracement, setProfitDrawdownMaxRetracement] = useState(40);
-
   // ── Grid-specific ─────────────────────────────
   const [gridSymbol, setGridSymbol] = useState('BTC');
   const [gridCoinSearch, setGridCoinSearch] = useState('');
@@ -224,9 +218,6 @@ export function UnifiedAiCreate() {
   }, [reasoningMode, gridSymbol]);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
-  const [gridProfitRetracePct, setGridProfitRetracePct] = useState(50);
-  const [gridProfitPeakWindowDays, setGridProfitPeakWindowDays] = useState(30);
-
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -399,9 +390,6 @@ export function UnifiedAiCreate() {
             minPositionSize,
             minConfidence: customParams.minConfidence,
             minRiskRewardRatio: customParams.minRR,
-            profitDrawdownEnabled,
-            profitDrawdownMinProfit: profitDrawdownMinProfit || 5,
-            profitDrawdownMaxRetracement: profitDrawdownMaxRetracement || 40,
           },
         });
         router.push(`/ai/research/${result.sessionId}`);
@@ -451,9 +439,6 @@ export function UnifiedAiCreate() {
           circuitBreaker: customParams.circuitBreaker,
           btcEthMaxPositionValueRatio: customParams.btcEthMaxPositionValueRatio,
           altcoinMaxPositionValueRatio: customParams.altcoinMaxPositionValueRatio,
-          profitDrawdownEnabled,
-          profitDrawdownMinProfit: profitDrawdownMinProfit || 5,
-          profitDrawdownMaxRetracement: profitDrawdownMaxRetracement || 40,
         },
         intervalMinutes: mins,
         ...(exchangeApiKeyId && { exchangeApiKeyId }),
@@ -470,8 +455,6 @@ export function UnifiedAiCreate() {
           lowerBound: (gridCurrentPrice > 0 && gridLowerPct > 0)
             ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
-          profitRetracePct: gridProfitRetracePct || 50,
-          profitPeakWindowDays: gridProfitPeakWindowDays || 30,
         };
       }
 
@@ -1066,41 +1049,6 @@ export function UnifiedAiCreate() {
               </div>
             </div>
 
-            {/* 利润回撤保护 */}
-            <div className="space-y-2">
-              <p className="text-xs text-[#9090A0]">{t('create.gridProfitRetrace')}</p>
-              <p className="text-[10px] text-[#606070] leading-relaxed">
-                {t('create.gridProfitRetraceHint', { days: gridProfitPeakWindowDays })}
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <p className="text-[10px] text-[#606070]">{t('create.gridProfitRetraceThreshold')}</p>
-                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                    <input
-                      type="number" min={10} max={100}
-                      value={gridProfitRetracePct || ''}
-                      onChange={(e) => { const v = parseInt(e.target.value); setGridProfitRetracePct(isNaN(v) ? 0 : v); }}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                      aria-label={t('create.gridProfitRetraceThreshold')}
-                    />
-                    <span className="text-[#606070] text-xs shrink-0">%</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-[#606070]">{t('create.gridProfitPeakWindow')}</p>
-                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                    <input
-                      type="number" min={1} max={365}
-                      value={gridProfitPeakWindowDays || ''}
-                      onChange={(e) => { const v = parseInt(e.target.value); setGridProfitPeakWindowDays(isNaN(v) ? 0 : v); }}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                      aria-label={t('create.gridProfitPeakWindow')}
-                    />
-                    <span className="text-[#606070] text-xs shrink-0">{t('common.days')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1355,48 +1303,6 @@ export function UnifiedAiCreate() {
                   </div>
                 </div>
 
-                {/* 利润回撤保护 */}
-                <div className="pt-3 border-t border-[#1E1E2E]">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <TrendingDown className="w-4 h-4 text-[#06B6D4]" />
-                      <span className="text-sm font-medium text-[#9090A0]">{t('create.profitDrawdown')}</span>
-                    </div>
-                    <button type="button"
-                      onClick={() => setProfitDrawdownEnabled(!profitDrawdownEnabled)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${profitDrawdownEnabled ? 'bg-[#06B6D4]' : 'bg-[#1E1E2E]'}`}
-                    >
-                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${profitDrawdownEnabled ? 'left-5' : 'left-0.5'}`} />
-                    </button>
-                  </div>
-                  {profitDrawdownEnabled && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMinProfit')}</p>
-                        <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                          <input type="number" min={1} max={50} step={1}
-                            value={profitDrawdownMinProfit || ''}
-                            onChange={(e) => { const v = parseFloat(e.target.value); setProfitDrawdownMinProfit(isNaN(v) ? 0 : v); }}
-                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                          />
-                          <span className="text-[#606070] text-xs">%</span>
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-[#606070] mb-1">{t('create.profitDrawdownMaxRetracement')}</p>
-                        <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                          <input type="number" min={10} max={80} step={5}
-                            value={profitDrawdownMaxRetracement || ''}
-                            onChange={(e) => { const v = parseFloat(e.target.value); setProfitDrawdownMaxRetracement(isNaN(v) ? 0 : v); }}
-                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                          />
-                          <span className="text-[#606070] text-xs">%</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-[#606070] mt-1">{t('create.profitDrawdownDesc')}</p>
-                </div>
               </div>
             )}
           </div>
