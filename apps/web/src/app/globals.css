@@ -446,14 +446,14 @@ nav button {
   position: relative;
 }
 
-/* 基础边框 - 默认可见亮度 */
+/* 基础边框 - 几乎透明，靠流光突出 */
 .glass-border-glow::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: rgba(6, 182, 212, 0.30);
+  background: rgba(6, 182, 212, 0.04);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
