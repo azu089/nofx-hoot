@@ -158,9 +158,9 @@ export const LoginPage = () => {
               </div>
             ) : (
               <img
-                src="/logo.png"
+                src="/token.png"
                 alt="HOOT"
-                style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: 48, height: 48, objectFit: 'contain' }}
                 onError={() => setLogoError(true)}
               />
             )}
