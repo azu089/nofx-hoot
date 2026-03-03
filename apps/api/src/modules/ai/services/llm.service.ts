@@ -417,11 +417,15 @@ export class LLMService {
       let response: OpenAI.Chat.Completions.ChatCompletion | undefined;
       let lastError: Error | undefined;
 
-      // Gemini 2.5/3 系列为内置思考模型，thinking tokens 计入 max_tokens 配额
+      // Gemini 2.5/3 / DeepSeek-Reasoner 为内置思考模型，thinking tokens 计入 max_tokens 配额
       // 若不保留足够空间，thinking 结束后无 token 可输出 JSON，导致 SafeFallback
       // 最低保障 12000 tokens（thinking ~4000-6000 + 结构化输出 ~2000-3000）
       // 6000 导致 ~33% 解析失败率，增大至 12000
-      const isThinkingModel = effectiveModelId.startsWith('gemini-2.5') || effectiveModelId.startsWith('gemini-3');
+      const isThinkingModel =
+        effectiveModelId.startsWith('gemini-2.5') ||
+        effectiveModelId.startsWith('gemini-3') ||
+        effectiveModelId === 'deepseek-reasoner' ||
+        effectiveModelId.includes('deepseek-r1');
       const actualMaxTokens = isThinkingModel
         ? Math.max(options?.maxTokens ?? 1000, 12000)
         : options?.maxTokens ?? 1000;
@@ -458,8 +462,15 @@ export class LLMService {
       }
 
       const message = response.choices[0]?.message as any;
-      const content = message?.content || '';
+      let content = message?.content || '';
       const thinking = message?.reasoning_content as string | undefined; // DeepSeek-Reasoner 思考链
+
+      // DeepSeek-Reasoner 极端情况：content 为空但 thinking 有内容（token 预算耗尽）
+      // fallback：将 thinking 作为 content，DecisionParser 能从中解析 <decision> 标签
+      if (!content && thinking) {
+        this.logger.warn(`${effectiveModelId} content 为空但 thinking 有 ${thinking.length} 字符，降级使用 thinking 作为 content`);
+        content = thinking;
+      }
       const usage = response.usage;
       const inputTokens = usage?.prompt_tokens || 0;
       const outputTokens = usage?.completion_tokens || 0;
