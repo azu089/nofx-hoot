@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
 import { encrypt } from '../../../../common/utils/crypto.util';
+import { FeeService } from '../../../trading/fee.service';
 
 /**
  * 策略引擎服务 — 产品 B 策略 CRUD + 启停控制
@@ -27,6 +28,7 @@ export class StrategyEngineService implements OnModuleInit {
     @InjectQueue('ai-auto') private readonly autoQueue: Queue,
     private readonly prisma: PrismaService,
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
+    @Optional() private readonly feeService?: FeeService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -943,6 +945,36 @@ export class StrategyEngineService implements OnModuleInit {
                 `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
                 (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
               );
+
+              // 燃油费扣除（仅当有正盈利且 feeService 可用时）
+              if (this.feeService && estimatedPnl != null && estimatedPnl > 0) {
+                try {
+                  const feeCalc = await this.feeService.calculateFee(
+                    userId,
+                    estimatedPnl.toFixed(8),
+                  );
+                  const uniqueOrderId = this.feeService.generateUniqueOrderId(
+                    'GAS_FEE',
+                    userId,
+                    dp.id,
+                  );
+                  await this.feeService.chargeFee({
+                    userId,
+                    positionId: dp.id,
+                    profit: feeCalc.profit,
+                    feeRate: feeCalc.finalFeeRate,
+                    feeAmount: feeCalc.feeAmount,
+                    uniqueOrderId,
+                  });
+                  this.logger.log(
+                    `[快照] 燃油费扣除: positionId=${dp.id} fee=${feeCalc.feeAmount}`,
+                  );
+                } catch (feeErr: any) {
+                  this.logger.error(
+                    `[快照] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
+                  );
+                }
+              }
             }
           }
 
@@ -1052,6 +1084,36 @@ export class StrategyEngineService implements OnModuleInit {
             },
           });
           closed++;
+
+          // 燃油费扣除（仅当有正盈利且 feeService 可用时）
+          if (this.feeService && estimatedPnl != null && estimatedPnl > 0) {
+            try {
+              const feeCalc = await this.feeService.calculateFee(
+                userId,
+                estimatedPnl.toFixed(8),
+              );
+              const uniqueOrderId = this.feeService.generateUniqueOrderId(
+                'GAS_FEE',
+                userId,
+                dp.id,
+              );
+              await this.feeService.chargeFee({
+                userId,
+                positionId: dp.id,
+                profit: feeCalc.profit,
+                feeRate: feeCalc.finalFeeRate,
+                feeAmount: feeCalc.feeAmount,
+                uniqueOrderId,
+              });
+              this.logger.log(
+                `[持仓同步] 燃油费扣除: positionId=${dp.id} fee=${feeCalc.feeAmount}`,
+              );
+            } catch (feeErr: any) {
+              this.logger.error(
+                `[持仓同步] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
+              );
+            }
+          }
         }
       }
 
