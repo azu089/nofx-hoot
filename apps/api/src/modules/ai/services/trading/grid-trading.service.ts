@@ -1527,7 +1527,8 @@ export class GridTradingService {
         }
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
-        if (decisions.length > 0) {
+        // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
+        {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
