@@ -1753,6 +1753,8 @@
       "actionReduce": "포지션 축소",
       "actionAdd": "추가",
       "actionGridAdjust": "그리드 조정",
+      "actionGridPlaceBuy": "매수 주문",
+      "actionGridPlaceSell": "매도 주문",
       "actionGridPause": "그리드 일시정지",
       "actionGridResume": "그리드 재개",
       "actionGridDirection": "방향 조정",

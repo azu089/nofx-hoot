@@ -1753,6 +1753,8 @@
       "actionReduce": "Kurangi",
       "actionAdd": "Tambah",
       "actionGridAdjust": "Sesuaikan Grid",
+      "actionGridPlaceBuy": "Pasang Beli",
+      "actionGridPlaceSell": "Pasang Jual",
       "actionGridPause": "Jeda Grid",
       "actionGridResume": "Lanjutkan Grid",
       "actionGridDirection": "Sesuaikan Arah",

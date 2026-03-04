@@ -1753,6 +1753,8 @@
       "actionReduce": "Azalt",
       "actionAdd": "Ekle",
       "actionGridAdjust": "Grid Ayarla",
+      "actionGridPlaceBuy": "Alış Emri",
+      "actionGridPlaceSell": "Satış Emri",
       "actionGridPause": "Grid Duraklat",
       "actionGridResume": "Grid Devam",
       "actionGridDirection": "Yön Ayarla",

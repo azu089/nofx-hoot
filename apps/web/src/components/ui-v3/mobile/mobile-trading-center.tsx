@@ -26,7 +26,7 @@ import {
   Radio,
 } from 'lucide-react'
 import { useTranslations } from '@/i18n/provider'
-import { getActionBadgeStyle, getActionText, getCloseReasonText, formatGridSummary } from '@/lib/execution-log-format'
+import { getActionBadgeStyle, getActionText, getCloseReasonText, formatGridSummary, formatLogMessage } from '@/lib/execution-log-format'
 
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
@@ -616,7 +616,7 @@ export function MobileTradingCenter({
                         <p className="font-medium text-cyan-400">
                           {position.marginRatio
                             ? position.marginRatio + '%'
-                            : '-'}
+                            : position.marginMode === 'cross' ? '全仓' : '-'}
                         </p>
                       </div>
                     </div>
@@ -638,7 +638,9 @@ export function MobileTradingCenter({
                       <div>
                         <p className="text-[#606070]">{t('liquidationPriceLabel')}</p>
                         <p className="font-medium text-yellow-400">
-                          {position.liquidationPrice > 0 ? position.liquidationPrice.toFixed(4) : '-'}
+                          {position.liquidationPrice > 0
+                            ? position.liquidationPrice.toFixed(4)
+                            : position.marginMode === 'cross' ? '全仓' : '-'}
                         </p>
                       </div>
                     </div>
@@ -1025,7 +1027,7 @@ function LogCard({ log }: { log: ExecutionLog }) {
           </div>
 
           {/* 消息行 */}
-          <p className="text-xs text-[#9090A0] mb-1.5">{log.message}</p>
+          <p className="text-xs text-[#9090A0] mb-1.5">{formatLogMessage(log.message, tAi)}</p>
 
           {/* ===== 策略专属详情区 ===== */}
 

@@ -1755,6 +1755,8 @@
       "actionReduce": "減倉",
       "actionAdd": "加倉",
       "actionGridAdjust": "網格調整",
+      "actionGridPlaceBuy": "掛買單",
+      "actionGridPlaceSell": "掛賣單",
       "actionGridPause": "暫停網格",
       "actionGridResume": "恢復網格",
       "actionGridDirection": "調整方向",

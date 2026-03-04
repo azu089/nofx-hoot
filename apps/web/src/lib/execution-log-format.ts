@@ -16,6 +16,8 @@ export const ACTION_STYLE: Record<string, string> = {
   fail: 'bg-red-400/10 text-red-400',
   execute: 'bg-blue-400/10 text-blue-400',
   adjust_grid: 'bg-emerald-400/10 text-emerald-400',
+  place_buy_limit: 'bg-green-400/10 text-green-400',
+  place_sell_limit: 'bg-red-400/10 text-red-400',
   pause_grid: 'bg-yellow-400/10 text-yellow-400',
   resume_grid: 'bg-green-400/10 text-green-400',
   reduce: 'bg-orange-400/10 text-orange-400',
@@ -35,6 +37,8 @@ const ACTION_I18N: Record<string, string> = {
   fail: 'detail.actionFail',
   execute: 'detail.actionExecute',
   adjust_grid: 'detail.actionGridAdjust',
+  place_buy_limit: 'detail.actionGridPlaceBuy',
+  place_sell_limit: 'detail.actionGridPlaceSell',
   pause_grid: 'detail.actionGridPause',
   resume_grid: 'detail.actionGridResume',
   reduce: 'detail.actionReduce',
@@ -88,6 +92,8 @@ export function formatGridSummary(raw: string, t: (k: string, params?: Record<st
     .replace(/(\d+)S/g, (_, n) => t('detail.gridSell', { count: n }))
     .replace(/(\d+)C/g, (_, n) => t('detail.gridCancel', { count: n }))
     .replace(/(\d+)ops/g, (_, n) => t('detail.gridOps', { count: n }))
+    .replace(/place_buy_limit/g, t('detail.actionGridPlaceBuy'))
+    .replace(/place_sell_limit/g, t('detail.actionGridPlaceSell'))
     .replace(/adjust_grid/g, t('detail.actionGridAdjust'))
     .replace(/pause_grid/g, t('detail.actionGridPause'))
     .replace(/resume_grid/g, t('detail.actionGridResume'))
@@ -95,4 +101,27 @@ export function formatGridSummary(raw: string, t: (k: string, params?: Record<st
     .replace(/reduce_position/g, t('detail.actionReduce'))
     .replace(/adjust_direction/g, t('detail.actionGridDirection'))
     .replace(/close_all/g, t('detail.actionGridCloseAll'));
+}
+
+/**
+ * 翻译 log.message 字段中的英文 action 名
+ * 后端格式: "AI: place_buy_limit SOL/USDT 1B/1S"
+ */
+export function formatLogMessage(
+  message: string,
+  t: (k: string, params?: Record<string, string | number>) => string,
+): string {
+  if (!message) return message;
+  return message
+    .replace(/\bplace_buy_limit\b/g, t('detail.actionGridPlaceBuy'))
+    .replace(/\bplace_sell_limit\b/g, t('detail.actionGridPlaceSell'))
+    .replace(/\badjust_grid\b/g, t('detail.actionGridAdjust'))
+    .replace(/\bpause_grid\b/g, t('detail.actionGridPause'))
+    .replace(/\bresume_grid\b/g, t('detail.actionGridResume'))
+    .replace(/\bopen_long\b/g, t('detail.actionOpenLong'))
+    .replace(/\bopen_short\b/g, t('detail.actionOpenShort'))
+    .replace(/\bclose_long\b/g, t('detail.actionCloseLong'))
+    .replace(/\bclose_short\b/g, t('detail.actionCloseShort'))
+    .replace(/(\d+)B\b/g, (_, n) => t('detail.gridBuy', { count: n }))
+    .replace(/(\d+)S\b/g, (_, n) => t('detail.gridSell', { count: n }));
 }

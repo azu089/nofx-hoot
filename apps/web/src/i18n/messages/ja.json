@@ -1753,6 +1753,8 @@
       "actionReduce": "ポジション縮小",
       "actionAdd": "追加",
       "actionGridAdjust": "グリッド調整",
+      "actionGridPlaceBuy": "買い注文",
+      "actionGridPlaceSell": "売り注文",
       "actionGridPause": "グリッド一時停止",
       "actionGridResume": "グリッド再開",
       "actionGridDirection": "方向調整",

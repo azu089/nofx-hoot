@@ -1753,6 +1753,8 @@
       "actionReduce": "ลดขนาด",
       "actionAdd": "เพิ่ม",
       "actionGridAdjust": "ปรับกริด",
+      "actionGridPlaceBuy": "วางคำสั่งซื้อ",
+      "actionGridPlaceSell": "วางคำสั่งขาย",
       "actionGridPause": "หยุดกริดชั่วคราว",
       "actionGridResume": "เริ่มกริดใหม่",
       "actionGridDirection": "ปรับทิศทาง",

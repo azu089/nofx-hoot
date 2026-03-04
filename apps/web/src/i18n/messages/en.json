@@ -1740,6 +1740,8 @@
       "actionReduce": "Reduce",
       "actionAdd": "Add",
       "actionGridAdjust": "Grid Adjust",
+      "actionGridPlaceBuy": "Place Buy",
+      "actionGridPlaceSell": "Place Sell",
       "actionGridPause": "Pause Grid",
       "actionGridResume": "Resume Grid",
       "actionGridDirection": "Adjust Direction",

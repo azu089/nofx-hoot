@@ -1736,6 +1736,8 @@
       "actionReduce": "تخفيض",
       "actionAdd": "إضافة",
       "actionGridAdjust": "تعديل الشبكة",
+      "actionGridPlaceBuy": "أمر شراء",
+      "actionGridPlaceSell": "أمر بيع",
       "actionGridPause": "إيقاف الشبكة",
       "actionGridResume": "استئناف الشبكة",
       "actionGridDirection": "تعديل الاتجاه",

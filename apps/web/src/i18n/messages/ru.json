@@ -1753,6 +1753,8 @@
       "actionReduce": "Сокращение",
       "actionAdd": "Добавить",
       "actionGridAdjust": "Настройка сетки",
+      "actionGridPlaceBuy": "Купить лимит",
+      "actionGridPlaceSell": "Продать лимит",
       "actionGridPause": "Пауза сетки",
       "actionGridResume": "Возобновление сетки",
       "actionGridDirection": "Изменение направления",

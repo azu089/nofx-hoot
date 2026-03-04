@@ -1754,6 +1754,8 @@
       "actionReduce": "Giảm vị thế",
       "actionAdd": "Thêm",
       "actionGridAdjust": "Điều chỉnh lưới",
+      "actionGridPlaceBuy": "Đặt mua",
+      "actionGridPlaceSell": "Đặt bán",
       "actionGridPause": "Tạm dừng lưới",
       "actionGridResume": "Tiếp tục lưới",
       "actionGridDirection": "Điều chỉnh hướng",

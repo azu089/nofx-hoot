@@ -1753,6 +1753,8 @@
       "actionReduce": "减仓",
       "actionAdd": "加仓",
       "actionGridAdjust": "网格调整",
+      "actionGridPlaceBuy": "挂买单",
+      "actionGridPlaceSell": "挂卖单",
       "actionGridPause": "暂停网格",
       "actionGridResume": "恢复网格",
       "actionGridDirection": "调整方向",
