@@ -113,6 +113,10 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             liveMargin = ep.margin;
             liveMarkPrice = ep.markPrice;
             liveUnrealizedPnl = ep.unrealizedPnl;
+          } else {
+            // 交易所持仓已加载但找不到此仓 = 已平仓，跳过（防止 -2022 ReduceOnly 无限重试）
+            this.scaleOutMap.delete(pos.id);
+            continue;
           }
         }
 
