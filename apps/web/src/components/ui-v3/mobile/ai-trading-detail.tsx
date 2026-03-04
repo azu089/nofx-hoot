@@ -1016,7 +1016,7 @@ export function AIStrategyDetailPage() {
                         } />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
-                        {!!gc.dailyLossLimitPct && <ConfigRow label={t('detail.configDailyLossLimit')} value={`${gc.dailyLossLimitPct}%`} />}
+                        <ConfigRow label={t('detail.configDailyLossLimit')} value={gc.dailyLossLimitPct ? `${gc.dailyLossLimitPct}%` : '不限'} />
                         {detail.gridState && (
                           <div className="mt-2 pt-2 border-t border-[#1E1E2E]">
                             <p className="text-xs text-[#10B981] font-medium mb-2">{t('detail.gridStatus')}</p>
@@ -1053,7 +1053,7 @@ export function AIStrategyDetailPage() {
                               <ConfigRow label={t('create.profitTarget')} value={`${strategy.stopConditions.profitTargetPercent}%`} />
                             )}
                             {!!strategy.stopConditions?.maxLossPercent && (
-                              <ConfigRow label={t('detail.maxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
+                              <ConfigRow label={t('create.maxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
                             )}
                           </>
                         )}
