@@ -143,6 +143,7 @@ export interface GridState {
   // 策略权益追踪
   startEquity: number;      // 策略启动时的账户权益，永不变更（用于计算策略总收益率）
   lastEquity: number;       // 最近一次成功获取的账户权益（用于计算总盈亏）
+  lastUnrealizedPnl: number; // 最近一次从交易所持仓获取的未实现盈亏（buildGridContext 每轮更新）
 
   // OI 持仓量追踪（用于计算周期间变化，区分真假突破）
   lastOI: number;           // 上一周期的持仓量，0 表示未知
