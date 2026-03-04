@@ -17,6 +17,7 @@ import {
   UserCheck,
   Share2,
   FileText,
+  Shield,
 } from 'lucide-react';
 import { AdminAuthProvider, useAdminAuth } from '@/lib/admin-auth';
 
