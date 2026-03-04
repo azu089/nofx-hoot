@@ -368,8 +368,22 @@ function MarketTabs({ prices, news, isLoading }: {
       {/* 标签页内容 */}
       <div className="p-4">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 text-[#06B6D4] animate-spin" />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="p-4 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-xl animate-pulse">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-[#1E1E2E]" />
+                  <div className="space-y-1.5">
+                    <div className="w-12 h-3 bg-[#1E1E2E] rounded" />
+                    <div className="w-16 h-2.5 bg-[#1A1A24] rounded" />
+                  </div>
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="w-20 h-4 bg-[#1E1E2E] rounded" />
+                  <div className="w-12 h-3 bg-[#1A1A24] rounded" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : activeTab === 'market' ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

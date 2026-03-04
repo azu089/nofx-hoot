@@ -330,8 +330,22 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
           {/* Tab Content */}
           <div className="p-3">
             {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 text-[#06B6D4] animate-spin" />
+              <div className="grid grid-cols-2 gap-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="p-3 bg-[#0A0A0F]/50 border border-[#1E1E2E] rounded-lg animate-pulse">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-7 h-7 rounded-full bg-[#1E1E2E]" />
+                      <div className="space-y-1">
+                        <div className="w-10 h-2.5 bg-[#1E1E2E] rounded" />
+                        <div className="w-14 h-2 bg-[#1A1A24] rounded" />
+                      </div>
+                    </div>
+                    <div className="flex items-end justify-between">
+                      <div className="w-16 h-3.5 bg-[#1E1E2E] rounded" />
+                      <div className="w-10 h-3 bg-[#1A1A24] rounded" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : activeTab === 'market' ? (
               <div className="grid grid-cols-2 gap-2">

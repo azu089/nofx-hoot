@@ -137,8 +137,8 @@ export function useHomepageData() {
       const response = await api.get<HomepageData>('/market/homepage');
       return response.data;
     },
-    refetchInterval: 30000, // 30秒刷新一次
-    staleTime: 15000,
+    refetchInterval: 30000, // 30秒后台刷新一次
+    staleTime: 60000,       // 1分钟内切页回来直接用缓存，不显示 loading
   });
 }
 
