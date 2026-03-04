@@ -1145,23 +1145,7 @@ export class GridTradingService {
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
-        // Fix-A: 严重倾斜时代码层注入 adjust_grid（优先于 AI 决策执行）
-        if (skewLevel === 'severe' && !state.userLockedRange && !state.isPaused) {
-          const rangeWidth = state.upperPrice - state.lowerPrice;
-          const newLower = parseFloat((currentPrice - rangeWidth / 2).toFixed(8));
-          const newUpper = parseFloat((currentPrice + rangeWidth / 2).toFixed(8));
-          decisions.unshift({
-            symbol: state.symbol,
-            action: 'adjust_grid',
-            upperPrice: newUpper,
-            lowerPrice: newLower,
-            confidence: 95,
-            reasoning: `[代码层] 严重倾斜自动居中: 多${skewBuy}格 vs 空${skewSell}格`,
-          });
-          this.logger.warn(`[网格] 严重倾斜自动注入 adjust_grid: ${newLower.toFixed(4)}~${newUpper.toFixed(4)}`);
-        }
-
-        // Fix-B: confidence 过滤（未提供 confidence 的决策默认通过，兼容旧格式）
+        // confidence 过滤（未提供 confidence 的决策默认通过，兼容旧格式）
         const CONFIDENCE_THRESHOLD = 40;
         const filteredDecisions = decisions.filter(d => {
           if (d.action === 'hold') return true;
