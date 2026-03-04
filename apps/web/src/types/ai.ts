@@ -608,6 +608,7 @@ export interface StrategyLog {
       activeOrders: number;
       totalProfit: number;
       totalPnl?: number;
+      unrealizedPnl?: number;
       totalTrades: number;
       winRate: number;
       maxDrawdown: number;

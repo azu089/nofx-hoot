@@ -3228,6 +3228,7 @@ export class GridTradingService {
         totalPnl: state.lastEquity && state.startEquity > 0
           ? state.lastEquity - state.startEquity
           : undefined,
+        unrealizedPnl: unrealizedPnl ?? 0,
         breakoutLevel: state.breakoutLevel,
         lastPrice: state.lastPrice,
         startEquity: state.startEquity,

@@ -754,11 +754,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
                 <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
               </div>
-              {d.gridSnapshot.totalPnl != null && (
+              {d.gridSnapshot.totalProfit != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070] font-medium">{t('timeline.gridTotalPnl')}</span>
-                  <span className={`font-mono font-medium ${d.gridSnapshot.totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {d.gridSnapshot.totalPnl >= 0 ? '+' : ''}{d.gridSnapshot.totalPnl.toFixed(2)}
+                  <span className="text-[#606070]">{t('timeline.gridOrderProfit')}</span>
+                  <span className={`font-mono ${d.gridSnapshot.totalProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {d.gridSnapshot.totalProfit >= 0 ? '+' : ''}{d.gridSnapshot.totalProfit.toFixed(2)}
                   </span>
                 </div>
               )}
@@ -774,11 +774,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   <span className="text-[#F8F8FC]">{d.gridSnapshot.pendingLevels}</span>
                 </div>
               )}
-              {d.gridSnapshot.dailyPnl != null && (
+              {d.gridSnapshot.unrealizedPnl != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridDailyPnl')}</span>
-                  <span className={`font-mono ${d.gridSnapshot.dailyPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {d.gridSnapshot.dailyPnl >= 0 ? '+' : ''}{d.gridSnapshot.dailyPnl.toFixed(2)}
+                  <span className="text-[#606070]">{t('timeline.gridPositionPnl')}</span>
+                  <span className={`font-mono ${d.gridSnapshot.unrealizedPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {d.gridSnapshot.unrealizedPnl >= 0 ? '+' : ''}{d.gridSnapshot.unrealizedPnl.toFixed(2)}
                   </span>
                 </div>
               )}
