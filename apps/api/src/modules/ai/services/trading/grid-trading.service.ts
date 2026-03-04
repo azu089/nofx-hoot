@@ -321,8 +321,6 @@ export class GridTradingService {
   // 并发保护：记录正在运行的策略 ID，防止同一策略多 job 并发执行
   private readonly runningStrategies = new Set<string>();
 
-  // 本次启动已清理过止损单的策略集合（重启后重置，用于一次性清理僵尸止损单）
-  private readonly stopOrdersCleanedOnStart = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1007,14 +1005,12 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-        // 服务重启后首次运行：清理可能堆积的僵尸止损单，避免条件委托越积越多
-        if (isGridAdapter(adapter) && !this.stopOrdersCleanedOnStart.has(strategyId) && stopLossPct > 0) {
-          this.stopOrdersCleanedOnStart.add(strategyId);
+        // 每轮清理僵尸止损单（不再主动放交易所止损单，此处为防残留）
+        if (isGridAdapter(adapter)) {
           try {
             await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
-            this.logger.log(`[网格] 启动清理：已取消 ${state.symbol} 所有旧止损单`);
           } catch (e: any) {
-            this.logger.warn(`[网格] 启动清理止损单失败(忽略): ${e.message}`);
+            this.logger.warn(`[网格] 清理止损单失败(忽略): ${e.message}`);
           }
         }
 
