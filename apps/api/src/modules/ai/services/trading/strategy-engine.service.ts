@@ -849,7 +849,7 @@ export class StrategyEngineService implements OnModuleInit {
             },
           });
 
-          // 交易所有但 DB 无 → 创建快照持仓
+          // 交易所有但 DB 无 → 创建快照持仓；DB 有且交易所有 → 更新 amount（防止网格累积后 DB 过时）
           for (const ep of exchangePositions) {
             const matched = dbPositions.find(
               (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
@@ -885,6 +885,17 @@ export class StrategyEngineService implements OnModuleInit {
                 `[快照] 创建遗失持仓: ${ep.symbol} ${ep.side} qty=${ep.quantity} user=${userId}` +
                 (matchedStrategy ? ` → 关联策略 ${matchedStrategy.id}` : ''),
               );
+            } else {
+              // DB 有且交易所有 → 同步最新 amount/entryPrice/unrealizedPnl，避免网格累积后 DB 量过时
+              await db.position.update({
+                where: { id: matched.id },
+                data: {
+                  amount: ep.quantity,
+                  entryPrice: ep.entryPrice,
+                  unrealizedPnl: ep.unrealizedPnl,
+                  lastSyncAt: new Date(),
+                },
+              });
             }
           }
 
@@ -914,7 +925,10 @@ export class StrategyEngineService implements OnModuleInit {
                   status: 'closed',
                   closeReason: 'not_found_on_exchange',
                   closedAt: new Date(),
-                  ...(closePrice != null ? { closePrice: closePrice.toFixed(8) } : {}),
+                  ...(closePrice != null ? {
+                    closePrice: closePrice.toFixed(8),
+                    exitPrice: closePrice.toFixed(8),
+                  } : {}),
                   ...(estimatedPnl != null ? {
                     pnl: estimatedPnl.toFixed(8),
                     realizedPnl: estimatedPnl.toFixed(8),
@@ -1006,7 +1020,7 @@ export class StrategyEngineService implements OnModuleInit {
         },
       });
 
-      // 交易所有但 DB 无 → 创建
+      // 交易所有但 DB 无 → 创建；DB 有且交易所有 → 更新 amount（防止网格累积后 DB 量过时）
       for (const ep of exchangePositions) {
         const matched = dbPositions.find(
           (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
@@ -1029,6 +1043,17 @@ export class StrategyEngineService implements OnModuleInit {
             },
           });
           created++;
+        } else {
+          // DB 有且交易所有 → 同步最新 amount/entryPrice，避免网格累积后 DB 量过时
+          await this.prisma.position.update({
+            where: { id: matched.id },
+            data: {
+              amount: ep.quantity,
+              entryPrice: ep.entryPrice,
+              unrealizedPnl: ep.unrealizedPnl,
+              lastSyncAt: new Date(),
+            },
+          });
         }
       }
 
@@ -1057,7 +1082,10 @@ export class StrategyEngineService implements OnModuleInit {
               status: 'closed',
               closeReason: 'not_found_on_exchange',
               closedAt: new Date(),
-              ...(closePrice != null ? { closePrice: closePrice.toFixed(8) } : {}),
+              ...(closePrice != null ? {
+                closePrice: closePrice.toFixed(8),
+                exitPrice: closePrice.toFixed(8),
+              } : {}),
               ...(estimatedPnl != null ? {
                 pnl: estimatedPnl.toFixed(8),
                 realizedPnl: estimatedPnl.toFixed(8),
