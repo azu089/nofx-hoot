@@ -631,7 +631,17 @@ function AiLogTab() {
 
   const columns: AdminColumn<AiLog>[] = [
     { key: 'user', title: '用户', render: (r) => <span className="text-xs text-[#9090A0]">{r.userEmail}</span> },
-    { key: 'strategyId', title: '策略 ID', render: (r) => <span className="text-xs font-mono text-[#9090A0] truncate max-w-[80px] block">{r.strategyId}</span> },
+    {
+      key: 'strategyId', title: '策略 ID', width: '140px',
+      render: (r) => (
+        <span
+          className="text-xs font-mono text-[#9090A0] cursor-default"
+          title={r.strategyId}
+        >
+          {r.strategyId ? r.strategyId.slice(0, 8) + '…' : '-'}
+        </span>
+      ),
+    },
     { key: 'symbol', title: '交易对', render: (r) => <span className="font-mono text-cyan-400 text-xs">{r.symbol}</span> },
     { key: 'decision', title: '决策', align: 'center', render: (r) => <AdminStatusBadge status={r.decision} map={DECISION_MAP} /> },
     {

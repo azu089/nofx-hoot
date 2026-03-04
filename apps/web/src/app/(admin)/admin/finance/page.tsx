@@ -47,10 +47,13 @@ interface RevenueRow {
 
 interface BillingItem {
   id: string;
-  userEmail: string;
+  uniqueOrderId?: string;
+  username?: string;
+  userEmail?: string;
   type: string;
   amount: string;
   status: string;
+  remark?: string;
   createdAt: string;
 }
 
@@ -208,11 +211,40 @@ function BillingTab() {
   } = useAdminList<BillingItem>('/admin/billing');
 
   const columns: AdminColumn<BillingItem>[] = [
-    { key: 'userEmail', title: '用户',   render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail}</span> },
-    { key: 'type',      title: '类型',   align: 'center', render: (r) => <AdminStatusBadge status={r.type} map={BILLING_TYPE_MAP} /> },
-    { key: 'amount',    title: '金额',   align: 'right',  render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
-    { key: 'status',    title: '状态',   align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
-    { key: 'createdAt', title: '时间',   align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{new Date(r.createdAt).toLocaleString('zh-CN')}</span> },
+    {
+      key: 'uniqueOrderId', title: '账单ID', width: '180px',
+      render: (r) => {
+        const id = r.uniqueOrderId || r.id;
+        return (
+          <span
+            className="text-xs font-mono text-[#9090A0] cursor-default"
+            title={id}
+          >
+            {id.length > 20 ? id.slice(0, 20) + '…' : id}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'user', title: '用户',
+      render: (r) => (
+        <span className="text-[#9090A0] text-xs" title={r.username || r.userEmail || ''}>
+          {r.username || r.userEmail || '-'}
+        </span>
+      ),
+    },
+    { key: 'type',   title: '类型',  align: 'center', render: (r) => <AdminStatusBadge status={r.type} map={BILLING_TYPE_MAP} /> },
+    { key: 'amount', title: '金额',  align: 'right',  render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
+    { key: 'status', title: '状态',  align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
+    {
+      key: 'remark', title: '备注',
+      render: (r) => r.remark ? (
+        <span className="text-[#9090A0] text-xs cursor-default" title={r.remark}>
+          {r.remark.length > 40 ? r.remark.slice(0, 40) + '…' : r.remark}
+        </span>
+      ) : <span className="text-[#505060] text-xs">-</span>,
+    },
+    { key: 'createdAt', title: '时间', align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{new Date(r.createdAt).toLocaleString('zh-CN')}</span> },
   ];
 
   if (error) return <AdminErrorState message={error} onRetry={refetch} />;

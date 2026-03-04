@@ -325,8 +325,28 @@ function ConfigTab() {
 
   const historyColumns: AdminColumn<ConfigHistoryItem>[] = [
     { key: 'key', title: '配置项', render: (row) => <span className="font-mono text-cyan-400 text-xs">{row.key}</span> },
-    { key: 'oldValue', title: '旧值', render: (row) => <span className="text-[#9090A0] text-xs truncate max-w-[120px] block">{row.oldValue || '-'}</span> },
-    { key: 'newValue', title: '新值', render: (row) => <span className="text-white text-xs truncate max-w-[120px] block">{row.newValue}</span> },
+    {
+      key: 'oldValue', title: '旧值',
+      render: (row) => {
+        const v = row.oldValue || '-';
+        return (
+          <span className="text-[#9090A0] text-xs font-mono cursor-default" title={v}>
+            {v.length > 30 ? v.slice(0, 30) + '…' : v}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'newValue', title: '新值',
+      render: (row) => {
+        const v = row.newValue || '';
+        return (
+          <span className="text-white text-xs font-mono cursor-default" title={v}>
+            {v.length > 30 ? v.slice(0, 30) + '…' : v}
+          </span>
+        );
+      },
+    },
     { key: 'operator', title: '操作人', render: (row) => <span className="text-[#9090A0] text-xs">{row.operator}</span> },
     { key: 'createdAt', title: '时间', align: 'right', render: (row) => <span className="text-[#9090A0] text-xs">{new Date(row.createdAt).toLocaleString('zh-CN')}</span> },
   ];
