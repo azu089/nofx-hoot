@@ -923,9 +923,10 @@ export class GridTradingService {
     }
 
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
+    // dailyLossLimitPct <= 0 视为禁用（0 = 不限制日内亏损）
     const dailyLossLimitPct = gridConfig?.dailyLossLimitPct ?? DEFAULT_DAILY_LOSS_LIMIT_PCT;
     const dailyBase = state.dailyStartEquity > 0 ? state.dailyStartEquity : state.totalInvestment;
-    if (state.dailyPnl < 0 && dailyBase > 0) {
+    if (dailyLossLimitPct > 0 && state.dailyPnl < 0 && dailyBase > 0) {
       const dailyLossPct = (Math.abs(state.dailyPnl) / dailyBase) * 100;
       if (dailyLossPct >= dailyLossLimitPct) {
         const dailyReason =
