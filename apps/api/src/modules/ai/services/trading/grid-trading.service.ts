@@ -928,6 +928,14 @@ export class GridTradingService {
         // 软暂停：撤单但不平仓（对齐 nofx dailyLoss 行为，避免浮亏变实亏，持仓等待价格恢复）
         await this.softPauseGrid(state, userId, apiKeyId, dailyReason);
         await this.persistGridState(strategyId, state);
+        await this.prisma.aiStrategyLog.create({
+          data: {
+            strategyId,
+            symbol: state.symbol,
+            decision: { action: 'daily_loss_pause', gridSummary: 'daily_loss_pause×1', reasoning: dailyReason } as any,
+            executed: true,
+          },
+        });
         return { trades: 0, errors: 0 };
       }
     }
@@ -995,6 +1003,14 @@ export class GridTradingService {
         this.logger.warn(`[网格] AutoPauseOnTrend: ${trendReason}`);
         await this.softPauseGrid(state, userId, apiKeyId, trendReason, 'trend');
         await this.persistGridState(strategyId, state);
+        await this.prisma.aiStrategyLog.create({
+          data: {
+            strategyId,
+            symbol: state.symbol,
+            decision: { action: 'volatile_pause', gridSummary: 'volatile_pause×1', reasoning: trendReason } as any,
+            executed: true,
+          },
+        });
         return { trades: 0, errors: 0 };
       }
 
@@ -1036,6 +1052,18 @@ export class GridTradingService {
         state.isPaused = false;
         state.pauseReason = undefined;
         state.pauseSource = undefined;
+        await this.prisma.aiStrategyLog.create({
+          data: {
+            strategyId,
+            symbol: state.symbol,
+            decision: {
+              action: 'volatile_resume',
+              gridSummary: 'volatile_resume×1',
+              reasoning: `市场从 volatile 回到 ${state.currentRegime}，趋势暂停解除，网格已恢复`,
+            } as any,
+            executed: true,
+          },
+        });
       }
     }
 
