@@ -2095,6 +2095,7 @@
       "roleJudge": "심판",
       "skippedWaitHold": "{count}회 분석 조치 없음 (숨김)",
       "showAllLogs": "모든 로그 표시",
+      "actionsOnlyMode": "액션만 보기",
       "showActionsOnly": "조치만 표시",
       "positionSize": "포지션",
       "riskRejected": "리스크 거부",

@@ -2095,6 +2095,7 @@
       "roleJudge": "Судья",
       "skippedWaitHold": "{count} анализов без действий (скрыто)",
       "showAllLogs": "Показать все логи",
+      "actionsOnlyMode": "Только с действиями",
       "showActionsOnly": "Только действия",
       "positionSize": "Позиция",
       "riskRejected": "Риск отклонён",

@@ -305,13 +305,27 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       throw new Error(`closeLong 数量无效: ${quantity}，请传入正数`);
     }
     const ex = this.getExchange();
-    const params: any = { reduceOnly: true };
-    // OKX 双向持仓模式需要显式指定 posSide，否则 reduceOnly 无效
+
     if (this.exchangeType === 'okx') {
-      params.posSide = 'long';
-      delete params.reduceOnly;
+      // OKX：先尝试双向持仓模式（posSide=long + reduceOnly=true）
+      // 参照 nofx okx/trader.go CloseShort：明确指定 posSide 确保平仓语义
+      try {
+        const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { posSide: 'long' });
+        return this.mapOrderResult(order);
+      } catch (e: any) {
+        const msg = (e?.message ?? '').toLowerCase();
+        // 51015: Redundant position side — 账户为单向持仓模式，posSide 不适用
+        // 51017: posSide parameter error
+        if (msg.includes('51015') || msg.includes('51017') || msg.includes('position mode') || msg.includes('possid')) {
+          this.logger.warn(`[CcxtAdapter] OKX closeLong: 双向模式失败，回退单向模式: ${e.message}`);
+          const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { reduceOnly: true });
+          return this.mapOrderResult(order);
+        }
+        throw e;
+      }
     }
-    const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, params);
+
+    const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { reduceOnly: true });
     return this.mapOrderResult(order);
   }
 
@@ -320,13 +334,27 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       throw new Error(`closeShort 数量无效: ${quantity}，请传入正数`);
     }
     const ex = this.getExchange();
-    const params: any = { reduceOnly: true };
-    // OKX 双向持仓模式需要显式指定 posSide，否则 reduceOnly 无效
+
     if (this.exchangeType === 'okx') {
-      params.posSide = 'short';
-      delete params.reduceOnly;
+      // OKX：先尝试双向持仓模式（posSide=short）
+      // 参照 nofx okx/trader.go CloseShort：buy + posSide=short = 平空，不需要额外保证金
+      try {
+        const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { posSide: 'short' });
+        return this.mapOrderResult(order);
+      } catch (e: any) {
+        const msg = (e?.message ?? '').toLowerCase();
+        // 51015: Redundant position side — 账户为单向持仓模式
+        // 51017: posSide parameter error
+        if (msg.includes('51015') || msg.includes('51017') || msg.includes('position mode') || msg.includes('possid')) {
+          this.logger.warn(`[CcxtAdapter] OKX closeShort: 双向模式失败，回退单向模式: ${e.message}`);
+          const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
+          return this.mapOrderResult(order);
+        }
+        throw e;
+      }
     }
-    const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, params);
+
+    const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
     return this.mapOrderResult(order);
   }
 
@@ -659,8 +687,14 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const params: any = {};
 
     // 对冲模式下设置 positionSide
+    // OKX API 参数名为 posSide（小写 'long'/'short'）
+    // Binance API 参数名为 positionSide（大写 'LONG'/'SHORT'）
     if (req.positionSide) {
-      params.positionSide = req.positionSide;
+      if (this.exchangeType === 'okx') {
+        params.posSide = req.positionSide;           // OKX: 小写
+      } else {
+        params.positionSide = req.positionSide.toUpperCase(); // Binance: 大写
+      }
     }
     if (req.postOnly) {
       params.postOnly = true;

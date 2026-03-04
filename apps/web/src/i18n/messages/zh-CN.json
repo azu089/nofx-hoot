@@ -2105,6 +2105,7 @@
       "roleJudge": "裁判",
       "skippedWaitHold": "{count} 次分析无操作（已隐藏）",
       "showAllLogs": "显示全部日志",
+      "actionsOnlyMode": "只看有操作的日志",
       "showActionsOnly": "只看有操作的",
       "positionSize": "仓位",
       "riskRejected": "风控拒绝",

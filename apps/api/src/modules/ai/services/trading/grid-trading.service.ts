@@ -9,7 +9,6 @@ import {
   ExchangeAdapter,
   GridExchangeAdapter,
   isGridAdapter,
-  LimitOrderRequest,
 } from '../../../exchange-adapters/types/adapter.interface';
 import { ExchangeBalance } from '../../../exchange-adapters/types/exchange.types';
 import {
@@ -161,6 +160,18 @@ export interface GridState {
   availableBalance: number;
   // 单格止损阈值%（从 GridConfig 复制，供 buildGridContext 使用）
   stopLossPct: number;
+
+  // === nofx 信号驱动自动调节字段（Round 1+2，每 cycle 重算，重启后首轮为 0）===
+  lastVolume24h: number;      // 最近 24h 成交量（updateBoxData 更新）
+  avgDailyVolume: number;     // 近 72h 日均成交量（updateBoxData 更新）
+  lastAtrHourly: number;      // ATR(14)[1h]（classifyRegime 返回后存储）
+  lastAtrSpikeRatio: number;  // 当前ATR/基线ATR比率（updateBoxData 计算）
+  currentOIChange: number;    // 当前周期 OI 变化%（Step 4.9 独立获取）
+  lastBidAskSpread: number;   // 最近 bid/ask 价差%（Step 4.9 顺带获取）
+  // === nofx 信号驱动自动调节字段（Phase 12，每 cycle 重算，重启后首轮为 0）===
+  rsiDivergenceType: 'bullish' | 'bearish' | 'none'; // RSI 背离类型（updateBoxData 计算）
+  lastBidDepth: number;       // 盘口买方深度 USD（top-5 档合计，Step 4.9 获取）
+  lastAskDepth: number;       // 盘口卖方深度 USD（top-5 档合计，Step 4.9 获取）
 }
 
 /** AI 返回的网格决策 */
@@ -206,6 +217,28 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
 };
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
+// nofx 信号驱动：量能骤变检测
+const VOLUME_SPIKE_RATIO = 2.0;             // 24h 量 > 日均 2 倍 = 骤变
+const VOLUME_SPIKE_PRICE_CONFIRM_PCT = 1.0; // 同时价格变化 ≥ 1% 才有方向
+// nofx 信号驱动：ATR 追踪网格宽度
+const ATR_SPACING_MULTIPLIER: Record<RegimeLevel, number> = {
+  narrow: 0.5,    // 极度压缩：密网格
+  standard: 1.0,
+  wide: 1.5,
+  volatile: 2.0,  // 高波动：宽网格减震
+};
+const ATR_SPACING_ADJUST_THRESHOLD = 0.35;  // 偏差 > 35% 才调整（防频繁重排）
+// nofx Round 2：OI 真假突破确认
+const BREAKOUT_OI_TRUE_THRESHOLD = 3;       // OI 变化 > +3% = 真突破，立即确认
+const BREAKOUT_OI_FALSE_THRESHOLD = 1;      // OI 变化 < 1%  = 可疑
+const BREAKOUT_CONFIRM_REQUIRED_OI_SUSPICIOUS = 5; // 可疑时需 5 次确认
+// nofx Round 2：bid/ask Spread 检测
+const MAX_SPREAD_PCT = 0.3;                 // 超过 0.3% 视为价差过宽，跳过下单
+// Phase 12：Order Book Depth 检测
+const ORDER_BOOK_DEPTH_LEVELS = 5;          // 取盘口前 5 档
+const MIN_ORDER_BOOK_DEPTH_USD = 1000;      // 买卖任一方深度 < $1000 → 跳单
+// Phase 12：RSI 背离检测
+const RSI_DIVERGENCE_LOOKBACK = 20;         // RSI 背离检测用最近 20 根 K 线
 
 // ========================= 错误分类工具函数 =========================
 
@@ -652,6 +685,16 @@ export class GridTradingService {
       userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
       stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
+      // nofx 信号驱动字段：首轮为 0，第二轮起正常计算
+      lastVolume24h: 0,
+      avgDailyVolume: 0,
+      lastAtrHourly: 0,
+      lastAtrSpikeRatio: 0,
+      currentOIChange: 0,
+      lastBidAskSpread: 0,
+      rsiDivergenceType: 'none' as const,
+      lastBidDepth: -1,  // -1 = 未取到数据（跳过检测）；0 = 取到但空盘口（触发跳单）
+      lastAskDepth: -1,
     };
 
     this.gridStates.set(strategyId, state);
@@ -959,6 +1002,42 @@ export class GridTradingService {
       }
     }
 
+    // Step 4.9: OI 变化 + bid/ask Spread 预获取（供 confirmBreakout OI 过滤 + placeGridLimitOrder Spread 检测）
+    if (this.adapterFactory && apiKeyId) {
+      try {
+        const tickerAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+        try {
+          if (typeof (tickerAdapter as any).fetchTicker === 'function') {
+            const ticker = await (tickerAdapter as any).fetchTicker(state.symbol);
+            const currentOI = Number(ticker?.info?.openInterest ?? ticker?.openInterest ?? 0);
+            if (currentOI > 0 && state.lastOI > 0) {
+              state.currentOIChange = (currentOI - state.lastOI) / state.lastOI * 100;
+            } else {
+              state.currentOIChange = 0;
+            }
+            if (currentOI > 0) state.lastOI = currentOI;
+            const bid = Number(ticker?.bid ?? 0);
+            const ask = Number(ticker?.ask ?? 0);
+            if (bid > 0 && ask > 0) {
+              state.lastBidAskSpread = (ask - bid) / bid * 100;
+            }
+          }
+          // 盘口深度（top-5 档 USD 合计）
+          if (isGridAdapter(tickerAdapter)) {
+            try {
+              const ob = await (tickerAdapter as GridExchangeAdapter).getOrderBook(
+                state.symbol, ORDER_BOOK_DEPTH_LEVELS,
+              );
+              state.lastBidDepth = ob.bids.reduce((s, [p, q]) => s + p * q, 0);
+              state.lastAskDepth = ob.asks.reduce((s, [p, q]) => s + p * q, 0);
+            } catch { /* 深度获取失败不影响主流程 */ }
+          }
+        } finally {
+          await tickerAdapter.dispose();
+        }
+      } catch { state.currentOIChange = 0; }
+    }
+
     // Step 5: 箱体突破检测（Donchian 多周期）
     if (this.indicators) {
       try {
@@ -990,10 +1069,88 @@ export class GridTradingService {
       }
     }
 
-    // Step 6: 市场状态分类
+    // Step 5.3: 量能骤变方向信号（nofx Round 1）
+    // 24h 量 > 日均 2 倍 + 价格同向变化 ≥ 1% → 触发 short 级别方向调整（long_bias/short_bias）
+    if (state.avgDailyVolume > 0 && state.lastVolume24h > state.avgDailyVolume * VOLUME_SPIKE_RATIO) {
+      let spikeDir: string | null = null;
+      if (state.lastCyclePrice > 0) {
+        const priceChg = (currentPrice - state.lastCyclePrice) / state.lastCyclePrice * 100;
+        if (priceChg > VOLUME_SPIKE_PRICE_CONFIRM_PCT) spikeDir = 'up';
+        else if (priceChg < -VOLUME_SPIKE_PRICE_CONFIRM_PCT) spikeDir = 'down';
+      }
+      if (spikeDir) {
+        const spikeNewDir = this.determineDirectionFromBreakout('short', spikeDir, state.currentDirection);
+        if (spikeNewDir !== state.currentDirection) {
+          const oldDir = state.currentDirection;
+          this.logger.log(
+            `[网格] 量能骤变(${state.lastVolume24h.toFixed(0)} > 日均×${VOLUME_SPIKE_RATIO}=${(state.avgDailyVolume * VOLUME_SPIKE_RATIO).toFixed(0)}) → 方向 ${oldDir} → ${spikeNewDir}`,
+          );
+          if (this.adapterFactory) {
+            let spikeAdpt: ExchangeAdapter | null = null;
+            try {
+              spikeAdpt = await this.adapterFactory.createAdapter(userId, apiKeyId);
+              await spikeAdpt.cancelAllOrders(state.symbol);
+            } catch (e: any) {
+              this.logger.warn(`[网格] 量能骤变撤单失败（继续运行）: ${e.message}`);
+            } finally {
+              if (spikeAdpt) { try { await spikeAdpt.dispose(); } catch { /* 忽略 */ } }
+            }
+            for (const line of state.gridLines) {
+              if (line.state === 'pending') { line.state = 'empty'; line.orderId = undefined; }
+            }
+            state.orderBook = {};
+          }
+          this.applyGridDirection(state.gridLines, currentPrice, spikeNewDir);
+          state.currentDirection = spikeNewDir;
+          await this.persistGridState(strategyId, state);
+        }
+      }
+    }
+
+    // Step 5.4: ATR Spike 方向信号（nofx Round 2）
+    // 当前 ATR > 基线 2 倍 + 价格同向变化 ≥ 1% → 触发 short 级别方向调整
+    if (state.lastAtrSpikeRatio > 2.0) {
+      let atrSpikeDir: string | null = null;
+      if (state.lastCyclePrice > 0) {
+        const priceChg = (currentPrice - state.lastCyclePrice) / state.lastCyclePrice * 100;
+        if (priceChg > VOLUME_SPIKE_PRICE_CONFIRM_PCT) atrSpikeDir = 'up';
+        else if (priceChg < -VOLUME_SPIKE_PRICE_CONFIRM_PCT) atrSpikeDir = 'down';
+      }
+      if (atrSpikeDir) {
+        const atrSpikeNewDir = this.determineDirectionFromBreakout('short', atrSpikeDir, state.currentDirection);
+        if (atrSpikeNewDir !== state.currentDirection) {
+          const oldDir = state.currentDirection;
+          this.logger.log(
+            `[网格] ATR Spike(比率=${state.lastAtrSpikeRatio.toFixed(2)}x) → 方向 ${oldDir} → ${atrSpikeNewDir}`,
+          );
+          if (this.adapterFactory) {
+            let atrAdpt: ExchangeAdapter | null = null;
+            try {
+              atrAdpt = await this.adapterFactory.createAdapter(userId, apiKeyId);
+              await atrAdpt.cancelAllOrders(state.symbol);
+            } catch (e: any) {
+              this.logger.warn(`[网格] ATR Spike 撤单失败（继续运行）: ${e.message}`);
+            } finally {
+              if (atrAdpt) { try { await atrAdpt.dispose(); } catch { /* 忽略 */ } }
+            }
+            for (const line of state.gridLines) {
+              if (line.state === 'pending') { line.state = 'empty'; line.orderId = undefined; }
+            }
+            state.orderBook = {};
+          }
+          this.applyGridDirection(state.gridLines, currentPrice, atrSpikeNewDir);
+          state.currentDirection = atrSpikeNewDir;
+          await this.persistGridState(strategyId, state);
+        }
+      }
+    }
+
+    // Step 6: 市场状态分类（同时获取 ATR(1h) 供 Step 6.55 使用）
     if (this.indicators) {
       try {
-        state.currentRegime = await this.classifyRegime(state.symbol);
+        const { regime, atrHourly } = await this.classifyRegime(state.symbol);
+        state.currentRegime = regime;
+        state.lastAtrHourly = atrHourly;
       } catch { /* 保持上次值 */ }
     }
 
@@ -1008,6 +1165,52 @@ export class GridTradingService {
         `(市场=${state.currentRegime}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
       );
       state.effectiveLeverage = newEffective;
+    }
+
+    // Step 6.55: ATR 追踪网格宽度（nofx Round 1）
+    // 无用户锁定范围、ATR 有效、无持仓时，根据市场 regime 动态调整网格间距
+    if (
+      !state.userLockedRange &&
+      state.lastAtrHourly > 0 &&
+      !state.gridLines.some(l => (l.positionSize ?? 0) > 0)
+    ) {
+      const multiplier = ATR_SPACING_MULTIPLIER[state.currentRegime];
+      const targetSpacing = state.lastAtrHourly * multiplier;
+      const deviation = Math.abs(targetSpacing - state.gridSpacing) / state.gridSpacing;
+      if (deviation > ATR_SPACING_ADJUST_THRESHOLD) {
+        const oldSpacing = state.gridSpacing;
+        const gridCount = state.gridLines.length;
+        const newRange = targetSpacing * (gridCount - 1);
+        state.upperPrice = currentPrice + newRange / 2;
+        state.lowerPrice = Math.max(currentPrice - newRange / 2, 0.0001);
+        state.gridSpacing = targetSpacing;
+        for (let i = 0; i < gridCount; i++) {
+          state.gridLines[i].price = parseFloat((state.lowerPrice + i * targetSpacing).toFixed(5));
+          if (state.gridLines[i].state === 'pending') {
+            state.gridLines[i].state = 'empty';
+            state.gridLines[i].orderId = undefined;
+          }
+        }
+        // 撤销所有挂单，重新按新间距下单
+        if (this.adapterFactory) {
+          let atrWidthAdpt: ExchangeAdapter | null = null;
+          try {
+            atrWidthAdpt = await this.adapterFactory.createAdapter(userId, apiKeyId);
+            await atrWidthAdpt.cancelAllOrders(state.symbol);
+          } catch (e: any) {
+            this.logger.warn(`[网格] ATR追踪撤单失败（继续运行）: ${e.message}`);
+          } finally {
+            if (atrWidthAdpt) { try { await atrWidthAdpt.dispose(); } catch { /* 忽略 */ } }
+          }
+          state.orderBook = {};
+        }
+        this.applyGridDirection(state.gridLines, currentPrice, state.currentDirection);
+        await this.persistGridState(strategyId, state);
+        this.logger.log(
+          `[网格] ATR追踪: spacing ${oldSpacing.toFixed(4)} → ${targetSpacing.toFixed(4)} ` +
+          `(${state.currentRegime} × ${multiplier}x, ATR(1h)=${state.lastAtrHourly.toFixed(4)})`,
+        );
+      }
     }
 
     // Step 6.6: 方向自适应（参照 nofx grid_regime.go，默认 true）
@@ -1323,10 +1526,6 @@ export class GridTradingService {
           }
         }
 
-        // 检测空转：AI 下达了 place 指令但 0 笔实际成功执行（被拦截 or 交易所拒绝）
-        const placeActions = execResults.filter(r => r.action.includes('place_'));
-        const noneExecuted = placeActions.length > 0 && trades === 0;
-
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         if (decisions.length > 0) {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
@@ -1336,69 +1535,7 @@ export class GridTradingService {
           );
         }
 
-        // 写一条前端可见的日志（空转 or 执行失败）
-        if (noneExecuted) {
-          // 汇总错误类别（去重）
-          const failedErrors = execResults.filter(r => !r.success && r.error).map(r => r.error!);
-          const uniqueCategories = [...new Set(failedErrors.map(e => e.match(/^\[([^\]]+)\]/)?.[1] ?? '交易所拒绝'))];
 
-          // 汇总所有 skip 原因（去重，取第一条作为代表）
-          const skippedReasons = execResults
-            .filter(r => r.success && r.skipped && r.skipReason)
-            .map(r => r.skipReason!);
-          const allSkipped = skippedReasons.length > 0 && skippedReasons.length === placeActions.length;
-          // 提取关键词作为用户可见摘要（如"保证金不足"、"每层资金不足"、"价格偏低"等）
-          const uniqueSkipKeywords = [...new Set(skippedReasons.map(r => {
-            if (r.includes('保证金不足')) return '保证金不足';
-            if (r.includes('每层资金不足')) return '每层资金不足';
-            if (r.includes('价格偏低')) return '卖单价格偏低';
-            if (r.includes('价格偏高')) return '买单价格偏高';
-            if (r.includes('仓位超安全上限')) return '仓位超限';
-            if (r.includes('数量不足')) return '数量不足';
-            if (r.includes('聚合保证金超限')) return '保证金超限';
-            return r.split(':')[0];
-          }))];
-
-          // 区分：有真实交易所错误 = 执行失败；全部是内部拦截（skipped）= 空转
-          const hasExchangeErrors = failedErrors.length > 0;
-          const logAction = hasExchangeErrors ? 'grid_exec_failed' : 'grid_idle';
-          const logTitle = hasExchangeErrors
-            ? `执行失败: AI 建议 ${placeActions.length} 笔下单，全部被交易所拒绝`
-            : allSkipped
-              ? `网格空转: ${uniqueSkipKeywords.join('、')}`
-              : `网格空转: AI 建议 ${placeActions.length} 笔下单，0 笔执行成功`;
-          const summaryPrefix = hasExchangeErrors ? '执行失败' : '空转';
-          const fullReasonSuffix = hasExchangeErrors
-            ? (uniqueCategories.length > 0 ? ` | 失败原因: ${uniqueCategories.join('、')}` : '')
-            : (allSkipped ? ` | ${uniqueSkipKeywords.join('、')}` : '');
-
-          await this.prisma.aiStrategyLog.create({
-            data: {
-              strategyId,
-              symbol: state.symbol,
-              decision: {
-                action: logAction,
-                attempted: placeActions.length,
-                categories: hasExchangeErrors ? uniqueCategories : [],
-                skipReasons: allSkipped ? uniqueSkipKeywords : [],
-                isExecFailed: hasExchangeErrors,
-                reasoning: logTitle +
-                  (allSkipped ? '' : ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)`) +
-                  fullReasonSuffix,
-                gridSummary: `${summaryPrefix}/${placeActions.length}笔未执行${fullReasonSuffix}`,
-                gridSnapshot: {
-                  regime: state.currentRegime,
-                  effectiveLeverage: state.effectiveLeverage,
-                  filledLevels: state.gridLines.filter(l => l.positionSize > 0).length,
-                  pendingLevels: state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0).length,
-                  totalInvestment: state.totalInvestment,
-                  lastPrice: state.lastPrice,
-                },
-              } as any,
-              executed: false,
-            },
-          }).catch(() => {});
-        }
       } catch (e: any) {
         errors++;
         this.logger.error(`[网格] AI 决策周期失败: ${e.message}`);
@@ -1470,11 +1607,12 @@ export class GridTradingService {
     return 0;
   }
 
-  /** 更新 Donchian 箱体数据（3 个周期） */
+  /** 更新 Donchian 箱体数据（3 个周期）+ 量能统计 + ATR Spike 比率 */
   private async updateBoxData(state: GridState): Promise<void> {
     const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '1h', 504);
     const highs = ohlcvRaw.map((c: any) => Number(c[2]));
     const lows = ohlcvRaw.map((c: any) => Number(c[3]));
+    const closes = ohlcvRaw.map((c: any) => Number(c[4]));
 
     // 短期 3d = 72h
     const shortDonchian = this.indicators!.calculateDonchianChannel(highs, lows, 72);
@@ -1490,6 +1628,79 @@ export class GridTradingService {
     const longDonchian = this.indicators!.calculateDonchianChannel(highs, lows, 504);
     state.longBoxUpper = longDonchian.upper ?? 0;
     state.longBoxLower = longDonchian.lower ?? 0;
+
+    // 量能统计（复用已有 1h×504 数据，不新增 API 请求）
+    const volumes = ohlcvRaw.slice(-96).map((c: any) => Number(c[5])); // 最近 96h（4天）
+    state.lastVolume24h = volumes.slice(-24).reduce((s: number, v: number) => s + v, 0);  // 最近 24h
+    const vol72h = volumes.slice(0, 72).reduce((s: number, v: number) => s + v, 0);        // 前 72h（3天）
+    state.avgDailyVolume = vol72h / 3;
+
+    // RSI 背离检测（复用已有 ohlcvRaw，不新增 API 请求）
+    // +26: calculateSeries 内部 MACD 需 26 根预热，确保返回完整 20 个 RSI 值
+    if (this.indicators && ohlcvRaw.length >= RSI_DIVERGENCE_LOOKBACK + 26) {
+      const ohlcvFormatted = ohlcvRaw.map((c: any) => ({
+        timestamp: Number(c[0]), open: Number(c[1]),
+        high: Number(c[2]),      low:  Number(c[3]),
+        close: Number(c[4]),     volume: Number(c[5]),
+      }));
+      const { rsiSeries } = this.indicators.calculateSeries(ohlcvFormatted, RSI_DIVERGENCE_LOOKBACK);
+      const recentCloses = ohlcvRaw.slice(-RSI_DIVERGENCE_LOOKBACK).map((c: any) => Number(c[4]));
+      state.rsiDivergenceType = this.detectRsiDivergence(rsiSeries, recentCloses);
+    }
+
+    // ATR Spike 比率：当前 ATR(14) vs 近期基线 ATR 均值
+    if (this.indicators && highs.length >= 84) {
+      const currentATR = this.indicators.calculateATR(highs.slice(-14), lows.slice(-14), closes.slice(-14), 14) ?? 0;
+      // 基线：用倒数 15-84 根（共 70 根）逐窗口计算 ATR 均值
+      let baseATRSum = 0;
+      let baseATRCount = 0;
+      for (let i = highs.length - 84; i <= highs.length - 15; i++) {
+        const windowATR = this.indicators.calculateATR(
+          highs.slice(i, i + 14), lows.slice(i, i + 14), closes.slice(i, i + 14), 14,
+        ) ?? 0;
+        if (windowATR > 0) { baseATRSum += windowATR; baseATRCount++; }
+      }
+      const baseATR = baseATRCount > 0 ? baseATRSum / baseATRCount : 0;
+      state.lastAtrSpikeRatio = (baseATR > 0 && currentATR > 0) ? currentATR / baseATR : 0;
+    }
+  }
+
+  /** 检测价格-RSI 背离（前后各半段对比法，防微小波动误触发） */
+  private detectRsiDivergence(
+    rsiSeries: number[],
+    closes: number[],
+  ): 'bullish' | 'bearish' | 'none' {
+    if (rsiSeries.length < 6 || closes.length < 6) return 'none';
+    const n = Math.min(rsiSeries.length, closes.length);
+    const half = Math.floor(n / 2);
+
+    const firstRsi    = rsiSeries.slice(0, half);
+    const secondRsi   = rsiSeries.slice(-half);
+    const firstClose  = closes.slice(0, half);
+    const secondClose = closes.slice(-half);
+
+    const f_rsiMax   = Math.max(...firstRsi);    const s_rsiMax   = Math.max(...secondRsi);
+    const f_rsiMin   = Math.min(...firstRsi);    const s_rsiMin   = Math.min(...secondRsi);
+    const f_closeMax = Math.max(...firstClose);  const s_closeMax = Math.max(...secondClose);
+    const f_closeMin = Math.min(...firstClose);  const s_closeMin = Math.min(...secondClose);
+
+    // 双重阈值过滤：价格偏差 > 0.5%、RSI 偏差 > 2 点，防止噪音误判
+    const PRICE_THRESHOLD = 0.005;
+    const RSI_THRESHOLD   = 2;
+
+    // bearish: 价格创新高，但 RSI 未创新高
+    if (
+      s_closeMax > f_closeMax * (1 + PRICE_THRESHOLD) &&
+      s_rsiMax < f_rsiMax - RSI_THRESHOLD
+    ) return 'bearish';
+
+    // bullish: 价格创新低，但 RSI 未创新低
+    if (
+      s_closeMin < f_closeMin * (1 - PRICE_THRESHOLD) &&
+      s_rsiMin > f_rsiMin + RSI_THRESHOLD
+    ) return 'bullish';
+
+    return 'none';
   }
 
   /** 检测箱体突破（优先级：长期>中期>短期），返回值包含突破幅度 magnitude */
@@ -1527,7 +1738,7 @@ export class GridTradingService {
     return { level: 'none', direction: '', magnitude: 0 };
   }
 
-  /** 确认突破（需要连续 3 次） */
+  /** 确认突破（nofx Round 2：OI 过滤真假突破） */
   private confirmBreakout(state: GridState, level: BreakoutLevel, direction: string): boolean {
     if (level === 'none') {
       state.breakoutConfirmCount = 0;
@@ -1544,7 +1755,18 @@ export class GridTradingService {
       state.breakoutConfirmCount = 1;
     }
 
-    return state.breakoutConfirmCount >= BREAKOUT_CONFIRM_REQUIRED;
+    // OI 过滤：真突破立即确认，可疑时要求更多次数
+    const oiChange = state.currentOIChange ?? 0;
+    const isOIEnhanced = (direction === 'up' && oiChange > BREAKOUT_OI_TRUE_THRESHOLD) ||
+                         (direction === 'down' && oiChange < -BREAKOUT_OI_TRUE_THRESHOLD);
+    if (isOIEnhanced) {
+      this.logger.log(`[网格] OI 增强突破(${oiChange.toFixed(1)}%) → 立即确认`);
+      return true;
+    }
+    const required = Math.abs(oiChange) < BREAKOUT_OI_FALSE_THRESHOLD
+      ? BREAKOUT_CONFIRM_REQUIRED_OI_SUSPICIOUS  // OI 平稳可疑：5 次
+      : BREAKOUT_CONFIRM_REQUIRED;               // 正常：3 次
+    return state.breakoutConfirmCount >= required;
   }
 
   /** 突破动作映射 */
@@ -1687,15 +1909,15 @@ export class GridTradingService {
 
   // ========================= 市场状态分类 =========================
 
-  /** 分类市场状态 */
-  private async classifyRegime(symbol: string): Promise<RegimeLevel> {
+  /** 分类市场状态，同时返回 ATR(14)[1h] 供 ATR 追踪网格宽度使用 */
+  private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
     const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '1h', 50);
     const closes = ohlcvRaw.map((c: any) => Number(c[4]));
     const highs = ohlcvRaw.map((c: any) => Number(c[2]));
     const lows = ohlcvRaw.map((c: any) => Number(c[3]));
     const currentPrice = closes[closes.length - 1] || 0;
 
-    if (!currentPrice || !this.indicators) return 'standard';
+    if (!currentPrice || !this.indicators) return { regime: 'standard', atrHourly: 0 };
 
     const bb = this.indicators.calculateBollingerBands(closes, 20);
     const atr = this.indicators.calculateATR(highs, lows, closes, 14);
@@ -1705,10 +1927,13 @@ export class GridTradingService {
       : 3; // 默认 standard
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
-    if (bbWidth < 2.0 && atrPct < 1.0) return 'narrow';
-    if (bbWidth <= 3.0 && atrPct <= 2.0) return 'standard';
-    if (bbWidth <= 4.0 && atrPct <= 3.0) return 'wide';
-    return 'volatile';
+    let regime: RegimeLevel;
+    if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
+    else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
+    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';
+    else regime = 'volatile';
+
+    return { regime, atrHourly: atr ?? 0 };
   }
 
   // ========================= AI 上下文 & 决策 =========================
@@ -1776,25 +2001,21 @@ export class GridTradingService {
       // 净持仓（兼容原有逻辑）
       currentPosition = (longPos?.quantity ?? 0) - (shortPos?.quantity ?? 0);
 
-      // 双向持仓详情
+      // 双向持仓详情（margin/marginRatio 不传给 AI，避免触发保证金管理行为）
       if (longPos) {
         positionLong = {
           quantity: longPos.quantity,
           entryPrice: longPos.entryPrice,
-          margin: longPos.margin,
           unrealizedPnl: longPos.unrealizedPnl,
           liquidationPrice: longPos.liquidationPrice,
-          marginRatio: longPos.marginRatio,
         };
       }
       if (shortPos) {
         positionShort = {
           quantity: shortPos.quantity,
           entryPrice: shortPos.entryPrice,
-          margin: shortPos.margin,
           unrealizedPnl: shortPos.unrealizedPnl,
           liquidationPrice: shortPos.liquidationPrice,
-          marginRatio: shortPos.marginRatio,
         };
       }
     } catch { /* 使用默认值 */ }
@@ -1806,18 +2027,8 @@ export class GridTradingService {
       if (fr) fundingRate = fr.fundingRate;
     } catch { /* 忽略 */ }
 
-    // OI 持仓量变化（graceful fallback，不支持的交易所/错误时跳过）
-    let oiChange1h = 0;
-    try {
-      if ('fetchTicker' in adapter && typeof (adapter as any).fetchTicker === 'function') {
-        const ticker = await (adapter as any).fetchTicker(state.symbol);
-        const currentOI = Number(ticker?.info?.openInterest ?? ticker?.openInterest ?? 0);
-        if (currentOI > 0 && state.lastOI > 0) {
-          oiChange1h = (currentOI - state.lastOI) / state.lastOI * 100;
-        }
-        if (currentOI > 0) state.lastOI = currentOI;
-      }
-    } catch { /* 不支持则跳过，保持 oiChange1h = 0 */ }
+    // OI 持仓量变化（直接使用 Step 4.9 已计算的值，避免重复拉取导致 lastOI 更新后 oiChange1h 归零）
+    const oiChange1h = state.currentOIChange ?? 0;
 
     // 价格变化（改用 1h K 线，精确且无临界问题）
     const priceChange1h = ohlcvHourly.length >= 2
@@ -1912,6 +2123,7 @@ export class GridTradingService {
       currentProfitPct: state.startEquity > 0 ? (totalEquity - state.startEquity) / state.startEquity * 100 : 0,
       marginUsedPct,
       oiChange1h,
+      rsiDivergenceType: state.rsiDivergenceType,  // RSI 背离信号（Phase 12）
       // K线历史（最近30根1h蜡烛，供AI判断趋势/支撑阻力）
       ohlcv: ohlcvHourly.slice(-30).map(c => ({
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
@@ -2272,6 +2484,29 @@ export class GridTradingService {
       percentPriceUp = precision.percentPriceUp;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
 
+    // Step 2.4: Bid/Ask Spread 检测（nofx Round 2）
+    // spread 过宽时跳过本格下单，避免在流动性差时挂单被吃成本
+    if (state.lastBidAskSpread > 0) {
+      const maxSpread = MAX_SPREAD_PCT;
+      if (state.lastBidAskSpread > maxSpread) {
+        const skipReason = `spread过宽(${state.lastBidAskSpread.toFixed(3)}% > ${maxSpread}%)`;
+        this.logger.debug(`[网格] ${skipReason}，跳过本格 level=${levelIndex}`);
+        return { executed: false, skipReason };
+      }
+    }
+
+    // Step 2.4.1: 盘口深度检测（Phase 12）
+    // 买卖任一方 top-5 档深度 < $1000 → 流动性极差，跳过下单
+    // 初始值 -1 表示未取到数据（跳过检测），0 表示空盘口（属于需跳过的最差情况）
+    if (state.lastBidDepth >= 0 && state.lastAskDepth >= 0) {
+      const minDepth = Math.min(state.lastBidDepth, state.lastAskDepth);
+      if (minDepth < MIN_ORDER_BOOK_DEPTH_USD) {
+        const skipReason = `盘口深度不足(${minDepth.toFixed(0)} USD < ${MIN_ORDER_BOOK_DEPTH_USD})`;
+        this.logger.debug(`[网格] ${skipReason}，跳过本格 level=${levelIndex}`);
+        return { executed: false, skipReason };
+      }
+    }
+
     // Step 2.5: 价格偏差保护（动态读取交易所 PERCENT_PRICE，替代硬编码）
     // Binance PERCENT_PRICE 因品种而异（如 multiplierDown=0.95 表示不低于标记价×0.95）
     // 加 2% 安全余量：lastPrice ≠ markPrice，防止下单瞬间标记价微移导致被拒
@@ -2345,9 +2580,45 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 3: 下单（单向持仓模式不传 positionSide，避免 Binance -4061）
+    // Step 2.8: 保证金预检（仿 nofx checkTotalPositionLimit）
+    // 参照 nofx: 下单前检查可用保证金，避免无谓下单和 51008/insufficient margin 错误
+    // 规则：可用余额已知（> 0）且不足以支撑本单所需保证金时，跳过下单
+    // 注意：不取消现有挂单，仅跳过新开仓，等待现有仓位成交后余额释放
+    if (state.availableBalance > 0) {
+      const requiredMargin = (finalQty * price) / leverage;
+      // 5% 安全余量：防止行情微动导致实际保证金需求略高于计算值
+      const marginNeeded = requiredMargin * 1.05;
+      if (state.availableBalance < marginNeeded) {
+        const skipReason = `保证金不足: 需要 ~$${marginNeeded.toFixed(2)}，可用 $${state.availableBalance.toFixed(2)} USDT`;
+        this.logger.warn(
+          `[网格] 跳过下单(保证金预检): ${skipReason}` +
+          ` (level=${levelIndex}, side=${side}, qty=${finalQty}, price=${price})`,
+        );
+        return { executed: false, skipReason };
+      }
+    }
+
+    // Step 3: 下单
+    // OKX 双向持仓模式需要 positionSide（对应 OKX 参数 posSide）：
+    //   BUY  → 多头/中性 开多(long)；空头方向 关空(short)
+    //   SELL → 多头/中性 关多(long)；空头方向 开空(short)
+    // 参照 nofx okx/trader.go：双向模式每笔单都必须指定 posSide
+    // 单向持仓模式（Binance默认/OKX net_mode）不传 positionSide，避免 -4061/51015 错误
     // OKX 要求 clOrdId 纯字母数字（无连字符），格式 g{idx}t{ts}，最长 17 字符
     const clientId = level ? `g${levelIndex}t${Date.now()}` : undefined;
+
+    // OKX 双向持仓模式下自动推导 positionSide
+    let positionSide: 'long' | 'short' | undefined;
+    if ((adapter as any).exchangeType === 'okx') {
+      const isShortBias = state.currentDirection === 'short' || state.currentDirection === 'short_bias';
+      if (side === 'buy') {
+        // BUY: 空头方向→关空(short)；其他→开多(long)
+        positionSide = isShortBias ? 'short' : 'long';
+      } else {
+        // SELL: 空头方向→开空(short)；其他→关多(long)
+        positionSide = isShortBias ? 'short' : 'long';
+      }
+    }
 
     const result = await adapter.placeLimitOrder({
       symbol: state.symbol,
@@ -2357,6 +2628,7 @@ export class GridTradingService {
       leverage,
       postOnly: useMakerOnly,
       clientId,
+      positionSide,
     });
 
     // Step 4: 更新本地状态

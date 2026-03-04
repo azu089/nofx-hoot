@@ -2095,6 +2095,7 @@
       "roleJudge": "Hakim",
       "skippedWaitHold": "{count} analisis tanpa aksi (disembunyikan)",
       "showAllLogs": "Tampilkan semua log",
+      "actionsOnlyMode": "Hanya log aksi",
       "showActionsOnly": "Hanya tindakan",
       "positionSize": "Posisi",
       "riskRejected": "Risiko Ditolak",

@@ -2092,6 +2092,7 @@
       "roleJudge": "Judge",
       "skippedWaitHold": "{count} analyses with no action (hidden)",
       "showAllLogs": "Show all logs",
+      "actionsOnlyMode": "Actions only mode",
       "showActionsOnly": "Actions only",
       "positionSize": "Position",
       "riskRejected": "Risk Rejected",

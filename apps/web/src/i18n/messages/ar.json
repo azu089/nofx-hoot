@@ -2088,6 +2088,7 @@
       "roleJudge": "قاضٍ",
       "skippedWaitHold": "{count} تحليل بلا إجراء (مخفي)",
       "showAllLogs": "عرض جميع السجلات",
+      "actionsOnlyMode": "سجلات الإجراءات فقط",
       "showActionsOnly": "الإجراءات فقط",
       "positionSize": "المركز",
       "riskRejected": "تم رفض المخاطر",

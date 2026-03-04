@@ -2096,6 +2096,7 @@
       "roleJudge": "Trọng tài",
       "skippedWaitHold": "{count} phân tích không có hành động (đã ẩn)",
       "showAllLogs": "Hiển thị tất cả nhật ký",
+      "actionsOnlyMode": "Chỉ xem nhật ký hành động",
       "showActionsOnly": "Chỉ xem hành động",
       "positionSize": "Vị thế",
       "riskRejected": "Từ chối rủi ro",

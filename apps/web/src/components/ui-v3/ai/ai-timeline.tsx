@@ -88,15 +88,17 @@ export function AiTimeline({ filter }: AiTimelineProps) {
         <div className="text-[10px] text-[#606070]/60 mt-1">
           {t('timeline.noLogsDesc')}
         </div>
-        {/* 有被过滤的 wait/hold 日志时，提示用户 */}
-        {skippedCount > 0 && actionsOnly && (
+        {/* actionsOnly 时始终提示可切换到全部日志 */}
+        {actionsOnly && (
           <button
             type="button"
             onClick={handleToggleActionsOnly}
             className="mt-4 flex items-center gap-1 px-4 py-2 rounded-lg bg-[#1A1A24]/60 border border-[#2A2A3A]/50 text-[11px] text-[#06B6D4] hover:text-[#0891B2] transition-colors"
           >
             <Eye className="w-3 h-3" />
-            {t('timeline.skippedWaitHold', { count: skippedCount })} · {t('timeline.showAllLogs')}
+            {skippedCount > 0
+              ? `${t('timeline.skippedWaitHold', { count: skippedCount })} · ${t('timeline.showAllLogs')}`
+              : t('timeline.showAllLogs')}
           </button>
         )}
       </div>
@@ -105,11 +107,13 @@ export function AiTimeline({ filter }: AiTimelineProps) {
 
   return (
     <div className="space-y-3">
-      {/* 过滤摘要 + 切换按钮 */}
-      {skippedCount > 0 && actionsOnly && (
+      {/* 过滤摘要 + 切换按钮（actionsOnly 时始终显示，方便查看未执行日志） */}
+      {actionsOnly && (
         <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#1A1A24]/60 border border-[#2A2A3A]/50">
           <span className="text-[11px] text-[#808090]">
-            {t('timeline.skippedWaitHold', { count: skippedCount })}
+            {skippedCount > 0
+              ? t('timeline.skippedWaitHold', { count: skippedCount })
+              : t('timeline.actionsOnlyMode')}
           </span>
           <button
             type="button"

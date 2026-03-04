@@ -2095,6 +2095,7 @@
       "roleJudge": "裁定者",
       "skippedWaitHold": "{count} 回の分析で操作なし（非表示）",
       "showAllLogs": "すべてのログを表示",
+      "actionsOnlyMode": "アクションのみ表示",
       "showActionsOnly": "操作ありのみ",
       "positionSize": "ポジション",
       "riskRejected": "リスク管理拒否",

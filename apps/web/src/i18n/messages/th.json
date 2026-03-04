@@ -2095,6 +2095,7 @@
       "roleJudge": "ผู้ตัดสิน",
       "skippedWaitHold": "วิเคราะห์ {count} ครั้งไม่มีการดำเนินการ (ซ่อน)",
       "showAllLogs": "แสดงบันทึกทั้งหมด",
+      "actionsOnlyMode": "ดูเฉพาะบันทึกการดำเนินการ",
       "showActionsOnly": "เฉพาะการดำเนินการ",
       "positionSize": "ขนาดสถานะ",
       "riskRejected": "ปฏิเสธความเสี่ยง",

@@ -2095,6 +2095,7 @@
       "roleJudge": "Hakem",
       "skippedWaitHold": "{count} analiz işlem yok (gizli)",
       "showAllLogs": "Tüm günlükleri göster",
+      "actionsOnlyMode": "Yalnızca işlem günlükleri",
       "showActionsOnly": "Sadece işlemler",
       "positionSize": "Pozisyon",
       "riskRejected": "Risk Reddedildi",

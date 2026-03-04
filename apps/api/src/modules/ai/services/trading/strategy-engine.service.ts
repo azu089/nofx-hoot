@@ -853,7 +853,7 @@ export class StrategyEngineService implements OnModuleInit {
       // 查询所有活跃策略的 userId + exchangeApiKeyId
       const activeStrategies = await db.aiStrategy.findMany({
         where: { isActive: true },
-        select: { userId: true, id: true, coinSourceConfig: true },
+        select: { userId: true, id: true, coinSourceConfig: true, strategyType: true, gridRuntimeState: true },
       });
 
       if (activeStrategies.length === 0) return;
@@ -968,6 +968,23 @@ export class StrategyEngineService implements OnModuleInit {
                 this.logger.warn(`[快照] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
               }
 
+              // 网格策略：优先使用 gridRuntimeState.totalProfit（比估算更准确）
+              let gridTotalProfit: number | undefined;
+              const baseCoin = dp.symbol.split('/')[0];
+              const gridStrategy = activeStrategies.find((s) => {
+                if (s.userId !== userId) return false;
+                if (s.strategyType !== 'grid') return false;
+                const cfg = s.coinSourceConfig as { coins?: string[] };
+                return cfg?.coins?.some((c: string) => c.includes(baseCoin));
+              });
+              if (gridStrategy?.gridRuntimeState) {
+                const state = gridStrategy.gridRuntimeState as any;
+                if (typeof state.totalProfit === 'number') {
+                  gridTotalProfit = state.totalProfit;
+                }
+              }
+              const finalPnl = gridTotalProfit ?? estimatedPnl;
+
               await db.position.update({
                 where: { id: dp.id },
                 data: {
@@ -978,24 +995,26 @@ export class StrategyEngineService implements OnModuleInit {
                     closePrice: closePrice.toFixed(8),
                     exitPrice: closePrice.toFixed(8),
                   } : {}),
-                  ...(estimatedPnl != null ? {
-                    pnl: estimatedPnl.toFixed(8),
-                    realizedPnl: estimatedPnl.toFixed(8),
+                  ...(finalPnl != null ? {
+                    pnl: finalPnl.toFixed(8),
+                    realizedPnl: finalPnl.toFixed(8),
                   } : {}),
                 },
               });
               closed++;
               this.logger.log(
                 `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-                (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
+                (gridTotalProfit != null
+                  ? ` PnL(网格总计)=$${gridTotalProfit.toFixed(4)}`
+                  : (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)')),
               );
 
               // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-              if (this.feeService && estimatedPnl != null && estimatedPnl > 0) {
+              if (this.feeService && finalPnl != null && finalPnl > 0) {
                 try {
                   const feeCalc = await this.feeService.calculateFee(
                     userId,
-                    estimatedPnl.toFixed(8),
+                    finalPnl.toFixed(8),
                   );
                   const uniqueOrderId = this.feeService.generateUniqueOrderId(
                     'GAS_FEE',
@@ -1125,6 +1144,25 @@ export class StrategyEngineService implements OnModuleInit {
             this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
           }
 
+          // 网格策略：优先使用 gridRuntimeState.totalProfit（比估算更准确）
+          let gridTotalProfit: number | undefined;
+          const baseCoin = dp.symbol.split('/')[0];
+          const userGridStrategies = await this.prisma.aiStrategy.findMany({
+            where: { userId, strategyType: 'grid', isActive: true },
+            select: { coinSourceConfig: true, gridRuntimeState: true },
+          });
+          const matchedGrid = userGridStrategies.find((s) => {
+            const cfg = s.coinSourceConfig as { coins?: string[] };
+            return cfg?.coins?.some((c: string) => c.includes(baseCoin));
+          });
+          if (matchedGrid?.gridRuntimeState) {
+            const state = matchedGrid.gridRuntimeState as any;
+            if (typeof state.totalProfit === 'number') {
+              gridTotalProfit = state.totalProfit;
+            }
+          }
+          const finalPnl = gridTotalProfit ?? estimatedPnl;
+
           await this.prisma.position.update({
             where: { id: dp.id },
             data: {
@@ -1135,20 +1173,26 @@ export class StrategyEngineService implements OnModuleInit {
                 closePrice: closePrice.toFixed(8),
                 exitPrice: closePrice.toFixed(8),
               } : {}),
-              ...(estimatedPnl != null ? {
-                pnl: estimatedPnl.toFixed(8),
-                realizedPnl: estimatedPnl.toFixed(8),
+              ...(finalPnl != null ? {
+                pnl: finalPnl.toFixed(8),
+                realizedPnl: finalPnl.toFixed(8),
               } : {}),
             },
           });
           closed++;
+          this.logger.log(
+            `[持仓同步] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
+            (gridTotalProfit != null
+              ? ` PnL(网格总计)=$${gridTotalProfit.toFixed(4)}`
+              : (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)')),
+          );
 
           // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-          if (this.feeService && estimatedPnl != null && estimatedPnl > 0) {
+          if (this.feeService && finalPnl != null && finalPnl > 0) {
             try {
               const feeCalc = await this.feeService.calculateFee(
                 userId,
-                estimatedPnl.toFixed(8),
+                finalPnl.toFixed(8),
               );
               const uniqueOrderId = this.feeService.generateUniqueOrderId(
                 'GAS_FEE',

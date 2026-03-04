@@ -594,18 +594,14 @@ export interface GridContext {
   positionLong?: {
     quantity: number;
     entryPrice: number;
-    margin: number;
     unrealizedPnl: number;
     liquidationPrice?: number;
-    marginRatio?: number;
   };
   positionShort?: {
     quantity: number;
     entryPrice: number;
-    margin: number;
     unrealizedPnl: number;
     liquidationPrice?: number;
-    marginRatio?: number;
   };
   // 绩效
   totalProfit: number;
@@ -627,6 +623,7 @@ export interface GridContext {
   currentProfitPct: number;    // 当前盈利%（相对启动权益）
   marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
+  rsiDivergenceType?: 'bullish' | 'bearish' | 'none';  // RSI 背离信号（Phase 12）
   // K线历史（最近30根1h蜡烛，K线历史数据）
   ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
   // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
@@ -657,19 +654,21 @@ export function GRID_SYSTEM_PROMPT(
 - 杠杆倍数: ${leverage}x
 - 分布方式: ${distribution}
 
-## 市场状态判断
-- **震荡市场**（适合网格）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
-- **趋势市场**（暂停网格）: Bollinger 带宽 > 4%，EMA20/50 距离 > 2%，价格持续突破布林带
-- **高波动**（谨慎）: ATR 异常放大，价格剧烈波动
+## 市场状态判断（参照 nofx：volatile ≠ 暂停，而是方向自适应）
+- **震荡市场**（最佳网格状态）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
+- **趋势/高波动**（方向自适应继续运行）: 后端已根据 Donchian 箱体突破自动调整方向（long_bias/short_bias/long/short）
+  - **不要调用 pause_grid**：趋势行情由后端方向机制处理，AI 只需按当前 direction 补挂空格线
+  - 高波动时系统已限制杠杆至 2x，AI 正常补单即可
+- **仅以下情况 AI 可调用 pause_grid**：持续亏损超止损阈值、或 AI 判断极端风险需人工介入
 
 ## 网格倾斜
 当 gridSkewLevel=severe（一侧持仓为 0，另一侧 ≥ 3）且代码未触发自动重排时，在空侧空格线补挂订单恢复平衡。
 
 ## ⚠️ 禁止行为（重要）
-- **严禁 cancel_order 以"释放保证金"为由撤单**：保证金由系统自动管理，无需 AI 干预。
-  - 如保证金真正不足，交易所会自动拒绝下单（返回错误码），系统会等下次循环补挂。
-  - cancel_order 只用于：格线价格远离当前价格需要重新布局（adjust_grid 前）、或 AI 主动调整网格边界。
-- **禁止因保证金/余额原因减少挂单数量**：始终尝试补全所有空格线，让交易所决定是否接受。
+- **严禁 cancel_order 以"保证金不足"为由撤单**：当可用保证金不足时，系统预检会自动跳过新开仓，无需 AI 干预。
+  - 保证金不足时唯一正确操作是 **hold**，等待现有持仓成交后释放保证金，系统下轮自动补挂。
+  - cancel_order 只用于：格线价格远离当前价格需要重新布局（adjust_grid 前）、或主动调整网格边界。
+- **禁止因保证金/余额原因减少挂单数量**：始终尝试补全所有空格线，保证金不足时由系统预检跳过，不依赖 AI 判断。
 
 ## 可用操作
 
@@ -802,8 +801,9 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 账户状态 ---');
   lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
-  // 不向 AI 暴露 availableBalance：AI 看到余额紧张会主动 cancel_order 释放保证金，
-  // 正确行为是直接下单、让交易所拒绝（保证金不足时等成交后自动补挂）
+  // 参照 nofx：仅传 AvailableBalance 原始数字（nofx kernel/grid_engine.go L270-275）
+  // 不传 marginUsedPct 百分比和警告标签，避免 AI 做保证金管理决策（由系统预检/交易所拒单处理）
+  lines.push(`可用保证金: ${ctx.availableBalance.toFixed(2)} USDT`);
   if (ctx.positionLong || ctx.positionShort) {
     if (ctx.positionLong) {
       const pl = ctx.positionLong;
@@ -823,8 +823,6 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
   lines.push(`未实现盈亏: ${ctx.unrealizedPnl > 0 ? '+' : ''}${ctx.unrealizedPnl.toFixed(2)} USDT`);
-  // 不向 AI 暴露保证金使用率：AI 看到高使用率会主动保守（"不新增仓位"），
-  // 正确行为是直接下单，让交易所在保证金真正不足时拒绝（51008/−2019 等）
 
   // Section 7: 绩效统计
   lines.push('');
@@ -848,6 +846,12 @@ export function buildGridUserPrompt(ctx: GridContext): string {
       ? '(OI↓+价格↑=空头平仓假突破 | OI↓+价格↓=多头止损)'
       : '(OI变化平稳)';
     lines.push(`持仓量变化: ${ctx.oiChange1h >= 0 ? '+' : ''}${ctx.oiChange1h.toFixed(2)}% ${oiDir} ${oiInterpretation}`);
+  }
+  if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
+    const divDesc = ctx.rsiDivergenceType === 'bullish'
+      ? '看涨背离（价格新低但RSI未新低，潜在反弹信号）'
+      : '看跌背离（价格新高但RSI未新高，潜在回调信号）';
+    lines.push(`RSI背离信号: ${ctx.rsiDivergenceType} — ${divDesc}`);
   }
 
   // Section 9: K线历史（最近30根1h蜡烛，K线历史数据）
