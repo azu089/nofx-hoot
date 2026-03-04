@@ -1608,11 +1608,17 @@ export class GridTradingService {
     enableDirectionAdjust: boolean,
   ): void {
     // 价格回到长期箱体内
+    // 参照 nofx checkFalseBreakoutRecovery: 价格回到长期箱体 → 无条件重置突破状态
+    // 条件：暂停中、仓位缩减中、或方向已偏移（enableDirectionAdjust 模式）
     if (
       state.longBoxUpper > 0 && state.longBoxLower > 0 &&
       price >= state.longBoxLower && price <= state.longBoxUpper
     ) {
-      if (state.isPaused || state.positionReductionPct > 0) {
+      const needsReset =
+        state.isPaused ||
+        state.positionReductionPct > 0 ||
+        (enableDirectionAdjust && state.currentDirection !== 'neutral');
+      if (needsReset) {
         state.breakoutLevel = 'none';
         state.breakoutDirection = '';
         state.breakoutConfirmCount = 0;
