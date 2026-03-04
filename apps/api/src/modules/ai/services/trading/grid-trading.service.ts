@@ -2051,15 +2051,16 @@ export class GridTradingService {
       }
 
       case 'pause_grid':
-        // LLM 的 pause_grid 已被禁用：网格暂停只由规则层触发（maxDrawdown/stopLoss/breakout）
-        // AI 可以"建议"暂停，但不会真正撤单。转换为 hold（不下新单）即可。
-        // 原因：LLM 每 3 分钟就以"保证金过高/volatile"为由暂停，
-        // 导致挂单时间极短，成交率大幅下降（核心问题）。
-        this.logger.warn(
-          `[网格] AI 建议暂停（已忽略）: ${decision.reasoning?.slice(0, 80) ?? 'pause_grid'}` +
-          ` — 暂停权限由规则层持有`,
+        // 参照 nofx executeGridDecision case "pause_grid": at.pauseGrid(d.Reasoning)
+        // AI 的 pause_grid 实际执行：取消挂单 + 设 isPaused=true
+        // pauseSource='ai' 允许 checkFalseBreakoutRecovery 在价格回归后自动恢复
+        // （区别于 pauseSource='risk_control'，后者需手动干预）
+        await this.softPauseGrid(
+          state, userId, apiKeyId,
+          decision.reasoning?.slice(0, 120) ?? 'AI pause_grid',
+          'ai',
         );
-        return { executed: false, skipReason: 'pause_grid_disabled' };
+        return { executed: true };
 
 
       case 'resume_grid':
