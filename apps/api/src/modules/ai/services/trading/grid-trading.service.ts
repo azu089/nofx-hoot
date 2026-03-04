@@ -1100,6 +1100,33 @@ export class GridTradingService {
           this.logger.warn(`[网格] 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
         }
 
+        // nofx autoAdjustGrid: 严重倾斜 + 价格偏离网格中点 > 30% → 代码层自动居中重排
+        // 参照 nofx/trader/auto_trader_grid.go L1377-1479: 仅在价格显著偏离时才介入，否则交由 AI 补单
+        if (skewLevel === 'severe' && isGridAdapter(adapter)) {
+          const gridMid = (state.upperPrice + state.lowerPrice) / 2;
+          const gridRange = state.upperPrice - state.lowerPrice;
+          const priceDeviation = Math.abs(currentPrice - gridMid);
+          const deviationPct = gridRange > 0 ? (priceDeviation / gridRange) * 100 : 0;
+          if (priceDeviation > gridRange * 0.3) {
+            this.logger.warn(
+              `[网格] autoAdjustGrid: 严重倾斜 buy=${skewBuy} sell=${skewSell}, ` +
+              `价格偏离中点 ${deviationPct.toFixed(1)}% > 30%，自动取消+居中重排`,
+            );
+            try {
+              await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
+            } catch (e: any) {
+              this.logger.warn(`[网格] autoAdjustGrid cancelAll 失败(继续): ${e.message}`);
+            }
+            this.reinitializeGridLevels(state, currentPrice);
+            await this.persistGridState(strategyId, state);
+            return { trades: 0, errors: 0 };
+          } else {
+            this.logger.warn(
+              `[网格] 严重倾斜但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，交由 AI 补挂缺失侧订单`,
+            );
+          }
+        }
+
         // Step 5.5: 1H 价格变化代码层硬检查（A1/A2 提升为硬规则，防止 AI 漏判）
         // --- 黑天鹅级别：≥10%，直接 emergencyExit 平仓 ---
         const maxHourlyChangePct = gridConfig?.maxHourlyChangePct ?? DEFAULT_MAX_HOURLY_CHANGE_PCT;

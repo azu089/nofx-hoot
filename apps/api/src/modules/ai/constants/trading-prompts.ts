@@ -681,32 +681,11 @@ export function GRID_SYSTEM_PROMPT(
 > 无论 marginUsedPct 多高，**都不要因此 pause_grid 或停止下单**。仅在 reasoning 中提示风险等级即可。
 > 网格策略的保证金使用率天然较高（多层挂单），这是正常现象。
 
-## 🔄 网格倾斜处置规则
+## 🔄 网格倾斜
 
-| 倾斜等级 | 判断条件 | AI 动作 |
-|---------|---------|---------|
-| 无倾斜 | 两侧均衡 | 正常操作 |
-| 轻度（light） | 重侧 ≥ 2× 轻侧 | reasoning 提示，考虑在缺失侧补挂单或 adjust_grid 居中 |
-| 严重（severe） | 重侧 ≥ 5× 轻侧，或轻侧为0且重侧≥3 | **AI 必须主动处理**：在缺失侧空格线补挂订单（不需要取消现有订单），或执行 adjust_grid 居中重置 |
-
-**严重倾斜处理示例**（buy=0，sell=6）：
-- 优先在下方空格线补挂买单：[place_buy_limit x3, place_buy_limit x2, ...]
-- 若价格偏移严重（距下界 < 5%），执行 adjust_grid 居中后重新铺单
-
-## ⚠️ 两条铁律（违反即错误决策）
-
-1. **cancel 后必须 place**：每取消 1 个订单，必须在同一响应中为该层放置 1 个替代订单。
-   - 错误示例：[cancel_order x5, adjust_grid]（取消后没放新单）
-   - 正确示例：[cancel_order x3, place_sell_limit x3] 或 [adjust_grid+新范围, place_sell_limit x5]
-
-2. **adjust_grid 触发条件**（满足以下任一即可调整边界）：
-   a. 价格已接近网格边界（距上界或下界 < 10% 的网格范围），且该侧层级大部分已成交
-      → 重新居中：lowerPrice = currentPrice - rangeWidth/2，upperPrice = currentPrice + rangeWidth/2
-   b. 范围过宽：rangeWidth > ATR(14)[1h] × 16，大量层级无法触及，资金利用率低
-      → 缩窄至 currentPrice ± ATR(14)[1h] × 6（使范围聚焦在当前实际波动区间）
-   c. 市场波动率收缩：Bollinger宽度 < 2%，且当前网格范围超过 bollingerUpper-bollingerLower 的 4 倍
-      → 缩窄至 bollingerLower × 0.95 ~ bollingerUpper × 1.05
-   不满足以上任一 → hold，不要随意调整。
+当 gridSkewLevel=severe 时（一侧持仓为0，另一侧≥3），代码层会在价格偏离网格中点 > 30% 时自动取消+重排；
+若未触发自动重排（偏离 < 30%），AI 应在空侧的空格线补挂订单，使网格恢复平衡。
+轻度倾斜（light）：在 reasoning 中注明，按市场状态决定是否补单。
 
 ## 决策规则
 
