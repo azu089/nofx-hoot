@@ -665,6 +665,12 @@ export function GRID_SYSTEM_PROMPT(
 ## 网格倾斜
 当 gridSkewLevel=severe（一侧持仓为 0，另一侧 ≥ 3）且代码未触发自动重排时，在空侧空格线补挂订单恢复平衡。
 
+## ⚠️ 禁止行为（重要）
+- **严禁 cancel_order 以"释放保证金"为由撤单**：保证金由系统自动管理，无需 AI 干预。
+  - 如保证金真正不足，交易所会自动拒绝下单（返回错误码），系统会等下次循环补挂。
+  - cancel_order 只用于：格线价格远离当前价格需要重新布局（adjust_grid 前）、或 AI 主动调整网格边界。
+- **禁止因保证金/余额原因减少挂单数量**：始终尝试补全所有空格线，让交易所决定是否接受。
+
 ## 可用操作
 
 - **place_buy_limit**: 放置限价买单
@@ -802,16 +808,14 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     if (ctx.positionLong) {
       const pl = ctx.positionLong;
       const liqStr = pl.liquidationPrice ? ` | 强平价=${pl.liquidationPrice.toFixed(2)}` : '';
-      const mrStr = pl.marginRatio !== undefined ? ` (margin率=${(pl.marginRatio * 100).toFixed(1)}%)` : '';
-      lines.push(`多仓: ${pl.quantity.toFixed(4)} @ 入场价=${pl.entryPrice.toFixed(4)} | 保证金=${pl.margin.toFixed(2)} | 未实现=${pl.unrealizedPnl > 0 ? '+' : ''}${pl.unrealizedPnl.toFixed(2)}${liqStr}${mrStr}`);
+      lines.push(`多仓: ${pl.quantity.toFixed(4)} @ 入场价=${pl.entryPrice.toFixed(4)} | 未实现=${pl.unrealizedPnl > 0 ? '+' : ''}${pl.unrealizedPnl.toFixed(2)}${liqStr}`);
     } else {
       lines.push('多仓: 无');
     }
     if (ctx.positionShort) {
       const ps = ctx.positionShort;
       const liqStr = ps.liquidationPrice ? ` | 强平价=${ps.liquidationPrice.toFixed(2)}` : '';
-      const mrStr = ps.marginRatio !== undefined ? ` (margin率=${(ps.marginRatio * 100).toFixed(1)}%)` : '';
-      lines.push(`空仓: ${ps.quantity.toFixed(4)} @ 入场价=${ps.entryPrice.toFixed(4)} | 保证金=${ps.margin.toFixed(2)} | 未实现=${ps.unrealizedPnl > 0 ? '+' : ''}${ps.unrealizedPnl.toFixed(2)}${liqStr}${mrStr}`);
+      lines.push(`空仓: ${ps.quantity.toFixed(4)} @ 入场价=${ps.entryPrice.toFixed(4)} | 未实现=${ps.unrealizedPnl > 0 ? '+' : ''}${ps.unrealizedPnl.toFixed(2)}${liqStr}`);
     } else {
       lines.push('空仓: 无');
     }
@@ -819,9 +823,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
   lines.push(`未实现盈亏: ${ctx.unrealizedPnl > 0 ? '+' : ''}${ctx.unrealizedPnl.toFixed(2)} USDT`);
-  // 保证金使用率风险提示
-  const marginWarning = ctx.marginUsedPct > 70 ? ' ⚠️严重' : ctx.marginUsedPct > 50 ? ' ⚠️危险' : ctx.marginUsedPct > 30 ? ' ⚠️警惕' : '';
-  lines.push(`保证金使用率: ${ctx.marginUsedPct.toFixed(1)}%${marginWarning} (>30%警惕 | >50%危险 | >70%严重)`);
+  // 不向 AI 暴露保证金使用率：AI 看到高使用率会主动保守（"不新增仓位"），
+  // 正确行为是直接下单，让交易所在保证金真正不足时拒绝（51008/−2019 等）
 
   // Section 7: 绩效统计
   lines.push('');

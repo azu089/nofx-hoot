@@ -905,7 +905,8 @@ export class GridTradingService {
     if (currentPrice > 0 && stopLossPct > 0) {
       const stopLossLines: GridLine[] = [];
       for (const line of state.gridLines) {
-        if (line.state !== 'filled' || line.positionSize <= 0 || line.positionEntry <= 0) continue;
+        // nofx 同格反向后 state='pending'，用 positionSize>0 而非 state==='filled' 检测持仓
+      if (line.positionSize <= 0 || line.positionEntry <= 0) continue;
         // 价格偏离%（基于价格变化）
         const priceDelta = Math.abs(currentPrice - line.positionEntry) / line.positionEntry * 100;
         // 方向判断：side='buy' 填充 = 持多头（怕跌）；side='sell' 填充 = 持空头（怕涨）
@@ -1145,10 +1146,11 @@ export class GridTradingService {
         if (state._pendingStopLoss?.length && isGridAdapter(adapter)) {
           for (const idx of state._pendingStopLoss) {
             const line = state.gridLines[idx];
-            if (!line || line.state !== 'filled') continue;
+            // nofx 同格反向后 state='pending'，但 positionSize>0 时仍持有仓位需止损
+            if (!line || line.positionSize <= 0) continue;
             try {
-              // 市价平仓：side='buy' 填充 = 持多头(long)，side='sell' 填充 = 持空头(short)
-              const closeSide = line.side === 'buy' ? 'long' : 'short';
+              // syncOrderFills 已翻转 side：'sell' = 持多头(原buy成交), 'buy' = 持空头(原sell成交)
+              const closeSide = line.side === 'sell' ? 'long' : 'short';
               closeSide === 'long'
                 ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, line.positionSize)
                 : await (adapter as GridExchangeAdapter).closeShort(state.symbol, line.positionSize);
@@ -1174,7 +1176,7 @@ export class GridTradingService {
 
         // 动态杠杆同步到交易所（effectiveLeverage 降低时重设）
         // 逐仓模式下有持仓时 Binance 不允许降杠杆，跳过避免每周期重复报错
-        const hasOpenPositions = state.gridLines.some(l => l.state === 'filled' && l.positionSize > 0);
+        const hasOpenPositions = state.gridLines.some(l => l.positionSize > 0);
         if (state.effectiveLeverage < state.leverage && !hasOpenPositions && isGridAdapter(adapter)) {
           try {
             await (adapter as GridExchangeAdapter).setLeverage(state.symbol, state.effectiveLeverage);
@@ -1187,7 +1189,8 @@ export class GridTradingService {
         const context = await this.buildGridContext(state, adapter, currentPrice, livePositions, liveBalance);
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
-        const filledAll = state.gridLines.filter(l => l.state === 'filled');
+        // nofx 同格反向后 state='pending'，用 positionSize>0 识别实际持仓格线
+        const filledAll = state.gridLines.filter(l => l.positionSize > 0);
         const skewBuy = filledAll.filter(l => l.side === 'sell').length; // 持多头（原buy成交，side已翻转为sell）
         const skewSell = filledAll.filter(l => l.side === 'buy').length; // 持空头（原sell成交，side已翻转为buy）
         const skewTotal = skewBuy + skewSell;
@@ -1382,7 +1385,7 @@ export class GridTradingService {
                 gridSnapshot: {
                   regime: state.currentRegime,
                   effectiveLeverage: state.effectiveLeverage,
-                  filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
+                  filledLevels: state.gridLines.filter(l => l.positionSize > 0).length,
                   pendingLevels: state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0).length,
                   totalInvestment: state.totalInvestment,
                   lastPrice: state.lastPrice,
@@ -1857,7 +1860,7 @@ export class GridTradingService {
         profit: l.unrealizedPnl !== 0 ? l.unrealizedPnl : undefined,
       })),
       activeOrderCount: state.gridLines.filter((l) => l.state === 'pending').length,
-      filledLevelCount: state.gridLines.filter((l) => l.state === 'filled').length,
+      filledLevelCount: state.gridLines.filter((l) => l.positionSize > 0).length,
       isPaused: state.isPaused,
       atr14: indFast.atr ?? 0,
       bollingerUpper: bbUpper,
@@ -2755,6 +2758,14 @@ export class GridTradingService {
    *
    * 注意：syncOrderFills 已将 line.side 翻转，此处 line.side 表示"下一步要挂的方向"
    */
+  /**
+   * 反向挂单（nofx 同格反向模式）
+   *
+   * nofx 设计：成交格线不退出，直接在同格重新挂反向单（价格参考相邻格）。
+   * 效果：无论成交多少格，始终保持 N 层全部有挂单（不减少）。
+   *
+   * 注意：line.side 在 syncOrderFills 中已翻转，此处 line.side 表示"下一步要挂的方向"
+   */
   private async placeReverseOrders(
     state: GridState,
     filledLines: GridLine[],
@@ -2765,22 +2776,18 @@ export class GridTradingService {
     for (const line of filledLines) {
       if (line.state !== 'filled') continue;
 
-      // 确定目标格线：sell（原 buy 成交）→ 上格(index+1)；buy（原 sell 成交）→ 下格(index-1)
-      const targetIdx = line.side === 'sell' ? line.index + 1 : line.index - 1;
-      if (targetIdx < 0 || targetIdx >= state.gridLines.length) {
+      // 确定价格参考格线：sell（原 buy 成交）→ 上格(index+1)；buy（原 sell 成交）→ 下格(index-1)
+      const priceRefIdx = line.side === 'sell' ? line.index + 1 : line.index - 1;
+      if (priceRefIdx < 0 || priceRefIdx >= state.gridLines.length) {
         this.logger.debug(`[网格] 反向挂单跳过: level=${line.index} 已在边界，无相邻格`);
         continue;
       }
 
-      const targetLine = state.gridLines[targetIdx];
-      // 相邻格线已有挂单或持仓，跳过（避免重复下单）
-      if (targetLine.state === 'pending' || targetLine.state === 'filled') {
-        this.logger.debug(`[网格] 反向挂单跳过: level=${targetIdx} 已有 ${targetLine.state} 订单`);
-        continue;
-      }
+      const priceRefLine = state.gridLines[priceRefIdx];
+      const targetPrice = priceRefLine.price;
 
-      const quantity = line.orderQuantity > 0 ? line.orderQuantity : line.allocatedUSD * state.leverage / targetLine.price;
-      if (quantity <= 0 || targetLine.price <= 0) continue;
+      const quantity = line.orderQuantity > 0 ? line.orderQuantity : line.allocatedUSD * state.leverage / targetPrice;
+      if (quantity <= 0 || targetPrice <= 0) continue;
 
       try {
         const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
@@ -2788,32 +2795,32 @@ export class GridTradingService {
         if (finalQty <= 0) continue;
 
         // OKX 要求 clOrdId 纯字母数字（无连字符），格式 gr{idx}t{ts}，最长 18 字符
-        const clientId = `gr${targetIdx}t${Date.now()}`;
+        const clientId = `gr${line.index}t${Date.now()}`;
 
         const result = await adapter.placeLimitOrder({
           symbol: state.symbol,
-          side: line.side,          // 已翻转的方向
-          price: targetLine.price,  // 相邻格线的价格（非成交价）
+          side: line.side,        // 已翻转的方向（buy→sell 或 sell→buy）
+          price: targetPrice,     // 相邻格线的价格（grid spacing 间距）
           quantity: finalQty,
           leverage: state.leverage,
           postOnly: useMakerOnly,
           clientId,
         });
 
-        // 更新目标格线状态（不是成交格线）
-        targetLine.state = 'pending';
-        targetLine.orderId = result.orderId;
-        targetLine.orderQuantity = finalQty;
-        targetLine.side = line.side; // 确保方向与实际挂单一致
-        state.orderBook[result.orderId] = targetLine.index;
+        // nofx 同格反向：将成交格线重新激活为 pending（保持 positionSize 记录持仓以供止损）
+        line.state = 'pending';
+        line.orderId = result.orderId;
+        line.orderQuantity = finalQty;
+        // line.side 已在 syncOrderFills 翻转，无需再翻转
+        state.orderBook[result.orderId] = line.index;
         placed++;
 
         this.logger.log(
-          `[网格] 反向挂单: ${line.side} ${finalQty} @ ${targetLine.price}` +
-          ` (目标 level=${targetIdx}, 触发 level=${line.index})`,
+          `[网格] 反向挂单(同格): ${line.side} ${finalQty} @ ${targetPrice}` +
+          ` (level=${line.index}, 价格参考 level=${priceRefIdx})`,
         );
       } catch (e: any) {
-        this.logger.warn(`[网格] 反向挂单失败 触发level=${line.index} 目标level=${targetIdx}: ${e.message}`);
+        this.logger.warn(`[网格] 反向挂单失败 level=${line.index}: ${e.message}`);
       }
     }
     return placed;
@@ -3179,7 +3186,7 @@ export class GridTradingService {
         direction: state.currentDirection,
         regime: state.currentRegime,
         totalLevels: state.gridLines.length,
-        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
+        filledLevels: state.gridLines.filter(l => l.positionSize > 0).length,
         pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
         activeOrders: Object.keys(state.orderBook).length,
         totalInvestment: state.totalInvestment,   // 用于前端展示每层成本估算
