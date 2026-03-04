@@ -108,7 +108,7 @@ export function MobileDepositPage({
                   key={network.name}
                   type="button"
                   onClick={() => handleNetworkChange(network.name)}
-                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0"
+                  className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#252530] transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center">

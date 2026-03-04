@@ -161,7 +161,7 @@ export function DepositPage({
                             setShowNetworkDropdown(false)
                             onNetworkChange?.(network.name)
                           }}
-                          className={`w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-[#252530] transition-colors border-b border-[#2A2A3A] last:border-b-0 ${
+                          className={`w-full px-4 py-3.5 text-left flex items-center gap-3 hover:bg-[#252530] transition-colors ${
                             selectedNetwork.id === network.id ? 'bg-[#252530]' : ''
                           }`}
                         >
