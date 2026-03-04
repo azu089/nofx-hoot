@@ -214,7 +214,7 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
       : null);
 
   return (
-    <div className="glass-border-glow glass-card p-4 space-y-3">
+    <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
       {/* === 标题行 — 和深研对齐 === */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs">

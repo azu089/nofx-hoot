@@ -2,7 +2,8 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import Image from 'next/image';
 import { useAdminAuth } from '@/lib/admin-auth';
 import { toast } from 'sonner';
 
@@ -52,8 +53,8 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-[#12121A] border border-[#1E1E2E] flex items-center justify-center mb-4">
-            <Shield size={32} className="text-cyan-400" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4">
+            <Image src="/icons/hoot/token.png" alt="HOOT" width={64} height={64} className="object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-white">Hoot Admin</h1>
           <p className="text-sm text-[#9090A0] mt-1">管理后台登录</p>

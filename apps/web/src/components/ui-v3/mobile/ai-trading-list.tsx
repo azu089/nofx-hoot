@@ -101,7 +101,7 @@ export function Page({ embedded }: PageProps = {}) {
 
       {/* 统计卡片 */}
       <div className="px-4 py-3">
-        <div className="glass-border-glow glass-card grid grid-cols-3">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden grid grid-cols-3">
           <div className="p-3 text-center">
             <div className="text-[#606070] text-[10px] mb-1">{t('list.strategyCount')}</div>
             <div className="text-[#06B6D4] text-lg font-semibold font-mono">{strategies.length}</div>
@@ -171,7 +171,7 @@ export function Page({ embedded }: PageProps = {}) {
                   <div
                     key={s.id}
                     onClick={() => router.push(`/ai/strategy/${s.id}`)}
-                    className="glass-border-glow glass-card p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
+                    className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
                   >
                     {/* 策略名+状态 */}
                     <div className="flex items-start justify-between mb-3">

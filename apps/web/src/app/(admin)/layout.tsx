@@ -2,12 +2,12 @@
 
 import type React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
   DollarSign,
-  Shield,
   Settings,
   Brain,
   LogOut,
@@ -71,7 +71,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       <div className="fixed left-0 top-0 h-screen w-56 bg-[#12121A] border-r border-[#1E1E2E] z-40 flex flex-col">
         {/* Logo */}
         <div className="flex h-14 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-          <Shield size={24} className="text-cyan-400" />
+          <Image src="/icons/hoot/token.png" alt="HOOT" width={28} height={28} className="object-contain" />
           <h1 className="text-lg font-bold text-[#F8F8FC]">Hoot Admin</h1>
         </div>
 

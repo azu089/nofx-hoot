@@ -1226,11 +1226,15 @@ export class AiController {
     }
 
     return {
-      data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string }) => {
+      data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
+        // 网格策略：今日盈亏从 gridRuntimeState.dailyPnl 读取（网格持仓 aiStrategyId=NULL，positions 查询无效）
+        const todayPnl = s.strategyType === 'grid' && s.gridRuntimeState?.dailyPnl != null
+          ? Number(s.gridRuntimeState.dailyPnl.toFixed(2))
+          : Number((todayPnlMap.get(s.id) || 0).toFixed(2));
         return {
           ...s,
-          todayPnl: Number((todayPnlMap.get(s.id) || 0).toFixed(2)),
+          todayPnl,
           exchangeName: akInfo?.exchange ?? null,
           exchangeLabel: akInfo?.label ?? null,
         };

@@ -149,7 +149,7 @@ function ResearchCard({
   return (
     <div
       onClick={onNavigate}
-      className="glass-border-glow glass-card p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
+      className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
     >
       {/* 顶行: 徽章 + 名称 + 状态 */}
       <div className="flex items-center justify-between mb-3">
@@ -331,7 +331,7 @@ function StrategyCard({
   return (
     <div
       onClick={onNavigate}
-      className="glass-border-glow glass-card p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
+      className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 cursor-pointer hover:border-[#06B6D4]/40 transition-all active:scale-[0.98]"
     >
       {/* 顶行：徽章 + 名称 + 状态 */}
       <div className="flex items-center justify-between mb-3">
@@ -391,7 +391,7 @@ function StrategyCard({
         </div>
         <div>
           <div className="text-[#606070] text-[10px] mb-0.5">{t('list.sharpe')}</div>
-          <div className="text-[#F8F8FC] font-medium text-xs font-mono">{sharpe.toFixed(2)}</div>
+          <div className="text-[#F8F8FC] font-medium text-xs font-mono">{isGrid ? '--' : sharpe.toFixed(2)}</div>
         </div>
       </div>
 
@@ -656,7 +656,7 @@ export function UnifiedAiList() {
 
       {/* 统计卡片 */}
       <div className="px-4 py-3">
-        <div className="glass-border-glow glass-card grid grid-cols-3">
+        <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden grid grid-cols-3">
           <div className="p-3 text-center">
             <div className="text-[#606070] text-[10px] mb-1">{t('list.summaryTotal')}</div>
             <div className="text-[#06B6D4] text-lg font-semibold font-mono">{totalCount}</div>
