@@ -725,7 +725,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
       {/* 主 Tab 切换 */}
       <div className="px-4 pt-4">
-        <div className="flex gap-2 p-1 bg-[#12121A] rounded-xl">
+        <div className="glass-border-glow flex gap-2 p-1 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
           <button
             type="button"
             onClick={() => setMainTab("wallet")}
@@ -819,8 +819,10 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
             </div>
           </div>
 
+          {/* 子 Tab + 内容区 - glass card */}
+          <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
           {/* 子 Tab 切换 */}
-          <div className="flex gap-6 border-b border-[#1E1E2E]">
+          <div className="flex gap-6 border-b border-[#1E1E2E] px-4 pt-4">
             <button
               type="button"
               onClick={() => setWalletSubTab("assets")}
@@ -855,7 +857,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
           {/* 资产明细列表 */}
           {walletSubTab === "assets" && (
-            <div className="space-y-3">
+            <div className="space-y-3 p-4">
               {assets.map((asset, index) => (
                 <div
                   key={index}
@@ -925,7 +927,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
 
           {/* 历史账单 */}
           {walletSubTab === "history" && (
-            <div className="space-y-4">
+            <div className="space-y-4 p-4">
               {/* 筛选按钮组 - 下拉筛选器 */}
               <div className="flex gap-2">
                 {/* 类型筛选 */}
@@ -1197,6 +1199,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               )}
             </div>
           )}
+          </div>{/* /glass card wrapper */}
         </div>
       )}
 
@@ -1204,7 +1207,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       {mainTab === "api" && (
         <div className="px-4 pt-4 space-y-4">
           {/* CEX / DEX 子标签切换 */}
-          <div className="flex gap-2 p-1 bg-[#12121A] rounded-xl border border-[#1E1E2E]">
+          <div className="glass-border-glow flex gap-2 p-1 bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden">
             <button
               type="button"
               onClick={() => setApiSubTab('cex')}

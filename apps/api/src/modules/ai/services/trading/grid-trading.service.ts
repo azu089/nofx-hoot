@@ -583,7 +583,9 @@ export class GridTradingService {
       try {
         const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
         const balance = await adapter.getBalance();
-        initialEquity = balance.totalEquity;
+        if (balance.totalEquity > 0) {
+          initialEquity = balance.totalEquity;
+        }
         await adapter.dispose();
       } catch {
         // 使用默认值
