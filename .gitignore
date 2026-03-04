@@ -46,6 +46,9 @@ temp/
 !apps/web/public/**/*.jpg
 !apps/web/public/**/*.jpeg
 !apps/web/public/**/*.webp
+!apps/admin/public/*.png
+!apps/admin/public/*.jpg
+!apps/admin/public/*.webp
 .playwright-mcp/
 
 # pnpm
