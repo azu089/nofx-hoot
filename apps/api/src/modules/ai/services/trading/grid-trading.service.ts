@@ -2002,30 +2002,33 @@ export class GridTradingService {
           useMakerOnly,
         );
 
-      case 'cancel_order':
-        if (decision.order_id && isGridAdapter(adapter)) {
+      case 'cancel_order': {
+        // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
+        const cancelOrderId = (decision as any).orderId ?? decision.order_id;
+        if (cancelOrderId && isGridAdapter(adapter)) {
           // 校验 orderId 是否存在于本地 orderBook（防止 AI 编造无效 ID 发给交易所）
-          if (state.orderBook[decision.order_id] === undefined) {
-            this.logger.warn(`[网格] cancel_order 跳过: orderId=${decision.order_id} 不在 orderBook 中`);
+          if (state.orderBook[cancelOrderId] === undefined) {
+            this.logger.warn(`[网格] cancel_order 跳过: orderId=${cancelOrderId} 不在 orderBook 中`);
             break;
           }
           try {
-            await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, decision.order_id);
+            await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
           } catch (e: any) {
             // 交易所返回"订单不存在/已成交"类错误 — 本地状态仍需清理
             this.logger.warn(`[网格] cancel_order 交易所调用失败: ${e.message}，仍清理本地状态（幂等）`);
           } finally {
-            // 无论交易所取消是否成功，都清理本地状态（幂等操作）
-            // 若订单其实未被取消，下次 syncOrderFills 会重新发现并处理
-            const levelIdx = state.orderBook[decision.order_id];
+            const levelIdx = state.orderBook[cancelOrderId];
             if (levelIdx !== undefined && state.gridLines[levelIdx]) {
               state.gridLines[levelIdx].state = 'empty';
               state.gridLines[levelIdx].orderId = undefined;
             }
-            delete state.orderBook[decision.order_id];
+            delete state.orderBook[cancelOrderId];
           }
+        } else if (!cancelOrderId) {
+          this.logger.warn(`[网格] cancel_order 跳过: AI 未提供 orderId（reasoning: ${decision.reasoning?.slice(0, 60)}）`);
         }
         break;
+      }
 
       case 'cancel_all_orders': {
         // 代码层守卫：仅当价格严重偏离网格中心才允许全部取消
@@ -2212,66 +2215,9 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 0.5: 保证金预检 — 参照 nofx: 削减数量适配可用保证金（而非直接拒绝）
-    {
-      const leverage0 = state.effectiveLeverage || state.leverage;
-      const newOrderMargin = (quantity * price) / leverage0;
-      const EARLY_MIN_NOTIONAL = 5; // 保守下限（Step 2 有精确值，此处仅做快速判断）
-
-      if (state.availableBalance > 5) {
-        // 优先路径：直接用交易所返回的可用余额做精确判断（每轮 buildGridContext 更新）
-        if (newOrderMargin > state.availableBalance * 0.9) {
-          // nofx 做法: 削减 qty 适配可用保证金，不直接拒绝
-          const maxQtyForMargin = (state.availableBalance * 0.9 * leverage0) / price;
-          const cappedNotional = maxQtyForMargin * price;
-          if (cappedNotional < EARLY_MIN_NOTIONAL) {
-            // 削减后仍低于最小下单额 — 真正资金不足，此时才拒绝
-            const skipReason =
-              `保证金不足: 可用 $${state.availableBalance.toFixed(2)},` +
-              ` 削减后名义值 $${cappedNotional.toFixed(2)} < 最低 $${EARLY_MIN_NOTIONAL}`;
-            this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-            return { executed: false, skipReason };
-          }
-          this.logger.debug(
-            `[网格] 保证金适配: qty ${quantity.toFixed(4)} → ${maxQtyForMargin.toFixed(4)}` +
-            ` (可用 $${state.availableBalance.toFixed(2)}, 需 $${newOrderMargin.toFixed(2)}, level=${levelIndex})`,
-          );
-          quantity = maxQtyForMargin;
-        }
-      } else {
-        // 兜底路径：availableBalance 未获取时，退回聚合估算逻辑
-        const pendingMargin = state.gridLines
-          .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-          .reduce((s, l) => s + (l.orderQuantity * price) / leverage0, 0);
-        const filledMargin = state.gridLines
-          .filter(l => l.state === 'filled' && l.positionSize > 0)
-          .reduce((s, l) => s + (l.positionSize * price) / leverage0, 0);
-        const totalEstimated = pendingMargin + filledMargin + newOrderMargin;
-        const marginLimit = state.totalInvestment * 1.1;
-        if (totalEstimated > marginLimit) {
-          // 尝试削减数量适配剩余保证金空间（与优先路径 L2054 对齐，避免 all-or-nothing 拒绝）
-          const remainingMargin = Math.max(0, marginLimit - pendingMargin - filledMargin);
-          const maxQtyForMargin = (remainingMargin * leverage0) / price;
-          const cappedNotional = maxQtyForMargin * price;
-          if (cappedNotional < EARLY_MIN_NOTIONAL) {
-            // 削减后仍低于最小下单额 — 真正保证金不足
-            const skipReason =
-              `聚合保证金超限(兜底): 挂单=$${pendingMargin.toFixed(2)} + 持仓=$${filledMargin.toFixed(2)}` +
-              ` + 新单=$${newOrderMargin.toFixed(2)} = $${totalEstimated.toFixed(2)} > 上限=$${marginLimit.toFixed(2)}` +
-              `，削减后名义值 $${cappedNotional.toFixed(2)} < 最低 $${EARLY_MIN_NOTIONAL}`;
-            this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-            return { executed: false, skipReason };
-          }
-          this.logger.debug(
-            `[网格] 兜底保证金适配: qty ${quantity.toFixed(4)} → ${maxQtyForMargin.toFixed(4)}` +
-            ` (剩余保证金 $${remainingMargin.toFixed(2)}, level=${levelIndex})`,
-          );
-          quantity = maxQtyForMargin;
-        }
-      }
-    }
-
     // Step 1: 仓位上限检查（使用 effectiveLeverage 代替 leverage）
+    // 对齐 nofx: 不预检可用保证金，直接按 per-level 上限下单
+    // 若保证金不足，交易所自然返回错误（51008/insufficient margin），下轮仓位成交释放保证金后再补挂
     const leverage = state.effectiveLeverage || state.leverage; // fallback 兼容旧数据
     if (price > 0 && state.totalInvestment > 0) {
       const maxMarginPerLevel = state.totalInvestment / state.gridLines.length;

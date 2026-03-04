@@ -796,7 +796,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 账户状态 ---');
   lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
-  lines.push(`可用余额: ${ctx.availableBalance.toFixed(2)} USDT`);
+  // 不向 AI 暴露 availableBalance：AI 看到余额紧张会主动 cancel_order 释放保证金，
+  // 正确行为是直接下单、让交易所拒绝（保证金不足时等成交后自动补挂）
   if (ctx.positionLong || ctx.positionShort) {
     if (ctx.positionLong) {
       const pl = ctx.positionLong;
