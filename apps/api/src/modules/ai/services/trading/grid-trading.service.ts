@@ -321,6 +321,9 @@ export class GridTradingService {
   // 并发保护：记录正在运行的策略 ID，防止同一策略多 job 并发执行
   private readonly runningStrategies = new Set<string>();
 
+  // 本次启动已清理过止损单的策略集合（重启后重置，用于一次性清理僵尸止损单）
+  private readonly stopOrdersCleanedOnStart = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly marketData: MarketDataService,
@@ -1004,6 +1007,17 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
+        // 服务重启后首次运行：清理可能堆积的僵尸止损单，避免条件委托越积越多
+        if (isGridAdapter(adapter) && !this.stopOrdersCleanedOnStart.has(strategyId) && stopLossPct > 0) {
+          this.stopOrdersCleanedOnStart.add(strategyId);
+          try {
+            await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+            this.logger.log(`[网格] 启动清理：已取消 ${state.symbol} 所有旧止损单`);
+          } catch (e: any) {
+            this.logger.warn(`[网格] 启动清理止损单失败(忽略): ${e.message}`);
+          }
+        }
+
         // 同步订单状态 + 成交后立即下反向单
         if (isGridAdapter(adapter)) {
           const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
@@ -1014,12 +1028,20 @@ export class GridTradingService {
               `本批利润 ${profitDelta >= 0 ? '+' : ''}${profitDelta.toFixed(4)} USDT | ` +
               `累计 +${state.totalProfit.toFixed(2)} USDT`,
             );
-            // 新成交格线 → 在交易所挂止损单（兜底：API 宕机时止损仍可触发）
+            // 新成交格线 → 刷新所有交易所止损单（先清空旧单，再按当前持仓重新挂）
+            // 避免多次成交时旧止损单不断堆积
             if (stopLossPct > 0) {
-              for (const line of filledLines) {
+              try {
+                await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+                this.logger.log('[网格] 已清理旧止损单，重新挂当前持仓止损');
+              } catch (e: any) {
+                this.logger.warn(`[网格] 清理旧止损单失败(忽略，继续挂新止损): ${e.message}`);
+              }
+              // 给所有当前持仓格线各挂一个止损单
+              for (const line of state.gridLines) {
                 if (line.state !== 'filled' || line.positionEntry <= 0 || line.positionSize <= 0) continue;
                 try {
-                  // syncOrderFills 后 side 已翻转：'sell' = 原BUY成交(持多头)，'buy' = 原SELL成交(持空头)
+                  // side 已翻转：'sell' = 原BUY成交(持多头)，'buy' = 原SELL成交(持空头)
                   const isLong = line.side === 'sell';
                   const positionSide = isLong ? 'long' : 'short';
                   const stopPrice = isLong
