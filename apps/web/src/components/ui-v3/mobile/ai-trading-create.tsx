@@ -312,7 +312,7 @@ export function CreateStrategyWizard() {
           indicators: ['EMA:20,50', 'MACD', 'RSI:14', 'ATR:14'],
         },
         riskControlConfig: {
-          allocatedCapital: isGrid ? (gridParams.totalInvestment || 100) : riskParams.allocatedCapital,
+          allocatedCapital: isGrid ? undefined : riskParams.allocatedCapital,
           maxLeverage: isGrid ? (gridParams.leverage || 1) : (riskParams.maxLeverage || 1),
           maxDailyDrawdown: riskParams.maxDailyDrawdown,
           minConfidence: riskParams.minConfidence,

@@ -312,8 +312,7 @@ export class AutoTraderService {
 
       // 网格策略优先路由: 有独立的回撤保护，跳过用户级日回撤检查
       if (strategy.strategyType === 'grid') {
-        const riskControlGrid = (strategy.riskControlConfig as RiskControlConfig) || {};
-        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, riskControlGrid, result, startTime);
+        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, result, startTime);
       }
 
       // Step 2: 检查是否被风控暂停
@@ -2064,7 +2063,6 @@ export class AutoTraderService {
     strategy: Prisma.AiStrategyGetPayload<{ include: Record<string, never> }>,
     userId: string,
     apiKeyId: string,
-    riskControl: RiskControlConfig,
     result: CycleResult,
     startTime: number,
   ): Promise<CycleResult> {
@@ -2155,12 +2153,14 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          // 与页面显示保持一致：优先用权益法（startEquity/lastEquity），回退到已实现利润法
-          const pnlPct = (gridStateForStop.startEquity > 0 && gridStateForStop.lastEquity && gridStateForStop.lastEquity > 0)
-            ? (gridStateForStop.lastEquity - gridStateForStop.startEquity) / gridStateForStop.startEquity * 100
-            : (riskControl.allocatedCapital || 0) > 0
-              ? (gridStateForStop.totalProfit / (riskControl.allocatedCapital || 1000)) * 100
-              : 0;
+          // 已实现利润法：totalProfit ÷ 投入资金
+          // totalProfit = 网格已完成循环的累计利润（纯已实现，不含浮盈）
+          // 基准优先级：gridConfig.totalInvestment > startEquity（账户权益）> 1000 兜底
+          // 避免权益法（mark-to-market）因浮盈过早触发止盈/止损
+          const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
+            ? gridConfig.totalInvestment
+            : (gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000);
+          const pnlPct = (gridStateForStop.totalProfit / investmentBase) * 100;
           if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;
             gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;
