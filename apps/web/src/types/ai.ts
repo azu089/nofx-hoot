@@ -392,6 +392,7 @@ export interface GridConfig {
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
+  dailyLossLimitPct?: number;
 }
 
 export interface IndicatorConfig {

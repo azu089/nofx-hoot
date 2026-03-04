@@ -306,6 +306,11 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
     const ex = this.getExchange();
     const params: any = { reduceOnly: true };
+    // OKX 双向持仓模式需要显式指定 posSide，否则 reduceOnly 无效
+    if (this.exchangeType === 'okx') {
+      params.posSide = 'long';
+      delete params.reduceOnly;
+    }
     const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, params);
     return this.mapOrderResult(order);
   }
@@ -316,6 +321,11 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
     const ex = this.getExchange();
     const params: any = { reduceOnly: true };
+    // OKX 双向持仓模式需要显式指定 posSide，否则 reduceOnly 无效
+    if (this.exchangeType === 'okx') {
+      params.posSide = 'short';
+      delete params.reduceOnly;
+    }
     const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, params);
     return this.mapOrderResult(order);
   }

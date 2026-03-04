@@ -680,14 +680,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </span>
                 </div>
               )}
-              {d.gridSnapshot.totalProfit != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridProfit')}</span>
-                  <span className={`font-mono ${d.gridSnapshot.totalProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {d.gridSnapshot.totalProfit >= 0 ? '+' : ''}{d.gridSnapshot.totalProfit.toFixed(2)}
-                  </span>
-                </div>
-              )}
               {d.gridSnapshot.winRate != null && d.gridSnapshot.totalTrades > 0 && (
                 <div className="flex justify-between">
                   <span className="text-[#606070]">{t('timeline.gridWinRate')}</span>

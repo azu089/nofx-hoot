@@ -461,7 +461,9 @@ nav button {
   pointer-events: none;
 }
 
-/* 流动高光层 - 窄光带，两端渐暗，中心最亮 */
+/* 呼吸高光层 - 边框整体呼吸发光（仅 opacity 动画，GPU 合成层加速，移动端友好）
+   之前 border-flow 用 background-position 动画，主线程运行，10+ 卡片同跑导致点击延迟。
+   opacity 动画由浏览器合成层处理，无主线程开销。 */
 .glass-border-glow::after {
   content: '';
   position: absolute;
@@ -469,24 +471,16 @@ nav button {
   border-radius: inherit;
   padding: 1px;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 15%,
-    rgba(6, 182, 212, 0.15) 22%,
-    rgba(34, 211, 238, 0.6) 35%,
-    rgba(34, 211, 238, 1.0) 50%,
-    rgba(34, 211, 238, 0.6) 65%,
-    rgba(6, 182, 212, 0.15) 78%,
-    transparent 85%,
-    transparent 100%
+    135deg,
+    rgba(6, 182, 212, 0.9) 0%,
+    rgba(34, 211, 238, 0.5) 40%,
+    rgba(6, 182, 212, 0.9) 100%
   );
-  background-size: 400% 100%;
-  background-repeat: no-repeat;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: border-flow 4s linear infinite;
+  animation: border-breathe 3s ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -507,10 +501,10 @@ nav button {
   overflow: hidden;
 }
 
-/* 渐变流动动画 - 光带从右入、向左扫过、从左出，无缝循环 */
-@keyframes border-flow {
-  0%   { background-position: 100% 0; }
-  100% { background-position: 0% 0; }
+/* 边框呼吸动画 - opacity 动画由 GPU 合成层处理，无主线程开销 */
+@keyframes border-breathe {
+  0%, 100% { opacity: 0.25; }
+  50%       { opacity: 0.85; }
 }
 
 /* 跑马灯动画（行业标准 15s 循环，对标 Binance/OKX，内联 style 可覆盖） */
@@ -590,10 +584,7 @@ input:-webkit-autofill:active {
     background: rgba(18, 18, 26, 0.85) !important;
   }
 
-  /* 2. glass-border-glow：移动端降速动画（backdrop-filter 已关，background-position 开销低） */
-  .glass-border-glow::after {
-    animation-duration: 5s !important;
-  }
+  /* 2. glass-border-glow：移动端已改为 opacity 呼吸动画（GPU 合成），无需禁用 */
 
   /* 3. glow-card：禁用三重呼吸动画 */
   .glow-card {
@@ -616,8 +607,11 @@ input:-webkit-autofill:active {
     background: rgba(6, 182, 212, 0.12) !important;
   }
 
-  /* 5. 内联 backdrop-filter 降级（Tailwind 类） */
-  [class*="backdrop-blur"] {
+  /* 5. 内联 backdrop-filter 降级（Tailwind 任意值类，如 backdrop-blur-[72px]）
+     注意：只匹配任意值（含"["），保留 backdrop-blur-lg/md/sm（16px/12px/4px），
+     因为 header 和底部导航依赖 backdrop-blur-lg 创建 CSS 合成层（stacking context），
+     移除会导致 iOS Safari 的 sticky 元素触摸事件异常（按钮无法点击）。 */
+  [class*="backdrop-blur-["] {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
   }

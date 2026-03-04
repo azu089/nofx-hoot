@@ -180,6 +180,7 @@ export function UnifiedAiCreate() {
   const [maxCycles, setMaxCycles] = useState(0);
   const [profitTarget, setProfitTarget] = useState(0);
   const [maxLoss, setMaxLoss] = useState(0);
+  const [gridDailyLossLimit, setGridDailyLossLimit] = useState(0);
 
   // ── Research-specific ─────────────────────────────
   const [selectedSymbol, setSelectedSymbol] = useState('BTC/USDT');
@@ -456,6 +457,7 @@ export function UnifiedAiCreate() {
           lowerBound: (gridCurrentPrice > 0 && gridLowerPct > 0)
             ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
+          dailyLossLimitPct: gridDailyLossLimit || 0,
         };
       }
 
@@ -1029,21 +1031,21 @@ export function UnifiedAiCreate() {
             )}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <p className="text-xs text-[#9090A0]">{t('create.gridMaxDrawdown')}</p>
+                <p className="text-xs text-[#9090A0]">峰值回撤</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                   <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={100}
                     value={gridMaxDrawdown || ''} onChange={(e) => setGridMaxDrawdown(parseInt(e.target.value) || 0)}
-                    aria-label={t('create.gridMaxDrawdown')}
+                    aria-label="峰值回撤"
                   />
                   <span className="text-[#606070] text-xs shrink-0">%</span>
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-[#9090A0]">{t('create.gridStopLossPercent')}</p>
+                <p className="text-xs text-[#9090A0]">单格止损</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                   <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={100}
                     value={gridStopLoss || ''} onChange={(e) => setGridStopLoss(parseInt(e.target.value) || 0)}
-                    aria-label={t('create.gridStopLossPercent')}
+                    aria-label="单格止损"
                   />
                   <span className="text-[#606070] text-xs shrink-0">%</span>
                 </div>
@@ -1339,12 +1341,21 @@ export function UnifiedAiCreate() {
                 <span className="text-xs text-[#606070]">%</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#9090A0] w-20 shrink-0">{t('create.maxLoss')}</span>
+                <span className="text-xs text-[#9090A0] w-20 shrink-0">最大止损</span>
                 <input type="number" min={0} value={maxLoss || ''} onChange={(e) => setMaxLoss(parseFloat(e.target.value) || 0)}
                   placeholder={t('common.unlimited')} className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                 />
                 <span className="text-xs text-[#606070]">%</span>
               </div>
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">日内亏损</span>
+                  <input type="number" min={0} max={20} value={gridDailyLossLimit || ''} onChange={(e) => setGridDailyLossLimit(parseFloat(e.target.value) || 0)}
+                    placeholder={t('common.unlimited')} className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                  />
+                  <span className="text-xs text-[#606070]">%</span>
+                </div>
+              )}
             </div>
           )}
         </div>

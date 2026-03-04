@@ -97,6 +97,7 @@ export function AIStrategyDetailPage() {
   const [editGridCount, setEditGridCount] = useState(10);
   const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
+  const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
   const [editGridInterval, setEditGridInterval] = useState(60);
   const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = AI 自动
   const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = AI 自动
@@ -297,6 +298,7 @@ export function AIStrategyDetailPage() {
       setEditGridCount(gc.gridCount || 10);
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
+      setEditGridDailyLossLimit(gc.dailyLossLimitPct || 0);
       setEditGridInterval(strategy?.intervalMinutes || 60);
       // 优先用用户手动配置的边界（gc.upperBound/lowerBound），不读 AI 运行时范围
       // 避免：用户设 0（AI 自动）→ AI 跑完写入 gridState → 重新打开显示 10%
@@ -394,6 +396,7 @@ export function AIStrategyDetailPage() {
           gridCount: editGridCount,
           maxDrawdownPct: editGridMaxDrawdown,
           stopLossPct: editGridStopLoss,
+          dailyLossLimitPct: editGridDailyLossLimit || 0,
           // 百分比 → 绝对价格；留空(0) → undefined → 后端保持原配置或 AI 决策
           upperBound: (editGridCurrentPrice > 0 && editGridUpperPct > 0)
             ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : undefined,
@@ -1013,6 +1016,7 @@ export function AIStrategyDetailPage() {
                         } />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
+                        {!!gc.dailyLossLimitPct && <ConfigRow label={t('detail.configDailyLossLimit')} value={`${gc.dailyLossLimitPct}%`} />}
                         {detail.gridState && (
                           <div className="mt-2 pt-2 border-t border-[#1E1E2E]">
                             <p className="text-xs text-[#10B981] font-medium mb-2">{t('detail.gridStatus')}</p>
@@ -1049,7 +1053,7 @@ export function AIStrategyDetailPage() {
                               <ConfigRow label={t('create.profitTarget')} value={`${strategy.stopConditions.profitTargetPercent}%`} />
                             )}
                             {!!strategy.stopConditions?.maxLossPercent && (
-                              <ConfigRow label={t('create.maxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
+                              <ConfigRow label={t('detail.maxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
                             )}
                           </>
                         )}
@@ -1172,7 +1176,7 @@ export function AIStrategyDetailPage() {
                             <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
                           )}
                           {!!strategy.stopConditions?.maxLossPercent && (
-                            <ConfigRow label="最大亏损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                            <ConfigRow label="最大止损" value={`${strategy.stopConditions.maxLossPercent}%`} />
                           )}
                         </>
                       )}
@@ -1485,6 +1489,22 @@ export function AIStrategyDetailPage() {
                         </div>
                       </div>
 
+                      {/* 日内亏损 */}
+                      <div className="space-y-1">
+                        <p className="text-xs text-[#9090A0]">{t('detail.configDailyLossLimit')}</p>
+                        <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                          <input
+                            type="number" min={0} max={20}
+                            value={editGridDailyLossLimit || ''}
+                            onChange={(e) => setEditGridDailyLossLimit(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                            placeholder="不限"
+                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                            aria-label={t('detail.configDailyLossLimit')}
+                          />
+                          <span className="text-[#606070] text-xs shrink-0">%</span>
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         <p className="text-xs text-[#9090A0]">{t('detail.editRunInterval')}</p>
                         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1580,7 +1600,7 @@ export function AIStrategyDetailPage() {
                           <span className="text-xs text-[#606070]">%</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大亏损</span>
+                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大止损</span>
                           <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
                             placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                           />
@@ -2180,7 +2200,7 @@ export function AIStrategyDetailPage() {
                       <span className="text-xs text-[#606070]">%</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大亏损</span>
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大止损</span>
                       <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
                         placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                       />

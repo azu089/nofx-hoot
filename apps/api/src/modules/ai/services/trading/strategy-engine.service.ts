@@ -6,6 +6,8 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
 import { encrypt } from '../../../../common/utils/crypto.util';
 import { FeeService } from '../../../trading/fee.service';
+import { GridTradingService } from './grid-trading.service';
+import { AiExecutionService } from '../ai-execution.service';
 
 /**
  * 策略引擎服务 — 产品 B 策略 CRUD + 启停控制
@@ -29,6 +31,8 @@ export class StrategyEngineService implements OnModuleInit {
     private readonly prisma: PrismaService,
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
     @Optional() private readonly feeService?: FeeService,
+    @Optional() private readonly gridTrading?: GridTradingService,
+    @Optional() private readonly aiExecution?: AiExecutionService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -288,6 +292,28 @@ export class StrategyEngineService implements OnModuleInit {
 
     // 停止定时任务
     await this.removeStrategyJob(strategyId);
+
+    // 平仓 + 结算燃油费（手动停止时与止盈/止损触发行为一致）
+    const apiKeyId = (strategy.exchangeApiKeyId as string | null) ?? '';
+    if (strategy.strategyType === 'grid') {
+      // 网格策略：取消挂单 → 平仓 → 结算燃油费
+      if (this.gridTrading && apiKeyId) {
+        try {
+          await this.gridTrading.stopGridForCondition(strategyId, userId, apiKeyId, '手动停止');
+        } catch (e: any) {
+          this.logger.error(`[策略] 手动停止网格平仓失败(继续停策略): ${e.message}`);
+        }
+      }
+    } else {
+      // 极速/共识/深研策略：逐一平仓 + 结算燃油费
+      if (this.aiExecution && apiKeyId) {
+        try {
+          await this.aiExecution.closeAllStrategyPositions(userId, strategyId, apiKeyId);
+        } catch (e: any) {
+          this.logger.error(`[策略] 手动停止平仓失败(继续停策略): ${e.message}`);
+        }
+      }
+    }
 
     // 更新状态
     const updated = await db.aiStrategy.update({

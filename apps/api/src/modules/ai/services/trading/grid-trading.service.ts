@@ -46,6 +46,7 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
+  autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true，对齐 nofx）
 }
 
 /** 网格方向 */
@@ -88,7 +89,7 @@ export interface GridState {
   isInitialized: boolean;
   isPaused: boolean;
   pauseReason?: string;
-  pauseSource?: 'ai' | 'risk_control'; // 'risk_control' 时 AI 无法通过 resume_grid 解除
+  pauseSource?: 'ai' | 'risk_control' | 'trend'; // 'risk_control'=风控不可恢复; 'trend'=趋势暂停可自动恢复
   lastPrice: number;
 
   // 绩效追踪
@@ -180,7 +181,7 @@ export interface GridDecision {
 // ========================= 常量 =========================
 
 const BREAKOUT_CONFIRM_REQUIRED = 3;
-const DEFAULT_ATR_MULTIPLIER = 5.0; // 5x ATR ≈ 覆盖 2-3 天波幅（原2x过窄，易被行情突破）
+const DEFAULT_ATR_MULTIPLIER = 2.5; // 2.5x ATR（nofx=2.0；5.0对高波动代币过宽，会使网格间距过大）
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
 const DEFAULT_BREAKOUT_PCT = 2;
@@ -982,6 +983,62 @@ export class GridTradingService {
       state.effectiveLeverage = newEffective;
     }
 
+    // Step 6.6: AutoPauseOnTrend — 参照 nofx default:true
+    // volatile 市场 = 布林带>4% + ATR>3%，此时单边行情风险高，网格卖单会持续开空越套越深
+    // 策略：检测到 volatile 就撤单软暂停（保留持仓），等市场回到震荡再自动恢复
+    const autoPauseOnTrend = gridConfig?.autoPauseOnTrend !== false; // 默认 true
+    if (autoPauseOnTrend) {
+      if (state.currentRegime === 'volatile' && !state.isPaused) {
+        const trendReason =
+          `检测到趋势行情 (volatile: 布林带>4% / ATR>3%)，` +
+          `自动撤单软暂停防止空单持续累积`;
+        this.logger.warn(`[网格] AutoPauseOnTrend: ${trendReason}`);
+        await this.softPauseGrid(state, userId, apiKeyId, trendReason, 'trend');
+        await this.persistGridState(strategyId, state);
+        return { trades: 0, errors: 0 };
+      }
+
+      // regime 改善后自动恢复（只恢复 trend 暂停，不恢复 risk_control/ai 类暂停）
+      if (state.isPaused && state.pauseSource === 'trend' && state.currentRegime !== 'volatile') {
+        this.logger.log(
+          `[网格] AutoPauseOnTrend 恢复: 市场从 volatile 回到 ${state.currentRegime}，解除趋势暂停`,
+        );
+
+        // 混合区间方案：恢复时用 ATR 重算区间（暂停期间价格可能大幅移动，旧区间已不适用）
+        // 例外：用户手动锁定了上下界 → 保持原区间不重算
+        if (!state.userLockedRange && this.indicators && this.marketData) {
+          try {
+            const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '4h', 20);
+            const highs = ohlcvRaw.map((c: any) => Number(c[2]));
+            const lows = ohlcvRaw.map((c: any) => Number(c[3]));
+            const closes4h = ohlcvRaw.map((c: any) => Number(c[4]));
+            const atr = this.indicators.calculateATR(highs, lows, closes4h, 14);
+            if (atr && atr > 0) {
+              const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
+              state.upperPrice = currentPrice + halfRange;
+              state.lowerPrice = currentPrice - halfRange;
+              this.logger.log(
+                `[网格] AutoPauseOnTrend 恢复重算区间 (ATR×${DEFAULT_ATR_MULTIPLIER}): ` +
+                `当前价=${currentPrice.toFixed(2)}, ATR(4H,14)=${atr.toFixed(2)}, ` +
+                `新区间=[${state.lowerPrice.toFixed(2)}, ${state.upperPrice.toFixed(2)}]`,
+              );
+              this.reinitializeGridLevels(state, currentPrice);
+            } else {
+              this.logger.warn(`[网格] AutoPauseOnTrend 恢复: ATR 无效，保留旧区间继续`);
+            }
+          } catch (e: any) {
+            this.logger.warn(`[网格] AutoPauseOnTrend 恢复重算失败(保留旧区间): ${e.message}`);
+          }
+        } else if (state.userLockedRange) {
+          this.logger.log(`[网格] AutoPauseOnTrend 恢复: 区间已锁定(用户指定)，保持原区间`);
+        }
+
+        state.isPaused = false;
+        state.pauseReason = undefined;
+        state.pauseSource = undefined;
+      }
+    }
+
     // Step 7: 暂停检查
     if (state.isPaused) {
       this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? 'unknown'}]: ${state.pauseReason || '未知原因'}`);
@@ -1464,14 +1521,20 @@ export class GridTradingService {
         state.positionReductionPct = 50;
         break;
 
-      case 'adjust_direction':
-        state.currentDirection = this.determineGridDirection(
-          state.breakoutLevel,
-          direction,
-          state.currentDirection,
+      case 'adjust_direction': {
+        const newDir = this.determineGridDirection(state.breakoutLevel, direction, state.currentDirection);
+        if (newDir === state.currentDirection) break; // 无变化
+        this.logger.warn(
+          `[网格] 方向自适应: ${state.currentDirection} → ${newDir} ` +
+          `(${state.breakoutLevel}级 ${direction}突破)`,
         );
+        state.currentDirection = newDir;
         this.applyGridDirection(state.gridLines, state.lastPrice, state.currentDirection);
+        // 参照 nofx executeDirectionAdjustment: 方向变化时取消所有挂单 + 平反向持仓
+        // 下一轮 cycle 将按新方向重新挂单
+        await this.cancelOrdersAndCloseOpposingPositions(state, newDir, userId, apiKeyId);
         break;
+      }
 
       case 'pause_grid':
         state.isPaused = true;
@@ -2343,6 +2406,59 @@ export class GridTradingService {
     }
   }
 
+  /**
+   * 方向自适应：取消所有挂单 + 平掉与新方向相反的持仓
+   * 参照 nofx executeDirectionAdjustment: cancelAllGridOrders() → adjustGridDirection()
+   */
+  private async cancelOrdersAndCloseOpposingPositions(
+    state: GridState,
+    newDirection: GridDirection,
+    userId: string,
+    apiKeyId: string,
+  ): Promise<void> {
+    if (!this.adapterFactory) return;
+    let adapter: ExchangeAdapter | null = null;
+    try {
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+
+      // Step 1: 取消所有挂单（nofx: cancelAllGridOrders，下轮按新方向重新挂）
+      try {
+        await adapter.cancelAllOrders(state.symbol);
+        this.logger.warn(`[网格] 方向调整: 已取消所有挂单，下轮按 ${newDirection} 方向重建`);
+      } catch (e: any) {
+        this.logger.warn(`[网格] 方向调整取消挂单失败: ${e.message}`);
+      }
+
+      // Step 2: 平掉与新方向相反的持仓
+      // long/long_bias → 平空；short/short_bias → 平多
+      const sideToClose =
+        newDirection === 'long' || newDirection === 'long_bias' ? 'short' :
+        newDirection === 'short' || newDirection === 'short_bias' ? 'long' : null;
+
+      if (sideToClose) {
+        const positions = await adapter.getPositions();
+        for (const pos of positions) {
+          if (!pos.symbol.includes(state.symbol.split('/')[0])) continue;
+          if (pos.side !== sideToClose) continue;
+          try {
+            sideToClose === 'long'
+              ? await adapter.closeLong(pos.symbol, pos.quantity)
+              : await adapter.closeShort(pos.symbol, pos.quantity);
+            this.logger.warn(
+              `[网格] 方向调整: 平掉反向${sideToClose}仓 ${pos.symbol} qty=${pos.quantity}`,
+            );
+          } catch (e: any) {
+            this.logger.warn(`[网格] 方向调整平仓失败: ${e.message}`);
+          }
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[网格] 方向调整执行失败: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+    }
+  }
+
   // ========================= 紧急退出 =========================
 
   /** 紧急平仓 */
@@ -2376,7 +2492,17 @@ export class GridTradingService {
         }
       }
 
-      // 平仓完成后结算燃油费（基于已实现网格利润，失败不阻塞后续状态更新）
+      // 平仓完成后获取真实权益（用于燃油费按实际盈亏计算）
+      try {
+        const freshBalance = await adapter.getBalance();
+        if (freshBalance.totalEquity > 0) {
+          state.lastEquity = freshBalance.totalEquity;
+        }
+      } catch (e: any) {
+        this.logger.warn(`[网格] 平仓后获取权益失败，燃油费将按旧权益计算: ${e.message}`);
+      }
+
+      // 结算燃油费（基于实际权益盈亏，失败不阻塞后续状态更新）
       await this.settleGridFee(state, userId);
     } catch (e: any) {
       this.logger.error(`[网格] 紧急退出执行失败: ${e.message}`);
@@ -2407,12 +2533,13 @@ export class GridTradingService {
     userId: string,
     apiKeyId: string,
     reason: string,
+    pauseSource: GridState['pauseSource'] = 'risk_control',
   ): Promise<void> {
     this.logger.warn(`[网格] 软暂停（取消挂单/保留持仓）: ${reason}`);
 
     if (!this.adapterFactory) {
       state.isPaused = true;
-      state.pauseSource = 'risk_control';
+      state.pauseSource = pauseSource;
       state.pauseReason = reason;
       return;
     }
@@ -2437,7 +2564,7 @@ export class GridTradingService {
     state.orderBook = {};
 
     state.isPaused = true;
-    state.pauseSource = 'risk_control';
+    state.pauseSource = pauseSource;
     state.pauseReason = reason;
   }
 
@@ -2450,11 +2577,15 @@ export class GridTradingService {
    */
   private async settleGridFee(state: GridState, userId: string): Promise<void> {
     if (!this.feeService) return;
-    const pendingProfit = state.totalProfit - (state.chargedProfit ?? 0);
-    if (pendingProfit <= 0) return;
+    // 使用实际权益涨幅作为费用基数（平仓后账户权益 - 本轮起始权益）
+    // 避免用 totalProfit（累加每笔卖单）导致与用户看到的实际盈亏不一致
+    const actualPnl = state.startEquity > 0
+      ? state.lastEquity - state.startEquity
+      : 0;
+    if (actualPnl <= 0) return;
 
     try {
-      const feeCalc = await this.feeService.calculateFee(userId, pendingProfit.toFixed(8));
+      const feeCalc = await this.feeService.calculateFee(userId, actualPnl.toFixed(8));
       if (parseFloat(feeCalc.feeAmount) > 0) {
         const uniqueOrderId = this.feeService.generateUniqueOrderId(
           'GRID_FEE',
@@ -2469,9 +2600,9 @@ export class GridTradingService {
           feeAmount: feeCalc.feeAmount,
           uniqueOrderId,
         });
-        state.chargedProfit = state.totalProfit; // 更新高水位，防止重复扣费
+        state.chargedProfit = state.totalProfit; // 高水位标记（防止重启后重复扣费）
         this.logger.log(
-          `[网格] 燃油费结算: 利润=${pendingProfit.toFixed(2)} USDT, ` +
+          `[网格] 燃油费结算: 实际盈亏=${actualPnl.toFixed(2)} USDT, ` +
           `扣费=${feeCalc.feeAmount} 点, 费率=${(parseFloat(feeCalc.finalFeeRate) * 100).toFixed(1)}%`,
         );
         if (result.balanceDepleted) {
