@@ -686,20 +686,20 @@ export function GRID_SYSTEM_PROMPT(
 | 倾斜等级 | 判断条件 | AI 动作 |
 |---------|---------|---------|
 | 无倾斜 | 两侧均衡 | 正常操作 |
-| 轻度（light） | 重侧 ≥ 2× 轻侧 | reasoning 提示，可考虑 adjust_grid 居中 |
-| 严重（severe） | 重侧 ≥ 5× 轻侧，或轻侧为0且重侧≥3 | 系统已自动注入 adjust_grid，AI 不要重复输出 |
+| 轻度（light） | 重侧 ≥ 2× 轻侧 | reasoning 提示，考虑在缺失侧补挂单或 adjust_grid 居中 |
+| 严重（severe） | 重侧 ≥ 5× 轻侧，或轻侧为0且重侧≥3 | **AI 必须主动处理**：在缺失侧空格线补挂订单（不需要取消现有订单），或执行 adjust_grid 居中重置 |
 
-## ⚠️ 三条铁律（违反即错误决策）
+**严重倾斜处理示例**（buy=0，sell=6）：
+- 优先在下方空格线补挂买单：[place_buy_limit x3, place_buy_limit x2, ...]
+- 若价格偏移严重（距下界 < 5%），执行 adjust_grid 居中后重新铺单
+
+## ⚠️ 两条铁律（违反即错误决策）
 
 1. **cancel 后必须 place**：每取消 1 个订单，必须在同一响应中为该层放置 1 个替代订单。
    - 错误示例：[cancel_order x5, adjust_grid]（取消后没放新单）
    - 正确示例：[cancel_order x3, place_sell_limit x3] 或 [adjust_grid+新范围, place_sell_limit x5]
 
-2. **hold 优先**：如果所有卖单距当前价 < 15%，必须选 hold，不得取消这些订单。
-   - 例：当前价 0.0956，卖单在 0.097（差 1.5%）→ hold，不 cancel
-   - 例：当前价 0.0956，卖单在 0.12（差 25%）→ 可以 cancel+replace
-
-3. **adjust_grid 触发条件**（满足以下任一即可调整边界）：
+2. **adjust_grid 触发条件**（满足以下任一即可调整边界）：
    a. 价格已接近网格边界（距上界或下界 < 10% 的网格范围），且该侧层级大部分已成交
       → 重新居中：lowerPrice = currentPrice - rangeWidth/2，upperPrice = currentPrice + rangeWidth/2
    b. 范围过宽：rangeWidth > ATR(14)[1h] × 16，大量层级无法触及，资金利用率低
