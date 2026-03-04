@@ -94,6 +94,7 @@ export interface GridState {
 
   // 绩效追踪
   totalProfit: number;
+  dailyTotalProfit: number;  // 当日已实现利润（网格挂单成交累计，UTC每日重置）
   totalTrades: number;
   winningTrades: number;
   maxDrawdown: number;
@@ -609,6 +610,7 @@ export class GridTradingService {
       lastPrice: currentPrice,
 
       totalProfit: 0,
+      dailyTotalProfit: 0,
       totalTrades: 0,
       winningTrades: 0,
       maxDrawdown: 0,
@@ -874,6 +876,7 @@ export class GridTradingService {
       if (state.dailyPnlResetDate !== todayStr) {
         state.dailyPnlResetDate = todayStr;
         state.dailyPnl = 0;
+        state.dailyTotalProfit = 0;
         state.dailyStartEquity = currentEquity;
       } else if (!state.dailyStartEquity) {
         state.dailyStartEquity = currentEquity;
@@ -2042,11 +2045,16 @@ export class GridTradingService {
       }
 
       case 'pause_grid':
-        await adapter.cancelAllOrders(state.symbol);
-        state.isPaused = true;
-        state.pauseSource = 'ai';
-        state.pauseReason = decision.reasoning || 'AI 决策暂停';
-        break;
+        // LLM 的 pause_grid 已被禁用：网格暂停只由规则层触发（maxDrawdown/stopLoss/breakout）
+        // AI 可以"建议"暂停，但不会真正撤单。转换为 hold（不下新单）即可。
+        // 原因：LLM 每 3 分钟就以"保证金过高/volatile"为由暂停，
+        // 导致挂单时间极短，成交率大幅下降（核心问题）。
+        this.logger.warn(
+          `[网格] AI 建议暂停（已忽略）: ${decision.reasoning?.slice(0, 80) ?? 'pause_grid'}` +
+          ` — 暂停权限由规则层持有`,
+        );
+        return { executed: false, skipReason: 'pause_grid_disabled' };
+
 
       case 'resume_grid':
         if (state.pauseSource === 'risk_control') {
@@ -2132,6 +2140,7 @@ export class GridTradingService {
       state.startEquity = state.lastEquity;
     }
     state.totalProfit = 0;      // 已实现利润归零（新轮次重新计算）
+    state.dailyTotalProfit = 0; // 日内已实现利润归零
     state.chargedProfit = 0;    // 已结算金额也归零（上一轮已在 emergencyExit 里结算完毕）
 
     state.peakEquity = state.startEquity;   // 回撤检测从新基准重新开始
@@ -2740,6 +2749,7 @@ export class GridTradingService {
           const netProfit = grossProfit - sellFee - buyFee;
           line.unrealizedPnl = netProfit;     // 字段名遗留，实为该格完成盈亏
           state.totalProfit += netProfit;
+          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
           if (netProfit > 0) state.winningTrades++;
         } else {
           line.unrealizedPnl = 0;            // 买入成交，盈亏待卖出确认
