@@ -2078,10 +2078,12 @@ export class GridTradingService {
 
       case 'adjust_grid': {
         await adapter.cancelAllOrders(state.symbol);
-        // 优先使用 AI 返回的 upperPrice/lowerPrice，否则 fallback 到中心价格重算
-        if (decision.upperPrice && decision.lowerPrice && decision.upperPrice > decision.lowerPrice) {
-          state.upperPrice = decision.upperPrice;
-          state.lowerPrice = decision.lowerPrice;
+        // 优先使用 AI 返回的边界（camelCase 和 snake_case 均兼容，对齐 nofx upper_price/lower_price）
+        const adjUpper = decision.upperPrice ?? (decision as any).upper_price;
+        const adjLower = decision.lowerPrice ?? (decision as any).lower_price;
+        if (adjUpper && adjLower && adjUpper > adjLower) {
+          state.upperPrice = adjUpper;
+          state.lowerPrice = adjLower;
           state.gridSpacing = (state.upperPrice - state.lowerPrice) / Math.max(state.gridLines.length - 1, 1);
           // 重算各格线价格并重置状态（订单已取消，state 须与边界保持一致）
           const weights = this.calculateWeights(state.gridLines.length, state.distribution);
