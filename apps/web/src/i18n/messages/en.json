@@ -2115,7 +2115,17 @@
       "blockedByHasPosition": "Position Exists",
       "gridIdle": "Idle",
       "marginInsufficient": "Margin Insufficient",
-      "pendingOrdersHint": "active orders are occupying margin, will re-place after fills"
+      "pendingOrdersHint": "active orders are occupying margin, will re-place after fills",
+      "sysDirectionChange": "Direction adjusted: {from} → {to}",
+      "sysDailyLossPause": "Daily loss limit: -{actualPct}% (limit {limitPct}%)",
+      "sysApiKeyInvalid": "API key invalid or deleted",
+      "sysCircuitBreaker": "Circuit breaker: -${pnl} exceeded ${limit} limit",
+      "sysGridIdle": "Grid idle · {reasons}",
+      "sysGridExecFailed": "{count} orders rejected · {categories}",
+      "sysGridInitialized": "Grid init: {gridCount} levels [{lower}–{upper}]",
+      "sysMinConfFiltered": "Confidence {actual}% < min {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -2130,7 +2130,17 @@
       "blockedByHasPosition": "Позиция существует",
       "gridIdle": "Простой",
       "marginInsufficient": "Недостаточно маржи",
-      "pendingOrdersHint": "активных ордеров занимают маржу, будут перевыставлены после исполнения"
+      "pendingOrdersHint": "активных ордеров занимают маржу, будут перевыставлены после исполнения",
+      "sysDirectionChange": "Направление: {from} → {to}",
+      "sysDailyLossPause": "Дневной лимит убытков: -{actualPct}% (лимит {limitPct}%)",
+      "sysApiKeyInvalid": "API ключ недействителен или удалён",
+      "sysCircuitBreaker": "Автоостановка: -${pnl} превысил лимит ${limit}",
+      "sysGridIdle": "Сетка бездействует · {reasons}",
+      "sysGridExecFailed": "{count} ордеров отклонено · {categories}",
+      "sysGridInitialized": "Сетка инициализирована: {gridCount} уровней [{lower}–{upper}]",
+      "sysMinConfFiltered": "Уверенность {actual}% < мин. {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -10,6 +10,80 @@ import { useTranslations } from '@/i18n/provider';
 
 type TFunc = (key: string, params?: Record<string, string | number>) => string;
 
+/** 系统日志 action 类型（非 AI 生成，需 i18n 渲染） */
+const SYSTEM_ACTIONS = new Set([
+  'direction_change', 'daily_loss_pause', 'auto_disabled_failure',
+  'circuit_breaker', 'grid_idle', 'grid_exec_failed', 'grid_initialized',
+]);
+
+const DIR_KEY: Record<string, string> = {
+  neutral: 'dirNeutral', long: 'dirLong', short: 'dirShort',
+  long_bias: 'dirLongBias', short_bias: 'dirShortBias',
+};
+const BREAKOUT_KEY: Record<string, string> = {
+  none: 'breakoutNone', short: 'breakoutShort', mid: 'breakoutMid', long: 'breakoutLong',
+};
+
+/**
+ * 将系统日志 decision 字段转换为 i18n 文本，返回 null 则降级显示 reasoning 原文
+ */
+function getSystemLogText(d: any, t: TFunc): string | null {
+  switch (d.action) {
+    case 'direction_change':
+      if (d.from != null && d.to != null) {
+        const from = t(`timeline.${DIR_KEY[d.from] ?? 'dirNeutral'}`);
+        const to   = t(`timeline.${DIR_KEY[d.to]   ?? 'dirNeutral'}`);
+        return t('timeline.sysDirectionChange', { from, to });
+      }
+      return null;
+    case 'daily_loss_pause':
+      if (d.limitPct != null)
+        return t('timeline.sysDailyLossPause', {
+          actualPct: Number(d.actualPct).toFixed(1),
+          limitPct: d.limitPct,
+        });
+      return null;
+    case 'auto_disabled_failure':
+      return t('timeline.sysApiKeyInvalid');
+    case 'circuit_breaker':
+      if (d.totalDailyPnl != null)
+        return t('timeline.sysCircuitBreaker', {
+          pnl: Math.abs(Number(d.totalDailyPnl)).toFixed(2),
+          limit: d.maxDailyDrawdown ?? '?',
+        });
+      return null;
+    case 'grid_idle': {
+      const reasons = [...(d.skipReasons ?? []), ...(d.categories ?? [])].join(', ');
+      if (reasons)
+        return t('timeline.sysGridIdle', { reasons });
+      return null;
+    }
+    case 'grid_exec_failed': {
+      const cats = (d.categories ?? []).join(', ');
+      return t('timeline.sysGridExecFailed', {
+        count: d.attempted ?? 0,
+        categories: cats || '—',
+      });
+    }
+    case 'grid_initialized':
+      if (d.gridCount != null)
+        return t('timeline.sysGridInitialized', {
+          gridCount: d.gridCount,
+          lower: Number(d.lower).toFixed(2),
+          upper: Number(d.upper).toFixed(2),
+        });
+      return null;
+    default:
+      // minConfidence 过滤（action=wait + minConfFilter=true）
+      if (d.action === 'wait' && d.minConfFilter)
+        return t('timeline.sysMinConfFiltered', {
+          actual: d.actual ?? d.confidence ?? 0,
+          required: d.required ?? 0,
+        });
+      return null;
+  }
+}
+
 /** 清理旧版英文回退前缀，提取 <reasoning> 标签中的实际内容 */
 function cleanReasoning(raw: string | undefined): string {
   if (!raw) return '';
@@ -444,9 +518,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         return '';
       })()
     : '';
-  const reasoning = isGridLog
+  // 系统日志优先用 i18n 渲染；AI 生成的 reasoning 保留原文
+  const systemText = SYSTEM_ACTIONS.has(d.action ?? '') ? getSystemLogText(d, t as TFunc) : null;
+  const reasoning = systemText ?? (isGridLog
     ? gridAnalysisText
-    : (d.reasoning || d.reason || '');
+    : (d.reasoning || d.reason || ''));
 
   const action = isAutoDisabled ? 'hold' : (d.action || (isGridLog ? gridDecisions[0]?.action : 'hold') || 'hold');
   const actionCfg = ACTION_CONFIG[action] || ACTION_CONFIG['wait'];
@@ -504,7 +580,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* === 自动禁用 — 错误信息 === */}
       {isAutoDisabled && (
         <div className="text-xs text-[#F59E0B]">
-          {d.reason || t('timeline.autoPaused')}
+          {t('timeline.sysApiKeyInvalid') || d.reason || t('timeline.autoPaused')}
           {d.lastError && (
             <div className="mt-1">
               <TruncatedText text={d.lastError} maxLines={2} />
@@ -515,10 +591,16 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
       {/* === 网格执行失败 / 空转 — 专属展示（不走 AI 对话框路径） === */}
       {isGridEntry && !isGridLog && !isAutoDisabled && (() => {
-        // 从 reasoning 提取失败原因标签（格式："... | 失败原因: X"）
+        // 优先使用结构化参数；旧日志降级到解析 reasoning 字符串
         const raw = d.reasoning || d.reason || '';
-        const categoryMatch = raw.match(/失败原因[:：]\s*(.+?)(\s*$|,|，)/);
-        const category = categoryMatch?.[1]?.trim() || '';
+        const categoryFromStruct = d.isExecFailed
+          ? (d.categories ?? []).join('、')
+          : (d.skipReasons ?? []).join('、');
+        const categoryFromRaw = (() => {
+          const m = raw.match(/失败原因[:：]\s*(.+?)(\s*$|,|，)/);
+          return m?.[1]?.trim() || '';
+        })();
+        const category = categoryFromStruct || categoryFromRaw;
         const isMarginInsufficient = category.includes('保证金不足') || raw.includes('保证金不足') || raw.includes('insufficient');
         const pendingCount = d.gridSnapshot?.pendingLevels ?? 0;
         const isIdle = d.action === 'grid_idle';
@@ -541,10 +623,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 </span>
               ) : null}
             </div>
-            {/* 简短说明（非 AI 对话框格式） */}
-            {raw && (
+            {/* 简短说明：优先 i18n 渲染，降级显示 raw */}
+            {(systemText || raw) && (
               <p className="text-xs text-[#606070] leading-relaxed">
-                {raw.split('|')[0].trim()}
+                {systemText || raw.split('|')[0].trim()}
               </p>
             )}
             {/* 保证金不足时：补充提示 */}

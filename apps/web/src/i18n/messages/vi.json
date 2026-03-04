@@ -2131,7 +2131,17 @@
       "blockedByHasPosition": "Đã có vị thế",
       "gridIdle": "Không hoạt động",
       "marginInsufficient": "Không đủ ký quỹ",
-      "pendingOrdersHint": "lệnh đang chiếm dụng ký quỹ, sẽ tự đặt lại sau khi khớp"
+      "pendingOrdersHint": "lệnh đang chiếm dụng ký quỹ, sẽ tự đặt lại sau khi khớp",
+      "sysDirectionChange": "Điều chỉnh hướng: {from} → {to}",
+      "sysDailyLossPause": "Giới hạn thua lỗ ngày: -{actualPct}% (giới hạn {limitPct}%)",
+      "sysApiKeyInvalid": "API key không hợp lệ hoặc đã bị xóa",
+      "sysCircuitBreaker": "Ngắt mạch: -${pnl} vượt giới hạn ${limit}",
+      "sysGridIdle": "Grid rảnh · {reasons}",
+      "sysGridExecFailed": "{count} lệnh bị từ chối · {categories}",
+      "sysGridInitialized": "Khởi tạo grid: {gridCount} mức [{lower}–{upper}]",
+      "sysMinConfFiltered": "Độ tin cậy {actual}% < tối thiểu {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

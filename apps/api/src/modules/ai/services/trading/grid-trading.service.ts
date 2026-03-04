@@ -670,6 +670,13 @@ export class GridTradingService {
         decision: {
           action: 'grid_initialized',
           gridSummary: `初始化/${gridCount}格`,
+          gridCount,
+          lower: lowerPrice,
+          upper: upperPrice,
+          spacing: gridSpacing,
+          currentPrice,
+          rangeSource,
+          direction,
           reasoning: `网格初始化完成 [${rangeSource}]` +
             `\n范围: $${lowerPrice.toFixed(2)} ~ $${upperPrice.toFixed(2)} (${rangePctTotal}%)` +
             `\n间距: $${gridSpacing.toFixed(4)}, 每格 $${(totalInvestment / gridCount).toFixed(2)}` +
@@ -932,7 +939,14 @@ export class GridTradingService {
           data: {
             strategyId,
             symbol: state.symbol,
-            decision: { action: 'daily_loss_pause', gridSummary: 'daily_loss_pause×1', reasoning: dailyReason } as any,
+            decision: {
+            action: 'daily_loss_pause',
+            gridSummary: 'daily_loss_pause×1',
+            limitPct: dailyLossLimitPct,
+            actualPct: dailyLossPct,
+            pnlAmount: Math.abs(state.dailyPnl),
+            reasoning: dailyReason,
+          } as any,
             executed: true,
           },
         });
@@ -1037,7 +1051,7 @@ export class GridTradingService {
         state.currentDirection = newDirection;
         await this.persistGridState(strategyId, state);
 
-        // UI 日志：方向调整是策略关键节点，用户需要看到
+        // UI 日志：方向调整是策略关键节点，用户需要看到（存结构化参数供前端 i18n 渲染）
         await this.prisma.aiStrategyLog.create({
           data: {
             strategyId,
@@ -1045,6 +1059,11 @@ export class GridTradingService {
             decision: {
               action: 'direction_change',
               gridSummary: `direction_change×1`,
+              from: state.currentDirection,
+              to: newDirection,
+              breakoutLevel: state.breakoutLevel,
+              breakoutDirection: state.breakoutDirection || 'none',
+              regime: state.currentRegime,
               reasoning: dirReason,
             } as any,
             executed: true,
@@ -1348,6 +1367,10 @@ export class GridTradingService {
               symbol: state.symbol,
               decision: {
                 action: logAction,
+                attempted: placeActions.length,
+                categories: hasExchangeErrors ? uniqueCategories : [],
+                skipReasons: allSkipped ? uniqueSkipKeywords : [],
+                isExecFailed: hasExchangeErrors,
                 reasoning: logTitle +
                   (allSkipped ? '' : ` (市场=${state.currentRegime}, 杠杆=${state.effectiveLeverage}x)`) +
                   fullReasonSuffix,

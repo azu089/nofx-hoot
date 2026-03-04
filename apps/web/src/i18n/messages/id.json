@@ -2130,7 +2130,17 @@
       "blockedByHasPosition": "Ada Posisi",
       "gridIdle": "Tidak aktif",
       "marginInsufficient": "Margin Tidak Cukup",
-      "pendingOrdersHint": "pesanan aktif sedang menggunakan margin, akan ditempatkan ulang setelah terisi"
+      "pendingOrdersHint": "pesanan aktif sedang menggunakan margin, akan ditempatkan ulang setelah terisi",
+      "sysDirectionChange": "Arah disesuaikan: {from} → {to}",
+      "sysDailyLossPause": "Batas rugi harian: -{actualPct}% (batas {limitPct}%)",
+      "sysApiKeyInvalid": "API key tidak valid atau telah dihapus",
+      "sysCircuitBreaker": "Circuit breaker: -${pnl} melebihi batas ${limit}",
+      "sysGridIdle": "Grid tidak aktif · {reasons}",
+      "sysGridExecFailed": "{count} order ditolak · {categories}",
+      "sysGridInitialized": "Grid diinisialisasi: {gridCount} level [{lower}–{upper}]",
+      "sysMinConfFiltered": "Kepercayaan {actual}% < min {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

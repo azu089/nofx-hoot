@@ -2129,7 +2129,17 @@
       "blockedByHasPosition": "已有持仓",
       "gridIdle": "空转",
       "marginInsufficient": "保证金不足",
-      "pendingOrdersHint": "个活跃挂单正在占用保证金，等待成交后自动补挂"
+      "pendingOrdersHint": "个活跃挂单正在占用保证金，等待成交后自动补挂",
+      "sysDirectionChange": "方向调整: {from} → {to}",
+      "sysDailyLossPause": "日内亏损保护: -{actualPct}% (限制 {limitPct}%)",
+      "sysApiKeyInvalid": "API Key 失效或已删除",
+      "sysCircuitBreaker": "日回撤熔断: -${pnl} 超过限制 ${limit}",
+      "sysGridIdle": "网格空转 · {reasons}",
+      "sysGridExecFailed": "{count} 笔下单被拒 · {categories}",
+      "sysGridInitialized": "网格初始化: {gridCount} 格 [{lower}–{upper}]",
+      "sysMinConfFiltered": "信心度 {actual}% < 最低 {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "极速模式",

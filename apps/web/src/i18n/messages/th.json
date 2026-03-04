@@ -2130,7 +2130,17 @@
       "blockedByHasPosition": "มีตำแหน่งอยู่แล้ว",
       "gridIdle": "ว่าง",
       "marginInsufficient": "มาร์จิ้นไม่เพียงพอ",
-      "pendingOrdersHint": "คำสั่งซื้อขายกำลังใช้มาร์จิ้น จะวางใหม่อัตโนมัติหลังจากจับคู่"
+      "pendingOrdersHint": "คำสั่งซื้อขายกำลังใช้มาร์จิ้น จะวางใหม่อัตโนมัติหลังจากจับคู่",
+      "sysDirectionChange": "ปรับทิศทาง: {from} → {to}",
+      "sysDailyLossPause": "จำกัดขาดทุนรายวัน: -{actualPct}% (จำกัด {limitPct}%)",
+      "sysApiKeyInvalid": "API key ไม่ถูกต้องหรือถูกลบแล้ว",
+      "sysCircuitBreaker": "เซอร์กิตเบรกเกอร์: -${pnl} เกินขีดจำกัด ${limit}",
+      "sysGridIdle": "กริดไม่มีการซื้อขาย · {reasons}",
+      "sysGridExecFailed": "{count} คำสั่งถูกปฏิเสธ · {categories}",
+      "sysGridInitialized": "เริ่มต้นกริด: {gridCount} ระดับ [{lower}–{upper}]",
+      "sysMinConfFiltered": "ความมั่นใจ {actual}% < ขั้นต่ำ {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

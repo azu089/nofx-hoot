@@ -2111,7 +2111,17 @@
       "blockedByHasPosition": "يوجد مركز",
       "gridIdle": "خامل",
       "marginInsufficient": "هامش غير كافٍ",
-      "pendingOrdersHint": "أوامر نشطة تشغل الهامش، سيتم إعادة الطلب تلقائياً بعد التنفيذ"
+      "pendingOrdersHint": "أوامر نشطة تشغل الهامش، سيتم إعادة الطلب تلقائياً بعد التنفيذ",
+      "sysDirectionChange": "تعديل الاتجاه: {from} → {to}",
+      "sysDailyLossPause": "حد الخسارة اليومية: -{actualPct}% (الحد {limitPct}%)",
+      "sysApiKeyInvalid": "مفتاح API غير صالح أو محذوف",
+      "sysCircuitBreaker": "قاطع الدائرة: -${pnl} تجاوز الحد ${limit}",
+      "sysGridIdle": "الشبكة خاملة · {reasons}",
+      "sysGridExecFailed": "{count} أوامر مرفوضة · {categories}",
+      "sysGridInitialized": "تهيئة الشبكة: {gridCount} مستوى [{lower}–{upper}]",
+      "sysMinConfFiltered": "الثقة {actual}% < الحد الأدنى {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "الوضع الفردي",

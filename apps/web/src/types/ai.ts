@@ -619,6 +619,24 @@ export interface StrategyLog {
     // auto_disabled_failure 格式
     reason?: string;
     lastError?: string;
+    // 系统日志结构化参数（i18n 渲染用）
+    from?: string;          // direction_change: 旧方向
+    to?: string;            // direction_change: 新方向
+    limitPct?: number;      // daily_loss_pause: 日亏损限制
+    actualPct?: number;     // daily_loss_pause: 实际亏损
+    pnlAmount?: number;     // daily_loss_pause: PnL 金额
+    totalDailyPnl?: number; // circuit_breaker: 当日总 PnL
+    maxDailyDrawdown?: number; // circuit_breaker: 最大回撤限制
+    attempted?: number;     // grid_exec_failed: 尝试下单数
+    categories?: string[];  // grid_exec_failed / grid_idle: 错误分类
+    skipReasons?: string[]; // grid_idle: 空转原因
+    isExecFailed?: boolean; // grid_idle vs grid_exec_failed 区分
+    gridCount?: number;     // grid_initialized: 网格数量
+    lower?: number;         // grid_initialized: 下边界
+    upper?: number;         // grid_initialized: 上边界
+    minConfFilter?: boolean; // wait: minConfidence 过滤
+    actual?: number;        // wait: 实际置信度
+    required?: number;      // wait: 要求置信度
   };
   executed: boolean;
   executionResult: {

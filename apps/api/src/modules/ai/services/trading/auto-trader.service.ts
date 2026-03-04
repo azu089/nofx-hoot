@@ -374,6 +374,7 @@ export class AutoTraderService {
               closedPnl,
               unrealizedPnl,
               totalDailyPnl,
+              maxDailyDrawdown,
             },
             executed: false,
           },
@@ -1242,6 +1243,9 @@ export class AutoTraderService {
                   decision: {
                     action: 'wait',
                     confidence: decision.confidence,
+                    minConfFilter: true,
+                    actual: decision.confidence,
+                    required: minConf,
                     reasoning: `minConfidence 过滤: ${decision.confidence}% < ${minConf}%`,
                   } as unknown as Prisma.InputJsonValue,
                   executed: false,

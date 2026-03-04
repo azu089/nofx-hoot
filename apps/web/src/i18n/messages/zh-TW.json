@@ -2132,7 +2132,17 @@
       "blockedByHasPosition": "已有倉位",
       "gridIdle": "空轉",
       "marginInsufficient": "保證金不足",
-      "pendingOrdersHint": "個活躍掛單正在佔用保證金，等待成交後自動補掛"
+      "pendingOrdersHint": "個活躍掛單正在佔用保證金，等待成交後自動補掛",
+      "sysDirectionChange": "方向調整: {from} → {to}",
+      "sysDailyLossPause": "日內虧損保護: -{actualPct}% (限制 {limitPct}%)",
+      "sysApiKeyInvalid": "API Key 失效或已刪除",
+      "sysCircuitBreaker": "日回撤熔斷: -${pnl} 超過限制 ${limit}",
+      "sysGridIdle": "網格空轉 · {reasons}",
+      "sysGridExecFailed": "{count} 筆下單被拒 · {categories}",
+      "sysGridInitialized": "網格初始化: {gridCount} 格 [{lower}–{upper}]",
+      "sysMinConfFiltered": "信心度 {actual}% < 最低 {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

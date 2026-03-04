@@ -2130,7 +2130,17 @@
       "blockedByHasPosition": "Pozisyon Var",
       "gridIdle": "Boşta",
       "marginInsufficient": "Yetersiz Marj",
-      "pendingOrdersHint": "aktif emir marjı kullanıyor, dolum sonrası otomatik yeniden yerleştirilecek"
+      "pendingOrdersHint": "aktif emir marjı kullanıyor, dolum sonrası otomatik yeniden yerleştirilecek",
+      "sysDirectionChange": "Yön ayarlandı: {from} → {to}",
+      "sysDailyLossPause": "Günlük kayıp limiti: -{actualPct}% (limit {limitPct}%)",
+      "sysApiKeyInvalid": "API anahtarı geçersiz veya silindi",
+      "sysCircuitBreaker": "Devre kesici: -${pnl} ${limit} limitini aştı",
+      "sysGridIdle": "Grid boşta · {reasons}",
+      "sysGridExecFailed": "{count} emir reddedildi · {categories}",
+      "sysGridInitialized": "Grid başlatıldı: {gridCount} seviye [{lower}–{upper}]",
+      "sysMinConfFiltered": "Güven {actual}% < min {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

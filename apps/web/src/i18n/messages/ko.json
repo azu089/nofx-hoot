@@ -2130,7 +2130,17 @@
       "blockedByHasPosition": "포지션 있음",
       "gridIdle": "대기",
       "marginInsufficient": "증거금 부족",
-      "pendingOrdersHint": "개의 활성 주문이 증거금을 점유 중, 체결 후 자동 재주문"
+      "pendingOrdersHint": "개의 활성 주문이 증거금을 점유 중, 체결 후 자동 재주문",
+      "sysDirectionChange": "방향 조정: {from} → {to}",
+      "sysDailyLossPause": "일일 손실 한도: -{actualPct}% (한도 {limitPct}%)",
+      "sysApiKeyInvalid": "API 키가 유효하지 않거나 삭제됨",
+      "sysCircuitBreaker": "서킷브레이커: -${pnl} 한도 ${limit} 초과",
+      "sysGridIdle": "그리드 유휴 · {reasons}",
+      "sysGridExecFailed": "{count}건 주문 거부 · {categories}",
+      "sysGridInitialized": "그리드 초기화: {gridCount}단 [{lower}–{upper}]",
+      "sysMinConfFiltered": "신뢰도 {actual}% < 최소 {required}%",
+      "breakoutDirUp": "↑",
+      "breakoutDirDown": "↓"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",
