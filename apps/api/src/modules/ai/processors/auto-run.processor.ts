@@ -15,8 +15,8 @@ import { ResearchCycleService } from '../services/research/research-cycle.servic
  * 2. 'research-cycle' — 产品 A 研究自动循环（由 ResearchCycleService 注册）
  * 3. 'auto-run' — 全局自动运行（AiConfig 级别，遍历所有交易对）
  */
-// concurrency: 3 — 允许同时处理 3 个策略周期，避免多策略串行等待（默认为 1 会导致 ~60s 延迟）
-@Processor('ai-auto', { concurrency: 3 })
+// concurrency: 2 — 同时处理 2 个策略周期（原3→降2，减少 Prisma 并发连接压力，避免 API 响应尖峰延迟）
+@Processor('ai-auto', { concurrency: 2 })
 export class AutoRunProcessor extends WorkerHost {
   private readonly logger = new Logger(AutoRunProcessor.name);
   private consecutiveFailures = new Map<string, number>();
