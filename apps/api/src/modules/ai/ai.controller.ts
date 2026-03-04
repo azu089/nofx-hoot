@@ -1653,6 +1653,8 @@ export class AiController {
       await this.strategyEngine.startStrategy(id, userId);
     } catch {
       // startStrategy 可能因"策略已在运行"而抛错，忽略
+      // 仍需立即触发一次执行（不等待下一个周期）
+      await this.strategyEngine.triggerImmediateRun(id, userId);
     }
 
     return result;

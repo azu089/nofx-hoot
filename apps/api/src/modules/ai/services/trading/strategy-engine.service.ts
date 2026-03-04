@@ -282,6 +282,18 @@ export class StrategyEngineService implements OnModuleInit {
     return updated;
   }
 
+  /**
+   * 立即触发一次策略执行（用于恢复后立即运行，无需等待下一个周期）
+   */
+  async triggerImmediateRun(strategyId: string, userId: string): Promise<void> {
+    await this.autoQueue.add(
+      'strategy-cycle',
+      { strategyId, userId },
+      { removeOnComplete: 1, removeOnFail: 1 },
+    );
+    this.logger.log(`[策略] 立即触发执行: ${strategyId}`);
+  }
+
   async stopStrategy(strategyId: string, userId: string): Promise<any> {
     const db = this.prisma;
 
@@ -746,10 +758,21 @@ export class StrategyEngineService implements OnModuleInit {
     strategyId: string,
     userId: string,
     intervalMs: number,
+    runImmediately = true,
   ): Promise<void> {
     // 先清理旧任务
     await this.removeStrategyJob(strategyId);
 
+    // 立即触发一次（不重复）：让策略启动/恢复后无需等待第一个周期
+    if (runImmediately) {
+      await this.autoQueue.add(
+        'strategy-cycle',
+        { strategyId, userId },
+        { removeOnComplete: 1, removeOnFail: 1 },
+      );
+    }
+
+    // 周期性重复任务
     await this.autoQueue.add(
       'strategy-cycle',
       { strategyId, userId },
