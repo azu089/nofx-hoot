@@ -2000,11 +2000,20 @@ export class GridTradingService {
       throw new BadRequestException('策略未处于风控暂停状态');
     }
 
-    // 重置峰值到基准线（防止立即重新触发最大回撤保护）
+    // 重置基准线为当前权益（防止止盈/止损/回撤立即重新触发）
     state.isPaused = false;
     state.pauseSource = undefined;
     state.pauseReason = undefined;
-    state.peakEquity = state.startEquity;   // 回撤检测从基准重新开始
+
+    // startEquity 重置为上次记录的权益，作为新一轮的起点
+    // 这样止盈目标 4% = 从现在开始再赚 4%，而不是从历史起点累计
+    if (state.lastEquity && state.lastEquity > 0) {
+      state.startEquity = state.lastEquity;
+    }
+    state.totalProfit = 0;      // 已实现利润归零（新轮次重新计算）
+    state.chargedProfit = 0;    // 已结算金额也归零（上一轮已在 emergencyExit 里结算完毕）
+
+    state.peakEquity = state.startEquity;   // 回撤检测从新基准重新开始
     state.maxDrawdown = 0;                  // 历史最大回撤归零
     state.dailyPnl = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
