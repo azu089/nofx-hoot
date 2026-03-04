@@ -107,7 +107,7 @@ export function Page({ embedded }: PageProps = {}) {
             <div className="text-[#06B6D4] text-lg font-semibold font-mono">{strategies.length}</div>
           </div>
           <div className="p-3 text-center">
-            <div className="text-[#606070] text-[10px] mb-1">{t('list.totalPnl')}</div>
+            <div className="text-[#606070] text-[10px] mb-1">{t('list.totalPnlSummary')}</div>
             <div className={`text-lg font-semibold font-mono ${totalPnl >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
               {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)}
             </div>
@@ -230,8 +230,8 @@ export function Page({ embedded }: PageProps = {}) {
                         <div className="text-[#F8F8FC] font-medium text-xs font-mono">{winRate.toFixed(1)}%</div>
                       </div>
                       <div>
-                        <div className="text-[#606070] text-[10px] mb-0.5">{t('list.sharpe')}</div>
-                        <div className="text-[#F8F8FC] font-medium text-xs font-mono">{sharpe.toFixed(2)}</div>
+                        <div className="text-[#606070] text-[10px] mb-0.5">{t('detail.trades')}</div>
+                        <div className="text-[#F8F8FC] font-medium text-xs font-mono">{Number(s.totalTrades ?? 0)}</div>
                       </div>
                     </div>
 

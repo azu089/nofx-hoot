@@ -1187,25 +1187,33 @@ export class AiController {
 
     const result = await this.strategyEngine.listStrategies(userId, pageNum, pageSize);
 
-    // 附加每个策略的 todayPnl
+    // 附加每个策略的 todayPnl / totalPnl（仅已平仓的 realizedPnl，不含浮盈浮亏）
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const strategyIds = result.data.map((s: Record<string, unknown> & { id: string }) => s.id);
 
     const todayPnlMap = new Map<string, number>();
+    const totalRealizedMap = new Map<string, number>();
     if (strategyIds.length > 0) {
-      const todayPositions = await this.prisma.position.findMany({
-        where: {
-          aiStrategyId: { in: strategyIds },
-          status: 'closed',
-          closedAt: { gte: todayStart },
-        },
-        select: { aiStrategyId: true, realizedPnl: true },
-      });
+      // 并行查今日平仓 + 全量平仓（网格持仓 aiStrategyId=NULL，查询结果为 0，由 gridRuntimeState 兜底）
+      const [todayPositions, allPositions] = await Promise.all([
+        this.prisma.position.findMany({
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart } },
+          select: { aiStrategyId: true, realizedPnl: true },
+        }),
+        this.prisma.position.findMany({
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed' },
+          select: { aiStrategyId: true, realizedPnl: true },
+        }),
+      ]);
       for (const p of todayPositions) {
         if (p.aiStrategyId) {
-          const prev = todayPnlMap.get(p.aiStrategyId) || 0;
-          todayPnlMap.set(p.aiStrategyId, prev + Number(p.realizedPnl || 0));
+          todayPnlMap.set(p.aiStrategyId, (todayPnlMap.get(p.aiStrategyId) || 0) + Number(p.realizedPnl || 0));
+        }
+      }
+      for (const p of allPositions) {
+        if (p.aiStrategyId) {
+          totalRealizedMap.set(p.aiStrategyId, (totalRealizedMap.get(p.aiStrategyId) || 0) + Number(p.realizedPnl || 0));
         }
       }
     }
@@ -1228,12 +1236,18 @@ export class AiController {
     return {
       data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
-        // 网格策略：今日盈亏从 gridRuntimeState.dailyPnl 读取（网格持仓 aiStrategyId=NULL，positions 查询无效）
-        const todayPnl = s.strategyType === 'grid' && s.gridRuntimeState?.dailyPnl != null
-          ? Number(s.gridRuntimeState.dailyPnl.toFixed(2))
+        // 所有策略统一用平仓 realizedPnl 之和（不含浮盈浮亏）
+        // 网格持仓 aiStrategyId=NULL 查不到，用 gridRuntimeState 兜底
+        const isGrid = s.strategyType === 'grid';
+        const todayPnl = isGrid
+          ? Number(((s.gridRuntimeState?.dailyTotalProfit ?? 0)).toFixed(2))
           : Number((todayPnlMap.get(s.id) || 0).toFixed(2));
+        const totalPnl = isGrid
+          ? Number((s.gridRuntimeState?.totalProfit ?? 0).toFixed(2))
+          : Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
         return {
           ...s,
+          totalPnl,
           todayPnl,
           exchangeName: akInfo?.exchange ?? null,
           exchangeLabel: akInfo?.label ?? null,

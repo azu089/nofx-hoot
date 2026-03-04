@@ -614,35 +614,6 @@ export function AIStrategyDetailPage() {
           </p>
         </div>
 
-        {/* 统计卡片 */}
-        <div className="px-4 pb-4">
-          <div className="glass-border-glow glass-card grid grid-cols-4">
-            <div className="p-2.5 text-center">
-              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.pnl')}</p>
-              <p className={`text-sm font-semibold ${Number(strategy.totalPnl) >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
-                {Number(strategy.totalPnl) >= 0 ? '+' : ''}{Number(strategy.totalPnl).toFixed(2)}
-              </p>
-            </div>
-            <div className="p-2.5 text-center">
-              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.winLoss')}</p>
-              <p className="text-sm font-semibold">
-                {Number(strategy.winRate).toFixed(1)}%
-              </p>
-            </div>
-            <div className="p-2.5 text-center">
-              <p className="text-[10px] text-[#606070] mb-0.5">Sharpe</p>
-              <p className="text-sm font-semibold">
-                {Number(strategy.sharpe).toFixed(2)}
-              </p>
-            </div>
-            <div className="p-2.5 text-center">
-              <p className="text-[10px] text-[#606070] mb-0.5">{t('detail.trades')}</p>
-              <p className="text-sm font-semibold">
-                {strategy.totalTrades}
-              </p>
-            </div>
-          </div>
-        </div>
 
         {/* Tab 栏 */}
         <div className="flex items-center border-b border-[#1E1E2E]">
@@ -1489,22 +1460,6 @@ export function AIStrategyDetailPage() {
                         </div>
                       </div>
 
-                      {/* 日内亏损 */}
-                      <div className="space-y-1">
-                        <p className="text-xs text-[#9090A0]">{t('detail.configDailyLossLimit')}</p>
-                        <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                          <input
-                            type="number" min={0} max={20}
-                            value={editGridDailyLossLimit || ''}
-                            onChange={(e) => setEditGridDailyLossLimit(e.target.value === '' ? 0 : parseFloat(e.target.value))}
-                            placeholder="不限"
-                            className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                            aria-label={t('detail.configDailyLossLimit')}
-                          />
-                          <span className="text-[#606070] text-xs shrink-0">%</span>
-                        </div>
-                      </div>
-
                       <div className="space-y-2">
                         <p className="text-xs text-[#9090A0]">{t('detail.editRunInterval')}</p>
                         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1583,28 +1538,52 @@ export function AIStrategyDetailPage() {
                         <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditStopConditions ? 'rotate-180' : ''}`} />
                       </button>
                       {showEditStopConditions && (
-                      <div className="px-4 pb-4 space-y-3">
+                      <div className="px-4 pb-4 space-y-2">
                         <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大周期</span>
-                          <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
-                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
-                          />
-                          <span className="text-xs text-[#606070]">次</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <p className="text-xs text-[#9090A0]">最大周期</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
+                                placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                aria-label="最大周期"
+                              />
+                              <span className="text-[#606070] text-xs shrink-0">次</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-[#9090A0]">盈利目标</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
+                                placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                aria-label="盈利目标"
+                              />
+                              <span className="text-[#606070] text-xs shrink-0">%</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#9090A0] w-20 shrink-0">盈利目标</span>
-                          <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
-                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
-                          />
-                          <span className="text-xs text-[#606070]">%</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#9090A0] w-20 shrink-0">最大止损</span>
-                          <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
-                            placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
-                          />
-                          <span className="text-xs text-[#606070]">%</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <p className="text-xs text-[#9090A0]">{t('create.maxLoss')}</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
+                                placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                aria-label={t('create.maxLoss')}
+                              />
+                              <span className="text-[#606070] text-xs shrink-0">%</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-[#9090A0]">{t('detail.configDailyLossLimit')}</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={0} max={20} value={editGridDailyLossLimit || ''}
+                                onChange={(e) => setEditGridDailyLossLimit(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                aria-label={t('detail.configDailyLossLimit')}
+                              />
+                              <span className="text-[#606070] text-xs shrink-0">%</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                       )}

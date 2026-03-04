@@ -355,6 +355,16 @@ export default function TradingPage() {
     }
   }, [apiKeys, selectedApiKeyId]);
 
+  // 处理账户切换：同步 selectedApiKeyId 和 selectedAccountIndex
+  const handleAccountChange = useCallback((accountId: string | number) => {
+    if (!apiKeys) return;
+    const idx = apiKeys.findIndex(k => k.id === accountId);
+    if (idx !== -1) {
+      setSelectedApiKeyId(String(accountId));
+      setSelectedAccountIndex(idx);
+    }
+  }, [apiKeys]);
+
   // 订阅策略类型
   interface SubscribedStrategy {
     id: string;
@@ -525,6 +535,9 @@ export default function TradingPage() {
     return symbol.replace(':USDT', '').replace(':USDC', '');
   };
 
+  // 当前选中账户对应的交易所名称（用于过滤 DB fallback 持仓）
+  const selectedExchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
+
   // 转换持仓数据格式（优先使用同步数据）
   const transformedPositions = (syncedPositions && syncedPositions.length > 0)
     ? syncedPositions.map(p => {
@@ -552,7 +565,9 @@ export default function TradingPage() {
           source: p.source,
         };
       })
-    : positionsData?.items?.map(p => {
+    : positionsData?.items
+        ?.filter(p => !selectedExchange || p.exchange?.toLowerCase() === selectedExchange)
+        .map(p => {
         const symbol = normalizeSymbol(p.symbol);
         return {
           id: p.id,
@@ -777,6 +792,7 @@ export default function TradingPage() {
           onDeleteStrategy={handleDeleteStrategy}
           onToggleStrategy={handleToggleStrategy}
           onViewMarket={handleViewMarket}
+          onAccountChange={handleAccountChange}
         />
       </div>
 

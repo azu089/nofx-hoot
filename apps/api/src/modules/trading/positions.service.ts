@@ -990,12 +990,9 @@ export class PositionsService {
     const winRate =
       tradeCount > 0 ? ((winCount / tradeCount) * 100).toFixed(1) : '0';
 
-    // 今日盈亏 = 今日已实现 + 当前未实现（反映当日实际盈亏情况）
-    const todayTotalPnl = todayPnl.plus(unrealizedPnl);
-
     return {
       totalPnl: totalPnl.toFixed(2),
-      todayPnl: todayTotalPnl.toFixed(2),
+      todayPnl: todayPnl.toFixed(2),
       todayRealizedPnl: todayPnl.toFixed(2),
       weekPnl: weekPnl.toFixed(2),
       monthPnl: monthPnl.toFixed(2),

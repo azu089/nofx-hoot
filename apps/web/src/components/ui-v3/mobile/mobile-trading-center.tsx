@@ -195,6 +195,7 @@ interface MobileTradingCenterProps {
   onDeleteStrategy?: (strategyId: string) => void
   onToggleStrategy?: (strategyId: string, status: 'running' | 'paused') => void
   onViewMarket?: () => void
+  onAccountChange?: (accountId: string | number) => void
 }
 
 // ============ Component ============
@@ -211,7 +212,8 @@ export function MobileTradingCenter({
   onEditStrategy,
   onDeleteStrategy,
   onToggleStrategy,
-  onViewMarket
+  onViewMarket,
+  onAccountChange,
 }: MobileTradingCenterProps) {
   const t = useTranslations('trading')
   const [activeTab, setActiveTab] = useState('positions')
@@ -359,6 +361,7 @@ export function MobileTradingCenter({
                     onClick={() => {
                       setSelectedAccount(account)
                       setShowAccountDropdown(false)
+                      onAccountChange?.(account.id)
                     }}
                     className="w-full px-4 py-3 text-left hover:bg-[#1E1E2E]/50 transition-colors"
                   >

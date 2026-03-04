@@ -844,16 +844,6 @@ export function CreateStrategyWizard() {
                 </RiskField>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <RiskField label="日亏损限制" suffix="%">
-                  <input
-                    type="number"
-                    title="日亏损限制"
-                    value={gridParams.dailyLossLimitPct}
-                    onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
-                    min={1} max={20}
-                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                  />
-                </RiskField>
                 <RiskField label="冷却时间" suffix="min">
                   <input
                     type="number"
@@ -990,7 +980,7 @@ export function CreateStrategyWizard() {
           <p className="text-[10px] text-[#606070] mb-2">
             止停条件 <span className="text-[#4A4A6A]">（可选，0 = 不限）</span>
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <RiskField label="最大周期" suffix="次">
               <input
                 type="number"
@@ -1013,6 +1003,8 @@ export function CreateStrategyWizard() {
                 className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
               />
             </RiskField>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <RiskField label="最大亏损" suffix="%">
               <input
                 type="number"
@@ -1024,6 +1016,19 @@ export function CreateStrategyWizard() {
                 className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
               />
             </RiskField>
+            {isGrid && (
+              <RiskField label="日内亏损" suffix="%">
+                <input
+                  type="number"
+                  title="日内亏损限制"
+                  value={gridParams.dailyLossLimitPct || ''}
+                  onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
+                  min={0} max={20}
+                  placeholder="0"
+                  className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                />
+              </RiskField>
+            )}
           </div>
         </div>
 
