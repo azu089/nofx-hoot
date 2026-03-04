@@ -59,6 +59,10 @@ interface Position {
   margin?: string;
   marginMode?: string;
   marginRatio?: string;  // 交易所原始保证金比率（%字符串）
+  markPrice?: string;
+  liquidationPrice?: string;
+  unrealizedPnl?: string;
+  pnlPercent?: string;
   // 止盈止损（后端 Position 模型字段）
   stopLossPrice?: string;
   takeProfitPrice?: string;
@@ -556,18 +560,35 @@ export default function TradingPage() {
           direction: p.side as 'long' | 'short',
           size: parseFloat(p.amount),
           entryPrice: parseFloat(p.entryPrice),
-          markPrice: parseFloat(p.entryPrice), // 没有同步时使用入场价
-          liquidationPrice: 0,
-          unrealizedPnl: parseFloat(p.pnl || '0'),
-          roe: 0,
+          markPrice: parseFloat(p.markPrice || p.entryPrice), // 优先用已同步的标记价
+          liquidationPrice: parseFloat(p.liquidationPrice || '0'),
+          unrealizedPnl: parseFloat(p.unrealizedPnl || p.pnl || '0'), // 优先未实现盈亏，回退已结算
+          roe: (() => {
+            // 后端不返回 pnlPercent，从 unrealizedPnl / margin 计算
+            const pnl = parseFloat(p.unrealizedPnl || p.pnl || '0');
+            const margin = parseFloat(p.margin || '0');
+            return margin > 0 ? (pnl / margin) * 100 : 0;
+          })(),
           icon: symbol.startsWith('BTC') ? '₿' : symbol.startsWith('ETH') ? 'Ξ' : symbol.startsWith('SOL') ? '◎' : '○',
           strategy: p.strategyName || '',
           stopLoss: parseFloat(p.stopLossPrice || '0'),
           takeProfit: parseFloat(p.takeProfitPrice || '0'),
           marketType: (p.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
-          leverage: p.leverage || 1,
+          leverage: (() => {
+            // DB leverage=1 可能是 CCXT bug，从 margin/notional 反推真实杠杆
+            const raw = p.leverage || 1;
+            if (raw > 1) return raw;
+            const notional = parseFloat(p.amount) * parseFloat(p.entryPrice);
+            const margin = parseFloat(p.margin || '0');
+            if (margin > 0 && notional > 0) {
+              const derived = Math.round(notional / margin);
+              if (derived > 1 && derived <= 200) return derived;
+            }
+            return raw;
+          })(),
           margin: parseFloat(p.margin || '0'),
           marginMode: p.marginMode || 'cross',
+          marginRatio: p.marginRatio || undefined, // DB 已同步的保证金比率
           source: p.source,
           syncSource: 'database' as const, // 未同步时标记为缓存
         };

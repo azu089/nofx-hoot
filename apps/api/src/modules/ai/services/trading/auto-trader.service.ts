@@ -2171,6 +2171,43 @@ export class AutoTraderService {
         this.logger.log(`[网格] 策略 ${strategy.id} 触发停止条件: ${gridStopReason}`);
         // 平仓 + 结算燃油费（内部调 emergencyExit）
         await this.gridTrading.stopGridForCondition(strategy.id, userId, apiKeyId, gridStopReason);
+        // 更新 DB 持仓状态为已平仓 + 推送前端 WebSocket 通知
+        try {
+          const openPositions = await this.prisma.position.findMany({
+            where: { userId, aiStrategyId: strategy.id, status: 'open' },
+            select: { id: true, symbol: true, side: true, entryPrice: true, amount: true, markPrice: true },
+          });
+          for (const pos of openPositions) {
+            const exit = Number((pos.markPrice ?? pos.entryPrice).toString());
+            const entry = Number(pos.entryPrice.toString());
+            const amt = Number(pos.amount.toString());
+            const pnl = pos.side === 'long' ? (exit - entry) * amt : (entry - exit) * amt;
+            await this.prisma.position.update({
+              where: { id: pos.id },
+              data: {
+                status: 'closed',
+                closedAt: new Date(),
+                exitPrice: pos.markPrice ?? pos.entryPrice,
+                realizedPnl: pnl,
+                closeReason: 'grid_stop_condition',
+              },
+            });
+            try {
+              this.gateway.sendPositionUpdate(userId, {
+                id: pos.id,
+                symbol: pos.symbol,
+                side: pos.side,
+                entryPrice: pos.entryPrice.toString(),
+                amount: pos.amount.toString(),
+                pnl: pnl.toFixed(4),
+                status: 'closed',
+                action: 'closed',
+              });
+            } catch { /* 非致命 */ }
+          }
+        } catch (e: any) {
+          this.logger.warn(`[网格] 停止后 DB 持仓更新失败: ${e.message}`);
+        }
         // 停用策略
         await this.prisma.aiStrategy.update({ where: { id: strategy.id }, data: { isActive: false } });
         try { await this.strategyEngine.removeStrategyJob(strategy.id); } catch { /* 忽略 */ }

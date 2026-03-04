@@ -298,15 +298,15 @@ export function AIStrategyDetailPage() {
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridInterval(strategy?.intervalMinutes || 60);
-      // 从 gridState 反算百分比（用上下界中点估算当前价）
-      const liveUpper = detail?.gridState?.upperPrice;
-      const liveLower = detail?.gridState?.lowerPrice;
-      if (liveUpper && liveLower) {
-        const midPrice = (Number(liveUpper) + Number(liveLower)) / 2;
-        setEditGridUpperPct(Math.round((Number(liveUpper) / midPrice - 1) * 100));
-        setEditGridLowerPct(Math.round((1 - Number(liveLower) / midPrice) * 100));
+      // 优先用用户手动配置的边界（gc.upperBound/lowerBound），不读 AI 运行时范围
+      // 避免：用户设 0（AI 自动）→ AI 跑完写入 gridState → 重新打开显示 10%
+      if (gc.upperBound && gc.lowerBound) {
+        const midPrice = (Number(gc.upperBound) + Number(gc.lowerBound)) / 2;
+        setEditGridUpperPct(Math.round((Number(gc.upperBound) / midPrice - 1) * 100));
+        setEditGridLowerPct(Math.round((1 - Number(gc.lowerBound) / midPrice) * 100));
         setEditGridCurrentPrice(midPrice);
       } else {
+        // 用户未配置上下界 → AI 自动，显示 0
         setEditGridUpperPct(0);
         setEditGridLowerPct(0);
       }

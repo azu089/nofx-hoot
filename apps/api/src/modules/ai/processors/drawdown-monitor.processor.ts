@@ -7,6 +7,7 @@ import { AdapterFactoryService } from '../../exchange-adapters/adapter-factory.s
 import { ExchangeAdapter } from '../../exchange-adapters/types/adapter.interface';
 import { Decimal } from '@prisma/client/runtime/library';
 import { isSameSymbol } from '../../../common/utils/symbol.util';
+import { TradingGateway } from '../../../gateways/trading.gateway';
 
 /**
  * AI 持仓回撤监控处理器
@@ -29,6 +30,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     @Inject(forwardRef(() => TradingService))
     private readonly tradingService: TradingService,
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
+    @Optional() private readonly tradingGateway?: TradingGateway,
   ) {
     super();
   }
@@ -351,6 +353,20 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           closeReason: 'trailing_stop',
         },
       });
+
+      // 推送前端 WebSocket 持仓平仓通知
+      try {
+        this.tradingGateway?.sendPositionUpdate(pos.userId, {
+          id: pos.id,
+          symbol: pos.symbol,
+          side: pos.side,
+          entryPrice: pos.entryPrice.toString(),
+          amount: pos.amount.toString(),
+          pnl: pnl.toFixed(4),
+          status: 'closed',
+          action: 'closed',
+        });
+      } catch { /* 非致命 */ }
 
       this.logger.log(
         `[AI监控] 自动平仓成功: ${pos.id} ${pos.symbol} ${pos.side} PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(4)} USDT，原因: ${reason}`,
