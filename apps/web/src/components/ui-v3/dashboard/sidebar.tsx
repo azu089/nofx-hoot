@@ -39,7 +39,7 @@ export function Sidebar({ activeItem = 'home' }: SidebarProps) {
     <div className="fixed left-0 top-0 h-full w-60 bg-[#12121A] border-r border-[#1E1E2E]">
       {/* Logo */}
       <div className="flex h-16 items-center justify-center gap-2 border-b border-[#1E1E2E]">
-        <Image src="/icons/hoot/token.png" alt="Hoot" width={32} height={32} className="object-contain" />
+        <Image src="/icons/hoot/token.png" alt="Hoot" width={32} height={32} className="object-contain" priority />
         <h1 className="text-2xl font-bold text-[#F8F8FC]">
           Hoot
         </h1>

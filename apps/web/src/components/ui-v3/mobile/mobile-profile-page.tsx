@@ -168,6 +168,7 @@ export function MobileProfilePage({
                   width={64}
                   height={64}
                   className="w-full h-full object-contain"
+                  priority
                 />
               </div>
             </div>
