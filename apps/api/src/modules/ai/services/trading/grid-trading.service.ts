@@ -1245,24 +1245,28 @@ export class GridTradingService {
           await this.persistGridState(strategyId, state);
           return { trades: 0, errors: 0 };
         }
-        // --- 单边快速行情：≥6% + RSI 确认，取消订单并暂停（不强平，可手动恢复）---
+        // --- 单边快速行情：≥6% + RSI 确认 → 方向自适应（对齐 nofx：volatile ≠ pause）---
+        // nofx: 快速行情 = short/mid 箱体突破信号，直接跳过 3 轮确认立即调整方向，继续运行
         const rapidRise = context.priceChange1h > 6 && context.rsi14 > 70;
         const rapidFall = context.priceChange1h < -6 && context.rsi14 < 30;
         if (rapidRise || rapidFall) {
-          const dir = rapidRise
-            ? `上涨 ${context.priceChange1h.toFixed(1)}%（RSI ${context.rsi14.toFixed(0)}）`
-            : `下跌 ${Math.abs(context.priceChange1h).toFixed(1)}%（RSI ${context.rsi14.toFixed(0)}）`;
-          this.logger.warn(`[网格] 单边快速行情: 1H ${dir}，取消订单并暂停`);
-          try {
-            await adapter.cancelAllOrders(state.symbol);
-          } catch (e: any) {
-            this.logger.warn(`[网格] 快速行情撤单失败: ${e.message}`);
+          const breakoutDir = rapidRise ? 'up' : 'down';
+          // 1H 变化 ≥10% 视为 mid 级别突破（完全趋势）；6-10% 视为 short 级别（bias 方向）
+          const urgentLevel: BreakoutLevel = Math.abs(context.priceChange1h) >= 10 ? 'mid' : 'short';
+          const urgentDir = this.determineDirectionFromBreakout(urgentLevel, breakoutDir, state.currentDirection);
+
+          this.logger.warn(
+            `[网格] 单边快速行情(${Math.abs(context.priceChange1h).toFixed(1)}% 1H, RSI=${context.rsi14.toFixed(0)})` +
+            ` → 方向自适应 ${state.currentDirection} → ${urgentDir}（${urgentLevel}级突破，跳过确认）`,
+          );
+
+          if (urgentDir !== state.currentDirection) {
+            state.currentDirection = urgentDir;
+            this.applyGridDirection(state.gridLines, currentPrice, state.currentDirection);
+            // 取消所有挂单 + 平反向持仓，下一步 AI 按新方向重新补挂
+            await this.cancelOrdersAndCloseOpposingPositions(state, urgentDir, userId, apiKeyId);
           }
-          state.isPaused = true;
-          state.pauseSource = 'risk_control';
-          state.pauseReason = `单边快速行情\n保护规则: 1H 价格变化超过 6% 且 RSI 超出合理区间时暂停\n实际情况: 1H ${dir}`;
-          await this.persistGridState(strategyId, state);
-          return { trades: 0, errors: 0 };
+          // 不 pause、不 return，继续本轮 AI 决策（按新方向下单）
         }
 
         const modelId = gridConfig?.modelId || 'deepseek-chat';
