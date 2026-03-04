@@ -19,13 +19,13 @@ import { useLocale } from 'next-intl';
 // ── Provider list ────────────────────────────────────────────────
 
 const LLM_PROVIDERS = [
-  { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.png', placeholder: 'sk-...', recommended: true },
-  { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.png', placeholder: 'sk-...' },
-  { key: 'anthropic', label: 'Claude', logo: '/icons/llm/anthropic.png', placeholder: 'sk-ant-...' },
-  { key: 'gemini', label: 'Gemini', logo: '/icons/llm/google.png', placeholder: 'AIza...' },
-  { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.png', placeholder: 'sk-...' },
-  { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.png', placeholder: 'xai-...' },
-  { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.png', placeholder: 'sk-...' },
+  { key: 'deepseek', label: 'DeepSeek', logo: '/icons/llm/deepseek.svg', placeholder: 'sk-...', recommended: true },
+  { key: 'openai', label: 'OpenAI', logo: '/icons/llm/openai.svg', placeholder: 'sk-...' },
+  { key: 'anthropic', label: 'Claude', logo: '/icons/llm/anthropic.svg', placeholder: 'sk-ant-...' },
+  { key: 'gemini', label: 'Gemini', logo: '/icons/llm/google.svg', placeholder: 'AIza...' },
+  { key: 'qwen', label: 'Qwen', logo: '/icons/llm/alibaba.svg', placeholder: 'sk-...' },
+  { key: 'grok', label: 'Grok', logo: '/icons/llm/xai.svg', placeholder: 'xai-...' },
+  { key: 'kimi', label: 'Kimi', logo: '/icons/llm/moonshot.svg', placeholder: 'sk-...' },
 ] as const;
 
 // ── Main ─────────────────────────────────────────────────────────
