@@ -10,22 +10,16 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icons/hoot/logo.png",
-      "sizes": "1024x1024",
+      "src": "/icons/hoot/token.png",
+      "sizes": "128x128",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/icons/hoot/logo.png",
-      "sizes": "1024x1024",
-      "type": "image/png",
-      "purpose": "maskable"
     },
     {
       "src": "/icons/hoot/token.png",
-      "sizes": "1024x1024",
+      "sizes": "128x128",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "maskable"
     }
   ]
 }
