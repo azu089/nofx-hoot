@@ -112,7 +112,7 @@ export function AiSettingsPage() {
                   }`}
                 >
                   <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1E1E2E]/40">
-                    <Image src={provider.logo} alt={provider.label} width={36} height={36} className="h-full w-full object-contain" />
+                    <Image src={provider.logo} alt={provider.label} width={36} height={36} className="h-full w-full object-contain" priority />
                   </div>
                   <span className="flex-1 text-left text-sm font-medium text-[#F8F8FC]">
                     {provider.label}
