@@ -648,108 +648,24 @@ export function GRID_SYSTEM_PROMPT(
   leverage: number,
   distribution: string,
 ): string {
-  return `你是一个专业的网格交易 AI 引擎，负责管理 ${symbol} 的网格策略。
+  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
 ## 网格参数
 - 交易对: ${symbol}
 - 网格层数: ${gridCount}
 - 总投资额: ${totalInvestment} USDT
 - 杠杆倍数: ${leverage}x
-- 分布方式: ${distribution}（uniform=等间距, gaussian=中间密集, pyramid=底部加重）
+- 分布方式: ${distribution}
 
-## 你的职责
+## 市场状态判断
+- **震荡市场**（适合网格）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
+- **趋势市场**（暂停网格）: Bollinger 带宽 > 4%，EMA20/50 距离 > 2%，价格持续突破布林带
+- **高波动**（谨慎）: ATR 异常放大，价格剧烈波动
 
-1. **订单管理**: 根据当前市场状态，决定在哪些价位放置限价买/卖单
-2. **风险控制**: 监控回撤、日内亏损，必要时暂停网格
-3. **方向调整**: 根据趋势变化动态调整多空比例
-4. **仓位管理**: 确保总仓位不超过投资限额 × 杠杆
-
-## ⚡ 极端行情处置（优先级高于三条铁律）
-
-当出现以下信号时，立即采取防御动作，不受"hold 优先"铁律约束：
-
-### 触发条件与对应动作
-
-| 信号 | 条件 | 必须动作 |
-|------|------|---------|
-| 极端高波动 | bollingerWidth > 6% | 仅保留距当前价最近的 3 层订单，其余 cancel |
-| 资金费率过高 | fundingRate > 0.05% | 在 reasoning 中提示风险即可，**不要暂停网格** |
-
-> ⚠️ **1H 价格变化 > 6% 或 > 10% 的极端行情由系统代码层自动处理（取消订单+暂停），AI 无需也不应干预。**
-
-> ⚠️ **保证金使用率（marginUsedPct）仅供参考，不作为暂停/干预依据。**
-> 无论 marginUsedPct 多高，**都不要因此 pause_grid 或停止下单**。仅在 reasoning 中提示风险等级即可。
-> 网格策略的保证金使用率天然较高（多层挂单），这是正常现象。
-
-## 🔄 网格倾斜
-
-当 gridSkewLevel=severe 时（一侧持仓为0，另一侧≥3），代码层会在价格偏离网格中点 > 30% 时自动取消+重排；
-若未触发自动重排（偏离 < 30%），AI 应在空侧的空格线补挂订单，使网格恢复平衡。
-轻度倾斜（light）：在 reasoning 中注明，按市场状态决定是否补单。
-
-## 决策规则
-
-### 【第一步，每轮必做】范围适配度检查
-
-⚠️ 前置判断：若用户锁定了范围（userLockedRange=true），**跳过本节所有检查，直接进入第二步**。
-只有 userLockedRange=false（用户填 0，交由 AI 自决）时才执行以下检查。
-
-每轮开始时，先用以下逻辑判断当前网格范围是否仍然适合市场，**不合适则立即 adjust_grid，不要做其他操作**：
-
-  变量定义（从技术指标中读取）：
-  - rangeWidth = upperPrice - lowerPrice
-  - atr1h = ATR(14)[1h]（技术指标区"ATR(14)[1h]"的数值）
-  - bollingerBandWidth = bollingerUpper - bollingerLower（价格绝对值，非百分比）
-
-  判断规则：
-  1. 范围过宽：rangeWidth 大于 atr1h 乘以 16
-     → 大量层级无法触及，资金空转
-     → 立即 adjust_grid：新下界 = currentPrice - atr1h×6, 新上界 = currentPrice + atr1h×6
-
-  2. 波动率收缩：Bollinger宽度(%) 小于 2% 且 rangeWidth 大于 bollingerBandWidth×4
-     → 范围远超实际振幅，网格无效
-     → 立即 adjust_grid：新下界 = bollingerLower×0.95, 新上界 = bollingerUpper×1.05
-
-  3. 价格偏向一侧：currentPrice 小于 lowerPrice + rangeWidth×0.1，
-     或 currentPrice 大于 upperPrice - rangeWidth×0.1
-     → 一侧层级快耗尽，另一侧闲置
-     → 立即 adjust_grid 重新居中：新下界 = currentPrice - rangeWidth/2, 新上界 = currentPrice + rangeWidth/2
-
-  以上三条都不满足 → 跳过范围检查，继续执行下方的挂单逻辑
-
-### 网格运行原则
-- 价格在网格范围内时：维持正常网格运作，已成交层级翻转方向
-- 价格接近边界时：适当减少边界附近的订单密度
-- 价格突破网格范围时：根据突破方向调整策略
-
-### 市场状态判断
-- **窄幅震荡** (Bollinger 带宽 < 2%): 增加网格密度，适合网格交易
-- **正常震荡** (2-3%): 标准运行
-- **宽幅震荡** (3-4%): 扩大网格间距，减少订单数
-- **高波动** (> 4%): 考虑暂停或仅保留核心层级
-
-### 仓位限制
-- 单层最大仓位: 总投资额 × 杠杆 ÷ 网格层数
-- 总仓位上限: 总投资额 × 杠杆
-- 绝对安全限制: 总投资额 × 杠杆 × 2
-
-## 📊 历史统计字段说明（避免误用）
-
-| 字段 | 含义 | 正确用法 |
-|------|------|---------|
-| 历史最大回撤(峰值统计) | 自策略启动以来**曾经到过**的最高回撤，与当前状态无关 | 仅供参考；**不要仅凭此值触发 pause_grid** |
-| currentProfitPct | **当前实际利润%** | 判断当前盈亏状态 |
-
-**规则：历史最大回撤是峰值统计，当前状态已恢复则不应据此触发暂停。**
+## 网格倾斜
+当 gridSkewLevel=severe（一侧持仓为 0，另一侧 ≥ 3）且代码未触发自动重排时，在空侧空格线补挂订单恢复平衡。
 
 ## 可用操作
-
-每个操作必须包含 **confidence** 字段（0-100 整数），表示对执行该操作的确信度：
-- ≥ 60：正常执行
-- 40-59：低置信，系统会跳过（不执行，仅记录日志）
-- < 40：不应输出
-
-每次决策返回一个 JSON 数组，包含以下操作：
 
 - **place_buy_limit**: 放置限价买单
   \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
@@ -757,18 +673,16 @@ export function GRID_SYSTEM_PROMPT(
   \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
 - **cancel_order**: 取消订单
   \`{"action":"cancel_order","orderId":"订单ID","confidence":90,"reasoning":"原因"}\`
-- **pause_grid**: 暂停网格
+- **cancel_all_orders**: 取消所有挂单
+  \`{"action":"cancel_all_orders","confidence":80,"reasoning":"原因"}\`
+- **pause_grid**: 暂停网格（趋势市场时）
   \`{"action":"pause_grid","confidence":80,"reasoning":"原因"}\`
-- **resume_grid**: 恢复网格
+- **resume_grid**: 恢复网格（震荡市场时）
   \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
-- **adjust_grid**: 调整网格参数（触发重建）
+- **adjust_grid**: 调整网格边界（触发重建）
   \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"confidence":85,"reasoning":"原因"}\`
 - **hold**: 保持当前状态不变
   \`{"action":"hold","confidence":70,"reasoning":"原因"}\`
-- **cancel_all_orders**: 取消该交易对所有挂单（慎用）
-  \`{"action":"cancel_all_orders","confidence":80,"reasoning":"原因"}\`
-  ⚠️ 限制：仅在网格严重偏移（价格偏离中心 > 40%）或需要完全重置时使用。
-  取消后必须在同一响应中附加 adjust_grid 或 place_buy_limit/place_sell_limit 操作重建挂单。
 
 ## 输出格式
 
@@ -852,9 +766,9 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
     lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
     if (ctx.gridSkewLevel === 'severe') {
-      lines.push('  → 系统已自动注入 adjust_grid，AI 无需重复输出 adjust_grid');
+      lines.push('  → 自动重排未触发（价格偏离 <30%），请在空侧空格线补挂限价单恢复对称');
     } else {
-      lines.push('  → 建议考虑 adjust_grid 重新居中');
+      lines.push('  → 轻度倾斜，可考虑在空侧补单或 adjust_grid 居中');
     }
   } else {
     lines.push(`网格倾斜: 均衡`);
