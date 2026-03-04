@@ -155,13 +155,13 @@ export function RegisterPage({
           {/* Logo and Header */}
           <div className="text-center mb-8">
             <div className="inline-block mb-4">
-              <div className="w-24 h-24 rounded-full overflow-hidden">
+              <div className="w-24 h-24 rounded-full overflow-hidden drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]">
                 <Image
                   src="/icons/hoot/token.png"
                   alt="HOOT"
                   width={96}
                   height={96}
-                  className="w-full h-full object-cover drop-shadow-[0_0_20px_rgba(6,182,212,0.3)]"
+                  className="w-full h-full object-cover rounded-full"
                   priority
                   unoptimized
                 />

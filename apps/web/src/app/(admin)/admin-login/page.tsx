@@ -53,8 +53,8 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4">
-            <Image src="/icons/hoot/token.png" alt="HOOT" width={64} height={64} className="object-contain" />
+          <div className="w-16 h-16 rounded-full overflow-hidden mb-4 drop-shadow-[0_0_16px_rgba(6,182,212,0.3)]">
+            <Image src="/icons/hoot/token.png" alt="HOOT" width={64} height={64} className="w-full h-full object-cover rounded-full" />
           </div>
           <h1 className="text-2xl font-bold text-white">Hoot Admin</h1>
           <p className="text-sm text-[#9090A0] mt-1">管理后台登录</p>

@@ -24,7 +24,7 @@ export function MobileNav({ activeTab, onTabChange, embedded = false, className 
   const t = useTranslations('nav')
   return (
     <nav className={cn(
-      "bg-[#12121A] border-t border-[#1E1E2E] px-2 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
+      "bg-[#12121A] border-t border-[#1E1E2E] px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]",
       embedded ? "" : "fixed bottom-0 left-0 right-0 z-50",
       className
     )}>
@@ -39,7 +39,7 @@ export function MobileNav({ activeTab, onTabChange, embedded = false, className 
               key={tab.id}
               onClick={() => onTabChange?.(tab.id)}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all",
+                "flex flex-col items-center gap-1 px-3 py-3 rounded-lg transition-all",
                 isActive
                   ? "text-transparent"
                   : "text-[#606070]"

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   ChevronRight,
   BarChart3,
@@ -25,8 +26,22 @@ import {
   Grid3x3,
   Radio,
 } from 'lucide-react'
+import Image from 'next/image'
 import { useTranslations } from '@/i18n/provider'
 import { getActionBadgeStyle, getActionText, getCloseReasonText, formatGridSummary, formatLogMessage } from '@/lib/execution-log-format'
+
+// ============ Exchange logo helpers ============
+const EXCHANGE_LOGOS: Record<string, string> = {
+  binance: '/icons/exchanges/币安.webp',
+  okx: '/icons/exchanges/okx.webp',
+  bybit: '/icons/exchanges/bybit.webp',
+  gate: '/icons/exchanges/gate.webp',
+  bitget: '/icons/exchanges/bitget.webp',
+  coinbase: '/icons/exchanges/coinbase.webp',
+  hyperliquid: '/icons/exchanges/hyperliquid.webp',
+}
+const getExchangeLogo = (exchange: string) =>
+  EXCHANGE_LOGOS[exchange?.toLowerCase()] || '/icons/exchanges/default.webp'
 
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
@@ -140,6 +155,7 @@ interface MyStrategy {
 
 interface Account {
   id: string | number
+  exchange?: string
   name: string
   balance: number
   spotValue?: number    // 现货余额
@@ -341,34 +357,61 @@ export function MobileTradingCenter({
             <button
               type="button"
               onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#12121A] border border-[#1E1E2E] rounded-xl text-sm"
+              className="w-full flex items-center gap-2 px-3 py-2.5 bg-[#12121A] border border-[#1E1E2E] rounded-xl hover:border-[#06B6D4]/50 transition-colors"
             >
-              <Wallet className="w-3.5 h-3.5 text-[#06B6D4]" />
-              <span className="truncate">{selectedAccount.name}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-[#9090A0]" />
+              {selectedAccount.exchange ? (
+                <Image
+                  src={getExchangeLogo(selectedAccount.exchange)}
+                  alt={selectedAccount.exchange}
+                  width={20}
+                  height={20}
+                  className="w-5 h-5 rounded-md object-cover flex-shrink-0"
+                />
+              ) : (
+                <Wallet className="w-4 h-4 text-[#06B6D4] flex-shrink-0" />
+              )}
+              <span className="flex-1 text-sm text-[#F8F8FC] truncate text-left">{selectedAccount.name}</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-[#9090A0] transition-transform flex-shrink-0 ${showAccountDropdown ? 'rotate-180' : ''}`} />
             </button>
 
             {showAccountDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#12121A]/95 backdrop-blur-xl border border-[#1E1E2E] rounded-xl shadow-xl z-50 overflow-hidden">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-[#12121A] border border-[#1E1E2E] rounded-xl shadow-2xl z-50 overflow-hidden">
                 {accounts.length === 0 ? (
                   <div className="px-4 py-3 text-center text-sm text-[#9090A0]">
                     {t('noAccountsBound')}
                   </div>
-                ) : accounts.map((account) => (
-                  <button
-                    key={account.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAccount(account)
-                      setShowAccountDropdown(false)
-                      onAccountChange?.(account.id)
-                    }}
-                    className="w-full px-4 py-3 text-left hover:bg-[#1E1E2E]/50 transition-colors"
-                  >
-                    <div className="text-sm text-[#F8F8FC]">{account.name}</div>
-                    <div className="text-xs text-[#9090A0]">${account.balance.toLocaleString()}</div>
-                  </button>
-                ))}
+                ) : accounts.map((account) => {
+                  const isSel = account.id === selectedAccount.id
+                  return (
+                    <button
+                      key={account.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAccount(account)
+                        setShowAccountDropdown(false)
+                        onAccountChange?.(account.id)
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors ${isSel ? 'bg-[#06B6D4]/10' : 'hover:bg-[#1E1E2E]'}`}
+                    >
+                      {account.exchange ? (
+                        <Image
+                          src={getExchangeLogo(account.exchange)}
+                          alt={account.exchange}
+                          width={22}
+                          height={22}
+                          className="w-5.5 h-5.5 rounded-md object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <Wallet className="w-5 h-5 text-[#606070] flex-shrink-0" />
+                      )}
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="text-sm text-[#F8F8FC] truncate">{account.name}</div>
+                        <div className="text-xs text-[#9090A0]">${account.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      </div>
+                      {isSel && <Check className="w-4 h-4 text-[#06B6D4] flex-shrink-0" />}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>

@@ -701,7 +701,8 @@ export default function TradingPage() {
     const balanceData = apiKeyBalanceQueries[index]?.data as ApiKeyBalanceData | undefined;
     return {
       id: k.id,
-      name: `${k.exchange} - ${k.label}`,
+      exchange: k.exchange,
+      name: k.label,
       balance: balanceData?.totalUsdValue || 0,
       spotValue: balanceData?.spotValue || 0,
       futuresValue: balanceData?.futuresValue || 0,
