@@ -287,12 +287,17 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       )) {
         const priceData = this.binancePrices.get(binanceSymbol);
         if (priceData) {
+          // 合并 CoinGecko 上次成功拿到的富数据（市值/7日涨跌/成交量）
+          const existing = this.priceCache.find(p => p.symbol === info.symbol);
           prices.push({
             symbol: info.symbol,
             name: info.name,
             price: priceData.price,
             change24h: priceData.change24h,
             image: info.image,
+            marketCap: existing?.marketCap,
+            change7d: existing?.change7d,
+            volume24h: existing?.volume24h,
           });
         }
       }
@@ -488,9 +493,10 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 刷新价格数据 (使用 CoinGecko API - 带图标)
+   * 刷新价格数据 (使用 CoinGecko API - 带市值/7日涨跌/成交量等富数据)
+   * 5分钟一次：实时价格由 Binance WebSocket 提供，CoinGecko 只补充富数据
    */
-  @Cron(CronExpression.EVERY_30_SECONDS)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   private async refreshPrices() {
     try {
       const coinIds = Object.keys(this.SUPPORTED_COINS).join(',');
