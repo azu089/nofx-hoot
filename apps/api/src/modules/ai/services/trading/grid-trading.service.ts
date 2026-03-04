@@ -991,79 +991,76 @@ export class GridTradingService {
       state.effectiveLeverage = newEffective;
     }
 
-    // Step 6.6: AutoPauseOnTrend — 参照 nofx default:true
-    // volatile 市场 = 布林带>4% + ATR>3%，此时单边行情风险高，网格卖单会持续开空越套越深
-    // 策略：检测到 volatile 就撤单软暂停（保留持仓），等市场回到震荡再自动恢复
-    const autoPauseOnTrend = gridConfig?.autoPauseOnTrend !== false; // 默认 true
+    // Step 6.6: 方向自适应（参照 nofx grid_regime.go，默认 true）
+    // volatile/trending 不再暂停，而是根据箱体突破级别调整下单方向：
+    // - Short Box 突破 → LongBias/ShortBias（70/30）
+    // - Mid Box 突破 → Long/Short（100/0）
+    // - 无突破 → 逐步恢复中性（Long→LongBias→Neutral）
+    // volatile 资源限制（2x 杠杆 + 40% 仓位上限）由 REGIME_LEVERAGE_CAP 已处理
+    const autoPauseOnTrend = gridConfig?.autoPauseOnTrend !== false; // 保留配置项，默认 true
+
     if (autoPauseOnTrend) {
-      if (state.currentRegime === 'volatile' && !state.isPaused) {
-        const trendReason =
-          `检测到趋势行情 (volatile: 布林带>4% / ATR>3%)，` +
-          `自动撤单软暂停防止空单持续累积`;
-        this.logger.warn(`[网格] AutoPauseOnTrend: ${trendReason}`);
-        await this.softPauseGrid(state, userId, apiKeyId, trendReason, 'trend');
-        await this.persistGridState(strategyId, state);
-        await this.prisma.aiStrategyLog.create({
-          data: {
-            strategyId,
-            symbol: state.symbol,
-            decision: { action: 'volatile_pause', gridSummary: 'volatile_pause×1', reasoning: trendReason } as any,
-            executed: true,
-          },
-        });
-        return { trades: 0, errors: 0 };
-      }
+      const newDirection = this.determineDirectionFromBreakout(
+        state.breakoutLevel,
+        state.breakoutDirection,
+        state.currentDirection,
+      );
 
-      // regime 改善后自动恢复（只恢复 trend 暂停，不恢复 risk_control/ai 类暂停）
-      if (state.isPaused && state.pauseSource === 'trend' && state.currentRegime !== 'volatile') {
-        this.logger.log(
-          `[网格] AutoPauseOnTrend 恢复: 市场从 volatile 回到 ${state.currentRegime}，解除趋势暂停`,
-        );
+      if (newDirection !== state.currentDirection) {
+        const dirReason =
+          `方向调整: ${state.currentDirection} → ${newDirection}` +
+          ` (breakout=${state.breakoutLevel}/${state.breakoutDirection || 'none'}, regime=${state.currentRegime})`;
+        this.logger.log(`[网格] ${dirReason}`);
 
-        // 混合区间方案：恢复时用 ATR 重算区间（暂停期间价格可能大幅移动，旧区间已不适用）
-        // 例外：用户手动锁定了上下界 → 保持原区间不重算
-        if (!state.userLockedRange && this.indicators && this.marketData) {
+        // 撤销当前所有挂单（本轮会按新方向重新下单）
+        if (this.adapterFactory) {
+          let dirAdpt: ExchangeAdapter | null = null;
           try {
-            const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '4h', 20);
-            const highs = ohlcvRaw.map((c: any) => Number(c[2]));
-            const lows = ohlcvRaw.map((c: any) => Number(c[3]));
-            const closes4h = ohlcvRaw.map((c: any) => Number(c[4]));
-            const atr = this.indicators.calculateATR(highs, lows, closes4h, 14);
-            if (atr && atr > 0) {
-              const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
-              state.upperPrice = currentPrice + halfRange;
-              state.lowerPrice = currentPrice - halfRange;
-              this.logger.log(
-                `[网格] AutoPauseOnTrend 恢复重算区间 (ATR×${DEFAULT_ATR_MULTIPLIER}): ` +
-                `当前价=${currentPrice.toFixed(2)}, ATR(4H,14)=${atr.toFixed(2)}, ` +
-                `新区间=[${state.lowerPrice.toFixed(2)}, ${state.upperPrice.toFixed(2)}]`,
-              );
-              this.reinitializeGridLevels(state, currentPrice);
-            } else {
-              this.logger.warn(`[网格] AutoPauseOnTrend 恢复: ATR 无效，保留旧区间继续`);
-            }
+            dirAdpt = await this.adapterFactory.createAdapter(userId, apiKeyId);
+            await dirAdpt.cancelAllOrders(state.symbol);
           } catch (e: any) {
-            this.logger.warn(`[网格] AutoPauseOnTrend 恢复重算失败(保留旧区间): ${e.message}`);
+            this.logger.warn(`[网格] 方向切换撤单失败（继续运行）: ${e.message}`);
+          } finally {
+            if (dirAdpt) { try { await dirAdpt.dispose(); } catch { /* 忽略 */ } }
           }
-        } else if (state.userLockedRange) {
-          this.logger.log(`[网格] AutoPauseOnTrend 恢复: 区间已锁定(用户指定)，保持原区间`);
+          for (const line of state.gridLines) {
+            if (line.state === 'pending') {
+              line.state = 'empty';
+              line.orderId = undefined;
+            }
+          }
+          state.orderBook = {};
         }
 
-        state.isPaused = false;
-        state.pauseReason = undefined;
-        state.pauseSource = undefined;
+        // 重新配置格线方向
+        this.applyGridDirection(state.gridLines, currentPrice, newDirection);
+        state.currentDirection = newDirection;
+        await this.persistGridState(strategyId, state);
+
+        // UI 日志：方向调整是策略关键节点，用户需要看到
         await this.prisma.aiStrategyLog.create({
           data: {
             strategyId,
             symbol: state.symbol,
             decision: {
-              action: 'volatile_resume',
-              gridSummary: 'volatile_resume×1',
-              reasoning: `市场从 volatile 回到 ${state.currentRegime}，趋势暂停解除，网格已恢复`,
+              action: 'direction_change',
+              gridSummary: `direction_change×1`,
+              reasoning: dirReason,
             } as any,
             executed: true,
           },
         });
+      }
+
+      // 兼容旧 trend 暂停：如果之前因 volatile 暂停了，现在按新方向恢复运行
+      if (state.isPaused && state.pauseSource === 'trend') {
+        this.logger.log(
+          `[网格] 解除 trend 暂停，方向已调整为 ${state.currentDirection}，继续运行`,
+        );
+        state.isPaused = false;
+        state.pauseSource = undefined;
+        state.pauseReason = undefined;
+        await this.persistGridState(strategyId, state);
       }
     }
 
@@ -2963,6 +2960,44 @@ export class GridTradingService {
     return weights;
   }
 
+  /**
+   * 根据箱体突破级别和方向确定网格方向（参照 nofx grid_regime.go determineGridDirection）
+   * Short Box 突破 → Bias（70/30）; Mid Box 突破 → Full（100/0）
+   * 无突破 → 逐步恢复中性
+   */
+  private determineDirectionFromBreakout(
+    breakoutLevel: BreakoutLevel,
+    breakoutDirection: string,
+    currentDirection: GridDirection,
+  ): GridDirection {
+    switch (breakoutLevel) {
+      case 'short':
+        // Short Box 突破：Bias 方向（仍在 Mid Box 内，非完全趋势）
+        return breakoutDirection === 'up' ? 'long_bias' : 'short_bias';
+      case 'mid':
+        // Mid Box 突破：完全方向（更大幅度移动，全力跟随）
+        return breakoutDirection === 'up' ? 'long' : 'short';
+      case 'long':
+        // Long Box 极端突破：保持当前方向，emergency 逻辑另处理
+        return currentDirection;
+      case 'none':
+      default:
+        // 无突破：逐步恢复中性（Long→LongBias→Neutral, Short→ShortBias→Neutral）
+        return this.stepTowardNeutral(currentDirection);
+    }
+  }
+
+  /** 方向恢复路径（参照 nofx determineRecoveryDirection）*/
+  private stepTowardNeutral(direction: GridDirection): GridDirection {
+    switch (direction) {
+      case 'long':      return 'long_bias';
+      case 'long_bias': return 'neutral';
+      case 'short':     return 'short_bias';
+      case 'short_bias': return 'neutral';
+      default:          return 'neutral';
+    }
+  }
+
   /** 应用方向到网格线 */
   private applyGridDirection(
     gridLines: GridLine[],
@@ -2973,16 +3008,16 @@ export class GridTradingService {
 
     switch (direction) {
       case 'long':
-        // long 方向：以当前价为界，低于当前价的格线买（建仓），高于当前价的格线卖（止盈），避免上格买单立即触发
+        // long 方向：100% buy（顺势做多，DCA 式建仓，参照 nofx Go L674-678）
         for (const line of gridLines) {
-          line.side = line.price <= currentPrice ? 'buy' : 'sell';
+          line.side = 'buy';
         }
         break;
 
       case 'short':
-        // short 方向：以当前价为界，高于当前价的格线卖（建仓），低于当前价的格线买（止盈）
+        // short 方向：100% sell（顺势做空，DCA 式建仓，参照 nofx Go L680-684）
         for (const line of gridLines) {
-          line.side = line.price <= currentPrice ? 'buy' : 'sell';
+          line.side = 'sell';
         }
         break;
 
