@@ -510,6 +510,8 @@ export class StrategyEngineService implements OnModuleInit {
 
     // 3. 转化为统一格式并合并排序
     const merged: Array<{ createdAt: Date; entry: any }> = [];
+    let skippedLogCount = 0;
+    let skippedSessionCount = 0;
 
     for (const log of logs as any[]) {
       const meta = strategyMap.get(log.strategyId);
@@ -518,7 +520,10 @@ export class StrategyEngineService implements OnModuleInit {
       if (actionsOnly) {
         const dec = (log.decision as Record<string, any>) || {};
         const act = dec.action || '';
-        if (act === 'wait' || act === 'hold') continue;
+        if (act === 'wait' || act === 'hold') {
+          skippedLogCount++;
+          continue;
+        }
       }
       const entryType = (meta as any).strategyType === 'grid' ? 'grid_log'
         : meta.tradingMode === 'debate' ? 'debate_log' : 'solo_log';
@@ -537,7 +542,10 @@ export class StrategyEngineService implements OnModuleInit {
       if (actionsOnly) {
         const fd = (session.finalDecision as Record<string, any>) || {};
         const act = fd.action || '';
-        if (act === 'wait' || act === 'hold') continue;
+        if (act === 'wait' || act === 'hold') {
+          skippedSessionCount++;
+          continue;
+        }
       }
       merged.push({
         createdAt: new Date(session.createdAt),
@@ -561,7 +569,7 @@ export class StrategyEngineService implements OnModuleInit {
       data: paged.map((m) => m.entry),
       total,
       totalAll,
-      skippedCount: totalAll - total,
+      skippedCount: skippedLogCount + skippedSessionCount,
     };
   }
 
