@@ -2916,6 +2916,7 @@ export class GridTradingService {
           feeRate: feeCalc.finalFeeRate,
           feeAmount: feeCalc.feeAmount,
           uniqueOrderId,
+          strategyName: state.symbol,
         });
         state.chargedProfit = state.totalProfit; // 高水位标记（防止重启后重复扣费）
         this.logger.log(

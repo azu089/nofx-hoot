@@ -40,6 +40,7 @@ export interface FeeRecord {
   feeRate: string;
   feeAmount: string;
   uniqueOrderId: string;
+  strategyName?: string; // 策略名称（交易对），用于账单备注
 }
 
 @Injectable()
@@ -217,7 +218,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: `燃油费 · 盈利${profit} · 费率${feeRate}`,
+          remark: `${feeRecord.strategyName ? feeRecord.strategyName + ' ' : ''}盈利扣除 · 盈利${profit} · 费率${feeRate}`,
         },
       });
 

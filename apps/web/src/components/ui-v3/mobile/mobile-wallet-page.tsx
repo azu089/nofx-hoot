@@ -1157,7 +1157,9 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                             </p>
                           </div>
                           <div className="flex items-center justify-between mt-1">
-                            <p className="text-sm text-[#94A3B8]">{getAssetLabel(tx.asset)}</p>
+                            <p className="text-sm text-[#94A3B8]">
+                              {tx.type === 'gas_fee' ? (tx.remark || '') : getAssetLabel(tx.asset)}
+                            </p>
                             <div className="flex items-center gap-1">
                               {statusInfo.icon}
                               <span className={`text-xs ${statusInfo.color}`}>
@@ -1165,7 +1167,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               </span>
                             </div>
                           </div>
-                          {/* 失败原因 */}
+                          {/* 失败原因（非成功状态） */}
                           {tx.remark && tx.status !== 'completed' && tx.status !== 'pending' && tx.status !== 'processing' && (
                             <p className="text-xs text-[#EF4444]/80 mt-1.5 bg-[#EF4444]/5 rounded px-2 py-1">
                               {tx.remark}
