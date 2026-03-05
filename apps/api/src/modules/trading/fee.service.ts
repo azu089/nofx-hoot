@@ -223,7 +223,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: `${feeRecord.strategyName ? (feeRecord.strategyName.split('/')[0] + ' ') : ''}盈利${profit} · 费率${feeRate}`,
+          remark: `${feeRecord.strategyName ? (feeRecord.strategyName.split('/')[0] + ' ') : ''}盈利${parseFloat(profit).toFixed(3)} · 费率${feeRate}`,
         },
       });
 
