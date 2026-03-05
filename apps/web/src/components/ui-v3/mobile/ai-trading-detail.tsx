@@ -970,9 +970,9 @@ export function AIStrategyDetailPage() {
                     )}
 
                     {/* Grid 策略配置 */}
-                    {strategy.strategyType === 'grid' && strategy.gridConfig ? (
+                    {strategy.strategyType === 'grid' ? (
                       (() => {
-                        const gc = strategy.gridConfig;
+                        const gc = (strategy.gridConfig ?? {}) as Record<string, any>;
                         return <>
                         <ConfigRow label={t('detail.configTradingPair')} value={gc.symbol || '—'} />
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
@@ -1064,13 +1064,13 @@ export function AIStrategyDetailPage() {
                     )}
                     {/* Debate 模型展示 */}
                     {strategy.tradingMode === 'debate' && strategy.models && strategy.models.length > 0 && (
-                      <div>
-                        <p className="text-xs text-[#606070] mb-1">{t('detail.editDebateModels')}</p>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.editDebateModels')}</span>
+                        <div className="flex flex-wrap gap-1 justify-end">
                           {strategy.models.map((m: string) => {
                             const info = MODEL_DISPLAY[m as keyof typeof MODEL_DISPLAY];
                             return (
-                              <span key={m} className="px-3 py-1.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded-lg">
+                              <span key={m} className="px-2 py-0.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded">
                                 {info?.name || m}
                               </span>
                             );
@@ -1089,15 +1089,12 @@ export function AIStrategyDetailPage() {
                         )}
                       </>
                     )}
-                    <div>
-                      <p className="text-xs text-[#606070] mb-1">{t('detail.coinSource')}</p>
-                      <p className="text-sm">{coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#606070] mb-1">{t('detail.tradingCoins')}</p>
-                      <div className="flex flex-wrap gap-2">
+                    <ConfigRow label={t('detail.coinSource')} value={coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'} />
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.tradingCoins')}</span>
+                      <div className="flex flex-wrap gap-1 justify-end">
                         {symbols.length > 0 ? symbols.map((s: string) => (
-                          <span key={s} className="px-3 py-1.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded-lg">{s.split('/')[0]}</span>
+                          <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded">{s.split('/')[0]}</span>
                         )) : <span className="text-sm text-[#606070]">{t('common.notConfigured')}</span>}
                       </div>
                     </div>
@@ -1105,11 +1102,11 @@ export function AIStrategyDetailPage() {
                       <ConfigRow label={t('detail.maxCoins')} value={coinSourceConfig.maxCoins} />
                     )}
                     {(coinSourceConfig?.excludedCoins?.length ?? 0) > 0 && (
-                      <div>
-                        <p className="text-xs text-[#606070] mb-1">{t('detail.excludeCoins')}</p>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.excludeCoins')}</span>
+                        <div className="flex flex-wrap gap-1 justify-end">
                           {coinSourceConfig?.excludedCoins?.map((s: string) => (
-                            <span key={s} className="px-3 py-1.5 text-xs font-medium bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded-lg">{s.split('/')[0]}</span>
+                            <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded">{s.split('/')[0]}</span>
                           ))}
                         </div>
                       </div>
@@ -2226,7 +2223,7 @@ export function AIStrategyDetailPage() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowPauseModal(false)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 animate-slide-up">
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,80px))] animate-slide-up">
             <h2 className="text-lg font-semibold mb-4">{t('detail.pauseStrategy')}</h2>
 
             <div className="mb-6">
@@ -2633,12 +2630,12 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   );
 }
 
-// 只读配置行
+// 只读配置行（左标签 + 右数值两列布局）
 function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <p className="text-xs text-[#606070] mb-1">{label}</p>
-      <p className="text-sm">{value}</p>
+    <div className="flex items-start justify-between gap-3 min-h-[1.5rem]">
+      <span className="text-xs text-[#606070] shrink-0 pt-0.5">{label}</span>
+      <span className="text-sm text-right break-all">{value}</span>
     </div>
   );
 }
