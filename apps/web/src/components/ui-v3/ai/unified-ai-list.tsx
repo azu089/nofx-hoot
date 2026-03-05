@@ -390,8 +390,8 @@ function StrategyCard({
           <div className="text-[#F8F8FC] font-medium text-xs font-mono">{winRate.toFixed(1)}%</div>
         </div>
         <div>
-          <div className="text-[#606070] text-[10px] mb-0.5">{t('list.sharpe')}</div>
-          <div className="text-[#F8F8FC] font-medium text-xs font-mono">{isGrid ? '--' : sharpe.toFixed(2)}</div>
+          <div className="text-[#606070] text-[10px] mb-0.5">{t('detail.trades')}</div>
+          <div className="text-[#F8F8FC] font-medium text-xs font-mono">{Number(strategy.totalTrades ?? 0)}</div>
         </div>
       </div>
 
