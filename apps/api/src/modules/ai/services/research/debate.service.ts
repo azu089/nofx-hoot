@@ -88,7 +88,17 @@ export interface DebateResult {
   totalTokens: number; // 总 Token 消耗
   totalLatencyMs: number; // 总延迟
   votingEntries?: DebateEntry[]; // Phase 9.1: 投票阶段条目
-  multiCoinConsensus?: Record<string, DebateResult['consensus']>; // Phase 9.1: 多币种共识
+  multiCoinConsensus?: Record<string, { // Phase 9.1: 多币种共识
+    direction: string;       // buy/sell/hold
+    action: string;          // open_long/open_short/close_long/close_short/hold/wait
+    confidence: number;      // 0-100
+    score: number;           // 支持该 action 的角色数
+    reasoning: string;       // 推理摘要
+    leverage?: number;       // 加权平均杠杆（1-20）
+    positionPct?: number;    // 仓位比例 decimal 0.0-1.0（如 0.1 = 10%）
+    stopLoss?: number;       // 止损百分比 decimal（如 0.03 = 3%）
+    takeProfit?: number;     // 止盈百分比 decimal（如 0.06 = 6%）
+  }>;
 }
 
 /**

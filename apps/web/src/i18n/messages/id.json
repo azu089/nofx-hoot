@@ -2247,6 +2247,15 @@
       "deleteFailed": "Delete failed",
       "prevStep": "Previous",
       "nextStep": "Next"
+    },
+    "debate": {
+      "roles": {
+        "bull": "Peneliti Bullish",
+        "bear": "Peneliti Bearish",
+        "analyst": "Analis Teknikal",
+        "contrarian": "Analis Kontrarian",
+        "risk_manager": "Manajer Risiko"
+      }
     }
   }
 }

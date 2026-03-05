@@ -153,8 +153,8 @@ export function CreateStrategyWizard() {
   const [gridParams, setGridParams] = useState({
     totalInvestment: 1000,  // 资金上限（$），对应后端 gridConfig.totalInvestment
     leverage: 1,
-    upperPct: 0,            // 上偏移百分比，0 = AI 自动决策
-    lowerPct: 0,            // 下偏移百分比，0 = AI 自动决策
+    upperPct: 0,            // 上偏移百分比，0 = 公式自动计算（nofx: ±3% × 层数/10）
+    lowerPct: 0,            // 下偏移百分比，0 = 公式自动计算（nofx: ±3% × 层数/10）
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
@@ -791,7 +791,7 @@ export function CreateStrategyWizard() {
                     value={gridParams.upperPct || ''}
                     onChange={(e) => updateGrid('upperPct', Number(e.target.value) || 0)}
                     min={0} max={50}
-                    placeholder="AI自动"
+                    placeholder="公式自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
@@ -802,7 +802,7 @@ export function CreateStrategyWizard() {
                     value={gridParams.lowerPct || ''}
                     onChange={(e) => updateGrid('lowerPct', Number(e.target.value) || 0)}
                     min={0} max={50}
-                    placeholder="AI自动"
+                    placeholder="公式自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
@@ -817,7 +817,7 @@ export function CreateStrategyWizard() {
                       <span>≈ ${(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(2)}</span>
                     </>
                   ) : (
-                    <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空由AI自动决定范围</span>
+                    <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
                   )}
                 </div>
               )}

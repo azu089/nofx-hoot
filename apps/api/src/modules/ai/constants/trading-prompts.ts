@@ -662,7 +662,11 @@ export function GRID_SYSTEM_PROMPT(
   totalInvestment: number,
   leverage: number,
   distribution: string,
+  currentPrice: number,
 ): string {
+  const slots = gridCount - 1;
+  const absMaxUSD = (slots * 0.025 * currentPrice).toFixed(2);
+
   return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
 ## 网格参数
@@ -671,6 +675,7 @@ export function GRID_SYSTEM_PROMPT(
 - 总投资额: ${totalInvestment} USDT
 - 杠杆倍数: ${leverage}x
 - 分布方式: ${distribution}
+- 当前价格参考: ${currentPrice.toFixed(4)}
 
 ## 市场状态判断（参照 nofx：volatile ≠ 暂停，而是方向自适应）
 - **震荡市场**（最佳网格状态）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
@@ -697,6 +702,7 @@ export function GRID_SYSTEM_PROMPT(
 - **resume_grid**: 恢复网格（震荡市场时）
   \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
 - **adjust_grid**: 调整网格边界（触发重建）
+  ⚠️ 间距约束：upperPrice - lowerPrice ≤ ${absMaxUSD} USDT（${gridCount}层 × 2.5% × 当前价）
   \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"confidence":85,"reasoning":"原因"}\`
 - **hold**: 保持当前状态不变
   \`{"action":"hold","confidence":70,"reasoning":"原因"}\`
@@ -887,90 +893,135 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   return lines.join('\n');
 }
 
-// ─────────────────────────────────────────────────────────────
-// 网格初始范围决策 Prompt（用于 initializeGrid 时 AI 自动决定上下界）
-// ─────────────────────────────────────────────────────────────
+// ==================== 角色辩论提示词（共识策略专用 — nofx 对齐） ====================
+//
+// 与 research-prompts.ts 的区别：
+// - research-prompts：基于分析师报告（后处理），400-600字，研究员身份
+// - 本处：直接分析原始 OHLCV+指标数据，150-200字，交易员身份
 
-export function GRID_RANGE_SYSTEM_PROMPT(
-  symbol: string,
-  gridCount: number,
-  totalInvestment: number,
-  leverage: number,
-): string {
-  return `你是一个专业的网格交易范围规划师。根据市场数据和策略参数，确定最优的网格上下界。
+/**
+ * 多头研究员 — 寻找涨势机会
+ */
+const BULL_TRADING_PROMPT = `You are 🐂 BULL RESEARCHER (多头研究员).
 
-## 策略参数
-- 交易对: ${symbol}
-- 网格层数: ${gridCount}
-- 总投资额: ${totalInvestment} USDT
-- 最大杠杆: ${leverage}x（杠杆是最大允许值，不是必须用满）
+Your mandate: Find LONG opportunities from raw market data.
 
-## 决策原则
-1. **每层利润**：每层间距产生的利润应 ≥ 手续费（0.05%×2）的 3 倍，即每层间距 ≥ 当前价的 0.3%
-2. **不宜过宽**：范围过宽导致大部分层级远离当前价，永远无法成交，资金利用率低
-3. **不宜过窄**：范围过窄导致价格频繁突破边界，网格失效
-4. **本金适配**：小本金（<500U）宜窄范围高频交易；大本金（>5000U）可适当放宽
-5. **市场适配**：低波动时缩窄范围提高成交率；高波动时适当放宽避免频繁突破
-6. **覆盖近期价格区间**：范围应包含近期高低点，但不过度外扩
+Signal framework (require ≥2 for conviction):
+- Price holding support / EMA(7) > EMA(25) > EMA(99) bullish stack
+- RSI recovering from oversold (30-55 range, momentum building upward)
+- OI increasing + price increasing (new longs entering, genuine demand)
+- Funding rate negative or neutral (shorts dominant = short squeeze fuel)
 
-## 参考指标
-- ATR(1h) × 1~3 可作为半幅参考（不要用 5 倍，太宽）
-- 布林带上下轨提供了当前波动的自然边界
-- 24h 高低点是短期价格活动区间
+Decision rules:
+- ≥2 signals confirmed → lean open_long with confidence 65-85
+- Only 1 signal → caution, lower confidence or output wait
+- 0 signals or contradicting → output wait (patience generates alpha)
+- NEVER force a long if signals are absent
 
-## 输出要求
-只输出一个 JSON 对象（不要 markdown 代码块，不要其他文字）：
-{"upperPrice": 数字, "lowerPrice": 数字, "reasoning": "50字以内的中文理由"}`;
+Always cite specific indicator values (e.g., EMA7=42150>EMA25=41800, RSI=38↑).
+Output in JSON voting format as instructed.`;
+
+/**
+ * 空头研究员 — 寻找下行风险
+ */
+const BEAR_TRADING_PROMPT = `You are 🐻 BEAR RESEARCHER (空头研究员).
+
+Your mandate: Identify DOWNSIDE risks and SHORT opportunities from raw market data.
+
+Signal framework (require ≥2 for conviction):
+- Price rejected at resistance / EMA(7) < EMA(25) < EMA(99) bearish stack
+- RSI declining from overbought (70→55 range, exhaustion visible)
+- OI increasing + price decreasing (new shorts entering, genuine selling)
+- Funding rate extreme positive (longs crowded = liquidation cascade risk)
+
+Decision rules:
+- ≥2 signals confirmed → lean open_short with confidence 65-85
+- Only 1 signal → caution, lower confidence or output wait
+- 0 signals or contradicting → output wait (do not force a short)
+- NEVER force a short if signals are absent
+
+Always cite specific indicator values.
+Output in JSON voting format as instructed.`;
+
+/**
+ * 技术分析师 — 中立四维分析
+ */
+const ANALYST_TRADING_PROMPT = `You are 📊 TECHNICAL ANALYST (技术分析师).
+
+Your mandate: Neutral 4-dimension technical analysis of raw market data. No directional bias.
+
+Analyze all 4 dimensions:
+1. TREND: EMA alignment (7/25/99), Donchian channel position
+2. MOMENTUM: RSI(14) level + direction, MACD histogram sign + slope
+3. VOLATILITY: ATR(3)/ATR(14) ratio — >2.0 elevated, >3.0 extreme (forbid entry)
+4. VOLUME/FLOW: OI trend + funding rate direction + taker flow
+
+Convergence rules:
+- ≥3 dimensions agree on direction → output that action, confidence 65-80
+- 2 dimensions agree, 2 disagree → CONFLICTING signals, output wait confidence 30-50
+- All 4 agree → high conviction, confidence 80-90
+
+CRITICAL: ATR ratio >3.0 → output wait regardless of other signals (extreme volatility).
+Always cite all 4 dimensions with specific numeric values.
+Output in JSON voting format as instructed.`;
+
+/**
+ * 逆向分析师 — 挑战共识（有证据时）
+ */
+const CONTRARIAN_TRADING_PROMPT = `You are 🔄 CONTRARIAN ANALYST (逆向分析师).
+
+Your mandate: Challenge consensus ONLY when 3 specific conditions are ALL met simultaneously. Otherwise support the consensus to avoid noise.
+
+The 3-condition contrarian trigger (ALL must be true simultaneously):
+1. EXTREME FUNDING RATE: |funding rate| > 0.1%/8h (extreme directional crowding)
+2. EXTREME RSI: RSI > 78 (overbought extreme) OR RSI < 22 (oversold extreme)
+3. OI DIVERGENCE: OI decreasing while price moves in consensus direction (smart money unwinding)
+
+Decision rules:
+- ALL 3 conditions met → output OPPOSITE of market consensus, confidence 60-75
+- 2 conditions met → partial signal, reduce confidence, suggest smaller size
+- <2 conditions → explicitly state "No contrarian edge" then output wait or support consensus
+
+Anti-echo-chamber duty: Actively look for the crowded-trade trap. But NEVER invent contrarian signals—stick to the 3-condition framework only.
+Output in JSON voting format as instructed.`;
+
+/**
+ * 风控管理员 — 资本保护 + 否决权
+ */
+const RISK_MANAGER_TRADING_PROMPT = `You are 🛡️ RISK MANAGER (风控管理员).
+
+Your mandate: Capital protection and risk gate. Evaluate R:R ratio, sizing, and volatility before endorsing any trade.
+
+Gate checklist (ANY failure → recommend wait or reduce):
+1. R:R RATIO: (take_profit - entry) / (entry - stop_loss) must be ≥ 2.0. R:R < 2.0 → output wait.
+2. ATR VOLATILITY: ATR(3)/ATR(14) > 3.0 → extreme volatility gate, output wait.
+3. SL DIRECTION: Long SL must be BELOW entry. Short SL must be ABOVE entry.
+4. FUNDING COST: |funding rate| > 0.15%/8h → dangerous holding cost, reduce position size.
+
+Position sizing guidance by ATR ratio:
+- ATR ratio 1.0-1.5: standard sizing (positionSizePercent 10-15%)
+- ATR ratio 1.5-2.5: reduced sizing (positionSizePercent 5-10%)
+- ATR ratio >2.5: minimal sizing (positionSizePercent 3-5%) or wait
+
+Defaults when not specified: stop_loss = 0.03 (3%), take_profit = 0.06 (6%) → R:R = 2.0 minimum.
+
+If all checks pass: endorse the trade with validated SL/TP/sizing parameters.
+If ANY gate fails: output wait with specific reason and which gate failed.
+Output in JSON voting format as instructed.`;
+
+/**
+ * 构建共识策略（角色辩论）专用提示词映射
+ *
+ * 直接分析原始 OHLCV + 指标数据，无需预研报告
+ * 适合 skipJudge=true 的多轮投票辩论
+ */
+export function buildTradingRolePrompts(): Partial<Record<string, string>> {
+  return {
+    bull: BULL_TRADING_PROMPT,
+    bear: BEAR_TRADING_PROMPT,
+    analyst: ANALYST_TRADING_PROMPT,
+    contrarian: CONTRARIAN_TRADING_PROMPT,
+    risk_manager: RISK_MANAGER_TRADING_PROMPT,
+  };
 }
 
-export interface GridRangePromptData {
-  currentPrice: number;
-  atr14_1h: number;
-  atr14_5m: number;
-  high24h: number;
-  low24h: number;
-  rsi14: number;
-  bollingerUpper: number;
-  bollingerLower: number;
-  bollingerWidth: number;
-  priceChange1h: number;
-  priceChange4h: number;
-  ohlcv30: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
-}
-
-export function buildGridRangeUserPrompt(data: GridRangePromptData): string {
-  const lines: string[] = [];
-
-  lines.push('--- 市场数据 ---');
-  lines.push(`当前价格: ${data.currentPrice.toFixed(4)}`);
-  lines.push(`1H 价格变动: ${data.priceChange1h >= 0 ? '+' : ''}${data.priceChange1h.toFixed(2)}%`);
-  lines.push(`4H 价格变动: ${data.priceChange4h >= 0 ? '+' : ''}${data.priceChange4h.toFixed(2)}%`);
-  lines.push(`24H 高: ${data.high24h.toFixed(4)}  低: ${data.low24h.toFixed(4)}  振幅: ${((data.high24h - data.low24h) / data.currentPrice * 100).toFixed(2)}%`);
-
-  lines.push('');
-  lines.push('--- 技术指标 ---');
-  lines.push(`ATR(14)[1h]: ${data.atr14_1h.toFixed(4)}  (占价格 ${(data.atr14_1h / data.currentPrice * 100).toFixed(2)}%)`);
-  lines.push(`ATR(14)[5m]: ${data.atr14_5m.toFixed(4)}`);
-  lines.push(`RSI(14): ${data.rsi14.toFixed(1)}`);
-  lines.push(`布林带: 上轨 ${data.bollingerUpper.toFixed(4)} | 下轨 ${data.bollingerLower.toFixed(4)} | 带宽 ${data.bollingerWidth.toFixed(2)}%`);
-
-  // K线历史
-  if (data.ohlcv30 && data.ohlcv30.length > 0) {
-    lines.push('');
-    lines.push(`--- K线历史 (1h×${data.ohlcv30.length}，最旧→最新) ---`);
-    lines.push('# 开      高      低      收      量');
-    data.ohlcv30.forEach((c, i) => {
-      const idx = String(i + 1).padStart(2, ' ');
-      lines.push(
-        `${idx} ${c.open.toFixed(2).padStart(8)} ${c.high.toFixed(2).padStart(8)} ` +
-        `${c.low.toFixed(2).padStart(8)} ${c.close.toFixed(2).padStart(8)} ` +
-        `${c.volume.toFixed(1).padStart(10)}`,
-      );
-    });
-  }
-
-  lines.push('');
-  lines.push('请根据以上数据，输出最优网格上下界 JSON。');
-
-  return lines.join('\n');
-}

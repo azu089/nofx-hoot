@@ -100,6 +100,9 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   private config: CcxtAdapterConfig;
   private readonly logger = new Logger(CcxtAdapter.name);
 
+  /** OKX 持仓模式：long_short_mode（双向）或 net_mode（单向）。undefined = 非 OKX 或未检测 */
+  okxPositionMode?: 'long_short_mode' | 'net_mode';
+
   constructor(config: CcxtAdapterConfig) {
     this.config = config;
     this.exchangeType = config.exchangeType;
@@ -124,6 +127,15 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       timeout: 60000,
       options: { defaultType, fetchCurrencies: false },
     };
+
+    // OKX 网格策略必须禁用 CCXT 的 hedged 自动 posSide 注入
+    // CCXT OKX createOrderRequest() 内部：
+    //   [hedged, params] = this.handleOptionAndParams(params, 'createOrder', 'hedged');
+    //   if (hedged) { request['posSide'] = isBuy ? 'long' : 'short'; }  ← 触发 51000
+    // 设 hedged=false 彻底阻断此路径，net_mode 下不需要 posSide
+    if (this.exchangeType === 'okx') {
+      options.options.hedged = false;
+    }
 
     // CEX: API Key + Secret
     if (this.config.apiKey) {
@@ -195,6 +207,53 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       throw new Error(
         `${this.exchangeType} loadMarkets 失败: ${lastLoadError}`,
       );
+    }
+
+    // OKX 特殊处理：对齐 nofx okx/trader.go 初始化逻辑
+    // 1. 检测当前 posMode (long_short_mode | net_mode)
+    // 2. 若非双向持仓，尝试切换（有仓位时交易所会拒绝，属正常）
+    // 3. 缓存结果，下单时按 mode 决定是否发 posSide
+    if (this.exchangeType === 'okx') {
+      await this.detectAndSetOkxPositionMode();
+    }
+  }
+
+  /** 检测并尝试设置 OKX 双向持仓模式（对齐 nofx okx/trader.go） */
+  private async detectAndSetOkxPositionMode(): Promise<void> {
+    const ex = this.exchange!;
+    try {
+      // GET /api/v5/account/config
+      const resp = await (ex as any).privateGetAccountConfig({});
+      const configs = resp?.data as Array<{ posMode: string }> | undefined;
+      if (configs && configs.length > 0) {
+        const detected = configs[0].posMode as 'long_short_mode' | 'net_mode';
+        this.okxPositionMode = detected;
+        this.logger.log(`[OKX] 检测到持仓模式: ${detected}`);
+      } else {
+        this.okxPositionMode = 'net_mode'; // 无数据时保守默认 net_mode
+        this.logger.warn(`[OKX] 持仓模式数据为空，默认 net_mode`);
+      }
+    } catch (e: any) {
+      // 无法检测时默认 net_mode（网格策略用 net_mode 更安全）
+      this.logger.warn(`[OKX] 持仓模式检测失败，默认 net_mode: ${e.message}`);
+      this.okxPositionMode = 'net_mode';
+    }
+
+    // 网格策略需要 net_mode（单向持仓）：
+    // - net_mode 可自由下买卖单，无需 posSide
+    // - long_short_mode 下，卖单 = 平多，空网格里没有多头会被 OKX 51000 拒绝
+    // 若当前是双向持仓（long_short_mode），尝试切换到单向
+    if (this.okxPositionMode === 'long_short_mode') {
+      try {
+        await (ex as any).privatePostAccountSetPositionMode({ posMode: 'net_mode' });
+        this.okxPositionMode = 'net_mode';
+        this.logger.log(`[OKX] 已自动切换到单向持仓模式 (net_mode)，网格策略兼容`);
+      } catch (e: any) {
+        // 有仓位时切换会失败，保持 long_short_mode
+        this.logger.warn(`[OKX] 切换 net_mode 失败（可能有未平仓位），维持 long_short_mode: ${e.message}`);
+      }
+    } else {
+      this.logger.log(`[OKX] 已在 net_mode，网格策略无需 posSide`);
     }
   }
 

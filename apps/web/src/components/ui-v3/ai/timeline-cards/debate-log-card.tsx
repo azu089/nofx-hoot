@@ -5,6 +5,9 @@ import { MessageSquare, Check, Clock, Shield, Pause, ChevronDown, ChevronUp, Dol
 import {
   ACTION_CONFIG,
   MODEL_DISPLAY,
+  PERSONALITY_COLORS,
+  PERSONALITY_EMOJIS,
+  parseRoleModelId,
 } from '@/constants/debate';
 import { translateExchangeOrderError } from '@/lib/error-translator';
 import type { TimelineDebateLog, StrategyLogVote } from '@/types/ai';
@@ -399,9 +402,16 @@ export function DebateLogCard({ entry }: DebateLogCardProps) {
 function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusAction: string }) {
   const t = useTranslations('ai');
   const [open, setOpen] = useState(false);
-  const modelInfo = MODEL_DISPLAY[vote.modelId];
-  const modelName = modelInfo?.name || vote.modelId;
-  const modelColor = modelInfo?.color || '#9090A0';
+  const { role, model } = parseRoleModelId(vote.modelId);
+  const isRoleBased = role !== null;
+  const modelInfo = MODEL_DISPLAY[model];
+  const roleColor = isRoleBased ? (PERSONALITY_COLORS[role!] || '#9090A0') : (modelInfo?.color || '#9090A0');
+  const roleEmoji = isRoleBased ? (PERSONALITY_EMOJIS[role!] || '') : '';
+  const displayName = isRoleBased
+    ? `${roleEmoji} ${t(`debate.roles.${role}`)}`
+    : (modelInfo?.name || vote.modelId);
+  const modelName = displayName;
+  const modelColor = roleColor;
   const voteCfg = ACTION_CONFIG[vote.action] || ACTION_CONFIG['wait'];
   const agreed = vote.action === consensusAction;
 
@@ -471,18 +481,26 @@ function VoteItem({ vote, consensusAction }: { vote: StrategyLogVote; consensusA
 
       {/* 推理文本区 — 模型 Logo 始终显示，即使 reasoning 为空 */}
       <div className="pb-2">
-        {/* 模型标识行 */}
+        {/* 模型/角色标识行 */}
         <div className="flex items-center gap-1.5 mb-1.5">
-          {modelInfo?.logo ? (
+          {isRoleBased ? (
+            <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] flex-shrink-0"
+              style={{ backgroundColor: `${roleColor}22`, color: roleColor }}>
+              {roleEmoji}
+            </span>
+          ) : modelInfo?.logo ? (
             <img src={modelInfo.logo} alt={modelName} title={modelName}
               className="w-4 h-4 rounded-full flex-shrink-0" />
           ) : (
             <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
-              style={{ color: modelColor }}>
+              style={{ color: roleColor }}>
               {modelName.charAt(0).toUpperCase()}
             </span>
           )}
-          <span className="text-[10px]" style={{ color: modelColor }}>{modelName}</span>
+          <span className="text-[10px]" style={{ color: roleColor }}>{displayName}</span>
+          {isRoleBased && (
+            <span className="text-[9px] text-[#606070]">({MODEL_DISPLAY[model]?.name || model})</span>
+          )}
         </div>
         {vote.reasoning ? (
           open ? (

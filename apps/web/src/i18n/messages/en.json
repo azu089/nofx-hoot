@@ -2232,6 +2232,15 @@
       "deleteFailed": "Delete failed",
       "prevStep": "Previous",
       "nextStep": "Next"
+    },
+    "debate": {
+      "roles": {
+        "bull": "Bull Researcher",
+        "bear": "Bear Researcher",
+        "analyst": "Technical Analyst",
+        "contrarian": "Contrarian Analyst",
+        "risk_manager": "Risk Manager"
+      }
     }
   }
 }

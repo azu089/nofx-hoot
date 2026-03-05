@@ -2248,6 +2248,15 @@
       "deleteFailed": "删除失败",
       "prevStep": "上一步",
       "nextStep": "下一步"
+    },
+    "debate": {
+      "roles": {
+        "bull": "多头研究员",
+        "bear": "空头研究员",
+        "analyst": "技术分析师",
+        "contrarian": "逆向分析师",
+        "risk_manager": "风控管理员"
+      }
     }
   }
 }

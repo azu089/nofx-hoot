@@ -2249,6 +2249,15 @@
       "deleteFailed": "刪除失敗",
       "prevStep": "上一步",
       "nextStep": "下一步"
+    },
+    "debate": {
+      "roles": {
+        "bull": "多頭研究員",
+        "bear": "空頭研究員",
+        "analyst": "技術分析師",
+        "contrarian": "逆向分析師",
+        "risk_manager": "風控管理員"
+      }
     }
   }
 }

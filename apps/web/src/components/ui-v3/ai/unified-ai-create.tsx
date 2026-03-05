@@ -204,8 +204,8 @@ export function UnifiedAiCreate() {
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
   const [gridLeverage, setGridLeverage] = useState(1);
-  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = AI 自动决策
-  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = AI 自动决策
+  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = 公式自动计算（nofx: ±3% × 层数/10）
+  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = 公式自动计算（nofx: ±3% × 层数/10）
 
   // 网格交易对实时价格
   const [gridCurrentPrice, setGridCurrentPrice] = useState(0);
@@ -996,7 +996,7 @@ export function UnifiedAiCreate() {
                 <p className="text-xs text-[#9090A0]">上偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                   <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
-                    value={gridUpperPct || ''} placeholder="自动计算"
+                    value={gridUpperPct || ''} placeholder="公式自动"
                     onChange={(e) => setGridUpperPct(parseFloat(e.target.value) || 0)}
                     aria-label="上偏移百分比"
                   />
@@ -1007,7 +1007,7 @@ export function UnifiedAiCreate() {
                 <p className="text-xs text-[#9090A0]">下偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                   <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
-                    value={gridLowerPct || ''} placeholder="自动计算"
+                    value={gridLowerPct || ''} placeholder="公式自动"
                     onChange={(e) => setGridLowerPct(parseFloat(e.target.value) || 0)}
                     aria-label="下偏移百分比"
                   />
@@ -1025,7 +1025,7 @@ export function UnifiedAiCreate() {
                     <span>≈ ${(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(2)}</span>
                   </>
                 ) : (
-                  <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空使用公式自动计算范围</span>
+                  <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
                 )}
               </div>
             )}

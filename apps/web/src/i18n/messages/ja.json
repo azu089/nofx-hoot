@@ -2247,6 +2247,15 @@
       "deleteFailed": "削除失敗",
       "prevStep": "前へ",
       "nextStep": "次へ"
+    },
+    "debate": {
+      "roles": {
+        "bull": "強気リサーチャー",
+        "bear": "弱気リサーチャー",
+        "analyst": "テクニカルアナリスト",
+        "contrarian": "逆張りアナリスト",
+        "risk_manager": "リスクマネージャー"
+      }
     }
   }
 }

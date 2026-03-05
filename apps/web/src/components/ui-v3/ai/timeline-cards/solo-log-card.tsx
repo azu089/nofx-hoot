@@ -423,7 +423,7 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
           );
         })}
         {(hasMore || expanded) && (
-          <div className="flex justify-end"><ToggleBtn /></div>
+          <div className="flex justify-center"><ToggleBtn /></div>
         )}
       </div>
     );
@@ -431,14 +431,12 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
 
   // ── 无标题结构 ──
   if (!expanded) {
-    // 收起：2 行截断 + 右侧展开按钮
+    // 收起：2 行截断 + 下方居中展开按钮
     return (
       <div>
         {modelHeader}
-        <div className="flex items-start gap-1">
-          <p className="flex-1 text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
-          {needsExpand && <ToggleBtn />}
-        </div>
+        <p className="text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
+        {needsExpand && <div className="flex justify-center mt-1"><ToggleBtn /></div>}
       </div>
     );
   }
@@ -451,7 +449,7 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
       {paras.map((para, i) => (
         <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{para}</p>
       ))}
-      <div className="flex justify-end"><ToggleBtn /></div>
+      <div className="flex justify-center"><ToggleBtn /></div>
     </div>
   );
 }

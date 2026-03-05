@@ -97,3 +97,14 @@ export function estimateDebateCost(modelCount: number): {
   const total = investDebate + riskDebate + consensus;
   return { investDebate, riskDebate, consensus, total };
 }
+
+/**
+ * 解析角色(模型) 格式的 modelId
+ * 新格式: "bull(deepseek-chat)" → { role: "bull", model: "deepseek-chat" }
+ * 旧格式: "deepseek-chat"       → { role: null, model: "deepseek-chat" }
+ */
+export function parseRoleModelId(modelId: string): { role: string | null; model: string } {
+  const match = modelId.match(/^(\w+)\((.+)\)$/);
+  if (match) return { role: match[1], model: match[2] };
+  return { role: null, model: modelId };
+}

@@ -2247,6 +2247,15 @@
       "deleteFailed": "삭제 실패",
       "prevStep": "이전",
       "nextStep": "다음"
+    },
+    "debate": {
+      "roles": {
+        "bull": "강세 연구원",
+        "bear": "약세 연구원",
+        "analyst": "기술 분석가",
+        "contrarian": "역발상 분석가",
+        "risk_manager": "리스크 매니저"
+      }
     }
   }
 }

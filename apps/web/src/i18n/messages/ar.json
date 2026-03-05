@@ -2228,6 +2228,15 @@
       "deleteFailed": "فشل الحذف",
       "prevStep": "السابق",
       "nextStep": "التالي"
+    },
+    "debate": {
+      "roles": {
+        "bull": "باحث صعودي",
+        "bear": "باحث هبوطي",
+        "analyst": "محلل تقني",
+        "contrarian": "محلل معاكس",
+        "risk_manager": "مدير المخاطر"
+      }
     }
   }
 }

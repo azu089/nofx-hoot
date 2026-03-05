@@ -99,8 +99,8 @@ export function AIStrategyDetailPage() {
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
   const [editGridInterval, setEditGridInterval] = useState(60);
-  const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = AI 自动
-  const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = AI 自动
+  const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = 公式自动计算
+  const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = 公式自动计算
   const [editGridModel, setEditGridModel] = useState('deepseek-chat');
   const [editGridCurrentPrice, setEditGridCurrentPrice] = useState(0);
 
@@ -301,14 +301,14 @@ export function AIStrategyDetailPage() {
       setEditGridDailyLossLimit(gc.dailyLossLimitPct || 0);
       setEditGridInterval(strategy?.intervalMinutes || 60);
       // 优先用用户手动配置的边界（gc.upperBound/lowerBound），不读 AI 运行时范围
-      // 避免：用户设 0（AI 自动）→ AI 跑完写入 gridState → 重新打开显示 10%
+      // 避免：用户设 0（公式自动）→ 跑完写入 gridState → 重新打开显示 10%
       if (gc.upperBound && gc.lowerBound) {
         const midPrice = (Number(gc.upperBound) + Number(gc.lowerBound)) / 2;
         setEditGridUpperPct(Math.round((Number(gc.upperBound) / midPrice - 1) * 100));
         setEditGridLowerPct(Math.round((1 - Number(gc.lowerBound) / midPrice) * 100));
         setEditGridCurrentPrice(midPrice);
       } else {
-        // 用户未配置上下界 → AI 自动，显示 0
+        // 用户未配置上下界 → 公式自动计算，显示 0
         setEditGridUpperPct(0);
         setEditGridLowerPct(0);
       }
@@ -981,8 +981,8 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configPriceBounds')} value={
                           gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound)
                             ? (detail?.gridState?.upperPrice && detail?.gridState?.lowerPrice
-                                ? `AI 自动 · $${Number(detail.gridState.lowerPrice).toFixed(2)} ~ $${Number(detail.gridState.upperPrice).toFixed(2)}`
-                                : 'AI 自动决定（等待初始化）')
+                                ? `${detail.gridState.rangeSource ?? '公式自动'} · $${Number(detail.gridState.lowerPrice).toFixed(2)} ~ $${Number(detail.gridState.upperPrice).toFixed(2)}`
+                                : '公式自动（等待初始化）')
                             : `$${gc.lowerBound} ~ $${gc.upperBound}`
                         } />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
@@ -1001,6 +1001,9 @@ export function AIStrategyDetailPage() {
                               <ConfigRow label={t('detail.gridSpacing')} value={`$${detail.gridState.gridSpacing.toFixed(2)}`} />
                             )}
                             <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? t('common.yes') : t('common.no')} />
+                            {detail.gridState.isPaused && (
+                              <ConfigRow label="暂停原因" value={detail.gridState.pauseReason || `已暂停 [${detail.gridState.pauseSource ?? '未知'}]`} />
+                            )}
                           </div>
                         )}
                         {/* LLM 模型 */}
@@ -1388,7 +1391,7 @@ export function AIStrategyDetailPage() {
                               type="number" min={0} max={50}
                               value={editGridUpperPct || ''}
                               onChange={(e) => setEditGridUpperPct(parseFloat(e.target.value) || 0)}
-                              placeholder="AI自动"
+                              placeholder="公式自动"
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label="上偏移百分比"
                             />
@@ -1402,7 +1405,7 @@ export function AIStrategyDetailPage() {
                               type="number" min={0} max={50}
                               value={editGridLowerPct || ''}
                               onChange={(e) => setEditGridLowerPct(parseFloat(e.target.value) || 0)}
-                              placeholder="AI自动"
+                              placeholder="公式自动"
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label="下偏移百分比"
                             />
@@ -1420,7 +1423,7 @@ export function AIStrategyDetailPage() {
                               <span>≈ ${(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(2)}</span>
                             </>
                           ) : (
-                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空由AI自动决定范围</span>
+                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
                           )}
                         </div>
                       )}

@@ -472,6 +472,10 @@ export interface GridState {
   totalInvestment?: number;
   leverage?: number;
   isInitialized?: boolean;
+  rangeSource?: string;   // '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
+  isPaused?: boolean;
+  pauseSource?: string;
+  pauseReason?: string;
 }
 
 export interface StrategyDetailResponse {

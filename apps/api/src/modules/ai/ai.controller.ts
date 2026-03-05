@@ -1454,6 +1454,10 @@ export class AiController {
           totalInvestment: rawState.totalInvestment,
           leverage: rawState.leverage,
           isInitialized: rawState.isInitialized,
+          rangeSource: rawState.rangeSource,   // 范围来源: '用户指定'|'ATR×5.0'|'±3.0%兜底' 等
+          isPaused: rawState.isPaused,
+          pauseSource: rawState.pauseSource,
+          pauseReason: rawState.pauseReason,
         };
       }
     }
