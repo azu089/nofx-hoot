@@ -545,10 +545,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   // Grid: 折叠状态
   const [showGridOps, setShowGridOps] = useState(false);
 
-  // 日志透明化：折叠状态
-  const [showUserPrompt, setShowUserPrompt] = useState(false);
-  const [showThinking, setShowThinking] = useState(false);
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
 
   return (
     <div className="glass-border-glow relative bg-[#12121A]/30 backdrop-blur-[72px] border border-cyan-500/[0.08] rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden p-4 space-y-3">
@@ -882,74 +878,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         </>
       )}
 
-      {/* === 日志透明化：判断依据 / AI思考 / 系统提示词 === */}
-      {(log.userPrompt || d.aiThinking || log.systemPrompt) && (
-        <div className="space-y-1 border-t border-[#1E1E2E] pt-2">
-
-          {/* 📥 判断依据 (userPrompt) */}
-          {log.userPrompt && (
-            <div>
-              <button
-                onClick={() => setShowUserPrompt(!showUserPrompt)}
-                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
-              >
-                <span style={{ color: '#60A5FA' }}>📥 {t('timeline.inputPromptLabel')}</span>
-                <span className="text-[#606070]">{showUserPrompt ? t('common.collapse') : t('common.expand')}</span>
-              </button>
-              {showUserPrompt && (
-                <div
-                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
-                >
-                  {log.userPrompt}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 🧠 AI 思考过程 (aiThinking) */}
-          {d.aiThinking && (
-            <div>
-              <button
-                onClick={() => setShowThinking(!showThinking)}
-                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
-              >
-                <span style={{ color: '#F0B90B' }}>🧠 {t('timeline.aiThinkingLabel')}</span>
-                <span className="text-[#606070]">{showThinking ? t('common.collapse') : t('common.expand')}</span>
-              </button>
-              {showThinking && (
-                <div
-                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
-                >
-                  {d.aiThinking}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ⚙️ 系统提示词 (systemPrompt) */}
-          {log.systemPrompt && (
-            <div>
-              <button
-                onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-                className="flex w-full items-center justify-between p-2 rounded hover:bg-white/5 text-xs"
-              >
-                <span style={{ color: '#A78BFA' }}>⚙️ {t('timeline.systemPromptLabel')}</span>
-                <span className="text-[#606070]">{showSystemPrompt ? t('common.collapse') : t('common.expand')}</span>
-              </button>
-              {showSystemPrompt && (
-                <div
-                  className="mt-1 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-                  style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#EAECEF' }}
-                >
-                  {log.systemPrompt}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* === 执行状态 === */}
       <div className="border-t border-[#1E1E2E] pt-2">
