@@ -1505,6 +1505,9 @@ export class GridTradingService {
             this.applyGridDirection(state.gridLines, currentPrice, state.currentDirection);
             // 取消所有挂单 + 平反向持仓，下一步 AI 按新方向重新补挂
             await this.cancelOrdersAndCloseOpposingPositions(state, urgentDir, userId, apiKeyId);
+            // cancelOrdersAndCloseOpposingPositions 内部会 dispose 缓存的 adapter 实例
+            // 导致 L1354 获取的 adapter 引用失效（exchange=null），需重新获取
+            adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
           }
           // 不 pause、不 return，继续本轮 AI 决策（按新方向下单）
         }
@@ -2644,18 +2647,11 @@ export class GridTradingService {
     // OKX 要求 clOrdId 纯字母数字（无连字符），格式 g{idx}t{ts}，最长 17 字符
     const clientId = level ? `g${levelIndex}t${Date.now()}` : undefined;
 
-    // OKX 双向持仓模式下自动推导 positionSide
-    let positionSide: 'long' | 'short' | undefined;
-    if ((adapter as any).exchangeType === 'okx') {
-      const isShortBias = state.currentDirection === 'short' || state.currentDirection === 'short_bias';
-      if (side === 'buy') {
-        // BUY: 空头方向→关空(short)；其他→开多(long)
-        positionSide = isShortBias ? 'short' : 'long';
-      } else {
-        // SELL: 空头方向→开空(short)；其他→关多(long)
-        positionSide = isShortBias ? 'short' : 'long';
-      }
-    }
+    // OKX 网格挂单：不发 posSide
+    // - net_mode（单向）: 不支持 posSide，发了就 51000
+    // - long_short_mode（双向）: 空网格下 sell+posSide='long' = 平多，但没有多头会 51000
+    // 结论：网格限价单始终不发 positionSide，让 OKX 按账户默认单向模式处理
+    const positionSide: 'long' | 'short' | undefined = undefined;
 
     const result = await adapter.placeLimitOrder({
       symbol: state.symbol,
@@ -3007,7 +3003,8 @@ export class GridTradingService {
         // === 真实成交处理 ===
         const prevSide = line.side;           // 记录成交方向（成交前的方向）
         line.state = 'filled';
-        line.positionSize = line.orderQuantity;
+        // BUY 成交 → 建立多头仓位，记录持仓量；SELL 成交 → 平掉多头，仓位归零
+        line.positionSize = prevSide === 'buy' ? line.orderQuantity : 0;
         line.positionEntry = detail.avgPrice > 0 ? detail.avgPrice : line.price;
         line.orderId = undefined;
 
@@ -3124,7 +3121,7 @@ export class GridTradingService {
           clientId,
         });
 
-        // nofx 同格反向：将成交格线重新激活为 pending（保持 positionSize 记录持仓以供止损）
+        // nofx 同格反向：将成交格线重新激活为 pending（positionSize 已在 syncOrderFills 正确设置）
         line.state = 'pending';
         line.orderId = result.orderId;
         line.orderQuantity = finalQty;
