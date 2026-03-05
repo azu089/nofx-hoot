@@ -681,6 +681,7 @@ export class GridTradingService {
 
       startEquity: initialEquity,
       lastEquity: initialEquity,
+      lastUnrealizedPnl: 0, // 首轮 buildGridContext 后从交易所持仓更新
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
       userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
@@ -1991,6 +1992,7 @@ export class GridTradingService {
       availableBalance = balance.availableBalance;
       state.availableBalance = availableBalance; // 同步到 state，供 placeGridLimitOrder 精确预检
       unrealizedPnl = balance.unrealizedPnl;
+      state.lastUnrealizedPnl = unrealizedPnl; // 同步到 state，供 saveGridDecisionLog 使用
       marginUsedPct = balance.marginUsedPct ?? 0;
 
       // 优先使用 Step 3 预取的持仓，避免重复 API 调用
@@ -3479,7 +3481,7 @@ export class GridTradingService {
         totalPnl: state.lastEquity && state.startEquity > 0
           ? state.lastEquity - state.startEquity
           : undefined,
-        unrealizedPnl: 0,
+        unrealizedPnl: state.lastUnrealizedPnl ?? 0,
         breakoutLevel: state.breakoutLevel,
         lastPrice: state.lastPrice,
         startEquity: state.startEquity,
