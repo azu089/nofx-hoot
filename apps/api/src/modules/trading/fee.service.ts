@@ -121,6 +121,11 @@ export class FeeService {
       feeAmount = FEE_CONFIG.MIN_FEE;
     }
 
+    // 向上取整到 0.01（用户友好展示，统一精度）
+    if (feeAmount.gt(0)) {
+      feeAmount = feeAmount.toDecimalPlaces(2, Decimal.ROUND_UP);
+    }
+
     // 计算净利润
     const netProfit = profitDecimal.minus(feeAmount);
 
@@ -218,7 +223,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: `${feeRecord.strategyName ? feeRecord.strategyName + ' ' : ''}盈利扣除 · 盈利${profit} · 费率${feeRate}`,
+          remark: `${feeRecord.strategyName ? (feeRecord.strategyName.split('/')[0] + ' ') : ''}盈利扣除 · 盈利${profit} · 费率${feeRate}`,
         },
       });
 
