@@ -307,7 +307,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const ex = this.getExchange();
 
     if (this.exchangeType === 'okx') {
-      // OKX：先尝试双向持仓模式（posSide=long + reduceOnly=true）
+      // OKX：先尝试双向持仓模式（posSide=long）
       // 参照 nofx okx/trader.go CloseShort：明确指定 posSide 确保平仓语义
       try {
         const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { posSide: 'long' });
@@ -316,9 +316,15 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const msg = (e?.message ?? '').toLowerCase();
         // 51015: Redundant position side — 账户为单向持仓模式，posSide 不适用
         // 51017: posSide parameter error
-        if (msg.includes('51015') || msg.includes('51017') || msg.includes('position mode') || msg.includes('possid')) {
-          this.logger.warn(`[CcxtAdapter] OKX closeLong: 双向模式失败，回退单向模式: ${e.message}`);
-          const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { reduceOnly: true });
+        // 51170: reduceOnly 在单向持仓模式下与持仓方向冲突
+        if (
+          msg.includes('51015') || msg.includes('51017') || msg.includes('51170') ||
+          msg.includes('position mode') || msg.includes('possid')
+        ) {
+          this.logger.warn(`[CcxtAdapter] OKX closeLong: 双向模式失败，回退单向模式（无 reduceOnly）: ${e.message}`);
+          // 单向持仓(net_mode)：直接普通市价卖单即可平多，OKX 自动减少多头
+          // 禁止加 reduceOnly=true，否则触发 51170 错误
+          const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, {});
           return this.mapOrderResult(order);
         }
         throw e;
@@ -345,9 +351,15 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const msg = (e?.message ?? '').toLowerCase();
         // 51015: Redundant position side — 账户为单向持仓模式
         // 51017: posSide parameter error
-        if (msg.includes('51015') || msg.includes('51017') || msg.includes('position mode') || msg.includes('possid')) {
-          this.logger.warn(`[CcxtAdapter] OKX closeShort: 双向模式失败，回退单向模式: ${e.message}`);
-          const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
+        // 51170: reduceOnly 在单向持仓模式下与持仓方向冲突
+        if (
+          msg.includes('51015') || msg.includes('51017') || msg.includes('51170') ||
+          msg.includes('position mode') || msg.includes('possid')
+        ) {
+          this.logger.warn(`[CcxtAdapter] OKX closeShort: 双向模式失败，回退单向模式（无 reduceOnly）: ${e.message}`);
+          // 单向持仓(net_mode)：直接普通市价买单即可平空，OKX 自动减少空头
+          // 禁止加 reduceOnly=true，否则触发 51170 错误
+          const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, {});
           return this.mapOrderResult(order);
         }
         throw e;
