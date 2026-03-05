@@ -202,7 +202,7 @@ export const AdminLayout = () => {
             <img
               src="/token.png"
               alt="HOOT"
-              style={{ width: 32, height: 32, objectFit: 'contain' }}
+              style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
               onError={() => setLogoError(true)}
             />
           )}
