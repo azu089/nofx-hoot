@@ -423,11 +423,24 @@ export class GridTradingService {
         lowerPrice = currentPrice * 0.92;
         rangeSource = '±8%兜底';
       }
-    } else if (config.upperBound && config.lowerBound) {
+    } else if (config.upperBound && config.lowerBound
+      && config.upperBound > config.lowerBound
+      && config.upperBound > currentPrice
+      && config.lowerBound < currentPrice
+      && config.upperBound / currentPrice < 10      // 上界不超过当前价 10 倍
+      && currentPrice / config.lowerBound < 10) {   // 当前价不超过下界 10 倍
+      // 用户指定边界且与当前价格兼容
       upperPrice = config.upperBound;
       lowerPrice = config.lowerBound;
       rangeSource = '用户指定';
     } else {
+      // 用户未填写边界，或指定边界与当前价不兼容（如换标的后旧边界残留）→ AI/ATR 自动决策
+      if (config.upperBound && config.lowerBound) {
+        this.logger.warn(
+          `[网格] 用户指定边界 [${config.lowerBound}, ${config.upperBound}] 与当前价 ${currentPrice.toFixed(6)} 不兼容，` +
+          `将使用 ATR/AI 自动决策范围（换标的后旧边界应被重置）`,
+        );
+      }
       // 用户未填写边界 → 让 AI 根据市场数据决策最优范围
       let aiRangeSet = false;
 
