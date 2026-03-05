@@ -1443,7 +1443,7 @@ export class GridTradingService {
             return { trades: 0, errors: 0 };
           } else {
             this.logger.warn(
-              `[网格] 严重倾斜但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，交由 AI 补挂缺失侧订单`,
+              `[网格] 严重倾斜但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，autoFillEmptySlots 本轮自动补挂空侧格线`,
             );
           }
         }
