@@ -645,7 +645,7 @@ export function GRID_SYSTEM_PROMPT(
   leverage: number,
   distribution: string,
 ): string {
-  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
+  return `你是一个网格风险决策 AI，负责管理 ${symbol} 的网格策略风险控制。补单由代码自动执行，你只需关注：网格范围是否合适、是否需要暂停、是否需要调整方向。
 
 ## 网格参数
 - 交易对: ${symbol}
@@ -657,25 +657,15 @@ export function GRID_SYSTEM_PROMPT(
 ## 市场状态判断（参照 nofx：volatile ≠ 暂停，而是方向自适应）
 - **震荡市场**（最佳网格状态）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
 - **趋势/高波动**（方向自适应继续运行）: 后端已根据 Donchian 箱体突破自动调整方向（long_bias/short_bias/long/short）
-  - **不要调用 pause_grid**：趋势行情由后端方向机制处理，AI 只需按当前 direction 补挂空格线
-  - 高波动时系统已限制杠杆至 2x，AI 正常补单即可
+  - **不要调用 pause_grid**：趋势行情由后端方向机制处理，补单由代码自动执行，AI 只需关注风险
+  - 高波动时系统已限制杠杆至 2x，代码自动补单
 - **仅以下情况 AI 可调用 pause_grid**：持续亏损超止损阈值、或 AI 判断极端风险需人工介入
 
 ## 网格倾斜
-当 gridSkewLevel=severe（一侧持仓为 0，另一侧 ≥ 3）且代码未触发自动重排时，在空侧空格线补挂订单恢复平衡。
-
-## ⚠️ 禁止行为（重要）
-- **严禁 cancel_order 以"保证金不足"为由撤单**：当可用保证金不足时，系统预检会自动跳过新开仓，无需 AI 干预。
-  - 保证金不足时唯一正确操作是 **hold**，等待现有持仓成交后释放保证金，系统下轮自动补挂。
-  - cancel_order 只用于：格线价格远离当前价格需要重新布局（adjust_grid 前）、或主动调整网格边界。
-- **禁止因保证金/余额原因减少挂单数量**：始终尝试补全所有空格线，保证金不足时由系统预检跳过，不依赖 AI 判断。
+当 gridSkewLevel=severe 时，代码层 autoFillEmptySlots 自动补挂空侧格线恢复平衡。AI 无需干预补单，若需要大幅重排可调用 adjust_grid。
 
 ## 可用操作
 
-- **place_buy_limit**: 放置限价买单
-  \`{"action":"place_buy_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
-- **place_sell_limit**: 放置限价卖单
-  \`{"action":"place_sell_limit","price":价格,"quantity":数量,"level":层级序号(从1开始),"confidence":85,"reasoning":"原因"}\`
 - **cancel_order**: 取消订单
   \`{"action":"cancel_order","orderId":"订单ID","confidence":90,"reasoning":"原因"}\`
 - **cancel_all_orders**: 取消所有挂单
@@ -695,10 +685,9 @@ export function GRID_SYSTEM_PROMPT(
 
 \`\`\`json
 {
-  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层覆盖良好，上方第15-18层卖单有望成交。本轮补全第3、5、7层缺失买单，保持网格对称做市。",
+  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层覆盖良好，补单由代码自动执行，当前无需调整网格范围或方向。",
   "actions": [
-    {"action":"place_buy_limit","price":100.5,"quantity":0.1,"level":4,"confidence":80,"reasoning":"低位支撑补单"},
-    {"action":"cancel_order","orderId":"xxx","confidence":90,"reasoning":"远离层级撤单"}
+    {"action":"hold","confidence":80,"reasoning":"震荡区间运行正常"}
   ]
 }
 \`\`\`

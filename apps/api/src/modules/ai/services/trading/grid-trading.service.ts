@@ -1379,6 +1379,14 @@ export class GridTradingService {
           delete state._pendingStopLoss;
         }
 
+        // Step 7.5: 代码自动补挂空格线（对齐 nofx：代码层确定性补单，AI 只负责高层风险决策）
+        if (isGridAdapter(adapter) && !state.isPaused) {
+          const autoFillResult = await this.autoFillEmptySlots(
+            state, adapter as GridExchangeAdapter, gridConfig?.useMakerOnly ?? false,
+          );
+          trades += autoFillResult.placed;
+        }
+
         // 动态杠杆同步到交易所（effectiveLeverage 降低时重设）
         // 逐仓模式下有持仓时 Binance 不允许降杠杆，跳过避免每周期重复报错
         const hasOpenPositions = state.gridLines.some(l => l.positionSize > 0);
@@ -2210,20 +2218,8 @@ export class GridTradingService {
     this.logger.debug(`[网格] 执行决策: action=${action}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
 
     switch (action) {
-      case 'place_buy_limit':
-      case 'place_sell_limit':
-        if (!isGridAdapter(adapter)) {
-          const skipReason = `适配器不支持限价单`;
-          this.logger.warn(`[网格] ${skipReason}, adapter类型=${adapter.constructor.name}`);
-          return { executed: false, skipReason };
-        }
-        return await this.placeGridLimitOrder(
-          state,
-          decision,
-          action === 'place_buy_limit' ? 'buy' : 'sell',
-          adapter as GridExchangeAdapter,
-          useMakerOnly,
-        );
+      // place_buy_limit / place_sell_limit 已移交 autoFillEmptySlots 代码层自动处理
+      // AI 若仍返回这些 action，走 default 静默忽略，不再由 AI 驱动补单
 
       case 'cancel_order': {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
@@ -3104,6 +3100,56 @@ export class GridTradingService {
       }
     }
     return placed;
+  }
+
+  /**
+   * 代码层自动补挂空格线（对齐 nofx fillEmptySlots）
+   *
+   * nofx 设计：每轮代码自动填满所有 state='empty' 的格线，AI 只负责 adjust/pause 等高层决策。
+   * 只处理 state='empty' 的格线，state='pending'/'filled' 不动 —— 避免不必要的撤单+重挂（10→8→10 抖动根本原因）。
+   */
+  private async autoFillEmptySlots(
+    state: GridState,
+    adapter: GridExchangeAdapter,
+    useMakerOnly: boolean,
+  ): Promise<{ placed: number; skipped: number }> {
+    let placed = 0;
+    let skipped = 0;
+    const emptyLines = state.gridLines.filter(l => l.state === 'empty');
+    for (const line of emptyLines) {
+      const qty =
+        line.allocatedUSD > 0 && line.price > 0
+          ? (line.allocatedUSD * (state.effectiveLeverage || state.leverage)) / line.price
+          : 0;
+      if (qty <= 0) {
+        skipped++;
+        continue;
+      }
+      try {
+        const result = await this.placeGridLimitOrder(
+          state,
+          {
+            action: `place_${line.side}_limit`,
+            level: line.index + 1,  // 1-based，与 placeGridLimitOrder 期望一致
+            price: line.price,
+            quantity: qty,
+            reasoning: '[代码自动补单]',
+          } as any,
+          line.side,
+          adapter,
+          useMakerOnly,
+        );
+        if (result.executed) placed++;
+        else skipped++;
+      } catch (e: any) {
+        skipped++;
+        this.logger.warn(`[网格] 自动补单失败 level=${line.index}: ${e.message}`);
+      }
+    }
+    if (placed > 0 || skipped > 0) {
+      this.logger.log(`[网格] 自动补单: +${placed} 成功, ${skipped} 跳过/失败`);
+    }
+    return { placed, skipped };
   }
 
   // ========================= 启动恢复（T4: reconcileGridState） =========================
