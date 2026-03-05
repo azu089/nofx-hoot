@@ -356,10 +356,14 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 你必须输出 <reasoning> 和 <decision> 两个标签:
 
 <reasoning>
-详细分析 (150-400字):
-- Market Regime 判定
-- 四维度信号分析
-- 风险评估
+详细分析 (200-500字)，必须包含以下四部分:
+1. Market Regime 判定（趋势/震荡/高波动，依据是什么指标）
+2. 四维度信号分析（趋势/动量/波动率/成交量各自结论）
+3. 风险评估（止损位依据、盈亏比计算过程）
+4. 决策依据（必填）:
+   - confidence X% 原因: 列出支持信号数量 vs 反对信号数量
+   - leverage Xx 原因: 基于当前 ATR/波动率水平，说明为何选此杠杆
+   - 仓位 Y% 原因: 基于 confidence 档位（高/中/低）和当前市场风险，说明为何此仓位
 </reasoning>
 <decision>
 [{
