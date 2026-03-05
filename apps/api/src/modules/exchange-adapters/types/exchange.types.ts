@@ -115,6 +115,8 @@ export interface OrderResult {
   fee: number;
   /** 订单状态 */
   status: OrderStatus;
+  /** 已实现盈亏（平仓订单，来自交易所原始数据，如 Binance info.realizedPnl） */
+  realizedPnl?: number;
   /** DEX 链上交易哈希 */
   txHash?: string;
   /** 原始数据 */

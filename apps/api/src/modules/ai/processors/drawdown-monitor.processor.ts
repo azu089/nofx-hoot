@@ -16,7 +16,7 @@ import { TradingGateway } from '../../../gateways/trading.gateway';
  * 1. 获取当前标记价格
  * 2. 计算未实现盈亏百分比
  * 3. 更新高水位（highWaterMark）
- * 4. 如果从高水位回撤 ≥40% 且曾盈利 >5%，自动平仓保护
+ * 4. 分批止盈：盈利 +3% 平 33%、+5% 平至 50%、+8% 全平（对齐 nofx scale-out）
  */
 @Processor('ai-monitor')
 export class DrawdownMonitorProcessor extends WorkerHost {

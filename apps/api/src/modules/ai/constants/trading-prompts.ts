@@ -260,7 +260,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 重要: 低波动不等于不交易。BTC/ETH 在平静期 ATR14/Price 通常在 0.3-1.0%，属于 ranging 状态，仍应积极寻找交易机会。
 
 ## Section 2: 账户与持仓评估
-1. 保证金使用率仅供参考（在 reasoning 中提示风险等级即可，**不作为拒绝开仓的依据**）
+1. 保证金使用率：**不得超过 30%**；超过此限制时优先平仓而非继续开仓，优先保护资本
 2. 当前持仓 PnL% = (unrealizedPnl / margin) × 100（不要混淆美元值和百分比）
 3. PeakPnL% = 历史最高未实现盈亏百分比（由系统追踪）
 4. 杠杆放大效应: 3x 杠杆下，价格涨1% → 持仓盈亏约3%
@@ -294,16 +294,17 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 
 ### 4.1 开仓规则 (无持仓时)
 可选: open_long / open_short / wait
-- 开仓条件: ≥ 3 个维度信号一致
+- **最低信心度**: confidence < 75 → 必须输出 wait（不确定时不开新仓，patience generates alpha）
+- 开仓条件: ≥ 3 个维度信号一致 + confidence ≥ 75
 - 仓位大小 (positionSizePercent: 1-20 整数):
-  - confidence 80-100 → 15-20%
-  - confidence 60-80 → 8-15%
-  - confidence 50-60 → 3-8%
-  - confidence < 50 → wait
+  - confidence 85-100 → 15-20%
+  - confidence 75-85 → 8-15%
+  - confidence < 75 → wait
 - 止损: SL distance = max(1.5 × ATR14 / price, 0.5%) / leverage
   - 多仓: stop_loss = entryPrice × (1 - SL_distance)
   - 空仓: stop_loss = entryPrice × (1 + SL_distance)
-- 止盈 (ATR 倍数): +1.5×ATR → 平33%, +2.5×ATR → 平50%, +4×ATR → 全平
+- 止盈目标: take_profit 对应 +3-8% 盈利区间（系统代码在 +3%/+5%/+8% 自动分批平仓）
+- **分批建仓 (Scale-in)**: 首次开仓不超过目标仓位的 50%；只在盈利仓位上加仓，永远不追亏损
 
 ### 4.2 平仓规则 (有持仓时)
 可选: close_long / close_short / hold
@@ -319,19 +320,29 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 **参考因素（非强制，根据具体情况灵活运用）:**
 - PeakPnL 较高但正在快速回撤时，考虑保护利润
 - 趋势明确反转（多指标确认）时，考虑平仓
-- 亏损持续扩大且趋势不支持时，考虑止损
-- 系统会在 PeakPnL > 5% 回撤 ≥ 40% 时自动保护平仓
+- **单个持仓亏损达到 -5% 时必须止损**，优先保护资本，再考虑盈利
+
+**Trailing Stop（跟踪止盈）:**
+- 持仓 PnL 从峰值回撤 ≥ 30% 时，考虑部分或全部止盈
+  示例: PeakPnL=+5%, 当前 PnL=+3.5% → 回撤 30% → 应止盈
+  示例: PeakPnL=+8%, 当前 PnL=+5.6% → 回撤 30% → 应止盈
+
+**分批止盈 (Scale-out，系统代码自动执行):**
+- 盈利 +3%: 平仓 33%
+- 盈利 +5%: 平仓至原仓 50%
+- 盈利 +8%: 全部平仓
 
 平仓时不需要设置 stop_loss/take_profit（可填 null）
 
 ## Section 5: 代码层规则
 
-### 代码强制拦截 (Hard Limits — 违反会被自动拒绝):
-- ATR(3)/ATR(14) > 3.0 → 全面暂停交易
-- Risk/Reward < 2.0:1 → 拒绝交易
-- 未设置 stop_loss → 拒绝交易
-- 杠杆超限 → 拒绝交易
-- 同币种反向仓位冲突 → 拒绝交易
+### 代码强制拦截 [CODE ENFORCED — 违反会被自动拒绝]:
+- ATR(3)/ATR(14) > 3.0 → 全面暂停交易 [CODE ENFORCED]
+- Risk/Reward < 2.0:1 → 拒绝交易 [CODE ENFORCED]
+- 未设置 stop_loss → 拒绝交易 [CODE ENFORCED]
+- 杠杆超限 → 拒绝交易 [CODE ENFORCED]
+- 同币种反向仓位冲突 → 拒绝交易 [CODE ENFORCED]
+- 平仓决策优先于开仓（每轮先执行所有平仓再执行开仓）[CODE ENFORCED]
 
 ### 代码软警告 (Soft Warnings — 你会看到警告但可以自主决策):
 - RSI > 80 或 < 20 → 系统警告但不阻止，由你判断
@@ -357,13 +368,16 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 
 <reasoning>
 详细分析 (200-500字)，必须包含以下四部分:
-1. Market Regime 判定（趋势/震荡/高波动，依据是什么指标）
-2. 四维度信号分析（趋势/动量/波动率/成交量各自结论）
-3. 风险评估（止损位依据、盈亏比计算过程）
+1. Market Regime 判定（trending/ranging/volatile，依据是什么具体指标数值）
+2. 四维度信号分析（每个维度必须含具体数值）:
+   - 趋势: EMA(7)=xxx vs EMA(25)=xxx vs EMA(99)=xxx → 多头/空头排列
+   - 动量: RSI(14)=xx.x（超买/正常/超卖），MACD 状态（金叉/死叉/上升/下降）
+   - 波动率: ATR(3)/ATR(14)=x.xx → low/normal/high
+   - 资金流: 资金费率=x.xxx%（正负方向对当前仓位的影响），OI 变化四象限判断
+3. 风险评估（止损位依据、R:R 比例计算）
 4. 决策依据（必填）:
-   - confidence X% 原因: 列出支持信号数量 vs 反对信号数量
-   - leverage Xx 原因: 基于当前 ATR/波动率水平，说明为何选此杠杆
-   - 仓位 Y% 原因: 基于 confidence 档位（高/中/低）和当前市场风险，说明为何此仓位
+   - confidence X% 原因: 支持信号 vs 反对信号
+   - 若 confidence < 75 → 输出 wait，说明哪些信号不足
 </reasoning>
 <decision>
 [{
@@ -374,7 +388,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
   "positionSizePercent": 1-20,
   "stop_loss": <绝对价格>,
   "take_profit": <绝对价格>,
-  "reasoning": "一句话总结"
+  "reasoning": "一句话摘要（必须含≥2个具体指标数值，格式：RSI(62.3)超买+EMA多头排列+MACD金叉，趋势/动量看多，判断开多）"
 }]
 </decision>
 
@@ -649,7 +663,7 @@ export function GRID_SYSTEM_PROMPT(
   leverage: number,
   distribution: string,
 ): string {
-  return `你是一个网格风险决策 AI，负责管理 ${symbol} 的网格策略风险控制。补单由代码自动执行，你只需关注：网格范围是否合适、是否需要暂停、是否需要调整方向。
+  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
 ## 网格参数
 - 交易对: ${symbol}
@@ -661,15 +675,19 @@ export function GRID_SYSTEM_PROMPT(
 ## 市场状态判断（参照 nofx：volatile ≠ 暂停，而是方向自适应）
 - **震荡市场**（最佳网格状态）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
 - **趋势/高波动**（方向自适应继续运行）: 后端已根据 Donchian 箱体突破自动调整方向（long_bias/short_bias/long/short）
-  - **不要调用 pause_grid**：趋势行情由后端方向机制处理，补单由代码自动执行，AI 只需关注风险
-  - 高波动时系统已限制杠杆至 2x，代码自动补单
+  - **不要调用 pause_grid**：趋势行情由后端方向机制处理
+  - 高波动时系统已限制杠杆至 2x
 - **仅以下情况 AI 可调用 pause_grid**：持续亏损超止损阈值、或 AI 判断极端风险需人工介入
 
 ## 网格倾斜
-当 gridSkewLevel=severe 时，代码层 autoFillEmptySlots 自动补挂空侧格线恢复平衡。AI 无需干预补单，若需要大幅重排可调用 adjust_grid。
+当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
 
 ## 可用操作
 
+- **place_buy_limit**: 在指定层挂买单（state=未挂单时补挂）
+  \`{"action":"place_buy_limit","level":层号,"price":价格,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
+- **place_sell_limit**: 在指定层挂卖单（state=未挂单时补挂）
+  \`{"action":"place_sell_limit","level":层号,"price":价格,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
 - **cancel_order**: 取消订单
   \`{"action":"cancel_order","orderId":"订单ID","confidence":90,"reasoning":"原因"}\`
 - **cancel_all_orders**: 取消所有挂单
@@ -689,8 +707,9 @@ export function GRID_SYSTEM_PROMPT(
 
 \`\`\`json
 {
-  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层覆盖良好，补单由代码自动执行，当前无需调整网格范围或方向。",
+  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层中有3格未挂单（空侧），需补挂买单。",
   "actions": [
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格线补单"},
     {"action":"hold","confidence":80,"reasoning":"震荡区间运行正常"}
   ]
 }
@@ -784,7 +803,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
-    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '已成交' : '已取消';
+    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '已成交' : '未挂单';
     // Fix-4: 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
     lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr} | ${orderIdStr}`);

@@ -814,6 +814,25 @@ export class GridTradingService {
       }
     }
 
+    // Step 1.2: 止盈/止损后的重启恢复
+    // 用户手动 startStrategy 重新激活策略时，isPaused=true + pauseSource='risk_control'
+    // 直接清除暂停状态，策略正常运行；totalProfit/dailyTotalProfit 保留（止盈止损百分比由用户在配置里调高）
+    if (state && state.isPaused && state.pauseSource === 'risk_control') {
+      state.isPaused = false;
+      state.pauseSource = undefined;
+      state.pauseReason = undefined;
+      state.startEquity = state.lastEquity;  // 回撤/均值基准归位
+      state.peakEquity  = state.lastEquity;
+      state.maxDrawdown = 0;
+      state.chargedProfit = 0;
+      this.logger.log(
+        `[网格] ✅ 策略重启: 累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT 保留 | ` +
+        `止盈止损目标由配置决定（如需下一轮触发，请修改配置百分比）`,
+      );
+      await this.persistGridState(strategyId, state);
+      this.gridStates.set(strategyId, state);
+    }
+
     // Step 1.5: 配置变更检测 — 用户修改参数后自动重建网格
     if (state && state.isInitialized && gridConfig) {
       const configChanged = this.detectGridConfigChange(state, gridConfig);
@@ -1071,7 +1090,7 @@ export class GridTradingService {
                 `[网格] 闪速箱体突破: ${magnitude.toFixed(1)}% ≥ ${FLASH_BREAKOUT_CONFIRM_OVERRIDE_PCT}%，跳过确认直接执行`,
               );
             }
-            const action = this.getBreakoutAction(level, gridConfig?.enableDirectionAdjust ?? false);
+            const action = this.getBreakoutAction(level, gridConfig?.enableDirectionAdjust ?? true);
             await this.executeBreakoutAction(state, action, direction, userId, apiKeyId);
             if (state.isPaused) {
               await this.persistGridState(strategyId, state);
@@ -1080,7 +1099,7 @@ export class GridTradingService {
           }
         } else {
           // 虚假突破恢复检查
-          this.checkFalseBreakoutRecovery(state, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
+          this.checkFalseBreakoutRecovery(state, currentPrice, gridConfig?.enableDirectionAdjust ?? true);
         }
       } catch (e: any) {
         this.logger.warn(`[网格] 箱体分析失败: ${e.message}`);
@@ -1236,7 +1255,7 @@ export class GridTradingService {
     // - Short Box 突破 → LongBias/ShortBias（70/30）
     // - Mid Box 突破 → Long/Short（100/0）
     // - 无突破 → 逐步恢复中性（Long→LongBias→Neutral）
-    // volatile 资源限制（2x 杠杆 + 40% 仓位上限）由 REGIME_LEVERAGE_CAP 已处理
+    // volatile 杠杆上限=2x 由 REGIME_LEVERAGE_CAP 强制；仓位%限制（nofx 中为死代码，未被调用）不需要
     const autoPauseOnTrend = gridConfig?.autoPauseOnTrend !== false; // 保留配置项，默认 true
 
     if (autoPauseOnTrend) {
@@ -1393,14 +1412,6 @@ export class GridTradingService {
             }
           }
           delete state._pendingStopLoss;
-        }
-
-        // Step 7.5: 代码自动补挂空格线（对齐 nofx：代码层确定性补单，AI 只负责高层风险决策）
-        if (isGridAdapter(adapter) && !state.isPaused) {
-          const autoFillResult = await this.autoFillEmptySlots(
-            state, adapter as GridExchangeAdapter, gridConfig?.useMakerOnly ?? false,
-          );
-          trades += autoFillResult.placed;
         }
 
         // 动态杠杆同步到交易所（effectiveLeverage 降低时重设）
@@ -1841,6 +1852,9 @@ export class GridTradingService {
         // 参照 nofx executeDirectionAdjustment: 方向变化时取消所有挂单 + 平反向持仓
         // 下一轮 cycle 将按新方向重新挂单
         await this.cancelOrdersAndCloseOpposingPositions(state, newDir, userId, apiKeyId);
+        // 对齐 nofx：方向调整时同时触发仓位缩减保护（方向 + 仓位双重保险）
+        // 假突破恢复时 checkFalseBreakoutRecovery 会重置 positionReductionPct = 0
+        state.positionReductionPct = 50;
         break;
       }
 
@@ -2234,8 +2248,14 @@ export class GridTradingService {
     this.logger.debug(`[网格] 执行决策: action=${action}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
 
     switch (action) {
-      // place_buy_limit / place_sell_limit 已移交 autoFillEmptySlots 代码层自动处理
-      // AI 若仍返回这些 action，走 default 静默忽略，不再由 AI 驱动补单
+      // 对齐 nofx：AI 驱动补单
+      case 'place_buy_limit':
+        if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
+        return this.placeGridLimitOrder(state, decision, 'buy', adapter as GridExchangeAdapter, useMakerOnly);
+
+      case 'place_sell_limit':
+        if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
+        return this.placeGridLimitOrder(state, decision, 'sell', adapter as GridExchangeAdapter, useMakerOnly);
 
       case 'cancel_order': {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
@@ -2376,19 +2396,20 @@ export class GridTradingService {
       throw new BadRequestException('策略未处于风控暂停状态');
     }
 
-    // 重置基准线为当前权益（防止止盈/止损/回撤立即重新触发）
+    // 清除暂停状态，恢复正常运行
     state.isPaused = false;
     state.pauseSource = undefined;
     state.pauseReason = undefined;
 
-    // startEquity 重置为上次记录的权益，作为新一轮的起点
-    // 这样止盈目标 4% = 从现在开始再赚 4%，而不是从历史起点累计
+    // 权益基准归位（回撤检测从当前权益重新开始）
     if (state.lastEquity && state.lastEquity > 0) {
       state.startEquity = state.lastEquity;
     }
-    state.totalProfit = 0;      // 已实现利润归零（新轮次重新计算）
-    state.dailyTotalProfit = 0; // 日内已实现利润归零
-    state.chargedProfit = 0;    // 已结算金额也归零（上一轮已在 emergencyExit 里结算完毕）
+    // totalProfit / dailyTotalProfit 保留（止盈止损触发百分比由用户在配置里调整）
+    state.chargedProfit = 0;
+    // peakEquity/maxDrawdown 归零，防止旧回撤值立刻再次触发保护
+    state.peakEquity = state.startEquity;
+    state.maxDrawdown = 0;
 
     state.peakEquity = state.startEquity;   // 回撤检测从新基准重新开始
     state.maxDrawdown = 0;                  // 历史最大回撤归零
@@ -2787,32 +2808,38 @@ export class GridTradingService {
       // 取消所有订单
       await adapter.cancelAllOrders(state.symbol);
 
-      // 平掉所有持仓，平仓前汇总未实现盈亏作为扣费基数
+      // 逐仓平仓：平仓后立即用交易所返回的已实现盈亏结算燃油费
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
-      const closingPnl = positions
-        .filter(pos => pos.symbol.includes(baseSymbol))
-        .reduce((sum, pos) => sum + pos.unrealizedPnl, 0);
+      let totalClosingPnl = 0;
 
       for (const pos of positions) {
         if (!pos.symbol.includes(baseSymbol)) continue;
         try {
-          pos.side === 'long'
+          const closeResult = pos.side === 'long'
             ? await adapter.closeLong(pos.symbol, pos.quantity)
             : await adapter.closeShort(pos.symbol, pos.quantity);
+
+          // 优先使用交易所返回的已实现盈亏，fallback 到平仓前的 unrealizedPnl（近似值）
+          const posRealizedPnl = closeResult.realizedPnl ?? pos.unrealizedPnl;
+          totalClosingPnl += posRealizedPnl;
+
+          this.logger.log(
+            `[网格] 平仓 ${pos.symbol} ${pos.side}: 已实现盈亏 ${posRealizedPnl >= 0 ? '+' : ''}${posRealizedPnl.toFixed(4)} USDT`,
+          );
+
+          // 单仓平仓后立即结算燃油费（亏损不扣，失败不阻塞）
+          await this.settleGridFee(state, userId, posRealizedPnl);
         } catch (e: any) {
           this.logger.warn(`[网格] 平仓失败: ${pos.symbol} ${pos.side} - ${e.message}`);
         }
       }
 
       this.logger.log(
-        `[网格] 紧急退出平仓盈亏: ${closingPnl >= 0 ? '+' : ''}${closingPnl.toFixed(4)} USDT`,
+        `[网格] 紧急退出合计盈亏: ${totalClosingPnl >= 0 ? '+' : ''}${totalClosingPnl.toFixed(4)} USDT`,
       );
-      state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + closingPnl;
-      state.totalProfit = (state.totalProfit ?? 0) + closingPnl;
-
-      // 结算燃油费（基于平仓时持仓的未实现盈亏，失败不阻塞后续状态更新）
-      await this.settleGridFee(state, userId, closingPnl);
+      state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + totalClosingPnl;
+      state.totalProfit = (state.totalProfit ?? 0) + totalClosingPnl;
     } catch (e: any) {
       this.logger.error(`[网格] 紧急退出执行失败: ${e.message}`);
     } finally {
@@ -3114,56 +3141,6 @@ export class GridTradingService {
       }
     }
     return placed;
-  }
-
-  /**
-   * 代码层自动补挂空格线（对齐 nofx fillEmptySlots）
-   *
-   * nofx 设计：每轮代码自动填满所有 state='empty' 的格线，AI 只负责 adjust/pause 等高层决策。
-   * 只处理 state='empty' 的格线，state='pending'/'filled' 不动 —— 避免不必要的撤单+重挂（10→8→10 抖动根本原因）。
-   */
-  private async autoFillEmptySlots(
-    state: GridState,
-    adapter: GridExchangeAdapter,
-    useMakerOnly: boolean,
-  ): Promise<{ placed: number; skipped: number }> {
-    let placed = 0;
-    let skipped = 0;
-    const emptyLines = state.gridLines.filter(l => l.state === 'empty');
-    for (const line of emptyLines) {
-      const qty =
-        line.allocatedUSD > 0 && line.price > 0
-          ? (line.allocatedUSD * (state.effectiveLeverage || state.leverage)) / line.price
-          : 0;
-      if (qty <= 0) {
-        skipped++;
-        continue;
-      }
-      try {
-        const result = await this.placeGridLimitOrder(
-          state,
-          {
-            action: `place_${line.side}_limit`,
-            level: line.index + 1,  // 1-based，与 placeGridLimitOrder 期望一致
-            price: line.price,
-            quantity: qty,
-            reasoning: '[代码自动补单]',
-          } as any,
-          line.side,
-          adapter,
-          useMakerOnly,
-        );
-        if (result.executed) placed++;
-        else skipped++;
-      } catch (e: any) {
-        skipped++;
-        this.logger.warn(`[网格] 自动补单失败 level=${line.index}: ${e.message}`);
-      }
-    }
-    if (placed > 0 || skipped > 0) {
-      this.logger.log(`[网格] 自动补单: +${placed} 成功, ${skipped} 跳过/失败`);
-    }
-    return { placed, skipped };
   }
 
   // ========================= 启动恢复（T4: reconcileGridState） =========================

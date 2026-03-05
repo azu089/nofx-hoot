@@ -20,9 +20,6 @@ const DIR_KEY: Record<string, string> = {
   neutral: 'dirNeutral', long: 'dirLong', short: 'dirShort',
   long_bias: 'dirLongBias', short_bias: 'dirShortBias',
 };
-const BREAKOUT_KEY: Record<string, string> = {
-  none: 'breakoutNone', short: 'breakoutShort', mid: 'breakoutMid', long: 'breakoutLong',
-};
 
 /**
  * 将系统日志 decision 字段转换为 i18n 文本，返回 null 则降级显示 reasoning 原文
@@ -917,9 +914,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             <span className="text-[#10B981] font-medium">
               {ACTION_I18N[action] ? t(ACTION_I18N[action]) : t('timeline.executed')}
             </span>
-            {d.capitalUSD != null && (
-              <span className="text-[#9090A0] font-mono">${d.capitalUSD}</span>
-            )}
             {d.positionSizePercent != null && (
               <span className="text-[#9090A0] font-mono">{d.positionSizePercent}%</span>
             )}

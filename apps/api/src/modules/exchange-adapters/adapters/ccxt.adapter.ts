@@ -812,6 +812,10 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   private mapOrderResult(order: ccxt.Order): OrderResult {
+    // Binance USDM 平仓订单在 info.realizedPnl 中携带已实现盈亏
+    const rawPnl = (order.info as any)?.realizedPnl;
+    const realizedPnl = rawPnl != null ? Number(rawPnl) : undefined;
+
     return {
       orderId: order.id,
       symbol: order.symbol || '',
@@ -821,6 +825,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       filledQuantity: Number(order.filled || 0),
       fee: Number(order.fee?.cost || 0),
       status: mapOrderStatus(order.status),
+      ...(realizedPnl !== undefined ? { realizedPnl } : {}),
     };
   }
 }
