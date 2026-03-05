@@ -8,15 +8,18 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   // 防止部署后浏览器缓存旧 HTML 导致 Server Action 找不到 → 黑屏
-  // 静态资源（_next/static/）有 content hash，不受影响
+  // 仅对 HTML 页面路由（无扩展名）生效，图片/字体/静态资源不受影响
   async headers() {
     return [
       {
-        source: "/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json).*)",
+        // 匹配无文件扩展名的路径（即 HTML 页面），排除 _next/ 和 api/
+        source: "/((?!_next/|api/)(?:[^.]*$))",
         headers: [
           {
             key: "Cache-Control",
-            value: "no-cache, no-store, must-revalidate",
+            // no-cache: 浏览器重新验证，若内容未变服务器返回 304（不重新下载）
+            // 图片/字体等有各自的 Cache-Control，不会被覆盖
+            value: "no-cache, must-revalidate",
           },
         ],
       },
