@@ -7,6 +7,22 @@ const nextConfig: NextConfig = {
   // Docker 部署需要 standalone 输出
   output: "standalone",
 
+  // 防止部署后浏览器缓存旧 HTML 导致 Server Action 找不到 → 黑屏
+  // 静态资源（_next/static/）有 content hash，不受影响
+  async headers() {
+    return [
+      {
+        source: "/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json).*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
+    ];
+  },
+
   // 开发指示器位置（避免阻挡底部导航）
   devIndicators: {
     position: 'top-left',
