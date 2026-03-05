@@ -448,7 +448,10 @@ export class StrategyEngineService implements OnModuleInit {
       filtered = rawData.filter(log => {
         const dec = (log.decision as Record<string, any>) || {};
         const act = dec.action || '';
-        return act !== 'wait' && act !== 'hold';
+        if (act === 'wait' || act === 'hold') return false;
+        // grid_cycle 且 decisions 为空（0 操作）视为无操作，过滤掉
+        if (act === 'grid_cycle' && Array.isArray(dec.decisions) && dec.decisions.length === 0) return false;
+        return true;
       });
     }
 
@@ -564,6 +567,11 @@ export class StrategyEngineService implements OnModuleInit {
         const dec = (log.decision as Record<string, any>) || {};
         const act = dec.action || '';
         if (act === 'wait' || act === 'hold') {
+          skippedLogCount++;
+          continue;
+        }
+        // grid_cycle 且 decisions 为空（0 操作）视为无操作
+        if (act === 'grid_cycle' && Array.isArray(dec.decisions) && dec.decisions.length === 0) {
           skippedLogCount++;
           continue;
         }

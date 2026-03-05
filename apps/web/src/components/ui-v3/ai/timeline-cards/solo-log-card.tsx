@@ -1048,7 +1048,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()
-        ) : isGridLog ? (
+        ) : isGridLog && gridDecisions.length > 0 ? (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs flex-wrap">
             <Check className="w-3.5 h-3.5 text-[#10B981]" />
             <span className="text-[#10B981] font-medium">{t('timeline.executed')}</span>
