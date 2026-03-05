@@ -739,6 +739,8 @@ export class GridTradingService {
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
+      // 风控重启后立即 reconcile：读取交易所现有挂单和持仓
+      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
     // Step 1.5: 配置变更检测 — 用户修改参数后自动重建网格
@@ -760,6 +762,8 @@ export class GridTradingService {
       // 尝试自动初始化（首次 or 配置变更后重建）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
+        // 新建/重建后立即 reconcile：读取交易所现有挂单和持仓
+        await this.reconcileGridState(strategyId, userId, apiKeyId, state);
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
         return { trades: 0, errors: 0 };
