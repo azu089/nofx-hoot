@@ -195,7 +195,7 @@ export interface GridDecision {
 // ========================= 常量 =========================
 
 const BREAKOUT_CONFIRM_REQUIRED = 3;
-const DEFAULT_ATR_MULTIPLIER = 2.0; // 2.0x ATR（对齐 nofx）
+const DEFAULT_ATR_MULTIPLIER = 1.5; // 1.5x ATR × (gridCount/10)，使格间距恒定在 ~0.5%/格
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
 const DEFAULT_BREAKOUT_PCT = 2;
@@ -222,14 +222,6 @@ const DEFAULT_STOP_LOSS_PCT = 5;
 // nofx 信号驱动：量能骤变检测
 const VOLUME_SPIKE_RATIO = 2.0;             // 24h 量 > 日均 2 倍 = 骤变
 const VOLUME_SPIKE_PRICE_CONFIRM_PCT = 1.0; // 同时价格变化 ≥ 1% 才有方向
-// nofx 信号驱动：ATR 追踪网格宽度
-const ATR_SPACING_MULTIPLIER: Record<RegimeLevel, number> = {
-  narrow: 0.5,    // 极度压缩：密网格
-  standard: 1.0,
-  wide: 1.5,
-  volatile: 2.0,  // 高波动：宽网格减震
-};
-const ATR_SPACING_ADJUST_THRESHOLD = 0.35;  // 偏差 > 35% 才调整（防频繁重排）
 // nofx Round 2：OI 真假突破确认
 const BREAKOUT_OI_TRUE_THRESHOLD = 3;       // OI 变化 > +3% = 真突破，立即确认
 const BREAKOUT_OI_FALSE_THRESHOLD = 1;      // OI 变化 < 1%  = 可疑
@@ -398,12 +390,13 @@ export class GridTradingService {
     // 获取当前价格
     const currentPrice = await this.getCurrentPrice(symbol);
 
-    // Step 1: 计算边界（初始化为 nofx 公式兜底，后续可被更精确算法覆盖）
-    // nofx: multiplier = 0.03 × gridCount / 10（10格→±3%，20格→±6%）
-    const _defaultMult = 0.03 * gridCount / 10;
+    // Step 1: 计算边界（初始化为格数驱动兜底，后续可被 ATR 算法覆盖）
+    // 目标格间距 0.5%/格：halfRange = price × 0.5% × (gridCount-1)/2
+    // 10格→±2.25%，20格→±4.75%（格间距恒定，利润空间一致）
+    const _defaultMult = 0.005 * (gridCount - 1) / 2;
     let upperPrice: number = currentPrice * (1 + _defaultMult);
     let lowerPrice: number = currentPrice * (1 - _defaultMult);
-    let rangeSource = `±${(_defaultMult * 100).toFixed(1)}%兜底`;  // 追踪范围决策来源
+    let rangeSource = `±${(_defaultMult * 100).toFixed(2)}%兜底`;  // 追踪范围决策来源
 
     if (useATRBounds && this.indicators) {
       // ATR 自动边界
@@ -415,10 +408,10 @@ export class GridTradingService {
 
       if (atr && atr > 0) {
         const mult = atrMultiplier > 0 ? atrMultiplier : DEFAULT_ATR_MULTIPLIER;
-        const halfRange = atr * mult;
+        const halfRange = atr * mult * (gridCount / 10); // gridCount 因子：层数越多范围越宽，格间距恒定
         upperPrice = currentPrice + halfRange;
         lowerPrice = currentPrice - halfRange;
-        rangeSource = `ATR×${mult}`;
+        rangeSource = `ATR×${mult}×(${gridCount}/10)`;
       } else {
         // ATR 计算失败，使用 nofx 公式兜底
         upperPrice = currentPrice * (1 + _defaultMult);
@@ -453,13 +446,13 @@ export class GridTradingService {
           const closes = ohlcvRaw.map((c: any) => Number(c[4]));
           const atr = this.indicators.calculateATR(highs, lows, closes, 14);
           if (atr && atr > 0) {
-            const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
+            const halfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10); // gridCount 因子保持格间距恒定
             upperPrice = currentPrice + halfRange;
             lowerPrice = currentPrice - halfRange;
             atrFallbackSet = true;
-            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}`;
+            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}×(${gridCount}/10)`;
             this.logger.log(
-              `[网格] 自动宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}): 当前价=${currentPrice.toFixed(2)}, ` +
+              `[网格] 自动宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}×${gridCount}/10): 当前价=${currentPrice.toFixed(2)}, ` +
               `ATR(4H,14)=${atr.toFixed(2)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
             );
           }
@@ -1097,7 +1090,7 @@ export class GridTradingService {
       }
     }
 
-    // Step 6: 市场状态分类（同时获取 ATR(1h) 供 Step 6.55 使用）
+    // Step 6: 市场状态分类
     if (this.indicators) {
       try {
         const { regime, atrHourly } = await this.classifyRegime(state.symbol);
@@ -1117,52 +1110,6 @@ export class GridTradingService {
         `(市场=${state.currentRegime}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
       );
       state.effectiveLeverage = newEffective;
-    }
-
-    // Step 6.55: ATR 追踪网格宽度（nofx Round 1）
-    // 无用户锁定范围、ATR 有效、无持仓时，根据市场 regime 动态调整网格间距
-    if (
-      !state.userLockedRange &&
-      state.lastAtrHourly > 0 &&
-      !state.gridLines.some(l => (l.positionSize ?? 0) > 0)
-    ) {
-      const multiplier = ATR_SPACING_MULTIPLIER[state.currentRegime];
-      const targetSpacing = state.lastAtrHourly * multiplier;
-      const deviation = Math.abs(targetSpacing - state.gridSpacing) / state.gridSpacing;
-      if (deviation > ATR_SPACING_ADJUST_THRESHOLD) {
-        const oldSpacing = state.gridSpacing;
-        const gridCount = state.gridLines.length;
-        const newRange = targetSpacing * (gridCount - 1);
-        state.upperPrice = currentPrice + newRange / 2;
-        state.lowerPrice = Math.max(currentPrice - newRange / 2, 0.0001);
-        state.gridSpacing = targetSpacing;
-        for (let i = 0; i < gridCount; i++) {
-          state.gridLines[i].price = parseFloat((state.lowerPrice + i * targetSpacing).toFixed(5));
-          if (state.gridLines[i].state === 'pending') {
-            state.gridLines[i].state = 'empty';
-            state.gridLines[i].orderId = undefined;
-          }
-        }
-        // 撤销所有挂单，重新按新间距下单
-        if (this.adapterFactory) {
-          let atrWidthAdpt: ExchangeAdapter | null = null;
-          try {
-            atrWidthAdpt = await this.adapterFactory.createAdapter(userId, apiKeyId);
-            await atrWidthAdpt.cancelAllOrders(state.symbol);
-          } catch (e: any) {
-            this.logger.warn(`[网格] ATR追踪撤单失败（继续运行）: ${e.message}`);
-          } finally {
-            if (atrWidthAdpt) { try { await atrWidthAdpt.dispose(); } catch { /* 忽略 */ } }
-          }
-          state.orderBook = {};
-        }
-        this.applyGridDirection(state.gridLines, currentPrice, state.currentDirection);
-        await this.persistGridState(strategyId, state);
-        this.logger.log(
-          `[网格] ATR追踪: spacing ${oldSpacing.toFixed(4)} → ${targetSpacing.toFixed(4)} ` +
-          `(${state.currentRegime} × ${multiplier}x, ATR(1h)=${state.lastAtrHourly.toFixed(4)})`,
-        );
-      }
     }
 
     // Step 6.6: 方向自适应（参照 nofx grid_regime.go，默认 true）
@@ -1287,18 +1234,14 @@ export class GridTradingService {
               `本批利润 ${profitDelta >= 0 ? '+' : ''}${profitDelta.toFixed(4)} USDT | ` +
               `累计 +${state.totalProfit.toFixed(2)} USDT`,
             );
-            // 对齐 nofx：止损由软件每轮检查执行，不在交易所挂条件止损单
-            // （交易所止损单会随成交次数不断堆积，造成僵尸条件委托）
-            const reversePlaced = await this.placeReverseOrders(
-              state, filledLines, adapter as GridExchangeAdapter,
-              gridConfig?.useMakerOnly ?? false,
-            );
-            trades += reversePlaced;
+            // nofx 对齐：移除 placeReverseOrders，改由环形平仓 + AI 补挂
+            // 环形平仓已在 syncOrderFills 内完成；AI 下轮决策补挂 empty 层位
+            trades += filledLines.length;
           }
         }
 
         // 突破检测（对齐 nofx checkBreakout/handleBreakout）
-        // 在 syncOrderFills/placeReverseOrders 之后、AI 决策之前执行
+        // 在 syncOrderFills（环形平仓）之后、AI 决策之前执行
         // ≥2%: 取消所有挂单并暂停; 1-2%: 仅记录警告
         if (state.upperPrice > 0 && state.lowerPrice > 0) {
           const breakout = this.checkBreakout(state, currentPrice);
@@ -1357,16 +1300,19 @@ export class GridTradingService {
         const context = await this.buildGridContext(state, adapter, currentPrice, livePositions, liveBalance);
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
-        // nofx 同格反向后 state='pending'，用 positionSize>0 识别实际持仓格线
+        // 环形平仓模式：卖单成交后卖层 positionSize=0，只有买单成交会留下 positionSize>0 的格线
+        // 因此 skewSell 在正常环形平仓下始终为 0，不应因此轻易触发 severe
+        // 对齐 nofx: buyFilled > 0 && sellFilled == 0 && sellEmpty > 5 才算 severe
         const filledAll = state.gridLines.filter(l => l.positionSize > 0);
         const skewBuy = filledAll.filter(l => l.side === 'sell').length; // 持多头（原buy成交，side已翻转为sell）
-        const skewSell = filledAll.filter(l => l.side === 'buy').length; // 持空头（原sell成交，side已翻转为buy）
+        const skewSell = filledAll.filter(l => l.side === 'buy').length; // 持空头（通常为0，环形平仓模式下）
         const skewTotal = skewBuy + skewSell;
         let skewLevel: 'none' | 'light' | 'severe' = 'none';
         if (skewTotal >= 3) {
           const heavy = Math.max(skewBuy, skewSell);
           const light = Math.min(skewBuy, skewSell);
-          if (light === 0 || heavy >= 5 * light) skewLevel = 'severe';
+          // 环形平仓模式下 light(=skewSell) 永远为 0，需要 heavy >= 5 才触发 severe（对齐 nofx sellEmpty > 5）
+          if ((light === 0 && heavy >= 5) || (light > 0 && heavy >= 5 * light)) skewLevel = 'severe';
           else if (heavy >= 2 * light) skewLevel = 'light';
         }
         (context as any).gridSkewLevel = skewLevel;
@@ -1398,13 +1344,12 @@ export class GridTradingService {
             return { trades: 0, errors: 0 };
           } else {
             this.logger.warn(
-              `[网格] 严重倾斜但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，autoFillEmptySlots 本轮自动补挂空侧格线`,
+              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，跳过自动居中，由 AI 本轮补挂空侧格线`,
             );
           }
         }
 
         // autoAdjustGrid 扩展触发：间距 > nofx 公式最优 × 2 + 无持仓 + 未锁定范围
-        // 修复旧 AI 宽间距初始化（Step 6.55 ATR追踪的 nofx 公式兜底，lastAtrHourly=0 时也有效）
         // 参照 nofx calculateDefaultBoundsLocked: multiplier = 0.03 × gridCount / 10
         if (!state.userLockedRange && isGridAdapter(adapter)) {
           const gcnt = state.gridLines.length;
@@ -2623,6 +2568,22 @@ export class GridTradingService {
       }
     }
 
+    // Step 2.9: 实时保证金预检（弥补 Step 2.8 的杠杆脱节问题）
+    // Step 2.8 用 DB 里的 effectiveLeverage（如5x），但交易所可能执行 volatile regime 2x 上限
+    // 导致名义值检查通过但实际保证金不足，引发交易所级拒绝 → 每轮重试 → 刷屏循环
+    // 解决：用 state.availableBalance（每轮真实拉取的可用余额）做最后一道防线
+    if (state.availableBalance > 0) {
+      const requiredMargin = (finalQty * price) / leverage;
+      const MARGIN_BUFFER = 1.05; // 5% 安全余量，应对下单瞬间价格/资金微变
+      if (state.availableBalance < requiredMargin * MARGIN_BUFFER) {
+        const skipReason =
+          `保证金不足(预检): 可用$${state.availableBalance.toFixed(2)} < ` +
+          `需要$${(requiredMargin * MARGIN_BUFFER).toFixed(2)} (qty=${finalQty}@${price}, lev=${leverage}x)`;
+        this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+        return { executed: false, skipReason };
+      }
+    }
+
     // Step 3: 下单
     // OKX 双向持仓模式需要 positionSide（对应 OKX 参数 posSide）：
     //   BUY  → 多头/中性 开多(long)；空头方向 关空(short)
@@ -2978,35 +2939,68 @@ export class GridTradingService {
           continue;
         }
 
-        // === 真实成交处理 ===
+        // === 真实成交处理（环形平仓模型）===
         const prevSide = line.side;           // 记录成交方向（成交前的方向）
-        line.state = 'filled';
-        // BUY 成交 → 建立多头仓位，记录持仓量；SELL 成交 → 平掉多头，仓位归零
-        line.positionSize = prevSide === 'buy' ? line.orderQuantity : 0;
-        line.positionEntry = detail.avgPrice > 0 ? detail.avgPrice : line.price;
+        const fillPrice = detail.avgPrice > 0 ? detail.avgPrice : line.price;
         line.orderId = undefined;
 
         state.totalTrades++;
 
-        // 只在 SELL 成交时计利润（卖出 = 完成一个买→卖循环，真正盈利）
-        // BUY 成交只是建仓，尚未获利
-        if (prevSide === 'sell' && line.positionEntry > 0) {
-          const grossProfit = state.gridSpacing * line.orderQuantity;
-          // 双边手续费：卖出价 × qty × 费率 + 买入价 × qty × 费率
-          // 买入价 ≈ 卖出价 - gridSpacing（中性网格每格等距）
-          const sellFee = line.positionEntry * line.orderQuantity * state.takerFeeRate;
-          const buyFee = (line.positionEntry - state.gridSpacing) * line.orderQuantity * state.takerFeeRate;
-          const netProfit = grossProfit - sellFee - buyFee;
-          line.unrealizedPnl = netProfit;     // 字段名遗留，实为该格完成盈亏
-          state.totalProfit += netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-          if (netProfit > 0) state.winningTrades++;
+        if (prevSide === 'buy') {
+          // ── 买单成交：建立多头仓位，等待上方卖单环形平仓 ──
+          line.state = 'filled';
+          line.positionSize = line.orderQuantity;
+          line.positionEntry = fillPrice;
+          line.side = 'sell';        // 翻转：持多头，等待卖出
+          line.unrealizedPnl = 0;
         } else {
-          line.unrealizedPnl = 0;            // 买入成交，盈亏待卖出确认
-        }
+          // ── 卖单成交：环形平仓 — 找下方最近持多仓格线关闭它 ──
+          line.state = 'empty';     // 卖单完成 → 本层恢复空闲
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.side = 'sell';       // 保持卖层方向（非翻转），AI 可重新补挂卖单
 
-        // 翻转方向：买→卖，卖→买
-        line.side = prevSide === 'buy' ? 'sell' : 'buy';
+          // 向下搜索最近的"已持多头"格线进行环形平仓
+          let closedLevel: GridLine | null = null;
+          for (let k = line.index - 1; k >= 0; k--) {
+            const below = state.gridLines[k];
+            if (below && below.positionSize > 0) {
+              closedLevel = below;
+              break;
+            }
+          }
+
+          if (closedLevel) {
+            // 环形平仓：真实利润 = (卖价 - 买价) × qty（精确，不依赖 gridSpacing 估算）
+            const buyEntry = closedLevel.positionEntry;
+            const qty = closedLevel.positionSize;
+            const grossProfit = (fillPrice - buyEntry) * qty;
+            const sellFee = fillPrice * qty * state.takerFeeRate;
+            const buyFee = buyEntry * qty * state.takerFeeRate;
+            const netProfit = grossProfit - sellFee - buyFee;
+
+            line.unrealizedPnl = netProfit;
+            state.totalProfit += netProfit;
+            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+            if (netProfit > 0) state.winningTrades++;
+
+            // 将下方格线重置为 empty，AI 下轮可重新补挂买单
+            closedLevel.state = 'empty';
+            closedLevel.positionSize = 0;
+            closedLevel.positionEntry = 0;
+            closedLevel.side = 'buy';   // 买层恢复原始方向
+
+            this.logger.log(
+              `[网格] 环形平仓: sell@level=${line.index}(${fillPrice.toFixed(4)}) → ` +
+              `close buy@level=${closedLevel.index}(${buyEntry.toFixed(4)}), ` +
+              `qty=${qty.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`,
+            );
+          } else {
+            // 初始卖单（上方格线，无对应买仓）—— 不计利润，直接释放
+            line.unrealizedPnl = 0;
+            this.logger.debug(`[网格] 初始卖单成交(无买仓): level=${line.index}`);
+          }
+        }
 
         filledLines.push(line);
         this.logger.log(
@@ -3025,97 +3019,7 @@ export class GridTradingService {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
 
-    // 倾斜检测（瞬时批次，仅供调试参考；全局倾斜检测已移至主循环 Fix-A）
-    // line.side 在 syncOrderFills 中已翻转：原 buy 成交 → side 变 sell；原 sell 成交 → side 变 buy
-    if (filledLines.length >= 3) {
-      const buyFilled = filledLines.filter(l => l.side === 'sell').length; // 原 buy 成交
-      const sellFilled = filledLines.filter(l => l.side === 'buy').length; // 原 sell 成交
-      const skew = Math.abs(buyFilled - sellFilled);
-      if (skew >= 3 || (buyFilled === 0 && sellFilled > 0) || (sellFilled === 0 && buyFilled > 0)) {
-        this.logger.debug(
-          `[网格] 批次倾斜(瞬时): buy_filled=${buyFilled}, sell_filled=${sellFilled}，单向聚集 ${skew} 格`,
-        );
-      }
-    }
-
     return { filledLines };
-  }
-
-  /**
-   * 成交后立即下反向限价单
-   *
-   * 网格核心逻辑：
-   *   买单在 level i 成交 → line.side 已翻转为 sell → 在 level i+1（上格）下卖单
-   *   卖单在 level j 成交 → line.side 已翻转为 buy  → 在 level j-1（下格）下买单
-   *
-   * 注意：syncOrderFills 已将 line.side 翻转，此处 line.side 表示"下一步要挂的方向"
-   */
-  /**
-   * 反向挂单（nofx 同格反向模式）
-   *
-   * nofx 设计：成交格线不退出，直接在同格重新挂反向单（价格参考相邻格）。
-   * 效果：无论成交多少格，始终保持 N 层全部有挂单（不减少）。
-   *
-   * 注意：line.side 在 syncOrderFills 中已翻转，此处 line.side 表示"下一步要挂的方向"
-   */
-  private async placeReverseOrders(
-    state: GridState,
-    filledLines: GridLine[],
-    adapter: GridExchangeAdapter,
-    useMakerOnly: boolean,
-  ): Promise<number> {
-    let placed = 0;
-    for (const line of filledLines) {
-      if (line.state !== 'filled') continue;
-
-      // 确定价格参考格线：sell（原 buy 成交）→ 上格(index+1)；buy（原 sell 成交）→ 下格(index-1)
-      const priceRefIdx = line.side === 'sell' ? line.index + 1 : line.index - 1;
-      if (priceRefIdx < 0 || priceRefIdx >= state.gridLines.length) {
-        this.logger.debug(`[网格] 反向挂单跳过: level=${line.index} 已在边界，无相邻格`);
-        continue;
-      }
-
-      const priceRefLine = state.gridLines[priceRefIdx];
-      const targetPrice = priceRefLine.price;
-
-      const quantity = line.orderQuantity > 0 ? line.orderQuantity : line.allocatedUSD * state.leverage / targetPrice;
-      if (quantity <= 0 || targetPrice <= 0) continue;
-
-      try {
-        const formattedQty = await adapter.formatQuantity(state.symbol, quantity);
-        const finalQty = Number(formattedQty);
-        if (finalQty <= 0) continue;
-
-        // OKX 要求 clOrdId 纯字母数字（无连字符），格式 gr{idx}t{ts}，最长 18 字符
-        const clientId = `gr${line.index}t${Date.now()}`;
-
-        const result = await adapter.placeLimitOrder({
-          symbol: state.symbol,
-          side: line.side,        // 已翻转的方向（buy→sell 或 sell→buy）
-          price: targetPrice,     // 相邻格线的价格（grid spacing 间距）
-          quantity: finalQty,
-          leverage: state.leverage,
-          postOnly: useMakerOnly,
-          clientId,
-        });
-
-        // nofx 同格反向：将成交格线重新激活为 pending（positionSize 已在 syncOrderFills 正确设置）
-        line.state = 'pending';
-        line.orderId = result.orderId;
-        line.orderQuantity = finalQty;
-        // line.side 已在 syncOrderFills 翻转，无需再翻转
-        state.orderBook[result.orderId] = line.index;
-        placed++;
-
-        this.logger.log(
-          `[网格] 反向挂单(同格): ${line.side} ${finalQty} @ ${targetPrice}` +
-          ` (level=${line.index}, 价格参考 level=${priceRefIdx})`,
-        );
-      } catch (e: any) {
-        this.logger.warn(`[网格] 反向挂单失败 level=${line.index}: ${e.message}`);
-      }
-    }
-    return placed;
   }
 
   // ========================= 启动恢复（T4: reconcileGridState） =========================
@@ -3160,6 +3064,24 @@ export class GridTradingService {
           if (line.orderId) {
             state.orderBook[line.orderId] = line.index;
           }
+        }
+
+        // 孤儿订单清理（对齐 nofx cancelAllGridOrders 思路）
+        // DB 不认识的交易所挂单 = 孤儿，直接取消，防止保证金被无效锁定
+        const trackedIds = new Set(Object.keys(state.orderBook));
+        const orphanOrders = openOrders.filter((o) => !trackedIds.has(o.orderId));
+        if (orphanOrders.length > 0) {
+          this.logger.warn(
+            `[网格] 发现 ${orphanOrders.length} 个孤儿订单，取消中: ${orphanOrders.map((o) => o.orderId).join(', ')}`,
+          );
+          await Promise.allSettled(
+            orphanOrders.map((o) =>
+              (adapter as GridExchangeAdapter)
+                .cancelOrder(state!.symbol, o.orderId)
+                .catch((e: any) => this.logger.warn(`[网格] 取消孤儿订单 ${o.orderId} 失败: ${e.message}`)),
+            ),
+          );
+          this.logger.log(`[网格] 孤儿订单清理完成`);
         }
       }
 

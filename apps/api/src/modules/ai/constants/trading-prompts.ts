@@ -571,7 +571,7 @@ export interface GridContext {
     price: number;
     side: 'buy' | 'sell';
     quantity: number;
-    state: 'pending' | 'filled' | 'cancelled';
+    state: 'pending' | 'filled' | 'cancelled' | 'empty';
     orderId?: string;
     fillPrice?: number;
     profit?: number;
@@ -683,6 +683,21 @@ export function GRID_SYSTEM_PROMPT(
   - **不要调用 pause_grid**：趋势行情由后端方向机制处理
   - 高波动时系统已限制杠杆至 2x
 - **仅以下情况 AI 可调用 pause_grid**：持续亏损超止损阈值、或 AI 判断极端风险需人工介入
+
+## 核心职责：补挂 empty 层位（每轮必须执行）
+
+**系统采用环形平仓机制**：卖单成交会同时关闭下方的买入仓位，两层都变为 state=未挂单(empty)。因此**每轮 AI 必须主动检查 empty 层并补挂订单**，这是保证网格持续运转的关键。
+
+### 补挂优先级规则
+1. **优先补挂当前价格附近的 empty 层**（距当前价最近的 2~3 层，最容易成交）
+2. 价格下方的 empty 层 → 补挂买单（place_buy_limit）
+3. 价格上方的 empty 层 → 补挂卖单（place_sell_limit）
+4. 已有多头仓位（state=已成交 + side=sell）的层 → 不补挂，等待上方卖单平仓
+5. 若 state=已成交 且 side=sell 但长时间无上方卖单 → 可在该层上方一层补挂卖单
+
+### 每轮应输出多个 place 操作（不限于1个）
+- 发现3个 empty 层 → 输出3个 place 操作
+- 所有层都有挂单或持仓 → 输出 hold
 
 ## 网格倾斜
 当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
@@ -801,6 +816,33 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     ? (ctx.totalInvestment / ctx.levels.length * ctx.leverage) / ctx.currentPrice
     : 0;
   lines.push(`推荐每层数量: ${suggestedQtyPerLevel.toFixed(6)} (= ${ctx.totalInvestment}÷${ctx.levels.length}层×${ctx.leverage}x÷${ctx.currentPrice.toFixed(2)}，请在 place_buy/sell_limit 中使用此值)`);
+
+  // 【重要】补挂摘要：明确告诉 AI 哪些 empty 层需要补单（环形平仓后必须补挂）
+  const emptyLevels = ctx.levels
+    .map((l, i) => ({ ...l, displayIdx: i + 1 }))
+    .filter(l => l.state === 'empty');
+  if (emptyLevels.length > 0) {
+    // 按距当前价的距离排序（最近优先）
+    const sorted = emptyLevels.sort((a, b) =>
+      Math.abs(a.price - ctx.currentPrice) - Math.abs(b.price - ctx.currentPrice),
+    );
+    const buyEmpty = sorted.filter(l => l.side === 'buy');
+    const sellEmpty = sorted.filter(l => l.side === 'sell');
+    lines.push('');
+    lines.push('⚡ 需补挂的空格线（按距当前价排序，请优先处理靠近当前价的层）:');
+    if (buyEmpty.length > 0) {
+      const top3 = buyEmpty.slice(0, 3);
+      lines.push(`  买单空格: ${top3.map(l => `层${l.displayIdx}(P=${l.price.toFixed(4)})`).join(', ')}${buyEmpty.length > 3 ? ` …共${buyEmpty.length}层` : ''}`);
+    }
+    if (sellEmpty.length > 0) {
+      const top3 = sellEmpty.slice(0, 3);
+      lines.push(`  卖单空格: ${top3.map(l => `层${l.displayIdx}(P=${l.price.toFixed(4)})`).join(', ')}${sellEmpty.length > 3 ? ` …共${sellEmpty.length}层` : ''}`);
+    }
+    lines.push(`  → 请为以上空格线各输出一个 place_buy_limit 或 place_sell_limit 操作`);
+  } else {
+    lines.push('');
+    lines.push('✅ 所有格线均有挂单或持仓，无需补挂');
+  }
 
   // Section 5: 网格层级表
   lines.push('');
