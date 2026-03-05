@@ -426,35 +426,40 @@ export class StrategyEngineService implements OnModuleInit {
 
     const skip = (page - 1) * limit;
 
-    // actionsOnly: 过滤掉 wait/hold 日志
+    // 注意：不在 DB 层做 JSON path 过滤（部分 PostgreSQL 版本会报错），改为取回后代码层过滤
+    // 参考 getTimeline 相同处理方式
     const baseWhere: any = { strategyId };
-    const actionWhere: any = actionsOnly
-      ? {
-          strategyId,
-          AND: [
-            { decision: { path: ['action'], not: 'wait' } },
-            { decision: { path: ['action'], not: 'hold' } },
-          ],
-        }
-      : baseWhere;
 
-    const [data, total, totalAll] = await Promise.all([
+    // 足量预取（保证第 N 页有数据），最多取 500 条避免内存压力
+    const fetchLimit = Math.min(500, Math.max(skip + limit * 3, limit * 5));
+
+    const [rawData, totalAll] = await Promise.all([
       db.aiStrategyLog.findMany({
-        where: actionWhere,
+        where: baseWhere,
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
+        take: fetchLimit,
       }),
-      db.aiStrategyLog.count({ where: actionWhere }),
-      actionsOnly
-        ? db.aiStrategyLog.count({ where: baseWhere })
-        : Promise.resolve(0),
+      db.aiStrategyLog.count({ where: baseWhere }),
     ]);
+
+    // 代码层过滤 wait/hold（与 getTimeline 保持一致，避免 Prisma JSON path 兼容性问题）
+    let filtered = rawData;
+    if (actionsOnly) {
+      filtered = rawData.filter(log => {
+        const dec = (log.decision as Record<string, any>) || {};
+        const act = dec.action || '';
+        return act !== 'wait' && act !== 'hold';
+      });
+    }
+
+    // 手动分页（在过滤后的结果上）
+    const data = filtered.slice(skip, skip + limit);
+    const total = filtered.length;
 
     return {
       data,
       total,
-      totalAll: actionsOnly ? totalAll : total,
+      totalAll,
       skippedCount: actionsOnly ? totalAll - total : 0,
     };
   }

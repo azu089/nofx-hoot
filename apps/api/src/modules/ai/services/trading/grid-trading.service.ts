@@ -917,7 +917,8 @@ export class GridTradingService {
     // ★ 日内 P&L 跟踪 — 权益获取成功后立即更新，不受后续 return 影响
     // 放在这里确保 Step 3.5/Step 4 的提前 return 也能正确保存日内基准
     if (equityFetched && currentEquity > 0) {
-      const todayStr = new Date().toISOString().split('T')[0];
+      // 使用北京时间（UTC+8）计算"今天"，确保日内重置在北京 0 点，而非 UTC 0 点（北京 8 点）
+      const todayStr = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
       if (state.dailyPnlResetDate !== todayStr) {
         state.dailyPnlResetDate = todayStr;
         state.dailyPnl = 0;
@@ -2788,6 +2789,17 @@ export class GridTradingService {
       try {
         const freshBalance = await adapter.getBalance();
         if (freshBalance.totalEquity > 0) {
+          // 计算并记录本次紧急退出的实际盈亏（平仓后权益 - 平仓前权益）
+          const equityBefore = state.lastEquity;
+          if (equityBefore > 0) {
+            const exitPnl = freshBalance.totalEquity - equityBefore;
+            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + exitPnl;
+            state.totalProfit = (state.totalProfit ?? 0) + exitPnl;
+            this.logger.log(
+              `[网格] 紧急退出盈亏: ${exitPnl >= 0 ? '+' : ''}${exitPnl.toFixed(4)} USDT ` +
+              `(权益 ${equityBefore.toFixed(4)} → ${freshBalance.totalEquity.toFixed(4)})`,
+            );
+          }
           state.lastEquity = freshBalance.totalEquity;
         }
       } catch (e: any) {
@@ -3498,7 +3510,8 @@ export class GridTradingService {
       if (sellCount) parts.push(`${sellCount}S`);
       if (cancelCount) parts.push(`${cancelCount}C`);
       for (const [act, cnt] of Object.entries(counts)) {
-        if (!['place_buy_limit', 'place_sell_limit', 'cancel_order'].includes(act)) {
+        // hold/wait 不纳入摘要（actionsOnly 模式下这些条目会被过滤掉，无需展示）
+        if (!['place_buy_limit', 'place_sell_limit', 'cancel_order', 'hold', 'wait'].includes(act)) {
           parts.push(`${act}×${cnt}`);
         }
       }
