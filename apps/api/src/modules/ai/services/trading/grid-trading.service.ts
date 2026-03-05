@@ -1349,21 +1349,19 @@ export class GridTradingService {
           }
         }
 
-        // autoAdjustGrid 扩展触发：间距 > nofx 公式最优 × 2 + 无持仓 + 未锁定范围
-        // 参照 nofx calculateDefaultBoundsLocked: multiplier = 0.03 × gridCount / 10
+        // autoAdjustGrid 扩展触发：间距 > 最优间距 × 2 + 无持仓 + 未锁定范围
+        // 最优间距与初始化公式对齐：0.5%/格（固定，不随层数变化）
         if (!state.userLockedRange && isGridAdapter(adapter)) {
-          const gcnt = state.gridLines.length;
-          const nofxOptMult = 0.03 * gcnt / 10;
-          // nofx 公式最优间距 = currentPrice × mult × 2 / (gridCount - 1)
-          const nofxOptSpacing = gcnt > 1 ? (currentPrice * nofxOptMult * 2) / (gcnt - 1) : 0;
+          // 与 calculateGridRange 初始化公式一致：spacing = price × 0.5%
+          const optSpacing = currentPrice * 0.005;
           const hasFilledPositions = state.gridLines.some(l => l.positionSize > 0);
-          const spacingRatio = nofxOptSpacing > 0 ? state.gridSpacing / nofxOptSpacing : 0;
+          const spacingRatio = optSpacing > 0 ? state.gridSpacing / optSpacing : 0;
 
           if (!hasFilledPositions && spacingRatio > 2.0) {
             const oldSpacing = state.gridSpacing;
             this.logger.warn(
               `[网格] autoAdjustGrid(间距过宽 ${spacingRatio.toFixed(1)}x): ` +
-              `间距 ${oldSpacing.toFixed(4)} > nofx最优 ${nofxOptSpacing.toFixed(4)} ×2，自动居中重排`,
+              `间距 ${oldSpacing.toFixed(4)} > 最优 ${optSpacing.toFixed(4)} ×2，自动居中重排`,
             );
             try {
               await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
