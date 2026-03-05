@@ -710,7 +710,7 @@ export class AutoTraderService {
         cumPnl += Number(allClosedForStats[i].realizedPnl || 0);
         if (cumPnl > peak) peak = cumPnl;
         if (peak > 0) {
-          const dd = (peak - cumPnl) / peak;
+          const dd = Math.min(1, (peak - cumPnl) / peak);
           if (dd > maxDrawdownPct) maxDrawdownPct = dd;
         }
       }
@@ -730,7 +730,7 @@ export class AutoTraderService {
       if (tradingStats.totalTrades > 0) {
         this.logger.log(
           `📈 交易统计: ${tradingStats.totalTrades}笔, ` +
-          `胜率=${tradingStats.winRate.toFixed(1)}%, PF=${tradingStats.profitFactor}, ` +
+          `胜率=${(tradingStats.winRate * 100).toFixed(1)}%, PF=${tradingStats.profitFactor}, ` +
           `Sharpe=${tradingStats.sharpeRatio}, DD=${tradingStats.maxDrawdownPct}%`,
         );
       }
@@ -2153,17 +2153,13 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          // 权益法：(lastEquity - startEquity) ÷ 投入资金
-          // startEquity 在每次 resetGridForRestart 时重置为当前权益，totalProfit 同步清零
-          // 权益法能跨重启正确累计（startEquity/lastEquity 均持久化），而 totalProfit 仅记录本次会话已实现利润
-          // 基准优先级：gridConfig.totalInvestment > startEquity（账户权益）> 1000 兜底
+          // 盈亏法：totalProfit（已实现网格利润）÷ 用户配置最大投入资金
+          // totalProfit = 完成网格循环的利润 + emergencyExit 平仓盈亏（可为负）
+          // 不用权益差(lastEquity-startEquity)，因为含持仓浮动会导致百分比偏移，触发时机不准
           const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
             ? gridConfig.totalInvestment
-            : (gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000);
-          const equityPnl =
-            gridStateForStop.startEquity > 0 && gridStateForStop.lastEquity > 0
-              ? gridStateForStop.lastEquity - gridStateForStop.startEquity
-              : gridStateForStop.totalProfit;
+            : 1000;
+          const equityPnl = gridStateForStop.totalProfit;
           const pnlPct = (equityPnl / investmentBase) * 100;
           if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;

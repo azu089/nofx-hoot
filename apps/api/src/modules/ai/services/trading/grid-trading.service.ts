@@ -3395,12 +3395,13 @@ export class GridTradingService {
   /** 重新初始化网格层级（保持边界，更新价格中心） */
   private reinitializeGridLevels(state: GridState, centerPrice: number): void {
     const gridCount = state.gridLines.length;
-    // 防御: 边界为 null/NaN 时用中心价格 ±5% 作为默认范围
+    // 防御: 边界为 null/NaN 时用 nofx 公式兜底（0.03 × gridCount/10）
     const validUpper = state.upperPrice && isFinite(state.upperPrice);
     const validLower = state.lowerPrice && isFinite(state.lowerPrice);
+    const nofxDefaultMult = 0.03 * gridCount / 10;
     const halfRange = (validUpper && validLower)
       ? (state.upperPrice - state.lowerPrice) / 2
-      : centerPrice * 0.05;
+      : centerPrice * nofxDefaultMult;
 
     state.upperPrice = centerPrice + halfRange;
     state.lowerPrice = centerPrice - halfRange;
