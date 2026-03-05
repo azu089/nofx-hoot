@@ -1010,7 +1010,8 @@ export class StrategyEngineService implements OnModuleInit {
               );
 
               // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-              if (this.feeService && finalPnl != null && finalPnl > 0) {
+              // 网格策略持仓跳过：网格燃油费统一由 settleGridFee 在 emergencyExit 时结算，避免重复扣费
+              if (this.feeService && finalPnl != null && finalPnl > 0 && gridTotalProfit == null) {
                 try {
                   const feeCalc = await this.feeService.calculateFee(
                     userId,
@@ -1037,6 +1038,10 @@ export class StrategyEngineService implements OnModuleInit {
                     `[快照] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
                   );
                 }
+              } else if (gridTotalProfit != null && finalPnl != null && finalPnl > 0) {
+                this.logger.log(
+                  `[快照] 网格持仓燃油费跳过(由 settleGridFee 统一处理): positionId=${dp.id}`,
+                );
               }
             }
           }
@@ -1188,7 +1193,8 @@ export class StrategyEngineService implements OnModuleInit {
           );
 
           // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-          if (this.feeService && finalPnl != null && finalPnl > 0) {
+          // 网格策略持仓跳过：网格燃油费统一由 settleGridFee 在 emergencyExit 时结算，避免重复扣费
+          if (this.feeService && finalPnl != null && finalPnl > 0 && gridTotalProfit == null) {
             try {
               const feeCalc = await this.feeService.calculateFee(
                 userId,
@@ -1215,6 +1221,10 @@ export class StrategyEngineService implements OnModuleInit {
                 `[持仓同步] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
               );
             }
+          } else if (gridTotalProfit != null && finalPnl != null && finalPnl > 0) {
+            this.logger.log(
+              `[持仓同步] 网格持仓燃油费跳过(由 settleGridFee 统一处理): positionId=${dp.id}`,
+            );
           }
         }
       }
