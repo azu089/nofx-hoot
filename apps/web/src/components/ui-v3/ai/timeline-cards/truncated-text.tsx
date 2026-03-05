@@ -48,7 +48,7 @@ export function TruncatedText({ text, maxLines = 3, className = '' }: TruncatedT
             e.stopPropagation();
             setExpanded(!expanded);
           }}
-          className="flex items-center justify-end w-full mt-0.5 text-[#606070] hover:text-[#06B6D4] transition-colors"
+          className="flex items-center justify-center w-full mt-0.5 text-[#606070] hover:text-[#06B6D4] transition-colors"
         >
           {expanded
             ? <ChevronUp className="w-3.5 h-3.5" />

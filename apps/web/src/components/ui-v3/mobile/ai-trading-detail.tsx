@@ -2223,7 +2223,7 @@ export function AIStrategyDetailPage() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowPauseModal(false)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,80px))] animate-slide-up">
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-24 animate-slide-up">
             <h2 className="text-lg font-semibold mb-4">{t('detail.pauseStrategy')}</h2>
 
             <div className="mb-6">
@@ -2283,7 +2283,7 @@ export function AIStrategyDetailPage() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowStopModal(false)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 animate-slide-up">
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-24 animate-slide-up">
             <h2 className="text-lg font-semibold mb-2">{t('detail.stopStrategy')}</h2>
             <p className="text-sm text-[#9090A0] mb-6">
               {t('detail.stopWarning')}
@@ -2319,7 +2319,7 @@ export function AIStrategyDetailPage() {
             className="absolute inset-0 bg-black/60"
             onClick={() => setShowResumeGridModal(false)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] animate-slide-up">
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl p-6 pb-24 animate-slide-up">
             <h2 className="text-base font-semibold mb-3">{t('detail.gridResumeConfirmTitle')}</h2>
             <p className="text-xs text-[#9090A0] mb-2">{riskPauseReason}</p>
             <p className="text-xs text-[#9090A0] mb-3">{t('detail.gridResumeConfirmDesc')}</p>
