@@ -500,8 +500,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
   // 检测 Grid 网格日志格式: decision.decisions 数组 或 entryType
   const gridDecisions: any[] = Array.isArray(d.decisions) ? d.decisions : [];
-  const isGridEntry = gridDecisions.length > 0 || (entry as any).entryType === 'grid_log';
-  const isGridLog = gridDecisions.length > 0;
+  const isGridEntry = gridDecisions.length > 0 || (entry as any).entryType === 'grid_log' || d.action === 'grid_cycle';
+  // grid_cycle 时 decisions 可能为空（AI 只返回 analysis 无 actions），但 gridSnapshot 仍存在
+  const isGridLog = gridDecisions.length > 0 || d.action === 'grid_cycle' || !!d.gridSnapshot;
   // 检测自动禁用日志
   const isAutoDisabled = d.action === 'auto_disabled_failure';
 
