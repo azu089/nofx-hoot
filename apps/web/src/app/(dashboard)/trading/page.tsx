@@ -240,28 +240,35 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易历史
+  // 获取交易历史（按选中账户的交易所过滤）
   const { data: historyData } = useQuery({
-    queryKey: ['trade-history'],
+    queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
+      const exchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
+      const params = exchange ? `?exchange=${encodeURIComponent(exchange)}` : '';
       const response = await api.get<{
         items: TradeHistory[];
         total: number;
-      }>('/trading/positions/history');
+      }>(`/trading/positions/history${params}`);
       return response.data;
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!selectedApiKeyId,
     retry: false,
   });
 
-  // 获取执行日志
+  // 获取执行日志（按选中账户过滤）
   const { data: logsData } = useQuery({
-    queryKey: ['execution-logs'],
+    queryKey: ['execution-logs', selectedApiKeyId],
     queryFn: async () => {
-      const response = await api.get<ExecutionLog[]>('/trading/positions/logs');
+      const exchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
+      const params = new URLSearchParams();
+      if (exchange) params.set('exchange', exchange);
+      if (selectedApiKeyId) params.set('apiKeyId', selectedApiKeyId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const response = await api.get<ExecutionLog[]>(`/trading/positions/logs${qs}`);
       return response.data;
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!selectedApiKeyId,
     retry: false,
   });
 

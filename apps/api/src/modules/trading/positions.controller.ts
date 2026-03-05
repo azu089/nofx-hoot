@@ -109,11 +109,15 @@ export class PositionsController {
     @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
     @Query('actionsOnly') actionsOnly?: string,
+    @Query('exchange') exchange?: string,
+    @Query('apiKeyId') apiKeyId?: string,
   ) {
     return this.positionsService.getExecutionLogs(
       user.id,
       limit ? Math.min(100, Math.max(1, parseInt(limit) || 50)) : 50,
       actionsOnly !== 'false', // 默认 true: 只返回交易执行记录
+      exchange,
+      apiKeyId,
     );
   }
 

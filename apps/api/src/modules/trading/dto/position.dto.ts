@@ -85,6 +85,10 @@ export class TradeHistoryQueryDto {
   @IsOptional()
   @IsString()
   locale?: string; // 语言设置，前端自动传递
+
+  @IsOptional()
+  @IsString()
+  exchange?: string; // 按交易所过滤（如 binance / okx）
 }
 
 // 交易历史响应

@@ -494,12 +494,16 @@ export class PositionsService {
     userId: string,
     query: TradeHistoryQueryDto,
   ): Promise<{ items: TradeHistoryResponse[]; total: number }> {
-    const { page = 1, limit = 20, symbol, side, startDate, endDate } = query;
+    const { page = 1, limit = 20, symbol, side, startDate, endDate, exchange } = query;
 
     const where: Prisma.PositionWhereInput = {
       userId,
       status: 'closed',
     };
+
+    if (exchange) {
+      where.exchange = { equals: exchange, mode: 'insensitive' };
+    }
 
     if (symbol) {
       where.symbol = { contains: symbol, mode: 'insensitive' };
@@ -592,6 +596,8 @@ export class PositionsService {
     userId: string,
     limit = 50,
     actionsOnly = true,
+    exchange?: string,
+    apiKeyId?: string,
   ): Promise<ExecutionLogResponse[]> {
     const logs: ExecutionLogResponse[] = [];
 
@@ -600,6 +606,7 @@ export class PositionsService {
       where: {
         userId,
         ...(actionsOnly ? { status: { in: ['success', 'failed'] } } : {}),
+        ...(exchange ? { exchange: { equals: exchange, mode: 'insensitive' } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -677,7 +684,10 @@ export class PositionsService {
     // 注意：不在 DB 层做 JSON path 过滤（部分 PostgreSQL 版本会报错），改为取回后在代码里过滤
     const aiLogs = await this.prisma.aiStrategyLog.findMany({
       where: {
-        strategy: { userId },
+        strategy: {
+          userId,
+          ...(apiKeyId ? { exchangeApiKeyId: apiKeyId } : {}),
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: limit * 3, // 多取一些，代码过滤后再截取
