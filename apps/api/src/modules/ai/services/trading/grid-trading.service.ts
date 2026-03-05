@@ -194,7 +194,7 @@ export interface GridDecision {
 // ========================= 常量 =========================
 
 const BREAKOUT_CONFIRM_REQUIRED = 3;
-const DEFAULT_ATR_MULTIPLIER = 2.5; // 2.5x ATR（nofx=2.0；5.0对高波动代币过宽，会使网格间距过大）
+const DEFAULT_ATR_MULTIPLIER = 2.0; // 2.0x ATR（对齐 nofx）
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
 const DEFAULT_BREAKOUT_PCT = 2;
@@ -397,10 +397,12 @@ export class GridTradingService {
     // 获取当前价格
     const currentPrice = await this.getCurrentPrice(symbol);
 
-    // Step 1: 计算边界（初始化为 ±8% 兜底，后续可被更精确算法覆盖）
-    let upperPrice: number = currentPrice * 1.08;
-    let lowerPrice: number = currentPrice * 0.92;
-    let rangeSource = '±8%兜底';          // 追踪范围决策来源
+    // Step 1: 计算边界（初始化为 nofx 公式兜底，后续可被更精确算法覆盖）
+    // nofx: multiplier = 0.03 × gridCount / 10（10格→±3%，20格→±6%）
+    const _defaultMult = 0.03 * gridCount / 10;
+    let upperPrice: number = currentPrice * (1 + _defaultMult);
+    let lowerPrice: number = currentPrice * (1 - _defaultMult);
+    let rangeSource = `±${(_defaultMult * 100).toFixed(1)}%兜底`;  // 追踪范围决策来源
     let rangeReasoning = '';               // AI 给出的理由
 
     if (useATRBounds && this.indicators) {
@@ -418,10 +420,10 @@ export class GridTradingService {
         lowerPrice = currentPrice - halfRange;
         rangeSource = `ATR×${mult}`;
       } else {
-        // ATR 计算失败，使用 ±8% 兜底（原方案 ±1.5% 过窄）
-        upperPrice = currentPrice * 1.08;
-        lowerPrice = currentPrice * 0.92;
-        rangeSource = '±8%兜底';
+        // ATR 计算失败，使用 nofx 公式兜底
+        upperPrice = currentPrice * (1 + _defaultMult);
+        lowerPrice = currentPrice * (1 - _defaultMult);
+        rangeSource = `±${(_defaultMult * 100).toFixed(1)}%兜底`;
       }
     } else if (config.upperBound && config.lowerBound
       && config.upperBound > config.lowerBound
@@ -560,10 +562,10 @@ export class GridTradingService {
           }
         }
         if (!atrFallbackSet) {
-          upperPrice = currentPrice * 1.08;
-          lowerPrice = currentPrice * 0.92;
+          upperPrice = currentPrice * (1 + _defaultMult);
+          lowerPrice = currentPrice * (1 - _defaultMult);
           this.logger.log(
-            `[网格] 兜底宽度 (±8%): 当前价=${currentPrice.toFixed(2)}, ` +
+            `[网格] 兜底宽度 (nofx±${(_defaultMult * 100).toFixed(1)}%): 当前价=${currentPrice.toFixed(2)}, ` +
             `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
           );
         }
@@ -2785,10 +2787,15 @@ export class GridTradingService {
       // 取消所有订单
       await adapter.cancelAllOrders(state.symbol);
 
-      // 平掉所有持仓
+      // 平掉所有持仓，平仓前汇总未实现盈亏作为扣费基数
       const positions = await adapter.getPositions();
+      const baseSymbol = state.symbol.split('/')[0];
+      const closingPnl = positions
+        .filter(pos => pos.symbol.includes(baseSymbol))
+        .reduce((sum, pos) => sum + pos.unrealizedPnl, 0);
+
       for (const pos of positions) {
-        if (!pos.symbol.includes(state.symbol.split('/')[0])) continue;
+        if (!pos.symbol.includes(baseSymbol)) continue;
         try {
           pos.side === 'long'
             ? await adapter.closeLong(pos.symbol, pos.quantity)
@@ -2798,29 +2805,14 @@ export class GridTradingService {
         }
       }
 
-      // 平仓完成后获取真实权益（用于燃油费按实际盈亏计算）
-      try {
-        const freshBalance = await adapter.getBalance();
-        if (freshBalance.totalEquity > 0) {
-          // 计算并记录本次紧急退出的实际盈亏（平仓后权益 - 平仓前权益）
-          const equityBefore = state.lastEquity;
-          if (equityBefore > 0) {
-            const exitPnl = freshBalance.totalEquity - equityBefore;
-            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + exitPnl;
-            state.totalProfit = (state.totalProfit ?? 0) + exitPnl;
-            this.logger.log(
-              `[网格] 紧急退出盈亏: ${exitPnl >= 0 ? '+' : ''}${exitPnl.toFixed(4)} USDT ` +
-              `(权益 ${equityBefore.toFixed(4)} → ${freshBalance.totalEquity.toFixed(4)})`,
-            );
-          }
-          state.lastEquity = freshBalance.totalEquity;
-        }
-      } catch (e: any) {
-        this.logger.warn(`[网格] 平仓后获取权益失败，燃油费将按旧权益计算: ${e.message}`);
-      }
+      this.logger.log(
+        `[网格] 紧急退出平仓盈亏: ${closingPnl >= 0 ? '+' : ''}${closingPnl.toFixed(4)} USDT`,
+      );
+      state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + closingPnl;
+      state.totalProfit = (state.totalProfit ?? 0) + closingPnl;
 
-      // 结算燃油费（基于实际权益盈亏，失败不阻塞后续状态更新）
-      await this.settleGridFee(state, userId);
+      // 结算燃油费（基于平仓时持仓的未实现盈亏，失败不阻塞后续状态更新）
+      await this.settleGridFee(state, userId, closingPnl);
     } catch (e: any) {
       this.logger.error(`[网格] 紧急退出执行失败: ${e.message}`);
     } finally {
@@ -2889,16 +2881,12 @@ export class GridTradingService {
 
   /**
    * 结算网格策略的点卡燃油费
-   * - 只在有新增盈利时扣费（高水位标记，防止重复扣费）
-   * - 失败不影响平仓流程（非致命错误）
+   * - 基于本次平仓的实际盈亏（平仓后权益 - 平仓前权益）
+   * - 亏损不扣费，失败不影响平仓流程（非致命错误）
    */
-  private async settleGridFee(state: GridState, userId: string): Promise<void> {
+  private async settleGridFee(state: GridState, userId: string, realizedPnl: number): Promise<void> {
     if (!this.feeService) return;
-    // 使用实际权益涨幅作为费用基数（平仓后账户权益 - 本轮起始权益）
-    // 避免用 totalProfit（累加每笔卖单）导致与用户看到的实际盈亏不一致
-    const actualPnl = state.startEquity > 0
-      ? state.lastEquity - state.startEquity
-      : 0;
+    const actualPnl = realizedPnl;
     if (actualPnl <= 0) return;
 
     try {
