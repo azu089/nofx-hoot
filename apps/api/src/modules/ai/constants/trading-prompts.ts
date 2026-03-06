@@ -686,7 +686,11 @@ export function GRID_SYSTEM_PROMPT(
 - **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
 - **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
 - **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
-- **volatile（真实高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**优先修复严重倾斜，再评估是否暂停**
+- **volatile（高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**谨慎运行，优先补挂空格、管理倾斜**
+
+> ⚠️ **volatile 不等于必须 pause_grid**。网格策略在波动市场中仍可盈利（高波动 = 更多成交机会）。
+> pause_grid 仅在以下情形才有意义：**单周期价格变化 ≥5%（闪崩/暴涨）、或价格已突破网格边界 ≥2%**。
+> 仅仅因为 regime=volatile 就 pause，会导致永远无法挂单（volatile 可能持续数天）。
 
 ## 核心职责：管理全部层位（每轮必须执行）
 
@@ -717,7 +721,6 @@ export function GRID_SYSTEM_PROMPT(
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
 - 正确做法：**本轮只 pause**；若倾斜严重，下次 resume_grid 后再补挂
-- **volatile 市场且网格严重倾斜时，优先补挂恢复对称（不 pause），下轮再评估是否暂停**
 
 ## 网格倾斜
 当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
@@ -807,7 +810,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     narrow: '窄幅震荡（最佳）',
     standard: '标准震荡（适合）',
     wide: '宽幅波动（谨慎）',
-    volatile: '真实高波动（考虑 pause_grid，但需结合网格倾斜情况决定）',
+    volatile: '高波动（谨慎运行，优先补挂空格，除非价格突破边界否则不要 pause）',
   };
   if (ctx.currentRegime) {
     lines.push(`⚡ 系统检测市场形态: ${ctx.currentRegime} = ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
