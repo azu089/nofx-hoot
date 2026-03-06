@@ -724,6 +724,15 @@ export class GridTradingService {
         state.lastAskDepth ??= -1;
         // 从 DB 恢复，需要 reconcile
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+        // 对齐 nofx InitializeGrid：每次重启都以当前价为中心重算 ATR 边界
+        // nofx 无状态持久化，每次重启 = 全新 NewGridState + ATR 重算
+        // HOOT 有持久化但效果需一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
+        if (!state.userLockedRange) {
+          const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
+          this.logger.log(`[网格] DB 恢复后对齐 nofx: 以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
+          await this.reinitializeGridLevels(state, restartPrice);
+          await this.persistGridState(strategyId, state);
+        }
       }
     }
 
