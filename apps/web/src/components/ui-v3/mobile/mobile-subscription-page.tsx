@@ -317,7 +317,7 @@ export function MobileSubscriptionPage({
 
       {/* 确认订阅弹窗 (Bottom Sheet) */}
       {showConfirmSheet && selectedPlan && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={handleCloseSheet}

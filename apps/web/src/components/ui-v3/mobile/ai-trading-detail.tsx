@@ -2218,7 +2218,7 @@ export function AIStrategyDetailPage() {
 
       {/* 弹窗1: 暂停策略 */}
       {showPauseModal && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowPauseModal(false)}
@@ -2278,7 +2278,7 @@ export function AIStrategyDetailPage() {
 
       {/* 弹窗2: 停止策略 */}
       {showStopModal && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowStopModal(false)}
@@ -2314,7 +2314,7 @@ export function AIStrategyDetailPage() {
 
       {/* 弹窗: 恢复风控暂停的网格策略 */}
       {showResumeGridModal && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/60"
             onClick={() => setShowResumeGridModal(false)}
@@ -2695,7 +2695,7 @@ function VoteDetailSheet({
   const getModelProvider = (modelId: string) => MODEL_DISPLAY[modelId]?.provider || '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end">
+    <div className="fixed inset-0 z-[100] flex items-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-h-[85vh] overflow-y-auto bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl animate-slide-up">
         {/* 拖动条 */}

@@ -1326,8 +1326,8 @@ export class GridTradingService {
           this.logger.warn(`[网格] 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
         }
 
-        // nofx autoAdjustGrid: 严重倾斜 + 价格偏离网格中点 > 30% → 代码层自动居中重排
-        // 参照 nofx/trader/auto_trader_grid.go L1377-1479: 仅在价格显著偏离时才介入，否则交由 AI 补单
+        // autoAdjustGrid: 严重倾斜 + 价格偏离网格中点 > 30% → 代码层自动居中重排
+        // 仅在价格显著偏离时才介入，否则交由 AI 补单
         if (skewLevel === 'severe' && isGridAdapter(adapter)) {
           const gridMid = (state.upperPrice + state.lowerPrice) / 2;
           const gridRange = state.upperPrice - state.lowerPrice;
@@ -1343,7 +1343,7 @@ export class GridTradingService {
             } catch (e: any) {
               this.logger.warn(`[网格] autoAdjustGrid cancelAll 失败(继续): ${e.message}`);
             }
-            this.reinitializeGridLevels(state, currentPrice);
+            await this.reinitializeGridLevels(state, currentPrice);
             await this.persistGridState(strategyId, state);
             return { trades: 0, errors: 0 };
           } else {
@@ -1353,52 +1353,6 @@ export class GridTradingService {
           }
         }
 
-        // autoAdjustGrid 扩展触发：间距 > 最优间距 × 2 + 无持仓 + 未锁定范围
-        // 最优间距与初始化公式对齐：0.5%/格（固定，不随层数变化）
-        if (!state.userLockedRange && isGridAdapter(adapter)) {
-          // 与 calculateGridRange 初始化公式一致：spacing = price × 0.5%
-          const optSpacing = currentPrice * 0.005;
-          const hasFilledPositions = state.gridLines.some(l => l.positionSize > 0);
-          const spacingRatio = optSpacing > 0 ? state.gridSpacing / optSpacing : 0;
-
-          if (!hasFilledPositions && spacingRatio > 2.0) {
-            const oldSpacing = state.gridSpacing;
-            this.logger.warn(
-              `[网格] autoAdjustGrid(间距过宽 ${spacingRatio.toFixed(1)}x): ` +
-              `间距 ${oldSpacing.toFixed(4)} > 最优 ${optSpacing.toFixed(4)} ×2，自动居中重排`,
-            );
-            try {
-              await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
-            } catch (e: any) {
-              this.logger.warn(`[网格] autoAdjustGrid(spacing) cancelAll 失败(继续): ${e.message}`);
-            }
-            this.reinitializeGridLevels(state, currentPrice);
-            await this.persistGridState(strategyId, state);
-            await this.prisma.aiStrategyLog.create({
-              data: {
-                strategyId,
-                symbol: state.symbol,
-                decision: {
-                  action: 'auto_adjust_grid',
-                  gridSummary: 'auto_adjust×1',
-                  oldSpacing,
-                  newSpacing: state.gridSpacing,
-                  spacingRatio: +spacingRatio.toFixed(2),
-                  newUpper: state.upperPrice,
-                  newLower: state.lowerPrice,
-                  reasoning:
-                    `间距过宽(${spacingRatio.toFixed(1)}x)，自动居中重排 [nofx公式兜底]\n` +
-                    `旧间距: ${oldSpacing.toFixed(4)} → 新间距: ${state.gridSpacing.toFixed(4)}\n` +
-                    `新范围: $${state.lowerPrice.toFixed(2)} ~ $${state.upperPrice.toFixed(2)}`,
-                } as any,
-                executed: true,
-              },
-            }).catch(e => {
-              this.logger.warn(`[网格] autoAdjustGrid log 写入失败: ${e.message}`);
-            });
-            // 不提前 return：本轮继续执行 AI 决策，AI 见到空格线后立即下单
-          }
-        }
 
         // Step 5.5: 1H 价格变化代码层硬检查（A1/A2 提升为硬规则，防止 AI 漏判）
         // --- 黑天鹅级别：≥10%，直接 emergencyExit 平仓 ---
@@ -2286,7 +2240,7 @@ export class GridTradingService {
           this.logger.log(`[网格] AI 调整网格边界: ${state.lowerPrice.toFixed(4)}-${state.upperPrice.toFixed(4)}, 格线已重算`);
         } else {
           const newPrice = decision.price || state.lastPrice;
-          this.reinitializeGridLevels(state, newPrice);
+          await this.reinitializeGridLevels(state, newPrice);
         }
         break;
       }
@@ -3269,12 +3223,29 @@ export class GridTradingService {
   }
 
   /** 重新初始化网格层级（对齐 nofx: 每次重建都从 nofx 公式重算宽度，不继承旧边界） */
-  private reinitializeGridLevels(state: GridState, centerPrice: number): void {
+  private async reinitializeGridLevels(state: GridState, centerPrice: number): Promise<void> {
     const gridCount = state.gridLines.length;
-    // 对齐 nofx calculateDefaultBounds: multiplier = 0.03 × gridCount / 10
-    // 10格 → ±3%，20格 → ±6%
-    const nofxDefaultMult = 0.03 * gridCount / 10;
-    const halfRange = centerPrice * nofxDefaultMult;
+    // 两套公式取最小值：波动小时 ATR 更窄→成交频繁；波动大时默认公式封顶→防范围过宽
+    const defaultHalfRange = centerPrice * 0.03 * (gridCount / 10);
+    let halfRange = defaultHalfRange;
+    if (this.indicators && this.marketData) {
+      try {
+        const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '4h', 20);
+        const highs  = ohlcvRaw.map((c: any) => Number(c[2]));
+        const lows   = ohlcvRaw.map((c: any) => Number(c[3]));
+        const closes = ohlcvRaw.map((c: any) => Number(c[4]));
+        const atr    = this.indicators.calculateATR(highs, lows, closes, 14);
+        if (atr && atr > 0) {
+          const atrHalfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10);
+          halfRange = Math.min(atrHalfRange, defaultHalfRange);
+          this.logger.log(
+            `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}`,
+          );
+        }
+      } catch (_e) {
+        this.logger.log(`[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}`);
+      }
+    }
 
     state.upperPrice = centerPrice + halfRange;
     state.lowerPrice = centerPrice - halfRange;

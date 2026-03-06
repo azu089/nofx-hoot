@@ -794,7 +794,7 @@ export function UnifiedAiList() {
 
       {/* 删除确认弹窗 */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteConfirmId(null)}
@@ -833,7 +833,7 @@ export function UnifiedAiList() {
 
       {/* 研究会话删除确认弹窗 */}
       {deleteResearchConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-[100] flex items-end">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteResearchConfirmId(null)}
