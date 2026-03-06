@@ -2707,11 +2707,16 @@ export class GridTradingService {
     const filledLines: GridLine[] = [];
     try {
       // ── nofx 对齐：先获取实际持仓（用于后续幽灵持仓检测） ──
-      let currentPositionSize = 0;
+      let exchangeLongQty = 0;
+      let exchangeShortQty = 0;
       try {
         const positions = await adapter.getPositions();
-        const symPos = positions.find((p) => p.symbol.includes(state.symbol.split('/')[0]));
-        currentPositionSize = symPos?.quantity ?? 0;
+        const baseSymbol = state.symbol.split('/')[0];
+        const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
+        const longPos = symPositions.find((p) => p.side === 'long');
+        const shortPos = symPositions.find((p) => p.side === 'short');
+        exchangeLongQty = longPos?.quantity ?? 0;
+        exchangeShortQty = shortPos?.quantity ?? 0;
       } catch {
         // 获取失败不阻断流程
       }
@@ -2722,15 +2727,15 @@ export class GridTradingService {
         .reduce((sum, l) => sum + l.positionSize, 0);
 
       this.logger.log(
-        `[网格] 持仓对比: 交易所=${currentPositionSize.toFixed(4)}, 本地filled=${expectedPositionSize.toFixed(4)}`,
+        `[网格] 持仓对比: 交易所多头=${exchangeLongQty.toFixed(4)} 空头=${exchangeShortQty.toFixed(4)}, 本地filled=${expectedPositionSize.toFixed(4)}`,
       );
 
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
       // ── 幽灵持仓检测（nofx syncGridState 核心逻辑）──
-      // 交易所多头=0 但本地 filled 层有持仓 → 说明持仓已被外部平仓（手动/强平）
-      if (expectedPositionSize > 0 && Math.abs(currentPositionSize) === 0) {
+      // 交易所多头=0 但本地 filled 层有持仓 → 说明多头持仓已被外部平仓（手动/强平）
+      if (expectedPositionSize > 0 && exchangeLongQty === 0) {
         const phantomLines = state.gridLines.filter(
           (l) => l.state === 'filled' && l.positionSize > 0,
         );
@@ -2741,7 +2746,7 @@ export class GridTradingService {
           line.unrealizedPnl = 0;
         }
         this.logger.warn(
-          `[网格] 幽灵持仓清除: ${phantomLines.length} 层 filled → empty（交易所持仓=0，本地预期=${expectedPositionSize.toFixed(4)}）`,
+          `[网格] 幽灵持仓清除: ${phantomLines.length} 层 filled → empty（交易所多头=0，本地预期=${expectedPositionSize.toFixed(4)}）`,
         );
       }
 

@@ -181,6 +181,9 @@ const GRID_ACTION_I18N: Record<string, { key: string; color: string }> = {
   grid_initialized: { key: 'timeline.gridInitialized', color: '#06B6D4' },
   rebalance: { key: 'timeline.gridRebalance', color: '#8B5CF6' },
   emergency_exit: { key: 'timeline.gridEmergencyExit', color: '#F43F5E' },
+  close_long: { key: 'timeline.gridCloseLong', color: '#F59E0B' },
+  close_short: { key: 'timeline.gridCloseShort', color: '#06B6D4' },
+  resume_grid: { key: 'timeline.gridResume', color: '#10B981' },
 };
 
 /** blockedBy 代码 → i18n key 映射 */
@@ -725,6 +728,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 exit_all: 'timeline.gridExitShort',
                 reduce_exposure: 'timeline.gridReduceShort',
                 hold: 'timeline.gridHoldShort',
+                close_long: 'timeline.gridCloseLongShort',
+                close_short: 'timeline.gridCloseShortShort',
+                resume_grid: 'timeline.gridResumeShort',
               };
               const parts = Object.entries(counts).map(([act, n]) => {
                 const key = SHORT_KEYS[act];
