@@ -399,19 +399,21 @@ export class GridTradingService {
     let rangeSource = `±${(_defaultMult * 100).toFixed(2)}%兜底`;  // 追踪范围决策来源
 
     if (useATRBounds && this.indicators) {
-      // ATR 自动边界
+      // ATR 自动边界，与默认公式取最小值（波动小→ATR更窄；波动大→默认公式封顶）
       const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '4h', 20);
       const highs = ohlcvRaw.map((c: any) => Number(c[2]));
       const lows = ohlcvRaw.map((c: any) => Number(c[3]));
       const closes = ohlcvRaw.map((c: any) => Number(c[4]));
       const atr = this.indicators.calculateATR(highs, lows, closes, 14);
+      const capHalfRange = currentPrice * 0.03 * (gridCount / 10); // 与 reinitializeGridLevels 统一上限
 
       if (atr && atr > 0) {
         const mult = atrMultiplier > 0 ? atrMultiplier : DEFAULT_ATR_MULTIPLIER;
-        const halfRange = atr * mult * (gridCount / 10); // gridCount 因子：层数越多范围越宽，格间距恒定
+        const atrHalfRange = atr * mult * (gridCount / 10); // gridCount 因子：层数越多范围越宽，格间距恒定
+        const halfRange = Math.min(atrHalfRange, capHalfRange);
         upperPrice = currentPrice + halfRange;
         lowerPrice = currentPrice - halfRange;
-        rangeSource = `ATR×${mult}×(${gridCount}/10)`;
+        rangeSource = `ATR×${mult}×(${gridCount}/10) min 默认`;
       } else {
         // ATR 计算失败，使用 nofx 公式兜底
         upperPrice = currentPrice * (1 + _defaultMult);
@@ -446,14 +448,17 @@ export class GridTradingService {
           const closes = ohlcvRaw.map((c: any) => Number(c[4]));
           const atr = this.indicators.calculateATR(highs, lows, closes, 14);
           if (atr && atr > 0) {
-            const halfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10); // gridCount 因子保持格间距恒定
+            const capHalfRange = currentPrice * 0.03 * (gridCount / 10); // 与 reinitializeGridLevels 统一上限
+            const atrHalf = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10); // gridCount 因子保持格间距恒定
+            const halfRange = Math.min(atrHalf, capHalfRange);
             upperPrice = currentPrice + halfRange;
             lowerPrice = currentPrice - halfRange;
             atrFallbackSet = true;
-            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}×(${gridCount}/10)`;
+            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}×(${gridCount}/10) min 默认`;
             this.logger.log(
-              `[网格] 自动宽度 (ATR×${DEFAULT_ATR_MULTIPLIER}×${gridCount}/10): 当前价=${currentPrice.toFixed(2)}, ` +
-              `ATR(4H,14)=${atr.toFixed(2)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+              `[网格] 自动宽度: 当前价=${currentPrice.toFixed(2)}, ATR(4H,14)=${atr.toFixed(2)}, ` +
+              `ATR半幅=${atrHalf.toFixed(4)}, 默认上限=${capHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}, ` +
+              `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
             );
           }
         } catch (_e) {
