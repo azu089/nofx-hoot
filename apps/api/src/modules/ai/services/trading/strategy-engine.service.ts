@@ -1230,6 +1230,8 @@ export class StrategyEngineService implements OnModuleInit {
       for (const strategy of activeStrategies) {
         try {
           const intervalMs = Math.max(3, strategy.intervalMinutes || 60) * 60 * 1000;
+          // VPS 重启后强制 reconcile：清除内存状态，让 runGridCycle 冷启动（同 startStrategy 路径）
+          this.gridTrading?.clearGridState(strategy.id);
           await this.addStrategyJob(strategy.id, strategy.userId, intervalMs);
           restored++;
         } catch (error) {
