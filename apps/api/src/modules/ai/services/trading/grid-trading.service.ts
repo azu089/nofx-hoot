@@ -43,7 +43,6 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
-  autoAdjustThreshold?: number;  // 网格重建阈值（偏离中点比例，默认 0.20 = 20%）
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true，对齐 nofx）
 }
 
@@ -1188,11 +1187,10 @@ export class GridTradingService {
           const gridRange = state.upperPrice - state.lowerPrice;
           const priceDeviation = Math.abs(currentPrice - gridMid);
           const deviationPct = gridRange > 0 ? (priceDeviation / gridRange) * 100 : 0;
-          const autoAdjustRatio = gridConfig?.autoAdjustThreshold ?? 0.2;
-          if (priceDeviation > gridRange * autoAdjustRatio) {
+          if (priceDeviation > gridRange * 0.2) {
             this.logger.warn(
               `[网格] autoAdjustGrid: 严重倾斜 buy=${skewBuy} sell=${skewSell}, ` +
-              `价格偏离中点 ${deviationPct.toFixed(1)}% > ${(autoAdjustRatio * 100).toFixed(0)}%，自动取消+居中重排`,
+              `价格偏离中点 ${deviationPct.toFixed(1)}% > 20%，自动取消+居中重排`,
             );
             try {
               await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
@@ -1204,7 +1202,7 @@ export class GridTradingService {
             return { trades: 0, errors: 0 };
           } else {
             this.logger.warn(
-              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < ${(autoAdjustRatio * 100).toFixed(0)}%，跳过自动居中，由 AI 本轮补挂空侧格线`,
+              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，跳过自动居中，由 AI 本轮补挂空侧格线`,
             );
           }
         }
@@ -1926,29 +1924,13 @@ export class GridTradingService {
 
     switch (action) {
       // 对齐 nofx：AI 驱动补单
-      case 'place_buy_limit': {
+      case 'place_buy_limit':
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        // 安全检查：买限价 > 当前价 会立即以市价成交，拦截
-        if (currentPrice && decision.price && decision.price > currentPrice * 1.001) {
-          this.logger.warn(
-            `[网格] place_buy_limit 拦截: 限价=${decision.price} > 市价=${currentPrice}，会立即成交，跳过`,
-          );
-          return { executed: false, skipReason: `买限价 ${decision.price} 高于市价 ${currentPrice}` };
-        }
         return this.placeGridLimitOrder(state, decision, 'buy', adapter as GridExchangeAdapter, useMakerOnly);
-      }
 
-      case 'place_sell_limit': {
+      case 'place_sell_limit':
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
-        // 安全检查：卖限价 < 当前价 会立即以市价成交，拦截
-        if (currentPrice && decision.price && decision.price < currentPrice * 0.999) {
-          this.logger.warn(
-            `[网格] place_sell_limit 拦截: 限价=${decision.price} < 市价=${currentPrice}，会立即成交，跳过`,
-          );
-          return { executed: false, skipReason: `卖限价 ${decision.price} 低于市价 ${currentPrice}` };
-        }
         return this.placeGridLimitOrder(state, decision, 'sell', adapter as GridExchangeAdapter, useMakerOnly);
-      }
 
       case 'cancel_order': {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
@@ -2724,49 +2706,9 @@ export class GridTradingService {
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
-      // ── nofx 对齐：先获取实际持仓（用于后续幽灵持仓检测） ──
-      let exchangeLongQty = 0;
-      let exchangeShortQty = 0;
-      try {
-        const positions = await adapter.getPositions();
-        const baseSymbol = state.symbol.split('/')[0];
-        const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
-        const longPos = symPositions.find((p) => p.side === 'long');
-        const shortPos = symPositions.find((p) => p.side === 'short');
-        exchangeLongQty = longPos?.quantity ?? 0;
-        exchangeShortQty = shortPos?.quantity ?? 0;
-      } catch {
-        // 获取失败不阻断流程
-      }
-
-      // filled 层期望持仓（nofx: expectedPositionSize）
-      const expectedPositionSize = state.gridLines
-        .filter((l) => l.state === 'filled' && l.positionSize > 0)
-        .reduce((sum, l) => sum + l.positionSize, 0);
-
-      this.logger.log(
-        `[网格] 持仓对比: 交易所多头=${exchangeLongQty.toFixed(4)} 空头=${exchangeShortQty.toFixed(4)}, 本地filled=${expectedPositionSize.toFixed(4)}`,
-      );
-
+      // nofx syncGridState: 只处理 pending 层，幽灵 filled 层在 reconcileGridState 启动时已对齐
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
-
-      // ── 幽灵持仓检测（nofx syncGridState 核心逻辑）──
-      // 交易所多头=0 但本地 filled 层有持仓 → 说明多头持仓已被外部平仓（手动/强平）
-      if (expectedPositionSize > 0 && exchangeLongQty === 0) {
-        const phantomLines = state.gridLines.filter(
-          (l) => l.state === 'filled' && l.positionSize > 0,
-        );
-        for (const line of phantomLines) {
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
-        }
-        this.logger.warn(
-          `[网格] 幽灵持仓清除: ${phantomLines.length} 层 filled → empty（交易所多头=0，本地预期=${expectedPositionSize.toFixed(4)}）`,
-        );
-      }
 
       // 收集所有"消失"的挂单
       const disappearedLines = state.gridLines.filter(
@@ -2917,9 +2859,29 @@ export class GridTradingService {
         }
       }
 
-      // 同步持仓状态
+      // ── 对齐 nofx: 读取交易所真实持仓，清除幽灵 filled 层（启动时一次性对齐）──
       const positions = await adapter.getPositions();
-      const symPos = positions.find((p) => p.symbol.includes(state!.symbol.split('/')[0]));
+      const baseSymbol = state.symbol.split('/')[0];
+      const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
+      const longPos = symPositions.find((p) => p.side === 'long');
+      const exchangeLongQty = longPos?.quantity ?? 0;
+
+      const filledLines = state.gridLines.filter((l) => l.state === 'filled' && l.positionSize > 0);
+      const expectedPositionSize = filledLines.reduce((sum, l) => sum + l.positionSize, 0);
+      if (expectedPositionSize > 0 && exchangeLongQty === 0) {
+        for (const line of filledLines) {
+          line.state = 'empty';
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = 0;
+        }
+        this.logger.warn(
+          `[网格] reconcile: ${filledLines.length} 层幽灵持仓 filled→empty（交易所多头=0，本地期望=${expectedPositionSize.toFixed(4)}）`,
+        );
+      }
+
+      // 同步持仓状态（快照记录）
+      const symPos = symPositions.find((p) => p.side === 'long') ?? symPositions[0];
 
       if (symPos) {
         // 找到交易所持仓，检查 DB 是否有对应 Position
