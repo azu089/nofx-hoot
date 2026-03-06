@@ -62,7 +62,7 @@ export type BreakoutAction = 'none' | 'reduce_position' | 'adjust_direction' | '
 export interface GridLine {
   index: number;
   price: number;
-  state: 'empty' | 'pending' | 'filled' | 'stopped';
+  state: 'empty' | 'pending' | 'filled' | 'stopped' | 'short';
   side: 'buy' | 'sell';
   orderId?: string;
   orderQuantity: number;
@@ -1232,22 +1232,6 @@ export class GridTradingService {
             await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
           } catch (e: any) {
             this.logger.warn(`[网格] 清理止损单失败(忽略): ${e.message}`);
-          }
-        }
-
-        // 同步订单状态 + 成交后立即下反向单
-        if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
-          if (filledLines.length > 0) {
-            const profitDelta = filledLines.reduce((s, l) => s + (l.unrealizedPnl || 0), 0);
-            this.logger.log(
-              `[网格] 成交同步: ${filledLines.length} 笔 | ` +
-              `本批利润 ${profitDelta >= 0 ? '+' : ''}${profitDelta.toFixed(4)} USDT | ` +
-              `累计 +${state.totalProfit.toFixed(2)} USDT`,
-            );
-            // nofx 对齐：移除 placeReverseOrders，改由环形平仓 + AI 补挂
-            // 环形平仓已在 syncOrderFills 内完成；AI 下轮决策补挂 empty 层位
-            trades += filledLines.length;
           }
         }
 
@@ -2906,12 +2890,52 @@ export class GridTradingService {
         state.totalTrades++;
 
         if (prevSide === 'buy') {
-          // ── 买单成交：建立多头仓位，等待上方卖单环形平仓 ──
+          // ── 买单成交：先检查上方是否有空头仓位（环形平空），再建立多头 ──
+
+          // 向上搜索最近的"持空头"格线（state='short'）进行环形平空
+          let closedShort: GridLine | null = null;
+          for (let k = line.index + 1; k < state.gridLines.length; k++) {
+            const above = state.gridLines[k];
+            if (above && above.state === 'short' && above.positionSize > 0) {
+              closedShort = above;
+              break;
+            }
+          }
+
+          if (closedShort) {
+            // 环形平空：真实利润 = (卖价 - 买价) × qty（空头：卖高买低为盈）
+            const shortEntry = closedShort.positionEntry;
+            const qty = closedShort.positionSize;
+            const grossProfit = (shortEntry - fillPrice) * qty;
+            const sellFee = shortEntry * qty * state.takerFeeRate;
+            const buyFee = fillPrice * qty * state.takerFeeRate;
+            const netShortProfit = grossProfit - sellFee - buyFee;
+
+            line.unrealizedPnl = netShortProfit;  // 传递给外部 profitDelta 计算
+            state.totalProfit += netShortProfit;
+            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netShortProfit;
+            if (netShortProfit > 0) state.winningTrades++;
+
+            // 重置空头格线为空闲，AI 下轮可重新补挂卖单
+            closedShort.state = 'empty';
+            closedShort.positionSize = 0;
+            closedShort.positionEntry = 0;
+            closedShort.side = 'sell';   // 恢复卖层方向
+
+            this.logger.log(
+              `[网格] 环形平空: buy@level=${line.index}(${fillPrice.toFixed(4)}) → ` +
+              `close short@level=${closedShort.index}(${shortEntry.toFixed(4)}), ` +
+              `qty=${qty.toFixed(4)}, profit=${netShortProfit >= 0 ? '+' : ''}${netShortProfit.toFixed(4)} USDT`,
+            );
+          } else {
+            line.unrealizedPnl = 0;
+          }
+
+          // 买单成交：建立多头仓位，等待上方卖单环形平仓
           line.state = 'filled';
           line.positionSize = line.orderQuantity;
           line.positionEntry = fillPrice;
           line.side = 'sell';        // 翻转标记：持多头，需要上方卖单平仓
-          line.unrealizedPnl = 0;
         } else {
           // ── 卖单成交：环形平仓 — 找下方最近持多仓格线关闭它 ──
           line.state = 'empty';     // 卖单完成 → 本层恢复空闲
@@ -2919,11 +2943,12 @@ export class GridTradingService {
           line.positionEntry = 0;
           line.side = 'sell';       // 保持卖层方向（非翻转），AI 可重新补挂卖单
 
-          // 向下搜索最近的"已持多头"格线进行环形平仓
+          // 向下搜索最近的"已持多头"格线（state='filled'）进行环形平仓
+          // 注意：跳过 state='short' 的空头格线，避免误命中
           let closedLevel: GridLine | null = null;
           for (let k = line.index - 1; k >= 0; k--) {
             const below = state.gridLines[k];
-            if (below && below.positionSize > 0) {
+            if (below && below.state === 'filled' && below.positionSize > 0) {
               closedLevel = below;
               break;
             }
@@ -2955,9 +2980,14 @@ export class GridTradingService {
               `qty=${qty.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`,
             );
           } else {
-            // 初始卖单（上方格线，无对应买仓）—— 不计利润，直接释放
+            // 初始卖单成交（上方格线，无对应买仓）—— 追踪空头仓位，等待买单平仓
+            // state='short' 区分多头（'filled'），买单平仓时搜索此标记
+            line.state = 'short';           // 持空头（区别于 filled = 持多头）
+            line.positionEntry = fillPrice; // 空头开仓价
+            line.positionSize = line.orderQuantity;
+            // line.side 保持 'sell'（此格持空头，AI 可重新补卖单）
             line.unrealizedPnl = 0;
-            this.logger.debug(`[网格] 初始卖单成交(无买仓): level=${line.index}`);
+            this.logger.debug(`[网格] 初始卖单成交(持空): level=${line.index}, entry=${fillPrice.toFixed(4)}`);
           }
         }
 
