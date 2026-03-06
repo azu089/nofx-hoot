@@ -2721,6 +2721,10 @@ export class GridTradingService {
         .filter((l) => l.state === 'filled' && l.positionSize > 0)
         .reduce((sum, l) => sum + l.positionSize, 0);
 
+      this.logger.log(
+        `[网格] 持仓对比: 交易所=${currentPositionSize.toFixed(4)}, 本地filled=${expectedPositionSize.toFixed(4)}`,
+      );
+
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
