@@ -685,8 +685,8 @@ export function GRID_SYSTEM_PROMPT(
 系统已检测市场形态并在 context 中以 currentRegime 字段传入，**请直接使用，不要自行重新判断**：
 - **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
 - **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
-- **wide（宽幅波动）**: BB带宽≤4% AND ATR(1h)/价格≤3% → 谨慎，可适当降频
-- **volatile（高波动）**: BB带宽>4% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，建议 pause_grid
+- **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
+- **volatile（真实高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，考虑 pause_grid
 
 ## 核心职责：管理全部层位（每轮必须执行）
 
@@ -802,7 +802,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     narrow: '窄幅震荡（最佳）',
     standard: '标准震荡（适合）',
     wide: '宽幅波动（谨慎）',
-    volatile: '高波动（建议 pause_grid）',
+    volatile: '真实高波动（考虑 pause_grid，但需结合网格倾斜情况决定）',
   };
   if (ctx.currentRegime) {
     lines.push(`⚡ 系统检测市场形态: ${ctx.currentRegime} = ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);

@@ -1264,7 +1264,14 @@ export class GridTradingService {
         // 执行决策（收集每条执行结果，供日志记录）
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
+        // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
+        const hasPauseGrid = filteredDecisions.some(d => d.action === 'pause_grid');
         for (const d of filteredDecisions) {
+          // 若本轮含 pause_grid，跳过所有 place_* 操作（避免下单后立即被 cancelAllOrders 撤掉，浪费 API 调用）
+          if (hasPauseGrid && d.action.startsWith('place_')) {
+            execResults.push({ action: d.action, success: true, skipped: true, skipReason: '本轮含 pause_grid，跳过下单' });
+            continue;
+          }
           // 账户配置错误已确认（如 OKX 51010）→ 跳过后续下单，避免刷屏重试
           if (accountConfigError) {
             execResults.push({ action: d.action, success: false, error: accountConfigError });
@@ -1629,8 +1636,8 @@ export class GridTradingService {
     let regime: RegimeLevel;
     if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
     else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
-    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';
-    else regime = 'volatile';
+    else if (bbWidth <= 6.0 && atrPct <= 3.0) regime = 'wide';   // 扩大 wide 上限：BB带宽≤6% 且 ATR/价格≤3%
+    else regime = 'volatile'; // 真正高波动：BB带宽>6% 或 ATR/价格>3%（hourly ATR>3% 极端罕见）
 
     return { regime, atrHourly: atr ?? 0 };
   }
