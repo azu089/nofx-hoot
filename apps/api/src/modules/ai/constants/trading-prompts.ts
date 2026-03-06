@@ -730,6 +730,8 @@ export function GRID_SYSTEM_PROMPT(
   \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
 - **adjust_grid**: 调整网格边界（触发重建）
   ⚠️ 间距约束：upperPrice - lowerPrice ≤ ${absMaxUSD} USDT（${gridCount}层 × 2.5% × 当前价）
+  ⚠️ 居中原则：以当前价为中心对称布局，即 lowerPrice ≈ currentPrice - range/2，upperPrice ≈ currentPrice + range/2
+  例：当前价=${currentPrice.toFixed(2)}，最大范围=${absMaxUSD}，推荐 lowerPrice≈${(currentPrice - (currentPrice * (gridCount - 1) * 0.025) / 2).toFixed(2)}，upperPrice≈${(currentPrice + (currentPrice * (gridCount - 1) * 0.025) / 2).toFixed(2)}
   \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"confidence":85,"reasoning":"原因"}\`
 - **close_long**: 平多仓（AI 评估需市价平仓时使用）
   \`{"action":"close_long","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
