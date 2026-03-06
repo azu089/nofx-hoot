@@ -790,7 +790,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     narrow: '窄幅震荡（最佳）',
     standard: '标准震荡（适合）',
     wide: '宽幅波动（谨慎）',
-    volatile: '高波动（谨慎运行，优先补挂空格，除非价格突破边界否则不要 pause）',
+    volatile: '高波动（谨慎运行）',
   };
   if (ctx.currentRegime) {
     lines.push(`⚡ 系统检测市场形态: ${ctx.currentRegime} = ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
@@ -823,9 +823,9 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
     lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
     if (ctx.gridSkewLevel === 'severe') {
-      lines.push('  → 自动重排未触发（价格偏离 <30%），请在空侧空格线补挂限价单恢复对称');
+      lines.push('  → 价格偏离未达自动重排阈值（30%）');
     } else {
-      lines.push('  → 轻度倾斜，可考虑在空侧补单或 adjust_grid 居中');
+      lines.push('  → 轻度倾斜');
     }
   } else {
     lines.push(`网格倾斜: 均衡`);
