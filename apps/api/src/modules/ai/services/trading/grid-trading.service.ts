@@ -1444,6 +1444,11 @@ export class GridTradingService {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
             if (result.executed && d.action.includes('place_')) trades++;
             execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
+            // 同轮内扣减估算保证金：防止后续单用旧余额快照，导致实际余额不足时仍通过预检
+            if (result.executed && d.action.startsWith('place_') && d.price && d.quantity) {
+              const usedMargin = (d.quantity * d.price) / (state.effectiveLeverage || state.leverage);
+              state.availableBalance = Math.max(0, state.availableBalance - usedMargin);
+            }
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);
@@ -2544,6 +2549,12 @@ export class GridTradingService {
     // 解决：用 state.availableBalance（每轮真实拉取的可用余额）做最后一道防线
     // 对齐 nofx 设计：nofx 用 totalInvestment/gridCount 预限 qty，而非直接拒绝；
     // 此处当保证金不足时先按比例缩减 qty，只有缩到低于 minQty 时才真正跳过
+    if (state.availableBalance <= 0) {
+      // 余额为零（所有保证金已被挂单/持仓占用）→ 直接跳过，避免盲目发单被交易所拒绝(-2019/51008)
+      const skipReason = `余额为零，跳过下单 (availableBalance=$${state.availableBalance.toFixed(2)})`;
+      this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+      return { executed: false, skipReason };
+    }
     if (state.availableBalance > 0) {
       const requiredMargin = (finalQty * price) / leverage;
       const MARGIN_BUFFER = 1.05; // 5% 安全余量，应对下单瞬间价格/资金微变
