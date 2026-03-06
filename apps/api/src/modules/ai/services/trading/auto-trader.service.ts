@@ -2164,8 +2164,14 @@ export class AutoTraderService {
             : gridStateForStop.totalProfit;
           const pnlPct = (equityPnl / investmentBase) * 100;
           if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
-            gridShouldStop = true;
-            gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;
+            // 止盈：持仓浮亏时跳过本轮，等持仓转正再触发（避免亏损平仓）
+            const unrealizedPnl = gridStateForStop.lastUnrealizedPnl ?? 0;
+            if (unrealizedPnl >= 0) {
+              gridShouldStop = true;
+              gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;
+            } else {
+              this.logger.log(`[网格] 止盈条件满足 (+${pnlPct.toFixed(1)}%) 但持仓浮亏 ${unrealizedPnl.toFixed(4)} USDT，等待持仓转正`);
+            }
           } else if (gridStopCond.maxLossPercent && gridStopCond.maxLossPercent > 0 && pnlPct <= -gridStopCond.maxLossPercent) {
             gridShouldStop = true;
             gridStopReason = `止损触发: ${pnlPct.toFixed(1)}% (限额: -${gridStopCond.maxLossPercent}%)`;
