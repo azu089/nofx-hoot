@@ -960,9 +960,9 @@ export function AIStrategyDetailPage() {
             {!isEditing ? (
               /* ── 阅读模式 ── */
               <>
-                <div className="glass-border-glow glass-card p-4 space-y-3">
-                  <h3 className="text-sm font-semibold mb-3">{t('detail.currentConfig')}</h3>
-                  <div className="space-y-2.5">
+                <div className="glass-border-glow glass-card p-4">
+                  <h3 className="text-sm font-semibold mb-1">{t('detail.currentConfig')}</h3>
+                  <div>
                     <ConfigRow label={t('detail.configStrategyType')} value={strategy.strategyType === 'grid' ? t('detail.gridTrading') : t('detail.normalStrategy')} />
                     {/* 交易所账户 */}
                     {strategy.exchangeApiKeyId && (
@@ -989,8 +989,8 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         <ConfigRow label={t('detail.configDailyLossLimit')} value={gc.dailyLossLimitPct ? `${gc.dailyLossLimitPct}%` : '不限'} />
                         {detail.gridState && (
-                          <div className="mt-2 pt-2 border-t border-[#1E1E2E]">
-                            <p className="text-xs text-[#10B981] font-medium mb-2">{t('detail.gridStatus')}</p>
+                          <div className="mt-3 pt-1 border-t border-[#1E1E2E]">
+                            <p className="text-sm text-[#10B981] font-medium py-2">{t('detail.gridStatus')}</p>
                             <ConfigRow label={t('detail.activeOrders')} value={detail.gridState.activeOrders} />
                             <ConfigRow label={t('detail.filledOrders')} value={detail.gridState.filledOrders} />
                             <ConfigRow label={t('detail.gridLevels')} value={detail.gridState.gridLevels} />
@@ -1064,9 +1064,9 @@ export function AIStrategyDetailPage() {
                     )}
                     {/* Debate 模型展示 */}
                     {strategy.tradingMode === 'debate' && strategy.models && strategy.models.length > 0 && (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.editDebateModels')}</span>
-                        <div className="flex flex-wrap gap-1 justify-end">
+                      <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
+                        <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.editDebateModels')}</span>
+                        <div className="flex flex-wrap gap-1">
                           {strategy.models.map((m: string) => {
                             const info = MODEL_DISPLAY[m as keyof typeof MODEL_DISPLAY];
                             return (
@@ -1090,9 +1090,9 @@ export function AIStrategyDetailPage() {
                       </>
                     )}
                     <ConfigRow label={t('detail.coinSource')} value={coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'} />
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.tradingCoins')}</span>
-                      <div className="flex flex-wrap gap-1 justify-end">
+                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
+                      <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.tradingCoins')}</span>
+                      <div className="flex flex-wrap gap-1">
                         {symbols.length > 0 ? symbols.map((s: string) => (
                           <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded">{s.split('/')[0]}</span>
                         )) : <span className="text-sm text-[#606070]">{t('common.notConfigured')}</span>}
@@ -1102,9 +1102,9 @@ export function AIStrategyDetailPage() {
                       <ConfigRow label={t('detail.maxCoins')} value={coinSourceConfig.maxCoins} />
                     )}
                     {(coinSourceConfig?.excludedCoins?.length ?? 0) > 0 && (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-xs text-[#606070] shrink-0 pt-0.5">{t('detail.excludeCoins')}</span>
-                        <div className="flex flex-wrap gap-1 justify-end">
+                      <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
+                        <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.excludeCoins')}</span>
+                        <div className="flex flex-wrap gap-1">
                           {coinSourceConfig?.excludedCoins?.map((s: string) => (
                             <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded">{s.split('/')[0]}</span>
                           ))}
@@ -1331,8 +1331,9 @@ export function AIStrategyDetailPage() {
                                 每层保证金{' '}
                                 <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
                                 <span className="text-[#404060] mx-1.5">·</span>
-                                强平距离{' '}
-                                <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 触发
+                                杠杆上限{' '}
+                                <b className="text-[#F8F8FC]">{safeLeverage}x</b>
+                                <span className="text-[#404060] mx-1">（AI 自动决策）</span>
                               </span>
                               <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
                             </div>
@@ -1342,10 +1343,13 @@ export function AIStrategyDetailPage() {
                                 style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
                               />
                             </div>
+                            <p className="text-[11px] text-[#606070]">
+                              最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 {safeLeverage}x 时），实际通常更低
+                            </p>
                             {showRec && (
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="text-[#606070]">
-                                  💡 ${editGridInvestment} 建议 {rec.leverage}x · {rec.count}格，强平距离 &gt;{Math.floor(100 / rec.leverage)}%
+                                  💡 ${editGridInvestment} 建议上限 {rec.leverage}x · {rec.count}格，最差强平 &gt;{Math.floor(100 / rec.leverage)}%
                                 </span>
                                 <button
                                   type="button"
@@ -1420,7 +1424,7 @@ export function AIStrategyDetailPage() {
                               <span>≈ ${(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(2)}</span>
                             </>
                           ) : (
-                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
+                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空则自动计算边界，上下各约 {(3 * editGridCount / 10).toFixed(1)}%，每格间距 0.6%</span>
                           )}
                         </div>
                       )}
@@ -2630,12 +2634,12 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
   );
 }
 
-// 只读配置行（左标签 + 右数值两列布局）
+// 只读配置行（固定标签宽度，值紧接标签，自然阅读顺序）
 function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3 min-h-[1.5rem]">
-      <span className="text-xs text-[#606070] shrink-0 pt-0.5">{label}</span>
-      <span className="text-sm text-right break-all">{value}</span>
+    <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24] last:border-0">
+      <span className="text-sm text-[#9090A0] w-24 shrink-0">{label}</span>
+      <span className="text-sm text-[#F8F8FC] break-all">{value}</span>
     </div>
   );
 }

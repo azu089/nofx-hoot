@@ -154,7 +154,7 @@ export function MobileRegisterPage({
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="inline-block mb-4">
-              <div className="w-24 h-24">
+              <div className="w-24 h-24 rounded-full overflow-hidden">
                 <Image
                   src="/icons/hoot/token.png"
                   alt="HOOT"

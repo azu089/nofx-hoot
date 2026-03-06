@@ -153,8 +153,8 @@ export function CreateStrategyWizard() {
   const [gridParams, setGridParams] = useState({
     totalInvestment: 1000,  // 资金上限（$），对应后端 gridConfig.totalInvestment
     leverage: 1,
-    upperPct: 0,            // 上偏移百分比，0 = 公式自动计算（nofx: ±3% × 层数/10）
-    lowerPct: 0,            // 下偏移百分比，0 = 公式自动计算（nofx: ±3% × 层数/10）
+    upperPct: 0,            // 上偏移百分比，0 = AI 自动计算区间
+    lowerPct: 0,            // 下偏移百分比，0 = AI 自动计算区间
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
@@ -817,7 +817,7 @@ export function CreateStrategyWizard() {
                       <span>≈ ${(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(2)}</span>
                     </>
                   ) : (
-                    <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
+                    <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则自动计算边界，上下各约 {(3 * gridParams.gridCount / 10).toFixed(1)}%，每格间距 0.6%</span>
                   )}
                 </div>
               )}

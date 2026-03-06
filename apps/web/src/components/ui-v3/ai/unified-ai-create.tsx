@@ -204,8 +204,8 @@ export function UnifiedAiCreate() {
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
   const [gridLeverage, setGridLeverage] = useState(1);
-  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = 公式自动计算（nofx: ±3% × 层数/10）
-  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = 公式自动计算（nofx: ±3% × 层数/10）
+  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = AI 自动计算区间
+  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = AI 自动计算区间
 
   // 网格交易对实时价格
   const [gridCurrentPrice, setGridCurrentPrice] = useState(0);
@@ -943,8 +943,9 @@ export function UnifiedAiCreate() {
                       每层保证金{' '}
                       <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
                       <span className="text-[#404060] mx-1.5">·</span>
-                      单格保证金{' '}
-                      <b className="text-[#F8F8FC]">跌 {liqDropPct}%</b> 耗尽
+                      杠杆上限{' '}
+                      <b className="text-[#F8F8FC]">{safeLeverage}x</b>
+                      <span className="text-[#404060] mx-1">（AI 自动决策）</span>
                     </span>
                     <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
                   </div>
@@ -954,10 +955,13 @@ export function UnifiedAiCreate() {
                       style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
                     />
                   </div>
+                  <p className="text-[11px] text-[#606070]">
+                    最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 {safeLeverage}x 时），实际通常更低
+                  </p>
                   {showRec && (
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-[#606070]">
-                        💡 ${gridInvestment} 建议 {rec.leverage}x · {rec.count}格，单格余量 &gt;{Math.floor(100 / rec.leverage)}%
+                        💡 ${gridInvestment} 建议上限 {rec.leverage}x · {rec.count}格，最差强平 &gt;{Math.floor(100 / rec.leverage)}%
                       </span>
                       <button
                         type="button"
@@ -1025,7 +1029,7 @@ export function UnifiedAiCreate() {
                     <span>≈ ${(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(2)}</span>
                   </>
                 ) : (
-                  <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则公式自动计算（±3% × 层数/10）</span>
+                  <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则自动计算边界，上下各约 {(3 * gridCount / 10).toFixed(1)}%，每格间距 0.6%</span>
                 )}
               </div>
             )}
