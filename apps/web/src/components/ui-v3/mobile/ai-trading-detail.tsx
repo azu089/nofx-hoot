@@ -969,7 +969,14 @@ export function AIStrategyDetailPage() {
                     <ConfigRow label={t('detail.configStrategyType')} value={strategy.strategyType === 'grid' ? t('detail.gridTrading') : t('detail.normalStrategy')} />
                     {/* 交易所账户 */}
                     {strategy.exchangeApiKeyId && (
-                      <ConfigRow label={t('create.exchangeAccount')} value={strategy.exchangeApiKeyId.slice(0, 8) + '...'} />
+                      <ConfigRow
+                        label={t('create.exchangeAccount')}
+                        value={
+                          detail?.exchangeLabel
+                            ? `${detail.exchangeLabel}${detail.exchangeName ? ` · ${detail.exchangeName}` : ''}`
+                            : detail?.exchangeName ?? strategy.exchangeApiKeyId.slice(0, 8) + '...'
+                        }
+                      />
                     )}
 
                     {/* Grid 策略配置 */}
@@ -981,13 +988,18 @@ export function AIStrategyDetailPage() {
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
                         <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
-                        <ConfigRow label={t('detail.configPriceBounds')} value={
-                          gc.useAtrBounds || (!gc.lowerBound && !gc.upperBound)
-                            ? (detail?.gridState?.upperPrice && detail?.gridState?.lowerPrice
-                                ? `${detail.gridState.rangeSource ?? '公式自动'} · $${Number(detail.gridState.lowerPrice).toFixed(2)} ~ $${Number(detail.gridState.upperPrice).toFixed(2)}`
-                                : '公式自动（等待初始化）')
-                            : `$${gc.lowerBound} ~ $${gc.upperBound}`
-                        } />
+                        <ConfigRow label={t('detail.configPriceBounds')} value={(() => {
+                          const lo = detail?.gridState?.lowerPrice ? Number(detail.gridState.lowerPrice) : null;
+                          const hi = detail?.gridState?.upperPrice ? Number(detail.gridState.upperPrice) : null;
+                          if (lo && hi && lo > 0 && hi > 0) {
+                            const halfRangePct = ((hi - lo) / (hi + lo)) * 100;
+                            return `$${lo.toFixed(2)} ~ $${hi.toFixed(2)} · ±${halfRangePct.toFixed(1)}%`;
+                          }
+                          if (!gc.useAtrBounds && gc.lowerBound && gc.upperBound) {
+                            return `$${gc.lowerBound} ~ $${gc.upperBound}`;
+                          }
+                          return t('detail.autoRange') || '自动（等待初始化）';
+                        })()} />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
                         <ConfigRow label={t('detail.configDailyLossLimit')} value={gc.dailyLossLimitPct ? `${gc.dailyLossLimitPct}%` : '不限'} />
@@ -1591,8 +1603,8 @@ export function AIStrategyDetailPage() {
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-xs text-[#9090A0]">网格重建阈值</p>
+                          <div className="space-y-1 col-span-2">
+                            <p className="text-xs text-[#9090A0]">网格重建阈值 <span className="text-[#606070]">（价格偏离中点超过此值自动重建，20=激进/趋势，30=保守/横盘）</span></p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold || ''}
                                 onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? 20 : parseInt(e.target.value))}
@@ -1601,7 +1613,6 @@ export function AIStrategyDetailPage() {
                               />
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
-                            <p className="text-xs text-[#606070]">价格偏离中点超过此值时自动重建。横盘用30，趋势用20</p>
                           </div>
                         </div>
                       </div>

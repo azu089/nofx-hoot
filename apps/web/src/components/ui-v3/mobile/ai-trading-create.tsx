@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Check, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, RotateCcw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCreateStrategy, useStrategyControl, useStartResearch, useUpdateAiConfig } from '@/hooks/useAi'
 import type { CreateStrategyBody } from '@/types/ai'
@@ -130,6 +130,7 @@ export function CreateStrategyWizard() {
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [debateModels, setDebateModels] = useState([...DEFAULT_DEBATE_MODELS])
   const [showDebateDropdown, setShowDebateDropdown] = useState(false)
+  const [showStopConditions, setShowStopConditions] = useState(true)
   const modelRef = useRef<HTMLDivElement>(null)
   const debateRef = useRef<HTMLDivElement>(null)
 
@@ -978,73 +979,78 @@ export function CreateStrategyWizard() {
         </div>
 
         {/* ── 止停条件 ── */}
-        <div className="mb-6">
-          <p className="text-[10px] text-[#606070] mb-2">
-            止停条件 <span className="text-[#4A4A6A]">（可选，0 = 不限）</span>
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <RiskField label="最大周期" suffix="次">
-              <input
-                type="number"
-                title="最大运行周期"
-                value={maxCycles || ''}
-                onChange={(e) => setMaxCycles(Number(e.target.value) || 0)}
-                min={0}
-                placeholder="0"
-                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-              />
-            </RiskField>
-            <RiskField label="盈利目标" suffix="%">
-              <input
-                type="number"
-                title="盈利目标百分比"
-                value={profitTarget || ''}
-                onChange={(e) => setProfitTarget(Number(e.target.value) || 0)}
-                min={0}
-                placeholder="0"
-                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-              />
-            </RiskField>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <RiskField label="最大亏损" suffix="%">
-              <input
-                type="number"
-                title="最大亏损百分比"
-                value={maxLoss || ''}
-                onChange={(e) => setMaxLoss(Number(e.target.value) || 0)}
-                min={0}
-                placeholder="0"
-                className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-              />
-            </RiskField>
-            {isGrid && (
-              <RiskField label="日内亏损" suffix="%">
-                <input
-                  type="number"
-                  title="日内亏损限制"
-                  value={gridParams.dailyLossLimitPct || ''}
-                  onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
-                  min={0} max={20}
-                  placeholder="0"
-                  className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                />
-              </RiskField>
-            )}
-            {isGrid && (
-              <RiskField label="重建阈值" suffix="%">
-                <input
-                  type="number"
-                  title="网格重建阈值（价格偏离中点超过此值时自动重建）"
-                  value={gridParams.autoAdjustThreshold || ''}
-                  onChange={(e) => updateGrid('autoAdjustThreshold', Number(e.target.value) || 20)}
-                  min={10} max={50} step={5}
-                  placeholder="20"
-                  className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                />
-              </RiskField>
-            )}
-          </div>
+        <div className="rounded-xl border border-[#1E1E2E] overflow-hidden mb-6">
+          <button type="button" onClick={() => setShowStopConditions(!showStopConditions)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#12121A] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
+              <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showStopConditions ? 'rotate-180' : ''}`} />
+          </button>
+          {showStopConditions && (
+            <div className="px-4 pb-4 space-y-2">
+              <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">最大周期</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input type="number" min={0} value={maxCycles || ''} onChange={(e) => setMaxCycles(Number(e.target.value) || 0)}
+                      placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                      aria-label="最大周期"
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">次</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">盈利目标</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input type="number" min={0} step={0.1} value={profitTarget || ''} onChange={(e) => setProfitTarget(Number(e.target.value) || 0)}
+                      placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                      aria-label="盈利目标"
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">%</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">最大亏损</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input type="number" min={0} step={0.1} value={maxLoss || ''} onChange={(e) => setMaxLoss(Number(e.target.value) || 0)}
+                      placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                      aria-label="最大亏损"
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">%</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">日内亏损</p>
+                  <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <input type="number" min={0} max={20} value={isGrid ? (gridParams.dailyLossLimitPct || '') : ''}
+                      onChange={(e) => isGrid && updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
+                      placeholder="0" disabled={!isGrid}
+                      className={`flex-1 bg-transparent text-sm outline-none min-w-0 placeholder:text-[#606070] ${isGrid ? 'text-[#F8F8FC]' : 'text-[#606070] cursor-not-allowed'}`}
+                      aria-label="日内亏损"
+                    />
+                    <span className="text-[#606070] text-xs shrink-0">%</span>
+                  </div>
+                </div>
+                {isGrid && (
+                  <div className="space-y-1 col-span-2">
+                    <p className="text-xs text-[#9090A0]">网格重建阈值 <span className="text-[#606070]">（价格偏离中点超过此值自动重建，20=激进/趋势，30=保守/横盘）</span></p>
+                    <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={10} max={50} step={5} value={gridParams.autoAdjustThreshold || ''}
+                        onChange={(e) => updateGrid('autoAdjustThreshold', Number(e.target.value) || 20)}
+                        placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                        aria-label="网格重建阈值"
+                      />
+                      <span className="text-[#606070] text-xs shrink-0">%</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── 提交按钮 ── */}

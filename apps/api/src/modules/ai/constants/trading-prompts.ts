@@ -601,6 +601,14 @@ export interface GridContext {
   rsi7?: number;           // RSI(7) 短期动量
   atr3?: number;           // ATR(3) 短期波动率
   atrHourly?: number;      // ATR(14) 基于 1h 数据，趋势可靠性更高
+  // 4h 指标（中期趋势判断，对齐 nofx 5m+4h 双周期设计）
+  rsi4h?: number;          // RSI(14) 4h 周期
+  macd4h?: number;         // MACD 4h 周期
+  macdSignal4h?: number;   // MACD Signal 4h 周期
+  atr4h?: number;          // ATR(14) 4h 周期
+  ema20_4h?: number;       // EMA(20) 4h 周期
+  ema50_4h?: number;       // EMA(50) 4h 周期
+  priceChange4hReal?: number; // 真实 4h 蜡烛价格变化%（非1h近似）
   // 价格区间（从 1h 数据计算，反映真实 24h 支撑阻力）
   high24h?: number;        // 近 24h 最高价
   low24h?: number;         // 近 24h 最低价
@@ -770,7 +778,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   const p1hAbs = Math.abs(ctx.priceChange1h);
   const p1hLabel = p1hAbs >= 8 ? '⚠️ 极端行情' : p1hAbs >= 5 ? '⚡ 快速行情' : '✓ 正常';
   lines.push(`📈 价格速度: 1H变化=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%（${p1hLabel}，>5%为快速行情，>8%为极端行情）`);
-  lines.push(`4h 涨跌: ${ctx.priceChange4h > 0 ? '+' : ''}${ctx.priceChange4h.toFixed(2)}%`);
+  const p4h = ctx.priceChange4hReal ?? ctx.priceChange4h;
+  lines.push(`4h 涨跌: ${p4h > 0 ? '+' : ''}${p4h.toFixed(2)}%${ctx.priceChange4hReal !== undefined ? '（真实4h蜡烛）' : '（1h近似）'}`);
   if (ctx.high24h !== undefined && ctx.low24h !== undefined && ctx.high24h > 0) {
     lines.push(`24h高: ${ctx.high24h} | 24h低: ${ctx.low24h}`);
   }
@@ -783,7 +792,10 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
   lines.push(`EMA(20): ${ctx.ema20.toFixed(2)} | EMA(50): ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
-  lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
+  lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
+  if (ctx.rsi4h !== undefined) {
+    lines.push(`4h 指标: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
+  }
   lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
   // 后端检测的市场形态（与 UI 显示一致，AI 必须以此为准，不要自行重新判断）
   const regimeLabels: Record<string, string> = {

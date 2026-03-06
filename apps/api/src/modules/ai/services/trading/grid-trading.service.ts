@@ -769,12 +769,20 @@ export class GridTradingService {
     }
 
     // Step 1.5: 配置变更检测 — 用户修改参数后自动重建网格
+    // 历史累计数据在配置变更时需保留（totalProfit 是策略创建以来的总和，不随重建清零）
+    let preservedProfit: number | null = null;
+    let preservedTrades: number | null = null;
+    let preservedWinning: number | null = null;
     if (state && state.isInitialized && gridConfig) {
       const configChanged = this.detectGridConfigChange(state, gridConfig);
       if (configChanged) {
         this.logger.warn(
           `[网格] 检测到配置变更: ${configChanged}，清理旧网格并重新初始化`,
         );
+        // 保存历史累计数据（跨配置变更不清零）
+        preservedProfit = state.totalProfit;
+        preservedTrades = state.totalTrades;
+        preservedWinning = state.winningTrades;
         // 取消交易所上的所有挂单
         await this.cleanupExistingOrders(state, userId, apiKeyId);
         // 清除内存和 DB 状态
@@ -787,6 +795,14 @@ export class GridTradingService {
       // 尝试自动初始化（首次 or 配置变更后重建）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
+        // 配置变更重建时，恢复历史累计利润（首次初始化时 preserved 为 null，保持 0）
+        if (preservedProfit !== null) {
+          state.totalProfit    = preservedProfit;
+          state.totalTrades    = preservedTrades!;
+          state.winningTrades  = preservedWinning!;
+          this.logger.log(`[网格] 配置变更重建：保留累计利润 ${preservedProfit >= 0 ? '+' : ''}${preservedProfit.toFixed(2)} USDT`);
+          await this.persistGridState(strategyId, state);
+        }
         // 新建/重建后立即 reconcile：读取交易所现有挂单和持仓
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
       } else {
@@ -1664,10 +1680,11 @@ export class GridTradingService {
     prefetchedPositions?: any[], // Step 3 已预取的持仓，避免重复 API 调用
     prefetchedBalance?: ExchangeBalance, // Step 3 已预取的余额，避免重复 API 调用
   ): Promise<GridContext> {
-    // 双周期 OHLCV 并行拉取（不增加串行等待时间）
-    const [ohlcvFastRaw, ohlcvSlowRaw] = await Promise.all([
+    // 三周期 OHLCV 并行拉取（对齐 nofx 5m+4h 双周期，HOOT 额外加 1h 中间周期）
+    const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
       this.marketData.fetchOHLCV(state.symbol, '5m', 50),   // 快速：RSI/MACD/短期信号
-      this.marketData.fetchOHLCV(state.symbol, '1h', 100),  // 慢速：趋势/ATR/价格变化/24h范围
+      this.marketData.fetchOHLCV(state.symbol, '1h', 100),  // 中速：趋势/ATR/价格变化/24h范围
+      this.marketData.fetchOHLCV(state.symbol, '4h', 50),   // 慢速：中期趋势（对齐 nofx）
     ]);
 
     const mapOHLCV = (raw: any[]): OHLCV[] => raw.map((c: any) => ({
@@ -1681,14 +1698,18 @@ export class GridTradingService {
 
     const ohlcv5m = mapOHLCV(ohlcvFastRaw);
     const ohlcvHourly = mapOHLCV(ohlcvSlowRaw);
+    const ohlcv4h = mapOHLCV(ohlcv4hRaw);
 
     // 快速指标（5m）：RSI、MACD、布林带、EMA 等短期信号
     let indFast: any = {};
     // 慢速指标（1h）：ATR 趋势可靠性
     let indSlow: any = {};
+    // 4h 指标：中期趋势判断（对齐 nofx）
+    let ind4h: any = {};
     if (this.indicators) {
       indFast = this.indicators.calculateAll(ohlcv5m);
       indSlow = this.indicators.calculateAll(ohlcvHourly);
+      ind4h = this.indicators.calculateAll(ohlcv4h);
     }
 
     // 获取账户状态
@@ -1756,6 +1777,10 @@ export class GridTradingService {
     const priceChange4h = ohlcvHourly.length >= 5
       ? ((currentPrice - ohlcvHourly[ohlcvHourly.length - 5].close) / ohlcvHourly[ohlcvHourly.length - 5].close) * 100
       : 0;
+    // 真实 4h 蜡烛价格变化（对齐 nofx，优先展示给 AI）
+    const priceChange4hReal = ohlcv4h.length >= 2
+      ? ((currentPrice - ohlcv4h[ohlcv4h.length - 2].close) / ohlcv4h[ohlcv4h.length - 2].close) * 100
+      : undefined;
 
     // 24h 高低价（从 1h K 线计算，反映真实支撑阻力）
     const last24Candles = ohlcvHourly.slice(-24);
@@ -1821,6 +1846,14 @@ export class GridTradingService {
       volume24h: ohlcvHourly.slice(-24).reduce((s, c) => s + c.volume, 0),
       priceChange1h,
       priceChange4h,
+      // 4h 指标（中期趋势，对齐 nofx 双周期设计）
+      rsi4h: ind4h.rsi ?? undefined,
+      macd4h: ind4h.macd?.macd ?? undefined,
+      macdSignal4h: ind4h.macd?.signal ?? undefined,
+      atr4h: ind4h.atr ?? undefined,
+      ema20_4h: ind4h.ema?.ema20 ?? undefined,
+      ema50_4h: ind4h.ema?.ema50 ?? undefined,
+      priceChange4hReal,
       // 补充指标
       rsi7: indFast.rsi7 ?? undefined,
       atr3: indFast.atr3 ?? undefined,

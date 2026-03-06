@@ -1462,7 +1462,19 @@ export class AiController {
       }
     }
 
-    return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), gridState };
+    // 附加交易所账户标签（供前端配置页显示）
+    let exchangeLabel: string | null = null;
+    let exchangeName: string | null = null;
+    if (strategy.exchangeApiKeyId) {
+      const apiKey = await this.prisma.apiKey.findUnique({
+        where: { id: strategy.exchangeApiKeyId },
+        select: { label: true, exchange: true },
+      });
+      exchangeLabel = apiKey?.label ?? null;
+      exchangeName = apiKey?.exchange ?? null;
+    }
+
+    return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), gridState, exchangeLabel, exchangeName };
   }
 
   /**

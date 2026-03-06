@@ -484,6 +484,8 @@ export interface StrategyDetailResponse {
   nextCycleAt: string | null;
   todayPnl: number;
   gridState: GridState | null;
+  exchangeLabel?: string | null;
+  exchangeName?: string | null;
 }
 
 export interface AiStrategyWithPnl extends AiStrategy {
