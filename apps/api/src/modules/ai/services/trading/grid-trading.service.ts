@@ -1839,6 +1839,7 @@ export class GridTradingService {
       })),
       userLockedRange: state.userLockedRange ?? false,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
+      currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
     };
   }
 

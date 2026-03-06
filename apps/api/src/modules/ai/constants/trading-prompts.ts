@@ -651,6 +651,8 @@ export interface GridContext {
   gridSkewLevel?: 'none' | 'light' | 'severe';
   gridSkewBuyFilled?: number;   // 持多头格线数（side='buy'，买单成交未平仓）
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
+  // 后端检测的市场形态（与 UI 显示保持一致，AI 应以此为准）
+  currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
 }
 
 /**
@@ -679,12 +681,12 @@ export function GRID_SYSTEM_PROMPT(
 - 分布方式: ${distribution}
 - 当前价格参考: ${currentPrice.toFixed(4)}
 
-## 市场状态判断（对齐 nofx）
-- **震荡市场**（最佳网格状态）: Bollinger 带宽 < 3%，EMA20/50 距离 < 1%，价格在布林带中轨附近
-- **趋势市场**（调用 pause_grid）: Bollinger 带宽 > 4%，EMA20/50 距离 > 2%，价格持续突破布林带
-  - 趋势明确时应调用 pause_grid 暂停网格，等待市场回归震荡后再 resume_grid
-- **高波动市场**（谨慎）: ATR 异常放大，价格剧烈波动，系统已限制杠杆至 2x
-  - 可选择 pause_grid 或降低补单频率
+## 市场状态判断（对齐后端 detectMarketRegime 公式）
+系统已检测市场形态并在 context 中以 currentRegime 字段传入，**请直接使用，不要自行重新判断**：
+- **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
+- **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
+- **wide（宽幅波动）**: BB带宽≤4% AND ATR(1h)/价格≤3% → 谨慎，可适当降频
+- **volatile（高波动）**: BB带宽>4% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，建议 pause_grid
 
 ## 核心职责：管理全部层位（每轮必须执行）
 
@@ -795,6 +797,16 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`EMA(20): ${ctx.ema20.toFixed(2)} | EMA(50): ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
+  // 后端检测的市场形态（与 UI 显示一致，AI 必须以此为准，不要自行重新判断）
+  const regimeLabels: Record<string, string> = {
+    narrow: '窄幅震荡（最佳）',
+    standard: '标准震荡（适合）',
+    wide: '宽幅波动（谨慎）',
+    volatile: '高波动（建议 pause_grid）',
+  };
+  if (ctx.currentRegime) {
+    lines.push(`⚡ 系统检测市场形态: ${ctx.currentRegime} = ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
+  }
 
   // Section 3: 箱体数据
   if (ctx.boxData) {
