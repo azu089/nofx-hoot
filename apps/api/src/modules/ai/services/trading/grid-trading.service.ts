@@ -2912,7 +2912,7 @@ export class GridTradingService {
           line.state = 'filled';
           line.positionSize = line.orderQuantity;
           line.positionEntry = fillPrice;
-          line.side = 'sell';        // 翻转：持多头，等待卖出
+          line.side = 'sell';        // 翻转标记：持多头，需要上方卖单平仓
           line.unrealizedPnl = 0;
         } else {
           // ── 卖单成交：环形平仓 — 找下方最近持多仓格线关闭它 ──

@@ -684,20 +684,31 @@ export function GRID_SYSTEM_PROMPT(
   - 高波动时系统已限制杠杆至 2x
 - **仅以下情况 AI 可调用 pause_grid**：持续亏损超止损阈值、或 AI 判断极端风险需人工介入
 
-## 核心职责：补挂 empty 层位（每轮必须执行）
+## 核心职责：管理全部层位（每轮必须执行）
 
-**系统采用环形平仓机制**：卖单成交会同时关闭下方的买入仓位，两层都变为 state=未挂单(empty)。因此**每轮 AI 必须主动检查 empty 层并补挂订单**，这是保证网格持续运转的关键。
+**每轮必须检查所有层的状态，确保网格始终在运转**：
 
-### 补挂优先级规则
-1. **优先补挂当前价格附近的 empty 层**（距当前价最近的 2~3 层，最容易成交）
-2. 价格下方的 empty 层 → 补挂买单（place_buy_limit）
-3. 价格上方的 empty 层 → 补挂卖单（place_sell_limit）
-4. 已有多头仓位（state=已成交 + side=sell）的层 → 不补挂，等待上方卖单平仓
-5. 若 state=已成交 且 side=sell 但长时间无上方卖单 → 可在该层上方一层补挂卖单
+### 三种层状态的处理规则
 
-### 每轮应输出多个 place 操作（不限于1个）
-- 发现3个 empty 层 → 输出3个 place 操作
-- 所有层都有挂单或持仓 → 输出 hold
+**1. state=未挂单 (empty)**：需要补挂
+- 价格下方 empty 层 → 补挂买单（place_buy_limit）
+- 价格上方 empty 层 → 补挂卖单（place_sell_limit）
+- **优先处理靠近当前价的层**（最容易成交）
+
+**2. state=待成交 (pending)**：已有挂单，通常 hold
+- 无需操作，等待成交
+- 极端行情（趋势明显）时可 cancel 后重新布局
+
+**3. state=持仓(多) (filled)**：买单已成交，持有多头仓位，**需要确认上格有卖单**
+- 找到该层上方（index+1）的层：
+  - 若上格是「待成交」且方向=卖 → 已有卖单，hold 等待平仓 ✓
+  - 若上格是「未挂单」或方向=买 → **必须在上格补挂卖单**（place_sell_limit），否则持仓永远无法平仓！
+  - 若该层已是顶格（无上格）→ hold，等待 adjust_grid
+
+### 每轮操作清单
+1. 扫描所有 empty 层 → 各补一个 place 操作
+2. 扫描所有 filled(多) 层 → 检查上格是否有 pending sell，没有则补挂
+3. 以上都满足 → hold
 
 ## 网格倾斜
 当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
@@ -841,7 +852,26 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`  → 请为以上空格线各输出一个 place_buy_limit 或 place_sell_limit 操作`);
   } else {
     lines.push('');
-    lines.push('✅ 所有格线均有挂单或持仓，无需补挂');
+    lines.push('✅ 所有空格线均已补挂');
+  }
+
+  // 检查 filled(多) 层是否缺少上格卖单
+  const filledMissingSell = ctx.levels
+    .map((l, i) => ({ ...l, displayIdx: i + 1, nextLevel: ctx.levels[i + 1] }))
+    .filter(l =>
+      l.state === 'filled' &&
+      l.side === 'sell' &&  // filled后side翻转为sell，表示持多头
+      (!l.nextLevel || l.nextLevel.state !== 'pending' || l.nextLevel.side !== 'sell'),
+    );
+  if (filledMissingSell.length > 0) {
+    lines.push('');
+    lines.push('⚠️ 持仓(多)层缺少上格卖单（必须补挂，否则仓位无法平仓！）:');
+    for (const l of filledMissingSell) {
+      const nextInfo = l.nextLevel
+        ? `上格=层${l.displayIdx + 1}(${l.nextLevel.state === 'pending' ? '待成交买' : '未挂单'}@${l.nextLevel.price.toFixed(4)})`
+        : '已是顶格';
+      lines.push(`  层${l.displayIdx}@${l.price.toFixed(4)} 持多头 qty=${l.quantity.toFixed(4)} → ${nextInfo}，需在上格补挂卖单`);
+    }
   }
 
   // Section 5: 网格层级表
@@ -851,7 +881,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
-    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '已成交' : '未挂单';
+    // filled = 买单已成交、持有多头仓位（系统已自动在上格挂卖单，等待平仓）
+    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '持仓(多)' : '未挂单';
     // Fix-4: 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
     lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${stateStr} | ${profitStr} | ${orderIdStr}`);
