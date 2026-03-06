@@ -1981,10 +1981,12 @@ export class GridTradingService {
         // AI 的 pause_grid 实际执行：取消挂单 + 设 isPaused=true
         // pauseSource='ai' 允许 checkFalseBreakoutRecovery 在价格回归后自动恢复
         // （区别于 pauseSource='risk_control'，后者需手动干预）
+        // 传入 adapter 避免 softPauseGrid 内部创建同一缓存实例后 dispose，导致主循环后续（syncOrderFills）报"未初始化"
         await this.softPauseGrid(
           state, userId, apiKeyId,
           decision.reasoning?.slice(0, 120) ?? 'AI pause_grid',
           'ai',
+          adapter,
         );
         return { executed: true };
 
@@ -2602,24 +2604,33 @@ export class GridTradingService {
     apiKeyId: string,
     reason: string,
     pauseSource: GridState['pauseSource'] = 'risk_control',
+    existingAdapter?: ExchangeAdapter | null,  // 传入时直接复用，不 dispose（避免销毁主循环共享实例）
   ): Promise<void> {
     this.logger.warn(`[网格] 软暂停（取消挂单/保留持仓）: ${reason}`);
 
-    if (!this.adapterFactory) {
+    if (existingAdapter) {
+      // 使用调用方传入的 adapter，不创建也不 dispose，避免销毁主循环仍在使用的共享实例
+      try {
+        await existingAdapter.cancelAllOrders(state.symbol);
+      } catch (e: any) {
+        this.logger.warn(`[网格] 软暂停撤单失败（忽略继续暂停）: ${e.message}`);
+      }
+    } else if (this.adapterFactory) {
+      // 自建 adapter，用完后 dispose（调用方没有可用实例的情况，如日内亏损保护）
+      let adapter: ExchangeAdapter | null = null;
+      try {
+        adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+        await adapter.cancelAllOrders(state.symbol);
+      } catch (e: any) {
+        this.logger.warn(`[网格] 软暂停撤单失败（忽略继续暂停）: ${e.message}`);
+      } finally {
+        if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+      }
+    } else {
       state.isPaused = true;
       state.pauseSource = pauseSource;
       state.pauseReason = reason;
       return;
-    }
-
-    let adapter: ExchangeAdapter | null = null;
-    try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-      await adapter.cancelAllOrders(state.symbol);
-    } catch (e: any) {
-      this.logger.warn(`[网格] 软暂停撤单失败（忽略继续暂停）: ${e.message}`);
-    } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
     }
 
     // 清理本地挂单状态
@@ -3023,6 +3034,18 @@ export class GridTradingService {
     state.lowerPrice = centerPrice - halfRange;
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
+    // 对齐 nofx autoAdjustGrid：重建前先保存所有 filled 层信息，重建后映射到最近价格层
+    const filledPositions = state.gridLines
+      .filter(l => l.state === 'filled')
+      .map(l => ({
+        positionEntry: l.positionEntry,
+        positionSize: l.positionSize,
+        unrealizedPnl: l.unrealizedPnl,
+        side: l.side,
+        orderId: l.orderId,
+        orderQuantity: l.orderQuantity,
+      }));
+
     const weights = this.calculateWeights(gridCount, state.distribution);
     const weightSum = weights.reduce((a, b) => a + b, 0);
 
@@ -3030,15 +3053,43 @@ export class GridTradingService {
       const line = state.gridLines[i];
       line.price = Math.round((state.lowerPrice + i * state.gridSpacing) * 100) / 100;
       line.allocatedUSD = state.totalInvestment * (weights[i] / weightSum);
-      if (line.state !== 'filled') {
-        line.state = 'empty';
-        line.orderId = undefined;
-        line.orderQuantity = 0;
-      }
+      // 全部重置（filled 层后续由最近价格映射恢复）
+      line.state = 'empty';
+      line.orderId = undefined;
+      line.orderQuantity = 0;
+      line.positionSize = 0;
+      line.positionEntry = 0;
+      line.unrealizedPnl = 0;
     }
 
     this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
     state.orderBook = {};
+
+    // 恢复 filled 层到价格最近的新层（对齐 nofx filledPositions restore 逻辑）
+    for (const saved of filledPositions) {
+      let closestIdx = -1;
+      let closestDist = Infinity;
+      for (let i = 0; i < state.gridLines.length; i++) {
+        const dist = Math.abs(state.gridLines[i].price - saved.positionEntry);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestIdx = i;
+        }
+      }
+      if (closestIdx >= 0 && state.gridLines[closestIdx].state !== 'filled') {
+        const line = state.gridLines[closestIdx];
+        line.state = 'filled';
+        line.positionEntry = saved.positionEntry;
+        line.positionSize = saved.positionSize;
+        line.unrealizedPnl = saved.unrealizedPnl;
+        line.side = saved.side;
+        line.orderId = saved.orderId;
+        line.orderQuantity = saved.orderQuantity;
+        this.logger.log(
+          `[网格] 重建后恢复 filled 层: index=${closestIdx}, price=${line.price.toFixed(4)}, entry=${saved.positionEntry.toFixed(4)}`,
+        );
+      }
+    }
 
     this.logger.log(`[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}`);
   }
