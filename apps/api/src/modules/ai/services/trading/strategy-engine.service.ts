@@ -270,6 +270,9 @@ export class StrategyEngineService implements OnModuleInit {
       data: { isActive: true },
     });
 
+    // 清除内存状态，强制下次从 DB 加载并 reconcile（对齐 nofx：每次启动都读取交易所）
+    this.gridTrading?.clearGridState(strategyId);
+
     // 注册定时任务到 BullMQ（strategy-cycle 类型）
     // 最小 3 分钟（服务端强制执行，防止过于频繁消耗 LLM 预算）
     const intervalMs = Math.max(3, strategy.intervalMinutes || 60) * 60 * 1000;
@@ -981,22 +984,8 @@ export class StrategyEngineService implements OnModuleInit {
                 this.logger.warn(`[快照] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
               }
 
-              // 网格策略：优先使用 gridRuntimeState.totalProfit（比估算更准确）
-              let gridTotalProfit: number | undefined;
-              const baseCoin = dp.symbol.split('/')[0];
-              const gridStrategy = activeStrategies.find((s) => {
-                if (s.userId !== userId) return false;
-                if (s.strategyType !== 'grid') return false;
-                const cfg = s.coinSourceConfig as { coins?: string[] };
-                return cfg?.coins?.some((c: string) => c.includes(baseCoin));
-              });
-              if (gridStrategy?.gridRuntimeState) {
-                const state = gridStrategy.gridRuntimeState as any;
-                if (typeof state.totalProfit === 'number') {
-                  gridTotalProfit = state.totalProfit;
-                }
-              }
-              const finalPnl = gridTotalProfit ?? estimatedPnl;
+              // 无论策略类型，统一用持仓本身的估算盈亏（开仓价×数量）
+              const finalPnl = estimatedPnl;
 
               await db.position.update({
                 where: { id: dp.id },
@@ -1017,14 +1006,11 @@ export class StrategyEngineService implements OnModuleInit {
               closed++;
               this.logger.log(
                 `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-                (gridTotalProfit != null
-                  ? ` PnL(网格总计)=$${gridTotalProfit.toFixed(4)}`
-                  : (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)')),
+                (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
               );
 
-              // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-              // 网格策略持仓跳过：网格燃油费统一由 settleGridFee 在 emergencyExit 时结算，避免重复扣费
-              if (this.feeService && finalPnl != null && finalPnl > 0 && gridTotalProfit == null) {
+              // 只要平仓有盈利就扣点卡燃油费（无论 HOOT 主动平仓还是用户手动平仓）
+              if (this.feeService && finalPnl != null && finalPnl > 0) {
                 try {
                   const feeCalc = await this.feeService.calculateFee(
                     userId,
@@ -1051,10 +1037,6 @@ export class StrategyEngineService implements OnModuleInit {
                     `[快照] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
                   );
                 }
-              } else if (gridTotalProfit != null && finalPnl != null && finalPnl > 0) {
-                this.logger.log(
-                  `[快照] 网格持仓燃油费跳过(由 settleGridFee 统一处理): positionId=${dp.id}`,
-                );
               }
             }
           }
@@ -1162,24 +1144,8 @@ export class StrategyEngineService implements OnModuleInit {
             this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
           }
 
-          // 网格策略：优先使用 gridRuntimeState.totalProfit（比估算更准确）
-          let gridTotalProfit: number | undefined;
-          const baseCoin = dp.symbol.split('/')[0];
-          const userGridStrategies = await this.prisma.aiStrategy.findMany({
-            where: { userId, strategyType: 'grid', isActive: true },
-            select: { coinSourceConfig: true, gridRuntimeState: true },
-          });
-          const matchedGrid = userGridStrategies.find((s) => {
-            const cfg = s.coinSourceConfig as { coins?: string[] };
-            return cfg?.coins?.some((c: string) => c.includes(baseCoin));
-          });
-          if (matchedGrid?.gridRuntimeState) {
-            const state = matchedGrid.gridRuntimeState as any;
-            if (typeof state.totalProfit === 'number') {
-              gridTotalProfit = state.totalProfit;
-            }
-          }
-          const finalPnl = gridTotalProfit ?? estimatedPnl;
+          // 无论策略类型，统一用持仓本身的估算盈亏（开仓价×数量）
+          const finalPnl = estimatedPnl;
 
           await this.prisma.position.update({
             where: { id: dp.id },
@@ -1200,14 +1166,11 @@ export class StrategyEngineService implements OnModuleInit {
           closed++;
           this.logger.log(
             `[持仓同步] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-            (gridTotalProfit != null
-              ? ` PnL(网格总计)=$${gridTotalProfit.toFixed(4)}`
-              : (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)')),
+            (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
           );
 
-          // 燃油费扣除（仅当有正盈利且 feeService 可用时）
-          // 网格策略持仓跳过：网格燃油费统一由 settleGridFee 在 emergencyExit 时结算，避免重复扣费
-          if (this.feeService && finalPnl != null && finalPnl > 0 && gridTotalProfit == null) {
+          // 只要平仓有盈利就扣点卡燃油费（无论 HOOT 主动平仓还是用户手动平仓）
+          if (this.feeService && finalPnl != null && finalPnl > 0) {
             try {
               const feeCalc = await this.feeService.calculateFee(
                 userId,
@@ -1234,10 +1197,6 @@ export class StrategyEngineService implements OnModuleInit {
                 `[持仓同步] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
               );
             }
-          } else if (gridTotalProfit != null && finalPnl != null && finalPnl > 0) {
-            this.logger.log(
-              `[持仓同步] 网格持仓燃油费跳过(由 settleGridFee 统一处理): positionId=${dp.id}`,
-            );
           }
         }
       }

@@ -87,6 +87,7 @@ export interface GridState {
   isPaused: boolean;
   pauseReason?: string;
   pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout'; // 'risk_control'=风控不可恢复; 'trend'/'breakout'=可自动恢复
+  needsReconcile?: boolean; // 暂停恢复后，下次周期开始前需对齐交易所状态
   lastPrice: number;
 
   // 绩效追踪
@@ -754,6 +755,13 @@ export class GridTradingService {
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
       // 风控重启后立即 reconcile：读取交易所现有挂单和持仓
+      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+    }
+
+    // Step 1.3: AI 暂停恢复后 reconcile（对齐 nofx：每次启动都读取交易所）
+    // resume_grid / breakout 自动恢复 会设置 needsReconcile=true，下次周期开始时触发
+    if (state && !state.isPaused && state.needsReconcile) {
+      state.needsReconcile = false;
       await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
@@ -1607,6 +1615,7 @@ export class GridTradingService {
           state.isPaused = false;
           state.pauseReason = undefined;
           state.pauseSource = undefined;
+          state.needsReconcile = true; // 下次周期开始前对齐交易所状态
         }
         this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内');
       }
@@ -2006,6 +2015,7 @@ export class GridTradingService {
         state.isPaused = false;
         state.pauseReason = undefined;
         state.pauseSource = undefined;
+        state.needsReconcile = true; // 下次周期开始前对齐交易所状态
         break;
 
       case 'adjust_grid': {
@@ -3393,6 +3403,11 @@ export class GridTradingService {
   }
 
   // ========================= 公开查询接口 =========================
+
+  /** 清除内存状态，强制下次从 DB 加载并 reconcile（用于 startStrategy） */
+  clearGridState(strategyId: string): void {
+    this.gridStates.delete(strategyId);
+  }
 
   async getGridState(strategyId: string): Promise<GridState | null> {
     const cached = this.gridStates.get(strategyId);
