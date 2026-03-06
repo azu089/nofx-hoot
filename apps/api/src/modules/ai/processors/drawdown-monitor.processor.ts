@@ -3,6 +3,7 @@ import { Logger, Inject, forwardRef, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TradingService } from '../../trading/trading.service';
+import { FeeService } from '../../trading/fee.service';
 import { AdapterFactoryService } from '../../exchange-adapters/adapter-factory.service';
 import { ExchangeAdapter } from '../../exchange-adapters/types/adapter.interface';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -31,6 +32,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     private readonly tradingService: TradingService,
     @Optional() private readonly adapterFactory?: AdapterFactoryService,
     @Optional() private readonly tradingGateway?: TradingGateway,
+    @Optional() private readonly feeService?: FeeService,
   ) {
     super();
   }
@@ -172,7 +174,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         }
 
         // 分批止盈检查（pnlPercent ≥ +3% 时触发；全平后 continue 跳过追踪止损）
-        const scaledOut = await this.checkScaleOut(pos, pnlPercent, currentPrice);
+        const scaledOut = await this.checkScaleOut(pos, pnlPercent, currentPrice, unrealizedPnl);
         if (scaledOut) {
           closedCount++;
           continue;
@@ -228,6 +230,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     },
     pnlPercent: number,
     currentPrice: number,
+    unrealizedPnl: number,
   ): Promise<boolean> {
     if (pnlPercent < 3 || !pos.apiKeyId) return false;
 
@@ -270,6 +273,33 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         await adapter.closeLong(pos.symbol, closeQty);
       } else {
         await adapter.closeShort(pos.symbol, closeQty);
+      }
+
+      // 按比例计算本次止盈的盈利，结算点卡燃油费（非致命）
+      const closedPnl = unrealizedPnl * (closeQty / entry.originalAmount);
+      if (closedPnl > 0 && this.feeService) {
+        try {
+          const feeCalc = await this.feeService.calculateFee(pos.userId, closedPnl.toFixed(8));
+          if (parseFloat(feeCalc.feeAmount) > 0) {
+            const uniqueOrderId = this.feeService.generateUniqueOrderId(
+              'SCALEOUT_FEE', pos.userId, `${pos.id}_s${entry.stage}`,
+            );
+            await this.feeService.chargeFee({
+              userId: pos.userId,
+              positionId: pos.id,
+              profit: feeCalc.profit,
+              feeRate: feeCalc.finalFeeRate,
+              feeAmount: feeCalc.feeAmount,
+              uniqueOrderId,
+              strategyName: pos.symbol,
+            });
+            this.logger.log(
+              `[AI监控] 分批止盈燃油费: ${pos.symbol} stage=${entry.stage} pnl≈${closedPnl.toFixed(4)} USDT, 扣费=${feeCalc.feeAmount}`,
+            );
+          }
+        } catch (e: any) {
+          this.logger.warn(`[AI监控] 分批止盈燃油费失败(非致命): ${e.message}`);
+        }
       }
 
       if (newStage === 3) {
@@ -353,6 +383,28 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           closeReason: 'trailing_stop',
         },
       });
+
+      // 平仓后结算点卡燃油费（盈利时扣，亏损跳过，失败不阻塞）
+      if (pnl > 0 && this.feeService) {
+        try {
+          const feeCalc = await this.feeService.calculateFee(pos.userId, pnl.toFixed(8));
+          if (parseFloat(feeCalc.feeAmount) > 0) {
+            const uniqueOrderId = this.feeService.generateUniqueOrderId('AI_FEE', pos.userId, pos.id);
+            await this.feeService.chargeFee({
+              userId: pos.userId,
+              positionId: pos.id,
+              profit: feeCalc.profit,
+              feeRate: feeCalc.finalFeeRate,
+              feeAmount: feeCalc.feeAmount,
+              uniqueOrderId,
+              strategyName: pos.symbol,
+            });
+            this.logger.log(`[AI监控] 燃油费结算: ${pos.symbol} pnl=${pnl.toFixed(4)} USDT, 扣费=${feeCalc.feeAmount}`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[AI监控] 燃油费结算失败(非致命): ${e.message}`);
+        }
+      }
 
       // 推送前端 WebSocket 持仓平仓通知
       try {
