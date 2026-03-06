@@ -43,6 +43,7 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
+  autoAdjustThreshold?: number;  // 网格重建阈值（偏离中点比例，默认 0.20 = 20%）
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true，对齐 nofx）
 }
 
@@ -1187,10 +1188,11 @@ export class GridTradingService {
           const gridRange = state.upperPrice - state.lowerPrice;
           const priceDeviation = Math.abs(currentPrice - gridMid);
           const deviationPct = gridRange > 0 ? (priceDeviation / gridRange) * 100 : 0;
-          if (priceDeviation > gridRange * 0.2) {
+          const autoAdjustRatio = gridConfig?.autoAdjustThreshold ?? 0.2;
+          if (priceDeviation > gridRange * autoAdjustRatio) {
             this.logger.warn(
               `[网格] autoAdjustGrid: 严重倾斜 buy=${skewBuy} sell=${skewSell}, ` +
-              `价格偏离中点 ${deviationPct.toFixed(1)}% > 20%，自动取消+居中重排`,
+              `价格偏离中点 ${deviationPct.toFixed(1)}% > ${(autoAdjustRatio * 100).toFixed(0)}%，自动取消+居中重排`,
             );
             try {
               await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
@@ -1202,7 +1204,7 @@ export class GridTradingService {
             return { trades: 0, errors: 0 };
           } else {
             this.logger.warn(
-              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，跳过自动居中，由 AI 本轮补挂空侧格线`,
+              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < ${(autoAdjustRatio * 100).toFixed(0)}%，跳过自动居中，由 AI 本轮补挂空侧格线`,
             );
           }
         }
@@ -1924,13 +1926,29 @@ export class GridTradingService {
 
     switch (action) {
       // 对齐 nofx：AI 驱动补单
-      case 'place_buy_limit':
+      case 'place_buy_limit': {
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
+        // 安全检查：买限价 > 当前价 会立即以市价成交，拦截
+        if (currentPrice && decision.price && decision.price > currentPrice * 1.001) {
+          this.logger.warn(
+            `[网格] place_buy_limit 拦截: 限价=${decision.price} > 市价=${currentPrice}，会立即成交，跳过`,
+          );
+          return { executed: false, skipReason: `买限价 ${decision.price} 高于市价 ${currentPrice}` };
+        }
         return this.placeGridLimitOrder(state, decision, 'buy', adapter as GridExchangeAdapter, useMakerOnly);
+      }
 
-      case 'place_sell_limit':
+      case 'place_sell_limit': {
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
+        // 安全检查：卖限价 < 当前价 会立即以市价成交，拦截
+        if (currentPrice && decision.price && decision.price < currentPrice * 0.999) {
+          this.logger.warn(
+            `[网格] place_sell_limit 拦截: 限价=${decision.price} < 市价=${currentPrice}，会立即成交，跳过`,
+          );
+          return { executed: false, skipReason: `卖限价 ${decision.price} 低于市价 ${currentPrice}` };
+        }
         return this.placeGridLimitOrder(state, decision, 'sell', adapter as GridExchangeAdapter, useMakerOnly);
+      }
 
       case 'cancel_order': {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
