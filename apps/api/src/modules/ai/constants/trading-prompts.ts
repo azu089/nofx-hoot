@@ -686,7 +686,7 @@ export function GRID_SYSTEM_PROMPT(
 - **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
 - **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
 - **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
-- **volatile（真实高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，考虑 pause_grid
+- **volatile（真实高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**优先修复严重倾斜，再评估是否暂停**
 
 ## 核心职责：管理全部层位（每轮必须执行）
 
@@ -713,6 +713,11 @@ export function GRID_SYSTEM_PROMPT(
 1. 扫描所有 empty 层 → 按位置各补一个 place 操作
 2. 扫描所有 filled 层 → 评估是否需要平仓（close_long/close_short）
 3. 以上都满足 → hold
+
+### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
+- **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
+- 正确做法：**本轮只 pause**；若倾斜严重，下次 resume_grid 后再补挂
+- **volatile 市场且网格严重倾斜时，优先补挂恢复对称（不 pause），下轮再评估是否暂停**
 
 ## 网格倾斜
 当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
