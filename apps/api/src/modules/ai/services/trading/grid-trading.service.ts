@@ -2706,8 +2706,40 @@ export class GridTradingService {
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
+      // ── nofx 对齐：先获取实际持仓（用于后续幽灵持仓检测） ──
+      let currentPositionSize = 0;
+      try {
+        const positions = await adapter.getPositions();
+        const symPos = positions.find((p) => p.symbol.includes(state.symbol.split('/')[0]));
+        currentPositionSize = symPos?.quantity ?? 0;
+      } catch {
+        // 获取失败不阻断流程
+      }
+
+      // filled 层期望持仓（nofx: expectedPositionSize）
+      const expectedPositionSize = state.gridLines
+        .filter((l) => l.state === 'filled' && l.positionSize > 0)
+        .reduce((sum, l) => sum + l.positionSize, 0);
+
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
+
+      // ── 幽灵持仓检测（nofx syncGridState 核心逻辑）──
+      // 交易所多头=0 但本地 filled 层有持仓 → 说明持仓已被外部平仓（手动/强平）
+      if (expectedPositionSize > 0 && Math.abs(currentPositionSize) === 0) {
+        const phantomLines = state.gridLines.filter(
+          (l) => l.state === 'filled' && l.positionSize > 0,
+        );
+        for (const line of phantomLines) {
+          line.state = 'empty';
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = 0;
+        }
+        this.logger.warn(
+          `[网格] 幽灵持仓清除: ${phantomLines.length} 层 filled → empty（交易所持仓=0，本地预期=${expectedPositionSize.toFixed(4)}）`,
+        );
+      }
 
       // 收集所有"消失"的挂单
       const disappearedLines = state.gridLines.filter(
