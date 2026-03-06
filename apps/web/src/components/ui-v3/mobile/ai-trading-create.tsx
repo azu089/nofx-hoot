@@ -158,6 +158,7 @@ export function CreateStrategyWizard() {
     gridCount: 10,
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
+    autoAdjustThreshold: 20,
   })
 
   // ── 网格交易对实时价格 ─────────────────────────────
@@ -351,6 +352,7 @@ export function CreateStrategyWizard() {
             ? +(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridParams.maxDrawdownPct || 5,
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
+          autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
         }
       }
 
@@ -1025,6 +1027,19 @@ export function CreateStrategyWizard() {
                   onChange={(e) => updateGrid('dailyLossLimitPct', Number(e.target.value) || 0)}
                   min={0} max={20}
                   placeholder="0"
+                  className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                />
+              </RiskField>
+            )}
+            {isGrid && (
+              <RiskField label="重建阈值" suffix="%">
+                <input
+                  type="number"
+                  title="网格重建阈值（价格偏离中点超过此值时自动重建）"
+                  value={gridParams.autoAdjustThreshold || ''}
+                  onChange={(e) => updateGrid('autoAdjustThreshold', Number(e.target.value) || 20)}
+                  min={10} max={50} step={5}
+                  placeholder="20"
                   className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                 />
               </RiskField>

@@ -121,11 +121,6 @@ export class FeeService {
       feeAmount = FEE_CONFIG.MIN_FEE;
     }
 
-    // 向上取整到 0.01（用户友好展示，统一精度）
-    if (feeAmount.gt(0)) {
-      feeAmount = feeAmount.toDecimalPlaces(2, Decimal.ROUND_UP);
-    }
-
     // 计算净利润
     const netProfit = profitDecimal.minus(feeAmount);
 
@@ -210,7 +205,7 @@ export class FeeService {
           type: 'GAS_FEE',
           amount: actualDeduction,
           uniqueOrderId,
-          description: `持仓 ${positionId} 盈利 ${profit} 手续费率 ${feeRate} 应扣 ${feeAmount} 实扣 ${actualDeduction}`,
+          description: `盈利${profit} 应扣${feeAmount} 实扣${actualDeduction}`,
         },
       });
 
@@ -223,7 +218,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: `${feeRecord.strategyName ? (feeRecord.strategyName.split('/')[0] + ' ') : ''}盈利${parseFloat(profit).toFixed(3)} · 费率${feeRate}`,
+          remark: `盈利${profit}`,
         },
       });
 

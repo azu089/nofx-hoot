@@ -299,7 +299,7 @@ export function Page({ embedded }: PageProps = {}) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteConfirmId(null)}
           />
-          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 shadow-2xl animate-slide-up">
+          <div className="relative w-full bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] p-6 pb-24 shadow-2xl animate-slide-up">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-[#F43F5E]/10 flex items-center justify-center">
                 <AlertTriangle className="w-5 h-5 text-[#F43F5E]" />

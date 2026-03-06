@@ -741,73 +741,87 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             })()}
           </span>
 
-          {/* 网格状态快照（后端 gridSnapshot 字段） */}
+          {/* 网格状态快照 — 只展示卡片上没有的信息 */}
           {d.gridSnapshot && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-[#606070]">{t('timeline.gridRange')}</span>
-                <span className="font-mono text-[#F8F8FC]">${Number(d.gridSnapshot.lowerPrice).toFixed(2)}~${Number(d.gridSnapshot.upperPrice).toFixed(2)}</span>
+            <div className="space-y-1 text-[11px]">
+              {/* 行1：价格区间 + 格间距 */}
+              <div className="grid grid-cols-2 gap-x-4">
+                <div className="flex justify-between">
+                  <span className="text-[#606070]">{t('timeline.gridRange')}</span>
+                  <span className="font-mono text-[#F8F8FC]">${Number(d.gridSnapshot.lowerPrice).toFixed(2)}~${Number(d.gridSnapshot.upperPrice).toFixed(2)}</span>
+                </div>
+                {d.gridSnapshot.gridSpacing != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">{t('timeline.gridSpacingLabel')}</span>
+                    <span className="font-mono text-[#F8F8FC]">${d.gridSnapshot.gridSpacing.toFixed(4)}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
-                <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
+              {/* 行2：层级进度 + 挂单层数 */}
+              <div className="grid grid-cols-2 gap-x-4">
+                <div className="flex justify-between">
+                  <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
+                  <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
+                </div>
+                {d.gridSnapshot.pendingLevels != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">{t('timeline.gridPendingLevels')}</span>
+                    <span className="text-[#F8F8FC]">{d.gridSnapshot.pendingLevels}</span>
+                  </div>
+                )}
               </div>
-              {d.gridSnapshot.totalProfit != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridOrderProfit')}</span>
-                  <span className={`font-mono ${d.gridSnapshot.totalProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {d.gridSnapshot.totalProfit >= 0 ? '+' : ''}{d.gridSnapshot.totalProfit.toFixed(2)}
-                  </span>
+              {/* 行3：持仓浮盈（未实现，卡片只显示已实现）+ 最大回撤 */}
+              {(d.gridSnapshot.unrealizedPnl != null || (d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0)) && (
+                <div className="grid grid-cols-2 gap-x-4">
+                  {d.gridSnapshot.unrealizedPnl != null && (
+                    <div className="flex justify-between">
+                      <span className="text-[#606070]">{t('timeline.gridPositionPnl')}</span>
+                      <span className={`font-mono ${d.gridSnapshot.unrealizedPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        {d.gridSnapshot.unrealizedPnl >= 0 ? '+' : ''}{d.gridSnapshot.unrealizedPnl.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
+                      <span className="font-mono text-[#EF4444]">{d.gridSnapshot.maxDrawdown.toFixed(1)}%</span>
+                    </div>
+                  )}
                 </div>
               )}
-              {d.gridSnapshot.winRate != null && d.gridSnapshot.totalTrades > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridWinRate')}</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.winRate}% ({d.gridSnapshot.totalTrades})</span>
-                </div>
-              )}
-              {d.gridSnapshot.pendingLevels != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridPendingLevels')}</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.pendingLevels}</span>
-                </div>
-              )}
-              {d.gridSnapshot.unrealizedPnl != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridPositionPnl')}</span>
-                  <span className={`font-mono ${d.gridSnapshot.unrealizedPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {d.gridSnapshot.unrealizedPnl >= 0 ? '+' : ''}{d.gridSnapshot.unrealizedPnl.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              {d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
-                  <span className="font-mono text-[#EF4444]">{d.gridSnapshot.maxDrawdown.toFixed(1)}%</span>
-                </div>
-              )}
-              {d.gridSnapshot.direction && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridDirection')}</span>
-                  <span className="text-[#F8F8FC]">{GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}</span>
-                </div>
-              )}
-              {d.gridSnapshot.regime && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridRegime')}</span>
-                  <span className="text-[#F8F8FC]">{GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}</span>
-                </div>
-              )}
-              {d.gridSnapshot.breakoutLevel && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridBreakoutLevel')}</span>
-                  <span className="text-[#F8F8FC]">{GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel] ? t(GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel]) : d.gridSnapshot.breakoutLevel}</span>
-                </div>
-              )}
-              {d.gridSnapshot.gridSpacing != null && (
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridSpacingLabel')}</span>
-                  <span className="font-mono text-[#F8F8FC]">${d.gridSnapshot.gridSpacing.toFixed(4)}</span>
+              {/* 行4：方向 · 形态 · 突破（紧凑一行） */}
+              {(d.gridSnapshot.direction || d.gridSnapshot.regime || d.gridSnapshot.breakoutLevel) && (
+                <div className="flex items-center gap-2 text-[#606070]">
+                  {d.gridSnapshot.direction && (
+                    <span>
+                      {t('timeline.gridDirection')}
+                      <span className="text-[#9090A0] ml-1">
+                        {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
+                      </span>
+                    </span>
+                  )}
+                  {d.gridSnapshot.regime && (
+                    <>
+                      <span className="text-[#2A2A3A]">·</span>
+                      <span>
+                        {t('timeline.gridRegime')}
+                        <span className="text-[#9090A0] ml-1">
+                          {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
+                        </span>
+                      </span>
+                    </>
+                  )}
+                  {d.gridSnapshot.breakoutLevel && d.gridSnapshot.breakoutLevel !== 'none' && (
+                    <>
+                      <span className="text-[#2A2A3A]">·</span>
+                      <span>
+                        {t('timeline.gridBreakoutLevel')}
+                        <span className="text-[#9090A0] ml-1">
+                          {GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel] ? t(GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel]) : d.gridSnapshot.breakoutLevel}
+                        </span>
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             </div>

@@ -686,44 +686,24 @@ export function GRID_SYSTEM_PROMPT(
 - **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
 - **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
 - **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
-- **volatile（高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**谨慎运行，优先补挂空格、管理倾斜**
+- **volatile（高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**谨慎运行**
 
 > ⚠️ **volatile 不等于必须 pause_grid**。网格策略在波动市场中仍可盈利（高波动 = 更多成交机会）。
 > pause_grid 仅在以下情形才有意义：**单周期价格变化 ≥5%（闪崩/暴涨）、或价格已突破网格边界 ≥2%**。
 > 仅仅因为 regime=volatile 就 pause，会导致永远无法挂单（volatile 可能持续数天）。
 
-## 核心职责：管理全部层位（每轮必须执行）
+## 决策框架
 
-**每轮必须检查所有层的状态，确保网格始终在运转**：
+根据市场数据、账户状态和网格层级状态，**自主判断**本轮应该执行哪些操作。
 
-### 三种层状态的处理规则
-
-**1. state=未挂单 (empty)**：需要补挂
-- 价格下方 empty 层 → 补挂买单（place_buy_limit）
-- 价格上方 empty 层 → 补挂卖单（place_sell_limit）
-- **优先处理靠近当前价的层**（最容易成交）
-
-**2. state=待成交 (pending)**：已有挂单，通常 hold
-- 无需操作，等待成交
-- 极端行情（趋势明显）时可 cancel 后重新布局
-
-**3. state=持仓 (filled)**：已开仓，持有多头（买单成交）或空头（卖单成交）仓位
-- 可选操作：
-  - 等待价格到达目标后 place_sell_limit/place_buy_limit 平仓
-  - 或直接发 close_long/close_short 市价平仓
-  - 或 hold 继续持有
-
-### 每轮操作清单
-1. 扫描所有 empty 层 → 按位置各补一个 place 操作
-2. 扫描所有 filled 层 → 评估是否需要平仓（close_long/close_short）
-3. 以上都满足 → hold
+### 三种层状态
+- **empty（未挂单）**: 可以挂单，也可以 hold 等待
+- **pending（待成交）**: 已有挂单，通常等待成交
+- **filled（持仓）**: 持有仓位，可 hold 或 close_long/close_short 平仓
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
 - 正确做法：**本轮只 pause**；若倾斜严重，下次 resume_grid 后再补挂
-
-## 网格倾斜
-当 gridSkewLevel=severe 时，请在空侧空格线（state=未挂单）补挂限价单恢复对称。可调用 place_buy_limit 或 place_sell_limit。
 
 ## 可用操作
 
@@ -850,34 +830,13 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   } else {
     lines.push(`网格倾斜: 均衡`);
   }
-  // 【重要】补挂摘要：明确告诉 AI 哪些 empty 层需要补单
-  // 注：每层数量（Q）已在 buildGridContext 按分布权重（allocatedUSD）预算好，直接使用
-  const emptyLevels = ctx.levels
-    .map((l, i) => ({ ...l, displayIdx: i + 1 }))
-    .filter(l => l.state === 'empty');
+  // 空格线统计（仅供参考，AI 根据可用保证金自主决策挂哪些层）
+  const emptyLevels = ctx.levels.filter(l => l.state === 'empty');
+  lines.push('');
   if (emptyLevels.length > 0) {
-    // 按距当前价的距离排序（最近优先）
-    const sorted = emptyLevels.sort((a, b) =>
-      Math.abs(a.price - ctx.currentPrice) - Math.abs(b.price - ctx.currentPrice),
-    );
-    // nofx 对齐：按价格位置决定补单方向（而非 l.side，side 在卖单成交后可能仍是 'sell'）
-    // 价格下方 → 补买单；价格上方 → 补卖单
-    const buyEmpty = sorted.filter(l => l.price < ctx.currentPrice);
-    const sellEmpty = sorted.filter(l => l.price >= ctx.currentPrice);
-    lines.push('');
-    lines.push('⚡ 需补挂的空格线（按距当前价排序，请优先处理靠近当前价的层）:');
-    if (buyEmpty.length > 0) {
-      const top3 = buyEmpty.slice(0, 3);
-      lines.push(`  买单空格: ${top3.map(l => `层${l.displayIdx}(P=${l.price.toFixed(4)},Q=${l.quantity.toFixed(6)})`).join(', ')}${buyEmpty.length > 3 ? ` …共${buyEmpty.length}层` : ''}`);
-    }
-    if (sellEmpty.length > 0) {
-      const top3 = sellEmpty.slice(0, 3);
-      lines.push(`  卖单空格: ${top3.map(l => `层${l.displayIdx}(P=${l.price.toFixed(4)},Q=${l.quantity.toFixed(6)})`).join(', ')}${sellEmpty.length > 3 ? ` …共${sellEmpty.length}层` : ''}`);
-    }
-    lines.push(`  → 请为以上空格线各输出一个 place_buy_limit 或 place_sell_limit 操作，quantity 使用括号中的 Q 值`);
+    lines.push(`空格线数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
   } else {
-    lines.push('');
-    lines.push('✅ 所有空格线均已补挂');
+    lines.push('空格线数量: 0（所有层已挂单或持仓）');
   }
 
   // Section 5: 网格层级表

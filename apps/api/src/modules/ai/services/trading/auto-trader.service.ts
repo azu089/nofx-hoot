@@ -2153,13 +2153,15 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          // 盈亏法：totalProfit（已实现网格利润）÷ 用户配置最大投入资金
-          // totalProfit = 完成网格循环的利润 + emergencyExit 平仓盈亏（可为负）
-          // 不用权益差(lastEquity-startEquity)，因为含持仓浮动会导致百分比偏移，触发时机不准
+          // 止盈止损必须基于实际持仓的浮动盈亏（含未实现盈亏），而非已实现利润
+          // 使用权益差：lastEquity（含浮动）- startEquity（策略启动时基准）
+          // fallback 到 totalProfit（仅已实现）当权益尚未获取时（首轮）
           const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
             ? gridConfig.totalInvestment
-            : 1000;
-          const equityPnl = gridStateForStop.totalProfit;
+            : gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000;
+          const equityPnl = (gridStateForStop.lastEquity > 0 && gridStateForStop.startEquity > 0)
+            ? gridStateForStop.lastEquity - gridStateForStop.startEquity
+            : gridStateForStop.totalProfit;
           const pnlPct = (equityPnl / investmentBase) * 100;
           if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;

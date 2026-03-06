@@ -220,6 +220,7 @@ export function UnifiedAiCreate() {
   }, [reasoningMode, gridSymbol]);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
+  const [gridAutoAdjustThreshold, setGridAutoAdjustThreshold] = useState(20);
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -458,6 +459,7 @@ export function UnifiedAiCreate() {
             ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
           dailyLossLimitPct: gridDailyLossLimit || 0,
+          autoAdjustThreshold: (gridAutoAdjustThreshold || 20) / 100,
         };
       }
 
@@ -1356,6 +1358,15 @@ export function UnifiedAiCreate() {
                   <span className="text-xs text-[#9090A0] w-20 shrink-0">日内亏损</span>
                   <input type="number" min={0} max={20} value={gridDailyLossLimit || ''} onChange={(e) => setGridDailyLossLimit(parseFloat(e.target.value) || 0)}
                     placeholder={t('common.unlimited')} className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                  />
+                  <span className="text-xs text-[#606070]">%</span>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">重建阈值</span>
+                  <input type="number" min={10} max={50} step={5} value={gridAutoAdjustThreshold || ''} onChange={(e) => setGridAutoAdjustThreshold(parseInt(e.target.value) || 20)}
+                    placeholder="20" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                   />
                   <span className="text-xs text-[#606070]">%</span>
                 </div>

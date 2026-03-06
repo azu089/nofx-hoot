@@ -392,6 +392,7 @@ export interface GridConfig {
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
+  autoAdjustThreshold?: number;  // 网格重建阈值（小数，如 0.30 = 30%）
   dailyLossLimitPct?: number;
 }
 

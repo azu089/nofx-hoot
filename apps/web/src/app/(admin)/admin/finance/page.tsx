@@ -86,6 +86,12 @@ const fmtUSD = (v: string | number) =>
     maximumFractionDigits: 2,
   })}`;
 
+// 点卡金额：保留 8 位有效小数（去除末尾 0）
+const fmtPoint = (v: string | number) => {
+  const n = parseFloat(String(v || '0'));
+  return n === 0 ? '0' : n.toFixed(8).replace(/\.?0+$/, '');
+};
+
 // 账单类型标签
 const BILLING_TYPE_MAP: Record<string, { label: string; color: string }> = {
   subscription: { label: '订阅',   color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
@@ -148,7 +154,15 @@ function OverviewTab() {
     { key: 'userEmail',    title: '用户',     render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
     { key: 'amount',       title: '金额',     align: 'right', render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
     { key: 'date',         title: '日期',     align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
-    { key: 'description',  title: '备注',     render: (r) => <span className="text-[#9090A0] text-xs">{r.description || '-'}</span> },
+    { key: 'description',  title: '盈利',     render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
+  ];
+
+  // 燃油费明细专用列（点卡精度）
+  const gasFeeColumns: AdminColumn<RevenueRow>[] = [
+    { key: 'userEmail',    title: '用户',     render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
+    { key: 'amount',       title: '扣费(pt)', align: 'right', render: (r) => <span className="font-mono text-white">{fmtPoint(r.amount)}</span> },
+    { key: 'date',         title: '日期',     align: 'center', render: (r) => <span className="text-[#9090A0] text-xs">{r.date}</span> },
+    { key: 'description',  title: '盈利',     render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
   ];
 
   return (
@@ -192,10 +206,10 @@ function OverviewTab() {
       )}
 
       {/* 燃油费收入明细 */}
-      {Array.isArray(gfData) && gfData.length > 0 && (
+      {Array.isArray((gfData as any)?.recentRecords) && (gfData as any).recentRecords.length > 0 && (
         <div>
           <p className="text-sm font-medium text-white mb-2">燃油费收入（近 30 天）</p>
-          <AdminTable<RevenueRow> columns={revenueColumns} data={gfData} rowKey="id" />
+          <AdminTable<RevenueRow> columns={gasFeeColumns} data={(gfData as any).recentRecords} rowKey="id" />
         </div>
       )}
     </div>
@@ -234,7 +248,7 @@ function BillingTab() {
       ),
     },
     { key: 'type',   title: '类型',  align: 'center', render: (r) => <AdminStatusBadge status={r.type} map={BILLING_TYPE_MAP} /> },
-    { key: 'amount', title: '金额',  align: 'right',  render: (r) => <span className="font-mono text-white">{fmtUSD(r.amount)}</span> },
+    { key: 'amount', title: '金额',  align: 'right',  render: (r) => <span className="font-mono text-white">{r.type === 'gas_fee' ? `${fmtPoint(r.amount)} pt` : fmtUSD(r.amount)}</span> },
     { key: 'status', title: '状态',  align: 'center', render: (r) => <AdminStatusBadge status={r.status} /> },
     {
       key: 'remark', title: '备注',

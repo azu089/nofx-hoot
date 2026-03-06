@@ -733,6 +733,9 @@ export class GridTradingService {
           this.logger.log(`[网格] DB 恢复后对齐 nofx: 以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
           await this.reinitializeGridLevels(state, restartPrice);
           await this.persistGridState(strategyId, state);
+          // reinitialize 清空了 orderBook，此时 exchange 上的旧价位挂单变成孤儿
+          // 补充一次孤儿清理（不需要重跑完整 reconcile，只处理 orphan）
+          await this.cancelOrphanOrders(strategyId, userId, apiKeyId, state);
         }
       }
     }
@@ -2804,6 +2807,45 @@ export class GridTradingService {
     }
 
     return { filledLines };
+  }
+
+  // ========================= 孤儿订单清理（reinitialize 后补充执行） =========================
+
+  /**
+   * 取消 exchange 上所有不在当前 orderBook 中的挂单（孤儿）
+   * 用于 reinitializeGridLevels 清空 orderBook 之后，防止旧价位挂单持续占用保证金
+   */
+  private async cancelOrphanOrders(
+    _strategyId: string,
+    userId: string,
+    apiKeyId: string,
+    state: GridState,
+  ): Promise<void> {
+    if (!this.adapterFactory) return;
+    try {
+      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      if (!isGridAdapter(adapter)) return;
+
+      const openOrders = await adapter.getOpenOrders(state.symbol);
+      const trackedIds = new Set(Object.keys(state.orderBook));
+      const orphans = openOrders.filter((o) => !trackedIds.has(o.orderId));
+
+      if (orphans.length === 0) return;
+
+      this.logger.warn(
+        `[网格] 边界重建后发现 ${orphans.length} 个孤儿订单，取消中: ${orphans.map((o) => o.orderId).join(', ')}`,
+      );
+      await Promise.allSettled(
+        orphans.map((o) =>
+          (adapter as GridExchangeAdapter)
+            .cancelOrder(state.symbol, o.orderId)
+            .catch((e: any) => this.logger.warn(`[网格] 取消孤儿订单 ${o.orderId} 失败: ${e.message}`)),
+        ),
+      );
+      this.logger.log(`[网格] 边界重建孤儿清理完成`);
+    } catch (e: any) {
+      this.logger.warn(`[网格] cancelOrphanOrders 失败: ${e.message}`);
+    }
   }
 
   // ========================= 启动恢复（T4: reconcileGridState） =========================

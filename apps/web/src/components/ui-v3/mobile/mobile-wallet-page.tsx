@@ -1028,7 +1028,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                   </button>
                   {showDatePicker && (
                     <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-                      <div className="w-full max-w-md bg-[#12121A] rounded-t-2xl p-4 space-y-4 animate-in slide-in-from-bottom">
+                      <div className="w-full max-w-md bg-[#12121A] rounded-t-2xl p-4 pb-24 space-y-4 animate-in slide-in-from-bottom">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-semibold text-white">{t('startDate')} ~ {t('endDate')}</h3>
                           <button
@@ -1446,7 +1446,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
             </div>
 
-            <div className="px-5 pb-8 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
+            <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-white">
                   {selectedExchange
@@ -1665,7 +1665,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
             </div>
 
-            <div className="px-5 pb-8 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
+            <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-[#1E1E2E] flex items-center justify-center overflow-hidden relative">
@@ -2070,7 +2070,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
               <div className="w-10 h-1 bg-[#3A3A4A] rounded-full" />
             </div>
 
-            <div className="px-5 pb-8 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
+            <div className="px-5 pb-24 pt-2 overflow-y-auto max-h-[calc(85vh-40px)]">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-white">
                   {selectedDexExchange

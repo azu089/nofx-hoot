@@ -98,6 +98,7 @@ export function AIStrategyDetailPage() {
   const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
+  const [editGridAutoAdjustThreshold, setEditGridAutoAdjustThreshold] = useState(20);
   const [editGridInterval, setEditGridInterval] = useState(60);
   const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = 公式自动计算
   const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = 公式自动计算
@@ -299,6 +300,7 @@ export function AIStrategyDetailPage() {
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridDailyLossLimit(gc.dailyLossLimitPct || 0);
+      setEditGridAutoAdjustThreshold(gc.autoAdjustThreshold != null ? Math.round(gc.autoAdjustThreshold * 100) : 20);
       setEditGridInterval(strategy?.intervalMinutes || 60);
       // 优先用用户手动配置的边界（gc.upperBound/lowerBound），不读 AI 运行时范围
       // 避免：用户设 0（公式自动）→ 跑完写入 gridState → 重新打开显示 10%
@@ -397,6 +399,7 @@ export function AIStrategyDetailPage() {
           maxDrawdownPct: editGridMaxDrawdown,
           stopLossPct: editGridStopLoss,
           dailyLossLimitPct: editGridDailyLossLimit || 0,
+          autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
           // 百分比 → 绝对价格；留空(0) → undefined → 后端保持原配置或 AI 决策
           upperBound: (editGridCurrentPrice > 0 && editGridUpperPct > 0)
             ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : undefined,
@@ -1588,6 +1591,18 @@ export function AIStrategyDetailPage() {
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
                           </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-[#9090A0]">网格重建阈值</p>
+                            <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                              <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold || ''}
+                                onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? 20 : parseInt(e.target.value))}
+                                placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                aria-label="网格重建阈值"
+                              />
+                              <span className="text-[#606070] text-xs shrink-0">%</span>
+                            </div>
+                            <p className="text-xs text-[#606070]">价格偏离中点超过此值时自动重建。横盘用30，趋势用20</p>
+                          </div>
                         </div>
                       </div>
                       )}
@@ -2701,7 +2716,7 @@ function VoteDetailSheet({
   return (
     <div className="fixed inset-0 z-[100] flex items-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-h-[85vh] overflow-y-auto bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl animate-slide-up">
+      <div className="relative w-full max-h-[85vh] overflow-y-auto bg-[#12121A] rounded-t-3xl border-t border-[#1E1E2E] shadow-2xl animate-slide-up pb-24">
         {/* 拖动条 */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-[#2B3139] rounded-full" />

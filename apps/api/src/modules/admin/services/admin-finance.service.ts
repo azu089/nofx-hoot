@@ -199,11 +199,16 @@ export class AdminFinanceService {
       recentRecords: gasFees.slice(0, 20).map((r) => ({
         id: r.id,
         userId: r.userId,
+        userEmail: r.user?.email || '-',
         user: r.user,
         symbol: r.symbol,
         exchange: r.exchange,
-        profitUsdt: r.profitUsdt.toString(),
-        feeAmount: r.feeAmount.toString(),
+        profitUsdt: r.profitUsdt.toFixed(8),
+        feeAmount: r.feeAmount.toFixed(8),
+        // RevenueRow 兼容字段
+        amount: r.feeAmount.toFixed(8),
+        description: `盈利${r.profitUsdt.toFixed(8)}`,
+        date: r.createdAt.toISOString().split('T')[0],
         createdAt: r.createdAt,
       })),
     };
