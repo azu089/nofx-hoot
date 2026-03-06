@@ -855,7 +855,9 @@ export class GridTradingService {
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
         livePositions = await adapter.getPositions(); // 预取持仓，Step 8 直接复用
-        await adapter.dispose();
+        // 注意：不在此 dispose() — 保留缓存实例供 Step 8 的 buildGridContext 复用
+        // 原先 dispose() 会使缓存失效，DrawdownMonitor 期间拿到同一实例后再 dispose()，
+        // 导致 LLM 调用后 adapter.exchange===null，所有执行全报"适配器未初始化"
       } catch (e: any) {
         this.logger.warn(`[网格] Step3 权益获取失败，使用缓存值 (peakEquity=${state.peakEquity}): ${e.message}`);
       }
@@ -1320,8 +1322,8 @@ export class GridTradingService {
         if (skewTotal >= 3) {
           const heavy = Math.max(skewBuy, skewSell);
           const light = Math.min(skewBuy, skewSell);
-          // 环形平仓模式下 light(=skewSell) 永远为 0，需要 heavy >= 5 才触发 severe（对齐 nofx sellEmpty > 5）
-          if ((light === 0 && heavy >= 5) || (light > 0 && heavy >= 5 * light)) skewLevel = 'severe';
+          // 环形平仓模式下 light(=skewSell) 永远为 0，heavy >= 3 即触发 severe（3:1 倾斜比）
+          if ((light === 0 && heavy >= 3) || (light > 0 && heavy >= 3 * light)) skewLevel = 'severe';
           else if (heavy >= 2 * light) skewLevel = 'light';
         }
         (context as any).gridSkewLevel = skewLevel;
@@ -1338,10 +1340,10 @@ export class GridTradingService {
           const gridRange = state.upperPrice - state.lowerPrice;
           const priceDeviation = Math.abs(currentPrice - gridMid);
           const deviationPct = gridRange > 0 ? (priceDeviation / gridRange) * 100 : 0;
-          if (priceDeviation > gridRange * 0.3) {
+          if (priceDeviation > gridRange * 0.2) {
             this.logger.warn(
               `[网格] autoAdjustGrid: 严重倾斜 buy=${skewBuy} sell=${skewSell}, ` +
-              `价格偏离中点 ${deviationPct.toFixed(1)}% > 30%，自动取消+居中重排`,
+              `价格偏离中点 ${deviationPct.toFixed(1)}% > 20%，自动取消+居中重排`,
             );
             try {
               await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
@@ -1405,6 +1407,13 @@ export class GridTradingService {
           apiKeys,
           { temperature: 0.3, maxTokens: 1500 },
         );
+
+        // LLM 调用期间（30-40s）DrawdownMonitor 可能已 dispose 同一缓存 adapter
+        // 重新检查，若已失效则重建，确保后续执行循环正常
+        if (!adapter.isReady()) {
+          this.logger.warn(`[网格] LLM 调用后 adapter 已失效，重新获取`);
+          adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
+        }
 
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
@@ -2533,15 +2542,32 @@ export class GridTradingService {
     // Step 2.8 用 DB 里的 effectiveLeverage（如5x），但交易所可能执行 volatile regime 2x 上限
     // 导致名义值检查通过但实际保证金不足，引发交易所级拒绝 → 每轮重试 → 刷屏循环
     // 解决：用 state.availableBalance（每轮真实拉取的可用余额）做最后一道防线
+    // 对齐 nofx 设计：nofx 用 totalInvestment/gridCount 预限 qty，而非直接拒绝；
+    // 此处当保证金不足时先按比例缩减 qty，只有缩到低于 minQty 时才真正跳过
     if (state.availableBalance > 0) {
       const requiredMargin = (finalQty * price) / leverage;
       const MARGIN_BUFFER = 1.05; // 5% 安全余量，应对下单瞬间价格/资金微变
       if (state.availableBalance < requiredMargin * MARGIN_BUFFER) {
-        const skipReason =
-          `保证金不足(预检): 可用$${state.availableBalance.toFixed(2)} < ` +
-          `需要$${(requiredMargin * MARGIN_BUFFER).toFixed(2)} (qty=${finalQty}@${price}, lev=${leverage}x)`;
-        this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-        return { executed: false, skipReason };
+        // 按可用余额反算最大可下 qty（对齐 nofx 每层保证金上限设计）
+        const marginPerUnit = (price / leverage) * MARGIN_BUFFER;
+        const rawScaled = state.availableBalance / marginPerUnit;
+        const scaledQty = minQty > 0
+          ? Math.floor(rawScaled / minQty) * minQty
+          : parseFloat(rawScaled.toFixed(8));
+        if (scaledQty < minQty || scaledQty <= 0) {
+          // 连最小单量都无法满足，才真正跳过
+          const minMarginNeeded = (minQty * price / leverage) * MARGIN_BUFFER;
+          const skipReason =
+            `保证金不足(预检): 可用$${state.availableBalance.toFixed(2)}, ` +
+            `最小单量需$${minMarginNeeded.toFixed(2)} (minQty=${minQty}@${price}, lev=${leverage}x)`;
+          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+          return { executed: false, skipReason };
+        }
+        this.logger.warn(
+          `[网格] 保证金不足，缩减qty: ${finalQty} → ${scaledQty} ` +
+          `(可用$${state.availableBalance.toFixed(2)}, 价=${price}, 杠=${leverage}x)`,
+        );
+        finalQty = scaledQty;
       }
     }
 
