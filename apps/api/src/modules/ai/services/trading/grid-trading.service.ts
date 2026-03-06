@@ -1444,11 +1444,6 @@ export class GridTradingService {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
             if (result.executed && d.action.includes('place_')) trades++;
             execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
-            // 同轮内扣减估算保证金：防止后续单用旧余额快照，导致实际余额不足时仍通过预检
-            if (result.executed && d.action.startsWith('place_') && d.price && d.quantity) {
-              const usedMargin = (d.quantity * d.price) / (state.effectiveLeverage || state.leverage);
-              state.availableBalance = Math.max(0, state.availableBalance - usedMargin);
-            }
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);
@@ -2543,44 +2538,10 @@ export class GridTradingService {
       }
     }
 
-    // Step 2.9: 实时保证金预检（弥补 Step 2.8 的杠杆脱节问题）
-    // Step 2.8 用 DB 里的 effectiveLeverage（如5x），但交易所可能执行 volatile regime 2x 上限
-    // 导致名义值检查通过但实际保证金不足，引发交易所级拒绝 → 每轮重试 → 刷屏循环
-    // 解决：用 state.availableBalance（每轮真实拉取的可用余额）做最后一道防线
-    // 对齐 nofx 设计：nofx 用 totalInvestment/gridCount 预限 qty，而非直接拒绝；
-    // 此处当保证金不足时先按比例缩减 qty，只有缩到低于 minQty 时才真正跳过
-    if (state.availableBalance <= 0) {
-      // 余额为零（所有保证金已被挂单/持仓占用）→ 直接跳过，避免盲目发单被交易所拒绝(-2019/51008)
-      const skipReason = `余额为零，跳过下单 (availableBalance=$${state.availableBalance.toFixed(2)})`;
-      this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-      return { executed: false, skipReason };
-    }
-    if (state.availableBalance > 0) {
-      const requiredMargin = (finalQty * price) / leverage;
-      const MARGIN_BUFFER = 1.05; // 5% 安全余量，应对下单瞬间价格/资金微变
-      if (state.availableBalance < requiredMargin * MARGIN_BUFFER) {
-        // 按可用余额反算最大可下 qty（对齐 nofx 每层保证金上限设计）
-        const marginPerUnit = (price / leverage) * MARGIN_BUFFER;
-        const rawScaled = state.availableBalance / marginPerUnit;
-        const scaledQty = minQty > 0
-          ? Math.floor(rawScaled / minQty) * minQty
-          : parseFloat(rawScaled.toFixed(8));
-        if (scaledQty < minQty || scaledQty <= 0) {
-          // 连最小单量都无法满足，才真正跳过
-          const minMarginNeeded = (minQty * price / leverage) * MARGIN_BUFFER;
-          const skipReason =
-            `保证金不足(预检): 可用$${state.availableBalance.toFixed(2)}, ` +
-            `最小单量需$${minMarginNeeded.toFixed(2)} (minQty=${minQty}@${price}, lev=${leverage}x)`;
-          this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-          return { executed: false, skipReason };
-        }
-        this.logger.warn(
-          `[网格] 保证金不足，缩减qty: ${finalQty} → ${scaledQty} ` +
-          `(可用$${state.availableBalance.toFixed(2)}, 价=${price}, 杠=${leverage}x)`,
-        );
-        finalQty = scaledQty;
-      }
-    }
+    // Step 2.9: 不做 availableBalance 预检 — 对齐 nofx 设计
+    // nofx 只做静态 qty 上限（totalInvestment/gridCount），不在运行时检查余额
+    // 保证金不足时由交易所返回错误（-2019/51008），上层 catch 记录日志后继续下一个决策
+    // 下一轮 AI 重新评估空格，自然补挂 — "信号生成 → 直接挂单 → 交易所裁判"
 
     // Step 3: 下单
     // OKX 双向持仓模式需要 positionSide（对应 OKX 参数 posSide）：
