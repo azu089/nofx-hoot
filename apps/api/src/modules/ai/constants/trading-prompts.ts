@@ -666,7 +666,8 @@ export function GRID_SYSTEM_PROMPT(
   currentPrice: number,
 ): string {
   const slots = gridCount - 1;
-  const absMaxUSD = (slots * 0.025 * currentPrice).toFixed(2);
+  // 对齐后端 ATR cap 公式：halfRange = price × 0.03 × (gridCount/10)，全幅 = price × 0.06 × (gridCount/10)
+  const absMaxUSD = (currentPrice * 0.06 * gridCount / 10).toFixed(2);
 
   return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
@@ -729,9 +730,9 @@ export function GRID_SYSTEM_PROMPT(
 - **resume_grid**: 恢复网格（震荡市场时）
   \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
 - **adjust_grid**: 调整网格边界（触发重建）
-  ⚠️ 间距约束：upperPrice - lowerPrice ≤ ${absMaxUSD} USDT（${gridCount}层 × 2.5% × 当前价）
+  ⚠️ 间距约束：upperPrice - lowerPrice ≤ ${absMaxUSD} USDT（对齐后端 ATR cap：价格 × 6% × 层数/10）
   ⚠️ 居中原则：以当前价为中心对称布局，即 lowerPrice ≈ currentPrice - range/2，upperPrice ≈ currentPrice + range/2
-  例：当前价=${currentPrice.toFixed(2)}，最大范围=${absMaxUSD}，推荐 lowerPrice≈${(currentPrice - (currentPrice * (gridCount - 1) * 0.025) / 2).toFixed(2)}，upperPrice≈${(currentPrice + (currentPrice * (gridCount - 1) * 0.025) / 2).toFixed(2)}
+  例：当前价=${currentPrice.toFixed(2)}，最大范围=${absMaxUSD}，推荐 lowerPrice≈${(currentPrice - currentPrice * 0.03 * gridCount / 10).toFixed(2)}，upperPrice≈${(currentPrice + currentPrice * 0.03 * gridCount / 10).toFixed(2)}
   \`{"action":"adjust_grid","upperPrice":新上界,"lowerPrice":新下界,"confidence":85,"reasoning":"原因"}\`
 - **close_long**: 平多仓（AI 评估需市价平仓时使用）
   \`{"action":"close_long","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
