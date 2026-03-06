@@ -2153,28 +2153,22 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          // 止盈止损必须基于实际持仓的浮动盈亏（含未实现盈亏），而非已实现利润
-          // 使用权益差：lastEquity（含浮动）- startEquity（策略启动时基准）
-          // fallback 到 totalProfit（仅已实现）当权益尚未获取时（首轮）
+          // 止盈：用已实现利润（totalProfit），与浮盈浮亏无关，触发时机稳定
+          // 止损：用权益差（含浮动盈亏），能及时响应持仓亏损
           const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
             ? gridConfig.totalInvestment
             : gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000;
+          const realizedPct = (gridStateForStop.totalProfit / investmentBase) * 100;
           const equityPnl = (gridStateForStop.lastEquity > 0 && gridStateForStop.startEquity > 0)
             ? gridStateForStop.lastEquity - gridStateForStop.startEquity
             : gridStateForStop.totalProfit;
-          const pnlPct = (equityPnl / investmentBase) * 100;
-          if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && pnlPct >= gridStopCond.profitTargetPercent) {
-            // 止盈：持仓浮亏时跳过本轮，等持仓转正再触发（避免亏损平仓）
-            const unrealizedPnl = gridStateForStop.lastUnrealizedPnl ?? 0;
-            if (unrealizedPnl >= 0) {
-              gridShouldStop = true;
-              gridStopReason = `止盈达标: +${pnlPct.toFixed(1)}% (目标: ${gridStopCond.profitTargetPercent}%)`;
-            } else {
-              this.logger.log(`[网格] 止盈条件满足 (+${pnlPct.toFixed(1)}%) 但持仓浮亏 ${unrealizedPnl.toFixed(4)} USDT，等待持仓转正`);
-            }
-          } else if (gridStopCond.maxLossPercent && gridStopCond.maxLossPercent > 0 && pnlPct <= -gridStopCond.maxLossPercent) {
+          const equityPct = (equityPnl / investmentBase) * 100;
+          if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && realizedPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;
-            gridStopReason = `止损触发: ${pnlPct.toFixed(1)}% (限额: -${gridStopCond.maxLossPercent}%)`;
+            gridStopReason = `止盈达标: +${realizedPct.toFixed(1)}% 已实现 (目标: ${gridStopCond.profitTargetPercent}%)`;
+          } else if (gridStopCond.maxLossPercent && gridStopCond.maxLossPercent > 0 && equityPct <= -gridStopCond.maxLossPercent) {
+            gridShouldStop = true;
+            gridStopReason = `止损触发: ${equityPct.toFixed(1)}% (限额: -${gridStopCond.maxLossPercent}%)`;
           }
         }
       }
