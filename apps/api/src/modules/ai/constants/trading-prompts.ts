@@ -601,7 +601,7 @@ export interface GridContext {
   rsi7?: number;           // RSI(7) 短期动量
   atr3?: number;           // ATR(3) 短期波动率
   atrHourly?: number;      // ATR(14) 基于 1h 数据，趋势可靠性更高
-  // 4h 指标（中期趋势判断，对齐 nofx 5m+4h 双周期设计）
+  // 4h 指标（中期趋势判断，三周期 5m+1h+4h 并行设计）
   rsi4h?: number;          // RSI(14) 4h 周期
   macd4h?: number;         // MACD 4h 周期
   macdSignal4h?: number;   // MACD Signal 4h 周期
@@ -871,8 +871,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 账户状态 ---');
   lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
-  // 参照 nofx：仅传 AvailableBalance 原始数字（nofx kernel/grid_engine.go L270-275）
-  // 不传 marginUsedPct 百分比和警告标签，避免 AI 做保证金管理决策（由系统预检/交易所拒单处理）
+  // 仅传 AvailableBalance 原始数字，不传 marginUsedPct 百分比和警告标签
+  // 避免 AI 做保证金管理决策（由系统预检/交易所拒单处理）
   lines.push(`可用保证金: ${ctx.availableBalance.toFixed(2)} USDT`);
   if (ctx.positionLong || ctx.positionShort) {
     if (ctx.positionLong) {
@@ -945,7 +945,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   return lines.join('\n');
 }
 
-// ==================== 角色辩论提示词（共识策略专用 — nofx 对齐） ====================
+// ==================== 角色辩论提示词（共识策略专用） ====================
 //
 // 与 research-prompts.ts 的区别：
 // - research-prompts：基于分析师报告（后处理），400-600字，研究员身份

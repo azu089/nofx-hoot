@@ -43,7 +43,7 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
-  autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true，对齐 nofx）
+  autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
 }
 
 /** 网格方向 */
@@ -164,14 +164,14 @@ export interface GridState {
   // 单格止损阈值%（从 GridConfig 复制，供 buildGridContext 使用）
   stopLossPct: number;
 
-  // === nofx 信号驱动自动调节字段（Round 1+2，每 cycle 重算，重启后首轮为 0）===
+  // === 信号驱动自动调节字段（Round 1+2，每 cycle 重算，重启后首轮为 0）===
   lastVolume24h: number;      // 最近 24h 成交量（updateBoxData 更新）
   avgDailyVolume: number;     // 近 72h 日均成交量（updateBoxData 更新）
   lastAtrHourly: number;      // ATR(14)[1h]（classifyRegime 返回后存储）
   lastAtrSpikeRatio: number;  // 当前ATR/基线ATR比率（updateBoxData 计算）
   currentOIChange: number;    // 当前周期 OI 变化%（Step 4.9 独立获取）
   lastBidAskSpread: number;   // 最近 bid/ask 价差%（Step 4.9 顺带获取）
-  // === nofx 信号驱动自动调节字段（Phase 12，每 cycle 重算，重启后首轮为 0）===
+  // === 信号驱动自动调节字段（Phase 12，每 cycle 重算，重启后首轮为 0）===
   rsiDivergenceType: 'bullish' | 'bearish' | 'none'; // RSI 背离类型（updateBoxData 计算）
   lastBidDepth: number;       // 盘口买方深度 USD（top-5 档合计，Step 4.9 获取）
   lastAskDepth: number;       // 盘口卖方深度 USD（top-5 档合计，Step 4.9 获取）
@@ -220,14 +220,14 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
 };
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
-// nofx 信号驱动：量能骤变检测（方向自适应已移除，常量保留备查）
+// 量能骤变检测（方向自适应已移除，常量保留备查）
 // const VOLUME_SPIKE_RATIO = 2.0;
 // const VOLUME_SPIKE_PRICE_CONFIRM_PCT = 1.0;
-// nofx Round 2：OI 真假突破确认
+// OI 真假突破确认
 const BREAKOUT_OI_TRUE_THRESHOLD = 3;       // OI 变化 > +3% = 真突破，立即确认
 const BREAKOUT_OI_FALSE_THRESHOLD = 1;      // OI 变化 < 1%  = 可疑
 const BREAKOUT_CONFIRM_REQUIRED_OI_SUSPICIOUS = 5; // 可疑时需 5 次确认
-// nofx Round 2：bid/ask Spread 检测
+// Bid/Ask Spread 检测
 const MAX_SPREAD_PCT = 0.3;                 // 超过 0.3% 视为价差过宽，跳过下单
 // Phase 12：Order Book Depth 检测
 const ORDER_BOOK_DEPTH_LEVELS = 5;          // 取盘口前 5 档
@@ -416,7 +416,7 @@ export class GridTradingService {
         lowerPrice = currentPrice - halfRange;
         rangeSource = `ATR×${mult}×(${gridCount}/10) min 默认`;
       } else {
-        // ATR 计算失败，使用 nofx 公式兜底
+        // ATR 计算失败，使用默认比例兜底
         upperPrice = currentPrice * (1 + _defaultMult);
         lowerPrice = currentPrice * (1 - _defaultMult);
         rangeSource = `±${(_defaultMult * 100).toFixed(1)}%兜底`;
@@ -432,14 +432,14 @@ export class GridTradingService {
       lowerPrice = config.lowerBound;
       rangeSource = '用户指定';
     } else {
-      // 用户未填写边界，或指定边界与当前价不兼容 → ATR 自动计算，失败则 nofx 公式兜底
+      // 用户未填写边界，或指定边界与当前价不兼容 → ATR 自动计算，失败则默认比例兜底
       if (config.upperBound && config.lowerBound) {
         this.logger.warn(
           `[网格] 用户指定边界 [${config.lowerBound}, ${config.upperBound}] 与当前价 ${currentPrice.toFixed(6)} 不兼容，` +
-          `将使用 ATR/nofx 自动计算范围（换标的后旧边界应被重置）`,
+          `将使用 ATR/默认比例自动计算范围（换标的后旧边界应被重置）`,
         );
       }
-      // 对齐 nofx: ATR 计算，失败则 nofx 公式（multiplier = 0.03 × gridCount / 10）
+      // ATR 计算范围，失败则按默认公式兜底（multiplier = 0.03 × gridCount / 10）
       let atrFallbackSet = false;
       if (this.indicators) {
         try {
@@ -463,14 +463,14 @@ export class GridTradingService {
             );
           }
         } catch (_e) {
-          // ATR 获取失败，使用 nofx 公式兜底
+          // ATR 获取失败，使用默认公式兜底
         }
       }
       if (!atrFallbackSet) {
         upperPrice = currentPrice * (1 + _defaultMult);
         lowerPrice = currentPrice * (1 - _defaultMult);
         this.logger.log(
-          `[网格] 兜底宽度 (nofx±${(_defaultMult * 100).toFixed(1)}%): 当前价=${currentPrice.toFixed(2)}, ` +
+          `[网格] 兜底宽度 (±${(_defaultMult * 100).toFixed(1)}%): 当前价=${currentPrice.toFixed(2)}, ` +
           `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
         );
       }
@@ -607,7 +607,7 @@ export class GridTradingService {
       rangeSource,  // 持久化供前端展示: '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
       stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
-      // nofx 信号驱动字段：首轮为 0，第二轮起正常计算
+      // 信号驱动字段：首轮为 0，第二轮起正常计算
       lastVolume24h: 0,
       avgDailyVolume: 0,
       lastAtrHourly: 0,
@@ -713,7 +713,7 @@ export class GridTradingService {
         state.effectiveLeverage ??= state.leverage;
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
-        // 兼容旧数据：nofx 信号字段（Phase 11/12 新增，旧 DB 记录无此字段）
+        // 兼容旧数据：信号字段（Phase 11/12 新增，旧 DB 记录无此字段）
         state.lastVolume24h ??= 0;
         state.avgDailyVolume ??= 0;
         state.lastAtrHourly ??= 0;
@@ -725,12 +725,11 @@ export class GridTradingService {
         state.lastAskDepth ??= -1;
         // 从 DB 恢复，需要 reconcile
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-        // 对齐 nofx InitializeGrid：每次重启都以当前价为中心重算 ATR 边界
-        // nofx 无状态持久化，每次重启 = 全新 NewGridState + ATR 重算
-        // HOOT 有持久化但效果需一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
+        // 每次重启都以当前价为中心重算 ATR 边界
+        // 有持久化但重启语义一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
         if (!state.userLockedRange) {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
-          this.logger.log(`[网格] DB 恢复后对齐 nofx: 以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
+          this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
           await this.reinitializeGridLevels(state, restartPrice);
           await this.persistGridState(strategyId, state);
           // reinitialize 清空了 orderBook，此时 exchange 上的旧价位挂单变成孤儿
@@ -761,7 +760,7 @@ export class GridTradingService {
       await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
-    // Step 1.3: AI 暂停恢复后 reconcile（对齐 nofx：每次启动都读取交易所）
+    // Step 1.3: AI 暂停恢复后 reconcile（每次恢复都重新从交易所读取真实状态）
     // resume_grid / breakout 自动恢复 会设置 needsReconcile=true，下次周期开始时触发
     if (state && !state.isPaused && state.needsReconcile) {
       state.needsReconcile = false;
@@ -811,7 +810,7 @@ export class GridTradingService {
       }
     }
 
-    // 每轮从 gridConfig 重新评估 userLockedRange（参照 nofx: 不持久化锁定标志，每次读配置）
+    // 每轮从 gridConfig 重新评估 userLockedRange（不持久化锁定标志，每次从配置读取最新值）
     // 用户在前端清空上下界 → upperBound=0, lowerBound=0 → 应解锁
     if (gridConfig) {
       const configHasManualBounds = !!(gridConfig.upperBound && gridConfig.lowerBound);
@@ -940,7 +939,7 @@ export class GridTradingService {
     if (currentPrice > 0 && stopLossPct > 0) {
       const stopLossLines: GridLine[] = [];
       for (const line of state.gridLines) {
-        // nofx 同格反向后 state='pending'，用 positionSize>0 而非 state==='filled' 检测持仓
+        // 同格反向后 state='pending'，用 positionSize>0 而非 state==='filled' 检测持仓
       if (line.positionSize <= 0 || line.positionEntry <= 0) continue;
         // 价格偏离%（基于价格变化）
         const priceDelta = Math.abs(currentPrice - line.positionEntry) / line.positionEntry * 100;
@@ -972,7 +971,7 @@ export class GridTradingService {
           `日内亏损保护触发\n` +
           `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时平仓退出\n` +
           `实际情况: 今日已亏损 ${dailyLossPct.toFixed(1)}%（$${Math.abs(state.dailyPnl).toFixed(2)}）`;
-        // 软暂停：撤单但不平仓（对齐 nofx dailyLoss 行为，避免浮亏变实亏，持仓等待价格恢复）
+        // 软暂停：撤单但不平仓（避免浮亏变实亏，持仓等待价格恢复）
         await this.softPauseGrid(state, userId, apiKeyId, dailyReason);
         await this.persistGridState(strategyId, state);
         await this.prisma.aiStrategyLog.create({
@@ -1062,7 +1061,7 @@ export class GridTradingService {
     }
 
     // Steps 5.3/5.4: 量能骤变/ATR Spike 方向信号 — 已移除
-    // 对齐 nofx 设计哲学：由 AI 决策（pause_grid/continue），后端不自动调整方向
+    // 后端不自动调整方向，由 AI 决策（pause_grid/continue）
 
     // Step 6: 市场状态分类
     if (this.indicators) {
@@ -1087,7 +1086,7 @@ export class GridTradingService {
     }
 
     // Step 6.6: 方向自适应 — 已移除
-    // 对齐 nofx 设计哲学：由 AI 决策（pause_grid/resume_grid），后端不自动调整方向
+    // 后端不自动调整方向，由 AI 决策（pause_grid/resume_grid）
 
     // Step 7: 暂停检查
     if (state.isPaused) {
@@ -1123,8 +1122,8 @@ export class GridTradingService {
           }
         }
 
-        // 突破检测（对齐 nofx checkBreakout/handleBreakout）
-        // 在 syncOrderFills（环形平仓）之后、AI 决策之前执行
+        // 突破检测：在 syncOrderFills 之后、AI 决策之前执行
+        // ≥2% 超出边界：取消所有挂单并暂停
         // ≥2%: 取消所有挂单并暂停; 1-2%: 仅记录警告
         if (state.upperPrice > 0 && state.lowerPrice > 0) {
           const breakout = this.checkBreakout(state, currentPrice);
@@ -1140,10 +1139,10 @@ export class GridTradingService {
         if (state._pendingStopLoss?.length && isGridAdapter(adapter)) {
           for (const idx of state._pendingStopLoss) {
             const line = state.gridLines[idx];
-            // nofx 同格反向后 state='pending'，但 positionSize>0 时仍持有仓位需止损
+            // 同格反向后 state='pending'，但 positionSize>0 时仍持有仓位需止损
             if (!line || line.positionSize <= 0) continue;
             try {
-              // nofx 对齐：side 不翻转 - 'buy' = 持多头，'sell' = 持空头
+              // side 不翻转：'buy' = 持多头，'sell' = 持空头
               const closeSide = line.side === 'buy' ? 'long' : 'short';
               const slCloseResult = closeSide === 'long'
                 ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, line.positionSize)
@@ -1187,7 +1186,7 @@ export class GridTradingService {
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
         // 环形平仓模式：卖单成交后卖层 positionSize=0，只有买单成交会留下 positionSize>0 的格线
         // 因此 skewSell 在正常环形平仓下始终为 0，不应因此轻易触发 severe
-        // 对齐 nofx: buyFilled > 0 && sellFilled == 0 && sellEmpty > 5 才算 severe
+        // buyFilled > 0 && sellFilled == 0 && sellEmpty > 5 才算 severe
         const filledAll = state.gridLines.filter(l => l.positionSize > 0);
         const skewBuy = filledAll.filter(l => l.side === 'buy').length;   // 持多头（buy成交，side='buy'）
         const skewSell = filledAll.filter(l => l.side === 'sell').length; // 持空头（sell成交，side='sell'）
@@ -1253,7 +1252,7 @@ export class GridTradingService {
             `[网格] 单边快速行情(${Math.abs(context.priceChange1h).toFixed(1)}% 1H, RSI=${context.rsi14.toFixed(0)})，` +
             `交由 AI 决策（pause_grid/hold）`,
           );
-          // nofx 对齐：后端不调整方向，由 AI 在本轮 prompt 中看到市场数据后自主决策
+          // 后端不调整方向，由 AI 在本轮 prompt 中看到市场数据后自主决策
         }
 
         const modelId = gridConfig?.modelId || 'deepseek-chat';
@@ -1324,7 +1323,7 @@ export class GridTradingService {
           }
         }
 
-        // nofx 对齐：syncOrderFills 在 AI 执行之后（周期末）
+        // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
         if (isGridAdapter(adapter)) {
           const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
@@ -1547,7 +1546,7 @@ export class GridTradingService {
     return { level: 'none', direction: '', magnitude: 0 };
   }
 
-  /** 确认突破（nofx Round 2：OI 过滤真假突破） */
+  /** 确认突破（OI 过滤真假突破） */
   private confirmBreakout(state: GridState, level: BreakoutLevel, direction: string): boolean {
     if (level === 'none') {
       state.breakoutConfirmCount = 0;
@@ -1616,7 +1615,7 @@ export class GridTradingService {
     }
   }
 
-  /** 虚假突破恢复检查（对齐 nofx：仅恢复暂停/仓位缩减，方向由 AI 决策） */
+  /** 虚假突破恢复检查（仅恢复暂停/仓位缩减，方向由 AI 决策） */
   private checkFalseBreakoutRecovery(state: GridState, price: number): void {
     // 价格回到长期箱体内 → 重置突破状态，解除仓位缩减和后端触发的暂停
     if (
@@ -1680,11 +1679,11 @@ export class GridTradingService {
     prefetchedPositions?: any[], // Step 3 已预取的持仓，避免重复 API 调用
     prefetchedBalance?: ExchangeBalance, // Step 3 已预取的余额，避免重复 API 调用
   ): Promise<GridContext> {
-    // 三周期 OHLCV 并行拉取（对齐 nofx 5m+4h 双周期，HOOT 额外加 1h 中间周期）
+    // 三周期 OHLCV 并行拉取（5m+1h+4h）
     const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
       this.marketData.fetchOHLCV(state.symbol, '5m', 50),   // 快速：RSI/MACD/短期信号
       this.marketData.fetchOHLCV(state.symbol, '1h', 100),  // 中速：趋势/ATR/价格变化/24h范围
-      this.marketData.fetchOHLCV(state.symbol, '4h', 50),   // 慢速：中期趋势（对齐 nofx）
+      this.marketData.fetchOHLCV(state.symbol, '4h', 50),   // 慢速：中期趋势
     ]);
 
     const mapOHLCV = (raw: any[]): OHLCV[] => raw.map((c: any) => ({
@@ -1704,7 +1703,7 @@ export class GridTradingService {
     let indFast: any = {};
     // 慢速指标（1h）：ATR 趋势可靠性
     let indSlow: any = {};
-    // 4h 指标：中期趋势判断（对齐 nofx）
+    // 4h 指标：中期趋势判断
     let ind4h: any = {};
     if (this.indicators) {
       indFast = this.indicators.calculateAll(ohlcv5m);
@@ -1777,7 +1776,7 @@ export class GridTradingService {
     const priceChange4h = ohlcvHourly.length >= 5
       ? ((currentPrice - ohlcvHourly[ohlcvHourly.length - 5].close) / ohlcvHourly[ohlcvHourly.length - 5].close) * 100
       : 0;
-    // 真实 4h 蜡烛价格变化（对齐 nofx，优先展示给 AI）
+    // 真实 4h 蜡烛价格变化（优先展示给 AI）
     const priceChange4hReal = ohlcv4h.length >= 2
       ? ((currentPrice - ohlcv4h[ohlcv4h.length - 2].close) / ohlcv4h[ohlcv4h.length - 2].close) * 100
       : undefined;
@@ -1846,7 +1845,7 @@ export class GridTradingService {
       volume24h: ohlcvHourly.slice(-24).reduce((s, c) => s + c.volume, 0),
       priceChange1h,
       priceChange4h,
-      // 4h 指标（中期趋势，对齐 nofx 双周期设计）
+      // 4h 指标（中期趋势，三周期并行设计）
       rsi4h: ind4h.rsi ?? undefined,
       macd4h: ind4h.macd?.macd ?? undefined,
       macdSignal4h: ind4h.macd?.signal ?? undefined,
@@ -1968,7 +1967,7 @@ export class GridTradingService {
     this.logger.debug(`[网格] 执行决策: action=${action}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
 
     switch (action) {
-      // 对齐 nofx：AI 驱动补单
+      // AI 驱动补单
       case 'place_buy_limit':
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
         return this.placeGridLimitOrder(state, decision, 'buy', adapter as GridExchangeAdapter, useMakerOnly);
@@ -2029,7 +2028,6 @@ export class GridTradingService {
       }
 
       case 'pause_grid':
-        // 参照 nofx executeGridDecision case "pause_grid": at.pauseGrid(d.Reasoning)
         // AI 的 pause_grid 实际执行：取消挂单 + 设 isPaused=true
         // pauseSource='ai' 允许 checkFalseBreakoutRecovery 在价格回归后自动恢复
         // （区别于 pauseSource='risk_control'，后者需手动干预）
@@ -2056,7 +2054,7 @@ export class GridTradingService {
 
       case 'adjust_grid': {
         await adapter.cancelAllOrders(state.symbol);
-        // 优先使用 AI 返回的边界（camelCase 和 snake_case 均兼容，对齐 nofx upper_price/lower_price）
+        // 优先使用 AI 返回的边界（camelCase 和 snake_case 均兼容）
         const adjUpper = decision.upperPrice ?? (decision as any).upper_price;
         const adjLower = decision.lowerPrice ?? (decision as any).lower_price;
         if (adjUpper && adjLower && adjUpper > adjLower) {
@@ -2087,7 +2085,7 @@ export class GridTradingService {
       }
 
       case 'close_long': {
-        // nofx 对齐：AI 主动平多仓
+        // AI 主动平多仓
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
         const rawLevel = decision.level_index ?? decision.level ?? 0;
         const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
@@ -2119,7 +2117,7 @@ export class GridTradingService {
       }
 
       case 'close_short': {
-        // nofx 对齐：AI 主动平空仓
+        // AI 主动平空仓
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
         const rawLevel = decision.level_index ?? decision.level ?? 0;
         const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
@@ -2260,7 +2258,7 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 1: per-level 仓位上限检查（对齐 nofx placeGridLimitOrder L1024-1062）
+    // Step 1: per-level 仓位上限检查
     const leverage = state.effectiveLeverage || state.leverage; // fallback 兼容旧数据
     if (price > 0 && state.totalInvestment > 0) {
       const maxMarginPerLevel = state.totalInvestment / state.gridLines.length;
@@ -2306,7 +2304,7 @@ export class GridTradingService {
       percentPriceUp = precision.percentPriceUp;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
 
-    // Step 2.4: Bid/Ask Spread 检测（nofx Round 2）
+    // Step 2.4: Bid/Ask Spread 检测
     // spread 过宽时跳过本格下单，避免在流动性差时挂单被吃成本
     if (state.lastBidAskSpread > 0) {
       const maxSpread = MAX_SPREAD_PCT;
@@ -2402,8 +2400,8 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 2.8: 仓位总量检查（对齐 nofx checkTotalPositionLimit）
-    // nofx 逻辑：(当前持仓名义价值 + 挂单名义价值 + 本次订单名义价值) ≤ totalInvestment × leverage
+    // Step 2.8: 仓位总量检查（名义价值守卫）
+    // 逻辑：(当前持仓名义价值 + 挂单名义价值 + 本次订单名义价值) ≤ totalInvestment × leverage
     // 使用 state.gridLines 本地状态计算，无需额外 API 调用
     // 同轮次前序成功下单已更新 level.state='pending'，pendingNominal 能正确累计防止过度挂单
     {
@@ -2429,8 +2427,8 @@ export class GridTradingService {
       }
     }
 
-    // Step 2.9: 不做 availableBalance 预检 — 对齐 nofx 设计
-    // nofx 只做静态 qty 上限（totalInvestment/gridCount），不在运行时检查余额
+    // Step 2.9: 不做 availableBalance 预检
+    // 只做静态 qty 上限（totalInvestment/gridCount），不在运行时检查余额
     // 保证金不足时由交易所返回错误（-2019/51008），上层 catch 记录日志后继续下一个决策
     // 下一轮 AI 重新评估空格，自然补挂 — "信号生成 → 直接挂单 → 交易所裁判"
 
@@ -2438,7 +2436,7 @@ export class GridTradingService {
     // OKX 双向持仓模式需要 positionSide（对应 OKX 参数 posSide）：
     //   BUY  → 多头/中性 开多(long)；空头方向 关空(short)
     //   SELL → 多头/中性 关多(long)；空头方向 开空(short)
-    // 参照 nofx okx/trader.go：双向模式每笔单都必须指定 posSide
+    // OKX 双向持仓模式每笔单都必须指定 posSide
     // 单向持仓模式（Binance默认/OKX net_mode）不传 positionSide，避免 -4061/51015 错误
     // OKX 要求 clOrdId 纯字母数字（无连字符），格式 g{idx}t{ts}，最长 17 字符
     const clientId = level ? `g${levelIndex}t${Date.now()}` : undefined;
@@ -2648,7 +2646,7 @@ export class GridTradingService {
   }
 
   /**
-   * 软暂停：只取消挂单，不平仓（对齐 nofx dailyLoss 行为）
+   * 软暂停：只取消挂单，不平仓
    * 适用于日内亏损等可能自然恢复的场景，避免把浮亏变实亏
    */
   private async softPauseGrid(
@@ -2752,7 +2750,7 @@ export class GridTradingService {
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
-      // nofx syncGridState: 只处理 pending 层，幽灵 filled 层在 reconcileGridState 启动时已对齐
+      // 只处理 pending 层，幽灵 filled 层在 reconcileGridState 启动时已对齐
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
@@ -2809,15 +2807,15 @@ export class GridTradingService {
         state.totalTrades++;
 
         if (prevSide === 'buy') {
-          // ── 买单成交：nofx 对齐 - 标记持仓，side 保持 'buy' 表示多头 ──
+          // ── 买单成交：标记持仓，side 保持 'buy' 表示多头 ──
           line.state = 'filled';
           line.positionSize = line.orderQuantity;
           line.positionEntry = fillPrice;
-          // side 保持 'buy'，表示持多头（nofx 不翻转 side）
+          // side 保持 'buy'，表示持多头
           line.unrealizedPnl = 0;
           this.logger.log(`[网格] 买单成交: level=${line.index}, fillPrice=${fillPrice.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
         } else {
-          // ── 卖单成交：nofx 对齐 - 直接标记为 empty，由 AI close_long/close_short 平仓 ──
+          // ── 卖单成交：直接标记为 empty，持仓由 AI 发 close_long/close_short 平仓 ──
           line.state = 'empty';
           line.positionSize = 0;
           line.positionEntry = 0;
@@ -2925,7 +2923,7 @@ export class GridTradingService {
           }
         }
 
-        // 孤儿订单清理（对齐 nofx cancelAllGridOrders 思路）
+        // 孤儿订单清理
         // DB 不认识的交易所挂单 = 孤儿，直接取消，防止保证金被无效锁定
         const trackedIds = new Set(Object.keys(state.orderBook));
         const orphanOrders = openOrders.filter((o) => !trackedIds.has(o.orderId));
@@ -2944,7 +2942,7 @@ export class GridTradingService {
         }
       }
 
-      // ── 对齐 nofx: 读取交易所真实持仓，清除幽灵 filled 层（启动时一次性对齐）──
+      // ── 读取交易所真实持仓，清除幽灵 filled 层（启动时一次性对齐）──
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
@@ -3070,14 +3068,14 @@ export class GridTradingService {
 
     switch (direction) {
       case 'long':
-        // long 方向：100% buy（顺势做多，DCA 式建仓，参照 nofx Go L674-678）
+        // long 方向：100% buy（顺势做多，DCA 式建仓）
         for (const line of gridLines) {
           line.side = 'buy';
         }
         break;
 
       case 'short':
-        // short 方向：100% sell（顺势做空，DCA 式建仓，参照 nofx Go L680-684）
+        // short 方向：100% sell（顺势做空，DCA 式建仓）
         for (const line of gridLines) {
           line.side = 'sell';
         }
@@ -3118,7 +3116,7 @@ export class GridTradingService {
     }
   }
 
-  /** 重新初始化网格层级（对齐 nofx: 每次重建都从 nofx 公式重算宽度，不继承旧边界） */
+  /** 重新初始化网格层级（每次重建都重算宽度，不继承旧边界） */
   private async reinitializeGridLevels(state: GridState, centerPrice: number): Promise<void> {
     const gridCount = state.gridLines.length;
     // 两套公式取最小值：波动小时 ATR 更窄→成交频繁；波动大时默认公式封顶→防范围过宽
@@ -3147,7 +3145,7 @@ export class GridTradingService {
     state.lowerPrice = centerPrice - halfRange;
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
-    // 对齐 nofx autoAdjustGrid：重建前先保存所有 filled 层信息，重建后映射到最近价格层
+    // 重建前先保存所有 filled 层信息，重建后映射到最近价格层
     const filledPositions = state.gridLines
       .filter(l => l.state === 'filled')
       .map(l => ({
@@ -3178,7 +3176,7 @@ export class GridTradingService {
     this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
     state.orderBook = {};
 
-    // 恢复 filled 层到价格最近的新层（对齐 nofx filledPositions restore 逻辑）
+    // 恢复 filled 层到价格最近的新层
     for (const saved of filledPositions) {
       let closestIdx = -1;
       let closestDist = Infinity;
@@ -3215,7 +3213,7 @@ export class GridTradingService {
     throw new Error(`无法获取 ${symbol} 当前价格`);
   }
 
-  // ========================= 突破检测（对齐 nofx checkBreakout/handleBreakout） =========================
+  // ========================= 突破检测 =========================
 
   /** 检测价格是否突破网格边界 */
   private checkBreakout(
@@ -3234,7 +3232,7 @@ export class GridTradingService {
   }
 
   /**
-   * 处理突破（对齐 nofx handleBreakout）:
+   * 处理突破:
    *   ≥ 2% → 取消所有挂单 + 暂停策略，返回 true（主循环应立即 return）
    *   1~2% → 仅记录警告，继续运行，返回 false
    *   < 1% → 不处理，返回 false

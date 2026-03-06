@@ -56,7 +56,8 @@
       "Bash(pnpm --filter api exec tsc --noEmit 2>&1 | head -40)",
       "Bash(pnpm --filter web exec tsc --noEmit 2>&1 | head -40)",
       "Bash(code --list-extensions | grep -i claude)",
-      "Bash(sshpass -p 'jia1212.JIA' ssh -o StrictHostKeyChecking=no root@139.59.254.219 'docker logs hoot-api --tail 100 2>&1 | grep -E \"\"风控|stopLoss|止损|平仓|closePosition|STOP|stop|position|SOL\"\" | tail -50')"
+      "Bash(sshpass -p 'jia1212.JIA' ssh -o StrictHostKeyChecking=no root@139.59.254.219 'docker logs hoot-api --tail 100 2>&1 | grep -E \"\"风控|stopLoss|止损|平仓|closePosition|STOP|stop|position|SOL\"\" | tail -50')",
+      "Bash(sshpass -p 'jia1212.JIA' ssh -o StrictHostKeyChecking=no root@139.59.254.219 'docker exec hoot-postgres psql -U hoot -d hoot -t -c \"\":*)"
     ],
     "defaultMode": "bypassPermissions"
   },

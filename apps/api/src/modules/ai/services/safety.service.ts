@@ -478,7 +478,7 @@ export class SafetyService {
       };
     }
 
-    // 对齐 nofx：仓位% 和杠杆超限时均自动削减，不拒绝
+    // 仓位% 和杠杆超限时均自动削减（clip），不拒绝
     // 只有非法值（leverage=0, positionSize≤0）才拒绝
     let clippedPositionSizePct: number | undefined;
     let clippedLeverage: number | undefined;
@@ -493,7 +493,7 @@ export class SafetyService {
       }
     }
 
-    // 检查杠杆（超限 → clip，不拒绝；对齐 nofx Leverage Fallback）
+    // 检查杠杆（超限 → clip，不拒绝；超限自动降至配置上限）
     if (input.leverage) {
       const bs = input.symbol.split('/')[0]?.toUpperCase();
       const isMaj = bs === 'BTC' || bs === 'ETH';

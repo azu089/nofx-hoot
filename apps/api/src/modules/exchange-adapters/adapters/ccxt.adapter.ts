@@ -209,7 +209,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       );
     }
 
-    // OKX 特殊处理：对齐 nofx okx/trader.go 初始化逻辑
+    // OKX 特殊处理：初始化时检测并设置双向持仓模式
     // 1. 检测当前 posMode (long_short_mode | net_mode)
     // 2. 若非双向持仓，尝试切换（有仓位时交易所会拒绝，属正常）
     // 3. 缓存结果，下单时按 mode 决定是否发 posSide
@@ -218,7 +218,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
-  /** 检测并尝试设置 OKX 双向持仓模式（对齐 nofx okx/trader.go） */
+  /** 检测并尝试设置 OKX 双向持仓模式 */
   private async detectAndSetOkxPositionMode(): Promise<void> {
     const ex = this.exchange!;
     try {
@@ -366,8 +366,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const ex = this.getExchange();
 
     if (this.exchangeType === 'okx') {
-      // OKX：先尝试双向持仓模式（posSide=long）
-      // 参照 nofx okx/trader.go CloseShort：明确指定 posSide 确保平仓语义
+      // OKX 双向持仓模式：明确指定 posSide=long 确保平多仓语义
       try {
         const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { posSide: 'long' });
         return this.mapOrderResult(order);
@@ -401,8 +400,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const ex = this.getExchange();
 
     if (this.exchangeType === 'okx') {
-      // OKX：先尝试双向持仓模式（posSide=short）
-      // 参照 nofx okx/trader.go CloseShort：buy + posSide=short = 平空，不需要额外保证金
+      // OKX 双向持仓模式：buy + posSide=short = 平空，不需要额外保证金
       try {
         const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { posSide: 'short' });
         return this.mapOrderResult(order);

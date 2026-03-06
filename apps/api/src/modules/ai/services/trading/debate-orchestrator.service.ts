@@ -492,7 +492,7 @@ export class DebateOrchestratorService {
         }
       }
 
-      // ============ 角色辩论投票（nofx 对齐）============
+      // ============ 角色辩论投票 ============
       // 共识策略: 5 固定角色（多头/空头/技术/逆向/风控）多轮辩论 + confidence 加权投票
       this.logger.log(
         `[角色辩论] 开始: ${effectiveSymbols.length} 币种, 5角色, ${Math.min(config.maxRounds || 2, 3)}轮辩论`,

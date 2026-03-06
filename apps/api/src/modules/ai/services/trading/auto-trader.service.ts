@@ -1328,7 +1328,7 @@ export class AutoTraderService {
 
           const safetyResult = await this.safety.checkAll(safetyInput);
 
-          // L4 自动削减：对齐 nofx Leverage Fallback，positionSize 和杠杆超限均 clip 不拒绝
+          // L4 自动削减：positionSize 和杠杆超限均 clip 不拒绝
           if (safetyResult.adjustedPositionSizePct !== undefined || safetyResult.adjustedLeverage !== undefined) {
             const clips: string[] = [];
             if (safetyResult.adjustedPositionSizePct !== undefined) {

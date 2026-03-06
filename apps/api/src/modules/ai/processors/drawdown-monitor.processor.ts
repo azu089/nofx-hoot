@@ -17,7 +17,7 @@ import { TradingGateway } from '../../../gateways/trading.gateway';
  * 1. 获取当前标记价格
  * 2. 计算未实现盈亏百分比
  * 3. 更新高水位（highWaterMark）
- * 4. 分批止盈：盈利 +3% 平 33%、+5% 平至 50%、+8% 全平（对齐 nofx scale-out）
+ * 4. 分批止盈：盈利 +3% 平 33%、+5% 平至 50%、+8% 全平
  */
 @Processor('ai-monitor')
 export class DrawdownMonitorProcessor extends WorkerHost {
@@ -215,7 +215,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
   }
 
   /**
-   * 分批止盈检测（对齐 nofx scale-out）
+   * 分批止盈检测
    * 阶段：+3%→平 33%、+5%→平至原 50%、+8%→全平
    * @returns true = 已全部平仓，应 continue 跳过后续止损检查
    */

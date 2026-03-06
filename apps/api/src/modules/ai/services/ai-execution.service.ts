@@ -323,7 +323,7 @@ export class AiExecutionService {
       this.logger.warn(`取消已有订单失败(非致命): ${e.message}`);
     }
 
-    // 8. 设置杠杆（参照 nofx：先查当前杠杆，已匹配则跳过 API 调用）
+    // 8. 设置杠杆（先查当前杠杆，已匹配则跳过 API 调用，减少不必要请求）
     let actualLeverage = leverage;
     try {
       const positions = await adapter.getPositions();
@@ -363,7 +363,7 @@ export class AiExecutionService {
         }
       }
     }
-    // 8b. 设置保证金模式（参照 nofx：常见错误为"已有持仓无法切换"，直接 warn 继续，不重试）
+    // 8b. 设置保证金模式（常见错误为"已有持仓无法切换"，直接 warn 继续，不重试）
     try {
       await adapter.setMarginMode(futuresSymbol, true);
     } catch (e: any) {

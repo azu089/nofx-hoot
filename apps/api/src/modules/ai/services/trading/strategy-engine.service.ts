@@ -270,7 +270,7 @@ export class StrategyEngineService implements OnModuleInit {
       data: { isActive: true },
     });
 
-    // 清除内存状态，强制下次从 DB 加载并 reconcile（对齐 nofx：每次启动都读取交易所）
+    // 清除内存状态，强制下次从 DB 加载并 reconcile（每次启动都重新从交易所读取真实状态）
     this.gridTrading?.clearGridState(strategyId);
 
     // 注册定时任务到 BullMQ（strategy-cycle 类型）
