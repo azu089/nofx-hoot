@@ -2921,6 +2921,29 @@ export class GridTradingService {
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
 
+      // Step 5: 若有消失挂单且持仓数据来自 preloaded（下单前快照，可能错过同轮成交），刷新持仓
+      if (disappearedLines.length > 0 && preloadedPositions !== undefined) {
+        try {
+          const freshPositions = await adapter.getPositions();
+          const baseSymbol2 = state.symbol.split('/')[0];
+          let freshSize = 0;
+          for (const pos of freshPositions) {
+            if ((pos as any).symbol?.includes(baseSymbol2)) {
+              const side = (pos as any).side;
+              const qty = (pos as any).quantity ?? 0;
+              if (side === 'long' || side === 'net' || !side) freshSize += qty;
+              else if (side === 'short') freshSize -= qty;
+            }
+          }
+          if (Math.abs(freshSize - currentPositionSize) > 0.0001) {
+            this.logger.debug(`[网格] 消失挂单存在，刷新持仓: preloaded=${currentPositionSize.toFixed(4)} → fresh=${freshSize.toFixed(4)}`);
+            currentPositionSize = freshSize;
+          }
+        } catch (e: any) {
+          this.logger.warn(`[网格] 刷新持仓失败（继续用 preloaded 数据）: ${e.message}`);
+        }
+      }
+
       this.logger.debug(
         `[网格] syncOrderFills: 交易所挂单=${openOrders.length}, 内存pending=${state.gridLines.filter(l => l.state === 'pending').length}, 消失=${disappearedLines.length}, currentPos=${currentPositionSize.toFixed(4)}, expectedPos=${expectedPositionSize.toFixed(4)}`,
       );
