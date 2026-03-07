@@ -2784,24 +2784,35 @@ export class GridTradingService {
 
       for (const line of disappearedLines) {
         const prevOrderId = line.orderId!;
+        const posIncreased = currentPositionSize > expectedPositionSize + 0.0001;
+        const posDecreased = currentPositionSize < expectedPositionSize - 0.0001;
 
-        if (Math.abs(currentPositionSize) > Math.abs(expectedPositionSize)) {
-          // 持仓增加 → 成交
-          if (line.side === 'buy') {
-            line.state = 'filled';
-            line.positionSize = line.orderQuantity;
-            line.positionEntry = line.price; // 以格线价作为入场价
-            line.unrealizedPnl = 0;
-            this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
-          } else {
-            line.state = 'empty';
-            line.positionSize = 0;
-            line.positionEntry = 0;
-            line.unrealizedPnl = 0;
-            this.logger.log(`[网格] 卖单成交: level=${line.index}, price=${line.price.toFixed(4)}`);
-          }
+        if (line.side === 'buy' && posIncreased) {
+          // 买单成交：仓位增加
+          line.state = 'filled';
+          line.positionSize = line.orderQuantity;
+          line.positionEntry = line.price;
+          line.unrealizedPnl = 0;
           state.totalTrades++;
           filledLines.push(line);
+          this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
+        } else if (line.side === 'sell' && posDecreased) {
+          // 卖单成交：仓位减少（平多头）
+          const entryPrice = line.positionEntry > 0 ? line.positionEntry : line.price;
+          const sellQty = line.positionSize > 0 ? line.positionSize : line.orderQuantity;
+          const grossProfit = (line.price - entryPrice) * sellQty;
+          const fee = (line.price + entryPrice) * sellQty * (state.takerFeeRate ?? 0.0005);
+          const netProfit = grossProfit - fee;
+          state.totalProfit = (state.totalProfit ?? 0) + netProfit;
+          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+          state.totalTrades++;
+          if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+          line.state = 'empty';
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = netProfit;
+          filledLines.push(line);
+          this.logger.log(`[网格] 卖单成交: level=${line.index}, price=${line.price.toFixed(4)}, profit=${netProfit.toFixed(4)}`);
         } else {
           // 持仓未变 → 取消/过期
           line.state = 'empty';
