@@ -2820,23 +2820,49 @@ export class GridTradingService {
           state.totalTrades++;
           filledLines.push(line);
           this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
-        } else if (line.side === 'sell' && posDecreased) {
+        } else if (line.side === 'sell' && posDecreased && currentPositionSize >= -0.0001) {
           // 卖单成交：仓位减少（平多头）
-          const entryPrice = line.positionEntry > 0 ? line.positionEntry : line.price;
-          const sellQty = line.positionSize > 0 ? line.positionSize : line.orderQuantity;
-          const grossProfit = (line.price - entryPrice) * sellQty;
-          const fee = (line.price + entryPrice) * sellQty * (state.takerFeeRate ?? 0.0005);
-          const netProfit = grossProfit - fee;
-          state.totalProfit = (state.totalProfit ?? 0) + netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-          state.totalTrades++;
-          if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+          // 条件额外检查 currentPositionSize >= 0：若仓位变负则说明卖单开了空头，
+          // 不应走此分支，交由 Step 6 signMismatch 检测处理
+          // 注意：sell pending 层的 positionEntry/positionSize 均为 0（持仓在 filled buy 层）
+          // 必须找到对应的 filled buy 层来获取真实入场价和数量
+          const filledBuyLevels = state.gridLines
+            .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
+            .sort((a, b) => Math.abs(a.positionEntry - line.price) - Math.abs(b.positionEntry - line.price));
+          const matchedBuyLevel = filledBuyLevels[0];
+
+          if (matchedBuyLevel) {
+            const exitPrice = line.price; // 卖单价格 = 出场价
+            const entryPrice = matchedBuyLevel.positionEntry; // 买单入场价
+            const qty = matchedBuyLevel.positionSize;
+            const grossProfit = (exitPrice - entryPrice) * qty;
+            const fee = (exitPrice + entryPrice) * qty * (state.takerFeeRate ?? 0.0005);
+            const netProfit = grossProfit - fee;
+            state.totalProfit = (state.totalProfit ?? 0) + netProfit;
+            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+            state.totalTrades++;
+            if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+            // 同时清除对应的 filled buy 层
+            matchedBuyLevel.state = 'empty';
+            matchedBuyLevel.positionSize = 0;
+            matchedBuyLevel.positionEntry = 0;
+            matchedBuyLevel.unrealizedPnl = netProfit;
+            if (matchedBuyLevel.orderId) {
+              delete state.orderBook[matchedBuyLevel.orderId];
+              matchedBuyLevel.orderId = undefined;
+            }
+            this.logger.log(
+              `[网格] 卖单成交(平多): sell_level=${line.index}→buy_level=${matchedBuyLevel.index}, ` +
+              `exit=${exitPrice.toFixed(4)}, entry=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, profit=${netProfit.toFixed(4)} USDT`,
+            );
+          } else {
+            this.logger.warn(`[网格] 卖单成交但无匹配 filled buy 层(可能已被 close_long 清除): level=${line.index}`);
+          }
           line.state = 'empty';
           line.positionSize = 0;
           line.positionEntry = 0;
-          line.unrealizedPnl = netProfit;
+          line.unrealizedPnl = 0;
           filledLines.push(line);
-          this.logger.log(`[网格] 卖单成交: level=${line.index}, price=${line.price.toFixed(4)}, profit=${netProfit.toFixed(4)}`);
         } else {
           // 持仓未变 → 取消/过期
           line.state = 'empty';

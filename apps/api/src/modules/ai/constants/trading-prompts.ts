@@ -703,10 +703,10 @@ export function GRID_SYSTEM_PROMPT(
 ### 三种层状态
 - **empty（未挂单）**: 可以挂单，也可以 hold 等待
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 持有仓位，**需主动补挂反向限价单来平仓**
-  - 买单成交(side=buy)→持多头 → 在**上一层**挂 place_sell_limit（止盈平多）
-  - 卖单成交(side=sell)→持空头 → 在**下一层**挂 place_buy_limit（止盈平空）
-  - 若已有该层反向挂单(pending)则 hold 等待成交
+- **filled（持仓）**: 持有仓位，可选两种平仓方式：
+  - 【限价平仓】在反向层挂限价单：买单成交(side=buy)→持多头 → 上一层挂 place_sell_limit；卖单成交(side=sell)→持空头 → 下一层挂 place_buy_limit
+  - 【市价平仓】直接发 close_long（平多）或 close_short（平空）
+  - 若已有反向挂单(pending)则 hold 等待
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
@@ -728,6 +728,10 @@ export function GRID_SYSTEM_PROMPT(
   \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
 - **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界，无需传边界参数）
   \`{"action":"adjust_grid","confidence":85,"reasoning":"原因"}\`
+- **close_long**: 市价平多仓（close_long 后持仓层自动清除，利润计入统计）
+  \`{"action":"close_long","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
+- **close_short**: 市价平空仓
+  \`{"action":"close_short","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
 - **hold**: 保持当前状态不变
   \`{"action":"hold","confidence":70,"reasoning":"原因"}\`
 
