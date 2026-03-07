@@ -2224,9 +2224,15 @@ export class GridTradingService {
       level.orderId = undefined;
     }
 
-    // Fix-3: 优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
-    // 防止 adjust_grid 与 place 同批次时 AI 旧价格覆盖刚重算的正确价格
-    const price = (level && level.price > 0) ? level.price : (decision.price ?? 0);
+    // Fix-3: 价格选取规则：
+    // - 买单(buy)：优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
+    //   防止 adjust_grid 与 place 同批次时 AI 旧价格覆盖刚重算的正确价格
+    // - 卖单(sell)在已成交(filled)层上：使用 AI 建议价格（即止盈目标价），不用格线买入价
+    //   否则格线买入价 < 市价 → 立即成交开空，而非止盈平多
+    const isSellOnFilledLevel = side === 'sell' && level && level.state === 'filled';
+    const price = isSellOnFilledLevel
+      ? (decision.price ?? level!.price)
+      : ((level && level.price > 0) ? level.price : (decision.price ?? 0));
 
     if (price <= 0 || quantity <= 0) {
       const skipReason = `无效参数: price=${price}, quantity=${quantity}`;
@@ -2830,11 +2836,17 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 幽灵持仓检测 — 交易所仓位为0但内存仍有filled层（仓位被外部平仓或之前误判）
+      // Step 6: 幽灵持仓检测
       const updatedExpected = state.gridLines
         .filter(l => l.state === 'filled')
         .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
-      if (Math.abs(currentPositionSize) < 0.0001 && updatedExpected > 0.0001) {
+
+      // 6a: 交易所仓位≈0但内存有filled层（外部平仓或之前误判）
+      const posApproxZero = Math.abs(currentPositionSize) < 0.0001 && updatedExpected > 0.0001;
+      // 6b: 方向相反 — 内存以为持多头但交易所实际是空头（卖单在空仓上执行开了空）
+      const signMismatch = currentPositionSize < -0.0001 && updatedExpected > 0.0001;
+
+      if (posApproxZero || signMismatch) {
         const ghosts = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0);
         for (const g of ghosts) {
           this.logger.warn(`[网格] 幽灵持仓清理: level=${g.index}, positionSize=${g.positionSize?.toFixed(4)}`);
@@ -2845,6 +2857,16 @@ export class GridTradingService {
           if (g.orderId) {
             delete state.orderBook[g.orderId];
             g.orderId = undefined;
+          }
+        }
+        // 6b: 方向相反时，还需自动平空（市价买单平掉意外空头）
+        if (signMismatch) {
+          const shortQty = Math.abs(currentPositionSize);
+          this.logger.warn(`[网格] 方向异常自动平空: qty=${shortQty.toFixed(4)}`);
+          try {
+            await adapter.closeShort(state.symbol, shortQty);
+          } catch (e: any) {
+            this.logger.error(`[网格] 自动平空失败: ${e.message}`);
           }
         }
       }
