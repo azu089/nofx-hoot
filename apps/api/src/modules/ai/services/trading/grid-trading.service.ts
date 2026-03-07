@@ -150,6 +150,9 @@ export interface GridState {
   // 动态杠杆（Regime 联动）
   effectiveLeverage: number;  // 当前生效杠杆 = min(leverage, regimeCap)，运行时由市场状态压低
 
+  // 对齐 nofx checkTotalPositionLimit：每轮从交易所实时持仓计算名义价值（取代内存 filled 层累加）
+  livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
+
   // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
   userLockedRange: boolean;
 
@@ -617,6 +620,7 @@ export class GridTradingService {
       rsiDivergenceType: 'none' as const,
       lastBidDepth: -1,  // -1 = 未取到数据（跳过检测）；0 = 取到但空盘口（触发跳单）
       lastAskDepth: -1,
+      livePositionNotional: 0,  // 交易所真实持仓名义价值，每轮从 GetPositions 更新
     };
 
     this.gridStates.set(strategyId, state);
@@ -890,6 +894,18 @@ export class GridTradingService {
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
         livePositions = await adapter.getPositions(); // 预取持仓，Step 8 直接复用
+        // 对齐 nofx checkTotalPositionLimit：用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
+        {
+          const baseSymbol = state.symbol.split('/')[0];
+          state.livePositionNotional = livePositions.reduce((sum: number, pos: any) => {
+            if ((pos as any).symbol?.includes(baseSymbol)) {
+              const qty = Math.abs((pos as any).quantity ?? (pos as any).positionAmt ?? 0);
+              const px = (pos as any).markPrice ?? (pos as any).entryPrice ?? currentPrice ?? 0;
+              return sum + qty * px;
+            }
+            return sum;
+          }, 0);
+        }
         // 注意：不在此 dispose() — 保留缓存实例供 Step 8 的 buildGridContext 复用
         // 原先 dispose() 会使缓存失效，DrawdownMonitor 期间拿到同一实例后再 dispose()，
         // 导致 LLM 调用后 adapter.exchange===null，所有执行全报"适配器未初始化"
@@ -2401,26 +2417,28 @@ export class GridTradingService {
     }
 
     // Step 2.8: 仓位总量检查（名义价值守卫）
-    // 逻辑：(当前持仓名义价值 + 挂单名义价值 + 本次订单名义价值) ≤ totalInvestment × leverage
-    // 使用 state.gridLines 本地状态计算，无需额外 API 调用
-    // 同轮次前序成功下单已更新 level.state='pending'，pendingNominal 能正确累计防止过度挂单
+    // 对齐 nofx checkTotalPositionLimit：
+    //   持仓 = 交易所真实持仓（livePositionNotional，每轮从 GetPositions 更新，消除幽灵持仓影响）
+    //   挂单 = 内存 pending 层（同轮次前序成功下单已更新 state='pending'，可正确累计防止过度挂单）
+    //   上限 = totalInvestment × leverage
     {
       const orderNominal = finalQty * price;
       const maxTotalNominal = state.totalInvestment * leverage;
+      // 持仓：优先用本轮预取的交易所实时值；若未取到（0），降级用内存 filled 层
+      const positionNominal = (state.livePositionNotional ?? 0) > 0
+        ? state.livePositionNotional
+        : state.gridLines.reduce((sum, l) =>
+            ((l.positionSize ?? 0) > 0 && l.positionEntry > 0) ? sum + l.positionSize * l.positionEntry : sum, 0);
       let pendingNominal = 0;
-      let positionNominal = 0;
       for (const l of state.gridLines) {
         if (l.state === 'pending' && l.orderQuantity > 0 && l.price > 0) {
           pendingNominal += l.orderQuantity * l.price;
-        }
-        if ((l.positionSize ?? 0) > 0 && l.positionEntry > 0) {
-          positionNominal += l.positionSize * l.positionEntry;
         }
       }
       const totalAfterOrder = positionNominal + pendingNominal + orderNominal;
       if (totalAfterOrder > maxTotalNominal) {
         const skipReason =
-          `仓位总量超限: 持仓$${positionNominal.toFixed(2)} + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
+          `仓位总量超限: 持仓$${positionNominal.toFixed(2)}(实时) + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
           ` = $${totalAfterOrder.toFixed(2)} > 上限$${maxTotalNominal.toFixed(2)}`;
         this.logger.warn(`[网格] 跳过下单(仓位总量检查): ${skipReason}`);
         return { executed: false, skipReason };
