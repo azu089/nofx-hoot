@@ -907,6 +907,7 @@ export class GridTradingService {
             return sum;
           }, 0);
         }
+        this.logger.debug(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
         // 注意：不在此 dispose() — 保留缓存实例供 Step 8 的 buildGridContext 复用
         // 原先 dispose() 会使缓存失效，DrawdownMonitor 期间拿到同一实例后再 dispose()，
         // 导致 LLM 调用后 adapter.exchange===null，所有执行全报"适配器未初始化"
