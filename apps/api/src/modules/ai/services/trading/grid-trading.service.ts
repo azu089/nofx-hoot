@@ -2737,91 +2737,78 @@ export class GridTradingService {
 
   // ========================= 订单同步 =========================
 
-  /** 同步交易所订单到本地状态 */
+  /**
+   * 同步交易所订单到本地状态（持仓对比启发式）
+   *
+   * 逻辑：getOpenOrders + getPositions
+   * - 挂单消失 && 实际持仓 > 内存预期持仓 → 成交
+   * - 挂单消失 && 实际持仓 ≤ 内存预期持仓 → 取消/过期
+   */
   private async syncOrderFills(
     state: GridState,
     adapter: GridExchangeAdapter,
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
-      // 只处理 pending 层，幽灵 filled 层在 reconcileGridState 启动时已对齐
+      // Step 1: 获取交易所当前挂单
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
-      // 收集所有"消失"的挂单
+      // Step 2: 获取交易所当前持仓（净多头量）
+      let currentPositionSize = 0;
+      try {
+        const positions = await adapter.getPositions();
+        const baseSymbol = state.symbol.split('/')[0];
+        for (const pos of positions) {
+          if ((pos as any).symbol?.includes(baseSymbol)) {
+            const long = (pos as any).side === 'long' ? (pos as any).quantity ?? 0 : 0;
+            const short = (pos as any).side === 'short' ? (pos as any).quantity ?? 0 : 0;
+            currentPositionSize += long - short;
+          }
+        }
+      } catch { /* 持仓获取失败则退化：所有消失挂单视为取消 */ }
+
+      // Step 3: 内存中 filled 层的预期持仓
+      const expectedPositionSize = state.gridLines
+        .filter((l) => l.state === 'filled')
+        .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+
+      // Step 4: 处理"消失"的 pending 层
       const disappearedLines = state.gridLines.filter(
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
 
-      // 批量并行查询真实状态（避免串行 N 个 API 调用）
-      const statusResults = await Promise.all(
-        disappearedLines.map((line) =>
-          adapter
-            .getOrderStatus(state.symbol, line.orderId!)
-            .catch((e: any) => {
-              const msg = (e?.message ?? '').toLowerCase();
-              // "订单不存在"类错误（Binance -2011 / unknown order）— 视为已取消，清理状态
-              const isNotFound = msg.includes('-2011') ||
-                msg.includes('order does not exist') ||
-                msg.includes('unknown order') ||
-                msg.includes('no order found');
-              if (isNotFound) {
-                return { status: 'CANCELED' as const, avgPrice: 0, filledQuantity: 0, fee: 0 };
-              }
-              // 网络错误/超时 — 返回 null，保留 pending 状态等待下次重试
-              return null;
-            }),
-        ),
-      );
+      for (const line of disappearedLines) {
+        const prevOrderId = line.orderId!;
 
-      for (let i = 0; i < disappearedLines.length; i++) {
-        const line = disappearedLines[i];
-        const detail = statusResults[i];
-        // detail 为 null 表示网络错误，保留 pending 状态等待下次循环重试
-        if (!detail) {
-          this.logger.warn(`[网格] 查询订单 ${line.orderId} 失败（网络错误），保留 pending 状态等下次重试`);
-          continue;
-        }
-        const isFilled = detail.status === 'FILLED' || detail.status === 'PARTIALLY_FILLED';
-
-        if (!isFilled) {
-          // 订单被取消（CANCELED/REJECTED/EXPIRED）—— 仅清理本地状态
-          delete state.orderBook[line.orderId!];  // 先用 orderId 删 orderBook
-          line.orderId = undefined;               // 再清空 orderId
-          line.state = 'empty';
-          this.logger.debug(`[网格] 订单已取消: level=${line.index}, status=${detail.status}`);
-          continue;
-        }
-
-        // === 真实成交处理（环形平仓模型）===
-        const prevSide = line.side;           // 记录成交方向（成交前的方向）
-        const fillPrice = detail.avgPrice > 0 ? detail.avgPrice : line.price;
-        line.orderId = undefined;
-
-        state.totalTrades++;
-
-        if (prevSide === 'buy') {
-          // ── 买单成交：标记持仓，side 保持 'buy' 表示多头 ──
-          line.state = 'filled';
-          line.positionSize = line.orderQuantity;
-          line.positionEntry = fillPrice;
-          // side 保持 'buy'，表示持多头
-          line.unrealizedPnl = 0;
-          this.logger.log(`[网格] 买单成交: level=${line.index}, fillPrice=${fillPrice.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
+        if (Math.abs(currentPositionSize) > Math.abs(expectedPositionSize)) {
+          // 持仓增加 → 成交
+          if (line.side === 'buy') {
+            line.state = 'filled';
+            line.positionSize = line.orderQuantity;
+            line.positionEntry = line.price; // 以格线价作为入场价
+            line.unrealizedPnl = 0;
+            this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
+          } else {
+            line.state = 'empty';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
+            this.logger.log(`[网格] 卖单成交: level=${line.index}, price=${line.price.toFixed(4)}`);
+          }
+          state.totalTrades++;
+          filledLines.push(line);
         } else {
-          // ── 卖单成交：直接标记为 empty ──
+          // 持仓未变 → 取消/过期
           line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          // side 保持 'sell'
-          line.unrealizedPnl = 0;
-          this.logger.log(`[网格] 卖单成交: level=${line.index}, fillPrice=${fillPrice.toFixed(4)}`);
+          this.logger.debug(`[网格] 挂单消失（取消/过期）: level=${line.index}`);
         }
 
-        filledLines.push(line);
+        line.orderId = undefined;
+        delete state.orderBook[prevOrderId];
       }
 
-      // 清理 orderBook 中已不存在的订单（处理其他意外消失的条目）
+      // Step 5: 清理 orderBook 中其他已消失条目
       for (const orderId of Object.keys(state.orderBook)) {
         if (!activeIds.has(orderId)) {
           delete state.orderBook[orderId];
