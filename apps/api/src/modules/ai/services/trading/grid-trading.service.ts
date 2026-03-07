@@ -2884,11 +2884,23 @@ export class GridTradingService {
       try {
         const positions = preloadedPositions ?? await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
+        // 诊断日志：打印原始持仓数据（临时，确认 side/symbol/quantity 字段格式后删除）
+        if (positions.length > 0) {
+          const matchedPos = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
+          this.logger.debug(`[网格] syncOrderFills 持仓原始(source=${preloadedPositions ? 'preloaded' : 'api'}): total=${positions.length}, matched=${matchedPos.length}, first=${JSON.stringify(matchedPos[0] ?? positions[0])}`);
+        } else {
+          this.logger.debug(`[网格] syncOrderFills 持仓原始(source=${preloadedPositions ? 'preloaded' : 'api'}): 交易所返回0持仓, preloadedLen=${preloadedPositions?.length ?? 'undefined'}`);
+        }
         for (const pos of positions) {
           if ((pos as any).symbol?.includes(baseSymbol)) {
-            const long = (pos as any).side === 'long' ? (pos as any).quantity ?? 0 : 0;
-            const short = (pos as any).side === 'short' ? (pos as any).quantity ?? 0 : 0;
-            currentPositionSize += long - short;
+            // 兼容 OKX net_mode（side='net'）和标准 long/short
+            const side = (pos as any).side;
+            const qty = (pos as any).quantity ?? 0;
+            if (side === 'long' || side === 'net' || !side) {
+              currentPositionSize += qty; // net mode 或 long：正持仓 = 多头
+            } else if (side === 'short') {
+              currentPositionSize -= qty; // short：负持仓 = 空头
+            }
           }
         }
       } catch (e: any) {
