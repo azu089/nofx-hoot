@@ -703,7 +703,10 @@ export function GRID_SYSTEM_PROMPT(
 ### 三种层状态
 - **empty（未挂单）**: 可以挂单，也可以 hold 等待
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 持有仓位，hold 等待反向成交平仓
+- **filled（持仓）**: 持有仓位，**需主动补挂反向限价单来平仓**
+  - 买单成交(side=buy)→持多头 → 在**上一层**挂 place_sell_limit（止盈平多）
+  - 卖单成交(side=sell)→持空头 → 在**下一层**挂 place_buy_limit（止盈平空）
+  - 若已有该层反向挂单(pending)则 hold 等待成交
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
