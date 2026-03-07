@@ -392,8 +392,10 @@ export interface GridConfig {
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
-  autoAdjustThreshold?: number;  // 网格重建阈值（小数，如 0.30 = 30%）
+  autoAdjustThreshold?: number;  // 网格重建阈值（小数，如 0.20 = 20%）
   dailyLossLimitPct?: number;
+  enableDirectionAdjust?: boolean; // 启用方向自适应（默认 false）
+  directionBiasRatio?: number;     // 偏向比例（小数，如 0.70 = 70%）
 }
 
 export interface IndicatorConfig {

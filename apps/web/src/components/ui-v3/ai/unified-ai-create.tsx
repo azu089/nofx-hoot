@@ -221,6 +221,8 @@ export function UnifiedAiCreate() {
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
   const [gridStopLoss, setGridStopLoss] = useState(5);
   const [gridAutoAdjustThreshold, setGridAutoAdjustThreshold] = useState(20);
+  const [gridEnableDirectionAdjust, setGridEnableDirectionAdjust] = useState(false);
+  const [gridDirectionBiasRatio, setGridDirectionBiasRatio] = useState(70);
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -460,6 +462,8 @@ export function UnifiedAiCreate() {
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
           dailyLossLimitPct: gridDailyLossLimit || 0,
           autoAdjustThreshold: (gridAutoAdjustThreshold || 20) / 100,
+          enableDirectionAdjust: gridEnableDirectionAdjust,
+          directionBiasRatio: (gridDirectionBiasRatio || 70) / 100,
         };
       }
 
@@ -1367,6 +1371,32 @@ export function UnifiedAiCreate() {
                   <span className="text-xs text-[#9090A0] w-20 shrink-0">重建阈值</span>
                   <input type="number" min={10} max={50} step={5} value={gridAutoAdjustThreshold || ''} onChange={(e) => setGridAutoAdjustThreshold(parseInt(e.target.value) || 20)}
                     placeholder="20" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                  />
+                  <span className="text-xs text-[#606070]">%</span>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">方向切换</span>
+                  <button
+                    type="button"
+                    onClick={() => setGridEnableDirectionAdjust(!gridEnableDirectionAdjust)}
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                      gridEnableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
+                    }`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      gridEnableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                  <span className="text-[10px] text-[#606070]">突破时自动偏转</span>
+                </div>
+              )}
+              {isGrid && gridEnableDirectionAdjust && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">偏向比例</span>
+                  <input type="number" min={50} max={90} step={5} value={gridDirectionBiasRatio || ''} onChange={(e) => setGridDirectionBiasRatio(parseInt(e.target.value) || 70)}
+                    placeholder="70" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                   />
                   <span className="text-xs text-[#606070]">%</span>
                 </div>

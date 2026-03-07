@@ -160,6 +160,8 @@ export function CreateStrategyWizard() {
     maxDrawdownPct: 15,
     dailyLossLimitPct: 10,
     autoAdjustThreshold: 20,
+    enableDirectionAdjust: false,
+    directionBiasRatio: 70,
   })
 
   // ── 网格交易对实时价格 ─────────────────────────────
@@ -255,7 +257,7 @@ export function CreateStrategyWizard() {
     setRiskParams((prev) => ({ ...prev, [key]: value }))
   }
 
-  const updateGrid = <K extends keyof typeof gridParams>(key: K, value: number) => {
+  const updateGrid = <K extends keyof typeof gridParams>(key: K, value: (typeof gridParams)[K]) => {
     setGridParams((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -354,6 +356,8 @@ export function CreateStrategyWizard() {
           maxDrawdownPct: gridParams.maxDrawdownPct || 5,
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
+          enableDirectionAdjust: gridParams.enableDirectionAdjust,
+          directionBiasRatio: (gridParams.directionBiasRatio || 70) / 100,
         }
       }
 
@@ -1043,6 +1047,40 @@ export function CreateStrategyWizard() {
                         onChange={(e) => updateGrid('autoAdjustThreshold', Number(e.target.value) || 20)}
                         placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                         aria-label="网格重建阈值"
+                      />
+                      <span className="text-[#606070] text-xs shrink-0">%</span>
+                    </div>
+                  </div>
+                )}
+                {isGrid && (
+                  <div className="space-y-1 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-[#9090A0]">方向自动切换</p>
+                        <p className="text-[10px] text-[#606070]">突破时偏转网格方向，回归后逐步恢复中性</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateGrid('enableDirectionAdjust', !gridParams.enableDirectionAdjust)}
+                        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                          gridParams.enableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
+                        }`}
+                      >
+                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                          gridParams.enableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {isGrid && gridParams.enableDirectionAdjust && (
+                  <div className="space-y-1 col-span-2">
+                    <p className="text-xs text-[#9090A0]">偏向比例 <span className="text-[#606070]">（偏向方向的格线占比，默认 70）</span></p>
+                    <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={50} max={90} step={5} value={gridParams.directionBiasRatio || ''}
+                        onChange={(e) => updateGrid('directionBiasRatio', Number(e.target.value) || 70)}
+                        placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                        aria-label="偏向比例"
                       />
                       <span className="text-[#606070] text-xs shrink-0">%</span>
                     </div>
