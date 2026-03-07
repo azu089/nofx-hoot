@@ -2524,10 +2524,13 @@ export class GridTradingService {
       const orderNominal = finalQty * price;
       const maxTotalNominal = state.totalInvestment * leverage;
       // 持仓：优先用本轮预取的交易所实时值；若未取到（0），降级用内存 filled 层
+      // ⚠️ 必须加 state==='filled' 过滤，否则旧版 pending/empty 层残留的 positionSize/positionEntry 脏数据会虚增持仓
       const positionNominal = (state.livePositionNotional ?? 0) > 0
         ? state.livePositionNotional
         : state.gridLines.reduce((sum, l) =>
-            ((l.positionSize ?? 0) > 0 && l.positionEntry > 0) ? sum + l.positionSize * l.positionEntry : sum, 0);
+            (l.state === 'filled' && (l.positionSize ?? 0) > 0 && l.positionEntry > 0)
+              ? sum + l.positionSize * l.positionEntry
+              : sum, 0);
       let pendingNominal = 0;
       for (const l of state.gridLines) {
         if (l.state === 'pending' && l.orderQuantity > 0 && l.price > 0) {
@@ -3205,6 +3208,23 @@ export class GridTradingService {
         this.logger.warn(
           `[网格] reconcile: ${filledLines.length} 层幽灵持仓 filled→empty（交易所多头=0，本地期望=${expectedPositionSize.toFixed(4)}）`,
         );
+      }
+
+      // 清理脏数据：state≠'filled' 但 positionSize/positionEntry 仍有残留值（旧版 bug 遗留）
+      // 这些脏数据会导致 positionNominal 回退计算虚增 cap，阻塞正常挂单
+      const dirtyLines = state.gridLines.filter(
+        (l) => l.state !== 'filled' && ((l.positionSize ?? 0) > 0 || l.positionEntry > 0),
+      );
+      if (dirtyLines.length > 0) {
+        this.logger.warn(
+          `[网格] reconcile: 清理 ${dirtyLines.length} 条脏数据行（state≠filled 但有残留 positionSize/Entry）: ` +
+          dirtyLines.map((l) => `idx=${l.index} state=${l.state} posSize=${l.positionSize?.toFixed(4)} posEntry=${l.positionEntry?.toFixed(4)}`).join(', '),
+        );
+        for (const line of dirtyLines) {
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = 0;
+        }
       }
 
       // 同步持仓状态（快照记录）
