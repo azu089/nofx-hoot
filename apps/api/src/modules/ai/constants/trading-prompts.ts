@@ -703,10 +703,13 @@ export function GRID_SYSTEM_PROMPT(
 ### 三种层状态
 - **empty（未挂单）**: 可以挂单，也可以 hold 等待
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 持有仓位，可选两种平仓方式：
-  - 【限价平仓】在反向层挂限价单：买单成交(side=buy)→持多头 → 上一层挂 place_sell_limit；卖单成交(side=sell)→持空头 → 下一层挂 place_buy_limit
-  - 【市价平仓】直接发 close_long（平多）或 close_short（平空）
-  - 若已有反向挂单(pending)则 hold 等待
+- **filled（持仓）**: 该层已成交，持有仓位，等待在对应反向层出局。**对每个 filled 层分别判断其反向层状态：**
+  - 买单成交(side=buy)→持多头，对应反向层为 **上一层**；卖单成交(side=sell)→持空头，对应反向层为 **下一层**
+  - 若反向层是 **empty**：补挂反向限价单（place_sell_limit / place_buy_limit）
+  - 若反向层已有 **正确方向的 pending 单**（buy层上方有 pending sell）：hold，等待出局
+  - 若反向层有 **错误方向的 pending 单**（buy层上方有 pending buy）：AI 自主判断是否 cancel 后补挂 sell
+  - 若市场判断不利：close_long / close_short 市价平仓
+  - **多个 filled 层同时存在时，可在同一轮 actions 中对多个层分别下单，无需逐轮处理**
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
@@ -801,7 +804,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     volatile: '高波动（谨慎运行）',
   };
   if (ctx.currentRegime) {
-    lines.push(`⚡ 系统检测市场形态: ${ctx.currentRegime} = ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
+    lines.push(`⚡ 系统检测市场形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
   }
 
   // Section 3: 箱体数据

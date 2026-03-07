@@ -312,7 +312,7 @@ export class AutoTraderService {
 
       // 网格策略优先路由: 有独立的回撤保护，跳过用户级日回撤检查
       if (strategy.strategyType === 'grid') {
-        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, result, startTime);
+        return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, result, startTime, locale);
       }
 
       // Step 2: 检查是否被风控暂停
@@ -2065,6 +2065,7 @@ export class AutoTraderService {
     apiKeyId: string,
     result: CycleResult,
     startTime: number,
+    locale = 'zh-CN',
   ): Promise<CycleResult> {
     const gridConfig = strategy.gridConfig as GridConfig | null;
     if (!gridConfig) {
@@ -2072,6 +2073,8 @@ export class AutoTraderService {
       result.errors = 1;
       return result;
     }
+    // 注入 locale 到 gridConfig，供后端日志多语言翻译使用
+    gridConfig.locale = locale;
     // 如果 gridConfig 没有 symbol，从 coinSourceConfig 获取
     if (!gridConfig.symbol) {
       const coinSource = strategy.coinSourceConfig as { coins?: string[] } | null;

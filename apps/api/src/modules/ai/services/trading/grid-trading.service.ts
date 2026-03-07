@@ -46,6 +46,7 @@ export interface GridConfig {
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
+  locale?: string;              // 用户语言（用于日志翻译，如 'zh-CN', 'en'）
 }
 
 /** 网格方向 */
@@ -370,6 +371,28 @@ export class GridTradingService {
       neutral: '中性', long: '做多', short: '做空', long_bias: '偏多', short_bias: '偏空',
     };
     return map[direction] ?? direction;
+  }
+
+  /** AI 动作名称多语言标签（跟随用户 locale 显示）*/
+  private actionLabel(action: string, locale?: string): string {
+    const isCN = !locale || locale.startsWith('zh');
+    if (isCN) {
+      const zhMap: Record<string, string> = {
+        hold:             '观望',
+        pause_grid:       '暂停网格',
+        resume_grid:      '恢复网格',
+        place_buy_limit:  '挂买单',
+        place_sell_limit: '挂卖单',
+        cancel_order:     '取消订单',
+        cancel_all_orders:'取消全部订单',
+        adjust_grid:      '重建网格',
+        close_long:       '平多仓',
+        close_short:      '平空仓',
+      };
+      return zhMap[action] ?? action;
+    }
+    // 英文及其他语言：将 snake_case → Title Case（如 place_buy_limit → Place Buy Limit）
+    return action.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   }
 
   constructor(
@@ -1388,7 +1411,7 @@ export class GridTradingService {
           if (d.confidence === undefined) return true;
           if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
           this.logger.warn(
-            `[网格] 低置信决策跳过: action=${d.action} confidence=${d.confidence} reasoning=${d.reasoning}`,
+            `[网格] 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`,
           );
           return false;
         });
@@ -1417,14 +1440,14 @@ export class GridTradingService {
             continue;
           }
           try {
-            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice);
+            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice, gridConfig?.locale);
             if (result.executed && d.action.includes('place_')) trades++;
             execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);
             const rawCode = e?.code ?? e?.id ?? '';
-            this.logger.warn(`[网格] 执行决策失败: ${d.action} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
+            this.logger.warn(`[网格] 执行决策失败: ${this.actionLabel(d.action, gridConfig?.locale)} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
             const errEntry = `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}`;
             execResults.push({ action: d.action, success: false, error: errEntry });
             // 账户配置错误（如 OKX 51010）是持久性错误，后续订单无需再试
@@ -1856,6 +1879,12 @@ export class GridTradingService {
       indSlow = this.indicators.calculateAll(ohlcvHourly);
       ind4h = this.indicators.calculateAll(ohlcv4h);
     }
+    this.logger.debug(
+      `[网格] 4h指标: RSI=${ind4h.rsi?.toFixed(1) ?? 'N/A'}, ` +
+      `EMA20=${ind4h.ema?.ema20?.toFixed(2) ?? 'N/A'}, EMA50=${ind4h.ema?.ema50?.toFixed(2) ?? 'N/A'}, ` +
+      `ATR=${ind4h.atr?.toFixed(4) ?? 'N/A'}, MACD=${ind4h.macd?.macd?.toFixed(4) ?? 'N/A'} ` +
+      `(K线=${ohlcv4h.length}根)`,
+    );
 
     // 获取账户状态
     let totalEquity = state.peakEquity;
@@ -2106,11 +2135,12 @@ export class GridTradingService {
     apiKeyId: string,
     useMakerOnly = false,
     currentPrice?: number,
+    locale?: string,
   ): Promise<{ executed: boolean; skipReason?: string }> {
     const { action } = decision;
 
     const aiLevel = decision.level_index ?? decision.level;
-    this.logger.debug(`[网格] 执行决策: action=${action}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
+    this.logger.debug(`[网格] 执行决策: action=${this.actionLabel(action, locale)}, AI层号=${aiLevel}, qty=${decision.quantity}, price=${decision.price}`);
 
     switch (action) {
       // AI 驱动补单
@@ -2309,7 +2339,7 @@ export class GridTradingService {
       case 'hold':
         // 对齐 nofx: hold 时打印 reasoning，便于终端日志追踪 AI 决策理由
         if (decision.reasoning) {
-          this.logger.log(`[网格] hold: ${decision.reasoning}`);
+          this.logger.log(`[网格] ${this.actionLabel('hold', locale)}: ${decision.reasoning}`);
         }
         return { executed: true };
 

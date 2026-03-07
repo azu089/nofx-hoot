@@ -1085,8 +1085,8 @@ export function AIStrategyDetailPage() {
                     )}
                     {/* Debate 模型展示 */}
                     {strategy.tradingMode === 'debate' && strategy.models && strategy.models.length > 0 && (
-                      <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
-                        <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.editDebateModels')}</span>
+                      <div className="flex items-start gap-3 py-2.5 border-b border-[#1A1A24]">
+                        <span className="text-sm text-[#9090A0] w-[36%] shrink-0 leading-normal">{t('detail.editDebateModels')}</span>
                         <div className="flex flex-wrap gap-1">
                           {strategy.models.map((m: string) => {
                             const info = MODEL_DISPLAY[m as keyof typeof MODEL_DISPLAY];
@@ -1111,8 +1111,8 @@ export function AIStrategyDetailPage() {
                       </>
                     )}
                     <ConfigRow label={t('detail.coinSource')} value={coinSourceConfig?.mode === 'static' ? t('detail.coinSourceManual') : coinSourceConfig?.mode === 'ai' ? t('detail.coinSourceAI') : coinSourceConfig?.mode === 'oi_top' ? t('detail.coinSourceOIHigh') : coinSourceConfig?.mode === 'oi_low' ? t('detail.coinSourceOILow') : coinSourceConfig?.mode === 'mixed' ? t('detail.coinSourceMixed') : '—'} />
-                    <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
-                      <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.tradingCoins')}</span>
+                    <div className="flex items-start gap-3 py-2.5 border-b border-[#1A1A24]">
+                      <span className="text-sm text-[#9090A0] w-[36%] shrink-0 leading-normal">{t('detail.tradingCoins')}</span>
                       <div className="flex flex-wrap gap-1">
                         {symbols.length > 0 ? symbols.map((s: string) => (
                           <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]/30 rounded">{s.split('/')[0]}</span>
@@ -1123,8 +1123,8 @@ export function AIStrategyDetailPage() {
                       <ConfigRow label={t('detail.maxCoins')} value={coinSourceConfig.maxCoins} />
                     )}
                     {(coinSourceConfig?.excludedCoins?.length ?? 0) > 0 && (
-                      <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24]">
-                        <span className="text-sm text-[#9090A0] w-24 shrink-0">{t('detail.excludeCoins')}</span>
+                      <div className="flex items-start gap-3 py-2.5 border-b border-[#1A1A24]">
+                        <span className="text-sm text-[#9090A0] w-[36%] shrink-0 leading-normal">{t('detail.excludeCoins')}</span>
                         <div className="flex flex-wrap gap-1">
                           {coinSourceConfig?.excludedCoins?.map((s: string) => (
                             <span key={s} className="px-2 py-0.5 text-xs font-medium bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444] rounded">{s.split('/')[0]}</span>
@@ -2701,9 +2701,9 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
 // 只读配置行（固定标签宽度，值紧接标签，自然阅读顺序）
 function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-[#1A1A24] last:border-0">
-      <span className="text-sm text-[#9090A0] w-24 shrink-0">{label}</span>
-      <span className="text-sm text-[#F8F8FC] break-all">{value}</span>
+    <div className="flex items-start gap-3 py-2.5 border-b border-[#1A1A24] last:border-0">
+      <span className="text-sm text-[#9090A0] w-[36%] shrink-0 leading-normal">{label}</span>
+      <span className="text-sm text-[#F8F8FC] flex-1 break-all leading-normal">{value}</span>
     </div>
   );
 }
