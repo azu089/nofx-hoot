@@ -34,7 +34,8 @@ export interface GridConfig {
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
-  enableDirectionAdjust?: boolean; // 启用方向自适应
+  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 false）
+  directionBiasRatio?: number;     // 偏向比例（默认 0.7，即 70% 偏向 / 30% 反向）
   useMakerOnly?: boolean;      // PostOnly 限价单
   modelId?: string;            // AI 模型（默认 deepseek-chat）
   flashBreakoutPct?: number;          // 单周期价格变化超过此值立即行动（默认 5%）
@@ -56,7 +57,7 @@ export type RegimeLevel = 'narrow' | 'standard' | 'wide' | 'volatile';
 export type BreakoutLevel = 'none' | 'short' | 'mid' | 'long';
 
 /** 突破动作 */
-export type BreakoutAction = 'none' | 'reduce_position' | 'pause_grid' | 'close_all';
+export type BreakoutAction = 'none' | 'reduce_position' | 'pause_grid' | 'close_all' | 'adjust_direction';
 
 /** 网格线 */
 export interface GridLine {
@@ -1060,16 +1061,73 @@ export class GridTradingService {
                 `[网格] 闪速箱体突破: ${magnitude.toFixed(1)}% ≥ ${FLASH_BREAKOUT_CONFIRM_OVERRIDE_PCT}%，跳过确认直接执行`,
               );
             }
-            const action = this.getBreakoutAction(level);
-            await this.executeBreakoutAction(state, action, direction, userId, apiKeyId);
-            if (state.isPaused) {
-              await this.persistGridState(strategyId, state);
-              return { trades: 0, errors: 0 };
+            const action = this.getBreakoutAction(level, gridConfig?.enableDirectionAdjust ?? false);
+            if (action === 'adjust_direction') {
+              // 方向自适应：偏转网格方向，取消挂单，AI 下个周期重新下单
+              const newDir = this.determineGridDirection(level, direction as 'up' | 'down');
+              const prevDir = state.currentDirection;
+              state.currentDirection = newDir;
+              const biasRatio = gridConfig?.directionBiasRatio ?? DIRECTION_BIAS_RATIO;
+              this.applyGridDirection(state.gridLines, currentPrice, newDir, biasRatio);
+              if (this.adapterFactory) {
+                let adjustAdapter: ExchangeAdapter | null = null;
+                try {
+                  adjustAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+                  await adjustAdapter.cancelAllOrders(state.symbol);
+                  state.orderBook = {};
+                  for (const line of state.gridLines) {
+                    if (line.state === 'pending') line.state = 'empty';
+                  }
+                } catch (e: any) {
+                  this.logger.warn(`[网格] 方向调整撤单失败(继续): ${e.message}`);
+                } finally {
+                  if (adjustAdapter) await adjustAdapter.dispose().catch(() => {});
+                }
+              }
+              this.logger.warn(
+                `[网格] 方向调整: ${prevDir} → ${newDir} ` +
+                `(突破${direction === 'up' ? '上' : '下'}界, 级别: ${level})`,
+              );
+            } else {
+              await this.executeBreakoutAction(state, action, direction, userId, apiKeyId);
+              if (state.isPaused) {
+                await this.persistGridState(strategyId, state);
+                return { trades: 0, errors: 0 };
+              }
             }
           }
         } else {
           // 虚假突破恢复检查
           this.checkFalseBreakoutRecovery(state, currentPrice);
+          // 方向恢复检查：价格回归盒内时，逐步向中性方向恢复
+          if (
+            gridConfig?.enableDirectionAdjust &&
+            state.currentDirection !== 'neutral'
+          ) {
+            const recoveryDir = this.determineRecoveryDirection(state.currentDirection);
+            if (recoveryDir !== state.currentDirection) {
+              const prevDir = state.currentDirection;
+              state.currentDirection = recoveryDir;
+              const biasRatio = gridConfig?.directionBiasRatio ?? DIRECTION_BIAS_RATIO;
+              this.applyGridDirection(state.gridLines, currentPrice, recoveryDir, biasRatio);
+              if (this.adapterFactory) {
+                let recoverAdapter: ExchangeAdapter | null = null;
+                try {
+                  recoverAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+                  await recoverAdapter.cancelAllOrders(state.symbol);
+                  state.orderBook = {};
+                  for (const line of state.gridLines) {
+                    if (line.state === 'pending') line.state = 'empty';
+                  }
+                } catch (e: any) {
+                  this.logger.warn(`[网格] 方向恢复撤单失败(继续): ${e.message}`);
+                } finally {
+                  if (recoverAdapter) await recoverAdapter.dispose().catch(() => {});
+                }
+              }
+              this.logger.log(`[网格] 方向恢复: ${prevDir} → ${recoveryDir} (价格回归盒内)`);
+            }
+          }
         }
       } catch (e: any) {
         this.logger.warn(`[网格] 箱体分析失败: ${e.message}`);
@@ -1101,8 +1159,8 @@ export class GridTradingService {
       state.effectiveLeverage = newEffective;
     }
 
-    // Step 6.6: 方向自适应 — 已移除
-    // 后端不自动调整方向，由 AI 决策（pause_grid/resume_grid）
+    // Step 6.6: 方向自适应 — 由 enableDirectionAdjust 控制（默认关闭）
+    // 启用时：突破 → Step 5 自动偏转方向；回归 → 逐步恢复中性
 
     // Step 7: 暂停检查
     if (state.isPaused) {
@@ -1341,8 +1399,9 @@ export class GridTradingService {
 
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
+        // 传入 livePositions（周期开始时已预取），避免二次 API 调用导致 silent fail → currentPos=0
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId, livePositions);
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
@@ -1593,13 +1652,46 @@ export class GridTradingService {
     return state.breakoutConfirmCount >= required;
   }
 
-  /** 突破动作映射（方向自适应已移除，AI 决策 pause_grid/continue） */
-  private getBreakoutAction(level: BreakoutLevel): BreakoutAction {
+  /** 突破动作映射 */
+  private getBreakoutAction(level: BreakoutLevel, enableDirectionAdjust = false): BreakoutAction {
+    if (enableDirectionAdjust) {
+      switch (level) {
+        case 'short': return 'adjust_direction'; // 短期突破：偏向调整
+        case 'mid':   return 'adjust_direction'; // 中期突破：完全方向切换
+        case 'long':  return 'close_all';        // 长期突破：紧急平仓
+        default: return 'none';
+      }
+    }
     switch (level) {
       case 'short': return 'reduce_position'; // 仓位缩减，AI 决策是否 pause
       case 'mid': return 'pause_grid';        // 中期突破：后端暂停，等 AI/价格回归
       case 'long': return 'close_all';        // 长期突破：紧急平仓
       default: return 'none';
+    }
+  }
+
+  /** 根据突破级别和方向确定新的网格方向（仅 enableDirectionAdjust=true 时调用） */
+  private determineGridDirection(
+    breakoutLevel: BreakoutLevel,
+    breakoutDir: 'up' | 'down',
+  ): GridDirection {
+    if (breakoutLevel === 'short') {
+      return breakoutDir === 'up' ? 'long_bias' : 'short_bias';
+    }
+    if (breakoutLevel === 'mid') {
+      return breakoutDir === 'up' ? 'long' : 'short';
+    }
+    return 'neutral';
+  }
+
+  /** 价格回归后方向逐步恢复中性（nofx 同款逻辑） */
+  private determineRecoveryDirection(currentDirection: GridDirection): GridDirection {
+    switch (currentDirection) {
+      case 'long':       return 'long_bias';
+      case 'short':      return 'short_bias';
+      case 'long_bias':  return 'neutral';
+      case 'short_bias': return 'neutral';
+      default:           return 'neutral';
     }
   }
 
@@ -2103,6 +2195,9 @@ export class GridTradingService {
           targetLevel.positionEntry = 0;
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
+          // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
+          const closedValue = qty * (currentPrice ?? state.lastPrice);
+          state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
           this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
         }
         return { executed: true };
@@ -2135,6 +2230,9 @@ export class GridTradingService {
           targetLevel.positionEntry = 0;
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
+          // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
+          const closedValueShort = qty * (currentPrice ?? state.lastPrice);
+          state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
         }
         return { executed: true };
@@ -2772,6 +2870,7 @@ export class GridTradingService {
     state: GridState,
     adapter: GridExchangeAdapter,
     userId?: string,
+    preloadedPositions?: any[],  // 复用主循环已预取的持仓，避免二次 API 调用 + silent fail
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
@@ -2780,9 +2879,10 @@ export class GridTradingService {
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
       // Step 2: 获取交易所当前持仓（净多头量）
+      // 优先复用主循环已预取的 livePositions，避免二次 API 调用导致 silent fail
       let currentPositionSize = 0;
       try {
-        const positions = await adapter.getPositions();
+        const positions = preloadedPositions ?? await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
         for (const pos of positions) {
           if ((pos as any).symbol?.includes(baseSymbol)) {
@@ -2791,7 +2891,9 @@ export class GridTradingService {
             currentPositionSize += long - short;
           }
         }
-      } catch { /* 持仓获取失败则退化：所有消失挂单视为取消 */ }
+      } catch (e: any) {
+        this.logger.warn(`[网格] syncOrderFills 持仓读取失败，退化为保守模式（所有消失挂单视为取消）: ${e.message}`);
+      }
 
       // Step 3: 内存中 filled 层的预期持仓
       const expectedPositionSize = state.gridLines
@@ -2943,6 +3045,23 @@ export class GridTradingService {
           } catch (e: any) {
             this.logger.error(`[网格] 自动平空失败: ${e.message}`);
           }
+        }
+      }
+
+      // Step 6c: 孤儿持仓检测
+      // 场景：exchange 有多头持仓，但内存无 filled 层（reinitialize 后遗留或 close_long 未成功落地）
+      // 对齐 nofx：幽灵持仓必须清理，否则 livePositionNotional 永久占用 cap，阻塞新挂单
+      const orphanLong = currentPositionSize > 0.0001 && updatedExpected < 0.0001 && disappearedLines.length === 0;
+      if (orphanLong) {
+        this.logger.warn(
+          `[网格] 孤儿多头持仓: exchange=${currentPositionSize.toFixed(4)}, 内存filled=0, 无成交 → 自动平仓`,
+        );
+        try {
+          await adapter.closeLong(state.symbol, currentPositionSize);
+          state.livePositionNotional = 0;
+          this.logger.log(`[网格] 孤儿多头已平: qty=${currentPositionSize.toFixed(4)}`);
+        } catch (e: any) {
+          this.logger.error(`[网格] 孤儿多头平仓失败: ${e.message}`);
         }
       }
     } catch (e: any) {
@@ -3175,6 +3294,7 @@ export class GridTradingService {
     gridLines: GridLine[],
     currentPrice: number,
     direction: GridDirection,
+    biasRatio = DIRECTION_BIAS_RATIO,
   ): void {
     const totalLevels = gridLines.length;
 
@@ -3194,7 +3314,7 @@ export class GridTradingService {
         break;
 
       case 'long_bias': {
-        const targetBuy = Math.round(totalLevels * DIRECTION_BIAS_RATIO);
+        const targetBuy = Math.round(totalLevels * biasRatio);
         let buyCount = 0;
         for (const line of gridLines) {
           if (buyCount < targetBuy) {
@@ -3208,7 +3328,7 @@ export class GridTradingService {
       }
 
       case 'short_bias': {
-        const targetSell = Math.round(totalLevels * DIRECTION_BIAS_RATIO);
+        const targetSell = Math.round(totalLevels * biasRatio);
         let sellCount = 0;
         for (let i = gridLines.length - 1; i >= 0; i--) {
           if (sellCount < targetSell) {
