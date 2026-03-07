@@ -1342,7 +1342,7 @@ export class GridTradingService {
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
+          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
@@ -2771,6 +2771,7 @@ export class GridTradingService {
   private async syncOrderFills(
     state: GridState,
     adapter: GridExchangeAdapter,
+    userId?: string,
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
@@ -2855,6 +2856,9 @@ export class GridTradingService {
               `[网格] 卖单成交(平多): sell_level=${line.index}→buy_level=${matchedBuyLevel.index}, ` +
               `exit=${exitPrice.toFixed(4)}, entry=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, profit=${netProfit.toFixed(4)} USDT`,
             );
+            if (netProfit > 0 && userId) {
+              await this.settleGridFee(state, userId, netProfit);
+            }
           } else {
             this.logger.warn(`[网格] 卖单成交但无匹配 filled buy 层(可能已被 close_long 清除): level=${line.index}`);
           }
@@ -2863,9 +2867,36 @@ export class GridTradingService {
           line.positionEntry = 0;
           line.unrealizedPnl = 0;
           filledLines.push(line);
+        } else if (line.side === 'buy' && posDecreased && currentPositionSize >= -0.0001 && (line.positionEntry ?? 0) > 0 && (line.positionSize ?? 0) > 0) {
+          // isSellOnFilledLevel 场景：AI 在 filled buy 层直接挂了卖单（关多头），现已成交
+          // 特征：side='buy'（来自原始 buy fill）但仓位减少了，且层上保留有 positionEntry/positionSize
+          // line.price 已在 placeGridLimitOrder 中被覆盖为卖单目标价
+          const exitPrice = line.price;
+          const entryPrice = line.positionEntry;
+          const qty = line.positionSize;
+          const grossProfit = (exitPrice - entryPrice) * qty;
+          const fee = (exitPrice + entryPrice) * qty * (state.takerFeeRate ?? 0.0005);
+          const netProfit = grossProfit - fee;
+          state.totalProfit = (state.totalProfit ?? 0) + netProfit;
+          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+          state.totalTrades++;
+          if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+          line.state = 'empty';
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = netProfit;
+          filledLines.push(line);
+          this.logger.log(`[网格] filled买层卖出成交: level=${line.index}, exit=${exitPrice.toFixed(4)}, entry=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, profit=${netProfit.toFixed(4)} USDT`);
+          if (netProfit > 0 && userId) {
+            await this.settleGridFee(state, userId, netProfit);
+          }
         } else {
           // 持仓未变 → 取消/过期
           line.state = 'empty';
+          // 清除任何残留的持仓字段，避免 ghost 数据污染后续判断
+          line.positionSize = 0;
+          line.positionEntry = 0;
+          line.unrealizedPnl = 0;
           this.logger.debug(`[网格] 挂单消失（取消/过期）: level=${line.index}`);
         }
 
