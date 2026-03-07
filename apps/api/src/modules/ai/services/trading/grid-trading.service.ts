@@ -44,6 +44,7 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
+  autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
 }
 
@@ -355,6 +356,21 @@ export class GridTradingService {
   // 并发保护：记录正在运行的策略 ID，防止同一策略多 job 并发执行
   private readonly runningStrategies = new Set<string>();
 
+  /** 市场状态英文→中文（用于日志显示） */
+  private regimeLabel(regime: string): string {
+    const map: Record<string, string> = {
+      narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动',
+    };
+    return map[regime] ?? regime;
+  }
+
+  /** 网格方向英文→中文（用于日志显示） */
+  private directionLabel(direction: string): string {
+    const map: Record<string, string> = {
+      neutral: '中性', long: '做多', short: '做空', long_bias: '偏多', short_bias: '偏空',
+    };
+    return map[direction] ?? direction;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1155,7 +1171,7 @@ export class GridTradingService {
     if (state.effectiveLeverage !== newEffective) {
       this.logger.log(
         `[网格] 杠杆调整: ${state.effectiveLeverage}x → ${newEffective}x ` +
-        `(市场=${state.currentRegime}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
+        `(市场=${this.regimeLabel(state.currentRegime)}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
       );
       state.effectiveLeverage = newEffective;
     }
@@ -1165,7 +1181,7 @@ export class GridTradingService {
 
     // Step 7: 暂停检查
     if (state.isPaused) {
-      this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? 'unknown'}]: ${state.pauseReason || '未知原因'}`);
+      this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? '未知来源'}]: ${state.pauseReason || '未知原因'}`);
       await this.persistGridState(strategyId, state);
       return { trades: 0, errors: 0 };
     }
@@ -1177,7 +1193,7 @@ export class GridTradingService {
         : 0;
       const activeOrders = Object.keys(state.orderBook).length;
       this.logger.log(
-        `[网格] ▶ ${state.symbol} | 价格=${currentPrice} | 市场=${state.currentRegime} | ` +
+        `[网格] ▶ ${state.symbol} | 价格=${currentPrice} | 市场=${this.regimeLabel(state.currentRegime)} | ` +
         `日内=${state.dailyPnl >= 0 ? '+' : ''}${state.dailyPnl.toFixed(2)} USDT | ` +
         `策略收益=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% | ` +
         `挂单=${activeOrders} 累计=${state.totalProfit.toFixed(2)} USDT`,
@@ -1234,7 +1250,13 @@ export class GridTradingService {
               line.positionSize = 0;
               line.positionEntry = 0;
               line.orderId = undefined;
-              this.logger.warn(`[网格] 逐层止损执行: level=${idx} 已平仓`);
+              const slLossPct = line.positionEntry > 0
+                ? ((Math.abs(currentPrice - line.positionEntry) / line.positionEntry) * 100).toFixed(2)
+                : '?';
+              this.logger.warn(
+                `[网格] 止损执行: level=${idx}, entry=$${line.positionEntry.toFixed(4)}, ` +
+                `current=$${currentPrice.toFixed(4)}, loss=${slLossPct}%`,
+              );
               trades++;
             } catch (e: any) {
               this.logger.error(`[网格] 逐层止损失败: level=${idx} - ${e.message}`);
@@ -1246,7 +1268,7 @@ export class GridTradingService {
 
         // 动态杠杆同步到交易所（effectiveLeverage 降低时重设）
         // 逐仓模式下有持仓时 Binance 不允许降杠杆，跳过避免每周期重复报错
-        const hasOpenPositions = state.gridLines.some(l => l.positionSize > 0);
+        const hasOpenPositions = state.gridLines.some(l => l.state === 'filled' && l.positionSize > 0);
         if (state.effectiveLeverage < state.leverage && !hasOpenPositions && isGridAdapter(adapter)) {
           try {
             await (adapter as GridExchangeAdapter).setLeverage(state.symbol, state.effectiveLeverage);
@@ -1262,7 +1284,7 @@ export class GridTradingService {
         // 环形平仓模式：卖单成交后卖层 positionSize=0，只有买单成交会留下 positionSize>0 的格线
         // 因此 skewSell 在正常环形平仓下始终为 0，不应因此轻易触发 severe
         // buyFilled > 0 && sellFilled == 0 && sellEmpty > 5 才算 severe
-        const filledAll = state.gridLines.filter(l => l.positionSize > 0);
+        const filledAll = state.gridLines.filter(l => l.state === 'filled' && l.positionSize > 0);
         const skewBuy = filledAll.filter(l => l.side === 'buy').length;   // 持多头（buy成交，side='buy'）
         const skewSell = filledAll.filter(l => l.side === 'sell').length; // 持空头（sell成交，side='sell'）
         const skewTotal = skewBuy + skewSell;
@@ -1281,17 +1303,19 @@ export class GridTradingService {
           this.logger.warn(`[网格] 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
         }
 
-        // autoAdjustGrid: 严重倾斜 + 价格偏离网格中点 > 30% → 代码层自动居中重排
+        // autoAdjustGrid: 严重倾斜 + 价格偏离网格中点 > 阈值 → 代码层自动居中重排
         // 仅在价格显著偏离时才介入，否则交由 AI 补单
         if (skewLevel === 'severe' && isGridAdapter(adapter)) {
           const gridMid = (state.upperPrice + state.lowerPrice) / 2;
           const gridRange = state.upperPrice - state.lowerPrice;
           const priceDeviation = Math.abs(currentPrice - gridMid);
           const deviationPct = gridRange > 0 ? (priceDeviation / gridRange) * 100 : 0;
-          if (priceDeviation > gridRange * 0.2) {
+          const adjustThreshold = gridConfig?.autoAdjustThreshold ?? 0.2;  // 读取配置，默认 20%
+          const adjustThresholdPct = Math.round(adjustThreshold * 100);
+          if (priceDeviation > gridRange * adjustThreshold) {
             this.logger.warn(
               `[网格] autoAdjustGrid: 严重倾斜 buy=${skewBuy} sell=${skewSell}, ` +
-              `价格偏离中点 ${deviationPct.toFixed(1)}% > 20%，自动取消+居中重排`,
+              `价格偏离中点 ${deviationPct.toFixed(1)}% > ${adjustThresholdPct}%，自动取消+居中重排`,
             );
             try {
               await (adapter as GridExchangeAdapter).cancelAllOrders(state.symbol);
@@ -1303,7 +1327,7 @@ export class GridTradingService {
             return { trades: 0, errors: 0 };
           } else {
             this.logger.warn(
-              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < 30%，跳过自动居中，由 AI 本轮补挂空侧格线`,
+              `[网格] 严重倾斜(buy=${skewBuy} sell=${skewSell})但价格偏离仅 ${deviationPct.toFixed(1)}% < ${adjustThresholdPct}%，跳过自动居中，由 AI 本轮补挂空侧格线`,
             );
           }
         }
@@ -1347,6 +1371,13 @@ export class GridTradingService {
           adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
         }
 
+        // 对齐 nofx: LLM 调用期间（await 释放事件循环）用户可能已停止策略
+        // 执行任何决策前再次检查，防止在已停止的策略上下单
+        if (state.isPaused || !this.gridStates.has(strategyId)) {
+          this.logger.warn(`[网格] LLM 调用后策略已停止/暂停，跳过本轮决策执行`);
+          return { trades, errors };
+        }
+
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
@@ -1368,6 +1399,12 @@ export class GridTradingService {
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = filteredDecisions.some(d => d.action === 'pause_grid');
         for (const d of filteredDecisions) {
+          // 对齐 nofx: 每条决策执行前检查策略是否已被停止（执行过程中用户可能通过 API 停止）
+          if (state.isPaused || !this.gridStates.has(strategyId)) {
+            const remaining = filteredDecisions.length - filteredDecisions.indexOf(d);
+            this.logger.warn(`[网格] 策略已停止/暂停，跳过剩余 ${remaining} 个决策`);
+            break;
+          }
           // 若本轮含 pause_grid，跳过所有 place_* 操作（避免下单后立即被 cancelAllOrders 撤掉，浪费 API 调用）
           if (hasPauseGrid && d.action.startsWith('place_')) {
             execResults.push({ action: d.action, success: true, skipped: true, skipReason: '本轮含 pause_grid，跳过下单' });
@@ -1471,7 +1508,7 @@ export class GridTradingService {
         `[网格] ◀ ${state.symbol} | 本轮=${trades}笔${errors > 0 ? ` 错误=${errors}` : ' ✓'} | ` +
         `日内=${state.dailyPnl >= 0 ? '+' : ''}${state.dailyPnl.toFixed(2)} / ` +
         `策略=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% | ` +
-        `市场=${state.currentRegime} 方向=${state.currentDirection}`,
+        `市场=${this.regimeLabel(state.currentRegime)} 方向=${this.directionLabel(state.currentDirection)}`,
       );
     }
 
@@ -1936,7 +1973,7 @@ export class GridTradingService {
         profit: l.unrealizedPnl !== 0 ? l.unrealizedPnl : undefined,
       })),
       activeOrderCount: state.gridLines.filter((l) => l.state === 'pending').length,
-      filledLevelCount: state.gridLines.filter((l) => l.positionSize > 0).length,
+      filledLevelCount: state.gridLines.filter((l) => l.state === 'filled' && l.positionSize > 0).length,
       isPaused: state.isPaused,
       atr14: indFast.atr ?? 0,
       bollingerUpper: bbUpper,
@@ -2176,7 +2213,7 @@ export class GridTradingService {
         const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
         const targetLevel = levelIndex >= 0
           ? state.gridLines[levelIndex]
-          : state.gridLines.find(l => l.positionSize > 0 && l.side === 'buy');
+          : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'buy');
         const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
         await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
@@ -2200,6 +2237,21 @@ export class GridTradingService {
           const closedValue = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
           this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
+          // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
+          const orphanSell = state.gridLines.find(
+            (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
+          );
+          if (orphanSell?.orderId) {
+            try {
+              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, orphanSell.orderId);
+              delete state.orderBook[orphanSell.orderId];
+              orphanSell.state = 'empty';
+              orphanSell.orderId = undefined;
+              this.logger.log(`[网格] close_long 后取消孤儿卖单: level=${orphanSell.index}`);
+            } catch (e: any) {
+              this.logger.warn(`[网格] 取消孤儿卖单失败: level=${orphanSell.index}, ${e.message}`);
+            }
+          }
         }
         return { executed: true };
       }
@@ -2211,7 +2263,7 @@ export class GridTradingService {
         const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
         const targetLevel = levelIndex >= 0
           ? state.gridLines[levelIndex]
-          : state.gridLines.find(l => l.positionSize > 0 && l.side === 'sell');
+          : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'sell');
         const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
         await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
@@ -2235,12 +2287,30 @@ export class GridTradingService {
           const closedValueShort = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
+          // 取消下方相邻 pending 买单（孤儿防护：平空后买单若触价会意外开多）
+          const orphanBuy = state.gridLines.find(
+            (l) => l.state === 'pending' && l.side === 'buy' && l.orderId && l.index === targetLevel.index - 1,
+          );
+          if (orphanBuy?.orderId) {
+            try {
+              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, orphanBuy.orderId);
+              delete state.orderBook[orphanBuy.orderId];
+              orphanBuy.state = 'empty';
+              orphanBuy.orderId = undefined;
+              this.logger.log(`[网格] close_short 后取消孤儿买单: level=${orphanBuy.index}`);
+            } catch (e: any) {
+              this.logger.warn(`[网格] 取消孤儿买单失败: level=${orphanBuy.index}, ${e.message}`);
+            }
+          }
         }
         return { executed: true };
       }
 
       case 'hold':
-        // 不操作
+        // 对齐 nofx: hold 时打印 reasoning，便于终端日志追踪 AI 决策理由
+        if (decision.reasoning) {
+          this.logger.log(`[网格] hold: ${decision.reasoning}`);
+        }
         return { executed: true };
 
       default:
@@ -2372,6 +2442,11 @@ export class GridTradingService {
         maxQuantityPerLevel *= (1 - state.positionReductionPct / 100);
       }
 
+      if (quantity > maxQuantityPerLevel) {
+        this.logger.debug(
+          `[网格] ⚠️ 数量截断: ${quantity.toFixed(4)} → ${maxQuantityPerLevel.toFixed(4)} (level=${levelIndex}, max=$${(maxQuantityPerLevel * price).toFixed(2)})`,
+        );
+      }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
       // 总仓位上限：所有 pending+filled 层名义价值 + 本次 ≤ totalInvestment × leverage
@@ -2891,9 +2966,9 @@ export class GridTradingService {
         // 诊断日志：打印原始持仓数据（临时，确认 side/symbol/quantity 字段格式后删除）
         if (positions.length > 0) {
           const matchedPos = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
-          this.logger.debug(`[网格] syncOrderFills 持仓原始(source=${preloadedPositions ? 'preloaded' : 'api'}): total=${positions.length}, matched=${matchedPos.length}, first=${JSON.stringify(matchedPos[0] ?? positions[0])}`);
+          this.logger.debug(`[网格] syncOrderFills 持仓原始(来源=${preloadedPositions ? '预加载' : 'API'}): total=${positions.length}, matched=${matchedPos.length}, first=${JSON.stringify(matchedPos[0] ?? positions[0])}`);
         } else {
-          this.logger.debug(`[网格] syncOrderFills 持仓原始(source=${preloadedPositions ? 'preloaded' : 'api'}): 交易所返回0持仓, preloadedLen=${preloadedPositions?.length ?? 'undefined'}`);
+          this.logger.debug(`[网格] syncOrderFills 持仓原始(来源=${preloadedPositions ? '预加载' : 'API'}): 交易所返回0持仓, 预加载长度=${preloadedPositions?.length ?? '无'}`);
         }
         for (const pos of positions) {
           if ((pos as any).symbol?.includes(baseSymbol)) {
@@ -2936,11 +3011,11 @@ export class GridTradingService {
             }
           }
           if (Math.abs(freshSize - currentPositionSize) > 0.0001) {
-            this.logger.debug(`[网格] 消失挂单存在，刷新持仓: preloaded=${currentPositionSize.toFixed(4)} → fresh=${freshSize.toFixed(4)}`);
+            this.logger.debug(`[网格] 消失挂单存在，刷新持仓: 预加载=${currentPositionSize.toFixed(4)} → 实时=${freshSize.toFixed(4)}`);
             currentPositionSize = freshSize;
           }
         } catch (e: any) {
-          this.logger.warn(`[网格] 刷新持仓失败（继续用 preloaded 数据）: ${e.message}`);
+          this.logger.warn(`[网格] 刷新持仓失败（继续用预加载数据）: ${e.message}`);
         }
       }
 
@@ -3001,7 +3076,7 @@ export class GridTradingService {
               await this.settleGridFee(state, userId, netProfit);
             }
           } else {
-            this.logger.warn(`[网格] 卖单成交但无匹配 filled buy 层(可能已被 close_long 清除): level=${line.index}`);
+            this.logger.warn(`[网格] 卖单成交但无匹配持多仓层(可能已被 close_long 清除): level=${line.index}`);
           }
           line.state = 'empty';
           line.positionSize = 0;
@@ -3027,7 +3102,7 @@ export class GridTradingService {
           line.positionEntry = 0;
           line.unrealizedPnl = netProfit;
           filledLines.push(line);
-          this.logger.log(`[网格] filled买层卖出成交: level=${line.index}, exit=${exitPrice.toFixed(4)}, entry=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, profit=${netProfit.toFixed(4)} USDT`);
+          this.logger.log(`[网格] 持多仓层卖出成交: level=${line.index}, 出价=${exitPrice.toFixed(4)}, 入价=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, 利润=${netProfit.toFixed(4)} USDT`);
           if (netProfit > 0 && userId) {
             await this.settleGridFee(state, userId, netProfit);
           }
@@ -3165,7 +3240,11 @@ export class GridTradingService {
     if (!state) {
       state = this.gridStates.get(strategyId) || await this.loadGridState(strategyId);
     }
-    if (!state || !this.adapterFactory) return;
+    if (!state) return;
+    if (!this.adapterFactory) {
+      this.logger.warn(`[网格] reconcile 跳过: adapterFactory 尚未就绪（依赖注入竞态），脏数据将在下次重启后清理`);
+      return;
+    }
 
     this.logger.log(`[网格] 恢复状态: ${strategyId}`);
 
@@ -3216,6 +3295,7 @@ export class GridTradingService {
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
+      // CCXT adapter 已在 getPositions() 中把 OKX net_mode 归一化为 'long'/'short'
       const longPos = symPositions.find((p) => p.side === 'long');
       const exchangeLongQty = longPos?.quantity ?? 0;
 
@@ -3655,7 +3735,7 @@ export class GridTradingService {
         direction: state.currentDirection,
         regime: state.currentRegime,
         totalLevels: state.gridLines.length,
-        filledLevels: state.gridLines.filter(l => l.positionSize > 0).length,
+        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
         pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
         activeOrders: Object.keys(state.orderBook).length,
         totalInvestment: state.totalInvestment,   // 用于前端展示每层成本估算
