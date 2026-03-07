@@ -2778,6 +2778,10 @@ export class GridTradingService {
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
 
+      this.logger.debug(
+        `[网格] syncOrderFills: 交易所挂单=${openOrders.length}, 内存pending=${state.gridLines.filter(l => l.state === 'pending').length}, 消失=${disappearedLines.length}, currentPos=${currentPositionSize.toFixed(4)}, expectedPos=${expectedPositionSize.toFixed(4)}`,
+      );
+
       for (const line of disappearedLines) {
         const prevOrderId = line.orderId!;
 
