@@ -2829,6 +2829,25 @@ export class GridTradingService {
           delete state.orderBook[orderId];
         }
       }
+
+      // Step 6: 幽灵持仓检测 — 交易所仓位为0但内存仍有filled层（仓位被外部平仓或之前误判）
+      const updatedExpected = state.gridLines
+        .filter(l => l.state === 'filled')
+        .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+      if (Math.abs(currentPositionSize) < 0.0001 && updatedExpected > 0.0001) {
+        const ghosts = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0);
+        for (const g of ghosts) {
+          this.logger.warn(`[网格] 幽灵持仓清理: level=${g.index}, positionSize=${g.positionSize?.toFixed(4)}`);
+          g.state = 'empty';
+          g.positionSize = 0;
+          g.positionEntry = 0;
+          g.unrealizedPnl = 0;
+          if (g.orderId) {
+            delete state.orderBook[g.orderId];
+            g.orderId = undefined;
+          }
+        }
+      }
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
