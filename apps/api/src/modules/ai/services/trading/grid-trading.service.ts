@@ -1817,7 +1817,7 @@ export class GridTradingService {
           : l.allocatedUSD > 0 && currentPrice > 0
             ? (l.allocatedUSD * state.leverage) / currentPrice
             : 0,
-        positionSize: l.positionSize,     // 实际持仓量（供 close_long/close_short 参考）
+        positionSize: l.positionSize,     // 实际持仓量（filled 层有效）
         state: (l.state === 'empty' || l.state === 'stopped'
           ? 'cancelled'
           // 兼容旧数据：'short' 状态表示持空头仓位，映射为 'filled'
@@ -2054,33 +2054,9 @@ export class GridTradingService {
 
       case 'adjust_grid': {
         await adapter.cancelAllOrders(state.symbol);
-        // 优先使用 AI 返回的边界（camelCase 和 snake_case 均兼容）
-        const adjUpper = decision.upperPrice ?? (decision as any).upper_price;
-        const adjLower = decision.lowerPrice ?? (decision as any).lower_price;
-        if (adjUpper && adjLower && adjUpper > adjLower) {
-          state.upperPrice = adjUpper;
-          state.lowerPrice = adjLower;
-          state.gridSpacing = (state.upperPrice - state.lowerPrice) / Math.max(state.gridLines.length - 1, 1);
-          // 重算各格线价格并重置状态（订单已取消，state 须与边界保持一致）
-          const weights = this.calculateWeights(state.gridLines.length, state.distribution);
-          const weightSum = weights.reduce((a, b) => a + b, 0);
-          for (let i = 0; i < state.gridLines.length; i++) {
-            const line = state.gridLines[i];
-            line.price = Math.round((state.lowerPrice + i * state.gridSpacing) * 100000) / 100000;
-            line.allocatedUSD = state.totalInvestment * (weights[i] / weightSum);
-            if (line.state !== 'filled') {
-              line.state = 'empty';
-              line.orderId = undefined;
-              line.orderQuantity = 0;
-            }
-          }
-          this.applyGridDirection(state.gridLines, currentPrice ?? state.lastPrice, state.currentDirection);
-          state.orderBook = {};
-          this.logger.log(`[网格] AI 调整网格边界: ${state.lowerPrice.toFixed(4)}-${state.upperPrice.toFixed(4)}, 格线已重算`);
-        } else {
-          const newPrice = decision.price || state.lastPrice;
-          await this.reinitializeGridLevels(state, newPrice);
-        }
+        // 后端自动以当前价为中心重建网格（AI 不指定边界）
+        const newPrice = currentPrice ?? state.lastPrice;
+        await this.reinitializeGridLevels(state, newPrice);
         break;
       }
 
@@ -2277,7 +2253,25 @@ export class GridTradingService {
 
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 绝对安全上限（totalInvestment 本身已是用户配置的最大资金，此处仅做兜底）
+      // 总仓位上限：所有 pending+filled 层名义价值 + 本次 ≤ totalInvestment × leverage
+      const existingNotional = state.gridLines.reduce((sum, l) => {
+        if (l.state === 'pending' || l.state === 'filled') {
+          const qty = l.orderQuantity > 0 ? l.orderQuantity : (l.positionSize ?? 0);
+          return sum + qty * price;
+        }
+        return sum;
+      }, 0);
+      const totalPositionCap = state.totalInvestment * leverage;
+      if (existingNotional + quantity * price > totalPositionCap) {
+        // 削减至剩余可用额度
+        const remaining = Math.max(0, totalPositionCap - existingNotional);
+        quantity = Math.min(quantity, remaining / price);
+        if (quantity <= 0) {
+          return { executed: false, skipReason: `总仓位已满: 已用 $${existingNotional.toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}` };
+        }
+      }
+
+      // 绝对安全上限（兜底：totalInvestment × leverage × POSITION_SAFETY_MULTIPLIER）
       const positionValue = quantity * price;
       const absoluteMax = state.totalInvestment * leverage * POSITION_SAFETY_MULTIPLIER;
       if (positionValue > absoluteMax) {
@@ -2815,7 +2809,7 @@ export class GridTradingService {
           line.unrealizedPnl = 0;
           this.logger.log(`[网格] 买单成交: level=${line.index}, fillPrice=${fillPrice.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
         } else {
-          // ── 卖单成交：直接标记为 empty，持仓由 AI 发 close_long/close_short 平仓 ──
+          // ── 卖单成交：直接标记为 empty ──
           line.state = 'empty';
           line.positionSize = 0;
           line.positionEntry = 0;
