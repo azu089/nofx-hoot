@@ -2052,6 +2052,8 @@
       "gridOrderProfit": "掛單浮盈",
       "gridProfit": "已實現盈虧",
       "gridWinRate": "勝率",
+      "gridFilledLevels": "持倉格",
+      "gridLayerState": "層級狀態",
       "gridPendingLevels": "掛單層",
       "gridActiveOrders": "活躍訂單",
       "gridDailyPnl": "日內損益",

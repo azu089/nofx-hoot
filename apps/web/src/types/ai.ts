@@ -625,6 +625,15 @@ export interface StrategyLog {
       breakoutLevel: string;
       lastPrice: number;
       rangeSource?: string;  // 网格范围来源: 'AI决策' | 'ATR×5' | '用户指定' | '±8%兜底' 等
+      gridLines?: Array<{
+        lv: number;    // 层号（1-based）
+        p: number;     // 价格
+        s: string;     // side: 'buy'|'sell'
+        st: string;    // state: 'filled'|'pending'|'empty'
+        qty?: number;  // filled: 持仓量
+        ep?: number;   // filled: 建仓价
+        oid?: string;  // pending: 订单ID末8位
+      }>;
     };
     // auto_disabled_failure 格式
     reason?: string;

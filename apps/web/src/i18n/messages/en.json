@@ -2035,6 +2035,8 @@
       "gridOrderProfit": "Order Profit",
       "gridProfit": "Realized P&L",
       "gridWinRate": "Win Rate",
+      "gridFilledLevels": "Filled Grids",
+      "gridLayerState": "Layer Status",
       "gridPendingLevels": "Pending Levels",
       "gridActiveOrders": "Active Orders",
       "gridDailyPnl": "Daily P&L",

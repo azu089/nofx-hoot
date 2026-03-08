@@ -703,13 +703,20 @@ export function GRID_SYSTEM_PROMPT(
 ### 三种层状态
 - **empty（未挂单）**: 可以挂单，也可以 hold 等待
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 该层已成交，持有仓位，等待在对应反向层出局。**对每个 filled 层分别判断其反向层状态：**
-  - 买单成交(side=buy)→持多头，对应反向层为 **上一层**；卖单成交(side=sell)→持空头，对应反向层为 **下一层**
-  - 若反向层是 **empty**：补挂反向限价单（place_sell_limit / place_buy_limit）
-  - 若反向层已有 **正确方向的 pending 单**（buy层上方有 pending sell）：hold，等待出局
-  - 若反向层有 **错误方向的 pending 单**（buy层上方有 pending buy）：AI 自主判断是否 cancel 后补挂 sell
+- **filled（持仓）**: 该层已成交，持有仓位，等待在**更高价的相邻层**出局（获取网格利润）。
+
+  ⚠️ **反向层规则（严格遵守）**：
+  - 买单成交（side=buy）→ 反向卖单应挂在 **层号+1（价格更高的那层）**，**绝对不能挂在本层（层号相同）**
+  - 卖单成交（side=sell）→ 反向买单应挂在 **层号-1（价格更低的那层）**，**绝对不能挂在本层**
+  - 示例：**Layer 6 买入成交 → 在 Layer 7 挂卖单**（用 Layer 7 的价格），而不是在 Layer 6 挂卖单
+  - ❌ 禁止：在 filled 层本身挂反向单（出入价相同 = 零利润 + 手续费 = 亏损）
+
+  对每个 filled 层检查其反向层（N+1 或 N-1）：
+  - 若反向层是 **empty**：在反向层挂限价单（place_sell_limit level=N+1 / place_buy_limit level=N-1）
+  - 若反向层已有 **正确方向的 pending 单**（N+1 层有 pending sell）：hold，等待出局
+  - 若反向层有 **错误方向的 pending 单**（N+1 层是 pending buy）：cancel 后补挂 sell
   - 若市场判断不利：close_long / close_short 市价平仓
-  - **多个 filled 层同时存在时，可在同一轮 actions 中对多个层分别下单，无需逐轮处理**
+  - **多个 filled 层同时存在时，可在同一轮 actions 中对多个层分别下单**
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）

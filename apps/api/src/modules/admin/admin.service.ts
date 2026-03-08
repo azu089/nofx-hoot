@@ -27,6 +27,23 @@ export class AdminService {
 
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * 根据 UUID (id) 或 uid（自增整数）解析出用户 UUID id
+   * 前端传 uid=110016 或 id="xxx-uuid" 均可正确找到
+   */
+  private async resolveUserId(idOrUid: string): Promise<string> {
+    const uid = parseInt(idOrUid, 10);
+    const isUid = Number.isFinite(uid) && String(uid) === idOrUid;
+
+    const user = await this.prisma.user.findFirst({
+      where: isUid ? { uid } : { id: idOrUid },
+      select: { id: true },
+    });
+
+    if (!user) throw new NotFoundException('用户不存在');
+    return user.id;
+  }
+
   // ==================== 用户管理 ====================
 
   // 获取用户列表
@@ -112,6 +129,7 @@ export class AdminService {
 
   // 获取用户详情
   async getUserDetail(userId: string) {
+    userId = await this.resolveUserId(userId);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -170,13 +188,7 @@ export class AdminService {
 
   // 更新用户状态
   async updateUserStatus(userId: string, dto: UpdateUserStatusDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
+    userId = await this.resolveUserId(userId);
 
     // 更新用户状态
     await this.prisma.user.update({
@@ -198,13 +210,7 @@ export class AdminService {
 
   // 更新用户信息
   async updateUserInfo(userId: string, dto: UpdateUserInfoDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
+    userId = await this.resolveUserId(userId);
 
     const updateData: any = {};
     if (dto.nickname !== undefined) updateData.nickname = dto.nickname;
@@ -236,6 +242,7 @@ export class AdminService {
     dto: AdjustBalanceDto,
     adminId: string,
   ) {
+    userId = await this.resolveUserId(userId);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -306,13 +313,10 @@ export class AdminService {
 
   // 重置用户密码
   async resetUserPassword(userId: string, dto: ResetPasswordDto) {
+    userId = await this.resolveUserId(userId);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
 
     // 生成新密码（如果未提供）
     const newPassword = dto.newPassword || this.generateRandomPassword();
@@ -346,13 +350,10 @@ export class AdminService {
 
   // 解绑用户 Telegram
   async unbindUserTelegram(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    userId = await this.resolveUserId(userId);
+    const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
 
     if (!user.telegramId) {
       throw new BadRequestException('用户未绑定 Telegram');
@@ -376,13 +377,10 @@ export class AdminService {
 
   // 解绑用户钱包
   async unbindUserWallet(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    userId = await this.resolveUserId(userId);
+    const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-
-    if (!user) {
-      throw new NotFoundException('用户不存在');
-    }
 
     if (!user.walletAddress) {
       throw new BadRequestException('用户未绑定钱包');

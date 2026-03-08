@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "Прибыль ордера",
       "gridProfit": "Реализ. P&L",
       "gridWinRate": "Доля побед",
+      "gridFilledLevels": "Уровни с позицией",
+      "gridLayerState": "Состояние уровней",
       "gridPendingLevels": "Уровни ордеров",
       "gridActiveOrders": "Активные ордера",
       "gridDailyPnl": "Дневной P&L",

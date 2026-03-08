@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "Profit Order",
       "gridProfit": "P&L Terealisasi",
       "gridWinRate": "Rasio Menang",
+      "gridFilledLevels": "Grid Posisi",
+      "gridLayerState": "Status Layer",
       "gridPendingLevels": "Level Tertunda",
       "gridActiveOrders": "Order Aktif",
       "gridDailyPnl": "P&L Harian",

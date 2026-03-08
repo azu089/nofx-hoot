@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "กำไรออร์เดอร์",
       "gridProfit": "กำไรขาดทุนที่รับรู้แล้ว",
       "gridWinRate": "อัตราชนะ",
+      "gridFilledLevels": "กริดที่มีตำแหน่ง",
+      "gridLayerState": "สถานะชั้น",
       "gridPendingLevels": "ชั้นคำสั่ง",
       "gridActiveOrders": "คำสั่งที่ใช้งาน",
       "gridDailyPnl": "กำไร/ขาดทุนรายวัน",

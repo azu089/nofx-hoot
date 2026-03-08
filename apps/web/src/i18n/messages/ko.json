@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "주문 수익",
       "gridProfit": "실현 손익",
       "gridWinRate": "승률",
+      "gridFilledLevels": "포지션 그리드",
+      "gridLayerState": "레이어 상태",
       "gridPendingLevels": "대기 레벨",
       "gridActiveOrders": "활성 주문",
       "gridDailyPnl": "일일 손익",

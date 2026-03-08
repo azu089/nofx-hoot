@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "Emir Karı",
       "gridProfit": "Gerçekleşen K/Z",
       "gridWinRate": "Kazanma Oranı",
+      "gridFilledLevels": "Pozisyonlu Katmanlar",
+      "gridLayerState": "Katman Durumu",
       "gridPendingLevels": "Bekleyen Katman",
       "gridActiveOrders": "Aktif Emirler",
       "gridDailyPnl": "Günlük K/Z",

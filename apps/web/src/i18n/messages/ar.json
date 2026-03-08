@@ -2031,6 +2031,8 @@
       "gridOrderProfit": "ربح الأوامر",
       "gridProfit": "الأرباح والخسائر المحققة",
       "gridWinRate": "معدل الفوز",
+      "gridFilledLevels": "الشبكات المشغولة",
+      "gridLayerState": "حالة الطبقة",
       "gridPendingLevels": "المستويات المعلقة",
       "gridActiveOrders": "الأوامر النشطة",
       "gridDailyPnl": "أرباح وخسائر اليوم",

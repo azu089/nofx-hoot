@@ -2050,6 +2050,8 @@
       "gridOrderProfit": "注文利益",
       "gridProfit": "実現損益",
       "gridWinRate": "勝率",
+      "gridFilledLevels": "建玉グリッド",
+      "gridLayerState": "レイヤー状態",
       "gridPendingLevels": "指値層",
       "gridActiveOrders": "アクティブ注文",
       "gridDailyPnl": "日次損益",

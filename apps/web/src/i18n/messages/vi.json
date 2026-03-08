@@ -2051,6 +2051,8 @@
       "gridOrderProfit": "Lợi nhuận lệnh",
       "gridProfit": "Lãi/lỗ đã thực hiện",
       "gridWinRate": "Tỷ lệ thắng",
+      "gridFilledLevels": "Lưới giữ vị thế",
+      "gridLayerState": "Trạng thái lớp",
       "gridPendingLevels": "Tầng chờ",
       "gridActiveOrders": "Lệnh hoạt động",
       "gridDailyPnl": "Lãi/Lỗ trong ngày",

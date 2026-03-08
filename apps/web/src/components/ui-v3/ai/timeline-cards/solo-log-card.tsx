@@ -757,11 +757,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </div>
                 )}
               </div>
-              {/* 行2：层级进度 + 挂单层数 */}
+              {/* 行2：持仓格数 + 挂单格数 */}
               <div className="grid grid-cols-2 gap-x-4">
                 <div className="flex justify-between">
-                  <span className="text-[#606070]">{t('timeline.gridLevels')}</span>
-                  <span className="text-[#F8F8FC]">{d.gridSnapshot.totalTrades ?? 0}/{d.gridSnapshot.totalLevels}</span>
+                  <span className="text-[#606070]">{t('timeline.gridFilledLevels')}</span>
+                  <span className={`font-mono ${(d.gridSnapshot.filledLevels ?? 0) > 0 ? 'text-[#06B6D4]' : 'text-[#9090A0]'}`}>
+                    {d.gridSnapshot.filledLevels ?? 0}/{d.gridSnapshot.totalLevels}
+                  </span>
                 </div>
                 {d.gridSnapshot.pendingLevels != null && (
                   <div className="flex justify-between">
@@ -856,7 +858,40 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             {showGridOps ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
           {showGridOps && (
-            <div className="space-y-1 max-h-[300px] overflow-y-auto px-1">
+            <div className="space-y-1 max-h-[400px] overflow-y-auto px-1">
+              {/* 层级状态表：持仓/挂单/空格，供用户核对交易所 */}
+              {d.gridSnapshot?.gridLines && Array.isArray(d.gridSnapshot.gridLines) && d.gridSnapshot.gridLines.length > 0 && (
+                <div className="mb-2 pb-2 border-b border-[#1E1E2E]">
+                  <div className="text-[9px] text-[#606070] mb-1 px-0.5">{t('timeline.gridLayerState')}</div>
+                  <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
+                    {d.gridSnapshot.gridLines.map((gl: any) => {
+                      const isFilled = gl.st === 'filled';
+                      const isPending = gl.st === 'pending';
+                      const color = isFilled ? '#06B6D4' : isPending ? '#9090A0' : '#3A3A4A';
+                      const textColor = isFilled ? '#06B6D4' : isPending ? '#9090A0' : '#505060';
+                      return (
+                        <div
+                          key={gl.lv}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px]"
+                          style={{ backgroundColor: `${color}12` }}
+                        >
+                          <span className="font-mono" style={{ color: textColor }}>L{gl.lv}</span>
+                          <span className="font-mono text-[#9090A0]">${Number(gl.p).toFixed(2)}</span>
+                          {isFilled && (
+                            <span className="font-mono text-[#06B6D4]">×{gl.qty}</span>
+                          )}
+                          {isPending && gl.oid && (
+                            <span className="text-[#505060]">#{gl.oid}</span>
+                          )}
+                          {!isFilled && !isPending && (
+                            <span className="text-[#404050]">—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {gridDecisions.map((op: any, idx: number) => {
                 const opCfg = GRID_ACTION_I18N[op.action];
                 const opColor = opCfg?.color || '#9090A0';

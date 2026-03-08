@@ -1469,6 +1469,21 @@ export class GridTradingService {
           }
         }
 
+        // 层级状态摘要日志（供运营核对交易所，LOG 级别确保生产可见）
+        {
+          const filled = state.gridLines.filter(l => l.state === 'filled');
+          const pending = state.gridLines.filter(l => l.state === 'pending');
+          const empty = state.gridLines.filter(l => l.state === 'empty');
+          const filledStr = filled.map(l =>
+            `L${(l.index ?? 0) + 1}@${(l.positionEntry ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`
+          ).join(' ');
+          const pendingStr = pending.map(l => `L${(l.index ?? 0) + 1}@${l.price.toFixed(2)}`).join(' ');
+          const emptyStr = empty.map(l => `L${(l.index ?? 0) + 1}`).join(',');
+          this.logger.log(
+            `[网格] 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
+          );
+        }
+
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
         {
@@ -2439,15 +2454,52 @@ export class GridTradingService {
       level.orderId = undefined;
     }
 
+    // Backend Guard: 若 AI 在 filled buy 层挂卖单（出=入价 → 零利润+手续费=亏损），自动重定向到 N+1
+    // nofx 设计：每个 filled 买入层(N) 对应的止盈卖单应挂在层 N+1（更高价）
+    if (side === 'sell' && level && level.state === 'filled' && level.side === 'buy') {
+      const redirectIndex = levelIndex + 1;
+      const redirectLevel = redirectIndex < state.gridLines.length ? state.gridLines[redirectIndex] : undefined;
+      if (redirectLevel) {
+        this.logger.warn(
+          `[网格] Backend Guard: AI 请求在 filled buy 层 ${levelIndex + 1} 挂卖单（出=入=$${level.price.toFixed(4)}）→ 自动重定向到层 ${redirectIndex + 1}（$${redirectLevel.price.toFixed(4)}）`,
+        );
+        // 重定向到 N+1：用 N+1 层的价格和索引
+        decision.level = redirectIndex + 1;  // 1-based
+        decision.level_index = redirectIndex + 1;
+        decision.price = redirectLevel.price;
+        // 重新绑定 level 变量指向 N+1
+        const newLevel = redirectLevel;
+        // 若 N+1 层已有 pending 挂单，先取消（防重复）
+        if (newLevel.state === 'pending' && newLevel.orderId) {
+          try {
+            await adapter.cancelOrder(state.symbol, newLevel.orderId);
+          } catch (_e) { /* 忽略，由 syncOrderFills 处理 */ }
+          delete state.orderBook[newLevel.orderId];
+          newLevel.state = 'empty';
+          newLevel.orderId = undefined;
+        }
+      } else {
+        // N+1 超出边界（已是最高层），跳过此单
+        const skipReason = `filled buy 层 ${levelIndex + 1} 已是最高层，无法重定向到 N+1`;
+        this.logger.warn(`[网格] Backend Guard: ${skipReason}`);
+        return { executed: false, skipReason };
+      }
+    }
+
+    // 重新读取（可能被 Backend Guard 更新）
+    const rawLevel2 = decision.level_index ?? decision.level ?? 0;
+    const finalLevelIndex = rawLevel2 > 0 ? rawLevel2 - 1 : levelIndex;
+    const finalLevel = finalLevelIndex >= 0 ? state.gridLines[finalLevelIndex] : level;
+
     // Fix-3: 价格选取规则：
     // - 买单(buy)：优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
     //   防止 adjust_grid 与 place 同批次时 AI 旧价格覆盖刚重算的正确价格
     // - 卖单(sell)在已成交(filled)层上：使用 AI 建议价格（即止盈目标价），不用格线买入价
     //   否则格线买入价 < 市价 → 立即成交开空，而非止盈平多
-    const isSellOnFilledLevel = side === 'sell' && level && level.state === 'filled';
+    const isSellOnFilledLevel = side === 'sell' && finalLevel && finalLevel.state === 'filled';
     const price = isSellOnFilledLevel
-      ? (decision.price ?? level!.price)
-      : ((level && level.price > 0) ? level.price : (decision.price ?? 0));
+      ? (decision.price ?? finalLevel!.price)
+      : ((finalLevel && finalLevel.price > 0) ? finalLevel.price : (decision.price ?? 0));
 
     if (price <= 0 || quantity <= 0) {
       const skipReason = `无效参数: price=${price}, quantity=${quantity}`;
@@ -2462,8 +2514,8 @@ export class GridTradingService {
       let maxQuantityPerLevel = (maxMarginPerLevel * leverage) / price;
 
       // 使用 level-specific 分配
-      if (level && level.allocatedUSD > 0) {
-        const levelMax = (level.allocatedUSD * leverage) / price;
+      if (finalLevel && finalLevel.allocatedUSD > 0) {
+        const levelMax = (finalLevel.allocatedUSD * leverage) / price;
         maxQuantityPerLevel = Math.min(maxQuantityPerLevel, levelMax);
       }
 
@@ -2664,7 +2716,7 @@ export class GridTradingService {
     // OKX 双向持仓模式每笔单都必须指定 posSide
     // 单向持仓模式（Binance默认/OKX net_mode）不传 positionSide，避免 -4061/51015 错误
     // OKX 要求 clOrdId 纯字母数字（无连字符），格式 g{idx}t{ts}，最长 17 字符
-    const clientId = level ? `g${levelIndex}t${Date.now()}` : undefined;
+    const clientId = finalLevel ? `g${finalLevelIndex}t${Date.now()}` : undefined;
 
     // OKX 网格挂单：不发 posSide
     // - net_mode（单向）: 不支持 posSide，发了就 51000
@@ -2684,19 +2736,19 @@ export class GridTradingService {
     });
 
     // Step 4: 更新本地状态
-    if (level) {
+    if (finalLevel) {
       // 如果层上仍残留旧 orderId（极端并发情况），先从 orderBook 清理，防止孤儿条目
-      if (level.orderId && level.orderId !== result.orderId) {
-        delete state.orderBook[level.orderId];
+      if (finalLevel.orderId && finalLevel.orderId !== result.orderId) {
+        delete state.orderBook[finalLevel.orderId];
       }
-      level.state = 'pending';
-      level.price = price;           // 与实际下单价保持一致
-      level.orderId = result.orderId;
-      level.orderQuantity = finalQty;
-      state.orderBook[result.orderId] = levelIndex;
+      finalLevel.state = 'pending';
+      finalLevel.price = price;           // 与实际下单价保持一致
+      finalLevel.orderId = result.orderId;
+      finalLevel.orderQuantity = finalQty;
+      state.orderBook[result.orderId] = finalLevelIndex;
     }
 
-    this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${levelIndex}, orderId=${result.orderId})`);
+    this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${finalLevelIndex}, orderId=${result.orderId})`);
     return { executed: true };
   }
 
@@ -3026,8 +3078,9 @@ export class GridTradingService {
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
 
-      // Step 5: 若有消失挂单且持仓数据来自 preloaded（下单前快照，可能错过同轮成交），刷新持仓
-      if (disappearedLines.length > 0 && preloadedPositions !== undefined) {
+      // Step 5: 对齐 nofx — 始终用实时持仓做对账（nofx syncGridState 每轮无条件调 GetPositions）
+      // 修复：close_long/close_short 执行后无消失挂单，若不刷新则用下单前旧快照，ghost check 失效
+      if (preloadedPositions !== undefined) {
         try {
           const freshPositions = await adapter.getPositions();
           const baseSymbol2 = state.symbol.split('/')[0];
@@ -3041,7 +3094,7 @@ export class GridTradingService {
             }
           }
           if (Math.abs(freshSize - currentPositionSize) > 0.0001) {
-            this.logger.debug(`[网格] 消失挂单存在，刷新持仓: 预加载=${currentPositionSize.toFixed(4)} → 实时=${freshSize.toFixed(4)}`);
+            this.logger.debug(`[网格] 刷新持仓: 预加载=${currentPositionSize.toFixed(4)} → 实时=${freshSize.toFixed(4)}`);
             currentPositionSize = freshSize;
           }
         } catch (e: any) {
@@ -3787,6 +3840,22 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
+        // 每层详情：供前端展示层级状态表，用户可核对交易所
+        gridLines: state.gridLines.map((l, i) => {
+          const entry: Record<string, unknown> = {
+            lv: i + 1,
+            p: +l.price.toFixed(4),
+            s: l.side,
+            st: l.state,
+          };
+          if (l.state === 'filled') {
+            entry.qty = +(l.positionSize ?? 0).toFixed(4);
+            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+          } else if (l.state === 'pending') {
+            entry.oid = l.orderId?.slice(-8) ?? '';  // 仅保留末8位，节省存储
+          }
+          return entry;
+        }),
       } : undefined;
 
       // 统计执行结果：有错误则 executed=false，errors + skipped 列表写入 execution_result
