@@ -875,7 +875,18 @@ export class GridTradingService {
           this.logger.error(`[网格] 配置变更时获取价格失败: ${e.message}，跳过本轮`);
           return { trades: 0, errors: 1 };
         }
-        await this.reinitializeGridLevels(state, rebuildPrice);
+        // 若用户设定了百分比边界，按百分比重建；否则 ATR 自动计算
+        if (state.upperBoundPct && state.lowerBoundPct) {
+          const explicitUpper = rebuildPrice * (1 + state.upperBoundPct / 100);
+          const explicitLower = rebuildPrice * (1 - state.lowerBoundPct / 100);
+          this.logger.log(
+            `[网格] 配置变更: 按用户百分比重建 +${state.upperBoundPct}%/-${state.lowerBoundPct}%` +
+            ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]`,
+          );
+          await this.reinitializeGridLevels(state, rebuildPrice, explicitUpper, explicitLower);
+        } else {
+          await this.reinitializeGridLevels(state, rebuildPrice);
+        }
         state.needsReconcile = false;
         await this.persistGridState(strategyId, state);
         this.logger.log(
@@ -3847,6 +3858,17 @@ export class GridTradingService {
     }
     if (config.distribution && config.distribution !== state.distribution) {
       diffs.push(`分布 ${state.distribution}→${config.distribution}`);
+    }
+    // 用户设定的百分比边界变更（0 = 未设定）
+    const oldUpperPct = state.upperBoundPct ?? 0;
+    const newUpperPct = config.upperBoundPct ?? 0;
+    if (Math.abs(oldUpperPct - newUpperPct) > 0.01) {
+      diffs.push(`上界 ${oldUpperPct}%→${newUpperPct}%`);
+    }
+    const oldLowerPct = state.lowerBoundPct ?? 0;
+    const newLowerPct = config.lowerBoundPct ?? 0;
+    if (Math.abs(oldLowerPct - newLowerPct) > 0.01) {
+      diffs.push(`下界 ${oldLowerPct}%→${newLowerPct}%`);
     }
     return diffs.length > 0 ? diffs.join(', ') : null;
   }
