@@ -791,39 +791,51 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   )}
                 </div>
               )}
-              {/* 行4：方向 · 形态 · 突破（紧凑一行） */}
-              {(d.gridSnapshot.direction || d.gridSnapshot.regime || d.gridSnapshot.breakoutLevel) && (
-                <div className="flex items-center gap-2 text-[#606070]">
-                  {d.gridSnapshot.direction && (
-                    <span>
-                      {t('timeline.gridDirection')}
-                      <span className="text-[#9090A0] ml-1">
-                        {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
-                      </span>
+              {/* 杠杆行：右列对齐（挂单层下方） */}
+              {d.gridSnapshot.leverage != null && (
+                <div className="grid grid-cols-2 gap-x-4">
+                  <div />
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">{t('timeline.gridLeverage')}</span>
+                    <span className="font-mono text-[#F8F8FC]">
+                      {d.gridSnapshot.leverage}x
+                      {!d.gridSnapshot.userFixedLeverage && (
+                        <span className="text-[#06B6D4] ml-1 text-[10px]">AI</span>
+                      )}
                     </span>
-                  )}
-                  {d.gridSnapshot.regime && (
-                    <>
-                      <span className="text-[#2A2A3A]">·</span>
+                  </div>
+                </div>
+              )}
+              {/* 行4：方向 · 形态 · 突破 — 右列对齐，与挂单层/杠杆视觉对称 */}
+              {(d.gridSnapshot.direction || d.gridSnapshot.regime || d.gridSnapshot.breakoutLevel) && (
+                <div className="grid grid-cols-2 gap-x-4">
+                  <div />
+                  <div className="flex items-center gap-2 text-[#606070]">
+                    {d.gridSnapshot.direction && (
                       <span>
-                        {t('timeline.gridRegime')}
+                        {t('timeline.gridDirection')}
                         <span className="text-[#9090A0] ml-1">
+                          {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
+                        </span>
+                      </span>
+                    )}
+                    {d.gridSnapshot.regime && (
+                      <>
+                        <span className="text-[#2A2A3A]">·</span>
+                        <span className="text-[#9090A0]">
                           {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
                         </span>
-                      </span>
-                    </>
-                  )}
-                  {d.gridSnapshot.breakoutLevel && d.gridSnapshot.breakoutLevel !== 'none' && (
-                    <>
-                      <span className="text-[#2A2A3A]">·</span>
-                      <span>
-                        {t('timeline.gridBreakoutLevel')}
-                        <span className="text-[#9090A0] ml-1">
+                      </>
+                    )}
+                    {d.gridSnapshot.breakoutLevel && d.gridSnapshot.breakoutLevel !== 'none' && (
+                      <>
+                        <span className="text-[#2A2A3A]">·</span>
+                        <span className="text-[#9090A0]">
                           {GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel] ? t(GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel]) : d.gridSnapshot.breakoutLevel}
                         </span>
-                      </span>
-                    </>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -876,7 +888,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                           style={{ backgroundColor: `${color}12` }}
                         >
                           <span className="font-mono" style={{ color: textColor }}>L{gl.lv}</span>
-                          <span style={{ color: gl.s === 'buy' ? '#10B981' : '#F59E0B', fontSize: '8px' }}>
+                          <span style={{ color: gl.s === 'buy' ? '#10B981' : '#F23645', fontSize: '8px' }}>
                             {gl.s === 'buy' ? '买' : '卖'}
                           </span>
                           <span className="font-mono text-[#9090A0]">${Number(gl.p).toFixed(2)}</span>
@@ -911,8 +923,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {op.quantity && (
                         <span className="font-mono text-[#9090A0]">x{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
-                      {op.level_index != null && (
-                        <span className="text-[#606070]">{t('timeline.gridLayer', { layer: op.level_index })}</span>
+                      {(op.level_index ?? op.level) != null && (
+                        <span className="text-[#606070]">{t('timeline.gridLayer', { layer: op.level_index ?? op.level })}</span>
                       )}
                       {op.reasoning && !gridAnalysisText?.includes(op.reasoning) && (
                         <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
