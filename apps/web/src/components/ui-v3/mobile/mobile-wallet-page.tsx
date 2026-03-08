@@ -555,7 +555,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     return transactionsData.items.map(tx => {
       const numAmount = parseFloat(tx.amount)
       const isPositive = numAmount >= 0
-      const absAmount = Math.abs(numAmount).toFixed(2)
+      const absAmount = Math.abs(numAmount).toFixed(8)
       return {
         id: tx.id,
         type: tx.type as TransactionItem['type'],

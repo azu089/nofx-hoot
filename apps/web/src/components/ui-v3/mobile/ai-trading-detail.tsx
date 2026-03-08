@@ -108,6 +108,8 @@ export function AIStrategyDetailPage() {
   const [editGridInterval, setEditGridInterval] = useState(60);
   const [editGridUpperPct, setEditGridUpperPct] = useState(0);   // 0 = 公式自动计算
   const [editGridLowerPct, setEditGridLowerPct] = useState(0);   // 0 = 公式自动计算
+  const [editGridUpperPctStr, setEditGridUpperPctStr] = useState('');  // 输入中间态字符串
+  const [editGridLowerPctStr, setEditGridLowerPctStr] = useState('');  // 输入中间态字符串
   const [editGridModel, setEditGridModel] = useState('deepseek-chat');
   const [editGridCurrentPrice, setEditGridCurrentPrice] = useState(0);
 
@@ -318,13 +320,19 @@ export function AIStrategyDetailPage() {
       // 避免：用户设 0（公式自动）→ 跑完写入 gridState → 重新打开显示 10%
       if (gc.upperBound && gc.lowerBound) {
         const midPrice = (Number(gc.upperBound) + Number(gc.lowerBound)) / 2;
-        setEditGridUpperPct(Math.round((Number(gc.upperBound) / midPrice - 1) * 100));
-        setEditGridLowerPct(Math.round((1 - Number(gc.lowerBound) / midPrice) * 100));
+        const uPct = Math.round((Number(gc.upperBound) / midPrice - 1) * 100);
+        const lPct = Math.round((1 - Number(gc.lowerBound) / midPrice) * 100);
+        setEditGridUpperPct(uPct);
+        setEditGridLowerPct(lPct);
+        setEditGridUpperPctStr(uPct > 0 ? String(uPct) : '');
+        setEditGridLowerPctStr(lPct > 0 ? String(lPct) : '');
         setEditGridCurrentPrice(midPrice);
       } else {
         // 用户未配置上下界 → 公式自动计算，显示 0
         setEditGridUpperPct(0);
         setEditGridLowerPct(0);
+        setEditGridUpperPctStr('');
+        setEditGridLowerPctStr('');
       }
       // 获取实时价格
       const rawSymbol = gc.symbol?.split('/')[0] || 'BTC';
@@ -406,7 +414,7 @@ export function AIStrategyDetailPage() {
           ...(strategy.gridConfig as GridConfig),
           symbol: editGridSymbol ? `${editGridSymbol}/USDT:USDT` : (strategy.gridConfig as GridConfig)?.symbol,
           totalInvestment: editGridInvestment,
-          leverage: editGridLeverage,
+          leverage: editGridLeverage > 0 ? editGridLeverage : null,
           gridCount: editGridCount,
           direction: editGridDirection,
           distribution: editGridDistribution,
@@ -423,6 +431,8 @@ export function AIStrategyDetailPage() {
             ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : undefined,
           lowerBound: (editGridCurrentPrice > 0 && editGridLowerPct > 0)
             ? +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6) : undefined,
+          // 标记上下界来源于百分比换算，不应视为用户手动锁定（AI 仍可调整）
+          boundsFromPct: (editGridCurrentPrice > 0 && editGridUpperPct > 0 && editGridLowerPct > 0),
         },
         models: [editGridModel],
         intervalMinutes: editGridInterval,
@@ -1305,7 +1315,7 @@ export function AIStrategyDetailPage() {
                         </div>
                       </div>
 
-                      <NumberStepper label={t('detail.editGridInvestment')} value={editGridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setEditGridInvestment} />
+                      <NumberStepper label={t('detail.editGridInvestment')} value={editGridInvestment} min={1} max={50000} step={10} prefix="$" onChange={setEditGridInvestment} />
 
                       {/* 杠杆 + 网格层数 — 两列输入 */}
                       <div className="grid grid-cols-2 gap-2">
@@ -1316,7 +1326,8 @@ export function AIStrategyDetailPage() {
                               type="number" min={1} max={20}
                               value={editGridLeverage || ''}
                               onChange={(e) => setEditGridLeverage(e.target.value === '' ? 0 : parseInt(e.target.value))}
-                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              placeholder="AI决策"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label={t('detail.editGridLeverage')}
                             />
                             <span className="text-[#606070] text-xs shrink-0">x</span>
@@ -1337,84 +1348,6 @@ export function AIStrategyDetailPage() {
                         </div>
                       </div>
 
-                      {/* 配置后果预览：强平距离、每层保证金、风险等级、推荐 */}
-                      {(() => {
-                        const safeCount = Math.max(editGridCount, 1);
-                        const safeLeverage = Math.max(editGridLeverage, 1);
-                        const perLevelMargin = editGridInvestment / safeCount;
-                        const liqDropPct = Math.floor((1 / safeLeverage) * 100);
-
-                        const risk = safeLeverage <= 1 ? { label: '安全',   color: '#10B981', bar: 10 }
-                          : safeLeverage <= 2           ? { label: '低风险', color: '#22C55E', bar: 25 }
-                          : safeLeverage <= 3           ? { label: '中等',   color: '#F59E0B', bar: 50 }
-                          : safeLeverage <= 5           ? { label: '较高',   color: '#EF4444', bar: 72 }
-                          :                               { label: '高风险', color: '#DC2626', bar: 92 };
-
-                        const rec = editGridInvestment < 300  ? { leverage: 1, count: 5  }
-                          : editGridInvestment < 1000         ? { leverage: 2, count: 6  }
-                          : editGridInvestment < 3000         ? { leverage: 2, count: 8  }
-                          :                                     { leverage: 3, count: 10 };
-
-                        const showRec = safeLeverage > rec.leverage;
-
-                        return (
-                          <div className="p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl space-y-2">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-[#9090A0]">
-                                每层保证金{' '}
-                                <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
-                                <span className="text-[#404060] mx-1.5">·</span>
-                                杠杆上限{' '}
-                                <b className="text-[#F8F8FC]">{safeLeverage}x</b>
-                                <span className="text-[#404060] mx-1">（AI 自动决策）</span>
-                              </span>
-                              <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
-                            </div>
-                            <div className="h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
-                              />
-                            </div>
-                            <p className="text-[11px] text-[#606070]">
-                              最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 {safeLeverage}x 时），实际通常更低
-                            </p>
-                            {showRec && (
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span className="text-[#606070]">
-                                  💡 ${editGridInvestment} 建议上限 {rec.leverage}x · {rec.count}格，最差强平 &gt;{Math.floor(100 / rec.leverage)}%
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => { setEditGridLeverage(rec.leverage); setEditGridCount(rec.count); }}
-                                  className="px-2 py-0.5 rounded bg-[#06B6D4]/15 text-[#06B6D4] hover:bg-[#06B6D4]/25 transition-colors"
-                                >
-                                  应用
-                                </button>
-                              </div>
-                            )}
-                            {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
-                            {(() => {
-                              const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
-                              const _base = editGridSymbol.split('/')[0].toUpperCase()
-                              const MIN_NOTIONAL = _base === 'BTC' ? 100 : _base === 'ETH' ? 20 : 5
-                              const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
-                              const maxViable = Math.floor((editGridInvestment * effLev) / MIN_NOTIONAL)
-                              const idleCount = Math.max(0, editGridCount - maxViable)
-                              if (idleCount === 0) return null
-                              const minInv = Math.ceil((editGridCount * MIN_NOTIONAL) / effLev)
-                              return (
-                                <div className="flex items-start gap-1 text-[11px] text-[#F59E0B]">
-                                  <span>⚠</span>
-                                  <span>
-                                    极端市场仅 {maxViable} 格可下单，{idleCount} 格将空转 · 建议资金 ≥ ${minInv}
-                                  </span>
-                                </div>
-                              )
-                            })()}
-                          </div>
-                        );
-                      })()}
 
                       {/* 上偏移 + 下偏移 — 百分比输入 */}
                       <div className="grid grid-cols-2 gap-2">
@@ -1422,9 +1355,15 @@ export function AIStrategyDetailPage() {
                           <p className="text-xs text-[#9090A0]">上偏移</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input
-                              type="number" min={0} max={50}
-                              value={editGridUpperPct || ''}
-                              onChange={(e) => setEditGridUpperPct(parseFloat(e.target.value) || 0)}
+                              type="text"
+                              inputMode="decimal"
+                              value={editGridUpperPctStr}
+                              onChange={(e) => {
+                                setEditGridUpperPctStr(e.target.value)
+                                if (e.target.value === '') { setEditGridUpperPct(0); return }
+                                const val = parseFloat(e.target.value)
+                                if (!isNaN(val) && val >= 0 && val <= 50) setEditGridUpperPct(val)
+                              }}
                               placeholder="公式自动"
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label="上偏移百分比"
@@ -1436,9 +1375,15 @@ export function AIStrategyDetailPage() {
                           <p className="text-xs text-[#9090A0]">下偏移</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input
-                              type="number" min={0} max={50}
-                              value={editGridLowerPct || ''}
-                              onChange={(e) => setEditGridLowerPct(parseFloat(e.target.value) || 0)}
+                              type="text"
+                              inputMode="decimal"
+                              value={editGridLowerPctStr}
+                              onChange={(e) => {
+                                setEditGridLowerPctStr(e.target.value)
+                                if (e.target.value === '') { setEditGridLowerPct(0); return }
+                                const val = parseFloat(e.target.value)
+                                if (!isNaN(val) && val >= 0 && val <= 50) setEditGridLowerPct(val)
+                              }}
                               placeholder="公式自动"
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label="下偏移百分比"
@@ -2095,7 +2040,7 @@ export function AIStrategyDetailPage() {
                     <p className="text-xs text-[#9090A0]">{t('create.allocatedCapital')}</p>
                     <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <span className="text-[#606070] text-xs">$</span>
-                      <input type="number" min={500} max={100000} step="any"
+                      <input type="number" min={1} max={100000} step="any"
                         value={editAllocatedCapital || ''}
                         onChange={(e) => setEditAllocatedCapital(parseFloat(e.target.value) || 0)}
                         className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"

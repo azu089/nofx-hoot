@@ -44,8 +44,8 @@ export function ProfilePageV3({
   // user 未加载时不渲染
   if (!user) return null
 
-  // 显示用户 ID（USR + 数字格式）
-  const displayId = user.uid ? String(100000 + user.uid) : user.id.slice(0, 8)
+  // 显示用户 ID（USR 前缀；无 uid 时用 UUID 前 8 位）
+  const displayId = user.uid ? `USR${user.uid}` : user.id.slice(0, 8)
 
   // 复制 ID 到剪贴板
   const handleCopyId = async () => {

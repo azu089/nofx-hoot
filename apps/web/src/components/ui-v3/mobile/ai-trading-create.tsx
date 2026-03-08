@@ -153,16 +153,25 @@ export function CreateStrategyWizard() {
   // ── Grid params ───────────────────────────────
   const [gridParams, setGridParams] = useState({
     totalInvestment: 1000,  // 资金上限（$），对应后端 gridConfig.totalInvestment
-    leverage: 1,
+    leverage: 0,            // 0 = AI 自动决策杠杆
     upperPct: 0,            // 上偏移百分比，0 = AI 自动计算区间
     lowerPct: 0,            // 下偏移百分比，0 = AI 自动计算区间
     gridCount: 10,
+    direction: 'neutral' as 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias',
+    distribution: 'uniform' as 'uniform' | 'gaussian' | 'pyramid',
     maxDrawdownPct: 15,
+    stopLossPct: 5,
     dailyLossLimitPct: 10,
     autoAdjustThreshold: 20,
+    useMakerOnly: false,
+    autoPauseOnTrend: true,
     enableDirectionAdjust: false,
     directionBiasRatio: 70,
   })
+
+  // ── 上/下偏移输入中间态（允许输入 0.X 小数）──────────
+  const [upperPctStr, setUpperPctStr] = useState('')
+  const [lowerPctStr, setLowerPctStr] = useState('')
 
   // ── 网格交易对实时价格 ─────────────────────────────
   const [gridCurrentPrice, setGridCurrentPrice] = useState(0)
@@ -193,7 +202,7 @@ export function CreateStrategyWizard() {
     const base = selectedSymbol.split('/')[0].toUpperCase()
     const MIN_NOTIONAL = base === 'BTC' ? 100 : base === 'ETH' ? 20 : 5
     const WORST_LEV_CAP = 2           // narrow=2x, volatile=2x（最严格 regime）
-    const effLev = Math.min(leverage, WORST_LEV_CAP)
+    const effLev = Math.min(leverage || 5, WORST_LEV_CAP) // leverage=0 = AI决策，预览按5x估算
     // 每层名义值 = 每层保证金 × 有效杠杆
     const perLayerNotional = (totalInvestment / gridCount) * effLev
     // 最多可运行层数
@@ -346,16 +355,21 @@ export function CreateStrategyWizard() {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
           gridCount: gridParams.gridCount || 10,
-          totalInvestment: gridParams.totalInvestment || 100,
-          leverage: gridParams.leverage || 1,
+          totalInvestment: gridParams.totalInvestment || 1,
+          leverage: gridParams.leverage > 0 ? gridParams.leverage : null,
           // 百分比 → 绝对价格换算；留空(0) → 发送 0 → 后端 AI 决策
           upperBound: (gridCurrentPrice > 0 && gridParams.upperPct > 0)
             ? +(gridCurrentPrice * (1 + gridParams.upperPct / 100)).toFixed(6) : 0,
           lowerBound: (gridCurrentPrice > 0 && gridParams.lowerPct > 0)
             ? +(gridCurrentPrice * (1 - gridParams.lowerPct / 100)).toFixed(6) : 0,
+          direction: gridParams.direction,
+          distribution: gridParams.distribution,
           maxDrawdownPct: gridParams.maxDrawdownPct || 5,
+          stopLossPct: gridParams.stopLossPct || 5,
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
+          useMakerOnly: gridParams.useMakerOnly,
+          autoPauseOnTrend: gridParams.autoPauseOnTrend,
           enableDirectionAdjust: gridParams.enableDirectionAdjust,
           directionBiasRatio: (gridParams.directionBiasRatio || 70) / 100,
         }
@@ -775,7 +789,7 @@ export function CreateStrategyWizard() {
                     title="资金上限"
                     value={gridParams.totalInvestment}
                     onChange={(e) => updateGrid('totalInvestment', Number(e.target.value) || 0)}
-                    min={100}
+                    min={1}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
@@ -783,32 +797,43 @@ export function CreateStrategyWizard() {
                   <input
                     type="number"
                     title="杠杆"
-                    value={gridParams.leverage}
-                    onChange={(e) => updateGrid('leverage', Number(e.target.value) || 0)}
+                    value={gridParams.leverage || ''}
+                    onChange={(e) => updateGrid('leverage', e.target.value === '' ? 0 : Number(e.target.value))}
                     min={1} max={20}
-                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    placeholder="AI决策"
+                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="上偏移" suffix="%">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     title="上偏移百分比"
-                    value={gridParams.upperPct || ''}
-                    onChange={(e) => updateGrid('upperPct', Number(e.target.value) || 0)}
-                    min={0} max={50}
+                    value={upperPctStr}
+                    onChange={(e) => {
+                      setUpperPctStr(e.target.value)
+                      if (e.target.value === '') { updateGrid('upperPct', 0); return }
+                      const val = parseFloat(e.target.value)
+                      if (!isNaN(val) && val >= 0 && val <= 50) updateGrid('upperPct', val)
+                    }}
                     placeholder="公式自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
                 </RiskField>
                 <RiskField label="下偏移" suffix="%">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     title="下偏移百分比"
-                    value={gridParams.lowerPct || ''}
-                    onChange={(e) => updateGrid('lowerPct', Number(e.target.value) || 0)}
-                    min={0} max={50}
+                    value={lowerPctStr}
+                    onChange={(e) => {
+                      setLowerPctStr(e.target.value)
+                      if (e.target.value === '') { updateGrid('lowerPct', 0); return }
+                      const val = parseFloat(e.target.value)
+                      if (!isNaN(val) && val >= 0 && val <= 50) updateGrid('lowerPct', val)
+                    }}
                     placeholder="公式自动"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                   />
@@ -849,6 +874,76 @@ export function CreateStrategyWizard() {
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
+              </div>
+              {/* 网格初始方向 + 分布方式 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">初始方向</p>
+                  <select
+                    value={gridParams.direction}
+                    onChange={(e) => updateGrid('direction', e.target.value as typeof gridParams.direction)}
+                    className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-[#F8F8FC] outline-none"
+                    aria-label="网格初始方向"
+                  >
+                    <option value="neutral">中性</option>
+                    <option value="long_bias">偏多</option>
+                    <option value="short_bias">偏空</option>
+                    <option value="long">纯多</option>
+                    <option value="short">纯空</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-[#9090A0]">格线分布</p>
+                  <select
+                    value={gridParams.distribution}
+                    onChange={(e) => updateGrid('distribution', e.target.value as typeof gridParams.distribution)}
+                    className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-[#F8F8FC] outline-none"
+                    aria-label="格线分布"
+                  >
+                    <option value="uniform">均匀</option>
+                    <option value="gaussian">正态</option>
+                    <option value="pyramid">金字塔</option>
+                  </select>
+                </div>
+              </div>
+              {/* 单格止损 + Maker-only */}
+              <div className="grid grid-cols-2 gap-2">
+                <RiskField label="单格止损" suffix="%">
+                  <input
+                    type="number"
+                    title="单格止损阈值"
+                    value={gridParams.stopLossPct}
+                    onChange={(e) => updateGrid('stopLossPct', Number(e.target.value) || 5)}
+                    min={1} max={20}
+                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                  />
+                </RiskField>
+                <div className="flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <span className="text-xs text-[#9090A0]">Maker 单</span>
+                  <button
+                    type="button"
+                    onClick={() => updateGrid('useMakerOnly', !gridParams.useMakerOnly)}
+                    className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${gridParams.useMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                    aria-label="PostOnly限价单"
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.useMakerOnly ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              </div>
+              {/* 趋势自动暂停 */}
+              <div className="flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                <div>
+                  <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
+                  <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateGrid('autoPauseOnTrend', !gridParams.autoPauseOnTrend)}
+                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridParams.autoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                  aria-label="趋势市场自动暂停"
+                >
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.autoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="冷却时间" suffix="min">
@@ -897,7 +992,7 @@ export function CreateStrategyWizard() {
                     title="资金上限"
                     value={riskParams.allocatedCapital}
                     onChange={(e) => updateRisk('allocatedCapital', Number(e.target.value) || 0)}
-                    min={100}
+                    min={1}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>

@@ -910,7 +910,7 @@ export function UnifiedAiCreate() {
               </div>
             </div>
 
-            <NumberStepper label="资金上限" value={gridInvestment} min={100} max={50000} step={100} prefix="$" onChange={setGridInvestment} />
+            <NumberStepper label="资金上限" value={gridInvestment} min={1} max={50000} step={10} prefix="$" onChange={setGridInvestment} />
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">{t('create.gridLeverage')}</p>
@@ -936,90 +936,6 @@ export function UnifiedAiCreate() {
               </div>
             </div>
 
-            {/* 配置后果预览：实时展示每层保证金耗尽距离、风险等级 */}
-            {(() => {
-              const safeCount = Math.max(gridCount, 1);
-              const isAIMode = gridLeverage === '';
-              const safeLeverage = isAIMode ? 5 : Math.max(Number(gridLeverage), 1);
-              const perLevelMargin = gridInvestment / safeCount;
-              const liqDropPct = Math.floor((1 / safeLeverage) * 100);
-
-              const risk = safeLeverage <= 1 ? { label: '安全',   color: '#10B981', bar: 10 }
-                : safeLeverage <= 2           ? { label: '低风险', color: '#22C55E', bar: 25 }
-                : safeLeverage <= 3           ? { label: '中等',   color: '#F59E0B', bar: 50 }
-                : safeLeverage <= 5           ? { label: '较高',   color: '#EF4444', bar: 72 }
-                :                               { label: '高风险', color: '#DC2626', bar: 92 };
-
-              const rec = gridInvestment < 300  ? { leverage: 1, count: 5  }
-                : gridInvestment < 1000         ? { leverage: 2, count: 6  }
-                : gridInvestment < 3000         ? { leverage: 2, count: 8  }
-                :                                 { leverage: 3, count: 10 };
-
-              const showRec = !isAIMode && safeLeverage > rec.leverage;
-
-              return (
-                <div className="p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#9090A0]">
-                      每层保证金{' '}
-                      <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
-                      <span className="text-[#404060] mx-1.5">·</span>
-                      {isAIMode ? (
-                        <>杠杆 <b className="text-[#06B6D4]">AI自动(≤5x)</b></>
-                      ) : (
-                        <>杠杆 <b className="text-[#F8F8FC]">{safeLeverage}x</b> <span className="text-[#404060]">（固定）</span></>
-                      )}
-                    </span>
-                    <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
-                  </div>
-                  <div className="h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{ width: `${risk.bar}%`, backgroundColor: risk.color }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-[#606070]">
-                    {isAIMode
-                      ? <>最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 5x 时），实际通常更低</>
-                      : <>最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b></>
-                    }
-                  </p>
-                  {showRec && (
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#606070]">
-                        💡 ${gridInvestment} 建议上限 {rec.leverage}x · {rec.count}格，最差强平 &gt;{Math.floor(100 / rec.leverage)}%
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setGridLeverage(rec.leverage); setGridCount(rec.count); }}
-                        className="px-2 py-0.5 rounded bg-[#06B6D4]/15 text-[#06B6D4] hover:bg-[#06B6D4]/25 transition-colors"
-                      >
-                        应用
-                      </button>
-                    </div>
-                  )}
-                  {/* 可行性检查：极端市场（杠杆被压到 2x）下能运行几格 */}
-                  {(() => {
-                    const WORST_LEV_CAP = 2   // narrow/volatile regime 杠杆上限
-                    const _base = gridSymbol.split('/')[0].toUpperCase()
-                    const MIN_NOTIONAL = _base === 'BTC' ? 100 : _base === 'ETH' ? 20 : 5
-                    const effLev = Math.min(safeLeverage, WORST_LEV_CAP)
-                    const maxViable = Math.floor((gridInvestment * effLev) / MIN_NOTIONAL)
-                    const idleCount = Math.max(0, gridCount - maxViable)
-                    if (idleCount === 0) return null
-                    const minInv = Math.ceil((gridCount * MIN_NOTIONAL) / effLev)
-                    return (
-                      <div className="flex items-start gap-1 text-[11px] text-[#F59E0B]">
-                        <span>⚠</span>
-                        <span>
-                          极端市场仅 {maxViable} 格可下单，{idleCount} 格将空转 · 建议资金 ≥ ${minInv}
-                        </span>
-                      </div>
-                    )
-                  })()}
-                </div>
-              );
-            })()}
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -1240,7 +1156,7 @@ export function UnifiedAiCreate() {
                   <p className="text-xs text-[#9090A0]">{t('create.allocatedCapital')}</p>
                   <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                     <span className="text-[#606070] text-xs">$</span>
-                    <input type="number" min={500} max={100000}
+                    <input type="number" min={1} max={100000}
                       value={customParams.allocatedCapital || ''}
                       onChange={(e) => setCustomParams((p) => ({ ...p, allocatedCapital: parseFloat(e.target.value) || 0 }))}
                       className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
