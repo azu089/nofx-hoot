@@ -2095,7 +2095,7 @@ export class GridTradingService {
           if (arrStart !== -1 && arrEnd > arrStart) jsonStr = content.slice(arrStart, arrEnd + 1);
         }
       }
-      if (!jsonStr) return { decisions: [] };
+      if (!jsonStr) return { decisions: [{ action: 'hold', reasoning: 'AI 未返回有效 JSON' } as GridDecision] };
 
       const parsed = JSON.parse(jsonStr);
 
@@ -2109,6 +2109,7 @@ export class GridTradingService {
             if (d.orderId && !d.order_id) d.order_id = d.orderId;
             return d as GridDecision;
           });
+        if (decisions.length === 0) return { decisions: [{ action: 'hold', reasoning: 'AI 返回空操作列表' } as GridDecision], analysis };
         return { decisions, analysis };
       }
 
@@ -2120,13 +2121,14 @@ export class GridTradingService {
             if (d.orderId && !d.order_id) d.order_id = d.orderId;
             return d as GridDecision;
           });
+        if (decisions.length === 0) return { decisions: [{ action: 'hold', reasoning: 'AI 返回空操作列表' } as GridDecision] };
         return { decisions };
       }
 
-      return { decisions: [] };
+      return { decisions: [{ action: 'hold', reasoning: 'AI 响应格式无法识别' } as GridDecision] };
     } catch (e: any) {
       this.logger.warn(`[网格] AI 决策解析失败: ${e.message}`);
-      return { decisions: [] };
+      return { decisions: [{ action: 'hold', reasoning: `AI 响应解析失败: ${e.message}` } as GridDecision] };
     }
   }
 
