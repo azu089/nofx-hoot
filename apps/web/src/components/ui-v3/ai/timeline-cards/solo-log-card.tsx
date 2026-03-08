@@ -212,11 +212,6 @@ const GRID_REGIME_I18N: Record<string, string> = {
   narrow: 'timeline.regimeNarrow', standard: 'timeline.regimeStandard',
   wide: 'timeline.regimeWide', volatile: 'timeline.regimeVolatile',
 };
-/** Grid 突破级别 — i18n key 映射 */
-const GRID_BREAKOUT_I18N: Record<string, string> = {
-  none: 'timeline.breakoutNone', short: 'timeline.breakoutShort',
-  mid: 'timeline.breakoutMid', long: 'timeline.breakoutLong',
-};
 
 function formatTimeAgo(dateStr: string, t: TFunc): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -772,70 +767,49 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </div>
                 )}
               </div>
-              {/* 行3：持仓浮盈（未实现，卡片只显示已实现）+ 最大回撤 */}
-              {(d.gridSnapshot.unrealizedPnl != null || (d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0)) && (
+              {/* 行3：持仓浮盈（左）+ 杠杆（右） */}
+              {(d.gridSnapshot.unrealizedPnl != null || d.gridSnapshot.leverage != null) && (
                 <div className="grid grid-cols-2 gap-x-4">
-                  {d.gridSnapshot.unrealizedPnl != null && (
+                  {d.gridSnapshot.unrealizedPnl != null ? (
                     <div className="flex justify-between">
                       <span className="text-[#606070]">{t('timeline.gridPositionPnl')}</span>
                       <span className={`font-mono ${d.gridSnapshot.unrealizedPnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                         {d.gridSnapshot.unrealizedPnl >= 0 ? '+' : ''}{d.gridSnapshot.unrealizedPnl.toFixed(2)}
                       </span>
                     </div>
-                  )}
-                  {d.gridSnapshot.maxDrawdown != null && d.gridSnapshot.maxDrawdown > 0 && (
+                  ) : <div />}
+                  {d.gridSnapshot.leverage != null && (
                     <div className="flex justify-between">
-                      <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
-                      <span className="font-mono text-[#EF4444]">{d.gridSnapshot.maxDrawdown.toFixed(1)}%</span>
+                      <span className="text-[#606070]">{t('timeline.gridLeverage')}</span>
+                      <span className="font-mono text-[#F8F8FC]">
+                        {d.gridSnapshot.leverage}x
+                        {!d.gridSnapshot.userFixedLeverage && (
+                          <span className="text-[#06B6D4] ml-1 text-[10px]">AI</span>
+                        )}
+                      </span>
                     </div>
                   )}
                 </div>
               )}
-              {/* 杠杆行：右列对齐（挂单层下方） */}
-              {d.gridSnapshot.leverage != null && (
+              {/* 行4：方向（左）· 市场形态（右） */}
+              {(d.gridSnapshot.direction || d.gridSnapshot.regime) && (
                 <div className="grid grid-cols-2 gap-x-4">
-                  <div />
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">{t('timeline.gridLeverage')}</span>
-                    <span className="font-mono text-[#F8F8FC]">
-                      {d.gridSnapshot.leverage}x
-                      {!d.gridSnapshot.userFixedLeverage && (
-                        <span className="text-[#06B6D4] ml-1 text-[10px]">AI</span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {/* 行4：方向 · 形态 · 突破 — 右列对齐，与挂单层/杠杆视觉对称 */}
-              {(d.gridSnapshot.direction || d.gridSnapshot.regime || d.gridSnapshot.breakoutLevel) && (
-                <div className="grid grid-cols-2 gap-x-4">
-                  <div />
-                  <div className="flex items-center gap-2 text-[#606070]">
-                    {d.gridSnapshot.direction && (
-                      <span>
-                        {t('timeline.gridDirection')}
-                        <span className="text-[#9090A0] ml-1">
-                          {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
-                        </span>
+                  {d.gridSnapshot.direction ? (
+                    <div className="flex justify-between">
+                      <span className="text-[#606070]">{t('timeline.gridDirection')}</span>
+                      <span className="text-[#9090A0]">
+                        {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
                       </span>
-                    )}
-                    {d.gridSnapshot.regime && (
-                      <>
-                        <span className="text-[#2A2A3A]">·</span>
-                        <span className="text-[#9090A0]">
-                          {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
-                        </span>
-                      </>
-                    )}
-                    {d.gridSnapshot.breakoutLevel && d.gridSnapshot.breakoutLevel !== 'none' && (
-                      <>
-                        <span className="text-[#2A2A3A]">·</span>
-                        <span className="text-[#9090A0]">
-                          {GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel] ? t(GRID_BREAKOUT_I18N[d.gridSnapshot.breakoutLevel]) : d.gridSnapshot.breakoutLevel}
-                        </span>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  ) : <div />}
+                  {d.gridSnapshot.regime && (
+                    <div className="flex justify-between">
+                      <span className="text-[#606070]">{t('timeline.gridRegime')}</span>
+                      <span className="text-[#9090A0]">
+                        {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

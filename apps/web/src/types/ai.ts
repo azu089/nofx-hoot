@@ -622,6 +622,8 @@ export interface StrategyLog {
       winRate: number;
       maxDrawdown: number;
       dailyPnl: number;
+      leverage?: number;
+      userFixedLeverage?: boolean;
       breakoutLevel: string;
       lastPrice: number;
       rangeSource?: string;  // 网格范围来源: 'AI决策' | 'ATR×5' | '用户指定' | '±8%兜底' 等

@@ -203,7 +203,7 @@ export function UnifiedAiCreate() {
   const [gridCoinSearch, setGridCoinSearch] = useState('');
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
-  const [gridLeverage, setGridLeverage] = useState(1);
+  const [gridLeverage, setGridLeverage] = useState<number | ''>(''); // '' = AI 决策(≤5x)
   const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = AI 自动计算区间
   const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = AI 自动计算区间
 
@@ -453,7 +453,8 @@ export function UnifiedAiCreate() {
       if (isGrid) {
         body.gridConfig = {
           symbol: `${gridSymbol}/USDT:USDT`,
-          gridCount: gridCount || 10, totalInvestment: gridInvestment || 1000, leverage: gridLeverage || 1,
+          gridCount: gridCount || 10, totalInvestment: gridInvestment || 1000,
+          leverage: gridLeverage !== '' && Number(gridLeverage) > 0 ? Number(gridLeverage) : null,
           // 百分比 → 绝对价格；留空(0) → 发送 0 → 后端 AI 决策
           upperBound: (gridCurrentPrice > 0 && gridUpperPct > 0)
             ? +(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(6) : 0,
@@ -904,7 +905,9 @@ export function UnifiedAiCreate() {
                 <p className="text-xs text-[#9090A0]">{t('create.gridLeverage')}</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                   <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={1} max={20}
-                    value={gridLeverage || ''} onChange={(e) => setGridLeverage(parseInt(e.target.value) || 0)}
+                    placeholder="AI决策"
+                    value={gridLeverage}
+                    onChange={(e) => setGridLeverage(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
                     aria-label={t('create.gridLeverage')}
                   />
                   <span className="text-[#606070] text-xs shrink-0">x</span>
@@ -925,7 +928,8 @@ export function UnifiedAiCreate() {
             {/* 配置后果预览：实时展示每层保证金耗尽距离、风险等级 */}
             {(() => {
               const safeCount = Math.max(gridCount, 1);
-              const safeLeverage = Math.max(gridLeverage, 1);
+              const isAIMode = gridLeverage === '';
+              const safeLeverage = isAIMode ? 5 : Math.max(Number(gridLeverage), 1);
               const perLevelMargin = gridInvestment / safeCount;
               const liqDropPct = Math.floor((1 / safeLeverage) * 100);
 
@@ -940,7 +944,7 @@ export function UnifiedAiCreate() {
                 : gridInvestment < 3000         ? { leverage: 2, count: 8  }
                 :                                 { leverage: 3, count: 10 };
 
-              const showRec = safeLeverage > rec.leverage;
+              const showRec = !isAIMode && safeLeverage > rec.leverage;
 
               return (
                 <div className="p-3 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl space-y-2">
@@ -949,9 +953,11 @@ export function UnifiedAiCreate() {
                       每层保证金{' '}
                       <b className="text-[#F8F8FC]">${perLevelMargin.toFixed(0)}</b>
                       <span className="text-[#404060] mx-1.5">·</span>
-                      杠杆上限{' '}
-                      <b className="text-[#F8F8FC]">{safeLeverage}x</b>
-                      <span className="text-[#404060] mx-1">（AI 自动决策）</span>
+                      {isAIMode ? (
+                        <>杠杆 <b className="text-[#06B6D4]">AI自动(≤5x)</b></>
+                      ) : (
+                        <>杠杆 <b className="text-[#F8F8FC]">{safeLeverage}x</b> <span className="text-[#404060]">（固定）</span></>
+                      )}
                     </span>
                     <span className="font-medium" style={{ color: risk.color }}>{risk.label}</span>
                   </div>
@@ -962,7 +968,10 @@ export function UnifiedAiCreate() {
                     />
                   </div>
                   <p className="text-[11px] text-[#606070]">
-                    最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 {safeLeverage}x 时），实际通常更低
+                    {isAIMode
+                      ? <>最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b>（AI 用满 5x 时），实际通常更低</>
+                      : <>最差强平距离：跌 <b className="text-[#9090A0]">{liqDropPct}%</b></>
+                    }
                   </p>
                   {showRec && (
                     <div className="flex items-center justify-between text-[11px]">
