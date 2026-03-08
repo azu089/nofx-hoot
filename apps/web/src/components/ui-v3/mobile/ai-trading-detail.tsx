@@ -320,8 +320,13 @@ export function AIStrategyDetailPage() {
       // 避免：用户设 0（公式自动）→ 跑完写入 gridState → 重新打开显示 10%
       if (gc.upperBound && gc.lowerBound) {
         const midPrice = (Number(gc.upperBound) + Number(gc.lowerBound)) / 2;
-        const uPct = Math.round((Number(gc.upperBound) / midPrice - 1) * 100);
-        const lPct = Math.round((1 - Number(gc.lowerBound) / midPrice) * 100);
+        // 优先用原始百分比（保留小数，如 0.5），没有时从绝对价格反算（保留 2 位小数，不 round）
+        const uPct = (gc.upperBoundPct != null && gc.upperBoundPct > 0)
+          ? gc.upperBoundPct
+          : parseFloat(((Number(gc.upperBound) / midPrice - 1) * 100).toFixed(2));
+        const lPct = (gc.lowerBoundPct != null && gc.lowerBoundPct > 0)
+          ? gc.lowerBoundPct
+          : parseFloat(((1 - Number(gc.lowerBound) / midPrice) * 100).toFixed(2));
         setEditGridUpperPct(uPct);
         setEditGridLowerPct(lPct);
         setEditGridUpperPctStr(uPct > 0 ? String(uPct) : '');
@@ -1037,9 +1042,6 @@ export function AIStrategyDetailPage() {
                             <ConfigRow label={t('detail.activeOrders')} value={detail.gridState.activeOrders} />
                             <ConfigRow label={t('detail.filledOrders')} value={detail.gridState.filledOrders} />
                             <ConfigRow label={t('detail.gridLevels')} value={detail.gridState.gridLevels} />
-                            {detail.gridState.upperPrice && detail.gridState.lowerPrice && (
-                              <ConfigRow label={t('detail.configActualRange')} value={`${Number(detail.gridState.lowerPrice).toFixed(2)} - ${Number(detail.gridState.upperPrice).toFixed(2)}`} />
-                            )}
                             {detail.gridState.gridSpacing && (
                               <ConfigRow label={t('detail.gridSpacing')} value={`$${detail.gridState.gridSpacing.toFixed(2)}`} />
                             )}

@@ -387,6 +387,8 @@ export interface GridConfig {
   totalInvestment: number;
   upperBound: number;
   lowerBound: number;
+  upperBoundPct?: number;  // 上界原始百分比（如 0.5 表示 +0.5%），避免 Math.round 损精度
+  lowerBoundPct?: number;  // 下界原始百分比
   leverage: number;
   direction?: 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'; // 网格初始方向
   distribution?: 'uniform' | 'gaussian' | 'pyramid';  // 格线分布
