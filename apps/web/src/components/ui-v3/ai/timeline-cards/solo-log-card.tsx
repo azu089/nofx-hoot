@@ -897,9 +897,23 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {op.quantity && (
                         <span className="font-mono text-[#9090A0]">x{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
-                      {(op.level_index ?? op.level) != null && (
-                        <span className="text-[#606070]">{t('timeline.gridLayer', { layer: op.level_index ?? op.level })}</span>
-                      )}
+                      {(() => {
+                        // 优先用 AI 决策中的 level 字段，兜底通过价格从快照反查层号
+                        const directLevel = op.level_index ?? op.level;
+                        const inferredLevel = directLevel == null && op.price && d.gridSnapshot?.gridLines
+                          ? (() => {
+                              const price = Number(op.price);
+                              const match = (d.gridSnapshot.gridLines as any[]).find(
+                                (gl: any) => Math.abs(Number(gl.p) - price) < 0.001
+                              );
+                              return match ? match.lv : null;
+                            })()
+                          : null;
+                        const displayLevel = directLevel ?? inferredLevel;
+                        return displayLevel != null ? (
+                          <span className="text-[#606070]">{t('timeline.gridLayer', { layer: displayLevel })}</span>
+                        ) : null;
+                      })()}
                       {op.reasoning && !gridAnalysisText?.includes(op.reasoning) && (
                         <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
                           {String(op.reasoning).slice(0, 30)}

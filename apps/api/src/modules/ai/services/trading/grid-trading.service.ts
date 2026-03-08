@@ -3282,14 +3282,16 @@ export class GridTradingService {
       }
 
       // Step 6: 幽灵持仓检测
-      const updatedExpected = state.gridLines
-        .filter(l => l.state === 'filled')
+      // 只统计 buy-side filled 层（多头仓位），sell-side filled 层代表合法空头，由 Step 6d 处理
+      const updatedExpectedLong = state.gridLines
+        .filter(l => l.state === 'filled' && l.side === 'buy')
         .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
 
-      // 6a: 交易所仓位≈0但内存有filled层（外部平仓或之前误判）
-      const posApproxZero = Math.abs(currentPositionSize) < 0.0001 && updatedExpected > 0.0001;
-      // 6b: 方向相反 — 内存以为持多头但交易所实际是空头（卖单在空仓上执行开了空）
-      const signMismatch = currentPositionSize < -0.0001 && updatedExpected > 0.0001;
+      // 6a: 交易所仓位≈0但内存有filled buy层（外部平仓或之前误判）
+      const posApproxZero = Math.abs(currentPositionSize) < 0.0001 && updatedExpectedLong > 0.0001;
+      // 6b: 方向相反 — 内存以为持多头（有 buy filled 层）但交易所实际是空头
+      // 注意：不含 sell-side filled 层，避免卖单成交开空时误触此检测
+      const signMismatch = currentPositionSize < -0.0001 && updatedExpectedLong > 0.0001;
 
       if (posApproxZero || signMismatch) {
         const ghosts = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0);
@@ -3320,7 +3322,7 @@ export class GridTradingService {
       // 场景：exchange 有多头持仓，但内存无 filled 层（通常发生在 adjust_grid 重建后，内存全部重置为 empty）
       // 对齐 nofx 根源设计：不自动平仓，而是将孤儿持仓关联到价格最近的 empty buy 层，
       // 让 AI 下一轮能正确看到持仓并自主决定是否平仓
-      const orphanLong = currentPositionSize > 0.0001 && updatedExpected < 0.0001 && disappearedLines.length === 0;
+      const orphanLong = currentPositionSize > 0.0001 && updatedExpectedLong < 0.0001 && disappearedLines.length === 0;
       if (orphanLong) {
         const entryPrice = currentPositionEntryPrice > 0 ? currentPositionEntryPrice : (state.lastPrice ?? 0);
         const nearestBuy = state.gridLines
