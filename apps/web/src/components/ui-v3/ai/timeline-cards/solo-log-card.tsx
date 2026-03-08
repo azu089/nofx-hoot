@@ -934,6 +934,29 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               {er.reason && <span className="text-[#606070]"> · {er.reason}</span>}
             </div>
           </div>
+        ) : isGridLog && log.executed && (er as any)?.skipped?.some((s: any) => s.action?.startsWith('place_')) ? (
+          // 网格挂单被跳过（仓位超限 / 数量不足 等），displayed as amber warning
+          (() => {
+            const skippedOps: Array<{ action: string; reason?: string }> = (er as any)?.skipped || [];
+            const skippedPlaces = skippedOps.filter(s => s.action?.startsWith('place_'));
+            const firstReason = skippedPlaces[0]?.reason ?? '';
+            // 截取核心原因（去掉详细数字，避免太长）
+            const reasonShort = firstReason.includes('总仓位已满') ? t('timeline.gridSkipCapFull')
+              : firstReason.includes('数量不足') ? t('timeline.gridSkipMinQty')
+              : firstReason.includes('spread') ? t('timeline.gridSkipSpread')
+              : firstReason ? firstReason.slice(0, 30) : t('timeline.gridSkipped');
+            return (
+              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-[#F59E0B]/5 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="text-[#F59E0B] font-medium">{t('timeline.gridSkipped')}</span>
+                  {skippedPlaces.length > 0 && (
+                    <span className="text-[#606070]"> · {reasonShort}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()
         ) : log.executed && isCloseAction ? (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#06B6D4]/5 text-xs">
             <Check className="w-3.5 h-3.5 text-[#06B6D4]" />
