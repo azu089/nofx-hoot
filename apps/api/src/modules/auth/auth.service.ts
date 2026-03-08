@@ -301,6 +301,13 @@ export class AuthService implements OnModuleDestroy {
       },
     });
 
+    // 生成并写入 userCode（格式 USR10007，uid < 10001 则加 10000 保证 5 位）
+    const userCode = `USR${user.uid < 10001 ? user.uid + 10000 : user.uid}`;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { userCode },
+    });
+
     // 绑定邀请码（仅在用户填写了邀请码时处理）
     if (dto.inviteCode) {
       try {
@@ -501,6 +508,7 @@ export class AuthService implements OnModuleDestroy {
       user: {
         id: user.id,
         uid: user.uid,
+        userCode: (user as any).userCode ?? null,
         email: user.email,
         nickname: user.nickname,
       },
@@ -514,6 +522,7 @@ export class AuthService implements OnModuleDestroy {
       select: {
         id: true,
         uid: true,
+        userCode: true,
         email: true,
         nickname: true,
         createdAt: true,
@@ -742,6 +751,13 @@ export class AuthService implements OnModuleDestroy {
       });
       isNewUser = true;
 
+      // 生成并写入 userCode
+      const tgUserCode = `USR${user.uid < 10001 ? user.uid + 10000 : user.uid}`;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { userCode: tgUserCode },
+      });
+
       // 审计日志
       await this.logAudit(user.id, 'user', 'register', 'user', user.id, `TG 注册: ${dto.telegramId}`);
 
@@ -784,6 +800,7 @@ export class AuthService implements OnModuleDestroy {
       select: {
         id: true,
         uid: true,
+        userCode: true,
         email: true,
         nickname: true,
         usdtBalance: true,
@@ -803,6 +820,7 @@ export class AuthService implements OnModuleDestroy {
       user: {
         id: u.id,
         uid: freshUser?.uid ?? user.uid,
+        userCode: freshUser?.userCode ?? null,
         email: u.email,
         nickname: u.nickname,
         usdtBalance: freshUser?.usdtBalance?.toString() || '0',

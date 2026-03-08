@@ -2489,15 +2489,10 @@ export class GridTradingService {
     const finalLevelIndex = levelIndex;
     const finalLevel = level;
 
-    // Fix-3: 价格选取规则：
-    // - 买单(buy)：优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
-    //   防止 adjust_grid 与 place 同批次时 AI 旧价格覆盖刚重算的正确价格
-    // - 卖单(sell)在已成交(filled)层上：使用 AI 建议价格（即止盈目标价），不用格线买入价
-    //   否则格线买入价 < 市价 → 立即成交开空，而非止盈平多
-    const isSellOnFilledLevel = side === 'sell' && finalLevel && finalLevel.state === 'filled';
-    const price = isSellOnFilledLevel
-      ? (decision.price ?? finalLevel!.price)
-      : ((finalLevel && finalLevel.price > 0) ? finalLevel.price : (decision.price ?? 0));
+    // nofx 对齐：始终优先使用 AI 建议价格，格线预设价作为 fallback
+    const price = (decision.price && decision.price > 0)
+      ? decision.price
+      : (finalLevel?.price ?? 0);
 
     if (price <= 0 || quantity <= 0) {
       const skipReason = `无效参数: price=${price}, quantity=${quantity}`;

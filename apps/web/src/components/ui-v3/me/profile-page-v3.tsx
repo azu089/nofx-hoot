@@ -20,6 +20,7 @@ interface ProfilePageV3Props {
   user?: {
     id: string
     uid?: number
+    userCode?: string | null
     username: string
     email: string
     memberSince: string
@@ -44,8 +45,8 @@ export function ProfilePageV3({
   // user 未加载时不渲染
   if (!user) return null
 
-  // 显示用户 ID（USR 前缀；无 uid 时用 UUID 前 8 位）
-  const displayId = user.uid ? `USR${user.uid}` : user.id.slice(0, 8)
+  // 显示用户 ID（优先用 userCode；无时用 UUID 前 8 位）
+  const displayId = user.userCode ?? user.id.slice(0, 8)
 
   // 复制 ID 到剪贴板
   const handleCopyId = async () => {

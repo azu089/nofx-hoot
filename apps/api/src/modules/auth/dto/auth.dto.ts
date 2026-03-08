@@ -45,6 +45,7 @@ export class LoginResponse {
   user: {
     id: string;
     uid?: number;
+    userCode?: string | null;
     email?: string | null;
     nickname?: string | null;
     walletAddress?: string | null;
@@ -70,6 +71,7 @@ export class TokenPairResponse {
   user?: {
     id: string;
     uid?: number;
+    userCode?: string | null;
     email?: string | null;
     nickname?: string | null;
     walletAddress?: string | null;
@@ -94,6 +96,7 @@ export class UpdateProfileDto {
 export class UserResponse {
   id: string;
   uid?: number;
+  userCode?: string | null;
   email?: string | null;
   nickname?: string | null;
   createdAt?: Date;

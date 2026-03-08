@@ -37,6 +37,7 @@ export default function ProfilePage() {
       const response = await api.get<{
         id: string;
         uid?: number;
+        userCode?: string | null;
         email: string;
         nickname: string;
         vipLevel: number;
@@ -59,6 +60,7 @@ export default function ProfilePage() {
     return {
       id: profile.id,
       uid: profile.uid,
+      userCode: profile.userCode,
       username: profile.nickname || profile.email.split('@')[0],
       email: profile.email,
       memberSince: new Date(profile.createdAt).toLocaleDateString('zh-CN'),

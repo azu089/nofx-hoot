@@ -17,6 +17,7 @@ datasource db {
 model User {
   id        String   @id @default(uuid())
   uid       Int      @unique @default(autoincrement())
+  userCode  String?  @unique @map("user_code") // 对外展示 ID，格式 USR10007，直接可查
   email     String?  @unique  // 可选：邮箱登录用户必填，钱包/TG登录用户可选
   password  String?           // 可选：邮箱登录用户必填，钱包/TG登录用户无需密码
   nickname  String?
