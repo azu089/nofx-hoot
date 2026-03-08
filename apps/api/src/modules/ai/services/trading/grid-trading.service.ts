@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { MarketDataService } from '../market-data.service';
 import { IndicatorsService, OHLCV } from '../indicators.service';
@@ -837,7 +838,13 @@ export class GridTradingService {
         await this.cleanupExistingOrders(state, userId, apiKeyId);
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
-        if (gridConfig.leverage) state.leverage = gridConfig.leverage;
+        if (gridConfig.leverage !== undefined) {
+          // null/0 = AI 决策（上限 5x）；正数 = 固定杠杆（与 initGridState 一致）
+          const AI_DEFAULT_MAX_LEVERAGE = 5;
+          state.leverage = (gridConfig.leverage != null && gridConfig.leverage > 0)
+            ? gridConfig.leverage
+            : AI_DEFAULT_MAX_LEVERAGE;
+        }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
         if (gridConfig.direction) state.currentDirection = gridConfig.direction;
         if (gridConfig.distribution) state.distribution = gridConfig.distribution;
@@ -1121,8 +1128,7 @@ export class GridTradingService {
       }
     }
 
-    // Step 6.6: 方向自适应 — 由 enableDirectionAdjust 控制（默认关闭）
-    // 启用时：突破 → Step 5 自动偏转方向；回归 → 逐步恢复中性
+    // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
     // Step 7: 暂停检查
     if (state.isPaused) {
@@ -1169,6 +1175,33 @@ export class GridTradingService {
             );
             if (paused) return { trades, errors };
           }
+        }
+
+        // Step 6.6: 箱体突破检测 → 方向自适应（对齐 nofx checkBoxBreakout）
+        // enableDirectionAdjust=true 时：短/中期突破→方向偏转，长期突破→紧急平仓
+        // enableDirectionAdjust=false 时：短期→reduce_position，中期→pause，长期→close_all
+        // 无论是否启用，均执行 checkFalseBreakoutRecovery（价格回归时自动恢复）
+        if (state.shortBoxUpper > 0) {
+          const boxDetected = this.detectBoxBreakout(currentPrice, state);
+          if (boxDetected.level !== 'none') {
+            const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
+            if (confirmed) {
+              const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+              const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
+              await this.executeBreakoutAction(
+                state, action, boxDetected.direction, userId, apiKeyId, adapter,
+              );
+              // pause_grid / close_all 后本轮跳过 AI 决策
+              if (state.isPaused) {
+                await this.persistGridState(strategyId, state);
+                return { trades, errors };
+              }
+            }
+          } else {
+            this.confirmBreakout(state, 'none', ''); // 重置连续计数
+          }
+          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+          this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
         }
 
         // 动态杠杆同步到交易所（effectiveLeverage 降低时重设）
@@ -1270,6 +1303,20 @@ export class GridTradingService {
         });
 
         // 执行决策（收集每条执行结果，供日志记录）
+        // nofx 对齐：执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
+        // 对应 nofx buildGridContext() 在 AI call 前、saveGridDecisionRecord 在执行后的设计
+        const preExecGridLines = state.gridLines.map((l, i) => {
+          const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
+          if (l.state === 'filled') {
+            entry.qty = +(l.positionSize ?? 0).toFixed(4);
+            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+          } else if (l.state === 'pending') {
+            entry.oid = l.orderId?.slice(-8) ?? '';
+            entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
+          }
+          return entry;
+        });
+
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
@@ -1321,7 +1368,7 @@ export class GridTradingService {
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
+          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
@@ -1349,7 +1396,7 @@ export class GridTradingService {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis,
+            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines,
           );
         }
 
@@ -1637,6 +1684,7 @@ export class GridTradingService {
     direction: string,
     userId: string,
     apiKeyId: string,
+    adapter?: ExchangeAdapter | null,
   ): Promise<void> {
     this.logger.warn(`[网格] 突破动作: ${action}, 方向=${direction}, 级别=${state.breakoutLevel}`);
 
@@ -1644,6 +1692,38 @@ export class GridTradingService {
       case 'reduce_position':
         state.positionReductionPct = 50;
         break;
+
+      case 'adjust_direction': {
+        // 对齐 nofx executeDirectionAdjustment：取消挂单 + 重新分配层级方向
+        const newDirection = this.determineGridDirection(
+          state.breakoutLevel as BreakoutLevel,
+          direction as 'up' | 'down',
+        );
+        if (newDirection !== state.currentDirection) {
+          this.logger.log(
+            `[网格] 方向自适应: ${state.currentDirection} → ${newDirection}` +
+            ` (${state.breakoutLevel} 级别突破 ${direction})`,
+          );
+          // 取消现有挂单，防止方向切换后原挂单方向错误
+          if (adapter) {
+            try { await adapter.cancelAllOrders(state.symbol); } catch (e: any) {
+              this.logger.warn(`[网格] 方向切换取消挂单失败(忽略): ${e.message}`);
+            }
+          }
+          // 清理内存中的 pending 订单状态
+          for (const line of state.gridLines) {
+            if (line.state === 'pending') { line.state = 'empty'; line.orderId = undefined; }
+          }
+          state.orderBook = {};
+          state.currentDirection = newDirection;
+          this.applyGridDirection(
+            state.gridLines,
+            state.lastPrice || 0,
+            newDirection as GridDirection,
+          );
+        }
+        break;
+      }
 
       case 'pause_grid':
         state.isPaused = true;
@@ -1658,8 +1738,8 @@ export class GridTradingService {
     }
   }
 
-  /** 虚假突破恢复检查（仅恢复暂停/仓位缩减，方向由 AI 决策） */
-  private checkFalseBreakoutRecovery(state: GridState, price: number): void {
+  /** 虚假突破恢复检查（对齐 nofx checkFalseBreakoutRecovery） */
+  private checkFalseBreakoutRecovery(state: GridState, price: number, enableDirectionAdjust = false): void {
     // 价格回到长期箱体内 → 重置突破状态，解除仓位缩减和后端触发的暂停
     if (
       state.longBoxUpper > 0 && state.longBoxLower > 0 &&
@@ -1670,7 +1750,8 @@ export class GridTradingService {
         state.breakoutLevel = 'none';
         state.breakoutDirection = '';
         state.breakoutConfirmCount = 0;
-        state.positionReductionPct = 0;
+        // 对齐 nofx：价格回归后部分恢复（50%），AI 负责逐步补仓，而非立即全量
+        state.positionReductionPct = 50;
         // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
         if (state.pauseSource !== 'risk_control') {
           state.isPaused = false;
@@ -1679,6 +1760,29 @@ export class GridTradingService {
           state.needsReconcile = true; // 下次周期开始前对齐交易所状态
         }
         this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内');
+      }
+    }
+
+    // 对齐 nofx：价格回到短期箱体内时，方向逐步向中性恢复（仅 enableDirectionAdjust=true）
+    if (
+      enableDirectionAdjust &&
+      state.currentDirection !== 'neutral' &&
+      state.shortBoxUpper > 0 && state.shortBoxLower > 0 &&
+      price >= state.shortBoxLower && price <= state.shortBoxUpper
+    ) {
+      const recoveredDirection = this.determineRecoveryDirection(state.currentDirection);
+      if (recoveredDirection !== state.currentDirection) {
+        this.logger.log(
+          `[网格] 方向逐步恢复: ${state.currentDirection} → ${recoveredDirection}` +
+          ` (价格回到短期箱体 ${state.shortBoxLower.toFixed(2)}~${state.shortBoxUpper.toFixed(2)})`,
+        );
+        state.currentDirection = recoveredDirection;
+        this.applyGridDirection(
+          state.gridLines,
+          price,
+          recoveredDirection as GridDirection,
+        );
+        state.needsReconcile = true;
       }
     }
   }
@@ -1966,6 +2070,7 @@ export class GridTradingService {
       currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
       exchangeOpenOrders,
       recentClosedPnl,
+      positionReductionPct: state.positionReductionPct > 0 ? state.positionReductionPct : undefined,
     };
   }
 
@@ -2159,10 +2264,14 @@ export class GridTradingService {
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
         await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         if (targetLevel && targetLevel.positionSize > 0) {
-          const grossProfit = (currentPrice ?? state.lastPrice) - targetLevel.positionEntry;
-          const netProfit = grossProfit * targetLevel.positionSize
-            - (currentPrice ?? state.lastPrice) * targetLevel.positionSize * state.takerFeeRate
-            - targetLevel.positionEntry * targetLevel.positionSize * state.takerFeeRate;
+          const _cp = new Decimal(currentPrice ?? state.lastPrice);
+          const _ep = new Decimal(targetLevel.positionEntry);
+          const _sz = new Decimal(targetLevel.positionSize);
+          const _fr = new Decimal(state.takerFeeRate);
+          const netProfitD = _cp.minus(_ep).times(_sz)
+            .minus(_cp.times(_sz).times(_fr))
+            .minus(_ep.times(_sz).times(_fr));
+          const netProfit = netProfitD.toNumber();
           state.totalProfit += netProfit;
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
           state.totalTrades++;
@@ -2177,7 +2286,7 @@ export class GridTradingService {
           // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
           const closedValue = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
-          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
+          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`);
           // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
           const orphanSell = state.gridLines.find(
             (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
@@ -2209,10 +2318,14 @@ export class GridTradingService {
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
         await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
         if (targetLevel && targetLevel.positionSize > 0) {
-          const grossProfit = targetLevel.positionEntry - (currentPrice ?? state.lastPrice);
-          const netProfit = grossProfit * targetLevel.positionSize
-            - (currentPrice ?? state.lastPrice) * targetLevel.positionSize * state.takerFeeRate
-            - targetLevel.positionEntry * targetLevel.positionSize * state.takerFeeRate;
+          const _cp2 = new Decimal(currentPrice ?? state.lastPrice);
+          const _ep2 = new Decimal(targetLevel.positionEntry);
+          const _sz2 = new Decimal(targetLevel.positionSize);
+          const _fr2 = new Decimal(state.takerFeeRate);
+          const netProfitD2 = _ep2.minus(_cp2).times(_sz2)
+            .minus(_cp2.times(_sz2).times(_fr2))
+            .minus(_ep2.times(_sz2).times(_fr2));
+          const netProfit = netProfitD2.toNumber();
           state.totalProfit += netProfit;
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
           state.totalTrades++;
@@ -2227,7 +2340,7 @@ export class GridTradingService {
           // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
           const closedValueShort = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
-          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(4)} USDT`);
+          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT`);
           // 取消下方相邻 pending 买单（孤儿防护：平空后买单若触价会意外开多）
           const orphanBuy = state.gridLines.find(
             (l) => l.state === 'pending' && l.side === 'buy' && l.orderId && l.index === targetLevel.index - 1,
@@ -2350,42 +2463,10 @@ export class GridTradingService {
       level.orderId = undefined;
     }
 
-    // Backend Guard: 若 AI 在 filled buy 层挂卖单（出=入价 → 零利润+手续费=亏损），自动重定向到 N+1
-    // nofx 设计：每个 filled 买入层(N) 对应的止盈卖单应挂在层 N+1（更高价）
-    if (side === 'sell' && level && level.state === 'filled' && level.side === 'buy') {
-      const redirectIndex = levelIndex + 1;
-      const redirectLevel = redirectIndex < state.gridLines.length ? state.gridLines[redirectIndex] : undefined;
-      if (redirectLevel) {
-        this.logger.warn(
-          `[网格] Backend Guard: AI 请求在 filled buy 层 ${levelIndex + 1} 挂卖单（出=入=$${level.price.toFixed(4)}）→ 自动重定向到层 ${redirectIndex + 1}（$${redirectLevel.price.toFixed(4)}）`,
-        );
-        // 重定向到 N+1：用 N+1 层的价格和索引
-        decision.level = redirectIndex + 1;  // 1-based
-        decision.level_index = redirectIndex + 1;
-        decision.price = redirectLevel.price;
-        // 重新绑定 level 变量指向 N+1
-        const newLevel = redirectLevel;
-        // 若 N+1 层已有 pending 挂单，先取消（防重复）
-        if (newLevel.state === 'pending' && newLevel.orderId) {
-          try {
-            await adapter.cancelOrder(state.symbol, newLevel.orderId);
-          } catch (_e) { /* 忽略，由 syncOrderFills 处理 */ }
-          delete state.orderBook[newLevel.orderId];
-          newLevel.state = 'empty';
-          newLevel.orderId = undefined;
-        }
-      } else {
-        // N+1 超出边界（已是最高层），跳过此单
-        const skipReason = `filled buy 层 ${levelIndex + 1} 已是最高层，无法重定向到 N+1`;
-        this.logger.warn(`[网格] Backend Guard: ${skipReason}`);
-        return { executed: false, skipReason };
-      }
-    }
-
-    // 重新读取（可能被 Backend Guard 更新）
-    const rawLevel2 = decision.level_index ?? decision.level ?? 0;
-    const finalLevelIndex = rawLevel2 > 0 ? rawLevel2 - 1 : levelIndex;
-    const finalLevel = finalLevelIndex >= 0 ? state.gridLines[finalLevelIndex] : level;
+    // nofx 对齐：AI 可在任意层自由选择买单或卖单，后端不强制重定向
+    // 后端唯一约束：价格有效性（PERCENT_PRICE）+ 仓位上限
+    const finalLevelIndex = levelIndex;
+    const finalLevel = level;
 
     // Fix-3: 价格选取规则：
     // - 买单(buy)：优先使用网格预设价格（由 initGrid/adjust_grid 数学计算），AI 价格仅作 fallback
@@ -2640,6 +2721,7 @@ export class GridTradingService {
         delete state.orderBook[finalLevel.orderId];
       }
       finalLevel.state = 'pending';
+      finalLevel.side = side;             // nofx 对齐：side 跟随 AI 实际操作（非初始化固定值）
       finalLevel.price = price;           // 与实际下单价保持一致
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
@@ -2928,6 +3010,7 @@ export class GridTradingService {
   private async syncOrderFills(
     state: GridState,
     adapter: GridExchangeAdapter,
+    userId: string,
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
@@ -2991,17 +3074,69 @@ export class GridTradingService {
           : currentPositionSize < runningExpected - 0.0001;
 
         if (isFilled) {
-          line.state = 'filled';
-          line.positionEntry = line.price;
-          line.positionSize = qty;
-          line.unrealizedPnl = 0;
-          state.totalTrades++;
-          filledLines.push(line);
-          // 更新 runningExpected 支持同周期多笔成交
-          runningExpected += line.side === 'buy' ? qty : -qty;
-          this.logger.log(
-            `[网格] 订单成交: level=${line.index}, side=${line.side}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
-          );
+          if (line.side === 'sell') {
+            // 卖单成交 = 多头平仓。找配对的 buy 持仓层（index-1），计算利润并扣燃油费
+            const pairedBuy = state.gridLines.find(
+              (l) => l.state === 'filled' && l.side === 'buy' &&
+                     l.index === (line.index ?? 0) - 1 && (l.positionSize ?? 0) > 0,
+            );
+            if (pairedBuy) {
+              const sellPrice = new Decimal(line.price);
+              const buyEntry  = new Decimal(pairedBuy.positionEntry ?? 0);
+              const posQty    = new Decimal(pairedBuy.positionSize  ?? 0);
+              const feeRate   = new Decimal(state.takerFeeRate);
+              // 利润 = (卖价 - 买入价) * 数量 - 双边手续费
+              const netProfitD = sellPrice.minus(buyEntry).times(posQty)
+                .minus(sellPrice.times(posQty).times(feeRate))
+                .minus(buyEntry.times(posQty).times(feeRate));
+              const netProfit = netProfitD.toNumber();
+
+              state.totalProfit += netProfit;
+              state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+              if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+              state.totalTrades++;
+
+              // 扣燃油费（异步，不阻塞状态更新）
+              if (netProfit > 0) {
+                this.settleGridFee(state, userId, netProfit).catch((e: any) =>
+                  this.logger.error(`[网格] syncOrderFills 燃油费结算失败: ${e.message}`),
+                );
+              }
+
+              // 双层归零
+              pairedBuy.state = 'empty'; pairedBuy.positionSize = 0; pairedBuy.positionEntry = 0; pairedBuy.unrealizedPnl = 0;
+              line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
+
+              filledLines.push(line);
+              // runningExpected：卖单平多 → 净持仓减少
+              runningExpected -= posQty.toNumber();
+              this.logger.log(
+                `[网格] 卖单成交(平多): level=${line.index}, sellPrice=${line.price.toFixed(4)}, ` +
+                `buyEntry=${(pairedBuy.positionEntry ?? 0).toFixed(4)}, qty=${posQty.toFixed(4)}, ` +
+                `netProfit=${netProfitD.toFixed(8)} USDT`,
+              );
+            } else {
+              // 没有配对 buy 层（孤儿卖单），直接归 empty
+              line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
+              state.totalTrades++;
+              runningExpected -= qty;
+              this.logger.warn(
+                `[网格] 卖单成交但无配对buy层: level=${line.index}, price=${line.price.toFixed(4)}`,
+              );
+            }
+          } else {
+            // buy 成交：持多头，标记 filled 等待 AI 下卖单
+            line.state = 'filled';
+            line.positionEntry = line.price;
+            line.positionSize = qty;
+            line.unrealizedPnl = 0;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty;
+            this.logger.log(
+              `[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
+            );
+          }
         } else {
           line.state = 'empty';
           line.positionSize = 0;
@@ -3572,6 +3707,7 @@ export class GridTradingService {
     thinking?: string,
     execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
     marketAnalysis?: string,
+    preExecGridLines?: any[],  // nofx 对齐：AI 分析时看到的执行前快照
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
@@ -3602,8 +3738,8 @@ export class GridTradingService {
         direction: state.currentDirection,
         regime: state.currentRegime,
         totalLevels: state.gridLines.length,
-        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
-        pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
+        filledLevels: (preExecGridLines ?? state.gridLines).filter((l: any) => (l.st ?? l.state) === 'filled').length,
+        pendingLevels: (preExecGridLines ?? state.gridLines).filter((l: any) => (l.st ?? l.state) === 'pending').length,
         activeOrders: Object.keys(state.orderBook).length,
         totalInvestment: state.totalInvestment,   // 用于前端展示每层成本估算
         totalProfit: state.totalProfit,
@@ -3626,8 +3762,8 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：供前端展示层级状态表，用户可核对交易所
-        gridLines: state.gridLines.map((l, i) => {
+        // 每层详情：使用执行前快照（AI 分析时的状态），空格线正确显示为 empty
+        gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = {
             lv: i + 1,
             p: +l.price.toFixed(4),
@@ -3638,7 +3774,7 @@ export class GridTradingService {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
             entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
           } else if (l.state === 'pending') {
-            entry.oid = l.orderId?.slice(-8) ?? '';  // 仅保留末8位，节省存储
+            entry.oid = l.orderId?.slice(-8) ?? '';
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
           }
           return entry;
@@ -3695,8 +3831,11 @@ export class GridTradingService {
     if (config.gridCount && config.gridCount !== state.gridLines.length) {
       diffs.push(`层数 ${state.gridLines.length}→${config.gridCount}`);
     }
-    if (config.leverage && config.leverage !== state.leverage) {
-      diffs.push(`杠杆 ${state.leverage}x→${config.leverage}x`);
+    if (config.leverage !== undefined) {
+      const newLev = (config.leverage != null && config.leverage > 0) ? config.leverage : 5;
+      if (newLev !== state.leverage) {
+        diffs.push(`杠杆 ${state.leverage}x→${config.leverage == null ? 'AI决策(≤5x)' : `${newLev}x`}`);
+      }
     }
     if (config.totalInvestment && config.totalInvestment !== state.totalInvestment) {
       diffs.push(`投资额 ${state.totalInvestment}→${config.totalInvestment}`);

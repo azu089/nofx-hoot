@@ -767,8 +767,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </div>
                 )}
               </div>
-              {/* 行3：持仓浮盈（左）+ 杠杆（右） */}
-              {(d.gridSnapshot.unrealizedPnl != null || d.gridSnapshot.leverage != null) && (
+              {/* 行3：持仓浮盈（左）+ 最大回撤（右） */}
+              {(d.gridSnapshot.unrealizedPnl != null || d.gridSnapshot.maxDrawdown != null) && (
                 <div className="grid grid-cols-2 gap-x-4">
                   {d.gridSnapshot.unrealizedPnl != null ? (
                     <div className="flex justify-between">
@@ -778,7 +778,18 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       </span>
                     </div>
                   ) : <div />}
-                  {d.gridSnapshot.leverage != null && (
+                  {d.gridSnapshot.maxDrawdown != null && (
+                    <div className="flex justify-between">
+                      <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
+                      <span className="font-mono text-[#EF4444]">{(d.gridSnapshot.maxDrawdown * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* 行4：杠杆（左）+ 方向 · 市场形态（右，内联） */}
+              {(d.gridSnapshot.leverage != null || d.gridSnapshot.direction || d.gridSnapshot.regime) && (
+                <div className="grid grid-cols-2 gap-x-4">
+                  {d.gridSnapshot.leverage != null ? (
                     <div className="flex justify-between">
                       <span className="text-[#606070]">{t('timeline.gridLeverage')}</span>
                       <span className="font-mono text-[#F8F8FC]">
@@ -788,26 +799,24 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         )}
                       </span>
                     </div>
-                  )}
-                </div>
-              )}
-              {/* 行4：方向（左）· 市场形态（右） */}
-              {(d.gridSnapshot.direction || d.gridSnapshot.regime) && (
-                <div className="grid grid-cols-2 gap-x-4">
-                  {d.gridSnapshot.direction ? (
-                    <div className="flex justify-between">
-                      <span className="text-[#606070]">{t('timeline.gridDirection')}</span>
-                      <span className="text-[#9090A0]">
-                        {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
-                      </span>
-                    </div>
                   ) : <div />}
-                  {d.gridSnapshot.regime && (
-                    <div className="flex justify-between">
-                      <span className="text-[#606070]">{t('timeline.gridRegime')}</span>
-                      <span className="text-[#9090A0]">
-                        {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
-                      </span>
+                  {(d.gridSnapshot.direction || d.gridSnapshot.regime) && (
+                    <div className="flex justify-between gap-1 flex-wrap">
+                      {d.gridSnapshot.direction && (
+                        <span className="text-[#9090A0]">
+                          <span className="text-[#606070]">{t('timeline.gridDirection')} </span>
+                          {GRID_DIR_I18N[d.gridSnapshot.direction] ? t(GRID_DIR_I18N[d.gridSnapshot.direction]) : d.gridSnapshot.direction}
+                        </span>
+                      )}
+                      {d.gridSnapshot.direction && d.gridSnapshot.regime && (
+                        <span className="text-[#444]">·</span>
+                      )}
+                      {d.gridSnapshot.regime && (
+                        <span className="text-[#9090A0]">
+                          <span className="text-[#606070]">{t('timeline.gridRegime')} </span>
+                          {GRID_REGIME_I18N[d.gridSnapshot.regime] ? t(GRID_REGIME_I18N[d.gridSnapshot.regime]) : d.gridSnapshot.regime}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -891,14 +900,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {opLabel}
                     </span>
                     <div className="flex-1 min-w-0 text-[10px] flex flex-wrap items-center gap-1.5">
-                      {op.price && (
-                        <span className="font-mono text-[#F8F8FC]">${Number(op.price).toFixed(2)}</span>
-                      )}
-                      {op.quantity && (
-                        <span className="font-mono text-[#9090A0]">x{parseFloat(Number(op.quantity).toFixed(6))}</span>
-                      )}
                       {(() => {
-                        // 优先用 AI 决策中的 level 字段，兜底通过价格从快照反查层号
+                        // 层号：优先用 AI 决策 level 字段，兜底通过价格从执行前快照反查
                         const directLevel = op.level_index ?? op.level;
                         const inferredLevel = directLevel == null && op.price && d.gridSnapshot?.gridLines
                           ? (() => {
@@ -911,13 +914,19 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                           : null;
                         const displayLevel = directLevel ?? inferredLevel;
                         return displayLevel != null ? (
-                          <span className="text-[#606070]">{t('timeline.gridLayer', { layer: displayLevel })}</span>
+                          <span
+                            className="px-1 py-0.5 rounded text-[9px] font-mono font-semibold flex-shrink-0"
+                            style={{ color: opColor, backgroundColor: `${opColor}20` }}
+                          >
+                            L{displayLevel}
+                          </span>
                         ) : null;
                       })()}
-                      {op.reasoning && !gridAnalysisText?.includes(op.reasoning) && (
-                        <span className="w-full text-[#606070] text-[9px] leading-relaxed mt-0.5">
-                          {String(op.reasoning).slice(0, 30)}
-                        </span>
+                      {op.price && (
+                        <span className="font-mono text-[#F8F8FC]">${Number(op.price).toFixed(2)}</span>
+                      )}
+                      {op.quantity && (
+                        <span className="font-mono text-[#9090A0]">×{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
                     </div>
                   </div>

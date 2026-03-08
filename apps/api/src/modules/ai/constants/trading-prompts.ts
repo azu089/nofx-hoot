@@ -666,6 +666,8 @@ export interface GridContext {
   exchangeOpenOrders?: Array<{orderId: string; side: string; price: number; quantity: number}>;
   // 近期已平仓记录（供 AI 分析最近成交历史）
   recentClosedPnl?: Array<{symbol: string; side: string; quantity: number; entryPrice: number; exitPrice: number; realizedPnl: number; closedAt: string}>;
+  // 突破恢复中：下单量缩减比例（50=每层最多用50%仓位预算，0=正常）
+  positionReductionPct?: number;
 }
 
 /**
@@ -684,82 +686,46 @@ export function GRID_SYSTEM_PROMPT(
   return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
 ## 网格参数
-- 交易对: ${symbol}
-- 网格层数: ${gridCount}
-- 总投资额: ${totalInvestment} USDT
-- 杠杆倍数: ${leverage}x
-- 分布方式: ${distribution}
-- 当前价格参考: ${currentPrice.toFixed(4)}
+交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 市场状态判断（对齐后端 detectMarketRegime 公式）
-系统已检测市场形态并在 context 中以 currentRegime 字段传入，供参考，AI 可结合原始指标（ATR、Bollinger、EMA）自行综合判断：
-- **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
-- **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
-- **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
-- **volatile（高波动）**: BB带宽>6% OR ATR(1h)/价格>3% → 系统已限制杠杆至2x，**谨慎运行**
+## 市场状态（context.currentRegime 字段）
+- **narrow/standard** → 最佳/适合网格，正常运行
+- **wide** → 谨慎运行，优先处理倾斜
+- **volatile** → 系统已限杠杆至2x。⚠️ volatile≠必须pause（高波动=更多成交机会）；只在 BB带宽>6% 且 EMA距>2% 时才 pause（否则 volatile 持续数天将永远无法挂单）
 
-> ⚠️ **volatile 不等于必须 pause_grid**。网格策略在波动市场中仍可盈利（高波动 = 更多成交机会）。
-> pause_grid 仅在以下情形才有意义：**BB带宽 > 6% 且 EMA(20)/EMA(50) 距离 > 2%（趋势确认）、或价格已突破网格边界 ≥2%**。
-> 仅仅因为 regime=volatile 就 pause，会导致永远无法挂单（volatile 可能持续数天）。
+## 层状态与决策
+- **empty**: 可挂单，或 hold 等待
+- **pending**: 等待成交
+- **filled**: AI自行判断平仓时机（趋势反转/RSI超买/回撤30%时考虑）；可 close_long/close_short 主动平仓，或等待反向挂单自然出局
 
-## 决策框架
-
-根据市场数据、账户状态和网格层级状态，**自主判断**本轮应该执行哪些操作。
-
-### 三种层状态
-- **empty（未挂单）**: 可以挂单，也可以 hold 等待
-- **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 已成交有仓位，可通过 close_long/close_short 主动平仓，或等待市场自然出局
-
-### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
-- **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
-- 正确做法：**本轮只 pause**；若倾斜严重，下次 resume_grid 后再补挂
+⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
 ## 可用操作
-
-- **place_buy_limit**: 在指定层挂买单（state=未挂单时补挂）
-  \`{"action":"place_buy_limit","level":层号,"price":价格,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
-- **place_sell_limit**: 在指定层挂卖单（state=未挂单时补挂）
-  \`{"action":"place_sell_limit","level":层号,"price":价格,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
-- **cancel_order**: 取消订单
-  \`{"action":"cancel_order","orderId":"订单ID","confidence":90,"reasoning":"原因"}\`
+- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
+- **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
-  \`{"action":"cancel_all_orders","confidence":80,"reasoning":"原因"}\`
-- **pause_grid**: 暂停网格（趋势市场时）
-  \`{"action":"pause_grid","confidence":80,"reasoning":"原因"}\`
-- **resume_grid**: 恢复网格（震荡市场时）
-  \`{"action":"resume_grid","confidence":75,"reasoning":"原因"}\`
-- **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界，无需传边界参数）
-  \`{"action":"adjust_grid","confidence":85,"reasoning":"原因"}\`
-- **close_long**: 市价平多仓（close_long 后持仓层自动清除，利润计入统计）
-  \`{"action":"close_long","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
-- **close_short**: 市价平空仓
-  \`{"action":"close_short","level":层号,"quantity":数量,"confidence":85,"reasoning":"原因"}\`
-- **hold**: 保持当前状态不变
-  \`{"action":"hold","confidence":70,"reasoning":"原因"}\`
+- **pause_grid**: 暂停网格（BB>6% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
+- **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
+- **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
+- **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
+- **close_short**: 市价平空仓（fields: level, quantity）
+- **hold**: 保持现状
 
 ## 输出格式
 
-必须输出一个 JSON 对象，包含 analysis 和 actions 两个字段：
-
 \`\`\`json
 {
-  "analysis": "价格84.2接近上边界$93（距7.5%），RSI=58偏多但未超买，ATR(1h)=1.8，BB宽=2.3%正常震荡。网格20层中有3格未挂单（空侧），需补挂买单。",
+  "analysis": "价格84.2接近上边界$93（7.5%），RSI=58，BB宽=2.3%标准震荡。3格空侧需补单。",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格线补单"},
-    {"action":"hold","confidence":80,"reasoning":"震荡区间运行正常"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格补单"},
+    {"action":"close_long","level":3,"quantity":0.01,"confidence":80,"reasoning":"RSI超买平仓"}
   ]
 }
 \`\`\`
 
-- analysis 字段是 AI 的**完整思考过程**，直接展示给用户，必须包含以下全部要素，**最少 60 字，禁止少于 40 字**：
-  ① 当前价格 + 在网格中的相对位置（如"接近上边界"、"处于中部"）
-  ② 关键指标数值：RSI=xx、ATR(1h)=xx、BB宽=x%（至少写两个具体数值）
-  ③ 市场形态判断（震荡/趋势/高波动）
-  ④ 本轮决策逻辑：为什么这样操作
-  - 严禁输出纯标签（禁止："价格接近上边界" / "高保证金风险" / "维持现状"）
-- actions：操作数组，无需操作时输出空数组 []
-- 每个 action 的 reasoning：≤15字简短标签，只说这一笔原因，不重复 analysis
+- **analysis**：≥60字，必须含 ①当前价格位置 ②至少2个指标数值（RSI/ATR/BB宽等具体数值） ③决策逻辑；禁止纯标签
+- **actions[].reasoning**：≤15字简标签；无需操作时 actions 输出 \`[]\`
 
 ${buildLanguageInstruction(locale)}
 `;
@@ -823,6 +789,15 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
+    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
+  }
+  // 交易所实际持仓 vs 内存 filled 合计（并排展示，AI 自行判断是否有孤儿持仓）
+  const _filledLongQty = ctx.levels.filter(l => l.state === 'filled' && l.side === 'buy').reduce((s, l) => s + (l.positionSize ?? 0), 0);
+  const _filledShortQty = ctx.levels.filter(l => l.state === 'filled' && l.side === 'sell').reduce((s, l) => s + (l.positionSize ?? 0), 0);
+  const _exchLong = ctx.positionLong?.quantity ?? 0;
+  const _exchShort = ctx.positionShort?.quantity ?? 0;
+  lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} / 内存filled合计 ${_filledLongQty.toFixed(4)} | 空头 ${_exchShort.toFixed(4)} / 内存filled合计 ${_filledShortQty.toFixed(4)}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false（AI可自主调整范围）'}`);
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`逐层止损阈值: ${ctx.stopLossPct}%（单格偏离入场价 ≥ ${ctx.stopLossPct}% 时强制平仓）`);
@@ -854,11 +829,16 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
-  lines.push('层号(从1开始) | 价格 | 方向 | 数量(推荐/实际) | 持仓量 | 状态 | 盈亏 | 订单ID');
+  lines.push('层号(从1开始) | 价格 | 建议方向 | 数量(推荐/实际) | 持仓量 | 状态 | 盈亏 | 订单ID');
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
-    // filled = 订单已成交，持有仓位（side='buy'=多头，side='sell'=空头）
+    // 持仓层显示实际持仓方向；挂单/空层显示位置建议（当前价以下→买/以上→卖，AI 可自由选择）
+    const dirStr = l.state === 'filled'
+      ? (l.side === 'buy' ? '持多' : '持空')
+      : l.state === 'pending'
+        ? (l.side === 'buy' ? '挂买' : '挂卖')
+        : (l.price < ctx.currentPrice ? '建议买' : '建议卖');
     const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '持仓' : '未挂单';
     // 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
@@ -872,7 +852,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
           return isLoss ? ` [亏${pct.toFixed(1)}%${ctx.stopLossPct ? `/阈${ctx.stopLossPct}%` : ''}]` : '';
         })()
       : '';
-    lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`);
+    lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`);
   }
 
   // Section 6: 账户状态

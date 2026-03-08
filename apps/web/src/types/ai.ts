@@ -388,12 +388,17 @@ export interface GridConfig {
   upperBound: number;
   lowerBound: number;
   leverage: number;
+  direction?: 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'; // 网格初始方向
+  distribution?: 'uniform' | 'gaussian' | 'pyramid';  // 格线分布
   useAtrBounds?: boolean;
   atrMultiplier?: number;
   maxDrawdownPct?: number;
   stopLossPct?: number;
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，如 0.20 = 20%）
   dailyLossLimitPct?: number;
+  breakoutPct?: number;          // 突破边界暂停阈值%
+  useMakerOnly?: boolean;        // PostOnly 限价单（省 maker 手续费）
+  autoPauseOnTrend?: boolean;    // 趋势市场自动软暂停（默认 true）
   enableDirectionAdjust?: boolean; // 启用方向自适应（默认 false）
   directionBiasRatio?: number;     // 偏向比例（小数，如 0.70 = 70%）
 }

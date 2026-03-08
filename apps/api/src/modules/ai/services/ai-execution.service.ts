@@ -701,7 +701,7 @@ export class AiExecutionService {
       try {
         const feeCalc = await this.feeService.calculateFee(userId, new Decimal(pnl).toFixed(8));
         this.logger.log(
-          `[AI执行] 燃油费计算: 盈利=$${pnl.toFixed(2)} 费率=${feeCalc.finalFeeRate} 费用=$${feeCalc.feeAmount}`,
+          `[AI执行] 燃油费计算: 盈利=$${feeCalc.profit} 费率=${feeCalc.finalFeeRate} 费用=$${feeCalc.feeAmount}`,
         );
 
         if (parseFloat(feeCalc.feeAmount) > 0) {
