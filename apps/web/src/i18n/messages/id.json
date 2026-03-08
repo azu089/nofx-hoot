@@ -2052,6 +2052,8 @@
       "gridWinRate": "Rasio Menang",
       "gridFilledLevels": "Grid Posisi",
       "gridLayerState": "Status Layer",
+      "gridKeepBuy": "Order Beli",
+      "gridKeepSell": "Order Jual",
       "gridPendingLevels": "Level Tertunda",
       "gridActiveOrders": "Order Aktif",
       "gridDailyPnl": "P&L Harian",

@@ -2033,6 +2033,8 @@
       "gridWinRate": "معدل الفوز",
       "gridFilledLevels": "الشبكات المشغولة",
       "gridLayerState": "حالة الطبقة",
+      "gridKeepBuy": "أمر شراء",
+      "gridKeepSell": "أمر بيع",
       "gridPendingLevels": "المستويات المعلقة",
       "gridActiveOrders": "الأوامر النشطة",
       "gridDailyPnl": "أرباح وخسائر اليوم",

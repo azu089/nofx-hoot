@@ -2052,6 +2052,8 @@
       "gridWinRate": "อัตราชนะ",
       "gridFilledLevels": "กริดที่มีตำแหน่ง",
       "gridLayerState": "สถานะชั้น",
+      "gridKeepBuy": "คำสั่งซื้อ",
+      "gridKeepSell": "คำสั่งขาย",
       "gridPendingLevels": "ชั้นคำสั่ง",
       "gridActiveOrders": "คำสั่งที่ใช้งาน",
       "gridDailyPnl": "กำไร/ขาดทุนรายวัน",

@@ -923,6 +923,25 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </div>
                 );
               })}
+              {/* 保持中的委托单：来自交易所读取，非 AI 决策，供用户核对 */}
+              {(() => {
+                const pendingLines = (d.gridSnapshot?.gridLines ?? []).filter((gl: any) => gl.st === 'pending');
+                if (pendingLines.length === 0) return null;
+                return pendingLines.map((gl: any) => (
+                  <div key={`pending-${gl.lv}`} className="flex items-start gap-2 py-1.5 border-t border-[#1E1E2E]/30">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 text-[#6B7280] bg-[#6B7280]/10 whitespace-nowrap">
+                      {gl.s === 'buy' ? t('timeline.gridKeepBuy') || '委托买' : t('timeline.gridKeepSell') || '委托卖'}
+                    </span>
+                    <div className="flex-1 min-w-0 text-[10px] flex flex-wrap items-center gap-1.5">
+                      <span className="font-mono text-[#F8F8FC]">${Number(gl.p).toFixed(2)}</span>
+                      {gl.qty > 0 && (
+                        <span className="font-mono text-[#9090A0]">x{parseFloat(Number(gl.qty).toFixed(6))}</span>
+                      )}
+                      <span className="text-[#505060]">L{gl.lv}</span>
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </>

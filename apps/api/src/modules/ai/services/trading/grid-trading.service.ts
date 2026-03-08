@@ -3818,6 +3818,7 @@ export class GridTradingService {
             entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
           } else if (l.state === 'pending') {
             entry.oid = l.orderId?.slice(-8) ?? '';  // 仅保留末8位，节省存储
+            entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
           }
           return entry;
         }),

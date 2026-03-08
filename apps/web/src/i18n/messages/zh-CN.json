@@ -2062,6 +2062,8 @@
       "gridWinRate": "胜率",
       "gridFilledLevels": "持仓格",
       "gridLayerState": "层级状态",
+      "gridKeepBuy": "委托买",
+      "gridKeepSell": "委托卖",
       "gridPendingLevels": "挂单层",
       "gridActiveOrders": "活跃订单",
       "gridDailyPnl": "日内盈亏",

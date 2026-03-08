@@ -2052,6 +2052,8 @@
       "gridWinRate": "Доля побед",
       "gridFilledLevels": "Уровни с позицией",
       "gridLayerState": "Состояние уровней",
+      "gridKeepBuy": "Ордер Куп",
+      "gridKeepSell": "Ордер Прод",
       "gridPendingLevels": "Уровни ордеров",
       "gridActiveOrders": "Активные ордера",
       "gridDailyPnl": "Дневной P&L",

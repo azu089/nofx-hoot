@@ -2053,6 +2053,8 @@
       "gridWinRate": "Tỷ lệ thắng",
       "gridFilledLevels": "Lưới giữ vị thế",
       "gridLayerState": "Trạng thái lớp",
+      "gridKeepBuy": "Lệnh Mua",
+      "gridKeepSell": "Lệnh Bán",
       "gridPendingLevels": "Tầng chờ",
       "gridActiveOrders": "Lệnh hoạt động",
       "gridDailyPnl": "Lãi/Lỗ trong ngày",

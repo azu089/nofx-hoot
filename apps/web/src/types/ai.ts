@@ -630,7 +630,7 @@ export interface StrategyLog {
         p: number;     // 价格
         s: string;     // side: 'buy'|'sell'
         st: string;    // state: 'filled'|'pending'|'empty'
-        qty?: number;  // filled: 持仓量
+        qty?: number;  // filled: 持仓量 / pending: 挂单量
         ep?: number;   // filled: 建仓价
         oid?: string;  // pending: 订单ID末8位
       }>;

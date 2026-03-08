@@ -2052,6 +2052,8 @@
       "gridWinRate": "Kazanma Oranı",
       "gridFilledLevels": "Pozisyonlu Katmanlar",
       "gridLayerState": "Katman Durumu",
+      "gridKeepBuy": "Alım Emri",
+      "gridKeepSell": "Satış Emri",
       "gridPendingLevels": "Bekleyen Katman",
       "gridActiveOrders": "Aktif Emirler",
       "gridDailyPnl": "Günlük K/Z",

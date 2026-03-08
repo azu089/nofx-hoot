@@ -2037,6 +2037,8 @@
       "gridWinRate": "Win Rate",
       "gridFilledLevels": "Filled Grids",
       "gridLayerState": "Layer Status",
+      "gridKeepBuy": "Order Buy",
+      "gridKeepSell": "Order Sell",
       "gridPendingLevels": "Pending Levels",
       "gridActiveOrders": "Active Orders",
       "gridDailyPnl": "Daily P&L",

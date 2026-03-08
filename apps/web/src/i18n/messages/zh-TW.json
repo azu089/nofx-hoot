@@ -2054,6 +2054,8 @@
       "gridWinRate": "勝率",
       "gridFilledLevels": "持倉格",
       "gridLayerState": "層級狀態",
+      "gridKeepBuy": "委託買",
+      "gridKeepSell": "委託賣",
       "gridPendingLevels": "掛單層",
       "gridActiveOrders": "活躍訂單",
       "gridDailyPnl": "日內損益",
