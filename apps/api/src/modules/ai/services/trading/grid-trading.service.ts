@@ -1323,6 +1323,44 @@ export class GridTradingService {
           }
         }
 
+        // Step 5.5: 孤儿持仓预关联 — AI 决策前确保内存状态与交易所一致
+        // 场景：配置变更重建（所有层清空）后，交易所仍有持仓尚未被 syncOrderFills 识别
+        // 使用 Step 3 已拿到的 livePositions 快照，无需额外 API 调用
+        // 对齐 nofx：交易所持仓始终属于本策略，AI 不应将其推断为"其他策略"
+        {
+          const noFilledLayers = !state.gridLines.some(l => l.state === 'filled' && l.positionSize > 0);
+          if (noFilledLayers && livePositions && livePositions.length > 0) {
+            const baseSymbol = state.symbol.split('/')[0];
+            let orphanQty = 0;
+            let orphanEntry = 0;
+            for (const pos of livePositions) {
+              if ((pos as any).symbol?.includes(baseSymbol)) {
+                const side = (pos as any).side;
+                if (side === 'long' || side === 'net' || !side) {
+                  orphanQty += (pos as any).quantity ?? (pos as any).positionAmt ?? 0;
+                  if (orphanEntry === 0) orphanEntry = (pos as any).entryPrice ?? 0;
+                }
+              }
+            }
+            if (orphanQty > 0.0001) {
+              const nearestBuy = state.gridLines
+                .filter(l => l.state === 'empty' && l.side === 'buy')
+                .sort((a, b) => Math.abs(a.price - orphanEntry) - Math.abs(b.price - orphanEntry))[0];
+              if (nearestBuy) {
+                nearestBuy.state = 'filled';
+                nearestBuy.positionSize = orphanQty;
+                nearestBuy.positionEntry = orphanEntry > 0 ? orphanEntry : nearestBuy.price;
+                nearestBuy.unrealizedPnl = 0;
+                this.logger.log(
+                  `[网格] 孤儿持仓预关联: level=${nearestBuy.index + 1}, qty=${orphanQty.toFixed(4)}, entry=${nearestBuy.positionEntry.toFixed(4)}`,
+                );
+              } else {
+                this.logger.warn(`[网格] 孤儿持仓无可关联层: qty=${orphanQty.toFixed(4)}`);
+              }
+            }
+          }
+        }
+
         // 构建 AI 上下文（对齐 nofx：始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice);
 
