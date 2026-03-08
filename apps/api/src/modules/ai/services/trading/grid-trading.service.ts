@@ -2619,15 +2619,17 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：所有 pending+filled 层名义价值 + 本次 ≤ totalInvestment × leverage
-      const existingNotional = state.gridLines.reduce((sum, l) => {
-        if (l.state === 'pending' || l.state === 'filled') {
-          const qty = l.orderQuantity > 0 ? l.orderQuantity : (l.positionSize ?? 0);
-          return sum + qty * price;
-        }
-        return sum;
-      }, 0);
+      // 总仓位上限：已持仓层按槽位预算计算（与 Step 2.8 保持一致）
+      // 原因：持仓来自旧配置时实际市值>每层预算，若用实际市值会削减本层 quantity 到极小值
+      // 极小 quantity → formatQuantity 取整后 notional < MIN_NOTIONAL → 伪造"资金不足"错误
       const totalPositionCap = state.totalInvestment * leverage;
+      const gridLayerCount = state.gridLines.length || 10;
+      const slotBudget = totalPositionCap / gridLayerCount; // 每层预算槽位
+      const filledSlotNotional = state.gridLines.filter(l => l.state === 'filled').length * slotBudget;
+      const pendingNotionalStep1 = state.gridLines
+        .filter(l => l.state === 'pending' && l.orderQuantity > 0)
+        .reduce((sum, l) => sum + l.orderQuantity * price, 0);
+      const existingNotional = filledSlotNotional + pendingNotionalStep1;
       if (existingNotional + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度
         const remaining = Math.max(0, totalPositionCap - existingNotional);
@@ -2749,7 +2751,7 @@ export class GridTradingService {
       const recommendedLevels = Math.floor((state.totalInvestment * leverage) / MIN_NOTIONAL);
       const recommendedInvestment = Math.ceil((MIN_NOTIONAL * state.gridLines.length) / leverage);
       const skipReason =
-        `每层资金不足: 每层约 $${perLevelNotional.toFixed(2)}，` +
+        `每层资金不足: 实际下单额 $${notional.toFixed(2)}（每层预算 $${perLevelNotional.toFixed(2)}），` +
         `低于 ${coinSymbol} 最低下单额 $${MIN_NOTIONAL.toFixed(0)} | ` +
         `建议: 减少层数(${state.gridLines.length}→${recommendedLevels})` +
         `或增加投资额($${state.totalInvestment}→$${recommendedInvestment})`;
