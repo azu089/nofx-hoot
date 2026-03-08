@@ -157,7 +157,6 @@ export interface GridState {
   effectiveLeverage: number;  // 当前生效杠杆 = min(leverage, regimeCap)，运行时由市场状态压低
   userFixedLeverage: boolean; // true = 用户固定杠杆（跳过 Regime 压杆）；false = AI 决策模式
 
-  // 对齐 nofx checkTotalPositionLimit：每轮从交易所实时持仓计算名义价值（取代内存 filled 层累加）
   livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
 
   // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
@@ -827,14 +826,14 @@ export class GridTradingService {
       await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
-    // Step 1.5: 配置变更检测 — 对齐 nofx adjustGrid：原地取消挂单 + 重建层级（历史利润不清零）
+    // Step 1.5: 配置变更检测 — 原地取消挂单 + 重建层级（历史利润不清零）
     if (state && state.isInitialized && gridConfig) {
       const configChanged = this.detectGridConfigChange(state, gridConfig);
       if (configChanged) {
         this.logger.warn(
           `[网格] 检测到配置变更: ${configChanged}，原地重建（历史利润保留）`,
         );
-        // Step A: 取消交易所所有挂单（对齐 nofx cancelAllGridOrders）
+        // Step A: 取消交易所所有挂单
         await this.cleanupExistingOrders(state, userId, apiKeyId);
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
@@ -867,7 +866,7 @@ export class GridTradingService {
           }
           state.gridLines.forEach((l, i) => { l.index = i; });
         }
-        // Step D: 获取价格并原地重建层级（对齐 nofx initializeGridLevels）
+        // Step D: 获取价格并原地重建层级
         let rebuildPrice: number;
         try {
           rebuildPrice = await this.getCurrentPrice(state.symbol);
@@ -978,7 +977,7 @@ export class GridTradingService {
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
         livePositions = await adapter.getPositions(); // 预取持仓，计算 livePositionNotional
-        // 对齐 nofx checkTotalPositionLimit：用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
+        // 用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
         {
           const baseSymbol = state.symbol.split('/')[0];
           state.livePositionNotional = livePositions.reduce((sum: number, pos: any) => {
@@ -1188,7 +1187,7 @@ export class GridTradingService {
           }
         }
 
-        // Step 6.6: 箱体突破检测 → 方向自适应（对齐 nofx checkBoxBreakout）
+        // Step 6.6: 箱体突破检测 → 方向自适应
         // enableDirectionAdjust=true 时：短/中期突破→方向偏转，长期突破→紧急平仓
         // enableDirectionAdjust=false 时：短期→reduce_position，中期→pause，长期→close_all
         // 无论是否启用，均执行 checkFalseBreakoutRecovery（价格回归时自动恢复）
@@ -1226,7 +1225,7 @@ export class GridTradingService {
           }
         }
 
-        // 构建 AI 上下文（对齐 nofx：始终 fresh 获取余额+持仓，不复用 Step 3 快照）
+        // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice);
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
@@ -1291,8 +1290,7 @@ export class GridTradingService {
           adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
         }
 
-        // 对齐 nofx: LLM 调用期间（await 释放事件循环）用户可能已停止策略
-        // 执行任何决策前再次检查，防止在已停止的策略上下单
+        // LLM 调用期间用户可能已停止策略，执行任何决策前再次检查
         if (state.isPaused || !this.gridStates.has(strategyId)) {
           this.logger.warn(`[网格] LLM 调用后策略已停止/暂停，跳过本轮决策执行`);
           return { trades, errors };
@@ -1314,8 +1312,7 @@ export class GridTradingService {
         });
 
         // 执行决策（收集每条执行结果，供日志记录）
-        // nofx 对齐：执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
-        // 对应 nofx buildGridContext() 在 AI call 前、saveGridDecisionRecord 在执行后的设计
+        // 执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
         const preExecGridLines = state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
           if (l.state === 'filled') {
@@ -1333,7 +1330,7 @@ export class GridTradingService {
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = filteredDecisions.some(d => d.action === 'pause_grid');
         for (const d of filteredDecisions) {
-          // 对齐 nofx: 每条决策执行前检查策略是否已被停止（执行过程中用户可能通过 API 停止）
+          // 每条决策执行前检查策略是否已被停止
           if (state.isPaused || !this.gridStates.has(strategyId)) {
             const remaining = filteredDecisions.length - filteredDecisions.indexOf(d);
             this.logger.warn(`[网格] 策略已停止/暂停，跳过剩余 ${remaining} 个决策`);
@@ -1677,7 +1674,7 @@ export class GridTradingService {
     return 'neutral';
   }
 
-  /** 价格回归后方向逐步恢复中性（nofx 同款逻辑） */
+  /** 价格回归后方向逐步恢复中性 */
   private determineRecoveryDirection(currentDirection: GridDirection): GridDirection {
     switch (currentDirection) {
       case 'long':       return 'long_bias';
@@ -1705,7 +1702,7 @@ export class GridTradingService {
         break;
 
       case 'adjust_direction': {
-        // 对齐 nofx executeDirectionAdjustment：取消挂单 + 重新分配层级方向
+        // 取消挂单 + 重新分配层级方向
         const newDirection = this.determineGridDirection(
           state.breakoutLevel as BreakoutLevel,
           direction as 'up' | 'down',
@@ -1749,7 +1746,7 @@ export class GridTradingService {
     }
   }
 
-  /** 虚假突破恢复检查（对齐 nofx checkFalseBreakoutRecovery） */
+  /** 虚假突破恢复检查 */
   private checkFalseBreakoutRecovery(state: GridState, price: number, enableDirectionAdjust = false): void {
     // 价格回到长期箱体内 → 重置突破状态，解除仓位缩减和后端触发的暂停
     if (
@@ -1761,7 +1758,7 @@ export class GridTradingService {
         state.breakoutLevel = 'none';
         state.breakoutDirection = '';
         state.breakoutConfirmCount = 0;
-        // 对齐 nofx：价格回归后部分恢复（50%），AI 负责逐步补仓，而非立即全量
+        // 价格回归后部分恢复（50%），AI 负责逐步补仓
         state.positionReductionPct = 50;
         // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
         if (state.pauseSource !== 'risk_control') {
@@ -1774,7 +1771,7 @@ export class GridTradingService {
       }
     }
 
-    // 对齐 nofx：价格回到短期箱体内时，方向逐步向中性恢复（仅 enableDirectionAdjust=true）
+    // 价格回到短期箱体内时，方向逐步向中性恢复（仅 enableDirectionAdjust=true）
     if (
       enableDirectionAdjust &&
       state.currentDirection !== 'neutral' &&
@@ -1883,7 +1880,7 @@ export class GridTradingService {
     let positionShort: GridContext['positionShort'];
 
     try {
-      // 对齐 nofx：始终 fresh 获取余额
+      // 始终 fresh 获取余额
       const balance = await adapter.getBalance();
       totalEquity = balance.totalEquity;
       availableBalance = balance.availableBalance;
@@ -1892,14 +1889,23 @@ export class GridTradingService {
       state.lastUnrealizedPnl = unrealizedPnl; // 同步到 state，供 saveGridDecisionLog 使用
       marginUsedPct = balance.marginUsedPct ?? 0;
 
-      // 对齐 nofx：始终 fresh 获取持仓
+      // 始终 fresh 获取持仓
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
-      const longPos = symPositions.find((p: any) => p.side === 'long');
-      const shortPos = symPositions.find((p: any) => p.side === 'short');
+      let longPos = symPositions.find((p: any) => p.side === 'long');
+      let shortPos = symPositions.find((p: any) => p.side === 'short');
+      // OKX 单向模式：side='net', qty>0=多头, qty<0=空头
+      if (!longPos && !shortPos) {
+        const netPos = symPositions.find((p: any) => p.side === 'net' || !p.side);
+        if (netPos) {
+          const netQty = netPos.quantity ?? 0;
+          if (netQty > 0.0001) longPos = { ...netPos, side: 'long' };
+          else if (netQty < -0.0001) shortPos = { ...netPos, side: 'short', quantity: Math.abs(netQty) };
+        }
+      }
 
-      // 净持仓（兼容原有逻辑）
+      // 净持仓
       currentPosition = (longPos?.quantity ?? 0) - (shortPos?.quantity ?? 0);
 
       // 双向持仓详情（margin/marginRatio 不传给 AI，避免触发保证金管理行为）
@@ -2382,7 +2388,7 @@ export class GridTradingService {
       }
 
       case 'hold':
-        // 对齐 nofx: hold 时打印 reasoning，便于终端日志追踪 AI 决策理由
+        // hold 时打印 reasoning，便于终端日志追踪 AI 决策理由
         if (decision.reasoning) {
           this.logger.log(`[网格] ${this.actionLabel('hold', locale)}: ${decision.reasoning}`);
         }
@@ -2484,12 +2490,11 @@ export class GridTradingService {
       level.orderId = undefined;
     }
 
-    // nofx 对齐：AI 可在任意层自由选择买单或卖单，后端不强制重定向
     // 后端唯一约束：价格有效性（PERCENT_PRICE）+ 仓位上限
     const finalLevelIndex = levelIndex;
     const finalLevel = level;
 
-    // nofx 对齐：始终优先使用 AI 建议价格，格线预设价作为 fallback
+    // 始终优先使用 AI 建议价格，格线预设价作为 fallback
     const price = (decision.price && decision.price > 0)
       ? decision.price
       : (finalLevel?.price ?? 0);
@@ -2668,7 +2673,6 @@ export class GridTradingService {
     }
 
     // Step 2.8: 仓位总量检查（名义价值守卫）
-    // 对齐 nofx checkTotalPositionLimit：
     //   持仓 = 交易所真实持仓（livePositionNotional，每轮从 GetPositions 更新，消除幽灵持仓影响）
     //   挂单 = 内存 pending 层（同轮次前序成功下单已更新 state='pending'，可正确累计防止过度挂单）
     //   上限 = totalInvestment × leverage
@@ -2737,7 +2741,7 @@ export class GridTradingService {
         delete state.orderBook[finalLevel.orderId];
       }
       finalLevel.state = 'pending';
-      finalLevel.side = side;             // nofx 对齐：side 跟随 AI 实际操作（非初始化固定值）
+      finalLevel.side = side;             // side 跟随 AI 实际操作（非初始化固定值）
       finalLevel.price = price;           // 与实际下单价保持一致
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
@@ -3034,7 +3038,7 @@ export class GridTradingService {
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
-      // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions）
+      // Step 2: 获取交易所当前持仓（实时，每轮无条件获取）
       let currentPositionSize = 0;
       let syncPositions: any[] = [];  // 提升作用域，供 Step 6 使用
       try {
@@ -3056,7 +3060,6 @@ export class GridTradingService {
       }
 
       // Step 3: 内存中 filled 层的预期净持仓（有符号：buy=+, sell=-）
-      // 对齐 nofx 逻辑，但扩展为支持中性网格（多空混合）场景：
       // - buy 成交 → 净多头增加（+qty）
       // - sell 成交 → 净空头增加（-qty）
       const expectedPositionSize = state.gridLines
@@ -3081,7 +3084,6 @@ export class GridTradingService {
         const prevOrderId = line.orderId!;
         const qty = line.orderQuantity ?? 0;
 
-        // 对齐 nofx（有符号扩展版）：
         // - buy 消失：若当前净持仓 > 预期净持仓 → 成交（净多头增加）
         // - sell 消失：若当前净持仓 < 预期净持仓 → 成交（净空头增加）
         // - 平仓单（sell 平多 / buy 平空）绝对值缩小 → 不满足条件 → 取消，由 AI 下轮处理
@@ -3174,12 +3176,16 @@ export class GridTradingService {
 
       // Step 6: 持仓状态同步 — exchange 净持仓=0 但内存有 filled 层时同步为 empty（幽灵层清理）
       const syncBaseSymbol = state.symbol.split('/')[0];
-      const exchangeLongQty = syncPositions
-        .filter(p => p.symbol?.includes(syncBaseSymbol) && (p.side === 'long' || p.side === 'net' || !p.side))
+      // OKX net 模式：net qty>0=多头, net qty<0=空头
+      const netQtySum = syncPositions
+        .filter(p => p.symbol?.includes(syncBaseSymbol) && (p.side === 'net' || !p.side))
         .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
+      const exchangeLongQty = syncPositions
+        .filter(p => p.symbol?.includes(syncBaseSymbol) && p.side === 'long')
+        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0) + Math.max(0, netQtySum);
       const exchangeShortQty = syncPositions
         .filter(p => p.symbol?.includes(syncBaseSymbol) && p.side === 'short')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
+        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0) + Math.max(0, -netQtySum);
 
       if (exchangeLongQty < 0.0001) {
         const ghostBuy = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
@@ -3569,7 +3575,7 @@ export class GridTradingService {
     }
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
-    // 对齐 nofx：重建时全部重置为 empty，持仓由下一轮 syncOrderFills 通过孤儿关联恢复
+    // 重建时全部重置为 empty，持仓由下一轮 syncOrderFills 恢复
     const weights = this.calculateWeights(gridCount, state.distribution);
     const weightSum = weights.reduce((a, b) => a + b, 0);
 
@@ -3723,7 +3729,7 @@ export class GridTradingService {
     thinking?: string,
     execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
     marketAnalysis?: string,
-    preExecGridLines?: any[],  // nofx 对齐：AI 分析时看到的执行前快照
+    preExecGridLines?: any[],  // AI 分析时看到的执行前快照
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
