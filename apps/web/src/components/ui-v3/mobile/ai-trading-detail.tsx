@@ -431,11 +431,14 @@ export function AIStrategyDetailPage() {
           autoPauseOnTrend: editGridAutoPauseOnTrend,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
-          // 百分比 → 绝对价格；留空(0) → undefined → 后端保持原配置或 AI 决策
-          upperBound: (editGridCurrentPrice > 0 && editGridUpperPct > 0)
-            ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : undefined,
-          lowerBound: (editGridCurrentPrice > 0 && editGridLowerPct > 0)
-            ? +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6) : undefined,
+          // 百分比 → 绝对价格；price=0 时保留 spread 进来的旧值（不覆盖为 undefined）
+          ...(editGridCurrentPrice > 0 && editGridUpperPct > 0 ? {
+            upperBound: +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6),
+            lowerBound: +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6),
+          } : {}),
+          // 保存原始百分比，避免下次加载时从绝对价格反算丢失精度（如 0.6 被四舍五入成 1）
+          upperBoundPct: editGridUpperPct > 0 ? editGridUpperPct : undefined,
+          lowerBoundPct: editGridLowerPct > 0 ? editGridLowerPct : undefined,
           // 标记上下界来源于百分比换算，不应视为用户手动锁定（AI 仍可调整）
           boundsFromPct: (editGridCurrentPrice > 0 && editGridUpperPct > 0 && editGridLowerPct > 0),
         },
