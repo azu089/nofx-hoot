@@ -3832,6 +3832,8 @@ export class GridTradingService {
           ? state.lastEquity - state.startEquity
           : undefined,
         unrealizedPnl: state.lastUnrealizedPnl ?? 0,
+        leverage: state.effectiveLeverage,        // 当前生效杠杆
+        userFixedLeverage: state.userFixedLeverage ?? true,
         breakoutLevel: state.breakoutLevel,
         lastPrice: state.lastPrice,
         startEquity: state.startEquity,
