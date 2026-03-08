@@ -2179,6 +2179,14 @@ export class GridTradingService {
             this.logger.warn(`[网格] cancel_order 跳过: orderId=${cancelOrderId} 不在 orderBook 中`);
             break;
           }
+          // 执行前回填层号/价格/数量到 decision，供日志展示（与 place_* 保持一致）
+          const preCancelIdx = state.orderBook[cancelOrderId];
+          if (preCancelIdx !== undefined && state.gridLines[preCancelIdx]) {
+            const cancelLine = state.gridLines[preCancelIdx];
+            decision.level = preCancelIdx + 1; // 1-based，与 AI prompt 层号一致
+            decision.price = cancelLine.price;
+            decision.quantity = cancelLine.orderQuantity || undefined;
+          }
           try {
             await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
           } catch (e: any) {
