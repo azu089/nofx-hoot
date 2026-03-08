@@ -1552,7 +1552,7 @@ export class GridTradingService {
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter);
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
@@ -3118,7 +3118,6 @@ export class GridTradingService {
   private async syncOrderFills(
     state: GridState,
     adapter: GridExchangeAdapter,
-    userId?: string,
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
@@ -3126,10 +3125,8 @@ export class GridTradingService {
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
-      // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions，不复用缓存）
+      // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions）
       let currentPositionSize = 0;
-      let currentPositionEntryPrice = 0;      // 多头入场价，用于 Step 6c 孤儿关联
-      let currentPositionEntryPriceShort = 0; // 空头入场价，用于 Step 6d 孤儿关联
       try {
         const positions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
@@ -3139,14 +3136,8 @@ export class GridTradingService {
             const qty = (pos as any).quantity ?? 0;
             if (side === 'long' || side === 'net' || !side) {
               currentPositionSize += qty;
-              if (qty > 0 && currentPositionEntryPrice === 0) {
-                currentPositionEntryPrice = (pos as any).entryPrice ?? 0;
-              }
             } else if (side === 'short') {
               currentPositionSize -= qty;
-              if (qty > 0 && currentPositionEntryPriceShort === 0) {
-                currentPositionEntryPriceShort = (pos as any).entryPrice ?? 0;
-              }
             }
           }
         }
@@ -3170,100 +3161,21 @@ export class GridTradingService {
 
       for (const line of disappearedLines) {
         const prevOrderId = line.orderId!;
-        const posIncreased = currentPositionSize > expectedPositionSize + 0.0001;
-        const posDecreased = currentPositionSize < expectedPositionSize - 0.0001;
 
-        if (line.side === 'buy' && posIncreased) {
-          // 买单成交：仓位增加
+        // 对齐 nofx: |当前持仓| > |预期持仓| → 成交；否则取消/过期
+        // 平仓单（sell 平多 / buy 平空）持仓绝对值减少，视为取消，由 AI 下轮通过 close_long/close_short 处理
+        if (Math.abs(currentPositionSize) > Math.abs(expectedPositionSize) + 0.0001) {
           line.state = 'filled';
+          line.positionEntry = line.price;
           line.positionSize = line.orderQuantity;
-          line.positionEntry = line.price;
           line.unrealizedPnl = 0;
           state.totalTrades++;
           filledLines.push(line);
-          this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
-        } else if (line.side === 'sell' && posDecreased && currentPositionSize < -0.0001) {
-          // 卖单成交：开空头（仓位变负）
-          // 对齐 nofx：math.Abs(current) > math.Abs(expected) → 成交，不区分方向
-          // 卖单填充后 currentPositionSize < 0，持仓方向为 short
-          line.state = 'filled';
-          line.positionSize = line.orderQuantity > 0 ? line.orderQuantity : Math.abs(currentPositionSize - expectedPositionSize);
-          line.positionEntry = line.price;
-          line.unrealizedPnl = 0;
-          state.totalTrades++;
-          filledLines.push(line);
-          this.logger.log(`[网格] 卖单成交(开空): level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
-        } else if (line.side === 'sell' && posDecreased && currentPositionSize >= -0.0001) {
-          // 卖单成交：仓位减少（平多头）
-          // 注意：sell pending 层的 positionEntry/positionSize 均为 0（持仓在 filled buy 层）
-          // 必须找到对应的 filled buy 层来获取真实入场价和数量
-          const filledBuyLevels = state.gridLines
-            .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
-            .sort((a, b) => Math.abs(a.positionEntry - line.price) - Math.abs(b.positionEntry - line.price));
-          const matchedBuyLevel = filledBuyLevels[0];
-
-          if (matchedBuyLevel) {
-            const exitPrice = line.price; // 卖单价格 = 出场价
-            const entryPrice = matchedBuyLevel.positionEntry; // 买单入场价
-            const qty = matchedBuyLevel.positionSize;
-            const grossProfit = (exitPrice - entryPrice) * qty;
-            const fee = (exitPrice + entryPrice) * qty * (state.takerFeeRate ?? 0.0005);
-            const netProfit = grossProfit - fee;
-            state.totalProfit = (state.totalProfit ?? 0) + netProfit;
-            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-            state.totalTrades++;
-            if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
-            // 同时清除对应的 filled buy 层
-            matchedBuyLevel.state = 'empty';
-            matchedBuyLevel.positionSize = 0;
-            matchedBuyLevel.positionEntry = 0;
-            matchedBuyLevel.unrealizedPnl = netProfit;
-            if (matchedBuyLevel.orderId) {
-              delete state.orderBook[matchedBuyLevel.orderId];
-              matchedBuyLevel.orderId = undefined;
-            }
-            this.logger.log(
-              `[网格] 卖单成交(平多): sell_level=${line.index}→buy_level=${matchedBuyLevel.index}, ` +
-              `exit=${exitPrice.toFixed(4)}, entry=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, profit=${netProfit.toFixed(4)} USDT`,
-            );
-            if (netProfit > 0 && userId) {
-              await this.settleGridFee(state, userId, netProfit);
-            }
-          } else {
-            this.logger.warn(`[网格] 卖单成交但无匹配持多仓层(可能已被 close_long 清除): level=${line.index}`);
-          }
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
-          filledLines.push(line);
-        } else if (line.side === 'buy' && posDecreased && currentPositionSize >= -0.0001 && (line.positionEntry ?? 0) > 0 && (line.positionSize ?? 0) > 0) {
-          // isSellOnFilledLevel 场景：AI 在 filled buy 层直接挂了卖单（关多头），现已成交
-          // 特征：side='buy'（来自原始 buy fill）但仓位减少了，且层上保留有 positionEntry/positionSize
-          // line.price 已在 placeGridLimitOrder 中被覆盖为卖单目标价
-          const exitPrice = line.price;
-          const entryPrice = line.positionEntry;
-          const qty = line.positionSize;
-          const grossProfit = (exitPrice - entryPrice) * qty;
-          const fee = (exitPrice + entryPrice) * qty * (state.takerFeeRate ?? 0.0005);
-          const netProfit = grossProfit - fee;
-          state.totalProfit = (state.totalProfit ?? 0) + netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-          state.totalTrades++;
-          if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = netProfit;
-          filledLines.push(line);
-          this.logger.log(`[网格] 持多仓层卖出成交: level=${line.index}, 出价=${exitPrice.toFixed(4)}, 入价=${entryPrice.toFixed(4)}, qty=${qty.toFixed(4)}, 利润=${netProfit.toFixed(4)} USDT`);
-          if (netProfit > 0 && userId) {
-            await this.settleGridFee(state, userId, netProfit);
-          }
+          this.logger.log(
+            `[网格] 订单成交: level=${line.index}, side=${line.side}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`,
+          );
         } else {
-          // 持仓未变 → 取消/过期
           line.state = 'empty';
-          // 清除任何残留的持仓字段，避免 ghost 数据污染后续判断
           line.positionSize = 0;
           line.positionEntry = 0;
           line.unrealizedPnl = 0;
@@ -3281,93 +3193,6 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 幽灵持仓检测
-      // 只统计 buy-side filled 层（多头仓位），sell-side filled 层代表合法空头，由 Step 6d 处理
-      const updatedExpectedLong = state.gridLines
-        .filter(l => l.state === 'filled' && l.side === 'buy')
-        .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
-
-      // 6a: 交易所仓位≈0但内存有filled buy层（外部平仓或之前误判）
-      const posApproxZero = Math.abs(currentPositionSize) < 0.0001 && updatedExpectedLong > 0.0001;
-      // 6b: 方向相反 — 内存以为持多头（有 buy filled 层）但交易所实际是空头
-      // 注意：不含 sell-side filled 层，避免卖单成交开空时误触此检测
-      const signMismatch = currentPositionSize < -0.0001 && updatedExpectedLong > 0.0001;
-
-      if (posApproxZero || signMismatch) {
-        const ghosts = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0);
-        for (const g of ghosts) {
-          this.logger.warn(`[网格] 幽灵持仓清理: level=${g.index}, positionSize=${g.positionSize?.toFixed(4)}`);
-          g.state = 'empty';
-          g.positionSize = 0;
-          g.positionEntry = 0;
-          g.unrealizedPnl = 0;
-          if (g.orderId) {
-            delete state.orderBook[g.orderId];
-            g.orderId = undefined;
-          }
-        }
-        // 6b: 方向相反时，还需自动平空（市价买单平掉意外空头）
-        if (signMismatch) {
-          const shortQty = Math.abs(currentPositionSize);
-          this.logger.warn(`[网格] 方向异常自动平空: qty=${shortQty.toFixed(4)}`);
-          try {
-            await adapter.closeShort(state.symbol, shortQty);
-          } catch (e: any) {
-            this.logger.error(`[网格] 自动平空失败: ${e.message}`);
-          }
-        }
-      }
-
-      // Step 6c: 孤儿持仓重关联
-      // 场景：exchange 有多头持仓，但内存无 filled 层（通常发生在 adjust_grid 重建后，内存全部重置为 empty）
-      // 对齐 nofx 根源设计：不自动平仓，而是将孤儿持仓关联到价格最近的 empty buy 层，
-      // 让 AI 下一轮能正确看到持仓并自主决定是否平仓
-      const orphanLong = currentPositionSize > 0.0001 && updatedExpectedLong < 0.0001 && disappearedLines.length === 0;
-      if (orphanLong) {
-        const entryPrice = currentPositionEntryPrice > 0 ? currentPositionEntryPrice : (state.lastPrice ?? 0);
-        const nearestBuy = state.gridLines
-          .filter(l => l.state === 'empty' && l.side === 'buy')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice))[0];
-        if (nearestBuy) {
-          nearestBuy.state = 'filled';
-          nearestBuy.positionSize = currentPositionSize;
-          nearestBuy.positionEntry = entryPrice > 0 ? entryPrice : nearestBuy.price;
-          nearestBuy.unrealizedPnl = 0;
-          this.logger.warn(
-            `[网格] 孤儿多头关联: qty=${currentPositionSize.toFixed(4)}, entry=${nearestBuy.positionEntry.toFixed(4)} → level=${nearestBuy.index}`,
-          );
-        } else {
-          this.logger.warn(
-            `[网格] 孤儿多头无可关联层: qty=${currentPositionSize.toFixed(4)}, entry=${entryPrice.toFixed(4)}, 无 empty buy 层`,
-          );
-        }
-      }
-
-      // Step 6d: 孤儿空头关联
-      // 场景：exchange 有空头持仓（currentPositionSize < 0），但内存无 filled sell 层
-      // 典型原因：重建/重启后内存丢失空头层的 filled 状态，导致 AI 反复尝试在该层挂卖单但仓位超限
-      const noFilledSellLayers = !state.gridLines.some(l => l.state === 'filled' && l.side === 'sell');
-      const orphanShort = currentPositionSize < -0.0001 && noFilledSellLayers && disappearedLines.length === 0;
-      if (orphanShort) {
-        const shortQty = Math.abs(currentPositionSize);
-        const entryPrice = currentPositionEntryPriceShort > 0 ? currentPositionEntryPriceShort : (state.lastPrice ?? 0);
-        const nearestSell = state.gridLines
-          .filter(l => l.state === 'empty' && l.side === 'sell')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice))[0];
-        if (nearestSell) {
-          nearestSell.state = 'filled';
-          nearestSell.positionSize = shortQty;
-          nearestSell.positionEntry = entryPrice > 0 ? entryPrice : nearestSell.price;
-          nearestSell.unrealizedPnl = 0;
-          this.logger.warn(
-            `[网格] 孤儿空头关联: qty=${shortQty.toFixed(4)}, entry=${nearestSell.positionEntry.toFixed(4)} → level=${nearestSell.index}`,
-          );
-        } else {
-          this.logger.warn(
-            `[网格] 孤儿空头无可关联层: qty=${shortQty.toFixed(4)}, entry=${entryPrice.toFixed(4)}, 无 empty sell 层`,
-          );
-        }
-      }
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
