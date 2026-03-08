@@ -701,22 +701,16 @@ export function GRID_SYSTEM_PROMPT(
 根据市场数据、账户状态和网格层级状态，**自主判断**本轮应该执行哪些操作。
 
 ### 三种层状态
-- **empty（未挂单）**: 可以挂单，也可以 hold 等待
+- **empty（未挂单）**: **必须补挂对应方向的限价单**（网格运行正常时不允许存在 empty 层）
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 该层已成交，持有仓位，等待在**更高价的相邻层**出局（获取网格利润）。
+- **filled（持仓）**: 该层已成交，持有仓位，持仓层本身**不需要也不能**再挂单，利润靠相邻 empty 层成交来实现
 
-  ⚠️ **反向层规则（严格遵守）**：
-  - 买单成交（side=buy）→ 反向卖单应挂在 **层号+1（价格更高的那层）**，**绝对不能挂在本层（层号相同）**
-  - 卖单成交（side=sell）→ 反向买单应挂在 **层号-1（价格更低的那层）**，**绝对不能挂在本层**
-  - 示例：**Layer 6 买入成交 → 在 Layer 7 挂卖单**（用 Layer 7 的价格），而不是在 Layer 6 挂卖单
-  - ❌ 禁止：在 filled 层本身挂反向单（出入价相同 = 零利润 + 手续费 = 亏损）
-
-  对每个 filled 层检查其反向层（N+1 或 N-1）：
-  - 若反向层是 **empty**：在反向层挂限价单（place_sell_limit level=N+1 / place_buy_limit level=N-1）
-  - 若反向层已有 **正确方向的 pending 单**（N+1 层有 pending sell）：hold，等待出局
-  - 若反向层有 **错误方向的 pending 单**（N+1 层是 pending buy）：cancel 后补挂 sell
-  - 若市场判断不利：close_long / close_short 市价平仓
-  - **多个 filled 层同时存在时，可在同一轮 actions 中对多个层分别下单**
+  ⚠️ **空格补单（最高优先级）**：
+  - 每次决策，优先检查所有 **empty 层**，对每个 empty 层补挂相应方向的限价单
+  - buy 侧层（下半区）补挂 place_buy_limit，sell 侧层（上半区）补挂 place_sell_limit
+  - **多个空格时，可在同一轮 actions 中批量补挂**
+  - 若市场判断不利（趋势突破、剧烈波动）：pause_grid 暂停，不补单
+  - filled 层的持仓靠**其他 empty 层成交**来平仓，不需要在 filled 层本身挂反向单
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
