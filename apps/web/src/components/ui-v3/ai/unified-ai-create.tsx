@@ -941,7 +941,7 @@ export function UnifiedAiCreate() {
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">上偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="any"
                     value={gridUpperPct || ''} placeholder="公式自动"
                     onChange={(e) => setGridUpperPct(parseFloat(e.target.value) || 0)}
                     aria-label="上偏移百分比"
@@ -952,7 +952,7 @@ export function UnifiedAiCreate() {
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">下偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="any"
                     value={gridLowerPct || ''} placeholder="公式自动"
                     onChange={(e) => setGridLowerPct(parseFloat(e.target.value) || 0)}
                     aria-label="下偏移百分比"
