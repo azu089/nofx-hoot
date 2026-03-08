@@ -701,16 +701,9 @@ export function GRID_SYSTEM_PROMPT(
 根据市场数据、账户状态和网格层级状态，**自主判断**本轮应该执行哪些操作。
 
 ### 三种层状态
-- **empty（未挂单）**: **必须补挂对应方向的限价单**（网格运行正常时不允许存在 empty 层）
+- **empty（未挂单）**: 可以挂单，也可以 hold 等待
 - **pending（待成交）**: 已有挂单，通常等待成交
-- **filled（持仓）**: 该层已成交，持有仓位，持仓层本身**不需要也不能**再挂单，利润靠相邻 empty 层成交来实现
-
-  ⚠️ **空格补单（最高优先级）**：
-  - 每次决策，优先检查所有 **empty 层**，对每个 empty 层补挂相应方向的限价单
-  - buy 侧层（下半区）补挂 place_buy_limit，sell 侧层（上半区）补挂 place_sell_limit
-  - **多个空格时，可在同一轮 actions 中批量补挂**
-  - 若市场判断不利（趋势突破、剧烈波动）：pause_grid 暂停，不补单
-  - filled 层的持仓靠**其他 empty 层成交**来平仓，不需要在 filled 层本身挂反向单
+- **filled（持仓）**: 已成交有仓位，可通过 close_long/close_short 主动平仓，或等待市场自然出局
 
 ### ⚠️ 重要约束：place 和 pause_grid 不能同时出现
 - **若本轮决定 pause_grid，actions 中禁止包含任何 place_* 操作**（系统会自动跳过，无效下单）
