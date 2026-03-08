@@ -659,8 +659,12 @@ export interface GridContext {
   gridSkewLevel?: 'none' | 'light' | 'severe';
   gridSkewBuyFilled?: number;   // 持多头格线数（side='buy'，买单成交未平仓）
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
-  // 后端检测的市场形态（与 UI 显示保持一致，AI 应以此为准）
+  // 后端检测的市场形态（供参考，AI 可结合指标自行判断）
   currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
+  // 交易所实时委托单（供 AI 对比内存状态）
+  exchangeOpenOrders?: Array<{orderId: string; side: string; price: number; quantity: number}>;
+  // 近期已平仓记录（供 AI 分析最近成交历史）
+  recentClosedPnl?: Array<{symbol: string; side: string; quantity: number; entryPrice: number; exitPrice: number; realizedPnl: number; closedAt: string}>;
 }
 
 /**
@@ -686,7 +690,7 @@ export function GRID_SYSTEM_PROMPT(
 - 当前价格参考: ${currentPrice.toFixed(4)}
 
 ## 市场状态判断（对齐后端 detectMarketRegime 公式）
-系统已检测市场形态并在 context 中以 currentRegime 字段传入，**请直接使用，不要自行重新判断**：
+系统已检测市场形态并在 context 中以 currentRegime 字段传入，供参考，AI 可结合原始指标（ATR、Bollinger、EMA）自行综合判断：
 - **narrow（窄幅震荡）**: BB带宽<2% AND ATR(1h)/价格<1% → 最佳网格状态，正常运行
 - **standard（标准震荡）**: BB带宽≤3% AND ATR(1h)/价格≤2% → 适合网格，正常运行
 - **wide（宽幅波动）**: BB带宽≤6% AND ATR(1h)/价格≤3% → 谨慎运行，优先处理网格倾斜，可适当降频
@@ -790,7 +794,6 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`4h 指标: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
   lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
-  // 后端检测的市场形态（与 UI 显示一致，AI 必须以此为准，不要自行重新判断）
   const regimeLabels: Record<string, string> = {
     narrow: '窄幅震荡（最佳）',
     standard: '标准震荡（适合）',
@@ -798,7 +801,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     volatile: '高波动（谨慎运行）',
   };
   if (ctx.currentRegime) {
-    lines.push(`⚡ 系统检测市场形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime} ← 请以此为准`);
+    lines.push(`⚡ 系统参考形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime}（供参考，可结合指标自行判断）`);
   }
 
   // Section 3: 箱体数据
@@ -857,7 +860,15 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
     // 仅 filled 层显示持仓量（供 close_long/close_short 参考数量）
     const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
-    lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr} | ${profitStr} | ${orderIdStr}`);
+    // filled 层显示当前亏损%（供 AI 判断是否止损）
+    const lossStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0 && ctx.currentPrice > 0)
+      ? (() => {
+          const pct = Math.abs(ctx.currentPrice - l.fillPrice) / l.fillPrice * 100;
+          const isLoss = l.side === 'buy' ? ctx.currentPrice < l.fillPrice : ctx.currentPrice > l.fillPrice;
+          return isLoss ? ` [亏${pct.toFixed(1)}%${ctx.stopLossPct ? `/阈${ctx.stopLossPct}%` : ''}]` : '';
+        })()
+      : '';
+    lines.push(`${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${l.side === 'buy' ? '买' : '卖'} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`);
   }
 
   // Section 6: 账户状态
@@ -930,6 +941,28 @@ export function buildGridUserPrompt(ctx: GridContext): string {
         `${c.volume.toFixed(1).padStart(10)}`,
       );
     });
+  }
+
+  // Section 10: 交易所委托单状态（实时，供 AI 对比内存网格状态）
+  if (ctx.exchangeOpenOrders && ctx.exchangeOpenOrders.length > 0) {
+    lines.push('');
+    lines.push(`--- 交易所委托单(${ctx.exchangeOpenOrders.length}) ---`);
+    for (const o of ctx.exchangeOpenOrders.slice(0, 15)) {
+      lines.push(`${o.orderId.slice(-8)} | ${o.side} | 价格=${o.price.toFixed(4)} | 数量=${o.quantity.toFixed(4)}`);
+    }
+  } else if (ctx.exchangeOpenOrders) {
+    lines.push('');
+    lines.push('--- 交易所委托单: 无 ---');
+  }
+
+  // Section 11: 近期已平仓记录（供 AI 分析成交历史，识别外部平仓等）
+  if (ctx.recentClosedPnl && ctx.recentClosedPnl.length > 0) {
+    lines.push('');
+    lines.push(`--- 近期已平仓(${ctx.recentClosedPnl.length}笔,24h内) ---`);
+    for (const r of ctx.recentClosedPnl.slice(0, 10)) {
+      const pnlStr = r.realizedPnl >= 0 ? `+${r.realizedPnl.toFixed(4)}` : r.realizedPnl.toFixed(4);
+      lines.push(`${r.side} ${r.quantity.toFixed(4)} | 入=${r.entryPrice.toFixed(4)} 出=${r.exitPrice.toFixed(4)} | PnL=${pnlStr}`);
+    }
   }
 
   lines.push('');
