@@ -1768,6 +1768,7 @@
       "gridErrMargin": "Yetersiz teminat",
       "gridErrMarginHintActive": "{count} aktif emir teminat kullanıyor, işlem sonrası otomatik tamamlanacak",
       "gridErrMarginHintWait": "Teminat serbest bırakılması bekleniyor",
+      "gridErrCapHint": "Toplam pozisyon yatırım×kaldıraç sınırına ulaştı, pozisyon azaldığında otomatik eklenecek",
       "gridErrOrderId": "Geçersiz emir ID (süresi dolmuş veya bulunamadı)",
       "gridErrFailBuy": "Alış×{count}",
       "gridErrFailSell": "Satış×{count}",

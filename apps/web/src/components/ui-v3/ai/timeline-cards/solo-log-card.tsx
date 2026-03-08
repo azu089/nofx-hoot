@@ -1054,6 +1054,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             if (failedOther > 0)  failedParts.push(t('detail.gridErrFailOther', { count: failedOther }));
 
             // 错误原因（i18n）
+            const isCapExceeded = firstErrRaw.includes('总仓位已满');
+            const isMinQtySkip  = firstErrRaw.includes('数量不足最小');
             let reasonText: string;
             let hintText: string | null = null;
             if (isMarginErr) {
@@ -1061,6 +1063,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               hintText   = activeOrders > 0
                 ? t('detail.gridErrMarginHintActive', { count: activeOrders })
                 : t('detail.gridErrMarginHintWait');
+            } else if (isCapExceeded) {
+              // 系统仓位上限（$投资额 × 杠杆）
+              reasonText = t('timeline.gridSkipCapFull');
+              hintText   = t('detail.gridErrCapHint');
+            } else if (isMinQtySkip) {
+              reasonText = t('timeline.gridSkipMinQty');
             } else {
               // 使用统一交易所错误翻译
               reasonText = translateExchangeOrderError(firstErrRaw, te);

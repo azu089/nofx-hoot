@@ -1768,6 +1768,7 @@
       "gridErrMargin": "증거금 부족",
       "gridErrMarginHintActive": "{count}개 활성 주문이 증거금 사용 중, 체결 후 자동 보충",
       "gridErrMarginHintWait": "증거금 해제 대기 중",
+      "gridErrCapHint": "총 포지션이 투자금×레버리지 한도에 도달, 포지션 감소 후 자동 보충",
       "gridErrOrderId": "주문 ID 무효 (만료 또는 존재하지 않음)",
       "gridErrFailBuy": "매수×{count}층",
       "gridErrFailSell": "매도×{count}층",

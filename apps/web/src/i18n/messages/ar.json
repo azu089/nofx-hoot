@@ -1751,6 +1751,7 @@
       "gridErrMargin": "هامش غير كافٍ",
       "gridErrMarginHintActive": "{count} أمر نشط يستخدم الهامش، سيُملأ تلقائياً بعد التنفيذ",
       "gridErrMarginHintWait": "بانتظار تحرير الهامش",
+      "gridErrCapHint": "وصل إجمالي المركز إلى حد الاستثمار×الرافعة، سيضاف تلقائياً عند انخفاض المركز",
       "gridErrOrderId": "معرّف أمر غير صحيح (منتهي الصلاحية أو غير موجود)",
       "gridErrFailBuy": "شراء×{count}",
       "gridErrFailSell": "بيع×{count}",

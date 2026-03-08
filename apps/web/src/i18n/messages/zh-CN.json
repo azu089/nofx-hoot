@@ -1768,6 +1768,7 @@
       "gridErrMargin": "保证金不足",
       "gridErrMarginHintActive": "{count} 个活跃挂单正在占用保证金，等待成交后自动补挂",
       "gridErrMarginHintWait": "等待保证金释放后自动补挂",
+      "gridErrCapHint": "总仓位已达投资额×杠杆上限，下轮持仓减少后自动补挂",
       "gridErrOrderId": "订单ID无效（已过期或不存在）",
       "gridErrFailBuy": "买单×{count}层",
       "gridErrFailSell": "卖单×{count}层",

@@ -1769,6 +1769,7 @@
       "gridErrMargin": "Không đủ ký quỹ",
       "gridErrMarginHintActive": "{count} lệnh đang sử dụng ký quỹ, sẽ tự động bổ sung sau khi khớp",
       "gridErrMarginHintWait": "Đang chờ giải phóng ký quỹ",
+      "gridErrCapHint": "Tổng vị thế đạt giới hạn đầu tư×đòn bẩy, tự động đặt lệnh khi vị thế giảm",
       "gridErrOrderId": "ID lệnh không hợp lệ (hết hạn hoặc không tồn tại)",
       "gridErrFailBuy": "Mua×{count}",
       "gridErrFailSell": "Bán×{count}",

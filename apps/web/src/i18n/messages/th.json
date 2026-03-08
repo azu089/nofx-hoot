@@ -1768,6 +1768,7 @@
       "gridErrMargin": "มาร์จิ้นไม่เพียงพอ",
       "gridErrMarginHintActive": "{count} คำสั่งใช้มาร์จิ้นอยู่ จะเติมอัตโนมัติหลังจากดำเนินการ",
       "gridErrMarginHintWait": "รอการปลดปล่อยมาร์จิ้น",
+      "gridErrCapHint": "ตำแหน่งรวมถึงขีดจำกัดการลงทุน×เลเวอเรจ จะเติมเองเมื่อตำแหน่งลดลง",
       "gridErrOrderId": "ID คำสั่งไม่ถูกต้อง (หมดอายุหรือไม่พบ)",
       "gridErrFailBuy": "ซื้อ×{count}ชั้น",
       "gridErrFailSell": "ขาย×{count}ชั้น",

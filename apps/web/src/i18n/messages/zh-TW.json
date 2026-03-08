@@ -1770,6 +1770,7 @@
       "gridErrMargin": "保證金不足",
       "gridErrMarginHintActive": "{count} 個活躍掛單正在佔用保證金，等待成交後自動補掛",
       "gridErrMarginHintWait": "等待保證金釋放後自動補掛",
+      "gridErrCapHint": "總倉位已達投資額×槓桿上限，下輪持倉減少後自動補掛",
       "gridErrOrderId": "訂單ID無效（已過期或不存在）",
       "gridErrFailBuy": "買單×{count}層",
       "gridErrFailSell": "賣單×{count}層",

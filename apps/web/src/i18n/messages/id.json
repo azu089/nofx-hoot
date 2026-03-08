@@ -1768,6 +1768,7 @@
       "gridErrMargin": "Margin tidak cukup",
       "gridErrMarginHintActive": "{count} pesanan aktif menggunakan margin, otomatis terisi setelah eksekusi",
       "gridErrMarginHintWait": "Menunggu margin dilepaskan",
+      "gridErrCapHint": "Total posisi mencapai batas investasi×leverage, akan otomatis ditempatkan saat posisi berkurang",
       "gridErrOrderId": "ID pesanan tidak valid (kedaluwarsa atau tidak ditemukan)",
       "gridErrFailBuy": "Beli×{count}",
       "gridErrFailSell": "Jual×{count}",

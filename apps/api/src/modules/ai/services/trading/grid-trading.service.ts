@@ -1526,7 +1526,14 @@ export class GridTradingService {
           try {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice, gridConfig?.locale);
             if (result.executed && d.action.includes('place_')) trades++;
-            execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
+            if (!result.executed && d.action.startsWith('place_')) {
+              // place_* 被系统限制拦截（仓位上限/最小数量/价差过宽等）→ 视为失败
+              // 前端 !log.executed + errors 面板会显示具体原因
+              execResults.push({ action: d.action, success: false, error: result.skipReason });
+              errors++;
+            } else {
+              execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
+            }
           } catch (e: any) {
             errors++;
             const errCategory = classifyExchangeError(e);

@@ -1755,6 +1755,7 @@
       "gridErrMargin": "Insufficient margin",
       "gridErrMarginHintActive": "{count} active orders using margin, will auto-fill after execution",
       "gridErrMarginHintWait": "Waiting for margin to be released",
+      "gridErrCapHint": "Total position reached investment×leverage cap, will auto-place when position decreases",
       "gridErrOrderId": "Invalid order ID (expired or not found)",
       "gridErrFailBuy": "Buy×{count}",
       "gridErrFailSell": "Sell×{count}",

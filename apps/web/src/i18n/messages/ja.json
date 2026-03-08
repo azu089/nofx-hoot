@@ -1768,6 +1768,7 @@
       "gridErrMargin": "証拠金不足",
       "gridErrMarginHintActive": "{count} 件の注文が証拠金を使用中、約定後に自動補充",
       "gridErrMarginHintWait": "証拠金の解放を待っています",
+      "gridErrCapHint": "総ポジションが投資額×レバレッジ上限に達しました、ポジション減少後に自動補充",
       "gridErrOrderId": "注文IDが無効（期限切れまたは存在しない）",
       "gridErrFailBuy": "買い×{count}層",
       "gridErrFailSell": "売り×{count}層",
