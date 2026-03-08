@@ -1230,8 +1230,8 @@ export class GridTradingService {
 
         const response = await this.llm.chat(
           modelId,
-          GRID_SYSTEM_PROMPT(state.symbol, state.gridLines.length, state.totalInvestment, state.leverage, state.distribution, currentPrice),
-          buildGridUserPrompt(context),
+          GRID_SYSTEM_PROMPT(state.symbol, state.gridLines.length, state.totalInvestment, state.leverage, state.distribution, currentPrice, gridConfig?.locale),
+          buildGridUserPrompt({ ...context, locale: gridConfig?.locale }),
           apiKeys,
           { temperature: 0.3, maxTokens: 1500 },
         );

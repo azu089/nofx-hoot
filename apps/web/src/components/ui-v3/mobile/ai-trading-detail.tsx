@@ -99,6 +99,10 @@ export function AIStrategyDetailPage() {
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
   const [editGridAutoAdjustThreshold, setEditGridAutoAdjustThreshold] = useState(20);
+  const [editGridDirection, setEditGridDirection] = useState<'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'>('neutral');
+  const [editGridDistribution, setEditGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
+  const [editGridUseMakerOnly, setEditGridUseMakerOnly] = useState(false);
+  const [editGridAutoPauseOnTrend, setEditGridAutoPauseOnTrend] = useState(true);
   const [editGridEnableDirectionAdjust, setEditGridEnableDirectionAdjust] = useState(false);
   const [editGridDirectionBiasRatio, setEditGridDirectionBiasRatio] = useState(70);
   const [editGridInterval, setEditGridInterval] = useState(60);
@@ -297,12 +301,16 @@ export function AIStrategyDetailPage() {
       // Grid 策略加载 gridConfig
       const gc = strategy.gridConfig as GridConfig;
       setEditGridInvestment(gc.totalInvestment || 1000);
-      setEditGridLeverage(gc.leverage || 1);
+      setEditGridLeverage(gc.leverage ?? 0);
       setEditGridCount(gc.gridCount || 10);
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridDailyLossLimit(gc.dailyLossLimitPct || 0);
       setEditGridAutoAdjustThreshold(gc.autoAdjustThreshold != null ? Math.round(gc.autoAdjustThreshold * 100) : 20);
+      setEditGridDirection((gc.direction as typeof editGridDirection) ?? 'neutral');
+      setEditGridDistribution((gc.distribution as typeof editGridDistribution) ?? 'uniform');
+      setEditGridUseMakerOnly(gc.useMakerOnly ?? false);
+      setEditGridAutoPauseOnTrend(gc.autoPauseOnTrend ?? true);
       setEditGridEnableDirectionAdjust(gc.enableDirectionAdjust ?? false);
       setEditGridDirectionBiasRatio(gc.directionBiasRatio != null ? Math.round(gc.directionBiasRatio * 100) : 70);
       setEditGridInterval(strategy?.intervalMinutes || 60);
@@ -400,10 +408,14 @@ export function AIStrategyDetailPage() {
           totalInvestment: editGridInvestment,
           leverage: editGridLeverage,
           gridCount: editGridCount,
+          direction: editGridDirection,
+          distribution: editGridDistribution,
           maxDrawdownPct: editGridMaxDrawdown,
           stopLossPct: editGridStopLoss,
           dailyLossLimitPct: editGridDailyLossLimit || 0,
           autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
+          useMakerOnly: editGridUseMakerOnly,
+          autoPauseOnTrend: editGridAutoPauseOnTrend,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
           // 百分比 → 绝对价格；留空(0) → undefined → 后端保持原配置或 AI 决策
@@ -992,7 +1004,7 @@ export function AIStrategyDetailPage() {
                         return <>
                         <ConfigRow label={t('detail.configTradingPair')} value={gc.symbol || '—'} />
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
-                        <ConfigRow label={t('detail.configLeverage')} value={`${gc.leverage || 1}x`} />
+                        <ConfigRow label={t('detail.configLeverage')} value={gc.leverage ? `${gc.leverage}x` : 'AI 自动决策'} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
                         <ConfigRow label={t('detail.configPriceBounds')} value={(() => {
                           const lo = detail?.gridState?.lowerPrice ? Number(detail.gridState.lowerPrice) : null;
@@ -1619,6 +1631,63 @@ export function AIStrategyDetailPage() {
                               />
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
+                          </div>
+                          {/* 初始方向 + 格线分布 */}
+                          <div className="grid grid-cols-2 gap-2 col-span-2">
+                            <div className="space-y-1">
+                              <p className="text-xs text-[#9090A0]">初始方向</p>
+                              <select
+                                value={editGridDirection}
+                                onChange={(e) => setEditGridDirection(e.target.value as typeof editGridDirection)}
+                                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] outline-none"
+                                aria-label="网格初始方向"
+                              >
+                                <option value="neutral">中性</option>
+                                <option value="long_bias">偏多</option>
+                                <option value="short_bias">偏空</option>
+                                <option value="long">纯多</option>
+                                <option value="short">纯空</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-[#9090A0]">格线分布</p>
+                              <select
+                                value={editGridDistribution}
+                                onChange={(e) => setEditGridDistribution(e.target.value as typeof editGridDistribution)}
+                                className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] outline-none"
+                                aria-label="格线分布"
+                              >
+                                <option value="uniform">均匀</option>
+                                <option value="gaussian">正态</option>
+                                <option value="pyramid">金字塔</option>
+                              </select>
+                            </div>
+                          </div>
+                          {/* Maker 单 + 趋势暂停 */}
+                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <span className="text-xs text-[#9090A0]">Maker 限价单（省手续费）</span>
+                            <button
+                              type="button"
+                              onClick={() => setEditGridUseMakerOnly(!editGridUseMakerOnly)}
+                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${editGridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                              aria-label="PostOnly限价单"
+                            >
+                              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <div>
+                              <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
+                              <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditGridAutoPauseOnTrend(!editGridAutoPauseOnTrend)}
+                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${editGridAutoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                              aria-label="趋势市场自动暂停"
+                            >
+                              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
                           </div>
                           <div className="space-y-1 col-span-2">
                             <div className="flex items-center justify-between">

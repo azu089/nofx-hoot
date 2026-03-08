@@ -9,7 +9,7 @@
  */
 
 import { AIRole, AI_ROLES, ANALYSIS_OUTPUT_FORMAT, buildAnalysisOutputFormat } from './models';
-import { buildLanguageInstruction, buildReasoningLanguageHint } from './locale-instructions';
+import { buildLanguageInstruction, buildReasoningLanguageHint, buildUserMessageLanguageReminder } from './locale-instructions';
 import type { EnhancedMarketData } from '../types/ai.types';
 
 // ==================== 市场数据格式化模板 ====================
@@ -557,6 +557,7 @@ export function buildVotingUserPrompt(
  * 
  */
 export interface GridContext {
+  locale?: string;          // 用户语言（控制 AI reasoning 输出语言）
   symbol: string;
   currentTime: string;
   currentPrice: number;
@@ -678,6 +679,7 @@ export function GRID_SYSTEM_PROMPT(
   leverage: number,
   distribution: string,
   currentPrice: number,
+  locale?: string,
 ): string {
   return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
 
@@ -758,6 +760,8 @@ export function GRID_SYSTEM_PROMPT(
   - 严禁输出纯标签（禁止："价格接近上边界" / "高保证金风险" / "维持现状"）
 - actions：操作数组，无需操作时输出空数组 []
 - 每个 action 的 reasoning：≤15字简短标签，只说这一笔原因，不重复 analysis
+
+${buildLanguageInstruction(locale)}
 `;
 }
 
@@ -967,6 +971,9 @@ export function buildGridUserPrompt(ctx: GridContext): string {
 
   lines.push('');
   lines.push('请根据以上数据输出你的网格操作决策（JSON 数组）。');
+
+  const langReminder = buildUserMessageLanguageReminder(ctx.locale);
+  if (langReminder) lines.push(langReminder);
 
   return lines.join('\n');
 }
