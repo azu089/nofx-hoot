@@ -1460,9 +1460,8 @@ export class GridTradingService {
 
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
-        // 传入 livePositions（周期开始时已预取），避免二次 API 调用导致 silent fail → currentPos=0
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId, livePositions);
+          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
@@ -3031,36 +3030,26 @@ export class GridTradingService {
     state: GridState,
     adapter: GridExchangeAdapter,
     userId?: string,
-    preloadedPositions?: any[],  // 复用主循环已预取的持仓，避免二次 API 调用 + silent fail
   ): Promise<{ filledLines: GridLine[] }> {
     const filledLines: GridLine[] = [];
     try {
-      // Step 1: 获取交易所当前挂单
+      // Step 1: 获取交易所当前挂单（实时）
       const openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
-      // Step 2: 获取交易所当前持仓（净多头量）
-      // 优先复用主循环已预取的 livePositions，避免二次 API 调用导致 silent fail
+      // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions，不复用缓存）
       let currentPositionSize = 0;
       try {
-        const positions = preloadedPositions ?? await adapter.getPositions();
+        const positions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
-        // 诊断日志：打印原始持仓数据（临时，确认 side/symbol/quantity 字段格式后删除）
-        if (positions.length > 0) {
-          const matchedPos = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
-          this.logger.debug(`[网格] syncOrderFills 持仓原始(来源=${preloadedPositions ? '预加载' : 'API'}): total=${positions.length}, matched=${matchedPos.length}, first=${JSON.stringify(matchedPos[0] ?? positions[0])}`);
-        } else {
-          this.logger.debug(`[网格] syncOrderFills 持仓原始(来源=${preloadedPositions ? '预加载' : 'API'}): 交易所返回0持仓, 预加载长度=${preloadedPositions?.length ?? '无'}`);
-        }
         for (const pos of positions) {
           if ((pos as any).symbol?.includes(baseSymbol)) {
-            // 兼容 OKX net_mode（side='net'）和标准 long/short
             const side = (pos as any).side;
             const qty = (pos as any).quantity ?? 0;
             if (side === 'long' || side === 'net' || !side) {
-              currentPositionSize += qty; // net mode 或 long：正持仓 = 多头
+              currentPositionSize += qty;
             } else if (side === 'short') {
-              currentPositionSize -= qty; // short：负持仓 = 空头
+              currentPositionSize -= qty;
             }
           }
         }
@@ -3077,30 +3066,6 @@ export class GridTradingService {
       const disappearedLines = state.gridLines.filter(
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
-
-      // Step 5: 对齐 nofx — 始终用实时持仓做对账（nofx syncGridState 每轮无条件调 GetPositions）
-      // 修复：close_long/close_short 执行后无消失挂单，若不刷新则用下单前旧快照，ghost check 失效
-      if (preloadedPositions !== undefined) {
-        try {
-          const freshPositions = await adapter.getPositions();
-          const baseSymbol2 = state.symbol.split('/')[0];
-          let freshSize = 0;
-          for (const pos of freshPositions) {
-            if ((pos as any).symbol?.includes(baseSymbol2)) {
-              const side = (pos as any).side;
-              const qty = (pos as any).quantity ?? 0;
-              if (side === 'long' || side === 'net' || !side) freshSize += qty;
-              else if (side === 'short') freshSize -= qty;
-            }
-          }
-          if (Math.abs(freshSize - currentPositionSize) > 0.0001) {
-            this.logger.debug(`[网格] 刷新持仓: 预加载=${currentPositionSize.toFixed(4)} → 实时=${freshSize.toFixed(4)}`);
-            currentPositionSize = freshSize;
-          }
-        } catch (e: any) {
-          this.logger.warn(`[网格] 刷新持仓失败（继续用预加载数据）: ${e.message}`);
-        }
-      }
 
       this.logger.debug(
         `[网格] syncOrderFills: 交易所挂单=${openOrders.length}, 内存pending=${state.gridLines.filter(l => l.state === 'pending').length}, 消失=${disappearedLines.length}, currentPos=${currentPositionSize.toFixed(4)}, expectedPos=${expectedPositionSize.toFixed(4)}`,
