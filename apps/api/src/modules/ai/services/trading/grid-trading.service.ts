@@ -25,7 +25,7 @@ export interface GridConfig {
   totalInvestment: number;     // 总投资额（USDT）
   upperBound?: number;         // 手动上界（useATRBounds=true 时可省略）
   lowerBound?: number;         // 手动下界
-  leverage: number;            // 杠杆倍数（默认 1）
+  leverage?: number | null;    // 杠杆倍数：null/undefined = AI 决策(≤5x)，填值 = 固定杠杆
   distribution?: 'uniform' | 'gaussian' | 'pyramid'; // 分布（默认 uniform）
   direction?: GridDirection;   // 方向（默认 neutral）
   useATRBounds?: boolean;      // 使用 ATR 自动边界
@@ -151,6 +151,7 @@ export interface GridState {
 
   // 动态杠杆（Regime 联动）
   effectiveLeverage: number;  // 当前生效杠杆 = min(leverage, regimeCap)，运行时由市场状态压低
+  userFixedLeverage: boolean; // true = 用户固定杠杆（跳过 Regime 压杆）；false = AI 决策模式
 
   // 对齐 nofx checkTotalPositionLimit：每轮从交易所实时持仓计算名义价值（取代内存 filled 层累加）
   livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
@@ -419,12 +420,17 @@ export class GridTradingService {
       symbol,
       gridCount,
       totalInvestment,
-      leverage,
+      leverage: leverageInput,
       distribution = 'uniform',
       direction = 'neutral',
       useATRBounds = false,
       atrMultiplier = DEFAULT_ATR_MULTIPLIER,
     } = config;
+
+    // 杠杆模式：null/undefined/0 = AI 决策（上限 5x）；填值 = 固定杠杆
+    const AI_DEFAULT_MAX_LEVERAGE = 5;
+    const userFixedLeverage = leverageInput != null && leverageInput > 0;
+    const leverage: number = userFixedLeverage ? leverageInput! : AI_DEFAULT_MAX_LEVERAGE;
 
     if (gridCount < 2 || gridCount > 100) {
       throw new Error('网格数量必须在 2-100 之间');
@@ -645,6 +651,7 @@ export class GridTradingService {
       lastUnrealizedPnl: 0, // 首轮 buildGridContext 后从交易所持仓更新
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
+      userFixedLeverage,           // true = 固定杠杆，跳过 Regime 压杆
       userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
       rangeSource,  // 持久化供前端展示: '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
@@ -810,42 +817,60 @@ export class GridTradingService {
       await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
-    // Step 1.5: 配置变更检测 — 用户修改参数后自动重建网格
-    // 历史累计数据在配置变更时需保留（totalProfit 是策略创建以来的总和，不随重建清零）
-    let preservedProfit: number | null = null;
-    let preservedTrades: number | null = null;
-    let preservedWinning: number | null = null;
+    // Step 1.5: 配置变更检测 — 对齐 nofx adjustGrid：原地取消挂单 + 重建层级（历史利润不清零）
     if (state && state.isInitialized && gridConfig) {
       const configChanged = this.detectGridConfigChange(state, gridConfig);
       if (configChanged) {
         this.logger.warn(
-          `[网格] 检测到配置变更: ${configChanged}，清理旧网格并重新初始化`,
+          `[网格] 检测到配置变更: ${configChanged}，原地重建（历史利润保留）`,
         );
-        // 保存历史累计数据（跨配置变更不清零）
-        preservedProfit = state.totalProfit;
-        preservedTrades = state.totalTrades;
-        preservedWinning = state.winningTrades;
-        // 取消交易所上的所有挂单
+        // Step A: 取消交易所所有挂单（对齐 nofx cancelAllGridOrders）
         await this.cleanupExistingOrders(state, userId, apiKeyId);
-        // 清除内存和 DB 状态
-        this.gridStates.delete(strategyId);
-        state = undefined;
+        // Step B: 原地更新 state 配置字段
+        if (gridConfig.symbol) state.symbol = gridConfig.symbol;
+        if (gridConfig.leverage) state.leverage = gridConfig.leverage;
+        if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
+        if (gridConfig.direction) state.currentDirection = gridConfig.direction;
+        if (gridConfig.distribution) state.distribution = gridConfig.distribution;
+        // Step C: 层数变更时调整 gridLines 数组大小
+        const newCount = gridConfig.gridCount ?? state.gridLines.length;
+        if (newCount !== state.gridLines.length) {
+          if (newCount > state.gridLines.length) {
+            for (let i = state.gridLines.length; i < newCount; i++) {
+              state.gridLines.push({
+                index: i, price: 0, state: 'empty', side: 'buy',
+                orderId: undefined, orderQuantity: 0, positionSize: 0,
+                positionEntry: 0, allocatedUSD: 0, unrealizedPnl: 0,
+              });
+            }
+          } else {
+            state.gridLines = state.gridLines.slice(0, newCount);
+          }
+          state.gridLines.forEach((l, i) => { l.index = i; });
+        }
+        // Step D: 获取价格并原地重建层级（对齐 nofx initializeGridLevels）
+        let rebuildPrice: number;
+        try {
+          rebuildPrice = await this.getCurrentPrice(state.symbol);
+        } catch (e: any) {
+          this.logger.error(`[网格] 配置变更时获取价格失败: ${e.message}，跳过本轮`);
+          return { trades: 0, errors: 1 };
+        }
+        await this.reinitializeGridLevels(state, rebuildPrice);
+        state.needsReconcile = false;
+        await this.persistGridState(strategyId, state);
+        this.logger.log(
+          `[网格] 配置变更重建完成: ${newCount} 层，利润保留 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
+        );
+        // 无需 reconcile — exchange 已由 cleanupExistingOrders 清空，本轮继续正常流程
       }
     }
 
     if (!state || !state.isInitialized) {
-      // 尝试自动初始化（首次 or 配置变更后重建）
+      // 首次初始化（非配置变更路径）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
-        // 配置变更重建时，恢复历史累计利润（首次初始化时 preserved 为 null，保持 0）
-        if (preservedProfit !== null) {
-          state.totalProfit    = preservedProfit;
-          state.totalTrades    = preservedTrades!;
-          state.winningTrades  = preservedWinning!;
-          this.logger.log(`[网格] 配置变更重建：保留累计利润 ${preservedProfit >= 0 ? '+' : ''}${preservedProfit.toFixed(2)} USDT`);
-          await this.persistGridState(strategyId, state);
-        }
-        // 新建/重建后立即 reconcile：读取交易所现有挂单和持仓
+        // 新建后立即 reconcile：读取交易所现有挂单和持仓
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
@@ -1181,16 +1206,20 @@ export class GridTradingService {
     }
 
     // Step 6.5: 动态杠杆 — 市场状态联动上限
-    // 防御性 fallback：旧数据可能无 effectiveLeverage 字段
+    // 防御性 fallback：旧数据可能无 effectiveLeverage / userFixedLeverage 字段
     if (!state.effectiveLeverage) state.effectiveLeverage = state.leverage;
-    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
-    const newEffective = Math.min(state.leverage, regimeCap);
-    if (state.effectiveLeverage !== newEffective) {
-      this.logger.log(
-        `[网格] 杠杆调整: ${state.effectiveLeverage}x → ${newEffective}x ` +
-        `(市场=${this.regimeLabel(state.currentRegime)}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
-      );
-      state.effectiveLeverage = newEffective;
+    state.userFixedLeverage ??= true; // 旧数据兼容：无此字段视为固定杠杆（行为不变）
+    // 用户固定杠杆时跳过 Regime 压杆
+    if (!state.userFixedLeverage) {
+      const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
+      const newEffective = Math.min(state.leverage, regimeCap);
+      if (state.effectiveLeverage !== newEffective) {
+        this.logger.log(
+          `[网格] 杠杆调整: ${state.effectiveLeverage}x → ${newEffective}x ` +
+          `(市场=${this.regimeLabel(state.currentRegime)}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
+        );
+        state.effectiveLeverage = newEffective;
+      }
     }
 
     // Step 6.6: 方向自适应 — 由 enableDirectionAdjust 控制（默认关闭）
