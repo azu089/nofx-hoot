@@ -1328,34 +1328,57 @@ export class GridTradingService {
         // 使用 Step 3 已拿到的 livePositions 快照，无需额外 API 调用
         // 对齐 nofx：交易所持仓始终属于本策略，AI 不应将其推断为"其他策略"
         {
-          const noFilledLayers = !state.gridLines.some(l => l.state === 'filled' && l.positionSize > 0);
-          if (noFilledLayers && livePositions && livePositions.length > 0) {
+          if (livePositions && livePositions.length > 0) {
             const baseSymbol = state.symbol.split('/')[0];
-            let orphanQty = 0;
-            let orphanEntry = 0;
+            let orphanLongQty = 0, orphanLongEntry = 0;
+            let orphanShortQty = 0, orphanShortEntry = 0;
             for (const pos of livePositions) {
               if ((pos as any).symbol?.includes(baseSymbol)) {
                 const side = (pos as any).side;
+                const qty = (pos as any).quantity ?? (pos as any).positionAmt ?? 0;
                 if (side === 'long' || side === 'net' || !side) {
-                  orphanQty += (pos as any).quantity ?? (pos as any).positionAmt ?? 0;
-                  if (orphanEntry === 0) orphanEntry = (pos as any).entryPrice ?? 0;
+                  orphanLongQty += qty;
+                  if (orphanLongEntry === 0) orphanLongEntry = (pos as any).entryPrice ?? 0;
+                } else if (side === 'short') {
+                  orphanShortQty += qty;
+                  if (orphanShortEntry === 0) orphanShortEntry = (pos as any).entryPrice ?? 0;
                 }
               }
             }
-            if (orphanQty > 0.0001) {
+            // 孤儿多头预关联（无 filled buy 层但交易所有多头）
+            const noFilledBuyLayers = !state.gridLines.some(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
+            if (orphanLongQty > 0.0001 && noFilledBuyLayers) {
               const nearestBuy = state.gridLines
                 .filter(l => l.state === 'empty' && l.side === 'buy')
-                .sort((a, b) => Math.abs(a.price - orphanEntry) - Math.abs(b.price - orphanEntry))[0];
+                .sort((a, b) => Math.abs(a.price - orphanLongEntry) - Math.abs(b.price - orphanLongEntry))[0];
               if (nearestBuy) {
                 nearestBuy.state = 'filled';
-                nearestBuy.positionSize = orphanQty;
-                nearestBuy.positionEntry = orphanEntry > 0 ? orphanEntry : nearestBuy.price;
+                nearestBuy.positionSize = orphanLongQty;
+                nearestBuy.positionEntry = orphanLongEntry > 0 ? orphanLongEntry : nearestBuy.price;
                 nearestBuy.unrealizedPnl = 0;
                 this.logger.log(
-                  `[网格] 孤儿持仓预关联: level=${nearestBuy.index + 1}, qty=${orphanQty.toFixed(4)}, entry=${nearestBuy.positionEntry.toFixed(4)}`,
+                  `[网格] 孤儿多头预关联: level=${nearestBuy.index + 1}, qty=${orphanLongQty.toFixed(4)}, entry=${nearestBuy.positionEntry.toFixed(4)}`,
                 );
               } else {
-                this.logger.warn(`[网格] 孤儿持仓无可关联层: qty=${orphanQty.toFixed(4)}`);
+                this.logger.warn(`[网格] 孤儿多头无可关联层: qty=${orphanLongQty.toFixed(4)}`);
+              }
+            }
+            // 孤儿空头预关联（无 filled sell 层但交易所有空头）
+            const noFilledSellLayers = !state.gridLines.some(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
+            if (orphanShortQty > 0.0001 && noFilledSellLayers) {
+              const nearestSell = state.gridLines
+                .filter(l => l.state === 'empty' && l.side === 'sell')
+                .sort((a, b) => Math.abs(a.price - orphanShortEntry) - Math.abs(b.price - orphanShortEntry))[0];
+              if (nearestSell) {
+                nearestSell.state = 'filled';
+                nearestSell.positionSize = orphanShortQty;
+                nearestSell.positionEntry = orphanShortEntry > 0 ? orphanShortEntry : nearestSell.price;
+                nearestSell.unrealizedPnl = 0;
+                this.logger.log(
+                  `[网格] 孤儿空头预关联: level=${nearestSell.index + 1}, qty=${orphanShortQty.toFixed(4)}, entry=${nearestSell.positionEntry.toFixed(4)}`,
+                );
+              } else {
+                this.logger.warn(`[网格] 孤儿空头无可关联层: qty=${orphanShortQty.toFixed(4)}`);
               }
             }
           }
@@ -3098,7 +3121,8 @@ export class GridTradingService {
 
       // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions，不复用缓存）
       let currentPositionSize = 0;
-      let currentPositionEntryPrice = 0; // 多头入场价，用于 Step 6c 孤儿关联
+      let currentPositionEntryPrice = 0;      // 多头入场价，用于 Step 6c 孤儿关联
+      let currentPositionEntryPriceShort = 0; // 空头入场价，用于 Step 6d 孤儿关联
       try {
         const positions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
@@ -3113,6 +3137,9 @@ export class GridTradingService {
               }
             } else if (side === 'short') {
               currentPositionSize -= qty;
+              if (qty > 0 && currentPositionEntryPriceShort === 0) {
+                currentPositionEntryPriceShort = (pos as any).entryPrice ?? 0;
+              }
             }
           }
         }
@@ -3148,10 +3175,19 @@ export class GridTradingService {
           state.totalTrades++;
           filledLines.push(line);
           this.logger.log(`[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
+        } else if (line.side === 'sell' && posDecreased && currentPositionSize < -0.0001) {
+          // 卖单成交：开空头（仓位变负）
+          // 对齐 nofx：math.Abs(current) > math.Abs(expected) → 成交，不区分方向
+          // 卖单填充后 currentPositionSize < 0，持仓方向为 short
+          line.state = 'filled';
+          line.positionSize = line.orderQuantity > 0 ? line.orderQuantity : Math.abs(currentPositionSize - expectedPositionSize);
+          line.positionEntry = line.price;
+          line.unrealizedPnl = 0;
+          state.totalTrades++;
+          filledLines.push(line);
+          this.logger.log(`[网格] 卖单成交(开空): level=${line.index}, price=${line.price.toFixed(4)}, qty=${line.positionSize.toFixed(4)}`);
         } else if (line.side === 'sell' && posDecreased && currentPositionSize >= -0.0001) {
           // 卖单成交：仓位减少（平多头）
-          // 条件额外检查 currentPositionSize >= 0：若仓位变负则说明卖单开了空头，
-          // 不应走此分支，交由 Step 6 signMismatch 检测处理
           // 注意：sell pending 层的 positionEntry/positionSize 均为 0（持仓在 filled buy 层）
           // 必须找到对应的 filled buy 层来获取真实入场价和数量
           const filledBuyLevels = state.gridLines
@@ -3294,6 +3330,32 @@ export class GridTradingService {
         } else {
           this.logger.warn(
             `[网格] 孤儿多头无可关联层: qty=${currentPositionSize.toFixed(4)}, entry=${entryPrice.toFixed(4)}, 无 empty buy 层`,
+          );
+        }
+      }
+
+      // Step 6d: 孤儿空头关联
+      // 场景：exchange 有空头持仓（currentPositionSize < 0），但内存无 filled sell 层
+      // 典型原因：重建/重启后内存丢失空头层的 filled 状态，导致 AI 反复尝试在该层挂卖单但仓位超限
+      const noFilledSellLayers = !state.gridLines.some(l => l.state === 'filled' && l.side === 'sell');
+      const orphanShort = currentPositionSize < -0.0001 && noFilledSellLayers && disappearedLines.length === 0;
+      if (orphanShort) {
+        const shortQty = Math.abs(currentPositionSize);
+        const entryPrice = currentPositionEntryPriceShort > 0 ? currentPositionEntryPriceShort : (state.lastPrice ?? 0);
+        const nearestSell = state.gridLines
+          .filter(l => l.state === 'empty' && l.side === 'sell')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice))[0];
+        if (nearestSell) {
+          nearestSell.state = 'filled';
+          nearestSell.positionSize = shortQty;
+          nearestSell.positionEntry = entryPrice > 0 ? entryPrice : nearestSell.price;
+          nearestSell.unrealizedPnl = 0;
+          this.logger.warn(
+            `[网格] 孤儿空头关联: qty=${shortQty.toFixed(4)}, entry=${nearestSell.positionEntry.toFixed(4)} → level=${nearestSell.index}`,
+          );
+        } else {
+          this.logger.warn(
+            `[网格] 孤儿空头无可关联层: qty=${shortQty.toFixed(4)}, entry=${entryPrice.toFixed(4)}, 无 empty sell 层`,
           );
         }
       }
@@ -3886,7 +3948,7 @@ export class GridTradingService {
                 errors: failedResults.map(r => ({ action: r.action, error: r.error })),
               }),
               ...(skippedResults.length > 0 && {
-                skipped: skippedResults.map(r => ({ action: r.action })),
+                skipped: skippedResults.map(r => ({ action: r.action, reason: r.skipReason })),
               }),
             } as any,
           }),
