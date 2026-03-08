@@ -2768,14 +2768,14 @@ export class GridTradingService {
     {
       const orderNominal = finalQty * price;
       const maxTotalNominal = state.totalInvestment * leverage;
-      // 持仓：优先用本轮预取的交易所实时值；若未取到（0），降级用内存 filled 层
-      // ⚠️ 必须加 state==='filled' 过滤，否则旧版 pending/empty 层残留的 positionSize/positionEntry 脏数据会虚增持仓
-      const positionNominal = (state.livePositionNotional ?? 0) > 0
-        ? state.livePositionNotional
-        : state.gridLines.reduce((sum, l) =>
-            (l.state === 'filled' && (l.positionSize ?? 0) > 0 && l.positionEntry > 0)
-              ? sum + l.positionSize * l.positionEntry
-              : sum, 0);
+      // 持仓占用：按"层数 × 每层预算"计算，而非实际名义价值
+      // 原因：已持仓层可能来自旧配置（qty/价格不同），若用实际市值会挤占其他层的下单空间
+      // 正确逻辑：每个已持仓层只"占用"一个槽位预算，剩余 (gridCount-filledCount) 个槽位供挂单
+      // 用户说：正确应该是总上限减去持仓（按槽位计），剩余才是挂单可用空间
+      const filledLayerCount = state.gridLines.filter(l => l.state === 'filled').length;
+      const gridTotalLayers = state.gridLines.length || 10;
+      const perLayerBudget = maxTotalNominal / gridTotalLayers;
+      const positionNominal = filledLayerCount * perLayerBudget;
       let pendingNominal = 0;
       for (const l of state.gridLines) {
         if (l.state === 'pending' && l.orderQuantity > 0 && l.price > 0) {
@@ -2785,7 +2785,7 @@ export class GridTradingService {
       const totalAfterOrder = positionNominal + pendingNominal + orderNominal;
       if (totalAfterOrder > maxTotalNominal) {
         const skipReason =
-          `仓位总量超限: 持仓$${positionNominal.toFixed(2)}(实时) + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
+          `仓位总量超限: 持仓${filledLayerCount}层×$${perLayerBudget.toFixed(2)}=$${positionNominal.toFixed(2)} + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
           ` = $${totalAfterOrder.toFixed(2)} > 上限$${maxTotalNominal.toFixed(2)}`;
         this.logger.warn(`[网格] 跳过下单(仓位总量检查): ${skipReason}`);
         return { executed: false, skipReason };
