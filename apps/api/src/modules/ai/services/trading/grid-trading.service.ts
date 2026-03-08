@@ -10,7 +10,6 @@ import {
   GridExchangeAdapter,
   isGridAdapter,
 } from '../../../exchange-adapters/types/adapter.interface';
-import { ExchangeBalance } from '../../../exchange-adapters/types/exchange.types';
 import {
   GRID_SYSTEM_PROMPT,
   buildGridUserPrompt,
@@ -920,20 +919,18 @@ export class GridTradingService {
       }
     }
 
-    // Step 3: 最大回撤检查（同时预取余额+持仓快照，供 Step 8 buildGridContext 复用，避免重复 API 调用）
+    // Step 3: 最大回撤检查（预取余额+持仓，计算 livePositionNotional 供 cap 检查用）
     let currentEquity = state.peakEquity;
     let equityFetched = false;      // 只有真实获取权益成功才设为 true，失败时不更新 dailyPnl
-    let livePositions: any[] | undefined; // 持仓快照，传给 buildGridContext 避免重复调用
-    let liveBalance: ExchangeBalance | undefined; // 余额快照，传给 buildGridContext 避免重复调用
+    let livePositions: any[] | undefined; // 持仓快照，仅用于 livePositionNotional 计算
     if (this.adapterFactory && apiKeyId) {
       try {
         const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
         const balance = await adapter.getBalance();
-        liveBalance = balance;       // 保存余额快照，Step 8 buildGridContext 直接复用
         currentEquity = balance.totalEquity;
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
-        livePositions = await adapter.getPositions(); // 预取持仓，Step 8 直接复用
+        livePositions = await adapter.getPositions(); // 预取持仓，计算 livePositionNotional
         // 对齐 nofx checkTotalPositionLimit：用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
         {
           const baseSymbol = state.symbol.split('/')[0];
@@ -947,9 +944,6 @@ export class GridTradingService {
           }, 0);
         }
         this.logger.debug(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
-        // 注意：不在此 dispose() — 保留缓存实例供 Step 8 的 buildGridContext 复用
-        // 原先 dispose() 会使缓存失效，DrawdownMonitor 期间拿到同一实例后再 dispose()，
-        // 导致 LLM 调用后 adapter.exchange===null，所有执行全报"适配器未初始化"
       } catch (e: any) {
         this.logger.warn(`[网格] Step3 权益获取失败，使用缓存值 (peakEquity=${state.peakEquity}): ${e.message}`);
       }
@@ -1300,8 +1294,8 @@ export class GridTradingService {
           }
         }
 
-        // 构建 AI 上下文（传入 Step 3 预取的余额+持仓快照，避免重复 API 调用）
-        const context = await this.buildGridContext(state, adapter, currentPrice, livePositions, liveBalance);
+        // 构建 AI 上下文（对齐 nofx：始终 fresh 获取余额+持仓，不复用 Step 3 快照）
+        const context = await this.buildGridContext(state, adapter, currentPrice);
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
         // 环形平仓模式：卖单成交后卖层 positionSize=0，只有买单成交会留下 positionSize>0 的格线
@@ -1859,8 +1853,6 @@ export class GridTradingService {
     state: GridState,
     adapter: ExchangeAdapter,
     currentPrice: number,
-    prefetchedPositions?: any[], // Step 3 已预取的持仓，避免重复 API 调用
-    prefetchedBalance?: ExchangeBalance, // Step 3 已预取的余额，避免重复 API 调用
   ): Promise<GridContext> {
     // 三周期 OHLCV 并行拉取（5m+1h+4h）
     const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
@@ -1910,8 +1902,8 @@ export class GridTradingService {
     let positionShort: GridContext['positionShort'];
 
     try {
-      // 优先使用 Step 3 预取的余额快照，避免重复 API 调用（节省 ~1s）
-      const balance = prefetchedBalance ?? await adapter.getBalance();
+      // 对齐 nofx：始终 fresh 获取余额
+      const balance = await adapter.getBalance();
       totalEquity = balance.totalEquity;
       availableBalance = balance.availableBalance;
       state.availableBalance = availableBalance; // 同步到 state，供 AI 上下文展示
@@ -1919,8 +1911,8 @@ export class GridTradingService {
       state.lastUnrealizedPnl = unrealizedPnl; // 同步到 state，供 saveGridDecisionLog 使用
       marginUsedPct = balance.marginUsedPct ?? 0;
 
-      // 优先使用 Step 3 预取的持仓，避免重复 API 调用
-      const positions = prefetchedPositions ?? await adapter.getPositions();
+      // 对齐 nofx：始终 fresh 获取持仓
+      const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
       const longPos = symPositions.find((p: any) => p.side === 'long');
@@ -3039,6 +3031,7 @@ export class GridTradingService {
 
       // Step 2: 获取交易所当前持仓（实时，对齐 nofx — 每轮无条件 GetPositions，不复用缓存）
       let currentPositionSize = 0;
+      let currentPositionEntryPrice = 0; // 多头入场价，用于 Step 6c 孤儿关联
       try {
         const positions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
@@ -3048,6 +3041,9 @@ export class GridTradingService {
             const qty = (pos as any).quantity ?? 0;
             if (side === 'long' || side === 'net' || !side) {
               currentPositionSize += qty;
+              if (qty > 0 && currentPositionEntryPrice === 0) {
+                currentPositionEntryPrice = (pos as any).entryPrice ?? 0;
+              }
             } else if (side === 'short') {
               currentPositionSize -= qty;
             }
@@ -3210,20 +3206,28 @@ export class GridTradingService {
         }
       }
 
-      // Step 6c: 孤儿持仓检测
-      // 场景：exchange 有多头持仓，但内存无 filled 层（reinitialize 后遗留或 close_long 未成功落地）
-      // 对齐 nofx：幽灵持仓必须清理，否则 livePositionNotional 永久占用 cap，阻塞新挂单
+      // Step 6c: 孤儿持仓重关联
+      // 场景：exchange 有多头持仓，但内存无 filled 层（通常发生在 adjust_grid 重建后，内存全部重置为 empty）
+      // 对齐 nofx 根源设计：不自动平仓，而是将孤儿持仓关联到价格最近的 empty buy 层，
+      // 让 AI 下一轮能正确看到持仓并自主决定是否平仓
       const orphanLong = currentPositionSize > 0.0001 && updatedExpected < 0.0001 && disappearedLines.length === 0;
       if (orphanLong) {
-        this.logger.warn(
-          `[网格] 孤儿多头持仓: exchange=${currentPositionSize.toFixed(4)}, 内存filled=0, 无成交 → 自动平仓`,
-        );
-        try {
-          await adapter.closeLong(state.symbol, currentPositionSize);
-          state.livePositionNotional = 0;
-          this.logger.log(`[网格] 孤儿多头已平: qty=${currentPositionSize.toFixed(4)}`);
-        } catch (e: any) {
-          this.logger.error(`[网格] 孤儿多头平仓失败: ${e.message}`);
+        const entryPrice = currentPositionEntryPrice > 0 ? currentPositionEntryPrice : (state.lastPrice ?? 0);
+        const nearestBuy = state.gridLines
+          .filter(l => l.state === 'empty' && l.side === 'buy')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice))[0];
+        if (nearestBuy) {
+          nearestBuy.state = 'filled';
+          nearestBuy.positionSize = currentPositionSize;
+          nearestBuy.positionEntry = entryPrice > 0 ? entryPrice : nearestBuy.price;
+          nearestBuy.unrealizedPnl = 0;
+          this.logger.warn(
+            `[网格] 孤儿多头关联: qty=${currentPositionSize.toFixed(4)}, entry=${nearestBuy.positionEntry.toFixed(4)} → level=${nearestBuy.index}`,
+          );
+        } else {
+          this.logger.warn(
+            `[网格] 孤儿多头无可关联层: qty=${currentPositionSize.toFixed(4)}, entry=${entryPrice.toFixed(4)}, 无 empty buy 层`,
+          );
         }
       }
     } catch (e: any) {
@@ -3561,18 +3565,7 @@ export class GridTradingService {
     state.lowerPrice = centerPrice - halfRange;
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
-    // 重建前先保存所有 filled 层信息，重建后映射到最近价格层
-    const filledPositions = state.gridLines
-      .filter(l => l.state === 'filled')
-      .map(l => ({
-        positionEntry: l.positionEntry,
-        positionSize: l.positionSize,
-        unrealizedPnl: l.unrealizedPnl,
-        side: l.side,
-        orderId: l.orderId,
-        orderQuantity: l.orderQuantity,
-      }));
-
+    // 对齐 nofx：重建时全部重置为 empty，持仓由下一轮 syncOrderFills 通过孤儿关联恢复
     const weights = this.calculateWeights(gridCount, state.distribution);
     const weightSum = weights.reduce((a, b) => a + b, 0);
 
@@ -3580,7 +3573,6 @@ export class GridTradingService {
       const line = state.gridLines[i];
       line.price = Math.round((state.lowerPrice + i * state.gridSpacing) * 100) / 100;
       line.allocatedUSD = state.totalInvestment * (weights[i] / weightSum);
-      // 全部重置（filled 层后续由最近价格映射恢复）
       line.state = 'empty';
       line.orderId = undefined;
       line.orderQuantity = 0;
@@ -3591,32 +3583,6 @@ export class GridTradingService {
 
     this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
     state.orderBook = {};
-
-    // 恢复 filled 层到价格最近的新层
-    for (const saved of filledPositions) {
-      let closestIdx = -1;
-      let closestDist = Infinity;
-      for (let i = 0; i < state.gridLines.length; i++) {
-        const dist = Math.abs(state.gridLines[i].price - saved.positionEntry);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestIdx = i;
-        }
-      }
-      if (closestIdx >= 0 && state.gridLines[closestIdx].state !== 'filled') {
-        const line = state.gridLines[closestIdx];
-        line.state = 'filled';
-        line.positionEntry = saved.positionEntry;
-        line.positionSize = saved.positionSize;
-        line.unrealizedPnl = saved.unrealizedPnl;
-        line.side = saved.side;
-        line.orderId = saved.orderId;
-        line.orderQuantity = saved.orderQuantity;
-        this.logger.log(
-          `[网格] 重建后恢复 filled 层: index=${closestIdx}, price=${line.price.toFixed(4)}, entry=${saved.positionEntry.toFixed(4)}`,
-        );
-      }
-    }
 
     this.logger.log(`[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}`);
   }
