@@ -46,6 +46,9 @@ export interface GridConfig {
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
   locale?: string;              // 用户语言（用于日志翻译，如 'zh-CN', 'en'）
+  boundsFromPct?: boolean;      // true = 上下界由前端百分比换算，AI 可重建范围（当前仅此一种情况）
+  upperBoundPct?: number;       // 上界百分比（如 1.5 表示当前价 ×1.015），adjust_grid 时按此重算
+  lowerBoundPct?: number;       // 下界百分比（如 1.5 表示当前价 ×0.985），adjust_grid 时按此重算
 }
 
 /** 网格方向 */
@@ -169,6 +172,9 @@ export interface GridState {
   availableBalance: number;
   // 单格止损阈值%（从 GridConfig 复制，供 buildGridContext 使用）
   stopLossPct: number;
+  // 用户设定的边界百分比（从 GridConfig 复制），adjust_grid 时用来重算绝对价格
+  upperBoundPct?: number;  // 上界 = 当前价 × (1 + upperBoundPct/100)
+  lowerBoundPct?: number;  // 下界 = 当前价 × (1 - lowerBoundPct/100)
 
   // === 信号驱动自动调节字段（Round 1+2，每 cycle 重算，重启后首轮为 0）===
   lastVolume24h: number;      // 最近 24h 成交量（updateBoxData 更新）
@@ -652,10 +658,13 @@ export class GridTradingService {
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
       userFixedLeverage,           // true = 固定杠杆，跳过 Regime 压杆
-      userLockedRange: rangeSource === '用户指定', // 用户填了具体数值 → AI 不得调整范围
+      // 所有边界均来自百分比换算，AI 始终可调整范围（无固定价格锁定场景）
+      userLockedRange: false,
       rangeSource,  // 持久化供前端展示: '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
       stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
+      upperBoundPct: config.upperBoundPct,
+      lowerBoundPct: config.lowerBoundPct,
       // 信号驱动字段：首轮为 0，第二轮起正常计算
       lastVolume24h: 0,
       avgDailyVolume: 0,
@@ -832,6 +841,9 @@ export class GridTradingService {
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
         if (gridConfig.direction) state.currentDirection = gridConfig.direction;
         if (gridConfig.distribution) state.distribution = gridConfig.distribution;
+        // 同步百分比边界（用户在前端修改了百分比时立即生效）
+        state.upperBoundPct = gridConfig.upperBoundPct;
+        state.lowerBoundPct = gridConfig.lowerBoundPct;
         // Step C: 层数变更时调整 gridLines 数组大小
         const newCount = gridConfig.gridCount ?? state.gridLines.length;
         if (newCount !== state.gridLines.length) {
@@ -878,17 +890,9 @@ export class GridTradingService {
       }
     }
 
-    // 每轮从 gridConfig 重新评估 userLockedRange（不持久化锁定标志，每次从配置读取最新值）
-    // 用户在前端清空上下界 → upperBound=0, lowerBound=0 → 应解锁
-    if (gridConfig) {
-      const configHasManualBounds = !!(gridConfig.upperBound && gridConfig.lowerBound);
-      if (state.userLockedRange !== configHasManualBounds) {
-        this.logger.log(
-          `[网格] userLockedRange 重新评估: ${state.userLockedRange} → ${configHasManualBounds}` +
-            ` (upperBound=${gridConfig.upperBound}, lowerBound=${gridConfig.lowerBound})`,
-        );
-        state.userLockedRange = configHasManualBounds;
-      }
+    // 所有边界均来自百分比换算，无固定价格锁定场景，始终保持 false
+    if (state.userLockedRange !== false) {
+      state.userLockedRange = false;
     }
 
     let currentPrice: number;
@@ -2126,9 +2130,20 @@ export class GridTradingService {
 
       case 'adjust_grid': {
         await adapter.cancelAllOrders(state.symbol);
-        // 后端自动以当前价为中心重建网格（AI 不指定边界）
         const newPrice = currentPrice ?? state.lastPrice;
-        await this.reinitializeGridLevels(state, newPrice);
+        // 用户设定了百分比边界：按百分比重算当前价的上/下界
+        // 未设定（AI 模式）：ATR 自动计算
+        if (state.upperBoundPct && state.lowerBoundPct) {
+          const explicitUpper = newPrice * (1 + state.upperBoundPct / 100);
+          const explicitLower = newPrice * (1 - state.lowerBoundPct / 100);
+          this.logger.log(
+            `[网格] adjust_grid: 按用户百分比重建 +${state.upperBoundPct}%/-${state.lowerBoundPct}%` +
+            ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]`,
+          );
+          await this.reinitializeGridLevels(state, newPrice, explicitUpper, explicitLower);
+        } else {
+          await this.reinitializeGridLevels(state, newPrice);
+        }
         break;
       }
 
@@ -3361,32 +3376,46 @@ export class GridTradingService {
   }
 
   /** 重新初始化网格层级（每次重建都重算宽度，不继承旧边界） */
-  private async reinitializeGridLevels(state: GridState, centerPrice: number): Promise<void> {
+  private async reinitializeGridLevels(
+    state: GridState,
+    centerPrice: number,
+    explicitUpper?: number,
+    explicitLower?: number,
+  ): Promise<void> {
     const gridCount = state.gridLines.length;
-    // 两套公式取最小值：波动小时 ATR 更窄→成交频繁；波动大时默认公式封顶→防范围过宽
-    const defaultHalfRange = centerPrice * 0.03 * (gridCount / 10);
-    let halfRange = defaultHalfRange;
-    if (this.indicators && this.marketData) {
-      try {
-        const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '4h', 20);
-        const highs  = ohlcvRaw.map((c: any) => Number(c[2]));
-        const lows   = ohlcvRaw.map((c: any) => Number(c[3]));
-        const closes = ohlcvRaw.map((c: any) => Number(c[4]));
-        const atr    = this.indicators.calculateATR(highs, lows, closes, 14);
-        if (atr && atr > 0) {
-          const atrHalfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10);
-          halfRange = Math.min(atrHalfRange, defaultHalfRange);
-          this.logger.log(
-            `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}`,
-          );
-        }
-      } catch (_e) {
-        this.logger.log(`[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}`);
-      }
-    }
 
-    state.upperPrice = centerPrice + halfRange;
-    state.lowerPrice = centerPrice - halfRange;
+    if (explicitUpper && explicitLower && explicitUpper > explicitLower) {
+      // 用户设定了百分比边界，按百分比重算后直接使用
+      state.upperPrice = explicitUpper;
+      state.lowerPrice = explicitLower;
+      this.logger.log(
+        `[网格] 重建范围(用户百分比): ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}`,
+      );
+    } else {
+      // 无百分比配置 → ATR 自动计算（两套公式取小值）
+      const defaultHalfRange = centerPrice * 0.03 * (gridCount / 10);
+      let halfRange = defaultHalfRange;
+      if (this.indicators && this.marketData) {
+        try {
+          const ohlcvRaw = await this.marketData.fetchOHLCV(state.symbol, '4h', 20);
+          const highs  = ohlcvRaw.map((c: any) => Number(c[2]));
+          const lows   = ohlcvRaw.map((c: any) => Number(c[3]));
+          const closes = ohlcvRaw.map((c: any) => Number(c[4]));
+          const atr    = this.indicators.calculateATR(highs, lows, closes, 14);
+          if (atr && atr > 0) {
+            const atrHalfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10);
+            halfRange = Math.min(atrHalfRange, defaultHalfRange);
+            this.logger.log(
+              `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}`,
+            );
+          }
+        } catch (_e) {
+          this.logger.log(`[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}`);
+        }
+      }
+      state.upperPrice = centerPrice + halfRange;
+      state.lowerPrice = centerPrice - halfRange;
+    }
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
     // 对齐 nofx：重建时全部重置为 empty，持仓由下一轮 syncOrderFills 通过孤儿关联恢复

@@ -223,6 +223,10 @@ export function UnifiedAiCreate() {
   const [gridAutoAdjustThreshold, setGridAutoAdjustThreshold] = useState(20);
   const [gridEnableDirectionAdjust, setGridEnableDirectionAdjust] = useState(false);
   const [gridDirectionBiasRatio, setGridDirectionBiasRatio] = useState(70);
+  const [gridDirection, setGridDirection] = useState<'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'>('neutral');
+  const [gridDistribution, setGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
+  const [gridUseMakerOnly, setGridUseMakerOnly] = useState(false);
+  const [gridAutoPauseOnTrend, setGridAutoPauseOnTrend] = useState(true);
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -460,11 +464,18 @@ export function UnifiedAiCreate() {
             ? +(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(6) : 0,
           lowerBound: (gridCurrentPrice > 0 && gridLowerPct > 0)
             ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
+          boundsFromPct: true, // 上下界由百分比换算，不视为用户手动锁定
+          upperBoundPct: gridUpperPct > 0 ? gridUpperPct : 0, // 保存原始百分比，adjust_grid 时按此重算
+          lowerBoundPct: gridLowerPct > 0 ? gridLowerPct : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
           dailyLossLimitPct: gridDailyLossLimit || 0,
           autoAdjustThreshold: (gridAutoAdjustThreshold || 20) / 100,
           enableDirectionAdjust: gridEnableDirectionAdjust,
           directionBiasRatio: (gridDirectionBiasRatio || 70) / 100,
+          direction: gridDirection,
+          distribution: gridDistribution,
+          useMakerOnly: gridUseMakerOnly,
+          autoPauseOnTrend: gridAutoPauseOnTrend,
         };
       }
 
@@ -1373,6 +1384,54 @@ export function UnifiedAiCreate() {
                     placeholder={t('common.unlimited')} className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                   />
                   <span className="text-xs text-[#606070]">%</span>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">方向偏向</span>
+                  <select value={gridDirection} onChange={(e) => setGridDirection(e.target.value as typeof gridDirection)}
+                    className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] focus:border-[#06B6D4]/40 focus:outline-none"
+                  >
+                    <option value="neutral">中性</option>
+                    <option value="long_bias">偏多</option>
+                    <option value="short_bias">偏空</option>
+                    <option value="long">全多</option>
+                    <option value="short">全空</option>
+                  </select>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">价格分布</span>
+                  <select value={gridDistribution} onChange={(e) => setGridDistribution(e.target.value as typeof gridDistribution)}
+                    className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] focus:border-[#06B6D4]/40 focus:outline-none"
+                  >
+                    <option value="uniform">均匀</option>
+                    <option value="gaussian">高斯</option>
+                    <option value="pyramid">金字塔</option>
+                  </select>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">只挂 Maker</span>
+                  <button type="button" onClick={() => setGridUseMakerOnly(!gridUseMakerOnly)}
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-[10px] text-[#606070]">仅使用限价单</span>
+                </div>
+              )}
+              {isGrid && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">趋势暂停</span>
+                  <button type="button" onClick={() => setGridAutoPauseOnTrend(!gridAutoPauseOnTrend)}
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridAutoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-[10px] text-[#606070]">趋势时自动暂停</span>
                 </div>
               )}
               {isGrid && (
