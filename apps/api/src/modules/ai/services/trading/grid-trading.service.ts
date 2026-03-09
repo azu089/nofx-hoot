@@ -2308,13 +2308,8 @@ export class GridTradingService {
           const spacingLog = ((explicitUpper - explicitLower) / (gridCountLog - 1)).toFixed(2);
           this.logger.log(
             `[网格] adjust_grid: 按用户百分比重建 +${state.upperBoundPct}%/-${state.lowerBoundPct}%` +
-            ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]`,
-          );
-          this.logger.log(
-            `[网格] 重建计算: 以当前价 ${newPrice.toFixed(2)} 为中心` +
-            `，用户设置上扩 +${state.upperBoundPct}% → ${explicitUpper.toFixed(2)}` +
-            `，下扩 -${state.lowerBoundPct}% → ${explicitLower.toFixed(2)}` +
-            `，共 ${gridCountLog} 层，格间距 ${spacingLog}，总跨度 ${totalSpanPct}%`,
+            ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]` +
+            `\n       以当前价 ${newPrice.toFixed(2)} 为中心，上扩 +${state.upperBoundPct}% → ${explicitUpper.toFixed(2)}，下扩 -${state.lowerBoundPct}% → ${explicitLower.toFixed(2)}，共 ${gridCountLog} 层，格间距 ${spacingLog}，总跨度 ${totalSpanPct}%`,
           );
           await this.reinitializeGridLevels(state, newPrice, explicitUpper, explicitLower);
         } else {
@@ -3597,17 +3592,15 @@ export class GridTradingService {
             halfRange = Math.min(atrHalfRange, defaultHalfRange);
             const chosenBasis = atrHalfRange <= defaultHalfRange ? `近期波动(4h ATR=${atr.toFixed(2)})` : `固定上限`;
             this.logger.log(
-              `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}`,
-            );
-            this.logger.log(
-              `[网格] 重建计算: 以当前价 ${centerPrice.toFixed(2)} 为中心` +
-              `，根据${chosenBasis}自动计算边界，半幅 ${halfRange.toFixed(2)}` +
-              `（ATR建议${atrHalfRange.toFixed(2)}，固定上限${defaultHalfRange.toFixed(2)}，取较小值）`,
+              `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}` +
+              `\n       以当前价 ${centerPrice.toFixed(2)} 为中心，根据${chosenBasis}自动计算边界，半幅 ${halfRange.toFixed(2)}（ATR建议${atrHalfRange.toFixed(2)}，固定上限${defaultHalfRange.toFixed(2)}，取较小值）`,
             );
           }
         } catch (_e) {
-          this.logger.log(`[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}`);
-          this.logger.log(`[网格] 重建计算: ATR获取失败，按固定比例计算边界，半幅 ${halfRange.toFixed(2)}`);
+          this.logger.log(
+            `[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}` +
+            `\n       ATR获取失败，按固定比例计算边界，半幅 ${halfRange.toFixed(2)}`,
+          );
         }
       }
       state.upperPrice = centerPrice + halfRange;
@@ -3635,9 +3628,9 @@ export class GridTradingService {
     state.orderBook = {};
 
     const finalSpacing = state.gridSpacing.toFixed(2);
-    this.logger.log(`[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}`);
     this.logger.log(
-      `[网格] 新网格就绪: 范围 ${state.lowerPrice.toFixed(2)}~${state.upperPrice.toFixed(2)}，共 ${gridCount} 层，格间距 ${finalSpacing}`,
+      `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
+      `，共 ${gridCount} 层，格间距 ${finalSpacing}`,
     );
   }
 
