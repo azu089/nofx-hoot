@@ -401,6 +401,8 @@ export interface GridConfig {
   breakoutPct?: number;          // 突破边界暂停阈值%
   useMakerOnly?: boolean;        // PostOnly 限价单（省 maker 手续费）
   autoPauseOnTrend?: boolean;    // 趋势市场自动软暂停（默认 true）
+  minRangingScore?: number;      // 触发暂停的最低盘整得分（0-100，默认 60）
+  trendResumeThreshold?: number; // 触发自动恢复的盘整得分（0-100，默认 70）
   enableDirectionAdjust?: boolean; // 启用方向自适应（默认 false）
   directionBiasRatio?: number;     // 偏向比例（小数，如 0.70 = 70%）
 }

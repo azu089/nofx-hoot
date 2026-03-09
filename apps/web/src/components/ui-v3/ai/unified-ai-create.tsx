@@ -227,6 +227,8 @@ export function UnifiedAiCreate() {
   const [gridDistribution, setGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [gridUseMakerOnly, setGridUseMakerOnly] = useState(false);
   const [gridAutoPauseOnTrend, setGridAutoPauseOnTrend] = useState(true);
+  const [gridMinRangingScore, setGridMinRangingScore] = useState(60);
+  const [gridTrendResumeThreshold, setGridTrendResumeThreshold] = useState(70);
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -476,6 +478,8 @@ export function UnifiedAiCreate() {
           distribution: gridDistribution,
           useMakerOnly: gridUseMakerOnly,
           autoPauseOnTrend: gridAutoPauseOnTrend,
+          minRangingScore: gridMinRangingScore || 60,
+          trendResumeThreshold: gridTrendResumeThreshold || 70,
         };
       }
 
@@ -1348,6 +1352,24 @@ export function UnifiedAiCreate() {
                     <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                   <span className="text-[10px] text-[#606070]">趋势时自动暂停</span>
+                </div>
+              )}
+              {isGrid && gridAutoPauseOnTrend && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">暂停阈值</span>
+                  <input type="number" min={0} max={100} step={5} value={gridMinRangingScore || ''} onChange={(e) => setGridMinRangingScore(parseInt(e.target.value) || 60)}
+                    placeholder="60" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                  />
+                  <span className="text-xs text-[#606070]">分</span>
+                </div>
+              )}
+              {isGrid && gridAutoPauseOnTrend && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#9090A0] w-20 shrink-0">恢复阈值</span>
+                  <input type="number" min={0} max={100} step={5} value={gridTrendResumeThreshold || ''} onChange={(e) => setGridTrendResumeThreshold(parseInt(e.target.value) || 70)}
+                    placeholder="70" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
+                  />
+                  <span className="text-xs text-[#606070]">分</span>
                 </div>
               )}
               {isGrid && (

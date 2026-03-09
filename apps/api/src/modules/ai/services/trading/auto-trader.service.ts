@@ -2156,19 +2156,18 @@ export class AutoTraderService {
       if (!gridShouldStop && (gridStopCond.profitTargetPercent || gridStopCond.maxLossPercent)) {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
-          // 止盈：用已实现利润（totalProfit），与浮盈浮亏无关，触发时机稳定
-          // 止损：用权益差（含浮动盈亏），能及时响应持仓亏损
+          // 止盈 + 止损统一用权益变化（含浮动盈亏），能及时响应持仓盈亏
+          // 修复：旧版止盈用 totalProfit（已实现对冲利润），导致权益+5%但只实现0.55%时不触发
           const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
             ? gridConfig.totalInvestment
             : gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000;
-          const realizedPct = (gridStateForStop.totalProfit / investmentBase) * 100;
           const equityPnl = (gridStateForStop.lastEquity > 0 && gridStateForStop.startEquity > 0)
             ? gridStateForStop.lastEquity - gridStateForStop.startEquity
             : gridStateForStop.totalProfit;
           const equityPct = (equityPnl / investmentBase) * 100;
-          if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && realizedPct >= gridStopCond.profitTargetPercent) {
+          if (gridStopCond.profitTargetPercent && gridStopCond.profitTargetPercent > 0 && equityPct >= gridStopCond.profitTargetPercent) {
             gridShouldStop = true;
-            gridStopReason = `止盈达标: +${realizedPct.toFixed(1)}% 已实现 (目标: ${gridStopCond.profitTargetPercent}%)`;
+            gridStopReason = `止盈达标: +${equityPct.toFixed(1)}% 权益 (目标: ${gridStopCond.profitTargetPercent}%)`;
           } else if (gridStopCond.maxLossPercent && gridStopCond.maxLossPercent > 0 && equityPct <= -gridStopCond.maxLossPercent) {
             gridShouldStop = true;
             gridStopReason = `止损触发: ${equityPct.toFixed(1)}% (限额: -${gridStopCond.maxLossPercent}%)`;

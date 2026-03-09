@@ -891,6 +891,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 const opCfg = GRID_ACTION_I18N[op.action];
                 const opColor = opCfg?.color || '#9090A0';
                 const opLabel = opCfg ? t(opCfg.key) : op.action;
+                const OP_HINT: Record<string, string> = {
+                  adjust_grid: '撤单后以当前价重建网格',
+                  exit_all: '撤销全部挂单（持仓不变）',
+                  cancel_all_orders: '撤销全部挂单（持仓不变）',
+                  pause_grid: '暂停挂单，持仓保留',
+                };
                 return (
                   <div key={idx} className="flex items-start gap-2 py-1.5 border-t border-[#1E1E2E]/30 first:border-t-0">
                     <span
@@ -900,6 +906,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {opLabel}
                     </span>
                     <div className="flex-1 min-w-0 text-[10px] flex flex-wrap items-center gap-1.5">
+                      {OP_HINT[op.action] && (
+                        <span className="text-[9px] text-[#606070]">{OP_HINT[op.action]}</span>
+                      )}
                       {(() => {
                         // 层号：优先用 AI 决策 level 字段，兜底通过价格从执行前快照反查
                         const directLevel = op.level_index ?? op.level;

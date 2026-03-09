@@ -165,6 +165,8 @@ export function CreateStrategyWizard() {
     autoAdjustThreshold: 20,
     useMakerOnly: false,
     autoPauseOnTrend: true,
+    minRangingScore: 60,
+    trendResumeThreshold: 70,
     enableDirectionAdjust: false,
     directionBiasRatio: 70,
   })
@@ -370,6 +372,8 @@ export function CreateStrategyWizard() {
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
           useMakerOnly: gridParams.useMakerOnly,
           autoPauseOnTrend: gridParams.autoPauseOnTrend,
+          minRangingScore: gridParams.minRangingScore || 60,
+          trendResumeThreshold: gridParams.trendResumeThreshold || 70,
           enableDirectionAdjust: gridParams.enableDirectionAdjust,
           directionBiasRatio: (gridParams.directionBiasRatio || 70) / 100,
         }
@@ -945,6 +949,29 @@ export function CreateStrategyWizard() {
                   <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.autoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
+              {/* autoPauseOnTrend 展开配置 */}
+              {isGrid && gridParams.autoPauseOnTrend && (
+                <div className="grid grid-cols-2 gap-2">
+                  <RiskField label="暂停阈值" suffix="分">
+                    <input
+                      type="number" min={0} max={100} step={5}
+                      title="最低盘整得分"
+                      value={gridParams.minRangingScore ?? 60}
+                      onChange={(e) => updateGrid('minRangingScore', Number(e.target.value) || 60)}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    />
+                  </RiskField>
+                  <RiskField label="恢复阈值" suffix="分">
+                    <input
+                      type="number" min={0} max={100} step={5}
+                      title="自动恢复盘整得分"
+                      value={gridParams.trendResumeThreshold ?? 70}
+                      onChange={(e) => updateGrid('trendResumeThreshold', Number(e.target.value) || 70)}
+                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                    />
+                  </RiskField>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="冷却时间" suffix="min">
                   <input

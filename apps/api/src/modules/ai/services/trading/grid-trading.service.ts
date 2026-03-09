@@ -40,12 +40,14 @@ export interface GridConfig {
   modelId?: string;            // AI 模型（默认 deepseek-chat）
   flashBreakoutPct?: number;          // 单周期价格变化超过此值立即行动（默认 5%）
   maxHourlyChangePct?: number;        // 1H 价格变化超过此值触发紧急退出（默认 10%）
-  directionalCloseOnBreakout?: boolean; // 突破上界时平 short、突破下界时平 long（默认 true）
+  directionalCloseOnBreakout?: boolean; // 突破上界时平 short、突破下界时平 long（默认 false，对齐 nofx：突破时只 cancel+pause）
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
+  minRangingScore?: number;     // 触发暂停的最低盘整得分（0-100，默认 60；wide/volatile 制度分别得 40/20）
+  trendResumeThreshold?: number; // 触发自动恢复的盘整得分（0-100，默认 70；narrow=80, standard=65）
   locale?: string;              // 用户语言（用于日志翻译，如 'zh-CN', 'en'）
   boundsFromPct?: boolean;      // true = 上下界由前端百分比换算，AI 可重建范围（当前仅此一种情况）
   upperBoundPct?: number;       // 上界百分比（如 1.5 表示当前价 ×1.015），adjust_grid 时按此重算
@@ -92,7 +94,7 @@ export interface GridState {
   isInitialized: boolean;
   isPaused: boolean;
   pauseReason?: string;
-  pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout'; // 'risk_control'=风控不可恢复; 'trend'/'breakout'=可自动恢复
+  pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout' | 'auto_trend'; // 'risk_control'=风控不可恢复; 'trend'/'breakout'/'auto_trend'=可自动恢复
   needsReconcile?: boolean; // 暂停恢复后，下次周期开始前需对齐交易所状态
   lastPrice: number;
 
@@ -132,6 +134,10 @@ export interface GridState {
   // 方向调节
   currentDirection: GridDirection;
 
+  // autoPauseOnTrend 状态追踪
+  consecutiveTrending: number;  // 连续低盘整得分周期数（≥2 触发软暂停）
+  rangingScore: number;         // 当前盘整得分（0-100，narrow=80,standard=65,wide=40,volatile=20）
+
   createdAt: string;
 
   // 价格速度检测（黑天鹅早期预警）
@@ -153,9 +159,10 @@ export interface GridState {
   // OI 持仓量追踪（用于计算周期间变化，区分真假突破）
   lastOI: number;           // 上一周期的持仓量，0 表示未知
 
-  // 动态杠杆（对齐 nofx：固定模式 = leverage，AI模式 = min(leverage, regimeCap)，每轮 Step 6.5 重算）
-  effectiveLeverage: number;  // 操作杠杆：固定模式=leverage, AI模式=min(leverage, regimeCap)
-  userFixedLeverage: boolean; // true = 用户固定杠杆（effectiveLeverage=leverage）；false = AI 决策（regime 联动）
+  // 动态杠杆（对齐 nofx：configLeverage 用于下单，recommendedLeverage 仅展示）
+  effectiveLeverage: number;  // 已废弃，始终等于 leverage（兼容旧数据引用）
+  userFixedLeverage: boolean; // true = 用户固定杠杆；false = AI 决策
+  recommendedLeverage?: number; // min(leverage, regimeCap)，仅展示用（对齐 nofx）
 
   livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
 
@@ -222,7 +229,7 @@ const FLASH_BREAKOUT_CONFIRM_OVERRIDE_PCT = 5; // 箱体突破幅度 ≥5% 跳�
 const DEFAULT_TAKER_FEE_RATE = 0.0005;      // 0.05% — Binance/OKX 默认 Taker 费率
 const DEFAULT_MAKER_FEE_RATE = 0.0002;      // 0.02% — Binance/OKX 默认 Maker 费率
 const MIN_GRID_PROFIT_MULTIPLIER = 1.5;     // 网格间距必须 ≥ 手续费来回 × 1.5 才有盈利空间
-const CANCEL_ALL_MAX_DEVIATION_PCT = 40;    // cancel_all_orders 最小允许偏离度（%）
+// cancel_all 安全阀已移除（对齐 nofx：无偏离度限制，AI 发出即执行）
 // 市场状态 → 杠杆上限映射
 const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
   narrow: 2,
@@ -642,6 +649,9 @@ export class GridTradingService {
       currentRegime: 'standard',
       currentDirection: direction,
 
+      consecutiveTrending: 0,
+      rangingScore: 65, // 默认 standard 制度得分
+
       createdAt: new Date().toISOString(),
 
       lastCyclePrice: 0,
@@ -962,48 +972,8 @@ export class GridTradingService {
     let trades = 0;
     let errors = 0;
 
-    // Step 2: 简单边界突破检查
-    const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
-    const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
-    if (breakoutPct >= breakoutThreshold) {
-      const direction = currentPrice > state.upperPrice ? 'up' : 'down';
-      this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
-
-      // 方向性平仓：突破上界平 short，突破下界平 long（默认启用）
-      if (gridConfig?.directionalCloseOnBreakout !== false) {
-        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
-      }
-
-      state.isPaused = true;
-      state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
-      await this.persistGridState(strategyId, state);
-      return { trades: 0, errors: 0 };
-    }
-
-    // Step 2.5: 价格速度检测（黑天鹅早期预警）
-    // flashBreakoutPct: 单周期价格变化超过此值触发闪速突破保护（默认 5%）
-    // maxHourlyChangePct: 保留配置字段，由 AI 提示词层面响应，代码层依赖单周期速度
-    const flashBreakoutThreshold = gridConfig?.flashBreakoutPct ?? DEFAULT_FLASH_BREAKOUT_PCT;
-
-    if (state.lastCyclePrice > 0) {
-      state.priceVelocityPct = Math.abs(
-        (currentPrice - state.lastCyclePrice) / state.lastCyclePrice * 100,
-      );
-
-      // 单周期闪崩/闪涨 → 立即触发方向性平仓 + 紧急退出
-      if (state.priceVelocityPct >= flashBreakoutThreshold) {
-        const direction = currentPrice > state.lastCyclePrice ? 'up' : 'down';
-        this.logger.warn(
-          `[网格] 闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%（${direction}）`,
-        );
-        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
-        await this.emergencyExit(state, userId, apiKeyId,
-          `闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%`);
-        state.lastCyclePrice = currentPrice;
-        await this.persistGridState(strategyId, state);
-        return { trades: 0, errors: 0 };
-      }
-    }
+    // ──── 风控优先：Step 3/3.5/4 始终在突破检查(Step 2)前执行，确保即使突破 return 风控也已生效 ────
+    let earlyAdapter: ExchangeAdapter | null = null;
 
     // Step 3: 最大回撤检查（预取余额+持仓，计算 livePositionNotional 供 cap 检查用）
     let currentEquity = state.peakEquity;
@@ -1011,12 +981,12 @@ export class GridTradingService {
     let livePositions: any[] | undefined; // 持仓快照，仅用于 livePositionNotional 计算
     if (this.adapterFactory && apiKeyId) {
       try {
-        const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-        const balance = await adapter.getBalance();
+        earlyAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+        const balance = await earlyAdapter.getBalance();
         currentEquity = balance.totalEquity;
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
-        livePositions = await adapter.getPositions(); // 预取持仓，计算 livePositionNotional
+        livePositions = await earlyAdapter.getPositions(); // 预取持仓，计算 livePositionNotional
         // 用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
         {
           const baseSymbol = state.symbol.split('/')[0];
@@ -1071,6 +1041,74 @@ export class GridTradingService {
       }
     }
 
+    // Step 3.5: 逐层硬止损检查（对齐 nofx checkAndExecuteStopLoss）
+    // 每轮遍历 filled 层，lossPct >= stopLossPct 时标记待平仓，在 adapter 块内执行
+    const perLevelStopPct = state.stopLossPct > 0 ? state.stopLossPct : DEFAULT_STOP_LOSS_PCT;
+    if (currentPrice > 0) {
+      for (let i = 0; i < state.gridLines.length; i++) {
+        const line = state.gridLines[i];
+        if (line.state !== 'filled' || !line.positionEntry || line.positionEntry <= 0) continue;
+        let lossPct: number;
+        if (line.side === 'sell') {
+          // 空头：价格上涨亏损
+          lossPct = ((currentPrice - line.positionEntry) / line.positionEntry) * 100;
+        } else {
+          // 多头：价格下跌亏损
+          lossPct = ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
+        }
+        if (lossPct >= perLevelStopPct) {
+          this.logger.warn(
+            `[网格] 硬止损标记: 层${i + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
+            `currentPrice=${currentPrice.toFixed(4)} 亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
+          );
+          if (!state._pendingStopLoss) state._pendingStopLoss = [];
+          state._pendingStopLoss.push(i);
+        }
+      }
+    }
+
+    // Step 3.5 执行: 逐层硬止损平仓（使用 earlyAdapter 直接执行，不延迟到 Step 8）
+    // 确保即使后续 Step 2 突破 return，止损已实际平仓
+    if (state._pendingStopLoss && state._pendingStopLoss.length > 0 && earlyAdapter && isGridAdapter(earlyAdapter)) {
+      for (const idx of state._pendingStopLoss) {
+        const line = state.gridLines[idx];
+        if (line.state !== 'filled') continue;
+        const closeSide = line.side === 'buy' ? 'long' : 'short';
+        const closeQty = line.positionSize || 0;
+        if (closeQty > 0) {
+          try {
+            if (closeSide === 'long') {
+              await (earlyAdapter as GridExchangeAdapter).closeLong(state.symbol, closeQty);
+            } else {
+              await (earlyAdapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
+            }
+            const entryPx = line.positionEntry || 0;
+            const profit = closeSide === 'long'
+              ? (currentPrice - entryPx) * closeQty
+              : (entryPx - currentPrice) * closeQty;
+            state.totalProfit += profit;
+            this.logger.warn(
+              `[网格] 硬止损平仓: 层${idx + 1} ${closeSide} qty=${closeQty} profit=${profit.toFixed(4)}`,
+            );
+            line.state = 'stopped';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.orderId = undefined;
+            state.livePositionNotional = Math.max(0, state.livePositionNotional - closeQty * currentPrice);
+          } catch (e: any) {
+            this.logger.error(`[网格] 硬止损层${idx + 1}失败: ${e.message}`);
+          }
+        }
+      }
+      state._pendingStopLoss = undefined;
+    }
+
+    // 释放 earlyAdapter（Step 8 会创建独立的 adapter）
+    if (earlyAdapter) {
+      try { await earlyAdapter.dispose(); } catch {}
+      earlyAdapter = null;
+    }
+
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
     // dailyLossLimitPct <= 0 视为禁用（0 = 不限制日内亏损）
     const dailyLossLimitPct = gridConfig?.dailyLossLimitPct ?? DEFAULT_DAILY_LOSS_LIMIT_PCT;
@@ -1100,6 +1138,47 @@ export class GridTradingService {
             executed: true,
           },
         });
+        return { trades: 0, errors: 0 };
+      }
+    }
+
+    // Step 2: 简单边界突破检查（移至 Step 3/3.5/4 之后，确保风控始终先执行）
+    const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
+    const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
+    if (breakoutPct >= breakoutThreshold) {
+      const direction = currentPrice > state.upperPrice ? 'up' : 'down';
+      this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
+
+      // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
+      if (gridConfig?.directionalCloseOnBreakout === true) {
+        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+      }
+
+      state.isPaused = true;
+      state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
+      await this.persistGridState(strategyId, state);
+      return { trades: 0, errors: 0 };
+    }
+
+    // Step 2.5: 价格速度检测（黑天鹅早期预警）
+    const flashBreakoutThreshold = gridConfig?.flashBreakoutPct ?? DEFAULT_FLASH_BREAKOUT_PCT;
+
+    if (state.lastCyclePrice > 0) {
+      state.priceVelocityPct = Math.abs(
+        (currentPrice - state.lastCyclePrice) / state.lastCyclePrice * 100,
+      );
+
+      // 单周期闪崩/闪涨 → 立即触发方向性平仓 + 紧急退出
+      if (state.priceVelocityPct >= flashBreakoutThreshold) {
+        const direction = currentPrice > state.lastCyclePrice ? 'up' : 'down';
+        this.logger.warn(
+          `[网格] 闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%（${direction}）`,
+        );
+        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+        await this.emergencyExit(state, userId, apiKeyId,
+          `闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%`);
+        state.lastCyclePrice = currentPrice;
+        await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
       }
     }
@@ -1161,25 +1240,43 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 动态杠杆 — 每轮实时计算（不依赖持久化旧值，对齐 nofx）
-    // 固定模式(用户填值>0): effectiveLeverage = leverage（始终同步）
-    // AI模式(用户填0):      effectiveLeverage = min(leverage, regimeCap)（regime 联动）
-    state.userFixedLeverage ??= true; // 旧数据兼容：无此字段视为固定杠杆
-    if (state.userFixedLeverage) {
-      // 固定杠杆：始终与配置值同步（修复配置变更后 effectiveLeverage 卡在旧值的 bug）
-      state.effectiveLeverage = state.leverage;
-    } else {
-      // AI 决策模式：regime cap 每轮实时计算
-      const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
-      const newEffective = Math.min(state.leverage, regimeCap);
-      if (state.effectiveLeverage !== newEffective) {
-        this.logger.log(
-          `[网格] 杠杆调整: ${state.effectiveLeverage}x → ${newEffective}x ` +
-          `(市场=${this.regimeLabel(state.currentRegime)}, 配置=${state.leverage}x, 上限=${regimeCap}x)`,
-        );
+    // Step 6.1: autoPauseOnTrend — 盘整得分检测（默认 true，false 时跳过）
+    if (gridConfig?.autoPauseOnTrend !== false) {
+      const minScore = gridConfig?.minRangingScore ?? 60;
+      const resumeScore = gridConfig?.trendResumeThreshold ?? 70;
+      state.rangingScore = this.computeRangingScore(state.currentRegime);
+
+      if (state.rangingScore < minScore) {
+        state.consecutiveTrending = (state.consecutiveTrending ?? 0) + 1;
+        if (state.consecutiveTrending >= 2 && !state.isPaused) {
+          state.isPaused = true;
+          state.pauseSource = 'auto_trend';
+          state.pauseReason = `盘整得分(${state.rangingScore}) < 阈值(${minScore})，制度=${this.regimeLabel(state.currentRegime)}，连续${state.consecutiveTrending}轮`;
+          this.logger.warn(
+            `[网格] autoPauseOnTrend: 连续${state.consecutiveTrending}轮盘整得分低(${state.rangingScore}) → 软暂停`,
+          );
+        }
+      } else {
+        state.consecutiveTrending = 0;
+        // 仅恢复由 auto_trend 触发的暂停（不干预 ai/risk_control/breakout）
+        if (state.isPaused && state.pauseSource === 'auto_trend' && state.rangingScore >= resumeScore) {
+          state.isPaused = false;
+          state.pauseSource = undefined;
+          state.pauseReason = undefined;
+          this.logger.log(
+            `[网格] autoPauseOnTrend: 盘整得分恢复(${state.rangingScore} ≥ ${resumeScore}) → 自动恢复运行`,
+          );
+        }
       }
-      state.effectiveLeverage = newEffective;
     }
+
+    // Step 6.5: 动态杠杆 — 仅计算推荐值，不改写 state（对齐 nofx）
+    // nofx: configLeverage（静态）用于所有下单计算，recommendedLeverage 仅展示
+    state.userFixedLeverage ??= true;
+    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
+    state.recommendedLeverage = Math.min(state.leverage, regimeCap);
+    // effectiveLeverage 始终同步配置值（兼容旧数据引用）
+    state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
@@ -1216,6 +1313,8 @@ export class GridTradingService {
             this.logger.warn(`[网格] 清理止损单失败(忽略): ${e.message}`);
           }
         }
+
+        // Step 3.5 逐层止损已在 Step 3.5 执行块中完成（earlyAdapter），此处无需重复
 
         // 突破检测：在 syncOrderFills 之后、AI 决策之前执行
         // ≥2% 超出边界：取消所有挂单并暂停
@@ -1438,7 +1537,7 @@ export class GridTradingService {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines,
+            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
           );
         }
 
@@ -1831,6 +1930,21 @@ export class GridTradingService {
 
   // ========================= 市场状态分类 =========================
 
+  /**
+   * 根据市场制度计算盘整得分（0-100）
+   * narrow=80 / standard=65 / wide=40 / volatile=20
+   * 阈值：< minRangingScore(60) → 触发暂停；≥ trendResumeThreshold(70) → 触发恢复
+   */
+  private computeRangingScore(regime: RegimeLevel): number {
+    switch (regime) {
+      case 'narrow':   return 80;
+      case 'standard': return 65;
+      case 'wide':     return 40;
+      case 'volatile': return 20;
+      default:         return 65;
+    }
+  }
+
   /** 分类市场状态，同时返回 ATR(14)[1h] 供 ATR 追踪网格宽度使用 */
   private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
     const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '1h', 50);
@@ -2110,6 +2224,7 @@ export class GridTradingService {
       userLockedRange: state.userLockedRange ?? false,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
       currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
+      rangingScore: state.rangingScore > 0 ? state.rangingScore : undefined,
       exchangeOpenOrders,
       recentClosedPnl,
       positionReductionPct: state.positionReductionPct > 0 ? state.positionReductionPct : undefined,
@@ -2238,17 +2353,7 @@ export class GridTradingService {
       }
 
       case 'cancel_all_orders': {
-        // 代码层守卫：仅当价格严重偏离网格中心才允许全部取消
-        const gridCenter = (state.upperPrice + state.lowerPrice) / 2;
-        const deviationPct = gridCenter > 0
-          ? Math.abs((currentPrice ?? state.lastPrice) - gridCenter) / gridCenter * 100
-          : 100;
-        if (deviationPct < CANCEL_ALL_MAX_DEVIATION_PCT) {
-          this.logger.warn(
-            `[网格] cancel_all_orders 被拦截: 价格偏离中心仅 ${deviationPct.toFixed(1)}% < ${CANCEL_ALL_MAX_DEVIATION_PCT}%。AI 理由: ${decision.reasoning}`,
-          );
-          break;
-        }
+        // 对齐 nofx：无偏离度安全阀，AI 发出 cancel_all 时直接执行
         await adapter.cancelAllOrders(state.symbol);
         for (const line of state.gridLines) {
           if (line.state === 'pending') {
@@ -2328,6 +2433,9 @@ export class GridTradingService {
           : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'buy');
         const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
+        // 回填平仓价到 decision，前端日志可展示（AI 可能只发 level+quantity）
+        const closeLongPrice = currentPrice ?? state.lastPrice;
+        if (!decision.price) decision.price = closeLongPrice;
         await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         if (targetLevel && targetLevel.positionSize > 0) {
           const _cp = new Decimal(currentPrice ?? state.lastPrice);
@@ -2382,6 +2490,9 @@ export class GridTradingService {
           : state.gridLines.find(l => l.state === 'filled' && l.positionSize > 0 && l.side === 'sell');
         const qty = decision.quantity ?? targetLevel?.positionSize ?? 0;
         if (qty <= 0) return { executed: false, skipReason: '无持仓可平' };
+        // 回填平仓价到 decision，前端日志可展示
+        const closeShortPrice = currentPrice ?? state.lastPrice;
+        if (!decision.price) decision.price = closeShortPrice;
         await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
         // 无论是否有 targetLevel，都更新 livePositionNotional（孤儿空头平仓）
         const closedValueShort = qty * (currentPrice ?? state.lastPrice);
@@ -3767,6 +3878,7 @@ export class GridTradingService {
     execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
     marketAnalysis?: string,
     preExecGridLines?: any[],  // AI 分析时看到的执行前快照
+    locale?: string,           // 用户语言（用于 gridSummary 翻译）
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
@@ -3784,7 +3896,7 @@ export class GridTradingService {
       for (const [act, cnt] of Object.entries(counts)) {
         // hold/wait 不纳入摘要（actionsOnly 模式下这些条目会被过滤掉，无需展示）
         if (!['place_buy_limit', 'place_sell_limit', 'cancel_order', 'hold', 'wait'].includes(act)) {
-          parts.push(`${act}×${cnt}`);
+          parts.push(`${this.actionLabel(act, locale)}×${cnt}`);
         }
       }
       const gridSummary = parts.join('/') || `${decisions.length}ops`;
@@ -3814,7 +3926,8 @@ export class GridTradingService {
           : undefined,
         unrealizedPnl: state.lastUnrealizedPnl ?? 0,
         leverage: state.leverage,                   // 配置杠杆（固定值 / AI默认上限）
-        effectiveLeverage: state.effectiveLeverage, // 操作杠杆（固定=leverage, AI=min(leverage,regimeCap)）
+        effectiveLeverage: state.leverage,            // 已废弃，始终等于 leverage（对齐 nofx）
+        recommendedLeverage: state.recommendedLeverage, // min(leverage, regimeCap)，仅展示
         userFixedLeverage: state.userFixedLeverage ?? true,
         breakoutLevel: state.breakoutLevel,
         lastPrice: state.lastPrice,

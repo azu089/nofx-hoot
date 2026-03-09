@@ -103,6 +103,8 @@ export function AIStrategyDetailPage() {
   const [editGridDistribution, setEditGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [editGridUseMakerOnly, setEditGridUseMakerOnly] = useState(false);
   const [editGridAutoPauseOnTrend, setEditGridAutoPauseOnTrend] = useState(true);
+  const [editGridMinRangingScore, setEditGridMinRangingScore] = useState(60);
+  const [editGridTrendResumeThreshold, setEditGridTrendResumeThreshold] = useState(70);
   const [editGridEnableDirectionAdjust, setEditGridEnableDirectionAdjust] = useState(false);
   const [editGridDirectionBiasRatio, setEditGridDirectionBiasRatio] = useState(70);
   const [editGridInterval, setEditGridInterval] = useState(60);
@@ -313,6 +315,8 @@ export function AIStrategyDetailPage() {
       setEditGridDistribution((gc.distribution as typeof editGridDistribution) ?? 'uniform');
       setEditGridUseMakerOnly(gc.useMakerOnly ?? false);
       setEditGridAutoPauseOnTrend(gc.autoPauseOnTrend ?? true);
+      setEditGridMinRangingScore(gc.minRangingScore ?? 60);
+      setEditGridTrendResumeThreshold(gc.trendResumeThreshold ?? 70);
       setEditGridEnableDirectionAdjust(gc.enableDirectionAdjust ?? false);
       setEditGridDirectionBiasRatio(gc.directionBiasRatio != null ? Math.round(gc.directionBiasRatio * 100) : 70);
       setEditGridInterval(strategy?.intervalMinutes || 60);
@@ -429,6 +433,8 @@ export function AIStrategyDetailPage() {
           autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
           useMakerOnly: editGridUseMakerOnly,
           autoPauseOnTrend: editGridAutoPauseOnTrend,
+          minRangingScore: editGridMinRangingScore || 60,
+          trendResumeThreshold: editGridTrendResumeThreshold || 70,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
           // 百分比 → 绝对价格；price=0 时保留 spread 进来的旧值（不覆盖为 undefined）
@@ -1639,6 +1645,34 @@ export function AIStrategyDetailPage() {
                               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
                             </button>
                           </div>
+                          {editGridAutoPauseOnTrend && (
+                            <div className="grid grid-cols-2 gap-2 col-span-2">
+                              <div className="space-y-1">
+                                <p className="text-xs text-[#9090A0]">暂停阈值 <span className="text-[#606070]">（默认60）</span></p>
+                                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                                  <input type="number" min={0} max={100} step={5}
+                                    value={editGridMinRangingScore || ''}
+                                    onChange={(e) => setEditGridMinRangingScore(e.target.value === '' ? 60 : parseInt(e.target.value))}
+                                    placeholder="60" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                    aria-label="暂停阈值"
+                                  />
+                                  <span className="text-[#606070] text-xs shrink-0">分</span>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs text-[#9090A0]">恢复阈值 <span className="text-[#606070]">（默认70）</span></p>
+                                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                                  <input type="number" min={0} max={100} step={5}
+                                    value={editGridTrendResumeThreshold || ''}
+                                    onChange={(e) => setEditGridTrendResumeThreshold(e.target.value === '' ? 70 : parseInt(e.target.value))}
+                                    placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
+                                    aria-label="恢复阈值"
+                                  />
+                                  <span className="text-[#606070] text-xs shrink-0">分</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <div className="space-y-1 col-span-2">
                             <div className="flex items-center justify-between">
                               <div>

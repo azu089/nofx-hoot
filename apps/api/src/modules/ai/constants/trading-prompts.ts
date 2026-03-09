@@ -662,6 +662,8 @@ export interface GridContext {
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
   // 后端检测的市场形态（供参考，AI 可结合指标自行判断）
   currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
+  // 盘整得分（0-100，narrow=80,standard=65,wide=40,volatile=20；<60 后端会软暂停）
+  rangingScore?: number;
   // 交易所实时委托单（供 AI 对比内存状态）
   exchangeOpenOrders?: Array<{orderId: string; side: string; price: number; quantity: number}>;
   // 近期已平仓记录（供 AI 分析最近成交历史）
@@ -771,7 +773,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     volatile: '高波动（谨慎运行）',
   };
   if (ctx.currentRegime) {
-    lines.push(`⚡ 系统参考形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime}（供参考，可结合指标自行判断）`);
+    const scoreStr = ctx.rangingScore !== undefined ? ` | 盘整得分: ${ctx.rangingScore}/100` : '';
+    lines.push(`⚡ 系统参考形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime}${scoreStr}（供参考，可结合指标自行判断）`);
   }
 
   // Section 3: 箱体数据
