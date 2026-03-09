@@ -3141,8 +3141,8 @@ export class GridTradingService {
               // runningExpected：卖单平多 → 净持仓减少
               runningExpected -= posQty.toNumber();
               this.logger.log(
-                `[网格] 卖单成交(平多): level=${line.index}, sellPrice=${line.price.toFixed(4)}, ` +
-                `buyEntry=${(pairedBuy.positionEntry ?? 0).toFixed(4)}, qty=${posQty.toFixed(4)}, ` +
+                `[网格] 卖单成交(平多): level=${line.index}, sellPrice=${sellPrice.toFixed(4)}, ` +
+                `buyEntry=${buyEntry.toFixed(4)}, qty=${posQty.toFixed(4)}, ` +
                 `netProfit=${netProfitD.toFixed(8)} USDT`,
               );
             } else {
