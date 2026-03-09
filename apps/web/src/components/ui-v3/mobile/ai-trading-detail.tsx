@@ -103,8 +103,7 @@ export function AIStrategyDetailPage() {
   const [editGridDistribution, setEditGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [editGridUseMakerOnly, setEditGridUseMakerOnly] = useState(false);
   const [editGridAutoPauseOnTrend, setEditGridAutoPauseOnTrend] = useState(true);
-  const [editGridMinRangingScore, setEditGridMinRangingScore] = useState(60);
-  const [editGridTrendResumeThreshold, setEditGridTrendResumeThreshold] = useState(70);
+
   const [editGridEnableDirectionAdjust, setEditGridEnableDirectionAdjust] = useState(false);
   const [editGridDirectionBiasRatio, setEditGridDirectionBiasRatio] = useState(70);
   const [editGridInterval, setEditGridInterval] = useState(60);
@@ -313,10 +312,9 @@ export function AIStrategyDetailPage() {
       setEditGridAutoAdjustThreshold(gc.autoAdjustThreshold != null ? Math.round(gc.autoAdjustThreshold * 100) : 20);
       setEditGridDirection((gc.direction as typeof editGridDirection) ?? 'neutral');
       setEditGridDistribution((gc.distribution as typeof editGridDistribution) ?? 'uniform');
-      setEditGridUseMakerOnly(gc.useMakerOnly ?? false);
+      setEditGridUseMakerOnly(gc.useMakerOnly ?? true);
       setEditGridAutoPauseOnTrend(gc.autoPauseOnTrend ?? true);
-      setEditGridMinRangingScore(gc.minRangingScore ?? 60);
-      setEditGridTrendResumeThreshold(gc.trendResumeThreshold ?? 70);
+
       setEditGridEnableDirectionAdjust(gc.enableDirectionAdjust ?? false);
       setEditGridDirectionBiasRatio(gc.directionBiasRatio != null ? Math.round(gc.directionBiasRatio * 100) : 70);
       setEditGridInterval(strategy?.intervalMinutes || 60);
@@ -433,8 +431,6 @@ export function AIStrategyDetailPage() {
           autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
           useMakerOnly: editGridUseMakerOnly,
           autoPauseOnTrend: editGridAutoPauseOnTrend,
-          minRangingScore: editGridMinRangingScore || 60,
-          trendResumeThreshold: editGridTrendResumeThreshold || 70,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
           // 百分比 → 绝对价格；price=0 时保留 spread 进来的旧值（不覆盖为 undefined）
@@ -1625,72 +1621,46 @@ export function AIStrategyDetailPage() {
                             <button
                               type="button"
                               onClick={() => setEditGridUseMakerOnly(!editGridUseMakerOnly)}
-                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${editGridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${editGridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
                               aria-label="PostOnly限价单"
                             >
                               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
                             </button>
                           </div>
-                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl opacity-50">
                             <div>
-                              <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
+                                <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">开发中</span>
+                              </div>
                               <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
                             </div>
                             <button
                               type="button"
-                              onClick={() => setEditGridAutoPauseOnTrend(!editGridAutoPauseOnTrend)}
-                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${editGridAutoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                              aria-label="趋势市场自动暂停"
+                              disabled
+                              className="relative w-11 h-6 rounded-full bg-[#2A2A3A] flex-shrink-0 overflow-hidden cursor-not-allowed"
+                              aria-label="趋势市场自动暂停（开发中）"
                             >
-                              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
+                              <span className="absolute top-1 translate-x-1 w-4 h-4 bg-white rounded-full" />
                             </button>
                           </div>
-                          {editGridAutoPauseOnTrend && (
-                            <div className="grid grid-cols-2 gap-2 col-span-2">
-                              <div className="space-y-1">
-                                <p className="text-xs text-[#9090A0]">暂停阈值 <span className="text-[#606070]">（默认60）</span></p>
-                                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                                  <input type="number" min={0} max={100} step={5}
-                                    value={editGridMinRangingScore || ''}
-                                    onChange={(e) => setEditGridMinRangingScore(e.target.value === '' ? 60 : parseInt(e.target.value))}
-                                    placeholder="60" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                    aria-label="暂停阈值"
-                                  />
-                                  <span className="text-[#606070] text-xs shrink-0">分</span>
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-xs text-[#9090A0]">恢复阈值 <span className="text-[#606070]">（默认70）</span></p>
-                                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                                  <input type="number" min={0} max={100} step={5}
-                                    value={editGridTrendResumeThreshold || ''}
-                                    onChange={(e) => setEditGridTrendResumeThreshold(e.target.value === '' ? 70 : parseInt(e.target.value))}
-                                    placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                    aria-label="恢复阈值"
-                                  />
-                                  <span className="text-[#606070] text-xs shrink-0">分</span>
-                                </div>
-                              </div>
+
+                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <div>
+                              <p className="text-xs text-[#9090A0]">方向自动切换</p>
+                              <p className="text-[10px] text-[#606070]">突破时偏转方向，回归后恢复中性</p>
                             </div>
-                          )}
-                          <div className="space-y-1 col-span-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-xs text-[#9090A0]">方向自动切换</p>
-                                <p className="text-[10px] text-[#606070]">突破时偏转方向，回归后恢复中性</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setEditGridEnableDirectionAdjust(!editGridEnableDirectionAdjust)}
-                                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                                  editGridEnableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
-                                }`}
-                              >
-                                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                                  editGridEnableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
-                                }`} />
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setEditGridEnableDirectionAdjust(!editGridEnableDirectionAdjust)}
+                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${
+                                editGridEnableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
+                              }`}
+                            >
+                              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                                editGridEnableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
+                              }`} />
+                            </button>
                           </div>
                           {editGridEnableDirectionAdjust && (
                             <div className="space-y-1 col-span-2">

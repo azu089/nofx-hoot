@@ -204,8 +204,8 @@ export function UnifiedAiCreate() {
   const [gridCount, setGridCount] = useState(10);
   const [gridInvestment, setGridInvestment] = useState(1000);
   const [gridLeverage, setGridLeverage] = useState<number | ''>(''); // '' = AI 决策(≤5x)
-  const [gridUpperPct, setGridUpperPct] = useState(0);   // 0 = AI 自动计算区间
-  const [gridLowerPct, setGridLowerPct] = useState(0);   // 0 = AI 自动计算区间
+  const [gridUpperPct, setGridUpperPct] = useState('');   // '' = AI 自动计算区间
+  const [gridLowerPct, setGridLowerPct] = useState('');   // '' = AI 自动计算区间
 
   // 网格交易对实时价格
   const [gridCurrentPrice, setGridCurrentPrice] = useState(0);
@@ -227,8 +227,7 @@ export function UnifiedAiCreate() {
   const [gridDistribution, setGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [gridUseMakerOnly, setGridUseMakerOnly] = useState(false);
   const [gridAutoPauseOnTrend, setGridAutoPauseOnTrend] = useState(true);
-  const [gridMinRangingScore, setGridMinRangingScore] = useState(60);
-  const [gridTrendResumeThreshold, setGridTrendResumeThreshold] = useState(70);
+
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -462,13 +461,13 @@ export function UnifiedAiCreate() {
           gridCount: gridCount || 10, totalInvestment: gridInvestment || 1000,
           leverage: gridLeverage !== '' && Number(gridLeverage) > 0 ? Number(gridLeverage) : null,
           // 百分比 → 绝对价格；留空(0) → 发送 0 → 后端 AI 决策
-          upperBound: (gridCurrentPrice > 0 && gridUpperPct > 0)
-            ? +(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(6) : 0,
-          lowerBound: (gridCurrentPrice > 0 && gridLowerPct > 0)
-            ? +(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(6) : 0,
+          upperBound: (gridCurrentPrice > 0 && parseFloat(gridUpperPct) > 0)
+            ? +(gridCurrentPrice * (1 + parseFloat(gridUpperPct) / 100)).toFixed(6) : 0,
+          lowerBound: (gridCurrentPrice > 0 && parseFloat(gridLowerPct) > 0)
+            ? +(gridCurrentPrice * (1 - parseFloat(gridLowerPct) / 100)).toFixed(6) : 0,
           boundsFromPct: true, // 上下界由百分比换算，不视为用户手动锁定
-          upperBoundPct: gridUpperPct > 0 ? gridUpperPct : 0, // 保存原始百分比，adjust_grid 时按此重算
-          lowerBoundPct: gridLowerPct > 0 ? gridLowerPct : 0,
+          upperBoundPct: parseFloat(gridUpperPct) > 0 ? parseFloat(gridUpperPct) : 0, // 保存原始百分比，adjust_grid 时按此重算
+          lowerBoundPct: parseFloat(gridLowerPct) > 0 ? parseFloat(gridLowerPct) : 0,
           maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
           dailyLossLimitPct: gridDailyLossLimit || 0,
           autoAdjustThreshold: (gridAutoAdjustThreshold || 20) / 100,
@@ -478,8 +477,6 @@ export function UnifiedAiCreate() {
           distribution: gridDistribution,
           useMakerOnly: gridUseMakerOnly,
           autoPauseOnTrend: gridAutoPauseOnTrend,
-          minRangingScore: gridMinRangingScore || 60,
-          trendResumeThreshold: gridTrendResumeThreshold || 70,
         };
       }
 
@@ -945,9 +942,9 @@ export function UnifiedAiCreate() {
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">上偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="any"
-                    value={gridUpperPct || ''} placeholder="公式自动"
-                    onChange={(e) => setGridUpperPct(parseFloat(e.target.value) || 0)}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="0.1"
+                    value={gridUpperPct} placeholder="公式自动"
+                    onChange={(e) => setGridUpperPct(e.target.value)}
                     aria-label="上偏移百分比"
                   />
                   <span className="text-[#606070] text-xs shrink-0">%</span>
@@ -956,9 +953,9 @@ export function UnifiedAiCreate() {
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">下偏移</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="any"
-                    value={gridLowerPct || ''} placeholder="公式自动"
-                    onChange={(e) => setGridLowerPct(parseFloat(e.target.value) || 0)}
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={0} max={50} step="0.1"
+                    value={gridLowerPct} placeholder="公式自动"
+                    onChange={(e) => setGridLowerPct(e.target.value)}
                     aria-label="下偏移百分比"
                   />
                   <span className="text-[#606070] text-xs shrink-0">%</span>
@@ -968,11 +965,11 @@ export function UnifiedAiCreate() {
             {/* 实时换算预览 */}
             {gridCurrentPrice > 0 && (
               <div className="flex items-center justify-between text-[10px] text-[#606070] px-1 -mt-1">
-                {gridUpperPct > 0 && gridLowerPct > 0 ? (
+                {parseFloat(gridUpperPct) > 0 && parseFloat(gridLowerPct) > 0 ? (
                   <>
-                    <span>≈ ${(gridCurrentPrice * (1 - gridLowerPct / 100)).toFixed(2)}</span>
+                    <span>≈ ${(gridCurrentPrice * (1 - parseFloat(gridLowerPct) / 100)).toFixed(2)}</span>
                     <span>当前: ${gridCurrentPrice.toFixed(2)}</span>
-                    <span>≈ ${(gridCurrentPrice * (1 + gridUpperPct / 100)).toFixed(2)}</span>
+                    <span>≈ ${(gridCurrentPrice * (1 + parseFloat(gridUpperPct) / 100)).toFixed(2)}</span>
                   </>
                 ) : (
                   <span>当前价: ${gridCurrentPrice.toFixed(2)} · 留空则自动计算边界，上下各约 {(3 * gridCount / 10).toFixed(1)}%，每格间距 0.6%</span>
@@ -1354,24 +1351,7 @@ export function UnifiedAiCreate() {
                   <span className="text-[10px] text-[#606070]">趋势时自动暂停</span>
                 </div>
               )}
-              {isGrid && gridAutoPauseOnTrend && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#9090A0] w-20 shrink-0">暂停阈值</span>
-                  <input type="number" min={0} max={100} step={5} value={gridMinRangingScore || ''} onChange={(e) => setGridMinRangingScore(parseInt(e.target.value) || 60)}
-                    placeholder="60" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
-                  />
-                  <span className="text-xs text-[#606070]">分</span>
-                </div>
-              )}
-              {isGrid && gridAutoPauseOnTrend && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#9090A0] w-20 shrink-0">恢复阈值</span>
-                  <input type="number" min={0} max={100} step={5} value={gridTrendResumeThreshold || ''} onChange={(e) => setGridTrendResumeThreshold(parseInt(e.target.value) || 70)}
-                    placeholder="70" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
-                  />
-                  <span className="text-xs text-[#606070]">分</span>
-                </div>
-              )}
+
               {isGrid && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-[#9090A0] w-20 shrink-0">重建阈值</span>

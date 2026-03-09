@@ -2075,6 +2075,11 @@ export class AutoTraderService {
     }
     // 注入 locale 到 gridConfig，供后端日志多语言翻译使用
     gridConfig.locale = locale;
+    // 注入止盈目标到 gridConfig，供 AI 提示词使用（来自 stopConditions）
+    const gridStopCondForConfig = (strategy.stopConditions as StopConditionsConfig) || {};
+    if (gridStopCondForConfig.profitTargetPercent && gridStopCondForConfig.profitTargetPercent > 0) {
+      gridConfig.profitTargetPct = gridStopCondForConfig.profitTargetPercent;
+    }
     // 如果 gridConfig 没有 symbol，从 coinSourceConfig 获取
     if (!gridConfig.symbol) {
       const coinSource = strategy.coinSourceConfig as { coins?: string[] } | null;

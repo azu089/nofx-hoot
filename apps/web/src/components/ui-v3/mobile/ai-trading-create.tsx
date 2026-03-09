@@ -163,10 +163,8 @@ export function CreateStrategyWizard() {
     stopLossPct: 5,
     dailyLossLimitPct: 10,
     autoAdjustThreshold: 20,
-    useMakerOnly: false,
+    useMakerOnly: true,
     autoPauseOnTrend: true,
-    minRangingScore: 60,
-    trendResumeThreshold: 70,
     enableDirectionAdjust: false,
     directionBiasRatio: 70,
   })
@@ -372,8 +370,6 @@ export function CreateStrategyWizard() {
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
           useMakerOnly: gridParams.useMakerOnly,
           autoPauseOnTrend: gridParams.autoPauseOnTrend,
-          minRangingScore: gridParams.minRangingScore || 60,
-          trendResumeThreshold: gridParams.trendResumeThreshold || 70,
           enableDirectionAdjust: gridParams.enableDirectionAdjust,
           directionBiasRatio: (gridParams.directionBiasRatio || 70) / 100,
         }
@@ -910,7 +906,7 @@ export function CreateStrategyWizard() {
                   </select>
                 </div>
               </div>
-              {/* 单格止损 + Maker-only */}
+              {/* 单格止损 */}
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="单格止损" suffix="%">
                   <input
@@ -922,56 +918,8 @@ export function CreateStrategyWizard() {
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>
-                <div className="flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                  <span className="text-xs text-[#9090A0]">Maker 单</span>
-                  <button
-                    type="button"
-                    onClick={() => updateGrid('useMakerOnly', !gridParams.useMakerOnly)}
-                    className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${gridParams.useMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                    aria-label="PostOnly限价单"
-                  >
-                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.useMakerOnly ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </button>
-                </div>
               </div>
-              {/* 趋势自动暂停 */}
-              <div className="flex items-center justify-between px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                <div>
-                  <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
-                  <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => updateGrid('autoPauseOnTrend', !gridParams.autoPauseOnTrend)}
-                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridParams.autoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                  aria-label="趋势市场自动暂停"
-                >
-                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.autoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-              {/* autoPauseOnTrend 展开配置 */}
-              {isGrid && gridParams.autoPauseOnTrend && (
-                <div className="grid grid-cols-2 gap-2">
-                  <RiskField label="暂停阈值" suffix="分">
-                    <input
-                      type="number" min={0} max={100} step={5}
-                      title="最低盘整得分"
-                      value={gridParams.minRangingScore ?? 60}
-                      onChange={(e) => updateGrid('minRangingScore', Number(e.target.value) || 60)}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                    />
-                  </RiskField>
-                  <RiskField label="恢复阈值" suffix="分">
-                    <input
-                      type="number" min={0} max={100} step={5}
-                      title="自动恢复盘整得分"
-                      value={gridParams.trendResumeThreshold ?? 70}
-                      onChange={(e) => updateGrid('trendResumeThreshold', Number(e.target.value) || 70)}
-                      className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
-                    />
-                  </RiskField>
-                </div>
-              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <RiskField label="冷却时间" suffix="min">
                   <input
@@ -1175,24 +1123,54 @@ export function CreateStrategyWizard() {
                   </div>
                 )}
                 {isGrid && (
-                  <div className="space-y-1 col-span-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-[#9090A0]">方向自动切换</p>
-                        <p className="text-[10px] text-[#606070]">突破时偏转网格方向，回归后逐步恢复中性</p>
+                  <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <span className="text-xs text-[#9090A0]">Maker 限价单（省手续费）</span>
+                    <button
+                      type="button"
+                      onClick={() => updateGrid('useMakerOnly', !gridParams.useMakerOnly)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${gridParams.useMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
+                      aria-label="PostOnly限价单"
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.useMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                )}
+                {isGrid && (
+                  <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl opacity-50">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
+                        <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">开发中</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => updateGrid('enableDirectionAdjust', !gridParams.enableDirectionAdjust)}
-                        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                          gridParams.enableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
-                        }`}
-                      >
-                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                          gridParams.enableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
-                        }`} />
-                      </button>
+                      <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
                     </div>
+                    <button
+                      type="button"
+                      disabled
+                      className="relative w-11 h-6 rounded-full bg-[#2A2A3A] flex-shrink-0 overflow-hidden cursor-not-allowed"
+                      aria-label="趋势市场自动暂停（开发中）"
+                    >
+                      <span className="absolute top-1 translate-x-1 w-4 h-4 bg-white rounded-full" />
+                    </button>
+                  </div>
+                )}
+                {isGrid && (
+                  <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                    <div>
+                      <p className="text-xs text-[#9090A0]">方向自动切换</p>
+                      <p className="text-[10px] text-[#606070]">突破时偏转方向，回归后恢复中性</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateGrid('enableDirectionAdjust', !gridParams.enableDirectionAdjust)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${
+                        gridParams.enableDirectionAdjust ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'
+                      }`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                        gridParams.enableDirectionAdjust ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
                   </div>
                 )}
                 {isGrid && gridParams.enableDirectionAdjust && (

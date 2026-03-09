@@ -44,10 +44,9 @@ export interface GridConfig {
   takerFeeRate?: number;    // 交易所 Taker 手续费率（默认 DEFAULT_TAKER_FEE_RATE）
   makerFeeRate?: number;    // 交易所 Maker 手续费率（默认 DEFAULT_MAKER_FEE_RATE）
   stopLossPct?: number;          // 单格止损阈值%（默认 5）：价格偏离 ≥ 此值平掉该格
+  profitTargetPct?: number;      // 策略止盈目标%（0=AI自主决策，>0=传递给AI提示词）
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，默认 0.2 = 20%）：严重倾斜+价格偏离超此值时自动重建
   autoPauseOnTrend?: boolean;   // 检测到趋势市场自动软暂停（默认 true）
-  minRangingScore?: number;     // 触发暂停的最低盘整得分（0-100，默认 60；wide/volatile 制度分别得 40/20）
-  trendResumeThreshold?: number; // 触发自动恢复的盘整得分（0-100，默认 70；narrow=80, standard=65）
   locale?: string;              // 用户语言（用于日志翻译，如 'zh-CN', 'en'）
   boundsFromPct?: boolean;      // true = 上下界由前端百分比换算，AI 可重建范围（当前仅此一种情况）
   upperBoundPct?: number;       // 上界百分比（如 1.5 表示当前价 ×1.015），adjust_grid 时按此重算
@@ -94,7 +93,7 @@ export interface GridState {
   isInitialized: boolean;
   isPaused: boolean;
   pauseReason?: string;
-  pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout' | 'auto_trend'; // 'risk_control'=风控不可恢复; 'trend'/'breakout'/'auto_trend'=可自动恢复
+  pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout'; // 'risk_control'=风控不可恢复; 'trend'/'breakout'=可自动恢复
   needsReconcile?: boolean; // 暂停恢复后，下次周期开始前需对齐交易所状态
   lastPrice: number;
 
@@ -133,10 +132,6 @@ export interface GridState {
 
   // 方向调节
   currentDirection: GridDirection;
-
-  // autoPauseOnTrend 状态追踪
-  consecutiveTrending: number;  // 连续低盘整得分周期数（≥2 触发软暂停）
-  rangingScore: number;         // 当前盘整得分（0-100，narrow=80,standard=65,wide=40,volatile=20）
 
   createdAt: string;
 
@@ -179,6 +174,8 @@ export interface GridState {
   availableBalance: number;
   // 单格止损阈值%（从 GridConfig 复制，供 buildGridContext 使用）
   stopLossPct: number;
+  // 策略止盈目标%（从 GridConfig 复制，0=未设置/AI自主决策）
+  profitTargetPct: number;
   // 用户设定的边界百分比（从 GridConfig 复制），adjust_grid 时用来重算绝对价格
   upperBoundPct?: number;  // 上界 = 当前价 × (1 + upperBoundPct/100)
   lowerBoundPct?: number;  // 下界 = 当前价 × (1 - lowerBoundPct/100)
@@ -649,8 +646,6 @@ export class GridTradingService {
       currentRegime: 'standard',
       currentDirection: direction,
 
-      consecutiveTrending: 0,
-      rangingScore: 65, // 默认 standard 制度得分
 
       createdAt: new Date().toISOString(),
 
@@ -673,6 +668,7 @@ export class GridTradingService {
       rangeSource,  // 持久化供前端展示: '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
       stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
+      profitTargetPct: config.profitTargetPct ?? 0,
       upperBoundPct: config.upperBoundPct,
       lowerBoundPct: config.lowerBoundPct,
       // 信号驱动字段：首轮为 0，第二轮起正常计算
@@ -782,6 +778,8 @@ export class GridTradingService {
         state.effectiveLeverage ??= state.leverage;
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
+        // 兼容旧数据：profitTargetPct 不存在时 fallback 到 0（AI自主决策）
+        state.profitTargetPct ??= 0;
         // 兼容旧数据：信号字段（Phase 11/12 新增，旧 DB 记录无此字段）
         state.lastVolume24h ??= 0;
         state.avgDailyVolume ??= 0;
@@ -1240,10 +1238,6 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.1: 盘整得分计算（仅供 AI prompt 参考，后端不自动暂停）
-    // nofx 对齐：暂停决策由 AI 通过 pause_grid 指令发出，后端不根据制度自动暂停
-    state.rangingScore = this.computeRangingScore(state.currentRegime);
-
     // Step 6.5: 动态杠杆 — 仅计算推荐值，不改写 state（对齐 nofx）
     // nofx: configLeverage（静态）用于所有下单计算，recommendedLeverage 仅展示
     state.userFixedLeverage ??= true;
@@ -1255,14 +1249,6 @@ export class GridTradingService {
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
     // Step 7: 暂停检查
-    // 兼容迁移：auto_trend 暂停逻辑已删除（对齐 nofx），自动解除遗留状态
-    if (state.isPaused && state.pauseSource === 'auto_trend') {
-      state.isPaused = false;
-      state.pauseSource = undefined;
-      state.pauseReason = undefined;
-      state.needsReconcile = true;
-      this.logger.log(`[网格] auto_trend 暂停已废弃，自动恢复 ${state.symbol}`);
-    }
     if (state.isPaused) {
       this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? '未知来源'}]: ${state.pauseReason || '未知原因'}`);
       await this.persistGridState(strategyId, state);
@@ -1463,7 +1449,7 @@ export class GridTradingService {
             continue;
           }
           try {
-            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? false, currentPrice, gridConfig?.locale);
+            const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
             if (result.executed && d.action.includes('place_')) trades++;
             if (!result.executed && d.action.startsWith('place_')) {
               // place_* 被系统限制拦截（仓位上限/最小数量/价差过宽等）→ 视为失败
@@ -1912,21 +1898,6 @@ export class GridTradingService {
 
   // ========================= 市场状态分类 =========================
 
-  /**
-   * 根据市场制度计算盘整得分（0-100）
-   * narrow=80 / standard=65 / wide=40 / volatile=20
-   * 阈值：< minRangingScore(60) → 触发暂停；≥ trendResumeThreshold(70) → 触发恢复
-   */
-  private computeRangingScore(regime: RegimeLevel): number {
-    switch (regime) {
-      case 'narrow':   return 80;
-      case 'standard': return 65;
-      case 'wide':     return 40;
-      case 'volatile': return 20;
-      default:         return 65;
-    }
-  }
-
   /** 分类市场状态，同时返回 ATR(14)[1h] 供 ATR 追踪网格宽度使用 */
   private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
     const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '1h', 50);
@@ -2205,8 +2176,9 @@ export class GridTradingService {
       })),
       userLockedRange: state.userLockedRange ?? false,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
+      profitTargetPct: state.profitTargetPct > 0 ? state.profitTargetPct : undefined,
       currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
-      rangingScore: state.rangingScore > 0 ? state.rangingScore : undefined,
+
       exchangeOpenOrders,
       recentClosedPnl,
       positionReductionPct: state.positionReductionPct > 0 ? state.positionReductionPct : undefined,

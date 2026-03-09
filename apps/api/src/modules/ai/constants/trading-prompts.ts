@@ -657,13 +657,12 @@ export interface GridContext {
   // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
   userLockedRange?: boolean;
   stopLossPct?: number;        // 单格止损阈值%（0或undefined=未启用）
+  profitTargetPct?: number;    // 策略止盈目标%（0或undefined=未设置，AI自主决策）
   gridSkewLevel?: 'none' | 'light' | 'severe';
   gridSkewBuyFilled?: number;   // 持多头格线数（side='buy'，买单成交未平仓）
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
   // 后端检测的市场形态（供参考，AI 可结合指标自行判断）
   currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
-  // 盘整得分（0-100，narrow=80,standard=65,wide=40,volatile=20；<60 后端会软暂停）
-  rangingScore?: number;
   // 交易所实时委托单（供 AI 对比内存状态）
   exchangeOpenOrders?: Array<{orderId: string; side: string; price: number; quantity: number}>;
   // 近期已平仓记录（供 AI 分析最近成交历史）
@@ -773,8 +772,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     volatile: '高波动（谨慎运行）',
   };
   if (ctx.currentRegime) {
-    const scoreStr = ctx.rangingScore !== undefined ? ` | 盘整得分: ${ctx.rangingScore}/100` : '';
-    lines.push(`⚡ 系统参考形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime}${scoreStr}（供参考，可结合指标自行判断）`);
+    lines.push(`⚡ 系统参考形态: ${regimeLabels[ctx.currentRegime] ?? ctx.currentRegime}（供参考，可结合指标自行判断）`);
   }
 
   // Section 3: 箱体数据
@@ -804,6 +802,9 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false（AI可自主调整范围）'}`);
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`逐层止损阈值: ${ctx.stopLossPct}%（单格偏离入场价 ≥ ${ctx.stopLossPct}% 时强制平仓）`);
+  }
+  if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
+    lines.push(`止盈目标: ${ctx.profitTargetPct}%（策略权益增长 ≥ ${ctx.profitTargetPct}% 时建议逐步平仓锁利）`);
   }
   if (ctx.gridSkewLevel && ctx.gridSkewLevel !== 'none') {
     const heavy = (ctx.gridSkewBuyFilled ?? 0) >= (ctx.gridSkewSellFilled ?? 0) ? '多头' : '空头';
