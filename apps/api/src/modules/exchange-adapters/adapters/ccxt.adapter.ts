@@ -313,10 +313,20 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const positions = await ex.fetchPositions();
     return positions
       .filter((p: any) => Math.abs(Number(p.contracts || 0)) > 0)
-      .map((p: any) => ({
+      .map((p: any) => {
+        // OKX 单向模式返回 side='net'，contracts 正值=多头，负值=空头；统一归一化为 long/short
+        const rawSide = p.side as string;
+        const rawQty = Number(p.contracts || 0);
+        let normSide: 'long' | 'short';
+        if (rawSide === 'net' || !rawSide) {
+          normSide = rawQty >= 0 ? 'long' : 'short';
+        } else {
+          normSide = (rawSide as 'long' | 'short');
+        }
+        return {
         symbol: p.symbol,
-        side: (p.side || 'long') as 'long' | 'short',
-        quantity: Math.abs(Number(p.contracts || 0)),
+        side: normSide,
+        quantity: Math.abs(rawQty),
         entryPrice: Number(p.entryPrice || 0),
         markPrice: Number(p.markPrice || 0),
         unrealizedPnl: Number(p.unrealizedPnl || 0),
@@ -332,7 +342,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         liquidationPrice: p.liquidationPrice
           ? Number(p.liquidationPrice)
           : undefined,
-      }));
+        };
+      });
   }
 
   // ========================= 开仓 / 平仓 =========================
