@@ -732,7 +732,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 const label = key ? t(key) : t('timeline.gridHoldShort');
                 return `${n}${label}`;
               });
-              return parts.join('/') || t('timeline.gridOpsCount', { count: gridDecisions.length });
+              return parts.join('/') || d.gridSummary || t('timeline.gridOpsCount', { count: gridDecisions.length });
             })()}
           </span>
 
