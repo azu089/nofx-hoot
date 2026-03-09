@@ -1240,35 +1240,9 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.1: autoPauseOnTrend — 盘整得分检测（默认 true，false 时跳过）
-    if (gridConfig?.autoPauseOnTrend !== false) {
-      const minScore = gridConfig?.minRangingScore ?? 60;
-      const resumeScore = gridConfig?.trendResumeThreshold ?? 70;
-      state.rangingScore = this.computeRangingScore(state.currentRegime);
-
-      if (state.rangingScore < minScore) {
-        state.consecutiveTrending = (state.consecutiveTrending ?? 0) + 1;
-        if (state.consecutiveTrending >= 2 && !state.isPaused) {
-          state.isPaused = true;
-          state.pauseSource = 'auto_trend';
-          state.pauseReason = `盘整得分(${state.rangingScore}) < 阈值(${minScore})，制度=${this.regimeLabel(state.currentRegime)}，连续${state.consecutiveTrending}轮`;
-          this.logger.warn(
-            `[网格] autoPauseOnTrend: 连续${state.consecutiveTrending}轮盘整得分低(${state.rangingScore}) → 软暂停`,
-          );
-        }
-      } else {
-        state.consecutiveTrending = 0;
-        // 仅恢复由 auto_trend 触发的暂停（不干预 ai/risk_control/breakout）
-        if (state.isPaused && state.pauseSource === 'auto_trend' && state.rangingScore >= resumeScore) {
-          state.isPaused = false;
-          state.pauseSource = undefined;
-          state.pauseReason = undefined;
-          this.logger.log(
-            `[网格] autoPauseOnTrend: 盘整得分恢复(${state.rangingScore} ≥ ${resumeScore}) → 自动恢复运行`,
-          );
-        }
-      }
-    }
+    // Step 6.1: 盘整得分计算（仅供 AI prompt 参考，后端不自动暂停）
+    // nofx 对齐：暂停决策由 AI 通过 pause_grid 指令发出，后端不根据制度自动暂停
+    state.rangingScore = this.computeRangingScore(state.currentRegime);
 
     // Step 6.5: 动态杠杆 — 仅计算推荐值，不改写 state（对齐 nofx）
     // nofx: configLeverage（静态）用于所有下单计算，recommendedLeverage 仅展示
@@ -1281,6 +1255,14 @@ export class GridTradingService {
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
     // Step 7: 暂停检查
+    // 兼容迁移：auto_trend 暂停逻辑已删除（对齐 nofx），自动解除遗留状态
+    if (state.isPaused && state.pauseSource === 'auto_trend') {
+      state.isPaused = false;
+      state.pauseSource = undefined;
+      state.pauseReason = undefined;
+      state.needsReconcile = true;
+      this.logger.log(`[网格] auto_trend 暂停已废弃，自动恢复 ${state.symbol}`);
+    }
     if (state.isPaused) {
       this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? '未知来源'}]: ${state.pauseReason || '未知原因'}`);
       await this.persistGridState(strategyId, state);
