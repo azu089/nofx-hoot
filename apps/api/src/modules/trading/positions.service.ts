@@ -499,6 +499,8 @@ export class PositionsService {
     const where: Prisma.PositionWhereInput = {
       userId,
       status: 'closed',
+      // 排除清理重复记录产生的虚假历史（无真实交易发生）
+      closeReason: { not: 'duplicate_cleanup' },
     };
 
     if (exchange) {
@@ -923,12 +925,13 @@ export class PositionsService {
 
   // 获取盈亏统计
   async getPnlStats(userId: string): Promise<PnlStatsResponse> {
-    // 获取所有已平仓的持仓
+    // 获取所有已平仓的持仓（排除清理重复记录）
     const closedPositions = await this.prisma.position.findMany({
       where: {
         userId,
         status: 'closed',
         pnl: { not: null },
+        closeReason: { not: 'duplicate_cleanup' },
       },
       select: {
         pnl: true,
