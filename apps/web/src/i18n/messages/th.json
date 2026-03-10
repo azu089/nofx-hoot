@@ -1056,7 +1056,8 @@
       "drawdownLimit": "ขีดจำกัดการถอน",
       "notFoundOnExchange": "ปิดบนตลาดแล้ว",
       "positionSync": "ซิงค์สถานะ",
-      "liquidation": "บังคับปิด"
+      "liquidation": "บังคับปิด",
+      "duplicateCleanup": "ล้างรายการซ้ำ"
     }
   },
   "strategyDetail": {

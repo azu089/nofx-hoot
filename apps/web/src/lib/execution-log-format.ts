@@ -62,6 +62,7 @@ const CLOSE_REASON_I18N: Record<string, string> = {
   not_found_on_exchange: 'notFoundOnExchange',
   position_sync: 'positionSync',
   liquidation: 'liquidation',
+  duplicate_cleanup: 'duplicateCleanup',
 };
 
 /** 获取 action 的 badge 样式 */

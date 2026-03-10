@@ -1041,7 +1041,8 @@
       "drawdownLimit": "حد السحب",
       "notFoundOnExchange": "مغلق في البورصة",
       "positionSync": "مزامنة المركز",
-      "liquidation": "تصفية"
+      "liquidation": "تصفية",
+      "duplicateCleanup": "تنظيف المراكز المكررة"
     }
   },
   "strategyDetail": {

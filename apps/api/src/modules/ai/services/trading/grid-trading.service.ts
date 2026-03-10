@@ -813,13 +813,14 @@ export class GridTradingService {
       state.isPaused = false;
       state.pauseSource = undefined;
       state.pauseReason = undefined;
-      state.startEquity = state.lastEquity;  // 回撤/均值基准归位
+      // startEquity 永不重置：totalProfit = currentEquity - startEquity 反映策略启动以来的真实累计盈亏
+      // 只重置风控参数：peakEquity（回撤基准）和 maxDrawdown，防止旧回撤值立刻再次触发保护
       state.peakEquity  = state.lastEquity;
       state.maxDrawdown = 0;
       state.chargedProfit = 0;
       this.logger.log(
         `[网格] ✅ 策略重启: 累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT 保留 | ` +
-        `止盈止损目标由配置决定（如需下一轮触发，请修改配置百分比）`,
+        `startEquity=${state.startEquity.toFixed(2)}（不变） peakEquity=${state.peakEquity.toFixed(2)}（重置为当前权益）`,
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
@@ -981,25 +982,28 @@ export class GridTradingService {
     let trades = 0;
     let errors = 0;
 
-    // ──── 风控优先：Step 3/3.5/4 始终在突破检查(Step 2)前执行，确保即使突破 return 风控也已生效 ────
-    let earlyAdapter: ExchangeAdapter | null = null;
+    // ──── 周期唯一 adapter：风控 + AI 决策 + syncOrderFills 全程复用，减少重复 CCXT 调用 ────
+    let adapter: ExchangeAdapter | null = null;
 
     // Step 3: 最大回撤检查（预取余额+持仓，计算 livePositionNotional 供 cap 检查用）
     let currentEquity = state.peakEquity;
     let equityFetched = false;      // 只有真实获取权益成功才设为 true，失败时不更新 dailyPnl
-    let livePositions: any[] | undefined; // 持仓快照，仅用于 livePositionNotional 计算
+    let cachedBalance: { totalEquity: number; availableBalance: number; unrealizedPnl: number; marginUsedPct?: number } | undefined;
+    let cachedPositions: any[] | undefined;
+    let stopLossTriggered = false;  // Step 3.5 执行止损后标记，buildGridContext 需刷新 positions
     if (this.adapterFactory && apiKeyId) {
       try {
-        earlyAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-        const balance = await earlyAdapter.getBalance();
+        adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+        const balance = await adapter.getBalance();
         currentEquity = balance.totalEquity;
         equityFetched = true;        // 成功才设为 true
         state.lastEquity = currentEquity; // 记录最新权益用于总盈亏计算
-        livePositions = await earlyAdapter.getPositions(); // 预取持仓，计算 livePositionNotional
+        cachedBalance = { totalEquity: balance.totalEquity, availableBalance: balance.availableBalance, unrealizedPnl: balance.unrealizedPnl, marginUsedPct: balance.marginUsedPct };
+        cachedPositions = await adapter.getPositions(); // 预取持仓，计算 livePositionNotional
         // 用交易所真实持仓名义价值，取代内存 filled 层（避免幽灵持仓虚高）
         {
           const baseSymbol = state.symbol.split('/')[0];
-          state.livePositionNotional = livePositions.reduce((sum: number, pos: any) => {
+          state.livePositionNotional = cachedPositions.reduce((sum: number, pos: any) => {
             if ((pos as any).symbol?.includes(baseSymbol)) {
               const qty = Math.abs((pos as any).quantity ?? (pos as any).positionAmt ?? 0);
               const px = (pos as any).markPrice ?? (pos as any).entryPrice ?? currentPrice ?? 0;
@@ -1008,10 +1012,10 @@ export class GridTradingService {
             return sum;
           }, 0);
         }
-        this.logger.debug(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
+        this.logger.debug(`[网格] Step3: positions.len=${cachedPositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
       } catch (e: any) {
         this.logger.warn(`[网格] Step3 权益获取失败，跳过本轮周期 (对齐nofx: 无法确认权益不做交易): ${e.message}`);
-        if (earlyAdapter) { try { await earlyAdapter.dispose(); } catch {} }
+        if (adapter) { try { await adapter.dispose(); } catch {} }
         return { trades: 0, errors: 0 };
       }
     }
@@ -1036,6 +1040,9 @@ export class GridTradingService {
       } else {
         state.dailyPnl = currentEquity - state.dailyStartEquity;
       }
+      // 权益差法：每轮直接从 CCXT 返回的权益计算，不累加，消除内存偏差
+      state.totalProfit = currentEquity - state.startEquity;
+      state.dailyTotalProfit = currentEquity - (state.dailyStartEquity || currentEquity);
     }
 
     const maxDrawdownPct = gridConfig?.maxDrawdownPct ?? DEFAULT_MAX_DRAWDOWN_PCT;
@@ -1046,8 +1053,9 @@ export class GridTradingService {
         await this.emergencyExit(state, userId, apiKeyId,
           `最大回撤保护触发\n` +
           `保护规则: 从最高点回撤超过 ${maxDrawdownPct}% 时紧急平仓\n` +
-          `实际情况: 当前回撤 ${drawdown.toFixed(1)}%`);
+          `实际情况: 当前回撤 ${drawdown.toFixed(1)}%`, adapter ?? undefined);
         await this.persistGridState(strategyId, state);
+        if (adapter) { try { await adapter.dispose(); } catch {} }
         return { trades: 0, errors: 0 };
       }
     }
@@ -1080,7 +1088,7 @@ export class GridTradingService {
 
     // Step 3.5 执行: 逐层硬止损平仓（使用 earlyAdapter 直接执行，不延迟到 Step 8）
     // 确保即使后续 Step 2 突破 return，止损已实际平仓
-    if (state._pendingStopLoss && state._pendingStopLoss.length > 0 && earlyAdapter && isGridAdapter(earlyAdapter)) {
+    if (state._pendingStopLoss && state._pendingStopLoss.length > 0 && adapter && isGridAdapter(adapter)) {
       for (const idx of state._pendingStopLoss) {
         const line = state.gridLines[idx];
         if (line.state !== 'filled') continue;
@@ -1089,12 +1097,13 @@ export class GridTradingService {
         if (closeQty > 0) {
           try {
             const stopLossResult = closeSide === 'long'
-              ? await (earlyAdapter as GridExchangeAdapter).closeLong(state.symbol, closeQty)
-              : await (earlyAdapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
+              ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, closeQty)
+              : await (adapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
             const entryPx = line.positionEntry || 0;
             const feeRate = new Decimal(state.takerFeeRate);
             const _entryD = new Decimal(entryPx);
-            const _priceD = new Decimal(currentPrice);
+            // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
+            const _priceD = new Decimal(stopLossResult.avgPrice ?? currentPrice);
             const _qtyD = new Decimal(closeQty);
             const profitD = closeSide === 'long'
               ? _priceD.minus(_entryD).times(_qtyD)
@@ -1104,13 +1113,12 @@ export class GridTradingService {
                   .minus(_priceD.times(_qtyD).times(feeRate))
                   .minus(_entryD.times(_qtyD).times(feeRate));
             const profit = profitD.toNumber();
-            state.totalProfit += profit;
-            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + profit;
+            // totalProfit / dailyTotalProfit 由权益差法在每轮 CCXT 获取后统一计算，不再逐笔累加
             state.totalTrades++;
             if (profit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
             // 盈利时扣燃油费（止损一般亏损，但极端回弹可能微盈）
             if (profit > 0) {
-              this.settleGridFee(state, userId, profit).catch((e: any) =>
+              this.settleGridFee(state, userId, profit, { side: closeSide, level: idx + 1, source: 'stop_loss' }).catch((e: any) =>
                 this.logger.error(`[网格] 硬止损燃油费结算失败: ${e.message}`),
               );
             }
@@ -1130,13 +1138,8 @@ export class GridTradingService {
           }
         }
       }
+      stopLossTriggered = true; // 止损执行后持仓已变化，buildGridContext 需刷新 positions
       state._pendingStopLoss = undefined;
-    }
-
-    // 释放 earlyAdapter（Step 8 会创建独立的 adapter）
-    if (earlyAdapter) {
-      try { await earlyAdapter.dispose(); } catch {}
-      earlyAdapter = null;
     }
 
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
@@ -1151,7 +1154,7 @@ export class GridTradingService {
           `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时平仓退出\n` +
           `实际情况: 今日已亏损 ${dailyLossPct.toFixed(1)}%（$${Math.abs(state.dailyPnl).toFixed(2)}）`;
         // 软暂停：撤单但不平仓（避免浮亏变实亏，持仓等待价格恢复）
-        await this.softPauseGrid(state, userId, apiKeyId, dailyReason);
+        await this.softPauseGrid(state, userId, apiKeyId, dailyReason, 'risk_control', adapter);
         await this.persistGridState(strategyId, state);
         await this.prisma.aiStrategyLog.create({
           data: {
@@ -1168,6 +1171,7 @@ export class GridTradingService {
             executed: true,
           },
         });
+        if (adapter) { try { await adapter.dispose(); } catch {} }
         return { trades: 0, errors: 0 };
       }
     }
@@ -1181,12 +1185,13 @@ export class GridTradingService {
 
       // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
       if (gridConfig?.directionalCloseOnBreakout === true) {
-        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId, adapter ?? undefined);
       }
 
       state.isPaused = true;
       state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
       await this.persistGridState(strategyId, state);
+      if (adapter) { try { await adapter.dispose(); } catch {} }
       return { trades: 0, errors: 0 };
     }
 
@@ -1204,47 +1209,43 @@ export class GridTradingService {
         this.logger.warn(
           `[网格] 闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%（${direction}）`,
         );
-        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId, adapter ?? undefined);
         await this.emergencyExit(state, userId, apiKeyId,
-          `闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%`);
+          `闪速突破: 单周期价格变化 ${state.priceVelocityPct.toFixed(1)}% ≥ ${flashBreakoutThreshold}%`, adapter ?? undefined);
         state.lastCyclePrice = currentPrice;
         await this.persistGridState(strategyId, state);
+        if (adapter) { try { await adapter.dispose(); } catch {} }
         return { trades: 0, errors: 0 };
       }
     }
 
-    // Step 4.9: OI 变化 + bid/ask Spread 预获取（供 confirmBreakout OI 过滤 + placeGridLimitOrder Spread 检测）
-    if (this.adapterFactory && apiKeyId) {
+    // Step 4.9: OI 变化 + bid/ask Spread 预获取（复用周期唯一 adapter）
+    if (adapter) {
       try {
-        const tickerAdapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-        try {
-          if (typeof (tickerAdapter as any).fetchTicker === 'function') {
-            const ticker = await (tickerAdapter as any).fetchTicker(state.symbol);
-            const currentOI = Number(ticker?.info?.openInterest ?? ticker?.openInterest ?? 0);
-            if (currentOI > 0 && state.lastOI > 0) {
-              state.currentOIChange = (currentOI - state.lastOI) / state.lastOI * 100;
-            } else {
-              state.currentOIChange = 0;
-            }
-            if (currentOI > 0) state.lastOI = currentOI;
-            const bid = Number(ticker?.bid ?? 0);
-            const ask = Number(ticker?.ask ?? 0);
-            if (bid > 0 && ask > 0) {
-              state.lastBidAskSpread = (ask - bid) / bid * 100;
-            }
+        if (typeof (adapter as any).fetchTicker === 'function') {
+          const ticker = await (adapter as any).fetchTicker(state.symbol);
+          const currentOI = Number(ticker?.info?.openInterest ?? ticker?.openInterest ?? 0);
+          if (currentOI > 0 && state.lastOI > 0) {
+            state.currentOIChange = (currentOI - state.lastOI) / state.lastOI * 100;
+          } else {
+            state.currentOIChange = 0;
           }
-          // 盘口深度（top-5 档 USD 合计）
-          if (isGridAdapter(tickerAdapter)) {
-            try {
-              const ob = await (tickerAdapter as GridExchangeAdapter).getOrderBook(
-                state.symbol, ORDER_BOOK_DEPTH_LEVELS,
-              );
-              state.lastBidDepth = ob.bids.reduce((s, [p, q]) => s + p * q, 0);
-              state.lastAskDepth = ob.asks.reduce((s, [p, q]) => s + p * q, 0);
-            } catch { /* 深度获取失败不影响主流程 */ }
+          if (currentOI > 0) state.lastOI = currentOI;
+          const bid = Number(ticker?.bid ?? 0);
+          const ask = Number(ticker?.ask ?? 0);
+          if (bid > 0 && ask > 0) {
+            state.lastBidAskSpread = (ask - bid) / bid * 100;
           }
-        } finally {
-          await tickerAdapter.dispose();
+        }
+        // 盘口深度（top-5 档 USD 合计）
+        if (isGridAdapter(adapter)) {
+          try {
+            const ob = await (adapter as GridExchangeAdapter).getOrderBook(
+              state.symbol, ORDER_BOOK_DEPTH_LEVELS,
+            );
+            state.lastBidDepth = ob.bids.reduce((s, [p, q]) => s + p * q, 0);
+            state.lastAskDepth = ob.asks.reduce((s, [p, q]) => s + p * q, 0);
+          } catch { /* 深度获取失败不影响主流程 */ }
         }
       } catch { state.currentOIChange = 0; }
     }
@@ -1300,11 +1301,8 @@ export class GridTradingService {
         `挂单=${activeOrders} 累计=${state.totalProfit.toFixed(2)} USDT`,
       );
     }
-    if (this.llm && this.adapterFactory) {
-      let adapter: ExchangeAdapter | null = null;
+    if (this.llm && adapter) {
       try {
-        adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-
         // 每轮清理僵尸止损单（不再主动放交易所止损单，此处为防残留）
         if (isGridAdapter(adapter)) {
           try {
@@ -1358,8 +1356,12 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
-        // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
-        const context = await this.buildGridContext(state, adapter, currentPrice);
+        // 构建 AI 上下文（复用 Step 3 预取的余额+持仓，止损执行后自动刷新持仓）
+        const context = await this.buildGridContext(state, adapter, currentPrice, {
+          balance: cachedBalance,
+          positions: cachedPositions,
+          stopLossExecuted: stopLossTriggered,
+        });
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
         // 环形平仓模式：卖单成交后卖层 positionSize=0，只有买单成交会留下 positionSize>0 的格线
@@ -1391,8 +1393,9 @@ export class GridTradingService {
         if (Math.abs(context.priceChange1h) >= maxHourlyChangePct) {
           const dir = context.priceChange1h > 0 ? '上涨' : '下跌';
           await this.emergencyExit(state, userId, apiKeyId,
-            `1H 极端行情: 价格${dir} ${Math.abs(context.priceChange1h).toFixed(1)}% ≥ ${maxHourlyChangePct}%，紧急平仓退出`);
+            `1H 极端行情: 价格${dir} ${Math.abs(context.priceChange1h).toFixed(1)}% ≥ ${maxHourlyChangePct}%，紧急平仓退出`, adapter ?? undefined);
           await this.persistGridState(strategyId, state);
+          if (adapter) { try { await adapter.dispose(); } catch {} }
           return { trades: 0, errors: 0 };
         }
         // --- 单边快速行情：≥6% + RSI 确认 → 仅告警，由 AI 决策（pause_grid/continue）---
@@ -1874,7 +1877,7 @@ export class GridTradingService {
 
       case 'close_all':
         await this.emergencyExit(state, userId, apiKeyId,
-          `长期箱体突破 (${direction})，紧急平仓`);
+          `长期箱体突破 (${direction})，紧急平仓`, adapter ?? undefined);
         break;
     }
   }
@@ -1964,6 +1967,11 @@ export class GridTradingService {
     state: GridState,
     adapter: ExchangeAdapter,
     currentPrice: number,
+    preloaded?: {
+      balance?: { totalEquity: number; availableBalance: number; unrealizedPnl: number; marginUsedPct?: number };
+      positions?: any[];
+      stopLossExecuted?: boolean;
+    },
   ): Promise<GridContext> {
     // 三周期 OHLCV 并行拉取（5m+1h+4h）
     const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
@@ -2013,17 +2021,26 @@ export class GridTradingService {
     let positionShort: GridContext['positionShort'];
 
     try {
-      // 始终 fresh 获取余额
-      const balance = await adapter.getBalance();
-      totalEquity = balance.totalEquity;
-      availableBalance = balance.availableBalance;
+      // 优先使用 preloaded 数据（Step 3 已获取），避免重复调用 CCXT
+      if (preloaded?.balance) {
+        totalEquity = preloaded.balance.totalEquity;
+        availableBalance = preloaded.balance.availableBalance;
+        unrealizedPnl = preloaded.balance.unrealizedPnl;
+        marginUsedPct = preloaded.balance.marginUsedPct ?? 0;
+      } else {
+        const balance = await adapter.getBalance();
+        totalEquity = balance.totalEquity;
+        availableBalance = balance.availableBalance;
+        unrealizedPnl = balance.unrealizedPnl;
+        marginUsedPct = balance.marginUsedPct ?? 0;
+      }
       state.availableBalance = availableBalance; // 同步到 state，供 AI 上下文展示
-      unrealizedPnl = balance.unrealizedPnl;
       state.lastUnrealizedPnl = unrealizedPnl; // 同步到 state，供 saveGridDecisionLog 使用
-      marginUsedPct = balance.marginUsedPct ?? 0;
 
-      // 始终 fresh 获取持仓
-      const positions = await adapter.getPositions();
+      // 优先使用 preloaded 持仓（止损执行后必须刷新）
+      const positions = (preloaded?.positions && !preloaded?.stopLossExecuted)
+        ? preloaded.positions
+        : await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
       const longPos = symPositions.find((p: any) => p.side === 'long');
@@ -2424,7 +2441,8 @@ export class GridTradingService {
         if (!decision.price) decision.price = closeLongPrice;
         const closeLongResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         if (targetLevel && targetLevel.positionSize > 0) {
-          const _cp = new Decimal(currentPrice ?? state.lastPrice);
+          // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
+          const _cp = new Decimal(closeLongResult.avgPrice ?? currentPrice ?? state.lastPrice);
           const _ep = new Decimal(targetLevel.positionEntry);
           const _sz = new Decimal(targetLevel.positionSize);
           const _fr = new Decimal(state.takerFeeRate);
@@ -2432,11 +2450,10 @@ export class GridTradingService {
             .minus(_cp.times(_sz).times(_fr))
             .minus(_ep.times(_sz).times(_fr));
           const netProfit = netProfitD.toNumber();
-          state.totalProfit += netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+          // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
+          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'long', level: targetLevel.index + 1, source: 'close_long' });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -2490,7 +2507,8 @@ export class GridTradingService {
         const closedValueShort = qty * (currentPrice ?? state.lastPrice);
         state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
         if (targetLevel && targetLevel.positionSize > 0) {
-          const _cp2 = new Decimal(currentPrice ?? state.lastPrice);
+          // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
+          const _cp2 = new Decimal(closeShortResult.avgPrice ?? currentPrice ?? state.lastPrice);
           const _ep2 = new Decimal(targetLevel.positionEntry);
           const _sz2 = new Decimal(targetLevel.positionSize);
           const _fr2 = new Decimal(state.takerFeeRate);
@@ -2498,11 +2516,10 @@ export class GridTradingService {
             .minus(_cp2.times(_sz2).times(_fr2))
             .minus(_ep2.times(_sz2).times(_fr2));
           const netProfit = netProfitD2.toNumber();
-          state.totalProfit += netProfit;
-          state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+          // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
+          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'short', level: targetLevel.index + 1, source: 'close_short' });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -2562,18 +2579,11 @@ export class GridTradingService {
     state.pauseSource = undefined;
     state.pauseReason = undefined;
 
-    // 权益基准归位（回撤检测从当前权益重新开始）
-    if (state.lastEquity && state.lastEquity > 0) {
-      state.startEquity = state.lastEquity;
-    }
-    // totalProfit / dailyTotalProfit 保留（止盈止损触发百分比由用户在配置里调整）
+    // startEquity 永不重置：totalProfit = currentEquity - startEquity 反映策略启动以来的真实累计盈亏
+    // 只重置风控参数：peakEquity（回撤基准从当前权益重新开始）和 maxDrawdown
     state.chargedProfit = 0;
-    // peakEquity/maxDrawdown 归零，防止旧回撤值立刻再次触发保护
-    state.peakEquity = state.startEquity;
+    state.peakEquity = state.lastEquity && state.lastEquity > 0 ? state.lastEquity : state.peakEquity;
     state.maxDrawdown = 0;
-
-    state.peakEquity = state.startEquity;   // 回撤检测从新基准重新开始
-    state.maxDrawdown = 0;                  // 历史最大回撤归零
     state.dailyPnl = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
 
@@ -3057,13 +3067,15 @@ export class GridTradingService {
     direction: 'up' | 'down',
     userId: string,
     apiKeyId: string,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<void> {
-    if (!this.adapterFactory) return;
+    if (!existingAdapter && !this.adapterFactory) return;
     const sideToClose = direction === 'up' ? 'short' : 'long';
 
-    let adapter: ExchangeAdapter | null = null;
+    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
+    const ownsAdapter = !existingAdapter;
     try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      if (!adapter) adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
       const positions = await adapter.getPositions();
 
       for (const pos of positions) {
@@ -3076,7 +3088,7 @@ export class GridTradingService {
             : await adapter.closeShort(pos.symbol, pos.quantity);
           // OKX 不返回 realizedPnl → fallback 到持仓浮动盈亏（近似值）
           const dirPnl = dirCloseResult.realizedPnl ?? pos.unrealizedPnl ?? 0;
-          await this.settleGridFee(state, userId, dirPnl);
+          await this.settleGridFee(state, userId, dirPnl, { side: sideToClose, source: 'breakout' });
           await this.syncDbPositionClose(userId, pos.symbol, sideToClose, pos.quantity, 'directional_breakout',
             { avgPrice: dirCloseResult.avgPrice, realizedPnl: dirPnl });
           this.logger.warn(
@@ -3089,7 +3101,7 @@ export class GridTradingService {
     } catch (e: any) {
       this.logger.error(`[网格] 方向性平仓执行失败: ${e.message}`);
     } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+      if (adapter && ownsAdapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
     }
   }
 
@@ -3101,14 +3113,16 @@ export class GridTradingService {
     userId: string,
     apiKeyId: string,
     reason: string,
+    existingAdapter?: ExchangeAdapter,
   ): Promise<void> {
     this.logger.error(`[网格] 紧急退出: ${reason}`);
 
-    if (!this.adapterFactory) return;
+    if (!existingAdapter && !this.adapterFactory) return;
 
-    let adapter: ExchangeAdapter | null = null;
+    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
+    const ownsAdapter = !existingAdapter; // 自建的 adapter 需要 dispose，传入的不管
     try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      if (!adapter) adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
 
       // 取消所有订单
       await adapter.cancelAllOrders(state.symbol);
@@ -3134,7 +3148,7 @@ export class GridTradingService {
           );
 
           // 单仓平仓后立即结算燃油费（亏损不扣，失败不阻塞）
-          await this.settleGridFee(state, userId, posRealizedPnl);
+          await this.settleGridFee(state, userId, posRealizedPnl, { side: pos.side, source: 'emergency_exit' });
           // 同步 DB 持仓记录（使用修正后的 PnL，OKX 不返回 realizedPnl 时用 unrealizedPnl 近似）
           await this.syncDbPositionClose(userId, pos.symbol, pos.side, pos.quantity, 'emergency_exit',
             { avgPrice: closeResult.avgPrice, realizedPnl: posRealizedPnl });
@@ -3146,12 +3160,12 @@ export class GridTradingService {
       this.logger.log(
         `[网格] 紧急退出合计盈亏: ${totalClosingPnl >= 0 ? '+' : ''}${totalClosingPnl.toFixed(4)} USDT`,
       );
-      state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + totalClosingPnl;
-      state.totalProfit = (state.totalProfit ?? 0) + totalClosingPnl;
+      // totalProfit / dailyTotalProfit 由权益差法统一计算
+      // 紧急退出后下一轮 CCXT 获取权益时会自动反映
     } catch (e: any) {
       this.logger.error(`[网格] 紧急退出执行失败: ${e.message}`);
     } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+      if (adapter && ownsAdapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
     }
 
     state.isPaused = true;
@@ -3232,7 +3246,10 @@ export class GridTradingService {
    * - 基于本次平仓的实际盈亏（平仓后权益 - 平仓前权益）
    * - 亏损不扣费，失败不影响平仓流程（非致命错误）
    */
-  private async settleGridFee(state: GridState, userId: string, realizedPnl: number): Promise<void> {
+  private async settleGridFee(
+    state: GridState, userId: string, realizedPnl: number,
+    closeContext?: { side?: string; level?: number; source?: string },
+  ): Promise<void> {
     if (!this.feeService) return;
     const actualPnl = realizedPnl;
     if (actualPnl <= 0) return;
@@ -3240,11 +3257,24 @@ export class GridTradingService {
     try {
       const feeCalc = await this.feeService.calculateFee(userId, actualPnl.toFixed(8));
       if (parseFloat(feeCalc.feeAmount) > 0) {
-        const uniqueOrderId = this.feeService.generateUniqueOrderId(
-          'GRID_FEE',
-          userId,
-          state.strategyId,
-        );
+        // 真幂等：确定性 ID，同一笔平仓无论调几次都生成相同 ID
+        // 格式: GRID_FEE_{userId}_{strategyId}_{side}_{level}_{source}_{tradeNo}
+        const ctx = closeContext;
+        const idParts = [
+          'GRID_FEE', userId, state.strategyId,
+          ctx?.side ?? 'unknown',
+          ctx?.level != null ? `L${ctx.level}` : 'Lx',
+          ctx?.source ?? 'unknown',
+          String(state.totalTrades ?? 0), // 单调递增的交易计数，确保每笔平仓唯一
+        ];
+        const uniqueOrderId = idParts.join('_');
+        // 构建备注：交易对 + 方向 + 层级 + 触发源，便于对账
+        const remarkParts = [state.symbol];
+        if (ctx?.side) remarkParts.push(ctx.side);
+        if (ctx?.level != null) remarkParts.push(`L${ctx.level}`);
+        if (ctx?.source) remarkParts.push(ctx.source);
+        const strategyRemark = remarkParts.join(' ');
+
         const result = await this.feeService.chargeFee({
           userId,
           positionId: state.strategyId,
@@ -3252,11 +3282,10 @@ export class GridTradingService {
           feeRate: feeCalc.finalFeeRate,
           feeAmount: feeCalc.feeAmount,
           uniqueOrderId,
-          strategyName: state.symbol,
+          strategyName: strategyRemark,
         });
-        state.chargedProfit = state.totalProfit; // 高水位标记（防止重启后重复扣费）
         this.logger.log(
-          `[网格] 燃油费结算: 实际盈亏=${actualPnl.toFixed(2)} USDT, ` +
+          `[网格] 燃油费结算: ${strategyRemark} 盈亏=${actualPnl.toFixed(2)} USDT, ` +
           `扣费=${feeCalc.feeAmount} 点, 费率=${(parseFloat(feeCalc.finalFeeRate) * 100).toFixed(1)}%`,
         );
         if (result.balanceDepleted) {
@@ -3898,10 +3927,9 @@ export class GridTradingService {
 
   private async persistGridState(strategyId: string, state: GridState): Promise<void> {
     try {
-      // 同步 total_pnl（权益差，非累计网格利润）和 win_rate 到策略主表
-      const equityPnl = state.lastEquity && state.startEquity > 0
-        ? state.lastEquity - state.startEquity
-        : 0;
+      // 同步 total_pnl（累计已实现利润）和 win_rate 到策略主表
+      // 使用 totalProfit（逐笔利润累计），与前端卡片一致
+      const equityPnl = state.totalProfit ?? 0;
       const winRate = state.totalTrades > 0
         ? Math.round((state.winningTrades / state.totalTrades) * 100 * 100) / 100
         : 0;

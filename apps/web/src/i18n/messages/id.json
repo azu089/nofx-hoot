@@ -1056,7 +1056,8 @@
       "drawdownLimit": "Batas Drawdown",
       "notFoundOnExchange": "Ditutup di Bursa",
       "positionSync": "Sinkronisasi Posisi",
-      "liquidation": "Likuidasi"
+      "liquidation": "Likuidasi",
+      "duplicateCleanup": "Pembersihan Duplikat"
     }
   },
   "strategyDetail": {

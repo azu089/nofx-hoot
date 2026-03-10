@@ -1041,7 +1041,8 @@
       "drawdownLimit": "Drawdown Limit",
       "notFoundOnExchange": "Closed on Exchange",
       "positionSync": "Position Sync",
-      "liquidation": "Liquidation"
+      "liquidation": "Liquidation",
+      "duplicateCleanup": "Duplicate Cleanup"
     }
   },
   "strategyDetail": {

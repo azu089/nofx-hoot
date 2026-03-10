@@ -1056,7 +1056,8 @@
       "drawdownLimit": "Лимит просадки",
       "notFoundOnExchange": "Закрыто на бирже",
       "positionSync": "Синхронизация позиции",
-      "liquidation": "Ликвидация"
+      "liquidation": "Ликвидация",
+      "duplicateCleanup": "Очистка дубликатов"
     }
   },
   "strategyDetail": {

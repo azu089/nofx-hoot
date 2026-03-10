@@ -205,7 +205,7 @@ export class FeeService {
           type: 'GAS_FEE',
           amount: actualDeduction,
           uniqueOrderId,
-          description: `盈利${profit} 应扣${feeAmount} 实扣${actualDeduction}`,
+          description: `${feeRecord.strategyName ? `[${feeRecord.strategyName}] ` : ''}盈利${profit} 应扣${feeAmount} 实扣${actualDeduction}`,
         },
       });
 
@@ -218,7 +218,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: `盈利${profit}`,
+          remark: feeRecord.strategyName ? `[${feeRecord.strategyName}] 盈利${profit}` : `盈利${profit}`,
         },
       });
 

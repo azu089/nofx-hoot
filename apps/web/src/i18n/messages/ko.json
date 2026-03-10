@@ -1056,7 +1056,8 @@
       "drawdownLimit": "최대 낙폭 한도",
       "notFoundOnExchange": "거래소에서 청산됨",
       "positionSync": "포지션 동기화",
-      "liquidation": "강제 청산"
+      "liquidation": "강제 청산",
+      "duplicateCleanup": "중복 포지션 정리"
     }
   },
   "strategyDetail": {

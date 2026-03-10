@@ -1056,7 +1056,8 @@
       "drawdownLimit": "ドローダウン制限",
       "notFoundOnExchange": "取引所で決済済み",
       "positionSync": "ポジション同期",
-      "liquidation": "強制決済"
+      "liquidation": "強制決済",
+      "duplicateCleanup": "重複ポジション整理"
     }
   },
   "strategyDetail": {

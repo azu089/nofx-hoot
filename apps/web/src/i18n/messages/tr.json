@@ -1056,7 +1056,8 @@
       "drawdownLimit": "Düşüş Limiti",
       "notFoundOnExchange": "Borsada Kapandı",
       "positionSync": "Pozisyon Senkronizasyonu",
-      "liquidation": "Tasfiye"
+      "liquidation": "Tasfiye",
+      "duplicateCleanup": "Kopya Temizliği"
     }
   },
   "strategyDetail": {

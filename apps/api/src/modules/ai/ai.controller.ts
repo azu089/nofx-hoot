@@ -1188,6 +1188,7 @@ export class AiController {
     const result = await this.strategyEngine.listStrategies(userId, pageNum, pageSize);
 
     // 附加每个策略的 todayPnl / totalPnl（仅已平仓的 realizedPnl，不含浮盈浮亏）
+    // 所有策略类型（Solo/Debate/Grid）统一从 Position 表聚合，按 aiStrategyId 精确隔离到策略级
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const strategyIds = result.data.map((s: Record<string, unknown> & { id: string }) => s.id);
@@ -1195,7 +1196,6 @@ export class AiController {
     const todayPnlMap = new Map<string, number>();
     const totalRealizedMap = new Map<string, number>();
     if (strategyIds.length > 0) {
-      // 并行查今日平仓 + 全量平仓（网格持仓 aiStrategyId=NULL，查询结果为 0，由 gridRuntimeState 兜底）
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
           where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart } },
@@ -1236,15 +1236,10 @@ export class AiController {
     return {
       data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
-        // 所有策略统一用平仓 realizedPnl 之和（不含浮盈浮亏）
-        // 网格持仓 aiStrategyId=NULL 查不到，用 gridRuntimeState 兜底
-        const isGrid = s.strategyType === 'grid';
-        const todayPnl = isGrid
-          ? Number(((s.gridRuntimeState?.dailyTotalProfit ?? 0)).toFixed(2))
-          : Number((todayPnlMap.get(s.id) || 0).toFixed(2));
-        const totalPnl = isGrid
-          ? Number((s.gridRuntimeState?.totalProfit ?? 0).toFixed(2))
-          : Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
+        // 所有策略类型统一从 Position 表取 realizedPnl（策略级精确盈亏，不含浮盈浮亏）
+        // 网格持仓已带 aiStrategyId，Position 表可正确按策略聚合
+        const todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
+        const totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
         return {
           ...s,
           totalPnl,
@@ -1426,21 +1421,26 @@ export class AiController {
       nextCycleAt = next.toISOString();
     }
 
-    // 今日 PnL（UTC 日期起始）
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-    const todayPositions = await this.prisma.position.findMany({
-      where: {
-        aiStrategyId: id,
-        status: 'closed',
-        closedAt: { gte: todayStart },
-      },
-      select: { realizedPnl: true },
-    });
-    const todayPnl = todayPositions.reduce((sum, p) => sum + Number(p.realizedPnl || 0), 0);
-
-    // 如果是网格策略，附加网格状态（将原始字段转换为前端期望的格式）
+    // 今日 PnL — 网格用 gridRuntimeState 权益差法（与列表接口一致），Solo/Debate 用 Position 表
+    let todayPnl = 0;
     let gridState: object | null = null;
+
+    // 所有策略类型统一从 Position 表取今日已平仓 realizedPnl（策略级精确盈亏）
+    {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const todayPositions = await this.prisma.position.findMany({
+        where: {
+          aiStrategyId: id,
+          status: 'closed',
+          closedAt: { gte: todayStart },
+        },
+        select: { realizedPnl: true },
+      });
+      todayPnl = Number(todayPositions.reduce((sum, p) => sum + Number(p.realizedPnl || 0), 0).toFixed(2));
+    }
+
+    // 网格策略附加 gridState（展示用）
     if (strategy.strategyType === 'grid') {
       const rawState = await this.gridTrading.getGridState(id);
       if (rawState) {
@@ -1454,7 +1454,7 @@ export class AiController {
           totalInvestment: rawState.totalInvestment,
           leverage: rawState.leverage,
           isInitialized: rawState.isInitialized,
-          rangeSource: rawState.rangeSource,   // 范围来源: '用户指定'|'ATR×5.0'|'±3.0%兜底' 等
+          rangeSource: rawState.rangeSource,
           isPaused: rawState.isPaused,
           pauseSource: rawState.pauseSource,
           pauseReason: rawState.pauseReason,

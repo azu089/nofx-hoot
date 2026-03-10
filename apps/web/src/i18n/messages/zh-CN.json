@@ -1054,7 +1054,8 @@
       "drawdownLimit": "回撤限额",
       "notFoundOnExchange": "交易所已平仓",
       "positionSync": "仓位同步",
-      "liquidation": "强制平仓"
+      "liquidation": "强制平仓",
+      "duplicateCleanup": "重复仓位清理"
     }
   },
   "strategyDetail": {
