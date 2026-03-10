@@ -114,13 +114,18 @@ export class PositionSyncService {
     const syncedPositions: SyncedPosition[] = [];
     const matchedExchangeSymbols = new Set<string>();
 
+    // 已匹配的交易所持仓索引（防止同一交易所持仓被多条 DB 记录重复匹配）
+    const matchedExchangeIndices = new Set<number>();
+
     for (const dbPos of dbPositions) {
-      // 在交易所持仓中查找匹配的持仓
-      const exchangePos = exchangePositions.find(
-        (ep) => isSameSymbol(ep.symbol, dbPos.symbol) && ep.side === dbPos.side,
+      // 在交易所持仓中查找匹配的持仓（排除已被其他 DB 记录匹配的）
+      const exchangePosIdx = exchangePositions.findIndex(
+        (ep, idx) => !matchedExchangeIndices.has(idx) && isSameSymbol(ep.symbol, dbPos.symbol) && ep.side === dbPos.side,
       );
+      const exchangePos = exchangePosIdx >= 0 ? exchangePositions[exchangePosIdx] : undefined;
 
       if (exchangePos) {
+        matchedExchangeIndices.add(exchangePosIdx);
         matchedExchangeSymbols.add(`${exchangePos.symbol}:${exchangePos.side}`);
         // 更新数据库中的持仓数据
         await this.updatePositionFromExchange(dbPos.id, exchangePos);
