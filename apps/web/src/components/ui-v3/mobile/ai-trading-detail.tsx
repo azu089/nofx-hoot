@@ -2597,6 +2597,7 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
     emergency_exit: t('timeline.gridEmergencyExit'), hold: t('detail.actionHold'),
     exit_all: t('timeline.gridExitAll'), reduce_exposure: t('timeline.gridReduce'),
     pause_grid: t('timeline.gridPause'), cancel_all_orders: t('timeline.gridExitAll'),
+    pause_monitoring: t('timeline.gridPauseMonitoring'), daily_loss_pause: t('timeline.gridDailyLossPause'),
   };
   const BLOCKED_BY_I18N: Record<string, string> = {
     L1: 'timeline.blockedByL1', L2: 'timeline.blockedByL2', L4: 'timeline.blockedByL4',

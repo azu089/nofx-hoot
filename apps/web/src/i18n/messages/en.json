@@ -2069,6 +2069,8 @@
       "gridCancel": "Cancel",
       "gridAdjust": "Adjust Grid",
       "gridPause": "Pause Grid",
+      "gridPauseMonitoring": "Pause Monitoring",
+      "gridDailyLossPause": "Daily Loss Pause",
       "gridExitAll": "Exit All",
       "gridReduce": "Reduce",
       "gridBuyShort": "B",

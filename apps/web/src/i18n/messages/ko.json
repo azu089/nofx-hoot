@@ -2084,6 +2084,8 @@
       "gridCancel": "취소",
       "gridAdjust": "그리드 조정",
       "gridPause": "그리드 일시정지",
+      "gridPauseMonitoring": "일시정지 모니터링",
+      "gridDailyLossPause": "일일 손실 정지",
       "gridExitAll": "전체 종료",
       "gridReduce": "감축",
       "gridBuyShort": "매수",

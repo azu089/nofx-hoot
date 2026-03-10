@@ -2094,6 +2094,8 @@
       "gridCancel": "撤单",
       "gridAdjust": "调整网格",
       "gridPause": "暂停网格",
+      "gridPauseMonitoring": "暂停监控中",
+      "gridDailyLossPause": "日内亏损暂停",
       "gridExitAll": "全部退出",
       "gridReduce": "减仓",
       "gridBuyShort": "买",

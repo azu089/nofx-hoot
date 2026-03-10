@@ -2084,6 +2084,8 @@
       "gridCancel": "キャンセル",
       "gridAdjust": "グリッド調整",
       "gridPause": "グリッド停止",
+      "gridPauseMonitoring": "一時停止監視中",
+      "gridDailyLossPause": "日次損失停止",
       "gridExitAll": "全決済",
       "gridReduce": "縮小",
       "gridBuyShort": "買",

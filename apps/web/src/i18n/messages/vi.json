@@ -2085,6 +2085,8 @@
       "gridCancel": "Hủy",
       "gridAdjust": "Điều chỉnh lưới",
       "gridPause": "Dừng lưới",
+      "gridPauseMonitoring": "Giám sát tạm dừng",
+      "gridDailyLossPause": "Dừng do lỗ trong ngày",
       "gridExitAll": "Thoát tất cả",
       "gridReduce": "Giảm",
       "gridBuyShort": "Mua",

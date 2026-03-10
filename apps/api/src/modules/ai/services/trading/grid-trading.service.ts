@@ -990,7 +990,7 @@ export class GridTradingService {
     let equityFetched = false;      // 只有真实获取权益成功才设为 true，失败时不更新 dailyPnl
     let cachedBalance: { totalEquity: number; availableBalance: number; unrealizedPnl: number; marginUsedPct?: number } | undefined;
     let cachedPositions: any[] | undefined;
-    let stopLossTriggered = false;  // Step 3.5 执行止损后标记，buildGridContext 需刷新 positions
+    // stopLossTriggered 已移除：逐层止损移至 AI 执行后（对齐 nofx），不再影响 buildGridContext
     if (this.adapterFactory && apiKeyId) {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
@@ -1060,87 +1060,8 @@ export class GridTradingService {
       }
     }
 
-    // Step 3.5: 逐层硬止损检查（对齐 nofx checkAndExecuteStopLoss）
-    // 每轮遍历 filled 层，lossPct >= stopLossPct 时标记待平仓，在 adapter 块内执行
-    const perLevelStopPct = state.stopLossPct > 0 ? state.stopLossPct : DEFAULT_STOP_LOSS_PCT;
-    if (currentPrice > 0) {
-      for (let i = 0; i < state.gridLines.length; i++) {
-        const line = state.gridLines[i];
-        if (line.state !== 'filled' || !line.positionEntry || line.positionEntry <= 0) continue;
-        let lossPct: number;
-        if (line.side === 'sell') {
-          // 空头：价格上涨亏损
-          lossPct = ((currentPrice - line.positionEntry) / line.positionEntry) * 100;
-        } else {
-          // 多头：价格下跌亏损
-          lossPct = ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
-        }
-        if (lossPct >= perLevelStopPct) {
-          this.logger.warn(
-            `[网格] 硬止损标记: 层${i + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
-            `currentPrice=${currentPrice.toFixed(4)} 亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
-          );
-          if (!state._pendingStopLoss) state._pendingStopLoss = [];
-          state._pendingStopLoss.push(i);
-        }
-      }
-    }
-
-    // Step 3.5 执行: 逐层硬止损平仓（使用 earlyAdapter 直接执行，不延迟到 Step 8）
-    // 确保即使后续 Step 2 突破 return，止损已实际平仓
-    if (state._pendingStopLoss && state._pendingStopLoss.length > 0 && adapter && isGridAdapter(adapter)) {
-      for (const idx of state._pendingStopLoss) {
-        const line = state.gridLines[idx];
-        if (line.state !== 'filled') continue;
-        const closeSide = line.side === 'buy' ? 'long' : 'short';
-        const closeQty = line.positionSize || 0;
-        if (closeQty > 0) {
-          try {
-            const stopLossResult = closeSide === 'long'
-              ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, closeQty)
-              : await (adapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
-            const entryPx = line.positionEntry || 0;
-            const feeRate = new Decimal(state.takerFeeRate);
-            const _entryD = new Decimal(entryPx);
-            // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
-            const _priceD = new Decimal(stopLossResult.avgPrice ?? currentPrice);
-            const _qtyD = new Decimal(closeQty);
-            const profitD = closeSide === 'long'
-              ? _priceD.minus(_entryD).times(_qtyD)
-                  .minus(_priceD.times(_qtyD).times(feeRate))
-                  .minus(_entryD.times(_qtyD).times(feeRate))
-              : _entryD.minus(_priceD).times(_qtyD)
-                  .minus(_priceD.times(_qtyD).times(feeRate))
-                  .minus(_entryD.times(_qtyD).times(feeRate));
-            const profit = profitD.toNumber();
-            // totalProfit / dailyTotalProfit 由权益差法在每轮 CCXT 获取后统一计算，不再逐笔累加
-            state.totalTrades++;
-            if (profit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
-            // 盈利时扣燃油费（止损一般亏损，但极端回弹可能微盈）
-            if (profit > 0) {
-              this.settleGridFee(state, userId, profit, { side: closeSide, level: idx + 1, source: 'stop_loss' }).catch((e: any) =>
-                this.logger.error(`[网格] 硬止损燃油费结算失败: ${e.message}`),
-              );
-            }
-            this.logger.warn(
-              `[网格] 硬止损平仓: 层${idx + 1} ${closeSide} qty=${closeQty} profit=${profit >= 0 ? '+' : ''}${profitD.toFixed(8)}`,
-            );
-            line.state = 'stopped';
-            line.positionSize = 0;
-            line.positionEntry = 0;
-            line.orderId = undefined;
-            state.livePositionNotional = Math.max(0, state.livePositionNotional - closeQty * currentPrice);
-            // 同步 DB 持仓记录（使用自算 profit，不依赖 adapter 的 realizedPnl）
-            await this.syncDbPositionClose(userId, state.symbol, closeSide, closeQty, 'stop_loss',
-              { avgPrice: stopLossResult.avgPrice, realizedPnl: profit });
-          } catch (e: any) {
-            this.logger.error(`[网格] 硬止损层${idx + 1}失败: ${e.message}`);
-          }
-        }
-      }
-      stopLossTriggered = true; // 止损执行后持仓已变化，buildGridContext 需刷新 positions
-      state._pendingStopLoss = undefined;
-    }
+    // Step 3.5 逐层止损：已移至 AI 执行后（对齐 nofx: checkAndExecuteStopLoss 在 syncGridState 末尾）
+    // 暂停期间不执行逐层止损，由 maxDrawdown 作为终极安全网；止损决策交给 AI
 
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
     // dailyLossLimitPct <= 0 视为禁用（0 = 不限制日内亏损）
@@ -1179,7 +1100,8 @@ export class GridTradingService {
     // Step 2: 简单边界突破检查（移至 Step 3/3.5/4 之后，确保风控始终先执行）
     const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
     const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
-    if (breakoutPct >= breakoutThreshold) {
+    // 已暂停时跳过 early return — 让流程继续到 Step 7/8，AI 全权决策
+    if (!state.isPaused && breakoutPct >= breakoutThreshold) {
       const direction = currentPrice > state.upperPrice ? 'up' : 'down';
       this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
 
@@ -1190,6 +1112,7 @@ export class GridTradingService {
 
       state.isPaused = true;
       state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
+      state.pauseSource = 'breakout';
       await this.persistGridState(strategyId, state);
       if (adapter) { try { await adapter.dispose(); } catch {} }
       return { trades: 0, errors: 0 };
@@ -1281,11 +1204,20 @@ export class GridTradingService {
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
-    // Step 7: 暂停检查
-    if (state.isPaused) {
-      this.logger.warn(`[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? '未知来源'}]: ${state.pauseReason || '未知原因'}`);
-      await this.persistGridState(strategyId, state);
-      return { trades: 0, errors: 0 };
+    // Step 7: 暂停状态标记（不再 return — AI 在暂停期间仍全权决策）
+    const isPausedCycle = state.isPaused;
+    if (isPausedCycle) {
+      const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
+      const unrealizedPnl = cachedBalance?.unrealizedPnl ?? 0;
+      const currentDrawdown = state.peakEquity > 0
+        ? ((state.peakEquity - currentEquity) / state.peakEquity) * 100 : 0;
+      this.logger.warn(
+        `[网格] ${state.symbol} 已暂停 [${state.pauseSource ?? '未知'}] → AI 继续决策\n` +
+        `  ├─ 原因: ${state.pauseReason || '未知'}\n` +
+        `  ├─ 持仓: ${filledCount}层 | 浮盈亏: ${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}\n` +
+        `  └─ 回撤: ${currentDrawdown.toFixed(1)}% / 上限 ${gridConfig?.maxDrawdownPct ?? DEFAULT_MAX_DRAWDOWN_PCT}%`,
+      );
+      // 不 return — 继续到 Step 8 让 AI 分析市场并决策
     }
 
     // Step 8: AI 决策
@@ -1314,44 +1246,41 @@ export class GridTradingService {
 
         // Step 3.5 逐层止损已在 Step 3.5 执行块中完成（earlyAdapter），此处无需重复
 
-        // 突破检测：在 syncOrderFills 之后、AI 决策之前执行
-        // ≥2% 超出边界：取消所有挂单并暂停
-        // ≥2%: 取消所有挂单并暂停; 1-2%: 仅记录警告
-        if (state.upperPrice > 0 && state.lowerPrice > 0) {
-          const breakout = this.checkBreakout(state, currentPrice);
-          if (breakout.type !== 'none') {
-            const paused = await this.handleBreakout(
-              state, breakout as { type: 'upper' | 'lower'; pct: number }, adapter, strategyId,
-            );
-            if (paused) return { trades, errors };
-          }
-        }
-
-        // Step 6.6: 箱体突破检测 → 方向自适应
-        // enableDirectionAdjust=true 时：短/中期突破→方向偏转，长期突破→紧急平仓
-        // enableDirectionAdjust=false 时：短期→reduce_position，中期→pause，长期→close_all
-        // 无论是否启用，均执行 checkFalseBreakoutRecovery（价格回归时自动恢复）
-        if (state.shortBoxUpper > 0) {
-          const boxDetected = this.detectBoxBreakout(currentPrice, state);
-          if (boxDetected.level !== 'none') {
-            const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
-            if (confirmed) {
-              const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
-              const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
-              await this.executeBreakoutAction(
-                state, action, boxDetected.direction, userId, apiKeyId, adapter,
+        // 突破检测 + 箱体突破：暂停期间跳过（已暂停，交给 AI 决策）
+        if (!isPausedCycle) {
+          // ≥2%: 取消所有挂单并暂停; 1-2%: 仅记录警告
+          if (state.upperPrice > 0 && state.lowerPrice > 0) {
+            const breakout = this.checkBreakout(state, currentPrice);
+            if (breakout.type !== 'none') {
+              const paused = await this.handleBreakout(
+                state, breakout as { type: 'upper' | 'lower'; pct: number }, adapter, strategyId,
               );
-              // pause_grid / close_all 后本轮跳过 AI 决策
-              if (state.isPaused) {
-                await this.persistGridState(strategyId, state);
-                return { trades, errors };
-              }
+              if (paused) return { trades, errors };
             }
-          } else {
-            this.confirmBreakout(state, 'none', ''); // 重置连续计数
           }
-          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
-          this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
+
+          // Step 6.6: 箱体突破检测 → 方向自适应
+          if (state.shortBoxUpper > 0) {
+            const boxDetected = this.detectBoxBreakout(currentPrice, state);
+            if (boxDetected.level !== 'none') {
+              const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
+              if (confirmed) {
+                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+                const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
+                await this.executeBreakoutAction(
+                  state, action, boxDetected.direction, userId, apiKeyId, adapter,
+                );
+                if (state.isPaused) {
+                  await this.persistGridState(strategyId, state);
+                  return { trades, errors };
+                }
+              }
+            } else {
+              this.confirmBreakout(state, 'none', '');
+            }
+            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+            this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
+          }
         }
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
@@ -1360,7 +1289,6 @@ export class GridTradingService {
         const context = await this.buildGridContext(state, adapter, currentPrice, {
           balance: cachedBalance,
           positions: cachedPositions,
-          stopLossExecuted: stopLossTriggered,
         });
 
         // Fix-A: 全局网格倾斜计算（基于全量 gridLines，非瞬时 filledLines）
@@ -1426,9 +1354,10 @@ export class GridTradingService {
           adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
         }
 
-        // LLM 调用期间用户可能已停止策略，执行任何决策前再次检查
-        if (state.isPaused || !this.gridStates.has(strategyId)) {
-          this.logger.warn(`[网格] LLM 调用后策略已停止/暂停，跳过本轮决策执行`);
+        // LLM 调用期间可能被外部新触发暂停（如 DrawdownMonitor），仅拦截新暂停
+        // isPausedCycle=true 时不拦截（本来就暂停，AI 需要继续决策）
+        if ((!isPausedCycle && state.isPaused) || !this.gridStates.has(strategyId)) {
+          this.logger.warn(`[网格] LLM 调用后策略被外部停止/暂停，跳过本轮决策执行`);
           return { trades, errors };
         }
 
@@ -1466,10 +1395,11 @@ export class GridTradingService {
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = filteredDecisions.some(d => d.action === 'pause_grid');
         for (const d of filteredDecisions) {
-          // 每条决策执行前检查策略是否已被停止
-          if (state.isPaused || !this.gridStates.has(strategyId)) {
+          // 每条决策执行前检查策略是否已被外部新暂停
+          // isPausedCycle=true 时不 break（暂停周期 AI 全权决策）
+          if ((!isPausedCycle && state.isPaused) || !this.gridStates.has(strategyId)) {
             const remaining = filteredDecisions.length - filteredDecisions.indexOf(d);
-            this.logger.warn(`[网格] 策略已停止/暂停，跳过剩余 ${remaining} 个决策`);
+            this.logger.warn(`[网格] 策略被外部停止/暂停，跳过剩余 ${remaining} 个决策`);
             break;
           }
           // 若本轮含 pause_grid，跳过所有 place_* 操作（避免下单后立即被 cancelAllOrders 撤掉，浪费 API 调用）
@@ -1516,6 +1446,64 @@ export class GridTradingService {
           if (filledLines.length > 0) {
             trades += filledLines.length;
             this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
+          }
+        }
+
+        // 逐层硬止损（对齐 nofx: checkAndExecuteStopLoss 在 syncGridState 末尾执行）
+        // AI 执行后检查，暂停期间同样执行（风控优先级高于暂停状态）
+        const perLevelStopPct = state.stopLossPct > 0 ? state.stopLossPct : DEFAULT_STOP_LOSS_PCT;
+        if (currentPrice > 0 && adapter && isGridAdapter(adapter)) {
+          for (let i = 0; i < state.gridLines.length; i++) {
+            const line = state.gridLines[i];
+            if (line.state !== 'filled' || !line.positionEntry || line.positionEntry <= 0) continue;
+            const lossPct = line.side === 'sell'
+              ? ((currentPrice - line.positionEntry) / line.positionEntry) * 100
+              : ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
+            if (lossPct < perLevelStopPct) continue;
+
+            this.logger.warn(
+              `[网格] 硬止损: 层${i + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
+              `currentPrice=${currentPrice.toFixed(4)} 亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
+            );
+            const closeSide = line.side === 'buy' ? 'long' : 'short';
+            const closeQty = line.positionSize || 0;
+            if (closeQty <= 0) continue;
+            try {
+              const stopLossResult = closeSide === 'long'
+                ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, closeQty)
+                : await (adapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
+              const feeRate = new Decimal(state.takerFeeRate);
+              const _entryD = new Decimal(line.positionEntry || 0);
+              const _priceD = new Decimal(stopLossResult.avgPrice ?? currentPrice);
+              const _qtyD = new Decimal(closeQty);
+              const profitD = closeSide === 'long'
+                ? _priceD.minus(_entryD).times(_qtyD)
+                    .minus(_priceD.times(_qtyD).times(feeRate))
+                    .minus(_entryD.times(_qtyD).times(feeRate))
+                : _entryD.minus(_priceD).times(_qtyD)
+                    .minus(_priceD.times(_qtyD).times(feeRate))
+                    .minus(_entryD.times(_qtyD).times(feeRate));
+              const profit = profitD.toNumber();
+              state.totalTrades++;
+              if (profit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+              if (profit > 0) {
+                this.settleGridFee(state, userId, profit, { side: closeSide, level: i + 1, source: 'stop_loss' }).catch((e: any) =>
+                  this.logger.error(`[网格] 硬止损燃油费结算失败: ${e.message}`),
+                );
+              }
+              this.logger.warn(
+                `[网格] 硬止损平仓: 层${i + 1} ${closeSide} qty=${closeQty} profit=${profit >= 0 ? '+' : ''}${profitD.toFixed(8)}`,
+              );
+              line.state = 'stopped';
+              line.positionSize = 0;
+              line.positionEntry = 0;
+              line.orderId = undefined;
+              state.livePositionNotional = Math.max(0, state.livePositionNotional - closeQty * currentPrice);
+              await this.syncDbPositionClose(userId, state.symbol, closeSide, closeQty, 'stop_loss',
+                { avgPrice: stopLossResult.avgPrice, realizedPnl: profit });
+            } catch (e: any) {
+              this.logger.error(`[网格] 硬止损层${i + 1}失败: ${e.message}`);
+            }
           }
         }
 
@@ -1970,7 +1958,6 @@ export class GridTradingService {
     preloaded?: {
       balance?: { totalEquity: number; availableBalance: number; unrealizedPnl: number; marginUsedPct?: number };
       positions?: any[];
-      stopLossExecuted?: boolean;
     },
   ): Promise<GridContext> {
     // 三周期 OHLCV 并行拉取（5m+1h+4h）
@@ -2037,10 +2024,8 @@ export class GridTradingService {
       state.availableBalance = availableBalance; // 同步到 state，供 AI 上下文展示
       state.lastUnrealizedPnl = unrealizedPnl; // 同步到 state，供 saveGridDecisionLog 使用
 
-      // 优先使用 preloaded 持仓（止损执行后必须刷新）
-      const positions = (preloaded?.positions && !preloaded?.stopLossExecuted)
-        ? preloaded.positions
-        : await adapter.getPositions();
+      // 优先使用 preloaded 持仓（Step 3 已获取，减少 CCXT 调用）
+      const positions = preloaded?.positions ?? await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
       const longPos = symPositions.find((p: any) => p.side === 'long');
@@ -2164,6 +2149,8 @@ export class GridTradingService {
       activeOrderCount: state.gridLines.filter((l) => l.state === 'pending').length,
       filledLevelCount: state.gridLines.filter((l) => l.state === 'filled' && l.positionSize > 0).length,
       isPaused: state.isPaused,
+      pauseReason: state.pauseReason,
+      pauseSource: state.pauseSource,
       atr14: indFast.atr ?? 0,
       bollingerUpper: bbUpper,
       bollingerMiddle: bbMiddle,

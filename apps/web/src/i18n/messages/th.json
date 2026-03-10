@@ -2084,6 +2084,8 @@
       "gridCancel": "ยกเลิก",
       "gridAdjust": "ปรับกริด",
       "gridPause": "หยุดกริด",
+      "gridPauseMonitoring": "กำลังตรวจสอบขณะหยุด",
+      "gridDailyLossPause": "หยุดจากขาดทุนรายวัน",
       "gridExitAll": "ออกทั้งหมด",
       "gridReduce": "ลดขนาด",
       "gridBuyShort": "ซื้อ",

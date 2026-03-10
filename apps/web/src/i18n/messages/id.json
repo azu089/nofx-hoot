@@ -2084,6 +2084,8 @@
       "gridCancel": "Batal",
       "gridAdjust": "Sesuaikan Grid",
       "gridPause": "Jeda Grid",
+      "gridPauseMonitoring": "Pemantauan Jeda",
+      "gridDailyLossPause": "Jeda Kerugian Harian",
       "gridExitAll": "Keluar Semua",
       "gridReduce": "Kurangi",
       "gridBuyShort": "Beli",

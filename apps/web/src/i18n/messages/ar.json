@@ -2065,6 +2065,8 @@
       "gridCancel": "إلغاء",
       "gridAdjust": "تعديل الشبكة",
       "gridPause": "إيقاف الشبكة",
+      "gridPauseMonitoring": "مراقبة الإيقاف",
+      "gridDailyLossPause": "إيقاف الخسارة اليومية",
       "gridExitAll": "خروج الكل",
       "gridReduce": "تخفيض",
       "gridBuyShort": "ش",

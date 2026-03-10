@@ -2084,6 +2084,8 @@
       "gridCancel": "Отмена",
       "gridAdjust": "Настройка сетки",
       "gridPause": "Пауза сетки",
+      "gridPauseMonitoring": "Мониторинг паузы",
+      "gridDailyLossPause": "Пауза по дневному убытку",
       "gridExitAll": "Закрыть все",
       "gridReduce": "Сокращение",
       "gridBuyShort": "П",

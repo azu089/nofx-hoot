@@ -2084,6 +2084,8 @@
       "gridCancel": "İptal",
       "gridAdjust": "Grid Ayarla",
       "gridPause": "Grid Durdur",
+      "gridPauseMonitoring": "Duraklama İzleme",
+      "gridDailyLossPause": "Günlük Zarar Duraklaması",
       "gridExitAll": "Tümünü Kapat",
       "gridReduce": "Azalt",
       "gridBuyShort": "Al",
