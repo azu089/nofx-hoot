@@ -1234,12 +1234,23 @@ export class AiController {
     }
 
     return {
-      data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any }) => {
+      data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any; totalPnl?: any; winRate?: any; totalTrades?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
-        // 所有策略类型统一从 Position 表取 realizedPnl（策略级精确盈亏，不含浮盈浮亏）
-        // 网格持仓已带 aiStrategyId，Position 表可正确按策略聚合
-        const todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
-        const totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
+
+        let todayPnl: number;
+        let totalPnl: number;
+
+        // 网格策略：从 gridRuntimeState 取实时盈亏（persistGridState 已同步到策略表，但 state 更实时）
+        // 非网格策略：从 Position 表聚合 realizedPnl
+        if (s.strategyType === 'grid' && s.gridRuntimeState) {
+          const grs = s.gridRuntimeState as { totalProfit?: number; dailyPnl?: number };
+          totalPnl = Number((grs.totalProfit ?? 0).toFixed(2));
+          todayPnl = Number((grs.dailyPnl ?? 0).toFixed(2));
+        } else {
+          todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
+          totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
+        }
+
         return {
           ...s,
           totalPnl,

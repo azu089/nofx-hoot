@@ -162,7 +162,6 @@ export interface GridState {
   // 【关键字段】交易所真实持仓名义价值（qty × markPrice）
   // 每轮 Step3 从 getPositions() 更新，close_long/close_short 执行后同轮同步扣减
   // placeGridLimitOrder 的 cap check 必须用此值，禁止用内存 filled 层数估算
-  // 对齐 nofx checkTotalPositionLimit（L978-992）：每次下单前用交易所真实持仓
   livePositionNotional: number;
 
   // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
@@ -1517,8 +1516,6 @@ export class GridTradingService {
               line.positionEntry = 0;
               line.orderId = undefined;
               state.livePositionNotional = Math.max(0, state.livePositionNotional - closeQty * currentPrice);
-              await this.syncDbPositionClose(userId, state.symbol, closeSide, closeQty, 'stop_loss',
-                { avgPrice: stopLossResult.avgPrice, realizedPnl: profit });
             } catch (e: any) {
               this.logger.error(`[网格] 硬止损层${i + 1}失败: ${e.message}`);
             }
@@ -2510,12 +2507,8 @@ export class GridTradingService {
               this.logger.warn(`[网格] 取消孤儿卖单失败: level=${orphanSell.index}, ${e.message}`);
             }
           }
-          // 同步 DB 持仓记录（使用自算 netProfit，OKX 不返回 realizedPnl）
-          await this.syncDbPositionClose(userId, state.symbol, 'long', qty, 'ai_close_long',
-            { avgPrice: closeLongResult.avgPrice, realizedPnl: netProfit });
         } else {
-          // 无 targetLevel（孤儿平仓），回退用 adapter 返回值
-          await this.syncDbPositionClose(userId, state.symbol, 'long', qty, 'ai_close_long', closeLongResult);
+          this.logger.warn(`[网格] close_long 孤儿多头平仓: qty=${qty}, 无对应 grid level`);
         }
         return { executed: true };
       }
@@ -2562,13 +2555,8 @@ export class GridTradingService {
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(8)} USDT`);
-          // 同步 DB 持仓记录（使用自算 netProfit，OKX 不返回 realizedPnl）
-          await this.syncDbPositionClose(userId, state.symbol, 'short', qty, 'ai_close_short',
-            { avgPrice: closeShortResult.avgPrice, realizedPnl: netProfit });
         } else {
           this.logger.warn(`[网格] close_short 孤儿空头平仓: qty=${qty}, 无对应 grid level`);
-          // 孤儿平仓，回退用 adapter 返回值
-          await this.syncDbPositionClose(userId, state.symbol, 'short', qty, 'ai_close_short', closeShortResult);
         }
         return { executed: true };
       }
@@ -2709,7 +2697,7 @@ export class GridTradingService {
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
       // ====================================================================
-      // 总仓位上限检查（对齐 nofx checkTotalPositionLimit L968-1007）
+      // 总仓位上限检查
       // 【核心原则】持仓必须用交易所真实值，禁止用内存估算
       //   持仓 = state.livePositionNotional（每轮 Step3 从 getPositions 更新）
       //   挂单 = 内存 pending 层 qty × price（同轮已更新）
@@ -2854,10 +2842,9 @@ export class GridTradingService {
     }
 
     // ====================================================================
-    // Step 2.8: 仓位总量检查（对齐 nofx checkTotalPositionLimit L968-1007）
+    // Step 2.8: 仓位总量检查
     // 【核心原则】持仓必须用交易所真实值（livePositionNotional），禁止用内存估算
-    //   nofx 每次下单前调 GetPositions() 获取真实持仓（L978-992）
-    //   HOOT 在 Step3 已预取并存入 state.livePositionNotional，此处直接使用
+    //   持仓 = state.livePositionNotional（Step3 从 getPositions 更新）
     //   挂单 = 内存 pending 层 qty × price（同轮内已更新，可正确累计）
     //   上限 = totalInvestment × leverage
     // 【禁止回退】不得改回 filledLayerCount × slotBudget 内存估算方式
@@ -2938,158 +2925,6 @@ export class GridTradingService {
    * 所有平仓路径（emergencyExit、方向性平仓、方向调整、逐层止损）统一调用此方法
    * - 使用交易所实际返回的 qty / avgPrice / realizedPnl（比 snapshot 更准确）
    * - 失败不阻塞平仓流程（non-fatal）
-   */
-  private async syncDbPositionClose(
-    userId: string,
-    symbol: string,
-    side: string,
-    actualQty: number,
-    closeReason: string,
-    closeResult: { avgPrice?: number; realizedPnl?: number },
-  ): Promise<void> {
-    try {
-      const baseSymbol = symbol.split('/')[0].replace(/USDT.*|:.*/, '');
-      const snapshot = await this.prisma.position.findFirst({
-        where: {
-          userId,
-          symbol: { contains: baseSymbol },
-          side,
-          status: 'open',
-          source: { in: ['snapshot', 'ai_strategy'] },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!snapshot) return;
-
-      const { avgPrice, realizedPnl } = closeResult;
-      const dbAmount = Number(snapshot.amount);
-      const isFullClose = actualQty >= dbAmount * 0.99; // 1% 容差防浮点误差
-
-      if (isFullClose) {
-        // 全量平仓：标记 closed（累加之前部分平仓的 PnL）
-        const prevPnlFull = Number(snapshot.realizedPnl ?? 0);
-        const totalPnl = prevPnlFull + (realizedPnl ?? 0);
-        await this.prisma.position.update({
-          where: { id: snapshot.id },
-          data: {
-            status: 'closed',
-            closeReason,
-            closedAt: new Date(),
-            amount: actualQty,
-            ...(avgPrice ? { closePrice: avgPrice.toFixed(8), exitPrice: avgPrice.toFixed(8) } : {}),
-            pnl: totalPnl.toFixed(8),
-            realizedPnl: totalPnl.toFixed(8),
-          },
-        });
-        this.logger.log(
-          `[网格] DB持仓同步: ${symbol} ${side} → closed (${closeReason}), ` +
-          `qty=${actualQty}, pnl=${totalPnl.toFixed(4)} USDT (含历史部分平仓 ${prevPnlFull.toFixed(4)})`,
-        );
-      } else {
-        // 部分平仓：减少 amount，累加 realizedPnl，不关闭
-        const remainAmount = dbAmount - actualQty;
-        const prevPnl = Number(snapshot.realizedPnl ?? 0);
-        const accPnl = prevPnl + (realizedPnl ?? 0);
-        await this.prisma.position.update({
-          where: { id: snapshot.id },
-          data: {
-            amount: remainAmount,
-            ...(accPnl !== 0 ? { realizedPnl: accPnl.toFixed(8) } : {}),
-            lastSyncAt: new Date(),
-          },
-        });
-        this.logger.log(
-          `[网格] DB持仓部分平仓: ${symbol} ${side} (${closeReason}), ` +
-          `qty=${dbAmount.toFixed(4)}→${remainAmount.toFixed(4)}, partPnl=${(realizedPnl ?? 0).toFixed(4)} USDT`,
-        );
-      }
-    } catch (e: any) {
-      this.logger.warn(`[网格] DB持仓同步失败(非致命): ${e.message}`);
-    }
-  }
-
-  /**
-   * 开仓/加仓后同步 DB：创建或更新 positions 表中的持仓记录
-   * - 不存在 → 创建新记录（source: 'ai_strategy'）
-   * - 已存在 → 加权均价更新 entryPrice，累加 amount
-   * - 失败不阻塞交易流程（non-fatal）
-   */
-  private async syncDbPositionOpen(
-    userId: string,
-    strategyId: string,
-    apiKeyId: string,
-    symbol: string,
-    side: string,
-    qty: number,
-    entryPrice: number,
-    exchangeType: string,
-    leverage: number,
-  ): Promise<void> {
-    try {
-      const baseSymbol = symbol.split('/')[0].replace(/USDT.*|:.*/, '');
-      const existing = await this.prisma.position.findFirst({
-        where: {
-          userId,
-          symbol: { contains: baseSymbol },
-          side,
-          status: 'open',
-          source: { in: ['snapshot', 'ai_strategy'] },
-          aiStrategyId: strategyId,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (existing) {
-        // 加权均价更新
-        const oldQty = Number(existing.amount);
-        const oldEntry = Number(existing.entryPrice);
-        const newQty = oldQty + qty;
-        const newEntry = newQty > 0
-          ? (oldEntry * oldQty + entryPrice * qty) / newQty
-          : entryPrice;
-        const newMargin = newEntry * newQty / Math.max(leverage, 1);
-        await this.prisma.position.update({
-          where: { id: existing.id },
-          data: {
-            amount: newQty,
-            entryPrice: newEntry.toFixed(8),
-            margin: newMargin.toFixed(8),
-            lastSyncAt: new Date(),
-          },
-        });
-        this.logger.log(
-          `[网格] DB持仓更新: ${symbol} ${side}, qty=${oldQty.toFixed(4)}→${newQty.toFixed(4)}, ` +
-          `entry=${oldEntry.toFixed(4)}→${newEntry.toFixed(4)}`,
-        );
-      } else {
-        const margin = entryPrice * qty / Math.max(leverage, 1);
-        await this.prisma.position.create({
-          data: {
-            userId,
-            exchange: exchangeType,
-            symbol,
-            side,
-            amount: qty,
-            entryPrice: entryPrice.toFixed(8),
-            margin: margin.toFixed(8),
-            leverage,
-            tradingType: 'futures',
-            marginMode: 'cross',
-            status: 'open',
-            source: 'ai_strategy',
-            apiKeyId,
-            aiStrategyId: strategyId,
-          },
-        });
-        this.logger.log(
-          `[网格] DB持仓创建: ${symbol} ${side}, qty=${qty.toFixed(4)}, entry=${entryPrice.toFixed(4)}`,
-        );
-      }
-    } catch (e: any) {
-      this.logger.warn(`[网格] DB持仓开仓同步失败(非致命): ${e.message}`);
-    }
-  }
-
   // ========================= 方向性平仓 =========================
 
   /**
@@ -3124,8 +2959,6 @@ export class GridTradingService {
           // OKX 不返回 realizedPnl → fallback 到持仓浮动盈亏（近似值）
           const dirPnl = dirCloseResult.realizedPnl ?? pos.unrealizedPnl ?? 0;
           await this.settleGridFee(state, userId, dirPnl, { side: sideToClose, source: 'breakout', orderId: dirCloseResult.orderId });
-          await this.syncDbPositionClose(userId, pos.symbol, sideToClose, pos.quantity, 'directional_breakout',
-            { avgPrice: dirCloseResult.avgPrice, realizedPnl: dirPnl });
           this.logger.warn(
             `[网格] 方向性平仓: ${pos.symbol} ${sideToClose} ${pos.quantity} (${direction}向突破)`,
           );
@@ -3184,9 +3017,6 @@ export class GridTradingService {
 
           // 单仓平仓后立即结算燃油费（亏损不扣，失败不阻塞）
           await this.settleGridFee(state, userId, posRealizedPnl, { side: pos.side, source: 'emergency_exit', orderId: closeResult.orderId });
-          // 同步 DB 持仓记录（使用修正后的 PnL，OKX 不返回 realizedPnl 时用 unrealizedPnl 近似）
-          await this.syncDbPositionClose(userId, pos.symbol, pos.side, pos.quantity, 'emergency_exit',
-            { avgPrice: closeResult.avgPrice, realizedPnl: posRealizedPnl });
         } catch (e: any) {
           this.logger.warn(`[网格] 平仓失败: ${pos.symbol} ${pos.side} - ${e.message}`);
         }
@@ -3433,12 +3263,6 @@ export class GridTradingService {
             this.logger.log(
               `[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
             );
-            // 同步 DB 持仓记录（买单成交开多）
-            await this.syncDbPositionOpen(
-              userId, strategyId, apiKeyId,
-              state.symbol, 'long', qty, line.price,
-              adapter.exchangeType, state.leverage,
-            );
           }
         } else {
           line.state = 'empty';
@@ -3526,11 +3350,148 @@ export class GridTradingService {
         }
       }
 
+      // Step 8: CCXT 持仓数据写入 DB 缓存（替代旧的自算 syncDbPositionOpen/Close）
+      await this.syncDbFromCcxt(userId, apiKeyId, strategyId, state.symbol, syncPositions);
+
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
 
     return { filledLines };
+  }
+
+  /**
+   * 用 CCXT 实时持仓数据更新 DB positions 表（缓存）
+   * - 交易所有持仓 → upsert DB 记录（CCXT 真实数据）
+   * - DB 有但交易所无 → 标记 closed
+   * - 失败不阻塞交易流程（non-fatal）
+   */
+  private async syncDbFromCcxt(
+    userId: string,
+    apiKeyId: string,
+    strategyId: string,
+    symbol: string,
+    exchangePositions: any[],
+  ): Promise<void> {
+    try {
+      const baseSymbol = symbol.split('/')[0];
+      const relevantPositions = exchangePositions.filter(
+        (p: any) => p.symbol?.includes(baseSymbol),
+      );
+
+      // 查找该策略在 DB 中的 open 持仓
+      const dbPositions = await this.prisma.position.findMany({
+        where: {
+          userId,
+          status: 'open',
+          symbol: { contains: baseSymbol },
+          source: { in: ['snapshot', 'ai_strategy'] },
+        },
+      });
+
+      const matchedDbIds = new Set<string>();
+
+      for (const pos of relevantPositions) {
+        const side = pos.side === 'net' || !pos.side ? 'long' : pos.side;
+        const qty = Math.abs(pos.quantity ?? pos.amount ?? 0);
+        if (qty < 0.0001) continue;
+
+        // 匹配 DB 记录
+        const dbMatch = dbPositions.find(
+          (d) => d.side === side && !matchedDbIds.has(d.id),
+        );
+
+        if (dbMatch) {
+          matchedDbIds.add(dbMatch.id);
+          // 用 CCXT 数据更新 DB 缓存
+          await this.prisma.position.update({
+            where: { id: dbMatch.id },
+            data: {
+              amount: qty,
+              entryPrice: pos.entryPrice?.toFixed(8) ?? dbMatch.entryPrice,
+              markPrice: pos.markPrice ?? dbMatch.markPrice,
+              unrealizedPnl: pos.unrealizedPnl ?? 0,
+              margin: pos.margin ?? dbMatch.margin,
+              leverage: pos.leverage > 1 ? pos.leverage : (dbMatch.leverage || 1),
+              lastSyncAt: new Date(),
+            },
+          });
+        } else {
+          // DB 无记录 → 创建（CCXT 数据）
+          const margin = pos.margin ?? (pos.entryPrice * qty / Math.max(pos.leverage || 1, 1));
+          await this.prisma.position.create({
+            data: {
+              userId,
+              exchange: 'binance',
+              symbol,
+              side,
+              amount: qty,
+              entryPrice: pos.entryPrice?.toFixed(8) ?? '0',
+              margin: typeof margin === 'number' ? margin.toFixed(8) : margin,
+              leverage: pos.leverage || 1,
+              tradingType: 'futures',
+              marginMode: pos.marginMode || 'cross',
+              status: 'open',
+              source: 'ai_strategy',
+              apiKeyId,
+              aiStrategyId: strategyId,
+              markPrice: pos.markPrice ?? 0,
+              unrealizedPnl: pos.unrealizedPnl ?? 0,
+              lastSyncAt: new Date(),
+            },
+          });
+        }
+      }
+
+      // DB 有但交易所无 → 标记 closed
+      for (const dbPos of dbPositions) {
+        if (!matchedDbIds.has(dbPos.id)) {
+          // 用最近一次 CCXT 同步的 unrealizedPnl 作为 pnl/realizedPnl（交易所已平仓，此值接近真实）
+          const lastPnl = dbPos.unrealizedPnl != null ? Number(dbPos.unrealizedPnl) : 0;
+          const lastMark = dbPos.markPrice != null ? Number(dbPos.markPrice) : Number(dbPos.entryPrice);
+          await this.prisma.position.update({
+            where: { id: dbPos.id },
+            data: {
+              status: 'closed',
+              closedAt: new Date(),
+              closeReason: 'exchange_sync',
+              closePrice: lastMark.toFixed(8),
+              exitPrice: lastMark.toFixed(8),
+              pnl: lastPnl.toFixed(8),
+              realizedPnl: lastPnl.toFixed(8),
+              lastSyncAt: new Date(),
+            },
+          });
+
+          // 盈利就扣燃油费（覆盖用户在交易所手动平仓的场景）
+          if (lastPnl > 0 && this.feeService) {
+            try {
+              const feeCalc = await this.feeService.calculateFee(userId, lastPnl.toFixed(8));
+              if (parseFloat(feeCalc.feeAmount) > 0) {
+                // 幂等 ID: 使用 dbPos.id 保证同一持仓关闭只扣一次
+                const uniqueOrderId = `GAS_FEE_SYNC_${userId}_${dbPos.id}`;
+                await this.feeService.chargeFee({
+                  userId,
+                  positionId: dbPos.id,
+                  profit: feeCalc.profit,
+                  feeRate: feeCalc.finalFeeRate,
+                  feeAmount: feeCalc.feeAmount,
+                  uniqueOrderId,
+                  strategyName: symbol.split('/')[0],
+                });
+                this.logger.log(
+                  `[网格] 交易所平仓检测→扣费: ${symbol} pnl=${lastPnl.toFixed(4)} fee=${feeCalc.feeAmount}`,
+                );
+              }
+            } catch (feeErr: any) {
+              this.logger.warn(`[网格] 交易所平仓扣费失败(非致命): ${feeErr.message}`);
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[网格] CCXT→DB缓存同步失败(非致命): ${e.message}`);
+    }
   }
 
   // ========================= 孤儿订单清理（reinitialize 后补充执行） =========================

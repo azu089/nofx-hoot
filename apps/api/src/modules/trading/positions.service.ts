@@ -302,6 +302,34 @@ export class PositionsService {
       );
 
       this.logger.log(`Exchange-only 平仓成功: ${symbol} ${side} 数量=${amount}`);
+
+      // 燃油费扣除（盈利时扣）
+      const entryP = parseFloat(ep.entryPrice?.toString() || '0');
+      const closeP = result.price || 0;
+      const epPnl = side === 'long'
+        ? (closeP - entryP) * amount
+        : (entryP - closeP) * amount;
+      if (epPnl > 0) {
+        try {
+          const feeCalc = await this.feeService.calculateFee(userId, epPnl.toFixed(8));
+          if (parseFloat(feeCalc.feeAmount) > 0) {
+            const uniqueOrderId = `GAS_FEE_MANUAL_${userId}_${result.orderId || Date.now()}`;
+            await this.feeService.chargeFee({
+              userId,
+              positionId: positionId,
+              profit: feeCalc.profit,
+              feeRate: feeCalc.finalFeeRate,
+              feeAmount: feeCalc.feeAmount,
+              uniqueOrderId,
+              strategyName: symbol,
+            });
+            this.logger.log(`Exchange-only 燃油费已扣除: ${symbol} 盈利=$${epPnl.toFixed(2)} 费用=$${feeCalc.feeAmount}`);
+          }
+        } catch (feeErr) {
+          this.logger.error(`Exchange-only 燃油费扣除失败(非致命): ${(feeErr as Error).message}`);
+        }
+      }
+
       return {
         id: positionId,
         exchange: result.exchange || 'binance',
