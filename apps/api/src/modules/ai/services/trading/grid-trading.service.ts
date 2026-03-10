@@ -236,6 +236,8 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
 };
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
+// 自动网格重建（对齐 nofx autoAdjustGrid）
+const DEFAULT_AUTO_ADJUST_THRESHOLD = 0.20; // 价格偏离中心 ≥20% 的 gridRange 时触发
 // 量能骤变检测（方向自适应已移除，常量保留备查）
 // const VOLUME_SPIKE_RATIO = 2.0;
 // const VOLUME_SPIKE_PRICE_CONFIRM_PCT = 1.0;
@@ -1504,6 +1506,18 @@ export class GridTradingService {
             } catch (e: any) {
               this.logger.error(`[网格] 硬止损层${i + 1}失败: ${e.message}`);
             }
+          }
+        }
+
+        // autoAdjustGrid（对齐 nofx: syncGridState 末尾 → checkAndExecuteStopLoss → autoAdjustGrid）
+        // 倾斜 + 价格偏离中心 > threshold 时自动重建，保留持仓映射到最近层
+        if (currentPrice > 0 && adapter && isGridAdapter(adapter) && !state.userLockedRange) {
+          const adjustThreshold = gridConfig?.autoAdjustThreshold ?? DEFAULT_AUTO_ADJUST_THRESHOLD;
+          const adjusted = await this.autoAdjustGrid(
+            state, currentPrice, adapter as GridExchangeAdapter, adjustThreshold,
+          );
+          if (adjusted) {
+            await this.persistGridState(strategyId, state);
           }
         }
 
@@ -3839,6 +3853,124 @@ export class GridTradingService {
       `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
       `，共 ${gridCount} 层，格间距 ${finalSpacing}`,
     );
+  }
+
+  /**
+   * 自动网格重建（对齐 nofx autoAdjustGrid）
+   * 触发条件（两个同时满足）：
+   *   1. 网格严重倾斜（一侧 filled ≥ 3×另一侧，或单侧全满+对侧 >5 空格）
+   *   2. 价格偏离网格中心 > threshold（默认 20% of gridRange，用户可配 autoAdjustThreshold）
+   * 行为：以当前价为中心重建网格，保留 filled 持仓映射到最近新层
+   */
+  private async autoAdjustGrid(
+    state: GridState,
+    currentPrice: number,
+    adapter: GridExchangeAdapter,
+    threshold: number,
+  ): Promise<boolean> {
+    // Step 1: 倾斜检测（对齐 nofx checkGridSkew）
+    const filledAll = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0);
+    const buyFilled = filledAll.filter(l => l.side === 'buy').length;
+    const sellFilled = filledAll.filter(l => l.side === 'sell').length;
+    const buyEmpty = state.gridLines.filter(l => l.side === 'buy' && l.state === 'empty').length;
+    const sellEmpty = state.gridLines.filter(l => l.side === 'sell' && l.state === 'empty').length;
+
+    let skewed = false;
+    if (buyFilled > 0 && sellFilled === 0 && sellEmpty > 5) {
+      skewed = true; // 全部买入成交，无卖出
+    } else if (sellFilled > 0 && buyFilled === 0 && buyEmpty > 5) {
+      skewed = true; // 全部卖出成交，无买入
+    } else if (buyFilled >= 3 * sellFilled && buyFilled > 5) {
+      skewed = true;
+    } else if (sellFilled >= 3 * buyFilled && sellFilled > 5) {
+      skewed = true;
+    }
+
+    if (!skewed) return false;
+
+    // Step 2: 价格偏离检测
+    const gridRange = state.upperPrice - state.lowerPrice;
+    if (gridRange <= 0) return false;
+    const midPrice = (state.upperPrice + state.lowerPrice) / 2;
+    const priceDeviation = Math.abs(currentPrice - midPrice);
+
+    if (priceDeviation < gridRange * threshold) {
+      return false; // 价格还在中心附近，不触发
+    }
+
+    this.logger.warn(
+      `[网格] autoAdjust 触发: 倾斜 buy=${buyFilled} sell=${sellFilled}, ` +
+      `偏离=${(priceDeviation / gridRange * 100).toFixed(1)}% > ${(threshold * 100).toFixed(0)}%`,
+    );
+
+    // Step 3: 保存 filled 持仓（对齐 nofx L1423-1428）
+    const filledPositions: Array<{
+      side: 'buy' | 'sell';
+      positionEntry: number;
+      positionSize: number;
+      unrealizedPnl: number;
+    }> = [];
+    for (const line of state.gridLines) {
+      if (line.state === 'filled' && (line.positionSize ?? 0) > 0) {
+        filledPositions.push({
+          side: line.side as 'buy' | 'sell',
+          positionEntry: line.positionEntry,
+          positionSize: line.positionSize,
+          unrealizedPnl: line.unrealizedPnl ?? 0,
+        });
+      }
+    }
+
+    // Step 4: 取消所有挂单
+    try {
+      await adapter.cancelAllOrders(state.symbol);
+    } catch (e: any) {
+      this.logger.warn(`[网格] autoAdjust 取消挂单失败: ${e.message}`);
+    }
+
+    // Step 5: 重建网格（以当前价为中心）
+    await this.reinitializeGridLevels(state, currentPrice);
+
+    // Step 6: 恢复 filled 持仓 → 映射到最近的新层（对齐 nofx L1456-1479）
+    for (const fp of filledPositions) {
+      let closestIdx = -1;
+      let closestDist = Infinity;
+      for (let i = 0; i < state.gridLines.length; i++) {
+        // 只映射到 empty 层，避免覆盖已映射的层
+        if (state.gridLines[i].state !== 'empty') continue;
+        const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestIdx = i;
+        }
+      }
+      if (closestIdx >= 0) {
+        const newLine = state.gridLines[closestIdx];
+        newLine.state = 'filled';
+        newLine.side = fp.side;
+        newLine.positionEntry = fp.positionEntry;
+        newLine.positionSize = fp.positionSize;
+        newLine.unrealizedPnl = fp.unrealizedPnl;
+        this.logger.log(
+          `[网格] autoAdjust 持仓映射: L${closestIdx + 1} ← ${fp.side} entry=${fp.positionEntry.toFixed(2)} qty=${fp.positionSize.toFixed(4)}`,
+        );
+      } else {
+        // 所有层都已被占用（极端情况），记录警告
+        this.logger.warn(
+          `[网格] autoAdjust 持仓映射失败（无空层）: ${fp.side} entry=${fp.positionEntry.toFixed(2)} qty=${fp.positionSize.toFixed(4)}`,
+        );
+      }
+    }
+
+    // 清空 orderBook（旧挂单已取消）
+    state.orderBook = {};
+
+    this.logger.log(
+      `[网格] autoAdjust 完成: 新范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}, ` +
+      `映射 ${filledPositions.length} 个持仓`,
+    );
+
+    return true;
   }
 
   private async getCurrentPrice(symbol: string): Promise<number> {
