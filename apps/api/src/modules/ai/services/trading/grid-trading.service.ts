@@ -159,7 +159,11 @@ export interface GridState {
   userFixedLeverage: boolean; // true = 用户固定杠杆；false = AI 决策
   recommendedLeverage?: number; // min(leverage, regimeCap)，仅展示用（对齐 nofx）
 
-  livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
+  // 【关键字段】交易所真实持仓名义价值（qty × markPrice）
+  // 每轮 Step3 从 getPositions() 更新，close_long/close_short 执行后同轮同步扣减
+  // placeGridLimitOrder 的 cap check 必须用此值，禁止用内存 filled 层数估算
+  // 对齐 nofx checkTotalPositionLimit（L978-992）：每次下单前用交易所真实持仓
+  livePositionNotional: number;
 
   // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
   userLockedRange: boolean;
@@ -798,8 +802,14 @@ export class GridTradingService {
         // 有持久化但重启语义一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
         if (!state.userLockedRange) {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
-          this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
-          await this.reinitializeGridLevels(state, restartPrice);
+          this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算边界`);
+          if (state.upperBoundPct && state.lowerBoundPct) {
+            const explicitUpper = restartPrice * (1 + state.upperBoundPct / 100);
+            const explicitLower = restartPrice * (1 - state.lowerBoundPct / 100);
+            await this.reinitializeGridLevels(state, restartPrice, explicitUpper, explicitLower);
+          } else {
+            await this.reinitializeGridLevels(state, restartPrice);
+          }
           await this.persistGridState(strategyId, state);
           // reinitialize 清空了 orderBook，此时 exchange 上的旧价位挂单变成孤儿
           // 补充一次孤儿清理（不需要重跑完整 reconcile，只处理 orphan）
@@ -1489,7 +1499,7 @@ export class GridTradingService {
               state.totalTrades++;
               if (profit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
               if (profit > 0) {
-                this.settleGridFee(state, userId, profit, { side: closeSide, level: i + 1, source: 'stop_loss' }).catch((e: any) =>
+                this.settleGridFee(state, userId, profit, { side: closeSide, level: i + 1, source: 'stop_loss', orderId: stopLossResult.orderId }).catch((e: any) =>
                   this.logger.error(`[网格] 硬止损燃油费结算失败: ${e.message}`),
                 );
               }
@@ -2464,7 +2474,7 @@ export class GridTradingService {
           // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'long', level: targetLevel.index + 1, source: 'close_long' });
+          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'long', level: targetLevel.index + 1, source: 'close_long', orderId: closeLongResult.orderId });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -2530,7 +2540,7 @@ export class GridTradingService {
           // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'short', level: targetLevel.index + 1, source: 'close_short' });
+          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'short', level: targetLevel.index + 1, source: 'close_short', orderId: closeShortResult.orderId });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -2684,23 +2694,25 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：已持仓层按槽位预算计算（与 Step 2.8 保持一致）
-      // 原因：持仓来自旧配置时实际市值>每层预算，若用实际市值会削减本层 quantity 到极小值
-      // 极小 quantity → formatQuantity 取整后 notional < MIN_NOTIONAL → 伪造"资金不足"错误
+      // ====================================================================
+      // 总仓位上限检查（对齐 nofx checkTotalPositionLimit L968-1007）
+      // 【核心原则】持仓必须用交易所真实值，禁止用内存估算
+      //   持仓 = state.livePositionNotional（每轮 Step3 从 getPositions 更新）
+      //   挂单 = 内存 pending 层 qty × price（同轮已更新）
+      //   上限 = totalInvestment × leverage
+      // ====================================================================
       const totalPositionCap = state.totalInvestment * leverage;
-      const gridLayerCount = state.gridLines.length || 10;
-      const slotBudget = totalPositionCap / gridLayerCount; // 每层预算槽位
-      const filledSlotNotional = state.gridLines.filter(l => l.state === 'filled').length * slotBudget;
+      const livePosition = state.livePositionNotional ?? 0; // 交易所真实持仓，非内存估算
       const pendingNotionalStep1 = state.gridLines
         .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-        .reduce((sum, l) => sum + l.orderQuantity * price, 0);
-      const existingNotional = filledSlotNotional + pendingNotionalStep1;
+        .reduce((sum, l) => sum + l.orderQuantity * l.price, 0);
+      const existingNotional = livePosition + pendingNotionalStep1;
       if (existingNotional + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度
         const remaining = Math.max(0, totalPositionCap - existingNotional);
         quantity = Math.min(quantity, remaining / price);
         if (quantity <= 0) {
-          return { executed: false, skipReason: `总仓位已满: 已用 $${existingNotional.toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}` };
+          return { executed: false, skipReason: `总仓位已满: 交易所持仓$${livePosition.toFixed(2)} + 挂单$${pendingNotionalStep1.toFixed(2)} ≥ 上限$${totalPositionCap.toFixed(2)}` };
         }
       }
 
@@ -2827,31 +2839,29 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 2.8: 仓位总量检查（名义价值守卫）
-    //   持仓 = 交易所真实持仓（livePositionNotional，每轮从 GetPositions 更新，消除幽灵持仓影响）
-    //   挂单 = 内存 pending 层（同轮次前序成功下单已更新 state='pending'，可正确累计防止过度挂单）
+    // ====================================================================
+    // Step 2.8: 仓位总量检查（对齐 nofx checkTotalPositionLimit L968-1007）
+    // 【核心原则】持仓必须用交易所真实值（livePositionNotional），禁止用内存估算
+    //   nofx 每次下单前调 GetPositions() 获取真实持仓（L978-992）
+    //   HOOT 在 Step3 已预取并存入 state.livePositionNotional，此处直接使用
+    //   挂单 = 内存 pending 层 qty × price（同轮内已更新，可正确累计）
     //   上限 = totalInvestment × leverage
+    // 【禁止回退】不得改回 filledLayerCount × slotBudget 内存估算方式
+    // ====================================================================
     {
       const orderNominal = finalQty * price;
       const maxTotalNominal = state.totalInvestment * leverage;
-      // 持仓占用：按"层数 × 每层预算"计算，而非实际名义价值
-      // 原因：已持仓层可能来自旧配置（qty/价格不同），若用实际市值会挤占其他层的下单空间
-      // 正确逻辑：每个已持仓层只"占用"一个槽位预算，剩余 (gridCount-filledCount) 个槽位供挂单
-      // 用户说：正确应该是总上限减去持仓（按槽位计），剩余才是挂单可用空间
-      const filledLayerCount = state.gridLines.filter(l => l.state === 'filled').length;
-      const gridTotalLayers = state.gridLines.length || 10;
-      const perLayerBudget = maxTotalNominal / gridTotalLayers;
-      const positionNominal = filledLayerCount * perLayerBudget;
+      const livePosition = state.livePositionNotional ?? 0; // 交易所真实持仓名义价值
       let pendingNominal = 0;
       for (const l of state.gridLines) {
         if (l.state === 'pending' && l.orderQuantity > 0 && l.price > 0) {
           pendingNominal += l.orderQuantity * l.price;
         }
       }
-      const totalAfterOrder = positionNominal + pendingNominal + orderNominal;
+      const totalAfterOrder = livePosition + pendingNominal + orderNominal;
       if (totalAfterOrder > maxTotalNominal) {
         const skipReason =
-          `仓位总量超限: 持仓${filledLayerCount}层×$${perLayerBudget.toFixed(2)}=$${positionNominal.toFixed(2)} + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
+          `仓位总量超限: 交易所持仓$${livePosition.toFixed(2)} + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
           ` = $${totalAfterOrder.toFixed(2)} > 上限$${maxTotalNominal.toFixed(2)}`;
         this.logger.warn(`[网格] 跳过下单(仓位总量检查): ${skipReason}`);
         return { executed: false, skipReason };
@@ -3099,7 +3109,7 @@ export class GridTradingService {
             : await adapter.closeShort(pos.symbol, pos.quantity);
           // OKX 不返回 realizedPnl → fallback 到持仓浮动盈亏（近似值）
           const dirPnl = dirCloseResult.realizedPnl ?? pos.unrealizedPnl ?? 0;
-          await this.settleGridFee(state, userId, dirPnl, { side: sideToClose, source: 'breakout' });
+          await this.settleGridFee(state, userId, dirPnl, { side: sideToClose, source: 'breakout', orderId: dirCloseResult.orderId });
           await this.syncDbPositionClose(userId, pos.symbol, sideToClose, pos.quantity, 'directional_breakout',
             { avgPrice: dirCloseResult.avgPrice, realizedPnl: dirPnl });
           this.logger.warn(
@@ -3159,7 +3169,7 @@ export class GridTradingService {
           );
 
           // 单仓平仓后立即结算燃油费（亏损不扣，失败不阻塞）
-          await this.settleGridFee(state, userId, posRealizedPnl, { side: pos.side, source: 'emergency_exit' });
+          await this.settleGridFee(state, userId, posRealizedPnl, { side: pos.side, source: 'emergency_exit', orderId: closeResult.orderId });
           // 同步 DB 持仓记录（使用修正后的 PnL，OKX 不返回 realizedPnl 时用 unrealizedPnl 近似）
           await this.syncDbPositionClose(userId, pos.symbol, pos.side, pos.quantity, 'emergency_exit',
             { avgPrice: closeResult.avgPrice, realizedPnl: posRealizedPnl });
@@ -3254,12 +3264,13 @@ export class GridTradingService {
 
   /**
    * 结算网格策略的点卡燃油费
-   * - 基于本次平仓的实际盈亏（平仓后权益 - 平仓前权益）
+   * - PnL 来源：CCXT 交易所返回的实际成交数据（avgPrice × qty - 手续费）
+   * - 幂等保证：用交易所 orderId 生成确定性 uniqueOrderId，同一笔平仓绝不重复扣费
    * - 亏损不扣费，失败不影响平仓流程（非致命错误）
    */
   private async settleGridFee(
     state: GridState, userId: string, realizedPnl: number,
-    closeContext?: { side?: string; level?: number; source?: string },
+    closeContext?: { side?: string; level?: number; source?: string; orderId?: string },
   ): Promise<void> {
     if (!this.feeService) return;
     const actualPnl = realizedPnl;
@@ -3268,15 +3279,14 @@ export class GridTradingService {
     try {
       const feeCalc = await this.feeService.calculateFee(userId, actualPnl.toFixed(8));
       if (parseFloat(feeCalc.feeAmount) > 0) {
-        // 真幂等：确定性 ID，同一笔平仓无论调几次都生成相同 ID
-        // 格式: GRID_FEE_{userId}_{strategyId}_{side}_{level}_{source}_{tradeNo}
+        // 幂等 ID：优先使用交易所 orderId（全局唯一），fallback 到 strategyId+level+tradeNo
+        // 格式: GRID_FEE_{userId}_{strategyId}_{orderId 或 side_level_source_tradeNo}
         const ctx = closeContext;
         const idParts = [
           'GRID_FEE', userId, state.strategyId,
-          ctx?.side ?? 'unknown',
-          ctx?.level != null ? `L${ctx.level}` : 'Lx',
-          ctx?.source ?? 'unknown',
-          String(state.totalTrades ?? 0), // 单调递增的交易计数，确保每笔平仓唯一
+          ctx?.orderId
+            ? ctx.orderId  // 交易所 orderId：全局唯一，最可靠
+            : [ctx?.side ?? 'unknown', ctx?.level != null ? `L${ctx.level}` : 'Lx', ctx?.source ?? 'unknown', String(state.totalTrades ?? 0)].join('_'),
         ];
         const uniqueOrderId = idParts.join('_');
         // 构建备注：交易对 + 方向 + 层级 + 触发源，便于对账
@@ -3977,8 +3987,18 @@ export class GridTradingService {
       this.logger.warn(`[网格] autoAdjust 取消挂单失败: ${e.message}`);
     }
 
-    // Step 5: 重建网格（以当前价为中心）
-    await this.reinitializeGridLevels(state, currentPrice);
+    // Step 5: 重建网格（以当前价为中心，优先使用用户配置的百分比边界）
+    if (state.upperBoundPct && state.lowerBoundPct) {
+      const explicitUpper = currentPrice * (1 + state.upperBoundPct / 100);
+      const explicitLower = currentPrice * (1 - state.lowerBoundPct / 100);
+      this.logger.log(
+        `[网格] autoAdjust: 按用户百分比重建 +${state.upperBoundPct}%/-${state.lowerBoundPct}%` +
+        ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]`,
+      );
+      await this.reinitializeGridLevels(state, currentPrice, explicitUpper, explicitLower);
+    } else {
+      await this.reinitializeGridLevels(state, currentPrice);
+    }
 
     // Step 6: 恢复 filled 持仓 → 映射到最近的新层（对齐 nofx L1456-1479）
     for (const fp of filledPositions) {
