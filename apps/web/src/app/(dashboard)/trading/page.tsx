@@ -144,15 +144,15 @@ interface StrategyHealth {
   message: string;
 }
 
-// 盈亏统计类型
-interface PnlStats {
-  totalPnl: string;
-  todayPnl: string;
-  weekPnl: string;
-  monthPnl: string;
-  unrealizedPnl: string;
-  tradeCount: number;
-  winRate: string;
+// 交易所盈亏统计类型（从 /api-keys/:id/pnl-stats 获取）
+interface ExchangePnlStats {
+  todayPnl: number;
+  unrealizedPnl: number;
+  weekPnl: number;
+  monthPnl: number;
+  todayFundingFee: number;
+  todayCommission: number;
+  error?: string;
 }
 
 // 钱包余额类型
@@ -183,7 +183,7 @@ export default function TradingPage() {
     (_event: PositionUpdateEvent) => {
       queryClient.invalidateQueries({ queryKey: ['positions'] });
       queryClient.invalidateQueries({ queryKey: ['synced-positions'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats', selectedApiKeyId] });
     },
     [queryClient],
   );
@@ -199,7 +199,7 @@ export default function TradingPage() {
       queryClient.invalidateQueries({ queryKey: ['synced-positions'] });
       queryClient.invalidateQueries({ queryKey: ['trade-history'] });
       queryClient.invalidateQueries({ queryKey: ['execution-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats', selectedApiKeyId] });
     },
     [queryClient],
   );
@@ -284,15 +284,18 @@ export default function TradingPage() {
     refetchInterval: 60000, // 每分钟刷新
   });
 
-  // 获取盈亏统计
+  // 获取盈亏统计（从交易所真实数据查询，按选中的 API Key）
   const { data: pnlStats } = useQuery({
-    queryKey: ['pnl-stats'],
+    queryKey: ['pnl-stats', selectedApiKeyId],
     queryFn: async () => {
-      const response = await api.get<PnlStats>('/trading/positions/pnl-stats');
+      if (!selectedApiKeyId) return null;
+      const response = await api.get<ExchangePnlStats>(`/api-keys/${selectedApiKeyId}/pnl-stats`);
       return response.data;
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!selectedApiKeyId,
     retry: false,
+    staleTime: 30 * 1000, // 30秒缓存
+    refetchInterval: 60000, // 每分钟刷新
   });
 
   // 获取钱包余额
@@ -410,7 +413,7 @@ export default function TradingPage() {
     onSuccess: () => {
       toast.success('平仓成功');
       queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats', selectedApiKeyId] });
       queryClient.invalidateQueries({ queryKey: ['trade-history'] });
     },
     onError: (error: unknown) => {
@@ -428,7 +431,7 @@ export default function TradingPage() {
     onSuccess: (data) => {
       toast.success(`紧急清仓完成: 成功 ${data.closed} 笔, 失败 ${data.failed} 笔`);
       queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['pnl-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-stats', selectedApiKeyId] });
       queryClient.invalidateQueries({ queryKey: ['trade-history'] });
     },
     onError: (error: unknown) => {
@@ -746,9 +749,10 @@ export default function TradingPage() {
       default: return selectedAccount.freeBalance;
     }
   })();
-  const totalPnl = parseFloat(pnlStats?.totalPnl || '0');
-  const todayPnl = parseFloat(pnlStats?.todayPnl || '0');
-  const unrealizedPnl = parseFloat(pnlStats?.unrealizedPnl || '0');
+  // 交易所真实盈亏数据（number 类型，直接使用）
+  const totalPnl = pnlStats?.monthPnl ?? 0; // 总盈亏 = 近30天累计
+  const todayPnl = pnlStats?.todayPnl ?? 0;
+  const unrealizedPnl = pnlStats?.unrealizedPnl ?? 0;
 
   return (
     <>

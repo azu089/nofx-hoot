@@ -78,6 +78,12 @@ export class ApiKeysController {
     return this.apiKeysService.verifyApiKey(user.id, id);
   }
 
+  // 获取交易所真实盈亏统计（今日/周/月盈亏、未实现盈亏）
+  @Get(':id/pnl-stats')
+  async getPnlStats(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+    return this.apiKeysService.getExchangePnlStats(user.id, id);
+  }
+
   // 删除 API Key
   @Delete(':id')
   async delete(@CurrentUser() user: { id: string }, @Param('id') id: string) {

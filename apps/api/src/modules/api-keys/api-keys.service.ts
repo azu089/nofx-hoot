@@ -996,4 +996,221 @@ export class ApiKeysService {
     this.logger.debug('合约权限检测: 所有方法失败，无法确认权限');
     return false;
   }
+
+  /**
+   * 从交易所获取真实盈亏统计（整个账户级别）
+   * - todayPnl: 今日已实现盈亏（合约 income endpoint）
+   * - unrealizedPnl: 当前未实现盈亏（合约 account）
+   * - totalPnl: 近30天累计已实现盈亏
+   */
+  async getExchangePnlStats(
+    userId: string,
+    apiKeyId: string,
+  ): Promise<{
+    todayPnl: number;
+    unrealizedPnl: number;
+    weekPnl: number;
+    monthPnl: number;
+    todayFundingFee: number;
+    todayCommission: number;
+    error?: string;
+  }> {
+    try {
+      const { apiKey, apiSecret, exchange, passphrase } = await this.getDecryptedApiKey(
+        userId,
+        apiKeyId,
+      );
+
+      const exchangeLower = exchange.toLowerCase();
+
+      // 当前仅支持 Binance/OKX 合约盈亏查询
+      const supportedExchanges = ['binance', 'okx', 'bybit'];
+      if (!supportedExchanges.includes(exchangeLower)) {
+        return {
+          todayPnl: 0,
+          unrealizedPnl: 0,
+          weekPnl: 0,
+          monthPnl: 0,
+          todayFundingFee: 0,
+          todayCommission: 0,
+          error: `${exchange} 暂不支持盈亏查询`,
+        };
+      }
+
+      // 创建合约交易所实例
+      const futuresClass = exchangeLower === 'binance' ? 'binanceusdm' : exchangeLower;
+      const ExchangeClass = ccxt[futuresClass as keyof typeof ccxt] as any;
+      const futuresEx: ccxt.Exchange = new ExchangeClass({
+        apiKey,
+        secret: apiSecret,
+        ...(passphrase ? { password: passphrase } : {}),
+        options: { defaultType: 'future' },
+      });
+
+      // 尝试加载市场（容忍失败）
+      try {
+        await futuresEx.loadMarkets();
+      } catch {
+        this.logger.debug('[pnl-stats] loadMarkets 失败，继续尝试');
+      }
+
+      // 时间范围
+      const now = Date.now();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayStartTs = todayStart.getTime();
+      const weekStartTs = todayStartTs - 7 * 24 * 60 * 60 * 1000;
+      const monthStartTs = todayStartTs - 30 * 24 * 60 * 60 * 1000;
+
+      // 并行查询：income（30天）+ account（未实现盈亏）
+      const [incomeResult, accountResult] = await Promise.allSettled([
+        this.fetchFuturesIncome(futuresEx, exchangeLower, monthStartTs, now),
+        this.fetchFuturesUnrealizedPnl(futuresEx, exchangeLower),
+      ]);
+
+      // 解析 income 数据
+      let todayPnl = 0;
+      let weekPnl = 0;
+      let monthPnl = 0;
+      let todayFundingFee = 0;
+      let todayCommission = 0;
+
+      if (incomeResult.status === 'fulfilled') {
+        const incomes = incomeResult.value;
+        for (const item of incomes) {
+          const amount = parseFloat(item.income || item.amount || '0');
+          const ts = item.time || item.timestamp || 0;
+          const type = (item.incomeType || item.type || '').toUpperCase();
+
+          if (ts >= monthStartTs) monthPnl += amount;
+          if (ts >= weekStartTs) weekPnl += amount;
+          if (ts >= todayStartTs) {
+            todayPnl += amount;
+            if (type === 'FUNDING_FEE') todayFundingFee += amount;
+            if (type === 'COMMISSION' || type === 'FEE') todayCommission += amount;
+          }
+        }
+      } else {
+        this.logger.warn(`[pnl-stats] 获取 income 失败: ${(incomeResult as PromiseRejectedResult).reason?.message}`);
+      }
+
+      // 解析未实现盈亏
+      let unrealizedPnl = 0;
+      if (accountResult.status === 'fulfilled') {
+        unrealizedPnl = accountResult.value;
+      } else {
+        this.logger.warn(`[pnl-stats] 获取未实现盈亏失败: ${(accountResult as PromiseRejectedResult).reason?.message}`);
+      }
+
+      return {
+        todayPnl: parseFloat(todayPnl.toFixed(4)),
+        unrealizedPnl: parseFloat(unrealizedPnl.toFixed(4)),
+        weekPnl: parseFloat(weekPnl.toFixed(4)),
+        monthPnl: parseFloat(monthPnl.toFixed(4)),
+        todayFundingFee: parseFloat(todayFundingFee.toFixed(4)),
+        todayCommission: parseFloat(todayCommission.toFixed(4)),
+      };
+    } catch (error: any) {
+      this.logger.error(`[pnl-stats] 交易所盈亏查询失败: ${error.message}`);
+      return {
+        todayPnl: 0,
+        unrealizedPnl: 0,
+        weekPnl: 0,
+        monthPnl: 0,
+        todayFundingFee: 0,
+        todayCommission: 0,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 获取合约 income 记录（REALIZED_PNL + FUNDING_FEE + COMMISSION）
+   * Binance: fapiPrivateGetIncome
+   * OKX/Bybit: fetchLedger 或类似端点
+   */
+  private async fetchFuturesIncome(
+    ex: ccxt.Exchange,
+    exchangeLower: string,
+    startTime: number,
+    endTime: number,
+  ): Promise<any[]> {
+    if (exchangeLower === 'binance') {
+      // Binance USDM: /fapi/v1/income — 每次最多1000条，需分页
+      const allIncomes: any[] = [];
+      let currentStart = startTime;
+
+      while (true) {
+        const result = await (ex as any).fapiPrivateGetIncome({
+          startTime: currentStart,
+          endTime,
+          limit: 1000,
+        });
+        if (!result || result.length === 0) break;
+        allIncomes.push(...result);
+        if (result.length < 1000) break;
+        // 下一页从最后一条之后开始
+        currentStart = parseInt(result[result.length - 1].time) + 1;
+      }
+      return allIncomes;
+    }
+
+    if (exchangeLower === 'okx') {
+      // OKX: 用 fetchLedger 获取
+      try {
+        const entries = await ex.fetchLedger(undefined, startTime, 100, {
+          instType: 'SWAP',
+        });
+        return entries.map((e: any) => ({
+          income: String(e.amount || 0),
+          time: e.timestamp,
+          incomeType: e.type?.toUpperCase() || 'UNKNOWN',
+        }));
+      } catch {
+        return [];
+      }
+    }
+
+    if (exchangeLower === 'bybit') {
+      // Bybit: 用 fetchLedger
+      try {
+        const entries = await ex.fetchLedger(undefined, startTime, 100);
+        return entries.map((e: any) => ({
+          income: String(e.amount || 0),
+          time: e.timestamp,
+          incomeType: e.type?.toUpperCase() || 'UNKNOWN',
+        }));
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * 获取合约未实现盈亏
+   */
+  private async fetchFuturesUnrealizedPnl(
+    ex: ccxt.Exchange,
+    exchangeLower: string,
+  ): Promise<number> {
+    if (exchangeLower === 'binance') {
+      // Binance: fapiPrivateV2GetAccount → totalUnrealizedProfit
+      const account = await (ex as any).fapiPrivateV2GetAccount();
+      return parseFloat(account.totalUnrealizedProfit || '0');
+    }
+
+    // 通用：fetchPositions 后累加 unrealizedPnl
+    try {
+      const positions = await ex.fetchPositions();
+      let total = 0;
+      for (const pos of positions) {
+        total += parseFloat(String(pos.unrealizedPnl || 0));
+      }
+      return total;
+    } catch {
+      return 0;
+    }
+  }
 }
