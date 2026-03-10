@@ -2042,8 +2042,18 @@ export class GridTradingService {
       const positions = preloaded?.positions ?? await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
-      const longPos = symPositions.find((p: any) => p.side === 'long');
-      const shortPos = symPositions.find((p: any) => p.side === 'short');
+      // OKX net 模式 side='net'：通过 unrealizedPnl 或 quantity 符号判断多空
+      let longPos = symPositions.find((p: any) => p.side === 'long');
+      let shortPos = symPositions.find((p: any) => p.side === 'short');
+      // net 模式兼容：side='net' 时根据净持仓方向映射
+      if (!longPos && !shortPos) {
+        const netPos = symPositions.find((p: any) => p.side === 'net' || !p.side);
+        if (netPos && netPos.quantity > 0) {
+          longPos = netPos; // net 正数 = 多头
+        } else if (netPos && netPos.quantity < 0) {
+          shortPos = { ...netPos, quantity: Math.abs(netPos.quantity) }; // net 负数 = 空头
+        }
+      }
 
       // 净持仓
       currentPosition = (longPos?.quantity ?? 0) - (shortPos?.quantity ?? 0);
@@ -3427,12 +3437,19 @@ export class GridTradingService {
 
       // Step 6: 持仓状态同步 — exchange 净持仓=0 但内存有 filled 层时同步为 empty（幽灵层清理）
       const syncBaseSymbol = state.symbol.split('/')[0];
-      const exchangeLongQty = syncPositions
-        .filter((p: any) => p.symbol?.includes(syncBaseSymbol) && p.side === 'long')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
-      const exchangeShortQty = syncPositions
-        .filter((p: any) => p.symbol?.includes(syncBaseSymbol) && p.side === 'short')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
+      const symPositionsSync = syncPositions.filter((p: any) => p.symbol?.includes(syncBaseSymbol));
+      // OKX net 模式 side='net'：qty>0 视为多头，qty 本身就是绝对值所以 net 直接看净持仓符号
+      let exchangeLongQty = 0;
+      let exchangeShortQty = 0;
+      for (const p of symPositionsSync) {
+        const side = (p as any).side;
+        const qty = Math.abs((p as any).quantity ?? 0);
+        if (side === 'long' || ((side === 'net' || !side) && currentPositionSize > 0)) {
+          exchangeLongQty += qty;
+        } else if (side === 'short' || ((side === 'net' || !side) && currentPositionSize < 0)) {
+          exchangeShortQty += qty;
+        }
+      }
 
       if (exchangeLongQty < 0.0001) {
         const ghostBuy = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
@@ -3450,6 +3467,38 @@ export class GridTradingService {
         }
         if (ghostSell.length > 0) {
           this.logger.warn(`[网格] syncOrderFills Step6: exchange空头=0，清理 ${ghostSell.length} 个幽灵sell层→empty`);
+        }
+      }
+
+      // Step 7: 持仓量校准 — 确保内存 filled 总量与交易所真实持仓一致
+      // 根因：OKX net 模式下，卖单先平多头再开空头，实际开空数量 < 卖出数量
+      // syncOrderFills 按挂单面值标记 positionSize，导致内存虚高
+      {
+        const memoryLongQty = state.gridLines
+          .filter(l => l.state === 'filled' && l.side === 'buy')
+          .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+        const memoryShortQty = state.gridLines
+          .filter(l => l.state === 'filled' && l.side === 'sell')
+          .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+
+        // 多头校准：内存 > 交易所 → 按比例缩减
+        if (exchangeLongQty > 0.0001 && memoryLongQty > exchangeLongQty + 0.001) {
+          const ratio = exchangeLongQty / memoryLongQty;
+          const buyFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy');
+          for (const line of buyFilled) {
+            line.positionSize = (line.positionSize ?? 0) * ratio;
+          }
+          this.logger.warn(`[网格] Step7持仓校准: 多头 内存${memoryLongQty.toFixed(4)} → 交易所${exchangeLongQty.toFixed(4)}, 缩减比=${ratio.toFixed(4)}`);
+        }
+
+        // 空头校准：内存 > 交易所 → 按比例缩减
+        if (exchangeShortQty > 0.0001 && memoryShortQty > exchangeShortQty + 0.001) {
+          const ratio = exchangeShortQty / memoryShortQty;
+          const sellFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell');
+          for (const line of sellFilled) {
+            line.positionSize = (line.positionSize ?? 0) * ratio;
+          }
+          this.logger.warn(`[网格] Step7持仓校准: 空头 内存${memoryShortQty.toFixed(4)} → 交易所${exchangeShortQty.toFixed(4)}, 缩减比=${ratio.toFixed(4)}`);
         }
       }
 
