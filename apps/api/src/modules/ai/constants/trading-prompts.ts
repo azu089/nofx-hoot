@@ -704,6 +704,13 @@ export function GRID_SYSTEM_PROMPT(
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
+## 亏损持仓风控（重要）
+当存在亏损持仓时，优先考虑以下策略：
+1. **避免加重风险敞口**：如空头亏损中价格仍在上涨，继续挂卖单会放大单边亏损；多头亏损中价格仍在下跌同理
+2. **逐步消除亏损**：可通过 close_long/close_short 逐步减仓，或挂反向限价单在有利价位对冲
+3. **重建网格（adjust_grid）**：以当前价为中心重建网格，现有持仓自动归入新网格的 filled 层，后续正常网格交易可逐步抵消亏损，恢复盈利循环
+4. **核心原则**：先控制亏损、再恢复正常运行。不要在亏损扩大时继续同方向开仓
+
 ## 可用操作
 - **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
 - **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
@@ -713,7 +720,7 @@ export function GRID_SYSTEM_PROMPT(
 - **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
 
 ⚠️ 暂停期间 AI 仍每轮运行，拥有所有操作权限（place_*/close_*/adjust_grid/resume_grid/hold）。请根据市场数据自行分析决策。
-- **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
+- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界，现有持仓自动归入新网格 filled 层，正常交易逐步抵消亏损）
 - **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
 - **close_short**: 市价平空仓（fields: level, quantity）
 - **hold**: 保持现状
