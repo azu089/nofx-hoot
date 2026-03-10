@@ -1484,18 +1484,24 @@ export class GridTradingService {
               const stopLossResult = closeSide === 'long'
                 ? await (adapter as GridExchangeAdapter).closeLong(state.symbol, closeQty)
                 : await (adapter as GridExchangeAdapter).closeShort(state.symbol, closeQty);
-              const feeRate = new Decimal(state.takerFeeRate);
-              const _entryD = new Decimal(line.positionEntry || 0);
-              const _priceD = new Decimal(stopLossResult.avgPrice ?? currentPrice);
-              const _qtyD = new Decimal(closeQty);
-              const profitD = closeSide === 'long'
-                ? _priceD.minus(_entryD).times(_qtyD)
-                    .minus(_priceD.times(_qtyD).times(feeRate))
-                    .minus(_entryD.times(_qtyD).times(feeRate))
-                : _entryD.minus(_priceD).times(_qtyD)
-                    .minus(_priceD.times(_qtyD).times(feeRate))
-                    .minus(_entryD.times(_qtyD).times(feeRate));
-              const profit = profitD.toNumber();
+              // PnL 优先用 CCXT 返回的交易所真实 realizedPnl
+              let profit: number;
+              if (stopLossResult.realizedPnl != null && stopLossResult.realizedPnl !== 0) {
+                profit = stopLossResult.realizedPnl;
+              } else {
+                const feeRate = new Decimal(state.takerFeeRate);
+                const _entryD = new Decimal(line.positionEntry || 0);
+                const _priceD = new Decimal(stopLossResult.avgPrice ?? currentPrice);
+                const _qtyD = new Decimal(closeQty);
+                const profitD = closeSide === 'long'
+                  ? _priceD.minus(_entryD).times(_qtyD)
+                      .minus(_priceD.times(_qtyD).times(feeRate))
+                      .minus(_entryD.times(_qtyD).times(feeRate))
+                  : _entryD.minus(_priceD).times(_qtyD)
+                      .minus(_priceD.times(_qtyD).times(feeRate))
+                      .minus(_entryD.times(_qtyD).times(feeRate));
+                profit = profitD.toNumber();
+              }
               state.totalTrades++;
               if (profit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
               if (profit > 0) {
@@ -1504,7 +1510,7 @@ export class GridTradingService {
                 );
               }
               this.logger.warn(
-                `[网格] 硬止损平仓: 层${i + 1} ${closeSide} qty=${closeQty} profit=${profit >= 0 ? '+' : ''}${profitD.toFixed(8)}`,
+                `[网格] 硬止损平仓: 层${i + 1} ${closeSide} qty=${closeQty} profit=${profit >= 0 ? '+' : ''}${profit.toFixed(8)}`,
               );
               line.state = 'stopped';
               line.positionSize = 0;
@@ -2462,18 +2468,22 @@ export class GridTradingService {
         if (!decision.price) decision.price = closeLongPrice;
         const closeLongResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         if (targetLevel && targetLevel.positionSize > 0) {
-          // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
-          const _cp = new Decimal(closeLongResult.avgPrice ?? currentPrice ?? state.lastPrice);
-          const _ep = new Decimal(targetLevel.positionEntry);
-          const _sz = new Decimal(targetLevel.positionSize);
-          const _fr = new Decimal(state.takerFeeRate);
-          const netProfitD = _cp.minus(_ep).times(_sz)
-            .minus(_cp.times(_sz).times(_fr))
-            .minus(_ep.times(_sz).times(_fr));
-          const netProfit = netProfitD.toNumber();
-          // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
+          // PnL 优先用 CCXT 返回的交易所真实 realizedPnl，fallback 到自算值
+          let netProfit: number;
+          if (closeLongResult.realizedPnl != null && closeLongResult.realizedPnl !== 0) {
+            netProfit = closeLongResult.realizedPnl;
+          } else {
+            const _cp = new Decimal(closeLongResult.avgPrice ?? currentPrice ?? state.lastPrice);
+            const _ep = new Decimal(targetLevel.positionEntry);
+            const _sz = new Decimal(targetLevel.positionSize);
+            const _fr = new Decimal(state.takerFeeRate);
+            netProfit = _cp.minus(_ep).times(_sz)
+              .minus(_cp.times(_sz).times(_fr))
+              .minus(_ep.times(_sz).times(_fr)).toNumber();
+          }
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
+          // 扣费：CCXT 平仓 → 识别策略(strategyId) + 层级(level) → 盈利就扣
           if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'long', level: targetLevel.index + 1, source: 'close_long', orderId: closeLongResult.orderId });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
@@ -2484,7 +2494,7 @@ export class GridTradingService {
           // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
           const closedValue = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
-          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`);
+          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(8)} USDT`);
           // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
           const orphanSell = state.gridLines.find(
             (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
@@ -2528,18 +2538,22 @@ export class GridTradingService {
         const closedValueShort = qty * (currentPrice ?? state.lastPrice);
         state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
         if (targetLevel && targetLevel.positionSize > 0) {
-          // 使用交易所实际成交价（非决策时市场价），确保 PnL 和扣费精确
-          const _cp2 = new Decimal(closeShortResult.avgPrice ?? currentPrice ?? state.lastPrice);
-          const _ep2 = new Decimal(targetLevel.positionEntry);
-          const _sz2 = new Decimal(targetLevel.positionSize);
-          const _fr2 = new Decimal(state.takerFeeRate);
-          const netProfitD2 = _ep2.minus(_cp2).times(_sz2)
-            .minus(_cp2.times(_sz2).times(_fr2))
-            .minus(_ep2.times(_sz2).times(_fr2));
-          const netProfit = netProfitD2.toNumber();
-          // totalProfit / dailyTotalProfit 由权益差法统一计算，不再逐笔累加
+          // PnL 优先用 CCXT 返回的交易所真实 realizedPnl，fallback 到自算值
+          let netProfit: number;
+          if (closeShortResult.realizedPnl != null && closeShortResult.realizedPnl !== 0) {
+            netProfit = closeShortResult.realizedPnl;
+          } else {
+            const _cp2 = new Decimal(closeShortResult.avgPrice ?? currentPrice ?? state.lastPrice);
+            const _ep2 = new Decimal(targetLevel.positionEntry);
+            const _sz2 = new Decimal(targetLevel.positionSize);
+            const _fr2 = new Decimal(state.takerFeeRate);
+            netProfit = _ep2.minus(_cp2).times(_sz2)
+              .minus(_cp2.times(_sz2).times(_fr2))
+              .minus(_ep2.times(_sz2).times(_fr2)).toNumber();
+          }
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
+          // 扣费：CCXT 平仓 → 识别策略(strategyId) + 层级(level) → 盈利就扣
           if (netProfit > 0) await this.settleGridFee(state, userId, netProfit, { side: 'short', level: targetLevel.index + 1, source: 'close_short', orderId: closeShortResult.orderId });
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
@@ -2547,7 +2561,7 @@ export class GridTradingService {
           targetLevel.positionEntry = 0;
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
-          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT`);
+          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(8)} USDT`);
           // 同步 DB 持仓记录（使用自算 netProfit，OKX 不返回 realizedPnl）
           await this.syncDbPositionClose(userId, state.symbol, 'short', qty, 'ai_close_short',
             { avgPrice: closeShortResult.avgPrice, realizedPnl: netProfit });
