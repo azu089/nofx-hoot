@@ -318,24 +318,36 @@ export function AIStrategyDetailPage() {
       setEditGridEnableDirectionAdjust(gc.enableDirectionAdjust ?? false);
       setEditGridDirectionBiasRatio(gc.directionBiasRatio != null ? Math.round(gc.directionBiasRatio * 100) : 70);
       setEditGridInterval(strategy?.intervalMinutes || 60);
-      // 优先用用户手动配置的边界（gc.upperBound/lowerBound），不读 AI 运行时范围
-      // 避免：用户设 0（公式自动）→ 跑完写入 gridState → 重新打开显示 10%
-      if (gc.upperBound && gc.lowerBound) {
+      // 上下界百分比加载策略：
+      // boundsFromPct=true  → 用户明确设了%，使用存储的 upperBoundPct
+      // boundsFromPct=false → 用户明确清空为公式模式，显示 0/空（不反算旧绝对值）
+      // boundsFromPct=null  → 旧策略无此字段，从绝对价格反算（向后兼容）
+      if (gc.boundsFromPct === true && gc.upperBoundPct != null && gc.upperBoundPct > 0) {
+        setEditGridUpperPct(gc.upperBoundPct);
+        setEditGridLowerPct(gc.lowerBoundPct ?? 0);
+        setEditGridUpperPctStr(String(gc.upperBoundPct));
+        setEditGridLowerPctStr(gc.lowerBoundPct ? String(gc.lowerBoundPct) : '');
+        if (gc.upperBound && gc.lowerBound) {
+          setEditGridCurrentPrice((Number(gc.upperBound) + Number(gc.lowerBound)) / 2);
+        }
+      } else if (gc.boundsFromPct === false) {
+        // 用户明确设为 0 → 公式自动计算，不反算旧值
+        setEditGridUpperPct(0);
+        setEditGridLowerPct(0);
+        setEditGridUpperPctStr('');
+        setEditGridLowerPctStr('');
+      } else if (gc.upperBound && gc.lowerBound) {
+        // 旧策略无 boundsFromPct 标记 → 从绝对价格反算（向后兼容）
         const midPrice = (Number(gc.upperBound) + Number(gc.lowerBound)) / 2;
-        // 优先用原始百分比（保留小数，如 0.5），没有时从绝对价格反算（保留 2 位小数，不 round）
-        const uPct = (gc.upperBoundPct != null && gc.upperBoundPct > 0)
-          ? gc.upperBoundPct
-          : parseFloat(((Number(gc.upperBound) / midPrice - 1) * 100).toFixed(2));
-        const lPct = (gc.lowerBoundPct != null && gc.lowerBoundPct > 0)
-          ? gc.lowerBoundPct
-          : parseFloat(((1 - Number(gc.lowerBound) / midPrice) * 100).toFixed(2));
+        const uPct = parseFloat(((Number(gc.upperBound) / midPrice - 1) * 100).toFixed(2));
+        const lPct = parseFloat(((1 - Number(gc.lowerBound) / midPrice) * 100).toFixed(2));
         setEditGridUpperPct(uPct);
         setEditGridLowerPct(lPct);
-        setEditGridUpperPctStr(uPct > 0 ? String(uPct) : '');
-        setEditGridLowerPctStr(lPct > 0 ? String(lPct) : '');
+        setEditGridUpperPctStr(String(uPct));
+        setEditGridLowerPctStr(String(lPct));
         setEditGridCurrentPrice(midPrice);
       } else {
-        // 用户未配置上下界 → 公式自动计算，显示 0
+        // 无任何边界信息 → 公式模式
         setEditGridUpperPct(0);
         setEditGridLowerPct(0);
         setEditGridUpperPctStr('');
@@ -433,16 +445,16 @@ export function AIStrategyDetailPage() {
           autoPauseOnTrend: editGridAutoPauseOnTrend,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
-          // 百分比 → 绝对价格；price=0 时保留 spread 进来的旧值（不覆盖为 undefined）
-          ...(editGridCurrentPrice > 0 && editGridUpperPct > 0 ? {
-            upperBound: +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6),
-            lowerBound: +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6),
-          } : {}),
+          // 百分比 → 绝对价格；pct=0 时明确发 null 清空（避免 Prisma 跳过更新保留旧值）
+          upperBound: (editGridCurrentPrice > 0 && editGridUpperPct > 0)
+            ? +(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(6) : null,
+          lowerBound: (editGridCurrentPrice > 0 && editGridLowerPct > 0)
+            ? +(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(6) : null,
           // 保存原始百分比，避免下次加载时从绝对价格反算丢失精度（如 0.6 被四舍五入成 1）
-          upperBoundPct: editGridUpperPct > 0 ? editGridUpperPct : undefined,
-          lowerBoundPct: editGridLowerPct > 0 ? editGridLowerPct : undefined,
-          // 标记上下界来源于百分比换算，不应视为用户手动锁定（AI 仍可调整）
-          boundsFromPct: (editGridCurrentPrice > 0 && editGridUpperPct > 0 && editGridLowerPct > 0),
+          upperBoundPct: editGridUpperPct > 0 ? editGridUpperPct : null,
+          lowerBoundPct: editGridLowerPct > 0 ? editGridLowerPct : null,
+          // 标记上下界来源：true=用户设了%; false=用户明确清空(公式模式); null=旧策略
+          boundsFromPct: editGridUpperPct > 0 && editGridLowerPct > 0,
         },
         models: [editGridModel],
         intervalMinutes: editGridInterval,
@@ -1024,7 +1036,7 @@ export function AIStrategyDetailPage() {
                         return <>
                         <ConfigRow label={t('detail.configTradingPair')} value={gc.symbol || '—'} />
                         <ConfigRow label={t('detail.configInvestment')} value={`$${gc.totalInvestment?.toLocaleString() || '—'}`} />
-                        <ConfigRow label={t('detail.configLeverage')} value={gc.leverage ? `${gc.leverage}x` : 'AI 自动决策'} />
+                        <ConfigRow label={t('detail.configLeverage')} value={gc.leverage ? `${gc.leverage}x` : t('detail.leverageAuto')} />
                         <ConfigRow label={t('detail.configGridCount')} value={gc.gridCount || '—'} />
                         <ConfigRow label={t('detail.configPriceBounds')} value={(() => {
                           const lo = detail?.gridState?.lowerPrice ? Number(detail.gridState.lowerPrice) : null;
@@ -1036,11 +1048,11 @@ export function AIStrategyDetailPage() {
                           if (!gc.useAtrBounds && gc.lowerBound && gc.upperBound) {
                             return `$${gc.lowerBound} ~ $${gc.upperBound}`;
                           }
-                          return t('detail.autoRange') || '自动（等待初始化）';
+                          return t('detail.autoRange');
                         })()} />
                         <ConfigRow label={t('detail.configMaxDrawdown')} value={`${gc.maxDrawdownPct || 15}%`} />
                         <ConfigRow label={t('detail.configStopLoss')} value={`${gc.stopLossPct || 5}%`} />
-                        <ConfigRow label={t('detail.configDailyLossLimit')} value={gc.dailyLossLimitPct ? `${gc.dailyLossLimitPct}%` : '不限'} />
+                        <ConfigRow label={t('detail.configDailyLossLimit')} value={gc.dailyLossLimitPct ? `${gc.dailyLossLimitPct}%` : t('detail.unlimited')} />
                         {detail.gridState && (
                           <div className="mt-3 pt-1 border-t border-[#1E1E2E]">
                             <p className="text-sm text-[#10B981] font-medium py-2">{t('detail.gridStatus')}</p>
@@ -1052,7 +1064,7 @@ export function AIStrategyDetailPage() {
                             )}
                             <ConfigRow label={t('detail.gridInitialized')} value={detail.gridState.isInitialized ? t('common.yes') : t('common.no')} />
                             {detail.gridState.isPaused && (
-                              <ConfigRow label="暂停原因" value={detail.gridState.pauseReason || `已暂停 [${detail.gridState.pauseSource ?? '未知'}]`} />
+                              <ConfigRow label={t('detail.pauseReason')} value={detail.gridState.pauseReason || t('detail.pausedWithSource', { source: detail.gridState.pauseSource ?? t('detail.pauseSourceUnknown') })} />
                             )}
                           </div>
                         )}
@@ -1188,16 +1200,16 @@ export function AIStrategyDetailPage() {
                       {!!(strategy.stopConditions?.maxCycles || strategy.stopConditions?.profitTargetPercent || strategy.stopConditions?.maxLossPercent) && (
                         <>
                           <div className="pt-1 border-t border-[#1E1E2E]">
-                            <p className="text-xs text-[#606070] font-medium">止停条件</p>
+                            <p className="text-xs text-[#606070] font-medium">{t('detail.readStopConditions')}</p>
                           </div>
                           {!!strategy.stopConditions?.maxCycles && (
-                            <ConfigRow label="最大周期" value={`${strategy.stopConditions.maxCycles} 次`} />
+                            <ConfigRow label={t('detail.readMaxCycles')} value={`${strategy.stopConditions.maxCycles} ${t('detail.timesUnit')}`} />
                           )}
                           {!!strategy.stopConditions?.profitTargetPercent && (
-                            <ConfigRow label="盈利目标" value={`${strategy.stopConditions.profitTargetPercent}%`} />
+                            <ConfigRow label={t('detail.readProfitTarget')} value={`${strategy.stopConditions.profitTargetPercent}%`} />
                           )}
                           {!!strategy.stopConditions?.maxLossPercent && (
-                            <ConfigRow label="最大止损" value={`${strategy.stopConditions.maxLossPercent}%`} />
+                            <ConfigRow label={t('detail.readMaxLoss')} value={`${strategy.stopConditions.maxLossPercent}%`} />
                           )}
                         </>
                       )}
@@ -1291,7 +1303,7 @@ export function AIStrategyDetailPage() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="block text-xs text-[#9090A0]">{t('detail.symbol')}</label>
-                          <span className="text-[10px] text-[#606070]">⚠ 网格仅支持单一交易对</span>
+                          <span className="text-[10px] text-[#606070]">⚠ {t('detail.gridOnlySinglePair')}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl min-h-[40px]">
                           <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#06B6D4]/20 text-[#06B6D4] rounded text-xs font-medium">
@@ -1303,7 +1315,7 @@ export function AIStrategyDetailPage() {
                               type="text"
                               value={editGridCoinSearch}
                               onChange={(e) => setEditGridCoinSearch(e.target.value)}
-                              placeholder="搜索更多..."
+                              placeholder={t('detail.searchMore')}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
                             />
                           </div>
@@ -1333,7 +1345,7 @@ export function AIStrategyDetailPage() {
                               type="number" min={1} max={20}
                               value={editGridLeverage || ''}
                               onChange={(e) => setEditGridLeverage(e.target.value === '' ? 0 : parseInt(e.target.value))}
-                              placeholder="AI决策"
+                              placeholder={t('detail.leveragePlaceholder')}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                               aria-label={t('detail.editGridLeverage')}
                             />
@@ -1350,7 +1362,7 @@ export function AIStrategyDetailPage() {
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                               aria-label={t('detail.editGridCount')}
                             />
-                            <span className="text-[#606070] text-xs shrink-0">格</span>
+                            <span className="text-[#606070] text-xs shrink-0">{t('detail.gridUnit')}</span>
                           </div>
                         </div>
                       </div>
@@ -1359,7 +1371,7 @@ export function AIStrategyDetailPage() {
                       {/* 上偏移 + 下偏移 — 百分比输入 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <p className="text-xs text-[#9090A0]">上偏移</p>
+                          <p className="text-xs text-[#9090A0]">{t('detail.upperOffset')}</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input
                               type="text"
@@ -1371,15 +1383,15 @@ export function AIStrategyDetailPage() {
                                 const val = parseFloat(e.target.value)
                                 if (!isNaN(val) && val >= 0 && val <= 50) setEditGridUpperPct(val)
                               }}
-                              placeholder="公式自动"
+                              placeholder={t('detail.formulaAuto')}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                              aria-label="上偏移百分比"
+                              aria-label={t('detail.upperOffsetPct')}
                             />
                             <span className="text-[#606070] text-xs shrink-0">%</span>
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-[#9090A0]">下偏移</p>
+                          <p className="text-xs text-[#9090A0]">{t('detail.lowerOffset')}</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <input
                               type="text"
@@ -1391,9 +1403,9 @@ export function AIStrategyDetailPage() {
                                 const val = parseFloat(e.target.value)
                                 if (!isNaN(val) && val >= 0 && val <= 50) setEditGridLowerPct(val)
                               }}
-                              placeholder="公式自动"
+                              placeholder={t('detail.formulaAuto')}
                               className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                              aria-label="下偏移百分比"
+                              aria-label={t('detail.lowerOffsetPct')}
                             />
                             <span className="text-[#606070] text-xs shrink-0">%</span>
                           </div>
@@ -1405,11 +1417,11 @@ export function AIStrategyDetailPage() {
                           {editGridUpperPct > 0 && editGridLowerPct > 0 ? (
                             <>
                               <span>≈ ${(editGridCurrentPrice * (1 - editGridLowerPct / 100)).toFixed(2)}</span>
-                              <span>当前: ${editGridCurrentPrice.toFixed(2)}</span>
+                              <span>{t('detail.currentPrice')}: ${editGridCurrentPrice.toFixed(2)}</span>
                               <span>≈ ${(editGridCurrentPrice * (1 + editGridUpperPct / 100)).toFixed(2)}</span>
                             </>
                           ) : (
-                            <span>当前价: ${editGridCurrentPrice.toFixed(2)} · 留空则自动计算边界，上下各约 {(3 * editGridCount / 10).toFixed(1)}%，每格间距 0.6%</span>
+                            <span>{t('detail.currentPriceAutoHint', { price: editGridCurrentPrice.toFixed(2), pct: (3 * editGridCount / 10).toFixed(1) })}</span>
                           )}
                         </div>
                       )}
@@ -1473,7 +1485,7 @@ export function AIStrategyDetailPage() {
                         <button type="button"
                           onClick={() => setShowEditGridModelDropdown(!showEditGridModelDropdown)}
                           className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
-                          title="选择模型" aria-label="选择模型"
+                          title={t('detail.selectModel')} aria-label={t('detail.selectModel')}
                         >
                           <div className="flex items-center gap-3">
                             {MODEL_DISPLAY[editGridModel as keyof typeof MODEL_DISPLAY]?.logo && (
@@ -1522,30 +1534,30 @@ export function AIStrategyDetailPage() {
                       >
                         <div className="flex items-center gap-2">
                           <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
-                          <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
+                          <span className="text-sm font-medium text-[#9090A0]">{t('detail.stopConditionsOptional')}</span>
                         </div>
                         <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditStopConditions ? 'rotate-180' : ''}`} />
                       </button>
                       {showEditStopConditions && (
                       <div className="px-4 pb-4 space-y-2">
-                        <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
+                        <p className="text-xs text-[#606070]">{t('detail.stopConditionHint')}</p>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
-                            <p className="text-xs text-[#9090A0]">最大周期</p>
+                            <p className="text-xs text-[#9090A0]">{t('detail.readMaxCycles')}</p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
                                 placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                aria-label="最大周期"
+                                aria-label={t('detail.readMaxCycles')}
                               />
-                              <span className="text-[#606070] text-xs shrink-0">次</span>
+                              <span className="text-[#606070] text-xs shrink-0">{t('detail.timesUnit')}</span>
                             </div>
                           </div>
                           <div className="space-y-1">
-                            <p className="text-xs text-[#9090A0]">盈利目标</p>
+                            <p className="text-xs text-[#9090A0]">{t('detail.readProfitTarget')}</p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
                                 placeholder="0" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                aria-label="盈利目标"
+                                aria-label={t('detail.readProfitTarget')}
                               />
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
@@ -1574,12 +1586,12 @@ export function AIStrategyDetailPage() {
                             </div>
                           </div>
                           <div className="space-y-1 col-span-2">
-                            <p className="text-xs text-[#9090A0]">网格重建阈值 <span className="text-[#606070]">（价格偏离中点超过此值自动重建，20=激进/趋势，30=保守/横盘）</span></p>
+                            <p className="text-xs text-[#9090A0]">{t('detail.gridRebuildThreshold')} <span className="text-[#606070]">（{t('detail.gridRebuildDesc')}）</span></p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                               <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold || ''}
                                 onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? 20 : parseInt(e.target.value))}
                                 placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                aria-label="网格重建阈值"
+                                aria-label={t('detail.gridRebuildThreshold')}
                               />
                               <span className="text-[#606070] text-xs shrink-0">%</span>
                             </div>
@@ -1587,42 +1599,42 @@ export function AIStrategyDetailPage() {
                           {/* 初始方向 + 格线分布 */}
                           <div className="grid grid-cols-2 gap-2 col-span-2">
                             <div className="space-y-1">
-                              <p className="text-xs text-[#9090A0]">初始方向</p>
+                              <p className="text-xs text-[#9090A0]">{t('detail.initialDirection')}</p>
                               <select
                                 value={editGridDirection}
                                 onChange={(e) => setEditGridDirection(e.target.value as typeof editGridDirection)}
                                 className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] outline-none"
-                                aria-label="网格初始方向"
+                                aria-label={t('detail.gridInitialDirection')}
                               >
-                                <option value="neutral">中性</option>
-                                <option value="long_bias">偏多</option>
-                                <option value="short_bias">偏空</option>
-                                <option value="long">纯多</option>
-                                <option value="short">纯空</option>
+                                <option value="neutral">{t('detail.dirNeutral')}</option>
+                                <option value="long_bias">{t('detail.dirLongBias')}</option>
+                                <option value="short_bias">{t('detail.dirShortBias')}</option>
+                                <option value="long">{t('detail.dirLong')}</option>
+                                <option value="short">{t('detail.dirShort')}</option>
                               </select>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-[#9090A0]">格线分布</p>
+                              <p className="text-xs text-[#9090A0]">{t('detail.gridDistribution')}</p>
                               <select
                                 value={editGridDistribution}
                                 onChange={(e) => setEditGridDistribution(e.target.value as typeof editGridDistribution)}
                                 className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] outline-none"
-                                aria-label="格线分布"
+                                aria-label={t('detail.gridDistribution')}
                               >
-                                <option value="uniform">均匀</option>
-                                <option value="gaussian">正态</option>
-                                <option value="pyramid">金字塔</option>
+                                <option value="uniform">{t('detail.distUniform')}</option>
+                                <option value="gaussian">{t('detail.distGaussian')}</option>
+                                <option value="pyramid">{t('detail.distPyramid')}</option>
                               </select>
                             </div>
                           </div>
                           {/* Maker 单 + 趋势暂停 */}
                           <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <span className="text-xs text-[#9090A0]">Maker 限价单（省手续费）</span>
+                            <span className="text-xs text-[#9090A0]">{t('detail.makerOnly')}</span>
                             <button
                               type="button"
                               onClick={() => setEditGridUseMakerOnly(!editGridUseMakerOnly)}
                               className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${editGridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                              aria-label="PostOnly限价单"
+                              aria-label={t('detail.makerOnlyAria')}
                             >
                               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
                             </button>
@@ -1630,16 +1642,16 @@ export function AIStrategyDetailPage() {
                           <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl opacity-50">
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
-                                <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">开发中</span>
+                                <p className="text-xs text-[#9090A0]">{t('detail.trendAutoPause')}</p>
+                                <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">{t('detail.inDevelopment')}</span>
                               </div>
-                              <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
+                              <p className="text-[10px] text-[#606070]">{t('detail.trendAutoPauseDesc')}</p>
                             </div>
                             <button
                               type="button"
                               disabled
                               className="relative w-11 h-6 rounded-full bg-[#2A2A3A] flex-shrink-0 overflow-hidden cursor-not-allowed"
-                              aria-label="趋势市场自动暂停（开发中）"
+                              aria-label={t('detail.trendAutoPauseAria')}
                             >
                               <span className="absolute top-1 translate-x-1 w-4 h-4 bg-white rounded-full" />
                             </button>
@@ -1647,8 +1659,8 @@ export function AIStrategyDetailPage() {
 
                           <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <div>
-                              <p className="text-xs text-[#9090A0]">方向自动切换</p>
-                              <p className="text-[10px] text-[#606070]">突破时偏转方向，回归后恢复中性</p>
+                              <p className="text-xs text-[#9090A0]">{t('detail.autoDirectionSwitch')}</p>
+                              <p className="text-[10px] text-[#606070]">{t('detail.autoDirectionSwitchDesc')}</p>
                             </div>
                             <button
                               type="button"
@@ -1664,12 +1676,12 @@ export function AIStrategyDetailPage() {
                           </div>
                           {editGridEnableDirectionAdjust && (
                             <div className="space-y-1 col-span-2">
-                              <p className="text-xs text-[#9090A0]">偏向比例 <span className="text-[#606070]">（默认 70%）</span></p>
+                              <p className="text-xs text-[#9090A0]">{t('detail.biasRatio')} <span className="text-[#606070]">（{t('detail.biasRatioDefault')}）</span></p>
                               <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                                 <input type="number" min={50} max={90} step={5} value={editGridDirectionBiasRatio || ''}
                                   onChange={(e) => setEditGridDirectionBiasRatio(e.target.value === '' ? 70 : parseInt(e.target.value))}
                                   placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
-                                  aria-label="偏向比例"
+                                  aria-label={t('detail.biasRatio')}
                                 />
                                 <span className="text-[#606070] text-xs shrink-0">%</span>
                               </div>
@@ -1705,7 +1717,7 @@ export function AIStrategyDetailPage() {
                         type="button"
                         onClick={() => setShowEditSoloModelDropdown(!showEditSoloModelDropdown)}
                         className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
-                        title="选择模型" aria-label="选择模型"
+                        title={t('detail.selectModel')} aria-label={t('detail.selectModel')}
                       >
                         <div className="flex items-center gap-3">
                           {MODEL_DISPLAY[editSoloModel as keyof typeof MODEL_DISPLAY]?.logo && (
@@ -1754,7 +1766,7 @@ export function AIStrategyDetailPage() {
                         <button type="button"
                           onClick={() => setShowEditDebateModelDropdown(!showEditDebateModelDropdown)}
                           className="w-full flex items-center justify-between bg-[#12121A] border border-[#1E1E2E] rounded-xl px-4 py-3 hover:border-[#06B6D4]/50 transition-colors"
-                          title="选择共识模型" aria-label="选择共识模型"
+                          title={t('detail.selectConsensusModel')} aria-label={t('detail.selectConsensusModel')}
                         >
                           <div className="flex items-center -space-x-2">
                             {editDebateModels.map((id) => {
@@ -1964,7 +1976,7 @@ export function AIStrategyDetailPage() {
                             type="text"
                             value={editCoinSearch}
                             onChange={(e) => setEditCoinSearch(e.target.value)}
-                            placeholder={editCoins.length === 0 ? '搜索币种...' : ''}
+                            placeholder={editCoins.length === 0 ? t('detail.searchCoins') : ''}
                             className="flex-1 bg-transparent text-sm text-[#F8F8FC] placeholder:text-[#606070] outline-none min-w-0"
                           />
                         </div>
@@ -2018,7 +2030,7 @@ export function AIStrategyDetailPage() {
                     </button>
                     {showEditExcluded && (
                       <div className="px-4 pb-4">
-                        <p className="text-xs text-[#606070] mb-3">选中的币种将被排除在交易范围外</p>
+                        <p className="text-xs text-[#606070] mb-3">{t('detail.excludeCoinsDesc')}</p>
                         <div className="flex flex-wrap gap-2">
                           {POPULAR_COINS.map(coin => {
                             const short = coin.split('/')[0];
@@ -2070,7 +2082,7 @@ export function AIStrategyDetailPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] text-[#606070] mb-1">日亏损上限</p>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('detail.dailyLossLimit')}</p>
                       <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                         <span className="text-[#606070] text-xs">$</span>
                         <input type="number" min={0}
@@ -2088,7 +2100,7 @@ export function AIStrategyDetailPage() {
                           onChange={(e) => setEditMaxDailyTrades(parseInt(e.target.value) || 0)}
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                         />
-                        <span className="text-[#606070] text-xs">次</span>
+                        <span className="text-[#606070] text-xs">{t('detail.timesUnit')}</span>
                       </div>
                     </div>
                     <div>
@@ -2114,7 +2126,7 @@ export function AIStrategyDetailPage() {
                       </div>
                     </div>
                     <div>
-                      <p className="text-[10px] text-[#606070] mb-1">最低盈亏比</p>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('detail.minRiskReward')}</p>
                       <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                         <input type="number" min={0} max={20} step={0.1}
                           value={editMinRR || ''}
@@ -2248,29 +2260,29 @@ export function AIStrategyDetailPage() {
                   >
                     <div className="flex items-center gap-2">
                       <RotateCcw className="w-4 h-4 text-[#06B6D4]" />
-                      <span className="text-sm font-medium text-[#9090A0]">止停条件（选填）</span>
+                      <span className="text-sm font-medium text-[#9090A0]">{t('detail.stopConditionsOptional')}</span>
                     </div>
                     <ChevronDown className={`w-4 h-4 text-[#606070] transition-transform ${showEditStopConditions ? 'rotate-180' : ''}`} />
                   </button>
                   {showEditStopConditions && (
                   <div className="px-4 pb-4 space-y-3">
-                    <p className="text-xs text-[#606070]">达到任一条件后策略自动停止，0=不限</p>
+                    <p className="text-xs text-[#606070]">{t('detail.stopConditionHint')}</p>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大周期</span>
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">{t('detail.readMaxCycles')}</span>
                       <input type="number" min={0} value={editMaxCycles || ''} onChange={(e) => setEditMaxCycles(parseFloat(e.target.value) || 0)}
                         placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                       />
-                      <span className="text-xs text-[#606070]">次</span>
+                      <span className="text-xs text-[#606070]">{t('detail.timesUnit')}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9090A0] w-20 shrink-0">盈利目标</span>
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">{t('detail.readProfitTarget')}</span>
                       <input type="number" min={0} step={0.1} value={editProfitTarget || ''} onChange={(e) => setEditProfitTarget(parseFloat(e.target.value) || 0)}
                         placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                       />
                       <span className="text-xs text-[#606070]">%</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-[#9090A0] w-20 shrink-0">最大止损</span>
+                      <span className="text-xs text-[#9090A0] w-20 shrink-0">{t('detail.readMaxLoss')}</span>
                       <input type="number" min={0} step={0.1} value={editMaxLoss || ''} onChange={(e) => setEditMaxLoss(parseFloat(e.target.value) || 0)}
                         placeholder="0" className="flex-1 bg-[#1E1E2E] border border-[#1E1E2E] rounded-xl px-3 py-2 text-sm text-[#F8F8FC] placeholder-[#606070] focus:border-[#06B6D4]/40 focus:outline-none"
                       />
@@ -2704,7 +2716,7 @@ function RecentDecisionRow({ log, tradingMode, onViewVotes, isLast }: {
           {/* Grid 初始化日志：显示网格范围快照 */}
           {isGrid && log.decision?.gridSnapshot?.rangeSource && (
             <div className="flex items-center gap-2 text-[10px] text-[#06B6D4]">
-              <span>范围来源: {log.decision.gridSnapshot.rangeSource}</span>
+              <span>{t('detail.rangeSource')}: {log.decision.gridSnapshot.rangeSource}</span>
               {log.decision.gridSnapshot.upperPrice && log.decision.gridSnapshot.lowerPrice && (
                 <span>${Number(log.decision.gridSnapshot.lowerPrice).toFixed(2)} ~ ${Number(log.decision.gridSnapshot.upperPrice).toFixed(2)}</span>
               )}

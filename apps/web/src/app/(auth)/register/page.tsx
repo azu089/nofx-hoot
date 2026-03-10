@@ -18,20 +18,13 @@ export default function RegisterPage() {
   const defaultReferralCode = searchParams.get('ref') || searchParams.get('inviteCode') || '';
   const { walletLogin: walletLoginHook } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  // 确保客户端 hydration 完成后再根据状态渲染
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration 检测是合理的一次性副作用
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // 已登录跳转到仪表盘
   useEffect(() => {
-    if (mounted && !isLoading && isAuthenticated) {
+    if (!isLoading && isAuthenticated) {
       router.push('/dashboard');
     }
-  }, [mounted, isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, router]);
 
   const handleRegister = async (data: {
     email: string;
@@ -101,9 +94,8 @@ export default function RegisterPage() {
     window.location.href = `https://t.me/${botUsername}/app`;
   };
 
-  // 服务端和客户端首次渲染保持一致（都显示 loading）
-  // 避免 Hydration 不匹配
-  if (!mounted || isLoading) {
+  // AuthProvider 初始化中（读取 localStorage / TG 自动登录）
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />

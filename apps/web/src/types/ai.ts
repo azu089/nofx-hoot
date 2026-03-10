@@ -385,10 +385,11 @@ export interface GridConfig {
   symbol: string;
   gridCount: number;
   totalInvestment: number;
-  upperBound: number;
-  lowerBound: number;
-  upperBoundPct?: number;  // 上界原始百分比（如 0.5 表示 +0.5%），避免 Math.round 损精度
-  lowerBoundPct?: number;  // 下界原始百分比
+  upperBound?: number | null;
+  lowerBound?: number | null;
+  upperBoundPct?: number | null;  // 上界原始百分比（如 0.5 表示 +0.5%），避免 Math.round 损精度
+  lowerBoundPct?: number | null;  // 下界原始百分比
+  boundsFromPct?: boolean | null;  // true=用户设了百分比; false=用户明确清空(公式模式); null=旧策略
   leverage: number;
   direction?: 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'; // 网格初始方向
   distribution?: 'uniform' | 'gaussian' | 'pyramid';  // 格线分布

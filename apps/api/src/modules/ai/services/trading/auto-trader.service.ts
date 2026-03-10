@@ -2162,10 +2162,12 @@ export class AutoTraderService {
         const gridStateForStop = await this.gridTrading.getGridState(strategy.id);
         if (gridStateForStop) {
           // 止盈 + 止损统一用权益变化（含浮动盈亏），能及时响应持仓盈亏
-          // 修复：旧版止盈用 totalProfit（已实现对冲利润），导致权益+5%但只实现0.55%时不触发
-          const investmentBase = (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
-            ? gridConfig.totalInvestment
-            : gridStateForStop.startEquity > 0 ? gridStateForStop.startEquity : 1000;
+          // 分母用 startEquity（恢复策略后重置为当前权益），确保每次从新基准开始计算
+          // 例：$100启动→$105止盈→恢复(startEquity=105)→下次需到$110.25才再触发5%
+          const investmentBase = gridStateForStop.startEquity > 0
+            ? gridStateForStop.startEquity
+            : (gridConfig?.totalInvestment && gridConfig.totalInvestment > 0)
+              ? gridConfig.totalInvestment : 1000;
           const equityPnl = (gridStateForStop.lastEquity > 0 && gridStateForStop.startEquity > 0)
             ? gridStateForStop.lastEquity - gridStateForStop.startEquity
             : gridStateForStop.totalProfit;

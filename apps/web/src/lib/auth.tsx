@@ -40,8 +40,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'hoot_token';
 const USER_KEY = 'hoot_user';
 
-/** Cookie 最大有效期：24 小时（秒） */
-const COOKIE_MAX_AGE = 86400;
+/** Cookie 最大有效期：7 天（秒）— 与移动端使用习惯对齐，token 失效由 API 401 兜底 */
+const COOKIE_MAX_AGE = 604800;
 
 /** 同步写入 hoot_token cookie（供 Next.js Middleware 读取） */
 function setAuthCookie(token: string) {
@@ -115,8 +115,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
   useEffect(() => {
-    // ── Step 1: 读取本地缓存 ────────────────────────────────────────────────
+    // ── Step 0: Cookie/localStorage 一致性检查 ──────────────────────────────
+    // Cookie 24h 过期但 localStorage 永不过期，cookie 消失后 middleware 会
+    // 重定向到 /login，但 AuthProvider 读 localStorage 认为已登录 → 死循环黑屏
+    // 修复：从 localStorage 恢复 cookie（token 本身可能仍有效）
     const storedToken = localStorage.getItem(TOKEN_KEY);
+    const cookieHasToken = document.cookie.includes(TOKEN_KEY + '=');
+
+    if (storedToken && !cookieHasToken) {
+      // Cookie 已过期但 token 可能仍有效 → 恢复 cookie，让 middleware 放行
+      setAuthCookie(storedToken);
+    }
+
+    // ── Step 1: 读取本地缓存 ────────────────────────────────────────────────
     const storedUser = localStorage.getItem(USER_KEY);
 
     if (storedToken) {

@@ -697,7 +697,8 @@ export function GRID_SYSTEM_PROMPT(
 ## 层状态与决策
 - **empty**: 可挂单，或 hold 等待
 - **pending**: 等待成交
-- **filled**: AI自行判断平仓时机（趋势反转/RSI超买/回撤30%时考虑）；可 close_long/close_short 主动平仓，或等待反向挂单自然出局
+- **filled(buy)**: 持多头，AI判断平仓时机（挂 sell_limit 在上格获利 或 close_long 市价平仓）
+- **filled(sell)**: 持空头（卖单成交），AI必须主动管理：挂 buy_limit 接回 或 close_short 市价平仓；若下方有 filled(buy) 层可配对平仓获利
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 

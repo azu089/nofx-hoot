@@ -5,6 +5,33 @@ import { NextIntlClientProvider, IntlErrorCode } from 'next-intl';
 import { locales, defaultLocale, localeNames, type Locale } from './config';
 import { api } from '../lib/api';
 
+// 静态导入所有语言文件，消除动态 import 导致的异步黑屏
+import zhCN from './messages/zh-CN.json';
+import en from './messages/en.json';
+import zhTW from './messages/zh-TW.json';
+import ja from './messages/ja.json';
+import ko from './messages/ko.json';
+import ru from './messages/ru.json';
+import vi from './messages/vi.json';
+import id from './messages/id.json';
+import th from './messages/th.json';
+import tr from './messages/tr.json';
+import ar from './messages/ar.json';
+
+const allMessages: Record<Locale, Record<string, unknown>> = {
+  'zh-CN': zhCN,
+  'en': en,
+  'zh-TW': zhTW,
+  'ja': ja,
+  'ko': ko,
+  'ru': ru,
+  'vi': vi,
+  'id': id,
+  'th': th,
+  'tr': tr,
+  'ar': ar,
+};
+
 interface LocaleContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
@@ -46,16 +73,8 @@ export function LocaleProvider({ children, initialLocale }: LocaleProviderProps)
     return initialLocale || defaultLocale;
   });
 
-  const [messages, setMessages] = useState<Record<string, unknown> | null>(null);
-
-  // 加载对应语言的翻译文件
-  useEffect(() => {
-    import(`./messages/${locale}.json`)
-      .then((m) => setMessages(m.default))
-      .catch(() => {
-        import('./messages/zh-CN.json').then((m) => setMessages(m.default));
-      });
-  }, [locale]);
+  // 同步从静态 map 获取，无需异步等待
+  const messages = allMessages[locale] || allMessages[defaultLocale];
 
   // 同步 locale 到 API 客户端
   useEffect(() => {
@@ -71,15 +90,6 @@ export function LocaleProvider({ children, initialLocale }: LocaleProviderProps)
     // 刷新页面以应用新语言
     window.location.reload();
   }, []);
-
-  if (!messages) {
-    // 消息加载中，显示加载动画而非 null（null 会导致整棵组件树不渲染→黑屏）
-    return (
-      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <LocaleContext.Provider value={{ locale, setLocale, locales, localeNames }}>
