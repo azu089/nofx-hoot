@@ -752,33 +752,37 @@ export function MobileTradingCenter({
 
                   {/* 数据行：标签在上，数值在下 */}
                   <div className="text-[11px] bg-[#0A0A0F]/50 rounded-lg px-2.5 py-2 space-y-2">
-                    {/* 第一行：4列 */}
-                    <div className="grid grid-cols-4 gap-1">
-                      <div>
-                        <p className="text-[#606070] mb-0.5">开仓价格</p>
-                        <p className="font-medium">{order.entryPrice.toLocaleString()}</p>
+                    {/* 第一行：价格/持仓量/保证金（有数据才显示） */}
+                    {(order.entryPrice > 0 || order.amount > 0) && (
+                      <div className="grid grid-cols-4 gap-1">
+                        <div>
+                          <p className="text-[#606070] mb-0.5">开仓价格</p>
+                          <p className="font-medium">{order.entryPrice > 0 ? order.entryPrice.toLocaleString() : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#606070] mb-0.5">平仓均价</p>
+                          <p className="font-medium">{order.closePrice > 0 ? order.closePrice.toLocaleString() : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#606070] mb-0.5">持仓量</p>
+                          <p className="font-medium">{order.amount > 0 ? order.amount : '-'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[#606070] mb-0.5">保证金</p>
+                          <p className="font-medium">{order.margin > 0 ? `${order.margin.toFixed(2)}` : '-'}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[#606070] mb-0.5">平仓均价</p>
-                        <p className="font-medium">{order.closePrice.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-[#606070] mb-0.5">持仓量</p>
-                        <p className="font-medium">{order.amount}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[#606070] mb-0.5">保证金</p>
-                        <p className="font-medium">{order.margin > 0 ? `${order.margin.toFixed(2)}` : '-'}</p>
-                      </div>
-                    </div>
-                    {/* 第二行：时间 左右各占一半 */}
+                    )}
+                    {/* 时间行 */}
                     <div className="flex">
-                      <div className="flex-1">
-                        <p className="text-[#606070] mb-0.5">开仓时间</p>
-                        <p className="text-[#9090A0]">{order.openTime ? new Date(order.openTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</p>
-                      </div>
-                      <div className="flex-1 text-right">
-                        <p className="text-[#606070] mb-0.5">全部平仓时间</p>
+                      {order.openTime && order.openTime !== order.time ? (
+                        <div className="flex-1">
+                          <p className="text-[#606070] mb-0.5">开仓时间</p>
+                          <p className="text-[#9090A0]">{new Date(order.openTime).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                        </div>
+                      ) : null}
+                      <div className={order.openTime && order.openTime !== order.time ? 'flex-1 text-right' : 'flex-1'}>
+                        <p className="text-[#606070] mb-0.5">平仓时间</p>
                         <p className="text-[#9090A0]">{order.time ? new Date(order.time).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</p>
                       </div>
                     </div>

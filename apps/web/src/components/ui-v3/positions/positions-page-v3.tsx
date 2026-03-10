@@ -723,9 +723,9 @@ export function PositionsPageV3({
                                   <div className="text-[#9090A0]">${(order.margin || 0).toFixed(2)}</div>
                                 </div>
                               </td>
-                              <td className="py-4 text-[#F8F8FC]">${(order.entryPrice || order.price).toLocaleString()}</td>
-                              <td className="py-4 text-[#F8F8FC]">${(order.closePrice || order.price).toLocaleString()}</td>
-                              <td className="py-4 text-[#F8F8FC]">{order.amount}</td>
+                              <td className="py-4 text-[#F8F8FC]">{(order.entryPrice || order.price) ? `$${(order.entryPrice || order.price).toLocaleString()}` : '-'}</td>
+                              <td className="py-4 text-[#F8F8FC]">{(order.closePrice || order.price) ? `$${(order.closePrice || order.price).toLocaleString()}` : '-'}</td>
+                              <td className="py-4 text-[#F8F8FC]">{order.amount > 0 ? order.amount : '-'}</td>
                               <td className="py-4">
                                 <div className={`font-medium ${order.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                   {order.pnl >= 0 ? '+' : ''}{order.pnl.toFixed(4)} USDT

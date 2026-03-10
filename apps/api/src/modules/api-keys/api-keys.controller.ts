@@ -6,6 +6,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   Optional,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -82,6 +83,22 @@ export class ApiKeysController {
   @Get(':id/pnl-stats')
   async getPnlStats(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.apiKeysService.getExchangePnlStats(user.id, id);
+  }
+
+  // 获取交易所真实交易历史（REALIZED_PNL，不走 DB）
+  @Get(':id/trade-history')
+  async getTradeHistory(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.apiKeysService.getExchangeTradeHistory(user.id, id, {
+      startDate,
+      endDate,
+      limit: limit ? parseInt(limit) : undefined,
+    });
   }
 
   // 删除 API Key

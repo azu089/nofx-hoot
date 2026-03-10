@@ -240,17 +240,47 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易历史（按选中账户的交易所过滤）
+  // 获取交易历史（从交易所 income API 直接获取 REALIZED_PNL）
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
-      const exchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
-      const params = exchange ? `?exchange=${encodeURIComponent(exchange)}` : '';
       const response = await api.get<{
-        items: TradeHistory[];
+        items: Array<{
+          id: string;
+          symbol: string;
+          side: string;
+          pnl: string;
+          asset: string;
+          time: string;
+          tradeId?: string;
+        }>;
         total: number;
-      }>(`/trading/positions/history${params}`);
-      return response.data;
+        source: 'exchange';
+        error?: string;
+      }>(`/api-keys/${selectedApiKeyId}/trade-history?limit=50`);
+
+      // 转换为前端 TradeHistory 格式
+      const items: TradeHistory[] = (response.data?.items || []).map((item) => ({
+        id: item.id,
+        symbol: item.symbol,
+        side: parseFloat(item.pnl) >= 0 ? 'long' : 'short',
+        type: 'market',
+        price: '0',
+        entryPrice: undefined,
+        closePrice: undefined,
+        amount: '0',
+        total: '0',
+        pnl: item.pnl,
+        pnlPercent: undefined,
+        fee: '0',
+        status: 'filled',
+        closedAt: item.time,
+        createdAt: item.time,
+        tradingType: 'futures',
+        source: 'exchange',
+      }));
+
+      return { items, total: response.data?.total || 0 };
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
     retry: false,
@@ -619,29 +649,29 @@ export default function TradingPage() {
         };
       });
 
-  // 转换交易历史数据格式
+  // 转换交易历史数据格式（数据来源：交易所 REALIZED_PNL）
   const transformedHistory = historyData?.items?.map(h => ({
     id: h.id,
     symbol: normalizeSymbol(h.symbol),
     side: h.side as 'long' | 'short',
-    type: h.type,
-    price: parseFloat(h.closePrice || h.price),
-    entryPrice: parseFloat(h.entryPrice || h.price),
-    closePrice: parseFloat(h.closePrice || h.price),
-    amount: parseFloat(h.amount),
-    filled: parseFloat(h.amount),
-    total: parseFloat(h.total),
+    type: h.type || 'market',
+    price: parseFloat(h.closePrice || h.price || '0'),
+    entryPrice: parseFloat(h.entryPrice || h.price || '0'),
+    closePrice: parseFloat(h.closePrice || h.price || '0'),
+    amount: parseFloat(h.amount || '0'),
+    filled: parseFloat(h.amount || '0'),
+    total: parseFloat(h.total || '0'),
     pnl: parseFloat(h.pnl),
     pnlPercent: parseFloat(h.pnlPercent || '0'),
-    fee: parseFloat(h.fee),
+    fee: parseFloat(h.fee || '0'),
     time: h.closedAt,
-    status: h.status as 'filled' | 'cancelled',
-    marketType: (h.tradingType === 'spot' ? 'spot' : 'futures') as 'spot' | 'futures',
+    status: 'filled' as const,
+    marketType: 'futures' as const,
     leverage: h.leverage || 1,
     margin: parseFloat(h.margin || '0'),
     closeReason: h.closeReason,
     strategyName: h.strategyName,
-    source: h.source,
+    source: h.source || 'exchange',
     openTime: h.createdAt,
   }));
 

@@ -1125,6 +1125,115 @@ export class ApiKeysService {
   }
 
   /**
+   * 获取交易所真实交易历史（仓位历史）
+   * 数据来源：交易所 income API（REALIZED_PNL 类型）
+   * 所有数据直接从交易所获取，不走 DB 缓存
+   */
+  async getExchangeTradeHistory(
+    userId: string,
+    apiKeyId: string,
+    query?: { startDate?: string; endDate?: string; limit?: number },
+  ): Promise<{
+    items: Array<{
+      id: string;
+      symbol: string;
+      side: string;
+      pnl: string;
+      asset: string;
+      time: string;
+      tradeId?: string;
+    }>;
+    total: number;
+    source: 'exchange';
+    error?: string;
+  }> {
+    try {
+      const { apiKey, apiSecret, exchange, passphrase } = await this.getDecryptedApiKey(
+        userId,
+        apiKeyId,
+      );
+
+      const exchangeLower = exchange.toLowerCase();
+      const supportedExchanges = ['binance', 'okx', 'bybit'];
+      if (!supportedExchanges.includes(exchangeLower)) {
+        return { items: [], total: 0, source: 'exchange', error: `${exchange} 暂不支持交易历史查询` };
+      }
+
+      // 创建合约交易所实例
+      const futuresClass = exchangeLower === 'binance' ? 'binanceusdm' : exchangeLower;
+      const ExchangeClass = ccxt[futuresClass as keyof typeof ccxt] as any;
+      const futuresEx: ccxt.Exchange = new ExchangeClass({
+        apiKey,
+        secret: apiSecret,
+        ...(passphrase ? { password: passphrase } : {}),
+        options: { defaultType: 'future' },
+      });
+
+      try {
+        await futuresEx.loadMarkets();
+      } catch {
+        this.logger.debug('[trade-history] loadMarkets 失败，继续尝试');
+      }
+
+      // 时间范围：默认 30 天
+      const now = Date.now();
+      const startTime = query?.startDate
+        ? new Date(query.startDate).getTime()
+        : now - 30 * 24 * 60 * 60 * 1000;
+      const endTime = query?.endDate
+        ? new Date(query.endDate).getTime()
+        : now;
+
+      // 获取 income 记录
+      const allIncomes = await this.fetchFuturesIncome(futuresEx, exchangeLower, startTime, endTime);
+
+      // 过滤 REALIZED_PNL 类型（每次平仓的真实盈亏）
+      const realizedPnlItems = allIncomes
+        .filter((item: any) => {
+          const type = (item.incomeType || item.type || '').toUpperCase();
+          return type === 'REALIZED_PNL';
+        })
+        .map((item: any, index: number) => {
+          const pnl = parseFloat(item.income || item.amount || '0');
+          const ts = parseInt(item.time || item.timestamp || '0');
+          const symbol = item.symbol || '';
+
+          // 从 symbol 推断方向：REALIZED_PNL > 0 且为 close → 大概率盈利平仓
+          // income API 不直接告诉方向，但 symbol 可用
+          return {
+            id: item.tranId ? String(item.tranId) : `income_${index}_${ts}`,
+            symbol: symbol, // 如 SOLUSDT
+            side: pnl >= 0 ? 'long' : 'short', // 近似推断
+            pnl: pnl.toFixed(8),
+            asset: item.asset || 'USDT',
+            time: new Date(ts).toISOString(),
+            tradeId: item.tradeId ? String(item.tradeId) : undefined,
+          };
+        })
+        // 按时间倒序
+        .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+      // 应用 limit
+      const limit = query?.limit || 50;
+      const items = realizedPnlItems.slice(0, limit);
+
+      return {
+        items,
+        total: realizedPnlItems.length,
+        source: 'exchange',
+      };
+    } catch (error: any) {
+      this.logger.error(`[trade-history] 交易所交易历史查询失败: ${error.message}`);
+      return {
+        items: [],
+        total: 0,
+        source: 'exchange',
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * 获取合约 income 记录（REALIZED_PNL + FUNDING_FEE + COMMISSION）
    * Binance: fapiPrivateGetIncome
    * OKX/Bybit: fetchLedger 或类似端点
