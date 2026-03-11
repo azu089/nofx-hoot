@@ -661,6 +661,7 @@ export interface GridContext {
   gridSkewLevel?: 'none' | 'light' | 'severe';
   gridSkewBuyFilled?: number;   // 持多头格线数（side='buy'，买单成交未平仓）
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
+  autoAdjustThreshold?: number; // 后端自动重建阈值（小数，默认 0.2 = 20%）
   // 后端检测的市场形态（供参考，AI 可结合指标自行判断）
   currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
   // 交易所实时委托单（供 AI 对比内存状态）
@@ -712,6 +713,17 @@ export function GRID_SYSTEM_PROMPT(
 - **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
 - **close_short**: 市价平空仓（fields: level, quantity）
 - **hold**: 保持现状
+
+## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
+当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
+- **可用操作**：adjust_grid / close_long / close_short / hold（place_* 和 pause_grid 无效）
+- **决策优先级**（从高到低）：
+  1. **有 filled 持仓（浮亏或浮盈）** → 优先 **adjust_grid**（以当前价重建，"包住"持仓让后续震荡磨平成本）
+  2. **趋势明确继续单边**（EMA顺向排列、RSI极值>70/<30、连续多根K线同向）→ **adjust_grid**（以当前价为中心重建网格，自动恢复运行）
+  3. **价格震荡、方向不明** → **hold**（等待后端突破恢复或价格回归）
+  4. **仅当保证金不足、爆仓价迫在眉睫** → close_long/close_short 保命平仓
+- **⛔ 不要因浮亏直接 close**：网格靠震荡磨平成本，adjust_grid 重建是首选，浮亏持仓会映射到新网格继续运行
+- **重建后**：isPaused 自动清除，持仓映射到最近层继续运行
 
 ## 输出格式
 
@@ -782,6 +794,12 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`短期(3d): ${ctx.boxData.shortLower.toFixed(2)} ~ ${ctx.boxData.shortUpper.toFixed(2)}`);
     lines.push(`中期(10d): ${ctx.boxData.midLower.toFixed(2)} ~ ${ctx.boxData.midUpper.toFixed(2)}`);
     lines.push(`长期(21d): ${ctx.boxData.longLower.toFixed(2)} ~ ${ctx.boxData.longUpper.toFixed(2)}`);
+    // 对齐 nofx: 突破箱体时输出警告（grid_engine.go L262-266）
+    if (ctx.currentPrice > ctx.boxData.longUpper || ctx.currentPrice < ctx.boxData.longLower) {
+      lines.push('⚠️ 突破: 价格突破长期箱体!');
+    } else if (ctx.currentPrice > ctx.boxData.midUpper || ctx.currentPrice < ctx.boxData.midLower) {
+      lines.push('⚠️ 警告: 价格接近长期箱体边界');
+    }
   }
 
   // Section 4: 网格状态
@@ -814,7 +832,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
     lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
     if (ctx.gridSkewLevel === 'severe') {
-      lines.push('  → 价格偏离未达自动重排阈值（30%）');
+      const thresholdPct = Math.round((ctx.autoAdjustThreshold ?? 0.2) * 100);
+      lines.push(`  → 价格偏离未达自动重排阈值（${thresholdPct}%）`);
     } else {
       lines.push('  → 轻度倾斜');
     }
