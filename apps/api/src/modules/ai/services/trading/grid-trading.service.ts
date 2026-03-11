@@ -1067,23 +1067,25 @@ export class GridTradingService {
       }
     }
 
-    // Step 2: 简单边界突破检查（移至 Step 3/3.5/4 之后，确保风控始终先执行）
-    const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
-    const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
-    if (breakoutPct >= breakoutThreshold) {
-      const direction = currentPrice > state.upperPrice ? 'up' : 'down';
-      this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
+    // Step 2: 简单边界突破检查（已暂停时跳过，让 AI 受限模式接管，避免持仓无人管理持续亏损）
+    if (!state.isPaused) {
+      const breakoutPct = this.checkSimpleBreakout(currentPrice, state);
+      const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
+      if (breakoutPct >= breakoutThreshold) {
+        const direction = currentPrice > state.upperPrice ? 'up' : 'down';
+        this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
 
-      // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
-      if (gridConfig?.directionalCloseOnBreakout === true) {
-        await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+        // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
+        if (gridConfig?.directionalCloseOnBreakout === true) {
+          await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
+        }
+
+        state.isPaused = true;
+        state.pauseSource = 'breakout';
+        state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
+        await this.persistGridState(strategyId, state);
+        return { trades: 0, errors: 0 };
       }
-
-      state.isPaused = true;
-      state.pauseSource = 'breakout';
-      state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
-      await this.persistGridState(strategyId, state);
-      return { trades: 0, errors: 0 };
     }
 
     // Step 5: 箱体数据更新（Donchian，供 AI 判断突破；突破决策由 AI 自行决定是否 pause_grid）
