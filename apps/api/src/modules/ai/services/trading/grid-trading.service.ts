@@ -164,9 +164,6 @@ export interface GridState {
   // placeGridLimitOrder 的 cap check 必须用此值，禁止用内存 filled 层数估算
   livePositionNotional: number;
 
-  // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
-  userLockedRange: boolean;
-
   // 网格范围来源（初始化时记录，供前端展示）
   rangeSource?: string;  // '用户指定' | 'ATR×5.0' | '±3.0%兜底' | 'ATR×2.0' 等
 
@@ -215,7 +212,7 @@ export interface GridDecision {
 // ========================= 常量 =========================
 
 const BREAKOUT_CONFIRM_REQUIRED = 3;
-const DEFAULT_ATR_MULTIPLIER = 1.5; // 1.5x ATR × (gridCount/10)，使格间距恒定在 ~0.5%/格
+const DEFAULT_ATR_MULTIPLIER = 1.5; // halfRange = ATR × multiplier（对齐 nofx，不含 gridCount 因子）
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
 const DEFAULT_BREAKOUT_PCT = 2;
@@ -454,34 +451,29 @@ export class GridTradingService {
     // 获取当前价格
     const currentPrice = await this.getCurrentPrice(symbol);
 
-    // Step 1: 计算边界（初始化为格数驱动兜底，后续可被 ATR 算法覆盖）
-    // 目标格间距 0.5%/格：halfRange = price × 0.5% × (gridCount-1)/2
-    // 10格→±2.25%，20格→±4.75%（格间距恒定，利润空间一致）
-    const _defaultMult = 0.005 * (gridCount - 1) / 2;
+    // Step 1: 计算边界（对齐 nofx: ATR 模式 halfRange = atr × multiplier，无 gridCount 因子）
+    // 默认兜底: ±3% × (gridCount/10)，与 nofx calculateDefaultBounds 一致
+    const _defaultMult = 0.03 * (gridCount / 10);
     let upperPrice: number = currentPrice * (1 + _defaultMult);
     let lowerPrice: number = currentPrice * (1 - _defaultMult);
     let rangeSource = `±${(_defaultMult * 100).toFixed(2)}%兜底`;  // 追踪范围决策来源
 
     if (useATRBounds && this.indicators) {
-      // ATR 自动边界，与默认公式取最小值（波动小→ATR更窄；波动大→默认公式封顶）
+      // ATR 自动边界（对齐 nofx: halfRange = atr × multiplier，ATR 失败→走默认兜底）
       const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '4h', 20);
       const highs = ohlcvRaw.map((c: any) => Number(c[2]));
       const lows = ohlcvRaw.map((c: any) => Number(c[3]));
       const closes = ohlcvRaw.map((c: any) => Number(c[4]));
       const atr = this.indicators.calculateATR(highs, lows, closes, 14);
-      const capHalfRange = currentPrice * 0.03 * (gridCount / 10); // 与 reinitializeGridLevels 统一上限
 
       if (atr && atr > 0) {
         const mult = atrMultiplier > 0 ? atrMultiplier : DEFAULT_ATR_MULTIPLIER;
-        const atrHalfRange = atr * mult * (gridCount / 10); // gridCount 因子：层数越多范围越宽，格间距恒定
-        const halfRange = Math.min(atrHalfRange, capHalfRange);
+        const halfRange = atr * mult;
         upperPrice = currentPrice + halfRange;
         lowerPrice = currentPrice - halfRange;
-        rangeSource = `ATR×${mult}×(${gridCount}/10) min 默认`;
+        rangeSource = `ATR×${mult}`;
       } else {
-        // ATR 计算失败，使用默认比例兜底
-        upperPrice = currentPrice * (1 + _defaultMult);
-        lowerPrice = currentPrice * (1 - _defaultMult);
+        // ATR 计算失败，使用默认兜底（±3% × gridCount/10）
         rangeSource = `±${(_defaultMult * 100).toFixed(1)}%兜底`;
       }
     } else if (config.upperBound && config.lowerBound
@@ -502,7 +494,7 @@ export class GridTradingService {
           `将使用 ATR/默认比例自动计算范围（换标的后旧边界应被重置）`,
         );
       }
-      // ATR 计算范围，失败则按默认公式兜底（multiplier = 0.03 × gridCount / 10）
+      // ATR 计算范围（对齐 nofx: halfRange = atr × multiplier），失败则按默认公式兜底
       let atrFallbackSet = false;
       if (this.indicators) {
         try {
@@ -512,17 +504,14 @@ export class GridTradingService {
           const closes = ohlcvRaw.map((c: any) => Number(c[4]));
           const atr = this.indicators.calculateATR(highs, lows, closes, 14);
           if (atr && atr > 0) {
-            const capHalfRange = currentPrice * 0.03 * (gridCount / 10); // 与 reinitializeGridLevels 统一上限
-            const atrHalf = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10); // gridCount 因子保持格间距恒定
-            const halfRange = Math.min(atrHalf, capHalfRange);
+            const halfRange = atr * DEFAULT_ATR_MULTIPLIER;
             upperPrice = currentPrice + halfRange;
             lowerPrice = currentPrice - halfRange;
             atrFallbackSet = true;
-            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}×(${gridCount}/10) min 默认`;
+            rangeSource = `ATR×${DEFAULT_ATR_MULTIPLIER}`;
             this.logger.log(
               `[网格] 自动宽度: 当前价=${currentPrice.toFixed(2)}, ATR(4H,14)=${atr.toFixed(2)}, ` +
-              `ATR半幅=${atrHalf.toFixed(4)}, 默认上限=${capHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}, ` +
-              `范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
+              `halfRange=${halfRange.toFixed(4)}, 范围=[${lowerPrice.toFixed(2)}, ${upperPrice.toFixed(2)}]`,
             );
           }
         } catch (_e) {
@@ -668,8 +657,6 @@ export class GridTradingService {
       lastOI: 0,
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
       userFixedLeverage,           // true = 固定杠杆，跳过 Regime 压杆
-      // 所有边界均来自百分比换算，AI 始终可调整范围（无固定价格锁定场景）
-      userLockedRange: false,
       rangeSource,  // 持久化供前端展示: '用户指定' | 'ATR×5.0' | '±3.0%兜底' 等
       availableBalance: 0, // 初始为 0，首轮 buildGridContext 后从交易所更新
       stopLossPct: config.stopLossPct ?? DEFAULT_STOP_LOSS_PCT,
@@ -799,7 +786,7 @@ export class GridTradingService {
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
         // 每次重启都以当前价为中心重算 ATR 边界
         // 有持久化但重启语义一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
-        if (!state.userLockedRange) {
+        {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
           this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算边界`);
           if (state.upperBoundPct && state.lowerBoundPct) {
@@ -978,10 +965,6 @@ export class GridTradingService {
       }
     }
 
-    // 所有边界均来自百分比换算，无固定价格锁定场景，始终保持 false
-    if (state.userLockedRange !== false) {
-      state.userLockedRange = false;
-    }
 
     let currentPrice: number;
     try {
@@ -1524,7 +1507,7 @@ export class GridTradingService {
 
         // autoAdjustGrid（对齐 nofx: syncGridState 末尾 → checkAndExecuteStopLoss → autoAdjustGrid）
         // 倾斜 + 价格偏离中心 > threshold 时自动重建，保留持仓映射到最近层
-        if (currentPrice > 0 && adapter && isGridAdapter(adapter) && !state.userLockedRange) {
+        if (currentPrice > 0 && adapter && isGridAdapter(adapter)) {
           const adjustThreshold = gridConfig?.autoAdjustThreshold ?? DEFAULT_AUTO_ADJUST_THRESHOLD;
           const adjusted = await this.autoAdjustGrid(
             state, currentPrice, adapter as GridExchangeAdapter, adjustThreshold,
@@ -2247,7 +2230,6 @@ export class GridTradingService {
       ohlcv: ohlcvHourly.slice(-30).map(c => ({
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       })),
-      userLockedRange: state.userLockedRange ?? false,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
       profitTargetPct: state.profitTargetPct > 0 ? state.profitTargetPct : undefined,
       currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
@@ -3832,7 +3814,7 @@ export class GridTradingService {
         `[网格] 重建范围(用户百分比): ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}`,
       );
     } else {
-      // 无百分比配置 → ATR 自动计算（两套公式取小值）
+      // 无百分比配置 → ATR 自动计算（对齐 nofx: halfRange = atr × multiplier），失败则默认兜底
       const defaultHalfRange = centerPrice * 0.03 * (gridCount / 10);
       let halfRange = defaultHalfRange;
       if (this.indicators && this.marketData) {
@@ -3843,18 +3825,16 @@ export class GridTradingService {
           const closes = ohlcvRaw.map((c: any) => Number(c[4]));
           const atr    = this.indicators.calculateATR(highs, lows, closes, 14);
           if (atr && atr > 0) {
-            const atrHalfRange = atr * DEFAULT_ATR_MULTIPLIER * (gridCount / 10);
-            halfRange = Math.min(atrHalfRange, defaultHalfRange);
-            const chosenBasis = atrHalfRange <= defaultHalfRange ? `近期波动(4h ATR=${atr.toFixed(2)})` : `固定上限`;
+            halfRange = atr * DEFAULT_ATR_MULTIPLIER;
             this.logger.log(
-              `[网格] 重建范围: ATR半幅=${atrHalfRange.toFixed(4)}, 默认半幅=${defaultHalfRange.toFixed(4)}, 取小值=${halfRange.toFixed(4)}` +
-              `\n       以当前价 ${centerPrice.toFixed(2)} 为中心，根据${chosenBasis}自动计算边界，半幅 ${halfRange.toFixed(2)}（ATR建议${atrHalfRange.toFixed(2)}，固定上限${defaultHalfRange.toFixed(2)}，取较小值）`,
+              `[网格] 重建范围: ATR(4H,14)=${atr.toFixed(2)}, halfRange=ATR×${DEFAULT_ATR_MULTIPLIER}=${halfRange.toFixed(4)}, ` +
+              `中心价=${centerPrice.toFixed(2)}, 范围=[${(centerPrice - halfRange).toFixed(2)}, ${(centerPrice + halfRange).toFixed(2)}]`,
             );
           }
         } catch (_e) {
           this.logger.log(
-            `[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}` +
-            `\n       ATR获取失败，按固定比例计算边界，半幅 ${halfRange.toFixed(2)}`,
+            `[网格] 重建范围(ATR获取失败，用默认公式): halfRange=${halfRange.toFixed(4)}, ` +
+            `范围=[${(centerPrice - halfRange).toFixed(2)}, ${(centerPrice + halfRange).toFixed(2)}]`,
           );
         }
       }
