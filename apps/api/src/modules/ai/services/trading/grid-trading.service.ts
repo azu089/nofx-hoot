@@ -3312,169 +3312,95 @@ export class GridTradingService {
     try {
       const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-      // 同步活跃订单
+      // ── Step 1: 重置所有层状态（以交易所为唯一事实，丢弃 DB 恢复的历史状态）──
+      for (const line of state.gridLines) {
+        line.state = 'empty';
+        line.positionSize = 0;
+        line.positionEntry = 0;
+        line.unrealizedPnl = 0;
+        line.orderId = undefined;
+      }
+      state.orderBook = {};
+
+      // ── Step 2: 从交易所活跃订单恢复 pending 层 ──
       if (isGridAdapter(adapter)) {
         const openOrders = await adapter.getOpenOrders(state.symbol);
-        const activeIds = new Set(openOrders.map((o) => o.orderId));
+        this.logger.log(`[网格] reconcile: 交易所活跃订单 ${openOrders.length} 个`);
 
-        for (const line of state.gridLines) {
-          if (line.state === 'pending' && line.orderId && !activeIds.has(line.orderId)) {
-            // DB 记录有挂单，但交易所已不存在 → 标记为 empty
-            line.state = 'empty';
-            line.orderId = undefined;
+        for (const order of openOrders) {
+          // 找到价格最近的层
+          let closestIdx = -1;
+          let closestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            const dist = Math.abs(state.gridLines[i].price - (order.price ?? 0));
+            if (dist < closestDist) { closestDist = dist; closestIdx = i; }
           }
-        }
-
-        // 重建 orderBook
-        state.orderBook = {};
-        for (const line of state.gridLines) {
-          if (line.orderId) {
-            state.orderBook[line.orderId] = line.index;
+          if (closestIdx >= 0 && state.gridLines[closestIdx].state === 'empty') {
+            state.gridLines[closestIdx].state = 'pending';
+            state.gridLines[closestIdx].orderId = order.orderId;
+            state.orderBook[order.orderId] = closestIdx;
+          } else {
+            // 无法映射到层（价格不在网格范围内或层已被占用）→ 取消
+            this.logger.warn(`[网格] reconcile: 无法映射订单 ${order.orderId}@${order.price}，取消`);
+            await (adapter as GridExchangeAdapter)
+              .cancelOrder(state.symbol, order.orderId)
+              .catch((e: any) => this.logger.warn(`[网格] 取消订单 ${order.orderId} 失败: ${e.message}`));
           }
-        }
-
-        // 孤儿订单清理
-        // DB 不认识的交易所挂单 = 孤儿，直接取消，防止保证金被无效锁定
-        const trackedIds = new Set(Object.keys(state.orderBook));
-        const orphanOrders = openOrders.filter((o) => !trackedIds.has(o.orderId));
-        if (orphanOrders.length > 0) {
-          this.logger.warn(
-            `[网格] 发现 ${orphanOrders.length} 个孤儿订单，取消中: ${orphanOrders.map((o) => o.orderId).join(', ')}`,
-          );
-          await Promise.allSettled(
-            orphanOrders.map((o) =>
-              (adapter as GridExchangeAdapter)
-                .cancelOrder(state!.symbol, o.orderId)
-                .catch((e: any) => this.logger.warn(`[网格] 取消孤儿订单 ${o.orderId} 失败: ${e.message}`)),
-            ),
-          );
-          this.logger.log(`[网格] 孤儿订单清理完成`);
         }
       }
 
-      // ── 读取交易所真实持仓，清除幽灵 filled 层（启动时一次性对齐）──
+      // ── Step 3: 从交易所持仓恢复 filled 层（按入场价映射到最近空层）──
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
-      // Adapter 已归一化 OKX net mode，直接按 long/short 汇总
-      const exchangeLongQty = symPositions
-        .filter((p: any) => p.side === 'long')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
-      const exchangeShortQty = symPositions
-        .filter((p: any) => p.side === 'short')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
 
-      // 分别检查 buy-filled（多头）和 sell-filled（空头）幽灵层，避免将合法 sell-fill（空头）误清
-      const filledBuyLines = state.gridLines.filter((l) => l.state === 'filled' && l.side === 'buy' && l.positionSize > 0);
-      const filledSellLines = state.gridLines.filter((l) => l.state === 'filled' && l.side === 'sell' && l.positionSize > 0);
-      const expectedLongSize = filledBuyLines.reduce((sum, l) => sum + l.positionSize, 0);
-      const expectedShortSize = filledSellLines.reduce((sum, l) => sum + l.positionSize, 0);
-
-      // ── 持仓对账：以 exchange 为唯一事实，DB 恢复的 filled 状态仅作参考 ──
-      // 全量清理（exchange 无持仓）+ 部分对账（内存超出 exchange 实际）
-      const RECONCILE_THRESHOLD = 0.05;
-
-      // 空头对账（sell-filled 层）
-      if (exchangeShortQty < 0.0001) {
-        // exchange 无空头：全部清理
-        for (const line of filledSellLines) {
-          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-        }
-        if (filledSellLines.length > 0)
-          this.logger.warn(`[网格] reconcile: exchange空头=0，清理 ${filledSellLines.length} 层sell-filled（本地期望=${expectedShortSize.toFixed(4)}）`);
-      } else if (expectedShortSize > exchangeShortQty + RECONCILE_THRESHOLD) {
-        // 部分不匹配：从最高价层开始清除多余
-        let excess = expectedShortSize - exchangeShortQty;
-        for (const layer of [...filledSellLines].sort((a, b) => b.price - a.price)) {
-          if (excess <= RECONCILE_THRESHOLD) break;
-          excess -= layer.positionSize;
-          this.logger.warn(`[网格] reconcile: 清除多余sell-filled L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}（exchange=${exchangeShortQty.toFixed(4)} < 内存=${expectedShortSize.toFixed(4)}）`);
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-        }
-      }
-
-      // 多头对账（buy-filled 层）
-      if (exchangeLongQty < 0.0001) {
-        // exchange 无多头：全部清理
-        for (const line of filledBuyLines) {
-          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-        }
-        if (filledBuyLines.length > 0)
-          this.logger.warn(`[网格] reconcile: exchange多头=0，清理 ${filledBuyLines.length} 层buy-filled（本地期望=${expectedLongSize.toFixed(4)}）`);
-      } else if (expectedLongSize > exchangeLongQty + RECONCILE_THRESHOLD) {
-        // 部分不匹配：从最低价层开始清除多余
-        let excess = expectedLongSize - exchangeLongQty;
-        for (const layer of [...filledBuyLines].sort((a, b) => a.price - b.price)) {
-          if (excess <= RECONCILE_THRESHOLD) break;
-          excess -= layer.positionSize;
-          this.logger.warn(`[网格] reconcile: 清除多余buy-filled L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}（exchange=${exchangeLongQty.toFixed(4)} < 内存=${expectedLongSize.toFixed(4)}）`);
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-        }
-      }
-
-      // 孤儿持仓映射：exchange 持仓 > 内存已追踪持仓（在 HOOT 未运行期间成交的订单）
-      // → 把多出来的量按平均入场价映射到最近的空层，让层级状态与 exchange 对齐
-      const liveShortPos = symPositions.find((p: any) => p.side === 'short');
-      const liveLongPos  = symPositions.find((p: any) => p.side === 'long');
-
-      // 重新计算对账后的内存量（清除多余层后可能已变化）
-      const memLongAfter  = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy').reduce((s, l) => s + l.positionSize, 0);
-      const memShortAfter = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell').reduce((s, l) => s + l.positionSize, 0);
-
-      if (liveLongPos && exchangeLongQty > memLongAfter + RECONCILE_THRESHOLD) {
-        const orphanQty  = exchangeLongQty - memLongAfter;
-        const entryPrice = liveLongPos.entryPrice ?? 0;
-        const qtyPerLayer = exchangeLongQty / Math.max(Math.round(exchangeLongQty / (orphanQty / Math.ceil(orphanQty / 0.4 + 0.5))), 1);
-        const emptyBuyLayers = state.gridLines
-          .filter(l => l.side === 'buy' && l.state !== 'filled')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        let remaining = orphanQty;
-        for (const layer of emptyBuyLayers) {
-          if (remaining <= RECONCILE_THRESHOLD) break;
-          const qty = Math.min(qtyPerLayer, remaining);
-          layer.state = 'filled'; layer.positionEntry = entryPrice;
-          layer.positionSize = qty; layer.side = 'buy'; layer.unrealizedPnl = 0;
-          remaining -= qty;
-          this.logger.warn(`[网格] reconcile: 孤儿多头 → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)} qty=${qty.toFixed(4)} (入场均价=${entryPrice.toFixed(2)})`);
-        }
-      }
-      if (liveShortPos && exchangeShortQty > memShortAfter + RECONCILE_THRESHOLD) {
-        const orphanQty  = exchangeShortQty - memShortAfter;
-        const entryPrice = liveShortPos.entryPrice ?? 0;
-        const qtyPerLayer = exchangeShortQty / Math.max(Math.round(exchangeShortQty / (orphanQty / Math.ceil(orphanQty / 0.4 + 0.5))), 1);
-        const emptyShortLayers = state.gridLines
-          .filter(l => l.side === 'sell' && l.state !== 'filled')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        let remaining = orphanQty;
-        for (const layer of emptyShortLayers) {
-          if (remaining <= RECONCILE_THRESHOLD) break;
-          const qty = Math.min(qtyPerLayer, remaining);
-          layer.state = 'filled'; layer.positionEntry = entryPrice;
-          layer.positionSize = qty; layer.side = 'sell'; layer.unrealizedPnl = 0;
-          remaining -= qty;
-          this.logger.warn(`[网格] reconcile: 孤儿空头 → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)} qty=${qty.toFixed(4)} (入场均价=${entryPrice.toFixed(2)})`);
-        }
-      }
-
-      // 清理脏数据：state≠'filled' 但 positionSize/positionEntry 仍有残留值（旧版 bug 遗留）
-      // 这些脏数据会导致 positionNominal 回退计算虚增 cap，阻塞正常挂单
-      const dirtyLines = state.gridLines.filter(
-        (l) => l.state !== 'filled' && ((l.positionSize ?? 0) > 0 || l.positionEntry > 0),
+      // 按 side 分组
+      const longPositions = symPositions.filter((p: any) =>
+        p.side === 'long' || p.side === 'net' || !p.side
       );
-      if (dirtyLines.length > 0) {
-        this.logger.warn(
-          `[网格] reconcile: 清理 ${dirtyLines.length} 条脏数据行（state≠filled 但有残留 positionSize/Entry）: ` +
-          dirtyLines.map((l) => `idx=${l.index} state=${l.state} posSize=${l.positionSize?.toFixed(4)} posEntry=${l.positionEntry?.toFixed(4)}`).join(', '),
-        );
-        for (const line of dirtyLines) {
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
-        }
+      const shortPositions = symPositions.filter((p: any) => p.side === 'short');
+
+      // 多头：映射到最近的 buy 层
+      for (const pos of longPositions) {
+        if ((pos.quantity ?? 0) < 0.0001) continue;
+        const entryPrice = pos.entryPrice ?? 0;
+        // 按距入场价最近排序，选未被占用的 buy 层
+        const candidates = state.gridLines
+          .filter(l => l.side === 'buy' && l.state === 'empty')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+        if (candidates.length === 0) continue;
+        const layer = candidates[0];
+        layer.state = 'filled';
+        layer.positionEntry = entryPrice;
+        layer.positionSize = pos.quantity;
+        layer.side = 'buy';
+        layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
+        this.logger.log(`[网格] reconcile: 多头 ${pos.quantity.toFixed(4)} 入场@${entryPrice.toFixed(2)} → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
       }
 
-      // 同步持仓状态（快照记录）；Adapter 归一化后不再需要 net fallback
-      const symPos = symPositions.find((p) => p.side === 'long') ?? symPositions[0];
+      // 空头：映射到最近的 sell 层
+      for (const pos of shortPositions) {
+        if ((pos.quantity ?? 0) < 0.0001) continue;
+        const entryPrice = pos.entryPrice ?? 0;
+        const candidates = state.gridLines
+          .filter(l => l.side === 'sell' && l.state === 'empty')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+        if (candidates.length === 0) continue;
+        const layer = candidates[0];
+        layer.state = 'filled';
+        layer.positionEntry = entryPrice;
+        layer.positionSize = pos.quantity;
+        layer.side = 'sell';
+        layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
+        this.logger.log(`[网格] reconcile: 空头 ${pos.quantity.toFixed(4)} 入场@${entryPrice.toFixed(2)} → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
+      }
+
+      const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
+      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
+      this.logger.log(`[网格] reconcile 完成: filled=${filledCount} pending=${pendingCount}`);
+
+      // ── Step 4: 同步持仓快照记录到 DB（只做账本记录，不影响内存状态）──
+      const symPos = symPositions.find((p) => p.side === 'long' || (p as any).side === 'net' || !p.side) ?? symPositions[0];
 
       if (symPos) {
         // 找到交易所持仓，检查 DB 是否有对应 Position
