@@ -894,6 +894,20 @@ export class GridTradingService {
           this.logger.error(`[网格] 配置变更时获取价格失败: ${e.message}，跳过本轮`);
           return { trades: 0, errors: 1 };
         }
+        // 保存 filled 持仓（对齐 nofx autoAdjustGrid L1423-1428）
+        const filledBeforeRebuild: Array<{
+          side: 'buy' | 'sell'; positionEntry: number; positionSize: number; unrealizedPnl: number;
+        }> = [];
+        for (const line of state.gridLines) {
+          if (line.state === 'filled' && (line.positionSize ?? 0) > 0) {
+            filledBeforeRebuild.push({
+              side: line.side as 'buy' | 'sell',
+              positionEntry: line.positionEntry,
+              positionSize: line.positionSize,
+              unrealizedPnl: line.unrealizedPnl ?? 0,
+            });
+          }
+        }
         // 若用户设定了百分比边界，按百分比重建；否则 ATR 自动计算
         if (state.upperBoundPct && state.lowerBoundPct) {
           const explicitUpper = rebuildPrice * (1 + state.upperBoundPct / 100);
@@ -905,6 +919,30 @@ export class GridTradingService {
           await this.reinitializeGridLevels(state, rebuildPrice, explicitUpper, explicitLower);
         } else {
           await this.reinitializeGridLevels(state, rebuildPrice);
+        }
+        // 恢复 filled 持仓 → 映射到最近层（对齐 nofx autoAdjustGrid L1456-1479）
+        for (const fp of filledBeforeRebuild) {
+          let closestIdx = -1;
+          let closestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (state.gridLines[i].state !== 'empty') continue;
+            const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestIdx = i;
+            }
+          }
+          if (closestIdx >= 0) {
+            const nl = state.gridLines[closestIdx];
+            nl.state = 'filled';
+            nl.side = fp.side;
+            nl.positionEntry = fp.positionEntry;
+            nl.positionSize = fp.positionSize;
+            nl.unrealizedPnl = fp.unrealizedPnl;
+            this.logger.log(
+              `[网格] 配置变更: 持仓映射 → L${closestIdx + 1}@${fp.positionEntry.toFixed(2)}×${fp.positionSize.toFixed(4)}`,
+            );
+          }
         }
         state.needsReconcile = false;
         await this.persistGridState(strategyId, state);
