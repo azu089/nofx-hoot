@@ -1878,7 +1878,6 @@ export class GridTradingService {
     let positionLong: GridContext['positionLong'];
     let positionShort: GridContext['positionShort'];
 
-    let symPositions: any[] = []; // 提升作用域，供对账块和 AI context 共用
     try {
       // 始终 fresh 获取余额
       const balance = await adapter.getBalance();
@@ -1892,7 +1891,7 @@ export class GridTradingService {
       // 始终 fresh 获取持仓
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
-      symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
+      const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
       const longPos = symPositions.find((p: any) => p.side === 'long');
       const shortPos = symPositions.find((p: any) => p.side === 'short');
 
@@ -1917,55 +1916,6 @@ export class GridTradingService {
         };
       }
     } catch { /* 使用默认值 */ }
-
-    // === 层级对账：AI 每轮拿到的层级状态必须来自 CCXT 实时数据，不能是内存脏数据 ===
-    // 原则：exchange 是事实，内存 filled 层必须与 exchange 实际持仓对齐，清理幽灵层后再构建 ctx
-    {
-      const liveLongQty = symPositions
-        .filter((p: any) => p.side === 'long')
-        .reduce((s: number, p: any) => s + (p.quantity ?? 0), 0);
-      const liveShortQty = symPositions
-        .filter((p: any) => p.side === 'short')
-        .reduce((s: number, p: any) => s + (p.quantity ?? 0), 0);
-
-      // 全量清理：exchange 无持仓但内存有 filled 层
-      if (liveLongQty < 0.0001) {
-        const ghost = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
-        for (const l of ghost) { l.state = 'empty'; l.positionSize = 0; l.positionEntry = 0; l.unrealizedPnl = 0; }
-        if (ghost.length > 0) this.logger.warn(`[网格][对账] exchange多头=0，清理 ${ghost.length} 幽灵buy层`);
-      }
-      if (liveShortQty < 0.0001) {
-        const ghost = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
-        for (const l of ghost) { l.state = 'empty'; l.positionSize = 0; l.positionEntry = 0; l.unrealizedPnl = 0; }
-        if (ghost.length > 0) this.logger.warn(`[网格][对账] exchange空头=0，清理 ${ghost.length} 幽灵sell层`);
-      }
-
-      // 部分持仓对账：内存 filled 总量 > exchange 实际持仓 + 容差 → 从边缘层开始清理
-      const LAYER_QTY_THRESHOLD = 0.05;
-      const memSell = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
-      const memShortQ = memSell.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-      if (memShortQ > liveShortQty + LAYER_QTY_THRESHOLD) {
-        let excess = memShortQ - liveShortQty;
-        for (const layer of [...memSell].sort((a, b) => b.price - a.price)) {
-          if (excess <= LAYER_QTY_THRESHOLD) break;
-          excess -= (layer.positionSize ?? 0);
-          this.logger.warn(`[网格][对账] 清理幽灵空头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-        }
-      }
-      const memBuy = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
-      const memLongQ = memBuy.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-      if (memLongQ > liveLongQty + LAYER_QTY_THRESHOLD) {
-        let excess = memLongQ - liveLongQty;
-        for (const layer of [...memBuy].sort((a, b) => a.price - b.price)) {
-          if (excess <= LAYER_QTY_THRESHOLD) break;
-          excess -= (layer.positionSize ?? 0);
-          this.logger.warn(`[网格][对账] 清理幽灵多头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-        }
-      }
-    }
-    // === 层级对账结束 — 以下 ctx.levels 即反映本轮 CCXT 实时持仓 ===
 
     // 资金费率
     let fundingRate = 0;
@@ -1999,22 +1949,6 @@ export class GridTradingService {
         closedAt: r.exitTime instanceof Date ? r.exitTime.toISOString() : String(r.exitTime),
       }));
     } catch { /* 忽略，不阻塞主流程 */ }
-
-    // pending 挂单对账：exchange 上不存在的 orderId → 清为 empty
-    // 补充对账填单层（filled 对账在 symPositions 拿到后已做）
-    if (exchangeOpenOrders) {
-      const liveOrderIds = new Set(exchangeOpenOrders.map(o => o.orderId));
-      for (const line of state.gridLines) {
-        if (line.state === 'pending' && line.orderId && !liveOrderIds.has(line.orderId)) {
-          this.logger.warn(
-            `[网格][对账] 清理幽灵挂单 L${(line.index ?? 0) + 1}@${line.price.toFixed(2)} orderId=${line.orderId}`,
-          );
-          line.state = 'empty';
-          delete state.orderBook[line.orderId];
-          line.orderId = undefined;
-        }
-      }
-    }
 
     // 价格变化（改用 1h K 线，精确且无临界问题）
     const priceChange1h = ohlcvHourly.length >= 2
@@ -3436,30 +3370,46 @@ export class GridTradingService {
       const expectedLongSize = filledBuyLines.reduce((sum, l) => sum + l.positionSize, 0);
       const expectedShortSize = filledSellLines.reduce((sum, l) => sum + l.positionSize, 0);
 
-      // 幽灵多头：期望有多头但交易所既无多头也无空头（说明仓位已平）
-      if (expectedLongSize > 0 && exchangeLongQty === 0 && exchangeShortQty === 0) {
-        for (const line of filledBuyLines) {
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
+      // ── 持仓对账：以 exchange 为唯一事实，DB 恢复的 filled 状态仅作参考 ──
+      // 全量清理（exchange 无持仓）+ 部分对账（内存超出 exchange 实际）
+      const RECONCILE_THRESHOLD = 0.05;
+
+      // 空头对账（sell-filled 层）
+      if (exchangeShortQty < 0.0001) {
+        // exchange 无空头：全部清理
+        for (const line of filledSellLines) {
+          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
         }
-        this.logger.warn(
-          `[网格] reconcile: ${filledBuyLines.length} 层buy幽灵持仓 filled→empty（交易所多头=0，本地期望多头=${expectedLongSize.toFixed(4)}）`,
-        );
+        if (filledSellLines.length > 0)
+          this.logger.warn(`[网格] reconcile: exchange空头=0，清理 ${filledSellLines.length} 层sell-filled（本地期望=${expectedShortSize.toFixed(4)}）`);
+      } else if (expectedShortSize > exchangeShortQty + RECONCILE_THRESHOLD) {
+        // 部分不匹配：从最高价层开始清除多余
+        let excess = expectedShortSize - exchangeShortQty;
+        for (const layer of [...filledSellLines].sort((a, b) => b.price - a.price)) {
+          if (excess <= RECONCILE_THRESHOLD) break;
+          excess -= layer.positionSize;
+          this.logger.warn(`[网格] reconcile: 清除多余sell-filled L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}（exchange=${exchangeShortQty.toFixed(4)} < 内存=${expectedShortSize.toFixed(4)}）`);
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+        }
       }
 
-      // 幽灵空头：期望有空头但交易所既无多头也无空头（说明空头已平）
-      if (expectedShortSize > 0 && exchangeShortQty === 0 && exchangeLongQty === 0) {
-        for (const line of filledSellLines) {
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
+      // 多头对账（buy-filled 层）
+      if (exchangeLongQty < 0.0001) {
+        // exchange 无多头：全部清理
+        for (const line of filledBuyLines) {
+          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
         }
-        this.logger.warn(
-          `[网格] reconcile: ${filledSellLines.length} 层sell幽灵持仓 filled→empty（交易所空头=0，本地期望空头=${expectedShortSize.toFixed(4)}）`,
-        );
+        if (filledBuyLines.length > 0)
+          this.logger.warn(`[网格] reconcile: exchange多头=0，清理 ${filledBuyLines.length} 层buy-filled（本地期望=${expectedLongSize.toFixed(4)}）`);
+      } else if (expectedLongSize > exchangeLongQty + RECONCILE_THRESHOLD) {
+        // 部分不匹配：从最低价层开始清除多余
+        let excess = expectedLongSize - exchangeLongQty;
+        for (const layer of [...filledBuyLines].sort((a, b) => a.price - b.price)) {
+          if (excess <= RECONCILE_THRESHOLD) break;
+          excess -= layer.positionSize;
+          this.logger.warn(`[网格] reconcile: 清除多余buy-filled L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}（exchange=${exchangeLongQty.toFixed(4)} < 内存=${expectedLongSize.toFixed(4)}）`);
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+        }
       }
 
       // 清理脏数据：state≠'filled' 但 positionSize/positionEntry 仍有残留值（旧版 bug 遗留）

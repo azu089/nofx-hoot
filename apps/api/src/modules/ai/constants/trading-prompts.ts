@@ -841,13 +841,13 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   } else {
     lines.push(`网格倾斜: 均衡`);
   }
-  // 空格线统计（仅供参考，AI 根据可用保证金自主决策挂哪些层）
-  const emptyLevels = ctx.levels.filter(l => l.state === 'empty');
+  // 空格统计（state==='cancelled' 表示该层无挂单无持仓，即空格）
+  const emptyLevels = ctx.levels.filter(l => l.state === 'cancelled');
   lines.push('');
   if (emptyLevels.length > 0) {
-    lines.push(`空格线数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
+    lines.push(`空格数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
   } else {
-    lines.push('空格线数量: 0（所有层已挂单或持仓）');
+    lines.push('空格数量: 0（所有层已挂单或持仓）');
   }
 
   // Section 5: 网格层级表
@@ -863,7 +863,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
       : l.state === 'pending'
         ? (l.side === 'buy' ? '挂买' : '挂卖')
         : (l.price < ctx.currentPrice ? '建议买' : '建议卖');
-    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '持仓' : '未挂单';
+    const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '持仓' : '空格';
     // 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
     // 仅 filled 层显示持仓量（供 close_long/close_short 参考数量）
