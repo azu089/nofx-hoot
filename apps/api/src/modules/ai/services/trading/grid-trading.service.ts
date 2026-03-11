@@ -1826,7 +1826,8 @@ export class GridTradingService {
 
   /** 分类市场状态，同时返回 ATR(14)[1h] 供 ATR 追踪网格宽度使用 */
   private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
-    const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '1h', 50);
+    // 对齐 nofx: 使用 5m K线，与 AI 收到的 BB/ATR 指标同源（避免 1h 和 5m 数据矛盾）
+    const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '5m', 50);
     const closes = ohlcvRaw.map((c: any) => Number(c[4]));
     const highs = ohlcvRaw.map((c: any) => Number(c[2]));
     const lows = ohlcvRaw.map((c: any) => Number(c[3]));
@@ -1845,8 +1846,8 @@ export class GridTradingService {
     let regime: RegimeLevel;
     if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
     else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
-    else if (bbWidth <= 6.0 && atrPct <= 3.0) regime = 'wide';   // 扩大 wide 上限：BB带宽≤6% 且 ATR/价格≤3%
-    else regime = 'volatile'; // 真正高波动：BB带宽>6% 或 ATR/价格>3%（hourly ATR>3% 极端罕见）
+    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';   // 对齐 nofx grid_regime.go: wide 上限 BB≤4%
+    else regime = 'volatile'; // BB>4% 或 ATR>3%
 
     return { regime, atrHourly: atr ?? 0 };
   }
