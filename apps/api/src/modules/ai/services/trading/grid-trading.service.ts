@@ -2669,21 +2669,16 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限（对齐 nofx checkTotalPositionLimit L970-1007）
-      // nofx: currentPositionValue(交易所真实持仓) + pendingValue(挂单名义) + additionalValue <= max
+      // 总仓位上限：只检查已成交持仓（livePositionNotional），不含挂单
+      // 挂单未成交不占杠杆敞口，含挂单会导致中性网格（多空各半）误报仓位已满
       const totalPositionCap = state.totalInvestment * leverage;
       const livePositionNotional = state.livePositionNotional ?? 0; // 交易所真实持仓名义价值（Step3 已更新）
-      const pendingNotionalStep1 = state.gridLines
-        .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-        .reduce((sum, l) => sum + l.orderQuantity * (l.price > 0 ? l.price : price), 0);
-      const existingNotional = livePositionNotional + pendingNotionalStep1;
-      if (existingNotional + quantity * price > totalPositionCap) {
+      if (livePositionNotional + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度
-        const remaining = Math.max(0, totalPositionCap - existingNotional);
+        const remaining = Math.max(0, totalPositionCap - livePositionNotional);
         quantity = Math.min(quantity, remaining / price);
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 已用 $${existingNotional.toFixed(2)}` +
-            ` (持仓$${livePositionNotional.toFixed(2)}+挂单$${pendingNotionalStep1.toFixed(2)}) / 上限 $${totalPositionCap.toFixed(2)}`;
+          const skipReason = `总仓位已满: 持仓 $${livePositionNotional.toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
