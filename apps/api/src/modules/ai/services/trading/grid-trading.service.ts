@@ -3193,6 +3193,52 @@ export class GridTradingService {
         }
       }
 
+      // Step 6b: 部分持仓对账 — exchange 实际持仓 < 内存预期时（外部平仓/止损/手动操作未被检测）
+      // 原则：exchange 是事实，内存层级必须与 exchange 对齐
+      const LAYER_QTY_THRESHOLD = 0.05; // 容差 0.05 SOL（约 1/8 层）
+      // 空头对账：内存 sell 持仓总量 > exchange 实际空头 → 从最高价层开始清理（最可能被止损）
+      const memSellLayers = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
+      const memShortQty = memSellLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+      if (memShortQty > exchangeShortQty + LAYER_QTY_THRESHOLD) {
+        let excess = memShortQty - exchangeShortQty;
+        const sortedDesc = [...memSellLayers].sort((a, b) => b.price - a.price);
+        let cleared = 0;
+        for (const layer of sortedDesc) {
+          if (excess <= LAYER_QTY_THRESHOLD) break;
+          excess -= (layer.positionSize ?? 0);
+          this.logger.warn(
+            `[网格] syncOrderFills Step6b: 清理幽灵空头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}×${layer.positionSize?.toFixed(4)}` +
+            `（exchange空头=${exchangeShortQty.toFixed(4)} < 内存预期=${memShortQty.toFixed(4)}）`,
+          );
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+          cleared++;
+        }
+        if (cleared > 0) {
+          this.logger.warn(`[网格] syncOrderFills Step6b: 共清理 ${cleared} 个幽灵空头层，内存已对齐 exchange`);
+        }
+      }
+      // 多头对账：内存 buy 持仓总量 > exchange 实际多头 → 从最低价层开始清理
+      const memBuyLayers = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
+      const memLongQty = memBuyLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+      if (memLongQty > exchangeLongQty + LAYER_QTY_THRESHOLD) {
+        let excess = memLongQty - exchangeLongQty;
+        const sortedAsc = [...memBuyLayers].sort((a, b) => a.price - b.price);
+        let cleared = 0;
+        for (const layer of sortedAsc) {
+          if (excess <= LAYER_QTY_THRESHOLD) break;
+          excess -= (layer.positionSize ?? 0);
+          this.logger.warn(
+            `[网格] syncOrderFills Step6b: 清理幽灵多头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}×${layer.positionSize?.toFixed(4)}` +
+            `（exchange多头=${exchangeLongQty.toFixed(4)} < 内存预期=${memLongQty.toFixed(4)}）`,
+          );
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+          cleared++;
+        }
+        if (cleared > 0) {
+          this.logger.warn(`[网格] syncOrderFills Step6b: 共清理 ${cleared} 个幽灵多头层，内存已对齐 exchange`);
+        }
+      }
+
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
