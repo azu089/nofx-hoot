@@ -2890,7 +2890,8 @@ export class GridTradingService {
       }
       finalLevel.state = 'pending';
       finalLevel.side = side;             // side 跟随 AI 实际操作（非初始化固定值）
-      finalLevel.price = price;           // 与实际下单价保持一致
+      // 不覆盖 finalLevel.price — 层价格由网格几何决定（lowerPrice + i × gridSpacing），
+      // AI 下单价可能偏离层预设价，覆盖会导致相邻层价格重复（L9=L10 同价 bug）
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
       state.orderBook[result.orderId] = finalLevelIndex;
@@ -4108,6 +4109,26 @@ export class GridTradingService {
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
         if (state.lastOI === undefined) state.lastOI = 0;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
+
+        // 价格校准：修复 L2893 覆盖 bug 导致的层价格偏移
+        // 层价格应严格等于 lowerPrice + i × gridSpacing，若偏差 > 0.001 则修正
+        if (state.gridSpacing > 0 && state.lowerPrice > 0) {
+          let corrected = 0;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            const expectedPrice = Math.round((state.lowerPrice + i * state.gridSpacing) * 100) / 100;
+            if (Math.abs(state.gridLines[i].price - expectedPrice) > 0.001) {
+              this.logger.warn(
+                `[网格] 价格校准: L${i + 1} ${state.gridLines[i].price.toFixed(4)} → ${expectedPrice.toFixed(4)}`,
+              );
+              state.gridLines[i].price = expectedPrice;
+              corrected++;
+            }
+          }
+          if (corrected > 0) {
+            this.logger.warn(`[网格] 价格校准完成: 修正 ${corrected} 层`);
+          }
+        }
+
         this.gridStates.set(strategyId, state);
         this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}`);
         return state;
