@@ -3282,6 +3282,10 @@ export class GridTradingService {
           .filter(l => l.state === 'filled' && l.side === 'buy')
           .reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
 
+        this.logger.debug(
+          `[网格] 校准数据: exchLong=${exchangeLongQty.toFixed(4)}, exchShort=${exchangeShortQty.toFixed(4)}, memLong=${memoryLongQty.toFixed(4)}, symPos=${symPositionsSync.length}`,
+        );
+
         // 多头校准：内存 > 交易所 → 按比例缩减
         if (exchangeLongQty > 0.0001 && memoryLongQty > exchangeLongQty + 0.001) {
           const ratio = exchangeLongQty / memoryLongQty;
