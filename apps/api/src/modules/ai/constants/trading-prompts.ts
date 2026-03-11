@@ -710,8 +710,8 @@ export function GRID_SYSTEM_PROMPT(
 4. **最终目标**：恢复到正常网格运行状态，持续盈利。你拥有所有操作权限，请综合市场数据自行决策最优路径
 
 ## 可用操作
-- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
+- **place_buy_limit**: 在指定价格挂买入限价单（fields: level, price, quantity）
+- **place_sell_limit**: 在指定价格挂卖出限价单（fields: level, price, quantity）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（BB>6% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
