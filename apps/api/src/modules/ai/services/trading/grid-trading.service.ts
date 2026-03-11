@@ -2000,6 +2000,22 @@ export class GridTradingService {
       }));
     } catch { /* 忽略，不阻塞主流程 */ }
 
+    // pending 挂单对账：exchange 上不存在的 orderId → 清为 empty
+    // 补充对账填单层（filled 对账在 symPositions 拿到后已做）
+    if (exchangeOpenOrders) {
+      const liveOrderIds = new Set(exchangeOpenOrders.map(o => o.orderId));
+      for (const line of state.gridLines) {
+        if (line.state === 'pending' && line.orderId && !liveOrderIds.has(line.orderId)) {
+          this.logger.warn(
+            `[网格][对账] 清理幽灵挂单 L${(line.index ?? 0) + 1}@${line.price.toFixed(2)} orderId=${line.orderId}`,
+          );
+          line.state = 'empty';
+          delete state.orderBook[line.orderId];
+          line.orderId = undefined;
+        }
+      }
+    }
+
     // 价格变化（改用 1h K 线，精确且无临界问题）
     const priceChange1h = ohlcvHourly.length >= 2
       ? ((currentPrice - ohlcvHourly[ohlcvHourly.length - 2].close) / ohlcvHourly[ohlcvHourly.length - 2].close) * 100
