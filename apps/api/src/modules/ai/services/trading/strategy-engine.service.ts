@@ -433,10 +433,10 @@ export class StrategyEngineService implements OnModuleInit {
     // 参考 getTimeline 相同处理方式
     const baseWhere: any = { strategyId };
 
-    // actionsOnly 时网格策略大量周期是观望（被过滤），需取满上限才能保证分页准确
-    // 否则：取100条→过滤90条观望→只剩10条→前端以为只有1页
+    // actionsOnly 时网格策略大量周期是观望（被过滤），需足量预取才能保证分页准确
+    // 取100条有操作记录（约1天历史）展示给用户，数据库仍保留完整7天/90天用于审计
     const fetchLimit = actionsOnly
-      ? StrategyEngineService.MAX_LOGS_PER_STRATEGY
+      ? 100
       : Math.min(500, Math.max(skip + limit * 3, limit * 5));
 
     const [rawData, totalAll] = await Promise.all([
