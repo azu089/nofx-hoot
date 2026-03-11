@@ -82,6 +82,7 @@ export interface GridState {
   strategyId: string;
   symbol: string;
   gridLines: GridLine[];
+  gridCount: number; // 网格层数，持久化用（gridLines 不再存 DB，重建时需要此字段）
   upperPrice: number;
   lowerPrice: number;
   gridSpacing: number;
@@ -584,6 +585,7 @@ export class GridTradingService {
       strategyId,
       symbol,
       gridLines,
+      gridCount: gridLines.length,
       upperPrice,
       lowerPrice,
       gridSpacing,
@@ -3275,6 +3277,7 @@ export class GridTradingService {
       line.positionEntry = 0;
       line.unrealizedPnl = 0;
       line.orderId = undefined;
+      line.orderQuantity = 0; // 对齐 nofx: 始终从 getOpenOrders 重新设置，杜绝 stale 值
     }
     state.orderBook = {};
 
@@ -3441,6 +3444,38 @@ export class GridTradingService {
   }
 
   // ========================= 辅助方法 =========================
+
+  /** 从持久化配置字段重建 gridLines 结构（不依赖 DB 中的 gridLines 数据）
+   *  对齐 nofx：启动时 gridLines 始终从 config + exchange 重建，不信任 DB 快照
+   */
+  private buildGridLinesFromConfig(state: GridState): GridLine[] {
+    const gridCount = state.gridCount
+      || Math.round((state.upperPrice - state.lowerPrice) / (state.gridSpacing || 1)) + 1;
+    if (gridCount <= 0 || state.upperPrice <= state.lowerPrice) return [];
+
+    const weights = this.calculateWeights(gridCount, state.distribution ?? 'uniform');
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const lines: GridLine[] = [];
+
+    for (let i = 0; i < gridCount; i++) {
+      lines.push({
+        index: i,
+        price: Math.round((state.lowerPrice + i * state.gridSpacing) * 100) / 100,
+        state: 'empty',
+        side: 'buy',       // applyGridDirection 会重新赋值
+        allocatedUSD: state.totalInvestment * (weights[i] / weightSum),
+        orderQuantity: 0,
+        positionSize: 0,
+        positionEntry: 0,
+        unrealizedPnl: 0,
+        orderId: undefined,
+      });
+    }
+
+    const centerPrice = (state.upperPrice + state.lowerPrice) / 2;
+    this.applyGridDirection(lines, centerPrice, state.currentDirection ?? 'neutral');
+    return lines;
+  }
 
   /** 计算分布权重（uniform / gaussian / pyramid 三种分布） */
   private calculateWeights(gridCount: number, distribution: string): number[] {
@@ -3786,7 +3821,12 @@ export class GridTradingService {
 
   private async persistGridState(strategyId: string, state: GridState): Promise<void> {
     try {
-      // 同步 total_pnl（权益差，非累计网格利润）和 win_rate 到策略主表
+      // 对齐 nofx：gridLines（动态层状态）和 orderBook（运行时索引）不存 DB
+      // 重启时始终从交易所 getOpenOrders/getPositions 重建，杜绝 stale DB 值引发的 bug
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { gridLines, orderBook, _pendingStopLoss, ...stateToSave } = state as any;
+      stateToSave.gridCount = gridLines?.length ?? state.gridCount ?? 0;  // 保留层数，重建时用
+
       const equityPnl = state.lastEquity && state.startEquity > 0
         ? state.lastEquity - state.startEquity
         : 0;
@@ -3795,9 +3835,8 @@ export class GridTradingService {
         : 0;
       await this.prisma.aiStrategy.update({
         where: { id: strategyId },
-        data: { gridRuntimeState: state as any },
+        data: { gridRuntimeState: stateToSave as any },
       });
-      // 原始 SQL 更新 PnL 字段（绕过 Prisma 客户端类型缓存问题）
       await this.prisma.$executeRawUnsafe(
         `UPDATE ai_strategies SET total_pnl = $1, win_rate = $2, total_trades = $3 WHERE id = $4`,
         equityPnl, winRate, state.totalTrades ?? 0, strategyId,
@@ -3824,8 +3863,13 @@ export class GridTradingService {
         // 向后兼容：旧版状态可能缺少新字段
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
+        // 对齐 nofx：gridLines 不从 DB 恢复（DB 快照可能是 stale 值）
+        // 从配置字段（lowerPrice/upperPrice/gridSpacing/distribution）确定性重建
+        // 动态状态（state/orderId/orderQuantity/positionSize）由 reconcileGridState 从交易所重建
+        state.gridLines = this.buildGridLinesFromConfig(state);
+        state.orderBook = {};
         this.gridStates.set(strategyId, state);
-        this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}`);
+        this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}（gridLines 从配置重建，共 ${state.gridLines.length} 层）`);
         return state;
       }
       return null;
