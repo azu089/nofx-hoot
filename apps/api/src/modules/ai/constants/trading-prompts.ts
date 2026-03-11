@@ -711,7 +711,7 @@ function gridSystemPromptZh(
 - **pending**: 等待成交
 - **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-💡 **挂单优先级建议**（adjust_grid 重建后 empty 层较多时）：优先补挂靠近当前价的层（成交概率高，资金效率好），再逐步向两侧延伸；边界附近的层可在后续周期再补。最终由 AI 根据市场判断决定。
+💡 **初始化/重建后立即挂满**：检测到大量 empty 层（通常是刚初始化或 adjust_grid 重建后），**本轮应尽量一次性把所有 empty 层都挂上委托单**，不要分多轮慢慢补。顺序：先挂靠近当前价的层（成交概率高），再向两侧延伸。仓位上限不足时跳过超限层，其余层仍全部挂满。
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
@@ -792,7 +792,7 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
-💡 **Order placement priority suggestion** (when many empty levels exist after adjust_grid rebuild): Prefer filling levels closest to current price first (higher fill probability, better capital efficiency), then expand outward; edge levels can be filled in later cycles. AI makes the final call based on market conditions.
+💡 **Fill all levels immediately after init/rebuild**: When many empty levels are detected (typically after initialization or adjust_grid rebuild), **fill ALL empty levels with orders in this single round** — do not spread across multiple rounds. Order: levels closest to current price first, then expand outward. Skip levels that exceed position cap; fill all remaining levels.
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 
