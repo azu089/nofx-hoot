@@ -3212,42 +3212,46 @@ export class GridTradingService {
         const prevOrderId = line.orderId!;
         const qty = line.orderQuantity ?? 0;
 
-        // 对齐 nofx L1247: abs(current) > abs(expected) → 仓位增大 → 开仓成交
-        const posGrew = Math.abs(currentPositionSize) > Math.abs(runningExpected) + 0.0001;
-        // 补充 nofx 缺失的场景: abs(current) < abs(expected) → 仓位缩小 → 平仓成交
-        const posShrunk = Math.abs(currentPositionSize) < Math.abs(runningExpected) - 0.0001;
-
-        if (posGrew) {
-          // 仓位增大 → 开仓成交（买入做多 或 卖出开空）
-          line.state = 'filled';
-          line.positionEntry = line.price;
-          line.positionSize = qty;
-          line.unrealizedPnl = 0;
-          state.totalTrades++;
-          filledLines.push(line);
-          runningExpected += qty; // 无论 buy/sell，filled 层都正向累加（对齐 nofx L1236）
-          this.logger.log(
-            `[网格] ${line.side === 'buy' ? '买单' : '卖单'}成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
-          );
-        } else if (posShrunk) {
-          // 仓位缩小 → 平仓成交（卖出平多 或 买入平空）
-          // 对齐 nofx: 层回 empty（网格循环完成，不创建 filled(sell)）
+        if (line.side === 'sell') {
+          // 卖单消失 → 总是回 empty（对齐 nofx: 卖单=平仓/止盈，不是网格开仓层）
+          // nofx 网格层只有 buy，sell 由 AI 单独管理，不参与 filled 状态追踪
+          const posShrunk = Math.abs(currentPositionSize) < Math.abs(runningExpected) - 0.0001;
           line.state = 'empty';
           line.positionSize = 0;
           line.positionEntry = 0;
           line.unrealizedPnl = 0;
-          state.totalTrades++;
-          this.logger.log(
-            `[网格] 平仓成交: level=${line.index}, side=${line.side}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}（层回空）`,
-          );
-          // runningExpected 不变 — 层回 empty 不增不减预期值
+          if (posShrunk) {
+            state.totalTrades++;
+            this.logger.log(
+              `[网格] 卖单平仓成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}（层回空）`,
+            );
+          } else {
+            this.logger.debug(`[网格] 卖单消失（取消/过期）: level=${line.index}`);
+          }
         } else {
-          // 仓位不变 → 订单取消/过期
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
-          this.logger.debug(`[网格] 挂单消失（取消/过期）: level=${line.index}`);
+          // 买单消失 → 用 abs() 启发式判断（对齐 nofx L1247）
+          const posGrew = Math.abs(currentPositionSize) > Math.abs(runningExpected) + 0.0001;
+
+          if (posGrew) {
+            // 仓位增大 → 买单成交
+            line.state = 'filled';
+            line.positionEntry = line.price;
+            line.positionSize = qty;
+            line.unrealizedPnl = 0;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty; // filled 层正向累加（对齐 nofx L1236）
+            this.logger.log(
+              `[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
+            );
+          } else {
+            // 仓位未增 → 订单取消/过期
+            line.state = 'empty';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
+            this.logger.debug(`[网格] 买单消失（取消/过期）: level=${line.index}`);
+          }
         }
 
         line.orderId = undefined;
@@ -3309,150 +3313,26 @@ export class GridTradingService {
             this.logger.warn(`[网格] 持仓校准: 交易所多头=0，${buyFilled.length} 个buy层→empty`);
           }
         }
-      }
 
-      // Step 7: CCXT 持仓数据写入 DB 缓存
-      await this.syncDbFromCcxt(userId, apiKeyId, strategyId, state.symbol, syncPositions);
+        // 安全网: 清理所有 filled(sell) 层 — nofx 网格层只有 buy-filled，sell-filled 不应存在
+        // 如果存在 filled(sell)，说明是旧版 bug 残留的脏数据
+        const sellFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell');
+        if (sellFilled.length > 0) {
+          for (const line of sellFilled) {
+            line.state = 'empty';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
+          }
+          this.logger.warn(`[网格] 持仓校准: 清理 ${sellFilled.length} 个残留 filled(sell) 层→empty（nofx 无此状态）`);
+        }
+      }
 
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
 
     return { filledLines };
-  }
-
-  /**
-   * 用 CCXT 实时持仓数据更新 DB positions 表（缓存）
-   * - 交易所有持仓 → upsert DB 记录（CCXT 真实数据）
-   * - DB 有但交易所无 → 标记 closed
-   * - 失败不阻塞交易流程（non-fatal）
-   */
-  private async syncDbFromCcxt(
-    userId: string,
-    apiKeyId: string,
-    strategyId: string,
-    symbol: string,
-    exchangePositions: any[],
-  ): Promise<void> {
-    try {
-      const baseSymbol = symbol.split('/')[0];
-      const relevantPositions = exchangePositions.filter(
-        (p: any) => p.symbol?.includes(baseSymbol),
-      );
-
-      // 查找该策略在 DB 中的 open 持仓
-      const dbPositions = await this.prisma.position.findMany({
-        where: {
-          userId,
-          status: 'open',
-          symbol: { contains: baseSymbol },
-          source: { in: ['snapshot', 'ai_strategy'] },
-        },
-      });
-
-      const matchedDbIds = new Set<string>();
-
-      for (const pos of relevantPositions) {
-        const side = pos.side === 'net' || !pos.side ? 'long' : pos.side;
-        const qty = Math.abs(pos.quantity ?? pos.amount ?? 0);
-        if (qty < 0.0001) continue;
-
-        // 匹配 DB 记录
-        const dbMatch = dbPositions.find(
-          (d) => d.side === side && !matchedDbIds.has(d.id),
-        );
-
-        if (dbMatch) {
-          matchedDbIds.add(dbMatch.id);
-          // 用 CCXT 数据更新 DB 缓存
-          await this.prisma.position.update({
-            where: { id: dbMatch.id },
-            data: {
-              amount: qty,
-              entryPrice: pos.entryPrice?.toFixed(8) ?? dbMatch.entryPrice,
-              markPrice: pos.markPrice ?? dbMatch.markPrice,
-              unrealizedPnl: pos.unrealizedPnl ?? 0,
-              margin: pos.margin ?? dbMatch.margin,
-              leverage: pos.leverage > 1 ? pos.leverage : (dbMatch.leverage || 1),
-              lastSyncAt: new Date(),
-            },
-          });
-        } else {
-          // DB 无记录 → 创建（CCXT 数据）
-          const margin = pos.margin ?? (pos.entryPrice * qty / Math.max(pos.leverage || 1, 1));
-          await this.prisma.position.create({
-            data: {
-              userId,
-              exchange: 'binance',
-              symbol,
-              side,
-              amount: qty,
-              entryPrice: pos.entryPrice?.toFixed(8) ?? '0',
-              margin: typeof margin === 'number' ? margin.toFixed(8) : margin,
-              leverage: pos.leverage || 1,
-              tradingType: 'futures',
-              marginMode: pos.marginMode || 'cross',
-              status: 'open',
-              source: 'ai_strategy',
-              apiKeyId,
-              aiStrategyId: strategyId,
-              markPrice: pos.markPrice ?? 0,
-              unrealizedPnl: pos.unrealizedPnl ?? 0,
-              lastSyncAt: new Date(),
-            },
-          });
-        }
-      }
-
-      // DB 有但交易所无 → 标记 closed
-      for (const dbPos of dbPositions) {
-        if (!matchedDbIds.has(dbPos.id)) {
-          // 用最近一次 CCXT 同步的 unrealizedPnl 作为 pnl/realizedPnl（交易所已平仓，此值接近真实）
-          const lastPnl = dbPos.unrealizedPnl != null ? Number(dbPos.unrealizedPnl) : 0;
-          const lastMark = dbPos.markPrice != null ? Number(dbPos.markPrice) : Number(dbPos.entryPrice);
-          await this.prisma.position.update({
-            where: { id: dbPos.id },
-            data: {
-              status: 'closed',
-              closedAt: new Date(),
-              closeReason: 'exchange_sync',
-              closePrice: lastMark.toFixed(8),
-              exitPrice: lastMark.toFixed(8),
-              pnl: lastPnl.toFixed(8),
-              realizedPnl: lastPnl.toFixed(8),
-              lastSyncAt: new Date(),
-            },
-          });
-
-          // 盈利就扣燃油费（覆盖用户在交易所手动平仓的场景）
-          if (lastPnl > 0 && this.feeService) {
-            try {
-              const feeCalc = await this.feeService.calculateFee(userId, lastPnl.toFixed(8));
-              if (parseFloat(feeCalc.feeAmount) > 0) {
-                // 幂等 ID: 使用 dbPos.id 保证同一持仓关闭只扣一次
-                const uniqueOrderId = `GAS_FEE_SYNC_${userId}_${dbPos.id}`;
-                await this.feeService.chargeFee({
-                  userId,
-                  positionId: dbPos.id,
-                  profit: feeCalc.profit,
-                  feeRate: feeCalc.finalFeeRate,
-                  feeAmount: feeCalc.feeAmount,
-                  uniqueOrderId,
-                  strategyName: symbol.split('/')[0],
-                });
-                this.logger.log(
-                  `[网格] 交易所平仓检测→扣费: ${symbol} pnl=${lastPnl.toFixed(4)} fee=${feeCalc.feeAmount}`,
-                );
-              }
-            } catch (feeErr: any) {
-              this.logger.warn(`[网格] 交易所平仓扣费失败(非致命): ${feeErr.message}`);
-            }
-          }
-        }
-      }
-    } catch (e: any) {
-      this.logger.warn(`[网格] CCXT→DB缓存同步失败(非致命): ${e.message}`);
-    }
   }
 
   // ========================= 孤儿订单清理（reinitialize 后补充执行） =========================
