@@ -3412,6 +3412,50 @@ export class GridTradingService {
         }
       }
 
+      // 孤儿持仓映射：exchange 持仓 > 内存已追踪持仓（在 HOOT 未运行期间成交的订单）
+      // → 把多出来的量按平均入场价映射到最近的空层，让层级状态与 exchange 对齐
+      const liveShortPos = symPositions.find((p: any) => p.side === 'short');
+      const liveLongPos  = symPositions.find((p: any) => p.side === 'long');
+
+      // 重新计算对账后的内存量（清除多余层后可能已变化）
+      const memLongAfter  = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy').reduce((s, l) => s + l.positionSize, 0);
+      const memShortAfter = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell').reduce((s, l) => s + l.positionSize, 0);
+
+      if (liveLongPos && exchangeLongQty > memLongAfter + RECONCILE_THRESHOLD) {
+        const orphanQty  = exchangeLongQty - memLongAfter;
+        const entryPrice = liveLongPos.entryPrice ?? 0;
+        const qtyPerLayer = exchangeLongQty / Math.max(Math.round(exchangeLongQty / (orphanQty / Math.ceil(orphanQty / 0.4 + 0.5))), 1);
+        const emptyBuyLayers = state.gridLines
+          .filter(l => l.side === 'buy' && l.state !== 'filled')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+        let remaining = orphanQty;
+        for (const layer of emptyBuyLayers) {
+          if (remaining <= RECONCILE_THRESHOLD) break;
+          const qty = Math.min(qtyPerLayer, remaining);
+          layer.state = 'filled'; layer.positionEntry = entryPrice;
+          layer.positionSize = qty; layer.side = 'buy'; layer.unrealizedPnl = 0;
+          remaining -= qty;
+          this.logger.warn(`[网格] reconcile: 孤儿多头 → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)} qty=${qty.toFixed(4)} (入场均价=${entryPrice.toFixed(2)})`);
+        }
+      }
+      if (liveShortPos && exchangeShortQty > memShortAfter + RECONCILE_THRESHOLD) {
+        const orphanQty  = exchangeShortQty - memShortAfter;
+        const entryPrice = liveShortPos.entryPrice ?? 0;
+        const qtyPerLayer = exchangeShortQty / Math.max(Math.round(exchangeShortQty / (orphanQty / Math.ceil(orphanQty / 0.4 + 0.5))), 1);
+        const emptyShortLayers = state.gridLines
+          .filter(l => l.side === 'sell' && l.state !== 'filled')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+        let remaining = orphanQty;
+        for (const layer of emptyShortLayers) {
+          if (remaining <= RECONCILE_THRESHOLD) break;
+          const qty = Math.min(qtyPerLayer, remaining);
+          layer.state = 'filled'; layer.positionEntry = entryPrice;
+          layer.positionSize = qty; layer.side = 'sell'; layer.unrealizedPnl = 0;
+          remaining -= qty;
+          this.logger.warn(`[网格] reconcile: 孤儿空头 → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)} qty=${qty.toFixed(4)} (入场均价=${entryPrice.toFixed(2)})`);
+        }
+      }
+
       // 清理脏数据：state≠'filled' 但 positionSize/positionEntry 仍有残留值（旧版 bug 遗留）
       // 这些脏数据会导致 positionNominal 回退计算虚增 cap，阻塞正常挂单
       const dirtyLines = state.gridLines.filter(
