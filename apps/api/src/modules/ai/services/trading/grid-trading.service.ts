@@ -2587,23 +2587,24 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：已持仓层按槽位预算计算（与 Step 2.8 保持一致）
-      // 原因：持仓来自旧配置时实际市值>每层预算，若用实际市值会削减本层 quantity 到极小值
-      // 极小 quantity → formatQuantity 取整后 notional < MIN_NOTIONAL → 伪造"资金不足"错误
+      // 总仓位上限（对齐 nofx checkTotalPositionLimit L970-1007）
+      // nofx: currentPositionValue(交易所真实持仓) + pendingValue(挂单名义) + additionalValue <= max
       const totalPositionCap = state.totalInvestment * leverage;
-      const gridLayerCount = state.gridLines.length || 10;
-      const slotBudget = totalPositionCap / gridLayerCount; // 每层预算槽位
-      const filledSlotNotional = state.gridLines.filter(l => l.state === 'filled').length * slotBudget;
+      const livePositionNotional = state.livePositionNotional ?? 0; // 交易所真实持仓名义价值（Step3 已更新）
       const pendingNotionalStep1 = state.gridLines
         .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-        .reduce((sum, l) => sum + l.orderQuantity * (l.price > 0 ? l.price : price), 0); // 对齐 nofx: 用挂单自身价格，非当前市价
-      const existingNotional = filledSlotNotional + pendingNotionalStep1;
+        .reduce((sum, l) => sum + l.orderQuantity * (l.price > 0 ? l.price : price), 0);
+      const existingNotional = livePositionNotional + pendingNotionalStep1;
       if (existingNotional + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度
         const remaining = Math.max(0, totalPositionCap - existingNotional);
         quantity = Math.min(quantity, remaining / price);
         if (quantity <= 0) {
-          return { executed: false, skipReason: `总仓位已满: 已用 $${existingNotional.toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}` };
+          return {
+            executed: false,
+            skipReason: `总仓位已满: 已用 $${existingNotional.toFixed(2)}` +
+              ` (持仓$${livePositionNotional.toFixed(2)}+挂单$${pendingNotionalStep1.toFixed(2)}) / 上限 $${totalPositionCap.toFixed(2)}`,
+          };
         }
       }
 
@@ -2705,37 +2706,6 @@ export class GridTradingService {
         ` (level=${levelIndex}, qty=${finalQty}, price=${price}) | ${skipReason}`,
       );
       return { executed: false, skipReason };
-    }
-
-    // Step 2.8: 仓位总量检查（名义价值守卫）
-    //   持仓 = 交易所真实持仓（livePositionNotional，每轮从 GetPositions 更新，消除幽灵持仓影响）
-    //   挂单 = 内存 pending 层（同轮次前序成功下单已更新 state='pending'，可正确累计防止过度挂单）
-    //   上限 = totalInvestment × leverage
-    {
-      const orderNominal = finalQty * price;
-      const maxTotalNominal = state.totalInvestment * leverage;
-      // 持仓占用：按"层数 × 每层预算"计算，而非实际名义价值
-      // 原因：已持仓层可能来自旧配置（qty/价格不同），若用实际市值会挤占其他层的下单空间
-      // 正确逻辑：每个已持仓层只"占用"一个槽位预算，剩余 (gridCount-filledCount) 个槽位供挂单
-      // 用户说：正确应该是总上限减去持仓（按槽位计），剩余才是挂单可用空间
-      const filledLayerCount = state.gridLines.filter(l => l.state === 'filled').length;
-      const gridTotalLayers = state.gridLines.length || 10;
-      const perLayerBudget = maxTotalNominal / gridTotalLayers;
-      const positionNominal = filledLayerCount * perLayerBudget;
-      let pendingNominal = 0;
-      for (const l of state.gridLines) {
-        if (l.state === 'pending' && l.orderQuantity > 0 && l.price > 0) {
-          pendingNominal += l.orderQuantity * l.price;
-        }
-      }
-      const totalAfterOrder = positionNominal + pendingNominal + orderNominal;
-      if (totalAfterOrder > maxTotalNominal) {
-        const skipReason =
-          `仓位总量超限: 持仓${filledLayerCount}层×$${perLayerBudget.toFixed(2)}=$${positionNominal.toFixed(2)} + 挂单$${pendingNominal.toFixed(2)} + 本单$${orderNominal.toFixed(2)}` +
-          ` = $${totalAfterOrder.toFixed(2)} > 上限$${maxTotalNominal.toFixed(2)}`;
-        this.logger.warn(`[网格] 跳过下单(仓位总量检查): ${skipReason}`);
-        return { executed: false, skipReason };
-      }
     }
 
     // Step 2.9: 不做 availableBalance 预检
