@@ -710,6 +710,8 @@ function gridSystemPromptZh(
 - **pending**: 等待成交
 - **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
+💡 **挂单优先级建议**（adjust_grid 重建后 empty 层较多时）：优先补挂靠近当前价的层（成交概率高，资金效率好），再逐步向两侧延伸；边界附近的层可在后续周期再补。最终由 AI 根据市场判断决定。
+
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
 ## 方向自适应系统（后端自动，无需 AI 干预）
@@ -787,6 +789,8 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **empty**: Can place order, or hold
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
+
+💡 **Order placement priority suggestion** (when many empty levels exist after adjust_grid rebuild): Prefer filling levels closest to current price first (higher fill probability, better capital efficiency), then expand outward; edge levels can be filled in later cycles. AI makes the final call based on market conditions.
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 
