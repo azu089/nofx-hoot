@@ -1371,19 +1371,6 @@ export class GridTradingService {
         });
 
         // 执行决策（收集每条执行结果，供日志记录）
-        // 执行前捕获格线快照（AI 分析时看到的状态）
-        const preExecGridLines = state.gridLines.map((l, i) => {
-          const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
-          if (l.state === 'filled') {
-            entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
-          } else if (l.state === 'pending') {
-            entry.oid = l.orderId?.slice(-8) ?? '';
-            entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
-          }
-          return entry;
-        });
-
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
@@ -1538,7 +1525,7 @@ export class GridTradingService {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, undefined, gridConfig?.locale,
             {
               positionLong: (context as any).positionLong,
               positionShort: (context as any).positionShort,
@@ -2433,6 +2420,7 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, newPrice);
         }
+
         break;
       }
 

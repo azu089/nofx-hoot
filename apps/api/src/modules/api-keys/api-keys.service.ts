@@ -1125,9 +1125,9 @@ export class ApiKeysService {
   }
 
   /**
-   * 获取交易所真实交易历史（仓位历史）
-   * 数据来源：交易所 income API（REALIZED_PNL 类型）
-   * 所有数据直接从交易所获取，不走 DB 缓存
+   * 获取交易所真实交易历史（平仓成交记录）
+   * 数据来源：CCXT fetchMyTrades → 过滤 realizedPnl != 0 的成交
+   * 返回每笔平仓的真实价格、数量、PnL，与交易所完全一致
    */
   async getExchangeTradeHistory(
     userId: string,
@@ -1138,8 +1138,10 @@ export class ApiKeysService {
       id: string;
       symbol: string;
       side: string;
+      price: string;
+      amount: string;
       pnl: string;
-      asset: string;
+      fee: string;
       time: string;
       tradeId?: string;
     }>;
@@ -1175,51 +1177,67 @@ export class ApiKeysService {
         this.logger.debug('[trade-history] loadMarkets 失败，继续尝试');
       }
 
-      // 时间范围：默认 30 天
+      // 时间范围：默认 7 天（fetchMyTrades 数据量大，控制范围）
       const now = Date.now();
-      const startTime = query?.startDate
+      const since = query?.startDate
         ? new Date(query.startDate).getTime()
-        : now - 30 * 24 * 60 * 60 * 1000;
-      const endTime = query?.endDate
-        ? new Date(query.endDate).getTime()
-        : now;
+        : now - 7 * 24 * 60 * 60 * 1000;
 
-      // 获取 income 记录
-      const allIncomes = await this.fetchFuturesIncome(futuresEx, exchangeLower, startTime, endTime);
+      // 获取所有成交记录（CCXT fetchMyTrades）
+      const allTrades: any[] = [];
+      let fetchSince = since;
+      const fetchLimit = 1000; // Binance 单次最多 1000
+      while (true) {
+        const trades = await futuresEx.fetchMyTrades(undefined, fetchSince, fetchLimit);
+        if (!trades || trades.length === 0) break;
+        allTrades.push(...trades);
+        if (trades.length < fetchLimit) break;
+        // 下一页从最后一条之后开始
+        fetchSince = trades[trades.length - 1].timestamp + 1;
+        if (allTrades.length >= 5000) break; // 安全上限
+      }
 
-      // 过滤 REALIZED_PNL 类型（每次平仓的真实盈亏）
-      const realizedPnlItems = allIncomes
-        .filter((item: any) => {
-          const type = (item.incomeType || item.type || '').toUpperCase();
-          return type === 'REALIZED_PNL';
+      // 过滤有 realizedPnl 的成交（= 平仓成交）
+      const closeTrades = allTrades
+        .filter((t: any) => {
+          const pnl = parseFloat(t.info?.realizedPnl || '0');
+          return Math.abs(pnl) > 0.0001; // 排除极小精度误差
         })
-        .map((item: any, index: number) => {
-          const pnl = parseFloat(item.income || item.amount || '0');
-          const ts = parseInt(item.time || item.timestamp || '0');
-          const symbol = item.symbol || '';
-
-          // 从 symbol 推断方向：REALIZED_PNL > 0 且为 close → 大概率盈利平仓
-          // income API 不直接告诉方向，但 symbol 可用
+        .map((t: any) => {
+          const pnl = parseFloat(t.info?.realizedPnl || '0');
+          const feeCost = t.fee?.cost ?? 0;
+          // positionSide: BOTH/LONG/SHORT；side: buy/sell
+          // 平仓方向：sell 平多头 = long 被平仓；buy 平空头 = short 被平仓
+          const positionSide = (t.info?.positionSide || 'BOTH').toUpperCase();
+          let closedSide: string;
+          if (positionSide === 'LONG') {
+            closedSide = 'long';
+          } else if (positionSide === 'SHORT') {
+            closedSide = 'short';
+          } else {
+            // BOTH 模式：sell = 平多，buy = 平空
+            closedSide = t.side === 'sell' ? 'long' : 'short';
+          }
           return {
-            id: item.tranId ? String(item.tranId) : `income_${index}_${ts}`,
-            symbol: symbol, // 如 SOLUSDT
-            side: pnl >= 0 ? 'long' : 'short', // 近似推断
+            id: String(t.id || t.info?.id || `trade_${t.timestamp}`),
+            symbol: t.symbol || '',
+            side: closedSide,
+            price: String(t.price || '0'),
+            amount: String(t.amount || '0'),
             pnl: pnl.toFixed(8),
-            asset: item.asset || 'USDT',
-            time: new Date(ts).toISOString(),
-            tradeId: item.tradeId ? String(item.tradeId) : undefined,
+            fee: typeof feeCost === 'number' ? feeCost.toFixed(8) : String(feeCost),
+            time: new Date(t.timestamp).toISOString(),
+            tradeId: String(t.id || ''),
           };
         })
-        // 按时间倒序
-        .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-      // 应用 limit
       const limit = query?.limit || 50;
-      const items = realizedPnlItems.slice(0, limit);
+      const items = closeTrades.slice(0, limit);
 
       return {
         items,
-        total: realizedPnlItems.length,
+        total: closeTrades.length,
         source: 'exchange',
       };
     } catch (error: any) {

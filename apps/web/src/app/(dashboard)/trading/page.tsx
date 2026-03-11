@@ -240,7 +240,7 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易历史（从交易所 income API 直接获取 REALIZED_PNL）
+  // 获取交易历史（交易所 CCXT fetchMyTrades 真实平仓成交，含价格/数量/PnL）
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
@@ -249,8 +249,10 @@ export default function TradingPage() {
           id: string;
           symbol: string;
           side: string;
+          price: string;
+          amount: string;
           pnl: string;
-          asset: string;
+          fee: string;
           time: string;
           tradeId?: string;
         }>;
@@ -258,29 +260,7 @@ export default function TradingPage() {
         source: 'exchange';
         error?: string;
       }>(`/api-keys/${selectedApiKeyId}/trade-history?limit=50`);
-
-      // 转换为前端 TradeHistory 格式
-      const items: TradeHistory[] = (response.data?.items || []).map((item) => ({
-        id: item.id,
-        symbol: item.symbol,
-        side: parseFloat(item.pnl) >= 0 ? 'long' : 'short',
-        type: 'market',
-        price: '0',
-        entryPrice: undefined,
-        closePrice: undefined,
-        amount: '0',
-        total: '0',
-        pnl: item.pnl,
-        pnlPercent: undefined,
-        fee: '0',
-        status: 'filled',
-        closedAt: item.time,
-        createdAt: item.time,
-        tradingType: 'futures',
-        source: 'exchange',
-      }));
-
-      return { items, total: response.data?.total || 0 };
+      return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
     retry: false,
@@ -387,13 +367,32 @@ export default function TradingPage() {
   // 账户类型筛选：全部/现货/合约
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'spot' | 'futures'>('all');
 
-  // 当 API Keys 加载完成后，自动选择第一个活跃的 API Key 用于同步
+  // 获取 AI 策略列表（用于判断哪个 API Key 有运行中的策略）
+  const { data: aiStrategiesData } = useQuery({
+    queryKey: ['ai-strategies', 1, 50],
+    queryFn: async () => {
+      const res = await api.get<{ data: Array<{ id: string; isActive: boolean; exchangeApiKeyId?: string }> }>('/ai/strategy?page=1&limit=50');
+      return res.data;
+    },
+    enabled: isAuthenticated,
+    staleTime: 30000,
+  });
+
+  // 当 API Keys 加载完成后，优先选择有运行中策略的 API Key
   useEffect(() => {
     if (apiKeys && apiKeys.length > 0 && !selectedApiKeyId) {
-      const activeKey = apiKeys.find(k => k.isActive) || apiKeys[0];
+      // 找出有运行中策略的 API Key IDs
+      const activeStrategyKeyIds = new Set(
+        (aiStrategiesData?.data ?? [])
+          .filter(s => s.isActive && s.exchangeApiKeyId)
+          .map(s => s.exchangeApiKeyId!),
+      );
+      // 优先选有运行中策略的，否则选第一个活跃的
+      const keyWithStrategy = apiKeys.find(k => activeStrategyKeyIds.has(k.id));
+      const activeKey = keyWithStrategy || apiKeys.find(k => k.isActive) || apiKeys[0];
       setSelectedApiKeyId(activeKey.id);
     }
-  }, [apiKeys, selectedApiKeyId]);
+  }, [apiKeys, selectedApiKeyId, aiStrategiesData]);
 
   // 处理账户切换：同步 selectedApiKeyId 和 selectedAccountIndex
   const handleAccountChange = useCallback((accountId: string | number) => {
@@ -649,30 +648,30 @@ export default function TradingPage() {
         };
       });
 
-  // 转换交易历史数据格式（数据来源：交易所 REALIZED_PNL）
+  // 转换交易历史数据格式（数据来源：交易所 CCXT fetchMyTrades 真实平仓成交）
   const transformedHistory = historyData?.items?.map(h => ({
     id: h.id,
     symbol: normalizeSymbol(h.symbol),
     side: h.side as 'long' | 'short',
-    type: h.type || 'market',
-    price: parseFloat(h.closePrice || h.price || '0'),
-    entryPrice: parseFloat(h.entryPrice || h.price || '0'),
-    closePrice: parseFloat(h.closePrice || h.price || '0'),
+    type: 'market',
+    price: parseFloat(h.price || '0'),
+    entryPrice: parseFloat(h.price || '0'), // 平仓价（成交价）
+    closePrice: parseFloat(h.price || '0'),
     amount: parseFloat(h.amount || '0'),
     filled: parseFloat(h.amount || '0'),
-    total: parseFloat(h.total || '0'),
-    pnl: parseFloat(h.pnl),
-    pnlPercent: parseFloat(h.pnlPercent || '0'),
+    total: parseFloat(h.price || '0') * parseFloat(h.amount || '0'),
+    pnl: parseFloat(h.pnl || '0'),
+    pnlPercent: 0, // 交易所不直接返回百分比
     fee: parseFloat(h.fee || '0'),
-    time: h.closedAt,
+    time: h.time,
     status: 'filled' as const,
     marketType: 'futures' as const,
-    leverage: h.leverage || 1,
-    margin: parseFloat(h.margin || '0'),
-    closeReason: h.closeReason,
-    strategyName: h.strategyName,
-    source: h.source || 'exchange',
-    openTime: h.createdAt,
+    leverage: 1,
+    margin: 0,
+    closeReason: undefined,
+    strategyName: undefined,
+    source: 'exchange',
+    openTime: h.time,
   }));
 
   // 转换执行日志数据格式
