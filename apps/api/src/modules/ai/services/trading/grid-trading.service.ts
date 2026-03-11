@@ -3217,19 +3217,38 @@ export class GridTradingService {
         const qty = line.orderQuantity ?? 0;
 
         if (line.side === 'sell') {
-          // 卖单消失 → 总是回 empty（对齐 nofx: 卖单=平仓/止盈，不是网格开仓层）
-          // nofx 网格层只有 buy，sell 由 AI 单独管理，不参与 filled 状态追踪
+          // 卖单消失：区分"平多"和"开空"
           const posShrunk = Math.abs(currentPositionSize) < Math.abs(runningExpected) - 0.0001;
-          line.state = 'empty';
-          line.positionSize = 0;
-          line.positionEntry = 0;
-          line.unrealizedPnl = 0;
+          const posGrew = Math.abs(currentPositionSize) > Math.abs(runningExpected) + 0.0001;
+
           if (posShrunk) {
+            // 仓位缩小 → 卖单平了多头 → 层回 empty（网格循环完成）
+            line.state = 'empty';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
             state.totalTrades++;
             this.logger.log(
               `[网格] 卖单平仓成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}（层回空）`,
             );
+          } else if (posGrew && currentPositionSize < -0.0001) {
+            // 仓位增大且方向为空头 → 卖单开了新空头 → 标记 filled
+            line.state = 'filled';
+            line.positionEntry = line.price;
+            line.positionSize = qty;
+            line.unrealizedPnl = 0;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty;
+            this.logger.log(
+              `[网格] 卖单开空成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
+            );
           } else {
+            // 仓位不变 → 取消/过期
+            line.state = 'empty';
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
             this.logger.debug(`[网格] 卖单消失（取消/过期）: level=${line.index}`);
           }
         } else {
@@ -3294,18 +3313,17 @@ export class GridTradingService {
           `[网格] 校准数据: exchLong=${exchangeLongQty.toFixed(4)}, exchShort=${exchangeShortQty.toFixed(4)}, memLong=${memoryLongQty.toFixed(4)}, symPos=${symPositionsSync.length}`,
         );
 
-        // 多头校准：内存 > 交易所 → 按比例缩减
+        // 多头校准
         if (exchangeLongQty > 0.0001 && memoryLongQty > exchangeLongQty + 0.001) {
+          // 内存 > 交易所 → 按比例缩减
           const ratio = exchangeLongQty / memoryLongQty;
           const buyFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy');
           for (const line of buyFilled) {
             line.positionSize = (line.positionSize ?? 0) * ratio;
           }
           this.logger.warn(`[网格] 持仓校准: 多头 内存${memoryLongQty.toFixed(4)} → 交易所${exchangeLongQty.toFixed(4)}, 缩减比=${ratio.toFixed(4)}`);
-        }
-
-        // 交易所无多头但内存仍有 filled(buy) → 全部被平仓，按比例缩至 0
-        if (exchangeLongQty < 0.0001 && memoryLongQty > 0.001) {
+        } else if (exchangeLongQty < 0.0001 && memoryLongQty > 0.001) {
+          // 交易所无多头但内存仍有 filled(buy) → 全部被平仓
           const buyFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy');
           for (const line of buyFilled) {
             line.state = 'empty';
@@ -3316,19 +3334,88 @@ export class GridTradingService {
           if (buyFilled.length > 0) {
             this.logger.warn(`[网格] 持仓校准: 交易所多头=0，${buyFilled.length} 个buy层→empty`);
           }
+        } else if (exchangeLongQty > 0.0001 && memoryLongQty < 0.0001) {
+          // 交易所有多头但内存无 filled(buy) → 匹配到最近价位层
+          const longPos = symPositionsSync.find((p: any) => {
+            const side = (p as any).side;
+            return side === 'long' || ((side === 'net' || !side) && currentPositionSize > 0);
+          });
+          const entryPrice = longPos ? Math.abs((longPos as any).entryPrice ?? 0) : 0;
+
+          let closestIdx = -1;
+          let closestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (state.gridLines[i].state !== 'empty') continue;
+            const dist = Math.abs(state.gridLines[i].price - (entryPrice > 0 ? entryPrice : state.lastPrice ?? 0));
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestIdx = i;
+            }
+          }
+          if (closestIdx >= 0) {
+            const targetLine = state.gridLines[closestIdx];
+            targetLine.state = 'filled';
+            targetLine.side = 'buy';
+            targetLine.positionEntry = entryPrice > 0 ? entryPrice : targetLine.price;
+            targetLine.positionSize = exchangeLongQty;
+            targetLine.unrealizedPnl = 0;
+            this.logger.warn(
+              `[网格] 持仓校准: 交易所多头=${exchangeLongQty.toFixed(4)} 匹配到 L${closestIdx + 1} (价格=${targetLine.price.toFixed(2)}, 开仓=${targetLine.positionEntry.toFixed(2)})`,
+            );
+          }
         }
 
-        // 安全网: 清理所有 filled(sell) 层 — nofx 网格层只有 buy-filled，sell-filled 不应存在
-        // 如果存在 filled(sell)，说明是旧版 bug 残留的脏数据
+        // 空头校准（对齐 nofx autoAdjustGrid L1456-1479 持仓映射逻辑）
         const sellFilled = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell');
-        if (sellFilled.length > 0) {
+        const memoryShortQty = sellFilled.reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+
+        if (exchangeShortQty < 0.0001 && sellFilled.length > 0) {
+          // 交易所无空头但内存有 filled(sell) → 脏数据，清理
           for (const line of sellFilled) {
             line.state = 'empty';
             line.positionSize = 0;
             line.positionEntry = 0;
             line.unrealizedPnl = 0;
           }
-          this.logger.warn(`[网格] 持仓校准: 清理 ${sellFilled.length} 个残留 filled(sell) 层→empty（nofx 无此状态）`);
+          this.logger.warn(`[网格] 持仓校准: 交易所空头=0，清理 ${sellFilled.length} 个 filled(sell)→empty`);
+        } else if (exchangeShortQty > 0.0001 && memoryShortQty < 0.0001) {
+          // 交易所有空头但内存无 filled(sell) → 匹配到最近价位层（对齐 nofx closest level）
+          const shortPos = symPositionsSync.find((p: any) => {
+            const side = (p as any).side;
+            return side === 'short' || ((side === 'net' || !side) && currentPositionSize < 0);
+          });
+          const entryPrice = shortPos ? Math.abs((shortPos as any).entryPrice ?? 0) : 0;
+          const shortQty = exchangeShortQty;
+
+          // 找最近价位的 empty 层
+          let closestIdx = -1;
+          let closestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (state.gridLines[i].state !== 'empty') continue;
+            const dist = Math.abs(state.gridLines[i].price - (entryPrice > 0 ? entryPrice : state.lastPrice ?? 0));
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestIdx = i;
+            }
+          }
+          if (closestIdx >= 0) {
+            const targetLine = state.gridLines[closestIdx];
+            targetLine.state = 'filled';
+            targetLine.side = 'sell';
+            targetLine.positionEntry = entryPrice > 0 ? entryPrice : targetLine.price;
+            targetLine.positionSize = shortQty;
+            targetLine.unrealizedPnl = 0;
+            this.logger.warn(
+              `[网格] 持仓校准: 交易所空头=${shortQty.toFixed(4)} 匹配到 L${closestIdx + 1} (价格=${targetLine.price.toFixed(2)}, 开仓=${targetLine.positionEntry.toFixed(2)})`,
+            );
+          }
+        } else if (exchangeShortQty > 0.0001 && memoryShortQty > exchangeShortQty + 0.001) {
+          // 内存空头 > 交易所 → 按比例缩减
+          const ratio = exchangeShortQty / memoryShortQty;
+          for (const line of sellFilled) {
+            line.positionSize = (line.positionSize ?? 0) * ratio;
+          }
+          this.logger.warn(`[网格] 持仓校准: 空头 内存${memoryShortQty.toFixed(4)} → 交易所${exchangeShortQty.toFixed(4)}, 缩减比=${ratio.toFixed(4)}`);
         }
       }
 
