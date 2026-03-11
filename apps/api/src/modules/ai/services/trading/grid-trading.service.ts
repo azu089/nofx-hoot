@@ -2292,7 +2292,13 @@ export class GridTradingService {
         // 回填平仓价到 decision，前端日志可展示（AI 可能只发 level+quantity）
         const closeLongPrice = currentPrice ?? state.lastPrice;
         if (!decision.price) decision.price = closeLongPrice;
-        await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
+        // 防御：若 AI 对 filled sell 层发出 close_long，自动转 closeShort（sell层=空头持仓）
+        if (targetLevel?.side === 'sell') {
+          this.logger.warn(`[网格] close_long 目标层${targetLevel.index}为sell层（空头），自动转 closeShort`);
+          await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
+        } else {
+          await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
+        }
         if (targetLevel && targetLevel.positionSize > 0) {
           const _cp = new Decimal(currentPrice ?? state.lastPrice);
           const _ep = new Decimal(targetLevel.positionEntry);
@@ -2349,7 +2355,13 @@ export class GridTradingService {
         // 回填平仓价到 decision，前端日志可展示
         const closeShortPrice = currentPrice ?? state.lastPrice;
         if (!decision.price) decision.price = closeShortPrice;
-        await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
+        // 防御：若 AI 对 filled buy 层发出 close_short，自动转 closeLong（buy层=多头持仓）
+        if (targetLevel?.side === 'buy') {
+          this.logger.warn(`[网格] close_short 目标层${targetLevel.index}为buy层（多头），自动转 closeLong`);
+          await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
+        } else {
+          await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
+        }
         // 无论是否有 targetLevel，都更新 livePositionNotional（孤儿空头平仓）
         const closedValueShort = qty * (currentPrice ?? state.lastPrice);
         state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);

@@ -698,7 +698,7 @@ export function GRID_SYSTEM_PROMPT(
 ## 层状态与决策
 - **empty**: 可挂单，或 hold 等待
 - **pending**: 等待成交
-- **filled**: AI自行判断平仓时机（趋势反转/RSI超买/回撤30%时考虑）；可 close_long/close_short 主动平仓，或等待反向挂单自然出局
+- **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
@@ -710,8 +710,9 @@ export function GRID_SYSTEM_PROMPT(
 - **pause_grid**: 暂停网格（BB>6% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
 - **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
 - **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
-- **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
-- **close_short**: 市价平空仓（fields: level, quantity）
+- **close_long**: 平多仓（针对 side=**buy** 的 filled 层；fields: level, quantity）
+- **close_short**: 平空仓（针对 side=**sell** 的 filled 层；fields: level, quantity）
+- ⚠️ **必须对应 side**：buy层→close_long，sell层→close_short；混用会导致交易所拒单
 - **hold**: 保持现状
 
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
