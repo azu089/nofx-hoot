@@ -1839,78 +1839,87 @@ export class AiController {
   ) {
     if (!userId) throw new BadRequestException('用户未认证');
 
-    // 验证策略属于用户，同时获取 exchangeApiKeyId 和 symbol
+    // 验证策略属于用户
     const strategy = await this.strategyEngine.getStrategy(id, userId);
 
-    // 获取实时开仓持仓（从交易所直接拉取）
+    // ── 当前持仓：实时从交易所拉取 ──
     let openPositions: any[] = [];
-    let exchangeError: string | undefined;
-
-    if (status !== 'closed' && this.adapterFactory && strategy.exchangeApiKeyId) {
-      try {
-        const adapter = await this.adapterFactory.createAdapter(userId, strategy.exchangeApiKeyId);
-        const allPositions = await adapter.getPositions();
-        // 从 gridConfig.symbol 或 coinSourceConfig.coins[0] 提取交易对（大小写不敏感）
-        const gridCfg = strategy.gridConfig as Record<string, any> | null;
-        const coinCfg = strategy.coinSourceConfig as Record<string, any> | null;
-        const strategySymbol: string | undefined =
-          gridCfg?.symbol ?? coinCfg?.coins?.[0];
-        const symUpper = strategySymbol?.toUpperCase();
-        openPositions = allPositions
-          .filter((p: any) => (!symUpper || p.symbol?.toUpperCase() === symUpper) && p.quantity > 0)
-          .map((p: any) => ({
-            symbol: p.symbol,
-            side: p.side,
-            quantity: p.quantity,
-            entryPrice: p.entryPrice,
-            markPrice: p.markPrice,
-            unrealizedPnl: p.unrealizedPnl,
-            leverage: p.leverage,
-            marginMode: p.marginMode,
-            margin: p.margin,
-            liquidationPrice: p.liquidationPrice,
-            source: 'exchange',
-          }));
-      } catch (e: any) {
-        this.logger.warn(`[持仓接口] 获取实时持仓失败 strategy=${id}: ${e.message}`);
-        exchangeError = 'exchange_unreachable';
+    if (status !== 'closed' && this.adapterFactory) {
+      const apiKeyId = (strategy as any).exchangeApiKeyId
+        ?? (strategy as any).gridConfig?.exchangeApiKeyId;
+      const symbol = (strategy as any).gridConfig?.symbol
+        ?? (strategy as any).coinSourceConfig?.coins?.[0];
+      if (apiKeyId && symbol) {
+        try {
+          const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+          const allPos = await adapter.getPositions();
+          const symUp = symbol.toUpperCase();
+          openPositions = allPos
+            .filter(p => p.symbol?.toUpperCase().includes(symUp.replace(/\/.*/, '')) && p.quantity > 0)
+            .map(p => ({
+              id: `${p.symbol}_${p.side}`,
+              symbol: p.symbol,
+              side: p.side,
+              leverage: p.leverage ?? 1,
+              entryPrice: p.entryPrice ?? 0,
+              exitPrice: null,
+              amount: p.quantity,
+              margin: p.margin ?? 0,
+              realizedPnl: 0,
+              unrealizedPnl: p.unrealizedPnl ?? 0,
+              closeReason: null,
+              source: 'exchange',
+              status: 'open',
+              createdAt: new Date().toISOString(),
+              closedAt: null,
+            }));
+        } catch (e: any) {
+          this.logger.warn(`[持仓] 实时持仓获取失败 strategy=${id}: ${e.message}`);
+        }
       }
     }
 
-    // 获取历史平仓记录（AiStrategyLog，decision.action=close_long/close_short，内存过滤）
-    let historyRecords: any[] = [];
+    // ── 历史持仓：从 DB 持久化记录读取 ──
+    let closedPositions: any[] = [];
+    let closedTotal = 0;
     if (status !== 'open') {
-      // 取最近 200 条，内存过滤 close_long/close_short（平仓记录数量有限）
-      const logs = await this.prisma.aiStrategyLog.findMany({
-        where: { strategyId: id },
-        orderBy: { createdAt: 'desc' },
-        take: 200,
-      });
-      historyRecords = logs
-        .filter((log) => {
-          const action = (log.decision as any)?.action;
-          return action === 'close_long' || action === 'close_short';
-        })
-        .slice(0, 50)
-        .map((log) => {
-          const dec = log.decision as any;
-          return {
-            action: dec?.action ?? null,
-            symbol: log.symbol,
-            strategyName: strategy.name ?? null,
-            gridSummary: dec?.gridSummary ?? null,
-            totalProfit: dec?.gridSnapshot?.totalProfit ?? null,
-            createdAt: log.createdAt,
-            source: 'log',
-          };
-        });
+      const [rows, cnt] = await Promise.all([
+        this.prisma.position.findMany({
+          where: { aiStrategyId: id, status: 'closed' },
+          orderBy: { closedAt: 'desc' },
+          take: 50,
+        }),
+        this.prisma.position.count({ where: { aiStrategyId: id, status: 'closed' } }),
+      ]);
+      closedTotal = cnt;
+      closedPositions = rows.map(p => ({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        leverage: Number(p.leverage ?? 1),
+        entryPrice: Number(p.entryPrice ?? 0),
+        exitPrice: p.exitPrice ? Number(p.exitPrice) : null,
+        amount: Number(p.amount ?? 0),
+        margin: Number(p.margin ?? 0),
+        realizedPnl: Number(p.realizedPnl ?? 0),
+        unrealizedPnl: 0,
+        closeReason: p.closeReason ?? null,
+        source: p.source ?? null,
+        status: 'closed',
+        createdAt: p.createdAt.toISOString(),
+        closedAt: p.closedAt?.toISOString() ?? null,
+      }));
     }
 
+    const data = status === 'open'
+      ? openPositions
+      : status === 'closed'
+        ? closedPositions
+        : [...openPositions, ...closedPositions];
+
     return {
-      open: openPositions,
-      history: historyRecords,
-      total: openPositions.length + historyRecords.length,
-      ...(exchangeError ? { exchangeError } : {}),
+      data,
+      total: status === 'open' ? openPositions.length : status === 'closed' ? closedTotal : openPositions.length + closedTotal,
     };
   }
 
@@ -1932,119 +1941,108 @@ export class AiController {
     const take = Math.min(Number(limit) || 50, 100);
     const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
 
-    // 获取实时开仓持仓（从交易所直接拉取）
+    // ── 当前持仓：实时从交易所拉取 ──
     let openPositions: any[] = [];
-
     if (status !== 'closed' && this.adapterFactory) {
-      // 获取所有活跃策略（isActive=true，含 exchangeApiKeyId）
       const strategies = await this.prisma.aiStrategy.findMany({
-        where: { userId, isActive: true, exchangeApiKeyId: { not: null } },
-        select: { id: true, gridConfig: true, coinSourceConfig: true, exchangeApiKeyId: true, name: true },
+        where: { userId, isActive: true },
+        select: { id: true, name: true, gridConfig: true, coinSourceConfig: true, exchangeApiKeyId: true },
       });
 
-      // 每个策略提取交易对映射：{ symbol, id, name }
-      const strategySymbolMap: Array<{ id: string; name: string; symUpper: string | undefined }> =
-        strategies.map((s) => {
-          const gc = s.gridConfig as Record<string, any> | null;
-          const cc = s.coinSourceConfig as Record<string, any> | null;
-          const sym: string | undefined = gc?.symbol ?? cc?.coins?.[0];
-          return { id: s.id, name: s.name, symUpper: sym?.toUpperCase() };
-        });
-
-      // 按 exchangeApiKeyId 分组，每个 apiKey 只调用一次
       const apiKeyMap = new Map<string, typeof strategies>();
       for (const s of strategies) {
-        if (!s.exchangeApiKeyId) continue;
-        if (!apiKeyMap.has(s.exchangeApiKeyId)) apiKeyMap.set(s.exchangeApiKeyId, []);
-        apiKeyMap.get(s.exchangeApiKeyId)!.push(s);
+        const keyId = (s as any).exchangeApiKeyId;
+        if (!keyId) continue;
+        if (!apiKeyMap.has(keyId)) apiKeyMap.set(keyId, []);
+        apiKeyMap.get(keyId)!.push(s);
       }
 
       for (const [apiKeyId, strats] of apiKeyMap.entries()) {
         try {
           const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-          const allPositions = await adapter.getPositions();
-          const stratIds = new Set(strats.map((s) => s.id));
-          for (const pos of allPositions as any[]) {
+          const allPos = await adapter.getPositions();
+          for (const pos of allPos) {
             if (pos.quantity <= 0) continue;
-            const symUpper = (pos.symbol as string | undefined)?.toUpperCase();
-            const matched = strategySymbolMap.find(
-              (m) => stratIds.has(m.id) && m.symUpper === symUpper,
-            );
+            const symBase = pos.symbol?.split('/')[0]?.toUpperCase();
+            const matched = strats.find(s => {
+              const sym = ((s as any).gridConfig?.symbol ?? (s as any).coinSourceConfig?.coins?.[0] ?? '');
+              return sym.toUpperCase().includes(symBase ?? '');
+            });
             openPositions.push({
+              id: `${pos.symbol}_${pos.side}`,
               symbol: pos.symbol,
               side: pos.side,
-              quantity: pos.quantity,
-              entryPrice: pos.entryPrice,
-              markPrice: pos.markPrice,
-              unrealizedPnl: pos.unrealizedPnl,
-              leverage: pos.leverage,
-              marginMode: pos.marginMode,
-              margin: pos.margin,
-              liquidationPrice: pos.liquidationPrice,
+              leverage: pos.leverage ?? 1,
+              entryPrice: pos.entryPrice ?? 0,
+              exitPrice: null,
+              amount: pos.quantity,
+              margin: pos.margin ?? 0,
+              realizedPnl: 0,
+              unrealizedPnl: pos.unrealizedPnl ?? 0,
+              closeReason: null,
+              source: 'exchange',
+              status: 'open',
               strategyId: matched?.id ?? null,
               strategyName: matched?.name ?? null,
-              source: 'exchange',
+              createdAt: new Date().toISOString(),
+              closedAt: null,
             });
           }
         } catch (e: any) {
-          this.logger.warn(`[持仓接口] apiKey=${apiKeyId} 获取持仓失败: ${e.message}`);
+          this.logger.warn(`[持仓] apiKey=${apiKeyId} 获取持仓失败: ${e.message}`);
         }
       }
     }
 
-    // 历史平仓记录（AiStrategyLog，内存过滤 decision.action=close_long/close_short）
-    let historyRecords: any[] = [];
-    let historyTotal = 0;
-
+    // ── 历史持仓：从 DB 持久化记录读取 ──
+    let closedPositions: any[] = [];
+    let closedTotal = 0;
     if (status !== 'open') {
-      // 先获取该用户所有策略 ID
-      const userStrategyIds = await this.prisma.aiStrategy
-        .findMany({ where: { userId }, select: { id: true } })
-        .then((rows) => rows.map((r) => r.id));
-
-      // 拉取候选 log（take 5倍数量，以便过滤后满足分页）
-      const candidateSize = (skip + take) * 5;
-      const candidateLogs = await this.prisma.aiStrategyLog.findMany({
-        where: { strategyId: { in: userStrategyIds } },
-        orderBy: { createdAt: 'desc' },
-        take: candidateSize,
-      });
-
-      // 内存过滤 close 动作
-      const filteredLogs = candidateLogs.filter((log) => {
-        const action = (log.decision as any)?.action;
-        return action === 'close_long' || action === 'close_short';
-      });
-
-      historyTotal = filteredLogs.length;
-      historyRecords = filteredLogs.slice(skip, skip + take).map((log) => {
-        const dec = log.decision as any;
-        return {
-          action: dec?.action ?? null,
-          symbol: log.symbol,
-          strategyName: null as string | null, // 需要策略名时由前端或二次查询补充
-          gridSummary: dec?.gridSummary ?? null,
-          totalProfit: dec?.gridSnapshot?.totalProfit ?? null,
-          createdAt: log.createdAt,
-          source: 'log',
-        };
-      });
+      const [rows, cnt] = await Promise.all([
+        this.prisma.position.findMany({
+          where: { userId, status: 'closed' },
+          orderBy: { closedAt: 'desc' },
+          take,
+          skip,
+          include: { aiStrategy: { select: { name: true } } },
+        }),
+        this.prisma.position.count({ where: { userId, status: 'closed' } }),
+      ]);
+      closedTotal = cnt;
+      closedPositions = rows.map(p => ({
+        id: p.id,
+        symbol: p.symbol,
+        side: p.side,
+        leverage: Number(p.leverage ?? 1),
+        entryPrice: Number(p.entryPrice ?? 0),
+        exitPrice: p.exitPrice ? Number(p.exitPrice) : null,
+        amount: Number(p.amount ?? 0),
+        margin: Number(p.margin ?? 0),
+        realizedPnl: Number(p.realizedPnl ?? 0),
+        unrealizedPnl: 0,
+        closeReason: p.closeReason ?? null,
+        source: p.source ?? null,
+        status: 'closed',
+        strategyId: p.aiStrategyId ?? null,
+        strategyName: (p as any).aiStrategy?.name ?? '已删除策略',
+        createdAt: p.createdAt.toISOString(),
+        closedAt: p.closedAt?.toISOString() ?? null,
+      }));
     }
 
-    const computedTotal =
-      status === 'open'
-        ? openPositions.length
-        : status === 'closed'
-          ? historyTotal
-          : openPositions.length + historyTotal;
+    const data = status === 'open'
+      ? openPositions
+      : status === 'closed'
+        ? closedPositions
+        : [...openPositions, ...closedPositions];
 
-    return {
-      open: openPositions,
-      history: historyRecords,
-      total: computedTotal,
-      page: Number(page) || 1,
-      limit: take,
-    };
+    const total = status === 'open'
+      ? openPositions.length
+      : status === 'closed'
+        ? closedTotal
+        : openPositions.length + closedTotal;
+
+    return { data, total, page: Number(page) || 1, limit: take };
   }
 
   // ========================= TG Bot 专用端点 =========================

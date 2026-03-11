@@ -161,7 +161,7 @@ export interface ExchangeAdapter {
    * @param startTime 查询起始时间
    * @param limit 最大返回数量
    */
-  getClosedPnl(startTime: Date, limit: number): Promise<ClosedPnlRecord[]>;
+  getClosedPnl(startTime: Date, limit: number, symbol?: string): Promise<ClosedPnlRecord[]>;
 
   // ========================= 生命周期 =========================
 

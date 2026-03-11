@@ -1011,8 +1011,13 @@ export class ApiKeysService {
     unrealizedPnl: number;
     weekPnl: number;
     monthPnl: number;
+    todayRealizedPnl: number;
+    weekRealizedPnl: number;
+    monthRealizedPnl: number;
     todayFundingFee: number;
     todayCommission: number;
+    monthFundingFee: number;
+    monthCommission: number;
     error?: string;
   }> {
     try {
@@ -1031,8 +1036,13 @@ export class ApiKeysService {
           unrealizedPnl: 0,
           weekPnl: 0,
           monthPnl: 0,
+          todayRealizedPnl: 0,
+          weekRealizedPnl: 0,
+          monthRealizedPnl: 0,
           todayFundingFee: 0,
           todayCommission: 0,
+          monthFundingFee: 0,
+          monthCommission: 0,
           error: `${exchange} 暂不支持盈亏查询`,
         };
       }
@@ -1072,8 +1082,13 @@ export class ApiKeysService {
       let todayPnl = 0;
       let weekPnl = 0;
       let monthPnl = 0;
+      let todayRealizedPnl = 0;
+      let weekRealizedPnl = 0;
+      let monthRealizedPnl = 0;
       let todayFundingFee = 0;
       let todayCommission = 0;
+      let monthFundingFee = 0;
+      let monthCommission = 0;
 
       if (incomeResult.status === 'fulfilled') {
         const incomes = incomeResult.value;
@@ -1081,13 +1096,30 @@ export class ApiKeysService {
           const amount = parseFloat(item.income || item.amount || '0');
           const ts = item.time || item.timestamp || 0;
           const type = (item.incomeType || item.type || '').toUpperCase();
+          const isRealizedPnl = type === 'REALIZED_PNL' || type === 'REALIZED_PROFIT' || type === 'CLOSE_POSITION';
+          const isFunding = type === 'FUNDING_FEE';
+          const isCommission = type === 'COMMISSION' || type === 'FEE';
 
+          // 全部收入累计（含资金费+手续费）
           if (ts >= monthStartTs) monthPnl += amount;
           if (ts >= weekStartTs) weekPnl += amount;
-          if (ts >= todayStartTs) {
-            todayPnl += amount;
-            if (type === 'FUNDING_FEE') todayFundingFee += amount;
-            if (type === 'COMMISSION' || type === 'FEE') todayCommission += amount;
+          if (ts >= todayStartTs) todayPnl += amount;
+
+          // 纯已实现盈亏（仅平仓盈亏，不含资金费和手续费）
+          if (isRealizedPnl) {
+            if (ts >= monthStartTs) monthRealizedPnl += amount;
+            if (ts >= weekStartTs) weekRealizedPnl += amount;
+            if (ts >= todayStartTs) todayRealizedPnl += amount;
+          }
+
+          // 资金费率和手续费分类统计
+          if (isFunding) {
+            if (ts >= monthStartTs) monthFundingFee += amount;
+            if (ts >= todayStartTs) todayFundingFee += amount;
+          }
+          if (isCommission) {
+            if (ts >= monthStartTs) monthCommission += amount;
+            if (ts >= todayStartTs) todayCommission += amount;
           }
         }
       } else {
@@ -1107,8 +1139,14 @@ export class ApiKeysService {
         unrealizedPnl: parseFloat(unrealizedPnl.toFixed(4)),
         weekPnl: parseFloat(weekPnl.toFixed(4)),
         monthPnl: parseFloat(monthPnl.toFixed(4)),
+        // 纯已实现盈亏（不含资金费和手续费）
+        todayRealizedPnl: parseFloat(todayRealizedPnl.toFixed(4)),
+        weekRealizedPnl: parseFloat(weekRealizedPnl.toFixed(4)),
+        monthRealizedPnl: parseFloat(monthRealizedPnl.toFixed(4)),
         todayFundingFee: parseFloat(todayFundingFee.toFixed(4)),
         todayCommission: parseFloat(todayCommission.toFixed(4)),
+        monthFundingFee: parseFloat(monthFundingFee.toFixed(4)),
+        monthCommission: parseFloat(monthCommission.toFixed(4)),
       };
     } catch (error: any) {
       this.logger.error(`[pnl-stats] 交易所盈亏查询失败: ${error.message}`);
@@ -1117,8 +1155,13 @@ export class ApiKeysService {
         unrealizedPnl: 0,
         weekPnl: 0,
         monthPnl: 0,
+        todayRealizedPnl: 0,
+        weekRealizedPnl: 0,
+        monthRealizedPnl: 0,
         todayFundingFee: 0,
         todayCommission: 0,
+        monthFundingFee: 0,
+        monthCommission: 0,
         error: error.message,
       };
     }

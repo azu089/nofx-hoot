@@ -150,8 +150,13 @@ interface ExchangePnlStats {
   unrealizedPnl: number;
   weekPnl: number;
   monthPnl: number;
+  todayRealizedPnl?: number;
+  weekRealizedPnl?: number;
+  monthRealizedPnl?: number;
   todayFundingFee: number;
   todayCommission: number;
+  monthFundingFee?: number;
+  monthCommission?: number;
   error?: string;
 }
 
@@ -779,7 +784,8 @@ export default function TradingPage() {
     }
   })();
   // 交易所真实盈亏数据（number 类型，直接使用）
-  const totalPnl = pnlStats?.monthPnl ?? 0; // 总盈亏 = 近30天累计
+  // 总盈亏 = 近30天纯已实现盈亏（不含资金费和手续费）
+  const totalPnl = pnlStats?.monthRealizedPnl ?? pnlStats?.monthPnl ?? 0;
   const todayPnl = pnlStats?.todayPnl ?? 0;
   const unrealizedPnl = pnlStats?.unrealizedPnl ?? 0;
 
