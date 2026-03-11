@@ -1906,6 +1906,9 @@ export class GridTradingService {
     let marginUsedPct = 0;
     let positionLong: GridContext['positionLong'];
     let positionShort: GridContext['positionShort'];
+    // 提到外层 scope，供下方 inline reconcile 使用
+    let liveRawLongPos: any = null;
+    let liveRawShortPos: any = null;
 
     try {
       // 始终 fresh 获取余额
@@ -1921,8 +1924,10 @@ export class GridTradingService {
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
-      const longPos = symPositions.find((p: any) => p.side === 'long');
+      const longPos = symPositions.find((p: any) => p.side === 'long' || p.side === 'net' || !p.side);
       const shortPos = symPositions.find((p: any) => p.side === 'short');
+      liveRawLongPos = longPos ?? null;
+      liveRawShortPos = shortPos ?? null;
 
       // 净持仓
       currentPosition = (longPos?.quantity ?? 0) - (shortPos?.quantity ?? 0);
@@ -1956,12 +1961,14 @@ export class GridTradingService {
     // 并行拉取：委托单状态 + 近期历史成交（24h内，最多10笔）
     let exchangeOpenOrders: GridContext['exchangeOpenOrders'];
     let recentClosedPnl: GridContext['recentClosedPnl'];
+    let liveRawOpenOrders: any[] | null = null; // 提到外层 scope，供 inline reconcile 使用
     try {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const [rawOpenOrders, rawClosedPnl] = await Promise.all([
         adapter.getOpenOrders(state.symbol).catch(() => []),
         adapter.getClosedPnl(since24h, 10).catch(() => []),
       ]);
+      liveRawOpenOrders = rawOpenOrders;
       exchangeOpenOrders = rawOpenOrders.map(o => ({
         orderId: o.orderId,
         side: o.side,
@@ -1978,6 +1985,72 @@ export class GridTradingService {
         closedAt: r.exitTime instanceof Date ? r.exitTime.toISOString() : String(r.exitTime),
       }));
     } catch { /* 忽略，不阻塞主流程 */ }
+
+    // ── 对齐 nofx: 每轮从交易所实时数据重建 state.gridLines ──
+    // nofx 不留缓存，每个周期以交易所为准重建层状态（orders + positions）
+    // 仅在两个 API 均成功时执行（liveRawOpenOrders != null），保证数据完整性
+    if (liveRawOpenOrders !== null) {
+      // Step 1: 全部重置（保留价格/side/allocatedUSD 等配置字段）
+      for (const line of state.gridLines) {
+        line.state = 'empty';
+        line.orderId = undefined;
+        line.orderQuantity = 0;
+        line.positionSize = 0;
+        line.positionEntry = 0;
+        line.unrealizedPnl = 0;
+      }
+      state.orderBook = {};
+
+      // Step 2: 从实时委托单恢复 pending 层（按价格最近匹配）
+      for (const order of liveRawOpenOrders) {
+        let closestIdx = -1;
+        let closestDist = Infinity;
+        for (let i = 0; i < state.gridLines.length; i++) {
+          const dist = Math.abs(state.gridLines[i].price - (order.price ?? 0));
+          if (dist < closestDist) { closestDist = dist; closestIdx = i; }
+        }
+        if (closestIdx >= 0 && state.gridLines[closestIdx].state === 'empty') {
+          state.gridLines[closestIdx].state = 'pending';
+          state.gridLines[closestIdx].orderId = order.orderId;
+          state.gridLines[closestIdx].orderQuantity = order.quantity ?? 0;
+          state.orderBook[order.orderId] = closestIdx;
+        }
+      }
+
+      // Step 3: 从实时持仓恢复 filled 层（多层拆分，含杠杆，对齐 reconcileGridState）
+      const mapLivePosition = (
+        totalQty: number,
+        entryPrice: number,
+        pnl: number,
+        side: 'buy' | 'sell',
+      ) => {
+        const candidates = state.gridLines
+          .filter(l => l.side === side && l.state === 'empty')
+          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+        if (candidates.length === 0) return;
+        const leverage = state.leverage ?? 1;
+        const refPrice = entryPrice > 0 ? entryPrice : (candidates[0].price || 1);
+        const expectedQtyPerLayer = candidates[0].allocatedUSD > 0 && refPrice > 0
+          ? (candidates[0].allocatedUSD * leverage) / refPrice
+          : totalQty;
+        const numLayers = Math.max(1, Math.min(Math.round(totalQty / expectedQtyPerLayer), candidates.length));
+        const qtyPerLayer = totalQty / numLayers;
+        const pnlPerLayer = pnl / numLayers;
+        for (let i = 0; i < numLayers; i++) {
+          candidates[i].state = 'filled';
+          candidates[i].positionEntry = entryPrice;
+          candidates[i].positionSize = qtyPerLayer;
+          candidates[i].unrealizedPnl = pnlPerLayer;
+        }
+      };
+
+      if (liveRawLongPos && (liveRawLongPos.quantity ?? 0) >= 0.0001) {
+        mapLivePosition(liveRawLongPos.quantity, liveRawLongPos.entryPrice ?? 0, liveRawLongPos.unrealizedPnl ?? 0, 'buy');
+      }
+      if (liveRawShortPos && (liveRawShortPos.quantity ?? 0) >= 0.0001) {
+        mapLivePosition(liveRawShortPos.quantity, liveRawShortPos.entryPrice ?? 0, liveRawShortPos.unrealizedPnl ?? 0, 'sell');
+      }
+    }
 
     // 价格变化（改用 1h K 线，精确且无临界问题）
     const priceChange1h = ohlcvHourly.length >= 2
