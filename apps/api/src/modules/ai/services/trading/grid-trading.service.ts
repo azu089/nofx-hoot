@@ -2715,6 +2715,11 @@ export class GridTradingService {
       finalLevel.price = price;           // 与实际下单价保持一致
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
+      // 对齐 nofx: placeGridLimitOrder 只设 State/OrderID/OrderBook，不设持仓数据
+      // pending 层必须清除脏数据（防止上一次 filled 的 positionSize 残留）
+      finalLevel.positionSize = 0;
+      finalLevel.positionEntry = 0;
+      finalLevel.unrealizedPnl = 0;
       state.orderBook[result.orderId] = finalLevelIndex;
     }
 
@@ -3173,6 +3178,46 @@ export class GridTradingService {
         }
         if (ghostSell.length > 0) {
           this.logger.warn(`[网格] syncOrderFills Step6: exchange空头=0，清理 ${ghostSell.length} 个幽灵sell层→empty`);
+        }
+      }
+
+      // Step 6c: 孤儿超量持仓映射（本周期无消失订单时，exchange持仓 > 内存预期）
+      // 对齐 nofx 启发式：把超出的持仓量映射到最近的 empty 层，确保 AI 能看到并处理
+      if (disappearedLines.length === 0) {
+        const excessThreshold = 0.001;
+        if (currentPositionSize > expectedPositionSize + excessThreshold && exchangeLongQty > 0.0001) {
+          const excessQty = currentPositionSize - expectedPositionSize;
+          const emptyBuyLayers = state.gridLines.filter(l => l.state === 'empty' && l.side === 'buy');
+          if (emptyBuyLayers.length > 0) {
+            const nearest = emptyBuyLayers.reduce((a, b) =>
+              Math.abs(a.price - (state.lowerPrice + state.upperPrice) / 2) <
+              Math.abs(b.price - (state.lowerPrice + state.upperPrice) / 2) ? a : b,
+            );
+            nearest.state = 'filled';
+            nearest.positionEntry = nearest.price;
+            nearest.positionSize = Math.abs(excessQty);
+            nearest.unrealizedPnl = 0;
+            this.logger.warn(
+              `[网格] syncOrderFills Step6c: 孤儿多头 ${excessQty.toFixed(4)} → 映射到层${nearest.index}@${nearest.price.toFixed(4)}`,
+            );
+          }
+        }
+        if (currentPositionSize < expectedPositionSize - excessThreshold && exchangeShortQty > 0.0001) {
+          const excessQty = Math.abs(currentPositionSize - expectedPositionSize);
+          const emptySellLayers = state.gridLines.filter(l => l.state === 'empty' && l.side === 'sell');
+          if (emptySellLayers.length > 0) {
+            const nearest = emptySellLayers.reduce((a, b) =>
+              Math.abs(a.price - (state.lowerPrice + state.upperPrice) / 2) <
+              Math.abs(b.price - (state.lowerPrice + state.upperPrice) / 2) ? a : b,
+            );
+            nearest.state = 'filled';
+            nearest.positionEntry = nearest.price;
+            nearest.positionSize = Math.abs(excessQty);
+            nearest.unrealizedPnl = 0;
+            this.logger.warn(
+              `[网格] syncOrderFills Step6c: 孤儿空头 ${excessQty.toFixed(4)} → 映射到层${nearest.index}@${nearest.price.toFixed(4)}`,
+            );
+          }
         }
       }
 
