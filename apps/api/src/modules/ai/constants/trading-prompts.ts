@@ -712,6 +712,21 @@ function gridSystemPromptZh(
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
+## 方向自适应系统（后端自动，无需 AI 干预）
+网格有 5 种方向状态（当前见 currentDirection 字段）：
+- **neutral**: 价格上下对称，买卖各半（默认状态）
+- **long_bias**: 70% 买层/30% 卖层（短期上涨突破后自动切入）
+- **long**: 100% 买层（中期上涨突破后自动切入，顺势 DCA 做多）
+- **short_bias**: 30% 买层/70% 卖层（短期下跌突破后自动切入）
+- **short**: 100% 卖层（中期下跌突破后自动切入，顺势 DCA 做空）
+
+**后端会在检测到箱体突破时自动改变方向**，AI 无需发出任何指令。方向恢复也是自动的（价格回到短期箱体 → 逐步 long→long_bias→neutral 或 short→short_bias→neutral）。
+
+**AI 如何配合方向系统**：
+- 看到 currentDirection=long/long_bias 时：side=sell 的 filled 层浮亏较正常（方向顺势做多，空头持仓是逆势），可用 close_short 减少逆势仓位
+- 看到 currentDirection=short/short_bias 时：side=buy 的 filled 层浮亏较正常，可用 close_long 减少逆势仓位
+- currentDirection=neutral：buy/sell 对等，正常管理两侧
+
 ## 可用操作
 - **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
 - **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
@@ -774,6 +789,21 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
+
+## Direction Auto-Adaptation System (backend automatic, no AI action needed)
+Grid has 5 direction states (see currentDirection field):
+- **neutral**: Symmetric buy/sell, 50/50 split (default)
+- **long_bias**: 70% buy / 30% sell levels (auto-activated on short-term upside breakout)
+- **long**: 100% buy levels (auto-activated on mid-term upside breakout, DCA long)
+- **short_bias**: 30% buy / 70% sell levels (auto-activated on short-term downside breakout)
+- **short**: 100% sell levels (auto-activated on mid-term downside breakout, DCA short)
+
+**Backend automatically changes direction on box breakout** — AI needs no action. Recovery is also automatic (price returns to short box → gradual long→long_bias→neutral or short→short_bias→neutral).
+
+**How AI works with the direction system**:
+- When currentDirection=long/long_bias: side=sell filled positions with unrealized loss is expected (grid is DCA-long, shorts are counter-trend). Use close_short to reduce counter-trend exposure.
+- When currentDirection=short/short_bias: side=buy filled with loss expected. Use close_long.
+- currentDirection=neutral: Both sides balanced, manage normally.
 
 ## Available Actions
 - **place_buy_limit**: Place buy order on empty level (fields: level, price, quantity)
@@ -848,9 +878,15 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
     ? (() => {
         const pct = Math.abs(ctx.currentPrice - l.fillPrice) / l.fillPrice * 100;
         const isLoss = l.side === 'buy' ? ctx.currentPrice < l.fillPrice : ctx.currentPrice > l.fillPrice;
-        const lossLabel = isEn ? 'loss' : '亏';
         const threshLabel = isEn ? '/thresh' : '/阈';
-        return isLoss ? ` [${lossLabel}${pct.toFixed(1)}%${ctx.stopLossPct ? `${threshLabel}${ctx.stopLossPct}%` : ''}]` : '';
+        // 对齐 nofx：盈亏都显示，亏损时附带止损阈值
+        if (isLoss) {
+          const lossLabel = isEn ? 'loss' : '亏';
+          return ` [${lossLabel}${pct.toFixed(1)}%${ctx.stopLossPct ? `${threshLabel}${ctx.stopLossPct}%` : ''}]`;
+        } else {
+          const profitLabel = isEn ? 'profit' : '盈';
+          return ` [${profitLabel}${pct.toFixed(1)}%]`;
+        }
       })()
     : '';
   return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;

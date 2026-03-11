@@ -34,7 +34,7 @@ export interface GridConfig {
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
-  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 false）
+  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true，对齐 nofx）
   directionBiasRatio?: number;     // 偏向比例（默认 0.7，即 70% 偏向 / 30% 反向）
   useMakerOnly?: boolean;      // PostOnly 限价单
   modelId?: string;            // AI 模型（默认 deepseek-chat）
@@ -1001,34 +1001,8 @@ export class GridTradingService {
       }
     }
 
-    // Step 3.5: 逐层硬止损检查（对齐 nofx checkAndExecuteStopLoss）
-    // 每轮遍历 filled 层，lossPct >= stopLossPct 时标记待平仓，在 adapter 块内执行
-    const perLevelStopPct = state.stopLossPct > 0 ? state.stopLossPct : DEFAULT_STOP_LOSS_PCT;
-    if (currentPrice > 0) {
-      for (let i = 0; i < state.gridLines.length; i++) {
-        const line = state.gridLines[i];
-        if (line.state !== 'filled' || !line.positionEntry || line.positionEntry <= 0) continue;
-        let lossPct: number;
-        if (line.side === 'sell') {
-          // 空头：价格上涨亏损
-          lossPct = ((currentPrice - line.positionEntry) / line.positionEntry) * 100;
-        } else {
-          // 多头：价格下跌亏损
-          lossPct = ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
-        }
-        if (lossPct >= perLevelStopPct) {
-          this.logger.warn(
-            `[网格] 硬止损标记: 层${i + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
-            `currentPrice=${currentPrice.toFixed(4)} 亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
-          );
-          if (!state._pendingStopLoss) state._pendingStopLoss = [];
-          state._pendingStopLoss.push(i);
-        }
-      }
-    }
-
     // earlyAdapter 只用于 getBalance + getPositions，用完立即释放
-    // 止损执行移至主 adapter 块 syncOrderFills 之后（对齐 nofx checkAndExecuteStopLoss）
+    // 止损检查+执行对齐 nofx: 在 syncOrderFills 之后内联执行（见 L1362）
     if (earlyAdapter) {
       try { await earlyAdapter.dispose(); } catch {}
       earlyAdapter = null;
@@ -1183,7 +1157,7 @@ export class GridTradingService {
         // 突破检测：暂停中先尝试 checkFalseBreakoutRecovery 自动恢复；非暂停时执行正常检测
         if (state.isPaused) {
           // 尝试自动恢复（价格可能已回归箱体或网格区间）
-          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
           this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           if (!state.isPaused) {
             this.logger.log(`[网格] 价格回归，暂停自动解除，继续正常运行`);
@@ -1209,7 +1183,7 @@ export class GridTradingService {
             if (boxDetected.level !== 'none') {
               const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
               if (confirmed) {
-                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
                 const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
                 await this.executeBreakoutAction(
                   state, action, boxDetected.direction, userId, apiKeyId, adapter,
@@ -1222,7 +1196,7 @@ export class GridTradingService {
             } else {
               this.confirmBreakout(state, 'none', ''); // 重置连续计数
             }
-            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
             this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           }
         }
@@ -1359,11 +1333,21 @@ export class GridTradingService {
           }
         }
 
-        // 对齐 nofx: checkAndExecuteStopLoss 在 syncGridState 末尾执行
-        if (state._pendingStopLoss && state._pendingStopLoss.length > 0 && isGridAdapter(adapter)) {
-          for (const idx of state._pendingStopLoss) {
+        // 对齐 nofx: checkAndExecuteStopLoss 在 syncGridState(syncOrderFills) 之后内联执行
+        // nofx 中止损检查和执行在同一位置（AI 决策之后），HOOT 之前是 AI 前标记+AI 后执行，现统一为 AI 后
+        if (isGridAdapter(adapter) && currentPrice > 0) {
+          const perLevelStopPct = state.stopLossPct > 0 ? state.stopLossPct : DEFAULT_STOP_LOSS_PCT;
+          for (let idx = 0; idx < state.gridLines.length; idx++) {
             const line = state.gridLines[idx];
-            if (line.state !== 'filled') continue;
+            if (line.state !== 'filled' || !line.positionEntry || line.positionEntry <= 0) continue;
+            const lossPct = line.side === 'sell'
+              ? ((currentPrice - line.positionEntry) / line.positionEntry) * 100
+              : ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
+            if (lossPct < perLevelStopPct) continue;
+            this.logger.warn(
+              `[网格] 硬止损触发: 层${idx + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
+              `亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
+            );
             const closeSide = line.side === 'buy' ? 'long' : 'short';
             const closeQty = line.positionSize || 0;
             if (closeQty > 0) {
@@ -1391,7 +1375,6 @@ export class GridTradingService {
               }
             }
           }
-          state._pendingStopLoss = undefined;
         }
 
         // 对齐 nofx: autoAdjustGrid 在 checkAndExecuteStopLoss 之后（syncGridState 末尾）
@@ -2042,7 +2025,12 @@ export class GridTradingService {
           : l.state === 'short' ? 'filled' : l.state) as 'pending' | 'filled' | 'cancelled',
         orderId: l.orderId,
         fillPrice: l.positionEntry > 0 ? l.positionEntry : undefined,
-        profit: l.unrealizedPnl !== 0 ? l.unrealizedPnl : undefined,
+        // 对齐 nofx: filled 层实时计算 unrealizedPnl（多头=价涨盈，空头=价跌盈）
+        profit: l.state === 'filled' && l.positionEntry > 0 && l.positionSize > 0 && currentPrice > 0
+          ? (l.side === 'buy'
+            ? (currentPrice - l.positionEntry) * l.positionSize
+            : (l.positionEntry - currentPrice) * l.positionSize)
+          : (l.unrealizedPnl !== 0 ? l.unrealizedPnl : undefined),
       })),
       activeOrderCount: state.gridLines.filter((l) => l.state === 'pending').length,
       filledLevelCount: state.gridLines.filter((l) => l.state === 'filled' && l.positionSize > 0).length,
@@ -2608,7 +2596,7 @@ export class GridTradingService {
       const filledSlotNotional = state.gridLines.filter(l => l.state === 'filled').length * slotBudget;
       const pendingNotionalStep1 = state.gridLines
         .filter(l => l.state === 'pending' && l.orderQuantity > 0)
-        .reduce((sum, l) => sum + l.orderQuantity * price, 0);
+        .reduce((sum, l) => sum + l.orderQuantity * (l.price > 0 ? l.price : price), 0); // 对齐 nofx: 用挂单自身价格，非当前市价
       const existingNotional = filledSlotNotional + pendingNotionalStep1;
       if (existingNotional + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度
