@@ -467,7 +467,7 @@
     "ai": "AI Trade",
     "dashboard": "Dasbor",
     "strategies": "Strategi",
-    "trading": "Trading",
+    "trading": "Posisi",
     "aiTrading": "AI Trading",
     "aiResearch": "AI Riset",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "Trading",
+    "title": "Posisi",
     "manual": "Manual",
     "realTimeMonitor": "Monitor status trading real-time",
     "refresh": "Refresh",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "Rasio Menang",
       "gridFilledLevels": "Grid Posisi",
       "gridLayerState": "Status Layer",
+      "exchLong": "Posisi Long",
+      "exchShort": "Posisi Short",
+      "exchNoPos": "Tidak Ada Posisi",
       "gridKeepBuy": "Order Beli",
       "gridPosition": "Posisi",
       "gridKeepSell": "Order Jual",

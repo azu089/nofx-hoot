@@ -462,7 +462,7 @@
     "ai": "AI Trade",
     "dashboard": "Dashboard",
     "strategies": "Strategies",
-    "trading": "Trading",
+    "trading": "Positions",
     "aiTrading": "AI Trading",
     "aiResearch": "AI Research",
     "aiSettings": "LLM API KEY",
@@ -882,7 +882,7 @@
     }
   },
   "trading": {
-    "title": "Trading",
+    "title": "Positions",
     "manual": "Manual",
     "noAccountsBound": "No accounts bound",
     "realTimeMonitor": "Real-time trading status monitoring",
@@ -2099,6 +2099,9 @@
       "gridWinRate": "Win Rate",
       "gridFilledLevels": "Filled Grids",
       "gridLayerState": "Layer Status",
+      "exchLong": "Exchange Long",
+      "exchShort": "Exchange Short",
+      "exchNoPos": "No Exchange Position",
       "gridKeepBuy": "Order Buy",
       "gridPosition": "Position",
       "gridKeepSell": "Order Sell",

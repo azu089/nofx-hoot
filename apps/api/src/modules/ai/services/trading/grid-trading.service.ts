@@ -1371,7 +1371,7 @@ export class GridTradingService {
         });
 
         // 执行决策（收集每条执行结果，供日志记录）
-        // 执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
+        // 执行前捕获格线快照（AI 分析时看到的状态）
         const preExecGridLines = state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
           if (l.state === 'filled') {
@@ -1539,6 +1539,10 @@ export class GridTradingService {
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
             hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
+            {
+              positionLong: (context as any).positionLong,
+              positionShort: (context as any).positionShort,
+            },
           );
         }
 
@@ -4007,6 +4011,10 @@ export class GridTradingService {
     marketAnalysis?: string,
     preExecGridLines?: any[],  // AI 分析时看到的执行前快照
     locale?: string,           // 用户语言（用于 gridSummary 翻译）
+    exchangePosition?: {       // 交易所真实持仓（用于前端展示，替代内存数据）
+      positionLong?: { quantity: number; entryPrice: number; unrealizedPnl: number };
+      positionShort?: { quantity: number; entryPrice: number; unrealizedPnl: number };
+    },
   ): Promise<void> {
     try {
       // 统计各操作类型数量，生成摘要
@@ -4063,7 +4071,7 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：使用执行前快照（AI 分析时的状态），空格线正确显示为 empty
+        // 每层详情：使用执行前快照（AI 分析时从交易所拉取的实时状态）
         gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = {
             lv: i + 1,
@@ -4079,6 +4087,25 @@ export class GridTradingService {
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
           }
           return entry;
+        }),
+        // 交易所真实持仓（前端展示用，替代内存估算）
+        ...(exchangePosition && {
+          exchPos: {
+            ...(exchangePosition.positionLong && {
+              long: {
+                qty: +exchangePosition.positionLong.quantity.toFixed(4),
+                ep: +exchangePosition.positionLong.entryPrice.toFixed(4),
+                pnl: +exchangePosition.positionLong.unrealizedPnl.toFixed(4),
+              },
+            }),
+            ...(exchangePosition.positionShort && {
+              short: {
+                qty: +exchangePosition.positionShort.quantity.toFixed(4),
+                ep: +exchangePosition.positionShort.entryPrice.toFixed(4),
+                pnl: +exchangePosition.positionShort.unrealizedPnl.toFixed(4),
+              },
+            }),
+          },
         }),
       } : undefined;
 

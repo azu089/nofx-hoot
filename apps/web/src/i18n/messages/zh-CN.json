@@ -464,7 +464,7 @@
     "ai": "AI 交易",
     "dashboard": "仪表盘",
     "strategies": "策略",
-    "trading": "交易",
+    "trading": "持仓",
     "aiTrading": "AI交易",
     "aiResearch": "AI研究",
     "aiSettings": "LLM API KEY",
@@ -887,7 +887,7 @@
     }
   },
   "trading": {
-    "title": "交易",
+    "title": "持仓",
     "manual": "手动",
     "noAccountsBound": "未绑定账户",
     "realTimeMonitor": "实时监控交易状态",
@@ -2124,6 +2124,9 @@
       "gridWinRate": "胜率",
       "gridFilledLevels": "持仓格",
       "gridLayerState": "层级状态",
+      "exchLong": "交易所多头",
+      "exchShort": "交易所空头",
+      "exchNoPos": "交易所无持仓",
       "gridKeepBuy": "委托买",
       "gridPosition": "持仓",
       "gridKeepSell": "委托卖",

@@ -467,7 +467,7 @@
     "ai": "AI Trade",
     "dashboard": "Панель",
     "strategies": "Стратегии",
-    "trading": "Торговля",
+    "trading": "Позиции",
     "aiTrading": "AI Трейдинг",
     "aiResearch": "AI Исследование",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "Торговля",
+    "title": "Позиции",
     "manual": "Вручную",
     "realTimeMonitor": "Мониторинг торговли в реальном времени",
     "refresh": "Обновить",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "Доля побед",
       "gridFilledLevels": "Уровни с позицией",
       "gridLayerState": "Состояние уровней",
+      "exchLong": "Длинная позиция",
+      "exchShort": "Короткая позиция",
+      "exchNoPos": "Нет позиции",
       "gridKeepBuy": "Ордер Куп",
       "gridPosition": "Позиция",
       "gridKeepSell": "Ордер Прод",

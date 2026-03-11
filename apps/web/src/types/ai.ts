@@ -644,6 +644,11 @@ export interface StrategyLog {
         ep?: number;   // filled: 建仓价
         oid?: string;  // pending: 订单ID末8位
       }>;
+      // 交易所真实持仓（与 AI 文案数据源一致）
+      exchPos?: {
+        long?: { qty: number; ep: number; pnl: number };
+        short?: { qty: number; ep: number; pnl: number };
+      };
     };
     // auto_disabled_failure 格式
     reason?: string;

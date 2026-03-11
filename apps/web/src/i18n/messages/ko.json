@@ -467,7 +467,7 @@
     "ai": "AI 거래",
     "dashboard": "대시보드",
     "strategies": "전략",
-    "trading": "거래",
+    "trading": "포지션",
     "aiTrading": "AI 트레이딩",
     "aiResearch": "AI 리서치",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "거래",
+    "title": "포지션",
     "manual": "수동",
     "realTimeMonitor": "실시간 거래 상태 모니터링",
     "refresh": "새로고침",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "승률",
       "gridFilledLevels": "포지션 그리드",
       "gridLayerState": "레이어 상태",
+      "exchLong": "거래소 롱",
+      "exchShort": "거래소 숏",
+      "exchNoPos": "거래소 포지션 없음",
       "gridKeepBuy": "주문매수",
       "gridPosition": "포지션",
       "gridKeepSell": "주문매도",

@@ -467,7 +467,7 @@
     "ai": "AI Trade",
     "dashboard": "Panel",
     "strategies": "Stratejiler",
-    "trading": "İşlem",
+    "trading": "Pozisyonlar",
     "aiTrading": "AI Trading",
     "aiResearch": "AI Araştırma",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "Ticaret",
+    "title": "Pozisyonlar",
     "manual": "Manuel",
     "realTimeMonitor": "Ticaret Durumunu Gerçek Zamanlı İzleyin",
     "refresh": "Yenile",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "Kazanma Oranı",
       "gridFilledLevels": "Pozisyonlu Katmanlar",
       "gridLayerState": "Katman Durumu",
+      "exchLong": "Uzun Pozisyon",
+      "exchShort": "Kısa Pozisyon",
+      "exchNoPos": "Pozisyon Yok",
       "gridKeepBuy": "Alım Emri",
       "gridPosition": "Pozisyon",
       "gridKeepSell": "Satış Emri",

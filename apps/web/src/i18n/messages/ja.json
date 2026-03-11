@@ -467,7 +467,7 @@
     "ai": "AI取引",
     "dashboard": "ダッシュボード",
     "strategies": "ストラテジー",
-    "trading": "取引",
+    "trading": "ポジション",
     "aiTrading": "AI取引",
     "aiResearch": "AIリサーチ",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "取引",
+    "title": "ポジション",
     "manual": "手動",
     "realTimeMonitor": "取引状況をリアルタイム監視",
     "refresh": "更新",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "勝率",
       "gridFilledLevels": "建玉グリッド",
       "gridLayerState": "レイヤー状態",
+      "exchLong": "取引所ロング",
+      "exchShort": "取引所ショート",
+      "exchNoPos": "取引所ポジションなし",
       "gridKeepBuy": "注文買",
       "gridPosition": "ポジション",
       "gridKeepSell": "注文売",

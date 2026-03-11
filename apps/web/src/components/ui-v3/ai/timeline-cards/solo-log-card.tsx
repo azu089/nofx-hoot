@@ -885,6 +885,24 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       );
                     })}
                   </div>
+                  {/* 交易所真实持仓（与 AI 文案数据源一致） */}
+                  {d.gridSnapshot?.exchPos && (
+                    <div className="flex flex-wrap gap-2 mt-1 px-0.5">
+                      {d.gridSnapshot.exchPos.long && (
+                        <span className="text-[9px] text-[#10B981]">
+                          {t('timeline.exchLong', { fallback: '交易所多头' })}: {d.gridSnapshot.exchPos.long.qty} @ ${Number(d.gridSnapshot.exchPos.long.ep).toFixed(2)} ({d.gridSnapshot.exchPos.long.pnl >= 0 ? '+' : ''}{d.gridSnapshot.exchPos.long.pnl})
+                        </span>
+                      )}
+                      {d.gridSnapshot.exchPos.short && (
+                        <span className="text-[9px] text-[#F23645]">
+                          {t('timeline.exchShort', { fallback: '交易所空头' })}: {d.gridSnapshot.exchPos.short.qty} @ ${Number(d.gridSnapshot.exchPos.short.ep).toFixed(2)} ({d.gridSnapshot.exchPos.short.pnl >= 0 ? '+' : ''}{d.gridSnapshot.exchPos.short.pnl})
+                        </span>
+                      )}
+                      {!d.gridSnapshot.exchPos.long && !d.gridSnapshot.exchPos.short && (
+                        <span className="text-[9px] text-[#505060]">{t('timeline.exchNoPos', { fallback: '交易所无持仓' })}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {gridDecisions.map((op: any, idx: number) => {

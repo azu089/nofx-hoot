@@ -467,7 +467,7 @@
     "ai": "AI Trade",
     "dashboard": "แดชบอร์ด",
     "strategies": "กลยุทธ์",
-    "trading": "เทรด",
+    "trading": "สถานะ",
     "aiTrading": "AI Trading",
     "aiResearch": "AI วิจัย",
     "aiSettings": "LLM API KEY",
@@ -897,7 +897,7 @@
     }
   },
   "trading": {
-    "title": "การเทรด",
+    "title": "สถานะ",
     "manual": "ด้วยตนเอง",
     "realTimeMonitor": "ตรวจสอบสถานะการเทรดแบบเรียลไทม์",
     "refresh": "รีเฟรช",
@@ -2114,6 +2114,9 @@
       "gridWinRate": "อัตราชนะ",
       "gridFilledLevels": "กริดที่มีตำแหน่ง",
       "gridLayerState": "สถานะชั้น",
+      "exchLong": "ตำแหน่ง Long",
+      "exchShort": "ตำแหน่ง Short",
+      "exchNoPos": "ไม่มีตำแหน่ง",
       "gridKeepBuy": "คำสั่งซื้อ",
       "gridPosition": "โพสิชัน",
       "gridKeepSell": "คำสั่งขาย",

@@ -467,7 +467,7 @@
     "ai": "AI Trade",
     "dashboard": "Bảng điều khiển",
     "strategies": "Chiến lược",
-    "trading": "Giao dịch",
+    "trading": "Vị thế",
     "aiTrading": "AI Trading",
     "aiResearch": "AI Nghiên cứu",
     "aiSettings": "LLM API KEY",
@@ -898,7 +898,7 @@
     "aiQuantTrading": "AI Smart Quant Trading"
   },
   "trading": {
-    "title": "Giao dịch",
+    "title": "Vị thế",
     "manual": "Thủ công",
     "realTimeMonitor": "Giám sát trạng thái giao dịch theo thời gian thực",
     "refresh": "Làm mới",
@@ -2115,6 +2115,9 @@
       "gridWinRate": "Tỷ lệ thắng",
       "gridFilledLevels": "Lưới giữ vị thế",
       "gridLayerState": "Trạng thái lớp",
+      "exchLong": "Vị thế mua",
+      "exchShort": "Vị thế bán",
+      "exchNoPos": "Không có vị thế",
       "gridKeepBuy": "Lệnh Mua",
       "gridPosition": "Vị Thế",
       "gridKeepSell": "Lệnh Bán",

@@ -462,7 +462,7 @@
     "ai": "تداول ذكي",
     "dashboard": "لوحة التحكم",
     "strategies": "الاستراتيجيات",
-    "trading": "التداول",
+    "trading": "المراكز",
     "aiTrading": "تداول ذكي",
     "aiResearch": "بحث ذكي",
     "aiSettings": "مفتاح LLM API",
@@ -882,7 +882,7 @@
     }
   },
   "trading": {
-    "title": "التداول",
+    "title": "المراكز",
     "manual": "يدوي",
     "noAccountsBound": "لا توجد حسابات مرتبطة",
     "realTimeMonitor": "مراقبة حالة التداول في الوقت الفعلي",
@@ -2095,6 +2095,9 @@
       "gridWinRate": "معدل الفوز",
       "gridFilledLevels": "الشبكات المشغولة",
       "gridLayerState": "حالة الطبقة",
+      "exchLong": "صفقة شراء",
+      "exchShort": "صفقة بيع",
+      "exchNoPos": "لا توجد صفقات",
       "gridKeepBuy": "أمر شراء",
       "gridPosition": "مركز",
       "gridKeepSell": "أمر بيع",
