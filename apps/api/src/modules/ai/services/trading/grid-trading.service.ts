@@ -2163,9 +2163,9 @@ export class GridTradingService {
             : 0,
         positionSize: l.positionSize,     // 实际持仓量（filled 层有效）
         state: (l.state === 'empty' || l.state === 'stopped'
-          ? 'cancelled'
+          ? 'empty'
           // 兼容旧数据：'short' 状态表示持空头仓位，映射为 'filled'
-          : l.state === 'short' ? 'filled' : l.state) as 'pending' | 'filled' | 'cancelled',
+          : l.state === 'short' ? 'filled' : l.state) as 'pending' | 'filled' | 'cancelled' | 'empty',
         orderId: l.orderId,
         fillPrice: l.positionEntry > 0 ? l.positionEntry : undefined,
         profit: l.unrealizedPnl !== 0 ? l.unrealizedPnl : undefined,
