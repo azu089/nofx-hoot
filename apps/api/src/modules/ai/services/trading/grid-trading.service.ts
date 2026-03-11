@@ -1080,6 +1080,7 @@ export class GridTradingService {
       }
 
       state.isPaused = true;
+      state.pauseSource = 'breakout';
       state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
       await this.persistGridState(strategyId, state);
       return { trades: 0, errors: 0 };
@@ -1158,11 +1159,9 @@ export class GridTradingService {
 
         // 突破检测：暂停中先尝试 checkFalseBreakoutRecovery 自动恢复；非暂停时执行正常检测
         if (state.isPaused) {
-          // 尝试自动恢复（价格可能已回归箱体）
-          if (state.shortBoxUpper > 0) {
-            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
-            this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
-          }
+          // 尝试自动恢复（价格可能已回归箱体或网格区间）
+          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+          this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           if (!state.isPaused) {
             this.logger.log(`[网格] 价格回归，暂停自动解除，继续正常运行`);
           }
@@ -1747,26 +1746,41 @@ export class GridTradingService {
 
   /** 虚假突破恢复检查 */
   private checkFalseBreakoutRecovery(state: GridState, price: number, enableDirectionAdjust = false): void {
-    // 价格回到长期箱体内 → 重置突破状态，解除仓位缩减和后端触发的暂停
+    const needsReset = state.isPaused || state.positionReductionPct > 0;
+    if (!needsReset) return;
+
+    let recovered = false;
+
+    // 优先：价格回到长期箱体内（Donchian）
     if (
       state.longBoxUpper > 0 && state.longBoxLower > 0 &&
       price >= state.longBoxLower && price <= state.longBoxUpper
     ) {
-      const needsReset = state.isPaused || state.positionReductionPct > 0;
-      if (needsReset) {
-        state.breakoutLevel = 'none';
-        state.breakoutDirection = '';
-        state.breakoutConfirmCount = 0;
-        // 价格回归后部分恢复（50%），AI 负责逐步补仓
-        state.positionReductionPct = 50;
-        // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
-        if (state.pauseSource !== 'risk_control') {
-          state.isPaused = false;
-          state.pauseReason = undefined;
-          state.pauseSource = undefined;
-          state.needsReconcile = true; // 下次周期开始前对齐交易所状态
-        }
-        this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内');
+      recovered = true;
+      this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内');
+    }
+    // 兜底：无箱体数据时，价格回到网格区间内也恢复（对齐 nofx 静默跳过时的意图）
+    else if (
+      state.longBoxUpper === 0 &&
+      state.lowerPrice > 0 && state.upperPrice > 0 &&
+      price >= state.lowerPrice && price <= state.upperPrice
+    ) {
+      recovered = true;
+      this.logger.log('[网格] 虚假突破恢复（兜底）: 无箱体数据，价格回到网格区间内');
+    }
+
+    if (recovered) {
+      state.breakoutLevel = 'none';
+      state.breakoutDirection = '';
+      state.breakoutConfirmCount = 0;
+      // 价格回归后部分恢复（50%），AI 负责逐步补仓
+      state.positionReductionPct = 50;
+      // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
+      if (state.pauseSource !== 'risk_control') {
+        state.isPaused = false;
+        state.pauseReason = undefined;
+        state.pauseSource = undefined;
+        state.needsReconcile = true;
       }
     }
 
