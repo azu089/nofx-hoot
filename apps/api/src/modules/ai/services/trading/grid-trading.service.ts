@@ -175,7 +175,7 @@ export interface GridState {
   // === 信号驱动自动调节字段（Round 1+2，每 cycle 重算，重启后首轮为 0）===
   lastVolume24h: number;      // 最近 24h 成交量（updateBoxData 更新）
   avgDailyVolume: number;     // 近 72h 日均成交量（updateBoxData 更新）
-  lastAtrHourly: number;      // ATR(14)[1h]（classifyRegime 返回后存储）
+  lastAtrHourly: number;      // ATR(14)[5m]（classifyRegime 返回后存储，仅存不读）
   lastAtrSpikeRatio: number;  // 当前ATR/基线ATR比率（updateBoxData 计算）
   // === 信号驱动自动调节字段（Phase 12，每 cycle 重算，重启后首轮为 0）===
   rsiDivergenceType: 'bullish' | 'bearish' | 'none'; // RSI 背离类型（updateBoxData 计算）
@@ -1824,7 +1824,7 @@ export class GridTradingService {
 
   // ========================= 市场状态分类 =========================
 
-  /** 分类市场状态，同时返回 ATR(14)[1h] 供 ATR 追踪网格宽度使用 */
+  /** 分类市场状态（基于 5m K线 BB/ATR，与 AI 收到的指标同源） */
   private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
     // 对齐 nofx: 使用 5m K线，与 AI 收到的 BB/ATR 指标同源（避免 1h 和 5m 数据矛盾）
     const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '5m', 50);
