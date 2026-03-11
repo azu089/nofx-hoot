@@ -695,7 +695,7 @@ export function GRID_SYSTEM_PROMPT(
 - **volatile** → 系统已限杠杆至2x。⚠️ volatile≠必须pause（高波动=更多成交机会）；只在 BB带宽>6% 且 EMA距>2% 时才 pause（否则 volatile 持续数天将永远无法挂单）
 
 ## 层状态与决策
-- **empty**: 可挂单，或 hold 等待
+- **empty**: 空层=网格缺口，优先补单（place_buy_limit/place_sell_limit）。空层越多网格效率越低，除非即将 pause/adjust 否则应补齐
 - **pending**: 等待成交
 - **filled(buy)**: 持多头，AI判断平仓时机（挂 sell_limit 在上格获利 或 close_long 市价平仓）
 - **filled(sell)**: 持空头（卖单成交），AI必须主动管理：挂 buy_limit 接回 或 close_short 市价平仓；若下方有 filled(buy) 层可配对平仓获利
@@ -835,7 +835,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   const emptyLevels = ctx.levels.filter(l => l.state === 'empty');
   lines.push('');
   if (emptyLevels.length > 0) {
-    lines.push(`空格线数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
+    const emptyIndices = ctx.levels.map((l, i) => l.state === 'empty' ? `L${i + 1}` : null).filter(Boolean);
+    lines.push(`⚠️ 空格线: ${emptyLevels.length} 层待补单 → ${emptyIndices.join(',')}（quantity 列为建议数量，请用 place_buy/sell_limit 补齐）`);
   } else {
     lines.push('空格线数量: 0（所有层已挂单或持仓）');
   }
