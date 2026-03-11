@@ -697,31 +697,22 @@ export function GRID_SYSTEM_PROMPT(
 ## 层状态与决策
 - **empty**: 可挂单，或 hold 等待
 - **pending**: 等待成交
-- **filled(buy)**: 持多头，AI判断平仓时机（挂 sell_limit 在上格获利 或 close_long 市价平仓）
-- **filled(sell)**: 持空头（卖单成交），AI必须主动管理：挂 buy_limit 接回 或 close_short 市价平仓；若下方有 filled(buy) 层可配对平仓获利
+- **filled**: 持仓中。平仓方式：close_long/close_short（市价），或在相邻 **empty** 层挂反向限价单等待成交出局
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
-
-## 亏损持仓处理（参考）
-当存在亏损持仓时，目标是**逐步抹平亏损，恢复到正常网格盈利循环**。以下是可参考的思路，请根据实际市场状况自行判断：
-1. **评估风险敞口**：观察亏损持仓方向与当前趋势是否一致，判断继续挂单是否有助于在有利价位成交后抵消亏损
-2. **逐步消除亏损**：可通过 close_long/close_short 减仓，或通过正常网格交易（挂单成交）逐步对冲亏损
-3. **重建网格（adjust_grid）**：以当前价为中心重建网格，现有持仓自动归入新网格的 filled 层，后续正常网格交易可逐步抵消亏损
-4. **最终目标**：恢复到正常网格运行状态，持续盈利。你拥有所有操作权限，请综合市场数据自行决策最优路径
+⚠️ place_buy_limit/place_sell_limit 只能用于 **empty** 层，filled 层必须用 close_long/close_short 平仓
 
 ## 可用操作
-- **place_buy_limit**: 在指定价格挂买入限价单（fields: level, price, quantity）
-- **place_sell_limit**: 在指定价格挂卖出限价单（fields: level, price, quantity）
+- **place_buy_limit**: 在 empty 层挂买入限价单（fields: level, price, quantity）
+- **place_sell_limit**: 在 empty 层挂卖出限价单（fields: level, price, quantity）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（BB>6% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
 - **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内）
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界，现有持仓自动归入新网格 filled 层）
-- **close_long**: 市价平多仓（fields: level, quantity）
-- **close_short**: 市价平空仓（fields: level, quantity）
+- **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
+- **close_short**: 市价平空仓（持仓层自动清除，利润计入统计；fields: level, quantity）
 - **hold**: 保持现状
-
-⚠️ 暂停期间 AI 仍每轮运行，拥有所有操作权限。请根据市场数据自行分析决策。
 
 ## 输出格式
 
@@ -803,7 +794,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   if (ctx.isPaused && ctx.pauseReason) {
     lines.push(`⚠️ 网格已暂停: ${ctx.pauseReason}`);
     lines.push(`暂停来源: ${ctx.pauseSource || '未知'}`);
-    lines.push(`暂停期间你仍拥有所有操作权限，请根据当前市场状况自行决策。`);
+    lines.push(`暂停期间禁止 place_* 操作，可使用 resume_grid 恢复或 close_long/close_short 平仓。`);
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
