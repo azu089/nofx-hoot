@@ -1878,6 +1878,7 @@ export class GridTradingService {
     let positionLong: GridContext['positionLong'];
     let positionShort: GridContext['positionShort'];
 
+    let symPositions: any[] = []; // 提升作用域，供对账块和 AI context 共用
     try {
       // 始终 fresh 获取余额
       const balance = await adapter.getBalance();
@@ -1891,7 +1892,7 @@ export class GridTradingService {
       // 始终 fresh 获取持仓
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
-      const symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
+      symPositions = positions.filter((p: any) => p.symbol.includes(baseSymbol));
       const longPos = symPositions.find((p: any) => p.side === 'long');
       const shortPos = symPositions.find((p: any) => p.side === 'short');
 
@@ -1916,6 +1917,55 @@ export class GridTradingService {
         };
       }
     } catch { /* 使用默认值 */ }
+
+    // === 层级对账：AI 每轮拿到的层级状态必须来自 CCXT 实时数据，不能是内存脏数据 ===
+    // 原则：exchange 是事实，内存 filled 层必须与 exchange 实际持仓对齐，清理幽灵层后再构建 ctx
+    {
+      const liveLongQty = symPositions
+        .filter((p: any) => p.side === 'long')
+        .reduce((s: number, p: any) => s + (p.quantity ?? 0), 0);
+      const liveShortQty = symPositions
+        .filter((p: any) => p.side === 'short')
+        .reduce((s: number, p: any) => s + (p.quantity ?? 0), 0);
+
+      // 全量清理：exchange 无持仓但内存有 filled 层
+      if (liveLongQty < 0.0001) {
+        const ghost = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
+        for (const l of ghost) { l.state = 'empty'; l.positionSize = 0; l.positionEntry = 0; l.unrealizedPnl = 0; }
+        if (ghost.length > 0) this.logger.warn(`[网格][对账] exchange多头=0，清理 ${ghost.length} 幽灵buy层`);
+      }
+      if (liveShortQty < 0.0001) {
+        const ghost = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
+        for (const l of ghost) { l.state = 'empty'; l.positionSize = 0; l.positionEntry = 0; l.unrealizedPnl = 0; }
+        if (ghost.length > 0) this.logger.warn(`[网格][对账] exchange空头=0，清理 ${ghost.length} 幽灵sell层`);
+      }
+
+      // 部分持仓对账：内存 filled 总量 > exchange 实际持仓 + 容差 → 从边缘层开始清理
+      const LAYER_QTY_THRESHOLD = 0.05;
+      const memSell = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
+      const memShortQ = memSell.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+      if (memShortQ > liveShortQty + LAYER_QTY_THRESHOLD) {
+        let excess = memShortQ - liveShortQty;
+        for (const layer of [...memSell].sort((a, b) => b.price - a.price)) {
+          if (excess <= LAYER_QTY_THRESHOLD) break;
+          excess -= (layer.positionSize ?? 0);
+          this.logger.warn(`[网格][对账] 清理幽灵空头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+        }
+      }
+      const memBuy = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
+      const memLongQ = memBuy.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+      if (memLongQ > liveLongQty + LAYER_QTY_THRESHOLD) {
+        let excess = memLongQ - liveLongQty;
+        for (const layer of [...memBuy].sort((a, b) => a.price - b.price)) {
+          if (excess <= LAYER_QTY_THRESHOLD) break;
+          excess -= (layer.positionSize ?? 0);
+          this.logger.warn(`[网格][对账] 清理幽灵多头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
+          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
+        }
+      }
+    }
+    // === 层级对账结束 — 以下 ctx.levels 即反映本轮 CCXT 实时持仓 ===
 
     // 资金费率
     let fundingRate = 0;
