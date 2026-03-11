@@ -781,7 +781,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {d.gridSnapshot.maxDrawdown != null && (
                     <div className="flex justify-between">
                       <span className="text-[#606070]">{t('timeline.gridMaxDrawdown')}</span>
-                      <span className="font-mono text-[#EF4444]">{(d.gridSnapshot.maxDrawdown * 100).toFixed(1)}%</span>
+                      <span className="font-mono text-[#EF4444]">{d.gridSnapshot.maxDrawdown.toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
