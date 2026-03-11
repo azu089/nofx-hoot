@@ -3181,46 +3181,6 @@ export class GridTradingService {
         }
       }
 
-      // Step 6c: 孤儿超量持仓映射（本周期无消失订单时，exchange持仓 > 内存预期）
-      // 对齐 nofx 启发式：把超出的持仓量映射到最近的 empty 层，确保 AI 能看到并处理
-      if (disappearedLines.length === 0) {
-        const excessThreshold = 0.001;
-        if (currentPositionSize > expectedPositionSize + excessThreshold && exchangeLongQty > 0.0001) {
-          const excessQty = currentPositionSize - expectedPositionSize;
-          const emptyBuyLayers = state.gridLines.filter(l => l.state === 'empty' && l.side === 'buy');
-          if (emptyBuyLayers.length > 0) {
-            const nearest = emptyBuyLayers.reduce((a, b) =>
-              Math.abs(a.price - (state.lowerPrice + state.upperPrice) / 2) <
-              Math.abs(b.price - (state.lowerPrice + state.upperPrice) / 2) ? a : b,
-            );
-            nearest.state = 'filled';
-            nearest.positionEntry = nearest.price;
-            nearest.positionSize = Math.abs(excessQty);
-            nearest.unrealizedPnl = 0;
-            this.logger.warn(
-              `[网格] syncOrderFills Step6c: 孤儿多头 ${excessQty.toFixed(4)} → 映射到层${nearest.index}@${nearest.price.toFixed(4)}`,
-            );
-          }
-        }
-        if (currentPositionSize < expectedPositionSize - excessThreshold && exchangeShortQty > 0.0001) {
-          const excessQty = Math.abs(currentPositionSize - expectedPositionSize);
-          const emptySellLayers = state.gridLines.filter(l => l.state === 'empty' && l.side === 'sell');
-          if (emptySellLayers.length > 0) {
-            const nearest = emptySellLayers.reduce((a, b) =>
-              Math.abs(a.price - (state.lowerPrice + state.upperPrice) / 2) <
-              Math.abs(b.price - (state.lowerPrice + state.upperPrice) / 2) ? a : b,
-            );
-            nearest.state = 'filled';
-            nearest.positionEntry = nearest.price;
-            nearest.positionSize = Math.abs(excessQty);
-            nearest.unrealizedPnl = 0;
-            this.logger.warn(
-              `[网格] syncOrderFills Step6c: 孤儿空头 ${excessQty.toFixed(4)} → 映射到层${nearest.index}@${nearest.price.toFixed(4)}`,
-            );
-          }
-        }
-      }
-
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
@@ -3840,20 +3800,6 @@ export class GridTradingService {
         // 向后兼容：旧版状态可能缺少新字段
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
-        // 启动时清理 pending 层脏数据（对齐 nofx: pending层不持有持仓数据）
-        // 历史 bug 可能导致 pending 层残留 positionSize/positionEntry，影响 expectedPos 计算
-        let dirtyCount = 0;
-        for (const line of state.gridLines ?? []) {
-          if (line.state === 'pending' && ((line.positionSize ?? 0) > 0 || (line.positionEntry ?? 0) > 0)) {
-            line.positionSize = 0;
-            line.positionEntry = 0;
-            line.unrealizedPnl = 0;
-            dirtyCount++;
-          }
-        }
-        if (dirtyCount > 0) {
-          this.logger.warn(`[网格] 启动清理: 修复 ${dirtyCount} 个 pending 层脏数据（positionSize归零）`);
-        }
         this.gridStates.set(strategyId, state);
         this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}`);
         return state;
