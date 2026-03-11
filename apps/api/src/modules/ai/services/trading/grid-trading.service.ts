@@ -3181,80 +3181,6 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 持仓状态同步 — exchange 净持仓=0 但内存有 filled 层时同步为 empty（幽灵层清理）
-      const syncBaseSymbol = state.symbol.split('/')[0];
-      const exchangeLongQty = syncPositions
-        .filter((p: any) => p.symbol?.includes(syncBaseSymbol) && p.side === 'long')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
-      const exchangeShortQty = syncPositions
-        .filter((p: any) => p.symbol?.includes(syncBaseSymbol) && p.side === 'short')
-        .reduce((sum: number, p: any) => sum + (p.quantity ?? 0), 0);
-
-      if (exchangeLongQty < 0.0001) {
-        const ghostBuy = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
-        for (const line of ghostBuy) {
-          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-        }
-        if (ghostBuy.length > 0) {
-          this.logger.warn(`[网格] syncOrderFills Step6: exchange多头=0，清理 ${ghostBuy.length} 个幽灵buy层→empty`);
-        }
-      }
-      if (exchangeShortQty < 0.0001) {
-        const ghostSell = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
-        for (const line of ghostSell) {
-          line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-        }
-        if (ghostSell.length > 0) {
-          this.logger.warn(`[网格] syncOrderFills Step6: exchange空头=0，清理 ${ghostSell.length} 个幽灵sell层→empty`);
-        }
-      }
-
-      // Step 6b: 部分持仓对账 — exchange 实际持仓 < 内存预期时（外部平仓/止损/手动操作未被检测）
-      // 原则：exchange 是事实，内存层级必须与 exchange 对齐
-      const LAYER_QTY_THRESHOLD = 0.05; // 容差 0.05 SOL（约 1/8 层）
-      // 空头对账：内存 sell 持仓总量 > exchange 实际空头 → 从最高价层开始清理（最可能被止损）
-      const memSellLayers = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0);
-      const memShortQty = memSellLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-      if (memShortQty > exchangeShortQty + LAYER_QTY_THRESHOLD) {
-        let excess = memShortQty - exchangeShortQty;
-        const sortedDesc = [...memSellLayers].sort((a, b) => b.price - a.price);
-        let cleared = 0;
-        for (const layer of sortedDesc) {
-          if (excess <= LAYER_QTY_THRESHOLD) break;
-          excess -= (layer.positionSize ?? 0);
-          this.logger.warn(
-            `[网格] syncOrderFills Step6b: 清理幽灵空头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}×${layer.positionSize?.toFixed(4)}` +
-            `（exchange空头=${exchangeShortQty.toFixed(4)} < 内存预期=${memShortQty.toFixed(4)}）`,
-          );
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-          cleared++;
-        }
-        if (cleared > 0) {
-          this.logger.warn(`[网格] syncOrderFills Step6b: 共清理 ${cleared} 个幽灵空头层，内存已对齐 exchange`);
-        }
-      }
-      // 多头对账：内存 buy 持仓总量 > exchange 实际多头 → 从最低价层开始清理
-      const memBuyLayers = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0);
-      const memLongQty = memBuyLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-      if (memLongQty > exchangeLongQty + LAYER_QTY_THRESHOLD) {
-        let excess = memLongQty - exchangeLongQty;
-        const sortedAsc = [...memBuyLayers].sort((a, b) => a.price - b.price);
-        let cleared = 0;
-        for (const layer of sortedAsc) {
-          if (excess <= LAYER_QTY_THRESHOLD) break;
-          excess -= (layer.positionSize ?? 0);
-          this.logger.warn(
-            `[网格] syncOrderFills Step6b: 清理幽灵多头 L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}×${layer.positionSize?.toFixed(4)}` +
-            `（exchange多头=${exchangeLongQty.toFixed(4)} < 内存预期=${memLongQty.toFixed(4)}）`,
-          );
-          layer.state = 'empty'; layer.positionSize = 0; layer.positionEntry = 0; layer.unrealizedPnl = 0;
-          cleared++;
-        }
-        if (cleared > 0) {
-          this.logger.warn(`[网格] syncOrderFills Step6b: 共清理 ${cleared} 个幽灵多头层，内存已对齐 exchange`);
-        }
-      }
-
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
@@ -3414,6 +3340,19 @@ export class GridTradingService {
       const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
       const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
       this.logger.log(`[网格] reconcile 完成: filled=${filledCount} pending=${pendingCount}`);
+
+      // 孤儿持仓检测：exchange 持仓数 > 成功映射的层数 → 说明有持仓未被网格层承载
+      // 不做额外映射（违反架构原则），仅记录告警供人工识别
+      const orphanLong = longPositions.filter(p => (p.quantity ?? 0) >= 0.0001).length
+        - state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy').length;
+      const orphanShort = shortPositions.filter(p => (p.quantity ?? 0) >= 0.0001).length
+        - state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell').length;
+      if (orphanLong > 0) {
+        this.logger.warn(`[网格] reconcile: ${orphanLong} 个多头持仓未映射到网格层（层数不足），下轮 AI 可见 positionLong 但无对应 filled 层`);
+      }
+      if (orphanShort > 0) {
+        this.logger.warn(`[网格] reconcile: ${orphanShort} 个空头持仓未映射到网格层（层数不足），下轮 AI 可见 positionShort 但无对应 filled 层`);
+      }
 
       // ── Step 4: 同步持仓快照记录到 DB（只做账本记录，不影响内存状态）──
       const symPos = symPositions.find((p) => p.side === 'long' || (p as any).side === 'net' || !p.side) ?? symPositions[0];
