@@ -2403,6 +2403,25 @@ export class GridTradingService {
         this.logger.log(
           `[网格] 重建触发: 当前价 ${newPrice.toFixed(2)} ${priceVsRange}（旧范围 ${oldLower}~${oldUpper}）`,
         );
+
+        // 保存 filled 持仓（对齐 nofx autoAdjustGrid L1423-1428）
+        const filledPositions: Array<{
+          side: 'buy' | 'sell';
+          positionEntry: number;
+          positionSize: number;
+          unrealizedPnl: number;
+        }> = [];
+        for (const line of state.gridLines) {
+          if (line.state === 'filled' && (line.positionSize ?? 0) > 0) {
+            filledPositions.push({
+              side: line.side as 'buy' | 'sell',
+              positionEntry: line.positionEntry,
+              positionSize: line.positionSize,
+              unrealizedPnl: line.unrealizedPnl ?? 0,
+            });
+          }
+        }
+
         // 用户设定了百分比边界：按百分比重算当前价的上/下界
         // 未设定（AI 模式）：ATR 自动计算
         if (state.upperBoundPct && state.lowerBoundPct) {
@@ -2419,6 +2438,34 @@ export class GridTradingService {
           await this.reinitializeGridLevels(state, newPrice, explicitUpper, explicitLower);
         } else {
           await this.reinitializeGridLevels(state, newPrice);
+        }
+
+        // 恢复 filled 持仓 → 映射到最近的新层（对齐 nofx autoAdjustGrid L1456-1479）
+        for (const fp of filledPositions) {
+          let closestIdx = -1;
+          let closestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (state.gridLines[i].state !== 'empty') continue;
+            const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestIdx = i;
+            }
+          }
+          if (closestIdx >= 0) {
+            const newLine = state.gridLines[closestIdx];
+            newLine.state = 'filled';
+            newLine.side = fp.side;
+            newLine.positionEntry = fp.positionEntry;
+            newLine.positionSize = fp.positionSize;
+            newLine.unrealizedPnl = fp.unrealizedPnl;
+            this.logger.log(
+              `[网格] adjust_grid 持仓映射: L${closestIdx + 1} ← ${fp.side} entry=${fp.positionEntry.toFixed(2)} qty=${fp.positionSize.toFixed(4)}`,
+            );
+          }
+        }
+        if (filledPositions.length > 0) {
+          this.logger.log(`[网格] adjust_grid 持仓映射完成: ${filledPositions.length} 个持仓`);
         }
 
         break;
