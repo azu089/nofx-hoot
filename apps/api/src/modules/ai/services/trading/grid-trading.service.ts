@@ -1338,7 +1338,7 @@ export class GridTradingService {
           GRID_SYSTEM_PROMPT(state.symbol, state.gridLines.length, state.totalInvestment, state.leverage, state.distribution, currentPrice, gridConfig?.locale),
           buildGridUserPrompt({ ...context, locale: gridConfig?.locale }),
           apiKeys,
-          { temperature: 0.3, maxTokens: 1500 },
+          { temperature: 0.3, maxTokens: 4000 },
         );
 
         // LLM 调用期间（30-40s）DrawdownMonitor 可能已 dispose 同一缓存 adapter
