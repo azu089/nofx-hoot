@@ -761,10 +761,10 @@ export class GridTradingService {
           this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
           await this.reinitializeGridLevels(state, restartPrice);
           await this.persistGridState(strategyId, state);
-          // reinitialize 清空了 orderBook，此时 exchange 上的旧价位挂单变成孤儿
-          // 补充一次孤儿清理（不需要重跑完整 reconcile，只处理 orphan）
-          await this.cancelOrphanOrders(strategyId, userId, apiKeyId, state);
         }
+        // 无论是否 userLockedRange，reconcile 后都清理孤儿订单
+        // （userLockedRange 不重建但仍可能有旧价位孤儿，如崩溃前部分撤单未完成）
+        await this.cancelOrphanOrders(strategyId, userId, apiKeyId, state);
       }
     }
 
@@ -2277,7 +2277,9 @@ export class GridTradingService {
         break;
 
       case 'adjust_grid': {
+        const pendingBeforeCancel = state.gridLines.filter(l => l.state === 'pending').length;
         await adapter.cancelAllOrders(state.symbol);
+        this.logger.log(`[网格] adjust_grid 撤单: ${pendingBeforeCancel} 个pending挂单已全部撤销`);
         const newPrice = currentPrice ?? state.lastPrice;
         const oldLower = state.lowerPrice?.toFixed(2) ?? '?';
         const oldUpper = state.upperPrice?.toFixed(2) ?? '?';
