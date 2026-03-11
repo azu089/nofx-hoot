@@ -411,10 +411,10 @@ export class GridTradingService {
       atrMultiplier = DEFAULT_ATR_MULTIPLIER,
     } = config;
 
-    // 杠杆模式：null/undefined/0 = AI 决策（上限 5x）；填值 = 固定杠杆
-    const AI_DEFAULT_MAX_LEVERAGE = 5;
+    // 杠杆模式：null/undefined/0 = AI 动态决策（跟随市场状态）；填值 = 固定杠杆
+    const AI_DYNAMIC_LEVERAGE_DEFAULT = 4; // AI 决策模式初始值，运行时由 REGIME_LEVERAGE_CAP 每轮覆盖
     const userFixedLeverage = leverageInput != null && leverageInput > 0;
-    const leverage: number = userFixedLeverage ? leverageInput! : AI_DEFAULT_MAX_LEVERAGE;
+    const leverage: number = userFixedLeverage ? leverageInput! : AI_DYNAMIC_LEVERAGE_DEFAULT;
 
     if (gridCount < 2 || gridCount > 100) {
       throw new Error('网格数量必须在 2-100 之间');
@@ -808,12 +808,12 @@ export class GridTradingService {
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
         if (gridConfig.leverage !== undefined) {
-          // null/0 = AI 决策（上限 5x）；正数 = 固定杠杆（与 initGridState 一致）
-          const AI_DEFAULT_MAX_LEVERAGE = 5;
+          // null/0 = AI 动态决策（跟随市场状态）；正数 = 固定杠杆
+          const AI_DYNAMIC_LEVERAGE_DEFAULT = 4;
           const newUserFixed = gridConfig.leverage != null && gridConfig.leverage > 0;
-          state.leverage = newUserFixed ? gridConfig.leverage! : AI_DEFAULT_MAX_LEVERAGE;
+          state.leverage = newUserFixed ? gridConfig.leverage! : AI_DYNAMIC_LEVERAGE_DEFAULT;
           state.userFixedLeverage = newUserFixed;
-          // 同步 effectiveLeverage，防止卡在旧值（Step 6.5 会每轮重算，这里先对齐）
+          // AI 决策模式下 Step 6.5 会每轮根据 regime 重算 leverage
           state.effectiveLeverage = state.leverage;
         }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
@@ -1109,12 +1109,23 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 动态杠杆 — 仅计算推荐值，不改写 state（对齐 nofx）
-    // nofx: configLeverage（静态）用于所有下单计算，recommendedLeverage 仅展示
+    // Step 6.5: 动态杠杆
+    // - 用户固定杠杆 → leverage 不变，recommendedLeverage 仅展示
+    // - AI 决策模式 → leverage 每轮跟随 REGIME_LEVERAGE_CAP 动态调整
     state.userFixedLeverage ??= true;
     const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
-    state.recommendedLeverage = Math.min(state.leverage, regimeCap);
-    // effectiveLeverage 始终同步配置值（兼容旧数据引用）
+    if (!state.userFixedLeverage) {
+      // AI 决策模式：实际杠杆 = 市场状态对应的上限值
+      const prevLev = state.leverage;
+      state.leverage = regimeCap;
+      state.recommendedLeverage = regimeCap;
+      if (prevLev !== regimeCap) {
+        this.logger.log(`[网格] AI动态杠杆: ${prevLev}x → ${regimeCap}x (${state.currentRegime})`);
+      }
+    } else {
+      // 用户固定杠杆：recommendedLeverage 仅展示
+      state.recommendedLeverage = Math.min(state.leverage, regimeCap);
+    }
     state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
@@ -1148,6 +1159,16 @@ export class GridTradingService {
       let adapter: ExchangeAdapter | null = null;
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+
+        // AI 决策模式：每轮同步杠杆到交易所（杠杆可能因市场状态变化）
+        if (!state.userFixedLeverage) {
+          try {
+            await adapter.setLeverage(state.symbol, state.leverage);
+          } catch (e: any) {
+            // -4161 = 有持仓时无法降杠杆（正常，warn 不影响流程）
+            this.logger.warn(`[网格] AI动态杠杆 setLeverage(${state.leverage}x) 失败: ${e.message}`);
+          }
+        }
 
         // 每轮清理僵尸止损单（不再主动放交易所止损单，此处为防残留）
         if (isGridAdapter(adapter)) {
@@ -2339,6 +2360,19 @@ export class GridTradingService {
           const closedValue = qty * (currentPrice ?? state.lastPrice);
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
           this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`);
+          this.saveClosedPositionRecord(
+            userId,
+            state.strategyId,
+            (adapter as any).exchangeType ?? 'unknown',
+            state.symbol,
+            'long',
+            _ep.toNumber(),
+            _cp.toNumber(),
+            _sz.toNumber(),
+            state.leverage ?? 1,
+            netProfit,
+            'ai_close',
+          );
           // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
           const orphanSell = state.gridLines.find(
             (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
@@ -2402,6 +2436,19 @@ export class GridTradingService {
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT`);
+          this.saveClosedPositionRecord(
+            userId,
+            state.strategyId,
+            (adapter as any).exchangeType ?? 'unknown',
+            state.symbol,
+            'short',
+            _ep2.toNumber(),
+            _cp2.toNumber(),
+            _sz2.toNumber(),
+            state.leverage ?? 1,
+            netProfit,
+            'ai_close',
+          );
         } else {
           this.logger.warn(`[网格] close_short 孤儿空头平仓: qty=${qty}, 无对应 grid level`);
         }
@@ -3128,6 +3175,21 @@ export class GridTradingService {
               pairedBuy.state = 'empty'; pairedBuy.positionSize = 0; pairedBuy.positionEntry = 0; pairedBuy.unrealizedPnl = 0;
               line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
 
+              // 持久化历史持仓记录
+              this.saveClosedPositionRecord(
+                userId,
+                state.strategyId,
+                (adapter as any).exchangeType ?? 'unknown',
+                state.symbol,
+                'long',
+                buyEntry.toNumber(),
+                sellPrice.toNumber(),
+                posQty.toNumber(),
+                state.leverage ?? 1,
+                netProfit,
+                'grid_fill',
+              );
+
               filledLines.push(line);
               // runningExpected：卖单平多 → 净持仓减少
               runningExpected -= posQty.toNumber();
@@ -3244,8 +3306,21 @@ export class GridTradingService {
       state = this.gridStates.get(strategyId) || await this.loadGridState(strategyId);
     }
     if (!state) return;
+
+    // ── Step 1: 立即重置所有层（DB 快照只用于账本，层状态永远以交易所为准）──
+    // 必须在 adapterFactory/adapter 检查之前：即使后续 API 失败，
+    // 层状态也是干净的空格，而不是 DB 的历史脏数据。
+    for (const line of state.gridLines) {
+      line.state = 'empty';
+      line.positionSize = 0;
+      line.positionEntry = 0;
+      line.unrealizedPnl = 0;
+      line.orderId = undefined;
+    }
+    state.orderBook = {};
+
     if (!this.adapterFactory) {
-      this.logger.warn(`[网格] reconcile 跳过: adapterFactory 尚未就绪（依赖注入竞态），脏数据将在下次重启后清理`);
+      this.logger.warn(`[网格] reconcile: adapterFactory 未就绪，层已重置为空（下轮 buildContext 从交易所重建）`);
       return;
     }
 
@@ -3253,16 +3328,6 @@ export class GridTradingService {
 
     try {
       const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-
-      // ── Step 1: 重置所有层状态（以交易所为唯一事实，丢弃 DB 恢复的历史状态）──
-      for (const line of state.gridLines) {
-        line.state = 'empty';
-        line.positionSize = 0;
-        line.positionEntry = 0;
-        line.unrealizedPnl = 0;
-        line.orderId = undefined;
-      }
-      state.orderBook = {};
 
       // ── Step 2: 从交易所活跃订单恢复 pending 层 ──
       if (isGridAdapter(adapter)) {
@@ -3810,6 +3875,47 @@ export class GridTradingService {
     }
   }
 
+  /** 持久化一条已关闭的仓位记录到 position 表（历史持仓展示用） */
+  private saveClosedPositionRecord(
+    userId: string,
+    strategyId: string,
+    exchange: string,
+    symbol: string,
+    side: 'long' | 'short',
+    entryPrice: number,
+    exitPrice: number,
+    quantity: number,
+    leverage: number,
+    realizedPnl: number,
+    closeReason: string,
+  ): void {
+    // 异步写入，不阻塞主流程
+    const margin = quantity > 0 && leverage > 0 ? (entryPrice * quantity) / leverage : 0;
+    this.prisma.position.create({
+      data: {
+        userId,
+        exchange,
+        symbol,
+        side,
+        entryPrice: entryPrice.toString(),
+        exitPrice: exitPrice.toString(),
+        closePrice: exitPrice.toString(),
+        amount: quantity.toString(),
+        tradingType: 'futures',
+        leverage,
+        margin: margin.toString(),
+        realizedPnl: realizedPnl.toString(),
+        pnl: realizedPnl.toString(),
+        status: 'closed',
+        closeReason,
+        closedAt: new Date(),
+        source: 'ai_strategy',
+        aiStrategyId: strategyId,
+        createdAt: new Date(),
+      },
+    }).catch((e: any) => this.logger.warn(`[网格] 历史持仓写入失败(忽略): ${e.message}`));
+  }
+
   private async saveGridDecisionLog(
     strategyId: string,
     symbol: string,
@@ -3947,9 +4053,10 @@ export class GridTradingService {
       diffs.push(`层数 ${state.gridLines.length}→${config.gridCount}`);
     }
     if (config.leverage !== undefined) {
-      const newLev = (config.leverage != null && config.leverage > 0) ? config.leverage : 5;
-      if (newLev !== state.leverage) {
-        diffs.push(`杠杆 ${state.leverage}x→${config.leverage == null ? 'AI决策(≤5x)' : `${newLev}x`}`);
+      const isNewAI = config.leverage == null || config.leverage <= 0;
+      const isOldAI = !state.userFixedLeverage;
+      if (isNewAI !== isOldAI || (!isNewAI && config.leverage !== state.leverage)) {
+        diffs.push(`杠杆 ${isOldAI ? 'AI动态' : state.leverage + 'x'}→${isNewAI ? 'AI动态' : config.leverage + 'x'}`);
       }
     }
     if (config.totalInvestment && config.totalInvestment !== state.totalInvestment) {
