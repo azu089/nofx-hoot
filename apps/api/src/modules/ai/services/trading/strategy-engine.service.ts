@@ -433,8 +433,11 @@ export class StrategyEngineService implements OnModuleInit {
     // 参考 getTimeline 相同处理方式
     const baseWhere: any = { strategyId };
 
-    // 足量预取（保证第 N 页有数据），最多取 500 条避免内存压力
-    const fetchLimit = Math.min(500, Math.max(skip + limit * 3, limit * 5));
+    // actionsOnly 时网格策略大量周期是观望（被过滤），需取满上限才能保证分页准确
+    // 否则：取100条→过滤90条观望→只剩10条→前端以为只有1页
+    const fetchLimit = actionsOnly
+      ? StrategyEngineService.MAX_LOGS_PER_STRATEGY
+      : Math.min(500, Math.max(skip + limit * 3, limit * 5));
 
     const [rawData, totalAll] = await Promise.all([
       db.aiStrategyLog.findMany({
