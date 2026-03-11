@@ -860,6 +860,9 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, rebuildPrice);
         }
+        // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
+        // reconcileGridState Step1 重置状态（不改价格），Step3 从 getPositions 恢复真实 filled 层
+        await this.reconcileGridState(strategyId, userId, apiKeyId, state);
         state.needsReconcile = false;
         await this.persistGridState(strategyId, state);
         this.logger.log(
@@ -1386,6 +1389,9 @@ export class GridTradingService {
             adapter as GridExchangeAdapter,
             currentPrice,
             gridConfig?.autoAdjustThreshold ?? 0.2,
+            strategyId,
+            userId,
+            apiKeyId,
           );
         }
 
@@ -3708,6 +3714,9 @@ export class GridTradingService {
     adapter: GridExchangeAdapter,
     currentPrice: number,
     autoAdjustThreshold: number = 0.2,
+    strategyId?: string,
+    userId?: string,
+    apiKeyId?: string,
   ): Promise<void> {
     const { skewed, buyFilled, sellFilled } = this.checkGridSkew(state);
     if (!skewed) return;
@@ -3735,6 +3744,11 @@ export class GridTradingService {
       await this.reinitializeGridLevels(state, currentPrice, explicitUpper, explicitLower);
     } else {
       await this.reinitializeGridLevels(state, currentPrice);
+    }
+
+    // 重建后从交易所恢复真实持仓（内存快照不可靠）
+    if (strategyId && userId && apiKeyId) {
+      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
     }
 
     // 重建后自动解除非风控暂停
