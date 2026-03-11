@@ -2600,11 +2600,10 @@ export class GridTradingService {
         const remaining = Math.max(0, totalPositionCap - existingNotional);
         quantity = Math.min(quantity, remaining / price);
         if (quantity <= 0) {
-          return {
-            executed: false,
-            skipReason: `总仓位已满: 已用 $${existingNotional.toFixed(2)}` +
-              ` (持仓$${livePositionNotional.toFixed(2)}+挂单$${pendingNotionalStep1.toFixed(2)}) / 上限 $${totalPositionCap.toFixed(2)}`,
-          };
+          const skipReason = `总仓位已满: 已用 $${existingNotional.toFixed(2)}` +
+            ` (持仓$${livePositionNotional.toFixed(2)}+挂单$${pendingNotionalStep1.toFixed(2)}) / 上限 $${totalPositionCap.toFixed(2)}`;
+          this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
+          return { executed: false, skipReason };
         }
       }
 
@@ -3305,6 +3304,7 @@ export class GridTradingService {
           if (closestIdx >= 0 && state.gridLines[closestIdx].state === 'empty') {
             state.gridLines[closestIdx].state = 'pending';
             state.gridLines[closestIdx].orderId = order.orderId;
+            state.gridLines[closestIdx].orderQuantity = order.quantity ?? 0; // 使用交易所实际数量，而非 DB 旧值
             state.orderBook[order.orderId] = closestIdx;
           } else {
             // 无法映射到层（价格不在网格范围内或层已被占用）→ 取消
