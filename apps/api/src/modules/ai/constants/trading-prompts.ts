@@ -581,8 +581,6 @@ export interface GridContext {
   activeOrderCount: number;
   filledLevelCount: number;
   isPaused: boolean;
-  pauseReason?: string;
-  pauseSource?: string;
   // 技术指标
   atr14: number;
   bollingerUpper: number;
@@ -656,6 +654,8 @@ export interface GridContext {
   rsiDivergenceType?: 'bullish' | 'bearish' | 'none';  // RSI 背离信号（Phase 12）
   // K线历史（最近30根1h蜡烛，K线历史数据）
   ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
+  // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
+  userLockedRange?: boolean;
   stopLossPct?: number;        // 单格止损阈值%（0或undefined=未启用）
   profitTargetPct?: number;    // 策略止盈目标%（0或undefined=未设置，AI自主决策）
   gridSkewLevel?: 'none' | 'light' | 'severe';
@@ -697,21 +697,20 @@ export function GRID_SYSTEM_PROMPT(
 ## 层状态与决策
 - **empty**: 可挂单，或 hold 等待
 - **pending**: 等待成交
-- **filled**: 持仓中。平仓方式：close_long/close_short（市价），或在相邻 **empty** 层挂反向限价单等待成交出局
+- **filled**: AI自行判断平仓时机（趋势反转/RSI超买/回撤30%时考虑）；可 close_long/close_short 主动平仓，或等待反向挂单自然出局
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
-⚠️ place_buy_limit/place_sell_limit 只能用于 **empty** 层，filled 层必须用 close_long/close_short 平仓
 
 ## 可用操作
-- **place_buy_limit**: 在 empty 层挂买入限价单（fields: level, price, quantity）
-- **place_sell_limit**: 在 empty 层挂卖出限价单（fields: level, price, quantity）
+- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（BB>6% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
-- **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内）
-- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界，现有持仓自动归入新网格 filled 层）
+- **resume_grid**: 恢复网格（条件：BB<6% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
+- **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
 - **close_long**: 市价平多仓（持仓层自动清除，利润计入统计；fields: level, quantity）
-- **close_short**: 市价平空仓（持仓层自动清除，利润计入统计；fields: level, quantity）
+- **close_short**: 市价平空仓（fields: level, quantity）
 - **hold**: 保持现状
 
 ## 输出格式
@@ -791,19 +790,16 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
-  if (ctx.isPaused && ctx.pauseReason) {
-    lines.push(`⚠️ 网格已暂停: ${ctx.pauseReason}`);
-    lines.push(`暂停来源: ${ctx.pauseSource || '未知'}`);
-    lines.push(`暂停期间禁止 place_* 操作，可使用 resume_grid 恢复或 close_long/close_short 平仓。`);
-  }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
   }
+  // 交易所实际持仓 vs 内存 filled 合计（并排展示，AI 自行判断是否有孤儿持仓）
   const _filledLongQty = ctx.levels.filter(l => l.state === 'filled' && l.side === 'buy').reduce((s, l) => s + (l.positionSize ?? 0), 0);
   const _filledShortQty = ctx.levels.filter(l => l.state === 'filled' && l.side === 'sell').reduce((s, l) => s + (l.positionSize ?? 0), 0);
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
   lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} / 内存filled合计 ${_filledLongQty.toFixed(4)} | 空头 ${_exchShort.toFixed(4)} / 内存filled合计 ${_filledShortQty.toFixed(4)}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false（AI可自主调整范围）'}`);
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`逐层止损阈值: ${ctx.stopLossPct}%（单格偏离入场价 ≥ ${ctx.stopLossPct}% 时强制平仓）`);
   }
@@ -818,11 +814,14 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
     lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
     if (ctx.gridSkewLevel === 'severe') {
-      lines.push('  → 价格偏离未达自动重排阈值（20%）');
+      lines.push('  → 价格偏离未达自动重排阈值（30%）');
+    } else {
+      lines.push('  → 轻度倾斜');
     }
   } else {
     lines.push(`网格倾斜: 均衡`);
   }
+  // 空格线统计（仅供参考，AI 根据可用保证金自主决策挂哪些层）
   const emptyLevels = ctx.levels.filter(l => l.state === 'empty');
   lines.push('');
   if (emptyLevels.length > 0) {
@@ -838,14 +837,18 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     const l = ctx.levels[i];
     const profitStr = l.profit !== undefined ? `${l.profit > 0 ? '+' : ''}${l.profit.toFixed(4)}` : '-';
+    // 持仓层显示实际持仓方向；挂单/空层显示位置建议（当前价以下→买/以上→卖，AI 可自由选择）
     const dirStr = l.state === 'filled'
       ? (l.side === 'buy' ? '持多' : '持空')
       : l.state === 'pending'
         ? (l.side === 'buy' ? '挂买' : '挂卖')
         : (l.price < ctx.currentPrice ? '建议买' : '建议卖');
     const stateStr = l.state === 'pending' ? '待成交' : l.state === 'filled' ? '持仓' : '未挂单';
+    // 仅 pending 层显示 orderId，让 AI cancel_order 使用真实订单ID而非序号
     const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
+    // 仅 filled 层显示持仓量（供 close_long/close_short 参考数量）
     const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
+    // filled 层显示当前亏损%（供 AI 判断是否止损）
     const lossStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0 && ctx.currentPrice > 0)
       ? (() => {
           const pct = Math.abs(ctx.currentPrice - l.fillPrice) / l.fillPrice * 100;
@@ -860,6 +863,8 @@ export function buildGridUserPrompt(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 账户状态 ---');
   lines.push(`总权益: ${ctx.totalEquity.toFixed(2)} USDT`);
+  // 仅传 AvailableBalance 原始数字，不传 marginUsedPct 百分比和警告标签
+  // 避免 AI 做保证金管理决策（由系统预检/交易所拒单处理）
   lines.push(`可用保证金: ${ctx.availableBalance.toFixed(2)} USDT`);
   if (ctx.positionLong || ctx.positionShort) {
     if (ctx.positionLong) {
@@ -911,6 +916,7 @@ export function buildGridUserPrompt(ctx: GridContext): string {
     lines.push(`RSI背离信号: ${ctx.rsiDivergenceType} — ${divDesc}`);
   }
 
+  // Section 9: K线历史（最近30根1h蜡烛，K线历史数据）
   if (ctx.ohlcv && ctx.ohlcv.length > 0) {
     lines.push('');
     lines.push(`--- K线历史 (1h×${ctx.ohlcv.length}，最旧→最新) ---`);
