@@ -3840,6 +3840,20 @@ export class GridTradingService {
         // 向后兼容：旧版状态可能缺少新字段
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
+        // 启动时清理 pending 层脏数据（对齐 nofx: pending层不持有持仓数据）
+        // 历史 bug 可能导致 pending 层残留 positionSize/positionEntry，影响 expectedPos 计算
+        let dirtyCount = 0;
+        for (const line of state.gridLines ?? []) {
+          if (line.state === 'pending' && ((line.positionSize ?? 0) > 0 || (line.positionEntry ?? 0) > 0)) {
+            line.positionSize = 0;
+            line.positionEntry = 0;
+            line.unrealizedPnl = 0;
+            dirtyCount++;
+          }
+        }
+        if (dirtyCount > 0) {
+          this.logger.warn(`[网格] 启动清理: 修复 ${dirtyCount} 个 pending 层脏数据（positionSize归零）`);
+        }
         this.gridStates.set(strategyId, state);
         this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}`);
         return state;
