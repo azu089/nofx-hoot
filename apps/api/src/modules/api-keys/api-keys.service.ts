@@ -1220,7 +1220,7 @@ export class ApiKeysService {
         this.logger.debug('[trade-history] loadMarkets 失败，继续尝试');
       }
 
-      // 时间范围：默认 7 天（fetchMyTrades 数据量大，控制范围）
+      // 时间范围：默认 7 天滚动窗口
       const now = Date.now();
       const since = query?.startDate
         ? new Date(query.startDate).getTime()
