@@ -701,17 +701,17 @@ function gridSystemPromptZh(
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
 ## 市场形态判断（基于 5m K线 BB宽度 + ATR，与下方指标同源）
-- **narrow**（BB<2%，ATR<1%）→ 最佳网格区间，积极挂单
-- **standard**（BB≤3%，ATR≤2%）→ 适合网格，正常运行
-- **wide**（BB≤4%，ATR≤3%）→ 谨慎运行，优先处理倾斜
-- **volatile**（BB>4% 或 ATR>3%）→ 系统已限杠杆至2x。⚠️ volatile≠必须pause；只在 BB>4% **且** EMA距>2% 趋势确认时才 pause（否则震荡行情会永远无法挂单）
+- **窄幅**（BB<2%，ATR<1%）→ 最佳网格区间，积极挂单
+- **标准**（BB≤3%，ATR≤2%）→ 适合网格，正常运行
+- **宽幅**（BB≤4%，ATR≤3%）→ 谨慎运行，优先处理倾斜
+- **剧烈**（BB>4% 或 ATR>3%）→ 系统已限杠杆至2x。⚠️ 剧烈波动≠必须pause；只在 BB>4% **且** EMA距>2% 趋势确认时才 pause（否则震荡行情会永远无法挂单）
 
 ## 层状态与决策
-- **empty**: 可挂单，或 hold 等待
-- **pending**: 等待成交
-- **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
+- **空格**（empty）: 可挂单，或 hold 等待
+- **待成交**（pending）: 等待成交
+- **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-💡 **初始化/重建后立即挂满**：检测到大量 empty 层（通常是刚初始化或 adjust_grid 重建后），**本轮应尽量一次性把所有 empty 层都挂上委托单**，不要分多轮慢慢补。顺序：先挂靠近当前价的层（成交概率高），再向两侧延伸。仓位上限不足时跳过超限层，其余层仍全部挂满。
+💡 **初始化/重建后立即挂满**：检测到大量空格层（通常是刚初始化或 adjust_grid 重建后），**本轮应尽量一次性把所有空格层都挂上委托单**，不要分多轮慢慢补。顺序：先挂靠近当前价的层（成交概率高），再向两侧延伸。仓位上限不足时跳过超限层，其余层仍全部挂满。
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
@@ -726,20 +726,20 @@ function gridSystemPromptZh(
 **后端会在检测到箱体突破时自动改变方向**，AI 无需发出任何指令。方向恢复也是自动的（价格回到短期箱体 → 逐步 long→long_bias→neutral 或 short→short_bias→neutral）。
 
 **AI 如何配合方向系统**：
-- 看到 currentDirection=long/long_bias 时：side=sell 的 filled 层浮亏较正常（方向顺势做多，空头持仓是逆势），可用 close_short 减少逆势仓位
-- 看到 currentDirection=short/short_bias 时：side=buy 的 filled 层浮亏较正常，可用 close_long 减少逆势仓位
+- 看到 currentDirection=long/long_bias 时：side=sell 的持仓层浮亏较正常（方向顺势做多，空头持仓是逆势），可用 close_short 减少逆势仓位
+- 看到 currentDirection=short/short_bias 时：side=buy 的持仓层浮亏较正常，可用 close_long 减少逆势仓位
 - currentDirection=neutral：buy/sell 对等，正常管理两侧
 
 ## 可用操作
-- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在 empty/filled 层挂卖单（filled 层 price 需高于 fillPrice 以盈利）
+- **place_buy_limit**: 在空格层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在空格/持仓层挂卖单（持仓层 price 需高于 fillPrice 以盈利）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（BB>4% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
 - **resume_grid**: 恢复网格（条件：BB<4% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
 - **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
-- **close_long**: 平多仓（针对 side=**buy** 的 filled 层；fields: level, quantity）
-- **close_short**: 平空仓（针对 side=**sell** 的 filled 层；fields: level, quantity）
+- **close_long**: 平多仓（针对 side=**buy** 的持仓层；fields: level, quantity）
+- **close_short**: 平空仓（针对 side=**sell** 的持仓层；fields: level, quantity）
 - ⚠️ **必须对应 side**：buy层→close_long，sell层→close_short；混用会导致交易所拒单
 - **hold**: 保持现状
 
@@ -747,7 +747,7 @@ function gridSystemPromptZh(
 当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
 - **可用操作**：adjust_grid / close_long / close_short / hold（place_* 和 pause_grid 无效）
 - **决策优先级**（从高到低）：
-  1. **有 filled 持仓（浮亏或浮盈）** → 优先 **adjust_grid**（以当前价重建，"包住"持仓让后续震荡磨平成本）
+  1. **有持仓层（浮亏或浮盈）** → 优先 **adjust_grid**（以当前价重建，"包住"持仓让后续震荡磨平成本）
   2. **趋势明确继续单边**（EMA顺向排列、RSI极值>70/<30、连续多根K线同向）→ **adjust_grid**（以当前价为中心重建网格，自动恢复运行）
   3. **价格震荡、方向不明** → **hold**（等待后端突破恢复或价格回归）
   4. **仅当保证金不足、爆仓价迫在眉睫** → close_long/close_short 保命平仓
@@ -768,6 +768,7 @@ function gridSystemPromptZh(
 
 - **analysis**：≥60字，必须含 ①当前价格位置 ②至少2个指标数值（RSI/ATR/BB宽等具体数值） ③决策逻辑；禁止纯标签
 - **actions[].reasoning**：≤15字简标签；无需操作时 actions 输出 \`[]\`
+- **语言**：analysis 和 reasoning 全部使用**中文**；市场形态用"窄幅/标准/宽幅/剧烈"，层状态用"空格/待成交/持仓"，禁止在中文文字中夹杂英文术语
 `;
 }
 
