@@ -756,18 +756,30 @@ export class GridTradingService {
         (state as any).rsiDivergenceType ??= 'none';
         // 从 DB 恢复，需要 reconcile
         await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-        // 每次重启都以当前价为中心重算 ATR 边界
-        // 有持久化但重启语义一致：恢复后立即重建范围（保留 filled 持仓，重置 empty/pending）
+        // 重启边界重算：仅当当前价格超出现有网格范围时才重建
+        // 原因：每次重建都会改变 layer 价格 → reconcile 时旧价位订单与新 layer 不对齐 → 自动取消
+        // 结果：AI 每次重启后都看到全空 grid，重新挂 20 个订单（浪费 API + 扰乱持仓）
         if (!state.userLockedRange) {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
-          this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
-          await this.reinitializeGridLevels(state, restartPrice);
-          // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
-          await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-          await this.persistGridState(strategyId, state);
+          const withinRange = restartPrice >= state.lowerPrice * 0.99 && restartPrice <= state.upperPrice * 1.01;
+          if (withinRange && state.upperPrice > state.lowerPrice) {
+            // 价格在范围内：保留现有挂单和 layer 价格，不重建
+            this.logger.log(
+              `[网格] DB 恢复后重启：当前价 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，跳过重建，保留交易所挂单`,
+            );
+          } else {
+            // 价格超出范围：以当前价重算 ATR 边界（此时交易所挂单本来就需要重建）
+            this.logger.log(
+              `[网格] DB 恢复后重启：当前价 ${restartPrice.toFixed(4)} 超出范围 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，重算 ATR 边界`,
+            );
+            await this.reinitializeGridLevels(state, restartPrice);
+            // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
+            await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+            await this.persistGridState(strategyId, state);
+          }
         }
         // 无论是否 userLockedRange，reconcile 后都清理孤儿订单
-        // （userLockedRange 不重建但仍可能有旧价位孤儿，如崩溃前部分撤单未完成）
+        // （范围超出时已重建；范围内时可能有旧价位孤儿，如崩溃前部分撤单未完成）
         await this.cancelOrphanOrders(strategyId, userId, apiKeyId, state);
       }
     }
@@ -1214,6 +1226,18 @@ export class GridTradingService {
 
         // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice);
+
+        // 将交易所实时持仓量同步到内存层（仅更新 positionSize/positionEntry，不改变 state）
+        // 目的：日志展示和 syncOrderFills.expectedPos 都基于交易所真实持仓量，消除持仓差异误报
+        // 注意：仅当双侧都是 'filled' 时才更新；不清除 filled 层（API 延迟场景保守处理）
+        for (let _si = 0; _si < context.levels.length; _si++) {
+          const _el = context.levels[_si];
+          const _ml = state.gridLines[_si];
+          if (_ml && _el.state === 'filled' && _ml.state === 'filled') {
+            _ml.positionSize = _el.positionSize ?? 0;
+            if (_el.fillPrice) _ml.positionEntry = _el.fillPrice;
+          }
+        }
 
         // 全局网格倾斜计算（供 AI context 使用，autoAdjustGrid 也复用此结果）
         const { skewed: _skewed, buyFilled: skewBuy, sellFilled: skewSell } = this.checkGridSkew(state);
