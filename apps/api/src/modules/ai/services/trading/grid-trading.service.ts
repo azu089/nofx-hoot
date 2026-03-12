@@ -770,16 +770,13 @@ export class GridTradingService {
     // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
     // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
     if (state && !this.reconcileCompleted.has(strategyId)) {
-      // 容器重启恢复：直接使用 DB 状态（保留多层 filled 信息）
-      // DB 每轮由 persistGridState 更新，层状态与交易所基本一致
-      // syncOrderFills 首轮通过 getOrderStatus 精确检测重启窗口期间的成交/撤单
-      // 不合并到单层：多层 filled 始终保持多层，不因重启丢失分层粒度
-      const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
-      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
-      this.logger.log(
-        `[网格] 容器重启恢复: 使用 DB 状态（filled=${filledCount}层, pending=${pendingCount}层）` +
-        ` → syncOrderFills 首轮检测重启期间成交/撤单`,
-      );
+      // 容器重启恢复：始终从交易所实时数据重建（交所是唯一事实）
+      // recoverOrdersFromExchange：挂单→pending（不取消，与交所一致）
+      // recoverPositionsFromExchange：通过 fetchMyTrades 重建多层 filled
+      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建（交所是唯一事实）`);
+      this.resetGridLayers(state);
+      await this.recoverOrdersFromExchange(state, userId, apiKeyId);
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       this.reconcileCompleted.add(strategyId);
     }
 
@@ -3503,9 +3500,9 @@ export class GridTradingService {
   }
 
   /**
-   * nofx 对齐：启动时从交易所持仓恢复 filled 层（对齐 nofx autoAdjustGrid L1456-1479）
-   * 容器重启时由 recoverOrdersFromExchange 先映射挂单，此函数补充映射持仓
-   * 持仓量完整放入最近层（positionSize 可能大于标准每层数量），由 AI 自行决策处理
+   * 启动时从交易所持仓恢复 filled 层
+   * 优先使用 fetchMyTrades FIFO 重建多层 filled（每层独立价格）
+   * 当 fetchMyTrades 不可用时 fallback：按持仓量拆分到多个最近空层
    */
   private async recoverPositionsFromExchange(
     state: GridState,
@@ -3521,46 +3518,97 @@ export class GridTradingService {
       const symPositions = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
 
       for (const pos of symPositions) {
-        const qty: number = pos.quantity ?? 0;
-        if (qty <= 0.0001) continue;
-        const entry: number = pos.entryPrice ?? 0;
-        if (entry <= 0) continue;
-        // OKX net_mode: side='net' → 多头；标准: 'long'→buy, 'short'→sell
+        const totalQty: number = pos.quantity ?? 0;
+        if (totalQty <= 0.0001) continue;
         const rawSide = pos.side as string;
         const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
 
-        // 按入场价最近原则找层（nofx autoAdjustGrid L1460-1467）
-        let closestIdx = -1;
-        let closestDist = Infinity;
-        for (let i = 0; i < state.gridLines.length; i++) {
-          const d = Math.abs(state.gridLines[i].price - entry);
-          if (d < closestDist) { closestDist = d; closestIdx = i; }
+        // 计算标准每层数量（用于判断是否多层）
+        const refEntry = pos.entryPrice ?? 0;
+        const refLayer = state.gridLines[0];
+        const normalQty = refLayer?.allocatedUSD > 0 && refEntry > 0
+          ? (refLayer.allocatedUSD * (state.leverage ?? 1)) / refEntry : 0;
+
+        // 尝试用 fetchMyTrades FIFO 重建多层 filled（精确还原每层入场价）
+        let fills: Array<{ price: number; qty: number }> = [];
+        try {
+          const since = Date.now() - 7 * 24 * 3600 * 1000; // 近7天
+          const trades = await adapter.fetchMyTrades(state.symbol, since, 200);
+          // 按时间排序，FIFO 匹配：buy 开仓，sell 平仓（关闭最早的 buy）
+          const sorted = trades.sort((a, b) => a.timestamp - b.timestamp);
+          const openBuys: Array<{ price: number; qty: number }> = [];
+          for (const t of sorted) {
+            if (t.side === posSide) {
+              openBuys.push({ price: t.price, qty: t.amount });
+            } else {
+              // 平仓：FIFO 消耗最早的 openBuy
+              let remaining = t.amount;
+              while (remaining > 0.0001 && openBuys.length > 0) {
+                const oldest = openBuys[0];
+                if (oldest.qty <= remaining + 0.0001) {
+                  remaining -= oldest.qty;
+                  openBuys.shift();
+                } else {
+                  oldest.qty -= remaining;
+                  remaining = 0;
+                }
+              }
+            }
+          }
+          // 验证：FIFO 得到的总量需与交易所持仓接近
+          const fifoTotal = openBuys.reduce((s, b) => s + b.qty, 0);
+          if (Math.abs(fifoTotal - totalQty) < totalQty * 0.1) {
+            fills = openBuys;
+            this.logger.log(`[网格] fetchMyTrades FIFO: 得到 ${fills.length} 笔未平仓 buy, total=${fifoTotal.toFixed(4)}`);
+          } else {
+            this.logger.warn(`[网格] fetchMyTrades FIFO总量不符: fifo=${fifoTotal.toFixed(4)}, exchange=${totalQty.toFixed(4)}, 降级为按层拆分`);
+          }
+        } catch (e: any) {
+          this.logger.warn(`[网格] fetchMyTrades 失败，降级为按层拆分: ${e.message}`);
         }
 
-        if (closestIdx >= 0) {
-          const layer = state.gridLines[closestIdx];
-          // 若该层已被 recoverOrdersFromExchange 标记为 pending，清理 orderBook 中的旧条目
-          // 避免持仓层的孤儿挂单造成内存 pending 数量与交易所不匹配
+        // fallback：按标准层数量拆分填入最近空层
+        if (fills.length === 0) {
+          const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
+          const avgEntry = refEntry > 0 ? refEntry : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+          for (let i = 0; i < layerCount; i++) fills.push({ price: avgEntry, qty: totalQty / layerCount });
+        }
+
+        // 将每笔 fill 映射到最近的空层（跳过已 pending/filled 的层）
+        const usedIdx = new Set<number>();
+        for (const fill of fills) {
+          let bestIdx = -1;
+          let bestDist = Infinity;
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (usedIdx.has(i)) continue;
+            if (state.gridLines[i].state === 'filled') continue;
+            const d = Math.abs(state.gridLines[i].price - fill.price);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+          }
+          if (bestIdx < 0) {
+            // 无可用空层，找已 pending 层覆盖（最近价格）
+            for (let i = 0; i < state.gridLines.length; i++) {
+              if (usedIdx.has(i) || state.gridLines[i].state === 'filled') continue;
+              const d = Math.abs(state.gridLines[i].price - fill.price);
+              if (d < bestDist) { bestDist = d; bestIdx = i; }
+            }
+          }
+          if (bestIdx < 0) continue;
+          usedIdx.add(bestIdx);
+          const layer = state.gridLines[bestIdx];
           if (layer.state === 'pending' && layer.orderId) {
             delete state.orderBook[layer.orderId];
           }
-          // nofx L1471-1476: 完整 positionSize 放入最近层（不拆分多层）
-          layer.state    = 'filled';
-          layer.positionEntry = entry;
-          layer.positionSize  = qty;      // 完整量（可能远大于标准每层数量）
+          layer.state = 'filled';
+          layer.positionEntry = fill.price;
+          layer.positionSize  = fill.qty;
           layer.side     = posSide;
-          layer.orderId  = undefined;     // 持仓层无挂单（对应的交易所挂单为孤儿，待自然消耗）
+          layer.orderId  = undefined;
           layer.orderQuantity = 0;
-          layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
-
-          const normalQty = layer.allocatedUSD > 0 && entry > 0
-            ? (layer.allocatedUSD * (state.leverage ?? 1)) / entry : 0;
-          const times = normalQty > 0 ? (qty / normalQty).toFixed(1) : '?';
-          const isBig = normalQty > 0 && qty > normalQty * 1.5;
+          layer.unrealizedPnl = 0;
           this.logger.log(
-            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ${qty} @ $${entry.toFixed(4)}` +
-            ` → 层${closestIdx + 1}@$${layer.price.toFixed(2)}` +
-            (isBig ? ` ⚠️ 大持仓(${times}x标准层)，AI将逐步处理` : ''),
+            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ${fill.qty.toFixed(4)} @ $${fill.price.toFixed(4)}` +
+            ` → L${bestIdx + 1}@$${layer.price.toFixed(2)}`,
           );
         }
       }

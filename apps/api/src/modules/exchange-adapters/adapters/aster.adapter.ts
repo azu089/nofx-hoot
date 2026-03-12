@@ -519,6 +519,12 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
+  async fetchMyTrades(_symbol: string, _since: number, _limit: number): Promise<Array<{
+    side: 'buy' | 'sell'; price: number; amount: number; timestamp: number; orderId: string;
+  }>> {
+    return []; // Aster 暂不支持，由 fallback 处理
+  }
+
   async getOrderStatus(
     symbol: string,
     orderId: string,

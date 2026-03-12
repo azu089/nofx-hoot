@@ -611,6 +611,24 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
+  async fetchMyTrades(symbol: string, since: number, limit: number): Promise<Array<{
+    side: 'buy' | 'sell';
+    price: number;
+    amount: number;
+    timestamp: number;
+    orderId: string;
+  }>> {
+    const ex = this.getExchange();
+    const trades = await ex.fetchMyTrades(symbol, since, limit);
+    return (trades ?? []).map((t: any) => ({
+      side: t.side === 'sell' ? 'sell' : 'buy',
+      price: Number(t.price || 0),
+      amount: Number(t.amount || 0),
+      timestamp: Number(t.timestamp || 0),
+      orderId: String(t.info?.orderId || t.order || ''),
+    }));
+  }
+
   async getOrderStatus(
     symbol: string,
     orderId: string,

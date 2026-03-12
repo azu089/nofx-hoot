@@ -454,6 +454,12 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
     logger.log(`${symbol} 已取消 ${orderIds.length} 个止损/止盈单`);
   }
 
+  async fetchMyTrades(_symbol: string, _since: number, _limit: number): Promise<Array<{
+    side: 'buy' | 'sell'; price: number; amount: number; timestamp: number; orderId: string;
+  }>> {
+    return []; // Lighter 暂不支持，由 fallback 处理
+  }
+
   async getOrderStatus(
     _symbol: string,
     orderId: string,

@@ -135,6 +135,17 @@ export interface ExchangeAdapter {
   getOrderStatus(symbol: string, orderId: string): Promise<OrderStatusDetail>;
 
   /**
+   * 获取近期成交记录（用于启动恢复多层filled）
+   */
+  fetchMyTrades(symbol: string, since: number, limit: number): Promise<Array<{
+    side: 'buy' | 'sell';
+    price: number;
+    amount: number;
+    timestamp: number;
+    orderId: string;
+  }>>;
+
+  /**
    * 获取挂单列表
    */
   getOpenOrders(symbol: string): Promise<OpenOrder[]>;
