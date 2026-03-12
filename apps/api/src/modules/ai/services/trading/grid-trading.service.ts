@@ -1223,6 +1223,18 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
+        // nofx 对齐：neutral 方向按实时价每轮修正空层 side
+        // nofx initializeGridLevels: price > currentPrice → "sell" else "buy"（动态依据实时价）
+        // HOOT buildGridLinesFromConfig 在 loadGridState 时用 centerPrice（静态），每轮在此纠正
+        // 只更新 empty 层：pending/filled 层 side 由交易所数据决定，不改动
+        if ((state.currentDirection ?? 'neutral') === 'neutral') {
+          for (const line of state.gridLines) {
+            if (line.state === 'empty') {
+              line.side = line.price <= currentPrice ? 'buy' : 'sell';
+            }
+          }
+        }
+
         // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
 
