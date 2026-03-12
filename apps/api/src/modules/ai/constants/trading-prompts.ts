@@ -712,17 +712,6 @@ function gridSystemPromptZh(
 - **待成交**（pending）: 等待成交
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-## 🔴 大持仓层处理（positionSize > 2× quantity）
-当某层的 positionSize 远大于标准每层数量（quantity），说明该层承载了来自前一配置的大持仓：
-- **估算占用层数**：positionSize / quantity ≈ N 层
-- **逐步释放策略**：在该持仓价格之上（多头）或之下（空头）连续挂 N 笔反向单
-  - 多头大持仓（side=buy）：在大持仓层+1、+2、+3...各层分别挂 sell（quantity 大小）
-  - 空头大持仓（side=sell）：在大持仓层-1、-2、-3...各层分别挂 buy（quantity 大小）
-- **不要一次性平仓**（close_long/close_short）：网格逐步磨平成本，优于直接平仓亏损
-- 每笔反向单成交都带来约 gridSpacing × quantity 的利润，持续获利退出
-
-💡 **初始化/重建后立即挂满**：检测到大量空格层（通常是刚初始化或 adjust_grid 重建后），**本轮应尽量一次性把所有空格层都挂上委托单**，不要分多轮慢慢补。顺序：先挂靠近当前价的层（成交概率高），再向两侧延伸。仓位上限不足时跳过超限层，其余层仍全部挂满。
-
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
 ## 方向自适应系统（后端自动，无需 AI 干预）
@@ -802,8 +791,6 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **empty**: Can place order, or hold
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
-
-💡 **Fill all levels immediately after init/rebuild**: When many empty levels are detected (typically after initialization or adjust_grid rebuild), **fill ALL empty levels with orders in this single round** — do not spread across multiple rounds. Order: levels closest to current price first, then expand outward. Skip levels that exceed position cap; fill all remaining levels.
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 

@@ -775,6 +775,8 @@ export class GridTradingService {
             await this.reinitializeGridLevels(state, restartPrice);
           }
         }
+        // nofx 对齐：层价格就绪后，从交易所持仓恢复 filled 层（完整量→最近层）
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
         await this.persistGridState(strategyId, state);
       }
     }
@@ -796,9 +798,10 @@ export class GridTradingService {
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
-      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单（干净起点）
+      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单 + 从交易所持仓恢复 filled 层
       this.resetGridLayers(state);
       await this.cancelAllGridOrders(state, userId, apiKeyId);
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
     }
 
     // Step 1.3: 暂停恢复后干净重启（resume_grid / breakout 自动恢复触发）
@@ -808,6 +811,7 @@ export class GridTradingService {
       this.logger.log(`[网格] 暂停恢复: 全空层 + 取消所有挂单（干净重启）`);
       this.resetGridLayers(state);
       await this.cancelAllGridOrders(state, userId, apiKeyId);
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
     }
 
     // Step 1.5: 配置变更检测 — 原地取消挂单 + 重建层级（历史利润不清零）
@@ -817,8 +821,9 @@ export class GridTradingService {
         this.logger.warn(
           `[网格] 检测到配置变更: ${configChanged}，原地重建（历史利润保留）`,
         );
-        // Step A: 取消交易所所有挂单
+        // Step A: 取消交易所所有挂单 + 清空内存层状态（避免 filledSnapshots 与交易所持仓双重映射）
         await this.cleanupExistingOrders(state, userId, apiKeyId);
+        this.resetGridLayers(state);
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
         if (gridConfig.leverage !== undefined) {
@@ -872,8 +877,9 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, rebuildPrice);
         }
-        // nofx 对齐：重建后全空层（cleanupExistingOrders 已取消所有挂单，无需 reconcile）
+        // nofx 对齐：重建后全空层 + 从交易所持仓恢复 filled 层
         state.needsReconcile = false;
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
         await this.persistGridState(strategyId, state);
         this.logger.log(
           `[网格] 配置变更重建完成: ${newCount} 层，利润保留 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
@@ -924,8 +930,9 @@ export class GridTradingService {
       // 首次初始化（非配置变更路径）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
-        // nofx 对齐：新建网格 = 全空层，取消所有旧挂单（initializeGrid 内已设全空层）
+        // nofx 对齐：新建网格 = 全空层，取消所有旧挂单，再恢复交易所持仓
         await this.cancelAllGridOrders(state, userId, apiKeyId);
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
         return { trades: 0, errors: 0 };
@@ -3440,6 +3447,70 @@ export class GridTradingService {
       line.orderQuantity = 0;
     }
     state.orderBook = {};
+  }
+
+  /**
+   * nofx 对齐：启动时从交易所持仓恢复 filled 层（对齐 nofx autoAdjustGrid L1456-1479）
+   * 全部挂单已在 cancelAllGridOrders 取消，此函数只映射持仓
+   * 持仓量完整放入最近层（positionSize 可能大于标准每层数量），由 AI 自行决策处理
+   */
+  private async recoverPositionsFromExchange(
+    state: GridState,
+    userId: string,
+    apiKeyId: string,
+  ): Promise<void> {
+    if (!this.adapterFactory || !apiKeyId) return;
+    let adapter: ExchangeAdapter | null = null;
+    try {
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const positions = await adapter.getPositions();
+      const baseSymbol = state.symbol.split('/')[0];
+      const symPositions = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
+
+      for (const pos of symPositions) {
+        const qty: number = pos.quantity ?? 0;
+        if (qty <= 0.0001) continue;
+        const entry: number = pos.entryPrice ?? 0;
+        if (entry <= 0) continue;
+        // OKX net_mode: side='net' → 多头；标准: 'long'→buy, 'short'→sell
+        const rawSide = pos.side as string;
+        const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+
+        // 按入场价最近原则找层（nofx autoAdjustGrid L1460-1467）
+        let closestIdx = -1;
+        let closestDist = Infinity;
+        for (let i = 0; i < state.gridLines.length; i++) {
+          const d = Math.abs(state.gridLines[i].price - entry);
+          if (d < closestDist) { closestDist = d; closestIdx = i; }
+        }
+
+        if (closestIdx >= 0) {
+          const layer = state.gridLines[closestIdx];
+          // nofx L1471-1476: 完整 positionSize 放入最近层（不拆分多层）
+          layer.state    = 'filled';
+          layer.positionEntry = entry;
+          layer.positionSize  = qty;      // 完整量（可能远大于标准每层数量）
+          layer.side     = posSide;
+          layer.orderId  = undefined;     // 挂单已全部取消
+          layer.orderQuantity = 0;
+          layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
+
+          const normalQty = layer.allocatedUSD > 0 && entry > 0
+            ? (layer.allocatedUSD * (state.leverage ?? 1)) / entry : 0;
+          const times = normalQty > 0 ? (qty / normalQty).toFixed(1) : '?';
+          const isBig = normalQty > 0 && qty > normalQty * 1.5;
+          this.logger.log(
+            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ${qty} @ $${entry.toFixed(4)}` +
+            ` → 层${closestIdx + 1}@$${layer.price.toFixed(2)}` +
+            (isBig ? ` ⚠️ 大持仓(${times}x标准层)，AI将逐步处理` : ''),
+          );
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
+    }
   }
 
   /**
