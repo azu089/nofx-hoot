@@ -620,13 +620,21 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }>> {
     const ex = this.getExchange();
     const trades = await ex.fetchMyTrades(symbol, since, limit);
-    return (trades ?? []).map((t: any) => ({
-      side: t.side === 'sell' ? 'sell' : 'buy',
-      price: Number(t.price || 0),
-      amount: Number(t.amount || 0),
-      timestamp: Number(t.timestamp || 0),
-      orderId: String(t.info?.orderId || t.order || ''),
-    }));
+    return (trades ?? [])
+      .filter((t: any) => {
+        // Binance hedge mode: 只保留 LONG 方向的成交（排除开空的 buy/平空的 sell）
+        // one-way mode: positionSide = 'BOTH'（默认包含）
+        // OKX: posSide = 'net' / 'long'
+        const ps = (t.info?.positionSide || t.info?.posSide || '').toUpperCase();
+        return !ps || ps === 'LONG' || ps === 'BOTH' || ps === 'NET';
+      })
+      .map((t: any) => ({
+        side: t.side === 'sell' ? 'sell' : 'buy',
+        price: Number(t.price || 0),
+        amount: Number(t.amount || 0),
+        timestamp: Number(t.timestamp || 0),
+        orderId: String(t.info?.orderId || t.order || ''),
+      }));
   }
 
   async getOrderStatus(
