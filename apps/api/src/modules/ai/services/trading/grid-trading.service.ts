@@ -2453,20 +2453,27 @@ export class GridTradingService {
         const closeLongPrice = currentPrice ?? state.lastPrice;
         if (!decision.price) decision.price = closeLongPrice;
         // 防御：若 AI 对 filled sell 层发出 close_long，自动转 closeShort（sell层=空头持仓）
+        let closeLongResult: any;
         if (targetLevel?.side === 'sell') {
           this.logger.warn(`[网格] close_long 目标层${targetLevel.index}为sell层（空头），自动转 closeShort`);
-          await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
+          closeLongResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
         } else {
-          await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
+          closeLongResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         }
         if (targetLevel && targetLevel.positionSize > 0) {
-          const _cp = new Decimal(currentPrice ?? state.lastPrice);
+          // 优先使用 CCXT 实际成交价，其次用 currentPrice
+          const actualClosePrice = closeLongResult?.avgPrice || currentPrice || state.lastPrice;
+          const _cp = new Decimal(actualClosePrice);
           const _ep = new Decimal(targetLevel.positionEntry);
           const _sz = new Decimal(targetLevel.positionSize);
           const _fr = new Decimal(state.takerFeeRate);
-          const netProfitD = _cp.minus(_ep).times(_sz)
-            .minus(_cp.times(_sz).times(_fr))
-            .minus(_ep.times(_sz).times(_fr));
+          // 优先使用交易所返回的 realizedPnl（最准确），否则本地计算
+          const exchangePnl = closeLongResult?.realizedPnl;
+          const netProfitD = exchangePnl != null
+            ? new Decimal(exchangePnl)
+            : _cp.minus(_ep).times(_sz)
+              .minus(_cp.times(_sz).times(_fr))
+              .minus(_ep.times(_sz).times(_fr));
           const netProfit = netProfitD.toNumber();
           state.totalProfit += netProfit;
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
@@ -2480,9 +2487,9 @@ export class GridTradingService {
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
           // 同轮内更新 livePositionNotional，防止后续 cap check 仍计入已平的持仓
-          const closedValue = qty * (currentPrice ?? state.lastPrice);
+          const closedValue = qty * _cp.toNumber();
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
-          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`);
+          this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, ccxtPrice=${_cp.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT${exchangePnl != null ? ' (exchange)' : ' (calc)'}`);
           this.saveClosedPositionRecord(
             userId,
             state.strategyId,
@@ -2529,23 +2536,30 @@ export class GridTradingService {
         const closeShortPrice = currentPrice ?? state.lastPrice;
         if (!decision.price) decision.price = closeShortPrice;
         // 防御：若 AI 对 filled buy 层发出 close_short，自动转 closeLong（buy层=多头持仓）
+        let closeShortResult: any;
         if (targetLevel?.side === 'buy') {
           this.logger.warn(`[网格] close_short 目标层${targetLevel.index}为buy层（多头），自动转 closeLong`);
-          await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
+          closeShortResult = await (adapter as GridExchangeAdapter).closeLong(state.symbol, qty);
         } else {
-          await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
+          closeShortResult = await (adapter as GridExchangeAdapter).closeShort(state.symbol, qty);
         }
         // 无论是否有 targetLevel，都更新 livePositionNotional（孤儿空头平仓）
-        const closedValueShort = qty * (currentPrice ?? state.lastPrice);
+        const actualClosePriceShort = closeShortResult?.avgPrice || currentPrice || state.lastPrice;
+        const closedValueShort = qty * actualClosePriceShort;
         state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValueShort);
         if (targetLevel && targetLevel.positionSize > 0) {
-          const _cp2 = new Decimal(currentPrice ?? state.lastPrice);
+          // 优先使用 CCXT 实际成交价
+          const _cp2 = new Decimal(actualClosePriceShort);
           const _ep2 = new Decimal(targetLevel.positionEntry);
           const _sz2 = new Decimal(targetLevel.positionSize);
           const _fr2 = new Decimal(state.takerFeeRate);
-          const netProfitD2 = _ep2.minus(_cp2).times(_sz2)
-            .minus(_cp2.times(_sz2).times(_fr2))
-            .minus(_ep2.times(_sz2).times(_fr2));
+          // 优先使用交易所返回的 realizedPnl
+          const exchangePnl2 = closeShortResult?.realizedPnl;
+          const netProfitD2 = exchangePnl2 != null
+            ? new Decimal(exchangePnl2)
+            : _ep2.minus(_cp2).times(_sz2)
+              .minus(_cp2.times(_sz2).times(_fr2))
+              .minus(_ep2.times(_sz2).times(_fr2));
           const netProfit = netProfitD2.toNumber();
           state.totalProfit += netProfit;
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
@@ -2558,7 +2572,7 @@ export class GridTradingService {
           targetLevel.positionEntry = 0;
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
-          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT`);
+          this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, ccxtPrice=${_cp2.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT${exchangePnl2 != null ? ' (exchange)' : ' (calc)'}`);
           this.saveClosedPositionRecord(
             userId,
             state.strategyId,
@@ -3135,11 +3149,10 @@ export class GridTradingService {
     try {
       const feeCalc = await this.feeService.calculateFee(userId, actualPnl.toFixed(8));
       if (parseFloat(feeCalc.feeAmount) > 0) {
-        const uniqueOrderId = this.feeService.generateUniqueOrderId(
-          'GRID_FEE',
-          userId,
-          state.strategyId,
-        );
+        // 确定性 uniqueOrderId：秒级时间戳 + 盈利金额 hash → 同一秒内同利润不重复扣费
+        const epochSec = Math.floor(Date.now() / 1000);
+        const pnlKey = actualPnl.toFixed(8).replace('.', '_');
+        const uniqueOrderId = `GRID_FEE_${userId}_${state.strategyId}_${epochSec}_${pnlKey}`;
         const result = await this.feeService.chargeFee({
           userId,
           positionId: state.strategyId,
@@ -3207,13 +3220,13 @@ export class GridTradingService {
       // Step 3: 内存中 filled 层的预期净持仓（有符号：buy=+, sell=-）
       // - buy 成交 → 净多头增加（+qty）
       // - sell 成交 → 净空头增加（-qty）
-      // 冷启动首轮：内存无 filled 层（resetGridLayers 清空），以交易所为准避免误报
+      // nofx 对齐：expectedPos 始终来自内存 filled 层之和，不 fallback 到 currentPos
+      // 冷启动场景由 recoverPositionsFromExchange 保证：有交易所持仓则已恢复为 filled 层
+      // 若 fallback 到 currentPos，会导致 expectedPos=currentPos → 任何成交都被误判为取消
       const memFilledLayers = state.gridLines.filter((l) => l.state === 'filled');
-      const expectedPositionSize = memFilledLayers.length > 0
-        ? memFilledLayers.reduce((sum, l) => l.side === 'buy'
-            ? sum + (l.positionSize ?? 0)
-            : sum - (l.positionSize ?? 0), 0)
-        : currentPositionSize;
+      const expectedPositionSize = memFilledLayers.reduce((sum, l) => l.side === 'buy'
+        ? sum + (l.positionSize ?? 0)
+        : sum - (l.positionSize ?? 0), 0);
 
       // Step 4: 处理"消失"的 pending 层
       const disappearedLines = state.gridLines.filter(
