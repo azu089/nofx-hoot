@@ -820,6 +820,12 @@ export class GridTradingService {
         this.logger.warn(
           `[网格] 检测到配置变更: ${configChanged}，原地重建（历史利润保留）`,
         );
+        // 取消前先保存每层挂单qty均值（用于重建后持仓恢复layerCount估算）
+        // cleanupExistingOrders 会取消所有挂单，之后 pending 层为空，无法从挂单推算
+        const preRebuildPendingQty = (() => {
+          const lines = state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0.0001);
+          return lines.length > 0 ? lines.reduce((s, l) => s + l.orderQuantity, 0) / lines.length : 0;
+        })();
         // Step A: 取消交易所所有挂单 + 清空内存层状态（避免 filledSnapshots 与交易所持仓双重映射）
         await this.cleanupExistingOrders(state, userId, apiKeyId);
         this.resetGridLayers(state);
@@ -877,8 +883,9 @@ export class GridTradingService {
           await this.reinitializeGridLevels(state, rebuildPrice);
         }
         // nofx 对齐：重建后全空层 + 从交易所持仓恢复 filled 层
+        // 传入重建前保存的挂单qty均值，用于正确估算layerCount（此时pending层已全部清空）
         state.needsReconcile = false;
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId, preRebuildPendingQty);
         await this.persistGridState(strategyId, state);
         this.logger.log(
           `[网格] 配置变更重建完成: ${newCount} 层，利润保留 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
@@ -3507,6 +3514,7 @@ export class GridTradingService {
     state: GridState,
     userId: string,
     apiKeyId: string,
+    qtyHint = 0,   // 配置变更路径传入：重建前保存的挂单qty均值
   ): Promise<void> {
     if (!this.adapterFactory || !apiKeyId) return;
     let adapter: ExchangeAdapter | null = null;
@@ -3527,11 +3535,15 @@ export class GridTradingService {
           ? pos.entryPrice
           : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
-        // 估算每层标准数量：优先用已恢复的挂单qty均值（不依赖leverage字段，最可靠）
-        // 挂单是以实际杠杆下单的，其qty就是单层标准数量
+        // 估算每层标准数量（优先级：qtyHint > pending挂单均值 > fallback）
+        // qtyHint：配置变更路径传入，取消挂单前保存的qty均值（最准确）
+        // pending挂单均值：容器重启路径，挂单已恢复到内存，从中读取
+        // fallback：无上述来源时用 allocatedUSD + state.leverage（可能因AI动态杠杆偏差）
         const pendingWithQty = state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0.0001);
         let normalQty = 0;
-        if (pendingWithQty.length > 0) {
+        if (qtyHint > 0.0001) {
+          normalQty = qtyHint; // 配置变更路径：重建前保存的精确值
+        } else if (pendingWithQty.length > 0) {
           normalQty = pendingWithQty.reduce((s, l) => s + l.orderQuantity, 0) / pendingWithQty.length;
         } else {
           // fallback：用 allocatedUSD + state.leverage（可能不准，但无更好来源）
@@ -3543,8 +3555,9 @@ export class GridTradingService {
         const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
         const perLayerQty = totalQty / layerCount;
 
+        const qtySource = qtyHint > 0.0001 ? 'hint' : (pendingWithQty.length > 0 ? '挂单' : 'fallback');
         this.logger.log(
-          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} normalQty=${normalQty.toFixed(4)}(from ${pendingWithQty.length > 0 ? '挂单' : 'fallback'}) → 映射到${layerCount}层`,
+          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} normalQty=${normalQty.toFixed(4)}(from ${qtySource}) → 映射到${layerCount}层`,
         );
 
         // 将每层映射到最近的空层（按均价距离排序，跳过已占用层）
