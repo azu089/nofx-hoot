@@ -3393,13 +3393,26 @@ export class GridTradingService {
                 pairedShort.positionEntry = 0; pairedShort.unrealizedPnl = 0;
               }
 
-              // buy 层标记为 empty（已用于平空，不作为新多头持仓）
-              line.state = 'empty';
-              line.positionSize = 0;
-              line.positionEntry = 0;
-              line.unrealizedPnl = 0;
+              // buy 层处理：若买量 > 平空量，超出部分开新多头
+              const excessQty = qty - closeQty;
+              if (excessQty > 0.001) {
+                // 超出部分在交易所形成净多头（net_mode: buy 0.16 - short 0.08 = long 0.08）
+                line.state = 'filled';
+                line.positionEntry = fillPrice;
+                line.positionSize = excessQty;
+                line.unrealizedPnl = 0;
+                state.totalTrades++;
+                this.logger.log(
+                  `[网格] 买单平空+开多: 平 ${closeQty.toFixed(4)} 空头, 余 ${excessQty.toFixed(4)} 开多 @ ${fillPrice.toFixed(4)}`,
+                );
+              } else {
+                line.state = 'empty';
+                line.positionSize = 0;
+                line.positionEntry = 0;
+                line.unrealizedPnl = 0;
+              }
               filledLines.push(line);
-              runningExpected += closeQty; // -0.88 + 0.16 = -0.72
+              runningExpected += qty; // 全量影响持仓：平空 closeQty + 开多 excessQty
 
               this.saveClosedPositionRecord(
                 userId, state.strategyId,
