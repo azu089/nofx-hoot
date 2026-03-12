@@ -762,6 +762,8 @@ export class GridTradingService {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
           this.logger.log(`[网格] DB 恢复后重启：以当前价 ${restartPrice.toFixed(4)} 重算 ATR 边界`);
           await this.reinitializeGridLevels(state, restartPrice);
+          // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
+          await this.reconcileGridState(strategyId, userId, apiKeyId, state);
           await this.persistGridState(strategyId, state);
         }
         // 无论是否 userLockedRange，reconcile 后都清理孤儿订单
@@ -1258,15 +1260,24 @@ export class GridTradingService {
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
+        // confidence 过滤：跳过低置信度 AI 决策（对齐 3月9日稳定版）
+        const CONFIDENCE_THRESHOLD = 40;
+        const confFiltered = decisions.filter(d => {
+          if (d.confidence === undefined) return true; // 未提供 confidence 的决策默认通过（兼容旧格式）
+          if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
+          this.logger.warn(`[网格] 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`);
+          return false;
+        });
+
         // 暂停受限模式：只允许 adjust_grid / close_long / close_short / hold
         const PAUSE_ALLOWED_ACTIONS = new Set(['adjust_grid', 'close_long', 'close_short', 'hold']);
         const execDecisions = (state.isPaused && state.pauseSource !== 'risk_control')
-          ? decisions.filter(d => {
+          ? confFiltered.filter(d => {
               if (PAUSE_ALLOWED_ACTIONS.has(d.action)) return true;
               this.logger.warn(`[网格] 暂停受限模式：跳过非允许动作 ${d.action}`);
               return false;
             })
-          : decisions;
+          : confFiltered;
 
         // 执行决策（收集每条执行结果，供日志记录）
         // 执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
@@ -1848,8 +1859,8 @@ export class GridTradingService {
     let regime: RegimeLevel;
     if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
     else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
-    else if (bbWidth <= 4.0 && atrPct <= 3.0) regime = 'wide';   // 对齐 nofx grid_regime.go: wide 上限 BB≤4%
-    else regime = 'volatile'; // BB>4% 或 ATR>3%
+    else if (bbWidth <= 6.0 && atrPct <= 3.0) regime = 'wide';   // 扩大 wide 上限至 BB≤6%（3月9日稳定版，SOL/BTC 正常波动区间）
+    else regime = 'volatile'; // BB>6% 或 ATR>3%（真正极端高波动）
 
     return { regime, atrHourly: atr ?? 0 };
   }
@@ -2311,6 +2322,8 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, newPrice);
         }
+        // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
+        await this.reconcileGridState(state.strategyId, userId, apiKeyId, state);
         // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
         if (state.isPaused && state.pauseSource !== 'risk_control') {
           state.isPaused = false;
