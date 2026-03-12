@@ -754,30 +754,14 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // 容器重启：全空层 + 从交易所恢复挂单(pending)和持仓(filled)（不取消用户订单）
-        // 网格数据架构原则 Step1+2+3：reset → exchange orders → exchange positions
-        this.resetGridLayers(state);
-        await this.recoverOrdersFromExchange(state, userId, apiKeyId);
-
-        // 价格超出范围时重算 ATR 边界（重建层价格）
-        // 此时内存已全空，reinitializeGridLevels 的 filledSnapshots=[] → 纯净新价格层
-        if (!state.userLockedRange) {
-          const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
-          const withinRange = restartPrice >= state.lowerPrice * 0.99 && restartPrice <= state.upperPrice * 1.01;
-          if (withinRange && state.upperPrice > state.lowerPrice) {
-            this.logger.log(
-              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，全空层等待 AI 重建`,
-            );
-          } else {
-            this.logger.log(
-              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 超出范围，重算 ATR 边界`,
-            );
-            await this.reinitializeGridLevels(state, restartPrice);
-          }
-        }
-        // nofx 对齐：层价格就绪后，从交易所持仓恢复 filled 层（完整量→最近层）
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
-        await this.persistGridState(strategyId, state);
+        // 容器重启（代码部署）：直接使用 DB 持久化的层状态，不清理
+        // DB 每轮由 persistGridState 更新，层状态与交易所一致
+        // syncOrderFills 在本轮末会自动修正重启窗口期间的任何变化（成交/撤单）
+        this.logger.log(
+          `[网格] 容器重启恢复: 直接使用 DB 状态（${state.gridLines.length}层, ` +
+          `filled=${state.gridLines.filter(l => l.state === 'filled').length}, ` +
+          `pending=${state.gridLines.filter(l => l.state === 'pending').length}）`,
+        );
       }
     }
 
