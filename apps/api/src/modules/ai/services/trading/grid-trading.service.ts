@@ -3416,19 +3416,32 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 持仓差异警告（处理交易所 API 延迟场景）
+      // Step 6: 持仓一致性（nofx 原则：交易所是唯一事实）
       // 若交易所持仓与内存预期不符，说明有成交还未被 disappearedLines 机制捕获
-      // 冷启动首轮内存无 filled 层 → 跳过，不误报
       const finalFilledLayers = state.gridLines.filter(l => l.state === 'filled');
       if (finalFilledLayers.length > 0) {
         const finalExpected = finalFilledLayers
           .reduce((sum, l) => l.side === 'buy' ? sum + (l.positionSize ?? 0) : sum - (l.positionSize ?? 0), 0);
         const posDiff = Math.abs(currentPositionSize - finalExpected);
         if (posDiff > 0.01) {
-          this.logger.warn(
-            `[网格] 持仓差异: 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
-            `差异=${posDiff.toFixed(4)}（可能是交易所 API 延迟，下轮将自动修正）`,
-          );
+          // 交易所持仓=0 但内存有 filled 层 → 幽灵 filled，直接清除（nofx：交所=真相）
+          // 发生场景：持仓被外部关闭（TP/SL/手动），内存 filled 层未同步
+          if (Math.abs(currentPositionSize) < 0.001) {
+            for (const l of finalFilledLayers) {
+              l.state = 'empty';
+              l.positionSize = 0;
+              l.positionEntry = 0;
+              l.unrealizedPnl = 0;
+            }
+            this.logger.log(
+              `[网格] 幽灵 filled 清除: 交易所持仓=0，内存残留 ${finalFilledLayers.length} 层已重置为 empty`,
+            );
+          } else {
+            this.logger.warn(
+              `[网格] 持仓差异: 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
+              `差异=${posDiff.toFixed(4)}（AI 下轮将补全层状态）`,
+            );
+          }
         }
       }
 
