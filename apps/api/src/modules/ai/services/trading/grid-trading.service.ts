@@ -1896,106 +1896,48 @@ export class GridTradingService {
   // ========================= AI 上下文 & 决策 =========================
 
   /**
-   * 从交易所实时数据重建层级状态（每轮调用，无额外 API 请求）
-   * 数据来源：buildGridContext 已拉取的 rawOpenOrders + longPos/shortPos
-   * state.gridLines 仅提供层价格作为匹配基准，不作为状态权威
+   * 从内存 gridLines 直接读取层级状态（nofx 对齐：ctx.Levels = gridState.Levels）
+   *
+   * nofx 设计：buildGridContext 不做任何 exchange→层 重映射，直接读内存。
+   * 内存由两条路径维护：
+   *   - 启动/重建时：recoverOrdersFromExchange + recoverPositionsFromExchange（一次性）
+   *   - 运行时：placeGridLimitOrder（→ pending）+ syncOrderFills（→ filled/empty）
    */
   private buildExchangeLevels(
     gridLines: GridLine[],
-    openOrders: Array<{ orderId: string; side: string; price: number; quantity: number }>,
     currentPrice: number,
     leverage: number,
   ): GridContext['levels'] {
-    // ──────────────────────────────────────────────────────────────────────
-    // nofx 对齐：
-    //   Step 1: exchange open orders → pending 层（按价格最近匹配）
-    //   Step 2: 内存 gridLines.state === 'filled' → filled 层（syncOrderFills 维护）
-    //   Step 3: 其余层 → cancelled（空格）
-    // 交易所只返回聚合持仓，无法反推各层；filled 层状态由内存 orderId→层 映射决定
-    //   Step 1: exchange open orders → pending 层（按价格最近匹配）
-    //   Step 2: exchange positions  → filled  层（按入场价最近匹配）
-    //   Step 3: 其余层 → cancelled（空格）
-    // 好处：容器重启/内存清空后 AI 立即看到正确状态，无需等 syncOrderFills 追赶
-    // ──────────────────────────────────────────────────────────────────────
-
-    const usedIdx = new Set<number>();
-    const pendingMap = new Map<number, { orderId: string; side: string; qty: number }>();
-    const filledMap  = new Map<number, { qty: number; entry: number; pnl: number; side: 'buy' | 'sell' }>();
-
-    // Step 1: 挂单 → pending 层（按价格最近匹配，每个层只占用一次）
-    // 优先级：filled 层 > pending 层 — 已有持仓的层不能被交易所挂单占用，否则 Step 2 会因 usedIdx 跳过 filled 层
-    for (const order of openOrders) {
-      const price: number = order.price ?? 0;
-      if (price <= 0) continue;
-      let bestIdx = -1;
-      let bestDist = Infinity;
-      for (let i = 0; i < gridLines.length; i++) {
-        if (usedIdx.has(i)) continue;
-        // filled 层跳过：持仓层不能被挂单侵占，否则 Step 2 读不到 filled 状态
-        if (gridLines[i].state === 'filled' && gridLines[i].positionSize > 0.0001) continue;
-        const d = Math.abs(gridLines[i].price - price);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
-      }
-      if (bestIdx >= 0) {
-        usedIdx.add(bestIdx);
-        pendingMap.set(bestIdx, {
-          orderId: order.orderId,
-          side: order.side,
-          qty: order.quantity ?? 0,
-        });
-      }
-    }
-
-    // Step 2: 持仓 → filled 层（来自内存 gridLines.state，nofx 对齐）
-    // 交易所只返回聚合持仓（所有 filled 层之和），无法反推到各层
-    // 正确来源：syncOrderFills 通过 orderId 维护的内存 gridLines.state === 'filled'
-    for (let i = 0; i < gridLines.length; i++) {
-      if (usedIdx.has(i)) continue;
-      const gl = gridLines[i];
-      if (gl.state === 'filled' && gl.positionSize > 0.0001) {
-        usedIdx.add(i);
-        filledMap.set(i, {
-          qty: gl.positionSize,
-          entry: gl.positionEntry,
-          pnl: gl.unrealizedPnl ?? 0,
-          side: gl.side as 'buy' | 'sell',
-        });
-      }
-    }
-
-    // Step 3: 组装输出
-    return gridLines.map((l, i) => {
+    return gridLines.map((l) => {
       const normalQty = l.allocatedUSD > 0 && currentPrice > 0
         ? (l.allocatedUSD * leverage) / currentPrice
         : 0;
 
-      const pInfo = pendingMap.get(i);
-      if (pInfo) {
+      if (l.state === 'pending' && l.orderId) {
         return {
           price: l.price,
-          side: (pInfo.side === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
+          side: l.side as 'buy' | 'sell',
           quantity: normalQty,
           positionSize: 0,
           state: 'pending' as const,
-          orderId: pInfo.orderId,
+          orderId: l.orderId,
           fillPrice: undefined,
           profit: undefined,
         };
       }
 
-      const fInfo = filledMap.get(i);
-      if (fInfo) {
-        const profit = fInfo.side === 'buy'
-          ? (currentPrice - fInfo.entry) * fInfo.qty
-          : (fInfo.entry - currentPrice) * fInfo.qty;
+      if (l.state === 'filled' && l.positionSize > 0.0001) {
+        const profit = l.side === 'buy'
+          ? (currentPrice - l.positionEntry) * l.positionSize
+          : (l.positionEntry - currentPrice) * l.positionSize;
         return {
           price: l.price,
-          side: fInfo.side,
+          side: l.side as 'buy' | 'sell',
           quantity: normalQty,
-          positionSize: fInfo.qty,
+          positionSize: l.positionSize,
           state: 'filled' as const,
           orderId: undefined,
-          fillPrice: fInfo.entry > 0 ? fInfo.entry : undefined,
+          fillPrice: l.positionEntry > 0 ? l.positionEntry : undefined,
           profit,
         };
       }
@@ -2174,10 +2116,11 @@ export class GridTradingService {
     const ema50 = indFast.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
-    // 层级状态：pending 来自交易所挂单（价格匹配），filled 来自内存 gridLines（orderId 追踪）
+    // 层级状态：直接读内存 gridLines（nofx 对齐：ctx.Levels = gridState.Levels）
+    // pending/filled/empty 由 placeGridLimitOrder + syncOrderFills 维护
+    // 启动/重建时由 recoverOrdersFromExchange + recoverPositionsFromExchange 一次性恢复
     const exchangeLevels = this.buildExchangeLevels(
       state.gridLines,
-      exchangeOpenOrders ?? [],
       currentPrice,
       state.leverage ?? 1,
     );
