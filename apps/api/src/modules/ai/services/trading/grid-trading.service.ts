@@ -3233,9 +3233,17 @@ export class GridTradingService {
         (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
       );
 
-      this.logger.debug(
-        `[网格] syncOrderFills: 交易所挂单=${openOrders.length}, 内存pending=${state.gridLines.filter(l => l.state === 'pending').length}, 消失=${disappearedLines.length}, currentPos=${currentPositionSize.toFixed(4)}, expectedPos=${expectedPositionSize.toFixed(4)}`,
+      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
+      const emptyCount = state.gridLines.filter(l => l.state === 'empty').length;
+      this.logger.log(
+        `[网格] syncOrderFills: 挂单=${openOrders.length}, 总层=${state.gridLines.length}(pending=${pendingCount},filled=${memFilledLayers.length},empty=${emptyCount}), 消失=${disappearedLines.length}, currentPos=${currentPositionSize.toFixed(4)}, expectedPos=${expectedPositionSize.toFixed(4)}`,
       );
+      // 调试：打印所有 filled 层详情（帮助诊断 expectedPos 异常）
+      if (memFilledLayers.length > 0) {
+        this.logger.log(
+          `[网格] syncOrderFills filled层: ${memFilledLayers.map(l => `L${(l.index??0)+1}(${l.side},sz=${(l.positionSize??0).toFixed(4)},entry=${(l.positionEntry??0).toFixed(4)},orderId=${l.orderId??'none'})`).join(', ')}`,
+        );
+      }
 
       // 用 runningExpected 在循环内累积（支持同一周期多笔成交）
       let runningExpected = expectedPositionSize;
