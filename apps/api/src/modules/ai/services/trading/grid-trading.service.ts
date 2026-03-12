@@ -34,7 +34,7 @@ export interface GridConfig {
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
-  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true，对齐 nofx）
+  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 false 对齐 nofx；nofx 无此功能）
   directionBiasRatio?: number;     // 偏向比例（默认 0.7，即 70% 偏向 / 30% 反向）
   useMakerOnly?: boolean;      // PostOnly 限价单
   modelId?: string;            // AI 模型（默认 deepseek-chat）
@@ -1162,7 +1162,8 @@ export class GridTradingService {
         // 突破检测：暂停中先尝试 checkFalseBreakoutRecovery 自动恢复；非暂停时执行正常检测
         if (state.isPaused) {
           // 尝试自动恢复（价格可能已回归箱体或网格区间）
-          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
+          // 对齐 nofx：方向自适应默认关闭（nofx 无此功能）
+          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
           this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           if (!state.isPaused) {
             this.logger.log(`[网格] 价格回归，暂停自动解除，继续正常运行`);
@@ -1188,7 +1189,8 @@ export class GridTradingService {
             if (boxDetected.level !== 'none') {
               const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
               if (confirmed) {
-                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
+                // 对齐 nofx：方向自适应默认关闭，short→reduce_position，mid→pause，long→close_all
+                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
                 const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
                 await this.executeBreakoutAction(
                   state, action, boxDetected.direction, userId, apiKeyId, adapter,
@@ -1201,7 +1203,7 @@ export class GridTradingService {
             } else {
               this.confirmBreakout(state, 'none', ''); // 重置连续计数
             }
-            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
+            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
             this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           }
         }
