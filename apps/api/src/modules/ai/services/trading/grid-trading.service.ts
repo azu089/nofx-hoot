@@ -770,10 +770,10 @@ export class GridTradingService {
     // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
     // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
     if (state && !this.reconcileCompleted.has(strategyId)) {
-      // 容器重启恢复：始终从交易所实时数据重建（交所是唯一事实）
+      // 容器重启恢复：始终从交易所实时数据重建（交所是唯一事实，DB不作为层状态来源）
       // recoverOrdersFromExchange：挂单→pending（不取消，与交所一致）
-      // recoverPositionsFromExchange：通过 fetchMyTrades 重建多层 filled
-      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建（交所是唯一事实）`);
+      // recoverPositionsFromExchange：持仓→filled（getPositions实时数据，映射到最近层）
+      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
       this.resetGridLayers(state);
       await this.recoverOrdersFromExchange(state, userId, apiKeyId);
       await this.recoverPositionsFromExchange(state, userId, apiKeyId);
@@ -3500,9 +3500,8 @@ export class GridTradingService {
   }
 
   /**
-   * 启动时从交易所持仓恢复 filled 层
-   * 优先使用 fetchMyTrades FIFO 重建多层 filled（每层独立价格）
-   * 当 fetchMyTrades 不可用时 fallback：按持仓量拆分到多个最近空层
+   * 启动时从交易所持仓恢复 filled 层（交所唯一数据源，不使用 fetchMyTrades）
+   * getPositions() → 按持仓量估算层数 → 均价拆分 → 映射到最近的多个空层
    */
   private async recoverPositionsFromExchange(
     state: GridState,
@@ -3523,93 +3522,47 @@ export class GridTradingService {
         const rawSide = pos.side as string;
         const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
 
-        // 计算标准每层数量（用于判断是否多层）
-        const refEntry = pos.entryPrice ?? 0;
+        // 用交易所加权均价（唯一可靠来源）
+        const avgEntry = (pos.entryPrice ?? 0) > 0
+          ? pos.entryPrice
+          : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+
+        // 估算层数：持仓量 / 标准每层数量（向上取整，最少1层）
         const refLayer = state.gridLines[0];
-        const normalQty = refLayer?.allocatedUSD > 0 && refEntry > 0
-          ? (refLayer.allocatedUSD * (state.leverage ?? 1)) / refEntry : 0;
-
+        const normalQty = refLayer?.allocatedUSD > 0 && avgEntry > 0
+          ? (refLayer.allocatedUSD * (state.leverage ?? 1)) / avgEntry : 0;
         const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
-        let fills: Array<{ price: number; qty: number }> = [];
+        const perLayerQty = totalQty / layerCount;
 
-        // 多层情况：尝试 fetchMyTrades FIFO 精确还原每层入场价
-        if (layerCount > 1) {
-          try {
-            // 只取最近50笔，覆盖当前仓位所需的成交记录（当日或最近几小时）
-            const since = Date.now() - 2 * 24 * 3600 * 1000; // 近2天
-            const trades = await adapter.fetchMyTrades(state.symbol, since, 50);
-            const sorted = trades.sort((a, b) => a.timestamp - b.timestamp);
-            const openBuys: Array<{ price: number; qty: number }> = [];
-            for (const t of sorted) {
-              if (t.side === posSide) {
-                openBuys.push({ price: t.price, qty: t.amount });
-              } else {
-                let remaining = t.amount;
-                while (remaining > 0.0001 && openBuys.length > 0) {
-                  const oldest = openBuys[0];
-                  if (oldest.qty <= remaining + 0.0001) {
-                    remaining -= oldest.qty;
-                    openBuys.shift();
-                  } else {
-                    oldest.qty -= remaining;
-                    remaining = 0;
-                  }
-                }
-              }
-            }
-            const fifoTotal = openBuys.reduce((s, b) => s + b.qty, 0);
-            if (Math.abs(fifoTotal - totalQty) < totalQty * 0.15 && openBuys.length > 0) {
-              fills = openBuys;
-              this.logger.log(`[网格] fetchMyTrades FIFO: ${fills.length}笔未平仓, total=${fifoTotal.toFixed(4)}`);
-            } else {
-              this.logger.warn(`[网格] FIFO总量不符(fifo=${fifoTotal.toFixed(4)}, exchange=${totalQty.toFixed(4)}), 降级为均摊`);
-            }
-          } catch (e: any) {
-            this.logger.warn(`[网格] fetchMyTrades 失败，降级为均摊: ${e.message}`);
-          }
-        }
+        this.logger.log(
+          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} → 映射到${layerCount}层`,
+        );
 
-        // fallback / 单层：直接用 getPositions 的加权均价
-        if (fills.length === 0) {
-          const avgEntry = refEntry > 0 ? refEntry : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
-          for (let i = 0; i < layerCount; i++) fills.push({ price: avgEntry, qty: totalQty / layerCount });
-        }
-
-        // 将每笔 fill 映射到最近的空层（跳过已 pending/filled 的层）
+        // 将每层映射到最近的空层（按均价距离排序，跳过已占用层）
         const usedIdx = new Set<number>();
-        for (const fill of fills) {
+        for (let i = 0; i < layerCount; i++) {
           let bestIdx = -1;
           let bestDist = Infinity;
-          for (let i = 0; i < state.gridLines.length; i++) {
-            if (usedIdx.has(i)) continue;
-            if (state.gridLines[i].state === 'filled') continue;
-            const d = Math.abs(state.gridLines[i].price - fill.price);
-            if (d < bestDist) { bestDist = d; bestIdx = i; }
+          for (let j = 0; j < state.gridLines.length; j++) {
+            if (usedIdx.has(j) || state.gridLines[j].state === 'filled') continue;
+            const d = Math.abs(state.gridLines[j].price - avgEntry);
+            if (d < bestDist) { bestDist = d; bestIdx = j; }
           }
-          if (bestIdx < 0) {
-            // 无可用空层，找已 pending 层覆盖（最近价格）
-            for (let i = 0; i < state.gridLines.length; i++) {
-              if (usedIdx.has(i) || state.gridLines[i].state === 'filled') continue;
-              const d = Math.abs(state.gridLines[i].price - fill.price);
-              if (d < bestDist) { bestDist = d; bestIdx = i; }
-            }
-          }
-          if (bestIdx < 0) continue;
+          if (bestIdx < 0) break; // 无可用层
           usedIdx.add(bestIdx);
           const layer = state.gridLines[bestIdx];
           if (layer.state === 'pending' && layer.orderId) {
             delete state.orderBook[layer.orderId];
           }
           layer.state = 'filled';
-          layer.positionEntry = fill.price;
-          layer.positionSize  = fill.qty;
-          layer.side     = posSide;
-          layer.orderId  = undefined;
+          layer.positionEntry = avgEntry;
+          layer.positionSize  = perLayerQty;
+          layer.side          = posSide;
+          layer.orderId       = undefined;
           layer.orderQuantity = 0;
           layer.unrealizedPnl = 0;
           this.logger.log(
-            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ${fill.qty.toFixed(4)} @ $${fill.price.toFixed(4)}` +
-            ` → L${bestIdx + 1}@$${layer.price.toFixed(2)}`,
+            `[网格] 启动持仓恢复: L${bestIdx + 1}@$${layer.price.toFixed(2)} ← ${perLayerQty.toFixed(4)}@$${avgEntry.toFixed(4)}`,
           );
         }
       }
