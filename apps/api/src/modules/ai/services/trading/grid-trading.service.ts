@@ -3525,6 +3525,8 @@ export class GridTradingService {
           layer.orderQuantity = order.quantity ?? 0;
           layer.positionSize = 0;
           layer.positionEntry = 0;
+          // 同步更新 orderBook（orderId→layerIndex 映射，cancel_order 和头部挂单计数依赖此）
+          if (order.orderId) state.orderBook[order.orderId] = bestIdx;
           mapped++;
         }
       }
