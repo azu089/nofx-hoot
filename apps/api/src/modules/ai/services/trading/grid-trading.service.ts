@@ -4036,11 +4036,12 @@ export class GridTradingService {
 
   private async persistGridState(strategyId: string, state: GridState): Promise<void> {
     try {
-      // 对齐 nofx：gridLines（动态层状态）和 orderBook（运行时索引）不存 DB
-      // 重启时始终从交易所 getOpenOrders/getPositions 重建，杜绝 stale DB 值引发的 bug
+      // gridLines 动态状态存 DB（state/orderId/positionSize/positionEntry）
+      // 重启时用 config 结构 + DB 动态状态合并，保留多层 filled 信息
+      // orderBook 运行时索引不存 DB（重建时从 gridLines 重建）
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { gridLines, orderBook, _pendingStopLoss, ...stateToSave } = state as any;
-      stateToSave.gridCount = gridLines?.length ?? state.gridCount ?? 0;  // 保留层数，重建时用
+      const { orderBook, _pendingStopLoss, ...stateToSave } = state as any;
+      stateToSave.gridCount = state.gridLines?.length ?? state.gridCount ?? 0;  // 保留层数，重建时用
 
       const equityPnl = state.lastEquity && state.startEquity > 0
         ? state.lastEquity - state.startEquity
@@ -4078,13 +4079,40 @@ export class GridTradingService {
         // 向后兼容：旧版状态可能缺少新字段
         if (state.startEquity === undefined) state.startEquity = state.peakEquity;
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
-        // 对齐 nofx：gridLines 不从 DB 恢复（DB 快照可能是 stale 值）
-        // 从配置字段（lowerPrice/upperPrice/gridSpacing/distribution）确定性重建
-        // 动态状态（state/orderId/orderQuantity/positionSize）由 syncOrderFills 增量维护
-        state.gridLines = this.buildGridLinesFromConfig(state);
+        // gridLines 恢复策略：config 提供价格结构，DB 提供动态状态（filled/orderId/positionSize）
+        // 这样重启后可以保留多层 filled 信息，syncOrderFills 首轮检测重启期间的成交/撤单
+        const configLines = this.buildGridLinesFromConfig(state);
+        const dbLines = (state.gridLines as any[]) ?? [];
+        if (dbLines.length === configLines.length) {
+          // DB 层数与 config 一致：config 结构 + DB 动态状态合并
+          for (let i = 0; i < configLines.length; i++) {
+            const db = dbLines[i];
+            if (db) {
+              configLines[i].state       = db.state       ?? 'empty';
+              configLines[i].orderId     = db.orderId     ?? undefined;
+              configLines[i].orderQuantity = db.orderQuantity ?? 0;
+              configLines[i].positionSize  = db.positionSize  ?? 0;
+              configLines[i].positionEntry = db.positionEntry ?? 0;
+              configLines[i].unrealizedPnl = db.unrealizedPnl ?? 0;
+            }
+          }
+          state.gridLines = configLines;
+          const filledCount = configLines.filter(l => l.state === 'filled').length;
+          const pendingCount = configLines.filter(l => l.state === 'pending').length;
+          this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}（DB+config合并，filled=${filledCount}层, pending=${pendingCount}层）`);
+        } else {
+          // 层数不一致（配置已变更）：从配置重建
+          state.gridLines = configLines;
+          this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}（层数变更，从配置重建，共 ${configLines.length} 层）`);
+        }
+        // orderBook 从 gridLines 重建（pending 层的 orderId → levelIndex 映射）
         state.orderBook = {};
+        for (const line of state.gridLines) {
+          if (line.state === 'pending' && line.orderId) {
+            state.orderBook[line.orderId] = line.index ?? 0;
+          }
+        }
         this.gridStates.set(strategyId, state);
-        this.logger.log(`[网格] 从数据库恢复状态: ${strategyId}（gridLines 从配置重建，共 ${state.gridLines.length} 层）`);
         return state;
       }
       return null;
