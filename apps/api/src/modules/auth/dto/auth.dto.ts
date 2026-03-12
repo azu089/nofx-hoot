@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsString,
+  IsBoolean,
   MinLength,
   MaxLength,
   IsOptional,
@@ -35,6 +36,10 @@ export class LoginDto {
   @IsString()
   @MinLength(6, { message: '密码至少6位' })
   password: string;
+
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }
 
 // 登录响应

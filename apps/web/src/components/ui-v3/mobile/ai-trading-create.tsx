@@ -1178,7 +1178,8 @@ export function CreateStrategyWizard() {
                     <p className="text-xs text-[#9090A0]">偏向比例 <span className="text-[#606070]">（偏向方向的格线占比，默认 70）</span></p>
                     <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <input type="number" min={50} max={90} step={5} value={gridParams.directionBiasRatio || ''}
-                        onChange={(e) => updateGrid('directionBiasRatio', Number(e.target.value) || 70)}
+                        onChange={(e) => updateGrid('directionBiasRatio', e.target.value === '' ? 0 : Number(e.target.value))}
+                        onBlur={() => { if (!gridParams.directionBiasRatio) updateGrid('directionBiasRatio', 70); }}
                         placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                         aria-label="偏向比例"
                       />

@@ -35,9 +35,9 @@ export default function LoginPage() {
     }
   }, [tgAutoLoginError]);
 
-  const handleLogin = async (email: string, password: string) => {
+  const handleLogin = async (email: string, password: string, rememberMe?: boolean) => {
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       router.push('/dashboard');
     } catch (err) {
       // 错误由 UI 组件内部处理

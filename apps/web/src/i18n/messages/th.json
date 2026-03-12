@@ -52,6 +52,7 @@
     "confirmPassword": "ยืนยันรหัสผ่าน",
     "username": "ชื่อผู้ใช้",
     "forgotPassword": "ลืมรหัสผ่าน?",
+    "rememberPassword": "จดจำการเข้าสู่ระบบ",
     "noAccount": "ยังไม่มีบัญชี?",
     "hasAccount": "มีบัญชีแล้ว?",
     "loginNow": "เข้าสู่ระบบเลย",

@@ -1679,7 +1679,8 @@ export function AIStrategyDetailPage() {
                               <p className="text-xs text-[#9090A0]">{t('detail.biasRatio')} <span className="text-[#606070]">（{t('detail.biasRatioDefault')}）</span></p>
                               <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                                 <input type="number" min={50} max={90} step={5} value={editGridDirectionBiasRatio || ''}
-                                  onChange={(e) => setEditGridDirectionBiasRatio(e.target.value === '' ? 70 : parseInt(e.target.value))}
+                                  onChange={(e) => setEditGridDirectionBiasRatio(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                                  onBlur={() => { if (!editGridDirectionBiasRatio) setEditGridDirectionBiasRatio(70); }}
                                   placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                                   aria-label={t('detail.biasRatio')}
                                 />

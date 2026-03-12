@@ -39,6 +39,7 @@ const ACCOUNT_LOCK_TTL = 30 * 60; // 锁定30分钟
 // Token TTL 常量
 const ACCESS_TOKEN_TTL = 2 * 60 * 60; // 2小时（秒）
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7天（秒）
+const REFRESH_TOKEN_TTL_REMEMBER = 30 * 24 * 60 * 60; // 30天（记住密码）
 
 @Injectable()
 export class AuthService implements OnModuleDestroy {
@@ -82,8 +83,9 @@ export class AuthService implements OnModuleDestroy {
     email?: string | null,
     ip?: string,
     userAgent?: string,
+    rememberMe?: boolean,
   ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
-    // Access Token (15min)
+    // Access Token (2h)
     const payload: JwtPayload = {
       sub: userId,
       email: email || undefined,
@@ -94,7 +96,8 @@ export class AuthService implements OnModuleDestroy {
 
     // Refresh Token（随机 64 字节 hex，不是 JWT）
     const refreshTokenValue = randomBytes(64).toString('hex');
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL * 1000);
+    const ttl = rememberMe ? REFRESH_TOKEN_TTL_REMEMBER : REFRESH_TOKEN_TTL;
+    const expiresAt = new Date(Date.now() + ttl * 1000);
 
     // 存储到数据库
     await this.prisma.refreshToken.create({
@@ -500,7 +503,7 @@ export class AuthService implements OnModuleDestroy {
     const [, , tokenPair] = await Promise.all([
       this.clearLoginFailures(dto.email),
       this.logAudit(user.id, 'user', 'login', 'user', user.id, '邮箱密码登录', ip),
-      this.generateTokenPair(user.id, user.email, ip),
+      this.generateTokenPair(user.id, user.email, ip, undefined, dto.rememberMe),
     ]);
 
     return {

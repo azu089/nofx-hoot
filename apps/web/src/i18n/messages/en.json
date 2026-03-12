@@ -52,6 +52,7 @@
     "confirmPassword": "Confirm Password",
     "username": "Username",
     "forgotPassword": "Forgot password?",
+    "rememberPassword": "Remember me",
     "noAccount": "Don't have an account?",
     "hasAccount": "Already have an account?",
     "loginNow": "Login now",

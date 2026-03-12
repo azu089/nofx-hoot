@@ -1,18 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { Eye, EyeOff, Mail, Lock, Wallet, Send } from 'lucide-react'
 import { useTranslations } from '@/i18n/provider'
 
 interface LoginPageProps {
-  onLogin?: (email: string, password: string) => void
+  onLogin?: (email: string, password: string, rememberMe?: boolean) => void
   onWalletConnect?: () => void
   onTelegramLogin?: () => void
   onRegister?: () => void
   onForgotPassword?: () => void
   initialShowEmailForm?: boolean  // 初始是否显示邮箱表单
 }
+
+const REMEMBERED_EMAIL_KEY = 'hoot_remembered_email'
 
 export function LoginPage({
   onLogin,
@@ -25,15 +27,31 @@ export function LoginPage({
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [showEmailForm, setShowEmailForm] = useState(initialShowEmailForm)
   const t = useTranslations('auth')
+
+  // 从 localStorage 恢复记住的邮箱
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBERED_EMAIL_KEY)
+    if (saved) {
+      setEmail(saved)
+      setRememberMe(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     try {
-      await onLogin?.(email, password)
+      // 记住邮箱
+      if (rememberMe) {
+        localStorage.setItem(REMEMBERED_EMAIL_KEY, email)
+      } else {
+        localStorage.removeItem(REMEMBERED_EMAIL_KEY)
+      }
+      await onLogin?.(email, password, rememberMe)
     } finally {
       setIsLoading(false)
     }
@@ -184,8 +202,17 @@ export function LoginPage({
                   </div>
                 </div>
 
-                {/* Forgot password link */}
-                <div className="text-right">
+                {/* Remember me + Forgot password */}
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded border-cyan-500/30 bg-[#1A1A24] text-cyan-500 focus:ring-cyan-500/30 focus:ring-offset-0 cursor-pointer"
+                    />
+                    <span className="text-sm text-[#9090A0]">{t('rememberPassword')}</span>
+                  </label>
                   <button
                     type="button"
                     onClick={onForgotPassword}

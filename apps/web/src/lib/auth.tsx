@@ -22,7 +22,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   /** TG Mini App 自动登录失败的错误信息（非空时可在 UI 上展示） */
   tgAutoLoginError: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, nickname?: string, inviteCode?: string) => Promise<void>;
   logout: () => Promise<void> | void;
   sendVerificationCode: (email: string) => Promise<void>;
@@ -231,13 +231,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     poll();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, rememberMe?: boolean) => {
     const response = await api.post<{
       accessToken: string;
       refreshToken?: string;
       expiresIn?: number;
       user: User;
-    }>('/auth/login', { email, password });
+    }>('/auth/login', { email, password, rememberMe });
 
     const { accessToken, refreshToken: rt, user: userData } = response.data;
 

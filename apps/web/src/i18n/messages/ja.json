@@ -52,6 +52,7 @@
     "confirmPassword": "パスワード確認",
     "username": "ユーザー名",
     "forgotPassword": "パスワードを忘れた？",
+    "rememberPassword": "ログイン情報を保存",
     "noAccount": "アカウントをお持ちでない？",
     "hasAccount": "既にアカウントをお持ち？",
     "loginNow": "今すぐログイン",

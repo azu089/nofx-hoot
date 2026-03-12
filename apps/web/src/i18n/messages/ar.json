@@ -52,6 +52,7 @@
     "confirmPassword": "تأكيد كلمة المرور",
     "username": "اسم المستخدم",
     "forgotPassword": "نسيت كلمة المرور؟",
+    "rememberPassword": "تذكرني",
     "noAccount": "ليس لديك حساب؟",
     "hasAccount": "لديك حساب بالفعل؟",
     "loginNow": "تسجيل الدخول الآن",
