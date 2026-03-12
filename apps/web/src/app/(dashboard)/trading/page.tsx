@@ -245,26 +245,40 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易历史（交易所 CCXT fetchMyTrades 真实平仓成交，含价格/数量/PnL）
+  // 获取交易历史（从 DB 读取，网格 saveClosedPositionRecord 每次平仓都会写入）
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
+      const exchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
+      const params = new URLSearchParams({ limit: '50' });
+      if (exchange) params.set('exchange', exchange);
       const response = await api.get<{
         items: Array<{
           id: string;
           symbol: string;
           side: string;
+          type: string;
           price: string;
+          entryPrice: string;
+          closePrice: string;
           amount: string;
+          total: string;
           pnl: string;
+          pnlPercent?: string;
           fee: string;
-          time: string;
-          tradeId?: string;
+          status: string;
+          closedAt: string;
+          createdAt: string;
+          tradingType?: string;
+          leverage?: number;
+          margin?: string;
+          marginMode?: string;
+          closeReason?: string;
+          strategyName?: string;
+          source?: string;
         }>;
         total: number;
-        source: 'exchange';
-        error?: string;
-      }>(`/api-keys/${selectedApiKeyId}/trade-history?limit=50`);
+      }>(`/trading/positions/history?${params.toString()}`);
       return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
@@ -653,30 +667,30 @@ export default function TradingPage() {
         };
       });
 
-  // 转换交易历史数据格式（数据来源：交易所 CCXT fetchMyTrades 真实平仓成交）
+  // 转换交易历史数据格式（数据来源：DB position 表，网格平仓时自动写入）
   const transformedHistory = historyData?.items?.map(h => ({
     id: h.id,
     symbol: normalizeSymbol(h.symbol),
     side: h.side as 'long' | 'short',
-    type: 'market',
-    price: parseFloat(h.price || '0'),
-    entryPrice: parseFloat(h.price || '0'), // 平仓价（成交价）
-    closePrice: parseFloat(h.price || '0'),
+    type: h.type || 'market',
+    price: parseFloat(h.closePrice || h.price || '0'),
+    entryPrice: parseFloat(h.entryPrice || '0'),
+    closePrice: parseFloat(h.closePrice || h.price || '0'),
     amount: parseFloat(h.amount || '0'),
     filled: parseFloat(h.amount || '0'),
-    total: parseFloat(h.price || '0') * parseFloat(h.amount || '0'),
+    total: parseFloat(h.total || '0'),
     pnl: parseFloat(h.pnl || '0'),
-    pnlPercent: 0, // 交易所不直接返回百分比
+    pnlPercent: parseFloat(h.pnlPercent || '0'),
     fee: parseFloat(h.fee || '0'),
-    time: h.time,
+    time: h.closedAt || h.createdAt,
     status: 'filled' as const,
-    marketType: 'futures' as const,
-    leverage: 1,
-    margin: 0,
-    closeReason: undefined,
-    strategyName: undefined,
-    source: 'exchange',
-    openTime: h.time,
+    marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
+    leverage: h.leverage || 1,
+    margin: parseFloat(h.margin || '0'),
+    closeReason: h.closeReason,
+    strategyName: h.strategyName,
+    source: h.source || 'ai_strategy',
+    openTime: h.createdAt,
   }));
 
   // 转换执行日志数据格式

@@ -346,6 +346,11 @@ export class GridTradingService {
   // 确保每次容器重启后首轮必定执行 exchange 恢复，不受 getGridState 预加载影响
   private readonly reconcileCompleted = new Set<string>();
 
+  // neutral side 一次性修正追踪：容器重启后首个有 currentPrice 的轮次执行一次
+  // nofx: side 在 initializeGridLevels 用 currentPrice 一次性赋值，之后静态不变
+  // HOOT buildGridLinesFromConfig 用 centerPrice（静态中间价），重启后需用实时价修正空层 side
+  private readonly neutralSideCorrected = new Set<string>();
+
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
     const map: Record<string, string> = {
@@ -950,6 +955,31 @@ export class GridTradingService {
     let trades = 0;
     let errors = 0;
 
+    // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
+    // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
+    // HOOT buildGridLinesFromConfig 用 centerPrice（上下界中间价），与实时价不同，需修正
+    // 仅对 empty 层修正；pending/filled 层 side 不变（由交易所挂单/持仓方向决定）
+    if (!this.neutralSideCorrected.has(strategyId)) {
+      this.neutralSideCorrected.add(strategyId);
+      if ((state.currentDirection ?? 'neutral') === 'neutral') {
+        let corrected = 0;
+        for (const line of state.gridLines) {
+          if (line.state === 'empty') {
+            const correctSide = line.price <= currentPrice ? 'buy' : 'sell';
+            if (line.side !== correctSide) {
+              line.side = correctSide;
+              corrected++;
+            }
+          }
+        }
+        if (corrected > 0) {
+          this.logger.log(
+            `[网格] 一次性 neutral side 修正: ${corrected} 层（基于实时价 ${currentPrice}）`,
+          );
+        }
+      }
+    }
+
     // ──── 风控优先：Step 3/3.5/4 始终在突破检查(Step 2)前执行，确保即使突破 return 风控也已生效 ────
     let earlyAdapter: ExchangeAdapter | null = null;
 
@@ -1222,18 +1252,6 @@ export class GridTradingService {
         }
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
-
-        // nofx 对齐：neutral 方向按实时价每轮修正空层 side
-        // nofx initializeGridLevels: price > currentPrice → "sell" else "buy"（动态依据实时价）
-        // HOOT buildGridLinesFromConfig 在 loadGridState 时用 centerPrice（静态），每轮在此纠正
-        // 只更新 empty 层：pending/filled 层 side 由交易所数据决定，不改动
-        if ((state.currentDirection ?? 'neutral') === 'neutral') {
-          for (const line of state.gridLines) {
-            if (line.state === 'empty') {
-              line.side = line.price <= currentPrice ? 'buy' : 'sell';
-            }
-          }
-        }
 
         // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
@@ -4254,6 +4272,7 @@ export class GridTradingService {
   clearGridState(strategyId: string): void {
     this.gridStates.delete(strategyId);
     this.reconcileCompleted.delete(strategyId);  // 下次启动重新执行 exchange 恢复
+    this.neutralSideCorrected.delete(strategyId); // 下次启动重新执行 neutral side 修正
   }
 
   async getGridState(strategyId: string): Promise<GridState | null> {
