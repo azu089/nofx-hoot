@@ -20,7 +20,7 @@ services:
     container_name: hoot-api
     restart: unless-stopped
     ports:
-      - "4001:4001"
+      - "127.0.0.1:4001:4001"
     environment:
       - NODE_ENV=production
       - API_PORT=4001
@@ -113,7 +113,7 @@ services:
     container_name: hoot-web
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
