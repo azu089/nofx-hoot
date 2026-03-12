@@ -384,8 +384,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { posSide: 'long' });
         return this.mapOrderResult(order);
       } else {
-        // net_mode（单向持仓）：普通市价卖单，OKX 自动减少多头，禁止带 posSide/reduceOnly
-        const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, {});
+        // net_mode（单向持仓）：reduceOnly=true 告知 OKX 仅减仓，绕过开多保证金检查（51008）
+        const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { reduceOnly: true });
         return this.mapOrderResult(order);
       }
     }
@@ -408,8 +408,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { posSide: 'short' });
         return this.mapOrderResult(order);
       } else {
-        // net_mode（单向持仓）：普通市价买单，OKX 自动减少空头，禁止带 posSide/reduceOnly
-        const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, {});
+        // net_mode（单向持仓）：reduceOnly=true 告知 OKX 仅减仓，绕过开空保证金检查（51008）
+        const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
         return this.mapOrderResult(order);
       }
     }
