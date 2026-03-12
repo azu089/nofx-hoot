@@ -770,13 +770,16 @@ export class GridTradingService {
     // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
     // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
     if (state && !this.reconcileCompleted.has(strategyId)) {
-      // 容器重启恢复：全部重置 → 从交易所重建（nofx 对齐：交所是唯一事实）
-      // recoverOrdersFromExchange：恢复挂单 → pending（不取消，与交所一致）
-      // recoverPositionsFromExchange：恢复持仓 → filled（OKX net_mode 兼容）
-      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
-      this.resetGridLayers(state);
-      await this.recoverOrdersFromExchange(state, userId, apiKeyId);
-      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+      // 容器重启恢复：直接使用 DB 状态（保留多层 filled 信息）
+      // DB 每轮由 persistGridState 更新，层状态与交易所基本一致
+      // syncOrderFills 首轮通过 getOrderStatus 精确检测重启窗口期间的成交/撤单
+      // 不合并到单层：多层 filled 始终保持多层，不因重启丢失分层粒度
+      const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
+      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
+      this.logger.log(
+        `[网格] 容器重启恢复: 使用 DB 状态（filled=${filledCount}层, pending=${pendingCount}层）` +
+        ` → syncOrderFills 首轮检测重启期间成交/撤单`,
+      );
       this.reconcileCompleted.add(strategyId);
     }
 
