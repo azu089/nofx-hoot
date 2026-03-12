@@ -3545,15 +3545,32 @@ export class GridTradingService {
       const shortPositions = symPositions.filter((p: any) => p.side === 'short');
 
       // 多头：映射到最近的 buy 层
+      // 优先选 empty buy 层；若全部 buy 层都是 pending，降级到最近 pending buy 层
       for (const pos of longPositions) {
         if ((pos.quantity ?? 0) < 0.0001) continue;
         const entryPrice = pos.entryPrice ?? 0;
-        // 按距入场价最近排序，选未被占用的 buy 层
-        const candidates = state.gridLines
+
+        // 首选：empty buy 层
+        let candidates = state.gridLines
           .filter(l => l.side === 'buy' && l.state === 'empty')
           .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        if (candidates.length === 0) continue;
-        const layer = candidates[0];
+        let layer = candidates[0];
+
+        // 降级：pending buy 层
+        if (!layer) {
+          const pendingCandidates = state.gridLines
+            .filter(l => l.side === 'buy' && l.state === 'pending')
+            .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+          layer = pendingCandidates[0];
+          if (layer && layer.orderId) {
+            this.logger.warn(`[网格] reconcile: 无空 buy 层，多头映射到 pending L${(layer.index ?? 0) + 1}，旧订单 ${layer.orderId} 将被孤儿清理`);
+            delete state.orderBook[layer.orderId];
+            layer.orderId = undefined;
+            layer.state = 'empty';
+          }
+        }
+
+        if (!layer) continue;
         layer.state = 'filled';
         layer.positionEntry = entryPrice;
         layer.positionSize = pos.quantity;
@@ -3563,14 +3580,34 @@ export class GridTradingService {
       }
 
       // 空头：映射到最近的 sell 层
+      // 优先选 empty sell 层；若 Step 2 已把所有 sell 层都标为 pending（无 empty），
+      // 降级到最近的 pending sell 层（把其挂单从 orderBook 删除，让 cancelOrphanOrders 取消它）
       for (const pos of shortPositions) {
         if ((pos.quantity ?? 0) < 0.0001) continue;
         const entryPrice = pos.entryPrice ?? 0;
-        const candidates = state.gridLines
+
+        // 首选：empty sell 层
+        let candidates = state.gridLines
           .filter(l => l.side === 'sell' && l.state === 'empty')
           .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        if (candidates.length === 0) continue;
-        const layer = candidates[0];
+        let layer = candidates[0];
+
+        // 降级：pending sell 层（当所有 sell 层都已被挂单占用时）
+        if (!layer) {
+          const pendingCandidates = state.gridLines
+            .filter(l => l.side === 'sell' && l.state === 'pending')
+            .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
+          layer = pendingCandidates[0];
+          if (layer && layer.orderId) {
+            this.logger.warn(`[网格] reconcile: 无空 sell 层，空头映射到 pending L${(layer.index ?? 0) + 1}，旧订单 ${layer.orderId} 将被孤儿清理`);
+            // 从 orderBook 移除：使其成为孤儿，cancelOrphanOrders 会取消它
+            delete state.orderBook[layer.orderId];
+            layer.orderId = undefined;
+            layer.state = 'empty';
+          }
+        }
+
+        if (!layer) continue;
         layer.state = 'filled';
         layer.positionEntry = entryPrice;
         layer.positionSize = pos.quantity;
