@@ -754,17 +754,19 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // 热重启三步恢复（网格数据架构原则.md）：
-        // Step 1: 全空层（清除 DB 历史状态）
+        // nofx 对齐：全空层 + 取消所有交易所挂单（干净起点，杜绝历史状态污染）
+        // nofx 每次启动 InitializeGrid() = 全空层，从不恢复 DB 历史
         this.resetGridLayers(state);
+        await this.cancelAllGridOrders(state, userId, apiKeyId);
 
         // 价格超出范围时重算 ATR 边界（重建层价格）
+        // 此时内存已全空，reinitializeGridLevels 的 filledSnapshots=[] → 纯净新价格层
         if (!state.userLockedRange) {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
           const withinRange = restartPrice >= state.lowerPrice * 0.99 && restartPrice <= state.upperPrice * 1.01;
           if (withinRange && state.upperPrice > state.lowerPrice) {
             this.logger.log(
-              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，从交易所恢复状态`,
+              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，全空层等待 AI 重建`,
             );
           } else {
             this.logger.log(
@@ -773,8 +775,8 @@ export class GridTradingService {
             await this.reinitializeGridLevels(state, restartPrice);
           }
         }
-        // Step 2+3: 从交易所挂单→pending，从交易所持仓→filled（不取消任何挂单）
-        await this.reconcileExchangeState(state, userId, apiKeyId);
+        // nofx 对齐：层价格就绪后，从交易所持仓恢复 filled 层（完整量→最近层）
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
         await this.persistGridState(strategyId, state);
       }
     }
@@ -3448,9 +3450,9 @@ export class GridTradingService {
   }
 
   /**
-   * 从交易所持仓恢复 filled 层（对齐 nofx autoAdjustGrid L1456-1479）
-   * 用于风控重启/needsReconcile 路径（这些路径会先 cancelAllGridOrders，再只恢复持仓）
-   * 热重启路径请使用 reconcileExchangeState（Step2+Step3 合并，不取消挂单）
+   * nofx 对齐：启动时从交易所持仓恢复 filled 层（对齐 nofx autoAdjustGrid L1456-1479）
+   * 全部挂单已在 cancelAllGridOrders 取消，此函数只映射持仓
+   * 持仓量完整放入最近层（positionSize 可能大于标准每层数量），由 AI 自行决策处理
    */
   private async recoverPositionsFromExchange(
     state: GridState,
@@ -3506,107 +3508,6 @@ export class GridTradingService {
       }
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
-    } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
-    }
-  }
-
-  /**
-   * 启动恢复三步流程（网格数据架构原则.md 标准）：
-   * Step 2: 从交易所挂单 → 恢复 pending 层（按价格最近匹配，不取消）
-   * Step 3: 从交易所持仓 → 恢复 filled 层（调用 recoverPositionsFromExchange）
-   *
-   * 用于热重启（代码部署/容器重启）——交易所状态完整保留，仅重建内存映射
-   * 禁止在此函数中取消任何交易所挂单
-   */
-  private async reconcileExchangeState(
-    state: GridState,
-    userId: string,
-    apiKeyId: string,
-  ): Promise<void> {
-    if (!this.adapterFactory || !apiKeyId) return;
-    let adapter: ExchangeAdapter | null = null;
-    try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-
-      // Step 2: 挂单 → pending 层（按价格最近匹配）
-      const openOrders = await adapter.getOpenOrders(state.symbol).catch(() => [] as any[]);
-      const usedIdx = new Set<number>();
-      let mappedOrders = 0;
-      const threshold = state.gridSpacing * 0.6;  // 匹配半径：60% 格距
-
-      for (const order of openOrders) {
-        const orderPrice = order.price ?? 0;
-        if (!orderPrice) continue;
-        let bestIdx = -1, bestDist = Infinity;
-        for (let i = 0; i < state.gridLines.length; i++) {
-          if (usedIdx.has(i)) continue;
-          const d = Math.abs(state.gridLines[i].price - orderPrice);
-          if (d < bestDist) { bestDist = d; bestIdx = i; }
-        }
-        if (bestIdx >= 0 && bestDist <= threshold) {
-          usedIdx.add(bestIdx);
-          const layer = state.gridLines[bestIdx];
-          layer.state = 'pending';
-          layer.side = order.side;
-          layer.orderId = order.orderId;
-          layer.orderQuantity = order.quantity;
-          mappedOrders++;
-        }
-      }
-      this.logger.log(
-        `[网格] 启动恢复: 挂单 ${mappedOrders}/${openOrders.length} 个 → pending层` +
-        (openOrders.length > mappedOrders
-          ? `（${openOrders.length - mappedOrders} 个超出格距范围，忽略）` : ''),
-      );
-
-      // Step 3: 持仓 → filled 层（复用 recoverPositionsFromExchange 逻辑，但共用同一 adapter）
-      const positions = await adapter.getPositions().catch(() => [] as any[]);
-      const baseSymbol = state.symbol.split('/')[0];
-      const symPositions = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
-      let mappedPos = 0;
-
-      for (const pos of symPositions) {
-        const qty: number = pos.quantity ?? 0;
-        if (qty <= 0.0001) continue;
-        const entry: number = pos.entryPrice ?? 0;
-        if (entry <= 0) continue;
-        const rawSide = pos.side as string;
-        const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
-
-        let closestIdx = -1, closestDist = Infinity;
-        for (let i = 0; i < state.gridLines.length; i++) {
-          if (usedIdx.has(i)) continue;  // 已被挂单占用的层跳过
-          const d = Math.abs(state.gridLines[i].price - entry);
-          if (d < closestDist) { closestDist = d; closestIdx = i; }
-        }
-        if (closestIdx >= 0) {
-          usedIdx.add(closestIdx);
-          const layer = state.gridLines[closestIdx];
-          layer.state = 'filled';
-          layer.positionEntry = entry;
-          layer.positionSize = qty;
-          layer.side = posSide;
-          layer.orderId = undefined;
-          layer.orderQuantity = 0;
-          layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
-          mappedPos++;
-
-          const normalQty = layer.allocatedUSD > 0 && entry > 0
-            ? (layer.allocatedUSD * (state.leverage ?? 1)) / entry : 0;
-          const isBig = normalQty > 0 && qty > normalQty * 1.5;
-          this.logger.log(
-            `[网格] 启动恢复: ${posSide === 'buy' ? '多' : '空'}头 ${qty} @ $${entry.toFixed(4)}` +
-            ` → 层${closestIdx + 1}@$${layer.price.toFixed(2)}` +
-            (isBig ? ` ⚠️ 大持仓，AI将逐步处理` : ''),
-          );
-        }
-      }
-      if (symPositions.filter((p: any) => (p.quantity ?? 0) > 0.0001).length === 0) {
-        this.logger.log(`[网格] 启动恢复: 无持仓`);
-      }
-    } catch (e: any) {
-      this.logger.warn(`[网格] 启动恢复失败（忽略）: ${e.message}`);
     } finally {
       if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
     }
