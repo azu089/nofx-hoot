@@ -58,6 +58,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         highWaterMark: true,
         leverage: true,
         aiStrategyId: true,
+        exchange: true,
+        source: true,
       },
     });
 
@@ -227,6 +229,11 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       symbol: string;
       side: string;
       amount: any;
+      entryPrice?: any;
+      leverage?: number | null;
+      exchange?: string | null;
+      source?: string | null;
+      aiStrategyId?: string | null;
     },
     pnlPercent: number,
     currentPrice: number,
@@ -301,6 +308,35 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           this.logger.warn(`[AI监控] 分批止盈燃油费失败(非致命): ${e.message}`);
         }
       }
+
+      // 写入历史持仓记录（与扣费对齐，每次减仓都有记录）
+      const entryPriceNum = parseFloat(pos.entryPrice?.toString() || '0');
+      const margin = closeQty > 0 && (pos.leverage || 1) > 0
+        ? (entryPriceNum * closeQty) / (pos.leverage || 1)
+        : 0;
+      this.prisma.position.create({
+        data: {
+          userId: pos.userId,
+          exchange: pos.exchange || 'unknown',
+          symbol: pos.symbol,
+          side: pos.side as string,
+          entryPrice: pos.entryPrice?.toString() || '0',
+          exitPrice: currentPrice.toString(),
+          closePrice: currentPrice.toString(),
+          amount: closeQty.toString(),
+          tradingType: 'futures',
+          leverage: pos.leverage || 1,
+          margin: margin.toString(),
+          realizedPnl: closedPnl.toString(),
+          pnl: closedPnl.toString(),
+          status: 'closed',
+          closeReason: `scale_out_s${entry.stage}`,
+          closedAt: new Date(),
+          source: pos.source || 'ai_research',
+          aiStrategyId: pos.aiStrategyId || undefined,
+          createdAt: new Date(),
+        },
+      }).catch((e: any) => this.logger.warn(`[AI监控] 分批止盈历史持仓写入失败(忽略): ${e.message}`));
 
       if (newStage === 3) {
         await this.prisma.position.update({

@@ -113,13 +113,9 @@ export class FeeService {
       finalFeeRate = new Decimal(0);
     }
 
-    // 计算手续费金额
-    let feeAmount = profitDecimal.times(finalFeeRate);
-
-    // 应用最小手续费
-    if (feeAmount.gt(0) && feeAmount.lt(FEE_CONFIG.MIN_FEE)) {
-      feeAmount = FEE_CONFIG.MIN_FEE;
-    }
+    // 计算手续费金额（直接按费率计算，不设最低门槛）
+    // 网格策略单笔利润很小（$0.01-0.05），MIN_FEE=0.01 会导致实际费率远超 20%
+    const feeAmount = profitDecimal.times(finalFeeRate);
 
     // 计算净利润
     const netProfit = profitDecimal.minus(feeAmount);
