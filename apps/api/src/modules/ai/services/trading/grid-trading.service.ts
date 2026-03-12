@@ -3528,14 +3528,16 @@ export class GridTradingService {
           : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
         // 估算层数：持仓量 / 标准每层数量（向上取整，最少1层）
+        // 使用 pos.leverage（交易所实际杠杆），而非 state.leverage（可能是 AI 动态杠杆的旧值）
+        const posLeverage = Math.max(1, (pos as any).leverage ?? state.leverage ?? 1);
         const refLayer = state.gridLines[0];
         const normalQty = refLayer?.allocatedUSD > 0 && avgEntry > 0
-          ? (refLayer.allocatedUSD * (state.leverage ?? 1)) / avgEntry : 0;
+          ? (refLayer.allocatedUSD * posLeverage) / avgEntry : 0;
         const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
         const perLayerQty = totalQty / layerCount;
 
         this.logger.log(
-          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} → 映射到${layerCount}层`,
+          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} lev=${posLeverage}x normalQty=${normalQty.toFixed(4)} → 映射到${layerCount}层`,
         );
 
         // 将每层映射到最近的空层（按均价距离排序，跳过已占用层）
