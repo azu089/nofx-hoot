@@ -754,33 +754,28 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // 从 DB 恢复，需要 reconcile
-        await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-        // 重启边界重算：仅当当前价格超出现有网格范围时才重建
-        // 原因：每次重建都会改变 layer 价格 → reconcile 时旧价位订单与新 layer 不对齐 → 自动取消
-        // 结果：AI 每次重启后都看到全空 grid，重新挂 20 个订单（浪费 API + 扰乱持仓）
+        // nofx 对齐：全空层 + 取消所有交易所挂单（干净起点，杜绝历史状态污染）
+        // nofx 每次启动 InitializeGrid() = 全空层，从不恢复 DB 历史
+        this.resetGridLayers(state);
+        await this.cancelAllGridOrders(state, userId, apiKeyId);
+
+        // 价格超出范围时重算 ATR 边界（重建层价格）
+        // 此时内存已全空，reinitializeGridLevels 的 filledSnapshots=[] → 纯净新价格层
         if (!state.userLockedRange) {
           const restartPrice = await this.getCurrentPrice(state.symbol).catch(() => state!.lastPrice);
           const withinRange = restartPrice >= state.lowerPrice * 0.99 && restartPrice <= state.upperPrice * 1.01;
           if (withinRange && state.upperPrice > state.lowerPrice) {
-            // 价格在范围内：保留现有挂单和 layer 价格，不重建
             this.logger.log(
-              `[网格] DB 恢复后重启：当前价 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，跳过重建，保留交易所挂单`,
+              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 在范围内 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，全空层等待 AI 重建`,
             );
           } else {
-            // 价格超出范围：以当前价重算 ATR 边界（此时交易所挂单本来就需要重建）
             this.logger.log(
-              `[网格] DB 恢复后重启：当前价 ${restartPrice.toFixed(4)} 超出范围 [${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}]，重算 ATR 边界`,
+              `[网格] 重启: 价格 ${restartPrice.toFixed(4)} 超出范围，重算 ATR 边界`,
             );
             await this.reinitializeGridLevels(state, restartPrice);
-            // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
-            await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-            await this.persistGridState(strategyId, state);
           }
         }
-        // 无论是否 userLockedRange，reconcile 后都清理孤儿订单
-        // （范围超出时已重建；范围内时可能有旧价位孤儿，如崩溃前部分撤单未完成）
-        await this.cancelOrphanOrders(strategyId, userId, apiKeyId, state);
+        await this.persistGridState(strategyId, state);
       }
     }
 
@@ -801,15 +796,18 @@ export class GridTradingService {
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
-      // 风控重启后立即 reconcile：读取交易所现有挂单和持仓
-      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单（干净起点）
+      this.resetGridLayers(state);
+      await this.cancelAllGridOrders(state, userId, apiKeyId);
     }
 
-    // Step 1.3: AI 暂停恢复后 reconcile（每次恢复都重新从交易所读取真实状态）
-    // resume_grid / breakout 自动恢复 会设置 needsReconcile=true，下次周期开始时触发
+    // Step 1.3: 暂停恢复后干净重启（resume_grid / breakout 自动恢复触发）
+    // nofx 对齐：全空层 + 取消所有挂单，让 AI 在下轮从干净状态重建
     if (state && !state.isPaused && state.needsReconcile) {
       state.needsReconcile = false;
-      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+      this.logger.log(`[网格] 暂停恢复: 全空层 + 取消所有挂单（干净重启）`);
+      this.resetGridLayers(state);
+      await this.cancelAllGridOrders(state, userId, apiKeyId);
     }
 
     // Step 1.5: 配置变更检测 — 原地取消挂单 + 重建层级（历史利润不清零）
@@ -874,9 +872,7 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, rebuildPrice);
         }
-        // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
-        // reconcileGridState Step1 重置状态（不改价格），Step3 从 getPositions 恢复真实 filled 层
-        await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+        // nofx 对齐：重建后全空层（cleanupExistingOrders 已取消所有挂单，无需 reconcile）
         state.needsReconcile = false;
         await this.persistGridState(strategyId, state);
         this.logger.log(
@@ -928,8 +924,8 @@ export class GridTradingService {
       // 首次初始化（非配置变更路径）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
-        // 新建后立即 reconcile：读取交易所现有挂单和持仓
-        await this.reconcileGridState(strategyId, userId, apiKeyId, state);
+        // nofx 对齐：新建网格 = 全空层，取消所有旧挂单（initializeGrid 内已设全空层）
+        await this.cancelAllGridOrders(state, userId, apiKeyId);
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
         return { trades: 0, errors: 0 };
@@ -2122,7 +2118,7 @@ export class GridTradingService {
     } catch { /* 忽略，不阻塞主流程 */ }
 
     // ── 对齐 nofx: 每轮从交易所实时数据重建 state.gridLines ──
-    // state.gridLines 由 syncOrderFills（周期末增量更新）和 reconcileGridState（启动时初始化）维护
+    // state.gridLines 由 syncOrderFills（周期末增量更新）维护；启动时 resetGridLayers 全空，cancelAllGridOrders 清空交易所挂单
     // 禁止在 buildGridContext 内做持仓对账（见 .claude/rules/网格数据架构原则.md）
 
     // 价格变化（改用 1h K 线，精确且无临界问题）
@@ -2439,8 +2435,7 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, newPrice);
         }
-        // 重建后立即从交易所恢复真实持仓（内存快照不可靠，交易所是唯一事实）
-        await this.reconcileGridState(state.strategyId, userId, apiKeyId, state);
+        // nofx 对齐：adjust_grid 重建后全空层（cancelAllOrders 已在上方执行，无需 reconcile）
         // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
         if (state.isPaused && state.pauseSource !== 'risk_control') {
           state.isPaused = false;
@@ -3431,268 +3426,45 @@ export class GridTradingService {
    * 取消 exchange 上所有不在当前 orderBook 中的挂单（孤儿）
    * 用于 reinitializeGridLevels 清空 orderBook 之后，防止旧价位挂单持续占用保证金
    */
-  private async cancelOrphanOrders(
-    _strategyId: string,
-    userId: string,
-    apiKeyId: string,
-    state: GridState,
-  ): Promise<void> {
-    if (!this.adapterFactory) return;
-    try {
-      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-      if (!isGridAdapter(adapter)) return;
-
-      const openOrders = await adapter.getOpenOrders(state.symbol);
-      const trackedIds = new Set(Object.keys(state.orderBook));
-      const orphans = openOrders.filter((o) => !trackedIds.has(o.orderId));
-
-      if (orphans.length === 0) return;
-
-      this.logger.warn(
-        `[网格] 边界重建后发现 ${orphans.length} 个孤儿订单，取消中: ${orphans.map((o) => o.orderId).join(', ')}`,
-      );
-      await Promise.allSettled(
-        orphans.map((o) =>
-          (adapter as GridExchangeAdapter)
-            .cancelOrder(state.symbol, o.orderId)
-            .catch((e: any) => this.logger.warn(`[网格] 取消孤儿订单 ${o.orderId} 失败: ${e.message}`)),
-        ),
-      );
-      this.logger.log(`[网格] 边界重建孤儿清理完成`);
-    } catch (e: any) {
-      this.logger.warn(`[网格] cancelOrphanOrders 失败: ${e.message}`);
-    }
-  }
-
-  // ========================= 启动恢复（T4: reconcileGridState） =========================
-
   /**
-   * 网格状态启动恢复
-   *
-   * 从 DB 恢复后，与交易所实际状态同步
+   * nofx 对齐：全空层（不信任 DB/内存历史状态）
+   * 等价于 nofx InitializeGrid 中 levels 全设为 "empty"
    */
-  async reconcileGridState(
-    strategyId: string,
-    userId: string,
-    apiKeyId: string,
-    state?: GridState | null,
-  ): Promise<void> {
-    if (!state) {
-      state = this.gridStates.get(strategyId) || await this.loadGridState(strategyId);
-    }
-    if (!state) return;
-
-    // ── Step 1: 立即重置所有层（DB 快照只用于账本，层状态永远以交易所为准）──
-    // 必须在 adapterFactory/adapter 检查之前：即使后续 API 失败，
-    // 层状态也是干净的空格，而不是 DB 的历史脏数据。
+  private resetGridLayers(state: GridState): void {
     for (const line of state.gridLines) {
       line.state = 'empty';
       line.positionSize = 0;
       line.positionEntry = 0;
       line.unrealizedPnl = 0;
       line.orderId = undefined;
-      line.orderQuantity = 0; // 对齐 nofx: 始终从 getOpenOrders 重新设置，杜绝 stale 值
+      line.orderQuantity = 0;
     }
     state.orderBook = {};
+  }
 
-    if (!this.adapterFactory) {
-      this.logger.warn(`[网格] reconcile: adapterFactory 未就绪，层已重置为空（下轮 buildContext 从交易所重建）`);
-      return;
-    }
-
-    this.logger.log(`[网格] 恢复状态: ${strategyId}`);
-
+  /**
+   * nofx 对齐：取消交易所所有挂单（clean slate）
+   * 等价于 nofx autoAdjustGrid 中 cancelAllGridOrders
+   * 错误忽略（取消失败不阻塞启动）
+   */
+  private async cancelAllGridOrders(
+    state: GridState,
+    userId: string,
+    apiKeyId: string,
+  ): Promise<void> {
+    if (!this.adapterFactory) return;
+    let adapter: ExchangeAdapter | null = null;
     try {
-      const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
-
-      // ── Step 2: 从交易所活跃订单恢复 pending 层 ──
-      if (isGridAdapter(adapter)) {
-        const openOrders = await adapter.getOpenOrders(state.symbol);
-        this.logger.log(`[网格] reconcile: 交易所活跃订单 ${openOrders.length} 个`);
-
-        for (const order of openOrders) {
-          // 找到价格最近的层
-          let closestIdx = -1;
-          let closestDist = Infinity;
-          for (let i = 0; i < state.gridLines.length; i++) {
-            const dist = Math.abs(state.gridLines[i].price - (order.price ?? 0));
-            if (dist < closestDist) { closestDist = dist; closestIdx = i; }
-          }
-          if (closestIdx >= 0 && state.gridLines[closestIdx].state === 'empty') {
-            state.gridLines[closestIdx].state = 'pending';
-            state.gridLines[closestIdx].orderId = order.orderId;
-            state.gridLines[closestIdx].orderQuantity = order.quantity ?? 0; // 使用交易所实际数量，而非 DB 旧值
-            state.orderBook[order.orderId] = closestIdx;
-          } else {
-            // 无法映射到层（价格不在网格范围内或层已被占用）→ 取消
-            this.logger.warn(`[网格] reconcile: 无法映射订单 ${order.orderId}@${order.price}，取消`);
-            await (adapter as GridExchangeAdapter)
-              .cancelOrder(state.symbol, order.orderId)
-              .catch((e: any) => this.logger.warn(`[网格] 取消订单 ${order.orderId} 失败: ${e.message}`));
-          }
-        }
-      }
-
-      // ── Step 3: 从交易所持仓恢复 filled 层（按入场价映射到最近空层）──
-      const positions = await adapter.getPositions();
-      const baseSymbol = state.symbol.split('/')[0];
-      const symPositions = positions.filter((p) => p.symbol.includes(baseSymbol));
-
-      // 按 side 分组
-      const longPositions = symPositions.filter((p: any) =>
-        p.side === 'long' || p.side === 'net' || !p.side
-      );
-      const shortPositions = symPositions.filter((p: any) => p.side === 'short');
-
-      // 多头：映射到最近的 buy 层
-      // 优先选 empty buy 层；若全部 buy 层都是 pending，降级到最近 pending buy 层
-      for (const pos of longPositions) {
-        if ((pos.quantity ?? 0) < 0.0001) continue;
-        const entryPrice = pos.entryPrice ?? 0;
-
-        // 首选：empty buy 层
-        let candidates = state.gridLines
-          .filter(l => l.side === 'buy' && l.state === 'empty')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        let layer = candidates[0];
-
-        // 降级：pending buy 层
-        if (!layer) {
-          const pendingCandidates = state.gridLines
-            .filter(l => l.side === 'buy' && l.state === 'pending')
-            .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-          layer = pendingCandidates[0];
-          if (layer && layer.orderId) {
-            this.logger.warn(`[网格] reconcile: 无空 buy 层，多头映射到 pending L${(layer.index ?? 0) + 1}，旧订单 ${layer.orderId} 将被孤儿清理`);
-            delete state.orderBook[layer.orderId];
-            layer.orderId = undefined;
-            layer.state = 'empty';
-          }
-        }
-
-        if (!layer) continue;
-        layer.state = 'filled';
-        layer.positionEntry = entryPrice;
-        layer.positionSize = pos.quantity;
-        layer.side = 'buy';
-        layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
-        this.logger.log(`[网格] reconcile: 多头 ${pos.quantity.toFixed(4)} 入场@${entryPrice.toFixed(2)} → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
-      }
-
-      // 空头：映射到最近的 sell 层
-      // 优先选 empty sell 层；若 Step 2 已把所有 sell 层都标为 pending（无 empty），
-      // 降级到最近的 pending sell 层（把其挂单从 orderBook 删除，让 cancelOrphanOrders 取消它）
-      for (const pos of shortPositions) {
-        if ((pos.quantity ?? 0) < 0.0001) continue;
-        const entryPrice = pos.entryPrice ?? 0;
-
-        // 首选：empty sell 层
-        let candidates = state.gridLines
-          .filter(l => l.side === 'sell' && l.state === 'empty')
-          .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-        let layer = candidates[0];
-
-        // 降级：pending sell 层（当所有 sell 层都已被挂单占用时）
-        if (!layer) {
-          const pendingCandidates = state.gridLines
-            .filter(l => l.side === 'sell' && l.state === 'pending')
-            .sort((a, b) => Math.abs(a.price - entryPrice) - Math.abs(b.price - entryPrice));
-          layer = pendingCandidates[0];
-          if (layer && layer.orderId) {
-            this.logger.warn(`[网格] reconcile: 无空 sell 层，空头映射到 pending L${(layer.index ?? 0) + 1}，旧订单 ${layer.orderId} 将被孤儿清理`);
-            // 从 orderBook 移除：使其成为孤儿，cancelOrphanOrders 会取消它
-            delete state.orderBook[layer.orderId];
-            layer.orderId = undefined;
-            layer.state = 'empty';
-          }
-        }
-
-        if (!layer) continue;
-        layer.state = 'filled';
-        layer.positionEntry = entryPrice;
-        layer.positionSize = pos.quantity;
-        layer.side = 'sell';
-        layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
-        this.logger.log(`[网格] reconcile: 空头 ${pos.quantity.toFixed(4)} 入场@${entryPrice.toFixed(2)} → L${(layer.index ?? 0) + 1}@${layer.price.toFixed(2)}`);
-      }
-
-      const filledCount = state.gridLines.filter(l => l.state === 'filled').length;
-      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
-      this.logger.log(`[网格] reconcile 完成: filled=${filledCount} pending=${pendingCount}`);
-
-      // 孤儿持仓检测：exchange 持仓数 > 成功映射的层数 → 说明有持仓未被网格层承载
-      // 不做额外映射（违反架构原则），仅记录告警供人工识别
-      const orphanLong = longPositions.filter(p => (p.quantity ?? 0) >= 0.0001).length
-        - state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy').length;
-      const orphanShort = shortPositions.filter(p => (p.quantity ?? 0) >= 0.0001).length
-        - state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell').length;
-      if (orphanLong > 0) {
-        this.logger.warn(`[网格] reconcile: ${orphanLong} 个多头持仓未映射到网格层（层数不足），下轮 AI 可见 positionLong 但无对应 filled 层`);
-      }
-      if (orphanShort > 0) {
-        this.logger.warn(`[网格] reconcile: ${orphanShort} 个空头持仓未映射到网格层（层数不足），下轮 AI 可见 positionShort 但无对应 filled 层`);
-      }
-
-      // ── Step 4: 同步持仓快照记录到 DB（只做账本记录，不影响内存状态）──
-      const symPos = symPositions.find((p) => p.side === 'long' || (p as any).side === 'net' || !p.side) ?? symPositions[0];
-
-      if (symPos) {
-        // 找到交易所持仓，检查 DB 是否有对应 Position
-        const dbPos = await this.prisma.position.findFirst({
-          where: {
-            userId,
-            symbol: { contains: state.symbol.split('/')[0] },
-            status: 'open',
-            source: { in: ['ai_strategy', 'snapshot'] },
-          },
-        });
-
-        if (!dbPos) {
-          // 幂等检查：防止多次重启产生重复快照记录
-          const existingSnapshot = await this.prisma.position.findFirst({
-            where: { userId, symbol: symPos.symbol, aiStrategyId: strategyId, status: 'open' },
-          });
-          if (!existingSnapshot) {
-            // 交易所有但 DB 无 → 创建快照记录
-            await this.prisma.position.create({
-              data: {
-                userId,
-                exchange: adapter.exchangeType,
-                symbol: symPos.symbol,
-                side: symPos.side,
-                amount: symPos.quantity,
-                entryPrice: symPos.entryPrice,
-                margin: symPos.margin,
-                leverage: symPos.leverage,
-                status: 'open',
-                source: 'snapshot',
-                apiKeyId,
-                aiStrategyId: strategyId,
-              },
-            });
-            this.logger.log(`[网格] 创建快照持仓: ${symPos.symbol} ${symPos.side} → 策略 ${strategyId}`);
-          }
-        } else {
-          // 快照已存在：同步 amount（网格加仓后交易所持仓量会增加，差异>1%时更新）
-          const exchangeQty = symPos.quantity;
-          const dbQty = Number(dbPos.amount);
-          if (Math.abs(exchangeQty - dbQty) / Math.max(exchangeQty, 0.0001) > 0.01) {
-            await this.prisma.position.update({
-              where: { id: dbPos.id },
-              data: { amount: exchangeQty },
-            });
-            this.logger.debug(`[网格] 快照 amount 更新: ${dbQty.toFixed(4)} → ${exchangeQty.toFixed(4)}`);
-          }
-        }
-      }
-
-      await adapter.dispose();
-      this.gridStates.set(strategyId, state);
-      await this.persistGridState(strategyId, state);
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      await adapter.cancelAllOrders(state.symbol);
+      this.logger.log(`[网格] 启动: 已取消 ${state.symbol} 所有挂单（干净起点）`);
     } catch (e: any) {
-      this.logger.warn(`[网格] 状态恢复失败: ${e.message}`);
+      this.logger.warn(`[网格] 取消所有挂单失败（忽略，继续）: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
     }
   }
+
 
   // ========================= 辅助方法 =========================
 
@@ -3991,10 +3763,7 @@ export class GridTradingService {
       await this.reinitializeGridLevels(state, currentPrice);
     }
 
-    // 重建后从交易所恢复真实持仓（内存快照不可靠）
-    if (strategyId && userId && apiKeyId) {
-      await this.reconcileGridState(strategyId, userId, apiKeyId, state);
-    }
+    // nofx 对齐：autoAdjustGrid 重建后全空层（cancelAllOrders 由调用方负责，无需 reconcile）
 
     // 重建后自动解除非风控暂停
     if (state.isPaused && state.pauseSource !== 'risk_control') {
@@ -4124,7 +3893,7 @@ export class GridTradingService {
         if (state.lastEquity === undefined) state.lastEquity = state.peakEquity;
         // 对齐 nofx：gridLines 不从 DB 恢复（DB 快照可能是 stale 值）
         // 从配置字段（lowerPrice/upperPrice/gridSpacing/distribution）确定性重建
-        // 动态状态（state/orderId/orderQuantity/positionSize）由 reconcileGridState 从交易所重建
+        // 动态状态（state/orderId/orderQuantity/positionSize）由 syncOrderFills 增量维护
         state.gridLines = this.buildGridLinesFromConfig(state);
         state.orderBook = {};
         this.gridStates.set(strategyId, state);
