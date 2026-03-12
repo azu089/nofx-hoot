@@ -754,14 +754,13 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // 容器重启（代码部署）：直接使用 DB 持久化的层状态，不清理
-        // DB 每轮由 persistGridState 更新，层状态与交易所一致
-        // syncOrderFills 在本轮末会自动修正重启窗口期间的任何变化（成交/撤单）
-        this.logger.log(
-          `[网格] 容器重启恢复: 直接使用 DB 状态（${state.gridLines.length}层, ` +
-          `filled=${state.gridLines.filter(l => l.state === 'filled').length}, ` +
-          `pending=${state.gridLines.filter(l => l.state === 'pending').length}）`,
-        );
+        // 容器重启恢复：全部重置 → 从交易所重建（nofx 对齐：交所是唯一事实）
+        // recoverOrdersFromExchange：恢复挂单 → pending（不取消，与交所一致）
+        // recoverPositionsFromExchange：恢复持仓 → filled（OKX net_mode 兼容）
+        this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
+        this.resetGridLayers(state);
+        await this.recoverOrdersFromExchange(state, userId, apiKeyId);
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       }
     }
 
