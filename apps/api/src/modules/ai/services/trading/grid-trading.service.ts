@@ -342,6 +342,10 @@ export class GridTradingService {
   // 并发保护：记录正在运行的策略 ID，防止同一策略多 job 并发执行
   private readonly runningStrategies = new Set<string>();
 
+  // 容器重启后首轮恢复追踪：Set 在进程生命周期内持续，容器重启时自动清空
+  // 确保每次容器重启后首轮必定执行 exchange 恢复，不受 getGridState 预加载影响
+  private readonly reconcileCompleted = new Set<string>();
+
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
     const map: Record<string, string> = {
@@ -754,14 +758,21 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // 容器重启恢复：全部重置 → 从交易所重建（nofx 对齐：交所是唯一事实）
-        // recoverOrdersFromExchange：恢复挂单 → pending（不取消，与交所一致）
-        // recoverPositionsFromExchange：恢复持仓 → filled（OKX net_mode 兼容）
-        this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
-        this.resetGridLayers(state);
-        await this.recoverOrdersFromExchange(state, userId, apiKeyId);
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       }
+    }
+
+    // Step 1.1: 容器重启恢复（首轮执行一次）
+    // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
+    // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
+    if (state && !this.reconcileCompleted.has(strategyId)) {
+      // 容器重启恢复：全部重置 → 从交易所重建（nofx 对齐：交所是唯一事实）
+      // recoverOrdersFromExchange：恢复挂单 → pending（不取消，与交所一致）
+      // recoverPositionsFromExchange：恢复持仓 → filled（OKX net_mode 兼容）
+      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
+      this.resetGridLayers(state);
+      await this.recoverOrdersFromExchange(state, userId, apiKeyId);
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+      this.reconcileCompleted.add(strategyId);
     }
 
     // Step 1.2: 止盈/止损后的重启恢复
@@ -906,6 +917,7 @@ export class GridTradingService {
           this.logger.warn(`[网格] 配置变更日志写入失败: ${e.message}`);
         });
         // 无需 reconcile — exchange 已由 cleanupExistingOrders 清空，本轮继续正常流程
+        this.reconcileCompleted.add(strategyId);  // 重建已完成恢复，跳过 Step 1.1
       }
     }
 
@@ -916,6 +928,7 @@ export class GridTradingService {
         // nofx 对齐：新建网格 = 全空层，取消所有旧挂单，再恢复交易所持仓
         await this.cancelAllGridOrders(state, userId, apiKeyId);
         await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+        this.reconcileCompleted.add(strategyId);  // 初始化已完成恢复，跳过 Step 1.1
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
         return { trades: 0, errors: 0 };
@@ -4221,6 +4234,7 @@ export class GridTradingService {
   /** 清除内存状态，强制下次从 DB 加载并 reconcile（用于 startStrategy） */
   clearGridState(strategyId: string): void {
     this.gridStates.delete(strategyId);
+    this.reconcileCompleted.delete(strategyId);  // 下次启动重新执行 exchange 恢复
   }
 
   async getGridState(strategyId: string): Promise<GridState | null> {
