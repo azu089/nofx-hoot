@@ -754,10 +754,10 @@ export class GridTradingService {
         state.lastAtrHourly ??= 0;
         state.lastAtrSpikeRatio ??= 0;
         (state as any).rsiDivergenceType ??= 'none';
-        // nofx 对齐：全空层 + 取消所有交易所挂单（干净起点，杜绝历史状态污染）
-        // nofx 每次启动 InitializeGrid() = 全空层，从不恢复 DB 历史
+        // 容器重启：全空层 + 从交易所恢复挂单(pending)和持仓(filled)（不取消用户订单）
+        // 网格数据架构原则 Step1+2+3：reset → exchange orders → exchange positions
         this.resetGridLayers(state);
-        await this.cancelAllGridOrders(state, userId, apiKeyId);
+        await this.recoverOrdersFromExchange(state, userId, apiKeyId);
 
         // 价格超出范围时重算 ATR 边界（重建层价格）
         // 此时内存已全空，reinitializeGridLevels 的 filledSnapshots=[] → 纯净新价格层
@@ -1908,84 +1908,101 @@ export class GridTradingService {
     leverage: number,
   ): GridContext['levels'] {
     // ──────────────────────────────────────────────────────────────────────
-    // 架构原则（与 nofx 一致）：
-    //   层状态（filled/pending/empty）← 内存 state.gridLines（syncOrderFills 维护）
-    //   持仓数量（positionSize）       ← 交易所实时总量均分到各 filled 层
-    //
-    // 不用入场均价反推层号的原因：
-    //   net mode 下多次成交后均价漂移，每轮映射到不同层，导致已成交层反复显示为空 → AI 重复补单
+    // 纯交易所驱动：层状态完全由交易所实时数据决定，不依赖内存 l.state
+    //   Step 1: exchange open orders → pending 层（按价格最近匹配）
+    //   Step 2: exchange positions  → filled  层（按入场价最近匹配）
+    //   Step 3: 其余层 → cancelled（空格）
+    // 好处：容器重启/内存清空后 AI 立即看到正确状态，无需等 syncOrderFills 追赶
     // ──────────────────────────────────────────────────────────────────────
 
-    // 交易所实时总持仓量
-    const exchangeShortQty = shortPos && shortPos.quantity > 0.0001 ? shortPos.quantity : 0;
-    const exchangeLongQty  = longPos  && longPos.quantity  > 0.0001 ? longPos.quantity  : 0;
+    const usedIdx = new Set<number>();
+    const pendingMap = new Map<number, { orderId: string; side: string; qty: number }>();
+    const filledMap  = new Map<number, { qty: number; entry: number; pnl: number; side: 'buy' | 'sell' }>();
 
-    // 内存 filled 层数（syncOrderFills 逐单更新）
-    const memFilledSellCount = gridLines.filter(l => l.state === 'filled' && l.side === 'sell').length;
-    const memFilledBuyCount  = gridLines.filter(l => l.state === 'filled' && l.side === 'buy').length;
+    // Step 1: 挂单 → pending 层（按价格最近匹配，每个层只占用一次）
+    for (const order of openOrders) {
+      const price: number = order.price ?? 0;
+      if (price <= 0) continue;
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < gridLines.length; i++) {
+        if (usedIdx.has(i)) continue;
+        const d = Math.abs(gridLines[i].price - price);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      if (bestIdx >= 0) {
+        usedIdx.add(bestIdx);
+        pendingMap.set(bestIdx, {
+          orderId: order.orderId,
+          side: order.side,
+          qty: order.quantity ?? 0,
+        });
+      }
+    }
 
-    // 每层持仓量 = 交易所总量 / filled 层数
-    // 若交易所无持仓但内存有 filled 层 → perQty=0 → positionSize=0，AI 可感知异常
-    const perSellQty = memFilledSellCount > 0 ? exchangeShortQty / memFilledSellCount : 0;
-    const perBuyQty  = memFilledBuyCount  > 0 ? exchangeLongQty  / memFilledBuyCount  : 0;
+    // Step 2: 持仓 → filled 层（按入场价最近匹配）
+    const mapPos = (
+      pos: { quantity: number; entryPrice: number; unrealizedPnl: number },
+      posSide: 'buy' | 'sell',
+    ) => {
+      if (!pos || pos.quantity <= 0.0001) return;
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < gridLines.length; i++) {
+        if (usedIdx.has(i)) continue;
+        const d = Math.abs(gridLines[i].price - pos.entryPrice);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      if (bestIdx >= 0) {
+        usedIdx.add(bestIdx);
+        filledMap.set(bestIdx, {
+          qty: pos.quantity,
+          entry: pos.entryPrice,
+          pnl: pos.unrealizedPnl ?? 0,
+          side: posSide,
+        });
+      }
+    };
+    if (longPos  && longPos.quantity  > 0.0001) mapPos(longPos,  'buy');
+    if (shortPos && shortPos.quantity > 0.0001) mapPos(shortPos, 'sell');
 
-    // 交易所挂单 orderId 快速查找（验证 pending 层订单是否仍存在）
-    const orderIdSet = new Set(openOrders.map(o => o.orderId));
-
-    return gridLines.map((l) => {
+    // Step 3: 组装输出
+    return gridLines.map((l, i) => {
       const normalQty = l.allocatedUSD > 0 && currentPrice > 0
         ? (l.allocatedUSD * leverage) / currentPrice
         : 0;
 
-      // ── Filled 层：由内存 state 决定，持仓量由交易所实时总量均分 ──
-      if (l.state === 'filled') {
-        const qty   = l.side === 'sell' ? perSellQty : perBuyQty;
-        const entry = l.positionEntry > 0 ? l.positionEntry : l.price;
-        const profit = l.side === 'buy'
-          ? (currentPrice - entry) * qty
-          : (entry - currentPrice) * qty;
+      const pInfo = pendingMap.get(i);
+      if (pInfo) {
         return {
           price: l.price,
-          side: l.side as 'buy' | 'sell',
+          side: (pInfo.side === 'sell' ? 'sell' : 'buy') as 'buy' | 'sell',
           quantity: normalQty,
-          positionSize: qty,
+          positionSize: 0,
+          state: 'pending' as const,
+          orderId: pInfo.orderId,
+          fillPrice: undefined,
+          profit: undefined,
+        };
+      }
+
+      const fInfo = filledMap.get(i);
+      if (fInfo) {
+        const profit = fInfo.side === 'buy'
+          ? (currentPrice - fInfo.entry) * fInfo.qty
+          : (fInfo.entry - currentPrice) * fInfo.qty;
+        return {
+          price: l.price,
+          side: fInfo.side,
+          quantity: normalQty,
+          positionSize: fInfo.qty,
           state: 'filled' as const,
           orderId: undefined,
-          fillPrice: entry > 0 ? entry : undefined,
+          fillPrice: fInfo.entry > 0 ? fInfo.entry : undefined,
           profit,
         };
       }
 
-      // ── Pending 层：内存有 orderId 且交易所确认仍存在 ──
-      if (l.state === 'pending' && l.orderId && orderIdSet.has(l.orderId)) {
-        return {
-          price: l.price,
-          side: l.side as 'buy' | 'sell',
-          quantity: normalQty,
-          positionSize: 0,
-          state: 'pending' as const,
-          orderId: l.orderId,
-          fillPrice: undefined,
-          profit: undefined,
-        };
-      }
-
-      // ── Pending 但订单已从交易所消失（成交或撤单）──
-      // 显示为 cancelled，让 AI 看到 empty；syncOrderFills 本轮结束时更新内存状态
-      if (l.state === 'pending' && l.orderId && !orderIdSet.has(l.orderId)) {
-        return {
-          price: l.price,
-          side: l.side as 'buy' | 'sell',
-          quantity: normalQty,
-          positionSize: 0,
-          state: 'cancelled' as const,
-          orderId: undefined,
-          fillPrice: undefined,
-          profit: undefined,
-        };
-      }
-
-      // ── Empty / Cancelled ──
       return {
         price: l.price,
         side: l.side as 'buy' | 'sell',
@@ -2125,7 +2142,7 @@ export class GridTradingService {
     } catch { /* 忽略，不阻塞主流程 */ }
 
     // ── 对齐 nofx: 每轮从交易所实时数据重建 state.gridLines ──
-    // state.gridLines 由 syncOrderFills（周期末增量更新）维护；启动时 resetGridLayers 全空，cancelAllGridOrders 清空交易所挂单
+    // state.gridLines 由 syncOrderFills（周期末增量更新）维护；启动时 resetGridLayers 全空，recoverOrdersFromExchange 恢复挂单
     // 禁止在 buildGridContext 内做持仓对账（见 .claude/rules/网格数据架构原则.md）
 
     // 价格变化（改用 1h K 线，精确且无临界问题）
@@ -3451,7 +3468,7 @@ export class GridTradingService {
 
   /**
    * nofx 对齐：启动时从交易所持仓恢复 filled 层（对齐 nofx autoAdjustGrid L1456-1479）
-   * 全部挂单已在 cancelAllGridOrders 取消，此函数只映射持仓
+   * 容器重启时由 recoverOrdersFromExchange 先映射挂单，此函数补充映射持仓
    * 持仓量完整放入最近层（positionSize 可能大于标准每层数量），由 AI 自行决策处理
    */
   private async recoverPositionsFromExchange(
@@ -3508,6 +3525,62 @@ export class GridTradingService {
       }
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
+    } finally {
+      if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
+    }
+  }
+
+  /**
+   * 容器重启恢复：从交易所挂单恢复 pending 层（不取消订单）
+   * 网格数据架构原则 Step 2：exchange open orders → pending layers
+   * 只在容器冷启动路径调用（不取消，只映射）
+   */
+  private async recoverOrdersFromExchange(
+    state: GridState,
+    userId: string,
+    apiKeyId: string,
+  ): Promise<void> {
+    if (!this.adapterFactory || !apiKeyId) return;
+    let adapter: ExchangeAdapter | null = null;
+    try {
+      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const openOrders = await adapter.getOpenOrders(state.symbol);
+      const baseSymbol = state.symbol.split('/')[0];
+      const symOrders = openOrders.filter((o: any) => {
+        const sym: string = o.symbol ?? '';
+        return sym.includes(baseSymbol);
+      });
+
+      let mapped = 0;
+      const usedIdx = new Set<number>();
+      for (const order of symOrders) {
+        const price: number = order.price ?? 0;
+        if (price <= 0) continue;
+        // 找最近未使用的层（按价格距离）
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < state.gridLines.length; i++) {
+          if (usedIdx.has(i)) continue;
+          const d = Math.abs(state.gridLines[i].price - price);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) {
+          usedIdx.add(bestIdx);
+          const layer = state.gridLines[bestIdx];
+          layer.state = 'pending';
+          layer.orderId = order.orderId;
+          layer.side = (order.side === 'sell') ? 'sell' : 'buy';
+          layer.orderQuantity = order.quantity ?? 0;
+          layer.positionSize = 0;
+          layer.positionEntry = 0;
+          mapped++;
+        }
+      }
+      this.logger.log(
+        `[网格] 容器重启恢复: 交易所挂单=${symOrders.length}, 映射到层=${mapped}（不取消）`,
+      );
+    } catch (e: any) {
+      this.logger.warn(`[网格] 启动挂单恢复失败（忽略）: ${e.message}`);
     } finally {
       if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
     }
