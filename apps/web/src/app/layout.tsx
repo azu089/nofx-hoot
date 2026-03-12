@@ -1,9 +1,19 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
 import { cookies } from "next/headers";
 import { isRtlLocale } from "@/i18n/config";
 
+
+// Next.js 14 App Router 标准写法：viewport 独立导出
+// user-scalable=no 对 Android 有效；iOS Safari 忽略此项，需配合 CSS touch-action
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   title: {
@@ -36,7 +46,6 @@ export default async function RootLayout({
   return (
     <html lang={locale} dir={dir} className="dark" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
         <meta name="google" content="notranslate" />
         <meta name="theme-color" content="#06B6D4" />
       </head>

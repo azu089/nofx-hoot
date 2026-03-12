@@ -126,6 +126,17 @@
   }
 }
 
+/* ========== 禁止移动端意外缩放（行业标准做法） ==========
+   问题：iOS Safari 10+ 忽略 viewport meta 中的 user-scalable=no（Apple 强制无障碍）
+   方案：touch-action: pan-x pan-y 告诉浏览器只处理平移手势（滚动），忽略捏合缩放
+   效果：Android → viewport meta 生效；iOS → CSS touch-action 生效
+   注意：pan-x pan-y 保留单指滚动，仅禁止双指捏合，不影响正常使用
+   ========== */
+html,
+body {
+  touch-action: pan-x pan-y;
+}
+
 /* ========== 移动端点击延迟优化（行业标准做法） ==========
    问题：iOS Safari 对可交互元素有 300ms 双击判定等待
    方案：
