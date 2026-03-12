@@ -1307,15 +1307,15 @@ export class GridTradingService {
           : confFiltered;
 
         // 执行决策（收集每条执行结果，供日志记录）
-        // 执行前捕获格线快照（AI 分析时看到的状态 = 执行前状态）
-        const preExecGridLines = state.gridLines.map((l, i) => {
+        // 执行前捕获格线快照：使用 context.levels（实时数据），与 AI 看到的一致
+        const preExecGridLines = context.levels.map((l, i) => {
           const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
           if (l.state === 'filled') {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+            entry.ep = +(l.fillPrice ?? l.price).toFixed(4);
           } else if (l.state === 'pending') {
-            entry.oid = l.orderId?.slice(-8) ?? '';
-            entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
+            entry.oid = (l.orderId ?? '').slice(-8);
+            entry.qty = +(l.quantity ?? 0).toFixed(4);
           }
           return entry;
         });
@@ -1435,16 +1435,17 @@ export class GridTradingService {
           );
         }
 
-        // 层级状态摘要日志（供运营核对交易所，LOG 级别确保生产可见）
+        // 层级状态摘要日志（读 context.levels 实时数据，与 AI 看到的一致）
         {
-          const filled = state.gridLines.filter(l => l.state === 'filled');
-          const pending = state.gridLines.filter(l => l.state === 'pending');
-          const empty = state.gridLines.filter(l => l.state === 'empty');
-          const filledStr = filled.map(l =>
-            `L${(l.index ?? 0) + 1}@${(l.positionEntry ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`
-          ).join(' ');
-          const pendingStr = pending.map(l => `L${(l.index ?? 0) + 1}@${l.price.toFixed(2)}`).join(' ');
-          const emptyStr = empty.map(l => `L${(l.index ?? 0) + 1}`).join(',');
+          const filled  = context.levels.filter(l => l.state === 'filled');
+          const pending = context.levels.filter(l => l.state === 'pending');
+          const empty   = context.levels.filter(l => l.state === 'cancelled');
+          const filledStr  = filled.map(l => {
+            const idx = context.levels.indexOf(l) + 1;
+            return `L${idx}@${(l.fillPrice ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`;
+          }).join(' ');
+          const pendingStr = pending.map(l => `L${context.levels.indexOf(l) + 1}@${l.price.toFixed(2)}`).join(' ');
+          const emptyStr   = empty.map(l => `L${context.levels.indexOf(l) + 1}`).join(',');
           this.logger.log(
             `[网格] 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
           );
@@ -2121,7 +2122,10 @@ export class GridTradingService {
     try {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const [rawOpenOrders, rawClosedPnl] = await Promise.all([
-        adapter.getOpenOrders(state.symbol).catch(() => []),
+        adapter.getOpenOrders(state.symbol).catch((e: any) => {
+        this.logger.warn(`[网格] buildGridContext getOpenOrders失败: ${e.message}`);
+        return [];
+      }),
         adapter.getClosedPnl(since24h, 10).catch(() => []),
       ]);
       exchangeOpenOrders = rawOpenOrders.map(o => ({
@@ -2130,6 +2134,7 @@ export class GridTradingService {
         price: o.price ?? 0,
         quantity: o.quantity,
       }));
+      this.logger.debug(`[网格] buildGridContext: rawOpenOrders=${rawOpenOrders.length}, 有价格=${(rawOpenOrders as any[]).filter(o => (o.price ?? 0) > 0).length}`);
       recentClosedPnl = rawClosedPnl.map(r => ({
         symbol: r.symbol,
         side: r.side,
