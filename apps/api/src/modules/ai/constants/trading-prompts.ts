@@ -647,6 +647,7 @@ export interface GridContext {
     longLower: number;
   };
   currentDirection: string;
+  enableDirectionAdjust: boolean;  // 是否启用方向自适应（true=后端自动偏转，false=突破时 pause/reduce）
   startEquity: number;          // 策略启动时权益
   currentProfitPct: number;    // 当前盈利%（相对启动权益）
   marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
@@ -695,7 +696,10 @@ function gridSystemPromptZh(
   symbol: string, gridCount: number, totalInvestment: number,
   leverage: number, distribution: string, currentPrice: number,
 ): string {
-  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。
+  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。你的任务是：
+1. 判断当前市场形态（窄幅/标准/宽幅/剧烈）
+2. 决定是否需要调整网格或暂停交易
+3. 管理**每个网格层级**的挂单（空格层 → 下限价单，无需逐轮分批）
 
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
@@ -719,19 +723,20 @@ function gridSystemPromptZh(
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
-## 方向自适应系统（后端自动，无需 AI 干预）
-网格有 5 种方向状态（当前见 currentDirection 字段）：
+## 方向自适应系统（当前方向见 currentDirection 字段）
+网格有 5 种方向状态：
 - **neutral**: 价格上下对称，买卖各半（默认状态）
-- **long_bias**: 70% 买层/30% 卖层（短期上涨突破后自动切入）
-- **long**: 100% 买层（中期上涨突破后自动切入，顺势 DCA 做多）
-- **short_bias**: 30% 买层/70% 卖层（短期下跌突破后自动切入）
-- **short**: 100% 卖层（中期下跌突破后自动切入，顺势 DCA 做空）
+- **long_bias**: 70% 买层/30% 卖层（顺多头偏向）
+- **long**: 100% 买层（顺势 DCA 做多）
+- **short_bias**: 30% 买层/70% 卖层（顺空头偏向）
+- **short**: 100% 卖层（顺势 DCA 做空）
 
-**后端会在检测到箱体突破时自动改变方向**，AI 无需发出任何指令。方向恢复也是自动的（价格回到短期箱体 → 逐步 long→long_bias→neutral 或 short→short_bias→neutral）。
+**enableDirectionAdjust=true 时**：后端检测到箱体突破自动切换方向（short→long_bias/short_bias，mid→long/short），AI 无需指令；价格回短期箱体后自动逐步恢复 neutral。
+**enableDirectionAdjust=false 时**：currentDirection 不会自动改变，突破时后端执行 reduce_position/pause_grid。（当前是否启用见每轮数据中的 enableDirectionAdjust 字段）
 
-**AI 如何配合方向系统**：
-- 看到 currentDirection=long/long_bias 时：side=sell 的持仓层浮亏较正常（方向顺势做多，空头持仓是逆势），可用 close_short 减少逆势仓位
-- 看到 currentDirection=short/short_bias 时：side=buy 的持仓层浮亏较正常，可用 close_long 减少逆势仓位
+**AI 如何配合当前方向**：
+- currentDirection=long/long_bias：side=sell 的持仓层浮亏属正常（逆势），可用 close_short 减少逆势仓位
+- currentDirection=short/short_bias：side=buy 的持仓层浮亏属正常，可用 close_long 减少
 - currentDirection=neutral：buy/sell 对等，正常管理两侧
 
 ## 可用操作
@@ -781,7 +786,10 @@ function gridSystemPromptEn(
   symbol: string, gridCount: number, totalInvestment: number,
   leverage: number, distribution: string, currentPrice: number, locale: string,
 ): string {
-  return `You are a Professional Grid Trading AI managing the ${symbol} grid strategy.
+  return `You are a Professional Grid Trading AI managing the ${symbol} grid strategy. Your tasks are:
+1. Assess current market regime (narrow/standard/wide/volatile)
+2. Decide whether to adjust grid or pause trading
+3. Manage orders at **each grid level** (empty levels → place limit orders, no need to batch across rounds)
 
 ## Grid Parameters
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
@@ -804,19 +812,20 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 
-## Direction Auto-Adaptation System (backend automatic, no AI action needed)
-Grid has 5 direction states (see currentDirection field):
+## Direction Adaptation System (see currentDirection field)
+Grid has 5 direction states:
 - **neutral**: Symmetric buy/sell, 50/50 split (default)
-- **long_bias**: 70% buy / 30% sell levels (auto-activated on short-term upside breakout)
-- **long**: 100% buy levels (auto-activated on mid-term upside breakout, DCA long)
-- **short_bias**: 30% buy / 70% sell levels (auto-activated on short-term downside breakout)
-- **short**: 100% sell levels (auto-activated on mid-term downside breakout, DCA short)
+- **long_bias**: 70% buy / 30% sell levels (bullish bias)
+- **long**: 100% buy levels (DCA long, trend-following)
+- **short_bias**: 30% buy / 70% sell levels (bearish bias)
+- **short**: 100% sell levels (DCA short, trend-following)
 
-**Backend automatically changes direction on box breakout** — AI needs no action. Recovery is also automatic (price returns to short box → gradual long→long_bias→neutral or short→short_bias→neutral).
+**When enableDirectionAdjust=true**: Backend auto-switches direction on box breakout (short→long_bias/short_bias, mid→long/short); recovery is also automatic (price returns to short box → gradual neutral recovery). AI needs no action.
+**When enableDirectionAdjust=false**: currentDirection does not change automatically; breakouts trigger reduce_position/pause_grid. (Current status: see enableDirectionAdjust field in per-round data)
 
-**How AI works with the direction system**:
-- When currentDirection=long/long_bias: side=sell filled positions with unrealized loss is expected (grid is DCA-long, shorts are counter-trend). Use close_short to reduce counter-trend exposure.
-- When currentDirection=short/short_bias: side=buy filled with loss expected. Use close_long.
+**How AI works with current direction**:
+- currentDirection=long/long_bias: side=sell filled positions with unrealized loss is expected (counter-trend). Use close_short to reduce exposure.
+- currentDirection=short/short_bias: side=buy filled with loss expected. Use close_long.
 - currentDirection=neutral: Both sides balanced, manage normally.
 
 ## Available Actions
@@ -1017,7 +1026,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 网格状态 ---');
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
-  lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}`);
+  lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection} | 方向自适应: ${ctx.enableDirectionAdjust ? '已启用（箱体突破→自动偏转）' : '未启用（突破→pause/reduce）'}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
@@ -1048,7 +1057,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   } else {
     lines.push(`网格倾斜: 均衡`);
   }
-  const emptyLevels = ctx.levels.filter(l => l.state === 'cancelled');
+  const emptyLevels = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
   if (emptyLevels.length > 0) {
     lines.push(`空格数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
@@ -1167,7 +1176,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('');
   lines.push('--- Grid Status ---');
   lines.push(`Range: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | Spacing: ${ctx.gridSpacing.toFixed(4)}`);
-  lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection}`);
+  lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection} | DirAdjust: ${ctx.enableDirectionAdjust ? 'enabled (box breakout→auto-shift)' : 'disabled (breakout→pause/reduce)'}`);
   lines.push(`Active Orders: ${ctx.activeOrderCount} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (post-breakout recovery, each level capped at ${100 - ctx.positionReductionPct}% of suggested qty, auto-enforced by system)`);
@@ -1198,7 +1207,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   } else {
     lines.push(`Grid Skew: Balanced`);
   }
-  const emptyLevelsEn = ctx.levels.filter(l => l.state === 'cancelled');
+  const emptyLevelsEn = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
   if (emptyLevelsEn.length > 0) {
     lines.push(`Empty Levels: ${emptyLevelsEn.length} (see level table, quantity column = suggested amount)`);

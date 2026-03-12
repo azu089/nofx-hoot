@@ -1228,7 +1228,7 @@ export class GridTradingService {
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
         // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
-        const context = await this.buildGridContext(state, adapter, currentPrice);
+        const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
 
         // 将交易所实时持仓量同步到内存层（仅更新 positionSize/positionEntry，不改变 state）
         // 目的：日志展示和 syncOrderFills.expectedPos 都基于交易所真实持仓量，消除持仓差异误报
@@ -1268,7 +1268,7 @@ export class GridTradingService {
           GRID_SYSTEM_PROMPT(state.symbol, state.gridLines.length, state.totalInvestment, state.leverage, state.distribution, currentPrice, gridConfig?.locale),
           buildGridUserPrompt({ ...context, locale: gridConfig?.locale }),
           apiKeys,
-          { temperature: 0.3, maxTokens: 1500 },
+          { temperature: 0.3, maxTokens: 2000 },
         );
 
         // LLM 调用期间（30-40s）DrawdownMonitor 可能已 dispose 同一缓存 adapter
@@ -1903,13 +1903,15 @@ export class GridTradingService {
   private buildExchangeLevels(
     gridLines: GridLine[],
     openOrders: Array<{ orderId: string; side: string; price: number; quantity: number }>,
-    longPos: { quantity: number; entryPrice: number; unrealizedPnl: number } | undefined,
-    shortPos: { quantity: number; entryPrice: number; unrealizedPnl: number } | undefined,
     currentPrice: number,
     leverage: number,
   ): GridContext['levels'] {
     // ──────────────────────────────────────────────────────────────────────
-    // 纯交易所驱动：层状态完全由交易所实时数据决定，不依赖内存 l.state
+    // nofx 对齐：
+    //   Step 1: exchange open orders → pending 层（按价格最近匹配）
+    //   Step 2: 内存 gridLines.state === 'filled' → filled 层（syncOrderFills 维护）
+    //   Step 3: 其余层 → cancelled（空格）
+    // 交易所只返回聚合持仓，无法反推各层；filled 层状态由内存 orderId→层 映射决定
     //   Step 1: exchange open orders → pending 层（按价格最近匹配）
     //   Step 2: exchange positions  → filled  层（按入场价最近匹配）
     //   Step 3: 其余层 → cancelled（空格）
@@ -1941,31 +1943,22 @@ export class GridTradingService {
       }
     }
 
-    // Step 2: 持仓 → filled 层（按入场价最近匹配）
-    const mapPos = (
-      pos: { quantity: number; entryPrice: number; unrealizedPnl: number },
-      posSide: 'buy' | 'sell',
-    ) => {
-      if (!pos || pos.quantity <= 0.0001) return;
-      let bestIdx = -1;
-      let bestDist = Infinity;
-      for (let i = 0; i < gridLines.length; i++) {
-        if (usedIdx.has(i)) continue;
-        const d = Math.abs(gridLines[i].price - pos.entryPrice);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
-      }
-      if (bestIdx >= 0) {
-        usedIdx.add(bestIdx);
-        filledMap.set(bestIdx, {
-          qty: pos.quantity,
-          entry: pos.entryPrice,
-          pnl: pos.unrealizedPnl ?? 0,
-          side: posSide,
+    // Step 2: 持仓 → filled 层（来自内存 gridLines.state，nofx 对齐）
+    // 交易所只返回聚合持仓（所有 filled 层之和），无法反推到各层
+    // 正确来源：syncOrderFills 通过 orderId 维护的内存 gridLines.state === 'filled'
+    for (let i = 0; i < gridLines.length; i++) {
+      if (usedIdx.has(i)) continue;
+      const gl = gridLines[i];
+      if (gl.state === 'filled' && gl.positionSize > 0.0001) {
+        usedIdx.add(i);
+        filledMap.set(i, {
+          qty: gl.positionSize,
+          entry: gl.positionEntry,
+          pnl: gl.unrealizedPnl ?? 0,
+          side: gl.side as 'buy' | 'sell',
         });
       }
-    };
-    if (longPos  && longPos.quantity  > 0.0001) mapPos(longPos,  'buy');
-    if (shortPos && shortPos.quantity > 0.0001) mapPos(shortPos, 'sell');
+    }
 
     // Step 3: 组装输出
     return gridLines.map((l, i) => {
@@ -2022,6 +2015,7 @@ export class GridTradingService {
     state: GridState,
     adapter: ExchangeAdapter,
     currentPrice: number,
+    enableDirectionAdjust = false,
   ): Promise<GridContext> {
     // 三周期 OHLCV 并行拉取（5m+1h+4h）
     const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
@@ -2134,7 +2128,6 @@ export class GridTradingService {
         price: o.price ?? 0,
         quantity: o.quantity,
       }));
-      this.logger.debug(`[网格] buildGridContext: rawOpenOrders=${rawOpenOrders.length}, 有价格=${(rawOpenOrders as any[]).filter(o => (o.price ?? 0) > 0).length}`);
       recentClosedPnl = rawClosedPnl.map(r => ({
         symbol: r.symbol,
         side: r.side,
@@ -2178,12 +2171,10 @@ export class GridTradingService {
     const ema50 = indFast.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
-    // 层级状态从交易所实时数据重建（不依赖内存 state.gridLines 状态字段）
+    // 层级状态：pending 来自交易所挂单（价格匹配），filled 来自内存 gridLines（orderId 追踪）
     const exchangeLevels = this.buildExchangeLevels(
       state.gridLines,
       exchangeOpenOrders ?? [],
-      positionLong,
-      positionShort,
       currentPrice,
       state.leverage ?? 1,
     );
@@ -2253,6 +2244,7 @@ export class GridTradingService {
         longLower: state.longBoxLower,
       } : undefined,
       currentDirection: state.currentDirection,
+      enableDirectionAdjust,
       startEquity: state.startEquity,
       currentProfitPct: state.startEquity > 0 ? (totalEquity - state.startEquity) / state.startEquity * 100 : 0,
       marginUsedPct,
@@ -3235,11 +3227,13 @@ export class GridTradingService {
       // Step 3: 内存中 filled 层的预期净持仓（有符号：buy=+, sell=-）
       // - buy 成交 → 净多头增加（+qty）
       // - sell 成交 → 净空头增加（-qty）
-      const expectedPositionSize = state.gridLines
-        .filter((l) => l.state === 'filled')
-        .reduce((sum, l) => l.side === 'buy'
-          ? sum + (l.positionSize ?? 0)
-          : sum - (l.positionSize ?? 0), 0);
+      // 冷启动首轮：内存无 filled 层（resetGridLayers 清空），以交易所为准避免误报
+      const memFilledLayers = state.gridLines.filter((l) => l.state === 'filled');
+      const expectedPositionSize = memFilledLayers.length > 0
+        ? memFilledLayers.reduce((sum, l) => l.side === 'buy'
+            ? sum + (l.positionSize ?? 0)
+            : sum - (l.positionSize ?? 0), 0)
+        : currentPositionSize;
 
       // Step 4: 处理"消失"的 pending 层
       const disappearedLines = state.gridLines.filter(
@@ -3431,15 +3425,18 @@ export class GridTradingService {
 
       // Step 6: 持仓差异警告（处理交易所 API 延迟场景）
       // 若交易所持仓与内存预期不符，说明有成交还未被 disappearedLines 机制捕获
-      const finalExpected = state.gridLines
-        .filter(l => l.state === 'filled')
-        .reduce((sum, l) => l.side === 'buy' ? sum + (l.positionSize ?? 0) : sum - (l.positionSize ?? 0), 0);
-      const posDiff = Math.abs(currentPositionSize - finalExpected);
-      if (posDiff > 0.01) {
-        this.logger.warn(
-          `[网格] 持仓差异: 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
-          `差异=${posDiff.toFixed(4)}（可能是交易所 API 延迟，下轮将自动修正）`,
-        );
+      // 冷启动首轮内存无 filled 层 → 跳过，不误报
+      const finalFilledLayers = state.gridLines.filter(l => l.state === 'filled');
+      if (finalFilledLayers.length > 0) {
+        const finalExpected = finalFilledLayers
+          .reduce((sum, l) => l.side === 'buy' ? sum + (l.positionSize ?? 0) : sum - (l.positionSize ?? 0), 0);
+        const posDiff = Math.abs(currentPositionSize - finalExpected);
+        if (posDiff > 0.01) {
+          this.logger.warn(
+            `[网格] 持仓差异: 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
+            `差异=${posDiff.toFixed(4)}（可能是交易所 API 延迟，下轮将自动修正）`,
+          );
+        }
       }
 
     } catch (e: any) {
