@@ -3529,47 +3529,48 @@ export class GridTradingService {
         const normalQty = refLayer?.allocatedUSD > 0 && refEntry > 0
           ? (refLayer.allocatedUSD * (state.leverage ?? 1)) / refEntry : 0;
 
-        // 尝试用 fetchMyTrades FIFO 重建多层 filled（精确还原每层入场价）
+        const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
         let fills: Array<{ price: number; qty: number }> = [];
-        try {
-          const since = Date.now() - 7 * 24 * 3600 * 1000; // 近7天
-          const trades = await adapter.fetchMyTrades(state.symbol, since, 200);
-          // 按时间排序，FIFO 匹配：buy 开仓，sell 平仓（关闭最早的 buy）
-          const sorted = trades.sort((a, b) => a.timestamp - b.timestamp);
-          const openBuys: Array<{ price: number; qty: number }> = [];
-          for (const t of sorted) {
-            if (t.side === posSide) {
-              openBuys.push({ price: t.price, qty: t.amount });
-            } else {
-              // 平仓：FIFO 消耗最早的 openBuy
-              let remaining = t.amount;
-              while (remaining > 0.0001 && openBuys.length > 0) {
-                const oldest = openBuys[0];
-                if (oldest.qty <= remaining + 0.0001) {
-                  remaining -= oldest.qty;
-                  openBuys.shift();
-                } else {
-                  oldest.qty -= remaining;
-                  remaining = 0;
+
+        // 多层情况：尝试 fetchMyTrades FIFO 精确还原每层入场价
+        if (layerCount > 1) {
+          try {
+            // 只取最近50笔，覆盖当前仓位所需的成交记录（当日或最近几小时）
+            const since = Date.now() - 2 * 24 * 3600 * 1000; // 近2天
+            const trades = await adapter.fetchMyTrades(state.symbol, since, 50);
+            const sorted = trades.sort((a, b) => a.timestamp - b.timestamp);
+            const openBuys: Array<{ price: number; qty: number }> = [];
+            for (const t of sorted) {
+              if (t.side === posSide) {
+                openBuys.push({ price: t.price, qty: t.amount });
+              } else {
+                let remaining = t.amount;
+                while (remaining > 0.0001 && openBuys.length > 0) {
+                  const oldest = openBuys[0];
+                  if (oldest.qty <= remaining + 0.0001) {
+                    remaining -= oldest.qty;
+                    openBuys.shift();
+                  } else {
+                    oldest.qty -= remaining;
+                    remaining = 0;
+                  }
                 }
               }
             }
+            const fifoTotal = openBuys.reduce((s, b) => s + b.qty, 0);
+            if (Math.abs(fifoTotal - totalQty) < totalQty * 0.15 && openBuys.length > 0) {
+              fills = openBuys;
+              this.logger.log(`[网格] fetchMyTrades FIFO: ${fills.length}笔未平仓, total=${fifoTotal.toFixed(4)}`);
+            } else {
+              this.logger.warn(`[网格] FIFO总量不符(fifo=${fifoTotal.toFixed(4)}, exchange=${totalQty.toFixed(4)}), 降级为均摊`);
+            }
+          } catch (e: any) {
+            this.logger.warn(`[网格] fetchMyTrades 失败，降级为均摊: ${e.message}`);
           }
-          // 验证：FIFO 得到的总量需与交易所持仓接近
-          const fifoTotal = openBuys.reduce((s, b) => s + b.qty, 0);
-          if (Math.abs(fifoTotal - totalQty) < totalQty * 0.1) {
-            fills = openBuys;
-            this.logger.log(`[网格] fetchMyTrades FIFO: 得到 ${fills.length} 笔未平仓 buy, total=${fifoTotal.toFixed(4)}`);
-          } else {
-            this.logger.warn(`[网格] fetchMyTrades FIFO总量不符: fifo=${fifoTotal.toFixed(4)}, exchange=${totalQty.toFixed(4)}, 降级为按层拆分`);
-          }
-        } catch (e: any) {
-          this.logger.warn(`[网格] fetchMyTrades 失败，降级为按层拆分: ${e.message}`);
         }
 
-        // fallback：按标准层数量拆分填入最近空层
+        // fallback / 单层：直接用 getPositions 的加权均价
         if (fills.length === 0) {
-          const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
           const avgEntry = refEntry > 0 ? refEntry : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
           for (let i = 0; i < layerCount; i++) fills.push({ price: avgEntry, qty: totalQty / layerCount });
         }
