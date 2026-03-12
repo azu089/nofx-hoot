@@ -3245,19 +3245,34 @@ export class GridTradingService {
         );
       }
 
-      // 用 runningExpected 在循环内累积（支持同一周期多笔成交）
+      // 用 runningExpected 在循环内累积（仅用于 getOrderStatus 失败时的 fallback 启发式）
       let runningExpected = expectedPositionSize;
 
       for (const line of disappearedLines) {
         const prevOrderId = line.orderId!;
-        const qty = line.orderQuantity ?? 0;
+        let qty = line.orderQuantity ?? 0;
+        let fillPrice = line.price; // 实际成交价（默认 limit 价，getOrderStatus 成功时用 avgPrice 覆盖）
 
-        // - buy 消失：若当前净持仓 > 预期净持仓 → 成交（净多头增加）
-        // - sell 消失：若当前净持仓 < 预期净持仓 → 成交（净空头增加）
-        // - 平仓单（sell 平多 / buy 平空）绝对值缩小 → 不满足条件 → 取消，由 AI 下轮处理
-        const isFilled = line.side === 'buy'
-          ? currentPositionSize > runningExpected + 0.0001
-          : currentPositionSize < runningExpected - 0.0001;
+        // 精确判断：直接查询订单状态（nofx 注释："ideally we'd query order history"）
+        // 避免启发式 abs 判断在多笔同时消失时的误判（成交+撤单混合场景）
+        let isFilled = false;
+        try {
+          const orderDetail = await adapter.getOrderStatus(state.symbol, prevOrderId);
+          isFilled = orderDetail.status === 'FILLED' || orderDetail.status === 'PARTIALLY_FILLED';
+          if (orderDetail.filledQuantity > 0) qty = orderDetail.filledQuantity;
+          if (orderDetail.avgPrice > 0) fillPrice = orderDetail.avgPrice;
+          this.logger.debug(
+            `[网格] 订单状态: L${(line.index ?? 0) + 1} orderId=${prevOrderId}, ` +
+            `status=${orderDetail.status}, qty=${qty.toFixed(4)}, price=${fillPrice.toFixed(4)}`,
+          );
+        } catch (e: any) {
+          // fallback: abs 启发式（nofx 方式，API 不可用时使用）
+          isFilled = Math.abs(currentPositionSize) > Math.abs(runningExpected) + 0.0001;
+          this.logger.warn(
+            `[网格] 订单状态查询失败，abs启发式判断: L${(line.index ?? 0) + 1} orderId=${prevOrderId} ` +
+            `isFilled=${isFilled}, err=${e.message}`,
+          );
+        }
 
         if (isFilled) {
           if (line.side === 'sell') {
@@ -3267,7 +3282,7 @@ export class GridTradingService {
                      l.index === (line.index ?? 0) - 1 && (l.positionSize ?? 0) > 0,
             );
             if (pairedBuy) {
-              const sellPrice = new Decimal(line.price);
+              const sellPrice = new Decimal(fillPrice); // 实际成交价（avgPrice），非限价
               const buyEntry  = new Decimal(pairedBuy.positionEntry ?? 0);
               const posQty    = new Decimal(pairedBuy.positionSize  ?? 0);
               const feeRate   = new Decimal(state.takerFeeRate);
@@ -3319,7 +3334,7 @@ export class GridTradingService {
             } else {
               // 没有配对 buy 层：卖单开空头，标记 filled（持空头），供 AI 在 grid 层级中看到并调用 close_short
               line.state = 'filled';
-              line.positionEntry = line.price;
+              line.positionEntry = fillPrice; // 实际成交价
               line.positionSize = qty;
               line.unrealizedPnl = 0;
               state.totalTrades++;
@@ -3394,14 +3409,14 @@ export class GridTradingService {
             } else {
               // 没有净空头，正常开多：标记 filled 等待 AI 下卖单
               line.state = 'filled';
-              line.positionEntry = line.price;
+              line.positionEntry = fillPrice; // 实际成交价（avgPrice）
               line.positionSize = qty;
               line.unrealizedPnl = 0;
               state.totalTrades++;
               filledLines.push(line);
               runningExpected += qty;
               this.logger.log(
-                `[网格] 买单成交: level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
+                `[网格] 买单成交: L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
               );
             }
           }
@@ -3410,7 +3425,7 @@ export class GridTradingService {
           line.positionSize = 0;
           line.positionEntry = 0;
           line.unrealizedPnl = 0;
-          this.logger.debug(`[网格] 挂单消失（取消/过期）: level=${line.index}`);
+          this.logger.log(`[网格] 挂单撤销/过期: L${(line.index ?? 0) + 1}@${line.price.toFixed(4)} → empty`);
         }
 
         line.orderId = undefined;
