@@ -1956,8 +1956,10 @@ export class GridTradingService {
         const profit = l.side === 'buy'
           ? (currentPrice - l.positionEntry) * l.positionSize
           : (l.positionEntry - currentPrice) * l.positionSize;
+        // 显示实际成交价（positionEntry），而非网格层限价（price）
+        const displayPrice = l.positionEntry > 0 ? l.positionEntry : l.price;
         return {
-          price: l.price,
+          price: displayPrice,
           side: l.side as 'buy' | 'sell',
           quantity: normalQty,
           positionSize: l.positionSize,
