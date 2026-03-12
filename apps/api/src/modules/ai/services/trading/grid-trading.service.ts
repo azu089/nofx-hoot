@@ -1904,89 +1904,88 @@ export class GridTradingService {
     currentPrice: number,
     leverage: number,
   ): GridContext['levels'] {
-    const usedIdx = new Set<number>();
+    // ──────────────────────────────────────────────────────────────────────
+    // 架构原则（与 nofx 一致）：
+    //   层状态（filled/pending/empty）← 内存 state.gridLines（syncOrderFills 维护）
+    //   持仓数量（positionSize）       ← 交易所实时总量均分到各 filled 层
+    //
+    // 不用入场均价反推层号的原因：
+    //   net mode 下多次成交后均价漂移，每轮映射到不同层，导致已成交层反复显示为空 → AI 重复补单
+    // ──────────────────────────────────────────────────────────────────────
 
-    // Step 1: 挂单 → pending 层（按价格最近匹配）
-    const pendingMap = new Map<number, { orderId: string; qty: number; side: string }>();
-    for (const order of openOrders) {
-      let best = -1;
-      let bestDist = Infinity;
-      for (let i = 0; i < gridLines.length; i++) {
-        if (usedIdx.has(i)) continue;
-        const d = Math.abs(gridLines[i].price - order.price);
-        if (d < bestDist) { bestDist = d; best = i; }
-      }
-      if (best >= 0) {
-        usedIdx.add(best);
-        pendingMap.set(best, { orderId: order.orderId, qty: order.quantity, side: order.side });
-      }
-    }
+    // 交易所实时总持仓量
+    const exchangeShortQty = shortPos && shortPos.quantity > 0.0001 ? shortPos.quantity : 0;
+    const exchangeLongQty  = longPos  && longPos.quantity  > 0.0001 ? longPos.quantity  : 0;
 
-    // Step 2: 持仓 → filled 层（按入场价最近匹配对应方向层）
-    const filledMap = new Map<number, { qty: number; entry: number; pnl: number; side: 'buy' | 'sell' }>();
+    // 内存 filled 层数（syncOrderFills 逐单更新）
+    const memFilledSellCount = gridLines.filter(l => l.state === 'filled' && l.side === 'sell').length;
+    const memFilledBuyCount  = gridLines.filter(l => l.state === 'filled' && l.side === 'buy').length;
 
-    const mapPosition = (
-      pos: { quantity: number; entryPrice: number; unrealizedPnl: number },
-      posSide: 'buy' | 'sell',
-    ) => {
-      let best = -1;
-      let bestDist = Infinity;
-      for (let i = 0; i < gridLines.length; i++) {
-        if (usedIdx.has(i)) continue;
-        if (gridLines[i].side !== posSide) continue;
-        const d = Math.abs(gridLines[i].price - pos.entryPrice);
-        if (d < bestDist) { bestDist = d; best = i; }
-      }
-      if (best >= 0) {
-        usedIdx.add(best);
-        filledMap.set(best, { qty: pos.quantity, entry: pos.entryPrice, pnl: pos.unrealizedPnl, side: posSide });
-      }
-    };
+    // 每层持仓量 = 交易所总量 / filled 层数
+    // 若交易所无持仓但内存有 filled 层 → perQty=0 → positionSize=0，AI 可感知异常
+    const perSellQty = memFilledSellCount > 0 ? exchangeShortQty / memFilledSellCount : 0;
+    const perBuyQty  = memFilledBuyCount  > 0 ? exchangeLongQty  / memFilledBuyCount  : 0;
 
-    if (longPos && longPos.quantity > 0.0001) mapPosition(longPos, 'buy');
-    if (shortPos && shortPos.quantity > 0.0001) mapPosition(shortPos, 'sell');
+    // 交易所挂单 orderId 快速查找（验证 pending 层订单是否仍存在）
+    const orderIdSet = new Set(openOrders.map(o => o.orderId));
 
-    // Step 3: 组装输出
-    return gridLines.map((l, i) => {
-      const pending = pendingMap.get(i);
-      if (pending) {
+    return gridLines.map((l) => {
+      const normalQty = l.allocatedUSD > 0 && currentPrice > 0
+        ? (l.allocatedUSD * leverage) / currentPrice
+        : 0;
+
+      // ── Filled 层：由内存 state 决定，持仓量由交易所实时总量均分 ──
+      if (l.state === 'filled') {
+        const qty   = l.side === 'sell' ? perSellQty : perBuyQty;
+        const entry = l.positionEntry > 0 ? l.positionEntry : l.price;
+        const profit = l.side === 'buy'
+          ? (currentPrice - entry) * qty
+          : (entry - currentPrice) * qty;
         return {
           price: l.price,
-          side: pending.side as 'buy' | 'sell',
-          quantity: pending.qty,
+          side: l.side as 'buy' | 'sell',
+          quantity: normalQty,
+          positionSize: qty,
+          state: 'filled' as const,
+          orderId: undefined,
+          fillPrice: entry > 0 ? entry : undefined,
+          profit,
+        };
+      }
+
+      // ── Pending 层：内存有 orderId 且交易所确认仍存在 ──
+      if (l.state === 'pending' && l.orderId && orderIdSet.has(l.orderId)) {
+        return {
+          price: l.price,
+          side: l.side as 'buy' | 'sell',
+          quantity: normalQty,
           positionSize: 0,
           state: 'pending' as const,
-          orderId: pending.orderId,
+          orderId: l.orderId,
           fillPrice: undefined,
           profit: undefined,
         };
       }
-      const filled = filledMap.get(i);
-      if (filled) {
-        const normalQty = l.allocatedUSD > 0 && currentPrice > 0
-          ? (l.allocatedUSD * leverage) / currentPrice
-          : 0;
-        const profit = filled.side === 'buy'
-          ? (currentPrice - filled.entry) * filled.qty
-          : (filled.entry - currentPrice) * filled.qty;
+
+      // ── Pending 但订单已从交易所消失（成交或撤单）──
+      // 显示为 cancelled，让 AI 看到 empty；syncOrderFills 本轮结束时更新内存状态
+      if (l.state === 'pending' && l.orderId && !orderIdSet.has(l.orderId)) {
         return {
           price: l.price,
-          side: filled.side,
+          side: l.side as 'buy' | 'sell',
           quantity: normalQty,
-          positionSize: filled.qty,
-          state: 'filled' as const,
+          positionSize: 0,
+          state: 'cancelled' as const,
           orderId: undefined,
-          fillPrice: filled.entry,
-          profit,
+          fillPrice: undefined,
+          profit: undefined,
         };
       }
-      // 无挂单无持仓 → cancelled
-      const normalQty = l.allocatedUSD > 0 && currentPrice > 0
-        ? (l.allocatedUSD * leverage) / currentPrice
-        : 0;
+
+      // ── Empty / Cancelled ──
       return {
         price: l.price,
-        side: l.side,
+        side: l.side as 'buy' | 'sell',
         quantity: normalQty,
         positionSize: 0,
         state: 'cancelled' as const,
