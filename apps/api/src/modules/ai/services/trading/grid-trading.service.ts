@@ -3455,12 +3455,17 @@ export class GridTradingService {
 
         if (closestIdx >= 0) {
           const layer = state.gridLines[closestIdx];
+          // 若该层已被 recoverOrdersFromExchange 标记为 pending，清理 orderBook 中的旧条目
+          // 避免持仓层的孤儿挂单造成内存 pending 数量与交易所不匹配
+          if (layer.state === 'pending' && layer.orderId) {
+            delete state.orderBook[layer.orderId];
+          }
           // nofx L1471-1476: 完整 positionSize 放入最近层（不拆分多层）
           layer.state    = 'filled';
           layer.positionEntry = entry;
           layer.positionSize  = qty;      // 完整量（可能远大于标准每层数量）
           layer.side     = posSide;
-          layer.orderId  = undefined;     // 挂单已全部取消
+          layer.orderId  = undefined;     // 持仓层无挂单（对应的交易所挂单为孤儿，待自然消耗）
           layer.orderQuantity = 0;
           layer.unrealizedPnl = pos.unrealizedPnl ?? 0;
 
