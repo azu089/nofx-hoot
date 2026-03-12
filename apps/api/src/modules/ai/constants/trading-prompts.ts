@@ -707,9 +707,19 @@ function gridSystemPromptZh(
 - **剧烈**（BB>4% 或 ATR>3%）→ 系统已限杠杆至2x。⚠️ 剧烈波动≠必须pause；只在 BB>4% **且** EMA距>2% 趋势确认时才 pause（否则震荡行情会永远无法挂单）
 
 ## 层状态与决策
-- **空格**（empty）: 可挂单，或 hold 等待
+📡 **层级状态为交易所实时数据**：每轮从交易所挂单/持仓重建，filled=交易所有持仓，pending=有挂单，cancelled=无。
+- **空格/cancelled**（empty/cancelled）: 可挂单，或 hold 等待
 - **待成交**（pending）: 等待成交
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
+
+## 🔴 大持仓层处理（positionSize > 2× quantity）
+当某层的 positionSize 远大于标准每层数量（quantity），说明该层承载了来自前一配置的大持仓：
+- **估算占用层数**：positionSize / quantity ≈ N 层
+- **逐步释放策略**：在该持仓价格之上（多头）或之下（空头）连续挂 N 笔反向单
+  - 多头大持仓（side=buy）：在大持仓层+1、+2、+3...各层分别挂 sell（quantity 大小）
+  - 空头大持仓（side=sell）：在大持仓层-1、-2、-3...各层分别挂 buy（quantity 大小）
+- **不要一次性平仓**（close_long/close_short）：网格逐步磨平成本，优于直接平仓亏损
+- 每笔反向单成交都带来约 gridSpacing × quantity 的利润，持续获利退出
 
 💡 **初始化/重建后立即挂满**：检测到大量空格层（通常是刚初始化或 adjust_grid 重建后），**本轮应尽量一次性把所有空格层都挂上委托单**，不要分多轮慢慢补。顺序：先挂靠近当前价的层（成交概率高），再向两侧延伸。仓位上限不足时跳过超限层，其余层仍全部挂满。
 
