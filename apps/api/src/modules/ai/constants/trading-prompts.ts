@@ -713,8 +713,8 @@ function gridSystemPromptZh(
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
 **📍 补单顺序（关键）**：
-- 补买单时，从**最高价的空买层**开始（最接近当前价），依次向下挂；**禁止从L1（最低层）开始**
-- 补卖单时，从**最低价的空卖层**开始（最接近当前价），依次向上挂；**禁止从最高层开始**
+- 补买单时，从**最接近当前价的空买层**开始，依次向下挂；**禁止从价格最低的边缘层开始**
+- 补卖单时，从**最接近当前价的空卖层**开始，依次向上挂；**禁止从价格最高的边缘层开始**
 - 目的：优先在当前价附近成交，最大化捕获价格小幅震荡利润；从边缘补单等于浪费机会
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
@@ -798,8 +798,8 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
 **📍 Order Placement Priority (critical)**:
-- For buy orders: start from the **highest-price empty buy level** (closest to current price), work downward; **do NOT start from L1 (lowest level)**
-- For sell orders: start from the **lowest-price empty sell level** (closest to current price), work upward; **do NOT start from the highest level**
+- For buy orders: start from the **empty buy level closest to current price**, work downward; **do NOT start from the lowest-price edge level**
+- For sell orders: start from the **empty sell level closest to current price**, work upward; **do NOT start from the highest-price edge level**
 - Purpose: fill orders nearest to current price first → maximize capture of small price oscillations → core of grid profitability
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
