@@ -1923,6 +1923,7 @@ export class GridTradingService {
     const filledMap  = new Map<number, { qty: number; entry: number; pnl: number; side: 'buy' | 'sell' }>();
 
     // Step 1: 挂单 → pending 层（按价格最近匹配，每个层只占用一次）
+    // 优先级：filled 层 > pending 层 — 已有持仓的层不能被交易所挂单占用，否则 Step 2 会因 usedIdx 跳过 filled 层
     for (const order of openOrders) {
       const price: number = order.price ?? 0;
       if (price <= 0) continue;
@@ -1930,6 +1931,8 @@ export class GridTradingService {
       let bestDist = Infinity;
       for (let i = 0; i < gridLines.length; i++) {
         if (usedIdx.has(i)) continue;
+        // filled 层跳过：持仓层不能被挂单侵占，否则 Step 2 读不到 filled 状态
+        if (gridLines[i].state === 'filled' && gridLines[i].positionSize > 0.0001) continue;
         const d = Math.abs(gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
@@ -2688,6 +2691,14 @@ export class GridTradingService {
     let quantity = decision.quantity ?? 0;
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
+
+    // Step 0: 已有持仓的层禁止直接下单（filled 层只能通过 close_long/close_short 处理）
+    // 若允许，placeGridLimitOrder 末尾的 finalLevel.state='pending' 会抹除持仓记录，导致持仓层消失
+    if (level && level.state === 'filled' && (level.positionSize ?? 0) > 0.0001) {
+      const skipReason = `层 ${levelIndex + 1} 已有持仓 ${(level.positionSize ?? 0).toFixed(4)} @ ${(level.positionEntry ?? 0).toFixed(2)}，跳过（需用 close_long/close_short 先平仓）`;
+      this.logger.warn(`[网格] ${skipReason}`);
+      return { executed: false, skipReason };
+    }
 
     // Step 0: 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高和 syncOrderFills 误判成交
