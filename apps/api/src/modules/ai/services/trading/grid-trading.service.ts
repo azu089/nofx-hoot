@@ -3219,8 +3219,7 @@ export class GridTradingService {
 
       // Step 2: 获取交易所当前持仓（实时，每轮无条件获取）
       let currentPositionSize = 0;
-      let syncPositions: any[] = [];  // 提升作用域，供 Step 6 使用
-      let positionReadSucceeded = false; // 标记持仓读取是否成功（失败时跳过 Step 6 幽灵清除）
+      let syncPositions: any[] = [];
       try {
         syncPositions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
@@ -3235,7 +3234,6 @@ export class GridTradingService {
             }
           }
         }
-        positionReadSucceeded = true;
       } catch (e: any) {
         this.logger.warn(`[网格] syncOrderFills 持仓读取失败，退化为保守模式（所有消失挂单视为取消）: ${e.message}`);
       }
@@ -3477,107 +3475,10 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 持仓一致性（nofx 原则：交易所是唯一事实）
-      // 若交易所持仓与内存预期不符，说明有成交还未被 disappearedLines 机制捕获
-      // 注意：持仓读取失败时（positionReadSucceeded=false）跳过此检查，避免用假值 0 清除真实持仓层
-      const finalFilledLayers = state.gridLines.filter(l => l.state === 'filled');
-      if (positionReadSucceeded && finalFilledLayers.length > 0) {
-        const finalExpected = finalFilledLayers
-          .reduce((sum, l) => l.side === 'buy' ? sum + (l.positionSize ?? 0) : sum - (l.positionSize ?? 0), 0);
-        const posDiff = Math.abs(currentPositionSize - finalExpected);
-        if (posDiff > 0.01) {
-          // 交易所持仓=0 但内存有 filled 层 → 幽灵 filled，直接清除（nofx：交所=真相）
-          // 发生场景：持仓被外部关闭（TP/SL/手动），内存 filled 层未同步
-          if (Math.abs(currentPositionSize) < 0.001) {
-            for (const l of finalFilledLayers) {
-              l.state = 'empty';
-              l.positionSize = 0;
-              l.positionEntry = 0;
-              l.unrealizedPnl = 0;
-            }
-            this.logger.log(
-              `[网格] 幽灵 filled 清除: 交易所持仓=0，内存残留 ${finalFilledLayers.length} 层已重置为 empty`,
-            );
-          } else {
-            // 交易所持仓≠0 但小于内存预期 → 部分持仓被外部平仓（TP/SL/手动）
-            // 核心修复：按比例缩减 filled 层，从离当前价最远的开始清理
-            // nofx 原则：交易所是唯一事实，内存必须对齐
-            const absActual = Math.abs(currentPositionSize);
-            const absExpected = Math.abs(finalExpected);
-            if (absActual < absExpected - 0.001) {
-              // 按 side 分组处理（可能同时有 buy filled 和 sell filled）
-              const buyFilled = finalFilledLayers.filter(l => l.side === 'buy');
-              const sellFilled = finalFilledLayers.filter(l => l.side === 'sell');
-              const memLong = buyFilled.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-              const memShort = sellFilled.reduce((s, l) => s + (l.positionSize ?? 0), 0);
-
-              // 从交易所持仓推断实际多/空头量
-              let targetLong = 0;
-              let targetShort = 0;
-              if (currentPositionSize >= 0) {
-                targetLong = currentPositionSize;
-                targetShort = 0;
-              } else {
-                targetLong = 0;
-                targetShort = Math.abs(currentPositionSize);
-              }
-
-              // 清理多余的 buy filled 层（离当前价最远的优先清理）
-              if (memLong > targetLong + 0.001) {
-                const excessLong = memLong - targetLong;
-                // 按距离当前价从远到近排序（最远的先清除）
-                const sortedBuy = [...buyFilled].sort(
-                  (a, b) => Math.abs(b.price - state.lastPrice) - Math.abs(a.price - state.lastPrice),
-                );
-                let remainToRemove = excessLong;
-                for (const l of sortedBuy) {
-                  if (remainToRemove < 0.001) break;
-                  const removeQty = Math.min(l.positionSize ?? 0, remainToRemove);
-                  remainToRemove -= removeQty;
-                  l.state = 'empty';
-                  l.positionSize = 0;
-                  l.positionEntry = 0;
-                  l.unrealizedPnl = 0;
-                  this.logger.log(
-                    `[网格] 持仓校准(多头缩减): L${(l.index ?? 0) + 1} → empty (外部平仓)`,
-                  );
-                }
-              }
-
-              // 清理多余的 sell filled 层
-              if (memShort > targetShort + 0.001) {
-                const excessShort = memShort - targetShort;
-                const sortedSell = [...sellFilled].sort(
-                  (a, b) => Math.abs(b.price - state.lastPrice) - Math.abs(a.price - state.lastPrice),
-                );
-                let remainToRemove = excessShort;
-                for (const l of sortedSell) {
-                  if (remainToRemove < 0.001) break;
-                  const removeQty = Math.min(l.positionSize ?? 0, remainToRemove);
-                  remainToRemove -= removeQty;
-                  l.state = 'empty';
-                  l.positionSize = 0;
-                  l.positionEntry = 0;
-                  l.unrealizedPnl = 0;
-                  this.logger.log(
-                    `[网格] 持仓校准(空头缩减): L${(l.index ?? 0) + 1} → empty (外部平仓)`,
-                  );
-                }
-              }
-
-              this.logger.log(
-                `[网格] 持仓校准完成: 内存预期=${finalExpected.toFixed(4)} → 交易所实际=${currentPositionSize.toFixed(4)}, ` +
-                `清理多余 filled 层`,
-              );
-            } else {
-              this.logger.warn(
-                `[网格] 持仓差异(交易所>内存): 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
-                `差异=${posDiff.toFixed(4)}（交易所仓位更大，下轮 AI 决策将补全）`,
-              );
-            }
-          }
-        }
-      }
+      // Step 6: 已删除（对齐 nofx）
+      // nofx 的 syncGridState 没有持仓校准/对账逻辑
+      // 网格数据架构原则：禁止"内存量 vs 交易所量的阈值对账"
+      // 幽灵 filled 层在容器重启时由 reconcileGridState 三步流程清理
 
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
