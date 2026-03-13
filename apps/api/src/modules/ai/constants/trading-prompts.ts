@@ -721,6 +721,11 @@ function gridSystemPromptZh(
 - 补卖单时，从**最接近当前价的空卖层**开始，依次向上挂；**禁止从价格最高的边缘层开始**
 - 目的：优先在当前价附近成交，最大化捕获价格小幅震荡利润；从边缘补单等于浪费机会
 
+**📌 全层补单原则**：网格靠全层覆盖捕捉每个区间波动。非趋势行情下：
+- **每轮必须一次性输出所有空层的挂单决策**，不要"等下轮再挂"
+- 单次 actions 可包含多个 place_buy_limit / place_sell_limit
+- 只有 isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时才允许不补单
+
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
 ## 方向自适应系统（当前方向见 currentDirection 字段）
@@ -809,6 +814,11 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - For buy orders: start from the **empty buy level closest to current price**, work downward; **do NOT start from the lowest-price edge level**
 - For sell orders: start from the **empty sell level closest to current price**, work upward; **do NOT start from the highest-price edge level**
 - Purpose: fill orders nearest to current price first → maximize capture of small price oscillations → core of grid profitability
+
+**📌 Full-layer fill rule**: Grid captures oscillations across all levels. In non-trending markets:
+- **Every round: output orders for ALL empty levels in one response** — do not defer to next round
+- A single actions array can include multiple place_buy_limit / place_sell_limit
+- Only skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 
