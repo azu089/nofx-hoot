@@ -3487,10 +3487,82 @@ export class GridTradingService {
               `[网格] 幽灵 filled 清除: 交易所持仓=0，内存残留 ${finalFilledLayers.length} 层已重置为 empty`,
             );
           } else {
-            this.logger.warn(
-              `[网格] 持仓差异: 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
-              `差异=${posDiff.toFixed(4)}（AI 下轮将补全层状态）`,
-            );
+            // 交易所持仓≠0 但小于内存预期 → 部分持仓被外部平仓（TP/SL/手动）
+            // 核心修复：按比例缩减 filled 层，从离当前价最远的开始清理
+            // nofx 原则：交易所是唯一事实，内存必须对齐
+            const absActual = Math.abs(currentPositionSize);
+            const absExpected = Math.abs(finalExpected);
+            if (absActual < absExpected - 0.001) {
+              // 按 side 分组处理（可能同时有 buy filled 和 sell filled）
+              const buyFilled = finalFilledLayers.filter(l => l.side === 'buy');
+              const sellFilled = finalFilledLayers.filter(l => l.side === 'sell');
+              const memLong = buyFilled.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+              const memShort = sellFilled.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+
+              // 从交易所持仓推断实际多/空头量
+              let targetLong = 0;
+              let targetShort = 0;
+              if (currentPositionSize >= 0) {
+                targetLong = currentPositionSize;
+                targetShort = 0;
+              } else {
+                targetLong = 0;
+                targetShort = Math.abs(currentPositionSize);
+              }
+
+              // 清理多余的 buy filled 层（离当前价最远的优先清理）
+              if (memLong > targetLong + 0.001) {
+                const excessLong = memLong - targetLong;
+                // 按距离当前价从远到近排序（最远的先清除）
+                const sortedBuy = [...buyFilled].sort(
+                  (a, b) => Math.abs(b.price - state.lastPrice) - Math.abs(a.price - state.lastPrice),
+                );
+                let remainToRemove = excessLong;
+                for (const l of sortedBuy) {
+                  if (remainToRemove < 0.001) break;
+                  const removeQty = Math.min(l.positionSize ?? 0, remainToRemove);
+                  remainToRemove -= removeQty;
+                  l.state = 'empty';
+                  l.positionSize = 0;
+                  l.positionEntry = 0;
+                  l.unrealizedPnl = 0;
+                  this.logger.log(
+                    `[网格] 持仓校准(多头缩减): L${(l.index ?? 0) + 1} → empty (外部平仓)`,
+                  );
+                }
+              }
+
+              // 清理多余的 sell filled 层
+              if (memShort > targetShort + 0.001) {
+                const excessShort = memShort - targetShort;
+                const sortedSell = [...sellFilled].sort(
+                  (a, b) => Math.abs(b.price - state.lastPrice) - Math.abs(a.price - state.lastPrice),
+                );
+                let remainToRemove = excessShort;
+                for (const l of sortedSell) {
+                  if (remainToRemove < 0.001) break;
+                  const removeQty = Math.min(l.positionSize ?? 0, remainToRemove);
+                  remainToRemove -= removeQty;
+                  l.state = 'empty';
+                  l.positionSize = 0;
+                  l.positionEntry = 0;
+                  l.unrealizedPnl = 0;
+                  this.logger.log(
+                    `[网格] 持仓校准(空头缩减): L${(l.index ?? 0) + 1} → empty (外部平仓)`,
+                  );
+                }
+              }
+
+              this.logger.log(
+                `[网格] 持仓校准完成: 内存预期=${finalExpected.toFixed(4)} → 交易所实际=${currentPositionSize.toFixed(4)}, ` +
+                `清理多余 filled 层`,
+              );
+            } else {
+              this.logger.warn(
+                `[网格] 持仓差异(交易所>内存): 内存预期=${finalExpected.toFixed(4)}, 交易所实际=${currentPositionSize.toFixed(4)}, ` +
+                `差异=${posDiff.toFixed(4)}（交易所仓位更大，下轮 AI 决策将补全）`,
+              );
+            }
           }
         }
       }
