@@ -1440,6 +1440,8 @@ export class GridTradingService {
                   ? (currentPrice - entryPx) * closeQty
                   : (entryPx - currentPrice) * closeQty;
                 state.totalProfit += profit;
+                state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + profit; // 对齐 nofx: DailyPnL += realizedLoss
+                state.totalTrades++;  // 对齐 nofx: TotalTrades++
                 this.logger.warn(
                   `[网格] 硬止损平仓: 层${idx + 1} ${closeSide} qty=${closeQty} profit=${profit.toFixed(4)}`,
                 );
@@ -3238,16 +3240,13 @@ export class GridTradingService {
         this.logger.warn(`[网格] syncOrderFills 持仓读取失败，退化为保守模式（所有消失挂单视为取消）: ${e.message}`);
       }
 
-      // Step 3: 内存中 filled 层的预期净持仓（有符号：buy=+, sell=-）
-      // - buy 成交 → 净多头增加（+qty）
-      // - sell 成交 → 净空头增加（-qty）
-      // nofx 对齐：expectedPos 始终来自内存 filled 层之和，不 fallback 到 currentPos
+      // Step 3: 内存中 filled 层的预期持仓量（无符号累加，与 nofx 完全一致）
+      // nofx L1233-1238: expectedPositionSize += level.PositionSize（不区分 side）
+      // 对齐原因：nofx 用 abs() 比较双方，无符号累加在 abs 下等价且更简单
+      // expectedPos 始终来自内存 filled 层之和，不 fallback 到 currentPos
       // 冷启动场景由 recoverPositionsFromExchange 保证：有交易所持仓则已恢复为 filled 层
-      // 若 fallback 到 currentPos，会导致 expectedPos=currentPos → 任何成交都被误判为取消
       const memFilledLayers = state.gridLines.filter((l) => l.state === 'filled');
-      const expectedPositionSize = memFilledLayers.reduce((sum, l) => l.side === 'buy'
-        ? sum + (l.positionSize ?? 0)
-        : sum - (l.positionSize ?? 0), 0);
+      const expectedPositionSize = memFilledLayers.reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
 
       // Step 4: 处理"消失"的 pending 层
       const disappearedLines = state.gridLines.filter(
@@ -3296,23 +3295,34 @@ export class GridTradingService {
         }
 
         if (isFilled) {
-          if (line.side === 'sell') {
-            // 卖单成交 = 对冲平多（net-mode：卖单减少多头仓位，不开独立空头）
-            // 找任意 buy filled 层配对（离卖单成交价最近优先），不限于 index-1
-            // 网格重建后 buy filled 层位置不固定，严格 index-1 匹配会失败
-            const buyFilledLayers = state.gridLines
+          // 对齐 nofx syncGridState：买单成交→filled(持多)，卖单成交→empty(平多+利润)
+          // 没有"开空头"概念，net-mode 下卖单 = 减少多头仓位
+          if (line.side === 'buy') {
+            // 买单成交：标记 filled，等待 AI 下卖单
+            line.state = 'filled';
+            line.positionEntry = fillPrice;
+            line.positionSize = qty;
+            line.unrealizedPnl = 0;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty;
+            this.logger.log(
+              `[网格] 买单成交: L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
+            );
+          } else {
+            // 卖单成交：找任意 buy filled 层配对 → 计算利润 → 双层归零
+            const pairedBuy = state.gridLines
               .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
               .sort((a, b) =>
                 Math.abs((a.positionEntry ?? a.price) - fillPrice) -
                 Math.abs((b.positionEntry ?? b.price) - fillPrice),
-              );
-            const pairedBuy = buyFilledLayers[0];
+              )[0];
+
             if (pairedBuy) {
-              const sellPrice = new Decimal(fillPrice); // 实际成交价（avgPrice），非限价
+              const sellPrice = new Decimal(fillPrice);
               const buyEntry  = new Decimal(pairedBuy.positionEntry ?? 0);
               const posQty    = new Decimal(pairedBuy.positionSize  ?? 0);
               const feeRate   = new Decimal(state.takerFeeRate);
-              // 利润 = (卖价 - 买入价) * 数量 - 双边手续费
               const netProfitD = sellPrice.minus(buyEntry).times(posQty)
                 .minus(sellPrice.times(posQty).times(feeRate))
                 .minus(buyEntry.times(posQty).times(feeRate));
@@ -3323,46 +3333,32 @@ export class GridTradingService {
               if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
               state.totalTrades++;
 
-              // 扣燃油费（异步，不阻塞状态更新）
               if (netProfit > 0) {
                 this.settleGridFee(state, userId, netProfit).catch((e: any) =>
                   this.logger.error(`[网格] syncOrderFills 燃油费结算失败: ${e.message}`),
                 );
               }
 
-              // 双层归零（卖单用于平多，不论是否有 qty 差异，sell 层始终清空）
-              // 注意：sell qty 可能 > pairedBuy.positionSize（配置变更后 qty 不一致场景）
-              // 超出部分在 net_mode 下只是减少其他多头，不开新空头（由 持仓差异 机制兜底）
+              // 双层归零
               pairedBuy.state = 'empty'; pairedBuy.positionSize = 0; pairedBuy.positionEntry = 0; pairedBuy.unrealizedPnl = 0;
               line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
 
-              // 持久化历史持仓记录
               this.saveClosedPositionRecord(
-                userId,
-                state.strategyId,
+                userId, state.strategyId,
                 (adapter as any).exchangeType ?? 'unknown',
-                state.symbol,
-                'long',
-                buyEntry.toNumber(),
-                sellPrice.toNumber(),
-                posQty.toNumber(),
-                state.leverage ?? 1,
-                netProfit,
-                'grid_fill',
+                state.symbol, 'long',
+                buyEntry.toNumber(), sellPrice.toNumber(), posQty.toNumber(),
+                state.leverage ?? 1, netProfit, 'grid_fill',
               );
 
               filledLines.push(line);
-              // runningExpected：用 qty（实际成交量）而非 posQty，更准确反映交易所减仓幅度
               runningExpected -= qty;
               this.logger.log(
-                `[网格] 卖单成交(平多): level=${line.index}, sellPrice=${sellPrice.toFixed(4)}, ` +
-                `buyEntry=${buyEntry.toFixed(4)}, qty=${posQty.toFixed(4)}, ` +
-                `netProfit=${netProfitD.toFixed(8)} USDT`,
+                `[网格] 卖单成交(平多): L${(line.index ?? 0) + 1}, sell=${sellPrice.toFixed(4)}, ` +
+                `buy=${buyEntry.toFixed(4)}, qty=${posQty.toFixed(4)}, profit=${netProfitD.toFixed(8)} USDT`,
               );
             } else {
-              // 没有配对 buy 层（net-mode 下不应出现独立空头）
-              // 对齐 nofx：卖单成交但无多头可对冲 → 标记 empty，层位释放
-              // 利润由交易所自动计算（net-mode 减仓即实现损益）
+              // 无配对多头 → 标记 empty（nofx: position didn't increase → empty）
               line.state = 'empty';
               line.positionSize = 0;
               line.positionEntry = 0;
@@ -3371,95 +3367,7 @@ export class GridTradingService {
               filledLines.push(line);
               runningExpected -= qty;
               this.logger.warn(
-                `[网格] 卖单成交(无配对多头): level=${line.index}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
-              );
-            }
-          } else {
-            // buy 成交：检查是否有净空头（net_mode 平空场景）
-            // OKX net_mode 下 buy 可能是在平部分空头仓位，而非开多
-            const netShortBeforeFill = -runningExpected; // 当前内存净空头量（正值=净空）
-            const pairedShort = netShortBeforeFill > 0.0001
-              ? state.gridLines
-                  .filter(l => l.state === 'filled' && l.side === 'sell' && (l.positionSize ?? 0) > 0.0001)
-                  .sort((a, b) => Math.abs((a.positionEntry ?? a.price) - line.price) - Math.abs((b.positionEntry ?? b.price) - line.price))[0]
-              : undefined;
-
-            if (pairedShort) {
-              // 平空：buy 抵消了部分短持仓（OKX net_mode）
-              const closeQty = Math.min(qty, pairedShort.positionSize ?? 0);
-              const shortEntry = new Decimal(pairedShort.positionEntry ?? 0);
-              const buyPriceD  = new Decimal(line.price);
-              const feeRate    = new Decimal(state.takerFeeRate);
-              // 空头利润 = (入场价 - 平仓买入价) * 数量 - 双边手续费
-              const netProfitD = shortEntry.minus(buyPriceD).times(closeQty)
-                .minus(shortEntry.times(closeQty).times(feeRate))
-                .minus(buyPriceD.times(closeQty).times(feeRate));
-              const netProfit  = netProfitD.toNumber();
-
-              state.totalProfit += netProfit;
-              state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-              if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
-              state.totalTrades++;
-
-              if (netProfit > 0) {
-                this.settleGridFee(state, userId, netProfit).catch((e: any) =>
-                  this.logger.error(`[网格] syncOrderFills 燃油费结算失败: ${e.message}`),
-                );
-              }
-
-              // 更新空头层持仓量（对齐交易所实际）
-              pairedShort.positionSize = (pairedShort.positionSize ?? 0) - closeQty;
-              if ((pairedShort.positionSize ?? 0) < 0.0001) {
-                pairedShort.state = 'empty'; pairedShort.positionSize = 0;
-                pairedShort.positionEntry = 0; pairedShort.unrealizedPnl = 0;
-              }
-
-              // buy 层处理：若买量 > 平空量，超出部分开新多头
-              const excessQty = qty - closeQty;
-              if (excessQty > 0.001) {
-                // 超出部分在交易所形成净多头（net_mode: buy 0.16 - short 0.08 = long 0.08）
-                line.state = 'filled';
-                line.positionEntry = fillPrice;
-                line.positionSize = excessQty;
-                line.unrealizedPnl = 0;
-                state.totalTrades++;
-                this.logger.log(
-                  `[网格] 买单平空+开多: 平 ${closeQty.toFixed(4)} 空头, 余 ${excessQty.toFixed(4)} 开多 @ ${fillPrice.toFixed(4)}`,
-                );
-              } else {
-                line.state = 'empty';
-                line.positionSize = 0;
-                line.positionEntry = 0;
-                line.unrealizedPnl = 0;
-              }
-              filledLines.push(line);
-              runningExpected += qty; // 全量影响持仓：平空 closeQty + 开多 excessQty
-
-              this.saveClosedPositionRecord(
-                userId, state.strategyId,
-                (adapter as any).exchangeType ?? 'unknown',
-                state.symbol, 'short',
-                shortEntry.toNumber(), buyPriceD.toNumber(), closeQty,
-                state.leverage ?? 1, netProfit, 'grid_fill',
-              );
-
-              this.logger.log(
-                `[网格] 买单平空: L${(line.index ?? 0) + 1}@${line.price.toFixed(4)} 平 ` +
-                `L${(pairedShort.index ?? 0) + 1}@${shortEntry.toFixed(4)} ` +
-                `closeQty=${closeQty.toFixed(4)} profit=${netProfitD.toFixed(8)} USDT ` +
-                `(空头剩余=${(pairedShort.positionSize ?? 0).toFixed(4)})`,
-              );
-            } else {
-              // 没有净空头，正常开多：标记 filled 等待 AI 下卖单
-              line.state = 'filled';
-              line.positionEntry = fillPrice; // 实际成交价（avgPrice）
-              line.positionSize = qty;
-              line.unrealizedPnl = 0;
-              state.totalTrades++;
-              filledLines.push(line);
-              runningExpected += qty;
-              this.logger.log(
-                `[网格] 买单成交: L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
+                `[网格] 卖单成交(无配对多头): L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
               );
             }
           }
