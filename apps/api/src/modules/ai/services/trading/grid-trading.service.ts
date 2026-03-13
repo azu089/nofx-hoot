@@ -3222,8 +3222,10 @@ export class GridTradingService {
       // Step 2: 获取交易所当前持仓（实时，每轮无条件获取）
       let currentPositionSize = 0;
       let syncPositions: any[] = [];
+      let positionFetchSucceeded = false; // 标记 getPositions 是否成功（防止失败时 currentPositionSize=0 误清 filled 层）
       try {
         syncPositions = await adapter.getPositions();
+        positionFetchSucceeded = true;
         const baseSymbol = state.symbol.split('/')[0];
         for (const pos of syncPositions) {
           if ((pos as any).symbol?.includes(baseSymbol)) {
@@ -3390,10 +3392,30 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 已删除（对齐 nofx）
-      // nofx 的 syncGridState 没有持仓校准/对账逻辑
-      // 网格数据架构原则：禁止"内存量 vs 交易所量的阈值对账"
-      // 幽灵 filled 层在容器重启时由 reconcileGridState 三步流程清理
+      // Step 6: 外部平仓检测（nofx 没有，HOOT 增强）
+      // 场景：用户手动在交易所平仓、强平、止盈止损触发等
+      // 交易所持仓=0 但内存仍有 filled 层 → 必须清理，否则永久残留
+      // 安全守卫：仅在 getPositions() 成功时执行（失败时 currentPositionSize 默认=0，会误清）
+      if (positionFetchSucceeded && Math.abs(currentPositionSize) < 0.0001) {
+        const staleFilledLayers = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0.0001);
+        if (staleFilledLayers.length > 0) {
+          const staleTotalQty = staleFilledLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+          this.logger.warn(
+            `[网格] ⚠️ 外部平仓检测: 交易所持仓=0 但内存有 ${staleFilledLayers.length} 个 filled 层` +
+            `(总量=${staleTotalQty.toFixed(4)})，全部清零`,
+          );
+          for (const l of staleFilledLayers) {
+            this.logger.log(
+              `[网格] 清理残留filled层: L${(l.index ?? 0) + 1}(${l.side}, sz=${(l.positionSize ?? 0).toFixed(4)}, entry=${(l.positionEntry ?? 0).toFixed(4)}) → empty`,
+            );
+            l.state = 'empty';
+            l.positionSize = 0;
+            l.positionEntry = 0;
+            l.unrealizedPnl = 0;
+            l.orderId = undefined;
+          }
+        }
+      }
 
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
