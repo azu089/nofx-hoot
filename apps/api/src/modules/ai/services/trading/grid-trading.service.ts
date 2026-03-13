@@ -3297,11 +3297,16 @@ export class GridTradingService {
 
         if (isFilled) {
           if (line.side === 'sell') {
-            // 卖单成交 = 多头平仓。找配对的 buy 持仓层（index-1），计算利润并扣燃油费
-            const pairedBuy = state.gridLines.find(
-              (l) => l.state === 'filled' && l.side === 'buy' &&
-                     l.index === (line.index ?? 0) - 1 && (l.positionSize ?? 0) > 0,
-            );
+            // 卖单成交 = 对冲平多（net-mode：卖单减少多头仓位，不开独立空头）
+            // 找任意 buy filled 层配对（离卖单成交价最近优先），不限于 index-1
+            // 网格重建后 buy filled 层位置不固定，严格 index-1 匹配会失败
+            const buyFilledLayers = state.gridLines
+              .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
+              .sort((a, b) =>
+                Math.abs((a.positionEntry ?? a.price) - fillPrice) -
+                Math.abs((b.positionEntry ?? b.price) - fillPrice),
+              );
+            const pairedBuy = buyFilledLayers[0];
             if (pairedBuy) {
               const sellPrice = new Decimal(fillPrice); // 实际成交价（avgPrice），非限价
               const buyEntry  = new Decimal(pairedBuy.positionEntry ?? 0);
@@ -3355,16 +3360,18 @@ export class GridTradingService {
                 `netProfit=${netProfitD.toFixed(8)} USDT`,
               );
             } else {
-              // 没有配对 buy 层：卖单开空头，标记 filled（持空头），供 AI 在 grid 层级中看到并调用 close_short
-              line.state = 'filled';
-              line.positionEntry = fillPrice; // 实际成交价
-              line.positionSize = qty;
+              // 没有配对 buy 层（net-mode 下不应出现独立空头）
+              // 对齐 nofx：卖单成交但无多头可对冲 → 标记 empty，层位释放
+              // 利润由交易所自动计算（net-mode 减仓即实现损益）
+              line.state = 'empty';
+              line.positionSize = 0;
+              line.positionEntry = 0;
               line.unrealizedPnl = 0;
               state.totalTrades++;
               filledLines.push(line);
               runningExpected -= qty;
               this.logger.warn(
-                `[网格] 卖单成交(开空头): level=${line.index}, price=${line.price.toFixed(4)}, qty=${qty.toFixed(4)}`,
+                `[网格] 卖单成交(无配对多头): level=${line.index}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
               );
             }
           } else {
