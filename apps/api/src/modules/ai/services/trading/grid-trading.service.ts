@@ -1260,13 +1260,20 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
-        // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
-        const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
+        // Pre-sync: 在构建 AI 上下文前先同步交易所状态到内存
+        // 解决数据源不一致问题：context.levels / AI分析 / header stats / 层级显示 必须统一
+        // 历史教训 2026-03-13：旧版 sync 只在周期末 → AI 看到的数据比交易所落后1周期
+        // → AI 分析说"5层空头"但实际8层、层级显示5 filled但header显示8
+        if (isGridAdapter(adapter)) {
+          const preSyncResult = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+          if (preSyncResult.filledLines.length > 0) {
+            trades += preSyncResult.filledLines.length;
+            this.logger.log(`[网格] 前置同步: ${preSyncResult.filledLines.length} 笔新成交检测`);
+          }
+        }
 
-        // 对齐 nofx: 不做任何 AI 前校准
-        // levels 来自内存（orderId→层映射），有 1 周期延迟是正常的
-        // AI 同时看到交易所实时数据（positionLong/positionShort/exchangeOpenOrders）可交叉验证
-        // 所有订单状态变更由 syncOrderFills（周期末）统一处理
+        // 构建 AI 上下文（state.gridLines 已被 pre-sync 更新为交易所最新状态）
+        const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
 
         // 全局网格倾斜计算（供 AI context 使用，autoAdjustGrid 也复用此结果）
         const { skewed: _skewed, buyFilled: skewBuy, sellFilled: skewSell } = this.checkGridSkew(state);
@@ -1481,13 +1488,25 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
-        // 使用 preExecGridLines（交易所实时快照），而非执行后的 state.gridLines
-        // 历史教训 2026-03-13：旧版用执行后数据 → 用户看到刚下的挂单而非交易所确认的状态
+        // 使用 syncOrderFills 后的 state.gridLines（交易所真实状态）
+        // 因为有 pre-sync + post-sync，state.gridLines 始终反映交易所最新数据
+        // 历史教训 2026-03-13：用 preExecGridLines 导致 header(8层) vs 层级显示(5层) 不一致
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
+          const postSyncGridLines = state.gridLines.map((l, i) => {
+            const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
+            if (l.state === 'filled') {
+              entry.qty = +(l.positionSize ?? 0).toFixed(4);
+              entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+            } else if (l.state === 'pending') {
+              entry.oid = (l.orderId ?? '').slice(-8);
+              entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
+            }
+            return entry;
+          });
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, postSyncGridLines, gridConfig?.locale,
           );
         }
 
@@ -4091,7 +4110,7 @@ export class GridTradingService {
     thinking?: string,
     execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
     marketAnalysis?: string,
-    preExecGridLines?: any[],  // AI 分析时看到的执行前快照
+    preExecGridLines?: any[],  // syncOrderFills 后的层级快照（交易所真实状态）
     locale?: string,           // 用户语言（用于 gridSummary 翻译）
   ): Promise<void> {
     try {
@@ -4149,7 +4168,7 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：使用执行前快照（交易所实时数据），fallback 到 state.gridLines
+        // 每层详情：使用 syncOrderFills 后的快照（交易所真实状态），fallback 到 state.gridLines
         gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = {
             lv: i + 1,
