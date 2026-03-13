@@ -3315,23 +3315,11 @@ export class GridTradingService {
                 );
               }
 
-              // 配对买层归零
+              // 双层归零（卖单用于平多，不论是否有 qty 差异，sell 层始终清空）
+              // 注意：sell qty 可能 > pairedBuy.positionSize（配置变更后 qty 不一致场景）
+              // 超出部分在 net_mode 下只是减少其他多头，不开新空头（由 持仓差异 机制兜底）
               pairedBuy.state = 'empty'; pairedBuy.positionSize = 0; pairedBuy.positionEntry = 0; pairedBuy.unrealizedPnl = 0;
-
-              // 卖单处理：若卖量 > 配对买层持仓量，超出部分在 net_mode 下开新空头
-              const excessSellQty = qty - posQty.toNumber();
-              if (excessSellQty > 0.001) {
-                // 超出部分在交易所形成净空头（net_mode: sell 0.16 - long 0.1333 = short 0.0267）
-                line.state = 'filled';
-                line.positionEntry = fillPrice;
-                line.positionSize = excessSellQty;
-                line.unrealizedPnl = 0;
-                this.logger.log(
-                  `[网格] 卖单平多+开空: 平 ${posQty.toFixed(4)} 多头, 余 ${excessSellQty.toFixed(4)} 开空 @ ${fillPrice.toFixed(4)}`,
-                );
-              } else {
-                line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-              }
+              line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
 
               // 持久化历史持仓记录
               this.saveClosedPositionRecord(
@@ -3349,7 +3337,7 @@ export class GridTradingService {
               );
 
               filledLines.push(line);
-              // runningExpected：全量影响持仓（平多 posQty + 开空 excessSellQty）
+              // runningExpected：用 qty（实际成交量）而非 posQty，更准确反映交易所减仓幅度
               runningExpected -= qty;
               this.logger.log(
                 `[网格] 卖单成交(平多): level=${line.index}, sellPrice=${sellPrice.toFixed(4)}, ` +
