@@ -1102,16 +1102,16 @@ export class GridTradingService {
       const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
       if (breakoutPct >= breakoutThreshold) {
         const direction = currentPrice > state.upperPrice ? 'up' : 'down';
-        this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），暂停网格`);
+        this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），撤单+暂停网格`);
 
         // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
         if (gridConfig?.directionalCloseOnBreakout === true) {
           await this.directionalCloseOnBreakout(state, direction, userId, apiKeyId);
         }
 
-        state.isPaused = true;
-        state.pauseSource = 'breakout';
-        state.pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
+        // 对齐 nofx：暂停时必须撤销所有挂单（防止价格继续偏离时挂单成交造成亏损）
+        const pauseReason = `价格突破网格边界 ${breakoutPct.toFixed(1)}% (${direction})`;
+        await this.softPauseGrid(state, userId, apiKeyId, pauseReason, 'breakout');
         await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
       }

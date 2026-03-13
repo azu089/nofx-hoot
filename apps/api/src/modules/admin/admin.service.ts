@@ -97,6 +97,7 @@ export class AdminService {
           emailVerified: true,
           usdtBalance: true,
           hootBalance: true,
+          pointBalance: true,
           createdAt: true,
           updatedAt: true,
           _count: {
