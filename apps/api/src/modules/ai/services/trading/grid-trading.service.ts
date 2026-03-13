@@ -3408,11 +3408,19 @@ export class GridTradingService {
 
         const leverage = Math.max(1, state.leverage ?? 1);
 
-        // 按距离排序的空层列表（只选 empty 层，不覆盖 pending 层的 orderId 映射）
-        const emptyLayers = state.gridLines
+        // 关键：空头持仓 → 只映射到 sell-side 层；多头持仓 → 只映射到 buy-side 层
+        // 这样才能保留对面的空层让 AI 挂反向单来减仓
+        // 如果同侧空层不够，再使用对侧层（但优先同侧）
+        const sameSideLayers = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
-          .filter(({ layer }) => layer.state === 'empty')
+          .filter(({ layer }) => layer.state === 'empty' && layer.side === posSide)
           .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+        const oppSideLayers = state.gridLines
+          .map((l, idx) => ({ layer: l, idx }))
+          .filter(({ layer }) => layer.state === 'empty' && layer.side !== posSide)
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+        // 优先同侧，不够再用对侧
+        const emptyLayers = [...sameSideLayers, ...oppSideLayers];
 
         let remainingQty = totalQty;
         let mappedCount = 0;
@@ -3758,12 +3766,23 @@ export class GridTradingService {
     let mappedCount = 0;
     for (const fp of sortedSnapshots) {
       if (remainingQty <= 0.0001) break;
+      // 关键：优先映射到同侧层（sell→sell-side, buy→buy-side），保留对侧空层给反向挂单
       let closestIdx = -1;
       let closestDist = Infinity;
+      // Pass 1: 同侧层优先
       for (let i = 0; i < state.gridLines.length; i++) {
-        if (mappedIndices.has(i)) continue; // 跳过已占用层
+        if (mappedIndices.has(i)) continue;
+        if (state.gridLines[i].side !== fp.side) continue; // 只看同侧
         const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
         if (dist < closestDist) { closestDist = dist; closestIdx = i; }
+      }
+      // Pass 2: 同侧不够时用对侧（避免持仓丢失）
+      if (closestIdx < 0) {
+        for (let i = 0; i < state.gridLines.length; i++) {
+          if (mappedIndices.has(i)) continue;
+          const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
+          if (dist < closestDist) { closestDist = dist; closestIdx = i; }
+        }
       }
       if (closestIdx >= 0) {
         mappedIndices.add(closestIdx);
