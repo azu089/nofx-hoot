@@ -3342,10 +3342,72 @@ export class GridTradingService {
         }
 
         if (isFilled) {
-          // 对齐 nofx syncGridState：买单成交→filled(持多)，卖单成交→empty(平多+利润)
-          // 没有"开空头"概念，net-mode 下卖单 = 减少多头仓位
-          if (line.side === 'buy') {
-            // 买单成交：标记 filled，等待 AI 下卖单
+          // 对齐 nofx syncGridState L1247-1253：不区分 buy/sell，成交即 filled
+          // nofx 用 abs() 启发式，成交后 level.State="filled"，side 保持原值
+          // HOOT 增强：配对平仓计算利润（nofx 没有此功能）
+          //
+          // 双向逻辑（neutral grid 完整支持）：
+          //   买单成交 → 先找配对 sell-filled 层（平空获利），无则开多
+          //   卖单成交 → 先找配对 buy-filled 层（平多获利），无则开空
+
+          // 查找对手方 filled 层（用于配对平仓）
+          const oppositeSide = line.side === 'buy' ? 'sell' : 'buy';
+          const pairedLayer = state.gridLines
+            .filter(l => l.state === 'filled' && l.side === oppositeSide && (l.positionSize ?? 0) > 0)
+            .sort((a, b) =>
+              Math.abs((a.positionEntry ?? a.price) - fillPrice) -
+              Math.abs((b.positionEntry ?? b.price) - fillPrice),
+            )[0];
+
+          if (pairedLayer) {
+            // ── 配对平仓：计算利润 → 双层归零 ──
+            const entryPrice = new Decimal(pairedLayer.positionEntry ?? 0);
+            const closePrice = new Decimal(fillPrice);
+            const posQty     = new Decimal(pairedLayer.positionSize ?? 0);
+            const feeRate    = new Decimal(state.takerFeeRate);
+
+            // 利润 = (平仓价 - 入场价) × 数量 × 方向系数 - 手续费
+            // 多头利润: (sell - buy) × qty；空头利润: (sell_entry - buy_close) × qty
+            const directionMultiplier = oppositeSide === 'buy' ? 1 : -1;  // 对手是buy=平多(+1), 对手是sell=平空(-1)
+            const netProfitD = closePrice.minus(entryPrice).times(posQty).times(directionMultiplier)
+              .minus(closePrice.times(posQty).times(feeRate))
+              .minus(entryPrice.times(posQty).times(feeRate));
+            const netProfit = netProfitD.toNumber();
+
+            state.totalProfit += netProfit;
+            state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+            if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
+            state.totalTrades++;
+
+            if (netProfit > 0) {
+              this.settleGridFee(state, userId, netProfit).catch((e: any) =>
+                this.logger.error(`[网格] syncOrderFills 燃油费结算失败: ${e.message}`),
+              );
+            }
+
+            // 双层归零
+            pairedLayer.state = 'empty'; pairedLayer.positionSize = 0; pairedLayer.positionEntry = 0; pairedLayer.unrealizedPnl = 0;
+            line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
+
+            const posType = oppositeSide === 'buy' ? 'long' : 'short';
+            this.saveClosedPositionRecord(
+              userId, state.strategyId,
+              (adapter as any).exchangeType ?? 'unknown',
+              state.symbol, posType,
+              entryPrice.toNumber(), closePrice.toNumber(), posQty.toNumber(),
+              state.leverage ?? 1, netProfit, 'grid_fill',
+            );
+
+            filledLines.push(line);
+            runningExpected -= qty;
+            const closeLabel = line.side === 'sell' ? '卖单成交(平多)' : '买单成交(平空)';
+            this.logger.log(
+              `[网格] ${closeLabel}: L${(line.index ?? 0) + 1}, close=${closePrice.toFixed(4)}, ` +
+              `entry=${entryPrice.toFixed(4)}, qty=${posQty.toFixed(4)}, profit=${netProfitD.toFixed(8)} USDT`,
+            );
+          } else {
+            // ── 无配对：开新仓位（买→开多，卖→开空）──
+            // 对齐 nofx: level.State = "filled", side 保持原值
             line.state = 'filled';
             line.positionEntry = fillPrice;
             line.positionSize = qty;
@@ -3353,70 +3415,10 @@ export class GridTradingService {
             state.totalTrades++;
             filledLines.push(line);
             runningExpected += qty;
+            const openLabel = line.side === 'buy' ? '买单成交(开多)' : '卖单成交(开空)';
             this.logger.log(
-              `[网格] 买单成交: L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
+              `[网格] ${openLabel}: L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
             );
-          } else {
-            // 卖单成交：找任意 buy filled 层配对 → 计算利润 → 双层归零
-            const pairedBuy = state.gridLines
-              .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
-              .sort((a, b) =>
-                Math.abs((a.positionEntry ?? a.price) - fillPrice) -
-                Math.abs((b.positionEntry ?? b.price) - fillPrice),
-              )[0];
-
-            if (pairedBuy) {
-              const sellPrice = new Decimal(fillPrice);
-              const buyEntry  = new Decimal(pairedBuy.positionEntry ?? 0);
-              const posQty    = new Decimal(pairedBuy.positionSize  ?? 0);
-              const feeRate   = new Decimal(state.takerFeeRate);
-              const netProfitD = sellPrice.minus(buyEntry).times(posQty)
-                .minus(sellPrice.times(posQty).times(feeRate))
-                .minus(buyEntry.times(posQty).times(feeRate));
-              const netProfit = netProfitD.toNumber();
-
-              state.totalProfit += netProfit;
-              state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
-              if (netProfit > 0) state.winningTrades = (state.winningTrades ?? 0) + 1;
-              state.totalTrades++;
-
-              if (netProfit > 0) {
-                this.settleGridFee(state, userId, netProfit).catch((e: any) =>
-                  this.logger.error(`[网格] syncOrderFills 燃油费结算失败: ${e.message}`),
-                );
-              }
-
-              // 双层归零
-              pairedBuy.state = 'empty'; pairedBuy.positionSize = 0; pairedBuy.positionEntry = 0; pairedBuy.unrealizedPnl = 0;
-              line.state = 'empty'; line.positionSize = 0; line.positionEntry = 0; line.unrealizedPnl = 0;
-
-              this.saveClosedPositionRecord(
-                userId, state.strategyId,
-                (adapter as any).exchangeType ?? 'unknown',
-                state.symbol, 'long',
-                buyEntry.toNumber(), sellPrice.toNumber(), posQty.toNumber(),
-                state.leverage ?? 1, netProfit, 'grid_fill',
-              );
-
-              filledLines.push(line);
-              runningExpected -= qty;
-              this.logger.log(
-                `[网格] 卖单成交(平多): L${(line.index ?? 0) + 1}, sell=${sellPrice.toFixed(4)}, ` +
-                `buy=${buyEntry.toFixed(4)}, qty=${posQty.toFixed(4)}, profit=${netProfitD.toFixed(8)} USDT`,
-              );
-            } else {
-              // 无配对多头 → 标记 empty（nofx: position didn't increase → empty）
-              line.state = 'empty';
-              line.positionSize = 0;
-              line.positionEntry = 0;
-              line.unrealizedPnl = 0;
-              state.totalTrades++;
-              filledLines.push(line);
-              runningExpected -= qty;
-              this.logger.warn(
-                `[网格] 卖单成交(无配对多头): L${(line.index ?? 0) + 1}, price=${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
-              );
-            }
           }
         } else {
           line.state = 'empty';
