@@ -3208,6 +3208,7 @@ export class GridTradingService {
       // Step 2: 获取交易所当前持仓（实时，每轮无条件获取）
       let currentPositionSize = 0;
       let syncPositions: any[] = [];  // 提升作用域，供 Step 6 使用
+      let positionReadSucceeded = false; // 标记持仓读取是否成功（失败时跳过 Step 6 幽灵清除）
       try {
         syncPositions = await adapter.getPositions();
         const baseSymbol = state.symbol.split('/')[0];
@@ -3222,6 +3223,7 @@ export class GridTradingService {
             }
           }
         }
+        positionReadSucceeded = true;
       } catch (e: any) {
         this.logger.warn(`[网格] syncOrderFills 持仓读取失败，退化为保守模式（所有消失挂单视为取消）: ${e.message}`);
       }
@@ -3477,8 +3479,9 @@ export class GridTradingService {
 
       // Step 6: 持仓一致性（nofx 原则：交易所是唯一事实）
       // 若交易所持仓与内存预期不符，说明有成交还未被 disappearedLines 机制捕获
+      // 注意：持仓读取失败时（positionReadSucceeded=false）跳过此检查，避免用假值 0 清除真实持仓层
       const finalFilledLayers = state.gridLines.filter(l => l.state === 'filled');
-      if (finalFilledLayers.length > 0) {
+      if (positionReadSucceeded && finalFilledLayers.length > 0) {
         const finalExpected = finalFilledLayers
           .reduce((sum, l) => l.side === 'buy' ? sum + (l.positionSize ?? 0) : sum - (l.positionSize ?? 0), 0);
         const posDiff = Math.abs(currentPositionSize - finalExpected);
