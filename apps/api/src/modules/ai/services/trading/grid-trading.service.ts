@@ -1264,8 +1264,13 @@ export class GridTradingService {
         // 解决数据源不一致问题：context.levels / AI分析 / header stats / 层级显示 必须统一
         // 历史教训 2026-03-13：旧版 sync 只在周期末 → AI 看到的数据比交易所落后1周期
         // → AI 分析说"5层空头"但实际8层、层级显示5 filled但header显示8
+        // 同时捕获交易所数据用于层级显示（显示 AI 决策前的状态，而非执行后的状态）
+        let preSyncExchangeOrders: any[] = [];
+        let preSyncExchangePositions: any[] = [];
         if (isGridAdapter(adapter)) {
           const preSyncResult = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+          preSyncExchangeOrders = preSyncResult.exchangeOpenOrders ?? [];
+          preSyncExchangePositions = preSyncResult.exchangePositions ?? [];
           if (preSyncResult.filledLines.length > 0) {
             trades += preSyncResult.filledLines.length;
             this.logger.log(`[网格] 前置同步: ${preSyncResult.filledLines.length} 笔新成交检测`);
@@ -1492,12 +1497,12 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
-        // 层级显示完全从交易所数据构建（不读内存 state.gridLines）
-        // 三种状态：pending=交易所有挂单, filled=交易所有持仓, empty=交易所无数据
+        // 层级显示用 pre-sync 交易所数据（AI 决策前的状态），不是 post-sync（执行后）
+        // 这样层级状态和 AI 看到的数据一致：AI 看到 L5 空 → 补单 L5 → 显示 L5 空
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
           const displayGridLines = this.buildDisplayFromExchange(
-            state, postSyncExchangeOrders, postSyncExchangePositions,
+            state, preSyncExchangeOrders, preSyncExchangePositions,
           );
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
