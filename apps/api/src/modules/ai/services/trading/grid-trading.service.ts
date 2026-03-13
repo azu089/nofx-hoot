@@ -3334,24 +3334,39 @@ export class GridTradingService {
       }
 
       // Step 6: 交易所持仓 → 内存对账（每轮执行，交易所是唯一事实）
-      // 历史教训 2026-03-13：内存 filled 层可能因买卖对冲、手动平仓等原因与交易所偏离
-      // 原则：不用阈值对比修补，直接清空重建 — 全部重置比部分对账更安全更简单
+      // 三种不一致场景都必须触发清空重建：
+      // 1. 买卖混合：内存同时有 buy-filled 和 sell-filled（交易所 one-way 模式只有一个方向）
+      // 2. 方向矛盾：交易所多头但内存有 sell-filled（或反之）
+      // 3. 净量偏离：memNet ≠ exchangeNet
+      // 历史教训 2026-03-13：旧版只比较 NET → 买12+卖2=net 2.53 匹配交易所 2.53 → 不触发 → 错误
       if (positionFetchSucceeded) {
-        // 计算内存 net 持仓（signed: buy=+, sell=-）
         const memBuyQty = state.gridLines
           .filter(l => l.state === 'filled' && l.side === 'buy')
           .reduce((s, l) => s + (l.positionSize ?? 0), 0);
         const memSellQty = state.gridLines
           .filter(l => l.state === 'filled' && l.side === 'sell')
           .reduce((s, l) => s + (l.positionSize ?? 0), 0);
-        const memNetPosition = memBuyQty - memSellQty; // positive=long, negative=short
-
-        // currentPositionSize 已在 Step 2 计算（signed: long=+, short=-）
+        const memNetPosition = memBuyQty - memSellQty;
         const netDiff = Math.abs(memNetPosition - currentPositionSize);
 
-        if (netDiff > 0.0001) {
+        // 检测不一致
+        const hasMixedSides = memBuyQty > 0.0001 && memSellQty > 0.0001;
+        const exchangeIsLong = currentPositionSize > 0.0001;
+        const exchangeIsShort = currentPositionSize < -0.0001;
+        const directionConflict =
+          (exchangeIsLong && memSellQty > 0.0001) ||
+          (exchangeIsShort && memBuyQty > 0.0001);
+        const netMismatch = netDiff > 0.0001;
+
+        const needReconcile = hasMixedSides || directionConflict || netMismatch;
+
+        if (needReconcile) {
+          const reasons: string[] = [];
+          if (hasMixedSides) reasons.push(`买卖混合(buy=${memBuyQty.toFixed(4)},sell=${memSellQty.toFixed(4)})`);
+          if (directionConflict) reasons.push(`方向矛盾(交易所=${exchangeIsLong ? '多' : '空'},内存有${memSellQty > 0.0001 ? '卖' : '买'}filled)`);
+          if (netMismatch) reasons.push(`净量偏离(mem=${memNetPosition.toFixed(4)},exch=${currentPositionSize.toFixed(4)})`);
           this.logger.warn(
-            `[网格] ⚠️ 内存↔交易所持仓偏离: 内存net=${memNetPosition.toFixed(4)}(buy=${memBuyQty.toFixed(4)},sell=${memSellQty.toFixed(4)}) 交易所net=${currentPositionSize.toFixed(4)} diff=${netDiff.toFixed(4)} → 清空filled重建`,
+            `[网格] ⚠️ 持仓对账触发: ${reasons.join(' + ')} → 清空filled重建`,
           );
 
           // Step 6a: 清空所有 filled 层
