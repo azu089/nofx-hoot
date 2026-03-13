@@ -3377,14 +3377,15 @@ export class GridTradingService {
   }
 
   /**
-   * 启动时从交易所持仓恢复 filled 层（交所唯一数据源，不使用 fetchMyTrades）
-   * getPositions() → 按持仓量估算层数 → 均价拆分 → 映射到最近的多个空层
+   * 启动时从交易所持仓恢复 filled 层（交所唯一数据源）
+   * 对齐 nofx 原则：每层数量 = allocatedUSD * leverage / price（网格配置决定），不均分
+   * 从最近层向外映射，总量不超过交易所实际持仓
    */
   private async recoverPositionsFromExchange(
     state: GridState,
     userId: string,
     apiKeyId: string,
-    qtyHint = 0,   // 配置变更路径传入：重建前保存的挂单qty均值
+    _qtyHint = 0,   // 已废弃，保留签名兼容
   ): Promise<void> {
     if (!this.adapterFactory || !apiKeyId) return;
     let adapter: ExchangeAdapter | null = null;
@@ -3405,58 +3406,46 @@ export class GridTradingService {
           ? pos.entryPrice
           : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
-        // 估算每层标准数量（优先级：qtyHint > pending挂单均值 > fallback）
-        // qtyHint：配置变更路径传入，取消挂单前保存的qty均值（最准确）
-        // pending挂单均值：容器重启路径，挂单已恢复到内存，从中读取
-        // fallback：无上述来源时用 allocatedUSD + state.leverage（可能因AI动态杠杆偏差）
-        const pendingWithQty = state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0.0001);
-        let normalQty = 0;
-        if (qtyHint > 0.0001) {
-          normalQty = qtyHint; // 配置变更路径：重建前保存的精确值
-        } else if (pendingWithQty.length > 0) {
-          normalQty = pendingWithQty.reduce((s, l) => s + l.orderQuantity, 0) / pendingWithQty.length;
-        } else {
-          // fallback：用 allocatedUSD + state.leverage（可能不准，但无更好来源）
-          const refLayer = state.gridLines[0];
-          const lev = Math.max(1, state.leverage ?? 1);
-          normalQty = refLayer?.allocatedUSD > 0 && avgEntry > 0
-            ? (refLayer.allocatedUSD * lev) / avgEntry : 0;
-        }
-        const layerCount = normalQty > 0.0001 ? Math.max(1, Math.round(totalQty / normalQty)) : 1;
-        const perLayerQty = totalQty / layerCount;
+        const leverage = Math.max(1, state.leverage ?? 1);
 
-        const qtySource = qtyHint > 0.0001 ? 'hint' : (pendingWithQty.length > 0 ? '挂单' : 'fallback');
-        this.logger.log(
-          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} normalQty=${normalQty.toFixed(4)}(from ${qtySource}) → 映射到${layerCount}层`,
-        );
+        // 按距离排序的空层列表（只选 empty 层，不覆盖 pending 层的 orderId 映射）
+        const emptyLayers = state.gridLines
+          .map((l, idx) => ({ layer: l, idx }))
+          .filter(({ layer }) => layer.state === 'empty')
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
 
-        // 将每层映射到最近的空层（按均价距离排序，跳过已占用层）
-        const usedIdx = new Set<number>();
-        for (let i = 0; i < layerCount; i++) {
-          let bestIdx = -1;
-          let bestDist = Infinity;
-          for (let j = 0; j < state.gridLines.length; j++) {
-            if (usedIdx.has(j) || state.gridLines[j].state === 'filled') continue;
-            const d = Math.abs(state.gridLines[j].price - avgEntry);
-            if (d < bestDist) { bestDist = d; bestIdx = j; }
-          }
-          if (bestIdx < 0) break; // 无可用层
-          usedIdx.add(bestIdx);
-          const layer = state.gridLines[bestIdx];
-          if (layer.state === 'pending' && layer.orderId) {
-            delete state.orderBook[layer.orderId];
-          }
+        let remainingQty = totalQty;
+        let mappedCount = 0;
+
+        for (const { layer, idx } of emptyLayers) {
+          if (remainingQty <= 0.0001) break;
+
+          // 每层数量 = 网格配置资金（allocatedUSD * leverage / price），不均分
+          const layerQty = layer.allocatedUSD > 0 && avgEntry > 0
+            ? (layer.allocatedUSD * leverage) / avgEntry
+            : 0;
+          if (layerQty <= 0.0001) continue;
+
+          // 不超过交易所剩余持仓量
+          const assignQty = Math.min(layerQty, remainingQty);
+
           layer.state = 'filled';
           layer.positionEntry = avgEntry;
-          layer.positionSize  = perLayerQty;
+          layer.positionSize  = assignQty;
           layer.side          = posSide;
           layer.orderId       = undefined;
           layer.orderQuantity = 0;
           layer.unrealizedPnl = 0;
-          this.logger.log(
-            `[网格] 启动持仓恢复: L${bestIdx + 1}@$${layer.price.toFixed(2)} ← ${perLayerQty.toFixed(4)}@$${avgEntry.toFixed(4)}`,
-          );
+          remainingQty -= assignQty;
+          mappedCount++;
         }
+
+        this.logger.log(
+          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ` +
+          `qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} ` +
+          `→ 映射${mappedCount}层（每层按allocatedUSD×${leverage}杠杆计算）` +
+          (remainingQty > 0.0001 ? ` 剩余${remainingQty.toFixed(4)}未映射（空层不足）` : ''),
+        );
       }
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
@@ -3752,9 +3741,23 @@ export class GridTradingService {
     state.orderBook = {};
 
     // 对齐 nofx autoAdjustGrid L1456-1479: 将 filled 持仓映射到最近新层
-    // 修复碰撞问题：多个同价快照不再覆盖同一层，而是依次占用相邻未占用层
+    // 修复：每层数量 = 目标层 allocatedUSD * leverage / positionEntry（网格配置决定），不直接用旧快照数量
+    // 总量不超过快照合计（即交易所实际持仓），避免虚增
+    const leverage = Math.max(1, state.leverage ?? 1);
+    const totalSnapshotQty = filledSnapshots.reduce((s, f) => s + f.positionSize, 0);
+    let remainingQty = totalSnapshotQty;
+
+    // 按距离排序：所有快照共享一个"距离池"，从最近层向外填充
+    const sortedSnapshots = [...filledSnapshots].sort((a, b) => {
+      // 按入场价与网格中心的距离排序，近的优先
+      const midPrice = (state.lowerPrice + state.upperPrice) / 2;
+      return Math.abs(a.positionEntry - midPrice) - Math.abs(b.positionEntry - midPrice);
+    });
+
     const mappedIndices = new Set<number>();
-    for (const fp of filledSnapshots) {
+    let mappedCount = 0;
+    for (const fp of sortedSnapshots) {
+      if (remainingQty <= 0.0001) break;
       let closestIdx = -1;
       let closestDist = Infinity;
       for (let i = 0; i < state.gridLines.length; i++) {
@@ -3765,15 +3768,24 @@ export class GridTradingService {
       if (closestIdx >= 0) {
         mappedIndices.add(closestIdx);
         const t = state.gridLines[closestIdx];
+        // 每层数量 = 目标层 allocatedUSD * leverage / 入场价（网格配置决定）
+        const layerQty = t.allocatedUSD > 0 && fp.positionEntry > 0
+          ? (t.allocatedUSD * leverage) / fp.positionEntry
+          : fp.positionSize;
+        const assignQty = Math.min(layerQty, remainingQty);
+        if (assignQty <= 0.0001) continue;
+
         t.state = 'filled';
         t.positionEntry = fp.positionEntry;
-        t.positionSize = fp.positionSize;
+        t.positionSize = assignQty;
         t.side = fp.side;
         t.orderId = fp.orderId;
         t.orderQuantity = fp.orderQuantity;
         t.unrealizedPnl = fp.unrealizedPnl;
+        remainingQty -= assignQty;
+        mappedCount++;
         this.logger.log(
-          `[网格] 持仓映射: 入场价${fp.positionEntry.toFixed(2)} → 层${closestIdx + 1}@${t.price.toFixed(2)}`,
+          `[网格] 持仓映射: 入场价${fp.positionEntry.toFixed(2)} → 层${closestIdx + 1}@${t.price.toFixed(2)} qty=${assignQty.toFixed(4)}`,
         );
       }
     }
@@ -3782,7 +3794,8 @@ export class GridTradingService {
     this.logger.log(
       `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
       `，共 ${gridCount} 层，格间距 ${finalSpacing}` +
-      (filledSnapshots.length > 0 ? `，持仓映射 ${filledSnapshots.length} 个` : ''),
+      (mappedCount > 0 ? `，持仓映射 ${mappedCount} 层（总量${totalSnapshotQty.toFixed(4)}）` : '') +
+      (remainingQty > 0.0001 ? `，剩余${remainingQty.toFixed(4)}未映射` : ''),
     );
   }
 
