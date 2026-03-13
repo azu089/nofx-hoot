@@ -1284,8 +1284,9 @@ export class GridTradingService {
           preSyncExchangeOrders, preSyncExchangePositions,
         );
 
-        // 全局网格倾斜计算（供 AI context 使用，autoAdjustGrid 也复用此结果）
-        const { skewed: _skewed, buyFilled: skewBuy, sellFilled: skewSell } = this.checkGridSkew(state);
+        // 全局网格倾斜计算（从交易所数据统计，和 AI/UI 一致）
+        const preSyncDisplay = this.buildDisplayFromExchange(state, preSyncExchangeOrders, preSyncExchangePositions);
+        const { skewed: _skewed, buyFilled: skewBuy, sellFilled: skewSell } = this.checkGridSkew(state, preSyncDisplay);
         const skewTotal = skewBuy + skewSell;
         let skewLevel: 'none' | 'light' | 'severe' = 'none';
         if (skewTotal >= 3) {
@@ -1470,6 +1471,10 @@ export class GridTradingService {
           }
         }
 
+        // 构建 postSyncDisplay（从交易所数据，不读内存）
+        // 用于 autoAdjustGrid 倾斜检测 + 层级摘要日志
+        const postSyncDisplay = this.buildDisplayFromExchange(state, postSyncExchangeOrders, postSyncExchangePositions);
+
         // 对齐 nofx: autoAdjustGrid 在 checkAndExecuteStopLoss 之后（syncGridState 末尾）
         if (isGridAdapter(adapter)) {
           await this.autoAdjustGrid(
@@ -1480,20 +1485,20 @@ export class GridTradingService {
             strategyId,
             userId,
             apiKeyId,
+            postSyncDisplay,  // 从交易所数据检测倾斜
           );
         }
 
-        // 层级状态摘要日志（读 state.gridLines — syncOrderFills 更新后的真实状态）
-        // 注意：context.levels 是 buildGridContext 快照（AI 决策前），不反映本轮成交/平仓结果
+        // 层级状态摘要日志（从交易所数据构建，不读内存）
         {
-          const filled  = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0.0001);
-          const pending = state.gridLines.filter(l => l.state === 'pending');
-          const empty   = state.gridLines.filter(l => l.state === 'empty' || l.state === 'stopped');
-          const filledStr  = filled.map(l => {
-            return `L${(l.index ?? 0) + 1}(${l.side})@${(l.positionEntry ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`;
-          }).join(' ');
-          const pendingStr = pending.map(l => `L${(l.index ?? 0) + 1}@${l.price.toFixed(2)}`).join(' ');
-          const emptyStr   = empty.map(l => `L${(l.index ?? 0) + 1}`).join(',');
+          const filled  = postSyncDisplay.filter((d: any) => d.st === 'filled');
+          const pending = postSyncDisplay.filter((d: any) => d.st === 'pending');
+          const empty   = postSyncDisplay.filter((d: any) => d.st === 'empty' || !d.st);
+          const filledStr  = filled.map((d: any) =>
+            `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}`
+          ).join(' ');
+          const pendingStr = pending.map((d: any) => `L${d.lv}@${d.p.toFixed(2)}`).join(' ');
+          const emptyStr   = empty.map((d: any) => `L${d.lv}`).join(',');
           this.logger.log(
             `[网格] 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
           );
@@ -3880,13 +3885,28 @@ export class GridTradingService {
   /**
    * 检查网格是否严重倾斜（对齐 nofx checkGridSkew）
    * 倾斜条件：单侧填满且另侧 empty>5，或一侧 filled ≥ 3× 另一侧且 filled>5
+   * @param displayLines 从交易所数据构建的层级（优先）；不传则 fallback 到 state.gridLines
    */
-  private checkGridSkew(state: GridState): { skewed: boolean; buyFilled: number; sellFilled: number } {
-    const filledAll = state.gridLines.filter(l => l.state === 'filled' && l.positionSize > 0);
-    const buyFilled = filledAll.filter(l => l.side === 'buy').length;
-    const sellFilled = filledAll.filter(l => l.side === 'sell').length;
-    const buyEmpty = state.gridLines.filter(l => l.side === 'buy' && l.state === 'empty').length;
-    const sellEmpty = state.gridLines.filter(l => l.side === 'sell' && l.state === 'empty').length;
+  private checkGridSkew(
+    state: GridState,
+    displayLines?: any[],
+  ): { skewed: boolean; buyFilled: number; sellFilled: number } {
+    let buyFilled: number, sellFilled: number, buyEmpty: number, sellEmpty: number;
+
+    if (displayLines && displayLines.length > 0) {
+      // 从交易所数据统计（和 UI / AI 完全一致）
+      buyFilled  = displayLines.filter((d: any) => d.st === 'filled' && d.s === 'buy').length;
+      sellFilled = displayLines.filter((d: any) => d.st === 'filled' && d.s === 'sell').length;
+      buyEmpty   = displayLines.filter((d: any) => d.s === 'buy' && (d.st === 'empty' || !d.st)).length;
+      sellEmpty  = displayLines.filter((d: any) => d.s === 'sell' && (d.st === 'empty' || !d.st)).length;
+    } else {
+      // Fallback：从内存统计
+      const filledAll = state.gridLines.filter(l => l.state === 'filled' && l.positionSize > 0);
+      buyFilled  = filledAll.filter(l => l.side === 'buy').length;
+      sellFilled = filledAll.filter(l => l.side === 'sell').length;
+      buyEmpty   = state.gridLines.filter(l => l.side === 'buy' && l.state === 'empty').length;
+      sellEmpty  = state.gridLines.filter(l => l.side === 'sell' && l.state === 'empty').length;
+    }
 
     let skewed = false;
     if (buyFilled > 0 && sellFilled === 0 && sellEmpty > 5) skewed = true;
@@ -3910,8 +3930,9 @@ export class GridTradingService {
     strategyId?: string,
     userId?: string,
     apiKeyId?: string,
+    displayLines?: any[],  // 从交易所数据构建的层级（消除内存依赖）
   ): Promise<void> {
-    const { skewed, buyFilled, sellFilled } = this.checkGridSkew(state);
+    const { skewed, buyFilled, sellFilled } = this.checkGridSkew(state, displayLines);
     if (!skewed) return;
 
     const gridRange = state.upperPrice - state.lowerPrice;
