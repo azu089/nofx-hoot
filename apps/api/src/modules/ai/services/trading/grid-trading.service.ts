@@ -1403,11 +1403,15 @@ export class GridTradingService {
 
         // syncOrderFills 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交，更新格线状态供下轮决策使用
+        let postSyncExchangeOrders: any[] = [];
+        let postSyncExchangePositions: any[] = [];
         if (isGridAdapter(adapter)) {
-          const { filledLines } = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
-          if (filledLines.length > 0) {
-            trades += filledLines.length;
-            this.logger.log(`[网格] 成交同步: ${filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
+          const syncResult = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+          postSyncExchangeOrders = syncResult.exchangeOpenOrders ?? [];
+          postSyncExchangePositions = syncResult.exchangePositions ?? [];
+          if (syncResult.filledLines.length > 0) {
+            trades += syncResult.filledLines.length;
+            this.logger.log(`[网格] 成交同步: ${syncResult.filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
           }
         }
 
@@ -1488,25 +1492,16 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
-        // 使用 syncOrderFills 后的 state.gridLines（交易所真实状态）
-        // 因为有 pre-sync + post-sync，state.gridLines 始终反映交易所最新数据
-        // 历史教训 2026-03-13：用 preExecGridLines 导致 header(8层) vs 层级显示(5层) 不一致
+        // 层级显示完全从交易所数据构建（不读内存 state.gridLines）
+        // 三种状态：pending=交易所有挂单, filled=交易所有持仓, empty=交易所无数据
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
-          const postSyncGridLines = state.gridLines.map((l, i) => {
-            const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
-            if (l.state === 'filled') {
-              entry.qty = +(l.positionSize ?? 0).toFixed(4);
-              entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
-            } else if (l.state === 'pending') {
-              entry.oid = (l.orderId ?? '').slice(-8);
-              entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
-            }
-            return entry;
-          });
+          const displayGridLines = this.buildDisplayFromExchange(
+            state, postSyncExchangeOrders, postSyncExchangePositions,
+          );
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, postSyncGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, displayGridLines, gridConfig?.locale,
           );
         }
 
@@ -3216,16 +3211,17 @@ export class GridTradingService {
     state: GridState,
     adapter: GridExchangeAdapter,
     userId: string,
-  ): Promise<{ filledLines: GridLine[] }> {
+  ): Promise<{ filledLines: GridLine[]; exchangeOpenOrders?: any[]; exchangePositions?: any[] }> {
     const filledLines: GridLine[] = [];
+    let openOrders: any[] = [];
+    let syncPositions: any[] = [];
     try {
       // Step 1: 获取交易所当前挂单（实时）
-      const openOrders = await adapter.getOpenOrders(state.symbol);
+      openOrders = await adapter.getOpenOrders(state.symbol);
       const activeIds = new Set(openOrders.map((o) => o.orderId));
 
       // Step 2: 获取交易所当前持仓（实时，每轮无条件获取）
       let currentPositionSize = 0;
-      let syncPositions: any[] = [];
       let positionFetchSucceeded = false; // 标记 getPositions 是否成功（防止失败时 currentPositionSize=0 误清 filled 层）
       try {
         syncPositions = await adapter.getPositions();
@@ -3442,7 +3438,7 @@ export class GridTradingService {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
     }
 
-    return { filledLines };
+    return { filledLines, exchangeOpenOrders: openOrders, exchangePositions: syncPositions };
   }
 
   // ========================= 孤儿订单清理（reinitialize 后补充执行） =========================
@@ -4114,6 +4110,90 @@ export class GridTradingService {
         createdAt: new Date(),
       },
     }).catch((e: any) => this.logger.warn(`[网格] 历史持仓写入失败(忽略): ${e.message}`));
+  }
+
+  /**
+   * 从交易所数据构建层级显示（不读内存 state.gridLines 的状态）
+   * 三种状态：pending=交易所有挂单, filled=交易所有持仓, empty=交易所无数据
+   * 用于前端展示，确保和交易所实时数据一致
+   */
+  private buildDisplayFromExchange(
+    state: GridState,
+    exchangeOpenOrders: any[],
+    exchangePositions: any[],
+  ): any[] {
+    const leverage = Math.max(1, state.leverage ?? 1);
+    const currentPrice = state.lastPrice ?? 0;
+
+    // 初始化所有层为 empty
+    const display: any[] = state.gridLines.map((l, i) => ({
+      lv: i + 1,
+      p: +l.price.toFixed(4),
+      s: l.side,
+      st: 'empty',
+    }));
+
+    // Step 1: 用交易所挂单标记 pending 层
+    // 通过 orderId 精确匹配（内存 gridLines 中的 orderId→层 映射）
+    const orderIdToLayerIdx = new Map<string, number>();
+    for (let i = 0; i < state.gridLines.length; i++) {
+      const oid = state.gridLines[i].orderId;
+      if (oid) orderIdToLayerIdx.set(oid, i);
+    }
+
+    for (const order of exchangeOpenOrders) {
+      const oid = order.id || order.orderId;
+      if (!oid) continue;
+      const idx = orderIdToLayerIdx.get(oid);
+      if (idx !== undefined && idx < display.length) {
+        display[idx].st = 'pending';
+        display[idx].oid = oid.slice(-8);
+        display[idx].qty = +(order.amount ?? 0).toFixed(4);
+      }
+    }
+
+    // Step 2: 用交易所持仓标记 filled 层
+    // 按入场价最近匹配到未被 pending 占用的层
+    const baseSymbol = state.symbol.split('/')[0];
+    for (const pos of exchangePositions) {
+      if (!pos.symbol?.includes(baseSymbol)) continue;
+      const totalQty = pos.quantity ?? 0;
+      if (totalQty <= 0.0001) continue;
+
+      const rawSide = pos.side as string;
+      const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+      const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
+
+      // 找到 empty 层（同侧优先），按距离入场价排序
+      const sameSideEmpty = display
+        .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
+        .filter(({ d }) => d.st === 'empty' && d.s === posSide)
+        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
+      const oppSideEmpty = display
+        .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
+        .filter(({ d }) => d.st === 'empty' && d.s !== posSide)
+        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
+      const candidates = [...sameSideEmpty, ...oppSideEmpty];
+
+      let remainingQty = totalQty;
+      for (const { d, gl } of candidates) {
+        if (remainingQty <= 0.0001) break;
+        // 每层数量 = allocatedUSD * leverage / entryPrice
+        const layerQty = gl.allocatedUSD > 0 && avgEntry > 0
+          ? (gl.allocatedUSD * leverage) / avgEntry
+          : 0;
+        if (layerQty <= 0.0001) continue;
+
+        const assignQty = Math.min(layerQty, remainingQty);
+        d.st = 'filled';
+        d.s = posSide;
+        d.qty = +assignQty.toFixed(4);
+        d.ep = +avgEntry.toFixed(4);
+        remainingQty -= assignQty;
+      }
+    }
+
+    return display;
   }
 
   private async saveGridDecisionLog(
