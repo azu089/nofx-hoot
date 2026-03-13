@@ -3885,14 +3885,18 @@ export class GridTradingService {
     state.orderBook = {};
 
     // 对齐 nofx autoAdjustGrid L1456-1479: 将 filled 持仓映射到最近新层
+    // 修复碰撞问题：多个同价快照不再覆盖同一层，而是依次占用相邻未占用层
+    const mappedIndices = new Set<number>();
     for (const fp of filledSnapshots) {
       let closestIdx = -1;
       let closestDist = Infinity;
       for (let i = 0; i < state.gridLines.length; i++) {
+        if (mappedIndices.has(i)) continue; // 跳过已占用层
         const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
         if (dist < closestDist) { closestDist = dist; closestIdx = i; }
       }
       if (closestIdx >= 0) {
+        mappedIndices.add(closestIdx);
         const t = state.gridLines[closestIdx];
         t.state = 'filled';
         t.positionEntry = fp.positionEntry;
