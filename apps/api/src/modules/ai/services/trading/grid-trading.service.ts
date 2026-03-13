@@ -1468,17 +1468,17 @@ export class GridTradingService {
           );
         }
 
-        // 层级状态摘要日志（读 context.levels 实时数据，与 AI 看到的一致）
+        // 层级状态摘要日志（读 state.gridLines — syncOrderFills 更新后的真实状态）
+        // 注意：context.levels 是 buildGridContext 快照（AI 决策前），不反映本轮成交/平仓结果
         {
-          const filled  = context.levels.filter(l => l.state === 'filled');
-          const pending = context.levels.filter(l => l.state === 'pending');
-          const empty   = context.levels.filter(l => l.state === 'cancelled');
+          const filled  = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0.0001);
+          const pending = state.gridLines.filter(l => l.state === 'pending');
+          const empty   = state.gridLines.filter(l => l.state === 'empty' || l.state === 'stopped');
           const filledStr  = filled.map(l => {
-            const idx = context.levels.indexOf(l) + 1;
-            return `L${idx}@${(l.fillPrice ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`;
+            return `L${(l.index ?? 0) + 1}(${l.side})@${(l.positionEntry ?? l.price).toFixed(2)}×${(l.positionSize ?? 0).toFixed(3)}`;
           }).join(' ');
-          const pendingStr = pending.map(l => `L${context.levels.indexOf(l) + 1}@${l.price.toFixed(2)}`).join(' ');
-          const emptyStr   = empty.map(l => `L${context.levels.indexOf(l) + 1}`).join(',');
+          const pendingStr = pending.map(l => `L${(l.index ?? 0) + 1}@${l.price.toFixed(2)}`).join(' ');
+          const emptyStr   = empty.map(l => `L${(l.index ?? 0) + 1}`).join(',');
           this.logger.log(
             `[网格] 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
           );
