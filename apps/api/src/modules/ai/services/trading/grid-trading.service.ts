@@ -1486,11 +1486,23 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
+        // 使用 syncOrderFills 后的 state.gridLines（实时状态），而非 preExecGridLines（周期开始快照）
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
+          const postSyncGridLines = state.gridLines.map((l, i) => {
+            const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
+            if (l.state === 'filled') {
+              entry.qty = +(l.positionSize ?? 0).toFixed(4);
+              entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+            } else if (l.state === 'pending') {
+              entry.oid = (l.orderId ?? '').slice(-8);
+              entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
+            }
+            return entry;
+          });
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, postSyncGridLines, gridConfig?.locale,
           );
         }
 
@@ -4318,8 +4330,8 @@ export class GridTradingService {
         direction: state.currentDirection,
         regime: state.currentRegime,
         totalLevels: state.gridLines.length,
-        filledLevels: (preExecGridLines ?? state.gridLines).filter((l: any) => (l.st ?? l.state) === 'filled').length,
-        pendingLevels: (preExecGridLines ?? state.gridLines).filter((l: any) => (l.st ?? l.state) === 'pending').length,
+        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
+        pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
         activeOrders: Object.keys(state.orderBook).length,
         totalInvestment: state.totalInvestment,   // 用于前端展示每层成本估算
         totalProfit: state.totalProfit,
@@ -4344,7 +4356,7 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：使用执行前快照（AI 分析时的状态），空格线正确显示为 empty
+        // 每层详情：使用 syncOrderFills 后的实时状态（postSyncGridLines 或 state.gridLines）
         gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = {
             lv: i + 1,
