@@ -964,28 +964,32 @@ export class StrategyEngineService implements OnModuleInit {
             }
           }
 
-          // DB 有但交易所无 → 标记关闭（估算 PnL）
+          // DB 有但交易所无 → 标记关闭（仅从交易所 fills 取实际 PnL，不估算）
           for (const dp of dbPositions) {
             const matched = exchangePositions.find(
               (ep) => ep.symbol === dp.symbol && ep.side === dp.side,
             );
             if (!matched) {
-              // 尝试获取当前价格估算 PnL（交易所侧 SL/TP 已平仓）
-              let estimatedPnl: number | undefined;
+              let exchangePnl: number | undefined;
               let closePrice: number | undefined;
-              try {
-                closePrice = await adapter.getMarketPrice(dp.symbol);
-                const entryPrice = Number(dp.entryPrice);
-                const amount = Number(dp.amount);
-                estimatedPnl = dp.side === 'long'
-                  ? (closePrice - entryPrice) * amount
-                  : (entryPrice - closePrice) * amount;
-              } catch {
-                this.logger.warn(`[快照] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
-              }
 
-              // 无论策略类型，统一用持仓本身的估算盈亏（开仓价×数量）
-              const finalPnl = estimatedPnl;
+              // 从交易所 fills 获取实际 PnL（Binance: info.realizedPnl，OKX: info.pnl）
+              try {
+                const since = dp.createdAt ? new Date(dp.createdAt).getTime() : Date.now() - 24 * 60 * 60 * 1000;
+                const fills = await adapter.fetchMyTrades(dp.symbol, since, 200);
+                // 平仓方向：多头用 sell 成交，空头用 buy 成交
+                const closingSide = dp.side === 'long' ? 'sell' : 'buy';
+                const closingFills = fills.filter((f: any) => f.side === closingSide);
+                if (closingFills.length > 0) {
+                  const totalPnl = closingFills.reduce((sum: number, f: any) => {
+                    return sum + Number(f.info?.realizedPnl ?? f.info?.pnl ?? 0);
+                  }, 0);
+                  if (totalPnl !== 0) exchangePnl = totalPnl;
+                  closePrice = Number(closingFills[closingFills.length - 1].price);
+                }
+              } catch {
+                this.logger.warn(`[快照] 无法获取 ${dp.symbol} fills，PnL 未写入`);
+              }
 
               await db.position.update({
                 where: { id: dp.id },
@@ -997,24 +1001,24 @@ export class StrategyEngineService implements OnModuleInit {
                     closePrice: closePrice.toFixed(8),
                     exitPrice: closePrice.toFixed(8),
                   } : {}),
-                  ...(finalPnl != null ? {
-                    pnl: finalPnl.toFixed(8),
-                    realizedPnl: finalPnl.toFixed(8),
+                  ...(exchangePnl != null ? {
+                    pnl: exchangePnl.toFixed(8),
+                    realizedPnl: exchangePnl.toFixed(8),
                   } : {}),
                 },
               });
               closed++;
               this.logger.log(
                 `[快照] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-                (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
+                (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),
               );
 
-              // 只要平仓有盈利就扣点卡燃油费（无论 HOOT 主动平仓还是用户手动平仓）
-              if (this.feeService && finalPnl != null && finalPnl > 0) {
+              // 仅在交易所确认盈利时才扣点卡燃油费
+              if (this.feeService && exchangePnl != null && exchangePnl > 0) {
                 try {
                   const feeCalc = await this.feeService.calculateFee(
                     userId,
-                    finalPnl.toFixed(8),
+                    exchangePnl.toFixed(8),
                   );
                   const uniqueOrderId = this.feeService.generateUniqueOrderId(
                     'GAS_FEE',
@@ -1125,27 +1129,31 @@ export class StrategyEngineService implements OnModuleInit {
         }
       }
 
-      // DB 有但交易所无 → 标记关闭（估算 PnL）
+      // DB 有但交易所无 → 标记关闭（仅从交易所 fills 取实际 PnL，不估算）
       for (const dp of dbPositions) {
         const matched = exchangePositions.find(
           (ep) => ep.symbol === dp.symbol && ep.side === dp.side,
         );
         if (!matched) {
-          let estimatedPnl: number | undefined;
+          let exchangePnl: number | undefined;
           let closePrice: number | undefined;
-          try {
-            closePrice = await adapter.getMarketPrice(dp.symbol);
-            const entryPrice = Number(dp.entryPrice);
-            const amount = Number(dp.amount);
-            estimatedPnl = dp.side === 'long'
-              ? (closePrice - entryPrice) * amount
-              : (entryPrice - closePrice) * amount;
-          } catch {
-            this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} 价格，PnL 未估算`);
-          }
 
-          // 无论策略类型，统一用持仓本身的估算盈亏（开仓价×数量）
-          const finalPnl = estimatedPnl;
+          // 从交易所 fills 获取实际 PnL（Binance: info.realizedPnl，OKX: info.pnl）
+          try {
+            const since = dp.createdAt ? new Date(dp.createdAt).getTime() : Date.now() - 24 * 60 * 60 * 1000;
+            const fills = await adapter.fetchMyTrades(dp.symbol, since, 200);
+            const closingSide = dp.side === 'long' ? 'sell' : 'buy';
+            const closingFills = fills.filter((f: any) => f.side === closingSide);
+            if (closingFills.length > 0) {
+              const totalPnl = closingFills.reduce((sum: number, f: any) => {
+                return sum + Number(f.info?.realizedPnl ?? f.info?.pnl ?? 0);
+              }, 0);
+              if (totalPnl !== 0) exchangePnl = totalPnl;
+              closePrice = Number(closingFills[closingFills.length - 1].price);
+            }
+          } catch {
+            this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} fills，PnL 未写入`);
+          }
 
           await this.prisma.position.update({
             where: { id: dp.id },
@@ -1157,24 +1165,24 @@ export class StrategyEngineService implements OnModuleInit {
                 closePrice: closePrice.toFixed(8),
                 exitPrice: closePrice.toFixed(8),
               } : {}),
-              ...(finalPnl != null ? {
-                pnl: finalPnl.toFixed(8),
-                realizedPnl: finalPnl.toFixed(8),
+              ...(exchangePnl != null ? {
+                pnl: exchangePnl.toFixed(8),
+                realizedPnl: exchangePnl.toFixed(8),
               } : {}),
             },
           });
           closed++;
           this.logger.log(
             `[持仓同步] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-            (estimatedPnl != null ? ` PnL≈$${estimatedPnl.toFixed(4)}` : ' (PnL未估算)'),
+            (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),
           );
 
-          // 只要平仓有盈利就扣点卡燃油费（无论 HOOT 主动平仓还是用户手动平仓）
-          if (this.feeService && finalPnl != null && finalPnl > 0) {
+          // 仅在交易所确认盈利时才扣点卡燃油费
+          if (this.feeService && exchangePnl != null && exchangePnl > 0) {
             try {
               const feeCalc = await this.feeService.calculateFee(
                 userId,
-                finalPnl.toFixed(8),
+                exchangePnl.toFixed(8),
               );
               const uniqueOrderId = this.feeService.generateUniqueOrderId(
                 'GAS_FEE',
