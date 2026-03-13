@@ -1263,15 +1263,60 @@ export class GridTradingService {
         // 构建 AI 上下文（始终 fresh 获取余额+持仓，不复用 Step 3 快照）
         const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
 
-        // 将交易所实时持仓量同步到内存层（仅更新 positionSize/positionEntry，不改变 state）
-        // 目的：日志展示和 syncOrderFills.expectedPos 都基于交易所真实持仓量，消除持仓差异误报
-        // 注意：仅当双侧都是 'filled' 时才更新；不清除 filled 层（API 延迟场景保守处理）
-        for (let _si = 0; _si < context.levels.length; _si++) {
-          const _el = context.levels[_si];
-          const _ml = state.gridLines[_si];
-          if (_ml && _el.state === 'filled' && _ml.state === 'filled') {
-            _ml.positionSize = _el.positionSize ?? 0;
-            if (_el.fillPrice) _ml.positionEntry = _el.fillPrice;
+        // ── 内存层实时校准（消除 syncOrderFills 的 1 周期延迟）──
+        // nofx 和 HOOT 都在周期末 sync，导致 AI 看到上一轮的内存快照
+        // 此处用 buildGridContext 已获取的实时数据修正内存，确保 AI 看到的 levels 与交易所一致
+        {
+          let layersCorrected = false;
+
+          // 1. Pending 层校准：内存 pending 的 orderId 不在交易所委托单中 → 标记 empty
+          // 安全守卫：仅当 exchangeOpenOrders 成功获取时执行（undefined = API 失败，不动）
+          if (context.exchangeOpenOrders) {
+            const liveOrderIds = new Set(context.exchangeOpenOrders.map(o => o.orderId));
+            for (const line of state.gridLines) {
+              if (line.state === 'pending' && line.orderId && !liveOrderIds.has(line.orderId)) {
+                const staleOrderId = line.orderId;
+                this.logger.warn(
+                  `[网格] 实时校准: L${(line.index ?? 0) + 1} pending orderId=${staleOrderId?.slice(-8)} 不在交易所委托单中 → empty`,
+                );
+                line.state = 'empty';
+                line.positionSize = 0;
+                line.positionEntry = 0;
+                line.orderId = undefined;
+                if (staleOrderId) delete state.orderBook[staleOrderId];
+                layersCorrected = true;
+              }
+            }
+          }
+
+          // 2. Filled 层校准：交易所持仓=0 但内存有 filled 层 → 全部清零（外部平仓/强平/止盈止损）
+          // 安全守卫：仅当 positionLong/positionShort 数据可用时执行（getPositions 失败则跳过）
+          const exchTotalPos = (context.positionLong?.quantity ?? 0) + (context.positionShort?.quantity ?? 0);
+          if ((context.positionLong !== undefined || context.positionShort !== undefined) && exchTotalPos < 0.0001) {
+            const staleFilledLayers = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0.0001);
+            if (staleFilledLayers.length > 0) {
+              const staleTotalQty = staleFilledLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+              this.logger.warn(
+                `[网格] 实时校准: 交易所持仓=0 但内存有 ${staleFilledLayers.length} 个 filled 层(${staleTotalQty.toFixed(4)}) → 全部清零`,
+              );
+              for (const l of staleFilledLayers) {
+                l.state = 'empty';
+                l.positionSize = 0;
+                l.positionEntry = 0;
+                l.unrealizedPnl = 0;
+                l.orderId = undefined;
+              }
+              layersCorrected = true;
+            }
+          }
+
+          // 3. 校准后重建 context.levels，让 AI 看到修正后的数据
+          if (layersCorrected) {
+            const correctedLevels = this.buildExchangeLevels(state.gridLines, currentPrice, state.leverage ?? 1);
+            (context as any).levels = correctedLevels;
+            (context as any).activeOrderCount = correctedLevels.filter(l => l.state === 'pending').length;
+            (context as any).filledLevelCount = correctedLevels.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0).length;
+            this.logger.log(`[网格] 实时校准完成: 已重建 AI context.levels`);
           }
         }
 
