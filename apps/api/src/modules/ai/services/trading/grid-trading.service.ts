@@ -2444,7 +2444,9 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, newPrice);
         }
-        // nofx 对齐：adjust_grid 重建后全空层（cancelAllOrders 已在上方执行，无需 reconcile）
+        // 重建后从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
+        // 历史教训 2026-03-13：旧版用内存快照 → 买卖混合持仓、19/20占满、AI 无空格
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
         // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
         if (state.isPaused && state.pauseSource !== 'risk_control') {
           state.isPaused = false;
@@ -3669,7 +3671,12 @@ export class GridTradingService {
     }
   }
 
-  /** 重新初始化网格层级（每次重建都重算宽度，不继承旧边界） */
+  /**
+   * 重新初始化网格层级（每次重建都重算宽度，不继承旧边界）
+   * 只负责重建网格结构（价格、分配、方向），所有层为 empty。
+   * 持仓恢复由调用方统一调用 recoverPositionsFromExchange（交易所是唯一事实）。
+   * 历史教训 2026-03-13：旧版用内存 filledSnapshots 映射 → 买卖混合持仓、19/20占满、AI 无空格挂单
+   */
   private async reinitializeGridLevels(
     state: GridState,
     centerPrice: number,
@@ -3677,18 +3684,6 @@ export class GridTradingService {
     explicitLower?: number,
   ): Promise<void> {
     const gridCount = state.gridLines.length;
-
-    // 对齐 nofx autoAdjustGrid L1424-1428: 重建前保存 filled 持仓快照
-    const filledSnapshots = state.gridLines
-      .filter(l => l.state === 'filled' && l.positionSize > 0)
-      .map(l => ({
-        positionEntry: l.positionEntry,
-        positionSize: l.positionSize,
-        side: l.side,
-        orderId: l.orderId,
-        orderQuantity: l.orderQuantity,
-        unrealizedPnl: l.unrealizedPnl,
-      }));
 
     if (explicitUpper && explicitLower && explicitUpper > explicitLower) {
       // 用户设定了百分比边界，按百分比重算后直接使用
@@ -3729,7 +3724,7 @@ export class GridTradingService {
     }
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
-    // 重建时全部重置为 empty，随后通过 filledSnapshots 映射回最近层
+    // 重建时全部重置为 empty，持仓恢复由调用方执行 recoverPositionsFromExchange
     const weights = this.calculateWeights(gridCount, state.distribution);
     const weightSum = weights.reduce((a, b) => a + b, 0);
 
@@ -3748,73 +3743,10 @@ export class GridTradingService {
     this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
     state.orderBook = {};
 
-    // 对齐 nofx autoAdjustGrid L1456-1479: 将 filled 持仓映射到最近新层
-    // 修复：每层数量 = 目标层 allocatedUSD * leverage / positionEntry（网格配置决定），不直接用旧快照数量
-    // 总量不超过快照合计（即交易所实际持仓），避免虚增
-    const leverage = Math.max(1, state.leverage ?? 1);
-    const totalSnapshotQty = filledSnapshots.reduce((s, f) => s + f.positionSize, 0);
-    let remainingQty = totalSnapshotQty;
-
-    // 按距离排序：所有快照共享一个"距离池"，从最近层向外填充
-    const sortedSnapshots = [...filledSnapshots].sort((a, b) => {
-      // 按入场价与网格中心的距离排序，近的优先
-      const midPrice = (state.lowerPrice + state.upperPrice) / 2;
-      return Math.abs(a.positionEntry - midPrice) - Math.abs(b.positionEntry - midPrice);
-    });
-
-    const mappedIndices = new Set<number>();
-    let mappedCount = 0;
-    for (const fp of sortedSnapshots) {
-      if (remainingQty <= 0.0001) break;
-      // 关键：优先映射到同侧层（sell→sell-side, buy→buy-side），保留对侧空层给反向挂单
-      let closestIdx = -1;
-      let closestDist = Infinity;
-      // Pass 1: 同侧层优先
-      for (let i = 0; i < state.gridLines.length; i++) {
-        if (mappedIndices.has(i)) continue;
-        if (state.gridLines[i].side !== fp.side) continue; // 只看同侧
-        const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
-        if (dist < closestDist) { closestDist = dist; closestIdx = i; }
-      }
-      // Pass 2: 同侧不够时用对侧（避免持仓丢失）
-      if (closestIdx < 0) {
-        for (let i = 0; i < state.gridLines.length; i++) {
-          if (mappedIndices.has(i)) continue;
-          const dist = Math.abs(state.gridLines[i].price - fp.positionEntry);
-          if (dist < closestDist) { closestDist = dist; closestIdx = i; }
-        }
-      }
-      if (closestIdx >= 0) {
-        mappedIndices.add(closestIdx);
-        const t = state.gridLines[closestIdx];
-        // 每层数量 = 目标层 allocatedUSD * leverage / 入场价（网格配置决定）
-        const layerQty = t.allocatedUSD > 0 && fp.positionEntry > 0
-          ? (t.allocatedUSD * leverage) / fp.positionEntry
-          : fp.positionSize;
-        const assignQty = Math.min(layerQty, remainingQty);
-        if (assignQty <= 0.0001) continue;
-
-        t.state = 'filled';
-        t.positionEntry = fp.positionEntry;
-        t.positionSize = assignQty;
-        t.side = fp.side;
-        t.orderId = fp.orderId;
-        t.orderQuantity = fp.orderQuantity;
-        t.unrealizedPnl = fp.unrealizedPnl;
-        remainingQty -= assignQty;
-        mappedCount++;
-        this.logger.log(
-          `[网格] 持仓映射: 入场价${fp.positionEntry.toFixed(2)} → 层${closestIdx + 1}@${t.price.toFixed(2)} qty=${assignQty.toFixed(4)}`,
-        );
-      }
-    }
-
-    const finalSpacing = state.gridSpacing.toFixed(2);
     this.logger.log(
       `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
-      `，共 ${gridCount} 层，格间距 ${finalSpacing}` +
-      (mappedCount > 0 ? `，持仓映射 ${mappedCount} 层（总量${totalSnapshotQty.toFixed(4)}）` : '') +
-      (remainingQty > 0.0001 ? `，剩余${remainingQty.toFixed(4)}未映射` : ''),
+      `，共 ${gridCount} 层，格间距 ${state.gridSpacing.toFixed(2)}` +
+      `（全部 empty，待 recoverPositionsFromExchange 恢复持仓）`,
     );
   }
 
@@ -3871,7 +3803,7 @@ export class GridTradingService {
       this.logger.warn(`[网格] autoAdjustGrid: 撤单失败（继续重建）: ${e.message}`);
     }
 
-    // 重建网格（reinitializeGridLevels 内部完成 filled 持仓映射）
+    // 重建网格（全部 empty） + 从交易所恢复真实持仓
     if (state.upperBoundPct && state.lowerBoundPct) {
       const explicitUpper = currentPrice * (1 + state.upperBoundPct / 100);
       const explicitLower = currentPrice * (1 - state.lowerBoundPct / 100);
@@ -3879,8 +3811,10 @@ export class GridTradingService {
     } else {
       await this.reinitializeGridLevels(state, currentPrice);
     }
-
-    // nofx 对齐：autoAdjustGrid 重建后全空层（cancelAllOrders 由调用方负责，无需 reconcile）
+    // 从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
+    if (userId && apiKeyId) {
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+    }
 
     // 重建后自动解除非风控暂停
     if (state.isPaused && state.pauseSource !== 'risk_control') {
