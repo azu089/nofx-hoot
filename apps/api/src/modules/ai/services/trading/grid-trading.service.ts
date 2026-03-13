@@ -3324,28 +3324,93 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 外部平仓检测（nofx 没有，HOOT 增强）
-      // 场景：用户手动在交易所平仓、强平、止盈止损触发等
-      // 交易所持仓=0 但内存仍有 filled 层 → 必须清理，否则永久残留
-      // 安全守卫：仅在 getPositions() 成功时执行（失败时 currentPositionSize 默认=0，会误清）
-      if (positionFetchSucceeded && Math.abs(currentPositionSize) < 0.0001) {
-        const staleFilledLayers = state.gridLines.filter(l => l.state === 'filled' && (l.positionSize ?? 0) > 0.0001);
-        if (staleFilledLayers.length > 0) {
-          const staleTotalQty = staleFilledLayers.reduce((s, l) => s + (l.positionSize ?? 0), 0);
+      // Step 6: 交易所持仓 → 内存对账（每轮执行，交易所是唯一事实）
+      // 历史教训 2026-03-13：内存 filled 层可能因买卖对冲、手动平仓等原因与交易所偏离
+      // 原则：不用阈值对比修补，直接清空重建 — 全部重置比部分对账更安全更简单
+      if (positionFetchSucceeded) {
+        // 计算内存 net 持仓（signed: buy=+, sell=-）
+        const memBuyQty = state.gridLines
+          .filter(l => l.state === 'filled' && l.side === 'buy')
+          .reduce((s, l) => s + (l.positionSize ?? 0), 0);
+        const memSellQty = state.gridLines
+          .filter(l => l.state === 'filled' && l.side === 'sell')
+          .reduce((s, l) => s + (l.positionSize ?? 0), 0);
+        const memNetPosition = memBuyQty - memSellQty; // positive=long, negative=short
+
+        // currentPositionSize 已在 Step 2 计算（signed: long=+, short=-）
+        const netDiff = Math.abs(memNetPosition - currentPositionSize);
+
+        if (netDiff > 0.0001) {
           this.logger.warn(
-            `[网格] ⚠️ 外部平仓检测: 交易所持仓=0 但内存有 ${staleFilledLayers.length} 个 filled 层` +
-            `(总量=${staleTotalQty.toFixed(4)})，全部清零`,
+            `[网格] ⚠️ 内存↔交易所持仓偏离: 内存net=${memNetPosition.toFixed(4)}(buy=${memBuyQty.toFixed(4)},sell=${memSellQty.toFixed(4)}) 交易所net=${currentPositionSize.toFixed(4)} diff=${netDiff.toFixed(4)} → 清空filled重建`,
           );
-          for (const l of staleFilledLayers) {
-            this.logger.log(
-              `[网格] 清理残留filled层: L${(l.index ?? 0) + 1}(${l.side}, sz=${(l.positionSize ?? 0).toFixed(4)}, entry=${(l.positionEntry ?? 0).toFixed(4)}) → empty`,
-            );
-            l.state = 'empty';
-            l.positionSize = 0;
-            l.positionEntry = 0;
-            l.unrealizedPnl = 0;
-            l.orderId = undefined;
+
+          // Step 6a: 清空所有 filled 层
+          for (const l of state.gridLines) {
+            if (l.state === 'filled') {
+              l.state = 'empty';
+              l.positionSize = 0;
+              l.positionEntry = 0;
+              l.unrealizedPnl = 0;
+              l.orderId = undefined;
+              l.orderQuantity = 0;
+            }
           }
+
+          // Step 6b: 从交易所持仓重建 filled 层（内联 recoverPositionsFromExchange 核心逻辑）
+          // 不创建新 adapter（已有 adapter 参数），直接用 syncPositions 数据
+          const baseSymbol = state.symbol.split('/')[0];
+          const leverage = Math.max(1, state.leverage ?? 1);
+
+          for (const pos of syncPositions) {
+            if (!(pos as any).symbol?.includes(baseSymbol)) continue;
+            const totalQty: number = (pos as any).quantity ?? 0;
+            if (totalQty <= 0.0001) continue;
+            const rawSide = (pos as any).side as string;
+            const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+            const avgEntry = ((pos as any).entryPrice ?? 0) > 0
+              ? (pos as any).entryPrice
+              : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+
+            // 优先映射到同侧空层，不够再用对侧
+            const sameSideLayers = state.gridLines
+              .map((l, idx) => ({ layer: l, idx }))
+              .filter(({ layer }) => layer.state === 'empty' && layer.side === posSide)
+              .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+            const oppSideLayers = state.gridLines
+              .map((l, idx) => ({ layer: l, idx }))
+              .filter(({ layer }) => layer.state === 'empty' && layer.side !== posSide)
+              .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+            const emptyLayers = [...sameSideLayers, ...oppSideLayers];
+
+            let remainingQty = totalQty;
+            let mappedCount = 0;
+
+            for (const { layer } of emptyLayers) {
+              if (remainingQty <= 0.0001) break;
+              const layerQty = layer.allocatedUSD > 0 && avgEntry > 0
+                ? (layer.allocatedUSD * leverage) / avgEntry
+                : 0;
+              if (layerQty <= 0.0001) continue;
+              const assignQty = Math.min(layerQty, remainingQty);
+              layer.state = 'filled';
+              layer.positionEntry = avgEntry;
+              layer.positionSize = assignQty;
+              layer.side = posSide;
+              layer.orderId = undefined;
+              layer.orderQuantity = 0;
+              layer.unrealizedPnl = 0;
+              remainingQty -= assignQty;
+              mappedCount++;
+            }
+
+            this.logger.log(
+              `[网格] Step6 持仓重建: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} → 映射${mappedCount}层` +
+              (remainingQty > 0.0001 ? ` 剩余${remainingQty.toFixed(4)}未映射` : ''),
+            );
+          }
+
+          // 如果交易所持仓=0，上面 for 循环不执行，所有 filled 已在 6a 清空 — 正确
         }
       }
 
