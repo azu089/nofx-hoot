@@ -30,7 +30,13 @@ export function MobileLoginPage({
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
-  const [showEmailForm, setShowEmailForm] = useState(false)
+  const [showEmailForm, setShowEmailForm] = useState(() => {
+    // 如果有记住的邮箱，自动展开邮箱表单
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem(REMEMBERED_EMAIL_KEY)
+    }
+    return false
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
 
@@ -40,6 +46,7 @@ export function MobileLoginPage({
     if (saved) {
       setEmail(saved)
       setRememberMe(true)
+      setShowEmailForm(true)
     }
   }, [])
 

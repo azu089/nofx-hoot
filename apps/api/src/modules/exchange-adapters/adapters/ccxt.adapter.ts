@@ -382,11 +382,11 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       if (this.okxPositionMode === 'long_short_mode') {
         // 双向持仓模式：sell + posSide=long = 平多仓
         const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { posSide: 'long' });
-        return this.mapOrderResult(order);
+        return this.fetchPnlFromFills(order, symbol);
       } else {
         // net_mode（单向持仓）：reduceOnly=true 告知 OKX 仅减仓，绕过开多保证金检查（51008）
         const order = await ex.createMarketOrder(symbol, 'sell', quantity, undefined, { reduceOnly: true });
-        return this.mapOrderResult(order);
+        return this.fetchPnlFromFills(order, symbol);
       }
     }
 
@@ -406,16 +406,44 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       if (this.okxPositionMode === 'long_short_mode') {
         // 双向持仓模式：buy + posSide=short = 平空仓
         const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { posSide: 'short' });
-        return this.mapOrderResult(order);
+        return this.fetchPnlFromFills(order, symbol);
       } else {
         // net_mode（单向持仓）：reduceOnly=true 告知 OKX 仅减仓，绕过开空保证金检查（51008）
         const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
-        return this.mapOrderResult(order);
+        return this.fetchPnlFromFills(order, symbol);
       }
     }
 
     const order = await ex.createMarketOrder(symbol, 'buy', quantity, undefined, { reduceOnly: true });
     return this.mapOrderResult(order);
+  }
+
+  /**
+   * OKX 专用：平仓订单创建后，从 fills 取准确的 realizedPnl
+   * OKX 市价单创建响应中 info.pnl 通常为 '0'，需查 fills 取实际已实现盈亏
+   * 仅用于 closeLong / closeShort（平仓操作），开仓不需要
+   */
+  private async fetchPnlFromFills(order: ccxt.Order, symbol: string): Promise<OrderResult> {
+    const result = this.mapOrderResult(order);
+    // 若 mapOrderResult 已拿到非零 pnl，直接返回
+    if (result.realizedPnl !== undefined && result.realizedPnl !== 0) return result;
+
+    try {
+      const ex = this.getExchange();
+      // fetchOrderTrades: 获取该订单的所有成交明细（包含 info.pnl）
+      const fills = await ex.fetchOrderTrades(order.id, symbol);
+      if (fills && fills.length > 0) {
+        const totalPnl = fills.reduce((sum: number, f: any) => {
+          return sum + Number((f.info as any)?.pnl ?? 0);
+        }, 0);
+        if (totalPnl !== 0) {
+          result.realizedPnl = totalPnl;
+        }
+      }
+    } catch {
+      // best-effort：失败不影响平仓流程，PnL 回退到 grid-trading.service 本地计算
+    }
+    return result;
   }
 
   // ========================= 杠杆 / 保证金 =========================
@@ -886,9 +914,9 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   private mapOrderResult(order: ccxt.Order): OrderResult {
-    // Binance USDM 平仓订单在 info.realizedPnl 中携带已实现盈亏
-    const rawPnl = (order.info as any)?.realizedPnl;
-    const realizedPnl = rawPnl != null ? Number(rawPnl) : undefined;
+    // Binance USDM 平仓订单在 info.realizedPnl；OKX 平仓订单在 info.pnl
+    const rawPnl = (order.info as any)?.realizedPnl ?? (order.info as any)?.pnl;
+    const realizedPnl = rawPnl != null && rawPnl !== '' ? Number(rawPnl) : undefined;
 
     return {
       orderId: order.id,

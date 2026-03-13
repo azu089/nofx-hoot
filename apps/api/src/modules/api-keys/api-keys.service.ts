@@ -1240,14 +1240,15 @@ export class ApiKeysService {
         if (allTrades.length >= 5000) break; // 安全上限
       }
 
-      // 过滤有 realizedPnl 的成交（= 平仓成交）
+      // 过滤有 realizedPnl/pnl 的成交（= 平仓成交）
+      // Binance USDM: info.realizedPnl；OKX: info.pnl
       const closeTrades = allTrades
         .filter((t: any) => {
-          const pnl = parseFloat(t.info?.realizedPnl || '0');
+          const pnl = parseFloat(t.info?.realizedPnl ?? t.info?.pnl ?? '0');
           return Math.abs(pnl) > 0.0001; // 排除极小精度误差
         })
         .map((t: any) => {
-          const pnl = parseFloat(t.info?.realizedPnl || '0');
+          const pnl = parseFloat(t.info?.realizedPnl ?? t.info?.pnl ?? '0');
           const feeCost = t.fee?.cost ?? 0;
           // positionSide: BOTH/LONG/SHORT；side: buy/sell
           // 平仓方向：sell 平多头 = long 被平仓；buy 平空头 = short 被平仓

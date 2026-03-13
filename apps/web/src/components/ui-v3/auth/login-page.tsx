@@ -29,7 +29,14 @@ export function LoginPage({
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
-  const [showEmailForm, setShowEmailForm] = useState(initialShowEmailForm)
+  const [showEmailForm, setShowEmailForm] = useState(() => {
+    // 如果有记住的邮箱，自动展开邮箱表单
+    if (initialShowEmailForm) return true
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem(REMEMBERED_EMAIL_KEY)
+    }
+    return false
+  })
   const t = useTranslations('auth')
 
   // 从 localStorage 恢复记住的邮箱
@@ -38,6 +45,7 @@ export function LoginPage({
     if (saved) {
       setEmail(saved)
       setRememberMe(true)
+      setShowEmailForm(true)
     }
   }, [])
 

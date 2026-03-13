@@ -245,7 +245,7 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易历史（从 DB 读取，网格 saveClosedPositionRecord 每次平仓都会写入）
+  // 获取交易历史（DB 本地记录：有完整字段，但 PnL 为本地估算）
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
@@ -282,6 +282,28 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
+    retry: false,
+  });
+
+  // 获取交易所实时已平仓记录（交易所是唯一事实：先实时拉取，覆盖 DB PnL）
+  const { data: exchangeHistoryData } = useQuery({
+    queryKey: ['exchange-trade-history', selectedApiKeyId],
+    queryFn: async () => {
+      if (!selectedApiKeyId) return null;
+      try {
+        const response = await api.get<{
+          items: Array<{ id: string; symbol: string; side: string; price: string; amount: string; pnl: string; fee: string; time: string; tradeId?: string }>;
+          total: number;
+          source: string;
+          error?: string;
+        }>(`/api-keys/${selectedApiKeyId}/trade-history?limit=50`);
+        return response.data;
+      } catch {
+        return null; // 交易所查询失败时回退到 DB 数据
+      }
+    },
+    enabled: isAuthenticated && !!selectedApiKeyId,
+    staleTime: 30 * 1000, // 30 秒缓存，避免频繁查交易所
     retry: false,
   });
 
@@ -667,31 +689,48 @@ export default function TradingPage() {
         };
       });
 
-  // 转换交易历史数据格式（数据来源：DB position 表，网格平仓时自动写入）
-  const transformedHistory = historyData?.items?.map(h => ({
-    id: h.id,
-    symbol: normalizeSymbol(h.symbol),
-    side: h.side as 'long' | 'short',
-    type: h.type || 'market',
-    price: parseFloat(h.closePrice || h.price || '0'),
-    entryPrice: parseFloat(h.entryPrice || '0'),
-    closePrice: parseFloat(h.closePrice || h.price || '0'),
-    amount: parseFloat(h.amount || '0'),
-    filled: parseFloat(h.amount || '0'),
-    total: parseFloat(h.total || '0'),
-    pnl: parseFloat(h.pnl || '0'),
-    pnlPercent: parseFloat(h.pnlPercent || '0'),
-    fee: parseFloat(h.fee || '0'),
-    time: h.closedAt || h.createdAt,
-    status: 'filled' as const,
-    marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
-    leverage: h.leverage || 1,
-    margin: parseFloat(h.margin || '0'),
-    closeReason: h.closeReason,
-    strategyName: h.strategyName,
-    source: h.source || 'ai_strategy',
-    openTime: h.createdAt,
-  }));
+  // 转换交易历史数据格式
+  // 数据策略：交易所实时 PnL 优先（按 symbol+时间±2分钟匹配），DB 提供完整结构
+  const transformedHistory = historyData?.items?.map(h => {
+    const hTime = new Date(h.closedAt || h.createdAt).getTime();
+    // 标准化 symbol 用于匹配（如 SOL/USDT:USDT → SOLUSDT）
+    const hSym = (h.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
+    const exchangeTrade = exchangeHistoryData?.items?.find(e => {
+      const eSym = (e.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
+      if (eSym !== hSym) return false;
+      const eTime = new Date(e.time).getTime();
+      return Math.abs(eTime - hTime) < 120_000; // 2分钟内视为同一笔平仓
+    });
+    // 交易所 PnL 存在且合理时覆盖 DB 本地估算值
+    const pnlFromExchange = exchangeTrade ? parseFloat(exchangeTrade.pnl || '0') : NaN;
+    const finalPnl = !isNaN(pnlFromExchange) ? pnlFromExchange : parseFloat(h.pnl || '0');
+    return {
+      id: h.id,
+      symbol: normalizeSymbol(h.symbol),
+      side: h.side as 'long' | 'short',
+      type: h.type || 'market',
+      price: parseFloat(h.closePrice || h.price || '0'),
+      entryPrice: parseFloat(h.entryPrice || '0'),
+      closePrice: parseFloat(h.closePrice || h.price || '0'),
+      amount: parseFloat(h.amount || '0'),
+      filled: parseFloat(h.amount || '0'),
+      total: parseFloat(h.total || '0'),
+      pnl: finalPnl,
+      pnlPercent: parseFloat(h.pnlPercent || '0'),
+      fee: parseFloat(h.fee || '0'),
+      time: h.closedAt || h.createdAt,
+      status: 'filled' as const,
+      marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
+      leverage: h.leverage || 1,
+      margin: parseFloat(h.margin || '0'),
+      closeReason: h.closeReason,
+      strategyName: h.strategyName,
+      source: h.source || 'ai_strategy',
+      openTime: h.createdAt,
+      // 标记 PnL 来源（供 UI 展示"交易所实时"或"本地估算"）
+      pnlSource: exchangeTrade ? 'exchange' : 'local',
+    };
+  });
 
   // 转换执行日志数据格式
   const transformedLogs = logsData?.map(log => ({
