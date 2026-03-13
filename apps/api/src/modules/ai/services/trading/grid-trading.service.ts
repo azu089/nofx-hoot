@@ -1277,8 +1277,12 @@ export class GridTradingService {
           }
         }
 
-        // 构建 AI 上下文（state.gridLines 已被 pre-sync 更新为交易所最新状态）
-        const context = await this.buildGridContext(state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false);
+        // 构建 AI 上下文
+        // 传入 pre-sync 交易所数据，确保 AI 看到的 levels 和 UI 层级显示完全一致
+        const context = await this.buildGridContext(
+          state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false,
+          preSyncExchangeOrders, preSyncExchangePositions,
+        );
 
         // 全局网格倾斜计算（供 AI context 使用，autoAdjustGrid 也复用此结果）
         const { skewed: _skewed, buyFilled: skewBuy, sellFilled: skewSell } = this.checkGridSkew(state);
@@ -2012,6 +2016,8 @@ export class GridTradingService {
     adapter: ExchangeAdapter,
     currentPrice: number,
     enableDirectionAdjust = false,
+    preSyncExchangeOrders?: any[],
+    preSyncExchangePositions?: any[],
   ): Promise<GridContext> {
     // 三周期 OHLCV 并行拉取（5m+1h+4h）
     const [ohlcvFastRaw, ohlcvSlowRaw, ohlcv4hRaw] = await Promise.all([
@@ -2167,14 +2173,45 @@ export class GridTradingService {
     const ema50 = indFast.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
-    // 层级状态：直接读内存 gridLines（nofx 对齐：ctx.Levels = gridState.Levels）
-    // pending/filled/empty 由 placeGridLimitOrder + syncOrderFills 维护
-    // 启动/重建时由 recoverOrdersFromExchange + recoverPositionsFromExchange 一次性恢复
-    const exchangeLevels = this.buildExchangeLevels(
-      state.gridLines,
-      currentPrice,
-      state.leverage ?? 1,
-    );
+    // 层级状态：优先从交易所数据构建（和 UI 显示完全一致）
+    // 有 pre-sync 交易所数据时用 buildDisplayFromExchange，否则 fallback 到内存
+    let exchangeLevels: GridContext['levels'];
+    if (preSyncExchangeOrders && preSyncExchangePositions) {
+      // 从交易所数据构建（和 UI buildDisplayFromExchange 完全相同的数据源）
+      const displayLines = this.buildDisplayFromExchange(state, preSyncExchangeOrders, preSyncExchangePositions);
+      exchangeLevels = displayLines.map((d: any, i: number) => {
+        const gl = state.gridLines[i];
+        const normalQty = gl?.allocatedUSD > 0 && currentPrice > 0
+          ? (gl.allocatedUSD * (state.leverage ?? 1)) / currentPrice
+          : 0;
+        if (d.st === 'pending') {
+          return {
+            price: d.p, side: d.s as 'buy' | 'sell', quantity: normalQty,
+            positionSize: 0, state: 'pending' as const, orderId: d.oid,
+            fillPrice: undefined, profit: undefined,
+          };
+        }
+        if (d.st === 'filled') {
+          const ep = d.ep ?? d.p;
+          const profit = d.s === 'buy'
+            ? (currentPrice - ep) * (d.qty ?? 0)
+            : (ep - currentPrice) * (d.qty ?? 0);
+          return {
+            price: ep, side: d.s as 'buy' | 'sell', quantity: normalQty,
+            positionSize: d.qty ?? 0, state: 'filled' as const, orderId: undefined,
+            fillPrice: ep, profit,
+          };
+        }
+        return {
+          price: d.p, side: d.s as 'buy' | 'sell', quantity: normalQty,
+          positionSize: 0, state: 'cancelled' as const, orderId: undefined,
+          fillPrice: undefined, profit: undefined,
+        };
+      });
+    } else {
+      // Fallback：从内存构建（启动首轮可能无 pre-sync 数据）
+      exchangeLevels = this.buildExchangeLevels(state.gridLines, currentPrice, state.leverage ?? 1);
+    }
 
     return {
       symbol: state.symbol,
