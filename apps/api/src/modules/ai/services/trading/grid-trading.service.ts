@@ -1481,23 +1481,13 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
-        // 使用 syncOrderFills 后的 state.gridLines（实时状态），而非 preExecGridLines（周期开始快照）
+        // 使用 preExecGridLines（交易所实时快照），而非执行后的 state.gridLines
+        // 历史教训 2026-03-13：旧版用执行后数据 → 用户看到刚下的挂单而非交易所确认的状态
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
-          const postSyncGridLines = state.gridLines.map((l, i) => {
-            const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
-            if (l.state === 'filled') {
-              entry.qty = +(l.positionSize ?? 0).toFixed(4);
-              entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
-            } else if (l.state === 'pending') {
-              entry.oid = (l.orderId ?? '').slice(-8);
-              entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
-            }
-            return entry;
-          });
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, postSyncGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, preExecGridLines, gridConfig?.locale,
           );
         }
 
@@ -4159,7 +4149,7 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：使用 syncOrderFills 后的实时状态（postSyncGridLines 或 state.gridLines）
+        // 每层详情：使用执行前快照（交易所实时数据），fallback 到 state.gridLines
         gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
           const entry: Record<string, unknown> = {
             lv: i + 1,
