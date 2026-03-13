@@ -160,7 +160,7 @@ function UserDetailDialog({
               {/* 基本信息 */}
               <div className="space-y-2 text-sm">
                 {[
-                  ['UID', user.uid ? `USR${user.uid}` : '-'],
+                  ['短 ID', user.uid ? `USR${user.uid}` : '-'],
                   ['邮箱', user.email],
                   ['昵称', user.nickname || '-'],
                   ['状态', <AdminStatusBadge key="s" status={user.status} />],
@@ -175,6 +175,17 @@ function UserDetailDialog({
                     <span className="text-white">{val}</span>
                   </div>
                 ))}
+                {/* 完整 UUID（仅详情显示） */}
+                <div className="flex items-start gap-3 pt-1 border-t border-[#1E1E2E]">
+                  <span className="w-24 text-[#9090A0] shrink-0 text-xs pt-0.5">用户 UUID</span>
+                  <span
+                    className="text-[#64748B] text-xs font-mono break-all cursor-pointer hover:text-[#9090A0] transition-colors"
+                    title="点击复制"
+                    onClick={() => { navigator.clipboard.writeText(user.id); }}
+                  >
+                    {user.id}
+                  </span>
+                </div>
               </div>
 
               {/* 操作按钮 */}
@@ -348,12 +359,21 @@ function UserListTab() {
   const columns: AdminColumn<UserItem>[] = [
     {
       key: 'uid',
-      title: 'UID',
-      width: '100px',
+      title: 'ID',
+      width: '110px',
       render: (row) => (
-        <span className="font-mono text-cyan-400 text-xs">
-          {row.uid ? `USR${row.uid}` : '-'}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono text-cyan-400 text-xs font-semibold">
+            {row.uid ? `USR${row.uid}` : '—'}
+          </span>
+          <span
+            className="font-mono text-[#4A4A5A] text-[10px] cursor-pointer hover:text-[#9090A0] transition-colors truncate max-w-[100px]"
+            title={row.id}
+            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.id); }}
+          >
+            {row.id.slice(0, 8)}…
+          </span>
+        </div>
       ),
     },
     {
