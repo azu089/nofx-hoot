@@ -3884,34 +3884,68 @@ export class GridTradingService {
 
     if (priceDeviation < gridRange * autoAdjustThreshold) return;
 
+    // 重建前：记录旧状态
+    const oldUpper = state.upperPrice;
+    const oldLower = state.lowerPrice;
+    const oldPending = state.gridLines.filter(l => l.state === 'pending').length;
+    const oldFilled = state.gridLines.filter(l => l.state === 'filled').length;
+
     this.logger.warn(
-      `[网格] 自动重建: 倾斜 buy=${buyFilled} sell=${sellFilled}，` +
-      `价格偏移 ${((priceDeviation / gridRange) * 100).toFixed(1)}% > ${(autoAdjustThreshold * 100).toFixed(0)}% 阈值`,
+      `[网格] ⚡ 自动重建触发: 倾斜 buy=${buyFilled} sell=${sellFilled}，` +
+      `价格偏移 ${((priceDeviation / gridRange) * 100).toFixed(1)}% > ${(autoAdjustThreshold * 100).toFixed(0)}% 阈值 | ` +
+      `旧范围=${oldLower.toFixed(2)}~${oldUpper.toFixed(2)}, 当前价=${currentPrice.toFixed(2)}, ` +
+      `旧状态: ${oldPending}挂单 + ${oldFilled}持仓`,
     );
 
-    try { await adapter.cancelAllOrders(state.symbol); } catch (e: any) {
-      this.logger.warn(`[网格] autoAdjustGrid: 撤单失败（继续重建）: ${e.message}`);
+    // Step 1: 撤销交易所所有挂单
+    try {
+      await adapter.cancelAllOrders(state.symbol);
+      this.logger.log(`[网格] 自动重建 Step1: 撤销交易所所有挂单（${oldPending}个）✓`);
+    } catch (e: any) {
+      this.logger.warn(`[网格] 自动重建 Step1: 撤单失败（继续重建）: ${e.message}`);
     }
 
-    // 重建网格（全部 empty） + 从交易所恢复真实持仓
+    // Step 2: 重建网格（全部 empty）
+    let newUpper: number, newLower: number;
     if (state.upperBoundPct && state.lowerBoundPct) {
-      const explicitUpper = currentPrice * (1 + state.upperBoundPct / 100);
-      const explicitLower = currentPrice * (1 - state.lowerBoundPct / 100);
-      await this.reinitializeGridLevels(state, currentPrice, explicitUpper, explicitLower);
+      newUpper = currentPrice * (1 + state.upperBoundPct / 100);
+      newLower = currentPrice * (1 - state.lowerBoundPct / 100);
+      await this.reinitializeGridLevels(state, currentPrice, newUpper, newLower);
     } else {
       await this.reinitializeGridLevels(state, currentPrice);
+      newUpper = state.upperPrice;
+      newLower = state.lowerPrice;
     }
-    // 从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
+    this.logger.log(
+      `[网格] 自动重建 Step2: 网格重置 ${state.gridLines.length}层 empty | ` +
+      `新范围=${newLower.toFixed(2)}~${newUpper.toFixed(2)}, 格间距=${state.gridSpacing.toFixed(4)}`,
+    );
+
+    // Step 3: 从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
     if (userId && apiKeyId) {
       await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+      const recoveredFilled = state.gridLines.filter(l => l.state === 'filled').length;
+      const recoveredPositions = state.gridLines
+        .filter(l => l.state === 'filled')
+        .map(l => `L${(l.index ?? 0) + 1}(${l.side})@${(l.positionEntry ?? 0).toFixed(2)}×${(l.positionSize ?? 0).toFixed(4)}`)
+        .join(', ');
+      this.logger.log(
+        `[网格] 自动重建 Step3: 持仓恢复 ${recoveredFilled}层 filled | ${recoveredPositions || '无持仓'}`,
+      );
     }
+
+    this.logger.log(
+      `[网格] ⚡ 自动重建完成: ${oldLower.toFixed(2)}~${oldUpper.toFixed(2)} → ${newLower.toFixed(2)}~${newUpper.toFixed(2)} | ` +
+      `撤${oldPending}单, 恢复${state.gridLines.filter(l => l.state === 'filled').length}持仓, ` +
+      `${state.gridLines.filter(l => l.state === 'empty').length}空格待AI补单`,
+    );
 
     // 重建后自动解除非风控暂停
     if (state.isPaused && state.pauseSource !== 'risk_control') {
       state.isPaused = false;
       state.pauseSource = undefined;
       state.pauseReason = undefined;
-      this.logger.log(`[网格] autoAdjustGrid 重建完成，自动解除暂停`);
+      this.logger.log(`[网格] 自动重建: 解除暂停（非风控）`);
     }
 
     state.orderBook = {};
@@ -4235,6 +4269,14 @@ export class GridTradingService {
       const gridSummary = parts.join('/') || `${decisions.length}ops`;
 
       // 构建 GridState 快照
+      // 表头统计优先从 preExecGridLines（pre-sync 交易所数据）统计
+      // 确保持仓格/挂单层和层级显示一致（都是 AI 决策前的交易所状态）
+      const displayFilled = preExecGridLines
+        ? preExecGridLines.filter((g: any) => g.st === 'filled').length
+        : state?.gridLines.filter(l => l.state === 'filled').length ?? 0;
+      const displayPending = preExecGridLines
+        ? preExecGridLines.filter((g: any) => g.st === 'pending').length
+        : state?.gridLines.filter(l => l.state === 'pending').length ?? 0;
       const gridSnapshot = state ? {
         upperPrice: state.upperPrice,
         lowerPrice: state.lowerPrice,
@@ -4242,9 +4284,9 @@ export class GridTradingService {
         direction: state.currentDirection,
         regime: state.currentRegime,
         totalLevels: state.gridLines.length,
-        filledLevels: state.gridLines.filter(l => l.state === 'filled').length,
-        pendingLevels: state.gridLines.filter(l => l.state === 'pending').length,
-        activeOrders: Object.keys(state.orderBook).length,
+        filledLevels: displayFilled,
+        pendingLevels: displayPending,
+        activeOrders: displayPending,
         totalInvestment: state.totalInvestment,   // 用于前端展示每层成本估算
         totalProfit: state.totalProfit,
         totalTrades: state.totalTrades,
