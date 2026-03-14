@@ -1353,6 +1353,8 @@ export class GridTradingService {
         // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
         // 见下方 saveGridDecisionLog 调用处的 displayGridLines
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
+        // 把交易所实时层级挂到 state，供 placeGridLimitOrder 的 filled 检查使用（交易所是唯一事实）
+        (state as any)._exchangeDisplay = preSyncDisplay;
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = execDecisions.some(d => d.action === 'pause_grid');
@@ -2746,12 +2748,29 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // Step 0: 已有持仓的层禁止直接下单（filled 层只能通过 close_long/close_short 处理）
-    // 若允许，placeGridLimitOrder 末尾的 finalLevel.state='pending' 会抹除持仓记录，导致持仓层消失
-    if (level && level.state === 'filled' && (level.positionSize ?? 0) > 0.0001) {
-      const skipReason = `层 ${levelIndex + 1} 已有持仓 ${(level.positionSize ?? 0).toFixed(4)} @ ${(level.positionEntry ?? 0).toFixed(2)}，跳过（需先平仓再挂单）`;
-      this.logger.warn(`[网格] ${skipReason}`);
-      return { executed: false, skipReason };
+    // Step 0: 已有持仓的层禁止直接下单
+    // 判断依据：交易所实时数据（_exchangeDisplay），不是内存（架构原则：交易所是唯一事实）
+    // 如果交易所数据认为该层是 filled，才拦截；内存 filled 但交易所不是 → 内存过期，清理并放行
+    {
+      const exDisplay = (state as any)._exchangeDisplay as any[] | undefined;
+      const exLayerState = exDisplay?.[levelIndex]?.st;
+      if (exLayerState === 'filled') {
+        // 交易所确认该层有持仓 → 拦截
+        const exQty = exDisplay?.[levelIndex]?.qty ?? 0;
+        const exEntry = exDisplay?.[levelIndex]?.ep ?? 0;
+        const skipReason = `层 ${levelIndex + 1} 已有持仓 ${exQty.toFixed(4)} @ ${exEntry.toFixed(2)}，跳过（需先平仓再挂单）`;
+        this.logger.warn(`[网格] ${skipReason}`);
+        return { executed: false, skipReason };
+      }
+      // 内存 filled 但交易所不是 → 内存过期，清理
+      if (level && level.state === 'filled') {
+        this.logger.log(`[网格] 层 ${levelIndex + 1} 内存=filled 但交易所=${exLayerState ?? 'unknown'}，清理过期内存`);
+        level.state = 'empty';
+        level.positionSize = 0;
+        level.positionEntry = 0;
+        level.orderId = undefined;
+        level.orderQuantity = 0;
+      }
     }
 
     // Step 0: 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
@@ -4301,13 +4320,22 @@ export class GridTradingService {
       const candidates = [...sameSideEmpty, ...oppSideEmpty];
 
       let remainingQty = totalQty;
-      for (const { d, gl } of candidates) {
+      let lastFilledD: typeof candidates[0] | null = null;
+      for (const item of candidates) {
         if (remainingQty <= 0.0001) break;
+        const { d, gl } = item;
         // 每层数量 = allocatedUSD * leverage / entryPrice
         const layerQty = gl.allocatedUSD > 0 && avgEntry > 0
           ? (gl.allocatedUSD * leverage) / avgEntry
           : 0;
         if (layerQty <= 0.0001) continue;
+
+        // 碎片归并：残余不足该层30%时并入上一层（与 recoverPositionsFromExchange 一致）
+        if (remainingQty < layerQty * 0.3 && lastFilledD) {
+          lastFilledD.d.qty = +((lastFilledD.d.qty ?? 0) + remainingQty).toFixed(4);
+          remainingQty = 0;
+          break;
+        }
 
         const assignQty = Math.min(layerQty, remainingQty);
         d.st = 'filled';
@@ -4315,6 +4343,7 @@ export class GridTradingService {
         d.qty = +assignQty.toFixed(4);
         d.ep = +avgEntry.toFixed(4);
         remainingQty -= assignQty;
+        lastFilledD = item;
       }
     }
 
