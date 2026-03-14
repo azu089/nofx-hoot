@@ -159,6 +159,9 @@ export interface GridState {
   // 网格范围来源（初始化时记录，供前端展示）
   rangeSource?: string;  // '用户指定' | 'ATR×5.0' | '±3.0%兜底' | 'ATR×2.0' 等
 
+  // 最近挂单成交记录（环形缓冲，最多10条，供 AI 分析近期成交节奏）
+  recentFills: Array<{ level: number; side: string; price: number; qty: number; profit?: number; time: string }>;
+
   // 逐层止损临时标记（不持久化，_前缀表示运行时临时字段）
   _pendingStopLoss?: number[];  // 需要止损的格线 index 数组
 
@@ -659,6 +662,7 @@ export class GridTradingService {
       lastAtrSpikeRatio: 0,
       rsiDivergenceType: 'none' as const,
       livePositionNotional: 0,  // 交易所真实持仓名义价值，每轮从 GetPositions 更新
+      recentFills: [],  // 最近挂单成交记录，供 AI 分析
     };
 
     this.gridStates.set(strategyId, state);
@@ -2310,6 +2314,7 @@ export class GridTradingService {
 
       exchangeOpenOrders,
       recentClosedPnl,
+      recentFills: state.recentFills?.length ? state.recentFills : undefined,
       positionReductionPct: state.positionReductionPct > 0 ? state.positionReductionPct : undefined,
     };
   }
@@ -3416,6 +3421,11 @@ export class GridTradingService {
                 `对应买入层L${(buyLayer.index ?? 0) + 1} entry=${(buyLayer.positionEntry || _ep.toNumber()).toFixed(4)}`,
               );
 
+              // 记录到 recentFills 供 AI 分析
+              if (!state.recentFills) state.recentFills = [];
+              state.recentFills.push({ level: (line.index ?? 0) + 1, side: 'sell', price: fillPrice, qty, profit: netProfit, time: new Date().toISOString() });
+              if (state.recentFills.length > 10) state.recentFills = state.recentFills.slice(-10);
+
               this.saveClosedPositionRecord(
                 userId,
                 state.strategyId,
@@ -3454,6 +3464,11 @@ export class GridTradingService {
             this.logger.log(
               `[网格] 买单成交: L${(line.index ?? 0) + 1}(${line.side}) @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
             );
+
+            // 记录到 recentFills 供 AI 分析
+            if (!state.recentFills) state.recentFills = [];
+            state.recentFills.push({ level: (line.index ?? 0) + 1, side: 'buy', price: fillPrice, qty, time: new Date().toISOString() });
+            if (state.recentFills.length > 10) state.recentFills = state.recentFills.slice(-10);
           }
         } else {
           line.state = 'empty';
