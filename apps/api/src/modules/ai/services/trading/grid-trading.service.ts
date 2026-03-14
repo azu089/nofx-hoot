@@ -770,13 +770,10 @@ export class GridTradingService {
     // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
     // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
     if (state && !this.reconcileCompleted.has(strategyId)) {
-      // 容器重启恢复：始终从交易所实时数据重建（交所是唯一事实，DB不作为层状态来源）
-      // recoverOrdersFromExchange：挂单→pending（不取消，与交所一致）
-      // recoverPositionsFromExchange：持仓→filled（getPositions实时数据，映射到最近层）
-      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所重建`);
+      // 容器重启恢复：对齐 nofx——全部 empty，只恢复挂单 pending，持仓由 AI 第一轮通过 positionLong/positionShort 自行决策
+      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所恢复挂单`);
       this.resetGridLayers(state);
       await this.recoverOrdersFromExchange(state, userId, apiKeyId);
-      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       this.reconcileCompleted.add(strategyId);
     }
 
@@ -797,10 +794,9 @@ export class GridTradingService {
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
-      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单 + 从交易所持仓恢复 filled 层
+      // nofx 对齐：风控重启 = 全空层 + 取消所有挂单，持仓由 AI 自行决策
       this.resetGridLayers(state);
       await this.cancelAllGridOrders(state, userId, apiKeyId);
-      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
     }
 
     // Step 1.3: 暂停恢复后干净重启（resume_grid / breakout 自动恢复触发）
@@ -810,7 +806,6 @@ export class GridTradingService {
       this.logger.log(`[网格] 暂停恢复: 全空层 + 取消所有挂单（干净重启）`);
       this.resetGridLayers(state);
       await this.cancelAllGridOrders(state, userId, apiKeyId);
-      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
     }
 
     // Step 1.5: 配置变更检测 — 原地取消挂单 + 重建层级（历史利润不清零）
@@ -935,9 +930,8 @@ export class GridTradingService {
       // 首次初始化（非配置变更路径）
       if (gridConfig) {
         state = await this.initializeGrid(strategyId, userId, apiKeyId, gridConfig, apiKeys);
-        // nofx 对齐：新建网格 = 全空层，取消所有旧挂单，再恢复交易所持仓
+        // nofx 对齐：新建网格 = 全空层，取消所有旧挂单，持仓由 AI 自行决策
         await this.cancelAllGridOrders(state, userId, apiKeyId);
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
         this.reconcileCompleted.add(strategyId);  // 初始化已完成恢复，跳过 Step 1.1
       } else {
         this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
