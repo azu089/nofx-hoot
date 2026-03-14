@@ -1979,7 +1979,7 @@ export class GridTradingService {
         const profit = l.side === 'buy'
           ? (currentPrice - l.positionEntry) * l.positionSize
           : (l.positionEntry - currentPrice) * l.positionSize;
-        // positionEntry = 层级价格（对齐 nofx），和 l.price 相同
+        // positionEntry = 交易所真实入场价（交易所是唯一真相）
         const displayPrice = l.positionEntry > 0 ? l.positionEntry : l.price;
         return {
           price: displayPrice,
@@ -3421,11 +3421,10 @@ export class GridTradingService {
             }
           } else {
             // 买单成交：标记 filled，保持 side='buy'（与 nofx 完全对齐）
-            // positionEntry = 层级价格（line.price），不是交易所实际成交均价（fillPrice）
-            // 原因：nofx 用 level.Price 作为 PositionEntry，确保卖单层价格始终 > 入场价
-            // 如果用交易所均价，重建后可能出现 入场均价 > 卖层价格 → 每笔卖出必亏
+            // positionEntry = 交易所实际成交价（fillPrice），交易所是唯一真相
+            // nofx 用 level.Price 是因为逐层成交时层价格≈实际成交价，但本质应该用真实值
             line.state = 'filled';
-            line.positionEntry = line.price;
+            line.positionEntry = fillPrice;
             line.positionSize = qty;
             line.unrealizedPnl = 0;
             state.totalTrades++;
@@ -3560,7 +3559,7 @@ export class GridTradingService {
           const assignQty = Math.min(layerQty, remainingQty);
 
           layer.state = 'filled';
-          layer.positionEntry = layer.price; // 用层级价格（对齐 nofx），确保卖层价格 > 入场价
+          layer.positionEntry = avgEntry; // 用交易所真实入场价（交易所是唯一真相）
           layer.positionSize  = assignQty;
           layer.side          = posSide;
           layer.orderId       = undefined;
