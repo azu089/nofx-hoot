@@ -671,8 +671,6 @@ export interface GridContext {
   recentClosedPnl?: Array<{symbol: string; side: string; quantity: number; entryPrice: number; exitPrice: number; realizedPnl: number; closedAt: string}>;
   // 突破恢复中：下单量缩减比例（50=每层最多用50%仓位预算，0=正常）
   positionReductionPct?: number;
-  // 最近挂单成交记录（网格内部 syncOrderFills 检测到的成交，含层号/价格/数量/利润）
-  recentFills?: Array<{level: number; side: string; price: number; qty: number; profit?: number; time: string}>;
 }
 
 /**
@@ -914,17 +912,6 @@ function buildOrdersSection(ctx: GridContext, isEn: boolean): string[] {
       const entryL = isEn ? 'entry' : '入';
       const exitL = isEn ? 'exit' : '出';
       lines.push(`${r.side} ${r.quantity.toFixed(4)} | ${entryL}=${r.entryPrice.toFixed(4)} ${exitL}=${r.exitPrice.toFixed(4)} | PnL=${pnlStr}`);
-    }
-  }
-  if (ctx.recentFills && ctx.recentFills.length > 0) {
-    lines.push('');
-    const label = isEn ? `Recent Grid Fills(${ctx.recentFills.length})` : `近期挂单成交(${ctx.recentFills.length}笔)`;
-    lines.push(`--- ${label} ---`);
-    for (const f of ctx.recentFills) {
-      const profitStr = f.profit !== undefined ? (f.profit >= 0 ? ` PnL=+${f.profit.toFixed(4)}` : ` PnL=${f.profit.toFixed(4)}`) : '';
-      const timeStr = f.time.replace('T', ' ').slice(0, 19);
-      const lvlLabel = isEn ? 'L' : '层';
-      lines.push(`${lvlLabel}${f.level} ${f.side} | price=${f.price.toFixed(4)} qty=${f.qty.toFixed(4)}${profitStr} | ${timeStr}`);
     }
   }
   return lines;
