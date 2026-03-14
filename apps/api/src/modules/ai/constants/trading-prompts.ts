@@ -714,8 +714,6 @@ function gridSystemPromptZh(
 - **pending**: 等待成交
 - **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）
 
-**反向挂单间距检查**：检查每个 filled 层对应的反向挂单（多头持仓→卖单，空头持仓→买单），若反向单价格与持仓入场价（positionEntry）的距离超过 2 格间距，可撤单并以持仓入场价 ±1 格间距重新挂单。
-
 ## 可用操作
 - **place_buy_limit**: 挂买单（fields: level, price, quantity）
 - **place_sell_limit**: 挂卖单（fields: level, price, quantity）
@@ -773,8 +771,6 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **empty**: Can place order
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit)
-
-**Reverse order spacing check**: For each filled level, check the corresponding reverse order (long position → sell order, short position → buy order). If the distance between the reverse order price and the position entry price (positionEntry) exceeds 2 grid spacings, cancel and re-place the order at positionEntry ± 1 grid spacing.
 
 ## Available Actions
 - **place_buy_limit**: Place buy order (fields: level, price, quantity)
