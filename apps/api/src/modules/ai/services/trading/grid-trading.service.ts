@@ -2962,11 +2962,13 @@ export class GridTradingService {
       if (finalLevel.orderId && finalLevel.orderId !== result.orderId) {
         delete state.orderBook[finalLevel.orderId];
       }
-      // 对齐 nofx L1090-1098: placeGridLimitOrder 只设 State/OrderID/OrderQuantity/OrderBook
-      // 不动 price/positionSize/positionEntry/unrealizedPnl（保留 filled 层持仓数据）
-      // side 需设置：HOOT syncOrderFills 用 side 区分买卖成交（nofx 用 abs 启发式不需要）
+      // 恢复 AI 定价权：price 跟随实际下单价（3月9日稳定版逻辑）
+      // 原因：AI 可能选择更优价格（如贴近持仓均价的卖单），层价格需同步更新
+      // 否则下轮 AI 看到的层价格仍是固定网格线价，无法感知实际挂单位置
+      // positionSize/positionEntry/unrealizedPnl 保持不动（保留 filled 层持仓数据）
       finalLevel.state = 'pending';
       finalLevel.side = side;
+      finalLevel.price = price;           // AI 定价权：层价格跟随实际下单价
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
       state.orderBook[result.orderId] = finalLevelIndex;
