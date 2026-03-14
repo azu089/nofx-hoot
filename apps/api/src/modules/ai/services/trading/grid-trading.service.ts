@@ -2821,16 +2821,18 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：只检查已成交持仓（livePositionNotional），不含挂单
-      // 挂单未成交不占杠杆敞口，含挂单会导致中性网格（多空各半）误报仓位已满
+      // 总仓位上限：已成交持仓 + 挂单名义价值（nofx: currentPositionValue + pendingValue）
       const totalPositionCap = state.totalInvestment * leverage;
-      const livePositionNotional = state.livePositionNotional ?? 0; // 交易所真实持仓名义价值（Step3 已更新）
-      if (livePositionNotional + quantity * price > totalPositionCap) {
-        // 削减至剩余可用额度
-        const remaining = Math.max(0, totalPositionCap - livePositionNotional);
+      const livePositionNotional = state.livePositionNotional ?? 0;
+      const pendingNotional = state.gridLines
+        .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
+        .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
+      if (livePositionNotional + pendingNotional + quantity * price > totalPositionCap) {
+        // 削减至剩余可用额度（持仓+挂单）
+        const remaining = Math.max(0, totalPositionCap - livePositionNotional - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 持仓 $${livePositionNotional.toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}`;
+          const skipReason = `总仓位已满: 持仓+挂单 $${(livePositionNotional + pendingNotional).toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
@@ -3531,56 +3533,32 @@ export class GridTradingService {
 
         const leverage = Math.max(1, state.leverage ?? 1);
 
-        // 对齐 nofx autoAdjustGrid L1456-1479：纯按价格距离映射，不过滤 side
-        // 映射后 L3575 会将 layer.side 转为 posSide，确保后端逻辑正确
-        // 修复(2026-03-15)：旧逻辑优先同侧层 → 多头映射到低价买层 → 卖单低于真实入场价
-        const emptyLayers = state.gridLines
+        // 对齐 nofx autoAdjustGrid L1456-1479：1个持仓→1个最近层，不拆分
+        // nofx 每个 filled level 只有一个 PositionSize，不按 allocatedUSD 拆分
+        const closestEmpty = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
           .filter(({ layer }) => layer.state === 'empty')
-          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry))[0];
 
-        let remainingQty = totalQty;
-        let mappedCount = 0;
+        if (closestEmpty) {
+          closestEmpty.layer.state = 'filled';
+          closestEmpty.layer.positionEntry = avgEntry;
+          closestEmpty.layer.positionSize  = totalQty;
+          closestEmpty.layer.side          = posSide;
+          closestEmpty.layer.orderId       = undefined;
+          closestEmpty.layer.orderQuantity = 0;
+          closestEmpty.layer.unrealizedPnl = 0;
 
-        let lastFilledLayer: typeof emptyLayers[0] | null = null;
-
-        for (const { layer, idx } of emptyLayers) {
-          if (remainingQty <= 0.0001) break;
-
-          // 每层数量 = 网格配置资金（allocatedUSD * leverage / price），不均分
-          const layerQty = layer.allocatedUSD > 0 && avgEntry > 0
-            ? (layer.allocatedUSD * leverage) / avgEntry
-            : 0;
-          if (layerQty <= 0.0001) continue;
-
-          // 碎片归并：剩余不足该层正常量的 30%，并入上一层而非单独占层
-          if (remainingQty < layerQty * 0.3 && lastFilledLayer) {
-            lastFilledLayer.layer.positionSize = (lastFilledLayer.layer.positionSize ?? 0) + remainingQty;
-            remainingQty = 0;
-            break;
-          }
-
-          // 不超过交易所剩余持仓量
-          const assignQty = Math.min(layerQty, remainingQty);
-
-          layer.state = 'filled';
-          layer.positionEntry = avgEntry; // 用交易所真实入场价（交易所是唯一真相）
-          layer.positionSize  = assignQty;
-          layer.side          = posSide;
-          layer.orderId       = undefined;
-          layer.orderQuantity = 0;
-          layer.unrealizedPnl = 0;
-          remainingQty -= assignQty;
-          mappedCount++;
-          lastFilledLayer = { layer, idx };
+          this.logger.log(
+            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ` +
+            `qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} ` +
+            `→ 映射到L${closestEmpty.idx + 1}@${closestEmpty.layer.price.toFixed(4)}`,
+          );
+        } else {
+          this.logger.warn(
+            `[网格] 启动持仓恢复: 无空层可映射 qty=${totalQty.toFixed(4)}`,
+          );
         }
-
-        this.logger.log(
-          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ` +
-          `qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} ` +
-          `→ 映射${mappedCount}层（每层按allocatedUSD×${leverage}杠杆计算）` +
-          (remainingQty > 0.0001 ? ` 剩余${remainingQty.toFixed(4)}未映射（空层不足）` : ''),
-        );
       }
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);

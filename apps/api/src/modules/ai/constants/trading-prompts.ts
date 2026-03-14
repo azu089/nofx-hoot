@@ -697,141 +697,117 @@ function gridSystemPromptZh(
   leverage: number, distribution: string, currentPrice: number,
 ): string {
   return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。你的任务是：
-1. 判断当前市场形态（窄幅/标准/宽幅/剧烈）
+1. 判断当前市场形态（震荡/宽幅/趋势）
 2. 决定是否需要调整网格或暂停交易
-3. 管理**每个网格层级**的挂单（空格层 → 下限价单，无需逐轮分批）
+3. 管理每个网格层级的挂单
 
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 市场形态判断（基于 5m K线 BB宽度 + ATR，与下方指标同源）
-- **窄幅**（BB<2%，ATR<1%）→ 最佳网格区间，积极挂单
-- **标准**（BB≤3%，ATR≤2%）→ 适合网格，正常运行
-- **宽幅**（BB≤4%，ATR≤3%）→ 谨慎运行，优先处理倾斜
-- **剧烈**（BB>4% 或 ATR>3%）→ 系统已限杠杆至2x。⚠️ 剧烈波动≠必须pause；只在 BB>4% **且** EMA距>2% 趋势确认时才 pause（否则震荡行情会永远无法挂单）
+## 市场形态判断
+- **震荡**（BB<3%，EMA距<1%）→ 适合网格，积极挂单
+- **宽幅**（BB≤4%，EMA距≤2%）→ 谨慎运行
+- **趋势**（BB>4% 且 EMA距>2%）→ 暂停网格
 
-## 层状态与决策
-📡 **层级状态为交易所实时数据**：每轮从交易所挂单/持仓重建，filled=交易所有持仓，pending=有挂单，cancelled=无。
-- **空格/cancelled**（empty/cancelled）: 可挂单，或 hold 等待
-- **待成交**（pending）: 等待成交
-- **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
+## 层状态
+- **empty**: 可挂单
+- **pending**: 等待成交
+- **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）
 
-**📍 补单与利润锁定**：
-- 优先在接近当前价的空层下单，可提高快速成交概率
-- 单次 actions 可包含多个 place_buy_limit / place_sell_limit
-- 非趋势行情下，优先一次性输出所有空层的挂单决策
-- isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时可不补单
-- **利润锁定（关键）**：检查持仓均价与最近卖单的距离（用层级表的 Price 列计算）。若最近卖单距持仓均价超过 2 个格距（gridSpacing），应 cancel_order 撤掉该远卖单，然后在距持仓均价最近的空层（empty/cancelled）上 place_sell_limit 补挂。price 必须使用目标层的网格线价格（Price 列），禁止自定义价格
-
-⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
+**利润锁定原则**：交易以优先锁定利润为主。你有撤单（cancel_order）和重挂（place_sell_limit）的完全自由，price 可以使用你认为最优的价格。
 
 ## 可用操作
-- **place_buy_limit**: 在空格层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在空格/持仓层挂卖单（持仓层 price 需高于 fillPrice 以盈利）
+- **place_buy_limit**: 挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 挂卖单（fields: level, price, quantity）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
-- **pause_grid**: 暂停网格（BB>4% 且 EMA距>2% 趋势确认，或价格突破边界≥2%）
-- **resume_grid**: 恢复网格（条件：BB<4% 且 EMA距<2%，价格回到网格区间内；后端已自动恢复突破类暂停，此操作用于 AI 主动暂停后的手动恢复）
-- **adjust_grid**: 触发网格重建（后端自动以当前价为中心重算边界）
-- **close_long**: 平多仓（针对 side=**buy** 的持仓层；fields: level, quantity）
-- **close_short**: 平空仓（针对 side=**sell** 的持仓层；fields: level, quantity）
-- ⚠️ **必须对应 side**：buy层→close_long，sell层→close_short；混用会导致交易所拒单
+- **pause_grid**: 暂停网格
+- **resume_grid**: 恢复网格
+- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
+- **close_long**: 平多仓（side=buy 的持仓层；fields: level, quantity）
+- **close_short**: 平空仓（side=sell 的持仓层；fields: level, quantity）
 - **hold**: 保持现状
+- ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
 
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
-- **可用操作**：adjust_grid / close_long / close_short / hold（place_* 和 pause_grid 无效）
+- **可用操作**：adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid：以当前价重建网格，持仓映射到新层继续运行，isPaused 自动清除
 - close_long/close_short：保证金不足或趋势反转明确时平仓
+- resume_grid：行情回归震荡时恢复网格
 - hold：方向不明时等待
-- 根据市场状况自行判断最优操作
 
 ## 输出格式
 
 \`\`\`json
 {
-  "analysis": "价格84.2接近上边界$93（7.5%），RSI=58，BB宽=2.3%标准震荡。3格空侧需补单。",
+  "analysis": "简要分析市场状态和决策理由",
   "actions": [
     {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格补单"},
     {"action":"close_long","level":3,"quantity":0.01,"confidence":80,"reasoning":"RSI超买平仓"}
   ]
 }
 \`\`\`
-
-- **analysis**：≥60字，必须含 ①当前价格位置 ②至少2个指标数值（RSI/ATR/BB宽等具体数值） ③决策逻辑；禁止纯标签
-- **actions[].reasoning**：≤15字简标签；无需操作时 actions 输出 \`[]\`
-- **语言**：analysis 和 reasoning 全部使用**中文**；市场形态用"窄幅/标准/宽幅/剧烈"，层状态用"空格/待成交/持仓"，禁止在中文文字中夹杂英文术语
 `;
 }
 
-/** 英文版 system prompt（对齐 nofx buildGridSystemPromptEn） */
+/** 英文版 system prompt */
 function gridSystemPromptEn(
   symbol: string, gridCount: number, totalInvestment: number,
   leverage: number, distribution: string, currentPrice: number, locale: string,
 ): string {
   return `You are a Professional Grid Trading AI managing the ${symbol} grid strategy. Your tasks are:
-1. Assess current market regime (narrow/standard/wide/volatile)
+1. Assess current market regime (ranging/wide/trending)
 2. Decide whether to adjust grid or pause trading
-3. Manage orders at **each grid level** (empty levels → place limit orders, no need to batch across rounds)
+3. Manage orders at each grid level
 
 ## Grid Parameters
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
 
-## Market Regime (based on 5m BB width + ATR, same source as indicators below)
-- **narrow** (BB<2%, ATR<1%) → Ideal grid range, place orders actively
-- **standard** (BB≤3%, ATR≤2%) → Suitable for grid, run normally
-- **wide** (BB≤4%, ATR≤3%) → Run cautiously, prioritize rebalancing skew
-- **volatile** (BB>4% or ATR>3%) → System has capped leverage at 2x. ⚠️ volatile ≠ must pause; only pause when BB>4% **AND** EMA distance>2% trend confirmed (otherwise ranging volatile market means no orders ever placed)
+## Market Regime
+- **Ranging** (BB<3%, EMA distance<1%) → Suitable for grid, place orders actively
+- **Wide** (BB≤4%, EMA distance≤2%) → Run cautiously
+- **Trending** (BB>4% AND EMA distance>2%) → Pause grid
 
-## Level States & Decisions
-- **empty**: Can place order, or hold
+## Level States
+- **empty**: Can place order
 - **pending**: Waiting for fill
-- **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
+- **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit)
 
-**📍 Order Placement & Profit Locking**:
-- Prefer placing orders on empty levels closest to current price for faster fills
-- A single actions array can include multiple place_buy_limit / place_sell_limit
-- In non-trending markets, prefer outputting orders for all empty levels in one response
-- Skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
-- **Profit Locking (critical)**: Check distance between position avg entry and nearest sell order (use Price column in level table). If nearest sell is >2 grid spacings from avg entry, cancel_order that distant sell, then place_sell_limit on the closest empty/cancelled level above avg entry. price MUST use the target level's grid line price (Price column), do NOT customize price
-
-⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
+**Profit Locking principle**: Prioritize locking in profits. You have full freedom to cancel_order and re-place (place_sell_limit) at any price you consider optimal.
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on empty/filled level (filled level price must be above fillPrice for profit)
+- **place_buy_limit**: Place buy order (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order (fields: level, price, quantity)
 - **cancel_order**: Cancel specific order (field: orderId)
 - **cancel_all_orders**: Cancel all orders
-- **pause_grid**: Pause grid (BB > 4% AND EMA distance > 2% trend confirmed, or price breaks boundary ≥ 2%)
-- **resume_grid**: Resume grid (conditions: BB < 4% AND EMA distance < 2%, price back within grid range; backend auto-resumes breakout pauses, this action is for manual resume after AI-initiated pause)
-- **adjust_grid**: Trigger grid rebuild (backend auto-recalculates boundaries centered on current price)
-- **close_long**: Close long position (for side=**buy** filled levels; fields: level, quantity)
-- **close_short**: Close short position (for side=**sell** filled levels; fields: level, quantity)
-- ⚠️ **Must match side**: buy level → close_long, sell level → close_short; mismatch causes exchange rejection
+- **pause_grid**: Pause grid
+- **resume_grid**: Resume grid
+- **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
+- **close_long**: Close long position (side=buy filled levels; fields: level, quantity)
+- **close_short**: Close short position (side=sell filled levels; fields: level, quantity)
 - **hold**: Maintain current state
+- ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
 
 ## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running in restricted mode:
-- **Available actions**: adjust_grid / close_long / close_short / hold (place_* and pause_grid are invalid)
+- **Available actions**: adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid: Rebuild grid centered on current price, positions map to nearest levels, isPaused auto-clears
 - close_long/close_short: Exit positions if margin pressure or clear trend reversal
+- resume_grid: Resume when market returns to ranging
 - hold: Wait when direction is unclear
-- Choose based on your market analysis
 
 ## Output Format
 
 \`\`\`json
 {
-  "analysis": "Price 84.2 near upper bound $93 (7.5%), RSI=58, BB width=2.3% standard range. 3 empty levels need orders.",
+  "analysis": "Brief market analysis and decision reasoning",
   "actions": [
     {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"fill empty grid"},
     {"action":"close_long","level":3,"quantity":0.01,"confidence":80,"reasoning":"RSI overbought"}
   ]
 }
 \`\`\`
-
-- **analysis**: ≥60 chars, must include ①current price position ②at least 2 indicator values (RSI/ATR/BB width etc.) ③decision logic; no pure labels
-- **actions[].reasoning**: ≤15 chars short label; output \`[]\` when no action needed
 
 ${buildLanguageInstruction(locale)}
 `;
