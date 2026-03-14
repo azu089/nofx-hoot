@@ -2222,6 +2222,28 @@ export class GridTradingService {
       }));
     }
 
+    // 关键修复：filled 层给 AI 显示交易所真实均价（而非层级价格）
+    // 问题：4 层 filled 显示 4 个不同"假入场价"(86.44/86.67/86.90/87.12)
+    //       AI 按最高层价 87.12 决策 → 卖单挂 87.35 → 距真实均价 86.78 太远
+    // 修复：所有 filled 层统一显示交易所均价，AI 知道真实成本后可挂更近的卖单
+    const realLongEntry = positionLong?.entryPrice ?? 0;
+    const realShortEntry = positionShort?.entryPrice ?? 0;
+    if (realLongEntry > 0 || realShortEntry > 0) {
+      for (const lv of exchangeLevels) {
+        if (lv.state === 'filled' && (lv.positionSize ?? 0) > 0) {
+          const realEntry = lv.side === 'buy' ? realLongEntry : realShortEntry;
+          if (realEntry > 0) {
+            lv.price = realEntry;
+            lv.fillPrice = realEntry;
+            // 用真实均价重算盈亏
+            lv.profit = lv.side === 'buy'
+              ? (currentPrice - realEntry) * (lv.positionSize ?? 0)
+              : (realEntry - currentPrice) * (lv.positionSize ?? 0);
+          }
+        }
+      }
+    }
+
     return {
       symbol: state.symbol,
       currentTime: new Date().toISOString(),
