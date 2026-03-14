@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -194,6 +194,8 @@ interface PositionsPageV3Props {
   onToggleStrategy?: (strategyId: string, status: 'running' | 'paused') => void
   onViewMarket?: () => void
   onCancelOrder?: (orderId: string) => void
+  defaultAccountId?: string | null
+  onAccountChange?: (accountId: string | number) => void
 }
 
 // ============ Component ============
@@ -214,7 +216,9 @@ export function PositionsPageV3({
   onDeleteStrategy,
   onToggleStrategy,
   onViewMarket,
-  onCancelOrder: _onCancelOrder
+  onCancelOrder: _onCancelOrder,
+  defaultAccountId,
+  onAccountChange,
 }: PositionsPageV3Props) {
   void _onPauseStrategy
   void _onResumeStrategy
@@ -229,6 +233,19 @@ export function PositionsPageV3({
   const [strategySearchQuery, setStrategySearchQuery] = useState('')
   const [strategyStatusFilter, setStrategyStatusFilter] = useState<'all' | 'running' | 'paused'>('all')
   const [visibleLogCount, setVisibleLogCount] = useState(10)
+
+  // ========== 当 accounts 加载后更新 selectedAccount ==========
+  useEffect(() => {
+    if (accounts.length > 0 && selectedAccount.id === 0) {
+      const target = (defaultAccountId && accounts.find(a => a.id === defaultAccountId)) || accounts[0]
+      setSelectedAccount(target)
+    } else if (accounts.length > 0) {
+      const updatedAccount = accounts.find(a => a.id === selectedAccount.id)
+      if (updatedAccount && updatedAccount.balance !== selectedAccount.balance) {
+        setSelectedAccount(updatedAccount)
+      }
+    }
+  }, [accounts, selectedAccount.id, selectedAccount.balance, defaultAccountId])
 
   // ========== 数据过滤（基于 accountType） ==========
   // 持仓过滤
@@ -351,6 +368,7 @@ export function PositionsPageV3({
                     onClick={() => {
                       setSelectedAccount(account)
                       setShowAccountDropdown(false)
+                      onAccountChange?.(account.id)
                     }}
                     className="w-full px-4 py-3 text-left hover:bg-[#1E1E2E]/50 transition-colors"
                   >

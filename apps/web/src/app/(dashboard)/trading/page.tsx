@@ -866,6 +866,8 @@ export default function TradingPage() {
           onDeleteStrategy={handleDeleteStrategy}
           onToggleStrategy={handleToggleStrategy}
           onViewMarket={handleViewMarket}
+          defaultAccountId={selectedApiKeyId}
+          onAccountChange={handleAccountChange}
         />
       </div>
 
@@ -892,6 +894,7 @@ export default function TradingPage() {
           onToggleStrategy={handleToggleStrategy}
           onViewMarket={handleViewMarket}
           onAccountChange={handleAccountChange}
+          defaultAccountId={selectedApiKeyId}
         />
       </div>
 

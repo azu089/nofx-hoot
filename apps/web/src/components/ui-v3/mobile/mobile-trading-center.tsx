@@ -212,6 +212,7 @@ interface MobileTradingCenterProps {
   onToggleStrategy?: (strategyId: string, status: 'running' | 'paused') => void
   onViewMarket?: () => void
   onAccountChange?: (accountId: string | number) => void
+  defaultAccountId?: string | null
 }
 
 // ============ Component ============
@@ -230,6 +231,7 @@ export function MobileTradingCenter({
   onToggleStrategy,
   onViewMarket,
   onAccountChange,
+  defaultAccountId,
 }: MobileTradingCenterProps) {
   const t = useTranslations('trading')
   const [activeTab, setActiveTab] = useState('positions')
@@ -253,8 +255,9 @@ export function MobileTradingCenter({
   // ========== 当 accounts 加载后更新 selectedAccount ==========
   useEffect(() => {
     if (accounts.length > 0 && selectedAccount.id === 0) {
-      // 初始状态时选择第一个账户
-      queueMicrotask(() => setSelectedAccount(accounts[0]))
+      // 初始状态时优先选有运行策略的账户
+      const target = (defaultAccountId && accounts.find(a => a.id === defaultAccountId)) || accounts[0]
+      queueMicrotask(() => setSelectedAccount(target))
     } else if (accounts.length > 0) {
       // 如果当前选中的账户数据更新了，同步更新
       const updatedAccount = accounts.find(a => a.id === selectedAccount.id)
