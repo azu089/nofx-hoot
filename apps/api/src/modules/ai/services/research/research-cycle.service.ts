@@ -306,15 +306,18 @@ export class ResearchCycleService implements OnModuleInit {
     });
 
     // G1: 周期性持仓同步 — 对齐 Solo/Debate 的 R2 步骤
+    // 架构原则：捕获交易所实时持仓，传递给 runResearch，避免 DB 快照延迟
+    let liveExchangePositions: any[] = [];
     if (root.exchangeApiKeyId) {
       try {
         const syncResult = await this.strategyEngine.syncPositionsForUser(
           root.userId,
           root.exchangeApiKeyId,
         );
+        liveExchangePositions = syncResult.exchangePositions;
         if (syncResult.created > 0 || syncResult.closed > 0) {
           this.logger.log(
-            `[循环-R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}`,
+            `[循环-R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}, 交易所持仓=${liveExchangePositions.length}`,
           );
         }
       } catch (e: any) {
@@ -338,6 +341,8 @@ export class ResearchCycleService implements OnModuleInit {
       riskControlConfig: cycConfig?.riskControlConfig || undefined,
       // 从根会话的 cyclingConfig JSON 中还原语言设置
       locale: cycConfig?.locale || 'zh-CN',
+      // 交易所实时持仓（避免 Trader 阶段再查 DB）
+      exchangePositions: liveExchangePositions,
     };
 
     try {

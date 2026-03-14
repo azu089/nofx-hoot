@@ -305,11 +305,14 @@ export class AutoTraderService {
       }
 
       // R2: 周期性持仓同步 — 交易所 SL/TP 触发平仓后同步 DB（仅用于非网格策略）
+      // 架构原则：syncPositionsForUser 返回交易所实时持仓，后续所有决策基于此数据，DB 仅用于历史记录
+      let liveExchangePositions: any[] = [];
       try {
         const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId);
+        liveExchangePositions = syncResult.exchangePositions;
         if (syncResult.created > 0 || syncResult.closed > 0) {
           this.logger.log(
-            `[R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}`,
+            `[R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}, 交易所持仓=${liveExchangePositions.length}`,
           );
         }
       } catch (e: any) {
@@ -344,16 +347,9 @@ export class AutoTraderService {
         (sum, p) => sum + Number(p.realizedPnl || 0), 0,
       );
 
-      const openPositions = await this.prisma.position.findMany({
-        where: {
-          userId,
-          source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
-          status: 'open',
-        },
-        select: { unrealizedPnl: true },
-      });
-      const unrealizedPnl = openPositions.reduce(
-        (sum, p) => sum + Number(p.unrealizedPnl || 0), 0,
+      // 使用交易所实时持仓的 unrealizedPnl（不再查 DB 快照）
+      const unrealizedPnl = liveExchangePositions.reduce(
+        (sum: number, p: any) => sum + Number(p.unrealizedPnl || 0), 0,
       );
 
       const totalDailyPnl = closedPnl + unrealizedPnl;
@@ -454,13 +450,33 @@ export class AutoTraderService {
       const timeframe = indicatorConfig.timeframe || '4h';
       const secondaryTimeframe = indicatorConfig.secondaryTimeframe || '1d';
 
-      // Step 5: 检查现有 AI 持仓
-      const existingPositions = await this.prisma.position.findMany({
+      // Step 5: 检查现有 AI 持仓（交易所实时数据 + DB 策略归属标记）
+      // 架构：交易所持仓是唯一事实，DB 仅提供 aiStrategyId 归属（syncPositionsForUser 已同步）
+      const dbPositionsForAttribution = await this.prisma.position.findMany({
         where: {
           userId,
           status: 'open',
           source: { in: ['ai_research', 'ai_strategy'] },
         },
+        select: { id: true, symbol: true, side: true, aiStrategyId: true },
+      });
+      // 合并：以交易所实时数据为准，从 DB 补充策略归属
+      const existingPositions = liveExchangePositions.map((ep: any) => {
+        const dbMatch = dbPositionsForAttribution.find(
+          (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
+        );
+        return {
+          symbol: ep.symbol,
+          side: ep.side,
+          entryPrice: ep.entryPrice,
+          amount: ep.quantity,
+          margin: ep.margin ?? 0,
+          leverage: ep.leverage ?? 1,
+          unrealizedPnl: ep.unrealizedPnl ?? 0,
+          highWaterMark: null,
+          aiStrategyId: dbMatch?.aiStrategyId ?? null,
+          id: dbMatch?.id ?? null,
+        };
       });
 
       // E1: 仓位已满预筛选（Pre-AI 拦截，避免浪费 Token）
@@ -1000,8 +1016,9 @@ export class AutoTraderService {
       for (const symbol of activeCandidates) {
         try {
           // 检查是否已有该币种的持仓（已有则跳过开仓，允许平仓决策）
+          // 交易所实时持仓全部是 open 状态，无需检查 status
           const hasPosition = existingPositions.some(
-            (p) => p.symbol === symbol && p.status === 'open',
+            (p) => p.symbol === symbol,
           );
 
           // Step 6: AI 决策

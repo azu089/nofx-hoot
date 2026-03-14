@@ -54,6 +54,7 @@ export interface ResearchConfig {
     minPositionSize?: number;           // CODE ENFORCED, 默认 12
   };
   locale?: string; // AI 输出语言 locale (e.g. "zh-CN", "en")
+  exchangePositions?: any[]; // 交易所实时持仓（由调用方传入，避免再查 DB）
 }
 
 /**
@@ -352,34 +353,23 @@ export class ResearchPipelineService {
         }
 
         // G2: 查询现有持仓 — 使 Trader 可以建议平仓
+        // 架构原则：优先使用调用方传入的交易所实时持仓，不再查 DB 快照
         let existingPositionsPrompt = '';
         try {
           const baseSymbol = symbol.replace('/USDT:USDT', '').replace('/USDT', '');
-          const openPositions = await this.prisma.position.findMany({
-            where: {
-              userId,
-              symbol: { contains: baseSymbol },
-              status: 'open',
-            },
-            select: {
-              side: true, entryPrice: true, amount: true,
-              unrealizedPnl: true, margin: true, leverage: true,
-              highWaterMark: true, createdAt: true,
-            },
-          });
+          const openPositions = (config.exchangePositions || [])
+            .filter((p: any) => (p.symbol || '').includes(baseSymbol) && Number(p.quantity || 0) > 0);
 
           if (openPositions.length > 0) {
-            const posLines = openPositions.map((p) => {
-              const entry = Number(p.entryPrice);
+            const posLines = openPositions.map((p: any) => {
+              const entry = Number(p.entryPrice || 0);
               const margin = Number(p.margin || 0);
               const unrealizedPnl = Number(p.unrealizedPnl || 0);
-              // ROE% = unrealizedPnl / margin * 100（已含杠杆效应）
               const roePct = margin > 0 ? (unrealizedPnl / margin * 100).toFixed(2) : '0.00';
-              const peakPnl = p.highWaterMark ? Number(p.highWaterMark).toFixed(2) : 'N/A';
-              return `  - ${p.side.toUpperCase()} | Entry: $${entry} | Qty: ${Number(p.amount)} | ${p.leverage}x | ROE: ${roePct}% | PeakPnL: ${peakPnl}% | Since: ${p.createdAt.toISOString().split('T')[0]}`;
+              return `  - ${(p.side || 'unknown').toUpperCase()} | Entry: $${entry} | Qty: ${Number(p.quantity || 0)} | ${p.leverage || 1}x | ROE: ${roePct}%`;
             }).join('\n');
 
-            existingPositionsPrompt = `\n\n=== EXISTING OPEN POSITIONS ===\n${posLines}\n\nIMPORTANT: ROE% = Return on Equity (includes leverage effect). PeakPnL% = highest ROE ever reached for this position.\nIf the analysis suggests closing existing positions, use "close_long" or "close_short". Avoid opening conflicting positions.\nDo NOT close a profitable position just because it pulled back slightly — only close if PeakPnL ≥ 2% AND pullback from peak ≥ 30%, or if trend has reversed.`;
+            existingPositionsPrompt = `\n\n=== EXISTING OPEN POSITIONS (LIVE from Exchange) ===\n${posLines}\n\nIMPORTANT: ROE% = Return on Equity (includes leverage effect). Data is LIVE from exchange, not cached.\nIf the analysis suggests closing existing positions, use "close_long" or "close_short". Avoid opening conflicting positions.\nDo NOT close a profitable position just because it pulled back slightly — only close if trend has reversed.`;
           }
         } catch (err) {
           this.logger.warn(`[Stage 3] 持仓查询失败: ${(err as Error).message}`);

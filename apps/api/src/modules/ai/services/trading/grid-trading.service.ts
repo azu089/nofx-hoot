@@ -1007,7 +1007,7 @@ export class GridTradingService {
           const baseSymbol = state.symbol.split('/')[0];
           state.livePositionNotional = livePositions.reduce((sum: number, pos: any) => {
             if ((pos as any).symbol?.includes(baseSymbol)) {
-              const qty = Math.abs((pos as any).quantity ?? (pos as any).positionAmt ?? 0);
+              const qty = Math.abs((pos as any).quantity ?? 0);
               const px = (pos as any).markPrice ?? (pos as any).entryPrice ?? currentPrice ?? 0;
               return sum + qty * px;
             }
@@ -4210,13 +4210,14 @@ export class GridTradingService {
     }
 
     for (const order of exchangeOpenOrders) {
-      const oid = order.id || order.orderId;
+      // adapter 返回标准化字段：orderId（非 CCXT 原生 id）、quantity（非 CCXT 原生 amount）
+      const oid = order.orderId ?? order.id;
       if (!oid) continue;
       const idx = orderIdToLayerIdx.get(oid);
       if (idx !== undefined && idx < display.length) {
         display[idx].st = 'pending';
         display[idx].oid = oid.slice(-8);
-        display[idx].qty = +(order.amount ?? 0).toFixed(4);
+        display[idx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
       }
     }
 

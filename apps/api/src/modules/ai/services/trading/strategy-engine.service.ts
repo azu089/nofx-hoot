@@ -1073,17 +1073,19 @@ export class StrategyEngineService implements OnModuleInit {
   async syncPositionsForUser(
     userId: string,
     apiKeyId: string,
-  ): Promise<{ created: number; closed: number }> {
+  ): Promise<{ created: number; closed: number; exchangePositions: any[] }> {
     if (!this.adapterFactory) {
-      return { created: 0, closed: 0 };
+      return { created: 0, closed: 0, exchangePositions: [] };
     }
 
     let created = 0;
     let closed = 0;
+    let liveExchangePositions: any[] = [];
 
     const adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
     try {
       const exchangePositions = await adapter.getPositions();
+      liveExchangePositions = exchangePositions;
       const dbPositions = await this.prisma.position.findMany({
         where: {
           userId,
@@ -1216,7 +1218,7 @@ export class StrategyEngineService implements OnModuleInit {
       await adapter.dispose();
     }
 
-    return { created, closed };
+    return { created, closed, exchangePositions: liveExchangePositions };
   }
 
   /**

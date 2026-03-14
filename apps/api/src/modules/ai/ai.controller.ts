@@ -548,6 +548,16 @@ export class AiController {
       locale: aiConfig.locale || 'zh-CN',
     };
 
+    // 获取交易所实时持仓（传入 pipeline，避免 Trader 阶段查 DB 快照）
+    if (config.apiKeyId) {
+      try {
+        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, config.apiKeyId);
+        config.exchangePositions = syncResult.exchangePositions;
+      } catch {
+        // 非致命：exchangePositions 为空时 pipeline 内部不会注入持仓 prompt
+      }
+    }
+
     // 在后台运行研究（不等待结果）
     this.researchPipeline.runResearch(config).catch((error) => {
       // 错误已在 pipeline 内部处理，这里只是防止未捕获的 Promise 异常
