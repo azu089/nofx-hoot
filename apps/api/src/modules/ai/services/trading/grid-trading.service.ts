@@ -1495,16 +1495,13 @@ export class GridTradingService {
 
         // 记录到 AiStrategyLog（含 GridState 快照和执行结果）
         // 每轮都写入，无操作轮次由前端归类为"X 次分析无操作（已隐藏）"
-        // 层级显示用 pre-sync 交易所数据（AI 决策前的状态），不是 post-sync（执行后）
-        // 这样层级状态和 AI 看到的数据一致：AI 看到 L5 空 → 补单 L5 → 显示 L5 空
+        // 层级显示用 preSyncDisplay（AI 决策前算好的快照），不能重新调 buildDisplayFromExchange
+        // 因为 state.gridLines 在 AI 执行后已被修改（新 pending/filled），重算会导致层级状态与 AI 分析不一致
         {
           const hasIssues = execResults.some(r => !r.success || r.skipped);
-          const displayGridLines = this.buildDisplayFromExchange(
-            state, preSyncExchangeOrders, preSyncExchangePositions,
-          );
           await this.saveGridDecisionLog(
             strategyId, state.symbol, decisions, response.cost, state, response.thinking,
-            hasIssues ? execResults : undefined, marketAnalysis, displayGridLines, gridConfig?.locale,
+            hasIssues ? execResults : undefined, marketAnalysis, preSyncDisplay, gridConfig?.locale,
           );
         }
 
