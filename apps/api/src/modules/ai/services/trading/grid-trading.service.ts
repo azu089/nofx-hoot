@@ -2748,32 +2748,10 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // Step 0: 已有持仓的层禁止直接下单
-    // 判断依据：交易所实时数据（_exchangeDisplay），不是内存（架构原则：交易所是唯一事实）
-    // 如果交易所数据认为该层是 filled，才拦截；内存 filled 但交易所不是 → 内存过期，清理并放行
-    {
-      const exDisplay = (state as any)._exchangeDisplay as any[] | undefined;
-      const exLayerState = exDisplay?.[levelIndex]?.st;
-      if (exLayerState === 'filled') {
-        // 交易所确认该层有持仓 → 拦截
-        const exQty = exDisplay?.[levelIndex]?.qty ?? 0;
-        const exEntry = exDisplay?.[levelIndex]?.ep ?? 0;
-        const skipReason = `层 ${levelIndex + 1} 已有持仓 ${exQty.toFixed(4)} @ ${exEntry.toFixed(2)}，跳过（需先平仓再挂单）`;
-        this.logger.warn(`[网格] ${skipReason}`);
-        return { executed: false, skipReason };
-      }
-      // 内存 filled 但交易所不是 → 内存过期，清理
-      if (level && level.state === 'filled') {
-        this.logger.log(`[网格] 层 ${levelIndex + 1} 内存=filled 但交易所=${exLayerState ?? 'unknown'}，清理过期内存`);
-        level.state = 'empty';
-        level.positionSize = 0;
-        level.positionEntry = 0;
-        level.orderId = undefined;
-        level.orderQuantity = 0;
-      }
-    }
+    // 对齐 nofx: placeGridLimitOrder 无 filled 层拦截
+    // AI 负责决策是否在 filled 层下单（如：在 filled buy 层挂 sell 以锁利润）
 
-    // Step 0: 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
+    // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高和 syncOrderFills 误判成交
     if (level && level.state === 'pending' && level.orderId) {
       const oldOrderId = level.orderId;
@@ -2984,16 +2962,13 @@ export class GridTradingService {
       if (finalLevel.orderId && finalLevel.orderId !== result.orderId) {
         delete state.orderBook[finalLevel.orderId];
       }
+      // 对齐 nofx L1090-1098: placeGridLimitOrder 只设 State/OrderID/OrderQuantity/OrderBook
+      // 不动 price/positionSize/positionEntry/unrealizedPnl（保留 filled 层持仓数据）
+      // side 需设置：HOOT syncOrderFills 用 side 区分买卖成交（nofx 用 abs 启发式不需要）
       finalLevel.state = 'pending';
-      finalLevel.side = side;             // side 跟随 AI 实际操作（非初始化固定值）
-      finalLevel.price = price;           // 与实际下单价保持一致
+      finalLevel.side = side;
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
-      // 对齐 nofx: placeGridLimitOrder 只设 State/OrderID/OrderBook，不设持仓数据
-      // pending 层必须清除脏数据（防止上一次 filled 的 positionSize 残留）
-      finalLevel.positionSize = 0;
-      finalLevel.positionEntry = 0;
-      finalLevel.unrealizedPnl = 0;
       state.orderBook[result.orderId] = finalLevelIndex;
     }
 
@@ -3368,9 +3343,17 @@ export class GridTradingService {
           if (line.side === 'sell') {
             // 网格卖单成交 = 平多仓（take-profit）
             // 无论 Binance hedge 还是 OKX net_mode，网格卖单始终是平多仓的止盈单
-            const buyLayer = state.gridLines
-              .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
-              .sort((a, b) => Math.abs(a.price - line.price) - Math.abs(b.price - line.price))[0];
+            // 优先检查当前层自身是否保留了买入持仓数据（sell on filled buy layer 场景）
+            // 否则搜索最近的 filled buy 层
+            let buyLayer: typeof line | undefined;
+            if ((line.positionSize ?? 0) > 0 && (line.positionEntry ?? 0) > 0) {
+              // 当前层有保留的买入持仓数据（placeGridLimitOrder 不再清除）
+              buyLayer = line;
+            } else {
+              buyLayer = state.gridLines
+                .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
+                .sort((a, b) => Math.abs(a.price - line.price) - Math.abs(b.price - line.price))[0];
+            }
 
             if (buyLayer) {
               const _cp = new Decimal(fillPrice);
