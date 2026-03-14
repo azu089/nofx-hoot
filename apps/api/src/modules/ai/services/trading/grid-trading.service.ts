@@ -4265,7 +4265,7 @@ export class GridTradingService {
     }
 
     // Step 2: 用交易所持仓标记 filled 层
-    // 按入场价最近匹配到未被 pending 占用的层
+    // 1 持仓 → 1 最近空层（对齐 nofx autoAdjustGrid + recoverPositionsFromExchange）
     const baseSymbol = state.symbol.split('/')[0];
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
@@ -4276,42 +4276,34 @@ export class GridTradingService {
       const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
       const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
 
-      // 找到 empty 层（同侧优先），按距离入场价排序
-      const sameSideEmpty = display
-        .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
-        .filter(({ d }) => d.st === 'empty' && d.s === posSide)
-        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
-      const oppSideEmpty = display
-        .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
-        .filter(({ d }) => d.st === 'empty' && d.s !== posSide)
-        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
-      const candidates = [...sameSideEmpty, ...oppSideEmpty];
+      // 优先用内存中已标记为 filled 的层（正常交易积累的持仓）
+      const memoryFilledLayers = state.gridLines
+        .map((gl, i) => ({ gl, i }))
+        .filter(({ gl }) => gl.state === 'filled' && (gl.positionSize ?? 0) > 0.0001);
 
-      let remainingQty = totalQty;
-      let lastFilledD: typeof candidates[0] | null = null;
-      for (const item of candidates) {
-        if (remainingQty <= 0.0001) break;
-        const { d, gl } = item;
-        // 每层数量 = allocatedUSD * leverage / entryPrice
-        const layerQty = gl.allocatedUSD > 0 && avgEntry > 0
-          ? (gl.allocatedUSD * leverage) / avgEntry
-          : 0;
-        if (layerQty <= 0.0001) continue;
-
-        // 碎片归并：残余不足该层30%时并入上一层（与 recoverPositionsFromExchange 一致）
-        if (remainingQty < layerQty * 0.3 && lastFilledD) {
-          lastFilledD.d.qty = +((lastFilledD.d.qty ?? 0) + remainingQty).toFixed(4);
-          remainingQty = 0;
-          break;
+      if (memoryFilledLayers.length > 0) {
+        // 内存有 filled 层，按内存映射显示（正常交易期间每层独立持仓）
+        for (const { gl, i } of memoryFilledLayers) {
+          if (i < display.length) {
+            display[i].st = 'filled';
+            display[i].s = gl.side || posSide;
+            display[i].qty = +(gl.positionSize ?? 0).toFixed(4);
+            display[i].ep = +(gl.positionEntry ?? gl.price).toFixed(4);
+          }
         }
+      } else {
+        // 内存无 filled 层（重建/重启后），映射到 1 个最近空层
+        const closestEmpty = display
+          .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
+          .filter(({ d }) => d.st === 'empty')
+          .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
 
-        const assignQty = Math.min(layerQty, remainingQty);
-        d.st = 'filled';
-        d.s = posSide;
-        d.qty = +assignQty.toFixed(4);
-        d.ep = d.p; // 用层级价格（对齐 nofx），确保 AI 看到的入场价 < 卖层价格
-        remainingQty -= assignQty;
-        lastFilledD = item;
+        if (closestEmpty) {
+          closestEmpty.d.st = 'filled';
+          closestEmpty.d.s = posSide;
+          closestEmpty.d.qty = +totalQty.toFixed(4);
+          closestEmpty.d.ep = +avgEntry.toFixed(4);
+        }
       }
     }
 
