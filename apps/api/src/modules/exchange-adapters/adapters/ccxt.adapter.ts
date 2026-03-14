@@ -620,7 +620,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
           msg.includes('order not found') ||
           msg.includes('Order does not exist')
         ) {
-          return;
+          break; // 跳出重试循环，继续清理算法单
         }
         this.logger.warn(`cancelAllOrders(${symbol}) attempt ${attempt} 失败: ${msg}`);
       }
@@ -632,7 +632,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
           if (attempt > 1) {
             this.logger.log(`cancelAllOrders(${symbol}): 第${attempt}轮成功，全部清理完毕`);
           }
-          return;
+          break; // 普通单已清完，继续清理算法单
         }
 
         if (attempt < MAX_RETRIES) {
@@ -654,8 +654,13 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         }
       } catch (verifyErr: any) {
         this.logger.warn(`cancelAllOrders(${symbol}): 验证残留挂单失败: ${verifyErr.message}`);
-        return; // 无法验证，不再重试
+        break; // 无法验证，跳出循环，继续清理算法单
       }
+    }
+
+    // OKX 算法单（条件委托）使用独立 API，cancelAllOrders 不会覆盖
+    if (this.exchangeType === 'okx') {
+      await this.cancelOkxAlgoOrders(symbol);
     }
   }
 
@@ -672,6 +677,49 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       } catch {
         // 订单可能已被取消
       }
+    }
+
+    // OKX 算法单同样需要单独清理
+    if (this.exchangeType === 'okx') {
+      await this.cancelOkxAlgoOrders(symbol);
+    }
+  }
+
+  /** OKX 算法单（条件委托/止盈止损）使用独立 API，普通 cancelAllOrders 无法取消 */
+  private async cancelOkxAlgoOrders(symbol: string): Promise<void> {
+    try {
+      const ex = this.getExchange();
+      const market = ex.market(symbol);
+      const instId = market?.id || symbol;
+
+      // 拉取所有待执行的算法单（条件单、OCO、触发单等）
+      const response = await (ex as any).privateGetTradeOrdersAlgoPending({
+        instId,
+        ordType: 'conditional,oco,trigger,move_order_stop,iceberg,twap',
+      });
+
+      const algoOrders: any[] = response?.data ?? [];
+      if (algoOrders.length === 0) return;
+
+      this.logger.log(`[OKX] 发现 ${algoOrders.length} 个算法单，准备取消...`);
+
+      // OKX 批量取消算法单，最多 10 个/次
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < algoOrders.length; i += BATCH_SIZE) {
+        const batch = algoOrders.slice(i, i + BATCH_SIZE).map((o: any) => ({
+          algoId: o.algoId,
+          instId,
+        }));
+        try {
+          await (ex as any).privatePostTradeCancelAlgos(batch);
+        } catch (e: any) {
+          this.logger.warn(`[OKX] 批量取消算法单失败: ${e.message}`);
+        }
+      }
+
+      this.logger.log(`[OKX] 已取消 ${algoOrders.length} 个算法单`);
+    } catch (e: any) {
+      this.logger.warn(`[OKX] 取消算法单失败(非致命): ${e.message}`);
     }
   }
 
