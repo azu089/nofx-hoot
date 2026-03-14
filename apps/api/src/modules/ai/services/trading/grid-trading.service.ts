@@ -882,10 +882,8 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, rebuildPrice);
         }
-        // nofx 对齐：重建后全空层 + 从交易所持仓恢复 filled 层
-        // 传入重建前保存的挂单qty均值，用于正确估算layerCount（此时pending层已全部清空）
+        // reinitializeGridLevels 已从内存保存 filled 层并恢复（对齐 nofx autoAdjustGrid）
         state.needsReconcile = false;
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId, preRebuildPendingQty);
         await this.persistGridState(strategyId, state);
         this.logger.log(
           `[网格] 配置变更重建完成: ${newCount} 层，利润保留 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
@@ -2510,9 +2508,7 @@ export class GridTradingService {
         } else {
           await this.reinitializeGridLevels(state, newPrice);
         }
-        // 重建后从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
-        // 历史教训 2026-03-13：旧版用内存快照 → 买卖混合持仓、19/20占满、AI 无空格
-        await this.recoverPositionsFromExchange(state, userId, apiKeyId);
+        // reinitializeGridLevels 已从内存保存 filled 层并恢复（对齐 nofx autoAdjustGrid）
         // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
         if (state.isPaused && state.pauseSource !== 'risk_control') {
           state.isPaused = false;
@@ -3548,32 +3544,42 @@ export class GridTradingService {
 
         const leverage = Math.max(1, state.leverage ?? 1);
 
-        // 对齐 nofx autoAdjustGrid L1456-1479：1个持仓→1个最近层，不拆分
-        // nofx 每个 filled level 只有一个 PositionSize，不按 allocatedUSD 拆分
-        const closestEmpty = state.gridLines
+        // 容器重启：交易所返回 1 个聚合持仓，按每层预算反推应占几层
+        // 计算每层标准数量
+        const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
+        const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
+        // 反推层数（至少 1 层）
+        const estimatedLayers = perLayerQty > 0.0001
+          ? Math.max(1, Math.round(totalQty / perLayerQty))
+          : 1;
+
+        // 将持仓平均分配到 N 个最近空层
+        const emptyLayers = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
           .filter(({ layer }) => layer.state === 'empty')
-          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry))[0];
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
 
-        if (closestEmpty) {
-          closestEmpty.layer.state = 'filled';
-          closestEmpty.layer.positionEntry = avgEntry;
-          closestEmpty.layer.positionSize  = totalQty;
-          closestEmpty.layer.side          = posSide;
-          closestEmpty.layer.orderId       = undefined;
-          closestEmpty.layer.orderQuantity = 0;
-          closestEmpty.layer.unrealizedPnl = 0;
+        const layersToFill = Math.min(estimatedLayers, emptyLayers.length);
+        const qtyPerLayer = totalQty / layersToFill;
 
-          this.logger.log(
-            `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ` +
-            `qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} ` +
-            `→ 映射到L${closestEmpty.idx + 1}@${closestEmpty.layer.price.toFixed(4)}`,
-          );
-        } else {
-          this.logger.warn(
-            `[网格] 启动持仓恢复: 无空层可映射 qty=${totalQty.toFixed(4)}`,
-          );
+        for (let i = 0; i < layersToFill; i++) {
+          const { layer, idx } = emptyLayers[i];
+          layer.state = 'filled';
+          layer.positionEntry = avgEntry;
+          layer.positionSize = qtyPerLayer;
+          layer.side = posSide;
+          layer.orderId = undefined;
+          layer.orderQuantity = 0;
+          layer.unrealizedPnl = 0;
         }
+
+        const filledIdxs = emptyLayers.slice(0, layersToFill).map(e => `L${e.idx + 1}`).join(',');
+        this.logger.log(
+          `[网格] 启动持仓恢复: ${posSide === 'buy' ? '多' : '空'}头 ` +
+          `qty=${totalQty.toFixed(4)} avgEntry=${avgEntry.toFixed(4)} ` +
+          `→ 按每层${perLayerQty.toFixed(4)}反推${estimatedLayers}层 ` +
+          `→ 映射到[${filledIdxs}]（每层${qtyPerLayer.toFixed(4)}）`,
+        );
       }
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
@@ -3792,14 +3798,20 @@ export class GridTradingService {
   /**
    * 重新初始化网格层级（每次重建都重算宽度，不继承旧边界）
    * 只负责重建网格结构（价格、分配、方向），所有层为 empty。
-   * 持仓恢复由调用方统一调用 recoverPositionsFromExchange（交易所是唯一事实）。
-   * 历史教训 2026-03-13：旧版用内存 filledSnapshots 映射 → 买卖混合持仓、19/20占满、AI 无空格挂单
+   * 对齐 nofx autoAdjustGrid L1424-1479：
+   * 1. 保存当前内存中所有 filled 层（N 个）
+   * 2. 重建所有层为 empty
+   * 3. 每个 filled 层映射到最近的新层（N→N）
+   *
+   * @param preserveFilledFromMemory true=从内存保存 filled 层（配置变更重建）
+   *                                 false=不保存，由调用方用 recoverPositionsFromExchange 恢复（容器重启）
    */
   private async reinitializeGridLevels(
     state: GridState,
     centerPrice: number,
     explicitUpper?: number,
     explicitLower?: number,
+    preserveFilledFromMemory = true,
   ): Promise<void> {
     const gridCount = state.gridLines.length;
 
@@ -3842,7 +3854,22 @@ export class GridTradingService {
     }
     state.gridSpacing = (state.upperPrice - state.lowerPrice) / (gridCount - 1);
 
-    // 重建时全部重置为 empty，持仓恢复由调用方执行 recoverPositionsFromExchange
+    // nofx autoAdjustGrid L1424-1429：保存当前内存中所有 filled 层
+    const filledSnapshots: Array<{ positionEntry: number; positionSize: number; side: string; unrealizedPnl: number }> = [];
+    if (preserveFilledFromMemory) {
+      for (const line of state.gridLines) {
+        if (line.state === 'filled' && (line.positionSize ?? 0) > 0.0001) {
+          filledSnapshots.push({
+            positionEntry: line.positionEntry ?? line.price,
+            positionSize: line.positionSize ?? 0,
+            side: line.side,
+            unrealizedPnl: line.unrealizedPnl ?? 0,
+          });
+        }
+      }
+    }
+
+    // 重建所有层为 empty
     const weights = this.calculateWeights(gridCount, state.distribution);
     const weightSum = weights.reduce((a, b) => a + b, 0);
 
@@ -3861,11 +3888,41 @@ export class GridTradingService {
     this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
     state.orderBook = {};
 
-    this.logger.log(
-      `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
-      `，共 ${gridCount} 层，格间距 ${state.gridSpacing.toFixed(2)}` +
-      `（全部 empty，待 recoverPositionsFromExchange 恢复持仓）`,
-    );
+    // nofx autoAdjustGrid L1456-1479：每个 filled 层映射到最近的新空层
+    if (filledSnapshots.length > 0) {
+      for (const snap of filledSnapshots) {
+        const closestEmpty = state.gridLines
+          .map((l, idx) => ({ layer: l, idx }))
+          .filter(({ layer }) => layer.state === 'empty')
+          .sort((a, b) => Math.abs(a.layer.price - snap.positionEntry) - Math.abs(b.layer.price - snap.positionEntry))[0];
+
+        if (closestEmpty) {
+          closestEmpty.layer.state = 'filled';
+          closestEmpty.layer.positionEntry = snap.positionEntry;
+          closestEmpty.layer.positionSize = snap.positionSize;
+          closestEmpty.layer.side = snap.side as 'buy' | 'sell';
+          closestEmpty.layer.unrealizedPnl = snap.unrealizedPnl;
+          closestEmpty.layer.orderId = undefined;
+          closestEmpty.layer.orderQuantity = 0;
+          this.logger.log(
+            `[网格] 重建持仓恢复: ${snap.side === 'buy' ? '多' : '空'}头 ` +
+            `qty=${snap.positionSize.toFixed(4)} entry=${snap.positionEntry.toFixed(4)} ` +
+            `→ L${closestEmpty.idx + 1}@${closestEmpty.layer.price.toFixed(4)}`,
+          );
+        }
+      }
+      this.logger.log(
+        `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
+        `，共 ${gridCount} 层，格间距 ${state.gridSpacing.toFixed(2)}` +
+        `，从内存恢复 ${filledSnapshots.length} 个持仓层`,
+      );
+    } else {
+      this.logger.log(
+        `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
+        `，共 ${gridCount} 层，格间距 ${state.gridSpacing.toFixed(2)}` +
+        `${preserveFilledFromMemory ? '（无持仓）' : '（待 recoverPositionsFromExchange 恢复持仓）'}`,
+      );
+    }
   }
 
   /**
@@ -3962,19 +4019,7 @@ export class GridTradingService {
       `新范围=${newLower.toFixed(2)}~${newUpper.toFixed(2)}, 格间距=${state.gridSpacing.toFixed(4)}`,
     );
 
-    // Step 3: 从交易所恢复真实持仓（交易所是唯一事实，不信任内存快照）
-    if (userId && apiKeyId) {
-      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
-      const recoveredFilled = state.gridLines.filter(l => l.state === 'filled').length;
-      const recoveredPositions = state.gridLines
-        .filter(l => l.state === 'filled')
-        .map(l => `L${(l.index ?? 0) + 1}(${l.side})@${(l.positionEntry ?? 0).toFixed(2)}×${(l.positionSize ?? 0).toFixed(4)}`)
-        .join(', ');
-      this.logger.log(
-        `[网格] 自动重建 Step3: 持仓恢复 ${recoveredFilled}层 filled | ${recoveredPositions || '无持仓'}`,
-      );
-    }
-
+    // Step 3: reinitializeGridLevels 已从内存保存 filled 层并恢复（对齐 nofx autoAdjustGrid L1424-1479）
     const recoveredFilled2 = state.gridLines.filter(l => l.state === 'filled').length;
     const emptyCount = state.gridLines.filter(l => l.state === 'empty').length;
 
@@ -4307,17 +4352,25 @@ export class GridTradingService {
           }
         }
       } else {
-        // 内存无 filled 层（重建/重启后），映射到 1 个最近空层
-        const closestEmpty = display
-          .map((d, i) => ({ d, i, gl: state.gridLines[i] }))
-          .filter(({ d }) => d.st === 'empty')
-          .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
+        // 内存无 filled 层（极端情况），按每层预算反推层数映射
+        const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
+        const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
+        const estLayers = perLayerQty > 0.0001
+          ? Math.max(1, Math.round(totalQty / perLayerQty))
+          : 1;
 
-        if (closestEmpty) {
-          closestEmpty.d.st = 'filled';
-          closestEmpty.d.s = posSide;
-          closestEmpty.d.qty = +totalQty.toFixed(4);
-          closestEmpty.d.ep = +avgEntry.toFixed(4);
+        const emptySlots = display
+          .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
+          .filter(({ dd }) => dd.st === 'empty')
+          .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
+
+        const fillCount = Math.min(estLayers, emptySlots.length);
+        const qtyEach = totalQty / fillCount;
+        for (let fi = 0; fi < fillCount; fi++) {
+          emptySlots[fi].dd.st = 'filled';
+          emptySlots[fi].dd.s = posSide;
+          emptySlots[fi].dd.qty = +qtyEach.toFixed(4);
+          emptySlots[fi].dd.ep = +avgEntry.toFixed(4);
         }
       }
     }
