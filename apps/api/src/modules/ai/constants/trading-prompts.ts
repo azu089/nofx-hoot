@@ -716,33 +716,13 @@ function gridSystemPromptZh(
 - **待成交**（pending）: 等待成交
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-**📍 补单顺序（关键）**：
-- 补买单时，从**最接近当前价的空买层**开始，依次向下挂；**禁止从价格最低的边缘层开始**
-- 补卖单时，从**最接近当前价的空卖层**开始，依次向上挂；**禁止从价格最高的边缘层开始**
-- 目的：优先在当前价附近成交，最大化捕获价格小幅震荡利润；从边缘补单等于浪费机会
-
-**📌 全层补单原则**：网格靠全层覆盖捕捉每个区间波动。非趋势行情下：
-- **每轮必须一次性输出所有空层的挂单决策**，不要"等下轮再挂"
+**📍 补单顺序建议**：
+- 优先在接近当前价的空层下单，可提高快速成交概率
 - 单次 actions 可包含多个 place_buy_limit / place_sell_limit
-- 只有 isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时才允许不补单
+- 非趋势行情下，优先一次性输出所有空层的挂单决策
+- isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时可不补单
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
-
-## 方向自适应系统（当前方向见 currentDirection 字段）
-网格有 5 种方向状态：
-- **neutral**: 价格上下对称，买卖各半（默认状态）
-- **long_bias**: 70% 买层/30% 卖层（顺多头偏向）
-- **long**: 100% 买层（顺势 DCA 做多）
-- **short_bias**: 30% 买层/70% 卖层（顺空头偏向）
-- **short**: 100% 卖层（顺势 DCA 做空）
-
-**enableDirectionAdjust=true 时**：后端检测到箱体突破自动切换方向（short→long_bias/short_bias，mid→long/short），AI 无需指令；价格回短期箱体后自动逐步恢复 neutral。
-**enableDirectionAdjust=false 时**：currentDirection 不会自动改变，突破时后端执行 reduce_position/pause_grid。（当前是否启用见每轮数据中的 enableDirectionAdjust 字段）
-
-**AI 如何配合当前方向**：
-- currentDirection=long/long_bias：side=sell 的持仓层浮亏属正常（逆势），可用 close_short 减少逆势仓位
-- currentDirection=short/short_bias：side=buy 的持仓层浮亏属正常，可用 close_long 减少
-- currentDirection=neutral：buy/sell 对等，正常管理两侧
 
 ## 可用操作
 - **place_buy_limit**: 在空格层挂买单（fields: level, price, quantity）
@@ -760,13 +740,10 @@ function gridSystemPromptZh(
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
 - **可用操作**：adjust_grid / close_long / close_short / hold（place_* 和 pause_grid 无效）
-- **决策优先级**（从高到低）：
-  1. **有持仓层（浮亏或浮盈）** → 优先 **adjust_grid**（以当前价重建，"包住"持仓让后续震荡磨平成本）
-  2. **趋势明确继续单边**（EMA顺向排列、RSI极值>70/<30、连续多根K线同向）→ **adjust_grid**（以当前价为中心重建网格，自动恢复运行）
-  3. **价格震荡、方向不明** → **hold**（等待后端突破恢复或价格回归）
-  4. **仅当保证金不足、爆仓价迫在眉睫** → close_long/close_short 保命平仓
-- **⛔ 不要因浮亏直接 close**：网格靠震荡磨平成本，adjust_grid 重建是首选，浮亏持仓会映射到新网格继续运行
-- **重建后**：isPaused 自动清除，持仓映射到最近层继续运行
+- adjust_grid：以当前价重建网格，持仓映射到新层继续运行，isPaused 自动清除
+- close_long/close_short：保证金不足或趋势反转明确时平仓
+- hold：方向不明时等待
+- 根据市场状况自行判断最优操作
 
 ## 输出格式
 
@@ -810,33 +787,13 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
-**📍 Order Placement Priority (critical)**:
-- For buy orders: start from the **empty buy level closest to current price**, work downward; **do NOT start from the lowest-price edge level**
-- For sell orders: start from the **empty sell level closest to current price**, work upward; **do NOT start from the highest-price edge level**
-- Purpose: fill orders nearest to current price first → maximize capture of small price oscillations → core of grid profitability
-
-**📌 Full-layer fill rule**: Grid captures oscillations across all levels. In non-trending markets:
-- **Every round: output orders for ALL empty levels in one response** — do not defer to next round
+**📍 Order Placement Suggestion**:
+- Prefer placing orders on empty levels closest to current price for faster fills
 - A single actions array can include multiple place_buy_limit / place_sell_limit
-- Only skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
+- In non-trending markets, prefer outputting orders for all empty levels in one response
+- Skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
-
-## Direction Adaptation System (see currentDirection field)
-Grid has 5 direction states:
-- **neutral**: Symmetric buy/sell, 50/50 split (default)
-- **long_bias**: 70% buy / 30% sell levels (bullish bias)
-- **long**: 100% buy levels (DCA long, trend-following)
-- **short_bias**: 30% buy / 70% sell levels (bearish bias)
-- **short**: 100% sell levels (DCA short, trend-following)
-
-**When enableDirectionAdjust=true**: Backend auto-switches direction on box breakout (short→long_bias/short_bias, mid→long/short); recovery is also automatic (price returns to short box → gradual neutral recovery). AI needs no action.
-**When enableDirectionAdjust=false**: currentDirection does not change automatically; breakouts trigger reduce_position/pause_grid. (Current status: see enableDirectionAdjust field in per-round data)
-
-**How AI works with current direction**:
-- currentDirection=long/long_bias: side=sell filled positions with unrealized loss is expected (counter-trend). Use close_short to reduce exposure.
-- currentDirection=short/short_bias: side=buy filled with loss expected. Use close_long.
-- currentDirection=neutral: Both sides balanced, manage normally.
 
 ## Available Actions
 - **place_buy_limit**: Place buy order on empty level (fields: level, price, quantity)
@@ -854,13 +811,10 @@ Grid has 5 direction states:
 ## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running in restricted mode:
 - **Available actions**: adjust_grid / close_long / close_short / hold (place_* and pause_grid are invalid)
-- **Decision priority** (high to low):
-  1. **Has filled positions (floating loss or profit)** → Prefer **adjust_grid** (rebuild around current price, "wrap" positions so oscillation grinds down cost)
-  2. **Clear trend continuation** (EMAs aligned, RSI extreme >70/<30, consecutive candles same direction) → **adjust_grid** (rebuild centered on current price, auto-resumes)
-  3. **Price ranging, direction unclear** → **hold** (wait for backend breakout recovery or price return)
-  4. **Only when margin insufficient, liquidation imminent** → close_long/close_short emergency exit
-- **⛔ Do NOT close just because of floating loss**: Grid profits from oscillation grinding down cost, adjust_grid rebuild is preferred, floating positions map to new grid to continue
-- **After rebuild**: isPaused auto-clears, positions map to nearest levels to continue
+- adjust_grid: Rebuild grid centered on current price, positions map to nearest levels, isPaused auto-clears
+- close_long/close_short: Exit positions if margin pressure or clear trend reversal
+- hold: Wait when direction is unclear
+- Choose based on your market analysis
 
 ## Output Format
 
@@ -994,9 +948,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push(`=== 市场数据: ${ctx.symbol} ===`);
   lines.push(`当前价格: ${ctx.currentPrice}`);
   lines.push(`时间: ${ctx.currentTime}`);
-  const p1hAbs = Math.abs(ctx.priceChange1h);
-  const p1hLabel = p1hAbs >= 8 ? '⚠️ 极端行情' : p1hAbs >= 5 ? '⚡ 快速行情' : '✓ 正常';
-  lines.push(`📈 价格速度: 1H变化=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%（${p1hLabel}，>5%为快速行情，>8%为极端行情）`);
+  lines.push(`📈 价格速度: 1H变化=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%`);
   const p4h = ctx.priceChange4hReal ?? ctx.priceChange4h;
   lines.push(`4h 涨跌: ${p4h > 0 ? '+' : ''}${p4h.toFixed(2)}%${ctx.priceChange4hReal !== undefined ? '（真实4h蜡烛）' : '（1h近似）'}`);
   if (ctx.high24h !== undefined && ctx.low24h !== undefined && ctx.high24h > 0) {
@@ -1051,21 +1003,10 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
     lines.push(`止盈目标: ${ctx.profitTargetPct}%（策略权益增长 ≥ ${ctx.profitTargetPct}% 时建议逐步平仓锁利）`);
   }
-  if (ctx.gridSkewLevel && ctx.gridSkewLevel !== 'none') {
-    const heavy = (ctx.gridSkewBuyFilled ?? 0) >= (ctx.gridSkewSellFilled ?? 0) ? '多头' : '空头';
-    const light = heavy === '多头' ? '空头' : '多头';
-    const hCount = heavy === '多头' ? ctx.gridSkewBuyFilled : ctx.gridSkewSellFilled;
-    const lCount = heavy === '多头' ? ctx.gridSkewSellFilled : ctx.gridSkewBuyFilled;
-    const label = ctx.gridSkewLevel === 'severe' ? '⚠️ 严重倾斜' : '轻度倾斜';
-    lines.push(`网格倾斜: ${label} — ${heavy}侧${hCount}格 vs ${light}侧${lCount}格`);
-    if (ctx.gridSkewLevel === 'severe') {
-      const thresholdPct = Math.round((ctx.autoAdjustThreshold ?? 0.2) * 100);
-      lines.push(`  → 价格偏离未达自动重排阈值（${thresholdPct}%）`);
-    } else {
-      lines.push('  → 轻度倾斜');
-    }
-  } else {
-    lines.push(`网格倾斜: 均衡`);
+  {
+    const buyFilled = ctx.gridSkewBuyFilled ?? 0;
+    const sellFilled = ctx.gridSkewSellFilled ?? 0;
+    lines.push(`网格持仓分布: 多头侧${buyFilled}格 vs 空头侧${sellFilled}格`);
   }
   const emptyLevels = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
@@ -1119,13 +1060,6 @@ function buildGridUserPromptZh(ctx: GridContext): string {
       : '(OI变化平稳)';
     lines.push(`持仓量变化: ${ctx.oiChange1h >= 0 ? '+' : ''}${ctx.oiChange1h.toFixed(2)}% ${oiDir} ${oiInterpretation}`);
   }
-  if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
-    const divDesc = ctx.rsiDivergenceType === 'bullish'
-      ? '看涨背离（价格新低但RSI未新低，潜在反弹信号）'
-      : '看跌背离（价格新高但RSI未新高，潜在回调信号）';
-    lines.push(`RSI背离信号: ${ctx.rsiDivergenceType} — ${divDesc}`);
-  }
-
   // Section 9-11: K线 + 委托单 + 已平仓
   lines.push(...buildOhlcvSection(ctx, false));
   lines.push(...buildOrdersSection(ctx, false));
@@ -1144,9 +1078,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push(`=== Market Data: ${ctx.symbol} ===`);
   lines.push(`Current Price: ${ctx.currentPrice}`);
   lines.push(`Time: ${ctx.currentTime}`);
-  const p1hAbs = Math.abs(ctx.priceChange1h);
-  const p1hLabel = p1hAbs >= 8 ? '⚠️ Extreme' : p1hAbs >= 5 ? '⚡ Fast' : '✓ Normal';
-  lines.push(`📈 Price Velocity: 1H change=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}% (${p1hLabel}, >5%=fast, >8%=extreme)`);
+  lines.push(`📈 Price Velocity: 1H change=${ctx.priceChange1h > 0 ? '+' : ''}${ctx.priceChange1h.toFixed(2)}%`);
   const p4h = ctx.priceChange4hReal ?? ctx.priceChange4h;
   lines.push(`4h Change: ${p4h > 0 ? '+' : ''}${p4h.toFixed(2)}%${ctx.priceChange4hReal !== undefined ? ' (real 4h candle)' : ' (1h approx)'}`);
   if (ctx.high24h !== undefined && ctx.low24h !== undefined && ctx.high24h > 0) {
@@ -1201,21 +1133,10 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
     lines.push(`Profit Target: ${ctx.profitTargetPct}% (suggest gradual close when strategy equity grows ≥ ${ctx.profitTargetPct}%)`);
   }
-  if (ctx.gridSkewLevel && ctx.gridSkewLevel !== 'none') {
-    const heavySide = (ctx.gridSkewBuyFilled ?? 0) >= (ctx.gridSkewSellFilled ?? 0) ? 'long' : 'short';
-    const lightSide = heavySide === 'long' ? 'short' : 'long';
-    const hCount = heavySide === 'long' ? ctx.gridSkewBuyFilled : ctx.gridSkewSellFilled;
-    const lCount = heavySide === 'long' ? ctx.gridSkewSellFilled : ctx.gridSkewBuyFilled;
-    const label = ctx.gridSkewLevel === 'severe' ? '⚠️ Severe Skew' : 'Mild Skew';
-    lines.push(`Grid Skew: ${label} — ${heavySide} side ${hCount} levels vs ${lightSide} side ${lCount} levels`);
-    if (ctx.gridSkewLevel === 'severe') {
-      const thresholdPct = Math.round((ctx.autoAdjustThreshold ?? 0.2) * 100);
-      lines.push(`  → Price deviation below auto-rebalance threshold (${thresholdPct}%)`);
-    } else {
-      lines.push('  → Mild skew');
-    }
-  } else {
-    lines.push(`Grid Skew: Balanced`);
+  {
+    const buyFilled = ctx.gridSkewBuyFilled ?? 0;
+    const sellFilled = ctx.gridSkewSellFilled ?? 0;
+    lines.push(`Grid Position Distribution: long side ${buyFilled} levels vs short side ${sellFilled} levels`);
   }
   const emptyLevelsEn = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
@@ -1269,13 +1190,6 @@ function buildGridUserPromptEn(ctx: GridContext): string {
       : '(OI stable)';
     lines.push(`OI Change: ${ctx.oiChange1h >= 0 ? '+' : ''}${ctx.oiChange1h.toFixed(2)}% ${oiDir} ${oiInterpretation}`);
   }
-  if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
-    const divDesc = ctx.rsiDivergenceType === 'bullish'
-      ? 'Bullish divergence (price new low but RSI not, potential bounce)'
-      : 'Bearish divergence (price new high but RSI not, potential pullback)';
-    lines.push(`RSI Divergence: ${ctx.rsiDivergenceType} — ${divDesc}`);
-  }
-
   // Section 9-11: Candles + Orders + Closed Trades
   lines.push(...buildOhlcvSection(ctx, true));
   lines.push(...buildOrdersSection(ctx, true));
