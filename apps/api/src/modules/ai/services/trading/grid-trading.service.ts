@@ -3533,6 +3533,8 @@ export class GridTradingService {
         let remainingQty = totalQty;
         let mappedCount = 0;
 
+        let lastFilledLayer: typeof emptyLayers[0] | null = null;
+
         for (const { layer, idx } of emptyLayers) {
           if (remainingQty <= 0.0001) break;
 
@@ -3541,6 +3543,13 @@ export class GridTradingService {
             ? (layer.allocatedUSD * leverage) / avgEntry
             : 0;
           if (layerQty <= 0.0001) continue;
+
+          // 碎片归并：剩余不足该层正常量的 30%，并入上一层而非单独占层
+          if (remainingQty < layerQty * 0.3 && lastFilledLayer) {
+            lastFilledLayer.layer.positionSize = (lastFilledLayer.layer.positionSize ?? 0) + remainingQty;
+            remainingQty = 0;
+            break;
+          }
 
           // 不超过交易所剩余持仓量
           const assignQty = Math.min(layerQty, remainingQty);
@@ -3554,6 +3563,7 @@ export class GridTradingService {
           layer.unrealizedPnl = 0;
           remainingQty -= assignQty;
           mappedCount++;
+          lastFilledLayer = { layer, idx };
         }
 
         this.logger.log(
