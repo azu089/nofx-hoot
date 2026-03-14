@@ -714,7 +714,7 @@ function gridSystemPromptZh(
 - **pending**: 等待成交
 - **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）
 
-**利润锁定原则**：交易以优先锁定利润为主。你有撤单（cancel_order）和重挂（place_sell_limit）的完全自由，price 可以使用你认为最优的价格。反向平仓单（如多头持仓对应的卖单）优先选择靠近持仓入场价的价格，更快触发成交、锁定利润、释放保证金。
+**反向挂单间距检查**：检查每个 filled 层对应的反向挂单（多头持仓→卖单，空头持仓→买单），若反向单价格与持仓入场价（positionEntry）的距离超过 2 格间距，可撤单并以持仓入场价 ±1 格间距重新挂单。
 
 ## 可用操作
 - **place_buy_limit**: 挂买单（fields: level, price, quantity）
@@ -774,7 +774,7 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit)
 
-**Profit Locking principle**: Prioritize locking in profits. You have full freedom to cancel_order and re-place (place_sell_limit) at any price you consider optimal. For reverse closing orders (e.g., sell orders against long positions), prefer prices closer to the position entry price — this triggers fills faster, locks in profit sooner, and frees up margin.
+**Reverse order spacing check**: For each filled level, check the corresponding reverse order (long position → sell order, short position → buy order). If the distance between the reverse order price and the position entry price (positionEntry) exceeds 2 grid spacings, cancel and re-place the order at positionEntry ± 1 grid spacing.
 
 ## Available Actions
 - **place_buy_limit**: Place buy order (fields: level, price, quantity)
