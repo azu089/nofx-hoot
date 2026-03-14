@@ -1979,7 +1979,7 @@ export class GridTradingService {
         const profit = l.side === 'buy'
           ? (currentPrice - l.positionEntry) * l.positionSize
           : (l.positionEntry - currentPrice) * l.positionSize;
-        // 显示实际成交价（positionEntry），而非网格层限价（price）
+        // positionEntry = 层级价格（对齐 nofx），和 l.price 相同
         const displayPrice = l.positionEntry > 0 ? l.positionEntry : l.price;
         return {
           price: displayPrice,
@@ -3438,8 +3438,11 @@ export class GridTradingService {
             }
           } else {
             // 买单成交：标记 filled，保持 side='buy'（与 nofx 完全对齐）
+            // positionEntry = 层级价格（line.price），不是交易所实际成交均价（fillPrice）
+            // 原因：nofx 用 level.Price 作为 PositionEntry，确保卖单层价格始终 > 入场价
+            // 如果用交易所均价，重建后可能出现 入场均价 > 卖层价格 → 每笔卖出必亏
             line.state = 'filled';
-            line.positionEntry = fillPrice;
+            line.positionEntry = line.price;
             line.positionSize = qty;
             line.unrealizedPnl = 0;
             state.totalTrades++;
@@ -3574,7 +3577,7 @@ export class GridTradingService {
           const assignQty = Math.min(layerQty, remainingQty);
 
           layer.state = 'filled';
-          layer.positionEntry = avgEntry;
+          layer.positionEntry = layer.price; // 用层级价格（对齐 nofx），确保卖层价格 > 入场价
           layer.positionSize  = assignQty;
           layer.side          = posSide;
           layer.orderId       = undefined;
@@ -4341,7 +4344,7 @@ export class GridTradingService {
         d.st = 'filled';
         d.s = posSide;
         d.qty = +assignQty.toFixed(4);
-        d.ep = +avgEntry.toFixed(4);
+        d.ep = d.p; // 用层级价格（对齐 nofx），确保 AI 看到的入场价 < 卖层价格
         remainingQty -= assignQty;
         lastFilledD = item;
       }
