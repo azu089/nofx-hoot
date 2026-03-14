@@ -2749,7 +2749,7 @@ export class GridTradingService {
     // Step 0: 已有持仓的层禁止直接下单（filled 层只能通过 close_long/close_short 处理）
     // 若允许，placeGridLimitOrder 末尾的 finalLevel.state='pending' 会抹除持仓记录，导致持仓层消失
     if (level && level.state === 'filled' && (level.positionSize ?? 0) > 0.0001) {
-      const skipReason = `层 ${levelIndex + 1} 已有持仓 ${(level.positionSize ?? 0).toFixed(4)} @ ${(level.positionEntry ?? 0).toFixed(2)}，跳过（需用 close_long/close_short 先平仓）`;
+      const skipReason = `层 ${levelIndex + 1} 已有持仓 ${(level.positionSize ?? 0).toFixed(4)} @ ${(level.positionEntry ?? 0).toFixed(2)}，跳过（需先平仓再挂单）`;
       this.logger.warn(`[网格] ${skipReason}`);
       return { executed: false, skipReason };
     }
@@ -3963,11 +3963,57 @@ export class GridTradingService {
       );
     }
 
+    const recoveredFilled2 = state.gridLines.filter(l => l.state === 'filled').length;
+    const emptyCount = state.gridLines.filter(l => l.state === 'empty').length;
+
     this.logger.log(
       `[网格] ⚡ 自动重建完成: ${oldLower.toFixed(2)}~${oldUpper.toFixed(2)} → ${newLower.toFixed(2)}~${newUpper.toFixed(2)} | ` +
-      `撤${oldPending}单, 恢复${state.gridLines.filter(l => l.state === 'filled').length}持仓, ` +
-      `${state.gridLines.filter(l => l.state === 'empty').length}空格待AI补单`,
+      `撤${oldPending}单, 恢复${recoveredFilled2}持仓, ${emptyCount}空格待AI补单`,
     );
+
+    // 写入策略日志，让前端用户看到自动重建事件
+    if (strategyId) {
+      const rebuildRangePct = ((newUpper - newLower) / currentPrice * 100).toFixed(1);
+      try {
+        await this.prisma.aiStrategyLog.create({
+          data: {
+            strategyId,
+            symbol: state.symbol,
+            decision: {
+              action: 'grid_rebuild',
+              gridSummary: `自动重建/倾斜${buyFilled}买${sellFilled}卖`,
+              reasoning: `网格严重倾斜（多头${buyFilled}层/空头${sellFilled}层），价格偏移超过阈值，自动重新居中` +
+                `\n旧范围: $${oldLower.toFixed(2)} ~ $${oldUpper.toFixed(2)}` +
+                `\n新范围: $${newLower.toFixed(2)} ~ $${newUpper.toFixed(2)} (${rebuildRangePct}%)` +
+                `\n撤销${oldPending}个挂单，恢复${recoveredFilled2}层持仓，${emptyCount}空格待AI补单` +
+                `\n当前价: $${currentPrice.toFixed(4)}`,
+              gridSnapshot: {
+                upperPrice: newUpper,
+                lowerPrice: newLower,
+                gridSpacing: state.gridSpacing,
+                direction: state.currentDirection,
+                totalLevels: state.gridLines.length,
+                totalInvestment: state.totalInvestment,
+                leverage: state.leverage,
+                lastPrice: currentPrice,
+                totalProfit: state.totalProfit,
+                totalTrades: state.totalTrades,
+                gridLines: state.gridLines.map((l) => ({
+                  lv: l.index + 1,
+                  st: l.state === 'filled' ? 'F' : l.state === 'pending' ? 'P' : '-',
+                  px: Number((l.price ?? 0).toFixed(2)),
+                  sd: l.side === 'buy' ? 'B' : l.side === 'sell' ? 'S' : '-',
+                  qty: Number((l.positionSize ?? 0).toFixed(4)),
+                })),
+              },
+            } as any,
+            executed: true,
+          },
+        });
+      } catch (logErr: any) {
+        this.logger.warn(`[网格] 自动重建日志写入失败: ${logErr.message}`);
+      }
+    }
 
     // 重建后自动解除非风控暂停
     if (state.isPaused && state.pauseSource !== 'risk_control') {
