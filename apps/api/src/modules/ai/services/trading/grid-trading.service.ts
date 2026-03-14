@@ -2099,6 +2099,17 @@ export class GridTradingService {
           liquidationPrice: shortPos.liquidationPrice,
         };
       }
+
+      // 交易所是唯一真相：每轮用交易所真实入场价刷新内存中 filled 层的 positionEntry
+      // 消除内存旧值与交易所实时数据的矛盾（重建/重启后内存可能残留错误入场价）
+      for (const line of state.gridLines) {
+        if (line.state !== 'filled' || (line.positionSize ?? 0) <= 0.0001) continue;
+        if (line.side === 'buy' && longPos && (longPos.entryPrice ?? 0) > 0) {
+          line.positionEntry = longPos.entryPrice!;
+        } else if (line.side === 'sell' && shortPos && (shortPos.entryPrice ?? 0) > 0) {
+          line.positionEntry = shortPos.entryPrice!;
+        }
+      }
     } catch { /* 使用默认值 */ }
 
     // 资金费率
