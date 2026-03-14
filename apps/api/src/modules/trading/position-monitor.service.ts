@@ -382,17 +382,18 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
         side,
       );
 
-      // G4: 计算绝对盈亏 (USDT) — 对齐 ai-execution.service.ts
+      // 使用交易所实际成交价（result.price = order.average），不估算
+      const fillPrice = result.price > 0 ? result.price : currentPrice;
       const absolutePnl = side === 'long'
-        ? (currentPrice - entryPrice) * amount
-        : (entryPrice - currentPrice) * amount;
+        ? (fillPrice - entryPrice) * amount
+        : (entryPrice - fillPrice) * amount;
 
       // 更新数据库
       await this.prisma.position.update({
         where: { id: positionId },
         data: {
           status: 'closed',
-          exitPrice: new Decimal(currentPrice).toString(),
+          exitPrice: new Decimal(fillPrice).toString(),
           closedAt: new Date(),
           closeReason: reason,
           realizedPnl: new Decimal(absolutePnl).toFixed(8),
