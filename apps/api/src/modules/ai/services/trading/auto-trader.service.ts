@@ -284,18 +284,6 @@ export class AutoTraderService {
         return result;
       }
 
-      // R2: 周期性持仓同步 — 交易所 SL/TP 触发平仓后同步 DB
-      try {
-        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId);
-        if (syncResult.created > 0 || syncResult.closed > 0) {
-          this.logger.log(
-            `[R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}`,
-          );
-        }
-      } catch (e: any) {
-        this.logger.warn(`[R2] 持仓同步失败(非致命): ${e.message}`);
-      }
-
       this.logger.log(
         `\n${'='.repeat(70)}\n` +
         `⏰ ${new Date().toISOString().slice(0, 19).replace('T', ' ')} - AI 决策周期 #${strategy.cycleCount || 0}\n` +
@@ -311,8 +299,21 @@ export class AutoTraderService {
       });
 
       // 网格策略优先路由: 有独立的回撤保护，跳过用户级日回撤检查
+      // 网格策略不使用通用持仓同步 — 网格有自己的持仓生命周期（close_long/close_short 指令）
       if (strategy.strategyType === 'grid') {
         return await this.runGridCycle(strategy, userId, effectiveExchangeApiKeyId, result, startTime, locale);
+      }
+
+      // R2: 周期性持仓同步 — 交易所 SL/TP 触发平仓后同步 DB（仅用于非网格策略）
+      try {
+        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId);
+        if (syncResult.created > 0 || syncResult.closed > 0) {
+          this.logger.log(
+            `[R2] 持仓同步: 新建${syncResult.created}, 关闭${syncResult.closed}`,
+          );
+        }
+      } catch (e: any) {
+        this.logger.warn(`[R2] 持仓同步失败(非致命): ${e.message}`);
       }
 
       // Step 2: 检查是否被风控暂停
