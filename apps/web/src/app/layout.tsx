@@ -43,6 +43,8 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const locale = cookieStore.get("NEXT_LOCALE")?.value || "zh-CN";
   const dir = isRtlLocale(locale) ? "rtl" : "ltr";
+  // Middleware 已验证 cookie，这里读取结果让 AuthProvider 跳过 loading 状态
+  const hasAuthToken = !!cookieStore.get("hoot_token")?.value;
   return (
     <html lang={locale} dir={dir} className="dark" suppressHydrationWarning>
       <head>
@@ -53,7 +55,7 @@ export default async function RootLayout({
         className="font-sans antialiased bg-[#0A0A0F] text-[#F8F8FC]"
         suppressHydrationWarning
       >
-        <Providers>{children}</Providers>
+        <Providers initialAuthenticated={hasAuthToken}>{children}</Providers>
       </body>
     </html>
   );

@@ -107,25 +107,20 @@ function isTelegramEnv(): boolean {
   return false;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  // 从 localStorage 同步初始化，消除已登录用户每次打开页面的转圈延迟
-  // typeof window 检查：Next.js SSR 预渲染时 window 不存在，需 fallback 到 null/true
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (t) api.setToken(t); // 立即注入，让页面首次 API 请求携带 token
-    return t;
-  });
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const s = localStorage.getItem(USER_KEY);
-    try { return s ? JSON.parse(s) : null; } catch { return null; }
-  });
-  // 已登录用户（有 token）直接跳过 loading；新用户/TG 环境需要异步登录
-  const [isLoading, setIsLoading] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return !localStorage.getItem(TOKEN_KEY);
-  });
+interface AuthProviderProps {
+  children: ReactNode;
+  initialAuthenticated?: boolean;
+}
+
+export function AuthProvider({ children, initialAuthenticated = false }: AuthProviderProps) {
+  // Server 通过读取 hoot_token cookie 传入 initialAuthenticated，
+  // 让服务端渲染的 HTML 直接跳过 loading 状态，消除返回用户每次打开页面的转圈延迟。
+  // useEffect 运行后从 localStorage 加载真实 token，isLoading 置为 false。
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  // 服务端确认已登录时（initialAuthenticated=true）直接从 isLoading=false 开始，
+  // 避免服务端渲染的 HTML 出现转圈骨架屏
+  const [isLoading, setIsLoading] = useState(!initialAuthenticated);
   const [tgAutoLoginError, setTgAutoLoginError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -142,7 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (storedToken) {
-      // 已在 useState 初始化时设置，此处仅确保 isLoading=false（理论上已是 false）
+      // 从 localStorage 加载 token 和用户信息，hydration 后立即生效
+      setToken(storedToken);
+      api.setToken(storedToken);
+      const storedUser = localStorage.getItem(USER_KEY);
+      if (storedUser) {
+        try { setUser(JSON.parse(storedUser)); } catch { /* 忽略损坏的 JSON */ }
+      }
       setIsLoading(false);
       return;
     }
@@ -332,7 +333,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isLoading,
-        isAuthenticated: !!token,
+        // isLoading=true 时（useEffect 尚未运行）信任服务端的 initialAuthenticated（cookie 检查结果）
+        // isLoading=false 时（useEffect 已完成）使用 localStorage 加载的真实 token
+        isAuthenticated: isLoading ? initialAuthenticated : !!token,
         tgAutoLoginError,
         login,
         register,

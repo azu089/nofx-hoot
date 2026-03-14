@@ -10,7 +10,12 @@ import { config } from './wagmi';
 import { LocaleProvider } from '@/i18n/provider';
 import { Toaster } from '@/components/ui/sonner';
 
-export function Providers({ children }: { children: ReactNode }) {
+interface ProvidersProps {
+  children: ReactNode;
+  initialAuthenticated?: boolean;
+}
+
+export function Providers({ children, initialAuthenticated }: ProvidersProps) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -32,7 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <ThemeProvider>
-            <AuthProvider>
+            <AuthProvider initialAuthenticated={initialAuthenticated}>
               <TelegramProvider>
                 {children}
                 <Toaster position="top-center" richColors closeButton />
