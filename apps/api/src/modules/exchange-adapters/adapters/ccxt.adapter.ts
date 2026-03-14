@@ -606,20 +606,56 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
   async cancelAllOrders(symbol: string): Promise<void> {
     const ex = this.getExchange();
-    try {
-      await ex.cancelAllOrders(symbol);
-    } catch (e: any) {
-      const msg: string = e.message || '';
-      // 交易所在没有挂单时有些会抛错（如 Gate、Bitget），属于正常情况，静默处理
-      if (
-        msg.includes('No orders') ||
-        msg.includes('no orders') ||
-        msg.includes('order not found') ||
-        msg.includes('Order does not exist')
-      ) {
-        return;
+    const MAX_RETRIES = 3;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await ex.cancelAllOrders(symbol);
+      } catch (e: any) {
+        const msg: string = e.message || '';
+        // 交易所在没有挂单时有些会抛错（如 Gate、Bitget），属于正常情况，静默处理
+        if (
+          msg.includes('No orders') ||
+          msg.includes('no orders') ||
+          msg.includes('order not found') ||
+          msg.includes('Order does not exist')
+        ) {
+          return;
+        }
+        this.logger.warn(`cancelAllOrders(${symbol}) attempt ${attempt} 失败: ${msg}`);
       }
-      this.logger.warn(`cancelAllOrders(${symbol}) 失败（可忽略）: ${msg}`);
+
+      // 验证：检查是否还有残留挂单
+      try {
+        const remaining = await ex.fetchOpenOrders(symbol);
+        if (!remaining || remaining.length === 0) {
+          if (attempt > 1) {
+            this.logger.log(`cancelAllOrders(${symbol}): 第${attempt}轮成功，全部清理完毕`);
+          }
+          return;
+        }
+
+        if (attempt < MAX_RETRIES) {
+          this.logger.warn(
+            `cancelAllOrders(${symbol}): 第${attempt}轮后仍有 ${remaining.length} 个残留挂单，重试...`,
+          );
+          // 逐个取消残留订单（兜底）
+          for (const order of remaining) {
+            try {
+              await ex.cancelOrder(order.id, symbol);
+            } catch {
+              // 订单可能已被取消或成交，忽略
+            }
+          }
+        } else {
+          this.logger.error(
+            `cancelAllOrders(${symbol}): ${MAX_RETRIES}轮后仍有 ${remaining.length} 个残留挂单，放弃重试`,
+          );
+        }
+      } catch (verifyErr: any) {
+        this.logger.warn(`cancelAllOrders(${symbol}): 验证残留挂单失败: ${verifyErr.message}`);
+        return; // 无法验证，不再重试
+      }
     }
   }
 
