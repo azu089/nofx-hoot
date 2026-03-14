@@ -716,12 +716,11 @@ function gridSystemPromptZh(
 - **待成交**（pending）: 等待成交
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-**📍 补单与优化建议**：
+**📍 补单顺序建议**：
 - 优先在接近当前价的空层下单，可提高快速成交概率
 - 单次 actions 可包含多个 place_buy_limit / place_sell_limit
 - 非趋势行情下，优先一次性输出所有空层的挂单决策
 - isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时可不补单
-- **利润优化**：若持仓层入场价与最近卖单价距离 > 2个格距，建议 adjust_grid 重建网格（以当前价为中心，持仓自动映射到最近层，卖单紧贴持仓上方）
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
@@ -788,12 +787,11 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
-**📍 Order Placement & Optimization**:
+**📍 Order Placement Suggestion**:
 - Prefer placing orders on empty levels closest to current price for faster fills
 - A single actions array can include multiple place_buy_limit / place_sell_limit
 - In non-trending markets, prefer outputting orders for all empty levels in one response
 - Skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
-- **Profit optimization**: If distance between filled entry price and nearest sell exceeds 2 grid spacings, consider adjust_grid to rebuild (centers on current price, positions auto-map to nearest levels, sells placed tightly above positions)
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 
