@@ -1352,7 +1352,7 @@ export class GridTradingService {
         // 执行决策（收集每条执行结果，供日志记录）
         // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
         // 见下方 saveGridDecisionLog 调用处的 displayGridLines
-        const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
+        const execResults: Array<{ action: string; level?: number; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         // 把交易所实时层级挂到 state，供 placeGridLimitOrder 的 filled 检查使用（交易所是唯一事实）
         (state as any)._exchangeDisplay = preSyncDisplay;
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
@@ -1367,12 +1367,12 @@ export class GridTradingService {
           }
           // 若本轮含 pause_grid，跳过所有 place_* 操作（避免下单后立即被 cancelAllOrders 撤掉，浪费 API 调用）
           if (hasPauseGrid && d.action.startsWith('place_')) {
-            execResults.push({ action: d.action, success: true, skipped: true, skipReason: '本轮含 pause_grid，跳过下单' });
+            execResults.push({ action: d.action, level: d.level, success: true, skipped: true, skipReason: '本轮含 pause_grid，跳过下单' });
             continue;
           }
           // 账户配置错误已确认（如 OKX 51010）→ 跳过后续下单，避免刷屏重试
           if (accountConfigError) {
-            execResults.push({ action: d.action, success: false, error: accountConfigError });
+            execResults.push({ action: d.action, level: d.level, success: false, error: accountConfigError });
             errors++;
             continue;
           }
@@ -1382,10 +1382,10 @@ export class GridTradingService {
             if (!result.executed && d.action.startsWith('place_')) {
               // place_* 被系统限制拦截（仓位上限/最小数量/价差过宽等）→ 视为失败
               // 前端 !log.executed + errors 面板会显示具体原因
-              execResults.push({ action: d.action, success: false, error: result.skipReason });
+              execResults.push({ action: d.action, level: d.level, success: false, error: result.skipReason });
               errors++;
             } else {
-              execResults.push({ action: d.action, success: true, skipped: !result.executed, skipReason: result.skipReason });
+              execResults.push({ action: d.action, level: d.level, success: true, skipped: !result.executed, skipReason: result.skipReason });
             }
           } catch (e: any) {
             errors++;
@@ -1393,7 +1393,7 @@ export class GridTradingService {
             const rawCode = e?.code ?? e?.id ?? '';
             this.logger.warn(`[网格] 执行决策失败: ${this.actionLabel(d.action, gridConfig?.locale)} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
             const errEntry = `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}`;
-            execResults.push({ action: d.action, success: false, error: errEntry });
+            execResults.push({ action: d.action, level: d.level, success: false, error: errEntry });
             // 账户配置错误（如 OKX 51010）是持久性错误，后续订单无需再试
             if (errCategory === '账户配置错误') {
               accountConfigError = errEntry;
@@ -2799,6 +2799,9 @@ export class GridTradingService {
 
     // Step 1: per-level 仓位上限检查（始终用静态配置杠杆，与 nofx 一致）
     const leverage = state.leverage;
+    let capTruncated = false;
+    let capUsed = 0;
+    let capTotal = 0;
     if (price > 0 && state.totalInvestment > 0) {
       const maxMarginPerLevel = state.totalInvestment / state.gridLines.length;
       let maxQuantityPerLevel = (maxMarginPerLevel * leverage) / price;
@@ -2821,16 +2824,19 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：已成交持仓 + 挂单名义价值（nofx: currentPositionValue + pendingValue）
+      // 总仓位上限：已成交持仓 + 挂单名义价值（与 nofx checkTotalPositionLimit 一致）
       const totalPositionCap = state.totalInvestment * leverage;
       const livePositionNotional = state.livePositionNotional ?? 0;
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
-      if (livePositionNotional + pendingNotional + quantity * price > totalPositionCap) {
+      capTotal = totalPositionCap;
+      capUsed = livePositionNotional + pendingNotional;
+      if (capUsed + quantity * price > totalPositionCap) {
         // 削减至剩余可用额度（持仓+挂单）
         const remaining = Math.max(0, totalPositionCap - livePositionNotional - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
+        capTruncated = true;
         if (quantity <= 0) {
           const skipReason = `总仓位已满: 持仓+挂单 $${(livePositionNotional + pendingNotional).toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
@@ -2923,14 +2929,23 @@ export class GridTradingService {
     }
     if (notional < MIN_NOTIONAL) {
       const coinSymbol = state.symbol.replace(/USDT.*/, '').replace(/\/.*/, '');
-      const perLevelNotional = (state.totalInvestment / state.gridLines.length) * leverage;
-      const recommendedLevels = Math.floor((state.totalInvestment * leverage) / MIN_NOTIONAL);
-      const recommendedInvestment = Math.ceil((MIN_NOTIONAL * state.gridLines.length) / leverage);
-      const skipReason =
-        `每层资金不足: 实际下单额 $${notional.toFixed(2)}（每层预算 $${perLevelNotional.toFixed(2)}），` +
-        `低于 ${coinSymbol} 最低下单额 $${MIN_NOTIONAL.toFixed(0)} | ` +
-        `建议: 减少层数(${state.gridLines.length}→${recommendedLevels})` +
-        `或增加投资额($${state.totalInvestment}→$${recommendedInvestment})`;
+      let skipReason: string;
+      if (capTruncated) {
+        // 总仓位额度不足导致 qty 被截断
+        skipReason =
+          `总仓位额度不足: 已用 $${capUsed.toFixed(2)} / 上限 $${capTotal.toFixed(2)}，` +
+          `剩余 $${(capTotal - capUsed).toFixed(2)} 不够 ${coinSymbol} 最低 $${MIN_NOTIONAL.toFixed(0)}`;
+      } else {
+        // 真正的每层预算不足
+        const perLevelNotional = (state.totalInvestment / state.gridLines.length) * leverage;
+        const recommendedLevels = Math.floor((state.totalInvestment * leverage) / MIN_NOTIONAL);
+        const recommendedInvestment = Math.ceil((MIN_NOTIONAL * state.gridLines.length) / leverage);
+        skipReason =
+          `每层资金不足: 实际下单额 $${notional.toFixed(2)}（每层预算 $${perLevelNotional.toFixed(2)}），` +
+          `低于 ${coinSymbol} 最低下单额 $${MIN_NOTIONAL.toFixed(0)} | ` +
+          `建议: 减少层数(${state.gridLines.length}→${recommendedLevels})` +
+          `或增加投资额($${state.totalInvestment}→$${recommendedInvestment})`;
+      }
       this.logger.warn(
         `[网格] 跳过下单: notional $${notional.toFixed(2)} < 交易所最低 $${MIN_NOTIONAL}` +
         ` (level=${levelIndex}, qty=${finalQty}, price=${price}) | ${skipReason}`,
@@ -4317,7 +4332,7 @@ export class GridTradingService {
     cost: number,
     state?: GridState,
     thinking?: string,
-    execResults?: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
+    execResults?: Array<{ action: string; level?: number; success: boolean; skipped?: boolean; skipReason?: string; error?: string }>,
     marketAnalysis?: string,
     preExecGridLines?: any[],  // syncOrderFills 后的层级快照（交易所真实状态）
     locale?: string,           // 用户语言（用于 gridSummary 翻译）
@@ -4428,10 +4443,10 @@ export class GridTradingService {
           ...(hasExecDetails && {
             executionResult: {
               ...(failedResults.length > 0 && {
-                errors: failedResults.map(r => ({ action: r.action, error: r.error })),
+                errors: failedResults.map(r => ({ action: r.action, level: r.level, error: r.error })),
               }),
               ...(skippedResults.length > 0 && {
-                skipped: skippedResults.map(r => ({ action: r.action, reason: r.skipReason })),
+                skipped: skippedResults.map(r => ({ action: r.action, level: r.level, reason: r.skipReason })),
               }),
             } as any,
           }),

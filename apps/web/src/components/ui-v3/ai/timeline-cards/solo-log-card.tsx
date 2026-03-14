@@ -915,6 +915,18 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   cancel_all_orders: '撤销全部挂单（持仓不变）',
                   pause_grid: '暂停挂单，持仓保留',
                 };
+                // 匹配执行结果：按 level 匹配（优先），兜底按 index 匹配
+                const opLevel = op.level_index ?? op.level;
+                const erAny = er as any;
+                const errMatch = erAny?.errors?.find?.((e: any) =>
+                  e.action === op.action && (e.level != null ? e.level === opLevel : false)
+                );
+                const skipMatch = erAny?.skipped?.find?.((s: any) =>
+                  s.action === op.action && (s.level != null ? s.level === opLevel : false)
+                );
+                const isFailed = !!errMatch;
+                const isSkipped = !!skipMatch;
+                const isSuccess = er && !isFailed && !isSkipped;
                 return (
                   <div key={idx} className="flex items-start gap-2 py-1.5 border-t border-[#1E1E2E]/30 first:border-t-0">
                     <span
@@ -955,6 +967,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {op.quantity && (
                         <span className="font-mono text-[#9090A0]">×{parseFloat(Number(op.quantity).toFixed(6))}</span>
                       )}
+                      {/* 执行状态标记 */}
+                      {isFailed && <span className="text-[#EF4444] font-medium">✗</span>}
+                      {isSkipped && <span className="text-[#F59E0B] font-medium">⊘</span>}
+                      {isSuccess && <span className="text-[#10B981] font-medium">✓</span>}
                     </div>
                   </div>
                 );
