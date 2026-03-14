@@ -108,12 +108,26 @@ function isTelegramEnv(): boolean {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // 从 localStorage 同步初始化，消除已登录用户每次打开页面的转圈延迟
+  // typeof window 检查：Next.js SSR 预渲染时 window 不存在，需 fallback 到 null/true
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const t = localStorage.getItem(TOKEN_KEY);
+    if (t) api.setToken(t); // 立即注入，让页面首次 API 请求携带 token
+    return t;
+  });
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const s = localStorage.getItem(USER_KEY);
+    try { return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  // 已登录用户（有 token）直接跳过 loading；新用户/TG 环境需要异步登录
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return !localStorage.getItem(TOKEN_KEY);
+  });
   const [tgAutoLoginError, setTgAutoLoginError] = useState<string | null>(null);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- 从 localStorage 初始化状态是合理的一次性副作用
   useEffect(() => {
     // ── Step 0: Cookie/localStorage 一致性检查 ──────────────────────────────
     // Cookie 24h 过期但 localStorage 永不过期，cookie 消失后 middleware 会
@@ -127,22 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthCookie(storedToken);
     }
 
-    // ── Step 1: 读取本地缓存 ────────────────────────────────────────────────
-    const storedUser = localStorage.getItem(USER_KEY);
-
     if (storedToken) {
-      setToken(storedToken);
-      api.setToken(storedToken);
-    }
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        // 忽略解析错误
-      }
-    }
-
-    if (storedToken) {
+      // 已在 useState 初始化时设置，此处仅确保 isLoading=false（理论上已是 false）
       setIsLoading(false);
       return;
     }
