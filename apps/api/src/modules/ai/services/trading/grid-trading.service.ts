@@ -1350,19 +1350,8 @@ export class GridTradingService {
           : confFiltered;
 
         // 执行决策（收集每条执行结果，供日志记录）
-        // 执行前捕获格线快照：使用 context.levels（实时数据），与 AI 看到的一致
-        const preExecGridLines = context.levels.map((l, i) => {
-          const entry: Record<string, unknown> = { lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: l.state };
-          if (l.state === 'filled') {
-            entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +(l.fillPrice ?? l.price).toFixed(4);
-          } else if (l.state === 'pending') {
-            entry.oid = (l.orderId ?? '').slice(-8);
-            entry.qty = +(l.quantity ?? 0).toFixed(4);
-          }
-          return entry;
-        });
-
+        // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
+        // 见下方 saveGridDecisionLog 调用处的 displayGridLines
         const execResults: Array<{ action: string; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
@@ -2214,8 +2203,21 @@ export class GridTradingService {
         };
       });
     } else {
-      // Fallback：从内存构建（启动首轮可能无 pre-sync 数据）
-      exchangeLevels = this.buildExchangeLevels(state.gridLines, currentPrice, state.leverage ?? 1);
+      // Fallback：交易所数据不可用时，返回全空层（不用内存脏数据喂 AI）
+      // AI 看到全空层会选择 hold，等下一轮交易所恢复
+      this.logger.warn(`[网格] buildGridContext: 交易所数据不可用，返回全空层（不使用内存）`);
+      exchangeLevels = state.gridLines.map((gl) => ({
+        price: gl.price,
+        side: gl.side as 'buy' | 'sell',
+        quantity: gl.allocatedUSD > 0 && currentPrice > 0
+          ? (gl.allocatedUSD * (state.leverage ?? 1)) / currentPrice
+          : 0,
+        positionSize: 0,
+        state: 'cancelled' as const,
+        orderId: undefined,
+        fillPrice: undefined,
+        profit: undefined,
+      }));
     }
 
     return {
@@ -3289,13 +3291,13 @@ export class GridTradingService {
         this.logger.warn(`[网格] syncOrderFills 持仓读取失败，退化为保守模式（所有消失挂单视为取消）: ${e.message}`);
       }
 
-      // Step 3: 内存中 filled 层的预期持仓量（无符号累加，与 nofx 完全一致）
-      // nofx L1233-1238: expectedPositionSize += level.PositionSize（不区分 side）
-      // 对齐原因：nofx 用 abs() 比较双方，无符号累加在 abs 下等价且更简单
-      // expectedPos 始终来自内存 filled 层之和，不 fallback 到 currentPos
-      // 冷启动场景由 recoverPositionsFromExchange 保证：有交易所持仓则已恢复为 filled 层
+      // Step 3: 内存中 filled 层的预期持仓量（带符号：buy=+, sell=-）
+      // 与交易所 currentPositionSize 保持同维度，便于比较和 abs 启发式判断
       const memFilledLayers = state.gridLines.filter((l) => l.state === 'filled');
-      const expectedPositionSize = memFilledLayers.reduce((sum, l) => sum + (l.positionSize ?? 0), 0);
+      const expectedPositionSize = memFilledLayers.reduce((sum, l) => {
+        const sz = l.positionSize ?? 0;
+        return sum + (l.side === 'sell' ? -sz : sz);
+      }, 0);
 
       // Step 4: 处理"消失"的 pending 层
       const disappearedLines = state.gridLines.filter(
@@ -3344,19 +3346,90 @@ export class GridTradingService {
         }
 
         if (isFilled) {
-          // 完全对齐 nofx syncGridState L1248-1253：
-          // 成交即 filled，side 保持原值，不做配对平仓计算
-          // 利润计算只在实际平仓时：close_long/close_short 指令执行 + 交易所历史持仓记录
-          line.state = 'filled';
-          line.positionEntry = fillPrice;
-          line.positionSize = qty;
-          line.unrealizedPnl = 0;
-          state.totalTrades++;
-          filledLines.push(line);
-          runningExpected += qty;
-          this.logger.log(
-            `[网格] 订单成交: L${(line.index ?? 0) + 1}(${line.side}) @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
-          );
+          if (line.side === 'sell') {
+            // 网格卖单成交 = 平多仓（take-profit）
+            // 无论 Binance hedge 还是 OKX net_mode，网格卖单始终是平多仓的止盈单
+            const buyLayer = state.gridLines
+              .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
+              .sort((a, b) => Math.abs(a.price - line.price) - Math.abs(b.price - line.price))[0];
+
+            if (buyLayer) {
+              const _cp = new Decimal(fillPrice);
+              const _ep = new Decimal(buyLayer.positionEntry);
+              const _sz = new Decimal(qty);
+              const _fr = new Decimal(state.takerFeeRate);
+              const netProfitD = _cp.minus(_ep).times(_sz)
+                .minus(_cp.times(_sz).times(_fr))
+                .minus(_ep.times(_sz).times(_fr));
+              const netProfit = netProfitD.toNumber();
+
+              state.totalProfit += netProfit;
+              state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+              state.totalTrades++;
+              if (netProfit > 0) state.winningTrades++;
+              if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
+
+              // 清空对应买入层
+              const reduceQty = Math.min(qty, buyLayer.positionSize ?? 0);
+              buyLayer.positionSize = (buyLayer.positionSize ?? 0) - reduceQty;
+              if (buyLayer.positionSize < 0.0001) {
+                buyLayer.state = 'empty';
+                buyLayer.positionSize = 0;
+                buyLayer.positionEntry = 0;
+                buyLayer.unrealizedPnl = 0;
+              }
+
+              // 卖单层恢复 empty（止盈完成）
+              line.state = 'empty';
+              line.positionSize = 0;
+              line.positionEntry = 0;
+              line.unrealizedPnl = 0;
+              filledLines.push(line);
+              runningExpected -= qty; // 平仓减少预期持仓
+
+              this.logger.log(
+                `[网格] 卖单成交(平多): L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}, ` +
+                `profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT, ` +
+                `对应买入层L${(buyLayer.index ?? 0) + 1} entry=${(buyLayer.positionEntry || _ep.toNumber()).toFixed(4)}`,
+              );
+
+              this.saveClosedPositionRecord(
+                userId,
+                state.strategyId,
+                (adapter as any).exchangeType ?? 'unknown',
+                state.symbol,
+                'long',
+                _ep.toNumber(),
+                _cp.toNumber(),
+                _sz.toNumber(),
+                state.leverage ?? 1,
+                netProfit,
+                'grid_tp',
+              );
+            } else {
+              // 无匹配买入层（孤儿卖单成交）
+              line.state = 'empty';
+              line.positionSize = 0;
+              line.positionEntry = 0;
+              line.unrealizedPnl = 0;
+              state.totalTrades++;
+              this.logger.warn(
+                `[网格] 卖单成交但无匹配买入层: L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
+              );
+            }
+          } else {
+            // 买单成交：标记 filled，保持 side='buy'（与 nofx 完全对齐）
+            line.state = 'filled';
+            line.positionEntry = fillPrice;
+            line.positionSize = qty;
+            line.unrealizedPnl = 0;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty;
+            this.logger.log(
+              `[网格] 买单成交: L${(line.index ?? 0) + 1}(${line.side}) @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`,
+            );
+          }
         } else {
           line.state = 'empty';
           line.positionSize = 0;
@@ -3376,110 +3449,11 @@ export class GridTradingService {
         }
       }
 
-      // Step 6: 交易所持仓 → 内存对账（每轮执行，交易所是唯一事实）
-      // 三种不一致场景都必须触发清空重建：
-      // 1. 买卖混合：内存同时有 buy-filled 和 sell-filled（交易所 one-way 模式只有一个方向）
-      // 2. 方向矛盾：交易所多头但内存有 sell-filled（或反之）
-      // 3. 净量偏离：memNet ≠ exchangeNet
-      // 历史教训 2026-03-13：旧版只比较 NET → 买12+卖2=net 2.53 匹配交易所 2.53 → 不触发 → 错误
-      if (positionFetchSucceeded) {
-        const memBuyQty = state.gridLines
-          .filter(l => l.state === 'filled' && l.side === 'buy')
-          .reduce((s, l) => s + (l.positionSize ?? 0), 0);
-        const memSellQty = state.gridLines
-          .filter(l => l.state === 'filled' && l.side === 'sell')
-          .reduce((s, l) => s + (l.positionSize ?? 0), 0);
-        const memNetPosition = memBuyQty - memSellQty;
-        const netDiff = Math.abs(memNetPosition - currentPositionSize);
-
-        // 检测不一致
-        const hasMixedSides = memBuyQty > 0.0001 && memSellQty > 0.0001;
-        const exchangeIsLong = currentPositionSize > 0.0001;
-        const exchangeIsShort = currentPositionSize < -0.0001;
-        const directionConflict =
-          (exchangeIsLong && memSellQty > 0.0001) ||
-          (exchangeIsShort && memBuyQty > 0.0001);
-        const netMismatch = netDiff > 0.0001;
-
-        const needReconcile = hasMixedSides || directionConflict || netMismatch;
-
-        if (needReconcile) {
-          const reasons: string[] = [];
-          if (hasMixedSides) reasons.push(`买卖混合(buy=${memBuyQty.toFixed(4)},sell=${memSellQty.toFixed(4)})`);
-          if (directionConflict) reasons.push(`方向矛盾(交易所=${exchangeIsLong ? '多' : '空'},内存有${memSellQty > 0.0001 ? '卖' : '买'}filled)`);
-          if (netMismatch) reasons.push(`净量偏离(mem=${memNetPosition.toFixed(4)},exch=${currentPositionSize.toFixed(4)})`);
-          this.logger.warn(
-            `[网格] ⚠️ 持仓对账触发: ${reasons.join(' + ')} → 清空filled重建`,
-          );
-
-          // Step 6a: 清空所有 filled 层
-          for (const l of state.gridLines) {
-            if (l.state === 'filled') {
-              l.state = 'empty';
-              l.positionSize = 0;
-              l.positionEntry = 0;
-              l.unrealizedPnl = 0;
-              l.orderId = undefined;
-              l.orderQuantity = 0;
-            }
-          }
-
-          // Step 6b: 从交易所持仓重建 filled 层（内联 recoverPositionsFromExchange 核心逻辑）
-          // 不创建新 adapter（已有 adapter 参数），直接用 syncPositions 数据
-          const baseSymbol = state.symbol.split('/')[0];
-          const leverage = Math.max(1, state.leverage ?? 1);
-
-          for (const pos of syncPositions) {
-            if (!(pos as any).symbol?.includes(baseSymbol)) continue;
-            const totalQty: number = (pos as any).quantity ?? 0;
-            if (totalQty <= 0.0001) continue;
-            const rawSide = (pos as any).side as string;
-            const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
-            const avgEntry = ((pos as any).entryPrice ?? 0) > 0
-              ? (pos as any).entryPrice
-              : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
-
-            // 优先映射到同侧空层，不够再用对侧
-            const sameSideLayers = state.gridLines
-              .map((l, idx) => ({ layer: l, idx }))
-              .filter(({ layer }) => layer.state === 'empty' && layer.side === posSide)
-              .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
-            const oppSideLayers = state.gridLines
-              .map((l, idx) => ({ layer: l, idx }))
-              .filter(({ layer }) => layer.state === 'empty' && layer.side !== posSide)
-              .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
-            const emptyLayers = [...sameSideLayers, ...oppSideLayers];
-
-            let remainingQty = totalQty;
-            let mappedCount = 0;
-
-            for (const { layer } of emptyLayers) {
-              if (remainingQty <= 0.0001) break;
-              const layerQty = layer.allocatedUSD > 0 && avgEntry > 0
-                ? (layer.allocatedUSD * leverage) / avgEntry
-                : 0;
-              if (layerQty <= 0.0001) continue;
-              const assignQty = Math.min(layerQty, remainingQty);
-              layer.state = 'filled';
-              layer.positionEntry = avgEntry;
-              layer.positionSize = assignQty;
-              layer.side = posSide;
-              layer.orderId = undefined;
-              layer.orderQuantity = 0;
-              layer.unrealizedPnl = 0;
-              remainingQty -= assignQty;
-              mappedCount++;
-            }
-
-            this.logger.log(
-              `[网格] Step6 持仓重建: ${posSide === 'buy' ? '多' : '空'}头 qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} → 映射${mappedCount}层` +
-              (remainingQty > 0.0001 ? ` 剩余${remainingQty.toFixed(4)}未映射` : ''),
-            );
-          }
-
-          // 如果交易所持仓=0，上面 for 循环不执行，所有 filled 已在 6a 清空 — 正确
-        }
-      }
+      // Step 6: 已删除（2026-03-14）
+      // 历史教训：对账逻辑每轮清空 filled 重建 → 丢失利润计算 → OKX pnl=0.00
+      // 架构原则：交易所是唯一事实，内存只做 orderId→层映射索引
+      // 卖单成交时已在 Step 4 内联计算利润并清空对应买入层，无需额外对账
+      // 启动时由 reconcileGridState 三步法重建（全部重置→从交易所恢复），运行时无需对账
 
     } catch (e: any) {
       this.logger.warn(`[网格] 订单同步失败: ${e.message}`);
@@ -3900,12 +3874,9 @@ export class GridTradingService {
       buyEmpty   = displayLines.filter((d: any) => d.s === 'buy' && (d.st === 'empty' || !d.st)).length;
       sellEmpty  = displayLines.filter((d: any) => d.s === 'sell' && (d.st === 'empty' || !d.st)).length;
     } else {
-      // Fallback：从内存统计
-      const filledAll = state.gridLines.filter(l => l.state === 'filled' && l.positionSize > 0);
-      buyFilled  = filledAll.filter(l => l.side === 'buy').length;
-      sellFilled = filledAll.filter(l => l.side === 'sell').length;
-      buyEmpty   = state.gridLines.filter(l => l.side === 'buy' && l.state === 'empty').length;
-      sellEmpty  = state.gridLines.filter(l => l.side === 'sell' && l.state === 'empty').length;
+      // 无交易所数据时返回不倾斜（不用内存判断，等下轮交易所恢复）
+      this.logger.warn(`[网格] checkGridSkew: 无交易所数据，跳过倾斜检查`);
+      return { skewed: false, buyFilled: 0, sellFilled: 0 };
     }
 
     let skewed = false;
