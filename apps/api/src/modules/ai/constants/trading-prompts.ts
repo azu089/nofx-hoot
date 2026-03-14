@@ -716,13 +716,12 @@ function gridSystemPromptZh(
 - **待成交**（pending）: 等待成交
 - **持仓**（filled）: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）。AI判断时机主动平仓，或等待反向挂单自然出局
 
-**📍 补单与利润优化**：
+**📍 补单与利润锁定**：
 - 优先在接近当前价的空层下单，可提高快速成交概率
 - 单次 actions 可包含多个 place_buy_limit / place_sell_limit
 - 非趋势行情下，优先一次性输出所有空层的挂单决策
 - isPaused=true 或明确趋势（BB>4% 且 EMA距>2%）时可不补单
-- **利润锁定（关键）**：若持仓层的卖单挂单距离持仓均价过远（超过2个格距），应 cancel_order 撤掉远单，在更贴近持仓均价上方1格距处重新 place_sell_limit，促使更快成交锁定利润
-- price 字段可自由指定，不必固定在网格线价格上。合理定价 = 持仓入场价 + 1个格距（确保覆盖手续费后盈利）
+- **利润锁定（关键）**：检查持仓均价与最近卖单的距离（用层级表的 Price 列计算）。若最近卖单距持仓均价超过 2 个格距（gridSpacing），应 cancel_order 撤掉该远卖单，然后在距持仓均价最近的空层（empty/cancelled）上 place_sell_limit 补挂。price 必须使用目标层的网格线价格（Price 列），禁止自定义价格
 
 ⚠️ 若本轮 pause_grid，禁止同时 place_*（系统自动跳过，无效下单）
 
@@ -789,13 +788,12 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pending**: Waiting for fill
 - **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit). AI decides when to exit, or wait for reverse order to naturally close
 
-**📍 Order Placement & Profit Optimization**:
+**📍 Order Placement & Profit Locking**:
 - Prefer placing orders on empty levels closest to current price for faster fills
 - A single actions array can include multiple place_buy_limit / place_sell_limit
 - In non-trending markets, prefer outputting orders for all empty levels in one response
 - Skip when isPaused=true or clear trend (BB>4% AND EMA distance>2%)
-- **Profit Locking (critical)**: If sell orders are placed too far from position avg entry (>2 grid spacings), cancel_order the distant sell and re-place place_sell_limit closer to avg entry + 1 grid spacing, to facilitate faster fills and lock in profit
-- price field can be freely specified, not fixed to grid line prices. Optimal sell price = position entry + 1 grid spacing (ensure profit after fees)
+- **Profit Locking (critical)**: Check distance between position avg entry and nearest sell order (use Price column in level table). If nearest sell is >2 grid spacings from avg entry, cancel_order that distant sell, then place_sell_limit on the closest empty/cancelled level above avg entry. price MUST use the target level's grid line price (Price column), do NOT customize price
 
 ⚠️ If pause_grid this round, do NOT place_* simultaneously (system auto-skips, orders are invalid)
 

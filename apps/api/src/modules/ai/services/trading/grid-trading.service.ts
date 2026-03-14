@@ -2962,13 +2962,11 @@ export class GridTradingService {
       if (finalLevel.orderId && finalLevel.orderId !== result.orderId) {
         delete state.orderBook[finalLevel.orderId];
       }
-      // 恢复 AI 定价权：price 跟随实际下单价（3月9日稳定版逻辑）
-      // 原因：AI 可能选择更优价格（如贴近持仓均价的卖单），层价格需同步更新
-      // 否则下轮 AI 看到的层价格仍是固定网格线价，无法感知实际挂单位置
-      // positionSize/positionEntry/unrealizedPnl 保持不动（保留 filled 层持仓数据）
+      // nofx 对齐：层价格(grid line)保持不变，只更新订单状态
+      // 教训(2026-03-14): finalLevel.price = price 导致多层塌陷到同一价格，破坏网格等距结构
       finalLevel.state = 'pending';
       finalLevel.side = side;
-      finalLevel.price = price;           // AI 定价权：层价格跟随实际下单价
+      // finalLevel.price 保持原始网格线价格，禁止覆盖
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
       state.orderBook[result.orderId] = finalLevelIndex;
