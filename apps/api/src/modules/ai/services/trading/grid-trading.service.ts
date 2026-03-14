@@ -3531,19 +3531,14 @@ export class GridTradingService {
 
         const leverage = Math.max(1, state.leverage ?? 1);
 
-        // 关键：空头持仓 → 只映射到 sell-side 层；多头持仓 → 只映射到 buy-side 层
-        // 这样才能保留对面的空层让 AI 挂反向单来减仓
-        // 如果同侧空层不够，再使用对侧层（但优先同侧）
-        const sameSideLayers = state.gridLines
+        // 按价格距离映射（不区分层原始 side）：
+        // 持仓映射到距离 avgEntry 最近的空层，无论该层原来是 buy 还是 sell
+        // 映射后将层 side 转换为 posSide，确保反向单挂在更远的层上
+        // 修复(2026-03-15): 旧逻辑优先同侧层 → 多头映射到低价买层 → 卖单低于真实入场价 → 亏损
+        const emptyLayers = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
-          .filter(({ layer }) => layer.state === 'empty' && layer.side === posSide)
+          .filter(({ layer }) => layer.state === 'empty')
           .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
-        const oppSideLayers = state.gridLines
-          .map((l, idx) => ({ layer: l, idx }))
-          .filter(({ layer }) => layer.state === 'empty' && layer.side !== posSide)
-          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
-        // 优先同侧，不够再用对侧
-        const emptyLayers = [...sameSideLayers, ...oppSideLayers];
 
         let remainingQty = totalQty;
         let mappedCount = 0;
