@@ -522,7 +522,7 @@ export class PositionsService {
     userId: string,
     query: TradeHistoryQueryDto,
   ): Promise<{ items: TradeHistoryResponse[]; total: number }> {
-    const { page = 1, limit = 20, symbol, side, startDate, endDate, exchange } = query;
+    const { page = 1, limit = 20, symbol, side, startDate, endDate, exchange, apiKeyId } = query;
 
     const where: Prisma.PositionWhereInput = {
       userId,
@@ -531,7 +531,10 @@ export class PositionsService {
       closeReason: { not: 'duplicate_cleanup' },
     };
 
-    if (exchange) {
+    if (apiKeyId) {
+      where.apiKeyId = apiKeyId;
+    } else if (exchange) {
+      // apiKeyId 优先；没有时才按 exchange 过滤
       where.exchange = { equals: exchange, mode: 'insensitive' };
     }
 

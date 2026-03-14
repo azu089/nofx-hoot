@@ -249,9 +249,8 @@ export default function TradingPage() {
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
-      const exchange = apiKeys?.find(k => k.id === selectedApiKeyId)?.exchange?.toLowerCase();
       const params = new URLSearchParams({ limit: '50' });
-      if (exchange) params.set('exchange', exchange);
+      if (selectedApiKeyId) params.set('apiKeyId', selectedApiKeyId);
       const response = await api.get<{
         items: Array<{
           id: string;

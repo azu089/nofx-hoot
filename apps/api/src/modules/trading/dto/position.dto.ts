@@ -89,6 +89,10 @@ export class TradeHistoryQueryDto {
   @IsOptional()
   @IsString()
   exchange?: string; // 按交易所过滤（如 binance / okx）
+
+  @IsOptional()
+  @IsString()
+  apiKeyId?: string; // 按 API Key 过滤（区分同交易所多账户）
 }
 
 // 交易历史响应
