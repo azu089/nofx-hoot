@@ -3895,11 +3895,8 @@ export class GridTradingService {
           .map((l, idx) => ({ layer: l, idx }))
           .filter(({ layer }) => layer.state === 'empty');
 
-        // 锚点层：距离 anchorEntry 最近的空层（方向过滤：买→price≤entry，卖→price≥entry）
-        const dirFilteredLayers = emptyLayers.filter(({ layer }) =>
-          side === 'buy' ? layer.price <= anchorEntry : layer.price >= anchorEntry
-        );
-        const anchorSlot = (dirFilteredLayers.length > 0 ? dirFilteredLayers : [...emptyLayers])
+        // 锚点层：距离 anchorEntry 最近的空层（nofx 纯距离，layer.side 由映射覆盖）
+        const anchorSlot = [...emptyLayers]
           .sort((a, b) => Math.abs(a.layer.price - anchorEntry) - Math.abs(b.layer.price - anchorEntry))[0];
         if (!anchorSlot) return;
 
@@ -4387,11 +4384,8 @@ export class GridTradingService {
           .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
           .filter(({ dd }) => dd.st === 'empty');
 
-        // 锚点：距离 avgEntry 最近的空槽（方向过滤：买→price≤entry，卖→price≥entry）
-        const dirFilteredSlots = emptySlots.filter(({ gl }) =>
-          posSide === 'buy' ? gl.price <= avgEntry : gl.price >= avgEntry
-        );
-        const anchorSlot = (dirFilteredSlots.length > 0 ? dirFilteredSlots : [...emptySlots])
+        // 锚点：距离 avgEntry 最近的空槽（nofx 纯距离）
+        const anchorSlot = [...emptySlots]
           .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
 
         if (anchorSlot) {
