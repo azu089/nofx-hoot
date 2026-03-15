@@ -2399,9 +2399,16 @@ export class GridTradingService {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
         const cancelOrderId = (decision as any).orderId ?? decision.order_id;
         if (cancelOrderId && isGridAdapter(adapter)) {
-          // 校验 orderId 是否存在于本地 orderBook（防止 AI 编造无效 ID 发给交易所）
+          // orderId 不在 orderBook 中：可能是溢出挂单（交易所挂单数 > 网格层数）
+          // 仍然尝试在交易所取消（交易所是唯一事实），只是不更新层状态
           if (state.orderBook[cancelOrderId] === undefined) {
-            this.logger.warn(`[网格] cancel_order 跳过: orderId=${cancelOrderId} 不在 orderBook 中`);
+            this.logger.warn(`[网格] cancel_order: orderId=${cancelOrderId} 不在 orderBook，尝试直接在交易所取消（溢出挂单）`);
+            try {
+              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
+              this.logger.log(`[网格] cancel_order 成功（溢出挂单）: orderId=${cancelOrderId}`);
+            } catch (e: any) {
+              this.logger.warn(`[网格] cancel_order 交易所调用失败: ${e.message}`);
+            }
             break;
           }
           // 执行前回填层号/价格/数量到 decision，供日志展示（与 place_* 保持一致）

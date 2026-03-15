@@ -898,7 +898,9 @@ function buildOrdersSection(ctx: GridContext, isEn: boolean): string[] {
   if (ctx.exchangeOpenOrders && ctx.exchangeOpenOrders.length > 0) {
     lines.push('');
     lines.push(`--- ${isEn ? 'Exchange Open Orders' : '交易所委托单'}(${ctx.exchangeOpenOrders.length}) ---`);
-    for (const o of ctx.exchangeOpenOrders.slice(0, 15)) {
+    // 溢出时显示全部挂单（AI 需要看到所有 orderId 以便撤销多余的）
+    const orderDisplayLimit = ctx.exchangeOpenOrders.length > (ctx.levels?.length ?? 20) ? ctx.exchangeOpenOrders.length : 15;
+    for (const o of ctx.exchangeOpenOrders.slice(0, orderDisplayLimit)) {
       const priceLabel = isEn ? 'price' : '价格';
       const qtyLabel = isEn ? 'qty' : '数量';
       lines.push(`${o.orderId.slice(-8)} | ${o.side} | ${priceLabel}=${o.price.toFixed(4)} | ${qtyLabel}=${o.quantity.toFixed(4)}`);
@@ -972,6 +974,12 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection} | 方向自适应: ${ctx.enableDirectionAdjust ? '已启用（箱体突破→自动偏转）' : '未启用（突破→pause/reduce）'}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  // 溢出警告：交易所挂单数 > 网格层数时，AI 需要主动撤销多余挂单
+  const _exchOrderCount = ctx.exchangeOpenOrders?.length ?? 0;
+  const _gridLevelCount = ctx.levels.length;
+  if (_exchOrderCount > _gridLevelCount) {
+    lines.push(`⚠️ 交易所委托单(${_exchOrderCount}) > 网格层数(${_gridLevelCount})！有 ${_exchOrderCount - _gridLevelCount} 个多余挂单未映射到任何层。请用 cancel_order 撤销距当前价最远的多余挂单，释放层位给持仓映射。`);
+  }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
   }
@@ -1102,6 +1110,11 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push(`Range: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | Spacing: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection} | DirAdjust: ${ctx.enableDirectionAdjust ? 'enabled (box breakout→auto-shift)' : 'disabled (breakout→pause/reduce)'}`);
   lines.push(`Active Orders: ${ctx.activeOrderCount} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
+  const _exchOrderCountEn = ctx.exchangeOpenOrders?.length ?? 0;
+  const _gridLevelCountEn = ctx.levels.length;
+  if (_exchOrderCountEn > _gridLevelCountEn) {
+    lines.push(`⚠️ Exchange orders(${_exchOrderCountEn}) > grid levels(${_gridLevelCountEn})! ${_exchOrderCountEn - _gridLevelCountEn} excess order(s) not mapped to any level. Use cancel_order to cancel the farthest orders from current price to free up level slots for position mapping.`);
+  }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (post-breakout recovery, each level capped at ${100 - ctx.positionReductionPct}% of suggested qty, auto-enforced by system)`);
   }
