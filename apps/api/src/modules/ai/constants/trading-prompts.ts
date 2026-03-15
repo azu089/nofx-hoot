@@ -728,7 +728,8 @@ function gridSystemPromptZh(
 - ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
 
 ## ⚠️ 补单优先级（强制）
-**以盈利释放持仓为核心。**
+**持仓反向侧 > 同向侧。** 有 filled buy 层时，必须优先补满 sell 侧空格（止盈单），再补 buy 侧空格。反之亦然。
+原因：网格=买低卖高的配对，有持仓无反向止盈单=裸头寸，不是网格。
 
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
@@ -789,7 +790,8 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
 
 ## ⚠️ Order Priority (mandatory)
-**Profit-taking to release positions is the core priority.**
+**Reverse side first.** When there are filled buy levels, you MUST fill all empty sell-side levels (take-profit orders) BEFORE placing buy-side orders. Vice versa for filled sell levels.
+Reason: Grid = buy-low-sell-high pairs. Positions without reverse take-profit orders = naked directional exposure, not a grid.
 
 ## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running in restricted mode:
