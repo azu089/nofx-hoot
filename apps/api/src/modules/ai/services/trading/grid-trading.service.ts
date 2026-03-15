@@ -4010,7 +4010,12 @@ export class GridTradingService {
     displayLines?: any[],  // 从交易所数据构建的层级（消除内存依赖）
   ): Promise<void> {
     const { skewed, buyFilled, sellFilled } = this.checkGridSkew(state, displayLines);
-    if (!skewed) return;
+
+    // 触发条件 1：倾斜（nofx 原始）
+    // 触发条件 2：价格超出网格范围（补充 —— 买侧被 pending 占满时倾斜检测 buyEmpty<5 不触发）
+    const priceOutOfRange = currentPrice > state.upperPrice || currentPrice < state.lowerPrice;
+
+    if (!skewed && !priceOutOfRange) return;
 
     const gridRange = state.upperPrice - state.lowerPrice;
     if (gridRange <= 0) return;
@@ -4025,8 +4030,11 @@ export class GridTradingService {
     const oldPending = state.gridLines.filter(l => l.state === 'pending').length;
     const oldFilled = state.gridLines.filter(l => l.state === 'filled').length;
 
+    const triggerReason = priceOutOfRange
+      ? `价格超出范围(${currentPrice.toFixed(2)} ${currentPrice > state.upperPrice ? '>' : '<'} ${currentPrice > state.upperPrice ? oldUpper.toFixed(2) : oldLower.toFixed(2)})`
+      : `倾斜 buy=${buyFilled} sell=${sellFilled}`;
     this.logger.warn(
-      `[网格] ⚡ 自动重建触发: 倾斜 buy=${buyFilled} sell=${sellFilled}，` +
+      `[网格] ⚡ 自动重建触发: ${triggerReason}，` +
       `价格偏移 ${((priceDeviation / gridRange) * 100).toFixed(1)}% > ${(autoAdjustThreshold * 100).toFixed(0)}% 阈值 | ` +
       `旧范围=${oldLower.toFixed(2)}~${oldUpper.toFixed(2)}, 当前价=${currentPrice.toFixed(2)}, ` +
       `旧状态: ${oldPending}挂单 + ${oldFilled}持仓`,
