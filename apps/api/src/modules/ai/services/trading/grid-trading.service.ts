@@ -1831,8 +1831,10 @@ export class GridTradingService {
         break;
 
       case 'close_all':
+        // 对齐 nofx: Long Box 突破 = 平仓 + 暂停，但 pauseSource='breakout'（可恢复）
+        // 禁止用 'risk_control'！nofx 在 checkFalseBreakoutRecovery 中价格回归后自动解除暂停
         await this.emergencyExit(state, userId, apiKeyId,
-          `长期箱体突破 (${direction})，紧急平仓`);
+          `长期箱体突破 (${direction})，紧急平仓`, 'breakout');
         break;
     }
   }
@@ -3101,6 +3103,7 @@ export class GridTradingService {
     userId: string,
     apiKeyId: string,
     reason: string,
+    pauseSource: 'risk_control' | 'breakout' = 'risk_control',
   ): Promise<void> {
     this.logger.error(`[网格] 紧急退出: ${reason}`);
 
@@ -3154,7 +3157,7 @@ export class GridTradingService {
     }
 
     state.isPaused = true;
-    state.pauseSource = 'risk_control';
+    state.pauseSource = pauseSource;
     state.pauseReason = reason;
 
     // 清理订单状态
