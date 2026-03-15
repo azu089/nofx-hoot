@@ -2811,21 +2811,27 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：已成交持仓 + 挂单名义价值（与 nofx checkTotalPositionLimit 一致）
+      // 总仓位上限：持仓按槽位预算计算 + 挂单名义价值
+      // 原因：持仓可能来自旧配置（qty/价格不同），用实际市值会挤占其他层的下单空间
+      // nofx 中持仓qty≈allocatedUSD×leverage/price，所以实际市值≈槽位预算，两者等价
+      // HOOT 持仓来自交易所映射，实际市值可能远超当前配置槽位预算，需用槽位预算防误判
       const totalPositionCap = state.totalInvestment * leverage;
-      const livePositionNotional = state.livePositionNotional ?? 0;
+      const gridLayerCount = state.gridLines.length || 10;
+      const perLayerBudget = totalPositionCap / gridLayerCount;
+      const filledLayerCount = state.gridLines.filter(l => l.state === 'filled').length;
+      const filledNotional = filledLayerCount * perLayerBudget; // 槽位预算，非实际市值
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
       capTotal = totalPositionCap;
-      capUsed = livePositionNotional + pendingNotional;
+      capUsed = filledNotional + pendingNotional;
       if (capUsed + quantity * price > totalPositionCap) {
-        // 削减至剩余可用额度（持仓+挂单）
-        const remaining = Math.max(0, totalPositionCap - livePositionNotional - pendingNotional);
+        // 削减至剩余可用额度（持仓槽位+挂单）
+        const remaining = Math.max(0, totalPositionCap - filledNotional - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
         capTruncated = true;
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 持仓+挂单 $${(livePositionNotional + pendingNotional).toFixed(2)} / 上限 $${totalPositionCap.toFixed(2)}`;
+          const skipReason = `总仓位已满: 持仓${filledLayerCount}层×$${perLayerBudget.toFixed(2)}=$${filledNotional.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)}`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
