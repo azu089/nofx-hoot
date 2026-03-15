@@ -3487,18 +3487,17 @@ export class GridTradingService {
                 'grid_tp',
               );
             } else {
-              // 无匹配买入层 = 卖单开空仓（非止盈）
-              // Fix2: 标记为 filled 空头持仓，而非 empty（防止内存与交易所仓位脱节）
+              // 无匹配买入层：对齐 nofx — 标记 filled，不改 side
+              // nofx syncGridState 只看持仓增减，不区分买卖，side 保持初始化时的值
               line.state = 'filled';
-              line.side = 'sell';
+              // side 不改（保持初始化时的 sell）
               line.positionEntry = fillPrice;
               line.positionSize = qty;
               line.unrealizedPnl = 0;
               state.totalTrades++;
-              runningExpected -= qty; // 空头增加，expectedPos 减少
               filledLines.push(line);
               this.logger.log(
-                `[网格] 卖单成交(开空): L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → filled(sell)`,
+                `[网格] 卖单成交: L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → filled`,
               );
             }
           } else {
