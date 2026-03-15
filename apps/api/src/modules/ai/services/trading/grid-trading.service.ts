@@ -4362,55 +4362,39 @@ export class GridTradingService {
       const totalQty = pos.quantity ?? 0;
       if (totalQty <= 0.0001) continue;
 
-      const rawSide = pos.side as string;
-      const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+      // adapter 已标准化 side='long'|'short'，quantity=abs(正值)
+      const posSide: 'buy' | 'sell' = pos.side === 'short' ? 'sell' : 'buy';
       const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
 
-      // 优先用内存中已标记为 filled 的层（正常交易积累的持仓）
-      const memoryFilledLayers = state.gridLines
-        .map((gl, i) => ({ gl, i }))
-        .filter(({ gl }) => gl.state === 'filled' && (gl.positionSize ?? 0) > 0.0001);
+      // 始终用交易所持仓数据构建 filled 层（交易所是唯一事实）
+      // 按交易所持仓均价为锚点，根据每层预算反推层数，向内侧连续映射
+      const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
+      const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
+      const estLayers = perLayerQty > 0.0001
+        ? Math.max(1, Math.round(totalQty / perLayerQty))
+        : 1;
 
-      if (memoryFilledLayers.length > 0) {
-        // 内存有 filled 层，按内存映射显示（正常交易期间每层独立持仓）
-        for (const { gl, i } of memoryFilledLayers) {
-          if (i < display.length) {
-            display[i].st = 'filled';
-            display[i].s = gl.side || posSide;
-            display[i].qty = +(gl.positionSize ?? 0).toFixed(4);
-            display[i].ep = +((gl.positionEntry || gl.price) || 0).toFixed(4);
-          }
-        }
-      } else {
-        // 内存无 filled 层（启动时），按交易所持仓均价为锚点，向内侧连续映射
-        const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
-        const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
-        const estLayers = perLayerQty > 0.0001
-          ? Math.max(1, Math.round(totalQty / perLayerQty))
-          : 1;
+      const emptySlots = display
+        .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
+        .filter(({ dd }) => dd.st === 'empty');
 
-        const emptySlots = display
-          .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
-          .filter(({ dd }) => dd.st === 'empty');
+      // 锚点：距离 avgEntry 最近的空槽（nofx 纯距离）
+      const anchorSlot = [...emptySlots]
+        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
 
-        // 锚点：距离 avgEntry 最近的空槽（nofx 纯距离）
-        const anchorSlot = [...emptySlots]
-          .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
+      if (anchorSlot) {
+        // 从锚点向内侧连续取 estLayers 层（买→锚点及以下，卖→锚点及以上）
+        const slots = emptySlots
+          .filter(({ i }) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
+          .sort((a, b) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
+          .slice(0, estLayers);
 
-        if (anchorSlot) {
-          // 从锚点向内侧连续取 estLayers 层（买→锚点及以下，卖→锚点及以上）
-          const slots = emptySlots
-            .filter(({ i }) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
-            .sort((a, b) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
-            .slice(0, estLayers);
-
-          const qtyEach = totalQty / Math.max(1, slots.length);
-          for (const { dd } of slots) {
-            dd.st = 'filled';
-            dd.s = posSide;
-            dd.qty = +qtyEach.toFixed(4);
-            dd.ep = +avgEntry.toFixed(4);
-          }
+        const qtyEach = totalQty / Math.max(1, slots.length);
+        for (const { dd } of slots) {
+          dd.st = 'filled';
+          dd.s = posSide;
+          dd.qty = +qtyEach.toFixed(4);
+          dd.ep = +avgEntry.toFixed(4);
         }
       }
     }
