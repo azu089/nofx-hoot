@@ -1970,8 +1970,8 @@ export class GridTradingService {
         const profit = l.side === 'buy'
           ? (currentPrice - l.positionEntry) * l.positionSize
           : (l.positionEntry - currentPrice) * l.positionSize;
-        // 对齐 nofx: filled 层显示网格线价格（层的固定锚点）
-        const displayPrice = l.price;
+        // positionEntry = 交易所真实入场价（交易所是唯一真相）
+        const displayPrice = l.positionEntry > 0 ? l.positionEntry : l.price;
         return {
           price: displayPrice,
           side: l.side as 'buy' | 'sell',
@@ -1979,7 +1979,7 @@ export class GridTradingService {
           positionSize: l.positionSize,
           state: 'filled' as const,
           orderId: undefined,
-          fillPrice: l.price,  // 网格线价格
+          fillPrice: l.positionEntry > 0 ? l.positionEntry : undefined,
           profit,
         };
       }
@@ -2091,9 +2091,16 @@ export class GridTradingService {
         };
       }
 
-      // positionEntry = 网格线价格（对齐 nofx），不再用交易所聚合均价覆盖
-      // 交易所返回的 entryPrice 是所有层的加权均价，覆盖后所有层变成同一个价格（价格坍塌）
-      // 每层的真实锚点是其网格线价格 line.price，由 syncOrderFills 和 recoverPositions 赋值
+      // 交易所是唯一真相：每轮用交易所真实入场价刷新内存中 filled 层的 positionEntry
+      // 消除内存旧值与交易所实时数据的矛盾（重建/重启后内存可能残留错误入场价）
+      for (const line of state.gridLines) {
+        if (line.state !== 'filled' || (line.positionSize ?? 0) <= 0.0001) continue;
+        if (line.side === 'buy' && longPos && (longPos.entryPrice ?? 0) > 0) {
+          line.positionEntry = longPos.entryPrice!;
+        } else if (line.side === 'sell' && shortPos && (shortPos.entryPrice ?? 0) > 0) {
+          line.positionEntry = shortPos.entryPrice!;
+        }
+      }
     } catch { /* 使用默认值 */ }
 
     // 资金费率
@@ -2859,32 +2866,6 @@ export class GridTradingService {
       percentPriceUp = precision.percentPriceUp;
     } catch { /* 获取失败则跳过，交由交易所兜底 */ }
 
-    // Step 2.4: Bid/Ask Spread + 盘口深度检测
-    // spread 过宽或盘口极薄时跳过本格下单，避免在流动性差时被大价差吃掉网格利润
-    try {
-      const ob = await adapter.getOrderBook(state.symbol, 5);
-      if (ob.bids.length > 0 && ob.asks.length > 0) {
-        const bestBid = ob.bids[0][0];
-        const bestAsk = ob.asks[0][0];
-        const midPrice = (bestBid + bestAsk) / 2;
-        const spreadPct = midPrice > 0 ? ((bestAsk - bestBid) / midPrice) * 100 : 0;
-        if (spreadPct > 0.3) {
-          const skipReason = `spread过宽(${spreadPct.toFixed(3)}% > 0.3%)`;
-          this.logger.debug(`[网格] ${skipReason}，跳过本格 level=${levelIndex}`);
-          return { executed: false, skipReason };
-        }
-        // 盘口深度：买卖任一方 top-5 档合计 < $1000 → 流动性极差，跳过
-        const bidDepth = ob.bids.reduce((sum, [p, q]) => sum + p * q, 0);
-        const askDepth = ob.asks.reduce((sum, [p, q]) => sum + p * q, 0);
-        const minDepth = Math.min(bidDepth, askDepth);
-        if (minDepth < 1000) {
-          const skipReason = `盘口深度不足(${minDepth.toFixed(0)} USD < 1000)`;
-          this.logger.debug(`[网格] ${skipReason}，跳过本格 level=${levelIndex}`);
-          return { executed: false, skipReason };
-        }
-      }
-    } catch { /* 获取失败不阻塞下单，由交易所兜底 */ }
-
     // Step 2.5: 价格偏差保护（动态读取交易所 PERCENT_PRICE，替代硬编码）
     // Binance PERCENT_PRICE 因品种而异（如 multiplierDown=0.95 表示不低于标记价×0.95）
     // 加 2% 安全余量：lastPrice ≠ markPrice，防止下单瞬间标记价微移导致被拒
@@ -3464,10 +3445,10 @@ export class GridTradingService {
             }
           } else {
             // 买单成交：标记 filled，保持 side='buy'（与 nofx 完全对齐）
-            // positionEntry = 网格线价格（line.price），对齐 nofx: level.PositionEntry = level.Price
-            // 网格线价格是层的固定锚点，用于计算层间距和显示，不受交易所聚合均价影响
+            // positionEntry = 交易所实际成交价（fillPrice），交易所是唯一真相
+            // nofx 用 level.Price 是因为逐层成交时层价格≈实际成交价，但本质应该用真实值
             line.state = 'filled';
-            line.positionEntry = line.price;
+            line.positionEntry = fillPrice;
             line.positionSize = qty;
             line.unrealizedPnl = 0;
             state.totalTrades++;
@@ -3584,7 +3565,7 @@ export class GridTradingService {
         for (let i = 0; i < layersToFill; i++) {
           const { layer, idx } = emptyLayers[i];
           layer.state = 'filled';
-          layer.positionEntry = layer.price;  // 对齐 nofx: 用网格线价格，非交易所聚合均价
+          layer.positionEntry = avgEntry;
           layer.positionSize = qtyPerLayer;
           layer.side = posSide;
           layer.orderId = undefined;
@@ -3943,7 +3924,7 @@ export class GridTradingService {
           const { layer, idx } = slots[i];
           const snap = sortedSnaps[i] ?? sortedSnaps[sortedSnaps.length - 1];
           layer.state = 'filled';
-          layer.positionEntry = layer.price;  // 对齐 nofx: 重建后用新层价格，非旧快照价格
+          layer.positionEntry = snap.positionEntry;
           layer.positionSize = snap.positionSize;
           layer.side = side;
           layer.unrealizedPnl = snap.unrealizedPnl;
@@ -4397,7 +4378,7 @@ export class GridTradingService {
             display[i].st = 'filled';
             display[i].s = gl.side || posSide;
             display[i].qty = +(gl.positionSize ?? 0).toFixed(4);
-            display[i].ep = +gl.price.toFixed(4);  // 对齐 nofx: 显示网格线价格
+            display[i].ep = +(gl.positionEntry ?? gl.price).toFixed(4);
           }
         }
       } else {
@@ -4424,11 +4405,11 @@ export class GridTradingService {
             .slice(0, estLayers);
 
           const qtyEach = totalQty / Math.max(1, slots.length);
-          for (const { dd, gl } of slots) {
+          for (const { dd } of slots) {
             dd.st = 'filled';
             dd.s = posSide;
             dd.qty = +qtyEach.toFixed(4);
-            dd.ep = +gl.price.toFixed(4);  // 对齐 nofx: 显示网格线价格
+            dd.ep = +avgEntry.toFixed(4);
           }
         }
       }
@@ -4522,7 +4503,7 @@ export class GridTradingService {
           };
           if (l.state === 'filled') {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +l.price.toFixed(4);  // 对齐 nofx: 网格线价格
+            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
           } else if (l.state === 'pending') {
             entry.oid = l.orderId?.slice(-8) ?? '';
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
