@@ -1347,6 +1347,8 @@ export class GridTradingService {
         const execResults: Array<{ action: string; level?: number; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
         // 把交易所实时层级挂到 state，供 placeGridLimitOrder 的 filled 检查使用（交易所是唯一事实）
         (state as any)._exchangeDisplay = preSyncDisplay;
+        // 缓存交易所挂单列表，供 cancel_order 溢出挂单回填价格/数量到 decision（前端显示用）
+        (state as any)._lastExchangeOrders = preSyncExchangeOrders;
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = execDecisions.some(d => d.action === 'pause_grid');
@@ -1473,10 +1475,21 @@ export class GridTradingService {
         }
 
         // 层级状态摘要日志（从交易所数据构建，不读内存）
+        // Fix5: autoAdjustGrid 后挂单已撤销，需重新拉取交易所数据构建显示
+        let finalDisplay = postSyncDisplay;
+        if (isGridAdapter(adapter)) {
+          try {
+            const freshOrders = await (adapter as GridExchangeAdapter).getOpenOrders(state.symbol);
+            const freshPositions = await (adapter as GridExchangeAdapter).getPositions();
+            finalDisplay = this.buildDisplayFromExchange(state, freshOrders, freshPositions);
+          } catch {
+            // 失败时用 postSyncDisplay（pre-rebuild），不阻塞
+          }
+        }
         {
-          const filled  = postSyncDisplay.filter((d: any) => d.st === 'filled');
-          const pending = postSyncDisplay.filter((d: any) => d.st === 'pending');
-          const empty   = postSyncDisplay.filter((d: any) => d.st === 'empty' || !d.st);
+          const filled  = finalDisplay.filter((d: any) => d.st === 'filled');
+          const pending = finalDisplay.filter((d: any) => d.st === 'pending');
+          const empty   = finalDisplay.filter((d: any) => d.st === 'empty' || !d.st);
           const filledStr  = filled.map((d: any) =>
             `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}`
           ).join(' ');
@@ -2399,18 +2412,6 @@ export class GridTradingService {
         // AI 提示词用 orderId (camelCase)，兼容 order_id (snake_case)
         const cancelOrderId = (decision as any).orderId ?? decision.order_id;
         if (cancelOrderId && isGridAdapter(adapter)) {
-          // orderId 不在 orderBook 中：可能是溢出挂单（交易所挂单数 > 网格层数）
-          // 仍然尝试在交易所取消（交易所是唯一事实），只是不更新层状态
-          if (state.orderBook[cancelOrderId] === undefined) {
-            this.logger.warn(`[网格] cancel_order: orderId=${cancelOrderId} 不在 orderBook，尝试直接在交易所取消（溢出挂单）`);
-            try {
-              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
-              this.logger.log(`[网格] cancel_order 成功（溢出挂单）: orderId=${cancelOrderId}`);
-            } catch (e: any) {
-              this.logger.warn(`[网格] cancel_order 交易所调用失败: ${e.message}`);
-            }
-            break;
-          }
           // 执行前回填层号/价格/数量到 decision，供日志展示（与 place_* 保持一致）
           const preCancelIdx = state.orderBook[cancelOrderId];
           if (preCancelIdx !== undefined && state.gridLines[preCancelIdx]) {
@@ -2418,6 +2419,28 @@ export class GridTradingService {
             decision.level = preCancelIdx + 1; // 1-based，与 AI prompt 层号一致
             decision.price = cancelLine.price;
             decision.quantity = cancelLine.orderQuantity || undefined;
+          } else {
+            // 溢出挂单（不在 orderBook）：从交易所挂单缓存中查找价格/数量
+            // 让前端也能显示撤了哪个价格/多少数量
+            const exchOrders = (state as any)._lastExchangeOrders as Array<{ orderId?: string; price?: number; quantity?: number; side?: string }> | undefined;
+            const matchOrder = exchOrders?.find((o: any) => o.orderId === cancelOrderId);
+            if (matchOrder) {
+              decision.price = matchOrder.price;
+              decision.quantity = matchOrder.quantity;
+            }
+          }
+
+          // orderId 不在 orderBook 中：可能是溢出挂单（交易所挂单数 > 网格层数）
+          // 仍然尝试在交易所取消（交易所是唯一事实），只是不更新层状态
+          if (state.orderBook[cancelOrderId] === undefined) {
+            this.logger.warn(`[网格] cancel_order: orderId=${cancelOrderId} 不在 orderBook，尝试直接在交易所取消（溢出挂单）`);
+            try {
+              await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
+              this.logger.log(`[网格] cancel_order 成功（溢出挂单）: orderId=${cancelOrderId} price=${decision.price ?? '?'} qty=${decision.quantity ?? '?'}`);
+            } catch (e: any) {
+              this.logger.warn(`[网格] cancel_order 交易所调用失败: ${e.message}`);
+            }
+            break;
           }
           try {
             await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
@@ -2493,6 +2516,7 @@ export class GridTradingService {
         );
         // 用户设定了百分比边界：按百分比重算当前价的上/下界
         // 未设定（AI 模式）：ATR 自动计算
+        // Fix3: 重建时不保留内存持仓（preserveFilledFromMemory=false），改从交易所恢复
         if (state.upperBoundPct && state.lowerBoundPct) {
           const explicitUpper = newPrice * (1 + state.upperBoundPct / 100);
           const explicitLower = newPrice * (1 - state.lowerBoundPct / 100);
@@ -2504,11 +2528,14 @@ export class GridTradingService {
             ` → [${explicitLower.toFixed(2)}, ${explicitUpper.toFixed(2)}]` +
             `\n       以当前价 ${newPrice.toFixed(2)} 为中心，上扩 +${state.upperBoundPct}% → ${explicitUpper.toFixed(2)}，下扩 -${state.lowerBoundPct}% → ${explicitLower.toFixed(2)}，共 ${gridCountLog} 层，格间距 ${spacingLog}，总跨度 ${totalSpanPct}%`,
           );
-          await this.reinitializeGridLevels(state, newPrice, explicitUpper, explicitLower);
+          await this.reinitializeGridLevels(state, newPrice, explicitUpper, explicitLower, false);
         } else {
-          await this.reinitializeGridLevels(state, newPrice);
+          await this.reinitializeGridLevels(state, newPrice, undefined, undefined, false);
         }
-        // reinitializeGridLevels 已从内存保存 filled 层并恢复（对齐 nofx autoAdjustGrid）
+        // 从交易所实时持仓恢复 filled（与容器重启恢复一致，交易所是唯一事实）
+        await this.recoverPositionsFromExchange(state, userId, apiKeyId, 0, adapter);
+        const adjustRecovered = state.gridLines.filter(l => l.state === 'filled').length;
+        this.logger.log(`[网格] adjust_grid: 从交易所恢复 ${adjustRecovered} 个持仓层`);
         // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
         if (state.isPaused && state.pauseSource !== 'risk_control') {
           state.isPaused = false;
@@ -3112,7 +3139,7 @@ export class GridTradingService {
     reason: string,
     pauseSource: 'risk_control' | 'breakout' = 'risk_control',
   ): Promise<void> {
-    this.logger.error(`[网格] 紧急退出: ${reason}`);
+    this.logger.error(`[网格] 🚨 紧急退出: ${reason} | pauseSource=${pauseSource}`);
 
     if (!this.adapterFactory) return;
 
@@ -3175,6 +3202,26 @@ export class GridTradingService {
       }
     }
     state.orderBook = {};
+
+    // Fix1: 写入策略日志，让前端看到风控/平仓事件
+    if (state.strategyId) {
+      try {
+        await this.prisma.aiStrategyLog.create({
+          data: {
+            strategyId: state.strategyId,
+            symbol: state.symbol,
+            decision: {
+              action: pauseSource === 'risk_control' ? 'risk_stop' : 'emergency_exit',
+              gridSummary: `${pauseSource === 'risk_control' ? '风控平仓' : '紧急退出'}`,
+              reasoning: reason,
+            } as any,
+            executed: true,
+          },
+        });
+      } catch (logErr: any) {
+        this.logger.warn(`[网格] 紧急退出日志写入失败: ${logErr.message}`);
+      }
+    }
   }
 
   /**
@@ -3440,14 +3487,18 @@ export class GridTradingService {
                 'grid_tp',
               );
             } else {
-              // 无匹配买入层（孤儿卖单成交）
-              line.state = 'empty';
-              line.positionSize = 0;
-              line.positionEntry = 0;
+              // 无匹配买入层 = 卖单开空仓（非止盈）
+              // Fix2: 标记为 filled 空头持仓，而非 empty（防止内存与交易所仓位脱节）
+              line.state = 'filled';
+              line.side = 'sell';
+              line.positionEntry = fillPrice;
+              line.positionSize = qty;
               line.unrealizedPnl = 0;
               state.totalTrades++;
-              this.logger.warn(
-                `[网格] 卖单成交但无匹配买入层: L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty`,
+              runningExpected -= qty; // 空头增加，expectedPos 减少
+              filledLines.push(line);
+              this.logger.log(
+                `[网格] 卖单成交(开空): L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → filled(sell)`,
               );
             }
           } else {
@@ -3529,11 +3580,14 @@ export class GridTradingService {
     userId: string,
     apiKeyId: string,
     _qtyHint = 0,   // 已废弃，保留签名兼容
+    existingAdapter?: ExchangeAdapter,  // 运行时传入主循环 adapter，避免重复创建
   ): Promise<void> {
-    if (!this.adapterFactory || !apiKeyId) return;
-    let adapter: ExchangeAdapter | null = null;
+    if (!existingAdapter && (!this.adapterFactory || !apiKeyId)) return;
+    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
     try {
-      adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
+      if (!adapter) {
+        adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
+      }
       const positions = await adapter.getPositions();
       const baseSymbol = state.symbol.split('/')[0];
       const symPositions = positions.filter((p: any) => p.symbol?.includes(baseSymbol));
@@ -3591,7 +3645,8 @@ export class GridTradingService {
     } catch (e: any) {
       this.logger.warn(`[网格] 启动持仓恢复失败（忽略）: ${e.message}`);
     } finally {
-      if (adapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
+      // 只 dispose 自己创建的 adapter，外部传入的由调用方管理
+      if (adapter && !existingAdapter) { try { await adapter.dispose(); } catch { /* ignore */ } }
     }
   }
 
@@ -4048,14 +4103,14 @@ export class GridTradingService {
       this.logger.warn(`[网格] 自动重建 Step1: 撤单失败（继续重建）: ${e.message}`);
     }
 
-    // Step 2: 重建网格（全部 empty）
+    // Step 2: 重建网格（全部 empty，不保留内存持仓——交由 Step 3 从交易所恢复）
     let newUpper: number, newLower: number;
     if (state.upperBoundPct && state.lowerBoundPct) {
       newUpper = currentPrice * (1 + state.upperBoundPct / 100);
       newLower = currentPrice * (1 - state.lowerBoundPct / 100);
-      await this.reinitializeGridLevels(state, currentPrice, newUpper, newLower);
+      await this.reinitializeGridLevels(state, currentPrice, newUpper, newLower, false);
     } else {
-      await this.reinitializeGridLevels(state, currentPrice);
+      await this.reinitializeGridLevels(state, currentPrice, undefined, undefined, false);
       newUpper = state.upperPrice;
       newLower = state.lowerPrice;
     }
@@ -4064,7 +4119,11 @@ export class GridTradingService {
       `新范围=${newLower.toFixed(2)}~${newUpper.toFixed(2)}, 格间距=${state.gridSpacing.toFixed(4)}`,
     );
 
-    // Step 3: reinitializeGridLevels 已从内存保存 filled 层并恢复（对齐 nofx autoAdjustGrid L1424-1479）
+    // Step 3: 从交易所实时持仓恢复 filled（与容器重启恢复一致，交易所是唯一事实）
+    // Fix3: 不再从内存快照恢复——内存可能严重滞后（如 0.3 SOL vs 交易所 2.71 SOL）
+    if (strategyId && userId && apiKeyId) {
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId, 0, adapter);
+    }
     const recoveredFilled2 = state.gridLines.filter(l => l.state === 'filled').length;
     const emptyCount = state.gridLines.filter(l => l.state === 'empty').length;
 
