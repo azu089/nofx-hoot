@@ -879,7 +879,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                             <span className="font-mono" style={{ color: textColor }}>×{gl.qty}</span>
                           )}
                           {isFilled && gl.ep && (
-                            <span className="font-mono" style={{ color: '#06B6D4' }}>@${Number(gl.ep).toFixed(2)}</span>
+                            <span className="font-mono" style={{ color: '#06B6D4' }}>@{Number(gl.ep).toFixed(2)}</span>
                           )}
                           {!isFilled && !isPending && (
                             <span className="text-[#404050]">—</span>
