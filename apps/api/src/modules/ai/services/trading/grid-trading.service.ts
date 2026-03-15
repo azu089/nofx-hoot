@@ -4378,7 +4378,7 @@ export class GridTradingService {
             display[i].st = 'filled';
             display[i].s = gl.side || posSide;
             display[i].qty = +(gl.positionSize ?? 0).toFixed(4);
-            display[i].ep = +(gl.positionEntry ?? gl.price).toFixed(4);
+            display[i].ep = +((gl.positionEntry || gl.price) || 0).toFixed(4);
           }
         }
       } else {
@@ -4503,7 +4503,7 @@ export class GridTradingService {
           };
           if (l.state === 'filled') {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +(l.positionEntry ?? l.price).toFixed(4);
+            entry.ep = +((l.positionEntry || l.price) || 0).toFixed(4);
           } else if (l.state === 'pending') {
             entry.oid = l.orderId?.slice(-8) ?? '';
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
