@@ -770,10 +770,11 @@ export class GridTradingService {
     // reconcileCompleted 在进程生命周期内持续，容器重启时自动清空
     // 使用 Set 而非 if (!state) 判断，避免 getGridState 预加载导致恢复块被跳过
     if (state && !this.reconcileCompleted.has(strategyId)) {
-      // 容器重启恢复：对齐 nofx——全部 empty，只恢复挂单 pending，持仓由 AI 第一轮通过 positionLong/positionShort 自行决策
-      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所恢复挂单`);
+      // 容器重启恢复：对齐架构三步法 — 全部 empty → 从交易所恢复挂单 pending → 从交易所恢复持仓 filled
+      this.logger.log(`[网格] 容器重启恢复: 全部重置 → 从交易所恢复挂单 + 持仓`);
       this.resetGridLayers(state);
       await this.recoverOrdersFromExchange(state, userId, apiKeyId);
+      await this.recoverPositionsFromExchange(state, userId, apiKeyId);
       this.reconcileCompleted.add(strategyId);
     }
 
@@ -821,9 +822,8 @@ export class GridTradingService {
           const lines = state.gridLines.filter(l => l.state === 'pending' && l.orderQuantity > 0.0001);
           return lines.length > 0 ? lines.reduce((s, l) => s + l.orderQuantity, 0) / lines.length : 0;
         })();
-        // Step A: 取消交易所所有挂单 + 清空内存层状态（避免 filledSnapshots 与交易所持仓双重映射）
+        // Step A: 取消交易所所有挂单（内存层状态由 reinitializeGridLevels 内部先快照再清空）
         await this.cleanupExistingOrders(state, userId, apiKeyId);
-        this.resetGridLayers(state);
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
         if (gridConfig.leverage !== undefined) {
