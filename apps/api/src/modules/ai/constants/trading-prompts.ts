@@ -972,6 +972,14 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('');
   lines.push('--- 网格状态 ---');
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
+  // 价格超出网格范围警告：引导 AI 主动 adjust_grid 重建
+  if (ctx.currentPrice > ctx.upperPrice) {
+    const overPct = ((ctx.currentPrice - ctx.upperPrice) / ctx.upperPrice * 100).toFixed(2);
+    lines.push(`⚠️ 当前价格(${ctx.currentPrice.toFixed(2)}) 已超出网格上界(${ctx.upperPrice.toFixed(2)})！偏离 ${overPct}%。网格顶部已无覆盖，建议 adjust_grid 以当前价为中心重建网格。`);
+  } else if (ctx.currentPrice < ctx.lowerPrice) {
+    const underPct = ((ctx.lowerPrice - ctx.currentPrice) / ctx.lowerPrice * 100).toFixed(2);
+    lines.push(`⚠️ 当前价格(${ctx.currentPrice.toFixed(2)}) 已低于网格下界(${ctx.lowerPrice.toFixed(2)})！偏离 ${underPct}%。网格底部已无覆盖，建议 adjust_grid 以当前价为中心重建网格。`);
+  }
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection} | 方向自适应: ${ctx.enableDirectionAdjust ? '已启用（箱体突破→自动偏转）' : '未启用（突破→pause/reduce）'}`);
   lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
   // 溢出警告：交易所挂单数 > 网格层数时，AI 需要主动撤销多余挂单
@@ -1108,6 +1116,13 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('');
   lines.push('--- Grid Status ---');
   lines.push(`Range: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | Spacing: ${ctx.gridSpacing.toFixed(4)}`);
+  if (ctx.currentPrice > ctx.upperPrice) {
+    const overPct = ((ctx.currentPrice - ctx.upperPrice) / ctx.upperPrice * 100).toFixed(2);
+    lines.push(`⚠️ Price(${ctx.currentPrice.toFixed(2)}) ABOVE grid upper bound(${ctx.upperPrice.toFixed(2)})! ${overPct}% over. No grid coverage above. Recommend adjust_grid to rebuild centered on current price.`);
+  } else if (ctx.currentPrice < ctx.lowerPrice) {
+    const underPct = ((ctx.lowerPrice - ctx.currentPrice) / ctx.lowerPrice * 100).toFixed(2);
+    lines.push(`⚠️ Price(${ctx.currentPrice.toFixed(2)}) BELOW grid lower bound(${ctx.lowerPrice.toFixed(2)})! ${underPct}% under. No grid coverage below. Recommend adjust_grid to rebuild centered on current price.`);
+  }
   lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection} | DirAdjust: ${ctx.enableDirectionAdjust ? 'enabled (box breakout→auto-shift)' : 'disabled (breakout→pause/reduce)'}`);
   lines.push(`Active Orders: ${ctx.activeOrderCount} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
   const _exchOrderCountEn = ctx.exchangeOpenOrders?.length ?? 0;
