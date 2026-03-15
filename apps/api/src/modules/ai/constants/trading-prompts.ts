@@ -728,11 +728,7 @@ function gridSystemPromptZh(
 - ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
 
 ## ⚠️ 补单优先级（强制）
-**止盈方向 > 同向加仓。** 网格=买低卖高的配对，持仓没有反向止盈单=裸头寸风险。
-- **有 filled buy 层（多头持仓）→ 优先在更高价格补 sell 挂单**（卖出止盈）
-- **有 filled sell 层（空头持仓）→ 优先在更低价格补 buy 挂单**（买入止盈）
-- 止盈方向补满后，才能继续补同向挂单
-⚠️ 常见错误：空头持仓时在更高价格挂卖单 = 加空（加仓），不是止盈！空头止盈 = 低价买单。
+**以盈利释放持仓为核心。** 持仓层必须有反向止盈单配对：多头配高价卖单，空头配低价买单。止盈侧补满后才能补同向单。
 
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
@@ -793,11 +789,7 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
 
 ## ⚠️ Order Priority (mandatory)
-**Take-profit direction first.** Grid = buy-low-sell-high pairs. Positions without reverse take-profit orders = naked directional exposure.
-- **Filled buy levels (long positions) → prioritize placing sell orders at HIGHER prices** (sell to take profit)
-- **Filled sell levels (short positions) → prioritize placing buy orders at LOWER prices** (buy to take profit)
-- Only after take-profit side is fully covered, place same-direction orders
-⚠️ Common mistake: placing MORE sell orders above short positions = adding to short exposure, NOT take-profit! Short take-profit = buy orders at lower prices.
+**Profit-taking to release positions is the core priority.** Every filled level must have a reverse take-profit order paired: longs need higher-price sells, shorts need lower-price buys. Fill take-profit side before placing same-direction orders.
 
 ## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running in restricted mode:
