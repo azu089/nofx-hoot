@@ -3487,18 +3487,14 @@ export class GridTradingService {
                 'grid_tp',
               );
             } else {
-              // 无匹配买入层 = 卖单开空仓（非止盈）
-              // Fix2: 标记为 filled 空头持仓，而非 empty（防止内存与交易所仓位脱节）
-              line.state = 'filled';
-              line.side = 'sell';
-              line.positionEntry = fillPrice;
-              line.positionSize = qty;
+              // 无匹配买入层 = 内存索引丢失（对齐 nofx：不改 side，不创建虚假空头）
+              // 保守处理：标记 empty，下一轮 buildDisplayFromExchange 会从交易所持仓重建正确状态
+              line.state = 'empty';
+              line.positionSize = 0;
+              line.positionEntry = 0;
               line.unrealizedPnl = 0;
-              state.totalTrades++;
-              runningExpected -= qty; // 空头增加，expectedPos 减少
-              filledLines.push(line);
-              this.logger.log(
-                `[网格] 卖单成交(开空): L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → filled(sell)`,
+              this.logger.warn(
+                `[网格] 卖单成交(无匹配买层): L${(line.index ?? 0) + 1} @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)} → empty（交易所持仓下轮重建）`,
               );
             }
           } else {
@@ -3603,7 +3599,8 @@ export class GridTradingService {
           ? pos.entryPrice
           : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
-        const leverage = Math.max(1, state.leverage ?? 1);
+        // leverage 默认 4（对齐 AI_DYNAMIC_LEVERAGE_DEFAULT），禁止 fallback 到 1
+        const leverage = Math.max(1, state.leverage ?? 4);
 
         // 容器重启：交易所返回 1 个聚合持仓，按每层预算反推应占几层
         // 计算每层标准数量
@@ -4397,7 +4394,9 @@ export class GridTradingService {
     exchangeOpenOrders: any[],
     exchangePositions: any[],
   ): any[] {
-    const leverage = Math.max(1, state.leverage ?? 1);
+    // leverage 默认 4（对齐 AI_DYNAMIC_LEVERAGE_DEFAULT），禁止 fallback 到 1
+    const AI_DYNAMIC_LEV = 4;
+    const leverage = Math.max(1, state.leverage ?? AI_DYNAMIC_LEV);
     const currentPrice = state.lastPrice ?? 0;
 
     // 初始化所有层为 empty
@@ -4429,7 +4428,7 @@ export class GridTradingService {
     }
 
     // Step 2: 用交易所持仓标记 filled 层
-    // 1 持仓 → 1 最近空层（对齐 nofx autoAdjustGrid + recoverPositionsFromExchange）
+    // 对齐 nofx + recoverPositionsFromExchange：纯距离最近映射，无方向过滤
     const baseSymbol = state.symbol.split('/')[0];
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
@@ -4440,36 +4439,28 @@ export class GridTradingService {
       const posSide: 'buy' | 'sell' = pos.side === 'short' ? 'sell' : 'buy';
       const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
 
-      // 始终用交易所持仓数据构建 filled 层（交易所是唯一事实）
-      // 按交易所持仓均价为锚点，根据每层预算反推层数，向内侧连续映射
+      // 按交易所持仓均价为锚点，根据每层预算反推层数
       const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
       const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
       const estLayers = perLayerQty > 0.0001
         ? Math.max(1, Math.round(totalQty / perLayerQty))
         : 1;
 
+      // 纯距离排序（nofx 方式）：所有空槽按距 avgEntry 距离升序
       const emptySlots = display
         .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
-        .filter(({ dd }) => dd.st === 'empty');
+        .filter(({ dd }) => dd.st === 'empty')
+        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry));
 
-      // 锚点：距离 avgEntry 最近的空槽（nofx 纯距离）
-      const anchorSlot = [...emptySlots]
-        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
+      // 取距离最近的 estLayers 个空槽
+      const slots = emptySlots.slice(0, estLayers);
 
-      if (anchorSlot) {
-        // 从锚点向内侧连续取 estLayers 层（买→锚点及以下，卖→锚点及以上）
-        const slots = emptySlots
-          .filter(({ i }) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
-          .sort((a, b) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
-          .slice(0, estLayers);
-
-        const qtyEach = totalQty / Math.max(1, slots.length);
-        for (const { dd } of slots) {
-          dd.st = 'filled';
-          dd.s = posSide;
-          dd.qty = +qtyEach.toFixed(4);
-          dd.ep = +avgEntry.toFixed(4);
-        }
+      const qtyEach = totalQty / Math.max(1, slots.length);
+      for (const { dd } of slots) {
+        dd.st = 'filled';
+        dd.s = posSide;
+        dd.qty = +qtyEach.toFixed(4);
+        dd.ep = +avgEntry.toFixed(4);
       }
     }
 
@@ -4551,23 +4542,12 @@ export class GridTradingService {
         currentProfitPct: state.startEquity > 0 && state.lastEquity
           ? (state.lastEquity - state.startEquity) / state.startEquity * 100
           : 0,
-        // 每层详情：使用 syncOrderFills 后的快照（交易所真实状态），fallback 到 state.gridLines
-        gridLines: preExecGridLines ?? state.gridLines.map((l, i) => {
-          const entry: Record<string, unknown> = {
-            lv: i + 1,
-            p: +l.price.toFixed(4),
-            s: l.side,
-            st: l.state,
-          };
-          if (l.state === 'filled') {
-            entry.qty = +(l.positionSize ?? 0).toFixed(4);
-            entry.ep = +((l.positionEntry || l.price) || 0).toFixed(4);
-          } else if (l.state === 'pending') {
-            entry.oid = l.orderId?.slice(-8) ?? '';
-            entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
-          }
-          return entry;
-        }),
+        // 每层详情：必须来自 buildDisplayFromExchange（交易所真实状态）
+        // 禁止 fallback 到 state.gridLines（内存数据），违反交易所唯一事实原则
+        gridLines: preExecGridLines ?? (() => {
+          this.logger.warn(`[网格] saveGridDecisionLog: preExecGridLines 为空，使用空层（禁止 memory fallback）`);
+          return state.gridLines.map((l, i) => ({ lv: i + 1, p: +l.price.toFixed(4), s: l.side, st: 'empty' }));
+        })(),
       } : undefined;
 
       // 统计执行结果：有错误则 executed=false，errors + skipped 列表写入 execution_result
