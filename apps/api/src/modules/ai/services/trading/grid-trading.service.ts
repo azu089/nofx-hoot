@@ -3507,10 +3507,8 @@ export class GridTradingService {
         }
       }
 
-      // Step 5: 映射交易所持仓 → filled 层（以 lastPrice 为锚点，滚动映射）
-      // 多头→ anchorPrice 下方空层，空头→ anchorPrice 上方空层
+      // Step 5: 映射交易所持仓 → filled 层（入场价最近，按每层预算反推层数）
       const leverage = Math.max(1, state.leverage ?? 1);
-      const anchorPrice = state.lastPrice > 0 ? state.lastPrice : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
       for (const pos of exchangePositions) {
         if (!pos.symbol?.includes(baseSymbol)) continue;
         const totalQty = pos.quantity ?? 0;
@@ -3520,7 +3518,7 @@ export class GridTradingService {
         const posSide: 'buy' | 'sell' = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
         const avgEntry = (pos.entryPrice ?? 0) > 0
           ? pos.entryPrice
-          : anchorPrice;
+          : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
         // 按每层预算反推应占几层
         const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
@@ -3529,26 +3527,10 @@ export class GridTradingService {
           ? Math.max(1, Math.round(totalQty / perLayerQty))
           : 1;
 
-        // 以 anchorPrice 为锚点，取同侧空层，按距当前价从近到远
-        const allEmptyLayers = state.gridLines
+        const emptyLayers = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
-          .filter(({ layer }) => layer.state === 'empty');
-
-        const emptyLayers = allEmptyLayers
-          .filter(({ layer }) => posSide === 'buy' ? layer.price <= anchorPrice : layer.price >= anchorPrice)
-          .sort((a, b) => Math.abs(a.layer.price - anchorPrice) - Math.abs(b.layer.price - anchorPrice));
-
-        // 同侧不够时补充最近空层
-        if (emptyLayers.length < estimatedLayers) {
-          const usedSet = new Set(emptyLayers.map(s => s.idx));
-          const remaining = allEmptyLayers
-            .filter(({ idx }) => !usedSet.has(idx))
-            .sort((a, b) => Math.abs(a.layer.price - anchorPrice) - Math.abs(b.layer.price - anchorPrice));
-          for (const slot of remaining) {
-            if (emptyLayers.length >= estimatedLayers) break;
-            emptyLayers.push(slot);
-          }
-        }
+          .filter(({ layer }) => layer.state === 'empty')
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
 
         const layersToFill = Math.min(estimatedLayers, emptyLayers.length);
         const qtyPerLayer = totalQty / Math.max(1, layersToFill);
@@ -3564,7 +3546,7 @@ export class GridTradingService {
         const filledIdxs = emptyLayers.slice(0, layersToFill).map(e => `L${e.idx + 1}`).join(',');
         this.logger.log(
           `[网格] syncMemory 持仓映射: ${posSide === 'buy' ? '多' : '空'}头 ` +
-          `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} anchor=${anchorPrice.toFixed(4)} → [${filledIdxs}]`,
+          `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} → [${filledIdxs}]`,
         );
       }
 
