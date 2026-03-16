@@ -311,18 +311,31 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getPositions(): Promise<ExchangePosition[]> {
     const ex = this.getExchange();
     const positions = await ex.fetchPositions();
-    // DEBUG: 打印原始持仓数据，排查杠杆解析问题
-    for (const p of positions.filter((pos: any) => Math.abs(Number(pos.contracts || 0)) > 0)) {
-      const raw = p as any;
-      console.log(
-        `[DEBUG getPositions] symbol=${raw.symbol} contracts=${raw.contracts} side=${raw.side} ` +
-        `p.leverage=${raw.leverage} p.info.leverage=${raw.info?.leverage} ` +
-        `marginMode=${raw.marginMode} p.crossMargin=${raw.info?.marginType}`,
-      );
+    const activePositions = positions.filter((p: any) => Math.abs(Number(p.contracts || 0)) > 0);
+
+    // Binance 全仓模式 fetchPositions 不返回 leverage — 通过 positionRisk 原生 API 补充
+    // leverageMap: symbol → leverage（仅在需要时才调用 API）
+    let leverageMap: Map<string, number> | undefined;
+    const needsLeverage = activePositions.some(
+      (p: any) => p.leverage == null && (p.info?.leverage == null),
+    );
+    if (needsLeverage && ex.id?.includes('binance')) {
+      try {
+        // Binance 原生 API: GET /fapi/v2/positionRisk — 始终返回 leverage 字段
+        const riskData: any[] = await (ex as any).fapiPrivateV2GetPositionRisk();
+        leverageMap = new Map();
+        for (const r of riskData) {
+          if (r.symbol && r.leverage) {
+            leverageMap.set(r.symbol, parseInt(String(r.leverage), 10) || 1);
+          }
+        }
+        this.logger.debug(`[CcxtAdapter] positionRisk 补充杠杆: ${leverageMap.size} 个交易对`);
+      } catch (e: any) {
+        this.logger.warn(`[CcxtAdapter] positionRisk 获取失败: ${e.message}`);
+      }
     }
-    return positions
-      .filter((p: any) => Math.abs(Number(p.contracts || 0)) > 0)
-      .map((p: any) => {
+
+    return activePositions.map((p: any) => {
         // OKX 单向模式返回 side='net'，contracts 正值=多头，负值=空头；统一归一化为 long/short
         const rawSide = p.side as string;
         const rawQty = Number(p.contracts || 0);
@@ -332,6 +345,19 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         } else {
           normSide = (rawSide as 'long' | 'short');
         }
+
+        // 杠杆优先级：p.info.leverage > p.leverage > positionRisk API > 1
+        const ccxtSymbol = p.symbol as string; // 'SOL/USDT:USDT'
+        const rawSymbol = p.info?.symbol as string; // 'SOLUSDT'
+        let leverage = parseInt(String(p.info?.leverage ?? ''), 10) || Number(p.leverage) || 0;
+        if (!leverage && leverageMap) {
+          leverage = leverageMap.get(rawSymbol) ?? 0;
+          if (leverage) {
+            this.logger.log(`[CcxtAdapter] ${ccxtSymbol} leverage 从 positionRisk 补充: ${leverage}x`);
+          }
+        }
+        leverage = Math.max(1, leverage);
+
         return {
         symbol: p.symbol,
         side: normSide,
@@ -339,9 +365,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         entryPrice: Number(p.entryPrice || 0),
         markPrice: Number(p.markPrice || 0),
         unrealizedPnl: Number(p.unrealizedPnl || 0),
-        // 优先使用 Binance 原始字段 p.info.leverage（合约杠杆倍数字符串），
-        // CCXT 标准化的 p.leverage 在全仓模式下可能被错误归一化为 1
-        leverage: Math.max(1, parseInt(String(p.info?.leverage ?? ''), 10) || Number(p.leverage) || 1),
+        leverage,
         marginMode: (p.marginMode || 'cross') as 'cross' | 'isolated',
         // 保证金：优先 positionInitialMargin (Binance)，次选 CCXT 标准 initialMargin，
         // 不使用 collateral（全仓时等于账户总权益，非持仓保证金）
