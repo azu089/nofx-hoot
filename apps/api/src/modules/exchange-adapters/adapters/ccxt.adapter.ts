@@ -311,6 +311,15 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async getPositions(): Promise<ExchangePosition[]> {
     const ex = this.getExchange();
     const positions = await ex.fetchPositions();
+    // DEBUG: 打印原始持仓数据，排查杠杆解析问题
+    for (const p of positions.filter((pos: any) => Math.abs(Number(pos.contracts || 0)) > 0)) {
+      const raw = p as any;
+      console.log(
+        `[DEBUG getPositions] symbol=${raw.symbol} contracts=${raw.contracts} side=${raw.side} ` +
+        `p.leverage=${raw.leverage} p.info.leverage=${raw.info?.leverage} ` +
+        `marginMode=${raw.marginMode} p.crossMargin=${raw.info?.marginType}`,
+      );
+    }
     return positions
       .filter((p: any) => Math.abs(Number(p.contracts || 0)) > 0)
       .map((p: any) => {
