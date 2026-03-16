@@ -1210,28 +1210,14 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-        // 动态杠杆同步：regime 推荐值 → 尝试同步交易所 → 成功才更新 state.leverage
-        // 有持仓时降杠杆会被交易所拒绝，state.leverage 保持交易所实际值不变
+        // 动态杠杆：对齐 nofx — recommendedLeverage 仅用于展示，不主动修改交易所杠杆
+        // 原因：Step 3/syncMemory 已从交易所读取真实杠杆，运行时不应覆盖用户手动设置
+        // nofx 只在初始化时 setLeverage，运行时 recommendedLeverage 是 display-only
         if (!state.userFixedLeverage && state.recommendedLeverage && state.recommendedLeverage !== state.leverage) {
-          const wantLev = state.recommendedLeverage;
-          const hasPosition = state.livePositionNotional > 0;
-          const isRaise = wantLev > state.leverage;
-          // 升杠杆始终尝试；降杠杆仅在无持仓时尝试
-          if (isRaise || !hasPosition) {
-            try {
-              await adapter.setLeverage(state.symbol, wantLev);
-              this.logger.log(`[网格]${tag} 交易所杠杆同步成功: ${state.leverage}x → ${wantLev}x (regime=${state.currentRegime})`);
-              state.leverage = wantLev;  // 成功后才更新
-              state.effectiveLeverage = wantLev;
-            } catch (e: any) {
-              // 同步失败，state.leverage 保持不变（= 交易所实际值）
-              this.logger.warn(`[网格]${tag} setLeverage(${wantLev}x) 失败，保持 ${state.leverage}x: ${e.message}`);
-            }
-          } else {
-            this.logger.debug(
-              `[网格]${tag} 杠杆降级等待: 推荐=${wantLev}x, 当前=${state.leverage}x, 有持仓 (需先平仓)`,
-            );
-          }
+          this.logger.debug(
+            `[网格]${tag} 杠杆建议: regime=${state.currentRegime} 推荐=${state.recommendedLeverage}x, ` +
+            `交易所实际=${state.leverage}x (仅展示，不修改交易所)`,
+          );
         }
 
         // 每轮清理僵尸止损单（不再主动放交易所止损单，此处为防残留）
@@ -3558,27 +3544,39 @@ export class GridTradingService {
           ? Math.max(1, Math.round(totalQty / perLayerQty))
           : 1;
 
-        const emptyLayers = state.gridLines
+        // ★ 对齐 nofx reinitializeGridLevels：按持仓方向筛选同侧空层
+        // 多头(buy) → 只映射到 buy 侧层（价格 < 当前价）
+        // 空头(sell) → 只映射到 sell 侧层（价格 > 当前价）
+        // 防止持仓覆盖反侧层的 side，破坏网格买卖结构
+        const sameSideEmpty = state.gridLines
           .map((l, idx) => ({ layer: l, idx }))
-          .filter(({ layer }) => layer.state === 'empty')
-          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
+          .filter(({ layer }) => layer.state === 'empty' && layer.side === posSide);
+        // 回退：如果同侧没有足够空层，允许使用所有空层（避免持仓丢失）
+        const allEmpty = state.gridLines
+          .map((l, idx) => ({ layer: l, idx }))
+          .filter(({ layer }) => layer.state === 'empty');
+        const candidateLayers = sameSideEmpty.length >= Math.min(estimatedLayers, 1)
+          ? sameSideEmpty
+          : allEmpty;
+        // 按距离入场价最近排序（同侧内优先靠近入场价的层）
+        candidateLayers.sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
 
-        const layersToFill = Math.min(estimatedLayers, emptyLayers.length);
+        const layersToFill = Math.min(estimatedLayers, candidateLayers.length);
         const qtyPerLayer = totalQty / Math.max(1, layersToFill);
 
         for (let i = 0; i < layersToFill; i++) {
-          const { layer } = emptyLayers[i];
+          const { layer } = candidateLayers[i];
           layer.state = 'filled';
           layer.positionEntry = avgEntry;
           layer.positionSize = qtyPerLayer;
           layer.side = posSide;
         }
 
-        const filledIdxs = emptyLayers.slice(0, layersToFill).map(e => `L${e.idx + 1}`).join(',');
+        const filledIdxs = candidateLayers.slice(0, layersToFill).map(e => `L${e.idx + 1}`).join(',');
         this.logger.log(
           `[网格] syncMemory 持仓映射: ${posSide === 'buy' ? '多' : '空'}头 ` +
           `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} lev=${posLeverage}x ` +
-          `perLayerQty=${perLayerQty.toFixed(4)} estimatedLayers=${estimatedLayers} → [${filledIdxs}]`,
+          `perLayerQty=${perLayerQty.toFixed(4)} est=${estimatedLayers} sameSide=${sameSideEmpty.length} → [${filledIdxs}]`,
         );
       }
 
