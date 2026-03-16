@@ -2140,6 +2140,7 @@
       "dirShort": "做空",
       "dirLongBias": "偏多",
       "dirShortBias": "偏空",
+      "regimeUltraNarrow": "極窄幅",
       "regimeNarrow": "窄幅",
       "regimeStandard": "標準",
       "regimeWide": "寬幅",

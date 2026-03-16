@@ -55,7 +55,7 @@ export interface GridConfig {
 export type GridDirection = 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias';
 
 /** 市场状态 */
-export type RegimeLevel = 'narrow' | 'standard' | 'wide' | 'volatile';
+export type RegimeLevel = 'ultra_narrow' | 'narrow' | 'standard' | 'wide' | 'volatile';
 
 /** 突破级别 */
 export type BreakoutLevel = 'none' | 'short' | 'mid' | 'long';
@@ -212,11 +212,15 @@ const DEFAULT_MAKER_FEE_RATE = 0.0002;      // 0.02% — Binance/OKX 默认 Make
 const MIN_GRID_PROFIT_MULTIPLIER = 1.5;     // 网格间距必须 ≥ 手续费来回 × 1.5 才有盈利空间
 // cancel_all 安全阀已移除（对齐 nofx：无偏离度限制，AI 发出即执行）
 // 市场状态 → 杠杆上限映射
+// 仓位上限计算专用最大杠杆（与 regime 无关，始终用此值计算 totalInvestment × MAX_LEVERAGE_CAP）
+const MAX_LEVERAGE_CAP = 5;
+// regime → 交易所实际杠杆映射（用户留空时，交易所杠杆随 regime 动态调整）
 const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
-  narrow: 2,
-  standard: 4,
-  wide: 3,
-  volatile: 2,
+  ultra_narrow: 5, // 极窄幅：最适合网格，推荐满杠杆
+  narrow: 4,       // 窄幅：适合网格
+  standard: 3,     // 标准：正常运行
+  wide: 2,         // 宽幅：谨慎
+  volatile: 1,     // 高波动：最低杠杆
 };
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
@@ -352,7 +356,7 @@ export class GridTradingService {
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
     const map: Record<string, string> = {
-      narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动',
+      ultra_narrow: '极窄幅', narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动',
     };
     return map[regime] ?? regime;
   }
@@ -419,10 +423,10 @@ export class GridTradingService {
       atrMultiplier = DEFAULT_ATR_MULTIPLIER,
     } = config;
 
-    // 杠杆模式：null/undefined/0 = AI 动态决策（跟随市场状态）；填值 = 固定杠杆
-    const AI_DYNAMIC_LEVERAGE_DEFAULT = 5; // AI 决策模式初始值（最大杠杆 5x）
+    // 杠杆模式：null/undefined/0 = AI 动态决策（跟随 regime）；填值 = 固定杠杆
     const userFixedLeverage = leverageInput != null && leverageInput > 0;
-    const leverage: number = userFixedLeverage ? leverageInput! : AI_DYNAMIC_LEVERAGE_DEFAULT;
+    // 用户填值 → 固定杠杆；留空 → 初始用 regime cap（首次未知 regime 先用 standard=3x）
+    const leverage: number = userFixedLeverage ? leverageInput! : REGIME_LEVERAGE_CAP['standard'];
 
     if (gridCount < 2 || gridCount > 100) {
       throw new Error('网格数量必须在 2-100 之间');
@@ -764,14 +768,12 @@ export class GridTradingService {
       }
     }
 
-    // 修复：DB 可能保存了被 Step 6.5 动态压低的 leverage（旧 Bug）
-    // 对齐 nofx：leverage 是固定配置值，从 gridConfig（策略表）恢复，不信任 runtime state
-    // 放在 if(!state) 块外，因为 getGridState 预加载可能已将 state 放入内存
+    // 从 gridConfig 恢复杠杆配置（DB 可能保存了 runtime 动态值）
     if (state && gridConfig) {
-      const AI_DYNAMIC_LEVERAGE_DEFAULT = 5;
       const cfgLev = gridConfig.leverage;
       const isUserFixed = cfgLev != null && cfgLev > 0;
-      const expectedLev = isUserFixed ? cfgLev! : AI_DYNAMIC_LEVERAGE_DEFAULT;
+      // 用户填值 → 恢复填写值；留空 → 恢复 regime cap（首轮未知 regime 先用 standard=3x）
+      const expectedLev = isUserFixed ? cfgLev! : REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
       if (state.leverage !== expectedLev) {
         this.logger.warn(`[网格] leverage 从配置恢复: ${state.leverage}x → ${expectedLev}x (userFixed=${isUserFixed})`);
         state.leverage = expectedLev;
@@ -833,12 +835,12 @@ export class GridTradingService {
         // Step B: 原地更新 state 配置字段
         if (gridConfig.symbol) state.symbol = gridConfig.symbol;
         if (gridConfig.leverage !== undefined) {
-          // null/0 = AI 动态决策（跟随市场状态）；正数 = 固定杠杆
-          const AI_DYNAMIC_LEVERAGE_DEFAULT = 5;
+          // null/0 = 跟随 regime 动态切换杠杆；正数 = 固定杠杆
           const newUserFixed = gridConfig.leverage != null && gridConfig.leverage > 0;
-          state.leverage = newUserFixed ? gridConfig.leverage! : AI_DYNAMIC_LEVERAGE_DEFAULT;
+          state.leverage = newUserFixed
+            ? gridConfig.leverage!
+            : REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
           state.userFixedLeverage = newUserFixed;
-          // AI 决策模式下 Step 6.5 会每轮根据 regime 重算 leverage
           state.effectiveLeverage = state.leverage;
         }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
@@ -1136,13 +1138,16 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 动态杠杆（对齐 nofx：leverage 固定不变，只改 recommendedLeverage 展示）
-    // nofx 中 gridConfig.Leverage 是固定值，recommendedLeverage = min(leverage, regimeCap) 仅展示
-    // HOOT 之前每轮改 state.leverage 导致 cap 缩小而旧挂单不变 → 下单永远被拒
-    state.userFixedLeverage ??= true;
-    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
-    // leverage 不变（固定配置值），recommendedLeverage 仅展示
-    state.recommendedLeverage = Math.min(state.leverage, regimeCap);
+    // Step 6.5: 杠杆跟随 regime
+    // 用户填值 → leverage/recommendedLeverage 都固定不变
+    // 用户留空 → leverage = regimeCap（每轮随 regime 变），仓位上限用 MAX_LEVERAGE_CAP
+    const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
+    if (!state.userFixedLeverage) {
+      state.leverage = regimeCap;
+      state.recommendedLeverage = regimeCap;
+    } else {
+      state.recommendedLeverage = state.leverage;
+    }
     state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
@@ -1177,13 +1182,14 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-        // AI 决策模式：每轮同步杠杆到交易所（杠杆可能因市场状态变化）
-        if (!state.userFixedLeverage) {
+        // 每轮同步杠杆到交易所：用户留空 → recommendedLeverage（随 regime 变）；用户固定 → 不变
+        if (!state.userFixedLeverage && state.recommendedLeverage) {
           try {
-            await adapter.setLeverage(state.symbol, state.leverage);
+            await adapter.setLeverage(state.symbol, state.recommendedLeverage);
+            this.logger.debug(`[网格] 交易所杠杆同步: ${state.recommendedLeverage}x (regime=${state.currentRegime})`);
           } catch (e: any) {
             // -4161 = 有持仓时无法降杠杆（正常，warn 不影响流程）
-            this.logger.warn(`[网格] AI动态杠杆 setLeverage(${state.leverage}x) 失败: ${e.message}`);
+            this.logger.warn(`[网格] setLeverage(${state.recommendedLeverage}x) 失败: ${e.message}`);
           }
         }
 
@@ -1922,7 +1928,8 @@ export class GridTradingService {
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
     let regime: RegimeLevel;
-    if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
+    if (bbWidth < 1.5 && atrPct < 0.8) regime = 'ultra_narrow'; // 极窄幅：BB<1.5% + ATR<0.8%，最适合网格，5x 杠杆
+    else if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
     else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
     else if (bbWidth <= 6.0 && atrPct <= 3.0) regime = 'wide';   // 扩大 wide 上限至 BB≤6%（3月9日稳定版，SOL/BTC 正常波动区间）
     else regime = 'volatile'; // BB>6% 或 ATR>3%（真正极端高波动）
@@ -2810,8 +2817,10 @@ export class GridTradingService {
       return { executed: false, skipReason };
     }
 
-    // Step 1: per-level 仓位上限检查（始终用静态配置杠杆，与 nofx 一致）
-    const leverage = state.leverage;
+    // Step 1: per-level 仓位上限检查
+    // 用户填值 → 用填写值；留空 → 用 MAX_LEVERAGE_CAP（5x）
+    // 确保仓位上限始终按最大杠杆计算，不因 regime 变化而拦截下单
+    const leverage = state.userFixedLeverage ? state.leverage : MAX_LEVERAGE_CAP;
     let capTruncated = false;
     let capUsed = 0;
     let capTotal = 0;

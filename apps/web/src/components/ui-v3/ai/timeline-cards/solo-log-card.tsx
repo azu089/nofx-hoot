@@ -209,6 +209,7 @@ const GRID_DIR_I18N: Record<string, string> = {
 };
 /** Grid 市场形态 — i18n key 映射 */
 const GRID_REGIME_I18N: Record<string, string> = {
+  ultra_narrow: 'timeline.regimeUltraNarrow',
   narrow: 'timeline.regimeNarrow', standard: 'timeline.regimeStandard',
   wide: 'timeline.regimeWide', volatile: 'timeline.regimeVolatile',
 };

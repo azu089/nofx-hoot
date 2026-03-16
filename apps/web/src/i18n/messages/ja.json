@@ -2138,6 +2138,7 @@
       "dirShort": "ショート",
       "dirLongBias": "ロング寄り",
       "dirShortBias": "ショート寄り",
+      "regimeUltraNarrow": "超狭域",
       "regimeNarrow": "狭域",
       "regimeStandard": "標準",
       "regimeWide": "広域",

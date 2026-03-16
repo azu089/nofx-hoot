@@ -2138,6 +2138,7 @@
       "dirShort": "ขาย",
       "dirLongBias": "เอียงซื้อ",
       "dirShortBias": "เอียงขาย",
+      "regimeUltraNarrow": "แคบมาก",
       "regimeNarrow": "แคบ",
       "regimeStandard": "มาตรฐาน",
       "regimeWide": "กว้าง",

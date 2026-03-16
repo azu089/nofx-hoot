@@ -2138,6 +2138,7 @@
       "dirShort": "Kısa",
       "dirLongBias": "Uzun Eğilimli",
       "dirShortBias": "Kısa Eğilimli",
+      "regimeUltraNarrow": "Çok Dar",
       "regimeNarrow": "Dar",
       "regimeStandard": "Standart",
       "regimeWide": "Geniş",

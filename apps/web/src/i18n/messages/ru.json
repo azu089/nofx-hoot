@@ -2138,6 +2138,7 @@
       "dirShort": "Шорт",
       "dirLongBias": "Лонг-смещение",
       "dirShortBias": "Шорт-смещение",
+      "regimeUltraNarrow": "Сверхузкий",
       "regimeNarrow": "Узкий",
       "regimeStandard": "Стандарт",
       "regimeWide": "Широкий",

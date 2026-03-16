@@ -2138,6 +2138,7 @@
       "dirShort": "Short",
       "dirLongBias": "Cenderung Long",
       "dirShortBias": "Cenderung Short",
+      "regimeUltraNarrow": "Sangat Sempit",
       "regimeNarrow": "Sempit",
       "regimeStandard": "Standar",
       "regimeWide": "Lebar",

@@ -2135,6 +2135,7 @@
       "dirShort": "Short",
       "dirLongBias": "Long Bias",
       "dirShortBias": "Short Bias",
+      "regimeUltraNarrow": "Ultra Narrow",
       "regimeNarrow": "Narrow",
       "regimeStandard": "Standard",
       "regimeWide": "Wide",

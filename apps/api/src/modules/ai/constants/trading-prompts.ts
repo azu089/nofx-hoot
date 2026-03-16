@@ -664,7 +664,7 @@ export interface GridContext {
   gridSkewSellFilled?: number;  // 持空头格线数（side='sell'，卖单成交未平仓）
   autoAdjustThreshold?: number; // 后端自动重建阈值（小数，默认 0.2 = 20%）
   // 后端检测的市场形态（供参考，AI 可结合指标自行判断）
-  currentRegime?: 'narrow' | 'standard' | 'wide' | 'volatile';
+  currentRegime?: 'ultra_narrow' | 'narrow' | 'standard' | 'wide' | 'volatile';
   // 交易所实时委托单（供 AI 对比内存状态）
   exchangeOpenOrders?: Array<{orderId: string; side: string; price: number; quantity: number}>;
   // 近期已平仓记录（供 AI 分析最近成交历史）
