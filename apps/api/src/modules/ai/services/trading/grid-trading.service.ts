@@ -3526,10 +3526,9 @@ export class GridTradingService {
           .filter(({ layer }) => layer.state === 'empty');
         const directedEmpty = allEmpty
           .filter(({ layer }) => posSide === 'buy' ? layer.price <= avgEntry : layer.price >= avgEntry);
-        // 回退：方向侧空层不够时用全部空层（保证持仓不丢失）
-        const candidates = directedEmpty.length >= Math.min(estimatedLayers, 1)
-          ? directedEmpty
-          : allEmpty;
+        // ★ 禁止 fallback 到反向侧：宁可少映射几层，也不占止盈区
+        // 反向侧必须留空给 AI 挂止盈单（空头留下方挂买单，多头留上方挂卖单）
+        const candidates = directedEmpty;
         // 按距入场价从近到远排序
         candidates.sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry));
 
@@ -4287,30 +4286,9 @@ export class GridTradingService {
       st: 'empty',
     }));
 
-    // Step 1: 用交易所挂单标记 pending 层
-    // 通过 orderId 精确匹配（内存 gridLines 中的 orderId→层 映射）
-    const orderIdToLayerIdx = new Map<string, number>();
-    for (let i = 0; i < state.gridLines.length; i++) {
-      const oid = state.gridLines[i].orderId;
-      if (oid) orderIdToLayerIdx.set(oid, i);
-    }
-
-    for (const order of exchangeOpenOrders) {
-      // adapter 返回标准化字段：orderId（非 CCXT 原生 id）、quantity（非 CCXT 原生 amount）
-      const oid = order.orderId ?? order.id;
-      if (!oid) continue;
-      const idx = orderIdToLayerIdx.get(oid);
-      if (idx !== undefined && idx < display.length) {
-        display[idx].st = 'pending';
-        display[idx].oid = oid.slice(-8);
-        display[idx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
-      }
-    }
-
-    // Step 2: 用交易所持仓标记 filled 层（以 currentPrice 为锚点，滚动映射）
-    // 多头(buy)：filled 映射到 currentPrice 下方最近空层（向下铺开）
-    // 空头(sell)：filled 映射到 currentPrice 上方最近空层（向上铺开）
-    // 每轮随价格滚动，确保反向止盈单距当前价最近
+    // Step 1: 持仓优先映射 → filled（以 entry 为锚点，单向扩展，禁止反向 fallback）
+    // 空头(sell) → 从 entry 往上映射（price ≥ entry），下方留给买单止盈
+    // 多头(buy)  → 从 entry 往下映射（price ≤ entry），上方留给卖单止盈
     const baseSymbol = state.symbol.split('/')[0];
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
@@ -4320,43 +4298,65 @@ export class GridTradingService {
       const posSide: 'buy' | 'sell' = pos.side === 'short' ? 'sell' : 'buy';
       const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
 
-      // 反推层数
       const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
       const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
       const estLayers = perLayerQty > 0.0001
         ? Math.max(1, Math.round(totalQty / perLayerQty))
         : 1;
 
-      const emptySlots = display
+      // ★ 只取方向侧空层，禁止 fallback 到反向（止盈区）
+      const directedSlots = display
         .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
-        .filter(({ dd }) => dd.st === 'empty');
-
-      // 以 currentPrice 为锚点，取同侧空层，按距当前价从近到远
-      // 多头→价格 ≤ currentPrice 的层（持仓在下方，上方空出来挂卖单止盈）
-      // 空头→价格 ≥ currentPrice 的层（持仓在上方，下方空出来挂买单止盈）
-      const sideSlots = emptySlots
-        .filter(({ gl }) => posSide === 'buy' ? gl.price <= currentPrice : gl.price >= currentPrice)
-        .sort((a, b) => Math.abs(a.gl.price - currentPrice) - Math.abs(b.gl.price - currentPrice))
+        .filter(({ dd }) => dd.st === 'empty')
+        .filter(({ gl }) => posSide === 'buy' ? gl.price <= avgEntry : gl.price >= avgEntry)
+        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))
         .slice(0, estLayers);
 
-      // 同侧空层不够时，补充距 currentPrice 最近的剩余空层
-      if (sideSlots.length < estLayers) {
-        const usedIdxs = new Set(sideSlots.map(s => s.i));
-        const remaining = emptySlots
-          .filter(({ i }) => !usedIdxs.has(i))
-          .sort((a, b) => Math.abs(a.gl.price - currentPrice) - Math.abs(b.gl.price - currentPrice));
-        for (const slot of remaining) {
-          if (sideSlots.length >= estLayers) break;
-          sideSlots.push(slot);
-        }
-      }
-
-      const qtyEach = totalQty / Math.max(1, sideSlots.length);
-      for (const { dd } of sideSlots) {
+      const qtyEach = totalQty / Math.max(1, directedSlots.length);
+      for (const { dd } of directedSlots) {
         dd.st = 'filled';
         dd.s = posSide;
         dd.qty = +qtyEach.toFixed(4);
         dd.ep = +avgEntry.toFixed(4);
+      }
+    }
+
+    // Step 2: 映射交易所挂单 → pending（跳过已被持仓占的 filled 层）
+    const orderIdToLayerIdx = new Map<string, number>();
+    for (let i = 0; i < state.gridLines.length; i++) {
+      const oid = state.gridLines[i].orderId;
+      if (oid) orderIdToLayerIdx.set(oid, i);
+    }
+
+    const usedDisplayIdx = new Set<number>();
+    for (const order of exchangeOpenOrders) {
+      const oid = order.orderId ?? order.id;
+      if (!oid) continue;
+      // 优先 orderId 精确匹配（如果该层未被持仓占）
+      const memIdx = orderIdToLayerIdx.get(oid);
+      if (memIdx !== undefined && memIdx < display.length && display[memIdx].st === 'empty' && !usedDisplayIdx.has(memIdx)) {
+        usedDisplayIdx.add(memIdx);
+        display[memIdx].st = 'pending';
+        display[memIdx].oid = oid.slice(-8);
+        display[memIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
+        continue;
+      }
+      // fallback: 价格最近的空层
+      const price: number = order.price ?? 0;
+      if (price <= 0) continue;
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < display.length; i++) {
+        if (usedDisplayIdx.has(i)) continue;
+        if (display[i].st !== 'empty') continue;
+        const d = Math.abs(state.gridLines[i].price - price);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      if (bestIdx >= 0) {
+        usedDisplayIdx.add(bestIdx);
+        display[bestIdx].st = 'pending';
+        display[bestIdx].oid = oid.slice(-8);
+        display[bestIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
       }
     }
 
