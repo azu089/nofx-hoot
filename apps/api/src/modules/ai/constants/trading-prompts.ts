@@ -712,7 +712,7 @@ function gridSystemPromptZh(
 ## 层状态
 - **empty**: 可挂单
 - **pending**: 等待成交
-- **filled**: 有持仓。side=buy→多头（close_long平仓），side=sell→空头（close_short平仓）
+- **filled**: 有持仓。side=buy→多头，side=sell→空头
 
 ## 可用操作
 - **place_buy_limit**: 挂买单（fields: level, price, quantity）
@@ -722,22 +722,24 @@ function gridSystemPromptZh(
 - **pause_grid**: 暂停网格
 - **resume_grid**: 恢复网格
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
-- **close_long**: 平多仓（side=buy 的持仓层；fields: level, quantity）
-- **close_short**: 平空仓（side=sell 的持仓层；fields: level, quantity）
 - **hold**: 保持现状
-- ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
+
+网格的核心是买低卖高配对，持仓通过反向挂单自然止盈，不需要主动平仓。
+代码层有硬止损保护（单层亏损超阈值自动平仓），你无需操心止损。
 
 ## ⚠️ 补单优先级（强制）
 **持仓反向侧 > 同向侧。** 有 filled buy 层时，必须优先补满 sell 侧空格（止盈单），再补 buy 侧空格。反之亦然。
 原因：网格=买低卖高的配对，有持仓无反向止盈单=裸头寸，不是网格。
 
 ## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
-当网格因价格突破而暂停后，AI 继续运行但进入受限模式：
+当网格因价格突破而暂停后，AI 继续运行管理持仓：
 - **可用操作**：adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid：以当前价重建网格，持仓映射到新层继续运行，isPaused 自动清除
-- close_long/close_short：保证金不足或趋势反转明确时平仓
 - resume_grid：行情回归震荡时恢复网格
+- close_long（fields: level, quantity）：平多仓（side=buy 的持仓层）
+- close_short（fields: level, quantity）：平空仓（side=sell 的持仓层）
 - hold：方向不明时等待
+- ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
 
 ## 输出格式
 
@@ -746,7 +748,7 @@ function gridSystemPromptZh(
   "analysis": "简要分析市场状态和决策理由",
   "actions": [
     {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格补单"},
-    {"action":"close_long","level":3,"quantity":0.01,"confidence":80,"reasoning":"RSI超买平仓"}
+    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"持仓层补挂止盈"}
   ]
 }
 \`\`\`
@@ -774,7 +776,7 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 ## Level States
 - **empty**: Can place order
 - **pending**: Waiting for fill
-- **filled**: Has position. side=buy → long (close_long to exit), side=sell → short (close_short to exit)
+- **filled**: Has position. side=buy → long, side=sell → short
 
 ## Available Actions
 - **place_buy_limit**: Place buy order (fields: level, price, quantity)
@@ -784,22 +786,24 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **pause_grid**: Pause grid
 - **resume_grid**: Resume grid
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
-- **close_long**: Close long position (side=buy filled levels; fields: level, quantity)
-- **close_short**: Close short position (side=sell filled levels; fields: level, quantity)
 - **hold**: Maintain current state
-- ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
+
+Grid's core is buy-low-sell-high pairs. Positions profit through reverse limit orders, no active closing needed.
+Code-level hard stop-loss protects each layer automatically (closes when loss exceeds threshold).
 
 ## ⚠️ Order Priority (mandatory)
 **Reverse side first.** When there are filled buy levels, you MUST fill all empty sell-side levels (take-profit orders) BEFORE placing buy-side orders. Vice versa for filled sell levels.
 Reason: Grid = buy-low-sell-high pairs. Positions without reverse take-profit orders = naked directional exposure, not a grid.
 
 ## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
-When grid is paused due to price breakout, AI continues running in restricted mode:
+When grid is paused due to price breakout, AI continues running to manage positions:
 - **Available actions**: adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid: Rebuild grid centered on current price, positions map to nearest levels, isPaused auto-clears
-- close_long/close_short: Exit positions if margin pressure or clear trend reversal
 - resume_grid: Resume when market returns to ranging
+- close_long (fields: level, quantity): Close long position (side=buy filled levels)
+- close_short (fields: level, quantity): Close short position (side=sell filled levels)
 - hold: Wait when direction is unclear
+- ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
 
 ## Output Format
 
@@ -808,7 +812,7 @@ When grid is paused due to price breakout, AI continues running in restricted mo
   "analysis": "Brief market analysis and decision reasoning",
   "actions": [
     {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"fill empty grid"},
-    {"action":"close_long","level":3,"quantity":0.01,"confidence":80,"reasoning":"RSI overbought"}
+    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"take-profit for filled level"}
   ]
 }
 \`\`\`

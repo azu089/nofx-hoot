@@ -916,7 +916,7 @@ export class GridTradingService {
                 direction: state.currentDirection,
                 totalLevels: newCount,
                 totalInvestment: state.totalInvestment,
-                leverage: state.leverage,
+                leverage: state.lastSyncedLeverage ?? state.leverage,
                 lastPrice: rebuildPrice,
                 totalProfit: state.totalProfit,
                 totalTrades: state.totalTrades,
@@ -966,7 +966,7 @@ export class GridTradingService {
     let trades = 0;
     let errors = 0;
 
-    this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'}`);
+    this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.lastSyncedLeverage ?? state.leverage}x(交易所) rec=${state.leverage}x(推荐) | regime=${state.currentRegime ?? '-'}`);
 
     // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
     // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
@@ -4395,8 +4395,8 @@ export class GridTradingService {
           ? state.lastEquity - state.startEquity
           : undefined,
         unrealizedPnl: state.lastUnrealizedPnl ?? 0,
-        leverage: state.leverage,                   // 配置杠杆（固定值 / AI默认上限）
-        effectiveLeverage: state.leverage,            // 已废弃，始终等于 leverage（对齐 nofx）
+        leverage: state.lastSyncedLeverage ?? state.leverage,  // 交易所实际杠杆（未同步成功时用配置值）
+        effectiveLeverage: state.lastSyncedLeverage ?? state.leverage,
         recommendedLeverage: state.recommendedLeverage, // min(leverage, regimeCap)，仅展示
         userFixedLeverage: state.userFixedLeverage ?? true,
         breakoutLevel: state.breakoutLevel,
