@@ -1130,23 +1130,13 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 动态杠杆
-    // - 用户固定杠杆 → leverage 不变，recommendedLeverage 仅展示
-    // - AI 决策模式 → leverage 每轮跟随 REGIME_LEVERAGE_CAP 动态调整
+    // Step 6.5: 动态杠杆（对齐 nofx：leverage 固定不变，只改 recommendedLeverage 展示）
+    // nofx 中 gridConfig.Leverage 是固定值，recommendedLeverage = min(leverage, regimeCap) 仅展示
+    // HOOT 之前每轮改 state.leverage 导致 cap 缩小而旧挂单不变 → 下单永远被拒
     state.userFixedLeverage ??= true;
     const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? state.leverage;
-    if (!state.userFixedLeverage) {
-      // AI 决策模式：实际杠杆 = 市场状态对应的上限值
-      const prevLev = state.leverage;
-      state.leverage = regimeCap;
-      state.recommendedLeverage = regimeCap;
-      if (prevLev !== regimeCap) {
-        this.logger.log(`[网格] AI动态杠杆: ${prevLev}x → ${regimeCap}x (${state.currentRegime})`);
-      }
-    } else {
-      // 用户固定杠杆：recommendedLeverage 仅展示
-      state.recommendedLeverage = Math.min(state.leverage, regimeCap);
-    }
+    // leverage 不变（固定配置值），recommendedLeverage 仅展示
+    state.recommendedLeverage = Math.min(state.leverage, regimeCap);
     state.effectiveLeverage = state.leverage;
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
@@ -1345,8 +1335,9 @@ export class GridTradingService {
         // 层级显示统一用 preSyncDisplay（buildDisplayFromExchange 构建，交易所实时数据）
         // 见下方 saveGridDecisionLog 调用处的 displayGridLines
         const execResults: Array<{ action: string; level?: number; success: boolean; skipped?: boolean; skipReason?: string; error?: string }> = [];
-        // 把交易所实时层级挂到 state，供 placeGridLimitOrder 的 filled 检查使用（交易所是唯一事实）
+        // 把交易所实时数据挂到 state，供 placeGridLimitOrder 使用（交易所是唯一事实）
         (state as any)._exchangeDisplay = preSyncDisplay;
+        (state as any)._exchangePositions = preSyncExchangePositions;
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         // 若决策列表包含 pause_grid，跳过所有 place_* 操作（否则下单后立即被撤，浪费 API 调用）
         const hasPauseGrid = execDecisions.some(d => d.action === 'pause_grid');
@@ -2820,27 +2811,35 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限：持仓按槽位预算计算 + 挂单名义价值
-      // 原因：持仓可能来自旧配置（qty/价格不同），用实际市值会挤占其他层的下单空间
-      // nofx 中持仓qty≈allocatedUSD×leverage/price，所以实际市值≈槽位预算，两者等价
-      // HOOT 持仓来自交易所映射，实际市值可能远超当前配置槽位预算，需用槽位预算防误判
+      // 总仓位上限（对齐 nofx checkTotalPositionLimit）：
+      // 持仓值 = 交易所实际持仓市值（abs(size) × markPrice），非槽位预算
+      // 挂单值 = 内存 pending 层 qty × price（与 nofx 一致）
       const totalPositionCap = state.totalInvestment * leverage;
-      const gridLayerCount = state.gridLines.length || 10;
-      const perLayerBudget = totalPositionCap / gridLayerCount;
-      const filledLayerCount = state.gridLines.filter(l => l.state === 'filled').length;
-      const filledNotional = filledLayerCount * perLayerBudget; // 槽位预算，非实际市值
+      const baseSymbol = state.symbol.split('/')[0];
+
+      // 从交易所实时持仓计算实际市值（对齐 nofx L978-992）
+      const exchPositions: any[] = (state as any)._exchangePositions ?? [];
+      let currentPositionValue = 0;
+      for (const pos of exchPositions) {
+        if (!pos.symbol?.includes(baseSymbol)) continue;
+        const posQty = Math.abs(pos.quantity ?? 0);
+        const posPrice = pos.markPrice ?? pos.entryPrice ?? state.lastPrice ?? 0;
+        currentPositionValue += posQty * posPrice;
+      }
+
+      // 挂单名义值（对齐 nofx L996-1001：所有 pending，不分买卖）
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
+
       capTotal = totalPositionCap;
-      capUsed = filledNotional + pendingNotional;
+      capUsed = currentPositionValue + pendingNotional;
       if (capUsed + quantity * price > totalPositionCap) {
-        // 削减至剩余可用额度（持仓槽位+挂单）
-        const remaining = Math.max(0, totalPositionCap - filledNotional - pendingNotional);
+        const remaining = Math.max(0, totalPositionCap - currentPositionValue - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
         capTruncated = true;
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 持仓${filledLayerCount}层×$${perLayerBudget.toFixed(2)}=$${filledNotional.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)}`;
+          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)}`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
