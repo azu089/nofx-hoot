@@ -646,6 +646,7 @@ export class GridTradingService {
       lastEquity: initialEquity,
       lastUnrealizedPnl: 0, // 首轮 buildGridContext 后从交易所持仓更新
       effectiveLeverage: leverage, // 初始 = 用户配置值，运行时由 regime 压低
+      lastSyncedLeverage: leverage,  // 初始 = 用户配置值，创建时 setLeverage 已调用
       userFixedLeverage,           // true = 固定杠杆，跳过 Regime 压杆
       // 所有边界均来自百分比换算，AI 始终可调整范围（无固定价格锁定场景）
       userLockedRange: false,
@@ -759,6 +760,8 @@ export class GridTradingService {
         state.makerFeeRate ??= DEFAULT_MAKER_FEE_RATE;
         // 兼容旧数据：effectiveLeverage 不存在时 fallback 到 leverage
         state.effectiveLeverage ??= state.leverage;
+        // 兼容旧数据：lastSyncedLeverage 不存在时，用配置初始杠杆（策略创建时已设置到交易所）
+        state.lastSyncedLeverage ??= gridConfig?.leverage ?? state.leverage;
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
         // 兼容旧数据：profitTargetPct 不存在时 fallback 到 0（AI自主决策）
