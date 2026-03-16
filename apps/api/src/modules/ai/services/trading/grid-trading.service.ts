@@ -152,6 +152,7 @@ export interface GridState {
   recommendedLeverage?: number; // min(leverage, regimeCap)，仅展示用（对齐 nofx）
 
   livePositionNotional: number;  // 交易所真实持仓名义价值（qty × markPrice），每轮周期开始时更新
+  lastSyncedLeverage?: number;   // 上次成功同步到交易所的杠杆值（避免有持仓时反复尝试降杠杆失败）
 
   // 范围锁定（用户明确填写了上下界 → AI 不得通过 adjust_grid 修改）
   userLockedRange: boolean;
@@ -1188,13 +1189,26 @@ export class GridTradingService {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
         // 每轮同步杠杆到交易所：用户留空 → recommendedLeverage（随 regime 变）；用户固定 → 不变
+        // 有持仓时降杠杆会被交易所拒绝（保证金不足），只在无持仓时尝试降杠杆
         if (!state.userFixedLeverage && state.recommendedLeverage) {
-          try {
-            await adapter.setLeverage(state.symbol, state.recommendedLeverage);
-            this.logger.debug(`[网格] 交易所杠杆同步: ${state.recommendedLeverage}x (regime=${state.currentRegime})`);
-          } catch (e: any) {
-            // -4161 = 有持仓时无法降杠杆（正常，warn 不影响流程）
-            this.logger.warn(`[网格] setLeverage(${state.recommendedLeverage}x) 失败: ${e.message}`);
+          const currentExchangeLev = state.lastSyncedLeverage ?? state.leverage;
+          const wantLev = state.recommendedLeverage;
+          // 升杠杆（或首次同步）始终尝试；降杠杆仅在无持仓时尝试
+          const hasPosition = state.livePositionNotional > 0;
+          const shouldSync = wantLev >= currentExchangeLev || !hasPosition;
+          if (shouldSync) {
+            try {
+              await adapter.setLeverage(state.symbol, wantLev);
+              state.lastSyncedLeverage = wantLev;
+              this.logger.debug(`[网格] 交易所杠杆同步: ${wantLev}x (regime=${state.currentRegime})`);
+            } catch (e: any) {
+              // 保证金不足等错误，记录但不阻塞
+              this.logger.warn(`[网格] setLeverage(${wantLev}x) 失败: ${e.message}`);
+            }
+          } else {
+            this.logger.debug(
+              `[网格] 杠杆降级跳过: 目标=${wantLev}x, 交易所=${currentExchangeLev}x, 有持仓=${hasPosition} (需先平仓)`,
+            );
           }
         }
 
@@ -4260,20 +4274,20 @@ export class GridTradingService {
       }
     }
 
-    // Step 2: 用交易所持仓标记 filled 层
-    // 1 持仓 → 1 最近空层（对齐 nofx autoAdjustGrid + syncMemoryFromExchange）
+    // Step 2: 用交易所持仓标记 filled 层（以 currentPrice 为锚点，滚动映射）
+    // 多头(buy)：filled 映射到 currentPrice 下方最近空层（向下铺开）
+    // 空头(sell)：filled 映射到 currentPrice 上方最近空层（向上铺开）
+    // 每轮随价格滚动，确保反向止盈单距当前价最近
     const baseSymbol = state.symbol.split('/')[0];
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
       const totalQty = pos.quantity ?? 0;
       if (totalQty <= 0.0001) continue;
 
-      // adapter 已标准化 side='long'|'short'，quantity=abs(正值)
       const posSide: 'buy' | 'sell' = pos.side === 'short' ? 'sell' : 'buy';
       const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
 
-      // 始终用交易所持仓数据构建 filled 层（交易所是唯一事实）
-      // 按交易所持仓均价为锚点，根据每层预算反推层数，向内侧连续映射
+      // 反推层数
       const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
       const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
       const estLayers = perLayerQty > 0.0001
@@ -4284,24 +4298,32 @@ export class GridTradingService {
         .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
         .filter(({ dd }) => dd.st === 'empty');
 
-      // 锚点：距离 avgEntry 最近的空槽（nofx 纯距离）
-      const anchorSlot = [...emptySlots]
-        .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
+      // 以 currentPrice 为锚点，取同侧空层，按距当前价从近到远
+      // 多头→价格 ≤ currentPrice 的层（持仓在下方，上方空出来挂卖单止盈）
+      // 空头→价格 ≥ currentPrice 的层（持仓在上方，下方空出来挂买单止盈）
+      const sideSlots = emptySlots
+        .filter(({ gl }) => posSide === 'buy' ? gl.price <= currentPrice : gl.price >= currentPrice)
+        .sort((a, b) => Math.abs(a.gl.price - currentPrice) - Math.abs(b.gl.price - currentPrice))
+        .slice(0, estLayers);
 
-      if (anchorSlot) {
-        // 从锚点向内侧连续取 estLayers 层（买→锚点及以下，卖→锚点及以上）
-        const slots = emptySlots
-          .filter(({ i }) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
-          .sort((a, b) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
-          .slice(0, estLayers);
-
-        const qtyEach = totalQty / Math.max(1, slots.length);
-        for (const { dd } of slots) {
-          dd.st = 'filled';
-          dd.s = posSide;
-          dd.qty = +qtyEach.toFixed(4);
-          dd.ep = +avgEntry.toFixed(4);
+      // 同侧空层不够时，补充距 currentPrice 最近的剩余空层
+      if (sideSlots.length < estLayers) {
+        const usedIdxs = new Set(sideSlots.map(s => s.i));
+        const remaining = emptySlots
+          .filter(({ i }) => !usedIdxs.has(i))
+          .sort((a, b) => Math.abs(a.gl.price - currentPrice) - Math.abs(b.gl.price - currentPrice));
+        for (const slot of remaining) {
+          if (sideSlots.length >= estLayers) break;
+          sideSlots.push(slot);
         }
+      }
+
+      const qtyEach = totalQty / Math.max(1, sideSlots.length);
+      for (const { dd } of sideSlots) {
+        dd.st = 'filled';
+        dd.s = posSide;
+        dd.qty = +qtyEach.toFixed(4);
+        dd.ep = +avgEntry.toFixed(4);
       }
     }
 
