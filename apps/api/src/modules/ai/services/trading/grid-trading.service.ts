@@ -1932,6 +1932,8 @@ export class GridTradingService {
       : 3; // 默认 standard
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
+    this.logger.debug(`[网格] classifyRegime(5m): bbWidth=${bbWidth.toFixed(3)}%, atrPct=${atrPct.toFixed(3)}%, price=${currentPrice}`);
+
     let regime: RegimeLevel;
     if (bbWidth < 1.5 && atrPct < 0.8) regime = 'ultra_narrow'; // 极窄幅：BB<1.5% + ATR<0.8%，最适合网格，5x 杠杆
     else if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
