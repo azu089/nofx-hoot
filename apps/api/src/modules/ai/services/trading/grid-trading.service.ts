@@ -3554,7 +3554,15 @@ export class GridTradingService {
         );
       }
 
-      // Step 5: 映射交易所挂单 → pending 层（价格最近匹配，跳过已被持仓占的层）
+      // Step 5: 映射交易所挂单 → pending 层（方向校验 + 价格最近匹配）
+      // ★ 用持仓 entry 做买卖分界线（而非陈旧的 layer.side）
+      //   有持仓: layer.price ≤ entry → buy 侧, > entry → sell 侧
+      //   无持仓: 用 lastPrice 做分界
+      const filledLayers = state.gridLines.filter(l => l.state === 'filled' && l.positionEntry > 0);
+      const sideRefPrice = filledLayers.length > 0
+        ? filledLayers[0].positionEntry
+        : (state.lastPrice || (state.upperPrice + state.lowerPrice) / 2);
+
       const usedIdx = new Set<number>();
       const symOrders = openOrders.filter((o: any) => {
         const sym: string = o.symbol ?? '';
@@ -3570,7 +3578,9 @@ export class GridTradingService {
         for (let i = 0; i < state.gridLines.length; i++) {
           if (usedIdx.has(i)) continue;
           if (state.gridLines[i].state !== 'empty') continue;
-          if (state.gridLines[i].side !== orderSide) continue; // ★ 方向校验：买单→买侧层，卖单→卖侧层
+          // ★ 动态方向校验：基于 entry 价格划分买卖侧
+          const expectedSide: 'buy' | 'sell' = state.gridLines[i].price <= sideRefPrice ? 'buy' : 'sell';
+          if (expectedSide !== orderSide) continue;
           const d = Math.abs(state.gridLines[i].price - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -4329,7 +4339,13 @@ export class GridTradingService {
       }
     }
 
-    // Step 2: 映射交易所挂单 → pending（跳过已被持仓占的 filled 层）
+    // Step 2: 映射交易所挂单 → pending（方向校验基于 entry 价格，非陈旧 layer.side）
+    // ★ 用持仓 entry 做买卖分界线
+    const filledDisplay = display.filter(d => d.st === 'filled' && d.ep > 0);
+    const displaySideRef = filledDisplay.length > 0
+      ? filledDisplay[0].ep
+      : (currentPrice || (state.upperPrice + state.lowerPrice) / 2);
+
     const orderIdToLayerIdx = new Map<string, number>();
     for (let i = 0; i < state.gridLines.length; i++) {
       const oid = state.gridLines[i].orderId;
@@ -4341,18 +4357,19 @@ export class GridTradingService {
       const oid = order.orderId ?? order.id;
       if (!oid) continue;
       const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
-      // 优先 orderId 精确匹配（层未被持仓占 + 方向匹配）
+      // 优先 orderId 精确匹配（层未被持仓占 + 动态方向匹配）
       const memIdx = orderIdToLayerIdx.get(oid);
-      if (memIdx !== undefined && memIdx < display.length
-        && display[memIdx].st === 'empty' && display[memIdx].s === orderSide
-        && !usedDisplayIdx.has(memIdx)) {
-        usedDisplayIdx.add(memIdx);
-        display[memIdx].st = 'pending';
-        display[memIdx].oid = oid.slice(-8);
-        display[memIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
-        continue;
+      if (memIdx !== undefined && memIdx < display.length && display[memIdx].st === 'empty' && !usedDisplayIdx.has(memIdx)) {
+        const memExpectedSide = state.gridLines[memIdx].price <= displaySideRef ? 'buy' : 'sell';
+        if (memExpectedSide === orderSide) {
+          usedDisplayIdx.add(memIdx);
+          display[memIdx].st = 'pending';
+          display[memIdx].oid = oid.slice(-8);
+          display[memIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
+          continue;
+        }
       }
-      // fallback: 价格最近 + 方向匹配的空层
+      // fallback: 价格最近 + 动态方向匹配的空层
       const price: number = order.price ?? 0;
       if (price <= 0) continue;
       let bestIdx = -1;
@@ -4360,7 +4377,8 @@ export class GridTradingService {
       for (let i = 0; i < display.length; i++) {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
-        if (display[i].s !== orderSide) continue; // ★ 方向校验
+        const expectedSide: 'buy' | 'sell' = state.gridLines[i].price <= displaySideRef ? 'buy' : 'sell';
+        if (expectedSide !== orderSide) continue; // ★ 动态方向校验
         const d = Math.abs(state.gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
