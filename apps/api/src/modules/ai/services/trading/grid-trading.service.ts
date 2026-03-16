@@ -1025,9 +1025,15 @@ export class GridTradingService {
           }, 0);
         }
         // 从交易所持仓读取实际杠杆（交易所数据唯一事实）
-        if (!state.userFixedLeverage && livePositions.length > 0) {
+        // 无论 userFixedLeverage 与否，都读取交易所杠杆并同步到 state
+        // 原因：用户可能在交易所手动改了杠杆，HOOT 必须反映真实值
+        if (livePositions.length > 0) {
           const baseSymbol = state.symbol.split('/')[0];
           const myPos = livePositions.find((p: any) => (p as any).symbol?.includes(baseSymbol));
+          this.logger.log(
+            `[网格] Step3 杠杆诊断: userFixed=${state.userFixedLeverage}, positions=${livePositions.length}, ` +
+            `matchedPos=${!!myPos}, exchangeLev=${myPos?.leverage ?? 'N/A'}, stateLev=${state.leverage}`,
+          );
           if (myPos?.leverage && myPos.leverage > 0) {
             if (state.leverage !== myPos.leverage) {
               this.logger.log(`[网格] 交易所实际杠杆: ${myPos.leverage}x (内存=${state.leverage}x)，以交易所为准`);
@@ -1035,8 +1041,10 @@ export class GridTradingService {
               state.effectiveLeverage = myPos.leverage;
             }
           }
+        } else {
+          this.logger.log(`[网格] Step3: 无持仓，杠杆保持 ${state.leverage}x (userFixed=${state.userFixedLeverage})`);
         }
-        this.logger.debug(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
+        this.logger.log(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
       } catch (e: any) {
         this.logger.warn(`[网格] Step3 权益获取失败，使用缓存值 (peakEquity=${state.peakEquity}): ${e.message}`);
       }
@@ -3522,7 +3530,7 @@ export class GridTradingService {
       }
 
       // Step 5: 映射交易所持仓 → filled 层（入场价最近，按每层预算反推层数）
-      const leverage = Math.max(1, state.leverage ?? 1);
+      // ★ 杠杆直接从交易所持仓对象读取（交易所数据唯一事实），不用 state.leverage
       for (const pos of exchangePositions) {
         if (!pos.symbol?.includes(baseSymbol)) continue;
         const totalQty = pos.quantity ?? 0;
@@ -3534,9 +3542,18 @@ export class GridTradingService {
           ? pos.entryPrice
           : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
 
+        // 从交易所持仓读取真实杠杆（不依赖 state.leverage，避免旧值导致层数计算错误）
+        const posLeverage = Math.max(1, pos.leverage ?? state.leverage ?? 1);
+        // 同步 state.leverage 为交易所实际值
+        if (pos.leverage && pos.leverage > 0 && state.leverage !== pos.leverage) {
+          this.logger.log(`[网格] syncMemory: 交易所杠杆 ${pos.leverage}x (state=${state.leverage}x)，同步`);
+          state.leverage = pos.leverage;
+          state.effectiveLeverage = pos.leverage;
+        }
+
         // 按每层预算反推应占几层
         const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
-        const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
+        const perLayerQty = avgAllocatedUSD * posLeverage / avgEntry;
         const estimatedLayers = perLayerQty > 0.0001
           ? Math.max(1, Math.round(totalQty / perLayerQty))
           : 1;
@@ -3560,7 +3577,8 @@ export class GridTradingService {
         const filledIdxs = emptyLayers.slice(0, layersToFill).map(e => `L${e.idx + 1}`).join(',');
         this.logger.log(
           `[网格] syncMemory 持仓映射: ${posSide === 'buy' ? '多' : '空'}头 ` +
-          `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} → [${filledIdxs}]`,
+          `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} lev=${posLeverage}x ` +
+          `perLayerQty=${perLayerQty.toFixed(4)} estimatedLayers=${estimatedLayers} → [${filledIdxs}]`,
         );
       }
 
