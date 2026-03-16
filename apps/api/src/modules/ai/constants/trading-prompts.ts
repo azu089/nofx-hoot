@@ -903,7 +903,7 @@ function buildOrdersSection(ctx: GridContext, isEn: boolean): string[] {
     for (const o of ctx.exchangeOpenOrders.slice(0, orderDisplayLimit)) {
       const priceLabel = isEn ? 'price' : '价格';
       const qtyLabel = isEn ? 'qty' : '数量';
-      lines.push(`${o.orderId.slice(-8)} | ${o.side} | ${priceLabel}=${o.price.toFixed(4)} | ${qtyLabel}=${o.quantity.toFixed(4)}`);
+      lines.push(`${o.orderId} | ${o.side} | ${priceLabel}=${o.price.toFixed(4)} | ${qtyLabel}=${o.quantity.toFixed(4)}`);
     }
   } else if (ctx.exchangeOpenOrders) {
     lines.push('');
