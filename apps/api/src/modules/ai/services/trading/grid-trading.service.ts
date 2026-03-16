@@ -3560,14 +3560,17 @@ export class GridTradingService {
         const sym: string = o.symbol ?? '';
         return sym.includes(baseSymbol);
       });
+      let unmappedOrders = 0;
       for (const order of symOrders) {
         const price: number = order.price ?? 0;
         if (price <= 0) continue;
+        const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
         let bestIdx = -1;
         let bestDist = Infinity;
         for (let i = 0; i < state.gridLines.length; i++) {
           if (usedIdx.has(i)) continue;
-          if (state.gridLines[i].state !== 'empty') continue; // 跳过已被持仓占的 filled 层
+          if (state.gridLines[i].state !== 'empty') continue;
+          if (state.gridLines[i].side !== orderSide) continue; // ★ 方向校验：买单→买侧层，卖单→卖侧层
           const d = Math.abs(state.gridLines[i].price - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -3576,10 +3579,15 @@ export class GridTradingService {
           const layer = state.gridLines[bestIdx];
           layer.state = 'pending';
           layer.orderId = order.orderId;
-          layer.side = (order.side === 'sell') ? 'sell' : 'buy';
+          layer.side = orderSide;
           layer.orderQuantity = order.quantity ?? 0;
           if (order.orderId) state.orderBook[order.orderId] = bestIdx;
+        } else {
+          unmappedOrders++;
         }
+      }
+      if (unmappedOrders > 0) {
+        this.logger.warn(`[网格] syncMemory: ${unmappedOrders} 个挂单无法映射（方向不匹配），AI 可从 exchangeOpenOrders 看到并撤单`);
       }
 
       // 日志汇总
@@ -4332,16 +4340,19 @@ export class GridTradingService {
     for (const order of exchangeOpenOrders) {
       const oid = order.orderId ?? order.id;
       if (!oid) continue;
-      // 优先 orderId 精确匹配（如果该层未被持仓占）
+      const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
+      // 优先 orderId 精确匹配（层未被持仓占 + 方向匹配）
       const memIdx = orderIdToLayerIdx.get(oid);
-      if (memIdx !== undefined && memIdx < display.length && display[memIdx].st === 'empty' && !usedDisplayIdx.has(memIdx)) {
+      if (memIdx !== undefined && memIdx < display.length
+        && display[memIdx].st === 'empty' && display[memIdx].s === orderSide
+        && !usedDisplayIdx.has(memIdx)) {
         usedDisplayIdx.add(memIdx);
         display[memIdx].st = 'pending';
         display[memIdx].oid = oid.slice(-8);
         display[memIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
         continue;
       }
-      // fallback: 价格最近的空层
+      // fallback: 价格最近 + 方向匹配的空层
       const price: number = order.price ?? 0;
       if (price <= 0) continue;
       let bestIdx = -1;
@@ -4349,6 +4360,7 @@ export class GridTradingService {
       for (let i = 0; i < display.length; i++) {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
+        if (display[i].s !== orderSide) continue; // ★ 方向校验
         const d = Math.abs(state.gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
