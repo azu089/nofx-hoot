@@ -775,17 +775,17 @@ export class GridTradingService {
       }
     }
 
-    // 从 gridConfig 恢复杠杆配置（DB 可能保存了 runtime 动态值）
+    // 从 gridConfig 恢复杠杆配置
     if (state && gridConfig) {
       const cfgLev = gridConfig.leverage;
       const isUserFixed = cfgLev != null && cfgLev > 0;
-      // 用户填值 → 恢复填写值；留空 → 恢复 regime cap（首轮未知 regime 先用 standard=3x）
-      const expectedLev = isUserFixed ? cfgLev! : REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
-      if (state.leverage !== expectedLev) {
-        this.logger.warn(`[网格] leverage 从配置恢复: ${state.leverage}x → ${expectedLev}x (userFixed=${isUserFixed})`);
-        state.leverage = expectedLev;
-        state.effectiveLeverage = expectedLev;
+      if (isUserFixed && state.leverage !== cfgLev) {
+        // 用户填了固定值 → 恢复为用户值
+        this.logger.warn(`[网格] leverage 从配置恢复: ${state.leverage}x → ${cfgLev}x (userFixed)`);
+        state.leverage = cfgLev!;
+        state.effectiveLeverage = cfgLev!;
       }
+      // 留空（动态模式）→ 保留 DB 中的 state.leverage（= 上次交易所实际值），由 Step 6.5+8 动态同步
       state.userFixedLeverage = isUserFixed;
     }
 
@@ -844,11 +844,12 @@ export class GridTradingService {
         if (gridConfig.leverage !== undefined) {
           // null/0 = 跟随 regime 动态切换杠杆；正数 = 固定杠杆
           const newUserFixed = gridConfig.leverage != null && gridConfig.leverage > 0;
-          state.leverage = newUserFixed
-            ? gridConfig.leverage!
-            : REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
+          if (newUserFixed) {
+            state.leverage = gridConfig.leverage!;
+            state.effectiveLeverage = gridConfig.leverage!;
+          }
+          // 留空（动态模式）→ state.leverage 保持当前值，由 Step 6.5+8 下轮 setLeverage 同步
           state.userFixedLeverage = newUserFixed;
-          state.effectiveLeverage = state.leverage;
         }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
         if (gridConfig.direction) state.currentDirection = gridConfig.direction;
@@ -919,7 +920,7 @@ export class GridTradingService {
                 direction: state.currentDirection,
                 totalLevels: newCount,
                 totalInvestment: state.totalInvestment,
-                leverage: state.lastSyncedLeverage ?? state.leverage,
+                leverage: state.leverage,
                 lastPrice: rebuildPrice,
                 totalProfit: state.totalProfit,
                 totalTrades: state.totalTrades,
@@ -969,7 +970,7 @@ export class GridTradingService {
     let trades = 0;
     let errors = 0;
 
-    this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.lastSyncedLeverage ?? state.leverage}x(交易所) rec=${state.leverage}x(推荐) | regime=${state.currentRegime ?? '-'}`);
+    this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'} | recLev=${state.recommendedLeverage ?? '-'}x`);
 
     // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
     // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
@@ -1022,6 +1023,18 @@ export class GridTradingService {
             }
             return sum;
           }, 0);
+        }
+        // 从交易所持仓读取实际杠杆（交易所数据唯一事实）
+        if (!state.userFixedLeverage && livePositions.length > 0) {
+          const baseSymbol = state.symbol.split('/')[0];
+          const myPos = livePositions.find((p: any) => (p as any).symbol?.includes(baseSymbol));
+          if (myPos?.leverage && myPos.leverage > 0) {
+            if (state.leverage !== myPos.leverage) {
+              this.logger.log(`[网格] 交易所实际杠杆: ${myPos.leverage}x (内存=${state.leverage}x)，以交易所为准`);
+              state.leverage = myPos.leverage;
+              state.effectiveLeverage = myPos.leverage;
+            }
+          }
         }
         this.logger.debug(`[网格] Step3: livePositions.len=${livePositions.length}, livePositionNotional=${state.livePositionNotional.toFixed(4)}`);
       } catch (e: any) {
@@ -1147,13 +1160,11 @@ export class GridTradingService {
       } catch { /* 保持上次值 */ }
     }
 
-    // Step 6.5: 杠杆跟随 regime
-    // 用户填值 → leverage/recommendedLeverage 都固定不变
-    // 用户留空 → leverage = regimeCap（每轮随 regime 变），仓位上限用 MAX_LEVERAGE_CAP
+    // Step 6.5: 计算 regime 推荐杠杆（state.leverage 只在交易所同步成功后才更新）
     const regimeCap = REGIME_LEVERAGE_CAP[state.currentRegime] ?? REGIME_LEVERAGE_CAP['standard'];
     if (!state.userFixedLeverage) {
-      state.leverage = regimeCap;
       state.recommendedLeverage = regimeCap;
+      // 注意：state.leverage 不在这里改，等 Step 8 setLeverage 成功后才更新
     } else {
       state.recommendedLeverage = state.leverage;
     }
@@ -1191,26 +1202,26 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-        // 每轮同步杠杆到交易所：用户留空 → recommendedLeverage（随 regime 变）；用户固定 → 不变
-        // 有持仓时降杠杆会被交易所拒绝（保证金不足），只在无持仓时尝试降杠杆
-        if (!state.userFixedLeverage && state.recommendedLeverage) {
-          const currentExchangeLev = state.lastSyncedLeverage ?? state.leverage;
+        // 动态杠杆同步：regime 推荐值 → 尝试同步交易所 → 成功才更新 state.leverage
+        // 有持仓时降杠杆会被交易所拒绝，state.leverage 保持交易所实际值不变
+        if (!state.userFixedLeverage && state.recommendedLeverage && state.recommendedLeverage !== state.leverage) {
           const wantLev = state.recommendedLeverage;
-          // 升杠杆（或首次同步）始终尝试；降杠杆仅在无持仓时尝试
           const hasPosition = state.livePositionNotional > 0;
-          const shouldSync = wantLev >= currentExchangeLev || !hasPosition;
-          if (shouldSync) {
+          const isRaise = wantLev > state.leverage;
+          // 升杠杆始终尝试；降杠杆仅在无持仓时尝试
+          if (isRaise || !hasPosition) {
             try {
               await adapter.setLeverage(state.symbol, wantLev);
-              state.lastSyncedLeverage = wantLev;
-              this.logger.debug(`[网格] 交易所杠杆同步: ${wantLev}x (regime=${state.currentRegime})`);
+              this.logger.log(`[网格]${tag} 交易所杠杆同步成功: ${state.leverage}x → ${wantLev}x (regime=${state.currentRegime})`);
+              state.leverage = wantLev;  // 成功后才更新
+              state.effectiveLeverage = wantLev;
             } catch (e: any) {
-              // 保证金不足等错误，记录但不阻塞
-              this.logger.warn(`[网格] setLeverage(${wantLev}x) 失败: ${e.message}`);
+              // 同步失败，state.leverage 保持不变（= 交易所实际值）
+              this.logger.warn(`[网格]${tag} setLeverage(${wantLev}x) 失败，保持 ${state.leverage}x: ${e.message}`);
             }
           } else {
             this.logger.debug(
-              `[网格] 杠杆降级跳过: 目标=${wantLev}x, 交易所=${currentExchangeLev}x, 有持仓=${hasPosition} (需先平仓)`,
+              `[网格]${tag} 杠杆降级等待: 推荐=${wantLev}x, 当前=${state.leverage}x, 有持仓 (需先平仓)`,
             );
           }
         }
@@ -4398,8 +4409,8 @@ export class GridTradingService {
           ? state.lastEquity - state.startEquity
           : undefined,
         unrealizedPnl: state.lastUnrealizedPnl ?? 0,
-        leverage: state.lastSyncedLeverage ?? state.leverage,  // 交易所实际杠杆（未同步成功时用配置值）
-        effectiveLeverage: state.lastSyncedLeverage ?? state.leverage,
+        leverage: state.leverage,                   // 用户配置杠杆（不变，对齐 nofx）
+        effectiveLeverage: state.leverage,
         recommendedLeverage: state.recommendedLeverage, // min(leverage, regimeCap)，仅展示
         userFixedLeverage: state.userFixedLeverage ?? true,
         breakoutLevel: state.breakoutLevel,
