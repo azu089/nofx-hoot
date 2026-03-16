@@ -726,7 +726,7 @@ export class GridTradingService {
   ): Promise<{ trades: number; errors: number }> {
     // 并发保护：同一策略上一周期仍在运行时直接跳过，避免状态竞争和重复下单
     if (this.runningStrategies.has(strategyId)) {
-      this.logger.warn(`[网格] ${strategyId} 上一周期仍在执行，跳过本轮`);
+      this.logger.warn(`[网格][u:${userId.slice(0, 8)}][s:${strategyId.slice(0, 8)}] 上一周期仍在执行，跳过本轮`);
       return { trades: 0, errors: 0 };
     }
     this.runningStrategies.add(strategyId);
@@ -745,6 +745,9 @@ export class GridTradingService {
     apiKeys: UserApiKeys = {},
     gridConfig?: GridConfig,
   ): Promise<{ trades: number; errors: number }> {
+    // 日志追踪标识：每条关键日志带 userId(前8位) + strategyId(前8位)，多用户/多策略可区分
+    const tag = `[u:${userId.slice(0, 8)}][s:${strategyId.slice(0, 8)}]`;
+
     // Step 1: 获取/恢复状态
     let state = this.gridStates.get(strategyId);
     if (!state) {
@@ -942,7 +945,7 @@ export class GridTradingService {
         await this.cancelAllGridOrders(state, userId, apiKeyId);
         // reconcileCompleted 已废弃（Step 1.1 已删除，每轮 syncMemoryFromExchange 自动重建）
       } else {
-        this.logger.warn(`[网格] 策略 ${strategyId} 未初始化`);
+        this.logger.warn(`[网格]${tag} 策略 ${strategyId} 未初始化`);
         return { trades: 0, errors: 0 };
       }
     }
@@ -956,11 +959,13 @@ export class GridTradingService {
     try {
       currentPrice = await this.getCurrentPrice(state.symbol);
     } catch (e: any) {
-      this.logger.error(`[网格] 获取当前价格失败，跳过本轮: ${e.message}`);
+      this.logger.error(`[网格]${tag} 获取当前价格失败，跳过本轮: ${e.message}`);
       return { trades: 0, errors: 1 };
     }
     let trades = 0;
     let errors = 0;
+
+    this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'}`);
 
     // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
     // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
@@ -1102,7 +1107,7 @@ export class GridTradingService {
       const breakoutThreshold = gridConfig?.breakoutPct ?? DEFAULT_BREAKOUT_PCT;
       if (breakoutPct >= breakoutThreshold) {
         const direction = currentPrice > state.upperPrice ? 'up' : 'down';
-        this.logger.warn(`[网格] 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），撤单+暂停网格`);
+        this.logger.warn(`[网格]${tag} 价格突破网格边界 ${breakoutPct.toFixed(1)}% ≥ ${breakoutThreshold}%（${direction}），撤单+暂停网格`);
 
         // 方向性平仓（默认关闭，对齐 nofx：突破时只 cancel+pause，不主动平仓）
         if (gridConfig?.directionalCloseOnBreakout === true) {
@@ -1156,12 +1161,12 @@ export class GridTradingService {
     if (state.isPaused) {
       if (state.pauseSource === 'risk_control') {
         // 风控暂停不可自动恢复，直接跳过
-        this.logger.warn(`[网格] ${state.symbol} 风控暂停，跳过: ${state.pauseReason || ''}`);
+        this.logger.warn(`[网格]${tag} ${state.symbol} 风控暂停，跳过: ${state.pauseReason || ''}`);
         await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
       }
       // breakout/ai/trend 暂停 → AI 受限模式运行，评估是否需要重建网格
-      this.logger.warn(`[网格] ${state.symbol} [${state.pauseSource ?? '未知'}]暂停，AI受限模式评估重建`);
+      this.logger.warn(`[网格]${tag} ${state.symbol} [${state.pauseSource ?? '未知'}]暂停，AI受限模式评估重建`);
     }
 
     // Step 8: AI 决策
@@ -1294,7 +1299,7 @@ export class GridTradingService {
         (context as any).gridSkewSellFilled = skewSell;
         (context as any).autoAdjustThreshold = gridConfig?.autoAdjustThreshold ?? 0.2;
         if (skewLevel !== 'none') {
-          this.logger.warn(`[网格] 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
+          this.logger.warn(`[网格]${tag} 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
         }
 
 
@@ -1329,7 +1334,7 @@ export class GridTradingService {
         const confFiltered = decisions.filter(d => {
           if (d.confidence === undefined) return true; // 未提供 confidence 的决策默认通过（兼容旧格式）
           if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
-          this.logger.warn(`[网格] 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`);
+          this.logger.warn(`[网格]${tag} 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`);
           return false;
         });
 
@@ -1386,7 +1391,7 @@ export class GridTradingService {
             errors++;
             const errCategory = classifyExchangeError(e);
             const rawCode = e?.code ?? e?.id ?? '';
-            this.logger.warn(`[网格] 执行决策失败: ${this.actionLabel(d.action, gridConfig?.locale)} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
+            this.logger.warn(`[网格]${tag} 执行决策失败: ${this.actionLabel(d.action, gridConfig?.locale)} [${errCategory}${rawCode ? '/' + rawCode : ''}] - ${e.message}`);
             const errEntry = `[${errCategory}${rawCode ? '/' + rawCode : ''}] ${e.message}`;
             execResults.push({ action: d.action, level: d.level, success: false, error: errEntry });
             // 账户配置错误（如 OKX 51010）是持久性错误，后续订单无需再试
@@ -1407,7 +1412,7 @@ export class GridTradingService {
           postSyncExchangePositions = syncResult.exchangePositions ?? [];
           if (syncResult.filledLines.length > 0) {
             trades += syncResult.filledLines.length;
-            this.logger.log(`[网格] 成交同步: ${syncResult.filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
+            this.logger.log(`[网格]${tag} 成交同步: ${syncResult.filledLines.length} 笔新成交 | 累计 +${state.totalProfit.toFixed(2)} USDT`);
           }
         }
 
@@ -1423,7 +1428,7 @@ export class GridTradingService {
               : ((line.positionEntry - currentPrice) / line.positionEntry) * 100;
             if (lossPct < perLevelStopPct) continue;
             this.logger.warn(
-              `[网格] 硬止损触发: 层${idx + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
+              `[网格]${tag} 硬止损触发: 层${idx + 1} ${line.side} entry=${line.positionEntry.toFixed(4)} ` +
               `亏损=${lossPct.toFixed(1)}% ≥ ${perLevelStopPct}%`,
             );
             const closeSide = line.side === 'buy' ? 'long' : 'short';
@@ -1443,7 +1448,7 @@ export class GridTradingService {
                 state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + profit; // 对齐 nofx: DailyPnL += realizedLoss
                 state.totalTrades++;  // 对齐 nofx: TotalTrades++
                 this.logger.warn(
-                  `[网格] 硬止损平仓: 层${idx + 1} ${closeSide} qty=${closeQty} profit=${profit.toFixed(4)}`,
+                  `[网格]${tag} 硬止损平仓: 层${idx + 1} ${closeSide} qty=${closeQty} profit=${profit.toFixed(4)}`,
                 );
                 line.state = 'stopped';
                 line.positionSize = 0;
@@ -1486,7 +1491,7 @@ export class GridTradingService {
           const pendingStr = pending.map((d: any) => `L${d.lv}@${d.p.toFixed(2)}`).join(' ');
           const emptyStr   = empty.map((d: any) => `L${d.lv}`).join(',');
           this.logger.log(
-            `[网格] 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
+            `[网格]${tag} 层级 | 持仓: ${filledStr || '无'} | 挂单: ${pendingStr || '无'} | 空格: [${emptyStr || '无'}]`,
           );
         }
 
@@ -1505,7 +1510,7 @@ export class GridTradingService {
 
       } catch (e: any) {
         errors++;
-        this.logger.error(`[网格] AI 决策周期失败: ${e.message}`);
+        this.logger.error(`[网格]${tag} AI 决策周期失败: ${e.message}`);
         // 交易所凭证问题（key不存在/被删/禁用/鉴权失败/解密失败）写前端可见日志
         const isAuthError =
           e.message?.includes('authenticate') ||
@@ -1550,7 +1555,7 @@ export class GridTradingService {
         ? (currentEquity - state.startEquity) / state.startEquity * 100
         : 0;
       this.logger.log(
-        `[网格] ◀ ${state.symbol} | 本轮=${trades}笔${errors > 0 ? ` 错误=${errors}` : ' ✓'} | ` +
+        `[网格]${tag} ◀ ${state.symbol} | 本轮=${trades}笔${errors > 0 ? ` 错误=${errors}` : ' ✓'} | ` +
         `日内=${state.dailyPnl >= 0 ? '+' : ''}${state.dailyPnl.toFixed(2)} / ` +
         `策略=${currentProfitPct >= 0 ? '+' : ''}${currentProfitPct.toFixed(2)}% | ` +
         `市场=${this.regimeLabel(state.currentRegime)} 方向=${this.directionLabel(state.currentDirection)}`,
