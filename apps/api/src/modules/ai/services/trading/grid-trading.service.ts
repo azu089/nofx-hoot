@@ -1915,8 +1915,9 @@ export class GridTradingService {
 
   /** 分类市场状态（基于 5m K线 BB/ATR，与 AI 收到的指标同源） */
   private async classifyRegime(symbol: string): Promise<{ regime: RegimeLevel; atrHourly: number }> {
-    // 对齐 nofx: 使用 5m K线，与 AI 收到的 BB/ATR 指标同源（避免 1h 和 5m 数据矛盾）
-    const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '5m', 50);
+    // 使用 1h K线判断中期市场形态（regime 反映小时级趋势，不是5分钟微观波动）
+    // 5m BB/ATR 天然极窄（SOL 5m bbWidth≈0.8%, atrPct≈0.3%），导致永远 ultra_narrow
+    const ohlcvRaw = await this.marketData.fetchOHLCV(symbol, '1h', 50);
     const closes = ohlcvRaw.map((c: any) => Number(c[4]));
     const highs = ohlcvRaw.map((c: any) => Number(c[2]));
     const lows = ohlcvRaw.map((c: any) => Number(c[3]));
@@ -1932,14 +1933,14 @@ export class GridTradingService {
       : 3; // 默认 standard
     const atrPct = (atr && currentPrice > 0) ? (atr / currentPrice) * 100 : 2;
 
-    this.logger.debug(`[网格] classifyRegime(5m): bbWidth=${bbWidth.toFixed(3)}%, atrPct=${atrPct.toFixed(3)}%, price=${currentPrice}`);
-
     let regime: RegimeLevel;
-    if (bbWidth < 1.5 && atrPct < 0.8) regime = 'ultra_narrow'; // 极窄幅：BB<1.5% + ATR<0.8%，最适合网格，5x 杠杆
-    else if (bbWidth < 2.0 && atrPct < 1.0) regime = 'narrow';
-    else if (bbWidth <= 3.0 && atrPct <= 2.0) regime = 'standard';
-    else if (bbWidth <= 6.0 && atrPct <= 3.0) regime = 'wide';   // 扩大 wide 上限至 BB≤6%（3月9日稳定版，SOL/BTC 正常波动区间）
-    else regime = 'volatile'; // BB>6% 或 ATR>3%（真正极端高波动）
+    if (bbWidth < 1.5 && atrPct < 0.8) regime = 'ultra_narrow'; // 极窄幅：BB<1.5% + ATR<0.8%
+    else if (bbWidth < 3.0 && atrPct < 1.5) regime = 'narrow';  // 窄幅
+    else if (bbWidth <= 5.0 && atrPct <= 2.5) regime = 'standard'; // 标准
+    else if (bbWidth <= 8.0 && atrPct <= 4.0) regime = 'wide';   // 宽幅
+    else regime = 'volatile'; // BB>8% 或 ATR>4%（极端高波动）
+
+    this.logger.debug(`[网格] classifyRegime(1h): bbWidth=${bbWidth.toFixed(2)}%, atrPct=${atrPct.toFixed(2)}%, regime=${regime}`);
 
     return { regime, atrHourly: atr ?? 0 };
   }
