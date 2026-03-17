@@ -735,9 +735,9 @@ export function MobileTradingCenter({
                           {order.leverage}x
                         </span>
                       )}
-                      {order.closeReason && order.closeReason !== 'unknown' && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
-                          {getCloseReasonText(order.closeReason, t)}
+                      {order.strategyName && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-400 font-medium">
+                          {order.source?.startsWith('ai_') ? 'AI ' : ''}{order.strategyName}
                         </span>
                       )}
                     </div>
@@ -789,15 +789,6 @@ export function MobileTradingCenter({
                         <p className="text-[#9090A0]">{order.time ? new Date(order.time).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}</p>
                       </div>
                     </div>
-                    {/* 策略名 右对齐 */}
-                    {order.strategyName && (
-                      <div className="flex items-center justify-end gap-1">
-                        {order.source?.startsWith('ai_') && (
-                          <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400">AI</span>
-                        )}
-                        <span className="text-cyan-400 text-[10px]">{order.strategyName}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               ))
