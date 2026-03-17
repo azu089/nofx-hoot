@@ -997,60 +997,86 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
-  /** Binance/Gate: fetchMyTrades (带价格/数量/手续费的完整成交记录) */
+  /**
+   * Binance/Gate: 两步获取完整平仓成交记录
+   * Step 1: fapiPrivateGetIncome(REALIZED_PNL) 获取有盈亏的 symbol 列表
+   * Step 2: fapiPrivateGetUserTrades(symbol) 获取完整成交详情（价格/数量/手续费）
+   * 注意：fetchMyTrades(undefined) 在本地缓存模式下会报 'contract' undefined 错误，
+   *       因此必须使用原始 API 绕过 CCXT market 解析
+   */
   private async getClosedPnlBinance(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
     const ex = this.getExchange();
-    const since = startTime.getTime();
-    const allTrades: any[] = [];
-    let fetchSince = since;
-    const fetchLimit = 1000;
+    const startMs = startTime.getTime();
 
-    // 分页拉取所有成交
-    while (true) {
-      const trades = await ex.fetchMyTrades(undefined, fetchSince, fetchLimit);
-      if (!trades || trades.length === 0) break;
-      allTrades.push(...trades);
-      if (trades.length < fetchLimit) break;
-      fetchSince = trades[trades.length - 1].timestamp + 1;
-      if (allTrades.length >= 5000) break;
+    // Step 1: 用 income API 找到有 realizedPnl 的 symbol
+    const incomeResp: any[] = await (ex as any).fapiPrivateGetIncome({
+      incomeType: 'REALIZED_PNL',
+      startTime: startMs,
+      limit: 1000,
+    });
+    if (!incomeResp || incomeResp.length === 0) return [];
+
+    // 提取 unique symbols（Binance 格式如 "SOLUSDT"）
+    const symbolSet = new Set<string>();
+    for (const inc of incomeResp) {
+      if (inc.symbol) symbolSet.add(inc.symbol);
+    }
+
+    // Step 2: 按 symbol 调原始 userTrades API 获取完整成交
+    const allTrades: any[] = [];
+    for (const rawSymbol of symbolSet) {
+      try {
+        const trades: any[] = await (ex as any).fapiPrivateGetUserTrades({
+          symbol: rawSymbol,
+          startTime: startMs,
+          limit: 1000,
+        });
+        if (trades && trades.length > 0) {
+          allTrades.push(...trades);
+        }
+      } catch (e: any) {
+        this.logger.debug(`getClosedPnlBinance: ${rawSymbol} userTrades 失败: ${e.message}`);
+      }
     }
 
     // 只保留有 realizedPnl 的成交（= 平仓成交）
     return allTrades
       .filter((t: any) => {
-        const pnl = parseFloat(t.info?.realizedPnl ?? '0');
+        const pnl = parseFloat(t.realizedPnl ?? '0');
         return Math.abs(pnl) > 0.0001;
       })
       .map((t: any) => {
-        const pnl = parseFloat(t.info?.realizedPnl ?? '0');
-        const feeCost = parseFloat(t.fee?.cost ?? '0');
+        const pnl = parseFloat(t.realizedPnl ?? '0');
+        const feeCost = parseFloat(t.commission ?? '0');
         const price = parseFloat(t.price || '0');
-        const qty = parseFloat(t.amount || '0');
+        const qty = parseFloat(t.qty || '0');
 
-        // 正确推断被平仓方向：positionSide=LONG/SHORT/BOTH
-        const positionSide = (t.info?.positionSide || 'BOTH').toUpperCase();
+        // 正确推断被平仓方向
+        const positionSide = (t.positionSide || 'BOTH').toUpperCase();
         let closedSide: 'long' | 'short';
         if (positionSide === 'LONG') {
           closedSide = 'long';
         } else if (positionSide === 'SHORT') {
           closedSide = 'short';
         } else {
-          // BOTH 模式：sell=平多头，buy=平空头
-          closedSide = t.side === 'sell' ? 'long' : 'short';
+          closedSide = t.side === 'SELL' ? 'long' : 'short';
         }
 
         // 反推开仓均价：entryPrice = exitPrice ∓ (pnl / qty)
         let entryPrice = 0;
         if (qty > 0 && price > 0) {
           entryPrice = closedSide === 'long'
-            ? price - (pnl / qty)   // 做多：开仓价 = 平仓价 - 每单位盈亏
-            : price + (pnl / qty);  // 做空：开仓价 = 平仓价 + 每单位盈亏
+            ? price - (pnl / qty)
+            : price + (pnl / qty);
           if (entryPrice < 0) entryPrice = 0;
         }
 
-        const tradeTime = t.timestamp ? new Date(t.timestamp) : new Date();
+        // Binance userTrades symbol 格式 "SOLUSDT"，转统一格式 "SOL/USDT:USDT"
+        const unifiedSymbol = this.binanceRawSymbolToUnified(t.symbol || '');
+        const tradeTime = t.time ? new Date(Number(t.time)) : new Date();
+
         return {
-          symbol: t.symbol || '',
+          symbol: unifiedSymbol,
           side: closedSide,
           entryPrice,
           exitPrice: price,
@@ -1066,6 +1092,19 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         };
       })
       .slice(0, limit);
+  }
+
+  /** Binance 原始 symbol "SOLUSDT" → 统一 "SOL/USDT:USDT" */
+  private binanceRawSymbolToUnified(raw: string): string {
+    // 常见 quote 货币，按长度倒序匹配
+    const quotes = ['USDT', 'USDC', 'BUSD', 'BTC', 'ETH', 'BNB'];
+    for (const q of quotes) {
+      if (raw.endsWith(q)) {
+        const base = raw.slice(0, -q.length);
+        return `${base}/${q}:${q}`;
+      }
+    }
+    return raw;
   }
 
   /** OKX: positions-history API */
