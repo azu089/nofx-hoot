@@ -2246,7 +2246,9 @@ export class GridTradingService {
             ? (currentPrice - ep) * (d.qty ?? 0)
             : (ep - currentPrice) * (d.qty ?? 0);
           return {
-            price: ep, side: d.s as 'buy' | 'sell', quantity: normalQty,
+            // ★ price 用层价格（d.p），不用入场价（ep）！
+            // 入场价放 fillPrice。否则 AI 看到 6 层同价会拿入场价去挂单 → 死循环
+            price: d.p, side: d.s as 'buy' | 'sell', quantity: 0,
             positionSize: d.qty ?? 0, state: 'filled' as const, orderId: undefined,
             fillPrice: ep, profit,
           };
@@ -2832,6 +2834,15 @@ export class GridTradingService {
     let quantity = decision.quantity ?? 0;
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
+
+    // ★ 安全拦截：禁止在 filled（持仓）层下新单
+    // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
+    if (level && level.state === 'filled') {
+      this.logger.warn(
+        `[网格] 拦截: 禁止在持仓层 L${levelIndex + 1}(${level.side}) 下${side}单 @${(decision.price ?? 0).toFixed(2)}，应使用 close_long/close_short`,
+      );
+      return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
+    }
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高

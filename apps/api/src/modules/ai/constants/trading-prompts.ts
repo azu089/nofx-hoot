@@ -864,7 +864,11 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
         }
       })()
     : '';
-  return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;
+  // filled 层：显示入场价（@entry），quantity=0 表示禁止在此层下单
+  const entryStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0)
+    ? ` @${l.fillPrice.toFixed(4)}`
+    : '';
+  return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)}${entryStr} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;
 }
 
 /** 构建持仓行 */
