@@ -3600,9 +3600,9 @@ export class GridTradingService {
           if (usedIdx.has(i)) continue;
           if (state.gridLines[i].state !== 'empty') continue;
           const lp = r2(state.gridLines[i].price);
-          // side 过滤：buy→下半区（含边界），sell→上半区（含边界）
-          if (orderSide === 'buy' && lp > upperBound) continue;
-          if (orderSide === 'sell' && lp < lowerBound) continue;
+          // side 过滤：buy→下半区（含边界+0.01容差），sell→上半区（含边界+0.01容差）
+          if (orderSide === 'buy' && lp > upperBound + 0.01) continue;
+          if (orderSide === 'sell' && lp < lowerBound - 0.01) continue;
           const d = Math.abs(state.gridLines[i].price - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -4425,8 +4425,8 @@ export class GridTradingService {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
         const lp = r2(state.gridLines[i].price);
-        if (orderSide === 'buy' && lp > upperBound) continue;
-        if (orderSide === 'sell' && lp < lowerBound) continue;
+        if (orderSide === 'buy' && lp > upperBound + 0.01) continue;
+        if (orderSide === 'sell' && lp < lowerBound - 0.01) continue;
         const d = Math.abs(state.gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
