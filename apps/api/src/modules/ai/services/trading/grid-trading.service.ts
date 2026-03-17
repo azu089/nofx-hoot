@@ -2828,6 +2828,13 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
+    // 已持仓层不允许再下单 — 必须先 close_long/close_short 平仓
+    if (level && level.state === 'filled') {
+      const skipReason = `层${rawLevel}已有持仓(${level.side})，不可再下${side}单，应先平仓`;
+      this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
+      return { executed: false, skipReason };
+    }
+
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
     if (level && level.state === 'pending' && level.orderId) {

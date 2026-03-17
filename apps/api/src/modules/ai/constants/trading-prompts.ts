@@ -726,7 +726,8 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-网格的核心是买低卖高配对。持仓可通过反向挂单自然止盈，也可主动平仓（close_long/close_short）。
+网格的核心是买低卖高配对。止盈方向：多头(buy层)止盈=挂卖单(高于入场价)，空头(sell层)止盈=挂买单(低于入场价)。也可主动平仓（close_long/close_short）。
+⚠️ 禁止在已持仓(filled)层再下单，必须在empty层操作。挂单优先从当前价附近开始，逐步向外扩展。
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
@@ -744,8 +745,8 @@ function gridSystemPromptZh(
 {
   "analysis": "简要分析市场状态和决策理由",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"低于入场价，挂买单等待成交"},
-    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"高于入场价，挂卖单止盈"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"empty层，低于当前价，挂买单"},
+    {"action":"place_sell_limit","level":16,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"empty层，高于当前价，挂卖单"}
   ]
 }
 \`\`\`
@@ -785,7 +786,8 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-Grid's core is buy-low-sell-high pairs. Positions can profit through reverse limit orders, or be actively closed (close_long/close_short).
+Grid's core is buy-low-sell-high pairs. Take-profit direction: Long(buy level) TP = place sell(above entry), Short(sell level) TP = place buy(below entry). Or actively close (close_long/close_short).
+⚠️ NEVER place orders on filled layers. Only place on empty layers. Prioritize layers near current price, then expand outward.
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
@@ -803,8 +805,8 @@ When grid is paused due to price breakout, AI continues running to manage positi
 {
   "analysis": "Brief market analysis and decision reasoning",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"below entry, place buy order"},
-    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"above entry, place sell for take-profit"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"empty level, below current price, place buy"},
+    {"action":"place_sell_limit","level":16,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"empty level, above current price, place sell"}
   ]
 }
 \`\`\`
