@@ -154,17 +154,13 @@ export class ClosedPnlSyncService {
       } catch (e: any) {
         // P2002 = 唯一约束冲突（竞态重复），静默跳过
         if (e?.code === 'P2002') continue;
-        // 强制打印完整错误信息（之前 err= 空白，怀疑是空对象或 undefined）
-        let errDetail: string;
-        try {
-          errDetail = `type=${typeof e} code=${e?.code} name=${e?.name} msg=${e?.message} ` +
-            `keys=${Object.keys(e || {}).join(',')} ` +
-            `str=${String(e)} json=${JSON.stringify(e, null, 0)?.substring(0, 500)}`;
-        } catch {
-          errDetail = `toString=${String(e)}`;
+        // PrismaClientValidationError: message 可能含换行符，用 console.error 打印完整堆栈
+        if (ri === 0) {
+          console.error('[历史持仓同步] 首条完整错误:', e);
         }
+        const errName = e?.name || e?.constructor?.name || typeof e;
         this.logger.warn(
-          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${errDetail}`,
+          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} errName=${errName}`,
         );
       }
     }
