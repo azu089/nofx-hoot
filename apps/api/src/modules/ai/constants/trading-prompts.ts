@@ -671,6 +671,8 @@ export interface GridContext {
   recentClosedPnl?: Array<{symbol: string; side: string; quantity: number; entryPrice: number; exitPrice: number; realizedPnl: number; closedAt: string}>;
   // 突破恢复中：下单量缩减比例（50=每层最多用50%仓位预算，0=正常）
   positionReductionPct?: number;
+  // 未映射到网格层的交易所挂单（方向不匹配等原因），AI 应主动撤销
+  unmappedOrderIds?: string[];
 }
 
 /**
@@ -705,7 +707,7 @@ function gridSystemPromptZh(
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
 ## 市场形态判断
-- **震荡**（BB<3%，EMA距<1%）→ 适合网格，积极挂单
+- **震荡**（BB<3%，EMA距<1%）→ 适合网格，正常运行
 - **宽幅**（BB 3-6%，EMA距≤2%）→ 谨慎运行，高波动=更多成交机会，不必暂停
 - **趋势**（BB>6% 且 EMA距>2%）→ 暂停网格
 
@@ -724,14 +726,9 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-网格的核心是买低卖高配对，持仓通过反向挂单自然止盈，不需要主动平仓。
-代码层有硬止损保护（单层亏损超阈值自动平仓），你无需操心止损。
+网格的核心是买低卖高配对。持仓可通过反向挂单自然止盈，也可主动平仓（close_long/close_short）。
 
-## ⚠️ 补单优先级（强制）
-**持仓反向侧 > 同向侧。** 有 filled buy 层时，必须优先补满 sell 侧空格（止盈单），再补 buy 侧空格。反之亦然。
-原因：网格=买低卖高的配对，有持仓无反向止盈单=裸头寸，不是网格。
-
-## ⚠️ 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
+## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
 - **可用操作**：adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid：以当前价重建网格，持仓映射到新层继续运行，isPaused 自动清除
@@ -747,8 +744,8 @@ function gridSystemPromptZh(
 {
   "analysis": "简要分析市场状态和决策理由",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"空格补单"},
-    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"持仓层补挂止盈"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"低于入场价，挂买单等待成交"},
+    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"高于入场价，挂卖单止盈"}
   ]
 }
 \`\`\`
@@ -769,7 +766,7 @@ function gridSystemPromptEn(
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
 
 ## Market Regime
-- **Ranging** (BB<3%, EMA distance<1%) → Suitable for grid, place orders actively
+- **Ranging** (BB<3%, EMA distance<1%) → Suitable for grid, normal operation
 - **Wide** (BB 3-6%, EMA distance≤2%) → Run cautiously, high volatility = more fill opportunities, no need to pause
 - **Trending** (BB>6% AND EMA distance>2%) → Pause grid
 
@@ -788,14 +785,9 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-Grid's core is buy-low-sell-high pairs. Positions profit through reverse limit orders, no active closing needed.
-Code-level hard stop-loss protects each layer automatically (closes when loss exceeds threshold).
+Grid's core is buy-low-sell-high pairs. Positions can profit through reverse limit orders, or be actively closed (close_long/close_short).
 
-## ⚠️ Order Priority (mandatory)
-**Reverse side first.** When there are filled buy levels, you MUST fill all empty sell-side levels (take-profit orders) BEFORE placing buy-side orders. Vice versa for filled sell levels.
-Reason: Grid = buy-low-sell-high pairs. Positions without reverse take-profit orders = naked directional exposure, not a grid.
-
-## ⚠️ Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
+## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
 - **Available actions**: adjust_grid / close_long / close_short / resume_grid / hold
 - adjust_grid: Rebuild grid centered on current price, positions map to nearest levels, isPaused auto-clears
@@ -811,8 +803,8 @@ When grid is paused due to price breakout, AI continues running to manage positi
 {
   "analysis": "Brief market analysis and decision reasoning",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"fill empty grid"},
-    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"take-profit for filled level"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"below entry, place buy order"},
+    {"action":"place_sell_limit","level":3,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"above entry, place sell for take-profit"}
   ]
 }
 \`\`\`
@@ -843,7 +835,7 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
     ? (l.side === 'buy' ? (isEn ? 'Long' : '持多') : (isEn ? 'Short' : '持空'))
     : l.state === 'pending'
       ? (l.side === 'buy' ? (isEn ? 'Bid' : '挂买') : (isEn ? 'Ask' : '挂卖'))
-      : (l.price < ctx.currentPrice ? (isEn ? 'Buy Side' : '建议买') : (isEn ? 'Sell Side' : '建议卖'));
+      : (l.side === 'buy' ? (isEn ? 'Buy Side' : '建议买') : (isEn ? 'Sell Side' : '建议卖'));
   const stateStr = l.state === 'pending' ? (isEn ? 'Pending' : '待成交') : l.state === 'filled' ? (isEn ? 'Filled' : '持仓') : (isEn ? 'Empty' : '空格');
   const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
   const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
@@ -977,12 +969,22 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('--- 网格状态 ---');
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection} | 方向自适应: ${ctx.enableDirectionAdjust ? '已启用（箱体突破→自动偏转）' : '未启用（突破→pause/reduce）'}`);
-  lines.push(`活跃订单: ${ctx.activeOrderCount} | 已成交: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
-  // 溢出警告：交易所挂单数 > 网格层数时，AI 需要主动撤销多余挂单
   const _exchOrderCount = ctx.exchangeOpenOrders?.length ?? 0;
-  const _gridLevelCount = ctx.levels.length;
-  if (_exchOrderCount > _gridLevelCount) {
-    lines.push(`⚠️ 交易所委托单(${_exchOrderCount}) > 网格层数(${_gridLevelCount})！有 ${_exchOrderCount - _gridLevelCount} 个多余挂单未映射到任何层。请用 cancel_order 撤销距当前价最远的多余挂单，释放层位给持仓映射。`);
+  const _mappedOrderCount = ctx.activeOrderCount;
+  const _unmappedCount = ctx.unmappedOrderIds?.length ?? 0;
+  lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
+  if (_unmappedCount > 0) {
+    lines.push(`🚨 ${_unmappedCount} 个多余挂单（价格被持仓层占位，无空层可映射），必须用 cancel_order 撤销：`);
+    for (const oid of ctx.unmappedOrderIds!) {
+      const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
+      if (matchOrder) {
+        lines.push(`  - orderId: ${oid} (${matchOrder.side} @${matchOrder.price.toFixed(2)} x${matchOrder.quantity})`);
+      } else {
+        lines.push(`  - orderId: ${oid}`);
+      }
+    }
+    lines.push('撤销后空出层位，可用于补挂止盈单。');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
@@ -1002,13 +1004,9 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     lines.push(`网格持仓分布: 多头侧${buyFilled}格 vs 空头侧${sellFilled}格`);
   }
-  const emptyLevels = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
-  if (emptyLevels.length > 0) {
-    lines.push(`空格数量: ${emptyLevels.length} 层（详见层级表，quantity 列为建议数量）`);
-  } else {
-    lines.push('空格数量: 0（所有层已挂单或持仓）');
-  }
+  lines.push(`活跃订单数: ${ctx.activeOrderCount}`);
+  lines.push(`已成交层数: ${ctx.filledLevelCount}`);
 
   // Section 5: 网格层级表
   lines.push('');
@@ -1113,11 +1111,21 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('--- Grid Status ---');
   lines.push(`Range: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | Spacing: ${ctx.gridSpacing.toFixed(4)}`);
   lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection} | DirAdjust: ${ctx.enableDirectionAdjust ? 'enabled (box breakout→auto-shift)' : 'disabled (breakout→pause/reduce)'}`);
-  lines.push(`Active Orders: ${ctx.activeOrderCount} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
   const _exchOrderCountEn = ctx.exchangeOpenOrders?.length ?? 0;
-  const _gridLevelCountEn = ctx.levels.length;
-  if (_exchOrderCountEn > _gridLevelCountEn) {
-    lines.push(`⚠️ Exchange orders(${_exchOrderCountEn}) > grid levels(${_gridLevelCountEn})! ${_exchOrderCountEn - _gridLevelCountEn} excess order(s) not mapped to any level. Use cancel_order to cancel the farthest orders from current price to free up level slots for position mapping.`);
+  const _mappedOrderCountEn = ctx.activeOrderCount;
+  const _unmappedCountEn = ctx.unmappedOrderIds?.length ?? 0;
+  lines.push(`Exchange Orders: ${_exchOrderCountEn} | Mapped: ${_mappedOrderCountEn} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
+  if (_unmappedCountEn > 0) {
+    lines.push(`🚨 ${_unmappedCountEn} excess order(s) (price occupied by position, no empty layer). MUST cancel_order each:`);
+    for (const oid of ctx.unmappedOrderIds!) {
+      const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
+      if (matchOrder) {
+        lines.push(`  - orderId: ${oid} (${matchOrder.side} @${matchOrder.price.toFixed(2)} x${matchOrder.quantity})`);
+      } else {
+        lines.push(`  - orderId: ${oid}`);
+      }
+    }
+    lines.push('Cancel to free layers for take-profit orders.');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (post-breakout recovery, each level capped at ${100 - ctx.positionReductionPct}% of suggested qty, auto-enforced by system)`);
@@ -1137,13 +1145,9 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     lines.push(`Grid Position Distribution: long side ${buyFilled} levels vs short side ${sellFilled} levels`);
   }
-  const emptyLevelsEn = ctx.levels.filter(l => l.state === 'cancelled' || l.state === 'empty');
   lines.push('');
-  if (emptyLevelsEn.length > 0) {
-    lines.push(`Empty Levels: ${emptyLevelsEn.length} (see level table, quantity column = suggested amount)`);
-  } else {
-    lines.push('Empty Levels: 0 (all levels have orders or positions)');
-  }
+  lines.push(`Active Orders: ${ctx.activeOrderCount}`);
+  lines.push(`Filled Levels: ${ctx.filledLevelCount}`);
 
   // Section 5: Grid Levels Table
   lines.push('');
