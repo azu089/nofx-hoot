@@ -77,33 +77,38 @@ export class ClosedPnlSyncService {
         // 匹配策略
         const strategy = await this.matchStrategy(userId, apiKeyId, record.symbol);
 
-        // 写入 Position 表
-        const position = await this.prisma.position.create({
-          data: {
-            userId,
-            exchange,
-            symbol: record.symbol,
-            side: record.side,
-            entryPrice: record.entryPrice || 0,
-            amount: record.quantity || 0,
-            tradingType: 'futures',
-            leverage: record.leverage || 1,
-            status: 'closed',
-            closedAt: record.exitTime || new Date(),
-            closePrice: record.exitPrice || 0,
-            pnl: record.realizedPnl || 0,
-            realizedPnl: record.realizedPnl || 0,
-            closeReason: record.closeType || 'unknown',
-            source: strategy ? 'ai_strategy' : 'exchange_sync',
-            aiStrategyId: strategy?.id || null,
-            apiKeyId,
-            exchangeRef: record.exchangeId,
-          },
+        // 写入 Position 表（upsert 防竞态重复，exchangeRef 有 @unique 约束）
+        const posData = {
+          userId,
+          exchange,
+          symbol: record.symbol,
+          side: record.side,
+          entryPrice: record.entryPrice || 0,
+          amount: record.quantity || 0,
+          tradingType: 'futures',
+          leverage: record.leverage || 1,
+          status: 'closed',
+          closedAt: record.exitTime || new Date(),
+          closePrice: record.exitPrice || 0,
+          pnl: record.realizedPnl || 0,
+          realizedPnl: record.realizedPnl || 0,
+          closeReason: record.closeType || 'unknown',
+          source: strategy ? 'ai_strategy' : 'exchange_sync',
+          aiStrategyId: strategy?.id || null,
+          apiKeyId,
+          exchangeRef: record.exchangeId!,
+        };
+        const position = await this.prisma.position.upsert({
+          where: { exchangeRef: record.exchangeId! },
+          create: posData,
+          update: {},  // 已存在则不更新（幂等）
         });
-        synced++;
+        // upsert 不区分 create/update，用 createdAt 判断是否新增
+        const isNew = (Date.now() - new Date(position.createdAt).getTime()) < 5000;
+        if (isNew) synced++;
 
-        // 盈利 > 0 → 点卡扣费
-        if (record.realizedPnl > 0 && strategy) {
+        // 盈利 > 0 → 点卡扣费（仅新记录，upsert 命中已有记录则跳过）
+        if (isNew && record.realizedPnl > 0 && strategy) {
           try {
             const feeCalc = await this.feeService.calculateFee(
               userId,

@@ -1016,7 +1016,12 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   {
     const buyFilled = ctx.gridSkewBuyFilled ?? 0;
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
-    lines.push(`网格持仓分布: 多头侧${buyFilled}格 vs 空头侧${sellFilled}格`);
+    const filledTotal = buyFilled + sellFilled;
+    if (filledTotal > 0) {
+      lines.push(`持仓层数: ${filledTotal}格（${buyFilled > 0 ? '多头' : '空头'}）`);
+    } else {
+      lines.push(`持仓层数: 0格`);
+    }
   }
   lines.push('');
   lines.push(`活跃订单数: ${ctx.activeOrderCount}`);
@@ -1157,7 +1162,12 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   {
     const buyFilled = ctx.gridSkewBuyFilled ?? 0;
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
-    lines.push(`Grid Position Distribution: long side ${buyFilled} levels vs short side ${sellFilled} levels`);
+    const filledTotal = buyFilled + sellFilled;
+    if (filledTotal > 0) {
+      lines.push(`Filled Levels: ${filledTotal} (${buyFilled > 0 ? 'long' : 'short'})`);
+    } else {
+      lines.push(`Filled Levels: 0`);
+    }
   }
   lines.push('');
   lines.push(`Active Orders: ${ctx.activeOrderCount}`);

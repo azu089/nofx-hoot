@@ -1334,9 +1334,8 @@ export class GridTradingService {
         (context as any).gridSkewBuyFilled = skewBuy;
         (context as any).gridSkewSellFilled = skewSell;
         (context as any).autoAdjustThreshold = gridConfig?.autoAdjustThreshold ?? 0.2;
-        if (skewLevel !== 'none') {
-          this.logger.warn(`[网格]${tag} 全局倾斜: ${skewLevel} buy=${skewBuy} sell=${skewSell}`);
-        }
+        // skew 日志已移除：合约同一交易对只有净持仓，buy/sell 永远单边，报 severe 无意义
+        // checkGridSkew 结果仍传入 autoAdjustGrid 用于重建触发判断
 
         // 倾斜驱动方向自适应 — 已删除（对齐 nofx：后端不做方向自动切换，方向由用户设置）
 
