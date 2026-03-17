@@ -76,26 +76,10 @@ export class ClosedPnlSyncService {
     let charged = 0;
     let balanceDepleted = false;
 
-    for (let ri = 0; ri < newRecords.length; ri++) {
-      const record = newRecords[ri];
+    for (const record of newRecords) {
       try {
         // 匹配策略
         const strategy = await this.matchStrategy(userId, apiKeyId, record.symbol);
-
-        // 首条记录打印完整数据用于调试
-        if (ri === 0) {
-          this.logger.debug(`[历史持仓同步] 首条记录数据: ${JSON.stringify({
-            userId: userId?.substring(0, 8),
-            exchange,
-            symbol: record.symbol,
-            side: record.side,
-            entryPrice: record.entryPrice,
-            quantity: record.quantity,
-            realizedPnl: record.realizedPnl,
-            exchangeId: record.exchangeId,
-            strategyId: strategy?.id?.substring(0, 8),
-          })}`);
-        }
 
         // 写入 Position 表（create + P2002 唯一约束冲突跳过）
         const position = await this.prisma.position.create({
@@ -154,13 +138,12 @@ export class ClosedPnlSyncService {
       } catch (e: any) {
         // P2002 = 唯一约束冲突（竞态重复），静默跳过
         if (e?.code === 'P2002') continue;
-        // PrismaClientValidationError: message 可能含换行符，用 console.error 打印完整堆栈
-        if (ri === 0) {
-          console.error('[历史持仓同步] 首条完整错误:', e);
-        }
-        const errName = e?.name || e?.constructor?.name || typeof e;
+        // 其他错误打印完整信息
+        const errDetail = e.code
+          ? `code=${e.code} meta=${JSON.stringify(e.meta)} msg=${e.message}`
+          : (e.message || e.stack || JSON.stringify(e, Object.getOwnPropertyNames(e)));
         this.logger.warn(
-          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} errName=${errName}`,
+          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${errDetail}`,
         );
       }
     }
