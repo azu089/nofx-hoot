@@ -3590,19 +3590,19 @@ export class GridTradingService {
         }
 
         // 规则2：找价格最近且 side 匹配的 empty 层
-        // buy 单 → 只映射 price <= midPrice 的层（下半区）
-        // sell 单 → 只映射 price >= midPrice 的层（上半区）
+        // 用层索引做 side 过滤（不用价格，避免偶数层边界浮点问题）
+        // buy 单 → 下半区 (index <= midIdx)，sell 单 → 上半区 (index >= midIdx)
+        // midIdx 处两侧都可映射（中心层可接受 buy 或 sell）
+        const midIdx = Math.floor(state.gridLines.length / 2);
         let bestIdx = -1;
         let bestDist = Infinity;
         for (let i = 0; i < state.gridLines.length; i++) {
           if (usedIdx.has(i)) continue;
           if (state.gridLines[i].state !== 'empty') continue;
-          const lp = state.gridLines[i].price;
-          // side 过滤：buy 单只匹配下半区，sell 单只匹配上半区
-          // 对齐到小数点后一位比较，消除浮点精度边界误差
-          if (orderSide === 'buy' && Math.round(lp * 10) > Math.round((midPrice + halfSpacing) * 10)) continue;
-          if (orderSide === 'sell' && Math.round(lp * 10) < Math.round((midPrice - halfSpacing) * 10)) continue;
-          const d = Math.abs(lp - price);
+          // 层索引 side 过滤：buy 映射下半区+中心，sell 映射上半区+中心
+          if (orderSide === 'buy' && i > midIdx) continue;
+          if (orderSide === 'sell' && i < midIdx) continue;
+          const d = Math.abs(state.gridLines[i].price - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
         // 规则4：距离超过 1.5 倍间距 → 不映射
@@ -4415,16 +4415,16 @@ export class GridTradingService {
       if ([...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing)) continue;
 
       // 规则2：找价格最近且 side 匹配的 empty 层
+      const midIdx = Math.floor(display.length / 2);
       let bestIdx = -1;
       let bestDist = Infinity;
       for (let i = 0; i < display.length; i++) {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
-        const lp = state.gridLines[i].price;
-        // 对齐到小数点后一位比较，消除浮点精度边界误差
-        if (orderSide === 'buy' && Math.round(lp * 10) > Math.round((midPrice + halfSpacing) * 10)) continue;
-        if (orderSide === 'sell' && Math.round(lp * 10) < Math.round((midPrice - halfSpacing) * 10)) continue;
-        const d = Math.abs(lp - price);
+        // 层索引 side 过滤（不用价格，避免偶数层边界问题）
+        if (orderSide === 'buy' && i > midIdx) continue;
+        if (orderSide === 'sell' && i < midIdx) continue;
+        const d = Math.abs(state.gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
       if (bestIdx >= 0 && bestDist <= maxMapDist) {
