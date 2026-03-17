@@ -44,6 +44,8 @@ export class ClosedPnlSyncService {
       return { synced: 0, charged: 0, balanceDepleted: false };
     }
 
+    this.logger.debug(`[历史持仓同步] 拉取到 ${closedRecords.length} 条记录 (exchange=${exchange})`);
+
     // 批量去重：查询已存在的 exchangeRef
     const exchangeRefs = closedRecords
       .filter(r => r.exchangeId)
@@ -68,6 +70,8 @@ export class ClosedPnlSyncService {
       return { synced: 0, charged: 0, balanceDepleted: false };
     }
 
+    this.logger.log(`[历史持仓同步] 新记录 ${newRecords.length} 条待写入 (已存在=${existing.length})`);
+
     let synced = 0;
     let charged = 0;
     let balanceDepleted = false;
@@ -77,38 +81,33 @@ export class ClosedPnlSyncService {
         // 匹配策略
         const strategy = await this.matchStrategy(userId, apiKeyId, record.symbol);
 
-        // 写入 Position 表（upsert 防竞态重复，exchangeRef 有 @unique 约束）
-        const posData = {
-          userId,
-          exchange,
-          symbol: record.symbol,
-          side: record.side,
-          entryPrice: record.entryPrice || 0,
-          amount: record.quantity || 0,
-          tradingType: 'futures',
-          leverage: record.leverage || 1,
-          status: 'closed',
-          closedAt: record.exitTime || new Date(),
-          closePrice: record.exitPrice || 0,
-          pnl: record.realizedPnl || 0,
-          realizedPnl: record.realizedPnl || 0,
-          closeReason: record.closeType || 'unknown',
-          source: strategy ? 'ai_strategy' : 'exchange_sync',
-          aiStrategyId: strategy?.id || null,
-          apiKeyId,
-          exchangeRef: record.exchangeId!,
-        };
-        const position = await this.prisma.position.upsert({
-          where: { exchangeRef: record.exchangeId! },
-          create: posData,
-          update: {},  // 已存在则不更新（幂等）
+        // 写入 Position 表（create + P2002 唯一约束冲突跳过）
+        const position = await this.prisma.position.create({
+          data: {
+            userId,
+            exchange,
+            symbol: record.symbol,
+            side: record.side || 'long',
+            entryPrice: record.entryPrice || 0,
+            amount: record.quantity || 0,
+            tradingType: 'futures',
+            leverage: record.leverage || 1,
+            status: 'closed',
+            closedAt: record.exitTime || new Date(),
+            closePrice: record.exitPrice || 0,
+            pnl: record.realizedPnl || 0,
+            realizedPnl: record.realizedPnl || 0,
+            closeReason: record.closeType || 'unknown',
+            source: strategy ? 'ai_strategy' : 'exchange_sync',
+            aiStrategyId: strategy?.id || null,
+            apiKeyId,
+            exchangeRef: record.exchangeId!,
+          },
         });
-        // upsert 不区分 create/update，用 createdAt 判断是否新增
-        const isNew = (Date.now() - new Date(position.createdAt).getTime()) < 5000;
-        if (isNew) synced++;
+        synced++;
 
-        // 盈利 > 0 → 点卡扣费（仅新记录，upsert 命中已有记录则跳过）
-        if (isNew && record.realizedPnl > 0 && strategy) {
+        // 盈利 > 0 → 点卡扣费
+        if (record.realizedPnl > 0 && strategy) {
           try {
             const feeCalc = await this.feeService.calculateFee(
               userId,
@@ -137,8 +136,12 @@ export class ClosedPnlSyncService {
           }
         }
       } catch (e: any) {
-        // 单条记录失败不影响其他（打印 code+meta 定位 Prisma 错误）
-        const errDetail = e.code ? `code=${e.code} meta=${JSON.stringify(e.meta)}` : (e.message || String(e));
+        // P2002 = 唯一约束冲突（竞态重复），静默跳过
+        if (e.code === 'P2002') continue;
+        // 其他错误打印完整信息
+        const errDetail = e.code
+          ? `code=${e.code} meta=${JSON.stringify(e.meta)} msg=${e.message}`
+          : (e.message || e.stack || JSON.stringify(e, Object.getOwnPropertyNames(e)));
         this.logger.warn(
           `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${errDetail}`,
         );
