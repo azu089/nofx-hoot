@@ -109,7 +109,7 @@ export class ClosedPnlSyncService {
             tradingType: 'futures',
             leverage: record.leverage || 1,
             status: 'closed',
-            closedAt: record.exitTime || new Date(),
+            closedAt: (record.exitTime && !isNaN(record.exitTime.getTime())) ? record.exitTime : new Date(),
             closePrice: record.exitPrice || 0,
             pnl: record.realizedPnl || 0,
             realizedPnl: record.realizedPnl || 0,
