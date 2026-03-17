@@ -3610,19 +3610,28 @@ export class GridTradingService {
         }
 
         // 规则2：找价格最近且 side 匹配的 empty 层
-        // buy 单 → 只映射 price <= midPrice 的层（下半区）
-        // sell 单 → 只映射 price >= midPrice 的层（上半区）
+        // buy 单 → 优先匹配 price <= midPrice 的层（下半区）
+        // sell 单 → 优先匹配 price >= midPrice 的层（上半区）
         let bestIdx = -1;
         let bestDist = Infinity;
         for (let i = 0; i < state.gridLines.length; i++) {
           if (usedIdx.has(i)) continue;
           if (state.gridLines[i].state !== 'empty') continue;
           const lp = state.gridLines[i].price;
-          // side 过滤：buy 单只匹配下半区，sell 单只匹配上半区
+          // side 过滤：buy 单优先匹配下半区，sell 单优先匹配上半区
           if (orderSide === 'buy' && lp > midPrice + halfSpacing) continue;
           if (orderSide === 'sell' && lp < midPrice - halfSpacing) continue;
           const d = Math.abs(lp - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        // fallback: side 过滤无结果 → 纯价格最近匹配（AI 自由决定挂单，映射应尊重）
+        if (bestIdx < 0) {
+          for (let i = 0; i < state.gridLines.length; i++) {
+            if (usedIdx.has(i)) continue;
+            if (state.gridLines[i].state !== 'empty') continue;
+            const d = Math.abs(state.gridLines[i].price - price);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+          }
         }
         // 规则4：距离超过 1.5 倍间距 → 不映射
         if (bestIdx >= 0 && bestDist <= maxMapDist) {
@@ -4444,6 +4453,15 @@ export class GridTradingService {
         if (orderSide === 'sell' && lp < midPrice - halfSpacing) continue;
         const d = Math.abs(lp - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      // fallback: side 过滤无结果 → 纯价格最近匹配（AI 自由决定挂单，映射应尊重）
+      if (bestIdx < 0) {
+        for (let i = 0; i < display.length; i++) {
+          if (usedDisplayIdx.has(i)) continue;
+          if (display[i].st !== 'empty') continue;
+          const d = Math.abs(state.gridLines[i].price - price);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
       }
       if (bestIdx >= 0 && bestDist <= maxMapDist) {
         usedDisplayIdx.add(bestIdx);
