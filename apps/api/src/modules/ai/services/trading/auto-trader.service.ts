@@ -18,6 +18,8 @@ import { GridTradingService, GridConfig } from './grid-trading.service';
 import { AI_SAFETY_DEFAULTS } from '../../constants/safety-defaults';
 import { translateExchangeError } from '../../utils/error-translator';
 import { CircuitBreakerService } from '../../../trading/config/circuit-breaker.service';
+import { ClosedPnlSyncService } from '../../../trading/closed-pnl-sync.service';
+import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
 
 /**
  * Debate 模式各模型投票详情
@@ -157,6 +159,8 @@ export class AutoTraderService {
     private readonly gateway: TradingGateway,
     private readonly gridTrading: GridTradingService,
     @Optional() private readonly circuitBreaker?: CircuitBreakerService,
+    @Optional() private readonly closedPnlSyncService?: ClosedPnlSyncService,
+    @Optional() private readonly adapterFactory?: AdapterFactoryService,
   ) {}
 
   /**
@@ -1958,6 +1962,25 @@ export class AutoTraderService {
           });
         } catch (e) {
           this.logger.warn(`[自动交易] 更新费用失败: ${e.message}`);
+        }
+      }
+
+      // 交易所历史持仓同步 + 统一扣费（唯一入口）
+      if (this.closedPnlSyncService && this.adapterFactory) {
+        try {
+          const syncAdapter = await this.adapterFactory.createAdapter(userId, effectiveExchangeApiKeyId);
+          try {
+            const syncResult = await this.closedPnlSyncService.syncClosedPositions(
+              userId, effectiveExchangeApiKeyId, syncAdapter.exchangeType, syncAdapter,
+            );
+            if (syncResult.synced > 0) {
+              this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 扣费=${syncResult.charged}`);
+            }
+          } finally {
+            try { await syncAdapter.dispose(); } catch { /* 忽略 */ }
+          }
+        } catch (e: any) {
+          this.logger.debug(`[自动交易] 历史持仓同步失败(非致命): ${e.message}`);
         }
       }
 

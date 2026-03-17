@@ -5,7 +5,7 @@ import { MarketDataService } from '../market-data.service';
 import { IndicatorsService, OHLCV } from '../indicators.service';
 import { LLMService, UserApiKeys } from '../llm.service';
 import { AdapterFactoryService } from '../../../exchange-adapters/adapter-factory.service';
-import { FeeService } from '../../../trading/fee.service';
+import { ClosedPnlSyncService } from '../../../trading/closed-pnl-sync.service';
 import {
   ExchangeAdapter,
   GridExchangeAdapter,
@@ -408,7 +408,7 @@ export class GridTradingService {
     @Optional() private readonly indicators: IndicatorsService,
     @Optional() private readonly llm: LLMService,
     @Optional() private readonly adapterFactory: AdapterFactoryService,
-    @Optional() private readonly feeService: FeeService,
+    @Optional() private readonly closedPnlSyncService: ClosedPnlSyncService,
   ) {}
 
   // ========================= 初始化 =========================
@@ -1542,6 +1542,19 @@ export class GridTradingService {
           );
         }
 
+        // 交易所历史持仓同步 + 统一扣费（唯一入口）
+        if (this.closedPnlSyncService && adapter) {
+          try {
+            const syncResult = await this.closedPnlSyncService.syncClosedPositions(
+              userId, apiKeyId, adapter.exchangeType, adapter,
+            );
+            if (syncResult.synced > 0) {
+              this.logger.log(`[网格] 历史持仓同步: 新增=${syncResult.synced}, 扣费=${syncResult.charged}`);
+            }
+          } catch (e: any) {
+            this.logger.debug(`[网格] 历史持仓同步失败(非致命): ${e.message}`);
+          }
+        }
 
       } catch (e: any) {
         errors++;
@@ -2639,7 +2652,6 @@ export class GridTradingService {
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -2725,7 +2737,6 @@ export class GridTradingService {
           state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
           state.totalTrades++;
           if (netProfit > 0) state.winningTrades++;
-          if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
           targetLevel.unrealizedPnl = netProfit;
           targetLevel.state = 'empty';
           targetLevel.positionSize = 0;
@@ -3182,7 +3193,6 @@ export class GridTradingService {
           const dirCloseResult = sideToClose === 'long'
             ? await adapter.closeLong(pos.symbol, pos.quantity)
             : await adapter.closeShort(pos.symbol, pos.quantity);
-          await this.settleGridFee(state, userId, dirCloseResult.realizedPnl ?? 0);
           await this.syncDbPositionClose(userId, pos.symbol, sideToClose, pos.quantity, 'directional_breakout', dirCloseResult);
           this.logger.warn(
             `[网格] 方向性平仓: ${pos.symbol} ${sideToClose} ${pos.quantity} (${direction}向突破)`,
@@ -3239,8 +3249,6 @@ export class GridTradingService {
             `[网格] 平仓 ${pos.symbol} ${pos.side}: 已实现盈亏 ${posRealizedPnl >= 0 ? '+' : ''}${posRealizedPnl.toFixed(4)} USDT`,
           );
 
-          // 单仓平仓后立即结算燃油费（亏损不扣，失败不阻塞）
-          await this.settleGridFee(state, userId, posRealizedPnl);
           // 同步 DB 持仓记录（使用交易所实际数据覆盖快照）
           await this.syncDbPositionClose(userId, pos.symbol, pos.side, pos.quantity, 'emergency_exit', closeResult);
         } catch (e: any) {
@@ -3324,48 +3332,6 @@ export class GridTradingService {
     state.isPaused = true;
     state.pauseSource = pauseSource;
     state.pauseReason = reason;
-  }
-
-  // ========================= 燃油费结算 =========================
-
-  /**
-   * 结算网格策略的点卡燃油费
-   * - 基于本次平仓的实际盈亏（平仓后权益 - 平仓前权益）
-   * - 亏损不扣费，失败不影响平仓流程（非致命错误）
-   */
-  private async settleGridFee(state: GridState, userId: string, realizedPnl: number): Promise<void> {
-    if (!this.feeService) return;
-    const actualPnl = realizedPnl;
-    if (actualPnl <= 0) return;
-
-    try {
-      const feeCalc = await this.feeService.calculateFee(userId, actualPnl.toFixed(8));
-      if (parseFloat(feeCalc.feeAmount) > 0) {
-        // 确定性 uniqueOrderId：秒级时间戳 + 盈利金额 hash → 同一秒内同利润不重复扣费
-        const epochSec = Math.floor(Date.now() / 1000);
-        const pnlKey = actualPnl.toFixed(8).replace('.', '_');
-        const uniqueOrderId = `GRID_FEE_${userId}_${state.strategyId}_${epochSec}_${pnlKey}`;
-        const result = await this.feeService.chargeFee({
-          userId,
-          positionId: state.strategyId,
-          profit: feeCalc.profit,
-          feeRate: feeCalc.finalFeeRate,
-          feeAmount: feeCalc.feeAmount,
-          uniqueOrderId,
-          strategyName: state.symbol,
-        });
-        state.chargedProfit = state.totalProfit; // 高水位标记（防止重启后重复扣费）
-        this.logger.log(
-          `[网格] 燃油费结算: 实际盈亏=${actualPnl.toFixed(2)} USDT, ` +
-          `扣费=${feeCalc.feeAmount} 点, 费率=${(parseFloat(feeCalc.finalFeeRate) * 100).toFixed(1)}%`,
-        );
-        if (result.balanceDepleted) {
-          this.logger.warn(`[网格] 点卡余额不足，策略将在下次周期自动停止`);
-        }
-      }
-    } catch (e: any) {
-      this.logger.error(`[网格] 燃油费结算失败（非致命，平仓继续）: ${e.message}`);
-    }
   }
 
   // ========================= 订单同步 =========================
@@ -3485,7 +3451,6 @@ export class GridTradingService {
               state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
               state.totalTrades++;
               if (netProfit > 0) state.winningTrades++;
-              if (netProfit > 0) await this.settleGridFee(state, userId, netProfit);
 
               filledLines.push(line);
               runningExpected -= qty;

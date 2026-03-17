@@ -892,48 +892,6 @@ export class TradeProcessor extends WorkerHost {
       this.logger.warn(`更新平仓执行状态失败: ${e.message}`);
     }
 
-    // ===== 燃油费扣除（仅盈利时） =====
-    if (pnl.gt(0)) {
-      try {
-        const feeCalc = await this.feeService.calculateFee(
-          userId,
-          pnl.toString(),
-        );
-        this.logger.log(
-          `燃油费计算: 盈利 ${feeCalc.profit}, 费率 ${feeCalc.finalFeeRate}, 费用 ${feeCalc.feeAmount}`,
-        );
-
-        if (parseFloat(feeCalc.feeAmount) > 0) {
-          const uniqueOrderId = this.feeService.generateUniqueOrderId(
-            'GAS_FEE',
-            userId,
-            openPosition.id,
-          );
-
-          await this.feeService.chargeFee({
-            userId,
-            positionId: openPosition.id,
-            profit: feeCalc.profit,
-            feeRate: feeCalc.finalFeeRate,
-            feeAmount: feeCalc.feeAmount,
-            uniqueOrderId,
-          });
-
-          this.logger.log(`燃油费已扣除: ${feeCalc.feeAmount} USDT`);
-
-          // ===== 推荐返佣（基于燃油费金额，多级分佣） =====
-          await this.processReferralCommission(
-            userId,
-            openPosition.id,
-            feeCalc.feeAmount,
-          );
-        }
-      } catch (error) {
-        this.logger.error(`燃油费扣除失败: ${error.message}`);
-        // 燃油费扣除失败不影响平仓结果
-      }
-    }
-
     // 发送平仓通知
     await this.notificationsService.notifyPositionClosed(
       userId,

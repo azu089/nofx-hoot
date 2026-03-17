@@ -435,27 +435,6 @@ export class PositionMonitorService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`写入 TradeExecutionLog 失败: ${(logErr as Error).message}`);
       }
 
-      // ===== 燃油费扣除（仅盈利时） =====
-      if (absolutePnl > 0) {
-        try {
-          const feeCalc = await this.feeService.calculateFee(userId, new Decimal(absolutePnl).toFixed(8));
-          if (parseFloat(feeCalc.feeAmount) > 0) {
-            const uniqueOrderId = this.feeService.generateUniqueOrderId('GAS_FEE', userId, positionId);
-            await this.feeService.chargeFee({
-              userId,
-              positionId,
-              profit: feeCalc.profit,
-              feeRate: feeCalc.finalFeeRate,
-              feeAmount: feeCalc.feeAmount,
-              uniqueOrderId,
-            });
-            this.logger.log(`燃油费已扣除: ${symbol} 盈利=$${absolutePnl.toFixed(2)} 费用=$${feeCalc.feeAmount} (${reason})`);
-          }
-        } catch (feeErr) {
-          this.logger.error(`燃油费扣除失败(非致命): ${(feeErr as Error).message}`);
-        }
-      }
-
       // 移除监控
       this.untrackPosition(positionId);
 

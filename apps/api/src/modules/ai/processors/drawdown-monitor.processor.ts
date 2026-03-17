@@ -282,34 +282,10 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         await adapter.closeShort(pos.symbol, closeQty);
       }
 
-      // 按比例计算本次止盈的盈利，结算点卡燃油费（非致命）
+      // 按比例计算本次止盈的盈利（用于历史持仓记录）
       const closedPnl = unrealizedPnl * (closeQty / entry.originalAmount);
-      if (closedPnl > 0 && this.feeService) {
-        try {
-          const feeCalc = await this.feeService.calculateFee(pos.userId, closedPnl.toFixed(8));
-          if (parseFloat(feeCalc.feeAmount) > 0) {
-            const uniqueOrderId = this.feeService.generateUniqueOrderId(
-              'SCALEOUT_FEE', pos.userId, `${pos.id}_s${entry.stage}`,
-            );
-            await this.feeService.chargeFee({
-              userId: pos.userId,
-              positionId: pos.id,
-              profit: feeCalc.profit,
-              feeRate: feeCalc.finalFeeRate,
-              feeAmount: feeCalc.feeAmount,
-              uniqueOrderId,
-              strategyName: pos.symbol,
-            });
-            this.logger.log(
-              `[AI监控] 分批止盈燃油费: ${pos.symbol} stage=${entry.stage} pnl≈${closedPnl.toFixed(4)} USDT, 扣费=${feeCalc.feeAmount}`,
-            );
-          }
-        } catch (e: any) {
-          this.logger.warn(`[AI监控] 分批止盈燃油费失败(非致命): ${e.message}`);
-        }
-      }
 
-      // 写入历史持仓记录（与扣费对齐，每次减仓都有记录）
+      // 写入历史持仓记录
       const entryPriceNum = parseFloat(pos.entryPrice?.toString() || '0');
       const margin = closeQty > 0 && (pos.leverage || 1) > 0
         ? (entryPriceNum * closeQty) / (pos.leverage || 1)
@@ -419,28 +395,6 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           closeReason: 'trailing_stop',
         },
       });
-
-      // 平仓后结算点卡燃油费（盈利时扣，亏损跳过，失败不阻塞）
-      if (pnl > 0 && this.feeService) {
-        try {
-          const feeCalc = await this.feeService.calculateFee(pos.userId, pnl.toFixed(8));
-          if (parseFloat(feeCalc.feeAmount) > 0) {
-            const uniqueOrderId = this.feeService.generateUniqueOrderId('AI_FEE', pos.userId, pos.id);
-            await this.feeService.chargeFee({
-              userId: pos.userId,
-              positionId: pos.id,
-              profit: feeCalc.profit,
-              feeRate: feeCalc.finalFeeRate,
-              feeAmount: feeCalc.feeAmount,
-              uniqueOrderId,
-              strategyName: pos.symbol,
-            });
-            this.logger.log(`[AI监控] 燃油费结算: ${pos.symbol} pnl=${pnl.toFixed(4)} USDT, 扣费=${feeCalc.feeAmount}`);
-          }
-        } catch (e: any) {
-          this.logger.warn(`[AI监控] 燃油费结算失败(非致命): ${e.message}`);
-        }
-      }
 
       // 推送前端 WebSocket 持仓平仓通知
       try {

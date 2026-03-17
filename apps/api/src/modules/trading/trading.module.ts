@@ -28,6 +28,9 @@ import { DailyPnlService } from './daily-pnl.service';
 // 持仓同步服务
 import { PositionSyncService } from './position-sync.service';
 
+// 交易所历史持仓同步 + 统一扣费
+import { ClosedPnlSyncService } from './closed-pnl-sync.service';
+
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'trade' }),
@@ -58,6 +61,8 @@ import { PositionSyncService } from './position-sync.service';
     DailyPnlService,
     // 持仓同步服务
     PositionSyncService,
+    // 交易所历史持仓同步 + 统一扣费
+    ClosedPnlSyncService,
   ],
   exports: [
     TradingService,
@@ -74,6 +79,8 @@ import { PositionSyncService } from './position-sync.service';
     DailyPnlService,
     // 持仓同步服务
     PositionSyncService,
+    // 交易所历史持仓同步 + 统一扣费
+    ClosedPnlSyncService,
   ],
 })
 export class TradingModule {}

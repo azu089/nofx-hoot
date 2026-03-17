@@ -440,6 +440,9 @@ model Position {
   aiStrategy     AiStrategy? @relation("AiStrategyPositions", fields: [aiStrategyId], references: [id])
   highWaterMark  Decimal? @db.Decimal(10, 4) @map("high_water_mark") // 盈利高水位（百分比）
 
+  // 交易所唯一标识（去重用，格式: {exchange}_{id}）
+  exchangeRef String? @unique @map("exchange_ref")
+
   // DCA 补仓
   dcaCount   Int       @default(0) @map("dca_count")
   lastDcaAt  DateTime? @map("last_dca_at")

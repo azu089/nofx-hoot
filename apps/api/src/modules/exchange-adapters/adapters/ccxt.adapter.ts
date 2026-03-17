@@ -976,11 +976,147 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   // ========================= 历史数据 =========================
 
   async getClosedPnl(
-    _startTime: Date,
-    _limit: number,
+    startTime: Date,
+    limit: number,
   ): Promise<ClosedPnlRecord[]> {
-    // CCXT 不统一支持此接口，返回空数组
-    return [];
+    try {
+      switch (this.exchangeType) {
+        case 'binance':
+        case 'gate':
+          return await this.getClosedPnlBinance(startTime, limit);
+        case 'okx':
+          return await this.getClosedPnlOkx(startTime, limit);
+        case 'bybit':
+          return await this.getClosedPnlBybit(startTime, limit);
+        default:
+          return [];
+      }
+    } catch (e: any) {
+      this.logger.debug(`getClosedPnl (${this.exchangeType}) 非致命错误: ${e.message}`);
+      return [];
+    }
+  }
+
+  /** Binance/Gate: income API (REALIZED_PNL) */
+  private async getClosedPnlBinance(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
+    const ex = this.getExchange();
+    const params: any = {
+      incomeType: 'REALIZED_PNL',
+      startTime: startTime.getTime(),
+      limit: Math.min(limit, 1000),
+    };
+    const incomes: any[] = await (ex as any).fapiPrivateGetIncome(params);
+    if (!incomes || !Array.isArray(incomes)) return [];
+
+    return incomes
+      .filter((inc: any) => parseFloat(inc.income || '0') !== 0)
+      .map((inc: any) => {
+        const pnl = parseFloat(inc.income || '0');
+        return {
+          symbol: this.binanceSymbolToUnified(inc.symbol || ''),
+          side: (pnl >= 0 ? 'long' : 'short') as 'long' | 'short',
+          entryPrice: 0,
+          exitPrice: 0,
+          quantity: parseFloat(inc.qty || '0'),
+          realizedPnl: pnl,
+          fee: 0,
+          leverage: 1,
+          entryTime: new Date(inc.time),
+          exitTime: new Date(inc.time),
+          orderId: String(inc.tradeId || inc.tranId || ''),
+          closeType: 'unknown' as const,
+          exchangeId: `binance_${inc.tranId}`,
+        };
+      });
+  }
+
+  /** OKX: positions-history API */
+  private async getClosedPnlOkx(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
+    const ex = this.getExchange();
+    // OKX before/after 是 posId 分页游标，不是时间戳
+    // 不传 before，拉最近 N 条，客户端按时间过滤
+    const params: any = {
+      instType: 'SWAP',
+      limit: String(Math.min(limit, 100)),
+    };
+    const resp: any = await (ex as any).privateGetAccountPositionsHistory(params);
+    const data = resp?.data || resp || [];
+    if (!Array.isArray(data)) return [];
+
+    const sinceMs = startTime.getTime();
+    return data
+      .filter((pos: any) => {
+        // 按更新时间过滤：只取 startTime 之后的记录
+        const uTime = parseInt(pos.uTime || '0');
+        return uTime >= sinceMs;
+      })
+      .map((pos: any) => {
+      const closeType = pos.type === '3' || pos.type === '4' ? 'liquidation' : 'manual';
+      return {
+        symbol: this.okxInstIdToUnified(pos.instId || ''),
+        side: (pos.direction === 'short' ? 'short' : 'long') as 'long' | 'short',
+        entryPrice: parseFloat(pos.openAvgPx || '0'),
+        exitPrice: parseFloat(pos.closeAvgPx || '0'),
+        quantity: parseFloat(pos.closeTotalPos || '0'),
+        realizedPnl: parseFloat(pos.realizedPnl || pos.pnl || '0'),
+        fee: Math.abs(parseFloat(pos.fee || '0')),
+        leverage: parseInt(pos.lever || '1', 10),
+        entryTime: new Date(parseInt(pos.cTime || '0')),
+        exitTime: new Date(parseInt(pos.uTime || '0')),
+        orderId: pos.posId || '',
+        closeType: closeType as 'manual' | 'liquidation',
+        exchangeId: `okx_${pos.posId}`,
+      };
+    });
+  }
+
+  /** Bybit: closed-pnl API */
+  private async getClosedPnlBybit(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
+    const ex = this.getExchange();
+    const params: any = {
+      category: 'linear',
+      limit: String(Math.min(limit, 200)),
+    };
+    if (startTime.getTime() > 0) {
+      params.startTime = String(startTime.getTime());
+    }
+    const resp: any = await (ex as any).privateGetV5PositionClosedPnl(params);
+    const list = resp?.result?.list || [];
+    if (!Array.isArray(list)) return [];
+
+    return list.map((item: any) => ({
+      symbol: item.symbol ? `${item.symbol.replace('USDT', '')}/USDT` : '',
+      side: (item.side === 'Sell' ? 'short' : 'long') as 'long' | 'short',
+      entryPrice: parseFloat(item.avgEntryPrice || '0'),
+      exitPrice: parseFloat(item.avgExitPrice || '0'),
+      quantity: parseFloat(item.closedSize || item.qty || '0'),
+      realizedPnl: parseFloat(item.closedPnl || '0'),
+      fee: 0,
+      leverage: parseInt(item.leverage || '1', 10),
+      entryTime: new Date(parseInt(item.createdTime || '0')),
+      exitTime: new Date(parseInt(item.updatedTime || '0')),
+      orderId: item.orderId || '',
+      closeType: 'unknown' as const,
+      exchangeId: `bybit_${item.orderId || item.createdTime}`,
+    }));
+  }
+
+  /** Binance symbol SOLUSDT → SOL/USDT */
+  private binanceSymbolToUnified(symbol: string): string {
+    if (symbol.includes('/')) return symbol;
+    const stables = ['USDT', 'BUSD', 'USDC'];
+    for (const s of stables) {
+      if (symbol.endsWith(s)) return `${symbol.slice(0, -s.length)}/${s}`;
+    }
+    return symbol;
+  }
+
+  /** OKX instId SOL-USDT-SWAP → SOL/USDT */
+  private okxInstIdToUnified(instId: string): string {
+    if (instId.includes('/')) return instId;
+    const parts = instId.split('-');
+    if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
+    return instId;
   }
 
   // ========================= 内部辅助 =========================

@@ -696,42 +696,6 @@ export class AiExecutionService {
       });
     } catch { /* 非致命 */ }
 
-    // 盈利时扣除燃油费（点卡）
-    if (pnl > 0) {
-      try {
-        const feeCalc = await this.feeService.calculateFee(userId, new Decimal(pnl).toFixed(8));
-        this.logger.log(
-          `[AI执行] 燃油费计算: 盈利=$${feeCalc.profit} 费率=${feeCalc.finalFeeRate} 费用=$${feeCalc.feeAmount}`,
-        );
-
-        if (parseFloat(feeCalc.feeAmount) > 0) {
-          const uniqueOrderId = this.feeService.generateUniqueOrderId('GAS_FEE', userId, position.id);
-          const feeResult = await this.feeService.chargeFee({
-            userId,
-            positionId: position.id,
-            profit: feeCalc.profit,
-            feeRate: feeCalc.finalFeeRate,
-            feeAmount: feeCalc.feeAmount,
-            uniqueOrderId,
-          });
-          this.logger.log(`[AI执行] 燃油费已扣除: $${feeCalc.feeAmount} (orderId=${uniqueOrderId})`);
-
-          // 点卡余额不足 → 自动停止该用户所有活跃策略
-          if (feeResult.balanceDepleted) {
-            const stopped = await this.prisma.aiStrategy.updateMany({
-              where: { userId, isActive: true },
-              data: { isActive: false },
-            });
-            this.logger.warn(
-              `[AI执行] 点卡余额不足，已自动停止 ${stopped.count} 个策略，请充值点卡后手动重启`,
-            );
-          }
-        }
-      } catch (e: any) {
-        this.logger.error(`[AI执行] 燃油费扣除失败(非致命): ${e.message}`);
-      }
-    }
-
     // 仅产品 A (ai_research) 存储 BM25 记忆
     // 产品 B (ai_strategy) 不使用 BM25（快速模式无状态设计）
     if (source === 'ai_research') {

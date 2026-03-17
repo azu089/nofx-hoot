@@ -1013,35 +1013,6 @@ export class StrategyEngineService implements OnModuleInit {
                 (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),
               );
 
-              // 仅在交易所确认盈利时才扣点卡燃油费
-              if (this.feeService && exchangePnl != null && exchangePnl > 0) {
-                try {
-                  const feeCalc = await this.feeService.calculateFee(
-                    userId,
-                    exchangePnl.toFixed(8),
-                  );
-                  const uniqueOrderId = this.feeService.generateUniqueOrderId(
-                    'GAS_FEE',
-                    userId,
-                    dp.id,
-                  );
-                  await this.feeService.chargeFee({
-                    userId,
-                    positionId: dp.id,
-                    profit: feeCalc.profit,
-                    feeRate: feeCalc.finalFeeRate,
-                    feeAmount: feeCalc.feeAmount,
-                    uniqueOrderId,
-                  });
-                  this.logger.log(
-                    `[快照] 燃油费扣除: positionId=${dp.id} fee=${feeCalc.feeAmount}`,
-                  );
-                } catch (feeErr: any) {
-                  this.logger.error(
-                    `[快照] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
-                  );
-                }
-              }
             }
           }
 
@@ -1179,35 +1150,6 @@ export class StrategyEngineService implements OnModuleInit {
             (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),
           );
 
-          // 仅在交易所确认盈利时才扣点卡燃油费
-          if (this.feeService && exchangePnl != null && exchangePnl > 0) {
-            try {
-              const feeCalc = await this.feeService.calculateFee(
-                userId,
-                exchangePnl.toFixed(8),
-              );
-              const uniqueOrderId = this.feeService.generateUniqueOrderId(
-                'GAS_FEE',
-                userId,
-                dp.id,
-              );
-              await this.feeService.chargeFee({
-                userId,
-                positionId: dp.id,
-                profit: feeCalc.profit,
-                feeRate: feeCalc.finalFeeRate,
-                feeAmount: feeCalc.feeAmount,
-                uniqueOrderId,
-              });
-              this.logger.log(
-                `[持仓同步] 燃油费扣除: positionId=${dp.id} fee=${feeCalc.feeAmount}`,
-              );
-            } catch (feeErr: any) {
-              this.logger.error(
-                `[持仓同步] 燃油费扣除失败(非致命): positionId=${dp.id} err=${feeErr.message}`,
-              );
-            }
-          }
         }
       }
 
