@@ -63,6 +63,7 @@ const CLOSE_REASON_I18N: Record<string, string> = {
   position_sync: 'positionSync',
   liquidation: 'liquidation',
   duplicate_cleanup: 'duplicateCleanup',
+  unknown: 'exchangeSync',
 };
 
 /** 获取 action 的 badge 样式 */

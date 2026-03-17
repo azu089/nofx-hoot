@@ -997,37 +997,75 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
-  /** Binance/Gate: income API (REALIZED_PNL) */
+  /** Binance/Gate: fetchMyTrades (带价格/数量/手续费的完整成交记录) */
   private async getClosedPnlBinance(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
     const ex = this.getExchange();
-    const params: any = {
-      incomeType: 'REALIZED_PNL',
-      startTime: startTime.getTime(),
-      limit: Math.min(limit, 1000),
-    };
-    const incomes: any[] = await (ex as any).fapiPrivateGetIncome(params);
-    if (!incomes || !Array.isArray(incomes)) return [];
+    const since = startTime.getTime();
+    const allTrades: any[] = [];
+    let fetchSince = since;
+    const fetchLimit = 1000;
 
-    return incomes
-      .filter((inc: any) => parseFloat(inc.income || '0') !== 0)
-      .map((inc: any) => {
-        const pnl = parseFloat(inc.income || '0');
+    // 分页拉取所有成交
+    while (true) {
+      const trades = await ex.fetchMyTrades(undefined, fetchSince, fetchLimit);
+      if (!trades || trades.length === 0) break;
+      allTrades.push(...trades);
+      if (trades.length < fetchLimit) break;
+      fetchSince = trades[trades.length - 1].timestamp + 1;
+      if (allTrades.length >= 5000) break;
+    }
+
+    // 只保留有 realizedPnl 的成交（= 平仓成交）
+    return allTrades
+      .filter((t: any) => {
+        const pnl = parseFloat(t.info?.realizedPnl ?? '0');
+        return Math.abs(pnl) > 0.0001;
+      })
+      .map((t: any) => {
+        const pnl = parseFloat(t.info?.realizedPnl ?? '0');
+        const feeCost = parseFloat(t.fee?.cost ?? '0');
+        const price = parseFloat(t.price || '0');
+        const qty = parseFloat(t.amount || '0');
+
+        // 正确推断被平仓方向：positionSide=LONG/SHORT/BOTH
+        const positionSide = (t.info?.positionSide || 'BOTH').toUpperCase();
+        let closedSide: 'long' | 'short';
+        if (positionSide === 'LONG') {
+          closedSide = 'long';
+        } else if (positionSide === 'SHORT') {
+          closedSide = 'short';
+        } else {
+          // BOTH 模式：sell=平多头，buy=平空头
+          closedSide = t.side === 'sell' ? 'long' : 'short';
+        }
+
+        // 反推开仓均价：entryPrice = exitPrice ∓ (pnl / qty)
+        let entryPrice = 0;
+        if (qty > 0 && price > 0) {
+          entryPrice = closedSide === 'long'
+            ? price - (pnl / qty)   // 做多：开仓价 = 平仓价 - 每单位盈亏
+            : price + (pnl / qty);  // 做空：开仓价 = 平仓价 + 每单位盈亏
+          if (entryPrice < 0) entryPrice = 0;
+        }
+
+        const tradeTime = t.timestamp ? new Date(t.timestamp) : new Date();
         return {
-          symbol: this.binanceSymbolToUnified(inc.symbol || ''),
-          side: (pnl >= 0 ? 'long' : 'short') as 'long' | 'short',
-          entryPrice: 0,
-          exitPrice: 0,
-          quantity: parseFloat(inc.qty || '0'),
+          symbol: t.symbol || '',
+          side: closedSide,
+          entryPrice,
+          exitPrice: price,
+          quantity: qty,
           realizedPnl: pnl,
-          fee: 0,
+          fee: Math.abs(feeCost),
           leverage: 1,
-          entryTime: inc.time ? new Date(Number(inc.time)) : new Date(),
-          exitTime: inc.time ? new Date(Number(inc.time)) : new Date(),
-          orderId: String(inc.tradeId || inc.tranId || ''),
-          closeType: 'unknown' as const,
-          exchangeId: `binance_${inc.tranId}`,
+          entryTime: tradeTime,
+          exitTime: tradeTime,
+          orderId: String(t.id || ''),
+          closeType: 'manual' as const,
+          exchangeId: `binance_${t.id}`,
         };
-      });
+      })
+      .slice(0, limit);
   }
 
   /** OKX: positions-history API */

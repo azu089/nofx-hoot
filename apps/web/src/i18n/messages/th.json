@@ -1058,7 +1058,8 @@
       "notFoundOnExchange": "ปิดบนตลาดแล้ว",
       "positionSync": "ซิงค์สถานะ",
       "liquidation": "บังคับปิด",
-      "duplicateCleanup": "ล้างรายการซ้ำ"
+      "duplicateCleanup": "ล้างรายการซ้ำ",
+      "exchangeSync": "ซิงค์จากสถานี"
     }
   },
   "strategyDetail": {

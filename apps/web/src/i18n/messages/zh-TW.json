@@ -1060,7 +1060,8 @@
       "notFoundOnExchange": "交易所已平倉",
       "positionSync": "倉位同步",
       "liquidation": "強制平倉",
-      "duplicateCleanup": "重複倉位清理"
+      "duplicateCleanup": "重複倉位清理",
+      "exchangeSync": "交易所同步"
     }
   },
   "strategyDetail": {

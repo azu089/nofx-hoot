@@ -1059,7 +1059,8 @@
       "notFoundOnExchange": "Đã đóng trên sàn",
       "positionSync": "Đồng bộ vị thế",
       "liquidation": "Thanh lý",
-      "duplicateCleanup": "Dọn dẹp trùng lặp"
+      "duplicateCleanup": "Dọn dẹp trùng lặp",
+      "exchangeSync": "Đồng bộ sàn"
     }
   },
   "strategyDetail": {

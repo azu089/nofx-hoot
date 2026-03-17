@@ -1058,7 +1058,8 @@
       "notFoundOnExchange": "Borsada Kapandı",
       "positionSync": "Pozisyon Senkronizasyonu",
       "liquidation": "Tasfiye",
-      "duplicateCleanup": "Kopya Temizliği"
+      "duplicateCleanup": "Kopya Temizliği",
+      "exchangeSync": "Borsa Senkronizasyonu"
     }
   },
   "strategyDetail": {

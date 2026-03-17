@@ -1058,7 +1058,8 @@
       "notFoundOnExchange": "Закрыто на бирже",
       "positionSync": "Синхронизация позиции",
       "liquidation": "Ликвидация",
-      "duplicateCleanup": "Очистка дубликатов"
+      "duplicateCleanup": "Очистка дубликатов",
+      "exchangeSync": "Синхронизация биржи"
     }
   },
   "strategyDetail": {

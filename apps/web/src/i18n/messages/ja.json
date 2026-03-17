@@ -1058,7 +1058,8 @@
       "notFoundOnExchange": "取引所で決済済み",
       "positionSync": "ポジション同期",
       "liquidation": "強制決済",
-      "duplicateCleanup": "重複ポジション整理"
+      "duplicateCleanup": "重複ポジション整理",
+      "exchangeSync": "取引所同期"
     }
   },
   "strategyDetail": {

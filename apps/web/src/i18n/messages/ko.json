@@ -1058,7 +1058,8 @@
       "notFoundOnExchange": "거래소에서 청산됨",
       "positionSync": "포지션 동기화",
       "liquidation": "강제 청산",
-      "duplicateCleanup": "중복 포지션 정리"
+      "duplicateCleanup": "중복 포지션 정리",
+      "exchangeSync": "거래소 동기화"
     }
   },
   "strategyDetail": {

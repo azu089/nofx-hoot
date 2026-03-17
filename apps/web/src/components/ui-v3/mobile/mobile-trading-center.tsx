@@ -728,14 +728,14 @@ export function MobileTradingCenter({
                           ? 'bg-green-400/10 text-green-400'
                           : 'bg-red-400/10 text-red-400'
                       }`}>
-                        {order.side === 'long' ? '做多' : '做空'}
+                        {order.side === 'long' ? t('long') : t('short')}
                       </span>
                       {order.leverage > 1 && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-400/10 text-yellow-400 font-medium">
                           {order.leverage}x
                         </span>
                       )}
-                      {order.closeReason && (
+                      {order.closeReason && order.closeReason !== 'unknown' && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#1E1E2E] text-[#9090A0]">
                           {getCloseReasonText(order.closeReason, t)}
                         </span>

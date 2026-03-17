@@ -1043,7 +1043,8 @@
       "notFoundOnExchange": "Closed on Exchange",
       "positionSync": "Position Sync",
       "liquidation": "Liquidation",
-      "duplicateCleanup": "Duplicate Cleanup"
+      "duplicateCleanup": "Duplicate Cleanup",
+      "exchangeSync": "Exchange Sync"
     }
   },
   "strategyDetail": {

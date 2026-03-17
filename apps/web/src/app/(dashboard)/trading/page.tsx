@@ -732,7 +732,8 @@ export default function TradingPage() {
         closeReason: h.closeReason,
         strategyName: h.strategyName,
         source: h.source || 'ai_strategy',
-        openTime: h.createdAt,
+        // 开仓时间：exchange_sync 来源的 createdAt 是同步时间不是开仓时间，不显示
+        openTime: h.source === 'exchange_sync' ? undefined : h.createdAt,
         pnlSource: exchangeTrade ? 'exchange' : 'local',
       };
     });

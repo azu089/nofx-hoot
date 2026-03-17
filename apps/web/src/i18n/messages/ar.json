@@ -1043,7 +1043,8 @@
       "notFoundOnExchange": "مغلق في البورصة",
       "positionSync": "مزامنة المركز",
       "liquidation": "تصفية",
-      "duplicateCleanup": "تنظيف المراكز المكررة"
+      "duplicateCleanup": "تنظيف المراكز المكررة",
+      "exchangeSync": "مزامنة البورصة"
     }
   },
   "strategyDetail": {
