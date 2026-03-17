@@ -911,8 +911,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               )}
               {gridDecisions.map((op: any, idx: number) => {
                 const opCfg = GRID_ACTION_I18N[op.action];
-                const opColor = opCfg?.color || '#9090A0';
-                const opLabel = opCfg ? t(opCfg.key) : op.action;
+                const opColor = op.action === 'cancel_order'
+                  ? (op.cancelSide === 'buy' ? '#10B981' : op.cancelSide === 'sell' ? '#F43F5E' : opCfg?.color || '#9090A0')
+                  : (opCfg?.color || '#9090A0');
+                const opLabel = op.action === 'cancel_order' && op.cancelSide
+                  ? (op.cancelSide === 'buy' ? t('timeline.gridCancelBuy', { fallback: '撤买单' }) : t('timeline.gridCancelSell', { fallback: '撤卖单' }))
+                  : (opCfg ? t(opCfg.key) : op.action);
                 const OP_HINT: Record<string, string> = {
                   adjust_grid: '撤单后以当前价重建网格',
                   exit_all: '撤销全部挂单（持仓不变）',

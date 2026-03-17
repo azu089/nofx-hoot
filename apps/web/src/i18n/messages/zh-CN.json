@@ -2093,6 +2093,8 @@
       "gridPlaceBuy": "挂买单",
       "gridPlaceSell": "挂卖单",
       "gridCancel": "撤单",
+      "gridCancelBuy": "撤买单",
+      "gridCancelSell": "撤卖单",
       "gridAdjust": "调整网格",
       "gridPause": "暂停网格",
       "gridPauseMonitoring": "暂停监控中",

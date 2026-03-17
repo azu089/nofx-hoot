@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "買い指値",
       "gridPlaceSell": "売り指値",
       "gridCancel": "キャンセル",
+      "gridCancelBuy": "買キャンセル",
+      "gridCancelSell": "売キャンセル",
       "gridAdjust": "グリッド調整",
       "gridPause": "グリッド停止",
       "gridPauseMonitoring": "一時停止監視中",

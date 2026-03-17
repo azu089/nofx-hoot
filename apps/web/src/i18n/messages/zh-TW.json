@@ -2085,6 +2085,8 @@
       "gridPlaceBuy": "掛買單",
       "gridPlaceSell": "掛賣單",
       "gridCancel": "撤單",
+      "gridCancelBuy": "撤買單",
+      "gridCancelSell": "撤賣單",
       "gridAdjust": "調整網格",
       "gridPause": "暫停網格",
       "gridPauseMonitoring": "暫停監控中",

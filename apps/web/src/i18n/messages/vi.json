@@ -2084,6 +2084,8 @@
       "gridPlaceBuy": "Đặt mua",
       "gridPlaceSell": "Đặt bán",
       "gridCancel": "Hủy",
+      "gridCancelBuy": "Hủy mua",
+      "gridCancelSell": "Hủy bán",
       "gridAdjust": "Điều chỉnh lưới",
       "gridPause": "Dừng lưới",
       "gridPauseMonitoring": "Giám sát tạm dừng",

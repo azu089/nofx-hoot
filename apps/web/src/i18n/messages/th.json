@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "วางซื้อ",
       "gridPlaceSell": "วางขาย",
       "gridCancel": "ยกเลิก",
+      "gridCancelBuy": "ยกเลิกซื้อ",
+      "gridCancelSell": "ยกเลิกขาย",
       "gridAdjust": "ปรับกริด",
       "gridPause": "หยุดกริด",
       "gridPauseMonitoring": "กำลังตรวจสอบขณะหยุด",

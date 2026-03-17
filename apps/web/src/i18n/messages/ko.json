@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "매수 지정가",
       "gridPlaceSell": "매도 지정가",
       "gridCancel": "취소",
+      "gridCancelBuy": "매수취소",
+      "gridCancelSell": "매도취소",
       "gridAdjust": "그리드 조정",
       "gridPause": "그리드 일시정지",
       "gridPauseMonitoring": "일시정지 모니터링",

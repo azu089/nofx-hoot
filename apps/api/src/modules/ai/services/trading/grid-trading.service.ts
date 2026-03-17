@@ -2456,20 +2456,23 @@ export class GridTradingService {
         }
         if (!isGridAdapter(adapter)) return { executed: false, skipReason: 'adapter 不支持 Grid' };
 
-        // 回填层号/价格/数量到 decision（供前端日志展示）
+        // 回填层号/价格/数量/方向到 decision（供前端日志展示）
         // 优先从 orderBook 查，否则从交易所挂单数据查
+        let cancelSide = '';
         const cancelBookIdx = state.orderBook[cancelOrderId];
         if (cancelBookIdx !== undefined && state.gridLines[cancelBookIdx]) {
           const cancelLine = state.gridLines[cancelBookIdx];
           decision.level = cancelBookIdx + 1;
           decision.price = cancelLine.price;
           decision.quantity = cancelLine.orderQuantity || undefined;
+          cancelSide = cancelLine.side ?? '';
         } else {
           // 溢出挂单（交易所挂单 > 网格层数）：从交易所原始数据补充详情
           const exchOrder = ((state as any)._exchangeOrders ?? []).find((o: any) => o.orderId === cancelOrderId);
           if (exchOrder) {
             decision.price = exchOrder.price ?? 0;
             decision.quantity = exchOrder.quantity ?? undefined;
+            cancelSide = exchOrder.side ?? '';
             // 尝试按价格匹配层号
             const matchIdx = state.gridLines.findIndex(l => Math.abs(l.price - (exchOrder.price ?? 0)) < 0.01);
             if (matchIdx >= 0) decision.level = matchIdx + 1;
@@ -2482,8 +2485,10 @@ export class GridTradingService {
         try {
           await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
           cancelSuccess = true;
+          const cancelSideLabel = cancelSide === 'buy' ? '撤买单' : cancelSide === 'sell' ? '撤卖单' : '撤单';
+          (decision as any).cancelSide = cancelSide || undefined;  // 写入 decision 供前端使用
           this.logger.log(
-            `[网格] cancel_order 成功: L${decision.level ?? '?'} @${(decision.price ?? 0).toFixed(2)} ×${(decision.quantity ?? 0).toFixed(4)}`,
+            `[网格] cancel_order 成功: ${cancelSideLabel} L${decision.level ?? '?'} @${(decision.price ?? 0).toFixed(2)} ×${(decision.quantity ?? 0).toFixed(4)}`,
           );
         } catch (e: any) {
           const msg = e.message ?? '';

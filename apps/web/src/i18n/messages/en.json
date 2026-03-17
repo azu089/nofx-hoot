@@ -2068,6 +2068,8 @@
       "gridPlaceBuy": "Buy Limit",
       "gridPlaceSell": "Sell Limit",
       "gridCancel": "Cancel",
+      "gridCancelBuy": "Cancel Buy",
+      "gridCancelSell": "Cancel Sell",
       "gridAdjust": "Adjust Grid",
       "gridPause": "Pause Grid",
       "gridPauseMonitoring": "Pause Monitoring",

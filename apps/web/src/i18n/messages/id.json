@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "Limit Beli",
       "gridPlaceSell": "Limit Jual",
       "gridCancel": "Batal",
+      "gridCancelBuy": "Batal beli",
+      "gridCancelSell": "Batal jual",
       "gridAdjust": "Sesuaikan Grid",
       "gridPause": "Jeda Grid",
       "gridPauseMonitoring": "Pemantauan Jeda",

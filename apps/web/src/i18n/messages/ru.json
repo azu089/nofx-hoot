@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "Лимит покупки",
       "gridPlaceSell": "Лимит продажи",
       "gridCancel": "Отмена",
+      "gridCancelBuy": "Отмена покупки",
+      "gridCancelSell": "Отмена продажи",
       "gridAdjust": "Настройка сетки",
       "gridPause": "Пауза сетки",
       "gridPauseMonitoring": "Мониторинг паузы",

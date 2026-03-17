@@ -2064,6 +2064,8 @@
       "gridPlaceBuy": "شراء محدد",
       "gridPlaceSell": "بيع محدد",
       "gridCancel": "إلغاء",
+      "gridCancelBuy": "إلغاء شراء",
+      "gridCancelSell": "إلغاء بيع",
       "gridAdjust": "تعديل الشبكة",
       "gridPause": "إيقاف الشبكة",
       "gridPauseMonitoring": "مراقبة الإيقاف",

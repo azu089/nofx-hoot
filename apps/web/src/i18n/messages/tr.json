@@ -2083,6 +2083,8 @@
       "gridPlaceBuy": "Alış Limiti",
       "gridPlaceSell": "Satış Limiti",
       "gridCancel": "İptal",
+      "gridCancelBuy": "Alış İptal",
+      "gridCancelSell": "Satış İptal",
       "gridAdjust": "Grid Ayarla",
       "gridPause": "Grid Durdur",
       "gridPauseMonitoring": "Duraklama İzleme",
