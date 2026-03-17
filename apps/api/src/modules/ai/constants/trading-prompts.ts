@@ -728,10 +728,6 @@ function gridSystemPromptZh(
 
 网格的核心是买低卖高配对。止盈方向：多头(buy层)止盈=挂卖单(高于入场价)，空头(sell层)止盈=挂买单(低于入场价)。也可主动平仓（close_long/close_short）。
 ⚠️ 禁止在已持仓(filled)层再下单，必须在empty层操作。
-⚠️ 挂单方向以持仓入场价为分界线（不是当前市价）：
-- 有空头持仓时：入场价下方的empty层→只能挂买单（止盈平空），入场价上方→挂卖单（加仓）
-- 有多头持仓时：入场价上方的empty层→只能挂卖单（止盈平多），入场价下方→挂买单（加仓）
-- 无持仓时：以当前价为中心，下方买单上方卖单
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
@@ -792,10 +788,6 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 
 Grid's core is buy-low-sell-high pairs. Take-profit direction: Long(buy level) TP = place sell(above entry), Short(sell level) TP = place buy(below entry). Or actively close (close_long/close_short).
 ⚠️ NEVER place orders on filled layers. Only place on empty layers.
-⚠️ Order direction is relative to ENTRY PRICE (not current market price):
-- With short positions: empty layers BELOW entry → BUY only (take profit), ABOVE entry → SELL (add position)
-- With long positions: empty layers ABOVE entry → SELL only (take profit), BELOW entry → BUY (add position)
-- No positions: use current price as center, buy below / sell above
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
