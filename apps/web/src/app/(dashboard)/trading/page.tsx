@@ -689,47 +689,88 @@ export default function TradingPage() {
       });
 
   // 转换交易历史数据格式
-  // 数据策略：交易所实时 PnL 优先（按 symbol+时间±2分钟匹配），DB 提供完整结构
-  const transformedHistory = historyData?.items?.map(h => {
-    const hTime = new Date(h.closedAt || h.createdAt).getTime();
-    // 标准化 symbol 用于匹配（如 SOL/USDT:USDT → SOLUSDT）
-    const hSym = (h.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
-    const exchangeTrade = exchangeHistoryData?.items?.find(e => {
-      const eSym = (e.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
-      if (eSym !== hSym) return false;
-      const eTime = new Date(e.time).getTime();
-      return Math.abs(eTime - hTime) < 120_000; // 2分钟内视为同一笔平仓
+  // 数据策略：DB 记录 + 交易所独有记录合并，交易所 PnL 优先覆盖 DB 估算值
+  const transformedHistory = (() => {
+    const dbItems = historyData?.items || [];
+    const exchangeItems = exchangeHistoryData?.items || [];
+
+    // 记录已匹配的交易所记录索引，用于后续找出交易所独有记录
+    const matchedExchangeIds = new Set<string>();
+
+    // Step 1: DB 记录为主，交易所 PnL 覆盖
+    const fromDb = dbItems.map(h => {
+      const hTime = new Date(h.closedAt || h.createdAt).getTime();
+      const hSym = (h.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
+      const exchangeTrade = exchangeItems.find(e => {
+        const eSym = (e.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
+        if (eSym !== hSym) return false;
+        const eTime = new Date(e.time).getTime();
+        return Math.abs(eTime - hTime) < 120_000; // 2分钟内视为同一笔
+      });
+      if (exchangeTrade) matchedExchangeIds.add(exchangeTrade.id || exchangeTrade.tradeId || '');
+      const pnlFromExchange = exchangeTrade ? parseFloat(exchangeTrade.pnl || '0') : NaN;
+      const finalPnl = !isNaN(pnlFromExchange) ? pnlFromExchange : parseFloat(h.pnl || '0');
+      return {
+        id: h.id,
+        symbol: normalizeSymbol(h.symbol),
+        side: h.side as 'long' | 'short',
+        type: h.type || 'market',
+        price: parseFloat(h.closePrice || h.price || '0'),
+        entryPrice: parseFloat(h.entryPrice || '0'),
+        closePrice: parseFloat(h.closePrice || h.price || '0'),
+        amount: parseFloat(h.amount || '0'),
+        filled: parseFloat(h.amount || '0'),
+        total: parseFloat(h.total || '0'),
+        pnl: finalPnl,
+        pnlPercent: parseFloat(h.pnlPercent || '0'),
+        fee: parseFloat(h.fee || '0'),
+        time: h.closedAt || h.createdAt,
+        status: 'filled' as const,
+        marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
+        leverage: h.leverage || 1,
+        margin: parseFloat(h.margin || '0'),
+        closeReason: h.closeReason,
+        strategyName: h.strategyName,
+        source: h.source || 'ai_strategy',
+        openTime: h.createdAt,
+        pnlSource: exchangeTrade ? 'exchange' : 'local',
+      };
     });
-    // 交易所 PnL 存在且合理时覆盖 DB 本地估算值
-    const pnlFromExchange = exchangeTrade ? parseFloat(exchangeTrade.pnl || '0') : NaN;
-    const finalPnl = !isNaN(pnlFromExchange) ? pnlFromExchange : parseFloat(h.pnl || '0');
-    return {
-      id: h.id,
-      symbol: normalizeSymbol(h.symbol),
-      side: h.side as 'long' | 'short',
-      type: h.type || 'market',
-      price: parseFloat(h.closePrice || h.price || '0'),
-      entryPrice: parseFloat(h.entryPrice || '0'),
-      closePrice: parseFloat(h.closePrice || h.price || '0'),
-      amount: parseFloat(h.amount || '0'),
-      filled: parseFloat(h.amount || '0'),
-      total: parseFloat(h.total || '0'),
-      pnl: finalPnl,
-      pnlPercent: parseFloat(h.pnlPercent || '0'),
-      fee: parseFloat(h.fee || '0'),
-      time: h.closedAt || h.createdAt,
-      status: 'filled' as const,
-      marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
-      leverage: h.leverage || 1,
-      margin: parseFloat(h.margin || '0'),
-      closeReason: h.closeReason,
-      strategyName: h.strategyName,
-      source: h.source || 'ai_strategy',
-      openTime: h.createdAt,
-      // 标记 PnL 来源（供 UI 展示"交易所实时"或"本地估算"）
-      pnlSource: exchangeTrade ? 'exchange' : 'local',
-    };
-  });
+
+    // Step 2: 交易所独有记录（DB 没有匹配到的），直接展示
+    const fromExchangeOnly = exchangeItems
+      .filter(e => !matchedExchangeIds.has(e.id || e.tradeId || ''))
+      .map(e => ({
+        id: `ex_${e.tradeId || e.id}`,
+        symbol: normalizeSymbol(e.symbol),
+        side: e.side as 'long' | 'short',
+        type: 'market' as const,
+        price: parseFloat(e.price || '0'),
+        entryPrice: 0,
+        closePrice: parseFloat(e.price || '0'),
+        amount: parseFloat(e.amount || '0'),
+        filled: parseFloat(e.amount || '0'),
+        total: 0,
+        pnl: parseFloat(e.pnl || '0'),
+        pnlPercent: 0,
+        fee: parseFloat(e.fee || '0'),
+        time: e.time,
+        status: 'filled' as const,
+        marketType: 'futures' as 'futures' | 'spot',
+        leverage: 1,
+        margin: 0,
+        closeReason: undefined as string | undefined,
+        strategyName: undefined as string | undefined,
+        source: 'exchange_sync',
+        openTime: e.time,
+        pnlSource: 'exchange' as const,
+      }));
+
+    // Step 3: 合并并按时间倒序
+    const merged = [...fromDb, ...fromExchangeOnly];
+    merged.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    return merged;
+  })();
 
   // 转换执行日志数据格式
   const transformedLogs = logsData?.map(log => ({
