@@ -2828,13 +2828,6 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // 已持仓层不允许再下单 — 必须先 close_long/close_short 平仓
-    if (level && level.state === 'filled') {
-      const skipReason = `层${rawLevel}已有持仓(${level.side})，不可再下${side}单，应先平仓`;
-      this.logger.warn(`[网格] 跳过下单: ${skipReason}`);
-      return { executed: false, skipReason };
-    }
-
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
     if (level && level.state === 'pending' && level.orderId) {
@@ -3603,6 +3596,8 @@ export class GridTradingService {
       const unmappedIds: string[] = [];
 
       for (const order of symOrders) {
+        const oid = order.orderId ?? order.id;
+        if (!oid) continue;
         const price: number = order.price ?? 0;
         if (price <= 0) continue;
         const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
@@ -3610,7 +3605,7 @@ export class GridTradingService {
         // 规则1：挂单价格与持仓层同价 → 多余（持仓占位的残留单）
         const matchesFilled = [...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing);
         if (matchesFilled) {
-          if (order.orderId) unmappedIds.push(order.orderId);
+          unmappedIds.push(oid);
           continue;
         }
 
@@ -3634,13 +3629,13 @@ export class GridTradingService {
           usedIdx.add(bestIdx);
           const layer = state.gridLines[bestIdx];
           layer.state = 'pending';
-          layer.orderId = order.orderId;
+          layer.orderId = oid;
           layer.side = orderSide;
           layer.orderQuantity = order.quantity ?? 0;
-          if (order.orderId) state.orderBook[order.orderId] = bestIdx;
+          state.orderBook[oid] = bestIdx;
         } else {
           // 规则3：没有匹配层 → 多余挂单，AI 需撤销
-          if (order.orderId) unmappedIds.push(order.orderId);
+          unmappedIds.push(oid);
         }
       }
       // 存储未映射订单 ID，供 AI prompt 展示并撤单
@@ -4339,13 +4334,21 @@ export class GridTradingService {
    * 三种状态：pending=交易所有挂单, filled=交易所有持仓, empty=交易所无数据
    * 用于前端展示，确保和交易所实时数据一致
    */
+  /**
+   * 从交易所数据构建层级展示（交易所是唯一真相）
+   *
+   * 算法与 syncMemoryFromExchange Step 3-5 完全一致（ONE mapping logic）：
+   * 1. 所有层初始化为 empty
+   * 2. 持仓优先映射 → filled（锚点=入场价最近层，方向展开）
+   * 3. 委托单映射 → pending（价格+方向对号入座）
+   * 4. 层被持仓占/无匹配层 → 多余委托，AI 撤单
+   */
   private buildDisplayFromExchange(
     state: GridState,
     exchangeOpenOrders: any[],
     exchangePositions: any[],
   ): any[] {
-    const leverage = Math.max(1, state.leverage ?? 1);
-    const currentPrice = state.lastPrice ?? 0;
+    const baseSymbol = state.symbol.split('/')[0];
 
     // 初始化所有层为 empty
     const display: any[] = state.gridLines.map((l, i) => ({
@@ -4355,35 +4358,38 @@ export class GridTradingService {
       st: 'empty',
     }));
 
-    // Step 1: 持仓优先映射 → filled（以 entry 为锚点，单向扩展，禁止反向 fallback）
-    // 空头(sell) → 从 entry 往上映射（price ≥ entry），下方留给买单止盈
-    // 多头(buy)  → 从 entry 往下映射（price ≤ entry），上方留给卖单止盈
-    const baseSymbol = state.symbol.split('/')[0];
+    // Step 1: 持仓优先映射 → filled
+    // 算法对齐 syncMemory Step 4（完全一致）
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
       const totalQty = pos.quantity ?? 0;
       if (totalQty <= 0.0001) continue;
 
-      const posSide: 'buy' | 'sell' = pos.side === 'short' ? 'sell' : 'buy';
-      const avgEntry = (pos.entryPrice ?? 0) > 0 ? pos.entryPrice : currentPrice;
+      // ★ 对齐 syncMemory：OKX net_mode side='net' 算多头
+      const rawSide = pos.side as string;
+      const posSide: 'buy' | 'sell' = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+      // ★ 对齐 syncMemory：fallback 用网格中点（非 currentPrice）
+      const avgEntry = (pos.entryPrice ?? 0) > 0
+        ? pos.entryPrice
+        : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+      // ★ 对齐 syncMemory：杠杆从交易所持仓读取
+      const posLeverage = Math.max(1, pos.leverage ?? state.leverage ?? 1);
 
       const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
-      const perLayerQty = avgAllocatedUSD * leverage / avgEntry;
+      const perLayerQty = avgAllocatedUSD * posLeverage / avgEntry;
       const estLayers = perLayerQty > 0.0001
         ? Math.max(1, Math.round(totalQty / perLayerQty))
         : 1;
 
-      // ★ 与 reinitializeGridLevels 一致：锚点+方向展开
+      // 锚点+方向展开（与 syncMemory/reinitializeGridLevels 完全一致）
       const allEmptySlots = display
         .map((dd, i) => ({ dd, i, gl: state.gridLines[i] }))
         .filter(({ dd }) => dd.st === 'empty');
 
-      // 锚点：纯距离最近
       const anchorSlot = [...allEmptySlots]
         .sort((a, b) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
       if (!anchorSlot) continue;
 
-      // 从锚点向内侧展开（买→idx<=anchor，卖→idx>=anchor）
       const directedSlots = allEmptySlots
         .filter(({ i }) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
         .sort((a, b) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
@@ -4398,50 +4404,55 @@ export class GridTradingService {
       }
     }
 
-    // Step 2: 映射交易所挂单 → pending（价格+买卖方向 对号入座）
-    // 规则：与 syncMemoryFromExchange Step 5 完全一致
-    const displayFilledPrices = display.filter(d => d.st === 'filled').map(d => d.p as number);
-    const displayHalfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
-    const displayMaxDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
+    // Step 2: 委托单映射 → pending
+    // 算法对齐 syncMemory Step 5（完全一致）
+    // ★ 对齐 syncMemory：用 Set 去重（与 syncMemory 的 filledPriceSet 一致）
+    const filledPriceSet = new Set(display.filter(d => d.st === 'filled').map(d => d.p as number));
+    const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
+    const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
 
-    // 买卖分界线：有持仓用入场均价，否则用网格中点
-    const dispFilledLayers = state.gridLines.filter(l => l.state === 'filled' && l.positionEntry > 0);
-    const dispMidPrice = dispFilledLayers.length > 0
-      ? dispFilledLayers.reduce((s, l) => s + l.positionEntry, 0) / dispFilledLayers.length
+    // ★ 修复：midPrice 从自己的 display 结果算（不读 state.gridLines）
+    const filledEntries = display.filter(d => d.st === 'filled' && d.ep > 0).map(d => d.ep as number);
+    const midPrice = filledEntries.length > 0
+      ? filledEntries.reduce((s, e) => s + e, 0) / filledEntries.length
       : (state.upperPrice + state.lowerPrice) / 2;
 
     const usedDisplayIdx = new Set<number>();
-    for (const order of exchangeOpenOrders) {
+    const symOrders = exchangeOpenOrders.filter((o: any) => {
+      const sym: string = o.symbol ?? '';
+      return sym.includes(baseSymbol);
+    });
+
+    for (const order of symOrders) {
       const oid = order.orderId ?? order.id;
       if (!oid) continue;
       const price: number = order.price ?? 0;
       if (price <= 0) continue;
       const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
 
-      // 挂单价格与持仓层同价 → 跳过（不显示在网格层中）
-      if (displayFilledPrices.some(fp => Math.abs(fp - price) < displayHalfSpacing)) continue;
+      // 规则1：挂单价格与持仓层同价 → 跳过（多余单）
+      if ([...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing)) continue;
 
-      // 找价格最近且 side 匹配的 empty 层
+      // 规则2：找价格最近且 side 匹配的 empty 层
       let bestIdx = -1;
       let bestDist = Infinity;
       for (let i = 0; i < display.length; i++) {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
         const lp = state.gridLines[i].price;
-        // side 过滤：buy 单只匹配下半区，sell 单只匹配上半区
-        if (orderSide === 'buy' && lp > dispMidPrice + displayHalfSpacing) continue;
-        if (orderSide === 'sell' && lp < dispMidPrice - displayHalfSpacing) continue;
+        if (orderSide === 'buy' && lp > midPrice + halfSpacing) continue;
+        if (orderSide === 'sell' && lp < midPrice - halfSpacing) continue;
         const d = Math.abs(lp - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
-      if (bestIdx >= 0 && bestDist <= displayMaxDist) {
+      if (bestIdx >= 0 && bestDist <= maxMapDist) {
         usedDisplayIdx.add(bestIdx);
         display[bestIdx].st = 'pending';
         display[bestIdx].s = orderSide;
         display[bestIdx].oid = oid.slice(-8);
         display[bestIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
       }
-      // 没有匹配层 → 多余挂单，不显示（AI 从 exchangeOpenOrders 看到并撤）
+      // 无匹配层 → AI 从 exchangeOpenOrders 看到并撤
     }
 
     return display;
