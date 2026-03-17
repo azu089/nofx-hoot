@@ -3600,8 +3600,9 @@ export class GridTradingService {
           if (state.gridLines[i].state !== 'empty') continue;
           const lp = state.gridLines[i].price;
           // side 过滤：buy 单只匹配下半区，sell 单只匹配上半区
-          if (orderSide === 'buy' && lp > midPrice + halfSpacing) continue;
-          if (orderSide === 'sell' && lp < midPrice - halfSpacing) continue;
+          // 用 gridSpacing（整格间距）而非 halfSpacing，避免浮点精度边界层被过滤 → 无法映射 → 死循环
+          if (orderSide === 'buy' && lp > midPrice + state.gridSpacing) continue;
+          if (orderSide === 'sell' && lp < midPrice - state.gridSpacing) continue;
           const d = Math.abs(lp - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -4421,8 +4422,9 @@ export class GridTradingService {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
         const lp = state.gridLines[i].price;
-        if (orderSide === 'buy' && lp > midPrice + halfSpacing) continue;
-        if (orderSide === 'sell' && lp < midPrice - halfSpacing) continue;
+        // 用 gridSpacing（整格间距）而非 halfSpacing，避免浮点精度边界层被过滤
+        if (orderSide === 'buy' && lp > midPrice + state.gridSpacing) continue;
+        if (orderSide === 'sell' && lp < midPrice - state.gridSpacing) continue;
         const d = Math.abs(lp - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
