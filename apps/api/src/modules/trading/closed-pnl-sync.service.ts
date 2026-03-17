@@ -137,9 +137,10 @@ export class ClosedPnlSyncService {
           }
         }
       } catch (e: any) {
-        // 单条记录失败不影响其他
+        // 单条记录失败不影响其他（打印 code+meta 定位 Prisma 错误）
+        const errDetail = e.code ? `code=${e.code} meta=${JSON.stringify(e.meta)}` : (e.message || String(e));
         this.logger.warn(
-          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${e.message}`,
+          `[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${errDetail}`,
         );
       }
     }
