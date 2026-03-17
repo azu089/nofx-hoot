@@ -132,7 +132,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Mobile Bottom Navigation - 仅在移动端显示（行业标准 56px 高度） */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A]/95 backdrop-blur-lg border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)]">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[#12121A] border-t border-[#1E1E2E] z-50 pb-[env(safe-area-inset-bottom,0px)] [transform:translateZ(0)]">
           <nav className="flex items-center justify-around h-14 select-none">
             {navItems.map((item) => {
               const Icon = item.icon;

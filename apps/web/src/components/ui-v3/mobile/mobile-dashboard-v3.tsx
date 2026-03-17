@@ -167,7 +167,7 @@ export function MobileDashboardV3({ onNavigate }: MobileDashboardV3Props) {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Header - 标题 + 通知 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F] border-b border-[#1E1E2E] [transform:translateZ(0)]">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="w-10" />
           <h1 className="text-base font-semibold text-white">{tNav('home')}</h1>

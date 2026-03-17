@@ -586,7 +586,7 @@ export function AIStrategyDetailPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] w-full">
       {/* 顶部导航栏 */}
-      <header className="sticky top-0 z-30 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <header className="sticky top-0 z-30 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             title={t('common.back')}

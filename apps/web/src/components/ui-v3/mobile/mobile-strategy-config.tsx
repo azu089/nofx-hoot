@@ -313,7 +313,7 @@ export function MobileStrategyConfig({
   return (
     <div className="h-full flex flex-col bg-[#0A0A0F] text-white">
       {/* 顶栏 */}
-      <div className="flex-shrink-0 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <div className="flex-shrink-0 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
           <button type="button" onClick={onBack} aria-label="返回" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-[#12121A] transition-colors">
             <ArrowLeft className="w-5 h-5" />

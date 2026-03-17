@@ -208,7 +208,7 @@ def on_bar(bar):
   return (
     <div className="h-screen flex flex-col bg-[#0A0A0F] text-white">
       {/* 顶部导航栏 */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"

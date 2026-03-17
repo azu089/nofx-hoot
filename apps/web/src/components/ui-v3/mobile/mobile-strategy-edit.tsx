@@ -92,7 +92,7 @@ export function MobileStrategyEdit({
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Fixed Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center justify-between px-4 h-14">
           <button
             type="button"

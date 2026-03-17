@@ -749,7 +749,7 @@ export function ResearchDetailPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* ========= Header — 始终展示，不再有 isCyclingMode 条件分支 ========= */}
-      <header className="sticky top-0 z-30 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <header className="sticky top-0 z-30 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         {/* Nav bar */}
         <div className="flex items-center justify-between px-4 h-14">
           <button

@@ -14,7 +14,7 @@ export function MobileExchangesPage({ onBack, exchanges = defaultExchanges }: Mo
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC]">
       {/* Header */}
-      <div className="sticky top-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-lg border-b border-[#1E1E2E]">
+      <div className="sticky top-0 z-50 bg-[#0A0A0F] [transform:translateZ(0)] border-b border-[#1E1E2E]">
         <div className="flex items-center px-4 h-14">
           <button type="button" onClick={onBack} className="p-1 -ml-1 mr-3">
             <ArrowLeft className="w-5 h-5 text-[#9090A0]" />

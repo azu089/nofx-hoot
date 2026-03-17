@@ -67,7 +67,7 @@ export function AiSettingsPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0F]">
       {/* ── Header ──────────────────────────────────────────── */}
-      <div className="sticky top-0 z-30 border-b border-[#1E1E2E] bg-[#0A0A0F]/95 backdrop-blur-lg">
+      <div className="sticky top-0 z-30 border-b border-[#1E1E2E] bg-[#0A0A0F] [transform:translateZ(0)]">
         <div className="flex h-14 items-center px-4">
           <button
             type="button"
