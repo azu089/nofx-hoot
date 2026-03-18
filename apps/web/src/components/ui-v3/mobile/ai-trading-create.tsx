@@ -797,8 +797,8 @@ export function CreateStrategyWizard() {
                   <input
                     type="number"
                     title="杠杆"
-                    value={gridParams.leverage || ''}
-                    onChange={(e) => updateGrid('leverage', e.target.value === '' ? 0 : Number(e.target.value))}
+                    value={gridParams.leverage ?? ''}
+                    onChange={(e) => updateGrid('leverage', e.target.value === '' ? undefined : Number(e.target.value))}
                     min={1} max={20}
                     placeholder="AI决策"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
@@ -881,7 +881,7 @@ export function CreateStrategyWizard() {
                     type="number"
                     title="利润回撤保护"
                     value={gridParams.profitTrailingStopPct ?? ''}
-                    onChange={(e) => updateGrid('profitTrailingStopPct', e.target.value === '' ? 0 : Number(e.target.value))}
+                    onChange={(e) => updateGrid('profitTrailingStopPct', e.target.value === '' ? undefined : Number(e.target.value))}
                     min={10} max={90}
                     placeholder="50"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
@@ -1127,7 +1127,7 @@ export function CreateStrategyWizard() {
                     <p className="text-xs text-[#9090A0]">网格重建阈值 <span className="text-[#606070]">（价格偏离中点超过此值自动重建，20=激进/趋势，30=保守/横盘）</span></p>
                     <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <input type="number" min={10} max={50} step={5} value={gridParams.autoAdjustThreshold ?? ''}
-                        onChange={(e) => updateGrid('autoAdjustThreshold', e.target.value === '' ? 0 : Number(e.target.value))}
+                        onChange={(e) => updateGrid('autoAdjustThreshold', e.target.value === '' ? undefined : Number(e.target.value))}
                         placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                         aria-label="网格重建阈值"
                       />
@@ -1171,8 +1171,8 @@ export function CreateStrategyWizard() {
                   <div className="space-y-1 col-span-2">
                     <p className="text-xs text-[#9090A0]">偏向比例 <span className="text-[#606070]">（偏向方向的格线占比，默认 70）</span></p>
                     <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                      <input type="number" min={50} max={90} step={5} value={gridParams.directionBiasRatio || ''}
-                        onChange={(e) => updateGrid('directionBiasRatio', e.target.value === '' ? 0 : Number(e.target.value))}
+                      <input type="number" min={50} max={90} step={5} value={gridParams.directionBiasRatio ?? ''}
+                        onChange={(e) => updateGrid('directionBiasRatio', e.target.value === '' ? undefined : Number(e.target.value))}
                         onBlur={() => { if (!gridParams.directionBiasRatio) updateGrid('directionBiasRatio', 70); }}
                         placeholder="70" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                         aria-label="偏向比例"

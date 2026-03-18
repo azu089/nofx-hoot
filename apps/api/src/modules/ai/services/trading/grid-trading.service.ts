@@ -33,7 +33,8 @@ export interface GridConfig {
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
   profitTrailingStopPct?: number; // 利润回撤保护%（默认 50）：总PnL从利润峰值回撤超此值时紧急平仓
-  dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
+  dailyLossLimitPct?: number;  // 日内亏损限额%（默认 10）
+  totalLossLimitPct?: number;  // 总体亏损上限%（默认 30）：累计亏损超过总投入此比例时紧急平仓
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
   enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true）
   directionBiasRatio?: number;     // 偏向比例（默认 0.7，即 70% 偏向 / 30% 反向）
@@ -1141,6 +1142,23 @@ export class GridTradingService {
             `利润回撤保护触发\n` +
             `保护规则: 总PnL从利润峰值回撤超过 ${profitTrailingStopPct}% 时紧急平仓\n` +
             `实际情况: 利润峰值 $${peakProfit.toFixed(2)}，当前总PnL $${totalPnl.toFixed(2)}，回撤 ${profitDrawdownPct}%`);
+          await this.persistGridState(strategyId, state);
+          return { trades: 0, errors: 0 };
+        }
+      }
+    }
+
+    // F2: 总体亏损上限（安全网）— 累计亏损超过 totalInvestment 的指定比例时紧急平仓
+    // 与 maxDrawdown（基于权益峰值）互补：即使权益未到峰值，累计亏损也受上限保护
+    {
+      const totalLossLimitPct = gridConfig?.totalLossLimitPct ?? 30;
+      if (totalLossLimitPct > 0 && state.totalProfit < 0 && state.totalInvestment > 0) {
+        const totalLossPct = (Math.abs(state.totalProfit) / state.totalInvestment) * 100;
+        if (totalLossPct >= totalLossLimitPct) {
+          await this.emergencyExit(state, userId, apiKeyId,
+            `总体亏损保护触发\n` +
+            `保护规则: 累计亏损超过总投入 ${totalLossLimitPct}% 时紧急平仓\n` +
+            `实际情况: 累计亏损 ${totalLossPct.toFixed(1)}%（$${Math.abs(state.totalProfit).toFixed(2)} / $${state.totalInvestment}）`);
           await this.persistGridState(strategyId, state);
           return { trades: 0, errors: 0 };
         }
@@ -2869,9 +2887,8 @@ export class GridTradingService {
     // 所有风控计数器必须清零，否则下一轮立即重新触发
     if (state.lastEquity && state.lastEquity > 0) {
       state.startEquity = state.lastEquity;
-      // peakEquity 重置为当前权益（手动恢复专属，区别于配置重启/偏离重建）
-      // 不重置的话，峰值回撤 = (oldPeak - currentEquity) / oldPeak 会立即重新触发
-      state.peakEquity = state.lastEquity;
+      // F1: peakEquity 不重置（对齐 nofx：只涨不跌，从不归零）
+      // 手动恢复不改变历史最高权益，回撤基准保持历史峰值不变
     }
     state.chargedProfit = 0;
     // maxDrawdown 归零，回撤计数从当前权益重新开始
@@ -2891,11 +2908,11 @@ export class GridTradingService {
 
     this.logger.log(
       `[网格] 用户手动恢复风控暂停: ${strategyId} | ` +
-      `peakEquity=${state.peakEquity.toFixed(2)}, maxDrawdown=0, dailyPnl=0 | ` +
+      `peakEquity=${state.peakEquity?.toFixed(2) ?? 'N/A'}（保留历史峰值）, maxDrawdown=0, dailyPnl=0 | ` +
       `totalProfit=${state.totalProfit.toFixed(2)}（保留）`,
     );
 
-    return { success: true, message: '网格已恢复，风控计数器已清零（从当前权益重新开始）' };
+    return { success: true, message: '网格已恢复，风控计数器已清零（peakEquity 保持历史峰值）' };
   }
 
   /** 下网格限价单（含仓位限制检查）
@@ -2922,6 +2939,19 @@ export class GridTradingService {
         `[网格] 拦截: 禁止在持仓层 L${levelIndex + 1}(${level.side}) 下${side}单 @${(decision.price ?? 0).toFixed(2)}，应使用 close_long/close_short`,
       );
       return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
+    }
+
+    // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
+    // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
+    if (level && level.state === 'empty' && (state.currentDirection ?? 'neutral') === 'neutral') {
+      const currentPrice = state.lastPrice ?? 0;
+      const correctSide = level.price <= currentPrice ? 'buy' : 'sell';
+      if (side !== correctSide) {
+        this.logger.warn(
+          `[网格] 方向纠正: L${levelIndex + 1} 价格${level.price.toFixed(2)} ${side === 'buy' ? '>' : '<'} 市价${currentPrice.toFixed(2)}，AI要${side}→纠正为${correctSide}`,
+        );
+        side = correctSide;
+      }
     }
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
