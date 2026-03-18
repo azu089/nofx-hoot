@@ -1,6 +1,6 @@
 /**
  * 财务中心页面
- * 收入三分类统计：订阅费、点卡、燃油费
+ * 收入三分类统计：订阅费、GAS、燃油费
  */
 import { useState, useEffect } from 'react';
 import {
@@ -236,7 +236,7 @@ export const FinancePage = () => {
         </Col>
         <Col xs={24} md={6}>
           <StatCard
-            title="点卡充值"
+            title="GAS充值"
             value={data?.summary.pointCardRevenue || '0'}
             prefix={<CreditCardOutlined />}
             suffix="USDT"
@@ -279,7 +279,7 @@ export const FinancePage = () => {
           </Col>
           <Col span={8}>
             <div style={{ textAlign: 'center' }}>
-              <Text type="secondary">点卡充值</Text>
+              <Text type="secondary">GAS充值</Text>
               <Progress
                 type="circle"
                 percent={parseFloat(getPercentage(
@@ -358,7 +358,7 @@ export const FinancePage = () => {
             key: 'pointCard',
             label: (
               <span>
-                <CreditCardOutlined /> 点卡充值
+                <CreditCardOutlined /> GAS充值
               </span>
             ),
             children: (
@@ -397,7 +397,7 @@ export const FinancePage = () => {
                 </Row>
                 <div style={{ marginTop: 16, padding: 16, background: '#1a1a2e', borderRadius: 8 }}>
                   <Text type="secondary">
-                    点卡与 USDT 1:1 兑换，用户可使用点卡支付订阅费用。
+                    GAS与 USDT 1:1 兑换，用户可使用GAS支付订阅费用。
                   </Text>
                 </div>
               </Card>
