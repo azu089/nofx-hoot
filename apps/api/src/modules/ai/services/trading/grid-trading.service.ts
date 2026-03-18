@@ -807,18 +807,26 @@ export class GridTradingService {
 
     // Step 1.2: 止盈/止损后的重启恢复
     // 用户手动 startStrategy 重新激活策略时，isPaused=true + pauseSource='risk_control'
-    // 直接清除暂停状态，策略正常运行；totalProfit/dailyTotalProfit 保留（止盈止损百分比由用户在配置里调高）
+    // 配置重启 = 和手动恢复相同逻辑：风控计数器全部清零，从当前权益重新开始
     if (state && state.isPaused && state.pauseSource === 'risk_control') {
       state.isPaused = false;
       state.pauseSource = undefined;
       state.pauseReason = undefined;
       state.startEquity = state.lastEquity;  // 回撤/均值基准归位
-      // peakEquity 不重置，保持历史最高值（对齐 nofx: 只涨不跌）
+      // peakEquity 重置为当前权益（否则峰值回撤立即重新触发）
+      if (state.lastEquity && state.lastEquity > 0) {
+        state.peakEquity = state.lastEquity;
+      }
       state.maxDrawdown = 0;
       state.chargedProfit = 0;
+      // dailyPnl + dailyTotalProfit 归零（否则日损保护立即重新触发）
+      state.dailyPnl = 0;
+      state.dailyTotalProfit = 0;
+      state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
+      // totalProfit 保留（累计盈亏是历史事实）
       this.logger.log(
-        `[网格] ✅ 策略重启: 累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT 保留 | ` +
-        `止盈止损目标由配置决定（如需下一轮触发，请修改配置百分比）`,
+        `[网格] ✅ 策略重启: 风控计数器清零 | peakEquity=${state.peakEquity?.toFixed(2)} | ` +
+        `累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT 保留`,
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
@@ -2865,26 +2873,35 @@ export class GridTradingService {
     state.pauseSource = undefined;
     state.pauseReason = undefined;
 
-    // 权益基准归位（回撤检测从当前权益重新开始）
+    // 手动恢复 = 用户确认风险，愿意从当前状态重新开始
+    // 所有风控计数器必须清零，否则下一轮立即重新触发
     if (state.lastEquity && state.lastEquity > 0) {
       state.startEquity = state.lastEquity;
+      // peakEquity 重置为当前权益（手动恢复专属，区别于配置重启/偏离重建）
+      // 不重置的话，峰值回撤 = (oldPeak - currentEquity) / oldPeak 会立即重新触发
+      state.peakEquity = state.lastEquity;
     }
-    // totalProfit / dailyTotalProfit 保留（止盈止损触发百分比由用户在配置里调整）
     state.chargedProfit = 0;
-    // peakEquity 不重置，保持历史最高值（对齐 nofx: 只涨不跌）
-    // maxDrawdown 归零，回撤计数从当前继续
+    // maxDrawdown 归零，回撤计数从当前权益重新开始
     state.maxDrawdown = 0;
+    // dailyPnl + dailyTotalProfit 全部归零（否则日损保护立即重新触发）
     state.dailyPnl = 0;
+    state.dailyTotalProfit = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
+    // totalProfit 保留（累计盈亏是历史事实，不清除）
 
     await this.persistGridState(strategyId, state);
 
-    // 同步更新内存缓存，防止下个周期从 gridStates Map 读到旧的 peakEquity
+    // 同步更新内存缓存
     this.gridStates.set(strategyId, state);
 
-    this.logger.log(`[网格] 用户手动恢复风控暂停: ${strategyId}, 峰值/回撤已归零（从基准重新开始）`);
+    this.logger.log(
+      `[网格] 用户手动恢复风控暂停: ${strategyId} | ` +
+      `peakEquity=${state.peakEquity.toFixed(2)}, maxDrawdown=0, dailyPnl=0 | ` +
+      `totalProfit=${state.totalProfit.toFixed(2)}（保留）`,
+    );
 
-    return { success: true, message: '网格已恢复，峰值与回撤已归零' };
+    return { success: true, message: '网格已恢复，风控计数器已清零（从当前权益重新开始）' };
   }
 
   /** 下网格限价单（含仓位限制检查）
