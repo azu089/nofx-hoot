@@ -6,6 +6,33 @@
 
 ---
 
+## [2026-03-17] 倾斜驱动方向自适应 — 补充箱体突破路径
+
+**状态**: ✅ 已实现
+
+### 问题背景
+策略 1532a2fb (SOL/USDT) 开启了 `enableDirectionAdjust=true`，但方向始终为 `neutral`。
+原因：方向自适应仅通过 `detectBoxBreakout()` 触发，价格在箱体内趋势运行时（96.38 < shortBoxUpper 97.65），
+即使网格严重倾斜（buy=0, sell=8）也无法触发方向调整。
+
+### 修复方案
+在 AI 决策前增加**倾斜驱动方向调整**触发路径（~30行）：
+- 条件：`enableDirectionAdjust=true` + `skewLevel=severe` + 单侧 filled ≥ `totalLayers × autoAdjustThreshold`
+- 阈值使用用户可配置参数 `autoAdjustThreshold`（默认 0.2 = 20%）
+- 方向推断：sell filled 多 = 上涨趋势 → `long_bias`；buy filled 多 = 下跌趋势 → `short_bias`
+- 使用 `'short'` 级别映射（只给 bias 偏向，不给 full direction），保守处理
+- 切换时取消现有挂单 + 重新分配层方向
+
+### 变更文件
+- `apps/api/src/modules/ai/services/trading/grid-trading.service.ts` — L1331-1366 新增倾斜驱动方向调整逻辑
+
+### 回滚方式
+```bash
+git revert HEAD
+```
+
+---
+
 ## [2026-03-01] 生产上线 — 首次成功部署
 
 **状态**: ✅ 已上线

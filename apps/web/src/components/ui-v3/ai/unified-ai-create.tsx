@@ -226,8 +226,6 @@ export function UnifiedAiCreate() {
   const [gridDirection, setGridDirection] = useState<'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'>('neutral');
   const [gridDistribution, setGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [gridUseMakerOnly, setGridUseMakerOnly] = useState(false);
-  const [gridAutoPauseOnTrend, setGridAutoPauseOnTrend] = useState(true);
-
   // ── Prompt config ─────────────────────────────
   const [promptRole, setPromptRole] = useState('');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -476,7 +474,6 @@ export function UnifiedAiCreate() {
           direction: gridDirection,
           distribution: gridDistribution,
           useMakerOnly: gridUseMakerOnly,
-          autoPauseOnTrend: gridAutoPauseOnTrend,
         };
       }
 
@@ -1338,17 +1335,6 @@ export function UnifiedAiCreate() {
                     <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
                   <span className="text-[10px] text-[#606070]">仅使用限价单</span>
-                </div>
-              )}
-              {isGrid && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#9090A0] w-20 shrink-0">趋势暂停</span>
-                  <button type="button" onClick={() => setGridAutoPauseOnTrend(!gridAutoPauseOnTrend)}
-                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridAutoPauseOnTrend ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                  >
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridAutoPauseOnTrend ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                  <span className="text-[10px] text-[#606070]">趋势时自动暂停</span>
                 </div>
               )}
 

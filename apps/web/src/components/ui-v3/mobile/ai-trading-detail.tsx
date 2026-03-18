@@ -102,8 +102,6 @@ export function AIStrategyDetailPage() {
   const [editGridDirection, setEditGridDirection] = useState<'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'>('neutral');
   const [editGridDistribution, setEditGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [editGridUseMakerOnly, setEditGridUseMakerOnly] = useState(false);
-  const [editGridAutoPauseOnTrend, setEditGridAutoPauseOnTrend] = useState(true);
-
   const [editGridEnableDirectionAdjust, setEditGridEnableDirectionAdjust] = useState(false);
   const [editGridDirectionBiasRatio, setEditGridDirectionBiasRatio] = useState(70);
   const [editGridInterval, setEditGridInterval] = useState(60);
@@ -313,8 +311,6 @@ export function AIStrategyDetailPage() {
       setEditGridDirection((gc.direction as typeof editGridDirection) ?? 'neutral');
       setEditGridDistribution((gc.distribution as typeof editGridDistribution) ?? 'uniform');
       setEditGridUseMakerOnly(gc.useMakerOnly ?? true);
-      setEditGridAutoPauseOnTrend(gc.autoPauseOnTrend ?? true);
-
       setEditGridEnableDirectionAdjust(gc.enableDirectionAdjust ?? false);
       setEditGridDirectionBiasRatio(gc.directionBiasRatio != null ? Math.round(gc.directionBiasRatio * 100) : 70);
       setEditGridInterval(strategy?.intervalMinutes || 60);
@@ -442,7 +438,6 @@ export function AIStrategyDetailPage() {
           dailyLossLimitPct: editGridDailyLossLimit || 0,
           autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
           useMakerOnly: editGridUseMakerOnly,
-          autoPauseOnTrend: editGridAutoPauseOnTrend,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
           // 百分比 → 绝对价格；pct=0 时明确发 null 清空（避免 Prisma 跳过更新保留旧值）
@@ -1639,24 +1634,6 @@ export function AIStrategyDetailPage() {
                               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
                             </button>
                           </div>
-                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl opacity-50">
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-xs text-[#9090A0]">{t('detail.trendAutoPause')}</p>
-                                <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">{t('detail.inDevelopment')}</span>
-                              </div>
-                              <p className="text-[10px] text-[#606070]">{t('detail.trendAutoPauseDesc')}</p>
-                            </div>
-                            <button
-                              type="button"
-                              disabled
-                              className="relative w-11 h-6 rounded-full bg-[#2A2A3A] flex-shrink-0 overflow-hidden cursor-not-allowed"
-                              aria-label={t('detail.trendAutoPauseAria')}
-                            >
-                              <span className="absolute top-1 translate-x-1 w-4 h-4 bg-white rounded-full" />
-                            </button>
-                          </div>
-
                           <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <div>
                               <p className="text-xs text-[#9090A0]">{t('detail.autoDirectionSwitch')}</p>

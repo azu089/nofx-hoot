@@ -372,6 +372,8 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 - High win-rate trades preferred (>60% confidence)
 - Focus on liquidity and tight spreads
 - Avoid trading during low-volume periods
+- TWO-BAR RULE: If price does not move in expected direction within 2 candlesticks after entry, close immediately
+- TIME CONSTRAINT: Maximum holding time per trade is 30 minutes — close regardless of P&L if exceeded
 - Still respect all hard constraints below`;
 
       case 'conservative':

@@ -164,7 +164,6 @@ export function CreateStrategyWizard() {
     dailyLossLimitPct: 10,
     autoAdjustThreshold: 20,
     useMakerOnly: true,
-    autoPauseOnTrend: true,
     enableDirectionAdjust: false,
     directionBiasRatio: 70,
   })
@@ -369,7 +368,6 @@ export function CreateStrategyWizard() {
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
           useMakerOnly: gridParams.useMakerOnly,
-          autoPauseOnTrend: gridParams.autoPauseOnTrend,
           enableDirectionAdjust: gridParams.enableDirectionAdjust,
           directionBiasRatio: (gridParams.directionBiasRatio || 70) / 100,
         }
@@ -1113,8 +1111,8 @@ export function CreateStrategyWizard() {
                   <div className="space-y-1 col-span-2">
                     <p className="text-xs text-[#9090A0]">网格重建阈值 <span className="text-[#606070]">（价格偏离中点超过此值自动重建，20=激进/趋势，30=保守/横盘）</span></p>
                     <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                      <input type="number" min={10} max={50} step={5} value={gridParams.autoAdjustThreshold || ''}
-                        onChange={(e) => updateGrid('autoAdjustThreshold', Number(e.target.value) || 20)}
+                      <input type="number" min={10} max={50} step={5} value={gridParams.autoAdjustThreshold ?? ''}
+                        onChange={(e) => updateGrid('autoAdjustThreshold', e.target.value === '' ? 0 : Number(e.target.value))}
                         placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                         aria-label="网格重建阈值"
                       />
@@ -1132,25 +1130,6 @@ export function CreateStrategyWizard() {
                       aria-label="PostOnly限价单"
                     >
                       <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.useMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-                )}
-                {isGrid && (
-                  <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl opacity-50">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs text-[#9090A0]">趋势市场自动暂停</p>
-                        <span className="text-[10px] text-[#606070] border border-[#2A2A3A] rounded px-1">开发中</span>
-                      </div>
-                      <p className="text-[10px] text-[#606070]">检测到强趋势时软暂停，回震荡后恢复</p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled
-                      className="relative w-11 h-6 rounded-full bg-[#2A2A3A] flex-shrink-0 overflow-hidden cursor-not-allowed"
-                      aria-label="趋势市场自动暂停（开发中）"
-                    >
-                      <span className="absolute top-1 translate-x-1 w-4 h-4 bg-white rounded-full" />
                     </button>
                   </div>
                 )}

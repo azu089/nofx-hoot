@@ -337,6 +337,195 @@ export class QuickAnalysisService {
     };
   }
 
+  /**
+   * 多币种批量分析（对齐 nofx GetFullDecisionWithStrategy）
+   *
+   * 一次 LLM 调用分析所有候选币，返回每个币种的决策。
+   * 失败时降级到逐币 analyze() 调用。
+   *
+   * @param configs 各币种的分析配置（共享 accountInfo/recentTrades/tradingStats/promptConfig）
+   * @returns 按 symbol 映射的分析结果
+   */
+  async analyzeMultiCoin(
+    configs: QuickAnalysisConfig[],
+  ): Promise<Map<string, QuickAnalysisResult>> {
+    if (configs.length === 0) return new Map();
+    if (configs.length === 1) {
+      const result = await this.analyze(configs[0]);
+      return new Map([[configs[0].symbol, result]]);
+    }
+
+    const startTime = Date.now();
+    const symbols = configs.map(c => c.symbol);
+    this.logger.log(`[多币种分析] 开始批量分析 ${symbols.length} 个币种: ${symbols.join(', ')}`);
+
+    try {
+      // 1. 并行获取所有币种的市场数据
+      const marketDataResults = await Promise.all(
+        configs.map(async (config) => {
+          try {
+            const [marketData, marketRanking, enhancedData] = await Promise.all([
+              this.fetchMarketData(config),
+              this.marketData.fetchMarketRanking(config.symbol).catch(() => null),
+              this.marketData.fetchEnhancedMarketData(config.symbol).catch(() => null),
+            ]);
+            const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
+            const indicatorResult = this.indicators.calculateAll(ohlcv);
+            const indicatorSeries = this.indicators.calculateSeries(ohlcv);
+            const flatIndicators = {
+              ...this.flattenIndicators(indicatorResult),
+              rsiSeries: indicatorSeries.rsiSeries,
+              macdHistSeries: indicatorSeries.macdHistSeries,
+            };
+
+            return {
+              symbol: config.symbol,
+              prompt: formatMarketDataPrompt({
+                symbol: config.symbol,
+                currentPrice,
+                indicators: flatIndicators,
+                openInterest,
+                fundingRate,
+                marketRanking: marketRanking || undefined,
+                enhanced: enhancedData || undefined,
+              }),
+              indicators: {
+                rsi: indicatorResult.rsi ?? null,
+                atr3: indicatorResult.atr3,
+                atr14: indicatorResult.atr,
+              },
+              fundingRate,
+              currentPrice,
+              volume24h,
+            };
+          } catch (e: any) {
+            this.logger.warn(`[多币种分析] ${config.symbol} 数据获取失败: ${e.message}`);
+            return null;
+          }
+        }),
+      );
+
+      const validResults = marketDataResults.filter(Boolean) as NonNullable<typeof marketDataResults[0]>[];
+      if (validResults.length === 0) {
+        throw new Error('所有币种数据获取失败');
+      }
+
+      // 2. 合并所有币种数据为单一 prompt
+      const combinedMarketData = validResults.map(r => r.prompt).join('\n\n');
+
+      // 3. 使用第一个 config 的共享参数构建 prompt
+      const refConfig = configs[0];
+      const systemPrompt = this.promptBuilder.buildSystemPrompt(refConfig.promptConfig);
+
+      const ai = refConfig.accountInfo;
+      const userPromptCtx: UserPromptContext = {
+        now: new Date(),
+        equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
+        balance: ai?.allocatedCapital,
+        marginUsage: ai && ai.allocatedCapital > 0 ? (ai.strategyMarginUsed / ai.allocatedCapital * 100) : undefined,
+        positionCount: ai?.strategyPositions.length,
+        exchangeEquity: ai?.exchangeTotalEquity,
+        otherStrategiesCount: ai?.otherStrategiesCount,
+        otherStrategiesMargin: ai?.otherStrategiesMargin,
+        recentTrades: refConfig.recentTrades?.map(t => ({
+          symbol: t.symbol, side: t.side, entryPrice: t.entryPrice,
+          exitPrice: t.exitPrice, pnl: t.pnl, pnlPercent: t.pnlPercent,
+          holdDuration: t.holdDuration, closedAt: t.closedAt,
+        })),
+        tradingStats: refConfig.tradingStats ? {
+          totalTrades: refConfig.tradingStats.totalTrades,
+          winRate: refConfig.tradingStats.winRate,
+          profitFactor: refConfig.tradingStats.profitFactor,
+          sharpeRatio: refConfig.tradingStats.sharpeRatio,
+          totalPnl: refConfig.tradingStats.totalPnl,
+          avgWin: refConfig.tradingStats.avgWin,
+          avgLoss: refConfig.tradingStats.avgLoss,
+          maxDrawdownPct: refConfig.tradingStats.maxDrawdownPct,
+        } : undefined,
+        positions: ai ? ai.strategyPositions.map(p => ({
+          symbol: p.symbol, side: p.side, entryPrice: p.entryPrice,
+          size: p.size, leverage: p.leverage, pnlPercent: p.pnlPercent,
+          peakPnlPercent: p.peakPnlPercent, margin: p.margin,
+        })) : [],
+        marketDataPrompt: combinedMarketData,
+        liquidityData: configs.flatMap(c => c.liquidityData || []),
+        locale: refConfig.promptConfig?.locale,
+      };
+
+      const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);
+
+      // 4. 单次 LLM 调用（增加 maxTokens 以容纳多决策输出）
+      const response = await this.llm.chat(
+        refConfig.modelId, systemPrompt, userMessage, refConfig.apiKeys,
+        {
+          temperature: refConfig.temperature ?? 0.5,
+          maxTokens: Math.min((refConfig.maxTokens ?? 2000) * validResults.length, 12000),
+        },
+      );
+
+      // 5. 解析所有决策
+      const allDecisions = parseDecisions(response.content);
+      const reasoningTrace = extractReasoning(response.content);
+      if (reasoningTrace) {
+        for (const d of allDecisions) {
+          if (reasoningTrace.length > (d.reasoning?.length || 0)) d.reasoning = reasoningTrace;
+        }
+      }
+
+      const latencyMs = Date.now() - startTime;
+      const costPerCoin = response.cost / validResults.length;
+
+      // 6. 按 symbol 映射结果（symbol 归一化：去除 /USDT 后缀，大写比较）
+      const normalizeSymbol = (s?: string) => (s || '').replace(/\/USDT$/i, '').replace(/USDT$/i, '').toUpperCase();
+      const resultMap = new Map<string, QuickAnalysisResult>();
+      for (const mr of validResults) {
+        const mrNorm = normalizeSymbol(mr.symbol);
+        const decision = allDecisions.find(d => normalizeSymbol(d.symbol) === mrNorm);
+        if (decision) {
+          resultMap.set(mr.symbol, {
+            decision, allDecisions, rawResponse: response.content,
+            cost: costPerCoin, latencyMs,
+            indicators: mr.indicators, fundingRate: mr.fundingRate,
+            currentPrice: mr.currentPrice, volume24h: mr.volume24h,
+            systemPrompt, userPrompt: userMessage, aiThinking: response.thinking,
+          });
+        } else {
+          this.logger.warn(`[多币种分析] ${mr.symbol} 未在 AI 响应中找到决策，降级逐币分析`);
+        }
+      }
+
+      this.logger.log(
+        `[多币种分析] 完成: ${resultMap.size}/${validResults.length} 个币种成功, ` +
+        `耗时=${latencyMs}ms, 成本=$${response.cost.toFixed(6)}`,
+      );
+
+      // 7. 对未匹配的币种降级到逐币分析
+      for (const config of configs) {
+        if (!resultMap.has(config.symbol)) {
+          try {
+            resultMap.set(config.symbol, await this.analyze(config));
+          } catch (e: any) {
+            this.logger.warn(`[多币种分析] ${config.symbol} 降级分析也失败: ${e.message}`);
+          }
+        }
+      }
+
+      return resultMap;
+    } catch (error: any) {
+      // 全局 fallback: 批量失败时逐币分析
+      this.logger.warn(`[多币种分析] 批量分析失败(${error.message})，降级逐币分析`);
+      const resultMap = new Map<string, QuickAnalysisResult>();
+      for (const config of configs) {
+        try {
+          resultMap.set(config.symbol, await this.analyze(config));
+        } catch (e: any) {
+          this.logger.warn(`[多币种分析] ${config.symbol} 逐币分析失败: ${e.message}`);
+        }
+      }
+      return resultMap;
+    }
+  }
+
   // ==================== 数据获取 ====================
 
   private async fetchMarketData(config: QuickAnalysisConfig): Promise<{

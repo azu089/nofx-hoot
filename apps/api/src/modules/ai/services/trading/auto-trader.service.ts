@@ -638,6 +638,17 @@ export class AutoTraderService {
         `其他策略持仓=${otherPositions.length} (保证金=$${otherMargin.toFixed(2)})`,
       );
 
+      // 权益快照（对齐 nofx saveEquitySnapshot，每个周期保存，含空转周期）
+      this.prisma.equitySnapshot.create({
+        data: {
+          strategyId: strategy.id,
+          equity: accountInfo.exchangeTotalEquity.toString(),
+          availBalance: accountInfo.exchangeAvailableBalance.toString(),
+          positionValue: thisMargin.toString(),
+          unrealizedPnl: thisUnrealizedPnl.toString(),
+        },
+      }).catch(e => this.logger.warn(`权益快照保存失败(非致命): ${e.message}`));
+
       // Step 5.5: 查询最近交易记录 + 统计（RecentOrder 9字段 + TradingStats 8字段）
       const recentPositions = await this.prisma.position.findMany({
         where: {

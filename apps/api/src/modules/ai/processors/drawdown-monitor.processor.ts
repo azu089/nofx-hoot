@@ -56,6 +56,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         amount: true,
         margin: true,
         highWaterMark: true,
+        peakPnlPercent: true,
         leverage: true,
         aiStrategyId: true,
         exchange: true,
@@ -194,12 +195,19 @@ export class DrawdownMonitorProcessor extends WorkerHost {
             pos,
             `绝对亏损保护：当前亏损 ${pnlPercent.toFixed(1)}% 超过 ${ABSOLUTE_LOSS_THRESHOLD}% 阈值 (杠杆 ${lev}x)`,
             currentPrice,
+            'absolute_loss',
           );
           closedCount++;
           continue; // 跳过高水位检查
         }
 
-        // 注：利润回撤保护已删除（与最大回撤保护功能重复），仅保留止损检查
+        // Peak-Drawdown 紧急平仓（对齐 nofx checkPositionDrawdown）
+        // 规则：当前盈利>5% 且从峰值回撤>=40% → 紧急全平
+        const peakClosed = await this.checkPeakDrawdown(pos, pnlPercent, currentPrice, unrealizedPnl);
+        if (peakClosed) {
+          closedCount++;
+          continue;
+        }
       } catch (error) {
         this.logger.warn(
           `[AI监控] 检查持仓 ${pos.id} 出错: ${error.message}`,
@@ -339,6 +347,73 @@ export class DrawdownMonitorProcessor extends WorkerHost {
   }
 
   /**
+   * Peak-Drawdown 紧急平仓检测（对齐 nofx auto_trader_risk.go:checkPositionDrawdown）
+   *
+   * 规则：当前盈利 > 5% 且从峰值回撤 >= 40% → 紧急全平
+   * 公式：drawdownPct = (peakPnLPct - currentPnLPct) / peakPnLPct * 100
+   *
+   * @returns true = 触发紧急平仓
+   */
+  private async checkPeakDrawdown(
+    pos: {
+      id: string;
+      userId: string;
+      apiKeyId: string | null;
+      symbol: string;
+      side: string;
+      entryPrice: any;
+      amount: any;
+      peakPnlPercent?: any;
+    },
+    currentPnlPct: number,
+    currentPrice: number,
+    unrealizedPnl: number,
+  ): Promise<boolean> {
+    if (!pos.apiKeyId) return false;
+
+    // 从 DB 恢复峰值（持久化，进程重启安全）
+    const storedPeak = pos.peakPnlPercent ? Number(pos.peakPnlPercent) : null;
+    const peakPnlPct = storedPeak !== null ? Math.max(storedPeak, currentPnlPct) : currentPnlPct;
+
+    // 更新峰值到 DB（仅当新高时写入）
+    if (storedPeak === null || currentPnlPct > storedPeak) {
+      await this.prisma.position.update({
+        where: { id: pos.id },
+        data: { peakPnlPercent: new Decimal(currentPnlPct) },
+      });
+    }
+
+    // 检查触发条件：盈利 > 5% 且从峰值回撤 >= 40%
+    if (currentPnlPct <= 5.0 || peakPnlPct <= 0) return false;
+
+    const drawdownPct = ((peakPnlPct - currentPnlPct) / peakPnlPct) * 100;
+
+    if (drawdownPct >= 40.0) {
+      this.logger.warn(
+        `[AI监控] Peak-Drawdown 紧急平仓触发: ${pos.symbol} ${pos.side} | 当前盈利: ${currentPnlPct.toFixed(2)}% | 峰值: ${peakPnlPct.toFixed(2)}% | 回撤: ${drawdownPct.toFixed(2)}%`,
+      );
+
+      await this.autoClosePosition(
+        pos,
+        `Peak-Drawdown 紧急平仓：盈利 ${currentPnlPct.toFixed(1)}%，峰值 ${peakPnlPct.toFixed(1)}%，回撤 ${drawdownPct.toFixed(1)}%`,
+        currentPrice,
+        'peak_drawdown',
+      );
+
+      return true;
+    }
+
+    // 接近触发时记录调试日志（盈利>5% 且回撤>20%）
+    if (drawdownPct > 20.0) {
+      this.logger.debug(
+        `[AI监控] Peak-Drawdown 监控: ${pos.symbol} ${pos.side} | 盈利: ${currentPnlPct.toFixed(2)}% | 峰值: ${peakPnlPct.toFixed(2)}% | 回撤: ${drawdownPct.toFixed(2)}%`,
+      );
+    }
+
+    return false;
+  }
+
+  /**
    * 自动平仓
    */
   private async autoClosePosition(
@@ -353,6 +428,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     },
     reason: string,
     currentPrice: number,
+    closeReason: string = 'trailing_stop',
   ): Promise<void> {
     if (!pos.apiKeyId) return;
 
@@ -392,7 +468,8 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           exitPrice: new Decimal(exitPrice),
           realizedPnl: new Decimal(pnl),
           closedAt: new Date(),
-          closeReason: 'trailing_stop',
+          closeReason,
+          peakPnlPercent: null, // 对齐 nofx ClearPeakPnLCache：平仓后清除峰值
         },
       });
 
