@@ -99,7 +99,7 @@ export function AIStrategyDetailPage() {
   const [editGridProfitTrailingStopPct, setEditGridProfitTrailingStopPct] = useState(50);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
-  const [editGridAutoAdjustThreshold, setEditGridAutoAdjustThreshold] = useState(20);
+  const [editGridAutoAdjustThreshold, setEditGridAutoAdjustThreshold] = useState<number | null>(20);
   const [editGridDirection, setEditGridDirection] = useState<'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias'>('neutral');
   const [editGridDistribution, setEditGridDistribution] = useState<'uniform' | 'gaussian' | 'pyramid'>('uniform');
   const [editGridUseMakerOnly, setEditGridUseMakerOnly] = useState(false);
@@ -439,7 +439,7 @@ export function AIStrategyDetailPage() {
           profitTrailingStopPct: editGridProfitTrailingStopPct,
           stopLossPct: editGridStopLoss,
           dailyLossLimitPct: editGridDailyLossLimit || 0,
-          autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
+          autoAdjustThreshold: (editGridAutoAdjustThreshold ?? 20) / 100,
           useMakerOnly: editGridUseMakerOnly,
           enableDirectionAdjust: editGridEnableDirectionAdjust,
           directionBiasRatio: (editGridDirectionBiasRatio || 70) / 100,
@@ -571,25 +571,10 @@ export function AIStrategyDetailPage() {
 
   const pnlHistory = pnlChart?.dataPoints || [];
 
-  // Today stats: 网格策略用 gridState 实际成交数据，非网格用 log 近似
-  const gridStateExt = (detail as any)?.gridState as { totalTrades?: number; winningTrades?: number; dailyTotalProfit?: number; totalProfit?: number } | null;
-  let todayTrades: number;
-  let todayWins: number;
-  let todayLosses: number;
-  if (strategy.strategyType === 'grid' && gridStateExt) {
-    todayTrades = gridStateExt.totalTrades ?? 0;
-    todayWins = gridStateExt.winningTrades ?? 0;
-    todayLosses = todayTrades - todayWins;
-  } else {
-    const todayLogs = logs.filter(log => {
-      const logDate = new Date(log.createdAt);
-      const today = new Date();
-      return logDate.toDateString() === today.toDateString();
-    });
-    todayTrades = todayLogs.filter(log => log.executed).length;
-    todayWins = todayLogs.filter(log => log.executed && log.decision?.action?.includes('close')).length;
-    todayLosses = todayTrades - todayWins;
-  }
+  // Today stats: 统一从后端 Position 表（交易所聚合记录）获取
+  const todayTrades: number = (detail as any)?.todayTrades ?? 0;
+  const todayWins: number = (detail as any)?.todayWins ?? 0;
+  const todayLosses: number = todayTrades - todayWins;
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] w-full">
@@ -1613,8 +1598,8 @@ export function AIStrategyDetailPage() {
                           <div className="space-y-1 col-span-2">
                             <p className="text-xs text-[#9090A0]">{t('detail.gridRebuildThreshold')} <span className="text-[#606070]">（{t('detail.gridRebuildDesc')}）</span></p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                              <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold || ''}
-                                onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? 20 : parseInt(e.target.value))}
+                              <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold ?? ''}
+                                onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? null : parseInt(e.target.value))}
                                 placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                                 aria-label={t('detail.gridRebuildThreshold')}
                               />

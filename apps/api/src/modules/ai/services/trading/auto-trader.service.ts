@@ -1984,8 +1984,8 @@ export class AutoTraderService {
             const syncResult = await this.closedPnlSyncService.syncClosedPositions(
               userId, effectiveExchangeApiKeyId, syncAdapter.exchangeType, syncAdapter,
             );
-            if (syncResult.synced > 0) {
-              this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 扣费=${syncResult.charged}`);
+            if (syncResult.synced > 0 || syncResult.deleted > 0) {
+              this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
             }
           } finally {
             try { await syncAdapter.dispose(); } catch { /* 忽略 */ }

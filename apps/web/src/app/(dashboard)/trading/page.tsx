@@ -250,7 +250,7 @@ export default function TradingPage() {
   const { data: historyData } = useQuery({
     queryKey: ['trade-history', selectedApiKeyId],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: '100' });
       if (selectedApiKeyId) params.set('apiKeyId', selectedApiKeyId);
       const response = await api.get<{
         items: Array<{
@@ -286,27 +286,8 @@ export default function TradingPage() {
     retry: false,
   });
 
-  // 获取交易所实时已平仓记录（交易所是唯一事实：先实时拉取，覆盖 DB PnL）
-  const { data: exchangeHistoryData } = useQuery({
-    queryKey: ['exchange-trade-history', selectedApiKeyId],
-    queryFn: async () => {
-      if (!selectedApiKeyId) return null;
-      try {
-        const response = await api.get<{
-          items: Array<{ id: string; symbol: string; side: string; price: string; amount: string; pnl: string; fee: string; time: string; tradeId?: string }>;
-          total: number;
-          source: string;
-          error?: string;
-        }>(`/api-keys/${selectedApiKeyId}/trade-history?limit=50`);
-        return response.data;
-      } catch {
-        return null; // 交易所查询失败时回退到 DB 数据
-      }
-    },
-    enabled: isAuthenticated && !!selectedApiKeyId,
-    staleTime: 60 * 1000, // 60秒缓存，交易所历史数据变化慢
-    retry: false,
-  });
+  // 交易所实时已平仓记录已移除 — 统一使用 DB Position 表（ClosedPnlSyncService 聚合数据）
+  // 原因：fetchMyTrades 返回逐笔成交，与 OKX 持仓历史（按 posId 聚合）粒度不同，合并会导致数据错乱
 
   // 获取执行日志（按选中账户过滤）
   const { data: logsData } = useQuery({
@@ -693,88 +674,36 @@ export default function TradingPage() {
       });
 
   // 转换交易历史数据格式
-  // 数据策略：DB 记录 + 交易所独有记录合并，交易所 PnL 优先覆盖 DB 估算值
+  // 数据策略：统一使用 DB Position 表（ClosedPnlSyncService 写入的聚合平仓记录）
+  // DB 数据来源 = 交易所 getClosedPnl()（按 posId 聚合），与交易所持仓历史完全一致
   const transformedHistory = (() => {
     const dbItems = historyData?.items || [];
-    const exchangeItems = exchangeHistoryData?.items || [];
 
-    // 记录已匹配的交易所记录索引，用于后续找出交易所独有记录
-    const matchedExchangeIds = new Set<string>();
-
-    // Step 1: DB 记录为主，交易所 PnL 覆盖
-    const fromDb = dbItems.map(h => {
-      const hTime = new Date(h.closedAt || h.createdAt).getTime();
-      const hSym = (h.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
-      const exchangeTrade = exchangeItems.find(e => {
-        const eSym = (e.symbol || '').replace(/[/: ]/g, '').replace('USDT', '').toUpperCase();
-        if (eSym !== hSym) return false;
-        const eTime = new Date(e.time).getTime();
-        return Math.abs(eTime - hTime) < 120_000; // 2分钟内视为同一笔
-      });
-      if (exchangeTrade) matchedExchangeIds.add(exchangeTrade.id || exchangeTrade.tradeId || '');
-      const pnlFromExchange = exchangeTrade ? parseFloat(exchangeTrade.pnl || '0') : NaN;
-      const finalPnl = !isNaN(pnlFromExchange) ? pnlFromExchange : parseFloat(h.pnl || '0');
-      return {
-        id: h.id,
-        symbol: normalizeSymbol(h.symbol),
-        side: h.side as 'long' | 'short',
-        type: h.type || 'market',
-        price: parseFloat(h.closePrice || h.price || '0'),
-        entryPrice: parseFloat(h.entryPrice || '0'),
-        closePrice: parseFloat(h.closePrice || h.price || '0'),
-        amount: parseFloat(h.amount || '0'),
-        filled: parseFloat(h.amount || '0'),
-        total: parseFloat(h.total || '0'),
-        pnl: finalPnl,
-        pnlPercent: parseFloat(h.pnlPercent || '0'),
-        fee: parseFloat(h.fee || '0'),
-        time: h.closedAt || h.createdAt,
-        status: 'filled' as const,
-        marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
-        leverage: h.leverage || 1,
-        margin: parseFloat(h.margin || '0'),
-        closeReason: h.closeReason,
-        strategyName: h.strategyName,
-        source: h.source || 'ai_strategy',
-        // 开仓时间：exchange_sync 来源的 createdAt 是同步时间不是开仓时间，不显示
-        openTime: h.source === 'exchange_sync' ? undefined : h.createdAt,
-        pnlSource: exchangeTrade ? 'exchange' : 'local',
-      };
-    });
-
-    // Step 2: 交易所独有记录（DB 没有匹配到的），直接展示
-    const fromExchangeOnly = exchangeItems
-      .filter(e => !matchedExchangeIds.has(e.id || e.tradeId || ''))
-      .map(e => ({
-        id: `ex_${e.tradeId || e.id}`,
-        symbol: normalizeSymbol(e.symbol),
-        side: e.side as 'long' | 'short',
-        type: 'market' as const,
-        price: parseFloat(e.price || '0'),
-        entryPrice: 0,
-        closePrice: parseFloat(e.price || '0'),
-        amount: parseFloat(e.amount || '0'),
-        filled: parseFloat(e.amount || '0'),
-        total: 0,
-        pnl: parseFloat(e.pnl || '0'),
-        pnlPercent: 0,
-        fee: parseFloat(e.fee || '0'),
-        time: e.time,
-        status: 'filled' as const,
-        marketType: 'futures' as 'futures' | 'spot',
-        leverage: 1,
-        margin: 0,
-        closeReason: undefined as string | undefined,
-        strategyName: undefined as string | undefined,
-        source: 'exchange_sync',
-        openTime: e.time,
-        pnlSource: 'exchange' as const,
-      }));
-
-    // Step 3: 合并并按时间倒序
-    const merged = [...fromDb, ...fromExchangeOnly];
-    merged.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-    return merged;
+    return dbItems.map(h => ({
+      id: h.id,
+      symbol: normalizeSymbol(h.symbol),
+      side: h.side as 'long' | 'short',
+      type: h.type || 'market',
+      price: parseFloat(h.closePrice || h.price || '0'),
+      entryPrice: parseFloat(h.entryPrice || '0'),
+      closePrice: parseFloat(h.closePrice || h.price || '0'),
+      amount: parseFloat(h.amount || '0'),
+      filled: parseFloat(h.amount || '0'),
+      total: parseFloat(h.total || '0'),
+      pnl: parseFloat(h.pnl || '0'),
+      pnlPercent: parseFloat(h.pnlPercent || '0'),
+      fee: parseFloat(h.fee || '0'),
+      time: h.closedAt || h.createdAt,
+      status: 'filled' as const,
+      marketType: (h.tradingType || 'futures') as 'futures' | 'spot',
+      leverage: h.leverage || 1,
+      margin: parseFloat(h.margin || '0'),
+      closeReason: h.closeReason,
+      strategyName: h.strategyName,
+      source: h.source || 'ai_strategy',
+      openTime: h.source === 'exchange_sync' ? undefined : h.createdAt,
+      pnlSource: 'exchange' as const, // DB 数据已来自交易所聚合
+    }));
   })();
 
   // 转换执行日志数据格式

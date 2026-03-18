@@ -1250,19 +1250,9 @@ export class AiController {
       data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any; totalPnl?: any; winRate?: any; totalTrades?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
 
-        let todayPnl: number;
-        let totalPnl: number;
-
-        // 网格策略：从 gridRuntimeState 取实时盈亏（persistGridState 已同步到策略表，但 state 更实时）
-        // 非网格策略：从 Position 表聚合 realizedPnl
-        if (s.strategyType === 'grid' && s.gridRuntimeState) {
-          const grs = s.gridRuntimeState as { totalProfit?: number; dailyPnl?: number };
-          totalPnl = Number((grs.totalProfit ?? 0).toFixed(2));
-          todayPnl = Number((grs.dailyPnl ?? 0).toFixed(2));
-        } else {
-          todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
-          totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
-        }
+        // 所有策略类型统一从 Position 表（交易所聚合记录）计算盈亏
+        const todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
+        const totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
 
         return {
           ...s,
@@ -1445,11 +1435,12 @@ export class AiController {
       nextCycleAt = next.toISOString();
     }
 
-    // 今日 PnL — 网格用 gridRuntimeState 权益差法（与列表接口一致），Solo/Debate 用 Position 表
+    // 今日统计 — 统一从 Position 表取今日已平仓记录（只用交易所聚合记录）
     let todayPnl = 0;
+    let todayTrades = 0;
+    let todayWins = 0;
     let gridState: object | null = null;
 
-    // 所有策略类型统一从 Position 表取今日已平仓 realizedPnl（只用交易所聚合记录）
     {
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
@@ -1463,6 +1454,8 @@ export class AiController {
         select: { realizedPnl: true },
       });
       todayPnl = Number(todayPositions.reduce((sum, p) => sum + Number(p.realizedPnl || 0), 0).toFixed(2));
+      todayTrades = todayPositions.length;
+      todayWins = todayPositions.filter(p => Number(p.realizedPnl || 0) > 0).length;
     }
 
     // 网格策略附加 gridState（展示用）
@@ -1504,7 +1497,7 @@ export class AiController {
       exchangeName = apiKey?.exchange ?? null;
     }
 
-    return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), gridState, exchangeLabel, exchangeName };
+    return { strategy, nextCycleAt, todayPnl: Number(todayPnl.toFixed(2)), todayTrades, todayWins, gridState, exchangeLabel, exchangeName };
   }
 
   /**
@@ -2119,6 +2112,7 @@ export class AiController {
         userId,
         status: 'closed',
         closedAt: { gte: todayStart },
+        exchangeRef: { not: null },
         OR: [
           { aiStrategyId: { not: null } },
           { source: 'ai_research' },

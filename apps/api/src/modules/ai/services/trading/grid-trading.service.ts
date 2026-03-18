@@ -32,7 +32,6 @@ export interface GridConfig {
   useATRBounds?: boolean;      // 使用 ATR 自动边界
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
-  profitTrailingStopPct?: number; // 利润回撤保护%（默认 50）：总PnL从利润峰值回撤超此值时紧急平仓
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 10）
   totalLossLimitPct?: number;  // 总体亏损上限%（默认 30）：累计亏损超过总投入此比例时紧急平仓
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
@@ -100,7 +99,6 @@ export interface GridState {
 
   // 绩效追踪
   totalProfit: number;
-  peakTotalProfit: number;   // 已实现利润峰值（用于利润回撤保护）
   dailyTotalProfit: number;  // 当日已实现利润（网格挂单成交累计，UTC每日重置）
   totalTrades: number;
   winningTrades: number;
@@ -213,7 +211,7 @@ const BREAKOUT_CONFIRM_REQUIRED = 3;
 const DEFAULT_ATR_MULTIPLIER = 1.5; // 1.5x ATR × (gridCount/10)，使格间距恒定在 ~0.5%/格
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
-const DEFAULT_PROFIT_TRAILING_STOP_PCT = 50; // 利润回撤保护：默认保护 50% 的已实现利润
+
 const DEFAULT_BREAKOUT_PCT = 2;
 const DIRECTION_BIAS_RATIO = 0.7; // 70/30 分配
 const POSITION_SAFETY_MULTIPLIER = 2; // 仓位绝对安全上限 = TotalInvestment × Leverage × 2
@@ -635,7 +633,7 @@ export class GridTradingService {
       lastPrice: currentPrice,
 
       totalProfit: 0,
-      peakTotalProfit: 0,
+
       dailyTotalProfit: 0,
       totalTrades: 0,
       winningTrades: 0,
@@ -794,7 +792,7 @@ export class GridTradingService {
         state.lastSyncedLeverage ??= gridConfig?.leverage ?? state.leverage;
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
-        state.peakTotalProfit ??= state.totalProfit ?? 0;
+
         state.currentDirection ??= 'neutral' as GridDirection;
         state.directionBiasRatio ??= gridConfig?.directionBiasRatio ?? DIRECTION_BIAS_RATIO;
         // 兼容旧数据：profitTargetPct 不存在时 fallback 到 0（AI自主决策）
@@ -1136,29 +1134,6 @@ export class GridTradingService {
       }
     }
 
-    // ★ 利润回撤保护 — 保护震荡期累积的已实现利润不被单边行情吃掉
-    // 与 maxDrawdown 的区别：maxDrawdown 基于账户权益峰值，利润回撤基于策略已实现利润峰值
-    if (state.totalProfit > (state.peakTotalProfit ?? 0)) {
-      state.peakTotalProfit = state.totalProfit;
-    }
-    {
-      const profitTrailingStopPct = gridConfig?.profitTrailingStopPct ?? DEFAULT_PROFIT_TRAILING_STOP_PCT;
-      const peakProfit = state.peakTotalProfit ?? 0;
-      // 仅在有实际利润时生效（peakProfit > 0），避免刚启动时误触发
-      if (profitTrailingStopPct > 0 && peakProfit > 0) {
-        const totalPnl = state.totalProfit + strategyUnrealizedPnl;
-        const profitThreshold = peakProfit * (1 - profitTrailingStopPct / 100);
-        if (totalPnl < profitThreshold) {
-          const profitDrawdownPct = ((peakProfit - totalPnl) / peakProfit * 100).toFixed(1);
-          await this.emergencyExit(state, userId, apiKeyId,
-            `利润回撤保护触发\n` +
-            `保护规则: 总PnL从利润峰值回撤超过 ${profitTrailingStopPct}% 时紧急平仓\n` +
-            `实际情况: 利润峰值 $${peakProfit.toFixed(2)}，当前总PnL $${totalPnl.toFixed(2)}，回撤 ${profitDrawdownPct}%`);
-          await this.persistGridState(strategyId, state);
-          return { trades: 0, errors: 0 };
-        }
-      }
-    }
 
     // F2: 总体亏损上限（安全网）— 累计亏损超过 totalInvestment 的指定比例时紧急平仓
     // 与 maxDrawdown（基于权益峰值）互补：即使权益未到峰值，累计亏损也受上限保护
@@ -1663,8 +1638,8 @@ export class GridTradingService {
             const syncResult = await this.closedPnlSyncService.syncClosedPositions(
               userId, apiKeyId, adapter.exchangeType, adapter,
             );
-            if (syncResult.synced > 0) {
-              this.logger.log(`[网格] 历史持仓同步: 新增=${syncResult.synced}, 扣费=${syncResult.charged}`);
+            if (syncResult.synced > 0 || syncResult.deleted > 0) {
+              this.logger.log(`[网格] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
             }
           } catch (e: any) {
             this.logger.debug(`[网格] 历史持仓同步失败(非致命): ${e.message}`);
@@ -2731,6 +2706,11 @@ export class GridTradingService {
         break;
 
       case 'adjust_grid': {
+        // 风控暂停期间禁止 AI 通过 adjust_grid 绕过（与 autoAdjustGrid 保持一致）
+        if (state.isPaused && state.pauseSource === 'risk_control') {
+          this.logger.warn(`[网格] adjust_grid 被拒绝：风控暂停中（${state.pauseReason ?? ''}），需 PM 手动恢复`);
+          return { executed: false, skipReason: '风控暂停中，禁止自动重建' };
+        }
         const pendingBeforeCancel = state.gridLines.filter(l => l.state === 'pending').length;
         await adapter.cancelAllOrders(state.symbol);
         this.logger.log(`[网格] adjust_grid 撤单: ${pendingBeforeCancel} 个pending挂单已全部撤销`);
@@ -2966,8 +2946,6 @@ export class GridTradingService {
     state.dailyTotalProfit = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
     // totalProfit 保留（累计盈亏是历史事实，不清除）
-    // peakTotalProfit 重置为当前 totalProfit（利润回撤保护从当前利润重新追踪）
-    state.peakTotalProfit = state.totalProfit;
 
     await this.persistGridState(strategyId, state);
 
@@ -4190,6 +4168,9 @@ export class GridTradingService {
     apiKeyId?: string,
     displayLines?: any[],  // 从交易所数据构建的层级（消除内存依赖）
   ): Promise<void> {
+    // 风控暂停期间禁止后端自动重建（需 PM 手动干预）
+    if (state.isPaused && state.pauseSource === 'risk_control') return;
+
     const { skewed, buyFilled, sellFilled } = this.checkGridSkew(state, displayLines);
     if (!skewed) return;
 

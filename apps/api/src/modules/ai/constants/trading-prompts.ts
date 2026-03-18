@@ -727,7 +727,7 @@ function gridSystemPromptZh(
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
 - **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
-- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（ATR 或用户百分比）③ 持仓按入场价就近映射到新层 ④ 自动解除暂停 ⑤ 立即清除仓位缩减（positionReductionPct→0） ⑥ 本轮结束，下轮 AI 基于新网格决策
+- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 自动解除非风控暂停（risk_control 暂停不可通过此操作解除） ⑤ 立即清除仓位缩减（positionReductionPct→0） ⑥ 本轮结束，下轮 AI 基于新网格决策
 - **hold**: 保持现状（仅在无空层且无需调整时使用）
 
 技术约束（交易所规则，不可违反）：
@@ -789,7 +789,7 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - **cancel_all_orders**: Cancel all pending orders
 - **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
 - **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
-- **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (ATR or user % range) ③ remap positions to nearest new levels ④ auto-clears isPaused ⑤ current cycle ends; next cycle AI works on new grid
+- **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (user-configured % range takes priority; ATR auto-calculation used if not configured) ③ remap positions to nearest new levels ④ auto-clears non-risk-control pauses (risk_control pause cannot be cleared this way) ⑤ current cycle ends; next cycle AI works on new grid
 - **hold**: Maintain current state (only when no empty levels and no adjustments needed)
 
 ## Technical Constraints (exchange rules, must not violate)

@@ -1061,96 +1061,54 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     if (closingTrades.length === 0) return [];
 
-    // Step 3: 按 symbol+side 聚合为持仓级别记录（对齐 OKX positions-history 粒度）
-    // key = "SOLUSDT_long" or "SOLUSDT_short"
-    const aggregated = new Map<string, {
-      symbol: string;
-      side: 'long' | 'short';
-      totalPnl: number;
-      totalQty: number;
-      totalFee: number;
-      totalNotional: number; // qty * price 加权，用于算平均出场价
-      firstTime: number;
-      lastTime: number;
-      tradeIds: string[];
-    }>();
+    // Binance 没有 OKX 那样的 posId 级持仓历史 API
+    // 逐笔记录，每笔平仓成交独立一条（与 Binance 交易历史一致）
+    const results: ClosedPnlRecord[] = closingTrades
+      .map((t: any) => {
+        const pnl = parseFloat(t.realizedPnl ?? '0');
+        const feeCost = Math.abs(parseFloat(t.commission ?? '0'));
+        const price = parseFloat(t.price || '0');
+        const qty = parseFloat(t.qty || '0');
+        const tradeTime = Number(t.time || 0);
 
-    for (const t of closingTrades) {
-      const pnl = parseFloat(t.realizedPnl ?? '0');
-      const feeCost = Math.abs(parseFloat(t.commission ?? '0'));
-      const price = parseFloat(t.price || '0');
-      const qty = parseFloat(t.qty || '0');
-      const tradeTime = Number(t.time || 0);
+        // 推断被平仓方向
+        const positionSide = (t.positionSide || 'BOTH').toUpperCase();
+        let closedSide: 'long' | 'short';
+        if (positionSide === 'LONG') {
+          closedSide = 'long';
+        } else if (positionSide === 'SHORT') {
+          closedSide = 'short';
+        } else {
+          closedSide = t.side === 'SELL' ? 'long' : 'short';
+        }
 
-      // 推断被平仓方向
-      const positionSide = (t.positionSide || 'BOTH').toUpperCase();
-      let closedSide: 'long' | 'short';
-      if (positionSide === 'LONG') {
-        closedSide = 'long';
-      } else if (positionSide === 'SHORT') {
-        closedSide = 'short';
-      } else {
-        closedSide = t.side === 'SELL' ? 'long' : 'short';
-      }
+        // 反推开仓价：entryPrice = exitPrice ∓ (pnl / qty)
+        let entryPrice = closedSide === 'long'
+          ? price - (qty > 0 ? pnl / qty : 0)
+          : price + (qty > 0 ? pnl / qty : 0);
+        if (entryPrice < 0) entryPrice = 0;
 
-      const key = `${t.symbol || ''}_${closedSide}`;
-      const agg = aggregated.get(key);
-      if (agg) {
-        agg.totalPnl += pnl;
-        agg.totalQty += qty;
-        agg.totalFee += feeCost;
-        agg.totalNotional += qty * price;
-        agg.firstTime = Math.min(agg.firstTime, tradeTime);
-        agg.lastTime = Math.max(agg.lastTime, tradeTime);
-        agg.tradeIds.push(String(t.id || ''));
-      } else {
-        aggregated.set(key, {
-          symbol: t.symbol || '',
-          side: closedSide,
-          totalPnl: pnl,
-          totalQty: qty,
-          totalFee: feeCost,
-          totalNotional: qty * price,
-          firstTime: tradeTime,
-          lastTime: tradeTime,
-          tradeIds: [String(t.id || '')],
-        });
-      }
-    }
+        const unifiedSymbol = this.binanceRawSymbolToUnified(t.symbol || '');
+        // 用 tradeId 唯一标识（Binance 每笔成交有唯一 id）
+        const exchangeId = `binance_${t.id || t.orderId || tradeTime}`;
 
-    // 转换为 ClosedPnlRecord[]
-    const results: ClosedPnlRecord[] = [];
-    for (const agg of aggregated.values()) {
-      if (agg.totalQty <= 0) continue;
-
-      // 加权平均出场价
-      const avgExitPrice = agg.totalNotional / agg.totalQty;
-      // 反推平均开仓价：entryPrice = exitPrice ∓ (totalPnl / totalQty)
-      let avgEntryPrice = agg.side === 'long'
-        ? avgExitPrice - (agg.totalPnl / agg.totalQty)
-        : avgExitPrice + (agg.totalPnl / agg.totalQty);
-      if (avgEntryPrice < 0) avgEntryPrice = 0;
-
-      const unifiedSymbol = this.binanceRawSymbolToUnified(agg.symbol);
-      // exchangeId 用 symbol+side+首笔时间 唯一标识这批聚合记录
-      const exchangeId = `binance_agg_${agg.symbol}_${agg.side}_${agg.firstTime}`;
-
-      results.push({
-        symbol: unifiedSymbol,
-        side: agg.side,
-        entryPrice: avgEntryPrice,
-        exitPrice: avgExitPrice,
-        quantity: agg.totalQty,
-        realizedPnl: agg.totalPnl,
-        fee: agg.totalFee,
-        leverage: 1,
-        entryTime: new Date(agg.firstTime || Date.now()),
-        exitTime: new Date(agg.lastTime || Date.now()),
-        orderId: agg.tradeIds[0] || '',
-        closeType: 'manual' as const,
-        exchangeId,
-      });
-    }
+        return {
+          symbol: unifiedSymbol,
+          side: closedSide as 'long' | 'short',
+          entryPrice,
+          exitPrice: price,
+          quantity: qty,
+          realizedPnl: pnl,
+          fee: feeCost,
+          leverage: 1,
+          entryTime: new Date(tradeTime || Date.now()),
+          exitTime: new Date(tradeTime || Date.now()),
+          orderId: String(t.orderId || t.id || ''),
+          closeType: 'manual' as const,
+          exchangeId,
+        };
+      })
+      .sort((a, b) => b.exitTime.getTime() - a.exitTime.getTime());
 
     return results.slice(0, limit);
   }

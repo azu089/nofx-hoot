@@ -446,7 +446,7 @@ export function UnifiedAiList() {
   const t = useTranslations('ai');
 
   // 支持 URL 参数初始化 (策略详情 "查看全部" 跳转: ?view=timeline&filter=solo)
-  const initialView = searchParams?.get('view') === 'timeline' ? 'timeline' : 'strategy';
+  const initialView = searchParams?.get('view') === 'strategy' ? 'strategy' : 'timeline';
   const initialFilterParam = searchParams?.get('filter') || '';
   const initialFilter: FilterTab = (['all', 'research', 'solo', 'debate', 'grid'] as const).includes(initialFilterParam as FilterTab)
     ? (initialFilterParam as FilterTab)
