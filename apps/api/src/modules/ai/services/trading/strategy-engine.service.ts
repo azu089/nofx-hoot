@@ -234,13 +234,13 @@ export class StrategyEngineService implements OnModuleInit {
   async startStrategy(strategyId: string, userId: string): Promise<any> {
     const db = this.prisma;
 
-    // 点卡余额门控：余额为 0 时禁止启动
+    // GAS余额门控：余额为 0 时禁止启动
     const user = await db.user.findUnique({
       where: { id: userId },
       select: { pointBalance: true },
     });
     if (!user || Number(user.pointBalance) <= 0) {
-      throw new BadRequestException('点卡余额不足，请充值后再启动策略');
+      throw new BadRequestException('GAS余额不足，请充值后再启动策略');
     }
 
     const strategy = await db.aiStrategy.findFirst({

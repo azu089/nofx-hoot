@@ -138,7 +138,7 @@ export interface GridState {
   takerFeeRate: number;
   makerFeeRate: number;
 
-  // 燃油费结算（点卡扣费基准）
+  // 燃油费结算（GAS扣费基准）
   chargedProfit: number;    // 已结算扣费的利润累计，防止重复扣费
 
   // 策略权益追踪

@@ -1,6 +1,6 @@
 /**
  * 管理后台 - 财务中心服务
- * 处理收入统计：订阅费、点卡、燃油费
+ * 处理收入统计：订阅费、GAS、燃油费
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -88,7 +88,7 @@ export class AdminFinanceService {
     };
   }
 
-  // 获取点卡收入统计
+  // 获取GAS收入统计
   async getPointCardRevenue(dateFilter: DateFilter) {
     const recharges = await this.prisma.pointCardRecord.findMany({
       where: {

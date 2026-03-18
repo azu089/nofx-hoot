@@ -20,7 +20,7 @@ export type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
 export class BalanceResponse {
   usdt: string;
   hoot: string;
-  point: string; // 点卡余额
+  point: string; // GAS余额
 }
 
 // 兑换 DTO

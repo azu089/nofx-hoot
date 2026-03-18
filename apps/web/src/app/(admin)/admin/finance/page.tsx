@@ -86,7 +86,7 @@ const fmtUSD = (v: string | number) =>
     maximumFractionDigits: 2,
   })}`;
 
-// 点卡金额：保留 8 位有效小数（去除末尾 0）
+// GAS 金额：保留 8 位有效小数（去除末尾 0）
 const fmtPoint = (v: string | number) => {
   const n = parseFloat(String(v || '0'));
   return n === 0 ? '0' : n.toFixed(8).replace(/\.?0+$/, '');
@@ -95,7 +95,7 @@ const fmtPoint = (v: string | number) => {
 // 账单类型标签
 const BILLING_TYPE_MAP: Record<string, { label: string; color: string }> = {
   subscription: { label: '订阅',   color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-  point_card:   { label: '点卡',   color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+  point_card:   { label: 'GAS',    color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
   gas_fee:      { label: '燃油费', color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
 };
 
@@ -157,7 +157,7 @@ function OverviewTab() {
     { key: 'description',  title: '盈利',     render: (r) => <span className="text-[#9090A0] text-xs font-mono">{r.description || '-'}</span> },
   ];
 
-  // 燃油费明细专用列（点卡精度）
+  // 燃油费明细专用列（GAS 精度）
   const gasFeeColumns: AdminColumn<RevenueRow>[] = [
     { key: 'userEmail',    title: '用户',     render: (r) => <span className="text-[#9090A0] text-xs">{r.userEmail || r.userId}</span> },
     { key: 'amount',       title: '扣费(pt)', align: 'right', render: (r) => <span className="font-mono text-white">{fmtPoint(r.amount)}</span> },
@@ -171,7 +171,7 @@ function OverviewTab() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <AdminStatCard title="总收入"     value={fmtUSD(overview.totalRevenue)}        icon={DollarSign} color="bg-green-500/20 text-green-400" />
         <AdminStatCard title="订阅收入"   value={fmtUSD(overview.subscriptionRevenue)} icon={CreditCard}  color="bg-blue-500/20 text-blue-400" />
-        <AdminStatCard title="点卡收入"   value={fmtUSD(overview.pointCardRevenue)}    icon={TrendingUp}  color="bg-purple-500/20 text-purple-400" />
+        <AdminStatCard title="GAS 收入"   value={fmtUSD(overview.pointCardRevenue)}    icon={TrendingUp}  color="bg-purple-500/20 text-purple-400" />
         <AdminStatCard title="燃油费收入" value={fmtUSD(overview.gasFeeRevenue)}       icon={Fuel}        color="bg-orange-500/20 text-orange-400" />
       </div>
 
@@ -197,10 +197,10 @@ function OverviewTab() {
         </div>
       )}
 
-      {/* 点卡收入明细 */}
+      {/* GAS 收入明细 */}
       {Array.isArray(pcData) && pcData.length > 0 && (
         <div>
-          <p className="text-sm font-medium text-white mb-2">点卡收入（近 30 天）</p>
+          <p className="text-sm font-medium text-white mb-2">GAS 收入（近 30 天）</p>
           <AdminTable<RevenueRow> columns={revenueColumns} data={pcData} rowKey="id" />
         </div>
       )}
@@ -270,7 +270,7 @@ function BillingTab() {
         {[
           { value: '',             label: '全部' },
           { value: 'subscription', label: '订阅' },
-          { value: 'point_card',   label: '点卡' },
+          { value: 'point_card',   label: 'GAS' },
           { value: 'gas_fee',      label: '燃油费' },
         ].map(({ value, label }) => (
           <button

@@ -71,7 +71,7 @@ export class AutoRunProcessor extends WorkerHost {
   ): Promise<{ analyzed: number; executed: number; errors: number }> {
     const { strategyId, userId } = job.data;
 
-    // 策略已停止时（如点卡耗尽被自动停止）直接跳过，不发起 LLM 调用
+    // 策略已停止时（如GAS耗尽被自动停止）直接跳过，不发起 LLM 调用
     const strategy = await this.prisma.aiStrategy.findUnique({
       where: { id: strategyId },
       select: { isActive: true },

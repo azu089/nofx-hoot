@@ -33,7 +33,7 @@ model User {
   // 余额 (平台内部余额，非交易所余额)
   usdtBalance Decimal @default(0) @db.Decimal(18, 8) @map("usdt_balance")
   hootBalance Decimal @default(0) @db.Decimal(18, 8) @map("hoot_balance")
-  pointBalance Decimal @default(0) @db.Decimal(18, 8) @map("point_balance") // 点卡余额（1:1 USDT）
+  pointBalance Decimal @default(0) @db.Decimal(18, 8) @map("point_balance") // GAS余额（1:1 USDT）
 
   // 账户状态
   status String @default("active") // active, frozen, banned
@@ -439,6 +439,7 @@ model Position {
   aiStrategyId   String?  @map("ai_strategy_id")                    // 关联 AI 策略 ID
   aiStrategy     AiStrategy? @relation("AiStrategyPositions", fields: [aiStrategyId], references: [id])
   highWaterMark  Decimal? @db.Decimal(10, 4) @map("high_water_mark") // 盈利高水位（百分比）
+  peakPnlPercent Decimal? @db.Decimal(10, 4) @map("peak_pnl_percent") // 峰值盈利百分比（用于 peak-drawdown 紧急平仓）
 
   // 交易所唯一标识（去重用，格式: {exchange}_{id}）
   exchangeRef String? @unique @map("exchange_ref")
@@ -1135,9 +1136,9 @@ model TradeExecutionLog {
   @@map("trade_execution_logs")
 }
 
-// ========== 点卡系统 ==========
+// ========== GAS系统 ==========
 
-// 点卡充值/消费记录
+// GAS充值/消费记录
 model PointCardRecord {
   id     String @id @default(uuid())
   userId String @map("user_id")
@@ -1426,7 +1427,7 @@ model SubscriptionRevenue {
   // 收入类型：new（新订阅）、renewal（续费）
   type   String
   amount Decimal @db.Decimal(18, 8)
-  asset  String  @default("USDT") // USDT 或 POINT（点卡）
+  asset  String  @default("USDT") // USDT 或 POINT（GAS）
 
   // 分成（如果有代理商）
   agentId          String?  @map("agent_id")
@@ -1549,7 +1550,7 @@ model PlatformDailyStats {
 
   // 收入统计
   subscriptionRevenue Decimal @default(0) @db.Decimal(18, 8) @map("subscription_revenue") // 订阅收入
-  pointCardRevenue    Decimal @default(0) @db.Decimal(18, 8) @map("point_card_revenue")   // 点卡充值
+  pointCardRevenue    Decimal @default(0) @db.Decimal(18, 8) @map("point_card_revenue")   // GAS充值
   gasFeeRevenue       Decimal @default(0) @db.Decimal(18, 8) @map("gas_fee_revenue")      // 燃油费收入
   totalRevenue        Decimal @default(0) @db.Decimal(18, 8) @map("total_revenue")        // 总收入
 
@@ -2117,4 +2118,19 @@ model RefreshToken {
   @@index([expiresAt])
   @@index([userId, revokedAt])
   @@map("refresh_tokens")
+}
+
+// ========== 权益快照（对齐 nofx saveEquitySnapshot） ==========
+
+model EquitySnapshot {
+  id            String   @id @default(uuid())
+  strategyId    String   @map("strategy_id")
+  equity        Decimal  @db.Decimal(18, 8)
+  availBalance  Decimal  @db.Decimal(18, 8) @map("avail_balance")
+  positionValue Decimal  @db.Decimal(18, 8) @map("position_value")
+  unrealizedPnl Decimal  @db.Decimal(18, 8) @map("unrealized_pnl")
+  timestamp     DateTime @default(now())
+
+  @@index([strategyId, timestamp])
+  @@map("equity_snapshots")
 }

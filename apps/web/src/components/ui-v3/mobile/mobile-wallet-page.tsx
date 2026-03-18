@@ -536,7 +536,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
       icon: "/icons/hoot/token.png",
     })
 
-    // 点卡 - 始终显示
+    // GAS - 始终显示
     const pointBalance = parseFloat(balanceData?.point || '0')
     result.push({
       name: t('gasCard'),

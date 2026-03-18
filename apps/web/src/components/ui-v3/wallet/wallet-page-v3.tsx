@@ -167,11 +167,11 @@ export function WalletPageV3({
       totalLocked: totalHoot
     })
 
-    // 点卡 - 始终显示
+    // GAS - 始终显示
     const pointBalance = parseFloat(balanceData?.point || '0')
     result.push({
       id: 'point',
-      name: '点卡',
+      name: 'GAS',
       symbol: 'GAS',
       balance: pointBalance,
       value: pointBalance,

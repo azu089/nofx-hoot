@@ -1051,8 +1051,8 @@ export const walletFunds: HelpArticle = {
   slug: 'wallet-funds',
   titleZh: '钱包与资金',
   titleEn: 'Wallet & Funds',
-  descriptionZh: '了解 Hoot 平台内的资金管理：USDT、HOOT 代币、点卡的充提与使用',
-  descriptionEn: 'Understand fund management on the Hoot platform: USDT, HOOT tokens, and point cards',
+  descriptionZh: '了解 Hoot 平台内的资金管理：USDT、HOOT 代币、GAS 的充提与使用',
+  descriptionEn: 'Understand fund management on the Hoot platform: USDT, HOOT tokens, and GAS',
   sections: [
     {
       titleZh: '三种余额说明',
@@ -1071,14 +1071,14 @@ export const walletFunds: HelpArticle = {
 - **特点：** 目前为平台积分形式，未来计划上链（TON DEX → 主流 DEX）
 - **不可提现：** 当前阶段不支持直接提现，未来上链后可转换
 
-**3. 点卡（Credit Card）**
+**3. GAS（Credit Card）**
 - **用途：** 平台代金券，可用于支付订阅费、燃油费
-- **面值：** 1 点卡 = 1 USDT
+- **面值：** 1 GAS = 1 USDT
 - **获取：** 充值赠送、邀请活动奖励、促销活动
 - **规则：** 优先于 USDT 使用、不可提现、永久有效、不可转让
 
 **余额优先级（扣款顺序）：**
-点卡 > USDT（系统优先消耗点卡，再使用 USDT）`,
+GAS > USDT（系统优先消耗 GAS，再使用 USDT）`,
       contentEn: `The Hoot platform has three different types of balances, each with different uses.
 
 **1. USDT Balance**
@@ -1845,7 +1845,7 @@ Users with 100+ cumulative successful referrals can apply to become an official 
 
 **返佣计算规则：**
 - 返佣基于被邀请人实际支付的燃油费金额计算
-- 如被邀请人使用点卡或 HOOT 支付燃油费，同样计入返佣基数
+- 如被邀请人使用 GAS 或 HOOT 支付燃油费，同样计入返佣基数
 - 返佣以 USDT 形式发放至您的 Hoot 钱包，可查看可提现
 - 返佣没有有效期，永久有效
 
@@ -1901,8 +1901,8 @@ export const billingSecurity: HelpArticle = {
   slug: 'billing-security',
   titleZh: '计费与安全',
   titleEn: 'Billing & Security',
-  descriptionZh: '了解燃油费计费模式、会员订阅、点卡系统与账户安全设置',
-  descriptionEn: 'Understand the gas fee model, membership subscription, point card system, and account security settings',
+  descriptionZh: '了解燃油费计费模式、会员订阅、GAS 系统与账户安全设置',
+  descriptionEn: 'Understand the gas fee model, membership subscription, GAS system, and account security settings',
   sections: [
     {
       titleZh: '燃油费（Gas Fee）详解',
@@ -1995,7 +1995,7 @@ A trade profits $100 USDT, user is Pro member + staking 5,000 HOOT (5% discount)
 
 **支付方式：**
 - USDT 余额直接扣款
-- 点卡（1 点卡 = 1 USDT）
+- GAS（1 GAS = 1 USDT）
 - 未来支持 HOOT 支付（享额外折扣）
 
 **订阅管理：**
@@ -2037,33 +2037,33 @@ A trade profits $100 USDT, user is Pro member + staking 5,000 HOOT (5% discount)
 - No refunds for already-started subscription periods`,
     },
     {
-      titleZh: '点卡系统',
-      titleEn: 'Point Card System',
-      contentZh: `点卡是 Hoot 平台的预付费代金券，面值 1 点卡 = 1 USDT，是 USDT 的等价替代支付手段。
+      titleZh: 'GAS 系统',
+      titleEn: 'GAS System',
+      contentZh: `GAS 是 Hoot 平台的预付费代金券，面值 1 GAS = 1 USDT，是 USDT 的等价替代支付手段。
 
-**点卡用途：**
+**GAS 用途：**
 - 支付 Pro 会员订阅费（与 USDT 等价）
-- 支付燃油费（系统自动优先扣除点卡余额）
+- 支付燃油费（系统自动优先扣除 GAS 余额）
 - 未来活动消耗场景
 
-**点卡获取方式：**
+**GAS 获取方式：**
 
 | 获取方式 | 说明 |
 |---------|------|
-| 充值赠送 | 首次充值 ≥ $100 USDT 赠 $10 点卡（10% 赠送） |
-| 邀请奖励 | 邀请好友成功，被邀请人首充时双方各得 $5 点卡 |
+| 充值赠送 | 首次充值 ≥ $100 USDT 赠 $10 GAS（10% 赠送） |
+| 邀请奖励 | 邀请好友成功，被邀请人首充时双方各得 $5 GAS |
 | 促销活动 | 节日活动、新用户专属活动等不定期发放 |
-| 会员权益 | Pro 年付会员每月赠 $5 点卡（全年 $60 点卡） |
+| 会员权益 | Pro 年付会员每月赠 $5 GAS（全年 $60 GAS） |
 
-**点卡规则：**
-- 优先扣除：支付时系统优先使用点卡，余额不足再用 USDT
-- 不可提现：点卡不能提现为 USDT，只能在平台内消费
-- 永久有效：点卡无有效期，不会过期
-- 不可转让：点卡绑定账户，不可转给其他用户
-- 不可退款：通过活动/奖励获得的点卡不可退款
+**GAS 规则：**
+- 优先扣除：支付时系统优先使用 GAS，余额不足再用 USDT
+- 不可提现：GAS 不能提现为 USDT，只能在平台内消费
+- 永久有效：GAS 无有效期，不会过期
+- 不可转让：GAS 绑定账户，不可转给其他用户
+- 不可退款：通过活动/奖励获得的 GAS 不可退款
 
-**查看点卡余额：**
-进入钱包页面，在余额区域可看到 USDT、HOOT、点卡三种余额分别显示。`,
+**查看 GAS 余额：**
+进入钱包页面，在余额区域可看到 USDT、HOOT、GAS 三种余额分别显示。`,
       contentEn: `Point cards are prepaid vouchers on the Hoot platform. 1 point card = 1 USDT — an equivalent substitute payment method for USDT.
 
 **Point Card Uses:**
@@ -2278,7 +2278,7 @@ At the bottom of the Bot menu, click "Open Hoot" or send /app to open the full H
 **账户与资产查看：**
 
 /wallet — 查看钱包余额
-返回您的 USDT 余额、HOOT 余额、点卡余额，以及绑定的交易所账户总权益。
+返回您的 USDT 余额、HOOT 余额、GAS 余额，以及绑定的交易所账户总权益。
 
 /trade — 查看当前持仓
 显示所有 AI 策略的当前持仓：交易对、方向（多/空）、开仓价、当前价、未实现盈亏、持仓时长。

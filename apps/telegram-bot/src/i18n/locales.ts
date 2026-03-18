@@ -261,7 +261,7 @@ export const zh: LocaleMessages = {
       `👋 <b>欢迎回来，{nickname}!</b>\n\n` +
       `━━━━━━━━━━━━━━━━\n` +
       `💵 <b>{usdt}</b> USDT | 🪙 <b>{hoot}</b> HOOT\n` +
-      `⛽ <b>{point}</b> 点卡\n\n` +
+      `⛽ <b>{point}</b> GAS\n\n` +
       `{todayPnl}\n` +
       `🎯 策略: <b>{strategies}</b> | 📊 持仓: <b>{positions}</b>\n` +
       `━━━━━━━━━━━━━━━━\n\n` +
@@ -326,7 +326,7 @@ export const zh: LocaleMessages = {
     platformSection: `<b>📦 平台账户</b>`,
     usdt: `💵 USDT: <b>{amount}</b>`,
     hoot: `🪙 HOOT: <b>{amount}</b>`,
-    point: `⛽ 点卡: <b>{amount}</b>`,
+    point: `⛽ GAS: <b>{amount}</b>`,
     hootNotice: `📢 代币上链计划进行中，请关注官方公告`,
     exchangeSection: `\n<b>💱 交易所</b>`,
     total: `💰 总资产: <b>{amount} USD</b>`,

@@ -305,7 +305,7 @@ export class AdminController {
     return this.financeService.getSubscriptionRevenue(dateFilter);
   }
 
-  // 获取点卡收入详情
+  // 获取GAS收入详情
   @Get('finance/point-card')
   async getPointCardRevenue(
     @Query('startDate') startDate?: string,

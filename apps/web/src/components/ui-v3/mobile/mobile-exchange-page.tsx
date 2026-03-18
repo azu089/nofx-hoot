@@ -40,7 +40,7 @@ export function MobileExchangePage({ balance, exchangeRecords = [], onBack, onEx
   // 根据真实余额构建资产列表
   const assets: Asset[] = useMemo(() => [
     { id: 'usdt', name: 'USDT', symbol: 'USDT', balance: balance?.usdt ?? 0, icon: '/icons/usdt.svg', rate: 1, canBePay: true },
-    { id: 'gas', name: '点卡', symbol: 'GAS', balance: balance?.point ?? 0, icon: '/icons/gas-card.svg', rate: 1, canBePay: false },
+    { id: 'gas', name: 'GAS', symbol: 'GAS', balance: balance?.point ?? 0, icon: '/icons/gas-card.svg', rate: 1, canBePay: false },
     { id: 'hoot', name: 'HOOT', symbol: 'HOOT', balance: balance?.hoot ?? 0, icon: '/icons/hoot/token.png', rate: 0.85, canBePay: true },
   ], [balance])
 

@@ -167,7 +167,7 @@ function UserDetailDialog({
                   ['状态', <AdminStatusBadge key="s" status={user.status} />],
                   ['USDT 余额', `${parseFloat(user.usdtBalance).toFixed(2)} USDT`],
                   ['HOOT 余额', `${parseFloat(user.hootBalance).toFixed(4)} HOOT`],
-                  ['点卡余额', `${parseFloat(user.pointBalance || '0').toFixed(2)}`],
+                  ['GAS 余额', `${parseFloat(user.pointBalance || '0').toFixed(2)}`],
                   ['TG 用户名', user.telegramUsername || '未绑定'],
                   ['钱包地址', user.walletAddress ? `${user.walletAddress.slice(0, 10)}...` : '未绑定'],
                   ['注册时间', new Date(user.createdAt).toLocaleString('zh-CN')],
@@ -410,7 +410,7 @@ function UserListTab() {
     },
     {
       key: 'pointBalance',
-      title: '点卡余额',
+      title: 'GAS 余额',
       align: 'right',
       render: (row) => (
         <span className="font-mono text-yellow-400">

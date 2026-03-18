@@ -1690,13 +1690,13 @@ export class AiController {
   ) {
     if (!userId) throw new BadRequestException('用户未认证');
 
-    // 点卡余额门控
+    // GAS余额门控
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { pointBalance: true },
     });
     if (!user || Number(user.pointBalance) <= 0) {
-      throw new BadRequestException('点卡余额不足，请充值后再恢复');
+      throw new BadRequestException('GAS余额不足，请充值后再恢复');
     }
 
     // 1. 清除风控暂停状态（grid_runtime_state）
@@ -2209,13 +2209,13 @@ export class AiController {
   async resumeAll(@CurrentUser('id') userId: string) {
     if (!userId) throw new BadRequestException('用户未认证');
 
-    // 点卡余额门控：余额为 0 时禁止恢复策略
+    // GAS余额门控：余额为 0 时禁止恢复策略
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { pointBalance: true },
     });
     if (!user || Number(user.pointBalance) <= 0) {
-      throw new BadRequestException('点卡余额不足，请充值后再恢复策略');
+      throw new BadRequestException('GAS余额不足，请充值后再恢复策略');
     }
 
     const db = this.prisma;

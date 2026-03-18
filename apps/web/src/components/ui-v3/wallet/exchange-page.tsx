@@ -43,11 +43,11 @@ export function ExchangePage({ balance, exchangeRecords = [], onExchange, isLoad
   // 根据真实余额构建资产列表
   const assets: Asset[] = useMemo(() => [
     { id: 'usdt', name: 'USDT', symbol: 'USDT', balance: balance?.usdt ?? 0, icon: '/icons/usdt.svg', rate: 1 },
-    { id: 'gas', name: '点卡', symbol: 'GAS', balance: balance?.point ?? 0, icon: '/icons/gas-card.svg', rate: 1 },
+    { id: 'gas', name: 'GAS', symbol: 'GAS', balance: balance?.point ?? 0, icon: '/icons/gas-card.svg', rate: 1 },
     { id: 'hoot', name: 'HOOT', symbol: 'HOOT', balance: balance?.hoot ?? 0, icon: '/icons/hoot/token.png', rate: 0.85 },
   ], [balance])
 
-  // 可作为支付的资产（点卡不可作为支付）
+  // 可作为支付的资产（GAS 不可作为支付）
   const payableAssets = useMemo(() => assets.filter(a => a.id !== 'gas'), [assets])
 
   const [fromAssetId, setFromAssetId] = useState('usdt')

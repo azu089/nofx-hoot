@@ -222,26 +222,26 @@ const defaultArticles: Record<string, { titleZh: string; titleEn: string; sectio
       {
         titleZh: '收费模式',
         titleEn: 'Pricing Model',
-        contentZh: 'Hoot 采用透明的收费模式：\n\n1. 策略订阅费：按策略定价，月度订阅\n2. 燃油费：仅在盈利时收取 20%\n\n无隐藏费用，无充值手续费。',
+        contentZh: 'Hoot 采用透明的收费模式：\n\n1. 策略订阅费：按策略定价，月度订阅\n2. GAS 费：仅在盈利时收取 20%\n\n无隐藏费用，无充值手续费。',
         contentEn: 'Hoot uses transparent pricing:\n\n1. Strategy subscription: Monthly, varies by strategy\n2. Gas fee: 20% only on profits\n\nNo hidden fees, no deposit fees.'
       },
       {
         titleZh: '策略订阅费',
         titleEn: 'Strategy Subscription',
-        contentZh: '每个策略有不同的月订阅费，订阅后 30 天内有效。\n\n支付方式：\n• USDT 余额\n• 点卡余额（1:1 USDT）\n\n续费方式：自动续费或手动续费',
+        contentZh: '每个策略有不同的月订阅费，订阅后 30 天内有效。\n\n支付方式：\n• USDT 余额\n• GAS 余额（1:1 USDT）\n\n续费方式：自动续费或手动续费',
         contentEn: 'Each strategy has different monthly fees, valid for 30 days.\n\nPayment methods:\n• USDT balance\n• Point card balance (1:1 USDT)\n\nRenewal: Auto or manual'
       },
       {
         titleZh: '燃油费（Gas Fee）',
         titleEn: 'Gas Fee',
-        contentZh: '燃油费是 Hoot 的核心收费机制：\n\n• 仅在盈利交易平仓时收取\n• 费率：盈利金额的 20%\n• 亏损交易不收取任何费用\n\n这确保了我们的利益与您一致——只有您赚钱，我们才收费。',
+        contentZh: 'GAS 费是 Hoot 的核心收费机制：\n\n• 仅在盈利交易平仓时收取\n• 费率：盈利金额的 20%\n• 亏损交易不收取任何费用\n\n这确保了我们的利益与您一致——只有您赚钱，我们才收费。',
         contentEn: 'Gas fee is Hoot\'s core charging mechanism:\n\n• Only charged when closing profitable trades\n• Rate: 20% of profit\n• No charge for losing trades\n\nThis aligns our interests—we only charge when you profit.',
         type: 'success'
       },
       {
-        titleZh: '点卡系统',
-        titleEn: 'Point Card System',
-        contentZh: '点卡是 Hoot 的预付费系统：\n\n• 1 点卡 = 1 USDT\n• 可用于支付订阅费\n• 充值赠送活动不定期推出\n• 点卡不可提现，只能消费',
+        titleZh: 'GAS 系统',
+        titleEn: 'GAS System',
+        contentZh: 'GAS 是 Hoot 的预付费系统：\n\n• 1 GAS = 1 USDT\n• 可用于支付订阅费\n• 充值赠送活动不定期推出\n• GAS 不可提现，只能消费',
         contentEn: 'Point cards are Hoot\'s prepaid system:\n\n• 1 Point = 1 USDT\n• Can pay for subscriptions\n• Bonus promotions available\n• Points cannot be withdrawn',
         type: 'info'
       }

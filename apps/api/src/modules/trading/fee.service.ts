@@ -160,7 +160,7 @@ export class FeeService {
 
     // 使用事务扣费
     await this.prisma.$transaction(async (tx) => {
-      // 获取用户余额（点卡余额）
+      // 获取用户余额（GAS余额）
       const user = await tx.user.findUnique({
         where: { id: userId },
         select: { pointBalance: true },
@@ -179,11 +179,11 @@ export class FeeService {
       if (currentPointBalance.lt(feeAmountDecimal)) {
         balanceDepleted = true;
         this.logger.warn(
-          `用户 ${userId} 点卡余额不足: 当前 ${currentPointBalance} < 应扣 ${feeAmountDecimal}，实扣 ${actualDeduction}`,
+          `用户 ${userId} GAS余额不足: 当前 ${currentPointBalance} < 应扣 ${feeAmountDecimal}，实扣 ${actualDeduction}`,
         );
       }
 
-      // 扣除点卡余额（使用精确计算避免浮点误差）
+      // 扣除GAS余额（使用精确计算避免浮点误差）
       if (actualDeduction.gt(0)) {
         const newPointBalance = currentPointBalance.minus(actualDeduction);
         await tx.user.update({
@@ -219,7 +219,7 @@ export class FeeService {
       });
 
       this.logger.log(
-        `燃油费已扣除: 用户 ${userId} 点卡扣除 ${actualDeduction} USDT`,
+        `燃油费已扣除: 用户 ${userId} GAS扣除 ${actualDeduction} USDT`,
       );
     });
 

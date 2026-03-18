@@ -10,7 +10,7 @@ import type { ExchangeAdapter } from '../exchange-adapters/types/adapter.interfa
  * 1. 从交易所拉取已平仓记录（getClosedPnl）
  * 2. 和 DB Position 表去重（exchangeRef 唯一键）
  * 3. 新增记录写入 DB + 匹配策略
- * 4. 盈利记录执行点卡扣费（唯一扣费入口）
+ * 4. 盈利记录执行GAS扣费（唯一扣费入口）
  */
 @Injectable()
 export class ClosedPnlSyncService {
@@ -106,7 +106,7 @@ export class ClosedPnlSyncService {
         });
         synced++;
 
-        // 盈利 > 0 → 点卡扣费
+        // 盈利 > 0 → GAS扣费
         if (record.realizedPnl > 0 && strategy) {
           try {
             const feeCalc = await this.feeService.calculateFee(
@@ -154,9 +154,9 @@ export class ClosedPnlSyncService {
       );
     }
 
-    // 点卡余额不足 → 停止用户所有活跃策略
+    // GAS余额不足 → 停止用户所有活跃策略
     if (balanceDepleted) {
-      this.logger.warn(`[历史持仓同步] 点卡余额不足，停止用户 ${userId} 所有活跃策略`);
+      this.logger.warn(`[历史持仓同步] GAS余额不足，停止用户 ${userId} 所有活跃策略`);
       await this.prisma.aiStrategy.updateMany({
         where: { userId, isActive: true },
         data: { isActive: false },
