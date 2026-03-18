@@ -128,7 +128,8 @@ export interface GridState {
 
   // 仓位缩减（虚假突破恢复后）
   positionReductionPct: number;
-  recoveryConfirmCount: number;   // 连续在短期箱内的轮次计数（≥3 → 自动清零 positionReductionPct）
+  recoveryConfirmCount: number;        // 连续在短期箱内的轮次计数（≥3 → 自动清零 positionReductionPct）
+  positionReductionJustCleared: boolean; // 本轮刚解除仓位缩减 → 触发精准撤单重挂全量
 
   // 市场状态分类
   currentRegime: RegimeLevel;
@@ -658,6 +659,7 @@ export class GridTradingService {
       breakoutConfirmCount: 0,
       positionReductionPct: 0,
       recoveryConfirmCount: 0,
+      positionReductionJustCleared: false,
       currentRegime: 'standard',
       currentDirection: direction,
       directionBiasRatio: config.directionBiasRatio ?? DIRECTION_BIAS_RATIO,
@@ -1412,6 +1414,24 @@ export class GridTradingService {
           }
         }
 
+        // 仓位缩减刚解除 → 精准撤单重挂全量（不改层价格，只升级数量）
+        if (state.positionReductionJustCleared && isGridAdapter(adapter)) {
+          state.positionReductionJustCleared = false; // 先清除，防止失败后反复触发
+          try {
+            const restored = await this.restoreFullQuantityOrders(
+              state, adapter as GridExchangeAdapter, userId, strategyId,
+            );
+            if (restored > 0) {
+              // 重挂后重新同步，确保后续 AI 看到最新状态
+              const reSyncResult = await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId);
+              preSyncExchangeOrders = reSyncResult.exchangeOpenOrders ?? [];
+              preSyncExchangePositions = reSyncResult.exchangePositions ?? [];
+            }
+          } catch (e: any) {
+            this.logger.warn(`[网格] 恢复全量挂单失败: ${e.message}`);
+          }
+        }
+
         // 构建 AI 上下文
         // 传入 pre-sync 交易所数据，确保 AI 看到的 levels 和 UI 层级显示完全一致
         const context = await this.buildGridContext(
@@ -2037,6 +2057,7 @@ export class GridTradingService {
           this.logger.log(`[网格] 仓位缩减自动解除: 短期箱内连续${state.recoveryConfirmCount}轮稳定 → positionReductionPct 0%`);
           state.positionReductionPct = 0;
           state.recoveryConfirmCount = 0;
+          state.positionReductionJustCleared = true; // 触发下轮精准撤单重挂全量
         } else {
           this.logger.log(`[网格] 短期箱恢复确认: ${state.recoveryConfirmCount}/3轮（仍维持50%缩减）`);
         }
@@ -4280,6 +4301,72 @@ export class GridTradingService {
     }
 
     state.orderBook = {};
+  }
+
+  /**
+   * 仓位缩减解除后精准恢复：撤销减半挂单，在同价格重挂全量
+   * 仅处理 pending 层，不动 filled 层，不改层价格
+   * 返回成功重挂的层数
+   */
+  private async restoreFullQuantityOrders(
+    state: GridState,
+    adapter: GridExchangeAdapter,
+    userId: string,
+    strategyId: string,
+  ): Promise<number> {
+    const tag = `[u:${userId.slice(0, 8)}][s:${strategyId.slice(0, 8)}]`;
+    this.logger.log(`[网格]${tag} 仓位缩减解除 → 恢复全量挂单（精准撤单重挂，不改层价格）`);
+
+    let restored = 0;
+    for (let i = 0; i < state.gridLines.length; i++) {
+      const line = state.gridLines[i];
+      if (line.state !== 'pending' || !line.orderId) continue;
+      if (!line.allocatedUSD || line.allocatedUSD <= 0) continue;
+
+      // 计算该层正常全量
+      const normalQty = (line.allocatedUSD * state.leverage) / line.price;
+      const currentQty = line.orderQuantity ?? 0;
+
+      // 仅对明显减半的单子操作（< 80% 正常量）
+      if (currentQty >= normalQty * 0.8) continue;
+
+      const oldOrderId = line.orderId;
+      const price = line.price;
+      const side = line.side as 'buy' | 'sell';
+
+      try {
+        // 撤旧的减半单
+        await adapter.cancelOrder(state.symbol, oldOrderId);
+        delete state.orderBook[oldOrderId];
+        line.state = 'empty';
+        line.orderId = undefined;
+        line.orderQuantity = 0;
+
+        // 在同价格重挂全量单（placeGridLimitOrder 内会做仓位上限检查）
+        const decision: GridDecision = {
+          action: side === 'buy' ? 'place_buy_limit' : 'place_sell_limit',
+          symbol: state.symbol,
+          level: i + 1,
+          price,
+          quantity: normalQty,
+          reasoning: '仓位缩减解除，恢复全量',
+        };
+        const result = await this.placeGridLimitOrder(state, decision, side, adapter);
+        if (result.executed) {
+          restored++;
+          this.logger.log(
+            `[网格]${tag} 全量恢复: L${i + 1} ${side} @${price.toFixed(2)} qty ${currentQty.toFixed(4)} → ${normalQty.toFixed(4)}`,
+          );
+        } else {
+          this.logger.warn(`[网格]${tag} 全量恢复跳过 L${i + 1}: ${result.skipReason}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`[网格]${tag} 全量恢复失败 L${i + 1}: ${e.message}`);
+      }
+    }
+
+    this.logger.log(`[网格]${tag} 全量恢复完成: ${restored} 层`);
+    return restored;
   }
 
   private async getCurrentPrice(symbol: string): Promise<number> {
