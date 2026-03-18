@@ -643,7 +643,15 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        await ex.cancelAllOrders(symbol);
+        if (this.exchangeType === 'okx') {
+          // OKX: cancelAllOrders 不支持，直接逐个取消
+          const openOrders = await ex.fetchOpenOrders(symbol);
+          for (const order of openOrders) {
+            try { await ex.cancelOrder(order.id, symbol); } catch { /* 可能已取消 */ }
+          }
+        } else {
+          await ex.cancelAllOrders(symbol);
+        }
       } catch (e: any) {
         const msg: string = e.message || '';
         // 交易所在没有挂单时有些会抛错（如 Gate、Bitget），属于正常情况，静默处理
@@ -742,6 +750,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const batch = algoOrders.slice(i, i + BATCH_SIZE).map((o: any) => ({
           algoId: o.algoId,
           instId,
+          ordType: o.ordType,  // OKX cancelAlgos 要求每个单指定自己的 ordType
         }));
         try {
           await (ex as any).privatePostTradeCancelAlgos(batch);
@@ -890,6 +899,12 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         if (d > 0 && d < 10) percentPriceDown = d;
         if (u > 0 && u < 100) percentPriceUp = u;
       }
+    }
+
+    // OKX 合约价格保护带 ±2%（OKX 不在 market.info.filters 中暴露）
+    if (!percentPriceDown && !percentPriceUp && this.exchangeType === 'okx') {
+      percentPriceDown = 0.98;
+      percentPriceUp = 1.02;
     }
 
     return {

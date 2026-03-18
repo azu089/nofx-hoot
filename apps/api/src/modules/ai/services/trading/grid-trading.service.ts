@@ -2293,6 +2293,21 @@ export class GridTradingService {
       }));
     }
 
+    // 仓位 cap 使用率（供 AI 决策参考，与 placeGridLimitOrder 中 cap 检查一致）
+    const capLeverage = state.userFixedLeverage ? state.leverage : MAX_LEVERAGE_CAP;
+    const capTotal = state.totalInvestment * capLeverage;
+    let capPositionValue = 0;
+    const capBaseSymbol = state.symbol.split('/')[0];
+    for (const pos of (preSyncExchangePositions ?? [])) {
+      if (!pos.symbol?.includes(capBaseSymbol)) continue;
+      capPositionValue += Math.abs(pos.quantity ?? 0) * (pos.markPrice ?? pos.entryPrice ?? currentPrice);
+    }
+    const capPendingNotional = exchangeLevels
+      .filter(l => l.state === 'pending' && (l.positionSize ?? 0) === 0)
+      .reduce((sum, l) => sum + (l.quantity ?? 0) * l.price, 0);
+    const capUsed = capPositionValue + capPendingNotional;
+    const capUsedPct = capTotal > 0 ? Math.round(capUsed / capTotal * 100) : 0;
+
     return {
       symbol: state.symbol,
       currentTime: new Date().toISOString(),
@@ -2307,6 +2322,10 @@ export class GridTradingService {
       levels: exchangeLevels,
       activeOrderCount: exchangeLevels.filter((l) => l.state === 'pending').length,
       filledLevelCount: exchangeLevels.filter((l) => l.state === 'filled' && (l.positionSize ?? 0) > 0).length,
+      capTotal,
+      capUsed,
+      capUsedPct,
+      capRemaining: Math.max(0, capTotal - capUsed),
       isPaused: state.isPaused,
       atr14: indFast.atr ?? 0,
       bollingerUpper: bbUpper,

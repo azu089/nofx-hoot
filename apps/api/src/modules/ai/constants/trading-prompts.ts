@@ -673,6 +673,11 @@ export interface GridContext {
   positionReductionPct?: number;
   // 未映射到网格层的交易所挂单（方向不匹配等原因），AI 应主动撤销
   unmappedOrderIds?: string[];
+  // 仓位容量（totalInvestment × leverage 的使用率）
+  capTotal?: number;       // 仓位上限 = totalInvestment × leverage
+  capUsed?: number;        // 已用 = 交易所持仓市值 + 挂单名义值
+  capUsedPct?: number;     // 使用率% = capUsed / capTotal × 100
+  capRemaining?: number;   // 剩余 = capTotal - capUsed
 }
 
 /**
@@ -717,8 +722,10 @@ function gridSystemPromptZh(
 - **filled**: 有持仓。side=buy→多头，side=sell→空头
 
 ## 可用操作
-- **place_buy_limit**: 挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 挂卖单（fields: level, price, quantity）
+- **place_buy_limit**: 在empty层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在empty层挂卖单（fields: level, price, quantity）
+- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）
+- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格
@@ -726,8 +733,14 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-网格的核心是买低卖高配对。止盈方向：多头(buy层)止盈=挂卖单(高于入场价)，空头(sell层)止盈=挂买单(低于入场价)。也可主动平仓（close_long/close_short）。
-⚠️ 禁止在已持仓(filled)层再下单，必须在empty层操作。
+网格的核心是买低卖高配对。止盈方向：多头(buy层)止盈=挂卖单(高于入场价)或close_long，空头(sell层)止盈=挂买单(低于入场价)或close_short。
+⚠️ place_buy/sell_limit 只能在 empty 层操作，close_long/close_short 只能在 filled 层操作。
+⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单。
+
+## 仓位管理
+- close_long/close_short 是正常止盈工具，不仅用于止损或暂停模式
+- 多头盈利时可 close_long 主动止盈锁定利润，空头盈利时可 close_short
+- 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
@@ -777,8 +790,10 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **filled**: Has position. side=buy → long, side=sell → short
 
 ## Available Actions
-- **place_buy_limit**: Place buy order (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order (fields: level, price, quantity)
+- **place_buy_limit**: Place buy order on empty level (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order on empty level (fields: level, price, quantity)
+- **close_long** (fields: level, quantity): Close long position (filled level with side=buy)
+- **close_short** (fields: level, quantity): Close short position (filled level with side=sell)
 - **cancel_order**: Cancel specific order (field: orderId)
 - **cancel_all_orders**: Cancel all orders
 - **pause_grid**: Pause grid
@@ -786,8 +801,14 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-Grid's core is buy-low-sell-high pairs. Take-profit direction: Long(buy level) TP = place sell(above entry), Short(sell level) TP = place buy(below entry). Or actively close (close_long/close_short).
-⚠️ NEVER place orders on filled layers. Only place on empty layers.
+Grid's core is buy-low-sell-high pairs. Take-profit: Long(buy level) TP = place sell(above entry) or close_long, Short(sell level) TP = place buy(below entry) or close_short.
+⚠️ place_buy/sell_limit can ONLY be used on empty levels. close_long/close_short can ONLY be used on filled levels.
+⚠️ buy level → close_long, sell level → close_short; mixing will cause exchange rejection.
+
+## Position Management
+- close_long/close_short are normal take-profit tools, not only for stop-loss or pause mode
+- When long is profitable, use close_long to lock in profits; when short is profitable, use close_short
+- See position capacity data below to assess whether to reduce or hold positions
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
@@ -1018,6 +1039,9 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('');
   lines.push(`活跃订单数: ${ctx.activeOrderCount}`);
   lines.push(`已成交层数: ${ctx.filledLevelCount}`);
+  if (ctx.capUsedPct !== undefined) {
+    lines.push(`仓位使用率: ${ctx.capUsedPct}% (已用$${ctx.capUsed?.toFixed(0)} / 上限$${ctx.capTotal?.toFixed(0)}, 剩余$${ctx.capRemaining?.toFixed(0)})`);
+  }
 
   // Section 5: 网格层级表
   lines.push('');
@@ -1164,6 +1188,9 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('');
   lines.push(`Active Orders: ${ctx.activeOrderCount}`);
   lines.push(`Filled Levels: ${ctx.filledLevelCount}`);
+  if (ctx.capUsedPct !== undefined) {
+    lines.push(`Position Capacity: ${ctx.capUsedPct}% (used $${ctx.capUsed?.toFixed(0)} / cap $${ctx.capTotal?.toFixed(0)}, remaining $${ctx.capRemaining?.toFixed(0)})`);
+  }
 
   // Section 5: Grid Levels Table
   lines.push('');
