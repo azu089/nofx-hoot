@@ -2737,6 +2737,11 @@ export class GridTradingService {
           state.pauseReason = undefined;
           this.logger.log(`[网格] adjust_grid 重建完成，自动解除暂停`);
         }
+        // 重建后清除仓位缩减：AI 判断市场恢复后主动重建，缩减模式应随之解除
+        if (state.positionReductionPct > 0) {
+          this.logger.log(`[网格] adjust_grid: 仓位缩减模式解除 (${state.positionReductionPct}% → 0%)`);
+          state.positionReductionPct = 0;
+        }
         break;
       }
 

@@ -1043,7 +1043,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）`);
+    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。市场恢复正常后可执行 adjust_grid 重建网格以自动解除缩减。`);
   }
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
@@ -1195,7 +1195,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty)`);
+    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty). When market recovers, use adjust_grid to rebuild and automatically clear this reduction.`);
   }
   const _exchLongEn = ctx.positionLong?.quantity ?? 0;
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
