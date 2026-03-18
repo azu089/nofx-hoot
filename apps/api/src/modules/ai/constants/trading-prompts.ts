@@ -733,18 +733,19 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-⚠️ place_buy/sell_limit 只能在 empty 层操作，close_long/close_short 只能在 filled 层操作。
-⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单。
+## 操作约束（严格执行）
+- filled 层 → 只能 close_long(buy层) / close_short(sell层)。**禁止在 filled 层使用 place_buy/sell_limit。**
+- empty 层 → 只能 place_buy_limit / place_sell_limit
+- 混用会被系统拦截，本轮空转
+
+## 止盈方式
+- **直接平仓（推荐）**：对 filled 层用 close_short(空头) 或 close_long(多头)
+- **限价对冲**：在 empty 层挂反向单（多头→empty层挂卖单，空头→empty层挂买单）
+- ⚠️ 止盈不是在持仓层挂单，而是 close 或在其他 empty 层挂反向单
 
 ## 仓位管理
 - 网格为单方向持仓：所有 filled 层方向相同（全多或全空）
-- 止盈优先用 close_long/close_short 直接平仓锁定利润
-- 也可在持仓上方(多头)/下方(空头)的 empty 层挂反向单对冲
 - 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
-- **同向积累风险**：已持 ≥ 3 层 filled 且当前价格在均价不利侧（多头：价格 < 均价；空头：价格 > 均价）时：
-  - 优先 hold，等待价格回归均价附近，不要盲目追加同向仓位
-  - 确需开仓须有明确信号：多头需 RSI<35 超卖 + OI 增加；空头需 RSI>65 超买 + OI 增加
-  - 仓位使用率 > 70% 时严禁追加；50-70% 需两个以上独立信号支撑
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
@@ -805,18 +806,19 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-⚠️ place_buy/sell_limit can ONLY be used on empty levels. close_long/close_short can ONLY be used on filled levels.
-⚠️ buy level → close_long, sell level → close_short; mixing will cause exchange rejection.
+## Action Constraints (strict)
+- filled level → ONLY close_long(buy level) / close_short(sell level). **NEVER use place_buy/sell_limit on filled levels.**
+- empty level → ONLY place_buy_limit / place_sell_limit
+- Violations are blocked by system, causing idle round
+
+## Take Profit
+- **Direct close (preferred)**: Use close_short(short) or close_long(long) on filled levels
+- **Limit hedge**: Place counter-direction order on empty levels (long→sell on empty, short→buy on empty)
+- ⚠️ Take-profit is NOT placing orders on position layers. Use close or place on OTHER empty layers
 
 ## Position Management
 - Grid holds single-direction positions: all filled levels share the same side (all long or all short)
-- Prefer close_long/close_short to take profit directly
-- Can also place counter-direction orders on empty levels above(long)/below(short) entry to hedge
 - See position capacity data below to assess whether to reduce or hold positions
-- **Accumulation Risk**: When holding ≥3 filled layers and price is on the unfavorable side of avg entry (long: price < avg entry; short: price > avg entry):
-  - Prefer hold and wait for price to recover toward avg entry; do NOT blindly add more same-direction positions
-  - New orders require clear signals: long needs RSI<35 oversold + OI rising; short needs RSI>65 overbought + OI rising
-  - Cap usage > 70%: no new positions; 50-70%: requires 2+ independent signals
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
@@ -1039,22 +1041,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     const filledTotal = buyFilled + sellFilled;
     if (filledTotal > 0) {
-      const isBuy = buyFilled > 0;
-      const entryPrice = isBuy ? ctx.positionLong?.entryPrice : ctx.positionShort?.entryPrice;
-      let avgInfo = '';
-      if (entryPrice && ctx.currentPrice) {
-        const diffPct = isBuy
-          ? ((ctx.currentPrice - entryPrice) / entryPrice * 100)
-          : ((entryPrice - ctx.currentPrice) / entryPrice * 100);
-        const isProfit = diffPct >= 0;
-        avgInfo = `，均价$${entryPrice.toFixed(2)}（距均价${isProfit ? '+' : ''}${diffPct.toFixed(1)}%，${isProfit ? '浮盈' : '⚠️浮亏'}）`;
-      }
-      const warnStr = filledTotal >= 3 && entryPrice && ctx.currentPrice
-        ? (isBuy ? ctx.currentPrice < entryPrice : ctx.currentPrice > entryPrice)
-          ? ` ⚠️${filledTotal}层浮亏，追加前须强信号`
-          : ''
-        : '';
-      lines.push(`持仓层数: ${filledTotal}格（${isBuy ? '多头' : '空头'}${avgInfo}）${warnStr}`);
+      lines.push(`持仓层数: ${filledTotal}格（${buyFilled > 0 ? '多头' : '空头'}）`);
     } else {
       lines.push(`持仓层数: 0格`);
     }
@@ -1203,22 +1190,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     const filledTotal = buyFilled + sellFilled;
     if (filledTotal > 0) {
-      const isBuy = buyFilled > 0;
-      const entryPrice = isBuy ? ctx.positionLong?.entryPrice : ctx.positionShort?.entryPrice;
-      let avgInfo = '';
-      if (entryPrice && ctx.currentPrice) {
-        const diffPct = isBuy
-          ? ((ctx.currentPrice - entryPrice) / entryPrice * 100)
-          : ((entryPrice - ctx.currentPrice) / entryPrice * 100);
-        const isProfit = diffPct >= 0;
-        avgInfo = `, avg entry $${entryPrice.toFixed(2)} (${isProfit ? '+' : ''}${diffPct.toFixed(1)}% from avg, ${isProfit ? 'profit' : '⚠️loss'})`;
-      }
-      const warnStr = filledTotal >= 3 && entryPrice && ctx.currentPrice
-        ? (isBuy ? ctx.currentPrice < entryPrice : ctx.currentPrice > entryPrice)
-          ? ` ⚠️${filledTotal} layers in loss, strong signal required to add`
-          : ''
-        : '';
-      lines.push(`Filled Levels: ${filledTotal} (${isBuy ? 'long' : 'short'}${avgInfo})${warnStr}`);
+      lines.push(`Filled Levels: ${filledTotal} (${buyFilled > 0 ? 'long' : 'short'})`);
     } else {
       lines.push(`Filled Levels: 0`);
     }
