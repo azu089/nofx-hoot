@@ -35,7 +35,7 @@ export interface GridConfig {
   totalLossLimitPct?: number;  // 总体亏损上限%（默认 30，相对 totalInvestment）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
-  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 false 对齐 nofx；nofx 无此功能）
+  enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true）
   directionBiasRatio?: number;     // 偏向比例（默认 0.7，即 70% 偏向 / 30% 反向）
   useMakerOnly?: boolean;      // PostOnly 限价单
   modelId?: string;            // AI 模型（默认 deepseek-chat）
@@ -1283,8 +1283,8 @@ export class GridTradingService {
         // 突破检测：暂停中先尝试 checkFalseBreakoutRecovery 自动恢复；非暂停时执行正常检测
         if (state.isPaused) {
           // 尝试自动恢复（价格可能已回归箱体或网格区间）
-          // 对齐 nofx：方向自适应默认关闭（nofx 无此功能）
-          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+          // 方向自适应默认开启：箱体突破→自动偏转方向（对齐 nofx EnableDirectionAdjust）
+          const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
           this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           if (!state.isPaused) {
             this.logger.log(`[网格] 价格回归，暂停自动解除，继续正常运行`);
@@ -1310,8 +1310,8 @@ export class GridTradingService {
             if (boxDetected.level !== 'none') {
               const confirmed = this.confirmBreakout(state, boxDetected.level, boxDetected.direction);
               if (confirmed) {
-                // 对齐 nofx：方向自适应默认关闭，short→reduce_position，mid→pause，long→close_all
-                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+                // 方向自适应开启时：short/mid→adjust_direction，long→close_all
+                const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
                 const action = this.getBreakoutAction(boxDetected.level, enableDirAdj);
                 await this.executeBreakoutAction(
                   state, action, boxDetected.direction, userId, apiKeyId, adapter,
@@ -1324,7 +1324,7 @@ export class GridTradingService {
             } else {
               this.confirmBreakout(state, 'none', ''); // 重置连续计数
             }
-            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? false;
+            const enableDirAdj = gridConfig?.enableDirectionAdjust ?? true;
             this.checkFalseBreakoutRecovery(state, currentPrice, enableDirAdj);
           }
         }
@@ -1351,7 +1351,7 @@ export class GridTradingService {
         // 构建 AI 上下文
         // 传入 pre-sync 交易所数据，确保 AI 看到的 levels 和 UI 层级显示完全一致
         const context = await this.buildGridContext(
-          state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? false,
+          state, adapter, currentPrice, gridConfig?.enableDirectionAdjust ?? true,
           preSyncExchangeOrders, preSyncExchangePositions,
         );
 
@@ -1813,7 +1813,7 @@ export class GridTradingService {
   }
 
   /** 突破动作映射 */
-  private getBreakoutAction(level: BreakoutLevel, enableDirectionAdjust = false): BreakoutAction {
+  private getBreakoutAction(level: BreakoutLevel, enableDirectionAdjust = true): BreakoutAction {
     if (enableDirectionAdjust) {
       switch (level) {
         case 'short': return 'adjust_direction'; // 短期突破：偏向调整
@@ -1931,9 +1931,16 @@ export class GridTradingService {
   }
 
   /** 虚假突破恢复检查 */
-  private checkFalseBreakoutRecovery(state: GridState, price: number, enableDirectionAdjust = false): void {
-    const needsReset = state.isPaused || state.positionReductionPct > 0;
-    if (!needsReset) return;
+  private checkFalseBreakoutRecovery(state: GridState, price: number, enableDirectionAdjust = true): void {
+    // 对齐 nofx: needsRecoveryCheck 必须包含方向恢复条件
+    // nofx: breakoutLevel != "none" || positionReduction != 0 || isPaused ||
+    //        (EnableDirectionAdjust && currentDirection != Neutral)
+    const needsCheck =
+      state.isPaused ||
+      state.positionReductionPct > 0 ||
+      state.breakoutLevel !== 'none' ||
+      (enableDirectionAdjust && state.currentDirection !== 'neutral');
+    if (!needsCheck) return;
 
     let recovered = false;
 
@@ -3835,29 +3842,41 @@ export class GridTradingService {
         }
         break;
 
-      case 'long_bias': {
-        const targetBuy = Math.round(totalLevels * biasRatio);
-        let buyCount = 0;
-        for (const line of gridLines) {
-          if (buyCount < targetBuy) {
-            line.side = 'buy';
-            buyCount++;
-          } else {
-            line.side = 'sell';
-          }
-        }
-        break;
-      }
-
+      case 'long_bias':
       case 'short_bias': {
-        const targetSell = Math.round(totalLevels * biasRatio);
+        // 对齐 nofx applyGridDirection(): 考虑价格位置分配买卖
+        // long_bias: 价格下方全部 buy，上方优先分配 buy 直到达到 targetBuy
+        // short_bias: 价格上方全部 sell，下方优先分配 sell 直到达到 targetSell
+        const targetBuy = Math.round(totalLevels * (direction === 'long_bias' ? biasRatio : 1 - biasRatio));
+        let buyCount = 0;
         let sellCount = 0;
-        for (let i = gridLines.length - 1; i >= 0; i--) {
-          if (sellCount < targetSell) {
-            gridLines[i].side = 'sell';
-            sellCount++;
+        for (const line of gridLines) {
+          const needMoreBuys = buyCount < targetBuy;
+          const needMoreSells = sellCount < (totalLevels - targetBuy);
+          if (line.price <= currentPrice) {
+            // 价格下方
+            if (needMoreBuys) {
+              line.side = 'buy';
+              buyCount++;
+            } else {
+              line.side = 'sell';
+              sellCount++;
+            }
           } else {
-            gridLines[i].side = 'buy';
+            // 价格上方
+            if (needMoreSells && direction === 'short_bias') {
+              line.side = 'sell';
+              sellCount++;
+            } else if (needMoreBuys && direction === 'long_bias') {
+              line.side = 'buy';
+              buyCount++;
+            } else if (needMoreSells) {
+              line.side = 'sell';
+              sellCount++;
+            } else {
+              line.side = 'buy';
+              buyCount++;
+            }
           }
         }
         break;
