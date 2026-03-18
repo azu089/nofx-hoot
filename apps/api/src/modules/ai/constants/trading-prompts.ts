@@ -733,18 +733,13 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-## 操作约束（严格执行）
-- filled 层 → 只能 close_long(buy层) / close_short(sell层)。**禁止在 filled 层使用 place_buy/sell_limit。**
-- empty 层 → 只能 place_buy_limit / place_sell_limit
-- 混用会被系统拦截，本轮空转
-
-## 止盈方式
-- **直接平仓（推荐）**：对 filled 层用 close_short(空头) 或 close_long(多头)
-- **限价对冲**：在 empty 层挂反向单（多头→empty层挂卖单，空头→empty层挂买单）
-- ⚠️ 止盈不是在持仓层挂单，而是 close 或在其他 empty 层挂反向单
+⚠️ place_buy/sell_limit 只能在 empty 层操作，close_long/close_short 只能在 filled 层操作。
+⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单。
+⚠️ 没有 empty 层时（全部 pending+filled），无需挂单，选择 hold 或 close 止盈。
 
 ## 仓位管理
 - 网格为单方向持仓：所有 filled 层方向相同（全多或全空）
+- 止盈优先用 close_long/close_short 直接平仓锁定利润
 - 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
@@ -806,18 +801,13 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-## Action Constraints (strict)
-- filled level → ONLY close_long(buy level) / close_short(sell level). **NEVER use place_buy/sell_limit on filled levels.**
-- empty level → ONLY place_buy_limit / place_sell_limit
-- Violations are blocked by system, causing idle round
-
-## Take Profit
-- **Direct close (preferred)**: Use close_short(short) or close_long(long) on filled levels
-- **Limit hedge**: Place counter-direction order on empty levels (long→sell on empty, short→buy on empty)
-- ⚠️ Take-profit is NOT placing orders on position layers. Use close or place on OTHER empty layers
+⚠️ place_buy/sell_limit can ONLY be used on empty levels. close_long/close_short can ONLY be used on filled levels.
+⚠️ buy level → close_long, sell level → close_short; mixing will cause exchange rejection.
+⚠️ When no empty levels exist (all pending+filled), no orders needed — choose hold or close to take profit.
 
 ## Position Management
 - Grid holds single-direction positions: all filled levels share the same side (all long or all short)
+- Prefer close_long/close_short to take profit directly
 - See position capacity data below to assess whether to reduce or hold positions
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
