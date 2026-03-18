@@ -1064,11 +1064,12 @@ export class ApiKeysService {
         this.logger.debug('[pnl-stats] loadMarkets 失败，继续尝试');
       }
 
-      // 时间范围
+      // 时间范围（统一用 UTC+8 北京时间计算"今日"，对齐 OKX）
       const now = Date.now();
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayStartTs = todayStart.getTime();
+      const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+      const nowInUtc8 = now + UTC8_OFFSET;
+      const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+      const todayStartTs = todayStartUtc8 - UTC8_OFFSET; // 转回 UTC 时间戳
       const weekStartTs = todayStartTs - 7 * 24 * 60 * 60 * 1000;
       const monthStartTs = todayStartTs - 30 * 24 * 60 * 60 * 1000;
 
