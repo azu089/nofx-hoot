@@ -948,33 +948,52 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         <span className="text-[9px] text-[#606070]">{OP_HINT[op.action]}</span>
                       )}
                       {(() => {
-                        // 层号：优先用 AI 决策 level 字段，兜底通过价格从执行前快照反查
+                        // cancel_order 专用：通过 orderId 末8位从快照反查层/价/量
+                        const cancelOid = op.action === 'cancel_order'
+                          ? ((op.orderId ?? op.order_id) as string | undefined)?.slice(-8)
+                          : undefined;
+                        const cancelMatch = cancelOid && d.gridSnapshot?.gridLines
+                          ? (d.gridSnapshot.gridLines as any[]).find((gl: any) => gl.oid === cancelOid)
+                          : undefined;
+
+                        // 层号：优先用 AI 决策 level 字段，兜底通过 orderId 或价格从快照反查
                         const directLevel = op.level_index ?? op.level;
-                        const inferredLevel = directLevel == null && op.price && d.gridSnapshot?.gridLines
-                          ? (() => {
-                              const price = Number(op.price);
-                              const match = (d.gridSnapshot.gridLines as any[]).find(
-                                (gl: any) => Math.abs(Number(gl.p) - price) < 0.001
-                              );
-                              return match ? match.lv : null;
-                            })()
+                        const inferredLevel = directLevel == null
+                          ? (cancelMatch?.lv ?? (op.price && d.gridSnapshot?.gridLines
+                              ? (() => {
+                                  const price = Number(op.price);
+                                  const match = (d.gridSnapshot.gridLines as any[]).find(
+                                    (gl: any) => Math.abs(Number(gl.p) - price) < 0.001
+                                  );
+                                  return match ? match.lv : null;
+                                })()
+                              : null))
                           : null;
                         const displayLevel = directLevel ?? inferredLevel;
-                        return displayLevel != null ? (
-                          <span
-                            className="px-1 py-0.5 rounded text-[9px] font-mono font-semibold flex-shrink-0"
-                            style={{ color: opColor, backgroundColor: `${opColor}20` }}
-                          >
-                            L{displayLevel}
-                          </span>
-                        ) : null;
+
+                        // 价格/数量：优先 op 自带，否则从 cancel 快照补
+                        const displayPrice = op.price || cancelMatch?.p;
+                        const displayQty = op.quantity || cancelMatch?.qty;
+
+                        return (
+                          <>
+                            {displayLevel != null && (
+                              <span
+                                className="px-1 py-0.5 rounded text-[9px] font-mono font-semibold flex-shrink-0"
+                                style={{ color: opColor, backgroundColor: `${opColor}20` }}
+                              >
+                                L{displayLevel}
+                              </span>
+                            )}
+                            {displayPrice ? (
+                              <span className="font-mono text-[#F8F8FC]">${Number(displayPrice).toFixed(2)}</span>
+                            ) : null}
+                            {displayQty ? (
+                              <span className="font-mono text-[#9090A0]">×{parseFloat(Number(displayQty).toFixed(6))}</span>
+                            ) : null}
+                          </>
+                        );
                       })()}
-                      {op.price && (
-                        <span className="font-mono text-[#F8F8FC]">${Number(op.price).toFixed(2)}</span>
-                      )}
-                      {op.quantity && (
-                        <span className="font-mono text-[#9090A0]">×{parseFloat(Number(op.quantity).toFixed(6))}</span>
-                      )}
                       {/* 执行状态标记 */}
                       {isFailed && <span className="text-[#EF4444] font-medium">✗</span>}
                       {isSkipped && <span className="text-[#F59E0B] font-medium">⊘</span>}

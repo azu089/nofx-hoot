@@ -880,8 +880,12 @@ export class GridTradingService {
           if (newUserFixed) {
             state.leverage = gridConfig.leverage!;
             state.effectiveLeverage = gridConfig.leverage!;
+            // 固定杠杆变更 → 标记待同步，下轮 Step 8 前由 adapter.setLeverage 生效
+            state.lastSyncedLeverage = undefined;
+          } else {
+            // 切换为动态模式 → 清除 lastSyncedLeverage，让 Step 6.5+8 下轮按 regime 同步
+            state.lastSyncedLeverage = undefined;
           }
-          // 留空（动态模式）→ state.leverage 保持当前值，由 Step 6.5+8 下轮 setLeverage 同步
           state.userFixedLeverage = newUserFixed;
         }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
@@ -1296,14 +1300,39 @@ export class GridTradingService {
       try {
         adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
 
-        // 动态杠杆：对齐 nofx — recommendedLeverage 仅用于展示，不主动修改交易所杠杆
-        // 原因：Step 3/syncMemory 已从交易所读取真实杠杆，运行时不应覆盖用户手动设置
-        // nofx 只在初始化时 setLeverage，运行时 recommendedLeverage 是 display-only
-        if (!state.userFixedLeverage && state.recommendedLeverage && state.recommendedLeverage !== state.leverage) {
-          this.logger.debug(
-            `[网格]${tag} 杠杆建议: regime=${state.currentRegime} 推荐=${state.recommendedLeverage}x, ` +
-            `交易所实际=${state.leverage}x (仅展示，不修改交易所)`,
-          );
+        // 杠杆同步：配置变更或 regime 变化时，同步杠杆到交易所
+        // lastSyncedLeverage=undefined → 配置刚变更，需要同步
+        // userFixedLeverage=false + recommendedLeverage≠leverage → regime 变化，需要动态调整
+        {
+          let targetLeverage: number | null = null;
+          if (state.userFixedLeverage && state.lastSyncedLeverage === undefined) {
+            // 用户刚修改了固定杠杆值，需要同步到交易所
+            targetLeverage = state.leverage;
+          } else if (!state.userFixedLeverage && state.recommendedLeverage && state.recommendedLeverage !== state.leverage) {
+            // 动态模式：regime 变化导致推荐杠杆与当前不同
+            if (state.recommendedLeverage !== state.lastSyncedLeverage) {
+              targetLeverage = state.recommendedLeverage;
+            }
+          }
+
+          if (targetLeverage != null) {
+            try {
+              await adapter.setLeverage(state.symbol, targetLeverage);
+              this.logger.log(
+                `[网格] 杠杆同步成功: ${state.leverage}x → ${targetLeverage}x` +
+                (state.userFixedLeverage ? ' (用户固定)' : ` (regime=${state.currentRegime})`),
+              );
+              state.leverage = targetLeverage;
+              state.effectiveLeverage = targetLeverage;
+              state.lastSyncedLeverage = targetLeverage;
+            } catch (e: any) {
+              // 有持仓时交易所拒绝改杠杆是正常的（如 Binance -4161），记录后继续
+              this.logger.warn(
+                `[网格] 杠杆同步失败(忽略): → ${targetLeverage}x, err=${e.message}`,
+              );
+              state.lastSyncedLeverage = targetLeverage; // 避免每轮重试同一个值
+            }
+          }
         }
 
         // 每轮清理僵尸止损单（不再主动放交易所止损单，此处为防残留）
@@ -3659,12 +3688,6 @@ export class GridTradingService {
       const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
       const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
 
-      // 确定买卖分界线：有持仓用入场均价，否则用网格中点
-      const filledLayers = state.gridLines.filter(l => l.state === 'filled' && l.positionEntry > 0);
-      const midPrice = filledLayers.length > 0
-        ? filledLayers.reduce((s, l) => s + l.positionEntry, 0) / filledLayers.length
-        : (state.upperPrice + state.lowerPrice) / 2;
-
       const usedIdx = new Set<number>();
       const symOrders = openOrders.filter((o: any) => {
         const sym: string = o.symbol ?? '';
@@ -3686,20 +3709,13 @@ export class GridTradingService {
           continue;
         }
 
-        // 规则2：找价格最近的 empty 层 + side 过滤（2位小数固定范围）
-        // buy 只映射 <= upperBound 的层，sell 只映射 >= lowerBound 的层
-        const r2 = (x: number) => Math.round(x * 100) / 100;
-        const upperBound = r2(midPrice + halfSpacing);
-        const lowerBound = r2(midPrice - halfSpacing);
+        // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
+        // 分区过滤已删除：AI 可在任意位置挂买/卖单（DCA空头/多头均可），分区会导致有效挂单被误判为"多余单"
         let bestIdx = -1;
         let bestDist = Infinity;
         for (let i = 0; i < state.gridLines.length; i++) {
           if (usedIdx.has(i)) continue;
           if (state.gridLines[i].state !== 'empty') continue;
-          const lp = r2(state.gridLines[i].price);
-          // side 过滤：buy→下半区（含边界+0.01容差），sell→上半区（含边界+0.01容差）
-          if (orderSide === 'buy' && lp > upperBound + 0.01) continue;
-          if (orderSide === 'sell' && lp < lowerBound - 0.01) continue;
           const d = Math.abs(state.gridLines[i].price - price);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
@@ -3720,7 +3736,7 @@ export class GridTradingService {
       // 存储未映射订单 ID，供 AI prompt 展示并撤单
       state.unmappedOrderIds = unmappedIds;
       if (unmappedIds.length > 0) {
-        this.logger.warn(`[网格] syncMemory: ${unmappedIds.length} 个多余挂单: ${unmappedIds.join(', ')} (midPrice=${midPrice.toFixed(4)})`);
+        this.logger.warn(`[网格] syncMemory: ${unmappedIds.length} 个多余挂单: ${unmappedIds.join(', ')}`);
       }
 
       // 日志汇总
