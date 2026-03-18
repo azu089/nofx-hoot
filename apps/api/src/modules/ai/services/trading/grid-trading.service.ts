@@ -1003,12 +1003,11 @@ export class GridTradingService {
 
     this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'} | recLev=${state.recommendedLeverage ?? '-'}x`);
 
-    // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
-    // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
-    // HOOT buildGridLinesFromConfig 用 centerPrice（上下界中间价），与实时价不同，需修正
-    // 仅对 empty 层修正；pending/filled 层 side 不变（由交易所挂单/持仓方向决定）
-    if (!this.neutralSideCorrected.has(strategyId)) {
-      this.neutralSideCorrected.add(strategyId);
+    // 每轮 neutral side 修正（empty 层 side 按当前价格重新赋值）
+    // nofx: initializeGridLevels 一次性赋值后 side 不变，但 nofx 层不会从 pending 变回 empty
+    // HOOT 层会从 pending→empty（挂单被撤/成交后），此时 side 可能残留旧值
+    // 因此每轮对 empty 层修正，确保 price<=currentPrice→buy, price>currentPrice→sell
+    {
       if ((state.currentDirection ?? 'neutral') === 'neutral') {
         let corrected = 0;
         for (const line of state.gridLines) {
