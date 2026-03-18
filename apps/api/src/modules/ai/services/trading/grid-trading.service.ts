@@ -32,6 +32,7 @@ export interface GridConfig {
   useATRBounds?: boolean;      // 使用 ATR 自动边界
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
+  totalLossLimitPct?: number;  // 总体亏损上限%（默认 30，相对 totalInvestment）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
   enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 false 对齐 nofx；nofx 无此功能）
@@ -812,7 +813,7 @@ export class GridTradingService {
       state.pauseSource = undefined;
       state.pauseReason = undefined;
       state.startEquity = state.lastEquity;  // 回撤/均值基准归位
-      state.peakEquity  = state.lastEquity;
+      // peakEquity 不重置，保持历史最高值（对齐 nofx: 只涨不跌）
       state.maxDrawdown = 0;
       state.chargedProfit = 0;
       this.logger.log(
@@ -1110,6 +1111,21 @@ export class GridTradingService {
       }
     }
 
+    // 总体亏损上限（安全网，独立于回撤计算）
+    // totalProfit 是已实现盈亏累计，不受 peakEquity 重置影响
+    const totalLossLimitPct = gridConfig?.totalLossLimitPct ?? 30;
+    if (totalLossLimitPct > 0 && state.totalProfit < 0 && state.totalInvestment > 0) {
+      const totalLossPct = (Math.abs(state.totalProfit) / state.totalInvestment) * 100;
+      if (totalLossPct >= totalLossLimitPct) {
+        await this.emergencyExit(state, userId, apiKeyId,
+          `总体亏损保护触发\n` +
+          `保护规则: 累计亏损超过投资额 ${totalLossLimitPct}% 时紧急平仓\n` +
+          `实际情况: 累计亏损 ${totalLossPct.toFixed(1)}%（$${Math.abs(state.totalProfit).toFixed(2)} / $${state.totalInvestment}）`);
+        await this.persistGridState(strategyId, state);
+        return { trades: 0, errors: 0 };
+      }
+    }
+
     // earlyAdapter 只用于 getBalance + getPositions，用完立即释放
     // 止损检查+执行对齐 nofx: 在 syncMemoryFromExchange 之后内联执行
     if (earlyAdapter) {
@@ -1118,8 +1134,11 @@ export class GridTradingService {
     }
 
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
-    // dailyLossLimitPct <= 0 视为禁用（0 = 不限制日内亏损）
-    const dailyLossLimitPct = gridConfig?.dailyLossLimitPct ?? DEFAULT_DAILY_LOSS_LIMIT_PCT;
+    // dailyLossLimitPct: 0 或未设置 → 使用默认值（防止误配置禁用保护）
+    const rawDailyLimit = gridConfig?.dailyLossLimitPct;
+    const dailyLossLimitPct = (rawDailyLimit !== undefined && rawDailyLimit > 0)
+      ? rawDailyLimit
+      : DEFAULT_DAILY_LOSS_LIMIT_PCT;
     // 对齐 nofx: dailyLossPct = (-dailyPnL) / TotalInvestment * 100
     // 始终用 totalInvestment 作为基数，不用 dailyStartEquity（已废弃）
     const dailyBase = state.totalInvestment;
@@ -2845,12 +2864,9 @@ export class GridTradingService {
     }
     // totalProfit / dailyTotalProfit 保留（止盈止损触发百分比由用户在配置里调整）
     state.chargedProfit = 0;
-    // peakEquity/maxDrawdown 归零，防止旧回撤值立刻再次触发保护
-    state.peakEquity = state.startEquity;
+    // peakEquity 不重置，保持历史最高值（对齐 nofx: 只涨不跌）
+    // maxDrawdown 归零，回撤计数从当前继续
     state.maxDrawdown = 0;
-
-    state.peakEquity = state.startEquity;   // 回撤检测从新基准重新开始
-    state.maxDrawdown = 0;                  // 历史最大回撤归零
     state.dailyPnl = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
 
