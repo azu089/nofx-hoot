@@ -805,28 +805,24 @@ export class GridTradingService {
     // 每轮 syncMemoryFromExchange 从交易所全量重建内存，无需一次性重启恢复
     // 容器重启 = 普通周期，交易所数据自动覆盖内存
 
-    // Step 1.2: 止盈/止损后的重启恢复
-    // 用户手动 startStrategy 重新激活策略时，isPaused=true + pauseSource='risk_control'
-    // 配置重启 = 和手动恢复相同逻辑：风控计数器全部清零，从当前权益重新开始
+    // Step 1.2: 配置重启恢复（修改配置后重新启动策略）
+    // 风控参数全部保留！用户应通过修改配置阈值（如 maxDrawdownPct 调高）来避免重新触发
+    // 区别于 manualResumeFromRiskControl（手动恢复）：后者清零所有风控计数器
     if (state && state.isPaused && state.pauseSource === 'risk_control') {
       state.isPaused = false;
       state.pauseSource = undefined;
       state.pauseReason = undefined;
       state.startEquity = state.lastEquity;  // 回撤/均值基准归位
-      // peakEquity 重置为当前权益（否则峰值回撤立即重新触发）
-      if (state.lastEquity && state.lastEquity > 0) {
-        state.peakEquity = state.lastEquity;
-      }
+      // peakEquity 不重置，保持历史最高值（配置重启应保留风控连续性）
+      // maxDrawdown 归零（仅重置追踪计数，实际回撤仍会在下一轮重新计算）
       state.maxDrawdown = 0;
       state.chargedProfit = 0;
-      // dailyPnl + dailyTotalProfit 归零（否则日损保护立即重新触发）
-      state.dailyPnl = 0;
-      state.dailyTotalProfit = 0;
-      state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
-      // totalProfit 保留（累计盈亏是历史事实）
+      // dailyPnl / dailyTotalProfit 不重置（配置重启不改变当日盈亏事实）
+      // totalProfit 不重置（累计盈亏是历史事实）
       this.logger.log(
-        `[网格] ✅ 策略重启: 风控计数器清零 | peakEquity=${state.peakEquity?.toFixed(2)} | ` +
-        `累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT 保留`,
+        `[网格] ✅ 配置重启: 风控参数保留 | peakEquity=${state.peakEquity?.toFixed(2)} | ` +
+        `dailyPnl=${state.dailyPnl?.toFixed(2)} | ` +
+        `累计利润 ${state.totalProfit >= 0 ? '+' : ''}${state.totalProfit.toFixed(2)} USDT`,
       );
       await this.persistGridState(strategyId, state);
       this.gridStates.set(strategyId, state);
