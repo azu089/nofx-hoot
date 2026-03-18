@@ -1268,16 +1268,9 @@ export class GridTradingService {
 
     // Step 6.6: 箱体突破方向自适应 — 在 Step 8 adapter 块内执行（需要 adapter 取消挂单）
 
-    // Step 7: 暂停检查
+    // Step 7: 暂停检查 — 任何来源的暂停都走 AI 受限模式（持仓需要管理）
     if (state.isPaused) {
-      if (state.pauseSource === 'risk_control') {
-        // 风控暂停不可自动恢复，直接跳过
-        this.logger.warn(`[网格]${tag} ${state.symbol} 风控暂停，跳过: ${state.pauseReason || ''}`);
-        await this.persistGridState(strategyId, state);
-        return { trades: 0, errors: 0 };
-      }
-      // breakout/ai/trend 暂停 → AI 受限模式运行，评估是否需要重建网格
-      this.logger.warn(`[网格]${tag} ${state.symbol} [${state.pauseSource ?? '未知'}]暂停，AI受限模式评估重建`);
+      this.logger.warn(`[网格]${tag} ${state.symbol} [${state.pauseSource ?? '未知'}]暂停，AI受限模式运行管理持仓: ${state.pauseReason || ''}`);
     }
 
     // Step 8: AI 决策
@@ -1431,9 +1424,9 @@ export class GridTradingService {
           adapter = await this.adapterFactory!.createAdapter(userId, apiKeyId);
         }
 
-        // LLM 调用期间用户可能已风控停止策略
-        if ((state.isPaused && state.pauseSource === 'risk_control') || !this.gridStates.has(strategyId)) {
-          this.logger.warn(`[网格] LLM 调用后策略已风控停止，跳过本轮决策执行`);
+        // LLM 调用期间策略可能已被停止
+        if (!this.gridStates.has(strategyId)) {
+          this.logger.warn(`[网格] LLM 调用后策略已停止，跳过本轮决策执行`);
           return { trades, errors };
         }
 
@@ -1449,9 +1442,9 @@ export class GridTradingService {
           return false;
         });
 
-        // 暂停受限模式：只允许 adjust_grid / close_long / close_short / hold
-        const PAUSE_ALLOWED_ACTIONS = new Set(['adjust_grid', 'close_long', 'close_short', 'hold']);
-        const execDecisions = (state.isPaused && state.pauseSource !== 'risk_control')
+        // 暂停受限模式（所有暂停来源统一）：允许持仓管理 + 恢复操作，禁止新开仓
+        const PAUSE_ALLOWED_ACTIONS = new Set(['adjust_grid', 'close_long', 'close_short', 'resume_grid', 'cancel_order', 'cancel_all_orders', 'hold']);
+        const execDecisions = state.isPaused
           ? confFiltered.filter(d => {
               if (PAUSE_ALLOWED_ACTIONS.has(d.action)) return true;
               this.logger.warn(`[网格] 暂停受限模式：跳过非允许动作 ${d.action}`);
@@ -1470,9 +1463,9 @@ export class GridTradingService {
         let accountConfigError: string | null = null; // OKX 51010 等账户配置错误（需用户手动修复）
         for (const d of execDecisions) {
           // 每条决策执行前检查策略是否已被停止
-          if ((state.isPaused && state.pauseSource === 'risk_control') || !this.gridStates.has(strategyId)) {
+          if (!this.gridStates.has(strategyId)) {
             const remaining = execDecisions.length - execDecisions.indexOf(d);
-            this.logger.warn(`[网格] 策略已风控停止，跳过剩余 ${remaining} 个决策`);
+            this.logger.warn(`[网格] 策略已停止，跳过剩余 ${remaining} 个决策`);
             break;
           }
           // 账户配置错误已确认（如 OKX 51010）→ 跳过后续下单，避免刷屏重试
