@@ -733,13 +733,13 @@ function gridSystemPromptZh(
 - **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
 - **hold**: 保持现状
 
-网格的核心是买低卖高配对。止盈方向：多头(buy层)止盈=挂卖单(高于入场价)或close_long，空头(sell层)止盈=挂买单(低于入场价)或close_short。
 ⚠️ place_buy/sell_limit 只能在 empty 层操作，close_long/close_short 只能在 filled 层操作。
 ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单。
 
 ## 仓位管理
-- close_long/close_short 是正常止盈工具，不仅用于止损或暂停模式
-- 多头盈利时可 close_long 主动止盈锁定利润，空头盈利时可 close_short
+- 网格为单方向持仓：所有 filled 层方向相同（全多或全空）
+- 止盈优先用 close_long/close_short 直接平仓锁定利润
+- 也可在持仓上方(多头)/下方(空头)的 empty 层挂反向单对冲
 - 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
@@ -801,13 +801,13 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
 - **hold**: Maintain current state
 
-Grid's core is buy-low-sell-high pairs. Take-profit: Long(buy level) TP = place sell(above entry) or close_long, Short(sell level) TP = place buy(below entry) or close_short.
 ⚠️ place_buy/sell_limit can ONLY be used on empty levels. close_long/close_short can ONLY be used on filled levels.
 ⚠️ buy level → close_long, sell level → close_short; mixing will cause exchange rejection.
 
 ## Position Management
-- close_long/close_short are normal take-profit tools, not only for stop-loss or pause mode
-- When long is profitable, use close_long to lock in profits; when short is profitable, use close_short
+- Grid holds single-direction positions: all filled levels share the same side (all long or all short)
+- Prefer close_long/close_short to take profit directly
+- Can also place counter-direction orders on empty levels above(long)/below(short) entry to hedge
 - See position capacity data below to assess whether to reduce or hold positions
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
@@ -858,7 +858,7 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
     ? (l.side === 'buy' ? (isEn ? 'Long' : '持多') : (isEn ? 'Short' : '持空'))
     : l.state === 'pending'
       ? (l.side === 'buy' ? (isEn ? 'Bid' : '挂买') : (isEn ? 'Ask' : '挂卖'))
-      : (l.side === 'buy' ? (isEn ? 'Buy Side' : '建议买') : (isEn ? 'Sell Side' : '建议卖'));
+      : (l.side === 'buy' ? (isEn ? 'buy' : '买') : (isEn ? 'sell' : '卖'));
   const stateStr = l.state === 'pending' ? (isEn ? 'Pending' : '待成交') : l.state === 'filled' ? (isEn ? 'Filled' : '持仓') : (isEn ? 'Empty' : '空格');
   const orderIdStr = l.state === 'pending' && l.orderId ? l.orderId : '-';
   const posSizeStr = l.state === 'filled' && l.positionSize && l.positionSize > 0 ? l.positionSize.toFixed(4) : '-';
@@ -1011,7 +1011,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
         lines.push(`  - orderId: ${oid}`);
       }
     }
-    lines.push('撤销后空出层位，可用于补挂止盈单。');
+    lines.push('只需撤销这些多余挂单。不要在持仓层(filled)补挂新单，止盈单应挂在持仓价格反向的 empty 层。');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
@@ -1046,7 +1046,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
-  lines.push('层号(从1开始) | 价格 | 建议方向 | 数量(推荐/实际) | 持仓量 | 状态 | 盈亏 | 订单ID');
+  lines.push('层号 | 价格 | 方向 | 数量 | 持仓量 | 状态 | 盈亏 | 订单ID');
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, false));
   }
@@ -1160,7 +1160,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
         lines.push(`  - orderId: ${oid}`);
       }
     }
-    lines.push('Cancel to free layers for take-profit orders.');
+    lines.push('Only cancel these excess orders. Do NOT place new orders on filled levels. Place take-profit on empty levels opposite to position entry.');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (post-breakout recovery, each level capped at ${100 - ctx.positionReductionPct}% of suggested qty, auto-enforced by system)`);
@@ -1195,7 +1195,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   // Section 5: Grid Levels Table
   lines.push('');
   lines.push('--- Grid Levels ---');
-  lines.push('Level(from 1) | Price | Direction | Qty(suggested) | Position | State | PnL | OrderID');
+  lines.push('Level | Price | Direction | Qty | Position | State | PnL | OrderID');
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, true));
   }
