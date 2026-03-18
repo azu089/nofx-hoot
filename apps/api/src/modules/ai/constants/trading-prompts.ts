@@ -713,8 +713,8 @@ function gridSystemPromptZh(
 
 ## 市场形态判断
 - **震荡**（BB<3%，EMA距<1%）→ 适合网格，正常运行
-- **宽幅**（BB 3-6%，EMA距≤2%）→ 谨慎运行，高波动=更多成交机会，不必暂停
-- **趋势**（BB>6% 且 EMA距>2%）→ 暂停网格
+- **趋势**（BB>4%，EMA距>2%）→ 暂停网格
+- **高波动**（ATR异常放大）→ 谨慎，减仓或暂停
 
 ## 层状态
 - **empty**: 可挂单
@@ -741,6 +741,10 @@ function gridSystemPromptZh(
 - 止盈优先用 close_long/close_short 直接平仓锁定利润
 - 也可在持仓上方(多头)/下方(空头)的 empty 层挂反向单对冲
 - 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
+- **同向积累风险**：已持 ≥ 3 层 filled 且当前价格在均价不利侧（多头：价格 < 均价；空头：价格 > 均价）时：
+  - 优先 hold，等待价格回归均价附近，不要盲目追加同向仓位
+  - 确需开仓须有明确信号：多头需 RSI<35 超卖 + OI 增加；空头需 RSI>65 超买 + OI 增加
+  - 仓位使用率 > 70% 时严禁追加；50-70% 需两个以上独立信号支撑
 
 ## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
 当网格因价格突破而暂停后，AI 继续运行管理持仓：
@@ -781,8 +785,8 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 
 ## Market Regime
 - **Ranging** (BB<3%, EMA distance<1%) → Suitable for grid, normal operation
-- **Wide** (BB 3-6%, EMA distance≤2%) → Run cautiously, high volatility = more fill opportunities, no need to pause
-- **Trending** (BB>6% AND EMA distance>2%) → Pause grid
+- **Trending** (BB>4%, EMA distance>2%) → Pause grid
+- **High Volatility** (ATR spike) → Caution, reduce position or pause
 
 ## Level States
 - **empty**: Can place order
@@ -809,6 +813,10 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - Prefer close_long/close_short to take profit directly
 - Can also place counter-direction orders on empty levels above(long)/below(short) entry to hedge
 - See position capacity data below to assess whether to reduce or hold positions
+- **Accumulation Risk**: When holding ≥3 filled layers and price is on the unfavorable side of avg entry (long: price < avg entry; short: price > avg entry):
+  - Prefer hold and wait for price to recover toward avg entry; do NOT blindly add more same-direction positions
+  - New orders require clear signals: long needs RSI<35 oversold + OI rising; short needs RSI>65 overbought + OI rising
+  - Cap usage > 70%: no new positions; 50-70%: requires 2+ independent signals
 
 ## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
 When grid is paused due to price breakout, AI continues running to manage positions:
@@ -1031,7 +1039,22 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     const filledTotal = buyFilled + sellFilled;
     if (filledTotal > 0) {
-      lines.push(`持仓层数: ${filledTotal}格（${buyFilled > 0 ? '多头' : '空头'}）`);
+      const isBuy = buyFilled > 0;
+      const entryPrice = isBuy ? ctx.positionLong?.entryPrice : ctx.positionShort?.entryPrice;
+      let avgInfo = '';
+      if (entryPrice && ctx.currentPrice) {
+        const diffPct = isBuy
+          ? ((ctx.currentPrice - entryPrice) / entryPrice * 100)
+          : ((entryPrice - ctx.currentPrice) / entryPrice * 100);
+        const isProfit = diffPct >= 0;
+        avgInfo = `，均价$${entryPrice.toFixed(2)}（距均价${isProfit ? '+' : ''}${diffPct.toFixed(1)}%，${isProfit ? '浮盈' : '⚠️浮亏'}）`;
+      }
+      const warnStr = filledTotal >= 3 && entryPrice && ctx.currentPrice
+        ? (isBuy ? ctx.currentPrice < entryPrice : ctx.currentPrice > entryPrice)
+          ? ` ⚠️${filledTotal}层浮亏，追加前须强信号`
+          : ''
+        : '';
+      lines.push(`持仓层数: ${filledTotal}格（${isBuy ? '多头' : '空头'}${avgInfo}）${warnStr}`);
     } else {
       lines.push(`持仓层数: 0格`);
     }
@@ -1180,7 +1203,22 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     const sellFilled = ctx.gridSkewSellFilled ?? 0;
     const filledTotal = buyFilled + sellFilled;
     if (filledTotal > 0) {
-      lines.push(`Filled Levels: ${filledTotal} (${buyFilled > 0 ? 'long' : 'short'})`);
+      const isBuy = buyFilled > 0;
+      const entryPrice = isBuy ? ctx.positionLong?.entryPrice : ctx.positionShort?.entryPrice;
+      let avgInfo = '';
+      if (entryPrice && ctx.currentPrice) {
+        const diffPct = isBuy
+          ? ((ctx.currentPrice - entryPrice) / entryPrice * 100)
+          : ((entryPrice - ctx.currentPrice) / entryPrice * 100);
+        const isProfit = diffPct >= 0;
+        avgInfo = `, avg entry $${entryPrice.toFixed(2)} (${isProfit ? '+' : ''}${diffPct.toFixed(1)}% from avg, ${isProfit ? 'profit' : '⚠️loss'})`;
+      }
+      const warnStr = filledTotal >= 3 && entryPrice && ctx.currentPrice
+        ? (isBuy ? ctx.currentPrice < entryPrice : ctx.currentPrice > entryPrice)
+          ? ` ⚠️${filledTotal} layers in loss, strong signal required to add`
+          : ''
+        : '';
+      lines.push(`Filled Levels: ${filledTotal} (${isBuy ? 'long' : 'short'}${avgInfo})${warnStr}`);
     } else {
       lines.push(`Filled Levels: 0`);
     }

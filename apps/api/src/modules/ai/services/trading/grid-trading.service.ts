@@ -32,7 +32,7 @@ export interface GridConfig {
   useATRBounds?: boolean;      // 使用 ATR 自动边界
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
-  totalLossLimitPct?: number;  // 总体亏损上限%（默认 30，相对 totalInvestment）
+  profitTrailingStopPct?: number; // 利润回撤保护%（默认 50）：总PnL从利润峰值回撤超此值时紧急平仓
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
   enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true）
@@ -99,6 +99,7 @@ export interface GridState {
 
   // 绩效追踪
   totalProfit: number;
+  peakTotalProfit: number;   // 已实现利润峰值（用于利润回撤保护）
   dailyTotalProfit: number;  // 当日已实现利润（网格挂单成交累计，UTC每日重置）
   totalTrades: number;
   winningTrades: number;
@@ -208,6 +209,7 @@ const BREAKOUT_CONFIRM_REQUIRED = 3;
 const DEFAULT_ATR_MULTIPLIER = 1.5; // 1.5x ATR × (gridCount/10)，使格间距恒定在 ~0.5%/格
 const DEFAULT_MAX_DRAWDOWN_PCT = 15;
 const DEFAULT_DAILY_LOSS_LIMIT_PCT = 10; // 日损上限 10%
+const DEFAULT_PROFIT_TRAILING_STOP_PCT = 50; // 利润回撤保护：默认保护 50% 的已实现利润
 const DEFAULT_BREAKOUT_PCT = 2;
 const DIRECTION_BIAS_RATIO = 0.7; // 70/30 分配
 const POSITION_SAFETY_MULTIPLIER = 2; // 仓位绝对安全上限 = TotalInvestment × Leverage × 2
@@ -226,6 +228,15 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
   standard: 3,     // 标准：正常运行
   wide: 2,         // 宽幅：谨慎
   volatile: 1,     // 高波动：最低杠杆
+};
+// regime → 仓位上限百分比（对齐 nofx getRegimePositionLimit）
+// totalInvestment × positionPct% × leverage = 允许的最大持仓名义值
+const REGIME_POSITION_PCT: Record<RegimeLevel, number> = {
+  ultra_narrow: 40, // 对齐 nofx narrow
+  narrow: 40,       // nofx: 40%
+  standard: 70,     // nofx: 70%
+  wide: 60,         // nofx: 60%
+  volatile: 40,     // nofx: 40%
 };
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
@@ -620,6 +631,7 @@ export class GridTradingService {
       lastPrice: currentPrice,
 
       totalProfit: 0,
+      peakTotalProfit: 0,
       dailyTotalProfit: 0,
       totalTrades: 0,
       winningTrades: 0,
@@ -776,6 +788,7 @@ export class GridTradingService {
         state.lastSyncedLeverage ??= gridConfig?.leverage ?? state.leverage;
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
+        state.peakTotalProfit ??= state.totalProfit ?? 0;
         // 兼容旧数据：profitTargetPct 不存在时 fallback 到 0（AI自主决策）
         state.profitTargetPct ??= 0;
         // 兼容旧数据：信号字段（Phase 11/12 新增，旧 DB 记录无此字段）
@@ -1072,9 +1085,18 @@ export class GridTradingService {
       state.peakEquity = currentEquity;
     }
 
-    // ★ 日内 P&L 跟踪 — 策略自身的 已实现+未实现 盈亏（不再用整个账户权益差）
-    // 修复：多策略共享同一 API Key 时，旧逻辑 currentEquity-dailyStartEquity 会把所有策略亏损算在一个策略头上
-    // 新逻辑：dailyPnl = dailyTotalProfit(今日已实现) + strategyUnrealizedPnl(本策略未实现)
+    // ★ 从交易所持仓中提取本策略 symbol 的未实现盈亏（供 dailyPnl + 利润回撤保护共用）
+    let strategyUnrealizedPnl = 0;
+    if (livePositions && livePositions.length > 0) {
+      const baseSymbol = state.symbol.split('/')[0];
+      for (const pos of livePositions) {
+        if ((pos as any).symbol?.includes(baseSymbol)) {
+          strategyUnrealizedPnl += (pos as any).unrealizedPnl ?? 0;
+        }
+      }
+    }
+
+    // ★ 日内 P&L 跟踪 — 策略自身的 已实现+未实现 盈亏
     {
       const todayStr = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
       if (state.dailyPnlResetDate !== todayStr) {
@@ -1082,22 +1104,9 @@ export class GridTradingService {
         state.dailyPnl = 0;
         state.dailyTotalProfit = 0;
         if (equityFetched && currentEquity > 0) {
-          state.dailyStartEquity = currentEquity; // 仅用于回撤计算的参考，不再用于 dailyPnl
+          state.dailyStartEquity = currentEquity;
         }
       }
-
-      // 从交易所持仓中提取本策略 symbol 的未实现盈亏
-      let strategyUnrealizedPnl = 0;
-      if (livePositions && livePositions.length > 0) {
-        const baseSymbol = state.symbol.split('/')[0];
-        for (const pos of livePositions) {
-          if ((pos as any).symbol?.includes(baseSymbol)) {
-            strategyUnrealizedPnl += (pos as any).unrealizedPnl ?? 0;
-          }
-        }
-      }
-
-      // dailyPnl = 今日已实现盈亏 + 本策略当前未实现盈亏
       state.dailyPnl = (state.dailyTotalProfit ?? 0) + strategyUnrealizedPnl;
     }
 
@@ -1115,18 +1124,27 @@ export class GridTradingService {
       }
     }
 
-    // 总体亏损上限（安全网，独立于回撤计算）
-    // totalProfit 是已实现盈亏累计，不受 peakEquity 重置影响
-    const totalLossLimitPct = gridConfig?.totalLossLimitPct ?? 30;
-    if (totalLossLimitPct > 0 && state.totalProfit < 0 && state.totalInvestment > 0) {
-      const totalLossPct = (Math.abs(state.totalProfit) / state.totalInvestment) * 100;
-      if (totalLossPct >= totalLossLimitPct) {
-        await this.emergencyExit(state, userId, apiKeyId,
-          `总体亏损保护触发\n` +
-          `保护规则: 累计亏损超过投资额 ${totalLossLimitPct}% 时紧急平仓\n` +
-          `实际情况: 累计亏损 ${totalLossPct.toFixed(1)}%（$${Math.abs(state.totalProfit).toFixed(2)} / $${state.totalInvestment}）`);
-        await this.persistGridState(strategyId, state);
-        return { trades: 0, errors: 0 };
+    // ★ 利润回撤保护 — 保护震荡期累积的已实现利润不被单边行情吃掉
+    // 与 maxDrawdown 的区别：maxDrawdown 基于账户权益峰值，利润回撤基于策略已实现利润峰值
+    if (state.totalProfit > (state.peakTotalProfit ?? 0)) {
+      state.peakTotalProfit = state.totalProfit;
+    }
+    {
+      const profitTrailingStopPct = gridConfig?.profitTrailingStopPct ?? DEFAULT_PROFIT_TRAILING_STOP_PCT;
+      const peakProfit = state.peakTotalProfit ?? 0;
+      // 仅在有实际利润时生效（peakProfit > 0），避免刚启动时误触发
+      if (profitTrailingStopPct > 0 && peakProfit > 0) {
+        const totalPnl = state.totalProfit + strategyUnrealizedPnl;
+        const profitThreshold = peakProfit * (1 - profitTrailingStopPct / 100);
+        if (totalPnl < profitThreshold) {
+          const profitDrawdownPct = ((peakProfit - totalPnl) / peakProfit * 100).toFixed(1);
+          await this.emergencyExit(state, userId, apiKeyId,
+            `利润回撤保护触发\n` +
+            `保护规则: 总PnL从利润峰值回撤超过 ${profitTrailingStopPct}% 时紧急平仓\n` +
+            `实际情况: 利润峰值 $${peakProfit.toFixed(2)}，当前总PnL $${totalPnl.toFixed(2)}，回撤 ${profitDrawdownPct}%`);
+          await this.persistGridState(strategyId, state);
+          return { trades: 0, errors: 0 };
+        }
       }
     }
 
@@ -2338,7 +2356,8 @@ export class GridTradingService {
 
     // 仓位 cap 使用率（供 AI 决策参考，与 placeGridLimitOrder 中 cap 检查一致）
     const capLeverage = state.userFixedLeverage ? state.leverage : MAX_LEVERAGE_CAP;
-    const capTotal = state.totalInvestment * capLeverage;
+    const capRegimePct = REGIME_POSITION_PCT[state.currentRegime] ?? REGIME_POSITION_PCT['standard'];
+    const capTotal = state.totalInvestment * (capRegimePct / 100) * capLeverage;
     let capPositionValue = 0;
     const capBaseSymbol = state.symbol.split('/')[0];
     for (const pos of (preSyncExchangePositions ?? [])) {
@@ -2727,19 +2746,7 @@ export class GridTradingService {
           const closedValue = qty * _cp.toNumber();
           state.livePositionNotional = Math.max(0, (state.livePositionNotional ?? 0) - closedValue);
           this.logger.log(`[网格] close_long 平仓: level=${targetLevel.index}, ccxtPrice=${_cp.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT${exchangePnl != null ? ' (exchange)' : ' (calc)'}`);
-          this.saveClosedPositionRecord(
-            userId,
-            state.strategyId,
-            (adapter as any).exchangeType ?? 'unknown',
-            state.symbol,
-            'long',
-            _ep.toNumber(),
-            _cp.toNumber(),
-            _sz.toNumber(),
-            state.leverage ?? 1,
-            netProfit,
-            'ai_close',
-          );
+          // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
           // 取消上方相邻 pending 卖单（孤儿防护：平多后卖单若触价会意外开空）
           const orphanSell = state.gridLines.find(
             (l) => l.state === 'pending' && l.side === 'sell' && l.orderId && l.index === targetLevel.index + 1,
@@ -2809,19 +2816,7 @@ export class GridTradingService {
           delete state.orderBook[targetLevel.orderId ?? ''];
           targetLevel.orderId = undefined;
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, ccxtPrice=${_cp2.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT${exchangePnl2 != null ? ' (exchange)' : ' (calc)'}`);
-          this.saveClosedPositionRecord(
-            userId,
-            state.strategyId,
-            (adapter as any).exchangeType ?? 'unknown',
-            state.symbol,
-            'short',
-            _ep2.toNumber(),
-            _cp2.toNumber(),
-            _sz2.toNumber(),
-            state.leverage ?? 1,
-            netProfit,
-            'ai_close',
-          );
+          // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
         } else {
           this.logger.warn(`[网格] close_short 孤儿空头平仓: qty=${qty}, 无对应 grid level`);
         }
@@ -2885,6 +2880,8 @@ export class GridTradingService {
     state.dailyTotalProfit = 0;
     state.dailyPnlResetDate = new Date().toISOString().slice(0, 10);
     // totalProfit 保留（累计盈亏是历史事实，不清除）
+    // peakTotalProfit 重置为当前 totalProfit（利润回撤保护从当前利润重新追踪）
+    state.peakTotalProfit = state.totalProfit;
 
     await this.persistGridState(strategyId, state);
 
@@ -2990,10 +2987,12 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限（对齐 nofx checkTotalPositionLimit）：
+      // 总仓位上限（对齐 nofx checkTotalPositionLimit + getRegimePositionLimit）：
       // 持仓值 = 交易所实际持仓市值（abs(size) × markPrice），非槽位预算
       // 挂单值 = 内存 pending 层 qty × price（与 nofx 一致）
-      const totalPositionCap = state.totalInvestment * leverage;
+      // regime 动态调整：volatile/narrow → 40%, wide → 60%, standard → 70%
+      const regimePositionPct = REGIME_POSITION_PCT[state.currentRegime] ?? REGIME_POSITION_PCT['standard'];
+      const totalPositionCap = state.totalInvestment * (regimePositionPct / 100) * leverage;
       const baseSymbol = state.symbol.split('/')[0];
 
       // 从交易所实时持仓计算实际市值（对齐 nofx L978-992）
@@ -3018,7 +3017,7 @@ export class GridTradingService {
         quantity = Math.min(quantity, remaining / price);
         capTruncated = true;
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)}`;
+          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} (regime=${state.currentRegime},${regimePositionPct}%)`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
@@ -3531,11 +3530,7 @@ export class GridTradingService {
                 `profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`,
               );
 
-              this.saveClosedPositionRecord(
-                userId, state.strategyId, (adapter as any).exchangeType ?? 'unknown',
-                state.symbol, 'long', _ep.toNumber(), _cp.toNumber(), _sz.toNumber(),
-                state.leverage ?? 1, netProfit, 'grid_tp',
-              );
+              // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
             } else {
               state.totalTrades++;
               this.logger.warn(`[网格] 卖单成交无匹配买入层 @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`);
