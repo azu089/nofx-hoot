@@ -742,20 +742,17 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       const algoOrders: any[] = response?.data ?? [];
       if (algoOrders.length === 0) return;
 
-      this.logger.log(`[OKX] 发现 ${algoOrders.length} 个算法单，准备取消...`);
+      this.logger.log(`[OKX] 发现 ${algoOrders.length} 个算法单，逐个取消...`);
 
-      // OKX 批量取消算法单，最多 10 个/次
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < algoOrders.length; i += BATCH_SIZE) {
-        const batch = algoOrders.slice(i, i + BATCH_SIZE).map((o: any) => ({
-          algoId: o.algoId,
-          instId,
-          ordType: o.ordType,  // OKX cancelAlgos 要求每个单指定自己的 ordType
-        }));
+      // OKX 逐个取消算法单（批量 API 参数格式易出错，逐个更可靠）
+      for (const o of algoOrders) {
         try {
-          await (ex as any).privatePostTradeCancelAlgos(batch);
+          await (ex as any).privatePostTradeCancelAlgos([{
+            algoId: o.algoId,
+            instId,
+          }]);
         } catch (e: any) {
-          this.logger.warn(`[OKX] 批量取消算法单失败: ${e.message}`);
+          this.logger.warn(`[OKX] 取消算法单 ${o.algoId} 失败: ${e.message}`);
         }
       }
 
