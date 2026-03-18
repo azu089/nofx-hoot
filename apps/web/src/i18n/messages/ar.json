@@ -1767,6 +1767,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "تبديل الاتجاه التلقائي",
       "autoDirectionSwitchDesc": "تغيير الاتجاه عند الاختراق، العودة عند الارتداد",
+      "profitTrailingStop": "حماية الأرباح",
+      "profitTrailingStopDesc": "خروج طارئ عندما ينخفض إجمالي الربح والخسارة عن ذروة الأرباح بهذه النسبة",
       "biasRatio": "نسبة الانحياز",
       "biasRatioDefault": "الافتراضي 70%",
       "searchCoins": "بحث عن عملات...",

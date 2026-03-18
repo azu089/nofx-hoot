@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly 지정가",
       "autoDirectionSwitch": "방향 자동 전환",
       "autoDirectionSwitchDesc": "돌파 시 방향 전환, 회귀 시 복원",
+      "profitTrailingStop": "수익 추적 손절",
+      "profitTrailingStopDesc": "총 PnL이 수익 최고점에서 이 비율 이상 하락하면 긴급 청산",
       "biasRatio": "편향 비율",
       "biasRatioDefault": "기본값 70%",
       "searchCoins": "코인 검색...",

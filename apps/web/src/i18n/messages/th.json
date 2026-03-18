@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "สลับทิศทางอัตโนมัติ",
       "autoDirectionSwitchDesc": "เปลี่ยนทิศทางเมื่อ breakout กลับเมื่อ mean reversion",
+      "profitTrailingStop": "ปกป้องกำไร",
+      "profitTrailingStopDesc": "ปิดฉุกเฉินเมื่อ PnL รวมลดลงจากจุดสูงสุดกำไรเกินอัตราส่วนนี้",
       "biasRatio": "อัตราส่วนเอียง",
       "biasRatioDefault": "ค่าเริ่มต้น 70%",
       "searchCoins": "ค้นหาเหรียญ...",

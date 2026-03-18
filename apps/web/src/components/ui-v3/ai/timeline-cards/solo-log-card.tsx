@@ -171,7 +171,7 @@ function briefWaitReason(text: string, t: TFunc): string {
 const GRID_ACTION_I18N: Record<string, { key: string; color: string }> = {
   place_buy_limit: { key: 'timeline.gridPlaceBuy', color: '#10B981' },
   place_sell_limit: { key: 'timeline.gridPlaceSell', color: '#F43F5E' },
-  cancel_order: { key: 'timeline.gridCancel', color: '#94A3B8' },
+  cancel_order: { key: 'timeline.gridCancel', color: '#F59E0B' },
   adjust_grid: { key: 'timeline.gridAdjust', color: '#8B5CF6' },
   pause_grid: { key: 'timeline.gridPause', color: '#F59E0B' },
   exit_all: { key: 'timeline.gridExitAll', color: '#F43F5E' },

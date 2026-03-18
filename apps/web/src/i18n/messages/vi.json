@@ -1785,6 +1785,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "Tự động chuyển hướng",
       "autoDirectionSwitchDesc": "Chuyển hướng khi breakout, hoàn nguyên khi quay về",
+      "profitTrailingStop": "Bảo vệ lợi nhuận",
+      "profitTrailingStopDesc": "Thoát khẩn cấp khi tổng PnL giảm dưới đỉnh lợi nhuận theo tỷ lệ này",
       "biasRatio": "Tỷ lệ thiên lệch",
       "biasRatioDefault": "Mặc định 70%",
       "searchCoins": "Tìm coin...",

@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "Otomatik Yön Değiştirme",
       "autoDirectionSwitchDesc": "Kırılımda yön değiştir, geri dönüşte eski hale getir",
+      "profitTrailingStop": "Kâr Koruma",
+      "profitTrailingStopDesc": "Toplam PnL kâr zirvesinden bu yüzde kadar düştüğünde acil çıkış",
       "biasRatio": "Eğilim Oranı",
       "biasRatioDefault": "Varsayılan 70%",
       "searchCoins": "Coin ara...",

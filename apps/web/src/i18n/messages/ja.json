@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly指値注文",
       "autoDirectionSwitch": "方向自動切替",
       "autoDirectionSwitchDesc": "ブレイクアウト時に方向転換、回帰時に復元",
+      "profitTrailingStop": "利益トレーリングストップ",
+      "profitTrailingStopDesc": "総PnLが利益ピークからこの割合以上下落した場合、緊急決済",
       "biasRatio": "バイアス比率",
       "biasRatioDefault": "デフォルト 70%",
       "searchCoins": "コイン検索...",

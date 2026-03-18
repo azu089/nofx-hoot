@@ -2579,13 +2579,15 @@ export class GridTradingService {
           this.logger.warn(`[网格] cancel_order: orderId=${cancelOrderId} 不在 orderBook（溢出挂单）`);
         }
 
+        // 写入 decision 供前端使用（在执行前写入，确保日志中始终有方向信息）
+        (decision as any).cancelSide = cancelSide || undefined;
+
         // 执行撤单（orderId 来自本轮 syncMemoryFromExchange 交易所实时数据，是真实存在的挂单）
         let cancelSuccess = false;
         try {
           await (adapter as GridExchangeAdapter).cancelOrder(state.symbol, cancelOrderId);
           cancelSuccess = true;
           const cancelSideLabel = cancelSide === 'buy' ? '撤买单' : cancelSide === 'sell' ? '撤卖单' : '撤单';
-          (decision as any).cancelSide = cancelSide || undefined;  // 写入 decision 供前端使用
           this.logger.log(
             `[网格] cancel_order 成功: ${cancelSideLabel} L${decision.level ?? '?'} @${(decision.price ?? 0).toFixed(2)} ×${(decision.quantity ?? 0).toFixed(4)}`,
           );

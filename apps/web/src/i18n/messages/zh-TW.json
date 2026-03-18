@@ -1786,6 +1786,8 @@
       "makerOnlyAria": "PostOnly限價單",
       "autoDirectionSwitch": "方向自動切換",
       "autoDirectionSwitchDesc": "突破時偏轉方向，回歸後恢復中性",
+      "profitTrailingStop": "利潤回撤保護",
+      "profitTrailingStopDesc": "總PnL從利潤峰值回撤超此值時緊急平倉",
       "biasRatio": "偏向比例",
       "biasRatioDefault": "預設 70%",
       "searchCoins": "搜尋幣種...",

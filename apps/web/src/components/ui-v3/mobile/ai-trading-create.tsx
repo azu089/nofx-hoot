@@ -160,6 +160,7 @@ export function CreateStrategyWizard() {
     direction: 'neutral' as 'neutral' | 'long' | 'short' | 'long_bias' | 'short_bias',
     distribution: 'uniform' as 'uniform' | 'gaussian' | 'pyramid',
     maxDrawdownPct: 15,
+    profitTrailingStopPct: 50,
     stopLossPct: 5,
     dailyLossLimitPct: 10,
     autoAdjustThreshold: 20,
@@ -364,6 +365,7 @@ export function CreateStrategyWizard() {
           direction: gridParams.direction,
           distribution: gridParams.distribution,
           maxDrawdownPct: gridParams.maxDrawdownPct || 5,
+          profitTrailingStopPct: gridParams.profitTrailingStopPct || 50,
           stopLossPct: gridParams.stopLossPct || 5,
           dailyLossLimitPct: gridParams.dailyLossLimitPct || 1,
           autoAdjustThreshold: (gridParams.autoAdjustThreshold || 20) / 100,
@@ -869,6 +871,19 @@ export function CreateStrategyWizard() {
                     value={gridParams.maxDrawdownPct}
                     onChange={(e) => updateGrid('maxDrawdownPct', Number(e.target.value) || 0)}
                     min={1} max={50}
+                    className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                  />
+                </RiskField>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <RiskField label="利润保护" suffix="%">
+                  <input
+                    type="number"
+                    title="利润回撤保护"
+                    value={gridParams.profitTrailingStopPct ?? ''}
+                    onChange={(e) => updateGrid('profitTrailingStopPct', e.target.value === '' ? 0 : Number(e.target.value))}
+                    min={10} max={90}
+                    placeholder="50"
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                   />
                 </RiskField>

@@ -1771,6 +1771,8 @@
       "makerOnlyAria": "PostOnly limit orders",
       "autoDirectionSwitch": "Auto Direction Switch",
       "autoDirectionSwitchDesc": "Shift direction on breakout, revert on mean reversion",
+      "profitTrailingStop": "Profit Trailing Stop",
+      "profitTrailingStopDesc": "Emergency exit when total PnL drops below peak profit by this percentage",
       "biasRatio": "Bias Ratio",
       "biasRatioDefault": "Default 70%",
       "searchCoins": "Search coins...",

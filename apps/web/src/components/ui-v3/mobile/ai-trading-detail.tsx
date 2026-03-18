@@ -96,6 +96,7 @@ export function AIStrategyDetailPage() {
   const [editGridLeverage, setEditGridLeverage] = useState(1);
   const [editGridCount, setEditGridCount] = useState(10);
   const [editGridMaxDrawdown, setEditGridMaxDrawdown] = useState(15);
+  const [editGridProfitTrailingStopPct, setEditGridProfitTrailingStopPct] = useState(50);
   const [editGridStopLoss, setEditGridStopLoss] = useState(5);
   const [editGridDailyLossLimit, setEditGridDailyLossLimit] = useState(0);
   const [editGridAutoAdjustThreshold, setEditGridAutoAdjustThreshold] = useState(20);
@@ -305,6 +306,7 @@ export function AIStrategyDetailPage() {
       setEditGridLeverage(gc.leverage ?? 0);
       setEditGridCount(gc.gridCount || 10);
       setEditGridMaxDrawdown(gc.maxDrawdownPct || 15);
+      setEditGridProfitTrailingStopPct(gc.profitTrailingStopPct ?? 50);
       setEditGridStopLoss(gc.stopLossPct || 5);
       setEditGridDailyLossLimit(gc.dailyLossLimitPct || 0);
       setEditGridAutoAdjustThreshold(gc.autoAdjustThreshold != null ? Math.round(gc.autoAdjustThreshold * 100) : 20);
@@ -434,6 +436,7 @@ export function AIStrategyDetailPage() {
           direction: editGridDirection,
           distribution: editGridDistribution,
           maxDrawdownPct: editGridMaxDrawdown,
+          profitTrailingStopPct: editGridProfitTrailingStopPct,
           stopLossPct: editGridStopLoss,
           dailyLossLimitPct: editGridDailyLossLimit || 0,
           autoAdjustThreshold: (editGridAutoAdjustThreshold || 20) / 100,
@@ -1426,7 +1429,7 @@ export function AIStrategyDetailPage() {
                     <div className="glass-border-glow glass-card p-4 space-y-3">
                       <h3 className="text-sm font-semibold">{t('detail.editGridRiskControl')}</h3>
 
-                      {/* 峰值回撤 + 单格止损 — 两列输入 */}
+                      {/* 峰值回撤 + 利润保护 — 两列输入 */}
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <p className="text-xs text-[#9090A0]">{t('detail.editGridMaxDrawdown')}</p>
@@ -1441,6 +1444,23 @@ export function AIStrategyDetailPage() {
                             <span className="text-[#606070] text-xs shrink-0">%</span>
                           </div>
                         </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-[#9090A0]">{t('detail.profitTrailingStop')}</p>
+                          <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                            <input
+                              type="number" min={10} max={90}
+                              value={editGridProfitTrailingStopPct || ''}
+                              onChange={(e) => setEditGridProfitTrailingStopPct(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                              placeholder="50"
+                              className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                              aria-label={t('detail.profitTrailingStop')}
+                            />
+                            <span className="text-[#606070] text-xs shrink-0">%</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* 单格止损 */}
+                      <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <p className="text-xs text-[#9090A0]">{t('detail.editGridStopLoss')}</p>
                           <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">

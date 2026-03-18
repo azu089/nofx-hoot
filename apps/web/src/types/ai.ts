@@ -396,6 +396,7 @@ export interface GridConfig {
   useAtrBounds?: boolean;
   atrMultiplier?: number;
   maxDrawdownPct?: number;
+  profitTrailingStopPct?: number; // 利润回撤保护%（默认 50）
   stopLossPct?: number;
   autoAdjustThreshold?: number;  // 网格重建阈值（小数，如 0.20 = 20%）
   dailyLossLimitPct?: number;

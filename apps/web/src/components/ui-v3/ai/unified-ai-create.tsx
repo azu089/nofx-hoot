@@ -219,6 +219,7 @@ export function UnifiedAiCreate() {
       .catch(() => {});
   }, [reasoningMode, gridSymbol]);
   const [gridMaxDrawdown, setGridMaxDrawdown] = useState(15);
+  const [gridProfitTrailingStopPct, setGridProfitTrailingStopPct] = useState(50);
   const [gridStopLoss, setGridStopLoss] = useState(5);
   const [gridAutoAdjustThreshold, setGridAutoAdjustThreshold] = useState(20);
   const [gridEnableDirectionAdjust, setGridEnableDirectionAdjust] = useState(false);
@@ -466,7 +467,7 @@ export function UnifiedAiCreate() {
           boundsFromPct: true, // 上下界由百分比换算，不视为用户手动锁定
           upperBoundPct: parseFloat(gridUpperPct) > 0 ? parseFloat(gridUpperPct) : 0, // 保存原始百分比，adjust_grid 时按此重算
           lowerBoundPct: parseFloat(gridLowerPct) > 0 ? parseFloat(gridLowerPct) : 0,
-          maxDrawdownPct: gridMaxDrawdown, stopLossPct: gridStopLoss,
+          maxDrawdownPct: gridMaxDrawdown, profitTrailingStopPct: gridProfitTrailingStopPct, stopLossPct: gridStopLoss,
           dailyLossLimitPct: gridDailyLossLimit || 0,
           autoAdjustThreshold: (gridAutoAdjustThreshold || 20) / 100,
           enableDirectionAdjust: gridEnableDirectionAdjust,
@@ -984,6 +985,18 @@ export function UnifiedAiCreate() {
                   <span className="text-[#606070] text-xs shrink-0">%</span>
                 </div>
               </div>
+              <div className="space-y-1">
+                <p className="text-xs text-[#9090A0]">利润保护</p>
+                <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                  <input type="number" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0" min={10} max={90}
+                    value={gridProfitTrailingStopPct || ''} onChange={(e) => setGridProfitTrailingStopPct(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                    placeholder="50" aria-label="利润回撤保护"
+                  />
+                  <span className="text-[#606070] text-xs shrink-0">%</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <p className="text-xs text-[#9090A0]">单格止损</p>
                 <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">

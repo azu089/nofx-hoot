@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "Авто переключение направления",
       "autoDirectionSwitchDesc": "Смена направления при пробое, возврат при откате",
+      "profitTrailingStop": "Защита прибыли",
+      "profitTrailingStopDesc": "Экстренный выход при падении PnL ниже пика прибыли на этот процент",
       "biasRatio": "Коэффициент смещения",
       "biasRatioDefault": "По умолчанию 70%",
       "searchCoins": "Поиск монет...",

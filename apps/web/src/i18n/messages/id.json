@@ -1784,6 +1784,8 @@
       "makerOnlyAria": "PostOnly Maker",
       "autoDirectionSwitch": "Ganti Arah Otomatis",
       "autoDirectionSwitchDesc": "Ganti arah saat breakout, kembali saat mean reversion",
+      "profitTrailingStop": "Perlindungan Profit",
+      "profitTrailingStopDesc": "Keluar darurat ketika total PnL turun dari puncak profit melebihi persentase ini",
       "biasRatio": "Rasio Bias",
       "biasRatioDefault": "Default 70%",
       "searchCoins": "Cari koin...",
