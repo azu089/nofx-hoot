@@ -2009,7 +2009,6 @@ export class GridTradingService {
       price >= state.longBoxLower && price <= state.longBoxUpper
     ) {
       recovered = true;
-      this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内');
     }
     // 兜底：无箱体数据时，价格回到网格区间内也恢复（对齐 nofx 静默跳过时的意图）
     else if (
@@ -2018,15 +2017,19 @@ export class GridTradingService {
       price >= state.lowerPrice && price <= state.upperPrice
     ) {
       recovered = true;
-      this.logger.log('[网格] 虚假突破恢复（兜底）: 无箱体数据，价格回到网格区间内');
     }
 
     if (recovered) {
+      // 只在首次恢复时打印（breakoutLevel 非 none 或 isPaused 说明是真正的状态转换）
+      const isFirstRecovery = state.breakoutLevel !== 'none' || state.isPaused;
       state.breakoutLevel = 'none';
       state.breakoutDirection = '';
       state.breakoutConfirmCount = 0;
-      // 价格回归后部分恢复（50%），AI 负责逐步补仓
+      // 价格回归后部分恢复（50%），AI 负责逐步补仓，可通过 adjust_grid 归零
       state.positionReductionPct = 50;
+      if (isFirstRecovery) {
+        this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内，以50%容量继续运行');
+      }
       // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
       // 对齐 nofx：recovery 只更新状态，不取消挂单（nofx 无 needsReconcile）
       if (state.pauseSource !== 'risk_control') {
