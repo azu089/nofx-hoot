@@ -128,6 +128,7 @@ export interface GridState {
 
   // 仓位缩减（虚假突破恢复后）
   positionReductionPct: number;
+  recoveryConfirmCount: number;   // 连续在短期箱内的轮次计数（≥3 → 自动清零 positionReductionPct）
 
   // 市场状态分类
   currentRegime: RegimeLevel;
@@ -656,6 +657,7 @@ export class GridTradingService {
       breakoutDirection: '',
       breakoutConfirmCount: 0,
       positionReductionPct: 0,
+      recoveryConfirmCount: 0,
       currentRegime: 'standard',
       currentDirection: direction,
       directionBiasRatio: config.directionBiasRatio ?? DIRECTION_BIAS_RATIO,
@@ -2001,42 +2003,53 @@ export class GridTradingService {
       (enableDirectionAdjust && state.currentDirection !== 'neutral');
     if (!needsCheck) return;
 
-    let recovered = false;
+    // 判断价格是否回到长期箱体内（或兜底：回到网格区间）
+    const inLongBox =
+      (state.longBoxUpper > 0 && state.longBoxLower > 0 &&
+        price >= state.longBoxLower && price <= state.longBoxUpper) ||
+      (state.longBoxUpper === 0 &&
+        state.lowerPrice > 0 && state.upperPrice > 0 &&
+        price >= state.lowerPrice && price <= state.upperPrice);
 
-    // 优先：价格回到长期箱体内（Donchian）
-    if (
-      state.longBoxUpper > 0 && state.longBoxLower > 0 &&
-      price >= state.longBoxLower && price <= state.longBoxUpper
-    ) {
-      recovered = true;
-    }
-    // 兜底：无箱体数据时，价格回到网格区间内也恢复（对齐 nofx 静默跳过时的意图）
-    else if (
-      state.longBoxUpper === 0 &&
-      state.lowerPrice > 0 && state.upperPrice > 0 &&
-      price >= state.lowerPrice && price <= state.upperPrice
-    ) {
-      recovered = true;
-    }
-
-    if (recovered) {
-      // 只在首次恢复时打印（breakoutLevel 非 none 或 isPaused 说明是真正的状态转换）
+    if (inLongBox) {
+      // 首次回到长期箱体：解除暂停，维持50%缩减等待短期确认
       const isFirstRecovery = state.breakoutLevel !== 'none' || state.isPaused;
       state.breakoutLevel = 'none';
       state.breakoutDirection = '';
       state.breakoutConfirmCount = 0;
-      // 价格回归后部分恢复（50%），AI 负责逐步补仓，可通过 adjust_grid 归零
-      state.positionReductionPct = 50;
       if (isFirstRecovery) {
-        this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内，以50%容量继续运行');
+        state.positionReductionPct = 50;
+        this.logger.log('[网格] 虚假突破恢复: 价格回到长期箱体内，以50%容量继续运行（等待短期箱确认后自动解除缩减）');
+        if (state.pauseSource !== 'risk_control') {
+          state.isPaused = false;
+          state.pauseReason = undefined;
+          state.pauseSource = undefined;
+        }
       }
-      // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
-      // 对齐 nofx：recovery 只更新状态，不取消挂单（nofx 无 needsReconcile）
-      if (state.pauseSource !== 'risk_control') {
-        state.isPaused = false;
-        state.pauseReason = undefined;
-        state.pauseSource = undefined;
+
+      // 短期箱体确认：连续 3 轮在短期箱内 → 自动完全恢复（positionReductionPct→0）
+      const inShortBox =
+        state.shortBoxUpper > 0 && state.shortBoxLower > 0 &&
+        price >= state.shortBoxLower && price <= state.shortBoxUpper;
+      if (inShortBox && state.positionReductionPct > 0) {
+        state.recoveryConfirmCount = (state.recoveryConfirmCount ?? 0) + 1;
+        if (state.recoveryConfirmCount >= 3) {
+          this.logger.log(`[网格] 仓位缩减自动解除: 短期箱内连续${state.recoveryConfirmCount}轮稳定 → positionReductionPct 0%`);
+          state.positionReductionPct = 0;
+          state.recoveryConfirmCount = 0;
+        } else {
+          this.logger.log(`[网格] 短期箱恢复确认: ${state.recoveryConfirmCount}/3轮（仍维持50%缩减）`);
+        }
+      } else if (!inShortBox) {
+        // 价格离开短期箱体，重置计数
+        if ((state.recoveryConfirmCount ?? 0) > 0) {
+          this.logger.log(`[网格] 短期箱恢复中断: 价格离开短期箱体，重置计数`);
+          state.recoveryConfirmCount = 0;
+        }
       }
+    } else {
+      // 价格离开长期箱体，重置所有恢复计数
+      state.recoveryConfirmCount = 0;
     }
 
     // 价格回到短期箱体内时，方向逐步向中性恢复（仅 enableDirectionAdjust=true）
@@ -2373,7 +2386,7 @@ export class GridTradingService {
         }
         return {
           price: d.p, side: d.s as 'buy' | 'sell', quantity: normalQty,
-          positionSize: 0, state: 'cancelled' as const, orderId: undefined,
+          positionSize: 0, state: 'empty' as const, orderId: undefined,
           fillPrice: undefined, profit: undefined,
         };
       });
@@ -2744,6 +2757,7 @@ export class GridTradingService {
         if (state.positionReductionPct > 0) {
           this.logger.log(`[网格] adjust_grid: 仓位缩减模式解除 (${state.positionReductionPct}% → 0%)`);
           state.positionReductionPct = 0;
+          state.recoveryConfirmCount = 0;
         }
         break;
       }

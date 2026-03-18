@@ -727,7 +727,7 @@ function gridSystemPromptZh(
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
 - **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
-- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（ATR 或用户百分比）③ 持仓按入场价就近映射到新层 ④ 自动解除暂停 ⑤ 本轮结束，下轮 AI 基于新网格决策
+- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（ATR 或用户百分比）③ 持仓按入场价就近映射到新层 ④ 自动解除暂停 ⑤ 立即清除仓位缩减（positionReductionPct→0） ⑥ 本轮结束，下轮 AI 基于新网格决策
 - **hold**: 保持现状（仅在无空层且无需调整时使用）
 
 技术约束（交易所规则，不可违反）：
@@ -1043,7 +1043,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。市场恢复正常后可执行 adjust_grid 重建网格以自动解除缩减。`);
+    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。系统将在短期箱体内连续3轮稳定后自动解除；如需立即解除可调用 adjust_grid。`);
   }
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
@@ -1195,7 +1195,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty). When market recovers, use adjust_grid to rebuild and automatically clear this reduction.`);
+    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty). System will auto-clear after 3 consecutive cycles stable inside the short-term box; use adjust_grid for immediate clearance.`);
   }
   const _exchLongEn = ctx.positionLong?.quantity ?? 0;
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
