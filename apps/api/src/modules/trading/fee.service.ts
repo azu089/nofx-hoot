@@ -214,7 +214,7 @@ export class FeeService {
           amount: actualDeduction.negated(),
           uniqueOrderId,
           status: 'completed',
-          remark: feeRecord.strategyName ? `[${feeRecord.strategyName}] 盈利${profit}` : `盈利${profit}`,
+          remark: feeRecord.strategyName ? `[${feeRecord.strategyName}] 盈利${parseFloat(profit).toFixed(2)}` : `盈利${parseFloat(profit).toFixed(2)}`,
         },
       });
 

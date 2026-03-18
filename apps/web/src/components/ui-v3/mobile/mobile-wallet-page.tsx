@@ -555,7 +555,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
     return transactionsData.items.map(tx => {
       const numAmount = parseFloat(tx.amount)
       const isPositive = numAmount >= 0
-      const absAmount = Math.abs(numAmount).toFixed(8)
+      const absAmount = parseFloat(Math.abs(numAmount).toFixed(8)).toString()
       return {
         id: tx.id,
         type: tx.type as TransactionItem['type'],
@@ -1150,7 +1150,7 @@ export function MobileWalletPage({ initialTab = 'wallet', onNavigate }: MobileWa
                               className={`text-lg font-bold ${
                                 tx.trend === "up"
                                   ? "text-[#22C55E]"
-                                  : "text-[#94A3B8]"
+                                  : "text-[#EF4444]"
                               }`}
                             >
                               {tx.amount}
