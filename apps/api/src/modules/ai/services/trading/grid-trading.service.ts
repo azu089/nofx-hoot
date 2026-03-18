@@ -32,7 +32,6 @@ export interface GridConfig {
   useATRBounds?: boolean;      // 使用 ATR 自动边界
   atrMultiplier?: number;      // ATR 乘数（默认 2.0）
   maxDrawdownPct?: number;     // 最大回撤%（默认 15）
-  totalLossLimitPct?: number;  // 总体亏损上限%（默认 30，相对 totalInvestment）
   dailyLossLimitPct?: number;  // 日内亏损限额%（默认 5）
   breakoutPct?: number;        // 价格突破网格边界暂停阈值%（默认 2）
   enableDirectionAdjust?: boolean; // 启用方向自适应（突破时自动偏转方向，默认 true）
@@ -353,10 +352,7 @@ export class GridTradingService {
 
   // reconcileCompleted 已废弃（2026-03-16）：每轮 syncMemoryFromExchange 从交易所全量重建内存，无需一次性恢复
 
-  // neutral side 一次性修正追踪：容器重启后首个有 currentPrice 的轮次执行一次
-  // nofx: side 在 initializeGridLevels 用 currentPrice 一次性赋值，之后静态不变
-  // HOOT buildGridLinesFromConfig 用 centerPrice（静态中间价），重启后需用实时价修正空层 side
-  private readonly neutralSideCorrected = new Set<string>();
+  // neutralSideCorrected 已废弃（2026-03-18）：改为每轮 syncMemoryFromExchange 后动态方向共识修正
 
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
@@ -990,30 +986,9 @@ export class GridTradingService {
 
     this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'} | recLev=${state.recommendedLeverage ?? '-'}x`);
 
-    // 一次性 neutral side 修正（容器重启后首个有 currentPrice 的轮次执行）
-    // nofx: initializeGridLevels 用当时 currentPrice 一次性赋值 side，之后静态不变
-    // HOOT buildGridLinesFromConfig 用 centerPrice（上下界中间价），与实时价不同，需修正
-    // 仅对 empty 层修正；pending/filled 层 side 不变（由交易所挂单/持仓方向决定）
-    if (!this.neutralSideCorrected.has(strategyId)) {
-      this.neutralSideCorrected.add(strategyId);
-      if ((state.currentDirection ?? 'neutral') === 'neutral') {
-        let corrected = 0;
-        for (const line of state.gridLines) {
-          if (line.state === 'empty') {
-            const correctSide = line.price <= currentPrice ? 'buy' : 'sell';
-            if (line.side !== correctSide) {
-              line.side = correctSide;
-              corrected++;
-            }
-          }
-        }
-        if (corrected > 0) {
-          this.logger.log(
-            `[网格] 一次性 neutral side 修正: ${corrected} 层（基于实时价 ${currentPrice}）`,
-          );
-        }
-      }
-    }
+    // 一次性 neutral side 修正 — 已删除（2026-03-18）
+    // 替代方案：每轮 syncMemoryFromExchange 之后的"动态方向共识修正"
+    // 原逻辑仅在容器重启后执行一次，无法应对运行中持仓方向变化（如全部变为多头时空层仍为 sell）
 
     // ──── 风控优先：Step 3/3.5/4 始终在突破检查(Step 2)前执行，确保即使突破 return 风控也已生效 ────
     let earlyAdapter: ExchangeAdapter | null = null;
@@ -1110,21 +1085,6 @@ export class GridTradingService {
           `最大回撤保护触发\n` +
           `保护规则: 从最高点回撤超过 ${maxDrawdownPct}% 时紧急平仓\n` +
           `实际情况: 当前回撤 ${drawdown.toFixed(1)}%`);
-        await this.persistGridState(strategyId, state);
-        return { trades: 0, errors: 0 };
-      }
-    }
-
-    // 总体亏损上限（安全网，独立于回撤计算）
-    // totalProfit 是已实现盈亏累计，不受 peakEquity 重置影响
-    const totalLossLimitPct = gridConfig?.totalLossLimitPct ?? 30;
-    if (totalLossLimitPct > 0 && state.totalProfit < 0 && state.totalInvestment > 0) {
-      const totalLossPct = (Math.abs(state.totalProfit) / state.totalInvestment) * 100;
-      if (totalLossPct >= totalLossLimitPct) {
-        await this.emergencyExit(state, userId, apiKeyId,
-          `总体亏损保护触发\n` +
-          `保护规则: 累计亏损超过投资额 ${totalLossLimitPct}% 时紧急平仓\n` +
-          `实际情况: 累计亏损 ${totalLossPct.toFixed(1)}%（$${Math.abs(state.totalProfit).toFixed(2)} / $${state.totalInvestment}）`);
         await this.persistGridState(strategyId, state);
         return { trades: 0, errors: 0 };
       }
@@ -1350,6 +1310,53 @@ export class GridTradingService {
             trades += preSyncResult.filledLines.length;
             this.logger.log(`[网格] 前置同步: ${preSyncResult.filledLines.length} 笔新成交检测`);
           }
+
+          // 动态方向共识修正（每轮执行，替代一次性 neutral side 修正）
+          // 对齐 nofx: 当所有持仓层为同一方向时，等价于 GridDirectionLong/Short
+          // 空层 side 必须跟随持仓方向，否则 AI 会在空层下反向单（如 L6 卖单死循环）
+          const filledBuys = state.gridLines.filter(l => l.state === 'filled' && l.side === 'buy');
+          const filledSells = state.gridLines.filter(l => l.state === 'filled' && l.side === 'sell');
+          if (filledBuys.length > 0 && filledSells.length === 0) {
+            // 全部持仓为多头 → 空层全部设为 buy（等价 nofx GridDirectionLong）
+            let corrected = 0;
+            for (const line of state.gridLines) {
+              if (line.state === 'empty' && line.side !== 'buy') {
+                line.side = 'buy';
+                corrected++;
+              }
+            }
+            if (corrected > 0) {
+              this.logger.log(`[网格]${tag} 方向共识修正: ${corrected} 个空层 sell→buy（全部持仓为多头）`);
+            }
+          } else if (filledSells.length > 0 && filledBuys.length === 0) {
+            // 全部持仓为空头 → 空层全部设为 sell（等价 nofx GridDirectionShort）
+            let corrected = 0;
+            for (const line of state.gridLines) {
+              if (line.state === 'empty' && line.side !== 'sell') {
+                line.side = 'sell';
+                corrected++;
+              }
+            }
+            if (corrected > 0) {
+              this.logger.log(`[网格]${tag} 方向共识修正: ${corrected} 个空层 buy→sell（全部持仓为空头）`);
+            }
+          } else if (filledBuys.length === 0 && filledSells.length === 0) {
+            // 无持仓 → 恢复 neutral 模式（价格分割）
+            let corrected = 0;
+            for (const line of state.gridLines) {
+              if (line.state === 'empty') {
+                const correctSide = line.price <= currentPrice ? 'buy' : 'sell';
+                if (line.side !== correctSide) {
+                  line.side = correctSide;
+                  corrected++;
+                }
+              }
+            }
+            if (corrected > 0) {
+              this.logger.log(`[网格]${tag} neutral 恢复: ${corrected} 个空层（无持仓，价格分割）`);
+            }
+          }
+          // 混合方向（同时有 buy+sell filled）→ 不修正，保持各层原 side
         }
 
         // 构建 AI 上下文
@@ -4732,7 +4739,7 @@ export class GridTradingService {
   clearGridState(strategyId: string): void {
     this.gridStates.delete(strategyId);
     // reconcileCompleted 已废弃（每轮 syncMemoryFromExchange 自动重建）
-    this.neutralSideCorrected.delete(strategyId); // 下次启动重新执行 neutral side 修正
+    // neutralSideCorrected 已废弃（每轮 syncMemoryFromExchange 后动态方向共识修正）
   }
 
   async getGridState(strategyId: string): Promise<GridState | null> {
