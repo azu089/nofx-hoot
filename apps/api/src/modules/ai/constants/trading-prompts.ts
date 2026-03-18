@@ -735,7 +735,15 @@ function gridSystemPromptZh(
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ## 暂停模式（isPaused=true）
-网格挂单已全部撤销，AI 仍继续运行管理持仓。可用全部操作（含 resume_grid / place_buy_limit）。
+网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
+- close_long / close_short：平仓
+- cancel_order / cancel_all_orders：撤单
+- resume_grid：解除暂停，下轮周期干净重建（推荐优先使用）
+- adjust_grid：以当前价重建网格并立即解除暂停
+- hold：继续观察
+
+⚠️ **place_buy_limit / place_sell_limit 暂停期间不可用**（代码层拦截）。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
+
 暂停来源（pauseSource）仅供参考，不影响 AI 操作权限：
 - breakout：价格越出网格边界
 - ai：AI 主动暂停
@@ -789,7 +797,15 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ## Pause Mode (isPaused=true)
-All grid orders cancelled. AI continues running to manage positions. All actions available (including resume_grid / place_buy_limit).
+All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
+- close_long / close_short: close positions
+- cancel_order / cancel_all_orders: cancel orders
+- resume_grid: lift pause, next cycle rebuilds cleanly from exchange (recommended)
+- adjust_grid: rebuild grid at current price and immediately lift pause
+- hold: observe
+
+⚠️ **place_buy_limit / place_sell_limit are NOT available while paused** (blocked by code). Use resume_grid or adjust_grid first; new orders can be placed next cycle.
+
 pauseSource is reference only — does NOT restrict AI actions:
 - breakout: price outside grid boundary
 - ai: AI-initiated pause
@@ -989,7 +1005,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     if (ctx.currentPrice > ctx.boxData.longUpper || ctx.currentPrice < ctx.boxData.longLower) {
       lines.push('⚠️ 突破: 价格突破长期箱体!');
     } else if (ctx.currentPrice > ctx.boxData.midUpper || ctx.currentPrice < ctx.boxData.midLower) {
-      lines.push('⚠️ 警告: 价格接近长期箱体边界');
+      lines.push('⚠️ 注意: 价格已突破中期箱体（在中期~长期区间内）');
     }
   }
 
@@ -1031,7 +1047,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   }
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
-  lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} / 内存filled合计 ${calcFilledQty(ctx.levels, 'buy').toFixed(4)} | 空头 ${_exchShort.toFixed(4)} / 内存filled合计 ${calcFilledQty(ctx.levels, 'sell').toFixed(4)}`);
+  lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} | 空头 ${_exchShort.toFixed(4)}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false'}`);
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`逐层止损阈值: ${ctx.stopLossPct}%`);
@@ -1141,7 +1157,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     if (ctx.currentPrice > ctx.boxData.longUpper || ctx.currentPrice < ctx.boxData.longLower) {
       lines.push('⚠️ BREAKOUT: Price outside long-term box!');
     } else if (ctx.currentPrice > ctx.boxData.midUpper || ctx.currentPrice < ctx.boxData.midLower) {
-      lines.push('⚠️ WARNING: Price approaching long-term box boundary');
+      lines.push('⚠️ NOTICE: Price has broken mid-term box (between mid and long-term range)');
     }
   }
 
@@ -1182,7 +1198,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   }
   const _exchLongEn = ctx.positionLong?.quantity ?? 0;
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
-  lines.push(`Exchange Position: Long ${_exchLongEn.toFixed(4)} / Memory filled ${calcFilledQty(ctx.levels, 'buy').toFixed(4)} | Short ${_exchShortEn.toFixed(4)} / Memory filled ${calcFilledQty(ctx.levels, 'sell').toFixed(4)}`);
+  lines.push(`Exchange Position: Long ${_exchLongEn.toFixed(4)} | Short ${_exchShortEn.toFixed(4)}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (user locked, adjust_grid cannot change range)' : 'false'}`);
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`Per-level Stop Loss: ${ctx.stopLossPct}%`);
