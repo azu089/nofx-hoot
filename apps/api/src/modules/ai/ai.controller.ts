@@ -1211,11 +1211,11 @@ export class AiController {
     if (strategyIds.length > 0) {
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart }, exchangeRef: { not: null } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed' },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', exchangeRef: { not: null } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
       ]);
@@ -1449,7 +1449,7 @@ export class AiController {
     let todayPnl = 0;
     let gridState: object | null = null;
 
-    // 所有策略类型统一从 Position 表取今日已平仓 realizedPnl（策略级精确盈亏）
+    // 所有策略类型统一从 Position 表取今日已平仓 realizedPnl（只用交易所聚合记录）
     {
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
@@ -1458,6 +1458,7 @@ export class AiController {
           aiStrategyId: id,
           status: 'closed',
           closedAt: { gte: todayStart },
+          exchangeRef: { not: null },
         },
         select: { realizedPnl: true },
       });
@@ -1482,6 +1483,11 @@ export class AiController {
           isPaused: rawState.isPaused,
           pauseSource: rawState.pauseSource,
           pauseReason: rawState.pauseReason,
+          // 盈亏统计（供前端今日统计使用）
+          totalTrades: rawState.totalTrades ?? 0,
+          winningTrades: rawState.winningTrades ?? 0,
+          totalProfit: rawState.totalProfit ?? 0,
+          dailyTotalProfit: (rawState as any).dailyTotalProfit ?? 0,
         };
       }
     }
@@ -1752,12 +1758,13 @@ export class AiController {
     const since = new Date();
     since.setDate(since.getDate() - daysNum);
 
-    // 查询策略关联的已平仓持仓
+    // 查询策略关联的已平仓持仓（只用交易所聚合记录）
     const closedPositions = await this.prisma.position.findMany({
       where: {
         aiStrategyId: id,
         status: 'closed',
         closedAt: { gte: since },
+        exchangeRef: { not: null },
       },
       orderBy: { closedAt: 'asc' },
       select: {

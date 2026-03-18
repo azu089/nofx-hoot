@@ -481,6 +481,8 @@ export class PositionsService {
       status: 'closed',
       // 排除清理重复记录产生的虚假历史（无真实交易发生）
       closeReason: { not: 'duplicate_cleanup' },
+      // 只显示交易所同步的聚合记录（有 exchangeRef），过滤掉旧的逐笔记录
+      exchangeRef: { not: null },
     };
 
     if (apiKeyId) {

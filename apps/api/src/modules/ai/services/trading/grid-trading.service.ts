@@ -134,6 +134,7 @@ export interface GridState {
 
   // 方向调节
   currentDirection: GridDirection;
+  directionBiasRatio: number;       // 偏向比例（从 GridConfig 复制，供 applyGridDirection 使用）
 
   createdAt: string;
 
@@ -587,7 +588,7 @@ export class GridTradingService {
     }
 
     // Step 5: 方向分配
-    this.applyGridDirection(gridLines, currentPrice, direction);
+    this.applyGridDirection(gridLines, currentPrice, direction, config.directionBiasRatio ?? DIRECTION_BIAS_RATIO);
 
     // Step 6: 设置杠杆（如果有 adapter）
     if (this.adapterFactory && apiKeyId) {
@@ -657,7 +658,7 @@ export class GridTradingService {
       positionReductionPct: 0,
       currentRegime: 'standard',
       currentDirection: direction,
-
+      directionBiasRatio: config.directionBiasRatio ?? DIRECTION_BIAS_RATIO,
 
       createdAt: new Date().toISOString(),
 
@@ -790,6 +791,8 @@ export class GridTradingService {
         // 兼容旧数据：stopLossPct 不存在时 fallback 到默认值
         state.stopLossPct ??= DEFAULT_STOP_LOSS_PCT;
         state.peakTotalProfit ??= state.totalProfit ?? 0;
+        state.currentDirection ??= 'neutral' as GridDirection;
+        state.directionBiasRatio ??= gridConfig?.directionBiasRatio ?? DIRECTION_BIAS_RATIO;
         // 兼容旧数据：profitTargetPct 不存在时 fallback 到 0（AI自主决策）
         state.profitTargetPct ??= 0;
         // 兼容旧数据：信号字段（Phase 11/12 新增，旧 DB 记录无此字段）
@@ -883,6 +886,7 @@ export class GridTradingService {
         }
         if (gridConfig.totalInvestment) state.totalInvestment = gridConfig.totalInvestment;
         if (gridConfig.direction) state.currentDirection = gridConfig.direction;
+        if (gridConfig.directionBiasRatio !== undefined) state.directionBiasRatio = gridConfig.directionBiasRatio;
         if (gridConfig.distribution) state.distribution = gridConfig.distribution;
         // 同步百分比边界（用户在前端修改了百分比时立即生效）
         state.upperBoundPct = gridConfig.upperBoundPct;
@@ -1930,6 +1934,7 @@ export class GridTradingService {
             state.gridLines,
             state.lastPrice || 0,
             newDirection as GridDirection,
+            state.directionBiasRatio ?? DIRECTION_BIAS_RATIO,
           );
         }
         break;
@@ -2027,6 +2032,7 @@ export class GridTradingService {
           state.gridLines,
           price,
           recoveredDirection as GridDirection,
+          state.directionBiasRatio ?? DIRECTION_BIAS_RATIO,
         );
         state.needsReconcile = true;
       }
@@ -3817,7 +3823,7 @@ export class GridTradingService {
     }
 
     const centerPrice = (state.upperPrice + state.lowerPrice) / 2;
-    this.applyGridDirection(lines, centerPrice, state.currentDirection ?? 'neutral');
+    this.applyGridDirection(lines, centerPrice, state.currentDirection ?? 'neutral', state.directionBiasRatio ?? DIRECTION_BIAS_RATIO);
     return lines;
   }
 
@@ -4014,7 +4020,7 @@ export class GridTradingService {
       line.unrealizedPnl = 0;
     }
 
-    this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection);
+    this.applyGridDirection(state.gridLines, centerPrice, state.currentDirection, state.directionBiasRatio ?? DIRECTION_BIAS_RATIO);
     state.orderBook = {};
 
     // nofx autoAdjustGrid L1456-1479：持仓锚点映射（按方向向内侧连续排列，防止持仓跨入反向区域）

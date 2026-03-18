@@ -571,15 +571,25 @@ export function AIStrategyDetailPage() {
 
   const pnlHistory = pnlChart?.dataPoints || [];
 
-  // Today stats calculation (approximate from logs)
-  const todayLogs = logs.filter(log => {
-    const logDate = new Date(log.createdAt);
-    const today = new Date();
-    return logDate.toDateString() === today.toDateString();
-  });
-  const todayTrades = todayLogs.filter(log => log.executed).length;
-  const todayWins = todayLogs.filter(log => log.executed && log.decision?.action?.includes('close')).length;
-  const todayLosses = todayTrades - todayWins;
+  // Today stats: 网格策略用 gridState 实际成交数据，非网格用 log 近似
+  const gridStateExt = (detail as any)?.gridState as { totalTrades?: number; winningTrades?: number; dailyTotalProfit?: number; totalProfit?: number } | null;
+  let todayTrades: number;
+  let todayWins: number;
+  let todayLosses: number;
+  if (strategy.strategyType === 'grid' && gridStateExt) {
+    todayTrades = gridStateExt.totalTrades ?? 0;
+    todayWins = gridStateExt.winningTrades ?? 0;
+    todayLosses = todayTrades - todayWins;
+  } else {
+    const todayLogs = logs.filter(log => {
+      const logDate = new Date(log.createdAt);
+      const today = new Date();
+      return logDate.toDateString() === today.toDateString();
+    });
+    todayTrades = todayLogs.filter(log => log.executed).length;
+    todayWins = todayLogs.filter(log => log.executed && log.decision?.action?.includes('close')).length;
+    todayLosses = todayTrades - todayWins;
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-[#F8F8FC] w-full">
