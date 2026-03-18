@@ -2006,11 +2006,11 @@ export class GridTradingService {
       // 价格回归后部分恢复（50%），AI 负责逐步补仓
       state.positionReductionPct = 50;
       // 只释放突破类暂停，风控类暂停（pauseSource=risk_control）不能被恢复函数解除
+      // 对齐 nofx：recovery 只更新状态，不取消挂单（nofx 无 needsReconcile）
       if (state.pauseSource !== 'risk_control') {
         state.isPaused = false;
         state.pauseReason = undefined;
         state.pauseSource = undefined;
-        state.needsReconcile = true;
       }
     }
 
