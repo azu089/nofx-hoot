@@ -1115,10 +1115,14 @@ export class GridTradingService {
       if (dailyLossPct >= dailyLossLimitPct) {
         const dailyReason =
           `日内亏损保护触发\n` +
-          `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时平仓退出\n` +
+          `保护规则: 今日亏损超过 ${dailyLossLimitPct}% 时暂停交易\n` +
           `实际情况: 今日已亏损 ${dailyLossPct.toFixed(1)}%（$${Math.abs(state.dailyPnl).toFixed(2)}）`;
-        // 软暂停：撤单但不平仓（避免浮亏变实亏，持仓等待价格恢复）
-        await this.softPauseGrid(state, userId, apiKeyId, dailyReason);
+        // 对齐 nofx：日内亏损只暂停，不撤单不平仓
+        // nofx: gridState.IsPaused = true + return error（挂单保留，等价格恢复后挂单可能成交回本）
+        this.logger.warn(`[网格] 日内亏损保护: 只暂停，保留挂单（对齐 nofx）`);
+        state.isPaused = true;
+        state.pauseSource = 'risk_control';
+        state.pauseReason = dailyReason;
         await this.persistGridState(strategyId, state);
         await this.prisma.aiStrategyLog.create({
           data: {
