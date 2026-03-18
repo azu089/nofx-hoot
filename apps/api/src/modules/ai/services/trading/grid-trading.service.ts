@@ -1067,22 +1067,33 @@ export class GridTradingService {
       state.peakEquity = currentEquity;
     }
 
-    // ★ 日内 P&L 跟踪 — 权益获取成功后立即更新，不受后续 return 影响
-    // 放在这里确保 Step 4 的提前 return 也能正确保存日内基准
-    if (equityFetched && currentEquity > 0) {
-      // 使用北京时间（UTC+8）计算"今天"，确保日内重置在北京 0 点，而非 UTC 0 点（北京 8 点）
+    // ★ 日内 P&L 跟踪 — 策略自身的 已实现+未实现 盈亏（不再用整个账户权益差）
+    // 修复：多策略共享同一 API Key 时，旧逻辑 currentEquity-dailyStartEquity 会把所有策略亏损算在一个策略头上
+    // 新逻辑：dailyPnl = dailyTotalProfit(今日已实现) + strategyUnrealizedPnl(本策略未实现)
+    {
       const todayStr = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
       if (state.dailyPnlResetDate !== todayStr) {
         state.dailyPnlResetDate = todayStr;
         state.dailyPnl = 0;
         state.dailyTotalProfit = 0;
-        state.dailyStartEquity = currentEquity;
-      } else if (!state.dailyStartEquity) {
-        state.dailyStartEquity = currentEquity;
-        state.dailyPnl = 0;
-      } else {
-        state.dailyPnl = currentEquity - state.dailyStartEquity;
+        if (equityFetched && currentEquity > 0) {
+          state.dailyStartEquity = currentEquity; // 仅用于回撤计算的参考，不再用于 dailyPnl
+        }
       }
+
+      // 从交易所持仓中提取本策略 symbol 的未实现盈亏
+      let strategyUnrealizedPnl = 0;
+      if (livePositions && livePositions.length > 0) {
+        const baseSymbol = state.symbol.split('/')[0];
+        for (const pos of livePositions) {
+          if ((pos as any).symbol?.includes(baseSymbol)) {
+            strategyUnrealizedPnl += (pos as any).unrealizedPnl ?? 0;
+          }
+        }
+      }
+
+      // dailyPnl = 今日已实现盈亏 + 本策略当前未实现盈亏
+      state.dailyPnl = (state.dailyTotalProfit ?? 0) + strategyUnrealizedPnl;
     }
 
     const maxDrawdownPct = gridConfig?.maxDrawdownPct ?? DEFAULT_MAX_DRAWDOWN_PCT;
@@ -1109,7 +1120,9 @@ export class GridTradingService {
     // Step 4: 日内亏损触发检查（dailyPnl 已在 Step 3 权益获取后更新）
     // dailyLossLimitPct <= 0 视为禁用（0 = 不限制日内亏损）
     const dailyLossLimitPct = gridConfig?.dailyLossLimitPct ?? DEFAULT_DAILY_LOSS_LIMIT_PCT;
-    const dailyBase = state.dailyStartEquity > 0 ? state.dailyStartEquity : state.totalInvestment;
+    // 对齐 nofx: dailyLossPct = (-dailyPnL) / TotalInvestment * 100
+    // 始终用 totalInvestment 作为基数，不用 dailyStartEquity（已废弃）
+    const dailyBase = state.totalInvestment;
     if (dailyLossLimitPct > 0 && state.dailyPnl < 0 && dailyBase > 0) {
       const dailyLossPct = (Math.abs(state.dailyPnl) / dailyBase) * 100;
       if (dailyLossPct >= dailyLossLimitPct) {
