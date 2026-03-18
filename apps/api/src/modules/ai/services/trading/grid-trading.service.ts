@@ -1310,9 +1310,7 @@ export class GridTradingService {
             targetLeverage = state.leverage;
           } else if (!state.userFixedLeverage && state.recommendedLeverage && state.recommendedLeverage !== state.leverage) {
             // 动态模式：regime 变化导致推荐杠杆与当前不同
-            if (state.recommendedLeverage !== state.lastSyncedLeverage) {
-              targetLeverage = state.recommendedLeverage;
-            }
+            targetLeverage = state.recommendedLeverage;
           }
 
           if (targetLeverage != null) {
@@ -1326,11 +1324,10 @@ export class GridTradingService {
               state.effectiveLeverage = targetLeverage;
               state.lastSyncedLeverage = targetLeverage;
             } catch (e: any) {
-              // 有持仓时交易所拒绝改杠杆是正常的（如 Binance -4161），记录后继续
               this.logger.warn(
-                `[网格] 杠杆同步失败(忽略): → ${targetLeverage}x, err=${e.message}`,
+                `[网格] 杠杆同步失败(下轮重试): → ${targetLeverage}x, err=${e.message}`,
               );
-              state.lastSyncedLeverage = targetLeverage; // 避免每轮重试同一个值
+              // 不设 lastSyncedLeverage，下轮继续重试
             }
           }
         }
@@ -4518,12 +4515,6 @@ export class GridTradingService {
     const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
     const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
 
-    // ★ 修复：midPrice 从自己的 display 结果算（不读 state.gridLines）
-    const filledEntries = display.filter(d => d.st === 'filled' && d.ep > 0).map(d => d.ep as number);
-    const midPrice = filledEntries.length > 0
-      ? filledEntries.reduce((s, e) => s + e, 0) / filledEntries.length
-      : (state.upperPrice + state.lowerPrice) / 2;
-
     const usedDisplayIdx = new Set<number>();
     const symOrders = exchangeOpenOrders.filter((o: any) => {
       const sym: string = o.symbol ?? '';
@@ -4540,18 +4531,13 @@ export class GridTradingService {
       // 规则1：挂单价格与持仓层同价 → 跳过（多余单）
       if ([...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing)) continue;
 
-      // 规则2：找价格最近的 empty 层 + side 过滤（2位小数固定范围）
-      const r2 = (x: number) => Math.round(x * 100) / 100;
-      const upperBound = r2(midPrice + halfSpacing);
-      const lowerBound = r2(midPrice - halfSpacing);
+      // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
+      // 对齐 syncMemoryFromExchange：删除 zone filter，避免 AI 放在非标准位置的单被误过滤
       let bestIdx = -1;
       let bestDist = Infinity;
       for (let i = 0; i < display.length; i++) {
         if (usedDisplayIdx.has(i)) continue;
         if (display[i].st !== 'empty') continue;
-        const lp = r2(state.gridLines[i].price);
-        if (orderSide === 'buy' && lp > upperBound + 0.01) continue;
-        if (orderSide === 'sell' && lp < lowerBound - 0.01) continue;
         const d = Math.abs(state.gridLines[i].price - price);
         if (d < bestDist) { bestDist = d; bestIdx = i; }
       }
