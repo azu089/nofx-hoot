@@ -2612,7 +2612,7 @@ export class GridTradingService {
           cancelSide = cancelLine.side ?? '';
         } else {
           // 溢出挂单（交易所挂单 > 网格层数）：从交易所原始数据补充详情
-          const exchOrder = ((state as any)._exchangeOrders ?? []).find((o: any) => o.orderId === cancelOrderId);
+          const exchOrder = ((state as any)._exchangeOrders ?? []).find((o: any) => String(o.orderId) === String(cancelOrderId));
           if (exchOrder) {
             decision.price = exchOrder.price ?? 0;
             decision.quantity = exchOrder.quantity ?? undefined;

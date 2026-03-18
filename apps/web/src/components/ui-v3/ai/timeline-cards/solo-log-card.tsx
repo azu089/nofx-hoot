@@ -950,7 +950,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {(() => {
                         // cancel_order 专用：通过 orderId 末8位从快照反查层/价/量
                         const cancelOid = op.action === 'cancel_order'
-                          ? ((op.orderId ?? op.order_id) as string | undefined)?.slice(-8)
+                          ? (String(op.orderId ?? op.order_id ?? '').slice(-8) || undefined)
                           : undefined;
                         const cancelMatch = cancelOid && d.gridSnapshot?.gridLines
                           ? (d.gridSnapshot.gridLines as any[]).find((gl: any) => gl.oid === cancelOid)
