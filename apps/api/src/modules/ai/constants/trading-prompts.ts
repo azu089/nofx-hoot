@@ -1062,6 +1062,11 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, false));
   }
+  // 可下单空层摘要（AI 直接用，无需自行计算）
+  const emptyLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'empty').map(({ i }) => `L${i + 1}`);
+  const nonEmptyLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state !== 'empty').map(({ l, i }) => `L${i + 1}[${l.state === 'filled' ? (l.side === 'buy' ? '持仓-多' : '持仓-空') : '挂单'}]`);
+  lines.push(`✅ 可下买/卖单的 empty 层: ${emptyLevels.length > 0 ? emptyLevels.join(', ') : '无（网格已满）'}`);
+  lines.push(`🚫 禁止下新单: ${nonEmptyLevels.length > 0 ? nonEmptyLevels.join(', ') : '无'}`);
 
   // Section 6: 账户状态
   lines.push('');
@@ -1209,6 +1214,11 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, true));
   }
+  // Explicit available/forbidden levels (prevents arithmetic errors)
+  const emptyLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'empty').map(({ i }) => `L${i + 1}`);
+  const nonEmptyLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state !== 'empty').map(({ l, i }) => `L${i + 1}[${l.state === 'filled' ? (l.side === 'buy' ? 'long' : 'short') : 'pending'}]`);
+  lines.push(`✅ Available empty levels (place_buy/sell_limit ONLY here): ${emptyLevelsEn.length > 0 ? emptyLevelsEn.join(', ') : 'None (grid full)'}`);
+  lines.push(`🚫 Forbidden levels (do NOT place new orders): ${nonEmptyLevelsEn.length > 0 ? nonEmptyLevelsEn.join(', ') : 'None'}`);
 
   // Section 6: Account Status
   lines.push('');
