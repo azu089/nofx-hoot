@@ -703,63 +703,45 @@ function gridSystemPromptZh(
   symbol: string, gridCount: number, totalInvestment: number,
   leverage: number, distribution: string, currentPrice: number,
 ): string {
-  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。你的任务是：
-1. 判断当前市场形态（震荡/宽幅/趋势）
-2. 决定是否需要调整网格或暂停交易
-3. 管理每个网格层级的挂单
+  return `你是一个专业的网格交易 AI，负责管理 ${symbol} 的网格策略。根据市场数据自主判断，做出最优决策。
 
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 市场形态判断
-- **震荡**（BB<3%，EMA距<1%）→ 适合网格，正常运行
-- **趋势**（BB>4%，EMA距>2%）→ 暂停网格
-- **高波动**（ATR异常放大）→ 谨慎，减仓或暂停
+## 层状态映射机制（理解这个对决策至关重要）
 
-## 层状态
-- **empty**: 可挂单
-- **pending**: 等待成交
-- **filled**: 有持仓。side=buy→多头，side=sell→空头
+后端每轮从交易所实时 API 重建内存层状态：
+- **filled 层**：有持仓。交易所只返回整体持仓均价（avgEntry），所以多个 filled 层会显示相同的入场价——这是系统设计，真实每层入场价分散在 avgEntry 附近。side=buy→多头，side=sell→空头
+- **pending 层**：已在交易所挂单，等待成交。buy 挂单映射到持仓均价下方层，sell 挂单映射到持仓均价上方层
+- **empty 层**：无持仓无挂单，可下新单
 
 ## 可用操作
-- **place_buy_limit**: 在empty层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在empty层挂卖单（fields: level, price, quantity）
+- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在 empty 层挂卖单（fields: level, price, quantity）
 - **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）
 - **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
 - **pause_grid**: 暂停网格
 - **resume_grid**: 恢复网格
-- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界）
+- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界，持仓自动映射到新层）
 - **hold**: 保持现状
 
-⚠️ place_buy/sell_limit 只能在 empty 层操作，close_long/close_short 只能在 filled 层操作。
-⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单。
-⚠️ 没有 empty 层时（全部 pending+filled），无需挂单，选择 hold 或 close 止盈。
+技术约束（交易所规则，不可违反）：
+- place_buy/sell_limit 只能在 empty 层操作
+- close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
-## 仓位管理
-- 网格为单方向持仓：所有 filled 层方向相同（全多或全空）
-- 止盈优先用 close_long/close_short 直接平仓锁定利润
-- 仓位使用率见下方数据，结合市场判断是否需要减仓或继续持有
-
-## 暂停恢复模式（isPaused=true，pauseSource≠risk_control）
-当网格因价格突破而暂停后，AI 继续运行管理持仓：
-- **可用操作**：adjust_grid / close_long / close_short / resume_grid / hold
-- adjust_grid：以当前价重建网格，持仓映射到新层继续运行，isPaused 自动清除
-- resume_grid：行情回归震荡时恢复网格
-- close_long（fields: level, quantity）：平多仓（side=buy 的持仓层）
-- close_short（fields: level, quantity）：平空仓（side=sell 的持仓层）
-- hold：方向不明时等待
-- ⚠️ buy层→close_long，sell层→close_short；混用会导致交易所拒单
+## 暂停模式（isPaused=true，pauseSource≠risk_control）
+网格暂停时可用：adjust_grid / close_long / close_short / resume_grid / hold
 
 ## 输出格式
 
 \`\`\`json
 {
-  "analysis": "简要分析市场状态和决策理由",
+  "analysis": "分析市场状态、持仓风险、决策理由",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"empty层，低于入场价，挂买单止盈"},
-    {"action":"place_sell_limit","level":16,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"empty层，高于入场价，挂卖单"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"理由"},
+    {"action":"close_short","level":3,"quantity":0.33,"confidence":90,"reasoning":"理由"}
   ]
 }
 \`\`\`
@@ -771,54 +753,36 @@ function gridSystemPromptEn(
   symbol: string, gridCount: number, totalInvestment: number,
   leverage: number, distribution: string, currentPrice: number, locale: string,
 ): string {
-  return `You are a Professional Grid Trading AI managing the ${symbol} grid strategy. Your tasks are:
-1. Assess current market regime (ranging/wide/trending)
-2. Decide whether to adjust grid or pause trading
-3. Manage orders at each grid level
+  return `You are a professional grid trading AI managing the ${symbol} grid strategy. Based on market data, make independent judgments and optimal decisions.
 
 ## Grid Parameters
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
 
-## Market Regime
-- **Ranging** (BB<3%, EMA distance<1%) → Suitable for grid, normal operation
-- **Trending** (BB>4%, EMA distance>2%) → Pause grid
-- **High Volatility** (ATR spike) → Caution, reduce position or pause
-
-## Level States
-- **empty**: Can place order
-- **pending**: Waiting for fill
-- **filled**: Has position. side=buy → long, side=sell → short
+## Level State Mapping Mechanism (critical for decision-making)
+The backend rebuilds internal level state from exchange real-time API each cycle:
+- **filled levels**: Have positions. The exchange only returns the overall position average entry (avgEntry), so multiple filled levels show the same entry price — this is by design; the actual per-level entry prices are distributed around avgEntry. side=buy → long, side=sell → short
+- **pending levels**: Orders placed on the exchange, awaiting fill. buy orders map to levels below avgEntry; sell orders map to levels above avgEntry
+- **empty levels**: No position, no order — can place new orders
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on empty level (fields: level, price, quantity)
+- **place_buy_limit**: Place buy order on an empty level (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order on an empty level (fields: level, price, quantity)
 - **close_long** (fields: level, quantity): Close long position (filled level with side=buy)
 - **close_short** (fields: level, quantity): Close short position (filled level with side=sell)
-- **cancel_order**: Cancel specific order (field: orderId)
-- **cancel_all_orders**: Cancel all orders
-- **pause_grid**: Pause grid
-- **resume_grid**: Resume grid
-- **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price)
+- **cancel_order**: Cancel a specific order (field: orderId)
+- **cancel_all_orders**: Cancel all pending orders
+- **pause_grid**: Pause grid trading
+- **resume_grid**: Resume grid trading
+- **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price, positions remap to nearest levels, isPaused auto-clears)
 - **hold**: Maintain current state
 
-⚠️ place_buy/sell_limit can ONLY be used on empty levels. close_long/close_short can ONLY be used on filled levels.
-⚠️ buy level → close_long, sell level → close_short; mixing will cause exchange rejection.
-⚠️ When no empty levels exist (all pending+filled), no orders needed — choose hold or close to take profit.
+## Technical Constraints (exchange rules, must not violate)
+- place_buy/sell_limit can ONLY be used on empty levels
+- close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
-## Position Management
-- Grid holds single-direction positions: all filled levels share the same side (all long or all short)
-- Prefer close_long/close_short to take profit directly
-- See position capacity data below to assess whether to reduce or hold positions
-
-## Pause Recovery Mode (isPaused=true, pauseSource ≠ risk_control)
-When grid is paused due to price breakout, AI continues running to manage positions:
-- **Available actions**: adjust_grid / close_long / close_short / resume_grid / hold
-- adjust_grid: Rebuild grid centered on current price, positions map to nearest levels, isPaused auto-clears
-- resume_grid: Resume when market returns to ranging
-- close_long (fields: level, quantity): Close long position (side=buy filled levels)
-- close_short (fields: level, quantity): Close short position (side=sell filled levels)
-- hold: Wait when direction is unclear
-- ⚠️ buy level → close_long, sell level → close_short; mismatch causes exchange rejection
+## Pause Mode (isPaused=true, pauseSource ≠ risk_control)
+Grid is paused but AI continues running to manage positions. Available: adjust_grid / close_long / close_short / resume_grid / hold.
+⚠️ pauseSource=risk_control pauses must NOT be auto-resumed; manual intervention required.
 
 ## Output Format
 
@@ -826,8 +790,8 @@ When grid is paused due to price breakout, AI continues running to manage positi
 {
   "analysis": "Brief market analysis and decision reasoning",
   "actions": [
-    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"empty level, below entry price, buy to take profit"},
-    {"action":"place_sell_limit","level":16,"price":84.20,"quantity":0.012,"confidence":85,"reasoning":"empty level, above entry price, place sell"}
+    {"action":"place_buy_limit","level":5,"price":82.50,"quantity":0.012,"confidence":85,"reasoning":"empty level, price below avgEntry, long profitable direction"},
+    {"action":"close_short","level":8,"quantity":0.012,"confidence":80,"reasoning":"short position, price dropped significantly, taking profit"}
   ]
 }
 \`\`\`
@@ -969,12 +933,12 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('--- 技术指标 ---');
   lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
-  lines.push(`EMA(20): ${ctx.ema20.toFixed(2)} | EMA(50): ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
+  lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h 指标: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
-  lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
+  lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
   // 对齐 nofx: 不传预计算的 regime 标签，由 AI 根据 BB 宽度/ATR/EMA 等原始指标自行判断市场形态
 
   // Section 3: 箱体数据
@@ -1119,12 +1083,12 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('--- Technical Indicators ---');
   lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
   lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
-  lines.push(`EMA(20): ${ctx.ema20.toFixed(2)} | EMA(50): ${ctx.ema50.toFixed(2)} | Distance: ${ctx.emaDistance.toFixed(2)}%`);
+  lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | Distance: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h Indicators: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
-  lines.push(`Bollinger: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (Width: ${ctx.bollingerWidth.toFixed(2)}%)`);
+  lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (Width: ${ctx.bollingerWidth.toFixed(2)}%)`);
   // Align with nofx: no pre-computed regime label; AI judges market regime from raw BB width / ATR / EMA indicators
 
   // Section 3: Box Data (Donchian Channels)

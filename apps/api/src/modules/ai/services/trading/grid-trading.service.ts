@@ -2305,15 +2305,15 @@ export class GridTradingService {
     const high24h = last24Candles.length > 0 ? Math.max(...last24Candles.map(c => c.high)) : 0;
     const low24h  = last24Candles.length > 0 ? Math.min(...last24Candles.map(c => c.low))  : 0;
 
-    // 布林带宽度（基于 5m 快速数据）
-    const bbUpper = indFast.bollingerBands?.upper ?? 0;
-    const bbMiddle = indFast.bollingerBands?.middle ?? currentPrice;
-    const bbLower = indFast.bollingerBands?.lower ?? 0;
+    // 布林带宽度（基于 1h 数据，与后端 classifyRegime 一致，AI 判断结果与系统对齐）
+    const bbUpper = indSlow.bollingerBands?.upper ?? 0;
+    const bbMiddle = indSlow.bollingerBands?.middle ?? currentPrice;
+    const bbLower = indSlow.bollingerBands?.lower ?? 0;
     const bbWidth = bbMiddle > 0 ? ((bbUpper - bbLower) / bbMiddle) * 100 : 0;
 
-    // EMA 距离（基于 5m 快速数据）
-    const ema20 = indFast.ema?.ema20 ?? 0;
-    const ema50 = indFast.ema?.ema50 ?? 0;
+    // EMA 距离（基于 1h 数据，中期趋势判断）
+    const ema20 = indSlow.ema?.ema20 ?? 0;
+    const ema50 = indSlow.ema?.ema50 ?? 0;
     const emaDistance = ema50 > 0 ? ((ema20 - ema50) / ema50) * 100 : 0;
 
     // 层级状态：优先从交易所数据构建（和 UI 显示完全一致）
