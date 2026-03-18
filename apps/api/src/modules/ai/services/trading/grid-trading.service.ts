@@ -1480,11 +1480,7 @@ export class GridTradingService {
           }
           try {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
-            // adjust_grid 重建了网格 → 本轮结束，剩余决策基于旧网格已失效，下轮重新来
-            if (result.executed && d.action === 'adjust_grid') {
-              this.logger.log(`[网格] adjust_grid 完成，本轮结束，下轮 AI 基于新网格重新决策`);
-              break;
-            }
+            // 对齐 nofx：adjust_grid 完成后继续执行剩余决策（同一轮内可挂单）
             if (result.executed && d.action.includes('place_')) trades++;
             if (!result.executed && (d.action.startsWith('place_') || d.action === 'cancel_order')) {
               // place_* / cancel_order 执行失败 → 视为错误，前端显示 ✗
@@ -2380,6 +2376,7 @@ export class GridTradingService {
       if (!pos.symbol?.includes(capBaseSymbol)) continue;
       capPositionValue += Math.abs(pos.quantity ?? 0) * (pos.markPrice ?? pos.entryPrice ?? currentPrice);
     }
+    // 对齐 nofx checkTotalPositionLimit：所有 pending 都计入（保守估计，与 nofx 一致）
     const capPendingNotional = exchangeLevels
       .filter(l => l.state === 'pending' && (l.positionSize ?? 0) === 0)
       .reduce((sum, l) => sum + (l.quantity ?? 0) * l.price, 0);
@@ -3038,7 +3035,7 @@ export class GridTradingService {
         currentPositionValue += posQty * posPrice;
       }
 
-      // 挂单名义值（对齐 nofx L996-1001：所有 pending，不分买卖）
+      // 挂单名义值（对齐 nofx：所有 pending 都计入，保守估计）
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);

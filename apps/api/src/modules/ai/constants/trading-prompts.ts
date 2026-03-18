@@ -715,12 +715,12 @@ function gridSystemPromptZh(
 
 后端每轮从交易所实时 API 重建内存层状态：
 - **filled 层**：有持仓。交易所只返回整体持仓均价（avgEntry），所以多个 filled 层会显示相同的入场价——这是系统设计，真实每层入场价分散在 avgEntry 附近。side=buy→多头，side=sell→空头
-- **pending 层**：已在交易所挂单，等待成交。buy 挂单映射到持仓均价下方层，sell 挂单映射到持仓均价上方层
+- **pending 层**：已在交易所挂单，等待成交
 - **empty 层**：无持仓无挂单，可下新单
 
 ## 可用操作
-- **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在 empty 层挂卖单（fields: level, price, quantity）
+- **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）。偏空方向时可在当前价下方 empty 层挂卖单（DCA 式做空积累）
 - **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
 - **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
 - **cancel_order**: 取消指定挂单（field: orderId）
@@ -728,7 +728,7 @@ function gridSystemPromptZh(
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
 - **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
 - **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（ATR 或用户百分比）③ 持仓按入场价就近映射到新层 ④ 自动解除暂停 ⑤ 本轮结束，下轮 AI 基于新网格决策
-- **hold**: 保持现状
+- **hold**: 保持现状（仅在无空层且无需调整时使用）
 
 技术约束（交易所规则，不可违反）：
 - place_buy/sell_limit 只能在 empty 层操作
@@ -777,12 +777,12 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 ## Level State Mapping Mechanism (critical for decision-making)
 The backend rebuilds internal level state from exchange real-time API each cycle:
 - **filled levels**: Have positions. The exchange only returns the overall position average entry (avgEntry), so multiple filled levels show the same entry price — this is by design; the actual per-level entry prices are distributed around avgEntry. side=buy → long, side=sell → short
-- **pending levels**: Orders placed on the exchange, awaiting fill. buy orders map to levels below avgEntry; sell orders map to levels above avgEntry
+- **pending levels**: Orders placed on the exchange, awaiting fill
 - **empty levels**: No position, no order — can place new orders
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on an empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on an empty level (fields: level, price, quantity)
+- **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity). In short-bias mode, you may place sell orders on empty levels below current price (DCA-style short accumulation)
 - **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
 - **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
 - **cancel_order**: Cancel a specific order (field: orderId)
@@ -790,7 +790,7 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
 - **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
 - **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (ATR or user % range) ③ remap positions to nearest new levels ④ auto-clears isPaused ⑤ current cycle ends; next cycle AI works on new grid
-- **hold**: Maintain current state
+- **hold**: Maintain current state (only when no empty levels and no adjustments needed)
 
 ## Technical Constraints (exchange rules, must not violate)
 - place_buy/sell_limit can ONLY be used on empty levels
@@ -1055,10 +1055,6 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
     lines.push(`止盈目标: ${ctx.profitTargetPct}%`);
   }
-  if (ctx.capUsedPct !== undefined) {
-    lines.push(`仓位使用率: ${ctx.capUsedPct}% (已用$${ctx.capUsed?.toFixed(0)} / 上限$${ctx.capTotal?.toFixed(0)}, 剩余$${ctx.capRemaining?.toFixed(0)})`);
-  }
-
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
@@ -1206,10 +1202,6 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   if (ctx.profitTargetPct !== undefined && ctx.profitTargetPct > 0) {
     lines.push(`Profit Target: ${ctx.profitTargetPct}%`);
   }
-  if (ctx.capUsedPct !== undefined) {
-    lines.push(`Position Capacity: ${ctx.capUsedPct}% (used $${ctx.capUsed?.toFixed(0)} / cap $${ctx.capTotal?.toFixed(0)}, remaining $${ctx.capRemaining?.toFixed(0)})`);
-  }
-
   // Section 5: Grid Levels Table
   lines.push('');
   lines.push('--- Grid Levels ---');
