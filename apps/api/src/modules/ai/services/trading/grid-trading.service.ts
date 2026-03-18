@@ -2466,6 +2466,10 @@ export class GridTradingService {
       ohlcv: ohlcvHourly.slice(-30).map(c => ({
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       })),
+      // 最近10根5m蜡烛（为RSI/MACD[5m]信号提供短期价格背景）
+      ohlcv5m: ohlcv5m.slice(-10).map(c => ({
+        open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
+      })),
       userLockedRange: state.userLockedRange ?? false,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
       profitTargetPct: state.profitTargetPct > 0 ? state.profitTargetPct : undefined,

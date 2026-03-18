@@ -653,8 +653,9 @@ export interface GridContext {
   marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
   rsiDivergenceType?: 'bullish' | 'bearish' | 'none';  // RSI 背离信号（Phase 12）
-  // K线历史（最近30根1h蜡烛，K线历史数据）
-  ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;
+  // K线历史
+  ohlcv?: Array<{ open: number; high: number; low: number; close: number; volume: number }>;   // 最近30根1h蜡烛
+  ohlcv5m?: Array<{ open: number; high: number; low: number; close: number; volume: number }>; // 最近10根5m蜡烛（为RSI/MACD信号提供短期价格背景）
   // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
   userLockedRange?: boolean;
   stopLossPct?: number;        // 单格止损阈值%（0或undefined=未启用）
@@ -731,8 +732,9 @@ function gridSystemPromptZh(
 - place_buy/sell_limit 只能在 empty 层操作
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
-## 暂停模式（isPaused=true，pauseSource≠risk_control）
-网格暂停时可用：adjust_grid / close_long / close_short / resume_grid / hold
+## 暂停模式（isPaused=true）
+- pauseSource ≠ risk_control：可用 adjust_grid / close_long / close_short / resume_grid / hold
+- pauseSource = risk_control：风控触发，禁止自动解除，需人工干预
 
 ## 输出格式
 
@@ -859,11 +861,30 @@ function buildPositionLine(pos: {quantity: number; entryPrice: number; unrealize
 /** 构建 OHLCV 表 */
 function buildOhlcvSection(ctx: GridContext, isEn: boolean): string[] {
   const lines: string[] = [];
+  // 5m K线（为 RSI/MACD[5m] 信号提供短期价格背景）
+  if (ctx.ohlcv5m && ctx.ohlcv5m.length > 0) {
+    lines.push('');
+    const header5m = isEn
+      ? `--- 5m Candles (×${ctx.ohlcv5m.length}, oldest→newest, context for RSI/MACD[5m]) ---`
+      : `--- 5m K线 (×${ctx.ohlcv5m.length}，最旧→最新，RSI/MACD[5m]的价格背景) ---`;
+    lines.push(header5m);
+    const colHeader = isEn ? '# Open     High     Low      Close    Volume' : '# 开      高      低      收      量';
+    lines.push(colHeader);
+    ctx.ohlcv5m.forEach((c, i) => {
+      const idx = String(i + 1).padStart(2, ' ');
+      lines.push(
+        `${idx} ${c.open.toFixed(2).padStart(8)} ${c.high.toFixed(2).padStart(8)} ` +
+        `${c.low.toFixed(2).padStart(8)} ${c.close.toFixed(2).padStart(8)} ` +
+        `${c.volume.toFixed(1).padStart(10)}`,
+      );
+    });
+  }
+  // 1h K线（趋势/支撑阻力）
   if (ctx.ohlcv && ctx.ohlcv.length > 0) {
     lines.push('');
     const header = isEn
-      ? `--- Candle History (1h×${ctx.ohlcv.length}, oldest→newest) ---`
-      : `--- K线历史 (1h×${ctx.ohlcv.length}，最旧→最新) ---`;
+      ? `--- 1h Candles (×${ctx.ohlcv.length}, oldest→newest) ---`
+      : `--- 1h K线 (×${ctx.ohlcv.length}，最旧→最新) ---`;
     lines.push(header);
     const colHeader = isEn ? '# Open     High     Low      Close    Volume' : '# 开      高      低      收      量';
     lines.push(colHeader);
@@ -931,15 +952,22 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   // Section 2: 技术指标
   lines.push('');
   lines.push('--- 技术指标 ---');
-  lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
-  lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
+  lines.push(`RSI(14)[5m]: ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7)[5m]: ${ctx.rsi7.toFixed(1)}` : ''}`);
+  lines.push(`MACD[5m]: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
   lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | 距离: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h 指标: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
   lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (宽度: ${ctx.bollingerWidth.toFixed(2)}%)`);
-  // 对齐 nofx: 不传预计算的 regime 标签，由 AI 根据 BB 宽度/ATR/EMA 等原始指标自行判断市场形态
+  if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
+    lines.push(`RSI背离: ${ctx.rsiDivergenceType === 'bullish' ? '底背离（多头信号）' : '顶背离（空头信号）'}`);
+  }
+  if (ctx.currentRegime) {
+    const regimeLabel: Record<string, string> = { ultra_narrow: '极窄幅震荡', narrow: '窄幅震荡', standard: '标准', wide: '宽幅', volatile: '高波动' };
+    lines.push(`后端市场形态(供参考): ${regimeLabel[ctx.currentRegime] ?? ctx.currentRegime}`);
+  }
+  lines.push(`保证金使用率: ${ctx.marginUsedPct.toFixed(1)}% (>30%警惕 >50%危险 >70%严重)`);
 
   // Section 3: 箱体数据
   if (ctx.boxData) {
@@ -966,7 +994,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
   // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
   if (_unmappedCount > 0) {
-    lines.push(`🚨 ${_unmappedCount} 个多余挂单（价格被持仓层占位，无空层可映射），必须用 cancel_order 撤销：`);
+    lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
     for (const oid of ctx.unmappedOrderIds!) {
       const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
       if (matchOrder) {
@@ -975,7 +1003,6 @@ function buildGridUserPromptZh(ctx: GridContext): string {
         lines.push(`  - orderId: ${oid}`);
       }
     }
-    lines.push('只需撤销这些多余挂单。不要在持仓层(filled)补挂新单，止盈单应挂在持仓价格反向的 empty 层。');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（突破后恢复中，每层实际下单量上限为建议量的 ${100 - ctx.positionReductionPct}%，系统后台自动执行）`);
@@ -1023,6 +1050,9 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, '多仓', false) : '多仓: 无');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, '空仓', false) : '空仓: 无');
+    // avgEntry 摘要：filled 层均显示此价格，是网格层映射的参考基准
+    if (ctx.positionLong) lines.push(`avgEntry(多头均价): ${ctx.positionLong.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
+    if (ctx.positionShort) lines.push(`avgEntry(空头均价): ${ctx.positionShort.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
   } else {
     lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
@@ -1081,15 +1111,22 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   // Section 2: Technical Indicators
   lines.push('');
   lines.push('--- Technical Indicators ---');
-  lines.push(`RSI(14): ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7): ${ctx.rsi7.toFixed(1)}` : ''}`);
-  lines.push(`MACD: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
+  lines.push(`RSI(14)[5m]: ${ctx.rsi14.toFixed(1)}${ctx.rsi7 !== undefined ? ` | RSI(7)[5m]: ${ctx.rsi7.toFixed(1)}` : ''}`);
+  lines.push(`MACD[5m]: ${ctx.macd.toFixed(4)} | Signal: ${ctx.macdSignal.toFixed(4)} | Histogram: ${ctx.macdHistogram.toFixed(4)}`);
   lines.push(`EMA(20)[1h]: ${ctx.ema20.toFixed(2)} | EMA(50)[1h]: ${ctx.ema50.toFixed(2)} | Distance: ${ctx.emaDistance.toFixed(2)}%`);
   lines.push(`ATR(14)[5m]: ${ctx.atr14.toFixed(4)}${ctx.atrHourly !== undefined ? ` | ATR(14)[1h]: ${ctx.atrHourly.toFixed(4)}` : ''}${ctx.atr4h !== undefined ? ` | ATR(14)[4h]: ${ctx.atr4h.toFixed(4)}` : ''}${ctx.atr3 !== undefined ? ` | ATR(3)[5m]: ${ctx.atr3.toFixed(4)}` : ''}`);
   if (ctx.rsi4h !== undefined) {
     lines.push(`4h Indicators: RSI=${ctx.rsi4h.toFixed(1)}${ctx.macd4h !== undefined ? ` | MACD=${ctx.macd4h.toFixed(4)}` : ''}${ctx.ema20_4h !== undefined ? ` | EMA20=${ctx.ema20_4h.toFixed(2)}` : ''}${ctx.ema50_4h !== undefined ? ` | EMA50=${ctx.ema50_4h.toFixed(2)}` : ''}`);
   }
   lines.push(`Bollinger[1h]: ${ctx.bollingerLower.toFixed(2)} / ${ctx.bollingerMiddle.toFixed(2)} / ${ctx.bollingerUpper.toFixed(2)} (Width: ${ctx.bollingerWidth.toFixed(2)}%)`);
-  // Align with nofx: no pre-computed regime label; AI judges market regime from raw BB width / ATR / EMA indicators
+  if (ctx.rsiDivergenceType && ctx.rsiDivergenceType !== 'none') {
+    lines.push(`RSI Divergence: ${ctx.rsiDivergenceType === 'bullish' ? 'Bullish (long signal)' : 'Bearish (short signal)'}`);
+  }
+  if (ctx.currentRegime) {
+    const regimeLabelEn: Record<string, string> = { ultra_narrow: 'ultra-narrow range', narrow: 'narrow range', standard: 'standard', wide: 'wide range', volatile: 'high volatility' };
+    lines.push(`Backend Market Regime (reference): ${regimeLabelEn[ctx.currentRegime] ?? ctx.currentRegime}`);
+  }
+  lines.push(`Margin Used: ${ctx.marginUsedPct.toFixed(1)}% (>30% caution, >50% danger, >70% critical)`);
 
   // Section 3: Box Data (Donchian Channels)
   if (ctx.boxData) {
@@ -1115,7 +1152,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   const _unmappedCountEn = ctx.unmappedOrderIds?.length ?? 0;
   lines.push(`Exchange Orders: ${_exchOrderCountEn} | Mapped: ${_mappedOrderCountEn} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
   if (_unmappedCountEn > 0) {
-    lines.push(`🚨 ${_unmappedCountEn} excess order(s) (price occupied by position, no empty layer). MUST cancel_order each:`);
+    lines.push(`⚠️ ${_unmappedCountEn} order(s) have no corresponding empty level in current mapping (may be due to position occupying that price):`);
     for (const oid of ctx.unmappedOrderIds!) {
       const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
       if (matchOrder) {
@@ -1124,7 +1161,6 @@ function buildGridUserPromptEn(ctx: GridContext): string {
         lines.push(`  - orderId: ${oid}`);
       }
     }
-    lines.push('Only cancel these excess orders. Do NOT place new orders on filled levels. Place take-profit on empty levels opposite to position entry.');
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
     lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (post-breakout recovery, each level capped at ${100 - ctx.positionReductionPct}% of suggested qty, auto-enforced by system)`);
@@ -1172,6 +1208,8 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, 'Long', true) : 'Long: None');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, 'Short', true) : 'Short: None');
+    if (ctx.positionLong) lines.push(`avgEntry (long avg price): ${ctx.positionLong.entryPrice.toFixed(4)} — all filled levels reference this entry`);
+    if (ctx.positionShort) lines.push(`avgEntry (short avg price): ${ctx.positionShort.entryPrice.toFixed(4)} — all filled levels reference this entry`);
   } else {
     lines.push(`Current Position: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
