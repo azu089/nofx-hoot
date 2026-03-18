@@ -2406,6 +2406,8 @@ export class GridTradingService {
       capUsedPct,
       capRemaining: Math.max(0, capTotal - capUsed),
       isPaused: state.isPaused,
+      pauseSource: state.pauseSource,
+      pauseReason: state.pauseReason,
       atr14: indFast.atr ?? 0,
       bollingerUpper: bbUpper,
       bollingerMiddle: bbMiddle,

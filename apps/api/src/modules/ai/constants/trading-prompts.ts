@@ -581,6 +581,8 @@ export interface GridContext {
   activeOrderCount: number;
   filledLevelCount: number;
   isPaused: boolean;
+  pauseSource?: 'ai' | 'risk_control' | 'trend' | 'breakout'; // 暂停来源
+  pauseReason?: string;  // 暂停原因文字描述
   // 技术指标
   atr14: number;
   bollingerUpper: number;
@@ -733,8 +735,9 @@ function gridSystemPromptZh(
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ## 暂停模式（isPaused=true）
-- pauseSource ≠ risk_control：可用 adjust_grid / close_long / close_short / resume_grid / hold
-- pauseSource = risk_control：风控触发，禁止自动解除，需人工干预
+网格挂单已全部撤销，AI 仍继续运行管理持仓。可用全部操作：
+adjust_grid / close_long / close_short / resume_grid / hold / place_buy_limit / place_sell_limit
+暂停来源（pauseSource）仅供参考：ai=AI主动暂停 | breakout=价格越界 | trend=趋势突破 | risk_control=风控触发
 
 ## 输出格式
 
@@ -782,9 +785,10 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - place_buy/sell_limit can ONLY be used on empty levels
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
-## Pause Mode (isPaused=true, pauseSource ≠ risk_control)
-Grid is paused but AI continues running to manage positions. Available: adjust_grid / close_long / close_short / resume_grid / hold.
-⚠️ pauseSource=risk_control pauses must NOT be auto-resumed; manual intervention required.
+## Pause Mode (isPaused=true)
+All grid orders cancelled. AI continues running to manage positions. All actions available:
+adjust_grid / close_long / close_short / resume_grid / hold / place_buy_limit / place_sell_limit
+pauseSource (reference only): ai=AI paused | breakout=price boundary | trend=trend breakout | risk_control=risk triggered
 
 ## Output Format
 
@@ -991,7 +995,10 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   const _exchOrderCount = ctx.exchangeOpenOrders?.length ?? 0;
   const _mappedOrderCount = ctx.activeOrderCount;
   const _unmappedCount = ctx.unmappedOrderIds?.length ?? 0;
-  lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${ctx.isPaused ? '是' : '否'}`);
+  const pauseStr = ctx.isPaused
+    ? `是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | 原因:${ctx.pauseReason}` : ''}]`
+    : '否';
+  lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${pauseStr}`);
   // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
   if (_unmappedCount > 0) {
     lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
@@ -1150,7 +1157,10 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   const _exchOrderCountEn = ctx.exchangeOpenOrders?.length ?? 0;
   const _mappedOrderCountEn = ctx.activeOrderCount;
   const _unmappedCountEn = ctx.unmappedOrderIds?.length ?? 0;
-  lines.push(`Exchange Orders: ${_exchOrderCountEn} | Mapped: ${_mappedOrderCountEn} | Filled: ${ctx.filledLevelCount} | Paused: ${ctx.isPaused ? 'Yes' : 'No'}`);
+  const pauseStrEn = ctx.isPaused
+    ? `Yes [source:${ctx.pauseSource ?? 'unknown'}${ctx.pauseReason ? ` | reason:${ctx.pauseReason}` : ''}]`
+    : 'No';
+  lines.push(`Exchange Orders: ${_exchOrderCountEn} | Mapped: ${_mappedOrderCountEn} | Filled: ${ctx.filledLevelCount} | Paused: ${pauseStrEn}`);
   if (_unmappedCountEn > 0) {
     lines.push(`⚠️ ${_unmappedCountEn} order(s) have no corresponding empty level in current mapping (may be due to position occupying that price):`);
     for (const oid of ctx.unmappedOrderIds!) {
