@@ -2657,14 +2657,11 @@ export class GridTradingService {
 
 
       case 'resume_grid':
-        if (state.pauseSource === 'risk_control') {
-          this.logger.warn(`[网格] AI 尝试解除风控暂停被拦截: ${state.pauseReason}`);
-          break;
-        }
         state.isPaused = false;
         state.pauseReason = undefined;
         state.pauseSource = undefined;
-        state.needsReconcile = true; // 下次周期开始前对齐交易所状态
+        state.needsReconcile = true; // 下次周期开始前：清空所有层 + 取消所有挂单 + 从交易所重建
+        this.logger.log(`[网格] resume_grid: 暂停解除，下轮干净重启`);
         break;
 
       case 'adjust_grid': {
@@ -2704,8 +2701,8 @@ export class GridTradingService {
           await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId);
           this.logger.log(`[网格] adjust_grid: 从交易所同步完成，持仓=${state.gridLines.filter(l => l.state === 'filled').length}层`);
         }
-        // 重建后自动解除暂停（breakout/ai/trend 暂停均可通过重建恢复）
-        if (state.isPaused && state.pauseSource !== 'risk_control') {
+        // 重建后自动解除暂停（所有来源均可通过重建恢复）
+        if (state.isPaused) {
           state.isPaused = false;
           state.pauseSource = undefined;
           state.pauseReason = undefined;

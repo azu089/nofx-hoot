@@ -721,13 +721,13 @@ function gridSystemPromptZh(
 ## 可用操作
 - **place_buy_limit**: 在 empty 层挂买单（fields: level, price, quantity）
 - **place_sell_limit**: 在 empty 层挂卖单（fields: level, price, quantity）
-- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）
-- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）
+- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
+- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
-- **pause_grid**: 暂停网格
-- **resume_grid**: 恢复网格
-- **adjust_grid**: 触发网格重建（后端以当前价为中心重算边界，持仓自动映射到新层）
+- **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
+- **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
+- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（ATR 或用户百分比）③ 持仓按入场价就近映射到新层 ④ 自动解除暂停 ⑤ 本轮结束，下轮 AI 基于新网格决策
 - **hold**: 保持现状
 
 技术约束（交易所规则，不可违反）：
@@ -735,9 +735,12 @@ function gridSystemPromptZh(
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 
 ## 暂停模式（isPaused=true）
-网格挂单已全部撤销，AI 仍继续运行管理持仓。可用全部操作：
-adjust_grid / close_long / close_short / resume_grid / hold / place_buy_limit / place_sell_limit
-暂停来源（pauseSource）仅供参考：ai=AI主动暂停 | breakout=价格越界 | trend=趋势突破 | risk_control=风控触发
+网格挂单已全部撤销，AI 仍继续运行管理持仓。可用全部操作（含 resume_grid / place_buy_limit）。
+暂停来源（pauseSource）仅供参考，不影响 AI 操作权限：
+- breakout：价格越出网格边界
+- ai：AI 主动暂停
+- trend：趋势突破
+- risk_control：风控触发（日内亏损/最大回撤）
 
 ## 输出格式
 
@@ -772,13 +775,13 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 ## Available Actions
 - **place_buy_limit**: Place buy order on an empty level (fields: level, price, quantity)
 - **place_sell_limit**: Place sell order on an empty level (fields: level, price, quantity)
-- **close_long** (fields: level, quantity): Close long position (filled level with side=buy)
-- **close_short** (fields: level, quantity): Close short position (filled level with side=sell)
+- **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
+- **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
 - **cancel_order**: Cancel a specific order (field: orderId)
 - **cancel_all_orders**: Cancel all pending orders
-- **pause_grid**: Pause grid trading
-- **resume_grid**: Resume grid trading
-- **adjust_grid**: Trigger grid rebuild (backend recalculates boundaries centered on current price, positions remap to nearest levels, isPaused auto-clears)
+- **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
+- **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
+- **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (ATR or user % range) ③ remap positions to nearest new levels ④ auto-clears isPaused ⑤ current cycle ends; next cycle AI works on new grid
 - **hold**: Maintain current state
 
 ## Technical Constraints (exchange rules, must not violate)
@@ -786,9 +789,12 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 
 ## Pause Mode (isPaused=true)
-All grid orders cancelled. AI continues running to manage positions. All actions available:
-adjust_grid / close_long / close_short / resume_grid / hold / place_buy_limit / place_sell_limit
-pauseSource (reference only): ai=AI paused | breakout=price boundary | trend=trend breakout | risk_control=risk triggered
+All grid orders cancelled. AI continues running to manage positions. All actions available (including resume_grid / place_buy_limit).
+pauseSource is reference only — does NOT restrict AI actions:
+- breakout: price outside grid boundary
+- ai: AI-initiated pause
+- trend: trend breakout
+- risk_control: risk control triggered (daily loss / max drawdown)
 
 ## Output Format
 
