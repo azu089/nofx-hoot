@@ -739,16 +739,16 @@ function gridSystemPromptZh(
 - close_long / close_short：平仓
 - cancel_order / cancel_all_orders：撤单
 - resume_grid：解除暂停，下轮周期干净重建（推荐优先使用）
-- adjust_grid：以当前价重建网格并立即解除暂停
+- adjust_grid：以当前价重建网格并立即解除暂停（**risk_control 暂停除外，代码层拦截，调用无效**）
 - hold：继续观察
 
 ⚠️ **place_buy_limit / place_sell_limit 暂停期间不可用**（代码层拦截）。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
 
-暂停来源（pauseSource）仅供参考，不影响 AI 操作权限：
-- breakout：价格越出网格边界
-- ai：AI 主动暂停
-- trend：趋势突破
-- risk_control：风控触发（日内亏损/最大回撤）
+暂停来源（pauseSource）与操作限制：
+- breakout：价格越出网格边界 → resume_grid / adjust_grid 均可解除
+- ai：AI 主动暂停 → resume_grid / adjust_grid 均可解除
+- trend：趋势突破 → resume_grid / adjust_grid 均可解除
+- risk_control：风控触发（日内亏损/最大回撤）→ **adjust_grid 代码层拒绝，resume_grid 有效**
 
 ## 输出格式
 
@@ -801,16 +801,16 @@ All grid orders cancelled. AI continues running to manage positions. Available a
 - close_long / close_short: close positions
 - cancel_order / cancel_all_orders: cancel orders
 - resume_grid: lift pause, next cycle rebuilds cleanly from exchange (recommended)
-- adjust_grid: rebuild grid at current price and immediately lift pause
+- adjust_grid: rebuild grid at current price and lift pause (**except risk_control pause — blocked by code, call will be rejected**)
 - hold: observe
 
 ⚠️ **place_buy_limit / place_sell_limit are NOT available while paused** (blocked by code). Use resume_grid or adjust_grid first; new orders can be placed next cycle.
 
-pauseSource is reference only — does NOT restrict AI actions:
-- breakout: price outside grid boundary
-- ai: AI-initiated pause
-- trend: trend breakout
-- risk_control: risk control triggered (daily loss / max drawdown)
+pauseSource and action restrictions:
+- breakout: price outside grid boundary → resume_grid / adjust_grid both work
+- ai: AI-initiated pause → resume_grid / adjust_grid both work
+- trend: trend breakout → resume_grid / adjust_grid both work
+- risk_control: risk control triggered (daily loss / max drawdown) → **adjust_grid is rejected by code; use resume_grid only**
 
 ## Output Format
 
