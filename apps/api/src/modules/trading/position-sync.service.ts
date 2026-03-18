@@ -113,6 +113,7 @@ export class PositionSyncService {
     // 3. 合并与更新数据
     const syncedPositions: SyncedPosition[] = [];
     const matchedExchangeSymbols = new Set<string>();
+    const pendingUpdates: Array<{ positionId: string; exchangePos: ExchangePosition }> = [];
 
     // 已匹配的交易所持仓索引（防止同一交易所持仓被多条 DB 记录重复匹配）
     const matchedExchangeIndices = new Set<number>();
@@ -127,8 +128,8 @@ export class PositionSyncService {
       if (exchangePos) {
         matchedExchangeIndices.add(exchangePosIdx);
         matchedExchangeSymbols.add(`${exchangePos.symbol}:${exchangePos.side}`);
-        // 更新数据库中的持仓数据
-        await this.updatePositionFromExchange(dbPos.id, exchangePos);
+        // 收集 DB 更新，稍后批量执行
+        pendingUpdates.push({ positionId: dbPos.id, exchangePos });
 
         syncedPositions.push({
           id: dbPos.id,
@@ -221,6 +222,15 @@ export class PositionSyncService {
           });
         }
       }
+    }
+
+    // 3.5 批量执行 DB 更新（并行而非串行，减少 DB 延迟）
+    if (pendingUpdates.length > 0) {
+      await this.prisma.$transaction(
+        pendingUpdates.map(({ positionId, exchangePos }) =>
+          this.buildPositionUpdateQuery(positionId, exchangePos),
+        ),
+      );
     }
 
     // 4. 交易所存在但 DB 中没有对应 open 记录的持仓（手动开仓/DB未记录/SL触发后DB未同步）
@@ -324,27 +334,26 @@ export class PositionSyncService {
   /**
    * 更新数据库持仓数据（含标记价格、杠杆、盈亏等实时数据）
    */
-  private async updatePositionFromExchange(
+  /**
+   * 构建持仓更新查询（不执行，用于 $transaction 批量提交）
+   */
+  private buildPositionUpdateQuery(
     positionId: string,
     exchangePos: ExchangePosition,
-  ): Promise<void> {
+  ) {
     const margin = new Decimal(exchangePos.margin);
     const notional = new Decimal(exchangePos.notionalValue);
-    // 优先使用交易所原始 marginRatio（维持保证金/保证金余额，Binance 风险指标）
-    // 无交易所值时降级为 margin/notional*100（等价于 1/leverage，仅表示保证金占用率）
     const marginRatio = exchangePos.marginRatio != null && exchangePos.marginRatio > 0
-      ? new Decimal(exchangePos.marginRatio).times(100)  // 交易所返回小数形式（0.05 = 5%）
+      ? new Decimal(exchangePos.marginRatio).times(100)
       : notional.gt(0)
         ? margin.div(notional).times(100)
         : new Decimal(0);
 
-    await this.prisma.position.update({
+    return this.prisma.position.update({
       where: { id: positionId },
       data: {
-        // 基础数据
         entryPrice: new Decimal(exchangePos.entryPrice),
         amount: new Decimal(exchangePos.amount),
-        // 交易所返回杠杆，若 <= 1 但 margin/notional 显示更高则反推真实杠杆再存储
         ...(() => {
           const raw = exchangePos.leverage;
           if (raw > 1) return { leverage: raw };
@@ -357,7 +366,6 @@ export class PositionSyncService {
         margin: margin,
         marginMode: exchangePos.marginMode,
         tradingType: 'futures',
-        // 实时价格与盈亏（新增字段）
         markPrice: new Decimal(exchangePos.markPrice),
         liquidationPrice: exchangePos.liquidationPrice > 0
           ? new Decimal(exchangePos.liquidationPrice)

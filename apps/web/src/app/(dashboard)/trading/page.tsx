@@ -241,7 +241,8 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
-    refetchInterval: 30000, // 每30秒自动刷新
+    staleTime: 15 * 1000, // 15秒内复用缓存，避免页面切换重复请求交易所
+    refetchInterval: 30000, // 每30秒后台刷新
     retry: false,
   });
 
@@ -281,6 +282,7 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
+    staleTime: 30 * 1000, // 30秒缓存
     retry: false,
   });
 
@@ -302,7 +304,7 @@ export default function TradingPage() {
       }
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
-    staleTime: 30 * 1000, // 30 秒缓存，避免频繁查交易所
+    staleTime: 60 * 1000, // 60秒缓存，交易所历史数据变化慢
     retry: false,
   });
 
@@ -319,6 +321,7 @@ export default function TradingPage() {
       return response.data;
     },
     enabled: isAuthenticated && !!selectedApiKeyId,
+    staleTime: 15 * 1000, // 15秒缓存
     retry: false,
   });
 
@@ -369,6 +372,7 @@ export default function TradingPage() {
       return response.data.items;
     },
     enabled: isAuthenticated,
+    staleTime: 60 * 1000, // API Key 列表很少变化
     retry: false,
   });
 
@@ -397,7 +401,7 @@ export default function TradingPage() {
         }
       },
       enabled: isAuthenticated && !!key.id,
-      staleTime: 30 * 1000, // 30秒缓存，与 API 页面共享
+      staleTime: 60 * 1000, // 60秒缓存，余额数据变化不频繁
       retry: false,
     })),
   });
