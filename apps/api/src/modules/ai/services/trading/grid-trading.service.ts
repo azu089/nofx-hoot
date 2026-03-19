@@ -190,6 +190,10 @@ export interface GridState {
 
   // 上轮 AI 决策摘要（内存，不持久化，重启后为空）
   lastCycleActions?: string[];
+
+  // 混合同步架构：启动全量 + 运行增量（对齐 nofx）
+  isFirstCycleDone: boolean;   // 容器启动后第一轮全量同步是否已完成
+  needsFullSync: boolean;      // 重建/恢复后需要下一轮全量同步
 }
 
 /** AI 返回的网格决策 */
@@ -362,10 +366,7 @@ export class GridTradingService {
 
   // reconcileCompleted 已废弃（2026-03-16）：每轮 syncMemoryFromExchange 从交易所全量重建内存，无需一次性恢复
 
-  // neutral side 一次性修正追踪：容器重启后首个有 currentPrice 的轮次执行一次
-  // nofx: side 在 initializeGridLevels 用 currentPrice 一次性赋值，之后静态不变
-  // HOOT buildGridLinesFromConfig 用 centerPrice（静态中间价），重启后需用实时价修正空层 side
-  private readonly neutralSideCorrected = new Set<string>();
+  // neutralSideCorrected 已删除（2026-03-19 对齐 nofx）：增量同步下 side 不变
 
   /** 市场状态英文→中文（用于日志显示） */
   private regimeLabel(regime: string): string {
@@ -687,6 +688,8 @@ export class GridTradingService {
       rsiDivergenceType: 'none' as const,
       livePositionNotional: 0,  // 交易所真实持仓名义价值，每轮从 GetPositions 更新
       unmappedOrderIds: [],     // syncMemoryFromExchange 每轮重建
+      isFirstCycleDone: false,  // 首轮强制全量同步
+      needsFullSync: false,
     };
 
     this.gridStates.set(strategyId, state);
@@ -853,6 +856,7 @@ export class GridTradingService {
       this.logger.log(`[网格] 暂停恢复: 全空层 + 取消所有挂单（干净重启）`);
       this.resetGridLayers(state);
       await this.cancelAllGridOrders(state, userId, apiKeyId);
+      state.needsFullSync = true; // 下轮前置同步用全量恢复
     }
 
     // Step 1.5: 配置变更检测 — 原地取消挂单 + 重建层级（历史利润不清零）
@@ -1010,29 +1014,8 @@ export class GridTradingService {
 
     this.logger.log(`[网格]${tag} ▶ ${state.symbol} 周期开始 | price=${currentPrice} | lev=${state.leverage}x | regime=${state.currentRegime ?? '-'} | recLev=${state.recommendedLeverage ?? '-'}x`);
 
-    // 每轮 neutral side 修正（empty 层 side 按当前价格重新赋值）
-    // nofx: initializeGridLevels 一次性赋值后 side 不变，但 nofx 层不会从 pending 变回 empty
-    // HOOT 层会从 pending→empty（挂单被撤/成交后），此时 side 可能残留旧值
-    // 因此每轮对 empty 层修正，确保 price<=currentPrice→buy, price>currentPrice→sell
-    {
-      if ((state.currentDirection ?? 'neutral') === 'neutral') {
-        let corrected = 0;
-        for (const line of state.gridLines) {
-          if (line.state === 'empty') {
-            const correctSide = line.price <= currentPrice ? 'buy' : 'sell';
-            if (line.side !== correctSide) {
-              line.side = correctSide;
-              corrected++;
-            }
-          }
-        }
-        if (corrected > 0) {
-          this.logger.log(
-            `[网格] 一次性 neutral side 修正: ${corrected} 层（基于实时价 ${currentPrice}）`,
-          );
-        }
-      }
-    }
+    // 每轮 neutral side 修正已删除（2026-03-19 对齐 nofx）：
+    // 增量同步下层状态连续，side 在初始化时赋值后不变
 
     // ──── 风控优先：Step 3/3.5/4 始终在突破检查(Step 2)前执行，确保即使突破 return 风控也已生效 ────
     let earlyAdapter: ExchangeAdapter | null = null;
@@ -1368,15 +1351,22 @@ export class GridTradingService {
 
         // 杠杆只在初始化时设一次，运行时不动态调整（对齐 nofx）
 
-        // Pre-sync: 在构建 AI 上下文前先同步交易所状态到内存
-        // 解决数据源不一致问题：context.levels / AI分析 / header stats / 层级显示 必须统一
-        // 历史教训 2026-03-13：旧版 sync 只在周期末 → AI 看到的数据比交易所落后1周期
-        // → AI 分析说"5层空头"但实际8层、层级显示5 filled但header显示8
-        // 同时捕获交易所数据用于层级显示（显示 AI 决策前的状态，而非执行后的状态）
+        // Pre-sync: 在构建 AI 上下文前同步交易所状态到内存
+        // 混合架构：首轮/重建后 → 全量同步（syncMemoryFromExchange）；正常运行 → 增量同步（syncOrderFills）
         let preSyncExchangeOrders: any[] = [];
         let preSyncExchangePositions: any[] = [];
         if (isGridAdapter(adapter)) {
-          const preSyncResult = await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId);
+          const useFullSync = !state.isFirstCycleDone || state.needsFullSync;
+          const preSyncResult = useFullSync
+            ? await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId)
+            : await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
+
+          if (useFullSync) {
+            state.isFirstCycleDone = true;
+            state.needsFullSync = false;
+            this.logger.log(`[网格] 前置同步: 全量重建完成`);
+          }
+
           preSyncExchangeOrders = preSyncResult.exchangeOpenOrders ?? [];
           preSyncExchangePositions = preSyncResult.exchangePositions ?? [];
           if (preSyncResult.filledLines.length > 0) {
@@ -1533,12 +1523,11 @@ export class GridTradingService {
             return `${label}${lvStr} ${status}`;
           });
 
-        // syncMemoryFromExchange 在 AI 执行之后（周期末）
-        // 检测本轮 AI 执行后的新成交 + 从交易所全量重建内存
+        // 后置同步：AI 执行后检测新成交（增量，对齐 nofx：syncGridState 在周期末）
         let postSyncExchangeOrders: any[] = [];
         let postSyncExchangePositions: any[] = [];
         if (isGridAdapter(adapter)) {
-          const syncResult = await this.syncMemoryFromExchange(state, adapter as GridExchangeAdapter, userId);
+          const syncResult = await this.syncOrderFills(state, adapter as GridExchangeAdapter, userId);
           postSyncExchangeOrders = syncResult.exchangeOpenOrders ?? [];
           postSyncExchangePositions = syncResult.exchangePositions ?? [];
           if (syncResult.filledLines.length > 0) {
@@ -2985,27 +2974,8 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // ★ 安全拦截：禁止在 filled（持仓）层下新单
-    // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
-    if (level && level.state === 'filled') {
-      this.logger.warn(
-        `[网格] 拦截: 禁止在持仓层 L${levelIndex + 1}(${level.side}) 下${side}单 @${(decision.price ?? 0).toFixed(2)}，应使用 close_long/close_short`,
-      );
-      return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
-    }
-
-    // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
-    // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
-    if (level && level.state === 'empty' && (state.currentDirection ?? 'neutral') === 'neutral') {
-      const currentPrice = state.lastPrice ?? 0;
-      const correctSide = level.price <= currentPrice ? 'buy' : 'sell';
-      if (side !== correctSide) {
-        this.logger.warn(
-          `[网格] 方向纠正: L${levelIndex + 1} 价格${level.price.toFixed(2)} ${side === 'buy' ? '>' : '<'} 市价${currentPrice.toFixed(2)}，AI要${side}→纠正为${correctSide}`,
-        );
-        side = correctSide;
-      }
-    }
+    // filled 层拦截已删除（2026-03-19 对齐 nofx）：AI 可在任意层下单，下单成功后层状态覆盖为 pending
+    // neutral 强制 side 纠正已删除（2026-03-19 对齐 nofx）：AI 决定的 side 即最终 side
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
@@ -3495,17 +3465,176 @@ export class GridTradingService {
    * - 挂单消失 && 实际持仓 ≤ 内存预期持仓 → 取消/过期
    */
   /**
-   * 每轮从交易所实时数据重建内存（核心原则：先有交易所数据，才有内存）
-   * 统一替代旧版 syncOrderFills + recoverOrdersFromExchange + recoverPositionsFromExchange
+   * 运行时增量同步（对齐 nofx syncGridState）
+   * 只检查消失的 pending 挂单，其他层不动。层状态连续。
    *
+   * 流程：
+   *   1. 获取交易所实时挂单 + 持仓
+   *   2. 填充检测：上轮 pending 订单消失 → getOrderStatus 确认成交/撤销，计算利润
+   *   3. 成交：layer→filled；撤销：layer→empty
+   *   不做：全量重置、持仓映射、挂单映射
+   */
+  private async syncOrderFills(
+    state: GridState,
+    adapter: GridExchangeAdapter,
+    userId: string,
+  ): Promise<{ filledLines: GridLine[]; exchangeOpenOrders: any[]; exchangePositions: any[] }> {
+    const filledLines: GridLine[] = [];
+    let openOrders: any[] = [];
+    let exchangePositions: any[] = [];
+    try {
+      // Step 1: 获取交易所实时数据
+      openOrders = await adapter.getOpenOrders(state.symbol);
+      try {
+        exchangePositions = await adapter.getPositions();
+      } catch (e: any) {
+        this.logger.warn(`[网格] syncOrderFills 持仓读取失败: ${e.message}`);
+      }
+      const activeIds = new Set(openOrders.map((o: any) => o.orderId));
+      const baseSymbol = state.symbol.split('/')[0];
+
+      // Step 2: 填充检测 — 上轮 pending 订单在交易所消失
+      const disappearedLines = state.gridLines.filter(
+        (line) => line.state === 'pending' && line.orderId && !activeIds.has(line.orderId),
+      );
+
+      // abs 启发式 fallback 所需数据
+      let currentPositionSize = 0;
+      for (const pos of exchangePositions) {
+        if (pos.symbol?.includes(baseSymbol)) {
+          const side = pos.side;
+          const qty = pos.quantity ?? 0;
+          if (side === 'long' || side === 'net' || !side) currentPositionSize += qty;
+          else if (side === 'short') currentPositionSize -= qty;
+        }
+      }
+      const memFilledLayers = state.gridLines.filter((l) => l.state === 'filled');
+      let runningExpected = memFilledLayers.reduce((sum, l) => {
+        const sz = l.positionSize ?? 0;
+        return sum + (l.side === 'sell' ? -sz : sz);
+      }, 0);
+
+      const pendingCount = state.gridLines.filter(l => l.state === 'pending').length;
+      const emptyCount = state.gridLines.filter(l => l.state === 'empty').length;
+      this.logger.log(
+        `[网格] syncOrderFills: 交易所挂单=${openOrders.length}, 持仓=${currentPositionSize.toFixed(4)}, ` +
+        `内存(pending=${pendingCount},filled=${memFilledLayers.length},empty=${emptyCount}), ` +
+        `消失=${disappearedLines.length}`,
+      );
+
+      // 处理消失的挂单（逻辑与 syncMemoryFromExchange Step 2 完全一致）
+      for (const line of disappearedLines) {
+        const prevOrderId = line.orderId!;
+        let qty = line.orderQuantity ?? 0;
+        let fillPrice = line.price;
+
+        let isFilled = false;
+        try {
+          const orderDetail = await adapter.getOrderStatus(state.symbol, prevOrderId);
+          isFilled = orderDetail.status === 'FILLED' || orderDetail.status === 'PARTIALLY_FILLED';
+          if (orderDetail.filledQuantity > 0) qty = orderDetail.filledQuantity;
+          if (orderDetail.avgPrice > 0) fillPrice = orderDetail.avgPrice;
+          this.logger.debug(
+            `[网格] 订单状态: orderId=${prevOrderId}, status=${orderDetail.status}, qty=${qty.toFixed(4)}, price=${fillPrice.toFixed(4)}`,
+          );
+        } catch (e: any) {
+          isFilled = Math.abs(currentPositionSize) > Math.abs(runningExpected) + 0.0001;
+          this.logger.warn(`[网格] 订单状态查询失败，abs启发式: orderId=${prevOrderId} isFilled=${isFilled}`);
+        }
+
+        if (isFilled) {
+          if (line.side === 'sell') {
+            // 卖单成交 = 平多（利润计算）
+            let buyLayer: typeof line | undefined;
+            if ((line.positionSize ?? 0) > 0 && (line.positionEntry ?? 0) > 0) {
+              buyLayer = line;
+            } else {
+              buyLayer = state.gridLines
+                .filter(l => l.state === 'filled' && l.side === 'buy' && (l.positionSize ?? 0) > 0)
+                .sort((a, b) => Math.abs(a.price - line.price) - Math.abs(b.price - line.price))[0];
+            }
+
+            if (buyLayer) {
+              const _cp = new Decimal(fillPrice);
+              const _ep = new Decimal(buyLayer.positionEntry);
+              const _sz = new Decimal(qty);
+              const _fr = new Decimal(state.takerFeeRate);
+              const netProfitD = _cp.minus(_ep).times(_sz)
+                .minus(_cp.times(_sz).times(_fr))
+                .minus(_ep.times(_sz).times(_fr));
+              const netProfit = netProfitD.toNumber();
+
+              state.totalProfit += netProfit;
+              state.dailyTotalProfit = (state.dailyTotalProfit ?? 0) + netProfit;
+              state.totalTrades++;
+              if (netProfit > 0) state.winningTrades++;
+
+              // 对齐 nofx：成交后层变 filled（持有持仓）
+              line.state = 'filled';
+              line.positionEntry = fillPrice;
+              line.positionSize = qty;
+              filledLines.push(line);
+              runningExpected -= qty;
+
+              this.logger.log(
+                `[网格] 卖单成交(平多): @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}, ` +
+                `profit=${netProfit >= 0 ? '+' : ''}${netProfitD.toFixed(8)} USDT`,
+              );
+            } else {
+              state.totalTrades++;
+              this.logger.warn(`[网格] 卖单成交无匹配买入层 @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`);
+              // 卖单成交但无匹配 → 层变 empty（持仓已平掉）
+              line.state = 'empty';
+              line.orderId = undefined;
+              line.orderQuantity = 0;
+            }
+          } else {
+            // 买单成交 → 层变 filled（对齐 nofx）
+            line.state = 'filled';
+            line.positionEntry = fillPrice;
+            line.positionSize = qty;
+            state.totalTrades++;
+            filledLines.push(line);
+            runningExpected += qty;
+            this.logger.log(`[网格] 买单成交 @ ${fillPrice.toFixed(4)}, qty=${qty.toFixed(4)}`);
+          }
+        } else {
+          // 撤销/过期 → 层变 empty（对齐 nofx）
+          line.state = 'empty';
+          line.orderId = undefined;
+          line.orderQuantity = 0;
+          this.logger.log(`[网格] 挂单撤销/过期: @${line.price.toFixed(4)}`);
+        }
+        // 清理 orderBook 映射
+        delete state.orderBook[prevOrderId];
+      }
+
+      // 同步交易所杠杆（保留 HOOT 独有优势）
+      for (const pos of exchangePositions) {
+        if (!pos.symbol?.includes(baseSymbol)) continue;
+        if (pos.leverage && pos.leverage > 0 && state.leverage !== pos.leverage) {
+          this.logger.log(`[网格] syncOrderFills: 交易所杠杆 ${pos.leverage}x (state=${state.leverage}x)，同步`);
+          state.leverage = pos.leverage;
+          state.effectiveLeverage = pos.leverage;
+        }
+      }
+    } catch (e: any) {
+      this.logger.error(`[网格] syncOrderFills 异常: ${e.message}`);
+    }
+
+    return { filledLines, exchangeOpenOrders: openOrders, exchangePositions };
+  }
+
+  /**
+   * 全量重建（启动恢复 / 网格重建后使用）
    * 流程：
    *   1. 获取交易所实时挂单 + 持仓
    *   2. 填充检测：上轮 pending 订单消失 → 查询成交/撤销，计算利润
    *   3. 全量重置内存（resetGridLayers）
-   *   4. 映射交易所挂单 → pending 层（价格最近匹配）
-   *   5. 映射交易所持仓 → filled 层（入场价最近匹配，按每层预算反推层数）
+   *   4. 映射交易所持仓 → filled 层（入场价最近匹配，按每层预算反推层数）
+   *   5. 映射交易所挂单 → pending 层（价格最近匹配）
    *
-   * 每轮都执行，容器重启/正常运行共用同一逻辑，无需特殊恢复路径。
+   * 仅在以下场景调用：容器首轮、reinitializeGridLevels后、autoAdjustGrid后、resume_grid后
    */
   private async syncMemoryFromExchange(
     state: GridState,
@@ -4120,9 +4249,12 @@ export class GridTradingService {
       this.logger.log(
         `[网格] 重建网格: 范围 ${state.lowerPrice.toFixed(2)}-${state.upperPrice.toFixed(2)}` +
         `，共 ${gridCount} 层，格间距 ${state.gridSpacing.toFixed(2)}` +
-        `${preserveFilledFromMemory ? '（无持仓）' : '（待 syncMemoryFromExchange 从交易所恢复持仓）'}`,
+        `${preserveFilledFromMemory ? '（无持仓）' : '（待全量同步从交易所恢复持仓）'}`,
       );
     }
+
+    // 重建后标记需要全量同步（下轮前置同步时执行）
+    state.needsFullSync = true;
   }
 
   /**
@@ -4219,6 +4351,7 @@ export class GridTradingService {
     }
     // preserveFilledFromMemory=false：不从内存恢复，立即从交易所同步
     await this.syncMemoryFromExchange(state, adapter, userId ?? '');
+    state.needsFullSync = false; // 已在此处完成全量同步，下轮不需要重复
     this.logger.log(
       `[网格] 自动重建 Step2: 网格重置+交易所同步 ${state.gridLines.length}层 | ` +
       `新范围=${newLower.toFixed(2)}~${newUpper.toFixed(2)}, 格间距=${state.gridSpacing.toFixed(4)}`,
@@ -4858,7 +4991,7 @@ export class GridTradingService {
   clearGridState(strategyId: string): void {
     this.gridStates.delete(strategyId);
     // reconcileCompleted 已废弃（每轮 syncMemoryFromExchange 自动重建）
-    this.neutralSideCorrected.delete(strategyId); // 下次启动重新执行 neutral side 修正
+    // neutralSideCorrected 已删除（2026-03-19）
   }
 
   async getGridState(strategyId: string): Promise<GridState | null> {

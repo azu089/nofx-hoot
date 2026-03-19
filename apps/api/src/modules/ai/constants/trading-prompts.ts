@@ -723,8 +723,8 @@ function gridSystemPromptZh(
 - **empty 层**：无持仓无挂单，可下新单
 
 ## 可用操作
-- **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）。偏空方向时可在当前价下方 empty 层挂卖单（DCA 式做空积累）
+- **place_buy_limit**: 挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 挂卖单（fields: level, price, quantity）
 - **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
 - **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
 - **cancel_order**: 取消指定挂单（field: orderId）
@@ -732,11 +732,11 @@ function gridSystemPromptZh(
 - **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
 - **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
 - **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 自动解除非风控暂停（risk_control 暂停不可通过此操作解除） ⑤ 立即清除仓位缩减（positionReductionPct→0） ⑥ 本轮结束，下轮 AI 基于新网格决策
-- **hold**: 保持现状（仅在无空层且无需调整时使用）
+- **hold**: 保持现状
 
 技术约束（交易所规则，不可违反）：
-- place_buy/sell_limit 只能在 empty 层操作
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
+- place_buy/sell_limit 下单成功后层状态变为 pending
 
 ## 暂停模式（isPaused=true）
 网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
@@ -785,8 +785,8 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - **empty levels**: No position, no order — can place new orders
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity). In short-bias mode, you may place sell orders on empty levels below current price (DCA-style short accumulation)
+- **place_buy_limit**: Place buy order (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order (fields: level, price, quantity)
 - **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
 - **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
 - **cancel_order**: Cancel a specific order (field: orderId)
@@ -794,11 +794,11 @@ The backend rebuilds internal level state from exchange real-time API each cycle
 - **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
 - **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
 - **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (user-configured % range takes priority; ATR auto-calculation used if not configured) ③ remap positions to nearest new levels ④ auto-clears non-risk-control pauses (risk_control pause cannot be cleared this way) ⑤ current cycle ends; next cycle AI works on new grid
-- **hold**: Maintain current state (only when no empty levels and no adjustments needed)
+- **hold**: Maintain current state
 
 ## Technical Constraints (exchange rules, must not violate)
-- place_buy/sell_limit can ONLY be used on empty levels
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
+- place_buy/sell_limit: order placed successfully transitions level state to pending
 
 ## Pause Mode (isPaused=true)
 All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
@@ -1071,11 +1071,13 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, false));
   }
-  // 可下单空层摘要（AI 直接用，无需自行计算）
+  // 层状态摘要
   const emptyLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'empty').map(({ i }) => `L${i + 1}`);
-  const nonEmptyLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state !== 'empty').map(({ l, i }) => `L${i + 1}[${l.state === 'filled' ? (l.side === 'buy' ? '持仓-多' : '持仓-空') : '挂单'}]`);
-  lines.push(`✅ 可下买/卖单的 empty 层: ${emptyLevels.length > 0 ? emptyLevels.join(', ') : '无（网格已满）'}`);
-  lines.push(`🚫 禁止下新单: ${nonEmptyLevels.length > 0 ? nonEmptyLevels.join(', ') : '无'}`);
+  const filledLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'filled').map(({ l, i }) => `L${i + 1}(${l.side === 'buy' ? '多' : '空'})`);
+  const pendingLevels = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'pending').map(({ i }) => `L${i + 1}`);
+  lines.push(`空层: ${emptyLevels.length > 0 ? emptyLevels.join(', ') : '无'}`);
+  lines.push(`持仓层: ${filledLevels.length > 0 ? filledLevels.join(', ') : '无'}`);
+  lines.push(`挂单层: ${pendingLevels.length > 0 ? pendingLevels.join(', ') : '无'}`);
 
   // Section 6: 账户状态
   lines.push('');
@@ -1237,11 +1239,13 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, true));
   }
-  // Explicit available/forbidden levels (prevents arithmetic errors)
+  // Level status summary
   const emptyLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'empty').map(({ i }) => `L${i + 1}`);
-  const nonEmptyLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state !== 'empty').map(({ l, i }) => `L${i + 1}[${l.state === 'filled' ? (l.side === 'buy' ? 'long' : 'short') : 'pending'}]`);
-  lines.push(`✅ Available empty levels (place_buy/sell_limit ONLY here): ${emptyLevelsEn.length > 0 ? emptyLevelsEn.join(', ') : 'None (grid full)'}`);
-  lines.push(`🚫 Forbidden levels (do NOT place new orders): ${nonEmptyLevelsEn.length > 0 ? nonEmptyLevelsEn.join(', ') : 'None'}`);
+  const filledLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'filled').map(({ l, i }) => `L${i + 1}(${l.side === 'buy' ? 'long' : 'short'})`);
+  const pendingLevelsEn = ctx.levels.map((l, i) => ({ l, i })).filter(({ l }) => l.state === 'pending').map(({ i }) => `L${i + 1}`);
+  lines.push(`Empty: ${emptyLevelsEn.length > 0 ? emptyLevelsEn.join(', ') : 'None'}`);
+  lines.push(`Filled: ${filledLevelsEn.length > 0 ? filledLevelsEn.join(', ') : 'None'}`);
+  lines.push(`Pending: ${pendingLevelsEn.length > 0 ? pendingLevelsEn.join(', ') : 'None'}`);
 
   // Section 6: Account Status
   lines.push('');
