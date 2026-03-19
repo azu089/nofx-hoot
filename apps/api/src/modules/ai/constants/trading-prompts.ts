@@ -660,6 +660,8 @@ export interface GridContext {
   ohlcv5m?: Array<{ open: number; high: number; low: number; close: number; volume: number }>; // 最近10根5m蜡烛（为RSI/MACD信号提供短期价格背景）
   // 范围锁定：用户明确填写了上下界 → true（AI 禁止 adjust_grid），用户填 0 让 AI 自决 → false
   userLockedRange?: boolean;
+  upperBoundPct?: number;  // 用户配置的上界百分比（如 1 表示 +1%），adjust_grid 将以此为准；undefined=ATR自动计算
+  lowerBoundPct?: number;  // 用户配置的下界百分比（如 1 表示 -1%），adjust_grid 将以此为准；undefined=ATR自动计算
   stopLossPct?: number;        // 单格止损阈值%（0或undefined=未启用）
   profitTargetPct?: number;    // 策略止盈目标%（0或undefined=未设置，AI自主决策）
   gridSkewLevel?: 'none' | 'light' | 'severe';
@@ -1049,6 +1051,11 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   const _exchShort = ctx.positionShort?.quantity ?? 0;
   lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} | 空头 ${_exchShort.toFixed(4)}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false'}`);
+  if (ctx.upperBoundPct && ctx.lowerBoundPct) {
+    lines.push(`⚙️ 用户网格边界配置: 上+${ctx.upperBoundPct}% / 下-${ctx.lowerBoundPct}%（adjust_grid 重建时将按此百分比计算，不使用ATR）`);
+  } else {
+    lines.push(`⚙️ 用户网格边界配置: 未设置（adjust_grid 重建时将用ATR自动计算边界）`);
+  }
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`逐层止损阈值: ${ctx.stopLossPct}%`);
   }
@@ -1201,6 +1208,11 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
   lines.push(`Exchange Position: Long ${_exchLongEn.toFixed(4)} | Short ${_exchShortEn.toFixed(4)}`);
   lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (user locked, adjust_grid cannot change range)' : 'false'}`);
+  if (ctx.upperBoundPct && ctx.lowerBoundPct) {
+    lines.push(`⚙️ User Grid Bounds Config: upper +${ctx.upperBoundPct}% / lower -${ctx.lowerBoundPct}% (adjust_grid will use this %, NOT ATR)`);
+  } else {
+    lines.push(`⚙️ User Grid Bounds Config: not set (adjust_grid will use ATR auto-calculation)`);
+  }
   if (ctx.stopLossPct !== undefined && ctx.stopLossPct > 0) {
     lines.push(`Per-level Stop Loss: ${ctx.stopLossPct}%`);
   }

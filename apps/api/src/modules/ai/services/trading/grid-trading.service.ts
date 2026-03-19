@@ -2507,6 +2507,8 @@ export class GridTradingService {
         open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume,
       })),
       userLockedRange: state.userLockedRange ?? false,
+      upperBoundPct: (state.upperBoundPct && state.upperBoundPct > 0) ? state.upperBoundPct : undefined,
+      lowerBoundPct: (state.lowerBoundPct && state.lowerBoundPct > 0) ? state.lowerBoundPct : undefined,
       stopLossPct: state.stopLossPct > 0 ? state.stopLossPct : undefined,
       profitTargetPct: state.profitTargetPct > 0 ? state.profitTargetPct : undefined,
       currentRegime: state.currentRegime,  // 后端检测的市场形态，与 UI 显示一致
