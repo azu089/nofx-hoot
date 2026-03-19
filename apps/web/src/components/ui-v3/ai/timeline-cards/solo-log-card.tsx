@@ -882,6 +882,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                           {isFilled && gl.ep && (
                             <span className="font-mono" style={{ color: '#06B6D4' }}>@{Number(gl.ep).toFixed(2)}</span>
                           )}
+                          {/* 双状态：filled 层上的挂单（po = pendingOrder） */}
+                          {isFilled && gl.po && (
+                            <span className="font-mono" style={{ color: gl.po.s === 'buy' ? '#10B981' : '#F23645', fontSize: '8px' }}>
+                              +{gl.po.s === 'buy' ? '买' : '卖'}×{gl.po.qty}
+                            </span>
+                          )}
                           {!isFilled && !isPending && (
                             <span className="text-[#404050]">—</span>
                           )}
