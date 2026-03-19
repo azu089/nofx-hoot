@@ -2985,14 +2985,8 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // ★ 安全拦截：禁止在 filled（持仓）层下新单
-    // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
-    if (level && level.state === 'filled') {
-      this.logger.warn(
-        `[网格] 拦截: 禁止在持仓层 L${levelIndex + 1}(${level.side}) 下${side}单 @${(decision.price ?? 0).toFixed(2)}，应使用 close_long/close_short`,
-      );
-      return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
-    }
+    // filled 层允许挂单（DCA 加仓摊薄成本），不拦截
+    // 下单成功后层保持 filled 状态，挂单信息挂载到 pendingOrder 附属字段
 
     // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
     // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
@@ -3252,8 +3246,13 @@ export class GridTradingService {
       }
       // nofx 对齐：层价格(grid line)保持不变，只更新订单状态
       // 教训(2026-03-14): finalLevel.price = price 导致多层塌陷到同一价格，破坏网格等距结构
-      finalLevel.state = 'pending';
-      finalLevel.side = side;
+      if (finalLevel.state === 'filled') {
+        // filled 层保持 filled 状态，挂单信息挂载到附属字段（双状态：持仓+挂单）
+        (finalLevel as any).pendingOrder = { side, orderId: result.orderId, quantity: finalQty, price };
+      } else {
+        finalLevel.state = 'pending';
+        finalLevel.side = side;
+      }
       // finalLevel.price 保持原始网格线价格，禁止覆盖
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
@@ -3724,10 +3723,16 @@ export class GridTradingService {
         if (price <= 0) continue;
         const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
 
-        // 规则1：挂单价格与持仓层同价 → 多余（持仓占位的残留单）
-        const matchesFilled = [...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing);
-        if (matchesFilled) {
-          unmappedIds.push(oid);
+        // 规则1：挂单价格与持仓层同价 → 标记为双状态（filled + pendingOrder）
+        const matchedFilledIdx = state.gridLines.findIndex(
+          l => l.state === 'filled' && Math.abs(l.price - price) < halfSpacing,
+        );
+        if (matchedFilledIdx >= 0) {
+          const fl = state.gridLines[matchedFilledIdx];
+          (fl as any).pendingOrder = { side: orderSide, orderId: oid, quantity: order.quantity ?? 0, price };
+          fl.orderId = oid;
+          fl.orderQuantity = order.quantity ?? 0;
+          state.orderBook[oid] = matchedFilledIdx;
           continue;
         }
 
@@ -4627,8 +4632,18 @@ export class GridTradingService {
       if (price <= 0) continue;
       const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
 
-      // 规则1：挂单价格与持仓层同价 → 跳过（多余单）
-      if ([...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing)) continue;
+      // 规则1：挂单价格与持仓层同价 → 标记为双状态（filled + pendingOrder）
+      const matchedFilledDisplayIdx = display.findIndex(
+        (d: any) => d.st === 'filled' && Math.abs(state.gridLines[display.indexOf(d)]?.price - price) < halfSpacing,
+      );
+      if (matchedFilledDisplayIdx >= 0) {
+        display[matchedFilledDisplayIdx].po = {
+          s: orderSide,
+          oid: oid.slice(-8),
+          qty: +(order.quantity ?? order.amount ?? 0).toFixed(4),
+        };
+        continue;
+      }
 
       // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
       // 对齐 syncMemoryFromExchange：删除 zone filter，避免 AI 放在非标准位置的单被误过滤
@@ -4743,6 +4758,11 @@ export class GridTradingService {
           if (l.state === 'filled') {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
             entry.ep = +((l.positionEntry || l.price) || 0).toFixed(4);
+            // 双状态：filled + pendingOrder
+            const po = (l as any).pendingOrder;
+            if (po) {
+              entry.po = { s: po.side, oid: po.orderId?.slice(-8) ?? '', qty: +(po.quantity ?? 0).toFixed(4) };
+            }
           } else if (l.state === 'pending') {
             entry.oid = l.orderId?.slice(-8) ?? '';
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
