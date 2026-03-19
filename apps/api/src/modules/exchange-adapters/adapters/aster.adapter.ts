@@ -641,7 +641,7 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
             exitTime: new Date(t.time),
             orderId: String(t.id),
             closeType: 'unknown' as const,
-            exchangeId: String(t.id),
+            exchangeId: `aster_${t.id}`,
           };
         });
     } catch (e) {

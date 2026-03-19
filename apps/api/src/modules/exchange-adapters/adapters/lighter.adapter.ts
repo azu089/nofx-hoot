@@ -553,7 +553,7 @@ export class LighterAdapter implements ExchangeAdapter, GridExchangeAdapter {
           exitTime: new Date(t.timestamp),
           orderId: String(t.order_id),
           closeType: 'unknown' as const,
-          exchangeId: t.trade_id,
+          exchangeId: `lighter_${t.trade_id}`,
         }));
     } catch (e) {
       logger.debug(`Lighter adapter non-critical error (getClosedPnl): ${e instanceof Error ? e.message : e}`);

@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FeeService } from './fee.service';
+import { ReferralService } from '../referral/referral.service';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { ExchangeAdapter } from '../exchange-adapters/types/adapter.interface';
 
 /**
@@ -14,6 +16,7 @@ import type { ExchangeAdapter } from '../exchange-adapters/types/adapter.interfa
  *   3. 交易所有、DB 没有 → INSERT（新增）
  *   4. DB 有、交易所没有 → DELETE（清理）
  *   5. 两边都有 → 不动（交易所历史不变）
+ *   6. 盈利仓位 → GAS 扣费 → 上级返佣（自动入账）
  */
 @Injectable()
 export class ClosedPnlSyncService {
@@ -22,6 +25,7 @@ export class ClosedPnlSyncService {
   constructor(
     private prisma: PrismaService,
     private feeService: FeeService,
+    @Optional() private referralService?: ReferralService,
   ) {}
 
   /**
@@ -45,8 +49,10 @@ export class ClosedPnlSyncService {
     }
 
     if (!exchangeRecords || exchangeRecords.length === 0) {
-      // 交易所返回空 → 清理 DB 中该 apiKey 最近 24h 的所有 exchangeRef 记录
-      const deleted = await this.cleanupStaleRecords(userId, apiKeyId, since, new Set());
+      // 交易所返回空 → 保守处理：不删除任何 DB 记录
+      // 原因：交易所 API 可能临时故障返回空，误删会导致重新插入+重复扣费
+      // 旧记录会在 24h 窗口外自然不再被查到
+      const deleted = 0;
       return { synced: 0, deleted, charged: 0, balanceDepleted: false };
     }
 
@@ -115,7 +121,9 @@ export class ClosedPnlSyncService {
           try {
             const feeCalc = await this.feeService.calculateFee(userId, record.realizedPnl.toFixed(8));
             if (parseFloat(feeCalc.feeAmount) > 0) {
-              const uniqueOrderId = `EXSYNC_FEE_${userId}_${record.exchangeId}`;
+              // 用仓位本质属性生成稳定的幂等 key，不受 exchangeId 格式变更影响
+              const stablePosKey = `${record.symbol}_${record.side}_${record.exitTime?.getTime() ?? 0}_${(record.quantity ?? 0).toFixed(4)}`;
+              const uniqueOrderId = `EXSYNC_FEE_${userId}_${stablePosKey}`;
               const feeResult = await this.feeService.chargeFee({
                 userId,
                 positionId: position.id,
@@ -127,6 +135,11 @@ export class ClosedPnlSyncService {
               });
               charged++;
               if (feeResult.balanceDepleted) balanceDepleted = true;
+
+              // GAS 扣费成功 → 触发上级返佣（非致命，失败不影响主流程）
+              if (feeResult.ok) {
+                await this.processReferralCommission(userId, position.id, feeCalc.feeAmount);
+              }
             }
           } catch (feeErr: any) {
             this.logger.warn(`[历史持仓同步] 扣费失败(非致命): ${record.symbol} pnl=${record.realizedPnl} err=${feeErr.message}`);
@@ -182,7 +195,28 @@ export class ClosedPnlSyncService {
     });
 
     // DB 有、交易所没有 → 删除
-    const toDelete = dbRecords.filter(p => p.exchangeRef && !validExchangeRefs.has(p.exchangeRef));
+    // 安全守卫：只删除与当前交易所同源的记录
+    // 防止 exchangeId 格式变更时误删旧格式记录导致重复扣费
+    // 旧格式记录会在 24h 窗口后自然过期
+    //
+    // 所有交易所 exchangeId 格式统一为 "{exchange}_..." 开头：
+    //   binance_pos_SOLUSDT_long_... | gate_pos_SOLUSDT_long_...
+    //   okx_123456789 | bybit_12345678
+    //   lighter_abc123 | aster_12345
+    // 提取交易所级前缀（第一个 _ 前 + _）用于同源匹配
+    const prefixSet = new Set<string>();
+    for (const ref of validExchangeRefs) {
+      const idx = ref.indexOf('_');
+      if (idx > 0) {
+        prefixSet.add(ref.substring(0, idx + 1)); // e.g. "binance_", "okx_", "lighter_"
+      }
+    }
+
+    const toDelete = dbRecords.filter(p => {
+      if (!p.exchangeRef || validExchangeRefs.has(p.exchangeRef)) return false;
+      // 只删除同交易所的记录，跳过不同交易所或旧格式无前缀的记录
+      return [...prefixSet].some(prefix => p.exchangeRef!.startsWith(prefix));
+    });
 
     if (toDelete.length === 0) return 0;
 
@@ -219,5 +253,114 @@ export class ClosedPnlSyncService {
     }
 
     return null;
+  }
+
+  /**
+   * GAS 扣费后触发上级返佣
+   * 返佣基数 = 实际扣除的 GAS 费用
+   * 一级返佣 = GAS × level1Rate%（默认 10%）
+   * 二级返佣 = GAS × level2Rate%（默认 5%）
+   * 返佣立即入账（创建 reward + 更新余额 + 写 Transaction，原子事务）
+   */
+  private async processReferralCommission(
+    userId: string,
+    positionId: string,
+    feeAmount: string,
+  ): Promise<void> {
+    try {
+      if (!this.referralService) return;
+
+      const fee = new Decimal(feeAmount);
+      if (fee.lte(0)) return;
+
+      // 获取返佣配置
+      const config = await this.prisma.referralConfig.findUnique({
+        where: { id: 'default' },
+      });
+      if (!config || !config.isActive) return;
+
+      const enabledTypes = config.enabledTypes as string[];
+      if (!enabledTypes.includes('trading')) return;
+
+      // 查找邀请链：用户 → 一级邀请人 → 二级邀请人
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { invitedBy: true },
+      });
+      if (!user?.invitedBy) return;
+
+      const levels: Array<{ inviterId: string; rate: Decimal; level: number }> = [
+        { inviterId: user.invitedBy, rate: new Decimal(config.level1Rate.toString()).div(100), level: 1 },
+      ];
+
+      // 二级邀请人
+      const level1User = await this.prisma.user.findUnique({
+        where: { id: user.invitedBy },
+        select: { invitedBy: true },
+      });
+      if (level1User?.invitedBy) {
+        levels.push({
+          inviterId: level1User.invitedBy,
+          rate: new Decimal(config.level2Rate.toString()).div(100),
+          level: 2,
+        });
+      }
+
+      // 为每一级创建返佣并立即入账
+      for (const { inviterId, rate, level } of levels) {
+        const commission = fee.times(rate);
+        if (commission.lte(0)) continue;
+
+        const uniqueOrderId = `ref_${inviterId}_gas_${positionId}_L${level}`;
+
+        // 幂等检查
+        const existing = await this.prisma.referralReward.findUnique({
+          where: { uniqueOrderId },
+        });
+        if (existing) continue;
+
+        // 原子事务：创建 reward（paid） + 更新余额 + 写 Transaction
+        await this.prisma.$transaction(async (tx) => {
+          // 1. 创建返佣记录（直接标记 paid）
+          await tx.referralReward.create({
+            data: {
+              userId: inviterId,
+              fromUserId: userId,
+              type: 'trading',
+              amount: commission,
+              asset: 'USDT',
+              uniqueOrderId,
+              status: 'paid',
+            },
+          });
+
+          // 2. 上级余额立即增加
+          await tx.user.update({
+            where: { id: inviterId },
+            data: { usdtBalance: { increment: commission } },
+          });
+
+          // 3. 写入交易记录
+          await tx.transaction.create({
+            data: {
+              userId: inviterId,
+              type: 'referral',
+              asset: 'USDT',
+              amount: commission,
+              uniqueOrderId: `referral_pay_${uniqueOrderId}`,
+              status: 'completed',
+              remark: `L${level}邀请返佣 - GAS费 ${feeAmount} × ${rate.times(100)}%`,
+            },
+          });
+        });
+
+        this.logger.log(
+          `[返佣] L${level}: ${inviterId} 从 ${userId} 获得 ${commission.toFixed(8)} USDT（GAS ${feeAmount} × ${rate.times(100)}%）`,
+        );
+      }
+    } catch (error: any) {
+      // 返佣失败不影响主流程
+      this.logger.warn(`[返佣] 处理失败(非致命): ${error.message}`);
+    }
   }
 }

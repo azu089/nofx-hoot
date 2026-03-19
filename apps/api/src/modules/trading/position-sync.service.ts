@@ -171,12 +171,17 @@ export class PositionSyncService {
       } else {
         if (exchangeSuccess) {
           // 交易所接口正常，但持仓不存在 → 已被平仓
-          // 不在此处写 DB（markPrice 是旧值，会导致盈亏失真）
-          // 真正的平仓记录由 strategy-engine.syncPositionsForUser / snapshotPositionsOnStartup 处理
-          // 使用 exchange fills 获取实际盈亏
-          this.logger.warn(
-            `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所未找到，跳过自动平仓（由 strategy-engine 处理）`,
+          // 标记 DB 记录为 closed，避免每次同步重复 warn
+          // 真实 PnL 由 ClosedPnlSyncService 从交易所拉取（带 exchangeRef），此处只清理旧 open 记录
+          this.logger.log(
+            `数据库持仓 ${dbPos.id} (${dbPos.symbol}) 在交易所已平仓，标记为 closed`,
           );
+          try {
+            await this.prisma.position.update({
+              where: { id: dbPos.id },
+              data: { status: 'closed', closedAt: new Date(), closeReason: 'exchange_closed' },
+            });
+          } catch { /* 非致命 */ }
           // 不加入 syncedPositions，前端持仓列表自然清除
         } else {
           // 交易所接口调用失败（网络/认证等），不执行自动平仓，降级返回 DB 数据

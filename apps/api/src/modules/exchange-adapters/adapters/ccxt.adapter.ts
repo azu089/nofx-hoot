@@ -1022,7 +1022,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     const ex = this.getExchange();
     const startMs = startTime.getTime();
 
-    // Step 1: 用 income API 找到有 realizedPnl 的 symbol
+    // Step 1: income API 找到近期有平仓 PnL 的 symbol
     const incomeResp: any[] = await (ex as any).fapiPrivateGetIncome({
       incomeType: 'REALIZED_PNL',
       startTime: startMs,
@@ -1030,87 +1030,148 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     });
     if (!incomeResp || incomeResp.length === 0) return [];
 
-    // 提取 unique symbols（Binance 格式如 "SOLUSDT"）
     const symbolSet = new Set<string>();
     for (const inc of incomeResp) {
       if (inc.symbol) symbolSet.add(inc.symbol);
     }
 
-    // Step 2: 按 symbol 调原始 userTrades API 获取完整成交
+    // Step 2: 拉取全量成交（含开仓+平仓），回看 48h 确保覆盖开仓记录
+    const lookbackMs = startMs - 48 * 60 * 60 * 1000;
     const allTrades: any[] = [];
     for (const rawSymbol of symbolSet) {
       try {
         const trades: any[] = await (ex as any).fapiPrivateGetUserTrades({
           symbol: rawSymbol,
-          startTime: startMs,
+          startTime: lookbackMs,
           limit: 1000,
         });
-        if (trades && trades.length > 0) {
-          allTrades.push(...trades);
-        }
+        if (trades?.length) allTrades.push(...trades);
       } catch (e: any) {
         this.logger.debug(`getClosedPnlBinance: ${rawSymbol} userTrades 失败: ${e.message}`);
       }
     }
 
-    // 只保留有 realizedPnl 的成交（= 平仓成交）
-    const closingTrades = allTrades.filter((t: any) => {
-      const pnl = parseFloat(t.realizedPnl ?? '0');
-      return Math.abs(pnl) > 0.0001;
-    });
+    if (allTrades.length === 0) return [];
 
-    if (closingTrades.length === 0) return [];
+    // Step 3: 按 symbol 分组，时间排序
+    const bySymbol = new Map<string, any[]>();
+    for (const t of allTrades) {
+      const sym = t.symbol || '';
+      if (!bySymbol.has(sym)) bySymbol.set(sym, []);
+      bySymbol.get(sym)!.push(t);
+    }
 
-    // Binance 没有 OKX 那样的 posId 级持仓历史 API
-    // 逐笔记录，每笔平仓成交独立一条（与 Binance 交易历史一致）
-    const results: ClosedPnlRecord[] = closingTrades
-      .map((t: any) => {
-        const pnl = parseFloat(t.realizedPnl ?? '0');
-        const feeCost = Math.abs(parseFloat(t.commission ?? '0'));
-        const price = parseFloat(t.price || '0');
+    // Step 4: 每个 symbol 重建仓位生命周期（对齐 Binance "仓位历史"）
+    const results: ClosedPnlRecord[] = [];
+
+    for (const [rawSymbol, trades] of bySymbol) {
+      trades.sort((a: any, b: any) => Number(a.time) - Number(b.time));
+
+      // 跟踪多头和空头仓位状态
+      let longQty = 0, longNotional = 0, longFee = 0, longOpenTime = 0;
+      let shortQty = 0, shortNotional = 0, shortFee = 0, shortOpenTime = 0;
+
+      for (const t of trades) {
         const qty = parseFloat(t.qty || '0');
+        const price = parseFloat(t.price || '0');
+        const pnl = parseFloat(t.realizedPnl ?? '0');
+        const fee = Math.abs(parseFloat(t.commission ?? '0'));
         const tradeTime = Number(t.time || 0);
-
-        // 推断被平仓方向
+        const side = (t.side || '').toUpperCase();
         const positionSide = (t.positionSide || 'BOTH').toUpperCase();
-        let closedSide: 'long' | 'short';
+
+        // 判断这笔成交是开仓还是平仓
+        let isClosingLong = false;
+        let isClosingShort = false;
+
         if (positionSide === 'LONG') {
-          closedSide = 'long';
+          // 双向模式：LONG+SELL = 平多
+          if (side === 'SELL') isClosingLong = true;
         } else if (positionSide === 'SHORT') {
-          closedSide = 'short';
+          // 双向模式：SHORT+BUY = 平空
+          if (side === 'BUY') isClosingShort = true;
         } else {
-          closedSide = t.side === 'SELL' ? 'long' : 'short';
+          // 单向模式 (BOTH)：有 realizedPnl = 平仓
+          if (Math.abs(pnl) > 0.0001) {
+            if (side === 'SELL') isClosingLong = true;
+            else isClosingShort = true;
+          }
         }
 
-        // 反推开仓价：entryPrice = exitPrice ∓ (pnl / qty)
-        let entryPrice = closedSide === 'long'
-          ? price - (qty > 0 ? pnl / qty : 0)
-          : price + (qty > 0 ? pnl / qty : 0);
-        if (entryPrice < 0) entryPrice = 0;
+        if (isClosingLong && longQty > 0) {
+          // 平多仓
+          const closedQty = Math.min(qty, longQty);
+          const avgEntry = longNotional / longQty;
+          results.push(this.buildBinancePositionRecord(
+            rawSymbol, 'long', avgEntry, price, closedQty, pnl, fee + longFee * (closedQty / longQty),
+            longOpenTime, tradeTime, t.orderId,
+          ));
+          longNotional -= closedQty * avgEntry;
+          longFee -= longFee * (closedQty / longQty);
+          longQty -= closedQty;
+          if (longQty <= 0.00001) { longQty = 0; longNotional = 0; longFee = 0; longOpenTime = 0; }
+        } else if (isClosingShort && shortQty > 0) {
+          // 平空仓
+          const closedQty = Math.min(qty, shortQty);
+          const avgEntry = shortNotional / shortQty;
+          results.push(this.buildBinancePositionRecord(
+            rawSymbol, 'short', avgEntry, price, closedQty, pnl, fee + shortFee * (closedQty / shortQty),
+            shortOpenTime, tradeTime, t.orderId,
+          ));
+          shortNotional -= closedQty * avgEntry;
+          shortFee -= shortFee * (closedQty / shortQty);
+          shortQty -= closedQty;
+          if (shortQty <= 0.00001) { shortQty = 0; shortNotional = 0; shortFee = 0; shortOpenTime = 0; }
+        } else {
+          // 开仓（加仓）
+          if (side === 'BUY') {
+            if (!longOpenTime) longOpenTime = tradeTime;
+            longQty += qty;
+            longNotional += qty * price;
+            longFee += fee;
+          } else {
+            if (!shortOpenTime) shortOpenTime = tradeTime;
+            shortQty += qty;
+            shortNotional += qty * price;
+            shortFee += fee;
+          }
+        }
+      }
+    }
 
-        const unifiedSymbol = this.binanceRawSymbolToUnified(t.symbol || '');
-        // 用 tradeId 唯一标识（Binance 每笔成交有唯一 id）
-        const exchangeId = `binance_${t.id || t.orderId || tradeTime}`;
+    // 只返回在 startTime 之后平仓的记录
+    return results
+      .filter(r => r.exitTime.getTime() >= startMs)
+      .sort((a, b) => b.exitTime.getTime() - a.exitTime.getTime())
+      .slice(0, limit);
+  }
 
-        return {
-          symbol: unifiedSymbol,
-          side: closedSide as 'long' | 'short',
-          entryPrice,
-          exitPrice: price,
-          quantity: qty,
-          realizedPnl: pnl,
-          fee: feeCost,
-          leverage: 1,
-          entryTime: new Date(tradeTime || Date.now()),
-          exitTime: new Date(tradeTime || Date.now()),
-          orderId: String(t.orderId || t.id || ''),
-          closeType: 'manual' as const,
-          exchangeId,
-        };
-      })
-      .sort((a, b) => b.exitTime.getTime() - a.exitTime.getTime());
-
-    return results.slice(0, limit);
+  /** 构建一条仓位历史记录（Binance/Gate 共用） */
+  private buildBinancePositionRecord(
+    rawSymbol: string, side: 'long' | 'short',
+    entryPrice: number, exitPrice: number, quantity: number,
+    realizedPnl: number, fee: number,
+    openTime: number, closeTime: number, orderId: string,
+  ): ClosedPnlRecord {
+    const unifiedSymbol = this.binanceRawSymbolToUnified(rawSymbol);
+    // exchangeId = 交易所 + symbol + side + 平仓时间戳 + 数量 确保唯一
+    const exchangePrefix = this.exchangeType || 'binance';
+    const exchangeId = `${exchangePrefix}_pos_${rawSymbol}_${side}_${closeTime}_${quantity.toFixed(4)}`;
+    return {
+      symbol: unifiedSymbol,
+      side,
+      entryPrice,
+      exitPrice,
+      quantity,
+      realizedPnl,
+      fee,
+      leverage: 1,
+      entryTime: new Date(openTime || closeTime),
+      exitTime: new Date(closeTime),
+      orderId: String(orderId || ''),
+      closeType: 'manual' as const,
+      exchangeId,
+    };
   }
 
   /** Binance 原始 symbol "SOLUSDT" → 统一 "SOL/USDT:USDT" */
