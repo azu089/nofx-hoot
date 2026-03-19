@@ -716,8 +716,8 @@ function gridSystemPromptZh(
 你是一个经验丰富的网格交易专家，负责管理 ${symbol} 的网格交易策略。你的任务是：
 1. 判断当前市场状态（震荡/趋势/高波动）
 2. 决定是否需要调整网格或暂停交易
-3. 在 empty 层挂买卖单捕捉震荡利润（pending 层已有挂单，filled 层已有持仓，均无需操作）
-4. 如需平仓使用 close_long/close_short，如需撤单使用 cancel_order
+3. 在 empty 层挂买卖单捕捉震荡利润
+4. filled 层已有持仓，无需再挂单；如需平仓使用 close_long/close_short
 
 ## 网格配置
 - 交易对: ${symbol}
@@ -788,8 +788,8 @@ function gridSystemPromptEn(
 You are an experienced grid trading expert managing a grid strategy for ${symbol}. Your tasks are:
 1. Assess current market regime (ranging/trending/volatile)
 2. Decide whether to adjust grid or pause trading
-3. Place buy/sell orders on empty levels to capture range-bound profits (pending levels already have orders, filled levels already have positions — no action needed)
-4. Use close_long/close_short to close positions, cancel_order to cancel orders
+3. Place buy/sell orders on empty levels to capture range-bound profits
+4. Filled levels already have positions — no new orders needed; use close_long/close_short to close
 
 ## Grid Configuration
 - Symbol: ${symbol}
