@@ -737,6 +737,7 @@ function gridSystemPromptZh(
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
 - place_buy/sell_limit 下单成功后层状态变为 pending
 - 每个挂单（含平仓方向）都会冻结保证金。保证金不足时可先 cancel_order 撤销远处挂单释放保证金，再挂新单
+- 可在持仓层补挂同方向单摊薄成本（如在多头持仓附近挂买单拉低均价）
 
 ## 暂停模式（isPaused=true）
 挂单已撤销，AI 继续运行管理持仓。可用操作：close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold。
@@ -792,6 +793,7 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
 - place_buy/sell_limit: order placed successfully transitions level state to pending
 - Every pending order (including close-direction) freezes margin. If margin is insufficient, you can cancel_order far-away orders to free margin, then place new ones
+- You can place same-direction orders on filled levels to average down cost (e.g. buy near long position to lower avgEntry)
 
 ## Pause Mode (isPaused=true)
 Orders cancelled. AI continues running to manage positions. Available: close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold.
