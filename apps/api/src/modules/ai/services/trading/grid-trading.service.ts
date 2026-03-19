@@ -4687,11 +4687,12 @@ export class GridTradingService {
   ): any[] {
     const baseSymbol = state.symbol.split('/')[0];
 
-    // 初始化所有层为 empty
+    // 初始化所有层为 empty，side 按当前价重算（不用 state.gridLines 的旧 side）
+    const currentPrice = state.lastPrice ?? 0;
     const display: any[] = state.gridLines.map((l, i) => ({
       lv: i + 1,
       p: +l.price.toFixed(4),
-      s: l.side,
+      s: currentPrice > 0 ? (l.price <= currentPrice ? 'buy' : 'sell') : l.side,
       st: 'empty',
     }));
 
