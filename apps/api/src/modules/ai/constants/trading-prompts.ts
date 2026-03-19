@@ -858,11 +858,12 @@ function buildLevelRow(l: GridContext['levels'][0], i: number, ctx: GridContext,
         }
       })()
     : '';
-  // filled 层：显示入场价（@entry），quantity=0 表示禁止在此层下单
   const entryStr = (l.state === 'filled' && l.fillPrice && l.fillPrice > 0)
     ? ` @${l.fillPrice.toFixed(4)}`
     : '';
-  return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)}${entryStr} | ${dirStr} | ${l.quantity.toFixed(4)} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;
+  // filled 层数量列显示"—"（不是 0.0000），避免 AI 误解为"需要补单"
+  const qtyStr = l.state === 'filled' ? '—' : l.quantity.toFixed(4);
+  return `${String(i + 1).padStart(3)} | ${l.price.toFixed(4)}${entryStr} | ${dirStr} | ${qtyStr} | ${posSizeStr} | ${stateStr}${lossStr} | ${profitStr} | ${orderIdStr}`;
 }
 
 /** 构建持仓行 */
@@ -1052,7 +1053,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   // Section 5: 网格层级表
   lines.push('');
   lines.push('--- 网格层级 ---');
-  lines.push('层号 | 价格 | 方向 | 数量 | 持仓量 | 状态 | 盈亏 | 订单ID');
+  lines.push('层号 | 价格 | 方向 | 订单数量 | 持仓数量 | 状态 | 盈亏 | 订单ID');
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, false));
   }
@@ -1218,7 +1219,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   // Section 5: Grid Levels Table
   lines.push('');
   lines.push('--- Grid Levels ---');
-  lines.push('Level | Price | Direction | Qty | Position | State | PnL | OrderID');
+  lines.push('Level | Price | Direction | OrderQty | PositionQty | State | PnL | OrderID');
   for (let i = 0; i < ctx.levels.length; i++) {
     lines.push(buildLevelRow(ctx.levels[i], i, ctx, true));
   }
