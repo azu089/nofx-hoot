@@ -4695,22 +4695,40 @@ export class GridTradingService {
       st: 'empty',
     }));
 
-    // Step 1: 持仓映射已删除（2026-03-19 对齐 nofx）
-    // 持仓聚合为独立对象，不映射到层
+    // Step 1: 持仓聚合映射到距 avgEntry 最近的 1 层（仅展示用）
+    // AI 的 state.gridLines 不受影响（操作历史），这里只改 display 数组
     let positionInfo: any = null;
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
       const totalQty = pos.quantity ?? 0;
       if (totalQty <= 0.0001) continue;
       const rawSide = pos.side as string;
-      const posSide = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+      const posSide: 'buy' | 'sell' = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+      const avgEntry = pos.entryPrice ?? 0;
+
       positionInfo = {
         side: posSide,
         qty: +totalQty.toFixed(4),
-        entry: +(pos.entryPrice ?? 0).toFixed(4),
+        entry: +avgEntry.toFixed(4),
         pnl: +(pos.unrealizedPnl ?? 0).toFixed(4),
         leverage: pos.leverage ?? state.leverage ?? 1,
       };
+
+      // 映射到距 avgEntry 最近的 1 层（展示为 filled）
+      if (avgEntry > 0) {
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < display.length; i++) {
+          const d = Math.abs(state.gridLines[i].price - avgEntry);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) {
+          display[bestIdx].st = 'filled';
+          display[bestIdx].s = posSide;
+          display[bestIdx].qty = +totalQty.toFixed(4);
+          display[bestIdx].ep = +avgEntry.toFixed(4);
+        }
+      }
     }
 
     // Step 2: 委托单映射 → pending（不再有 filled 占位过滤）
