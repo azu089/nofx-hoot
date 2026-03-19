@@ -1016,11 +1016,11 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push('--- 网格状态 ---');
   lines.push(`范围: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | 间距: ${ctx.gridSpacing.toFixed(4)}`);
   const dirExplain: Record<string, string> = {
-    neutral:    '中性（下方全买/上方全卖，标准网格）',
-    long_bias:  '偏多（~70%层挂买，含价格上方部分层也挂买，DCA式做多积累）',
-    short_bias: '偏空（~70%层挂卖，含价格下方部分层也挂卖，DCA式做空积累）',
-    long:       '全多（100%买单，单向顺势积累多头）',
-    short:      '全空（100%卖单，单向顺势积累空头）',
+    neutral:    '中性 (50%买+50%卖)',
+    long_bias:  '偏多 (70%买+30%卖)',
+    short_bias: '偏空 (30%买+70%卖)',
+    long:       '做多 (100%买)',
+    short:      '做空 (100%卖)',
   };
   const dirNote = dirExplain[ctx.currentDirection] ?? ctx.currentDirection;
   lines.push(`分布: ${ctx.distribution} | 方向: ${ctx.currentDirection}（${dirNote}）`);
@@ -1174,11 +1174,11 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   lines.push('--- Grid Status ---');
   lines.push(`Range: ${ctx.lowerPrice.toFixed(2)} ~ ${ctx.upperPrice.toFixed(2)} | Spacing: ${ctx.gridSpacing.toFixed(4)}`);
   const dirExplainEn: Record<string, string> = {
-    neutral:    'neutral (buy below price / sell above, standard grid)',
-    long_bias:  'long-bias (~70% buy levels, including some above price, DCA-style long accumulation)',
-    short_bias: 'short-bias (~70% sell levels, including some below price, DCA-style short accumulation)',
-    long:       'full-long (100% buy orders, one-directional long)',
-    short:      'full-short (100% sell orders, one-directional short)',
+    neutral:    'Neutral (50% buy + 50% sell)',
+    long_bias:  'Long Bias (70% buy + 30% sell)',
+    short_bias: 'Short Bias (30% buy + 70% sell)',
+    long:       'Long (100% buy)',
+    short:      'Short (100% sell)',
   };
   const dirNoteEn = dirExplainEn[ctx.currentDirection] ?? ctx.currentDirection;
   lines.push(`Distribution: ${ctx.distribution} | Direction: ${ctx.currentDirection} (${dirNoteEn})`);
