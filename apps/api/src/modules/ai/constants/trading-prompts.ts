@@ -715,12 +715,12 @@ function gridSystemPromptZh(
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 层状态映射机制（理解这个对决策至关重要）
+## 层状态说明
 
-后端每轮从交易所实时 API 重建内存层状态：
-- **filled 层**：有持仓。交易所只返回整体持仓均价（avgEntry），所以多个 filled 层会显示相同的入场价——这是系统设计，真实每层入场价分散在 avgEntry 附近。side=buy→多头，side=sell→空头
+- **filled 层**：你之前下的单已成交，层记录了实际成交价和数量
 - **pending 层**：已在交易所挂单，等待成交
-- **empty 层**：无持仓无挂单，可下新单
+- **empty 层**：无挂单，可下新单
+- **持仓信息**：交易所净持仓（数量、均价、未实现盈亏）在"账户状态"Section 独立展示，不映射到层。你自主决定在哪些层操作以管理持仓
 
 ## 可用操作
 - **place_buy_limit**: 挂买单（fields: level, price, quantity）
@@ -778,11 +778,12 @@ function gridSystemPromptEn(
 ## Grid Parameters
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
 
-## Level State Mapping Mechanism (critical for decision-making)
-The backend rebuilds internal level state from exchange real-time API each cycle:
-- **filled levels**: Have positions. The exchange only returns the overall position average entry (avgEntry), so multiple filled levels show the same entry price — this is by design; the actual per-level entry prices are distributed around avgEntry. side=buy → long, side=sell → short
-- **pending levels**: Orders placed on the exchange, awaiting fill
-- **empty levels**: No position, no order — can place new orders
+## Level States
+
+- **filled levels**: Your previous order was executed; level records actual fill price and quantity
+- **pending levels**: Order placed on exchange, awaiting fill
+- **empty levels**: No order — can place new orders
+- **Position info**: Exchange net position (quantity, avgEntry, unrealizedPnl) shown separately in Account section, not mapped to levels. You decide which levels to operate on to manage positions
 
 ## Available Actions
 - **place_buy_limit**: Place buy order (fields: level, price, quantity)
@@ -1087,9 +1088,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, '多仓', false) : '多仓: 无');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, '空仓', false) : '空仓: 无');
-    // avgEntry 摘要：filled 层均显示此价格，是网格层映射的参考基准
-    if (ctx.positionLong) lines.push(`avgEntry(多头均价): ${ctx.positionLong.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
-    if (ctx.positionShort) lines.push(`avgEntry(空头均价): ${ctx.positionShort.entryPrice.toFixed(4)} — filled层均以此为入场参考`);
+    // 持仓独立于层，AI 自主决定操作方式
   } else {
     lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
@@ -1255,8 +1254,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, 'Long', true) : 'Long: None');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, 'Short', true) : 'Short: None');
-    if (ctx.positionLong) lines.push(`avgEntry (long avg price): ${ctx.positionLong.entryPrice.toFixed(4)} — all filled levels reference this entry`);
-    if (ctx.positionShort) lines.push(`avgEntry (short avg price): ${ctx.positionShort.entryPrice.toFixed(4)} — all filled levels reference this entry`);
+    // Position independent of levels — AI decides how to manage
   } else {
     lines.push(`Current Position: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
