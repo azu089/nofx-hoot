@@ -1092,8 +1092,6 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     if (allTrades.length === 0) return [];
 
-    this.logger.debug(`[仓位重建] income=${incomeResp.length}条, symbols=${[...symbolSet].join(',')}, trades=${allTrades.length}条`);
-
     // Step 3: 按 symbol 分组，时间排序
     const bySymbol = new Map<string, any[]>();
     for (const t of allTrades) {
@@ -1107,13 +1105,6 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     for (const [rawSymbol, trades] of bySymbol) {
       trades.sort((a: any, b: any) => Number(a.time) - Number(b.time));
-
-      // 诊断：前 5 条和后 5 条 trade 的关键字段
-      const diagTrades = trades.slice(0, 5).concat(trades.length > 5 ? trades.slice(-3) : []);
-      for (const dt of diagTrades) {
-        this.logger.debug(`[仓位重建] ${rawSymbol} trade: side=${dt.side} posSide=${dt.positionSide} qty=${dt.qty} price=${dt.price} pnl=${dt.realizedPnl} time=${dt.time}`);
-      }
-      this.logger.debug(`[仓位重建] ${rawSymbol} 共 ${trades.length} 条 trades`);
 
       // ── 多头追踪 ──
       let longQty = 0, longOpenTime = 0;
@@ -1254,10 +1245,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     // 只返回在 startTime 之后平仓的记录
     const filtered = results.filter(r => r.exitTime.getTime() >= startMs);
-    this.logger.debug(`[仓位重建] 完成: 原始=${results.length}条, 过滤后=${filtered.length}条 (startMs=${startMs})`);
     if (results.length > 0 && filtered.length === 0) {
-      // 有结果但全被过滤了 — 打印第一条看看时间
-      this.logger.warn(`[仓位重建] 全部被时间过滤! 第一条 exitTime=${results[0].exitTime.toISOString()}, startTime=${new Date(startMs).toISOString()}`);
+      this.logger.warn(`[仓位重建] ${results.length}条全被时间过滤: first=${results[0].exitTime.toISOString()}, start=${new Date(startMs).toISOString()}`);
     }
     return filtered
       .sort((a, b) => b.exitTime.getTime() - a.exitTime.getTime())
