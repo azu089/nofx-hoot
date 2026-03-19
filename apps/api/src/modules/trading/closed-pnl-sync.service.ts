@@ -44,16 +44,13 @@ export class ClosedPnlSyncService {
     try {
       exchangeRecords = await adapter.getClosedPnl(since, 100);
     } catch (e: any) {
-      this.logger.debug(`[历史持仓同步] 拉取失败(非致命): ${e.message}`);
+      this.logger.warn(`[历史持仓同步] 拉取失败(非致命): ${e.message}`);
       return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false };
     }
 
     if (!exchangeRecords || exchangeRecords.length === 0) {
-      // 交易所返回空 → 保守处理：不删除任何 DB 记录
-      // 原因：交易所 API 可能临时故障返回空，误删会导致重新插入+重复扣费
-      // 旧记录会在 24h 窗口外自然不再被查到
-      const deleted = 0;
-      return { synced: 0, deleted, charged: 0, balanceDepleted: false };
+      this.logger.log(`[历史持仓同步] 交易所返回空记录 (exchange=${exchange})`);
+      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false };
     }
 
     // 交易所记录集合（exchangeId → record）
