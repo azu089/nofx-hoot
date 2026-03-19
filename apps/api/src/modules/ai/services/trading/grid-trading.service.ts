@@ -4819,19 +4819,13 @@ export class GridTradingService {
       const gridSummary = parts.join('/') || `${decisions.length}ops`;
 
       // 构建 GridState 快照
-      // 表头统计优先从 preExecGridLines（pre-sync 交易所数据）统计
-      // 确保持仓格/挂单层和层级显示一致（都是 AI 决策前的交易所状态）
-      // 持仓层数：内存中 filled 层（AI 操作历史）+ 聚合持仓（前端展示用 _position）
-      const memFilled = state?.gridLines.filter(l => l.state === 'filled').length ?? 0;
-      const hasPosition = preExecGridLines ? !!(preExecGridLines as any)._position : false;
-      const displayFilled = memFilled > 0 ? memFilled : (hasPosition ? 1 : 0);
-      // 挂单数 = 交易所实际挂单数（不是内存映射数），用户要求"交易所是几就是几"
-      const exchOrderCount = ((state as any)?._exchangeOrders ?? []).length;
-      const displayPending = exchOrderCount > 0
-        ? exchOrderCount
-        : (preExecGridLines
-          ? preExecGridLines.filter((g: any) => g.st === 'pending').length
-          : state?.gridLines.filter(l => l.state === 'pending').length ?? 0);
+      // 表头统计直接从 preExecGridLines（展示数据）统计，确保和层级显示完全一致
+      const displayFilled = preExecGridLines
+        ? preExecGridLines.filter((g: any) => g.st === 'filled').length
+        : state?.gridLines.filter(l => l.state === 'filled').length ?? 0;
+      const displayPending = preExecGridLines
+        ? preExecGridLines.filter((g: any) => g.st === 'pending').length
+        : state?.gridLines.filter(l => l.state === 'pending').length ?? 0;
       const gridSnapshot = state ? {
         upperPrice: state.upperPrice,
         lowerPrice: state.lowerPrice,
