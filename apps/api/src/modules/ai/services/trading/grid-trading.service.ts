@@ -3697,7 +3697,7 @@ export class GridTradingService {
         }
       }
 
-      state.unmappedOrderIds = unmappedIds;
+      state.unmappedOrderIds = (display as any)._unmappedOrderIds ?? [];
 
       // 日志汇总
       const newPending = state.gridLines.filter(l => l.state === 'pending').length;
@@ -4553,6 +4553,7 @@ export class GridTradingService {
     const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
 
     const usedDisplayIdx = new Set<number>();
+    const unmappedOrderIds: string[] = [];
     const symOrders = exchangeOpenOrders.filter((o: any) => {
       const sym: string = o.symbol ?? '';
       return sym.includes(baseSymbol);
@@ -4594,10 +4595,13 @@ export class GridTradingService {
         display[bestIdx].s = orderSide;
         display[bestIdx].oid = oid.slice(-8);
         display[bestIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
+      } else {
+        // 无匹配层 → 记录为多余挂单
+        unmappedOrderIds.push(oid);
       }
-      // 无匹配层 → AI 从 exchangeOpenOrders 看到并撤
     }
 
+    (display as any)._unmappedOrderIds = unmappedOrderIds;
     return display;
   }
 
