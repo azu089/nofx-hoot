@@ -1626,6 +1626,9 @@ export class GridTradingService {
         }
 
         // 交易所历史持仓同步 + 统一扣费（唯一入口）
+        if (!this.closedPnlSyncService) {
+          this.logger.warn(`[网格] closedPnlSyncService 未注入，跳过历史持仓同步`);
+        }
         if (this.closedPnlSyncService && adapter) {
           try {
             const syncResult = await this.closedPnlSyncService.syncClosedPositions(
