@@ -715,12 +715,11 @@ function gridSystemPromptZh(
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 层状态说明
+## 层状态
 
-- **filled 层**：你之前下的单已成交，层记录了实际成交价和数量
-- **pending 层**：已在交易所挂单，等待成交
-- **empty 层**：无挂单，可下新单
-- **持仓信息**：交易所净持仓（数量、均价、未实现盈亏）在"账户状态"Section 独立展示，不映射到层。你自主决定在哪些层操作以管理持仓
+- **filled**：已成交
+- **pending**：已挂单，等待成交
+- **empty**：可操作
 
 ## 可用操作
 - **place_buy_limit**: 挂买单（fields: level, price, quantity）
@@ -780,10 +779,9 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 
 ## Level States
 
-- **filled levels**: Your previous order was executed; level records actual fill price and quantity
-- **pending levels**: Order placed on exchange, awaiting fill
-- **empty levels**: No order — can place new orders
-- **Position info**: Exchange net position (quantity, avgEntry, unrealizedPnl) shown separately in Account section, not mapped to levels. You decide which levels to operate on to manage positions
+- **filled**: Order executed
+- **pending**: Order placed, awaiting fill
+- **empty**: Available for new orders
 
 ## Available Actions
 - **place_buy_limit**: Place buy order (fields: level, price, quantity)
