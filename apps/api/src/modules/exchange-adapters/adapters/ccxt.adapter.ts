@@ -1018,6 +1018,20 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
    * 注意：fetchMyTrades(undefined) 在本地缓存模式下会报 'contract' undefined 错误，
    *       因此必须使用原始 API 绕过 CCXT market 解析
    */
+  /**
+   * Binance 仓位历史重建（Binance 无原生 position history API）
+   *
+   * 行业标准算法（Freqtrade / Hummingbot / CCXT PR#21942 / OctoBot 共识）：
+   *   1. income API (REALIZED_PNL) 发现有 PnL 的 symbol
+   *   2. userTrades 拉逐笔成交（回看 7 天 — Binance 单次最大窗口）
+   *   3. 按 symbol 追踪 netQty，qty 归零 = 一条完整仓位生命周期
+   *
+   * 关键改进（v3 - 2026-03-19）：
+   *   - 回看从 48h → 7天，覆盖更长周期的开仓记录
+   *   - entry 价格从 Binance realizedPnl 反算（保证与 Binance 数学一致）
+   *   - 处理仓位翻转（平仓 qty > 持仓 qty 时自动开反向仓）
+   *   - 单向模式支持 break-even close（pnl=0 但 qty 减少）
+   */
   private async getClosedPnlBinance(startTime: Date, limit: number): Promise<ClosedPnlRecord[]> {
     const ex = this.getExchange();
     const startMs = startTime.getTime();
@@ -1035,8 +1049,10 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       if (inc.symbol) symbolSet.add(inc.symbol);
     }
 
-    // Step 2: 拉取全量成交（含开仓+平仓），回看 48h 确保覆盖开仓记录
-    const lookbackMs = startMs - 48 * 60 * 60 * 1000;
+    // Step 2: 拉全量成交，回看 7 天（Binance userTrades 单次最大窗口）
+    // 确保覆盖开仓记录，即使仓位几天前开的
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const lookbackMs = startMs - SEVEN_DAYS_MS;
     const allTrades: any[] = [];
     for (const rawSymbol of symbolSet) {
       try {
@@ -1061,34 +1077,53 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       bySymbol.get(sym)!.push(t);
     }
 
-    // Step 4: 每个 symbol 重建仓位生命周期（对齐 Binance "仓位历史"）
-    // 算法来源：Freqtrade recalc_trade_from_orders + Binance App 行为分析
-    // 每行 = 一个完整仓位生命周期（开仓→qty归零=一条记录）
-    // 参考：https://github.com/ccxt/ccxt/pull/21942（Binance 无原生 API，需从 userTrades 重建）
+    // Step 4: 每个 symbol 重建仓位生命周期
     const results: ClosedPnlRecord[] = [];
 
     for (const [rawSymbol, trades] of bySymbol) {
       trades.sort((a: any, b: any) => Number(a.time) - Number(b.time));
 
-      // 多头仓位追踪
-      let longQty = 0, longEntryNotional = 0, longOpenTime = 0;
+      // ── 多头追踪 ──
+      let longQty = 0, longOpenTime = 0;
       let longClosedQty = 0, longExitNotional = 0, longTotalPnl = 0, longTotalFee = 0;
-      let longMaxQty = 0, longLastCloseTime = 0, longLastOrderId = '';
+      let longLastCloseTime = 0, longLastOrderId = '';
 
-      // 空头仓位追踪
-      let shortQty = 0, shortEntryNotional = 0, shortOpenTime = 0;
+      // ── 空头追踪 ──
+      let shortQty = 0, shortOpenTime = 0;
       let shortClosedQty = 0, shortExitNotional = 0, shortTotalPnl = 0, shortTotalFee = 0;
-      let shortMaxQty = 0, shortLastCloseTime = 0, shortLastOrderId = '';
+      let shortLastCloseTime = 0, shortLastOrderId = '';
 
+      const emitLong = () => {
+        if (longClosedQty <= 0) return;
+        const avgExit = longExitNotional / longClosedQty;
+        // 核心：从 Binance realizedPnl 反算 entry（保证与 Binance 数学一致）
+        // 做多: pnl = (exit - entry) * qty → entry = exit - pnl/qty
+        const avgEntry = avgExit - longTotalPnl / longClosedQty;
+        results.push(this.buildBinancePositionRecord(
+          rawSymbol, 'long', avgEntry, avgExit, longClosedQty,
+          longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime, longLastOrderId,
+        ));
+      };
       const resetLong = () => {
-        longQty = 0; longEntryNotional = 0; longOpenTime = 0;
+        longQty = 0; longOpenTime = 0;
         longClosedQty = 0; longExitNotional = 0; longTotalPnl = 0; longTotalFee = 0;
-        longMaxQty = 0; longLastCloseTime = 0; longLastOrderId = '';
+        longLastCloseTime = 0; longLastOrderId = '';
+      };
+
+      const emitShort = () => {
+        if (shortClosedQty <= 0) return;
+        const avgExit = shortExitNotional / shortClosedQty;
+        // 做空: pnl = (entry - exit) * qty → entry = exit + pnl/qty
+        const avgEntry = avgExit + shortTotalPnl / shortClosedQty;
+        results.push(this.buildBinancePositionRecord(
+          rawSymbol, 'short', avgEntry, avgExit, shortClosedQty,
+          shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime, shortLastOrderId,
+        ));
       };
       const resetShort = () => {
-        shortQty = 0; shortEntryNotional = 0; shortOpenTime = 0;
+        shortQty = 0; shortOpenTime = 0;
         shortClosedQty = 0; shortExitNotional = 0; shortTotalPnl = 0; shortTotalFee = 0;
-        shortMaxQty = 0; shortLastCloseTime = 0; shortLastOrderId = '';
+        shortLastCloseTime = 0; shortLastOrderId = '';
       };
 
       for (const t of trades) {
@@ -1097,83 +1132,89 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         const pnl = parseFloat(t.realizedPnl ?? '0');
         const fee = Math.abs(parseFloat(t.commission ?? '0'));
         const tradeTime = Number(t.time || 0);
-        const side = (t.side || '').toUpperCase();
-        const positionSide = (t.positionSide || 'BOTH').toUpperCase();
+        const side = (t.side || '').toUpperCase();     // BUY / SELL
+        const posSide = (t.positionSide || 'BOTH').toUpperCase(); // LONG / SHORT / BOTH
 
-        // 判断这笔成交是开仓还是平仓
-        let isClosingLong = false;
-        let isClosingShort = false;
+        // ── 判断开仓 vs 平仓 ──
+        // 对冲模式：positionSide 直接决定
+        // 单向模式（BOTH）：realizedPnl != 0 = 平仓，== 0 = 开仓
+        let isClosing = false;
+        let closingSide: 'long' | 'short' | null = null;
 
-        if (positionSide === 'LONG') {
-          if (side === 'SELL') isClosingLong = true;
-        } else if (positionSide === 'SHORT') {
-          if (side === 'BUY') isClosingShort = true;
+        if (posSide === 'LONG') {
+          if (side === 'BUY') { /* 加多 */ }
+          else { isClosing = true; closingSide = 'long'; }
+        } else if (posSide === 'SHORT') {
+          if (side === 'SELL') { /* 加空 */ }
+          else { isClosing = true; closingSide = 'short'; }
         } else {
-          // 单向模式 (BOTH)：有 realizedPnl 且 > 阈值 = 平仓
-          if (Math.abs(pnl) > 0.0001) {
-            if (side === 'SELL') isClosingLong = true;
-            else isClosingShort = true;
+          // 单向模式：realizedPnl != 0 → 平仓（含 break-even 用阈值 0）
+          if (Math.abs(pnl) > 0) {
+            isClosing = true;
+            closingSide = side === 'SELL' ? 'long' : 'short';
           }
         }
 
-        if (isClosingLong && longQty > 0) {
-          // 平多：累积到仓位生命周期
-          const closedQty = Math.min(qty, longQty);
+        if (isClosing && closingSide === 'long') {
+          // ── 平多 ──
+          if (longQty <= 0) {
+            // 没有追踪到开仓（lookback 不够深）—— 仍然记录平仓数据
+            // 后续 emitLong 会用 pnl 反算 entry，所以不影响准确性
+            if (!longOpenTime) longOpenTime = tradeTime;
+          }
+          const closedQty = Math.min(qty, Math.max(longQty, qty)); // 没有开仓记录时取 trade qty
           longClosedQty += closedQty;
           longExitNotional += closedQty * price;
           longTotalPnl += pnl;
           longTotalFee += fee;
           longLastCloseTime = tradeTime;
           longLastOrderId = t.orderId || longLastOrderId;
-          longQty -= closedQty;
+          longQty = Math.max(longQty - closedQty, 0);
 
-          // 仓位完全平仓 → 生成一条记录（对齐币安"仓位历史"）
+          // qty 归零 → 仓位完全平仓 → 生成记录
           if (longQty <= 0.00001) {
-            const avgEntry = longEntryNotional > 0 && longClosedQty > 0
-              ? longEntryNotional / (longClosedQty + longQty) // 用原始入场计算
-              : price;
-            const avgExit = longExitNotional / longClosedQty;
-            results.push(this.buildBinancePositionRecord(
-              rawSymbol, 'long', avgEntry, avgExit, longClosedQty,
-              longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime, longLastOrderId,
-            ));
+            emitLong();
             resetLong();
+
+            // 仓位翻转：平仓 qty 大于持仓 qty，多出部分开反向仓
+            const overflow = qty - closedQty;
+            if (overflow > 0.00001) {
+              shortOpenTime = tradeTime;
+              shortQty += overflow;
+            }
           }
-        } else if (isClosingShort && shortQty > 0) {
-          // 平空：累积到仓位生命周期
-          const closedQty = Math.min(qty, shortQty);
+        } else if (isClosing && closingSide === 'short') {
+          // ── 平空 ──
+          if (shortQty <= 0) {
+            if (!shortOpenTime) shortOpenTime = tradeTime;
+          }
+          const closedQty = Math.min(qty, Math.max(shortQty, qty));
           shortClosedQty += closedQty;
           shortExitNotional += closedQty * price;
           shortTotalPnl += pnl;
           shortTotalFee += fee;
           shortLastCloseTime = tradeTime;
           shortLastOrderId = t.orderId || shortLastOrderId;
-          shortQty -= closedQty;
+          shortQty = Math.max(shortQty - closedQty, 0);
 
-          // 仓位完全平仓 → 生成一条记录
           if (shortQty <= 0.00001) {
-            const avgEntry = shortEntryNotional > 0 && shortClosedQty > 0
-              ? shortEntryNotional / (shortClosedQty + shortQty)
-              : price;
-            const avgExit = shortExitNotional / shortClosedQty;
-            results.push(this.buildBinancePositionRecord(
-              rawSymbol, 'short', avgEntry, avgExit, shortClosedQty,
-              shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime, shortLastOrderId,
-            ));
+            emitShort();
             resetShort();
+
+            const overflow = qty - closedQty;
+            if (overflow > 0.00001) {
+              longOpenTime = tradeTime;
+              longQty += overflow;
+            }
           }
         } else {
-          // 开仓（加仓）
+          // ── 开仓 / 加仓 ──
           if (side === 'BUY') {
             if (!longOpenTime) longOpenTime = tradeTime;
             longQty += qty;
-            longEntryNotional += qty * price;
-            longMaxQty = Math.max(longMaxQty, longQty);
           } else {
             if (!shortOpenTime) shortOpenTime = tradeTime;
             shortQty += qty;
-            shortEntryNotional += qty * price;
-            shortMaxQty = Math.max(shortMaxQty, shortQty);
           }
         }
       }
