@@ -1504,12 +1504,15 @@ export class GridTradingService {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
             // 对齐 nofx：adjust_grid 完成后继续执行剩余决策（同一轮内可挂单）
             if (result.executed && d.action.includes('place_')) trades++;
+            // 如果 neutral 纠正了 side，记录实际执行的 action（不是 AI 原始 action）
+            const actualAction = (result as any).actualSide
+              ? `place_${(result as any).actualSide}_limit`
+              : d.action;
             if (!result.executed && (d.action.startsWith('place_') || d.action === 'cancel_order')) {
-              // place_* / cancel_order 执行失败 → 视为错误，前端显示 ✗
-              execResults.push({ action: d.action, level: d.level, success: false, error: result.skipReason });
+              execResults.push({ action: actualAction, level: d.level, success: false, error: result.skipReason });
               errors++;
             } else {
-              execResults.push({ action: d.action, level: d.level, success: true, skipped: !result.executed, skipReason: result.skipReason });
+              execResults.push({ action: actualAction, level: d.level, success: true, skipped: !result.executed, skipReason: result.skipReason });
             }
           } catch (e: any) {
             errors++;
@@ -2987,7 +2990,7 @@ export class GridTradingService {
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
     useMakerOnly = false,
-  ): Promise<{ executed: boolean; skipReason?: string }> {
+  ): Promise<{ executed: boolean; skipReason?: string; actualSide?: string }> {
     // Prompt 中 level 从 1 开始（用户友好），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
     const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
@@ -3289,7 +3292,7 @@ export class GridTradingService {
     }
 
     this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${finalLevelIndex}, orderId=${result.orderId})`);
-    return { executed: true };
+    return { executed: true, actualSide: side };
   }
 
   // ========================= DB 持仓记录同步 =========================
