@@ -1622,9 +1622,10 @@ export class GridTradingService {
           const filled  = postSyncDisplay.filter((d: any) => d.st === 'filled');
           const pending = postSyncDisplay.filter((d: any) => d.st === 'pending');
           const empty   = postSyncDisplay.filter((d: any) => d.st === 'empty' || !d.st);
-          const filledStr  = filled.map((d: any) =>
-            `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}`
-          ).join(' ');
+          const filledStr  = filled.map((d: any) => {
+            const poStr = d.po ? `+挂${d.po.s}×${d.po.qty}` : '';
+            return `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}${poStr}`;
+          }).join(' ');
           const pendingStr = pending.map((d: any) => `L${d.lv}@${d.p.toFixed(2)}`).join(' ');
           const emptyStr   = empty.map((d: any) => `L${d.lv}`).join(',');
           this.logger.log(
@@ -3001,18 +3002,8 @@ export class GridTradingService {
     // filled 层允许挂单（DCA 加仓摊薄成本），不拦截
     // 下单成功后层保持 filled 状态，挂单信息挂载到 pendingOrder 附属字段
 
-    // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
-    // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
-    if (level && level.state === 'empty' && (state.currentDirection ?? 'neutral') === 'neutral') {
-      const currentPrice = state.lastPrice ?? 0;
-      const correctSide = level.price <= currentPrice ? 'buy' : 'sell';
-      if (side !== correctSide) {
-        this.logger.warn(
-          `[网格] 方向纠正: L${levelIndex + 1} 价格${level.price.toFixed(2)} ${side === 'buy' ? '>' : '<'} 市价${currentPrice.toFixed(2)}，AI要${side}→纠正为${correctSide}`,
-        );
-        side = correctSide;
-      }
-    }
+    // neutral side 纠正已删除（2026-03-20）：AI 决定的 side 即最终 side
+    // 限价卖低于市价 = 以市价成交（对平仓有利），限价买高于市价 = 以市价成交
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
