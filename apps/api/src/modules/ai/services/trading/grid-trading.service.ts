@@ -2418,9 +2418,16 @@ export class GridTradingService {
       if (!pos.symbol?.includes(capBaseSymbol)) continue;
       capPositionValue += Math.abs(pos.quantity ?? 0) * (pos.markPrice ?? pos.entryPrice ?? currentPrice);
     }
-    // 对齐 nofx checkTotalPositionLimit：所有 pending 都计入（保守估计，与 nofx 一致）
+    // 挂单名义值：只计入加仓方向的 pending（平仓方向不占 cap）
+    const capPosDir = (preSyncExchangePositions ?? []).find((p: any) => p.symbol?.includes(capBaseSymbol))?.side ?? '';
+    const capIsLong = capPosDir === 'long' || capPosDir === 'net' || capPosDir === '';
     const capPendingNotional = exchangeLevels
       .filter(l => l.state === 'pending' && (l.positionSize ?? 0) === 0)
+      .filter(l => {
+        if (capPositionValue <= 0.01) return true;
+        if (capIsLong) return l.side === 'buy';
+        return l.side === 'sell';
+      })
       .reduce((sum, l) => sum + (l.quantity ?? 0) * l.price, 0);
     const capUsed = capPositionValue + capPendingNotional;
     const capUsedPct = capTotal > 0 ? Math.round(capUsed / capTotal * 100) : 0;
@@ -3080,9 +3087,23 @@ export class GridTradingService {
         currentPositionValue += posQty * posPrice;
       }
 
-      // 挂单名义值（对齐 nofx：所有 pending 都计入，保守估计）
+      // 挂单名义值：只计入加仓方向的 pending（平仓方向不占 cap）
+      // 持多头 → 买单 pending 算占用，卖单 pending 是平仓不算
+      // 持空头 → 卖单 pending 算占用，买单 pending 是平仓不算
+      const posDirection = currentPositionValue > 0
+        ? (exchPositions.find((p: any) => p.symbol?.includes(baseSymbol))?.side ?? 'long')
+        : '';
+      const isLong = posDirection === 'long' || posDirection === 'net' || posDirection === '';
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
+        .filter(l => {
+          // 无持仓时全部计入（保守）
+          if (currentPositionValue <= 0.01) return true;
+          // 持多头：只算买单（加仓方向），卖单是平仓不算
+          if (isLong) return l.side === 'buy';
+          // 持空头：只算卖单，买单是平仓不算
+          return l.side === 'sell';
+        })
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
 
       capTotal = totalPositionCap;
