@@ -1135,19 +1135,7 @@ export function CreateStrategyWizard() {
                     </div>
                   </div>
                 )}
-                {isGrid && (
-                  <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                    <span className="text-xs text-[#9090A0]">Maker 限价单（省手续费）</span>
-                    <button
-                      type="button"
-                      onClick={() => updateGrid('useMakerOnly', !gridParams.useMakerOnly)}
-                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${gridParams.useMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                      aria-label="PostOnly限价单"
-                    >
-                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridParams.useMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-                )}
+                {/* Maker 限价单：网格策略永远是限价挂单，无需用户选择，后端默认 useMakerOnly=true */}
                 {isGrid && (
                   <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                     <div>

@@ -1339,17 +1339,7 @@ export function UnifiedAiCreate() {
                   </select>
                 </div>
               )}
-              {isGrid && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#9090A0] w-20 shrink-0">只挂 Maker</span>
-                  <button type="button" onClick={() => setGridUseMakerOnly(!gridUseMakerOnly)}
-                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${gridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                  >
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                  <span className="text-[10px] text-[#606070]">仅使用限价单</span>
-                </div>
-              )}
+              {/* Maker 限价单：网格策略永远是限价挂单，无需用户选择，后端默认 useMakerOnly=true */}
 
               {isGrid && (
                 <div className="flex items-center gap-2">

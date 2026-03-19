@@ -1638,18 +1638,7 @@ export function AIStrategyDetailPage() {
                               </select>
                             </div>
                           </div>
-                          {/* Maker 单 + 趋势暂停 */}
-                          <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                            <span className="text-xs text-[#9090A0]">{t('detail.makerOnly')}</span>
-                            <button
-                              type="button"
-                              onClick={() => setEditGridUseMakerOnly(!editGridUseMakerOnly)}
-                              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 overflow-hidden ${editGridUseMakerOnly ? 'bg-[#06B6D4]' : 'bg-[#2A2A3A]'}`}
-                              aria-label={t('detail.makerOnlyAria')}
-                            >
-                              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${editGridUseMakerOnly ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                          </div>
+                          {/* Maker 限价单：网格策略永远是限价挂单，无需用户选择，后端默认 useMakerOnly=true */}
                           <div className="flex items-center justify-between col-span-2 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                             <div>
                               <p className="text-xs text-[#9090A0]">{t('detail.autoDirectionSwitch')}</p>

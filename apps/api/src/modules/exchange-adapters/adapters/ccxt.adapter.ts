@@ -1062,14 +1062,34 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
 
     // Step 4: 每个 symbol 重建仓位生命周期（对齐 Binance "仓位历史"）
+    // 算法来源：Freqtrade recalc_trade_from_orders + Binance App 行为分析
+    // 每行 = 一个完整仓位生命周期（开仓→qty归零=一条记录）
+    // 参考：https://github.com/ccxt/ccxt/pull/21942（Binance 无原生 API，需从 userTrades 重建）
     const results: ClosedPnlRecord[] = [];
 
     for (const [rawSymbol, trades] of bySymbol) {
       trades.sort((a: any, b: any) => Number(a.time) - Number(b.time));
 
-      // 跟踪多头和空头仓位状态
-      let longQty = 0, longNotional = 0, longFee = 0, longOpenTime = 0;
-      let shortQty = 0, shortNotional = 0, shortFee = 0, shortOpenTime = 0;
+      // 多头仓位追踪
+      let longQty = 0, longEntryNotional = 0, longOpenTime = 0;
+      let longClosedQty = 0, longExitNotional = 0, longTotalPnl = 0, longTotalFee = 0;
+      let longMaxQty = 0, longLastCloseTime = 0, longLastOrderId = '';
+
+      // 空头仓位追踪
+      let shortQty = 0, shortEntryNotional = 0, shortOpenTime = 0;
+      let shortClosedQty = 0, shortExitNotional = 0, shortTotalPnl = 0, shortTotalFee = 0;
+      let shortMaxQty = 0, shortLastCloseTime = 0, shortLastOrderId = '';
+
+      const resetLong = () => {
+        longQty = 0; longEntryNotional = 0; longOpenTime = 0;
+        longClosedQty = 0; longExitNotional = 0; longTotalPnl = 0; longTotalFee = 0;
+        longMaxQty = 0; longLastCloseTime = 0; longLastOrderId = '';
+      };
+      const resetShort = () => {
+        shortQty = 0; shortEntryNotional = 0; shortOpenTime = 0;
+        shortClosedQty = 0; shortExitNotional = 0; shortTotalPnl = 0; shortTotalFee = 0;
+        shortMaxQty = 0; shortLastCloseTime = 0; shortLastOrderId = '';
+      };
 
       for (const t of trades) {
         const qty = parseFloat(t.qty || '0');
@@ -1085,13 +1105,11 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         let isClosingShort = false;
 
         if (positionSide === 'LONG') {
-          // 双向模式：LONG+SELL = 平多
           if (side === 'SELL') isClosingLong = true;
         } else if (positionSide === 'SHORT') {
-          // 双向模式：SHORT+BUY = 平空
           if (side === 'BUY') isClosingShort = true;
         } else {
-          // 单向模式 (BOTH)：有 realizedPnl = 平仓
+          // 单向模式 (BOTH)：有 realizedPnl 且 > 阈值 = 平仓
           if (Math.abs(pnl) > 0.0001) {
             if (side === 'SELL') isClosingLong = true;
             else isClosingShort = true;
@@ -1099,41 +1117,63 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         }
 
         if (isClosingLong && longQty > 0) {
-          // 平多仓
+          // 平多：累积到仓位生命周期
           const closedQty = Math.min(qty, longQty);
-          const avgEntry = longNotional / longQty;
-          results.push(this.buildBinancePositionRecord(
-            rawSymbol, 'long', avgEntry, price, closedQty, pnl, fee + longFee * (closedQty / longQty),
-            longOpenTime, tradeTime, t.orderId,
-          ));
-          longNotional -= closedQty * avgEntry;
-          longFee -= longFee * (closedQty / longQty);
+          longClosedQty += closedQty;
+          longExitNotional += closedQty * price;
+          longTotalPnl += pnl;
+          longTotalFee += fee;
+          longLastCloseTime = tradeTime;
+          longLastOrderId = t.orderId || longLastOrderId;
           longQty -= closedQty;
-          if (longQty <= 0.00001) { longQty = 0; longNotional = 0; longFee = 0; longOpenTime = 0; }
+
+          // 仓位完全平仓 → 生成一条记录（对齐币安"仓位历史"）
+          if (longQty <= 0.00001) {
+            const avgEntry = longEntryNotional > 0 && longClosedQty > 0
+              ? longEntryNotional / (longClosedQty + longQty) // 用原始入场计算
+              : price;
+            const avgExit = longExitNotional / longClosedQty;
+            results.push(this.buildBinancePositionRecord(
+              rawSymbol, 'long', avgEntry, avgExit, longClosedQty,
+              longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime, longLastOrderId,
+            ));
+            resetLong();
+          }
         } else if (isClosingShort && shortQty > 0) {
-          // 平空仓
+          // 平空：累积到仓位生命周期
           const closedQty = Math.min(qty, shortQty);
-          const avgEntry = shortNotional / shortQty;
-          results.push(this.buildBinancePositionRecord(
-            rawSymbol, 'short', avgEntry, price, closedQty, pnl, fee + shortFee * (closedQty / shortQty),
-            shortOpenTime, tradeTime, t.orderId,
-          ));
-          shortNotional -= closedQty * avgEntry;
-          shortFee -= shortFee * (closedQty / shortQty);
+          shortClosedQty += closedQty;
+          shortExitNotional += closedQty * price;
+          shortTotalPnl += pnl;
+          shortTotalFee += fee;
+          shortLastCloseTime = tradeTime;
+          shortLastOrderId = t.orderId || shortLastOrderId;
           shortQty -= closedQty;
-          if (shortQty <= 0.00001) { shortQty = 0; shortNotional = 0; shortFee = 0; shortOpenTime = 0; }
+
+          // 仓位完全平仓 → 生成一条记录
+          if (shortQty <= 0.00001) {
+            const avgEntry = shortEntryNotional > 0 && shortClosedQty > 0
+              ? shortEntryNotional / (shortClosedQty + shortQty)
+              : price;
+            const avgExit = shortExitNotional / shortClosedQty;
+            results.push(this.buildBinancePositionRecord(
+              rawSymbol, 'short', avgEntry, avgExit, shortClosedQty,
+              shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime, shortLastOrderId,
+            ));
+            resetShort();
+          }
         } else {
           // 开仓（加仓）
           if (side === 'BUY') {
             if (!longOpenTime) longOpenTime = tradeTime;
             longQty += qty;
-            longNotional += qty * price;
-            longFee += fee;
+            longEntryNotional += qty * price;
+            longMaxQty = Math.max(longMaxQty, longQty);
           } else {
             if (!shortOpenTime) shortOpenTime = tradeTime;
             shortQty += qty;
-            shortNotional += qty * price;
-            shortFee += fee;
+            shortEntryNotional += qty * price;
+            shortMaxQty = Math.max(shortMaxQty, shortQty);
           }
         }
       }
