@@ -3108,6 +3108,11 @@ export class GridTradingService {
 
       capTotal = totalPositionCap;
       capUsed = currentPositionValue + pendingNotional;
+      this.logger.debug(
+        `[网格] cap检查: posDir=${posDirection} isLong=${isLong} side=${side} ` +
+        `持仓$${currentPositionValue.toFixed(2)} + 加仓pending$${pendingNotional.toFixed(2)} = $${capUsed.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} ` +
+        `新单$${(quantity * price).toFixed(2)} level=${levelIndex}`,
+      );
       if (capUsed + quantity * price > totalPositionCap) {
         const remaining = Math.max(0, totalPositionCap - currentPositionValue - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
