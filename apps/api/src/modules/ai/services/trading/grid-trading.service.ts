@@ -4695,8 +4695,8 @@ export class GridTradingService {
       st: 'empty',
     }));
 
-    // Step 1: 持仓聚合映射到距 avgEntry 最近的 1 层（仅展示用）
-    // AI 的 state.gridLines 不受影响（操作历史），这里只改 display 数组
+    // Step 1: 持仓映射到多层（展示用，AI 上下文也用）
+    // AI 可在 filled 层操作（不拦截），state.gridLines 不受影响
     let positionInfo: any = null;
     for (const pos of exchangePositions) {
       if (!pos.symbol?.includes(baseSymbol)) continue;
@@ -4704,30 +4704,47 @@ export class GridTradingService {
       if (totalQty <= 0.0001) continue;
       const rawSide = pos.side as string;
       const posSide: 'buy' | 'sell' = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
-      const avgEntry = pos.entryPrice ?? 0;
+      const avgEntry = (pos.entryPrice ?? 0) > 0
+        ? pos.entryPrice
+        : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+      const posLeverage = Math.max(1, pos.leverage ?? state.leverage ?? 1);
 
       positionInfo = {
         side: posSide,
         qty: +totalQty.toFixed(4),
         entry: +avgEntry.toFixed(4),
         pnl: +(pos.unrealizedPnl ?? 0).toFixed(4),
-        leverage: pos.leverage ?? state.leverage ?? 1,
+        leverage: posLeverage,
       };
 
-      // 映射到距 avgEntry 最近的 1 层（展示为 filled）
-      if (avgEntry > 0) {
-        let bestIdx = -1;
-        let bestDist = Infinity;
-        for (let i = 0; i < display.length; i++) {
-          const d = Math.abs(state.gridLines[i].price - avgEntry);
-          if (d < bestDist) { bestDist = d; bestIdx = i; }
-        }
-        if (bestIdx >= 0) {
-          display[bestIdx].st = 'filled';
-          display[bestIdx].s = posSide;
-          display[bestIdx].qty = +totalQty.toFixed(4);
-          display[bestIdx].ep = +avgEntry.toFixed(4);
-        }
+      // 按每层预算反推应占几层，映射到距 avgEntry 最近的 N 层
+      const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
+      const perLayerQty = avgAllocatedUSD * posLeverage / avgEntry;
+      const estLayers = perLayerQty > 0.0001
+        ? Math.max(1, Math.round(totalQty / perLayerQty))
+        : 1;
+
+      // 锚点 = 距入场价最近的 empty 层
+      const allEmptySlots = display
+        .map((dd: any, i: number) => ({ dd, i, gl: state.gridLines[i] }))
+        .filter(({ dd }: any) => dd.st === 'empty');
+
+      const anchorSlot = [...allEmptySlots]
+        .sort((a: any, b: any) => Math.abs(a.gl.price - avgEntry) - Math.abs(b.gl.price - avgEntry))[0];
+      if (!anchorSlot) continue;
+
+      // 从锚点向内侧展开（买→下，卖→上）
+      const directedSlots = allEmptySlots
+        .filter(({ i }: any) => posSide === 'buy' ? i <= anchorSlot.i : i >= anchorSlot.i)
+        .sort((a: any, b: any) => posSide === 'buy' ? b.i - a.i : a.i - b.i)
+        .slice(0, estLayers);
+
+      const qtyEach = totalQty / Math.max(1, directedSlots.length);
+      for (const { dd } of directedSlots) {
+        dd.st = 'filled';
+        dd.s = posSide;
+        dd.qty = +qtyEach.toFixed(4);
+        dd.ep = +avgEntry.toFixed(4);
       }
     }
 
