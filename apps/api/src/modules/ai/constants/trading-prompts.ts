@@ -1034,9 +1034,9 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     ? `是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | 原因:${ctx.pauseReason}` : ''}]`
     : '否';
   lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${pauseStr}`);
-  // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
+  // 额外挂单（不在网格层映射中，供 AI 参考，AI 自主决定保留或撤销）
   if (_unmappedCount > 0) {
-    lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
+    lines.push(`ℹ️ ${_unmappedCount} 个额外挂单（不在网格层中）：`);
     for (const oid of ctx.unmappedOrderIds!) {
       const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
       if (matchOrder) {
@@ -1204,7 +1204,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     : 'No';
   lines.push(`Exchange Orders: ${_exchOrderCountEn} | Mapped: ${_mappedOrderCountEn} | Filled: ${ctx.filledLevelCount} | Paused: ${pauseStrEn}`);
   if (_unmappedCountEn > 0) {
-    lines.push(`⚠️ ${_unmappedCountEn} order(s) have no corresponding empty level in current mapping (may be due to position occupying that price):`);
+    lines.push(`ℹ️ ${_unmappedCountEn} extra order(s) not in grid levels:`);
     for (const oid of ctx.unmappedOrderIds!) {
       const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
       if (matchOrder) {
