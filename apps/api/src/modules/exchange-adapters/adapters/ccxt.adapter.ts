@@ -1049,19 +1049,42 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       if (inc.symbol) symbolSet.add(inc.symbol);
     }
 
-    // Step 2: 拉全量成交，回看 7 天（Binance userTrades 单次最大窗口）
-    // 确保覆盖开仓记录，即使仓位几天前开的
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const lookbackMs = startMs - SEVEN_DAYS_MS;
+    // Step 2: 找到最早 income 时间，从更早开始拉 trades（覆盖开仓记录）
+    // Binance userTrades limit=1000，时间窗口太大会丢失最新数据
+    // 策略：从 income 最早时间 - 48h 开始拉，分段避免超 1000 条
+    let earliestIncomeMs = startMs;
+    for (const inc of incomeResp) {
+      const t = Number(inc.time || 0);
+      if (t > 0 && t < earliestIncomeMs) earliestIncomeMs = t;
+    }
+    const LOOKBACK_48H = 48 * 60 * 60 * 1000;
+    const lookbackMs = Math.max(earliestIncomeMs - LOOKBACK_48H, startMs - 7 * 24 * 60 * 60 * 1000);
+
     const allTrades: any[] = [];
     for (const rawSymbol of symbolSet) {
       try {
-        const trades: any[] = await (ex as any).fapiPrivateGetUserTrades({
-          symbol: rawSymbol,
-          startTime: lookbackMs,
-          limit: 1000,
-        });
-        if (trades?.length) allTrades.push(...trades);
+        // 分段拉取：如果时间跨度 > 3天，先拉后半段（最新的），再拉前半段
+        const now = Date.now();
+        const totalSpan = now - lookbackMs;
+        if (totalSpan > 3 * 24 * 60 * 60 * 1000) {
+          // 后半段（最近 48h，最重要）
+          const recentStart = now - LOOKBACK_48H;
+          const recentTrades: any[] = await (ex as any).fapiPrivateGetUserTrades({
+            symbol: rawSymbol, startTime: recentStart, limit: 1000,
+          });
+          if (recentTrades?.length) allTrades.push(...recentTrades);
+
+          // 前半段（覆盖更早的开仓）
+          const olderTrades: any[] = await (ex as any).fapiPrivateGetUserTrades({
+            symbol: rawSymbol, startTime: lookbackMs, endTime: recentStart, limit: 1000,
+          });
+          if (olderTrades?.length) allTrades.push(...olderTrades);
+        } else {
+          const trades: any[] = await (ex as any).fapiPrivateGetUserTrades({
+            symbol: rawSymbol, startTime: lookbackMs, limit: 1000,
+          });
+          if (trades?.length) allTrades.push(...trades);
+        }
       } catch (e: any) {
         this.logger.debug(`getClosedPnlBinance: ${rawSymbol} userTrades 失败: ${e.message}`);
       }
