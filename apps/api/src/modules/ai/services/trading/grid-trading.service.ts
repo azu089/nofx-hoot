@@ -1456,10 +1456,13 @@ export class GridTradingService {
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
-        // confidence 过滤：跳过低置信度 AI 决策（对齐 3月9日稳定版）
+        // confidence 过滤：跳过低置信度 AI 决策
+        // 风险管理操作（平仓/撤单）免 confidence 限制，防止亏损持仓因置信度不够无法平仓
         const CONFIDENCE_THRESHOLD = 40;
+        const CONFIDENCE_EXEMPT_ACTIONS = new Set(['close_long', 'close_short', 'cancel_order', 'cancel_all_orders', 'pause_grid', 'resume_grid', 'adjust_grid']);
         const confFiltered = decisions.filter(d => {
-          if (d.confidence === undefined) return true; // 未提供 confidence 的决策默认通过（兼容旧格式）
+          if (d.confidence === undefined) return true;
+          if (CONFIDENCE_EXEMPT_ACTIONS.has(d.action)) return true;
           if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
           this.logger.warn(`[网格]${tag} 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`);
           return false;
