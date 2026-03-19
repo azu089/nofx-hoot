@@ -676,6 +676,8 @@ export interface GridContext {
   recentClosedPnl?: Array<{symbol: string; side: string; quantity: number; entryPrice: number; exitPrice: number; realizedPnl: number; closedAt: string}>;
   // 突破恢复中：下单量缩减比例（50=每层最多用50%仓位预算，0=正常）
   positionReductionPct?: number;
+  // 上轮 AI 决策摘要（防止决策震荡）
+  lastCycleActions?: string[];
   // 未映射到网格层的交易所挂单（方向不匹配等原因），AI 应主动撤销
   unmappedOrderIds?: string[];
   // 仓位容量（totalInvestment × leverage 的使用率）
@@ -1112,6 +1114,15 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   lines.push(...buildOhlcvSection(ctx, false));
   lines.push(...buildOrdersSection(ctx, false));
 
+  // 上轮操作摘要（防止 AI 决策震荡）
+  if (ctx.lastCycleActions && ctx.lastCycleActions.length > 0) {
+    lines.push('');
+    lines.push('--- 上轮操作 ---');
+    for (const a of ctx.lastCycleActions) {
+      lines.push(`- ${a}`);
+    }
+  }
+
   lines.push('');
   lines.push('请根据以上数据输出你的网格操作决策（JSON 数组）。');
   return lines.join('\n');
@@ -1267,6 +1278,15 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   // Section 9-11: Candles + Orders + Closed Trades
   lines.push(...buildOhlcvSection(ctx, true));
   lines.push(...buildOrdersSection(ctx, true));
+
+  // Last cycle actions summary (prevent AI decision oscillation)
+  if (ctx.lastCycleActions && ctx.lastCycleActions.length > 0) {
+    lines.push('');
+    lines.push('--- Last Cycle Actions ---');
+    for (const a of ctx.lastCycleActions) {
+      lines.push(`- ${a}`);
+    }
+  }
 
   lines.push('');
   lines.push('Analyze the data above and output your grid trading decisions (JSON array).');

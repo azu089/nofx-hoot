@@ -187,6 +187,9 @@ export interface GridState {
 
   // 未映射到网格层的交易所挂单 orderId（方向不匹配等原因，供 AI 撤单）
   unmappedOrderIds: string[];
+
+  // 上轮 AI 决策摘要（内存，不持久化，重启后为空）
+  lastCycleActions?: string[];
 }
 
 /** AI 返回的网格决策 */
@@ -1520,6 +1523,16 @@ export class GridTradingService {
           }
         }
 
+        // 保存本轮决策摘要，供下轮 AI 参考（防止决策震荡）
+        state.lastCycleActions = execResults
+          .filter(r => r.action !== 'hold')
+          .map(r => {
+            const label = this.actionLabel(r.action, gridConfig?.locale);
+            const lvStr = r.level !== undefined ? ` L${r.level}` : '';
+            const status = r.success ? '✓' : `✗${r.skipReason ? '(' + r.skipReason.slice(0, 30) + ')' : ''}`;
+            return `${label}${lvStr} ${status}`;
+          });
+
         // syncMemoryFromExchange 在 AI 执行之后（周期末）
         // 检测本轮 AI 执行后的新成交 + 从交易所全量重建内存
         let postSyncExchangeOrders: any[] = [];
@@ -2511,6 +2524,7 @@ export class GridTradingService {
       recentClosedPnl,
       positionReductionPct: state.positionReductionPct > 0 ? state.positionReductionPct : undefined,
       unmappedOrderIds: state.unmappedOrderIds?.length > 0 ? state.unmappedOrderIds : undefined,
+      lastCycleActions: state.lastCycleActions?.length ? state.lastCycleActions : undefined,
     };
   }
 
@@ -4275,6 +4289,11 @@ export class GridTradingService {
     }
 
     state.orderBook = {};
+
+    // 覆盖上轮决策摘要，让下轮 AI 知道发生了自动重建
+    state.lastCycleActions = [
+      `自动重建: ${oldLower.toFixed(2)}~${oldUpper.toFixed(2)} → ${newLower.toFixed(2)}~${newUpper.toFixed(2)} (倾斜${buyFilled}买${sellFilled}卖)`,
+    ];
   }
 
   /**
