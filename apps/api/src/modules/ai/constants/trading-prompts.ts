@@ -739,20 +739,12 @@ function gridSystemPromptZh(
 - 每个挂单（含平仓方向）都会冻结保证金。保证金不足时可先 cancel_order 撤销远处挂单释放保证金，再挂新单
 
 ## 暂停模式（isPaused=true）
-网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
-- close_long / close_short：平仓
-- cancel_order / cancel_all_orders：撤单
-- resume_grid：解除暂停，下轮周期干净重建（推荐优先使用）
-- adjust_grid：以当前价重建网格并立即解除暂停（**risk_control 暂停除外，代码层拦截，调用无效**）
-- hold：继续观察
+挂单已撤销，AI 继续运行管理持仓。可用操作：close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold。
+place_buy/sell_limit 暂停期间不可用，需先 resume_grid 或 adjust_grid 恢复。
 
-⚠️ **place_buy_limit / place_sell_limit 暂停期间不可用**（代码层拦截）。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
-
-暂停来源（pauseSource）与操作限制：
-- breakout：价格越出网格边界 → resume_grid / adjust_grid 均可解除
-- ai：AI 主动暂停 → resume_grid / adjust_grid 均可解除
-- trend：趋势突破 → resume_grid / adjust_grid 均可解除
-- risk_control：风控触发（日内亏损/最大回撤）→ **adjust_grid 代码层拒绝，resume_grid 有效**
+pauseSource 区分：
+- breakout/ai/trend → resume_grid 或 adjust_grid 均可解除
+- risk_control → 仅 resume_grid 可解除（adjust_grid 被拦截）
 
 ## 输出格式
 
@@ -802,20 +794,12 @@ Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT |
 - Every pending order (including close-direction) freezes margin. If margin is insufficient, you can cancel_order far-away orders to free margin, then place new ones
 
 ## Pause Mode (isPaused=true)
-All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
-- close_long / close_short: close positions
-- cancel_order / cancel_all_orders: cancel orders
-- resume_grid: lift pause, next cycle rebuilds cleanly from exchange (recommended)
-- adjust_grid: rebuild grid at current price and lift pause (**except risk_control pause — blocked by code, call will be rejected**)
-- hold: observe
+Orders cancelled. AI continues running to manage positions. Available: close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold.
+place_buy/sell_limit not available while paused — use resume_grid or adjust_grid first.
 
-⚠️ **place_buy_limit / place_sell_limit are NOT available while paused** (blocked by code). Use resume_grid or adjust_grid first; new orders can be placed next cycle.
-
-pauseSource and action restrictions:
-- breakout: price outside grid boundary → resume_grid / adjust_grid both work
-- ai: AI-initiated pause → resume_grid / adjust_grid both work
-- trend: trend breakout → resume_grid / adjust_grid both work
-- risk_control: risk control triggered (daily loss / max drawdown) → **adjust_grid is rejected by code; use resume_grid only**
+pauseSource:
+- breakout/ai/trend → resume_grid or adjust_grid to unpause
+- risk_control → only resume_grid works (adjust_grid blocked)
 
 ## Output Format
 
@@ -1048,12 +1032,12 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。系统将在短期箱体内连续3轮稳定后自动解除；如需立即解除可调用 adjust_grid。`);
+    lines.push(`⚠️ 仓位缩减: 每层下单量限制为正常的${100 - ctx.positionReductionPct}%。adjust_grid 可立即解除。`);
   }
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
   lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} | 空头 ${_exchShort.toFixed(4)}`);
-  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false'}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（adjust_grid将沿用用户配置的百分比边界）' : 'false'}`);
   if (ctx.upperBoundPct && ctx.lowerBoundPct) {
     lines.push(`⚙️ 用户网格边界配置: 上+${ctx.upperBoundPct}% / 下-${ctx.lowerBoundPct}%（adjust_grid 重建时将按此百分比计算，不使用ATR）`);
   } else {
@@ -1088,7 +1072,7 @@ function buildGridUserPromptZh(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, '多仓', false) : '多仓: 无');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, '空仓', false) : '空仓: 无');
-    // 持仓独立于层，AI 自主决定操作方式
+    lines.push('（此持仓与层级表中 filled 层为同一笔，交易所数据）');
   } else {
     lines.push(`当前持仓: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
@@ -1214,12 +1198,12 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty). System will auto-clear after 3 consecutive cycles stable inside the short-term box; use adjust_grid for immediate clearance.`);
+    lines.push(`⚠️ Position Reduction: each level capped at ${100 - ctx.positionReductionPct}% of normal qty. adjust_grid clears immediately.`);
   }
   const _exchLongEn = ctx.positionLong?.quantity ?? 0;
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
   lines.push(`Exchange Position: Long ${_exchLongEn.toFixed(4)} | Short ${_exchShortEn.toFixed(4)}`);
-  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (user locked, adjust_grid cannot change range)' : 'false'}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (adjust_grid will use user-configured % bounds)' : 'false'}`);
   if (ctx.upperBoundPct && ctx.lowerBoundPct) {
     lines.push(`⚙️ User Grid Bounds Config: upper +${ctx.upperBoundPct}% / lower -${ctx.lowerBoundPct}% (adjust_grid will use this %, NOT ATR)`);
   } else {
@@ -1254,7 +1238,7 @@ function buildGridUserPromptEn(ctx: GridContext): string {
   if (ctx.positionLong || ctx.positionShort) {
     lines.push(ctx.positionLong ? buildPositionLine(ctx.positionLong, 'Long', true) : 'Long: None');
     lines.push(ctx.positionShort ? buildPositionLine(ctx.positionShort, 'Short', true) : 'Short: None');
-    // Position independent of levels — AI decides how to manage
+    lines.push('(Same position as filled levels in grid table — exchange data)');
   } else {
     lines.push(`Current Position: ${ctx.currentPosition > 0 ? '+' : ''}${ctx.currentPosition.toFixed(4)}`);
   }
