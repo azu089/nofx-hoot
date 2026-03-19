@@ -1598,8 +1598,9 @@ export function AIStrategyDetailPage() {
                           <div className="space-y-1 col-span-2">
                             <p className="text-xs text-[#9090A0]">{t('detail.gridRebuildThreshold')} <span className="text-[#606070]">（{t('detail.gridRebuildDesc')}）</span></p>
                             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
-                              <input type="number" min={10} max={50} step={5} value={editGridAutoAdjustThreshold ?? ''}
-                                onChange={(e) => setEditGridAutoAdjustThreshold(e.target.value === '' ? null : parseInt(e.target.value))}
+                              <input type="text" inputMode="numeric" pattern="[0-9]*" value={editGridAutoAdjustThreshold ?? ''}
+                                onChange={(e) => { const v = e.target.value; setEditGridAutoAdjustThreshold(v === '' ? null : parseInt(v) || null); }}
+                                onBlur={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setEditGridAutoAdjustThreshold(Math.max(5, Math.min(50, v))); }}
                                 placeholder="20" className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0 placeholder:text-[#606070]"
                                 aria-label={t('detail.gridRebuildThreshold')}
                               />
