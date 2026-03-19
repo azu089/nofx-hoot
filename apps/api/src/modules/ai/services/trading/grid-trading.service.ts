@@ -221,8 +221,7 @@ const DEFAULT_MAKER_FEE_RATE = 0.0002;      // 0.02% — Binance/OKX 默认 Make
 const MIN_GRID_PROFIT_MULTIPLIER = 1.5;     // 网格间距必须 ≥ 手续费来回 × 1.5 才有盈利空间
 // cancel_all 安全阀已移除（对齐 nofx：无偏离度限制，AI 发出即执行）
 // 市场状态 → 杠杆上限映射
-// 仓位上限计算专用最大杠杆（与 regime 无关，始终用此值计算 totalInvestment × MAX_LEVERAGE_CAP）
-const MAX_LEVERAGE_CAP = 5;
+// MAX_LEVERAGE_CAP 已删除（2026-03-19）— 对齐 nofx，直接用 state.leverage（交易所实际杠杆）
 // regime → 交易所实际杠杆映射（用户留空时，交易所杠杆随 regime 动态调整）
 const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
   ultra_narrow: 5, // 极窄幅：最适合网格，推荐满杠杆
@@ -231,15 +230,9 @@ const REGIME_LEVERAGE_CAP: Record<RegimeLevel, number> = {
   wide: 2,         // 宽幅：谨慎
   volatile: 1,     // 高波动：最低杠杆
 };
-// regime → 仓位上限百分比（对齐 nofx getRegimePositionLimit）
-// totalInvestment × positionPct% × leverage = 允许的最大持仓名义值
-const REGIME_POSITION_PCT: Record<RegimeLevel, number> = {
-  ultra_narrow: 40, // 对齐 nofx narrow
-  narrow: 40,       // nofx: 40%
-  standard: 70,     // nofx: 70%
-  wide: 60,         // nofx: 60%
-  volatile: 40,     // nofx: 40%
-};
+// REGIME_POSITION_PCT 已删除（2026-03-19）
+// nofx checkTotalPositionLimit 不使用 regime 百分比，公式为 TotalInvestment × Leverage
+// getRegimePositionLimit 虽在 nofx 定义但从未被调用
 // 逐层止损默认值
 const DEFAULT_STOP_LOSS_PCT = 5;
 // 量能骤变检测（方向自适应已移除，常量保留备查）
@@ -2404,10 +2397,8 @@ export class GridTradingService {
       }));
     }
 
-    // 仓位 cap 使用率（供 AI 决策参考，与 placeGridLimitOrder 中 cap 检查一致）
-    const capLeverage = state.userFixedLeverage ? state.leverage : MAX_LEVERAGE_CAP;
-    const capRegimePct = REGIME_POSITION_PCT[state.currentRegime] ?? REGIME_POSITION_PCT['standard'];
-    const capTotal = state.totalInvestment * (capRegimePct / 100) * capLeverage;
+    // 仓位 cap 使用率（对齐 nofx checkTotalPositionLimit: TotalInvestment × Leverage，无 regime 百分比）
+    const capTotal = state.totalInvestment * (state.leverage ?? 1);
     let capPositionValue = 0;
     const capBaseSymbol = state.symbol.split('/')[0];
     for (const pos of (preSyncExchangePositions ?? [])) {
@@ -3038,9 +3029,8 @@ export class GridTradingService {
     }
 
     // Step 1: per-level 仓位上限检查
-    // 用户填值 → 用填写值；留空 → 用 MAX_LEVERAGE_CAP（5x）
-    // 确保仓位上限始终按最大杠杆计算，不因 regime 变化而拦截下单
-    const leverage = state.userFixedLeverage ? state.leverage : MAX_LEVERAGE_CAP;
+    // 对齐 nofx：直接使用当前交易所杠杆（state.leverage），无 MAX_LEVERAGE_CAP
+    const leverage = state.leverage ?? 1;
     let capTruncated = false;
     let capUsed = 0;
     let capTotal = 0;
@@ -3066,12 +3056,10 @@ export class GridTradingService {
       }
       quantity = Math.min(quantity, maxQuantityPerLevel);
 
-      // 总仓位上限（对齐 nofx checkTotalPositionLimit + getRegimePositionLimit）：
+      // 总仓位上限（对齐 nofx checkTotalPositionLimit: TotalInvestment × Leverage，无 regime 百分比）
       // 持仓值 = 交易所实际持仓市值（abs(size) × markPrice），非槽位预算
       // 挂单值 = 内存 pending 层 qty × price（与 nofx 一致）
-      // regime 动态调整：volatile/narrow → 40%, wide → 60%, standard → 70%
-      const regimePositionPct = REGIME_POSITION_PCT[state.currentRegime] ?? REGIME_POSITION_PCT['standard'];
-      const totalPositionCap = state.totalInvestment * (regimePositionPct / 100) * leverage;
+      const totalPositionCap = state.totalInvestment * leverage;
       const baseSymbol = state.symbol.split('/')[0];
 
       // 从交易所实时持仓计算实际市值（对齐 nofx L978-992）
@@ -3096,7 +3084,7 @@ export class GridTradingService {
         quantity = Math.min(quantity, remaining / price);
         capTruncated = true;
         if (quantity <= 0) {
-          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} (regime=${state.currentRegime},${regimePositionPct}%)`;
+          const skipReason = `总仓位已满: 交易所持仓$${currentPositionValue.toFixed(2)} + 挂单$${pendingNotional.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} (investment=${state.totalInvestment}×${leverage}x)`;
           this.logger.warn(`[网格] ${skipReason} | investment=${state.totalInvestment} leverage=${leverage} level=${levelIndex}`);
           return { executed: false, skipReason };
         }
