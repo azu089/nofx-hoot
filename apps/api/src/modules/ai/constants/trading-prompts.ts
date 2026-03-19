@@ -715,44 +715,35 @@ function gridSystemPromptZh(
 ## 网格参数
 交易对: ${symbol} | 层数: ${gridCount} | 投资: ${totalInvestment} USDT | 杠杆: ${leverage}x | 分布: ${distribution} | 参考价: ${currentPrice.toFixed(4)}
 
-## 层状态映射机制（理解这个对决策至关重要）
+## 层状态
 
-后端每轮从交易所实时 API 重建内存层状态：
-- **filled 层**：有持仓。交易所只返回整体持仓均价（avgEntry），所以多个 filled 层会显示相同的入场价——这是系统设计，真实每层入场价分散在 avgEntry 附近。side=buy→多头，side=sell→空头
-- **pending 层**：已在交易所挂单，等待成交
-- **empty 层**：无持仓无挂单，可下新单
+- **filled**：已成交持仓
+- **pending**：已挂单，等待成交
+- **empty**：可操作
 
 ## 可用操作
-- **place_buy_limit**: 在任意 empty 层挂买单（fields: level, price, quantity）
-- **place_sell_limit**: 在任意 empty 层挂卖单（fields: level, price, quantity）。偏空方向时可在当前价下方 empty 层挂卖单（DCA 式做空积累）
-- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分（<positionSize）或全额（=positionSize）
-- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）。quantity 同上
+- **place_buy_limit**: 挂买单（fields: level, price, quantity）
+- **place_sell_limit**: 挂卖单（fields: level, price, quantity）
+- **close_long**（fields: level, quantity）：平多仓（side=buy 的 filled 层）。quantity 可部分或全额
+- **close_short**（fields: level, quantity）：平空仓（side=sell 的 filled 层）
 - **cancel_order**: 取消指定挂单（field: orderId）
 - **cancel_all_orders**: 取消所有挂单
-- **pause_grid**: 暂停网格（撤销全部挂单，下轮 AI 仍运行管理持仓）
-- **resume_grid**: 恢复网格。效果：下轮周期开始时自动清空所有层并从交易所重建干净状态
-- **adjust_grid**: 重建网格。效果：① 立即撤销所有挂单 ② 以当前价为中心重算边界（用户配置百分比优先，未配置则用 ATR 自动计算）③ 持仓按入场价就近映射到新层 ④ 自动解除非风控暂停（risk_control 暂停不可通过此操作解除） ⑤ 立即清除仓位缩减（positionReductionPct→0） ⑥ 本轮结束，下轮 AI 基于新网格决策
-- **hold**: 保持现状（仅在无空层且无需调整时使用）
+- **pause_grid**: 暂停网格（撤销全部挂单，AI 继续管理持仓）
+- **resume_grid**: 恢复网格
+- **adjust_grid**: 以当前价重建网格
+- **hold**: 保持现状
 
-技术约束（交易所规则，不可违反）：
-- place_buy/sell_limit 只能在 empty 层操作
+技术约束：
 - close_long 对应 side=buy 的 filled 层，close_short 对应 side=sell 的 filled 层；混用会导致交易所拒单
+- 每个挂单（含平仓方向）都会冻结保证金。保证金不足时可先 cancel_order 撤远处挂单释放保证金
 
 ## 暂停模式（isPaused=true）
-网格挂单已全部撤销，AI 仍继续运行管理持仓。暂停期间可用操作：
-- close_long / close_short：平仓
-- cancel_order / cancel_all_orders：撤单
-- resume_grid：解除暂停，下轮周期干净重建（推荐优先使用）
-- adjust_grid：以当前价重建网格并立即解除暂停（**risk_control 暂停除外，代码层拦截，调用无效**）
-- hold：继续观察
+挂单已撤销，AI 继续管理持仓。可用：close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold。
+place_buy/sell_limit 暂停期间不可用，需先 resume_grid 或 adjust_grid 恢复。
 
-⚠️ **place_buy_limit / place_sell_limit 暂停期间不可用**（代码层拦截）。需先 resume_grid 或 adjust_grid 恢复后，下轮才能挂新单。
-
-暂停来源（pauseSource）与操作限制：
-- breakout：价格越出网格边界 → resume_grid / adjust_grid 均可解除
-- ai：AI 主动暂停 → resume_grid / adjust_grid 均可解除
-- trend：趋势突破 → resume_grid / adjust_grid 均可解除
-- risk_control：风控触发（日内亏损/最大回撤）→ **adjust_grid 代码层拒绝，resume_grid 有效**
+pauseSource：
+- breakout/ai/trend → resume_grid 或 adjust_grid 均可解除
+- risk_control → 仅 resume_grid 可解除（adjust_grid 被拦截）
 
 ## 输出格式
 
@@ -778,43 +769,35 @@ function gridSystemPromptEn(
 ## Grid Parameters
 Symbol: ${symbol} | Levels: ${gridCount} | Investment: ${totalInvestment} USDT | Leverage: ${leverage}x | Distribution: ${distribution} | Reference Price: ${currentPrice.toFixed(4)}
 
-## Level State Mapping Mechanism (critical for decision-making)
-The backend rebuilds internal level state from exchange real-time API each cycle:
-- **filled levels**: Have positions. The exchange only returns the overall position average entry (avgEntry), so multiple filled levels show the same entry price — this is by design; the actual per-level entry prices are distributed around avgEntry. side=buy → long, side=sell → short
-- **pending levels**: Orders placed on the exchange, awaiting fill
-- **empty levels**: No position, no order — can place new orders
+## Level States
+
+- **filled**: Position held
+- **pending**: Order placed, awaiting fill
+- **empty**: Available
 
 ## Available Actions
-- **place_buy_limit**: Place buy order on any empty level (fields: level, price, quantity)
-- **place_sell_limit**: Place sell order on any empty level (fields: level, price, quantity). In short-bias mode, you may place sell orders on empty levels below current price (DCA-style short accumulation)
-- **close_long** (fields: level, quantity): Close long position (filled level with side=buy). quantity can be partial (<positionSize) or full (=positionSize)
-- **close_short** (fields: level, quantity): Close short position (filled level with side=sell). quantity same as above
-- **cancel_order**: Cancel a specific order (field: orderId)
-- **cancel_all_orders**: Cancel all pending orders
-- **pause_grid**: Pause grid (cancels all orders; AI continues running next cycle to manage positions)
-- **resume_grid**: Resume grid. Effect: next cycle auto-clears all levels and rebuilds clean state from exchange
-- **adjust_grid**: Rebuild grid. Effect: ① immediately cancel all orders ② recalculate boundaries centered on current price (user-configured % range takes priority; ATR auto-calculation used if not configured) ③ remap positions to nearest new levels ④ auto-clears non-risk-control pauses (risk_control pause cannot be cleared this way) ⑤ current cycle ends; next cycle AI works on new grid
-- **hold**: Maintain current state (only when no empty levels and no adjustments needed)
+- **place_buy_limit**: Place buy order (fields: level, price, quantity)
+- **place_sell_limit**: Place sell order (fields: level, price, quantity)
+- **close_long** (fields: level, quantity): Close long (filled, side=buy). Partial or full
+- **close_short** (fields: level, quantity): Close short (filled, side=sell)
+- **cancel_order**: Cancel order (field: orderId)
+- **cancel_all_orders**: Cancel all orders
+- **pause_grid**: Pause grid (cancel all orders, AI continues managing positions)
+- **resume_grid**: Resume grid
+- **adjust_grid**: Rebuild grid at current price
+- **hold**: Maintain current state
 
-## Technical Constraints (exchange rules, must not violate)
-- place_buy/sell_limit can ONLY be used on empty levels
-- close_long applies to filled levels with side=buy; close_short applies to filled levels with side=sell — mixing causes exchange rejection
+Technical constraints:
+- close_long for side=buy filled; close_short for side=sell filled — mixing causes rejection
+- Every pending order freezes margin. Cancel far orders to free margin if needed
 
 ## Pause Mode (isPaused=true)
-All grid orders cancelled. AI continues running to manage positions. Available actions while paused:
-- close_long / close_short: close positions
-- cancel_order / cancel_all_orders: cancel orders
-- resume_grid: lift pause, next cycle rebuilds cleanly from exchange (recommended)
-- adjust_grid: rebuild grid at current price and lift pause (**except risk_control pause — blocked by code, call will be rejected**)
-- hold: observe
+Orders cancelled. AI manages positions. Available: close_long/close_short/cancel_order/cancel_all_orders/resume_grid/adjust_grid/hold.
+place_buy/sell_limit not available while paused — resume_grid or adjust_grid first.
 
-⚠️ **place_buy_limit / place_sell_limit are NOT available while paused** (blocked by code). Use resume_grid or adjust_grid first; new orders can be placed next cycle.
-
-pauseSource and action restrictions:
-- breakout: price outside grid boundary → resume_grid / adjust_grid both work
-- ai: AI-initiated pause → resume_grid / adjust_grid both work
-- trend: trend breakout → resume_grid / adjust_grid both work
-- risk_control: risk control triggered (daily loss / max drawdown) → **adjust_grid is rejected by code; use resume_grid only**
+pauseSource:
+- breakout/ai/trend → resume_grid or adjust_grid to unpause
+- risk_control → only resume_grid works (adjust_grid blocked)
 
 ## Output Format
 
@@ -1034,9 +1017,9 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     ? `是 [来源:${ctx.pauseSource ?? '未知'}${ctx.pauseReason ? ` | 原因:${ctx.pauseReason}` : ''}]`
     : '否';
   lines.push(`交易所挂单: ${_exchOrderCount} | 已映射: ${_mappedOrderCount} | 持仓格: ${ctx.filledLevelCount} | 暂停: ${pauseStr}`);
-  // ★ 多余挂单：持仓占位导致无空层可映射，必须撤销
+  // 额外挂单（不在网格层映射中）
   if (_unmappedCount > 0) {
-    lines.push(`⚠️ ${_unmappedCount} 个挂单在当前映射中无对应 empty 层（可能是持仓层占位导致无处映射）：`);
+    lines.push(`ℹ️ ${_unmappedCount} 个额外挂单（不在网格层中）：`);
     for (const oid of ctx.unmappedOrderIds!) {
       const matchOrder = ctx.exchangeOpenOrders?.find(o => o.orderId === oid);
       if (matchOrder) {
@@ -1047,12 +1030,12 @@ function buildGridUserPromptZh(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ 仓位缩减模式: ${ctx.positionReductionPct}%（每层下单量上限为建议量的 ${100 - ctx.positionReductionPct}%）。系统将在短期箱体内连续3轮稳定后自动解除；如需立即解除可调用 adjust_grid。`);
+    lines.push(`⚠️ 仓位缩减: 每层下单量限制为正常的${100 - ctx.positionReductionPct}%。adjust_grid 可立即解除。`);
   }
   const _exchLong = ctx.positionLong?.quantity ?? 0;
   const _exchShort = ctx.positionShort?.quantity ?? 0;
   lines.push(`交易所持仓: 多头 ${_exchLong.toFixed(4)} | 空头 ${_exchShort.toFixed(4)}`);
-  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（用户锁定，禁止adjust_grid改范围）' : 'false'}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true（adjust_grid将沿用用户配置的百分比边界）' : 'false'}`);
   if (ctx.upperBoundPct && ctx.lowerBoundPct) {
     lines.push(`⚙️ 用户网格边界配置: 上+${ctx.upperBoundPct}% / 下-${ctx.lowerBoundPct}%（adjust_grid 重建时将按此百分比计算，不使用ATR）`);
   } else {
@@ -1213,12 +1196,12 @@ function buildGridUserPromptEn(ctx: GridContext): string {
     }
   }
   if (ctx.positionReductionPct && ctx.positionReductionPct > 0) {
-    lines.push(`⚠️ Position Reduction Mode: ${ctx.positionReductionPct}% (each level capped at ${100 - ctx.positionReductionPct}% of suggested qty). System will auto-clear after 3 consecutive cycles stable inside the short-term box; use adjust_grid for immediate clearance.`);
+    lines.push(`⚠️ Position Reduction: each level capped at ${100 - ctx.positionReductionPct}% of normal qty. adjust_grid clears immediately.`);
   }
   const _exchLongEn = ctx.positionLong?.quantity ?? 0;
   const _exchShortEn = ctx.positionShort?.quantity ?? 0;
   lines.push(`Exchange Position: Long ${_exchLongEn.toFixed(4)} | Short ${_exchShortEn.toFixed(4)}`);
-  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (user locked, adjust_grid cannot change range)' : 'false'}`);
+  lines.push(`userLockedRange: ${ctx.userLockedRange ? 'true (adjust_grid will use user-configured % bounds)' : 'false'}`);
   if (ctx.upperBoundPct && ctx.lowerBoundPct) {
     lines.push(`⚙️ User Grid Bounds Config: upper +${ctx.upperBoundPct}% / lower -${ctx.lowerBoundPct}% (adjust_grid will use this %, NOT ATR)`);
   } else {
