@@ -43,6 +43,25 @@ const EXCHANGE_LOGOS: Record<string, string> = {
 const getExchangeLogo = (exchange: string) =>
   EXCHANGE_LOGOS[exchange?.toLowerCase()] || '/icons/exchanges/default.webp'
 
+/**
+ * 价格格式化（对齐 Binance 精度）
+ * BTC: 1位 ($84000.1)  ETH: 2位 ($1900.12)  SOL等: 2-4位自适应
+ * 规则：价格>1000 → 2位，100-1000 → 2位，10-100 → 3位，<10 → 4位
+ */
+const formatTradePrice = (price: number): string => {
+  if (price >= 1000) return price.toFixed(1)
+  if (price >= 10) return price.toFixed(2)
+  if (price >= 1) return price.toFixed(3)
+  return price.toFixed(4)
+}
+
+/** 数量格式化：去尾零，最多4位小数 */
+const formatTradeQty = (qty: number): string => {
+  if (qty >= 100) return qty.toFixed(2)
+  if (qty >= 1) return parseFloat(qty.toFixed(3)).toString()
+  return parseFloat(qty.toFixed(4)).toString()
+}
+
 // ============ Types ============
 type MarketType = 'spot' | 'futures'
 
@@ -673,12 +692,12 @@ export function MobileTradingCenter({
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <p className="text-[#606070]">{t('entryPriceLabel')}</p>
-                        <p className="font-medium">{position.entryPrice.toFixed(2)}</p>
+                        <p className="font-medium">{formatTradePrice(position.entryPrice)}</p>
                       </div>
                       <div>
                         <p className="text-[#606070]">{t('markPriceLabel')}</p>
                         <p className="font-medium">
-                          {position.markPrice.toFixed(4)}
+                          {formatTradePrice(position.markPrice)}
                           {position.syncSource === 'database' && (
                             <span className="ml-1 text-[9px] text-yellow-400/70" title={t('cachedData')}>⏱</span>
                           )}
@@ -760,15 +779,15 @@ export function MobileTradingCenter({
                       <div className="grid grid-cols-4 gap-1">
                         <div>
                           <p className="text-[#606070] mb-0.5">开仓价格</p>
-                          <p className="font-medium">{order.entryPrice > 0 ? order.entryPrice.toLocaleString() : '-'}</p>
+                          <p className="font-medium">{order.entryPrice > 0 ? formatTradePrice(order.entryPrice) : '-'}</p>
                         </div>
                         <div>
                           <p className="text-[#606070] mb-0.5">平仓均价</p>
-                          <p className="font-medium">{order.closePrice > 0 ? order.closePrice.toLocaleString() : '-'}</p>
+                          <p className="font-medium">{order.closePrice > 0 ? formatTradePrice(order.closePrice) : '-'}</p>
                         </div>
                         <div>
                           <p className="text-[#606070] mb-0.5">持仓量</p>
-                          <p className="font-medium">{order.amount > 0 ? order.amount : '-'}</p>
+                          <p className="font-medium">{order.amount > 0 ? formatTradeQty(order.amount) : '-'}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-[#606070] mb-0.5">保证金</p>
