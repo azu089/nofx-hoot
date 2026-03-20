@@ -4553,11 +4553,12 @@ export class GridTradingService {
   ): any[] {
     const baseSymbol = state.symbol.split('/')[0];
 
-    // 初始化所有层为 empty
+    // 初始化所有层为 empty，side 按当前价实时计算（不用初始化时的静态中心价）
+    const currentPrice = state.lastPrice ?? 0;
     const display: any[] = state.gridLines.map((l, i) => ({
       lv: i + 1,
       p: +l.price.toFixed(4),
-      s: l.side,
+      s: currentPrice > 0 ? (l.price <= currentPrice ? 'buy' : 'sell') : l.side,
       st: 'empty',
     }));
 
