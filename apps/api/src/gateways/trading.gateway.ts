@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service';
 
 // WebSocket 事件类型
 export interface SignalEvent {
@@ -138,7 +139,10 @@ export class TradingGateway
   private readonly logger = new Logger(TradingGateway.name);
   private userSockets: Map<string, Set<string>> = new Map(); // userId -> socketIds
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private prisma: PrismaService,
+  ) {}
 
   // 客户端连接
   async handleConnection(client: Socket) {
@@ -193,14 +197,27 @@ export class TradingGateway
     this.logger.log(`客户端断开: ${client.id}`);
   }
 
-  // 订阅策略信号
+  // 订阅策略信号（验证策略归属，防止跨用户订阅）
   @SubscribeMessage('subscribe:strategy')
-  handleSubscribeStrategy(
+  async handleSubscribeStrategy(
     @ConnectedSocket() client: Socket,
     @MessageBody() strategyId: string,
   ) {
+    const userId = client.data?.userId;
+    if (!userId || !strategyId) {
+      return { error: 'unauthorized' };
+    }
+    // 验证策略属于当前用户
+    const strategy = await this.prisma.aiStrategy.findFirst({
+      where: { id: strategyId, userId },
+      select: { id: true },
+    });
+    if (!strategy) {
+      this.logger.warn(`[WS] 用户 ${userId} 尝试订阅非本人策略 ${strategyId}，已拒绝`);
+      return { error: 'strategy_not_found' };
+    }
     client.join(`strategy:${strategyId}`);
-    this.logger.log(`用户 ${client.data.userId} 订阅策略 ${strategyId}`);
+    this.logger.log(`用户 ${userId} 订阅策略 ${strategyId}`);
     return { subscribed: strategyId };
   }
 

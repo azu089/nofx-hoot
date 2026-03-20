@@ -61,6 +61,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         aiStrategyId: true,
         exchange: true,
         source: true,
+        exchangeRef: true,
       },
     });
 
@@ -242,6 +243,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
       exchange?: string | null;
       source?: string | null;
       aiStrategyId?: string | null;
+      exchangeRef?: string | null;
     },
     pnlPercent: number,
     currentPrice: number,
@@ -318,6 +320,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
           closedAt: new Date(),
           source: pos.source || 'ai_research',
           aiStrategyId: pos.aiStrategyId || undefined,
+          exchangeRef: pos.exchangeRef || undefined,
           createdAt: new Date(),
         },
       }).catch((e: any) => this.logger.warn(`[AI监控] 分批止盈历史持仓写入失败(忽略): ${e.message}`));

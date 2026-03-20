@@ -628,7 +628,7 @@ export class SafetyService {
       };
     }
 
-    // 4. 连续亏损检查（基于已实现 PnL，与失败计数互补——每笔执行成功但连续亏损也触发）
+    // 4. 连续亏损检查（基于已实现 PnL，按策略隔离，防止跨策略误触发熔断）
     const maxConsecLoss = input.strategyRiskConfig?.circuitBreaker?.maxConsecutiveLosses;
     if (maxConsecLoss && maxConsecLoss > 0) {
       const recentClosed = await this.prisma.position.findMany({
@@ -636,7 +636,8 @@ export class SafetyService {
           userId: input.userId,
           source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
           status: 'closed',
-          closedAt: { gte: last24h }, // 24h 内，避免历史噪声
+          closedAt: { gte: last24h },
+          ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
         },
         orderBy: { closedAt: 'desc' },
         take: maxConsecLoss,
