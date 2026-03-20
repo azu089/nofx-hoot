@@ -544,7 +544,11 @@ Your response MUST contain BOTH tags below, in this order, with NO extra text be
 [{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"positionSizePercent":60,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from $96,000 key support with 1.5x volume. Funding rate neutral 0.01%."}]
 </decision>
 
-IMPORTANT: positionSizePercent should follow the Position Sizing Guide (50-80% for confidence 70-84). Do NOT default to small values like 10-15.
+⚠️ CRITICAL: positionSizePercent MUST follow the Position Sizing Guide:
+- confidence 70-84 → positionSizePercent = 50-80 (NOT 10-20!)
+- confidence 85+ → positionSizePercent = 80-100
+- confidence 60-69 → positionSizePercent = 30-50
+- Values below 30 for open_long/open_short will be REJECTED by the system.
 
 FORMAT RULES — violations cause parse failure:
 1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait

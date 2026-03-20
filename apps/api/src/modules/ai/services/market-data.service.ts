@@ -67,23 +67,25 @@ export class MarketDataService implements OnModuleInit {
   private readonly etfCache = new Map<string, { data: ETFFlowData; timestamp: number }>();
   private readonly cotCache = new Map<string, { data: COTReportData; timestamp: number }>();
 
-  private readonly OHLCV_TTL = 5 * 60 * 1000; // 5 分钟
-  private readonly PRICE_TTL = 30 * 1000; // 30 秒
-  private readonly OI_TTL = 60 * 1000; // 1 分钟
-  private readonly FUNDING_RATE_TTL = 60 * 1000; // 1 分钟
-  private readonly NEWS_TTL = 15 * 60 * 1000; // 15 分钟（新闻更新不需要太频繁）
-  private readonly ORDER_BOOK_TTL = 10 * 1000; // 10 秒（订单簿变化快）
+  // 对齐 nofx：每轮直调交易所 API，禁用缓存（TTL=0）
+  // 多用户场景下如果触发限流，可适当调高 TTL
+  private readonly OHLCV_TTL = 0;
+  private readonly PRICE_TTL = 0;
+  private readonly OI_TTL = 0;
+  private readonly FUNDING_RATE_TTL = 0;
+  private readonly NEWS_TTL = 15 * 60 * 1000; // 新闻保留15分钟缓存（第三方API限流严格）
+  private readonly ORDER_BOOK_TTL = 0;
 
-  // === 增强数据 TTL ===
-  private readonly LONG_SHORT_TTL = 5 * 60 * 1000;     // 5 分钟
-  private readonly TAKER_FLOW_TTL = 5 * 60 * 1000;     // 5 分钟
-  private readonly OI_HISTORY_TTL = 5 * 60 * 1000;     // 5 分钟
-  private readonly STABLECOIN_TTL = 30 * 60 * 1000;    // 30 分钟
-  private readonly OPTIONS_TTL = 10 * 60 * 1000;       // 10 分钟
-  private readonly MACRO_TTL = 6 * 60 * 60 * 1000;     // 6 小时
-  private readonly LIQUIDATION_TTL = 5 * 60 * 1000;    // 5 分钟
-  private readonly ETF_TTL = 60 * 60 * 1000;           // 1 小时
-  private readonly COT_TTL = 24 * 60 * 60 * 1000;      // 24 小时
+  // === 增强数据 TTL（第三方API保留适当缓存，防限流）===
+  private readonly LONG_SHORT_TTL = 0;
+  private readonly TAKER_FLOW_TTL = 0;
+  private readonly OI_HISTORY_TTL = 0;
+  private readonly STABLECOIN_TTL = 30 * 60 * 1000;    // 稳定币数据变化慢，保留30分钟
+  private readonly OPTIONS_TTL = 10 * 60 * 1000;       // Deribit期权数据，保留10分钟
+  private readonly MACRO_TTL = 6 * 60 * 60 * 1000;     // 宏观数据每日更新，保留6小时
+  private readonly LIQUIDATION_TTL = 0;
+  private readonly ETF_TTL = 60 * 60 * 1000;           // ETF数据每日更新，保留1小时
+  private readonly COT_TTL = 24 * 60 * 60 * 1000;      // COT周报，保留24小时
 
   constructor() {
     // 使用 binanceusdm 期货专用类（使用 fapi.binance.com 域名，避免 api.binance.com 被墙）
