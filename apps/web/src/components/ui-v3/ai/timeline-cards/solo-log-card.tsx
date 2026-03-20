@@ -665,43 +665,25 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 )}
               </div>
 
-              {/* 行2: 开仓参数 — 4列网格 */}
+              {/* 行2: 开仓参数 — 标签: 值 同行 */}
               {(action === 'open_long' || action === 'open_short') && (
-                <div className="grid grid-cols-4 text-[11px]">
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{t('research.leverage')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent ?? '-'}%</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</p>
-                  </div>
+                <div className="grid grid-cols-4 text-[11px] gap-y-1">
+                  <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent ?? '-'}%</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
                 </div>
               )}
 
-              {/* 行2b: 平仓参数 — 等间距横排 */}
-              {(action === 'close_long' || action === 'close_short') && er?.price && (
-                <div className="grid grid-cols-3 text-[11px]">
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">${entryPrice > 0 ? entryPrice.toFixed(2) : Number(er.price).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.exitPrice', '出场价')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">${Number(er.price).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}</p>
-                    <p className="font-mono text-[#F8F8FC] font-semibold">{er.amount ?? '-'}</p>
-                  </div>
+              {/* 行2b: 平仓参数 — 含杠杆 */}
+              {(action === 'close_long' || action === 'close_short') && (
+                <div className="grid grid-cols-4 text-[11px] gap-y-1">
+                  {d.leverage != null && (
+                    <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage}x</span></p>
+                  )}
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.exitPrice', '出场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
                 </div>
               )}
 
