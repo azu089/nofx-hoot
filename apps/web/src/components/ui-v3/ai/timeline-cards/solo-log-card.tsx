@@ -715,45 +715,33 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 </div>
               )}
 
-              {/* 行3: SL/TP + R:R — 三列对齐布局 */}
+              {/* 行3: SL/TP + R:R — 单行内联 */}
               {(d.stopLoss != null || d.takeProfit != null) && (
-                <div className="grid grid-cols-3 gap-2 text-xs pt-2">
-                  {d.stopLoss != null ? (
-                    <div>
-                      <p className="text-[10px] text-[#606070] mb-0.5">{t('timeline.slLabel')}:</p>
-                      <p className="text-[#F43F5E] font-mono font-semibold">
-                        ${Number(d.stopLoss).toLocaleString()}
-                      </p>
-                      <p className="text-[#F43F5E] opacity-70 text-[10px]">
-                        ({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})
-                      </p>
-                    </div>
-                  ) : <div />}
-                  {d.takeProfit != null ? (
-                    <div>
-                      <p className="text-[10px] text-[#606070] mb-0.5">{t('timeline.tpLabel')}:</p>
-                      <p className="text-[#10B981] font-mono font-semibold">
-                        ${Number(d.takeProfit).toLocaleString()}
-                      </p>
-                      <p className="text-[#10B981] opacity-70 text-[10px]">
-                        ({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})
-                      </p>
-                    </div>
-                  ) : <div />}
-                  {rr != null ? (
-                    <div>
-                      <p className="text-[10px] text-[#606070] mb-0.5">{t('timeline.rrLabel')}:</p>
-                      <p className="font-mono font-semibold" style={{ color: rrColor(rr) }}>
-                        1:{rr.toFixed(1)}
-                      </p>
-                      <div className="w-full h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden mt-1">
+                <div className="flex items-center gap-4 text-xs flex-wrap">
+                  {d.stopLoss != null && (
+                    <span className="text-[#F43F5E]">
+                      {t('timeline.slLabel')}: <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
+                      <span className="opacity-60 ml-1 text-[10px]">({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})</span>
+                    </span>
+                  )}
+                  {d.takeProfit != null && (
+                    <span className="text-[#10B981]">
+                      {t('timeline.tpLabel')}: <span className="font-mono font-semibold">${Number(d.takeProfit).toLocaleString()}</span>
+                      <span className="opacity-60 ml-1 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span>
+                    </span>
+                  )}
+                  {rr != null && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[#606070]">{t('timeline.rrLabel')}:</span>
+                      <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
+                      <div className="w-12 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full"
                           style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }}
                         />
                       </div>
-                    </div>
-                  ) : <div />}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
