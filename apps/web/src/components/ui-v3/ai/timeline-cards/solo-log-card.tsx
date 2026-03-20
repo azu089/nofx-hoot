@@ -630,13 +630,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         );
       })()}
 
-      {/* === 普通 Solo: 决策 + 参数（wait/hold 由底部状态栏表达，此处不重复） === */}
+      {/* === 普通 Solo: 决策卡片（统一展示所有参数） === */}
       {!isGridLog && !isAutoDisabled && !(isGridEntry && !isGridLog) && (
         <div className="space-y-2">
+          {/* 决策区块 — 开仓/平仓 */}
           {(action === 'open_long' || action === 'open_short'
             || action === 'close_long' || action === 'close_short') && (
-            <>
-              <div className="flex items-center gap-3">
+            <div className="bg-[#0A0A0F]/60 rounded-lg p-3 space-y-2.5 border border-[#1E1E2E]">
+              {/* 行1: 动作标签 + 置信度条 */}
+              <div className="flex items-center justify-between">
                 <span
                   className="px-2.5 py-1 rounded-md text-xs font-semibold"
                   style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}
@@ -644,64 +646,136 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
                 </span>
                 {d.confidence != null && (
-                  <span className="text-xs text-[#9090A0]">
-                    {t('research.confidence')} <span className={`font-mono ${d.confidence > 0 ? 'text-[#F8F8FC]' : 'text-[#F43F5E]'}`}>{d.confidence}%</span>
-                  </span>
-                )}
-                {d.leverage != null && d.leverage > 1 && (
-                  <span className="text-xs text-[#9090A0]">
-                    {t('research.leverage')} <span className="text-[#F8F8FC] font-mono">{d.leverage}x</span>
-                  </span>
-                )}
-                {d.positionSizePercent != null && (
-                  <span className="text-xs text-[#9090A0]">
-                    {t('research.position') || '仓位'} <span className="text-[#F8F8FC] font-mono">{d.positionSizePercent}%</span>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-[#606070]">{t('research.confidence')}</span>
+                    <div className="w-16 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, d.confidence)}%`,
+                          backgroundColor: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs font-mono font-semibold" style={{
+                      color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                    }}>{d.confidence}%</span>
+                  </div>
                 )}
               </div>
 
-            </>
-          )}
-
-          {/* 推理文本 — 分段显示，模型 Logo 在对话框内部顶端 */}
-          {reasoning && (
-            <SectionedReasoning text={reasoning} modelId={d.modelId} />
-          )}
-
-          {/* SL/TP + R:R (放在推理之后) */}
-          {(d.stopLoss != null || d.takeProfit != null) && (
-            <div className="flex items-center gap-4 text-xs">
-              {d.stopLoss != null && (
-                <span className="text-[#F43F5E]">
-                  {t('timeline.slLabel')}: <span className="font-mono">${Number(d.stopLoss).toLocaleString()}</span>
-                  <span className="opacity-70 ml-1">
-                    ({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})
-                  </span>
-                </span>
+              {/* 行2: 参数网格（开仓专用） */}
+              {(action === 'open_long' || action === 'open_short') && (
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {d.leverage != null && (
+                    <div>
+                      <p className="text-[10px] text-[#606070]">{t('research.leverage')}</p>
+                      <p className="text-xs font-mono text-[#F8F8FC]">{d.leverage}x</p>
+                    </div>
+                  )}
+                  {d.positionSizePercent != null && (
+                    <div>
+                      <p className="text-[10px] text-[#606070]">{t('research.position') || '仓位'}</p>
+                      <p className="text-xs font-mono text-[#F8F8FC]">{d.positionSizePercent}%</p>
+                    </div>
+                  )}
+                  {er?.price && (
+                    <div>
+                      <p className="text-[10px] text-[#606070]">{t('timeline.entryPrice') || '入场价'}</p>
+                      <p className="text-xs font-mono text-[#F8F8FC]">${Number(er.price).toFixed(2)}</p>
+                    </div>
+                  )}
+                  {er?.amount && (
+                    <div>
+                      <p className="text-[10px] text-[#606070]">{t('timeline.quantity') || '数量'}</p>
+                      <p className="text-xs font-mono text-[#F8F8FC]">{er.amount}</p>
+                    </div>
+                  )}
+                </div>
               )}
-              {d.takeProfit != null && (
-                <span className="text-[#10B981]">
-                  {t('timeline.tpLabel')}: <span className="font-mono">${Number(d.takeProfit).toLocaleString()}</span>
-                  <span className="opacity-70 ml-1">
-                    ({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})
+
+              {/* 行2b: 平仓专用 — 入场→出场 + 盈亏 */}
+              {(action === 'close_long' || action === 'close_short') && er?.price && (
+                <div className="flex items-center gap-3 text-xs">
+                  {entryPrice > 0 && (
+                    <span className="text-[#9090A0]">
+                      {t('timeline.entryPrice') || '入场'} <span className="font-mono text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>
+                    </span>
+                  )}
+                  <span className="text-[#606070]">→</span>
+                  <span className="text-[#9090A0]">
+                    {t('timeline.exitPrice') || '出场'} <span className="font-mono text-[#F8F8FC]">${Number(er.price).toFixed(2)}</span>
                   </span>
-                </span>
+                </div>
               )}
-              {rr != null && (
-                <span className="flex items-center gap-1">
-                  <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}</span>
-                  <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>
-                    1:{rr.toFixed(1)}
-                  </span>
-                  <div className="w-12 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }}
-                    />
-                  </div>
-                </span>
+
+              {/* 行3: SL/TP + R:R */}
+              {(d.stopLoss != null || d.takeProfit != null) && (
+                <div className="flex items-center gap-4 text-xs pt-1 border-t border-[#1E1E2E]/50">
+                  {d.stopLoss != null && (
+                    <span className="text-[#F43F5E]">
+                      {t('timeline.slLabel')}: <span className="font-mono">${Number(d.stopLoss).toLocaleString()}</span>
+                      <span className="opacity-70 ml-1">
+                        ({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})
+                      </span>
+                    </span>
+                  )}
+                  {d.takeProfit != null && (
+                    <span className="text-[#10B981]">
+                      {t('timeline.tpLabel')}: <span className="font-mono">${Number(d.takeProfit).toLocaleString()}</span>
+                      <span className="opacity-70 ml-1">
+                        ({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})
+                      </span>
+                    </span>
+                  )}
+                  {rr != null && (
+                    <span className="flex items-center gap-1">
+                      <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}</span>
+                      <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>
+                        1:{rr.toFixed(1)}
+                      </span>
+                      <div className="w-12 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }}
+                        />
+                      </div>
+                    </span>
+                  )}
+                </div>
               )}
             </div>
+          )}
+
+          {/* wait/hold 决策区块 — 简化 */}
+          {(action === 'wait' || action === 'hold') && d.confidence != null && (
+            <div className="bg-[#0A0A0F]/60 rounded-lg p-3 border border-[#1E1E2E]">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#64748B]/10 text-[#94A3B8]">
+                  {ACTION_I18N[action] ? t(ACTION_I18N[action]) : (action === 'hold' ? '持仓' : '观望')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#606070]">{t('research.confidence')}</span>
+                  <div className="w-16 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, d.confidence)}%`,
+                        backgroundColor: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono" style={{
+                    color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                  }}>{d.confidence}%</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 推理文本 — 分段显示 */}
+          {reasoning && (
+            <SectionedReasoning text={reasoning} modelId={d.modelId} />
           )}
         </div>
       )}
@@ -1066,17 +1140,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         ) : log.executed ? (
           <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#10B981]/5 text-xs">
             <Check className="w-3.5 h-3.5 text-[#10B981]" />
-            <span className="text-[#10B981] font-medium">
-              {ACTION_I18N[action] ? t(ACTION_I18N[action]) : t('timeline.executed')}
-            </span>
-            {d.positionSizePercent != null && (
-              <span className="text-[#9090A0] font-mono">{d.positionSizePercent}%</span>
-            )}
-            {d.leverage != null && d.leverage > 1 && (
-              <span className="text-[#9090A0] font-mono">{d.leverage}x</span>
-            )}
-            {er?.price && <span className="text-[#9090A0] font-mono">${Number(er.price).toFixed(2)}</span>}
-            {er?.amount && <span className="text-[#606070] font-mono">×{er.amount}</span>}
+            <span className="text-[#10B981] font-medium">{t('timeline.executed')}</span>
             {er?.positionId && (
               <span className="text-[#606070] font-mono">#{er.positionId.slice(-8)}</span>
             )}
