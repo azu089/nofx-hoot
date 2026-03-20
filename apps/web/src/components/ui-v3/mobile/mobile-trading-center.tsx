@@ -44,22 +44,20 @@ const getExchangeLogo = (exchange: string) =>
   EXCHANGE_LOGOS[exchange?.toLowerCase()] || '/icons/exchanges/default.webp'
 
 /**
- * 价格格式化（对齐 Binance 精度）
- * BTC: 1位 ($84000.1)  ETH: 2位 ($1900.12)  SOL等: 2-4位自适应
- * 规则：价格>1000 → 2位，100-1000 → 2位，10-100 → 3位，<10 → 4位
+ * 价格格式化（对齐 Binance 合约持仓精度）
+ * Binance 持仓界面: 均价/标记价都显示4位小数（SOL: 89.1175, 88.9900）
+ * BTC: tickSize=0.10 → 1位  ETH: tickSize=0.01 → 2位  其余: 4位
  */
 const formatTradePrice = (price: number): string => {
-  if (price >= 1000) return price.toFixed(1)
-  if (price >= 10) return price.toFixed(2)
-  if (price >= 1) return price.toFixed(3)
-  return price.toFixed(4)
+  if (price >= 10000) return price.toFixed(1)   // BTC 级别
+  if (price >= 1000) return price.toFixed(2)    // ETH 级别
+  return price.toFixed(4)                       // SOL 及以下：4位小数（与 Binance 一致）
 }
 
-/** 数量格式化：去尾零，最多4位小数 */
+/** 数量格式化：与 Binance 对齐，显示2位（SOL: 1.60, 0.44） */
 const formatTradeQty = (qty: number): string => {
   if (qty >= 100) return qty.toFixed(2)
-  if (qty >= 1) return parseFloat(qty.toFixed(3)).toString()
-  return parseFloat(qty.toFixed(4)).toString()
+  return qty.toFixed(2)
 }
 
 // ============ Types ============
@@ -673,7 +671,7 @@ export function MobileTradingCenter({
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <p className="text-[#606070]">{t('positionAmount')}</p>
-                        <p className="font-medium">{position.size}</p>
+                        <p className="font-medium">{formatTradeQty(position.size)}</p>
                       </div>
                       <div>
                         <p className="text-[#606070]">{t('marginAmount')}</p>
