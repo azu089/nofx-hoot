@@ -63,7 +63,11 @@ export class AdminService {
         { nickname: { contains: search, mode: 'insensitive' } },
         { telegramUsername: { contains: search, mode: 'insensitive' } },
         { walletAddress: { contains: search, mode: 'insensitive' } },
+        // 支持 USR10007 格式直接搜索（userCode 精确匹配 + uid 数字匹配）
+        { userCode: { equals: search.toUpperCase(), mode: 'insensitive' } },
         ...(Number.isFinite(uidNum) ? [{ uid: uidNum }] : []),
+        // 支持 UUID 直接搜索
+        ...(search.includes('-') && search.length > 30 ? [{ id: search }] : []),
       ];
     }
 
