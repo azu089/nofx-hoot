@@ -780,16 +780,37 @@ export class AutoTraderService {
         sharpe: tradingStats.sharpeRatio,
       });
 
-      // Step 5.7: 计算连续 wait/hold 周期数（注入 Prompt 促进开仓）
+      // Step 5.7: 计算连续 wait/hold 周期数 + 提取上轮决策摘要（注入 Prompt）
       const recentStrategyLogs = await db.aiStrategyLog.findMany({
         where: { strategyId },
         orderBy: { createdAt: 'desc' },
         take: 10,
-        select: { decision: true },
+        select: { decision: true, symbol: true, createdAt: true },
       });
       const consecutiveWaits = this.countConsecutiveWaits(recentStrategyLogs);
       if (consecutiveWaits >= 3) {
         this.logger.log(`⚠️ 连续 ${consecutiveWaits} 个周期 wait/hold，Prompt 将鼓励降低开仓门槛`);
+      }
+
+      // 提取上轮 AI 决策摘要（最近 1 轮的所有币种决策，注入 prompt 提供决策连续性）
+      const lastDecisions: Array<{ symbol: string; action: string; confidence: number; reasoning: string; timestamp: string }> = [];
+      if (recentStrategyLogs.length > 0) {
+        // 找最近一轮的时间戳（同一轮可能有多条记录，每个币种一条）
+        const lastTime = recentStrategyLogs[0].createdAt;
+        const lastTimeCutoff = new Date(lastTime.getTime() - 60_000); // 1分钟内视为同一轮
+        for (const log of recentStrategyLogs) {
+          if (log.createdAt < lastTimeCutoff) break; // 超过1分钟的不是同一轮
+          const d = log.decision as any;
+          if (d?.action) {
+            lastDecisions.push({
+              symbol: log.symbol || d.symbol || 'unknown',
+              action: d.action,
+              confidence: d.confidence ?? 0,
+              reasoning: d.reasoning || '',
+              timestamp: log.createdAt.toISOString().slice(0, 16),
+            });
+          }
+        }
       }
 
       // nofx 风格上下文摘要（对齐 auto_trader_decision.go buildTradingContext 日志）
@@ -1129,6 +1150,7 @@ export class AutoTraderService {
               tradingStats,
               liquidityData: symbolLiquidityData,
               accountInfo,
+              lastDecisions,
               promptConfig: {
                 promptSections: promptSections ? {
                   role: promptSections.role,

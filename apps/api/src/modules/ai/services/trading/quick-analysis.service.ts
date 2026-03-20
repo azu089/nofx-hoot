@@ -86,6 +86,14 @@ export interface QuickAnalysisConfig {
     otherStrategiesCount: number;
     otherStrategiesMargin: number;
   };
+  /** 上轮 AI 决策摘要（注入 prompt 提供决策连续性） */
+  lastDecisions?: Array<{
+    symbol: string;
+    action: string;
+    confidence: number;
+    reasoning: string;
+    timestamp: string;
+  }>;
 }
 
 /**
@@ -315,6 +323,7 @@ export class QuickAnalysisService {
       liquidityData: config.liquidityData,
       debateContext: config.debateContext,
       locale: config.promptConfig?.locale,
+      lastDecisions: config.lastDecisions,
     };
 
     const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);
@@ -332,7 +341,16 @@ export class QuickAnalysisService {
     );
 
     // 9. 解析 JSON 结果（Phase 9.0: 6 层鲁棒解析器，替代简单 JSON.parse）
-    const allDecisions = parseDecisions(response.content, config.symbol);
+    // P0 修复：deepseek-reasoner thinking tokens 占比过大时，content 中 <decision> JSON 可能被截断
+    // 检测 content 是否包含完整 <decision>，若不完整但 thinking 有内容，合并后重新解析
+    let parseInput = response.content;
+    if (response.thinking && !response.content.includes('</decision>')) {
+      this.logger.warn(
+        `[解析修复] content 缺少完整 <decision> 标签 (${response.content.length}字符)，合并 thinking (${response.thinking.length}字符) 重试`,
+      );
+      parseInput = response.thinking + '\n' + response.content;
+    }
+    const allDecisions = parseDecisions(parseInput, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
     // 提取 <reasoning> CoT trace（如有）— 分发给所有 decisions

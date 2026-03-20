@@ -133,6 +133,14 @@ export interface UserPromptContext {
   otherStrategiesCount?: number;
   /** 其他策略总保证金 */
   otherStrategiesMargin?: number;
+  /** 上轮 AI 决策摘要（避免重复分析，提供决策连续性） */
+  lastDecisions?: Array<{
+    symbol: string;
+    action: string;
+    confidence: number;
+    reasoning: string;
+    timestamp: string;
+  }>;
 }
 
 // ========================= Service =========================
@@ -268,6 +276,22 @@ export class PromptBuilderService {
       lines.push('');
       lines.push('=== Current Positions ===');
       lines.push('  No open positions');
+    }
+
+    // [5.3] Last Cycle Decisions（上轮 AI 决策摘要，避免重复分析）
+    if (ctx.lastDecisions && ctx.lastDecisions.length > 0) {
+      lines.push('');
+      lines.push('=== Previous Cycle Decisions ===');
+      lines.push('Your analysis from the previous cycle (avoid repeating identical reasoning):');
+      for (const d of ctx.lastDecisions) {
+        lines.push(`  ${d.symbol} → ${d.action} (confidence=${d.confidence}%) @ ${d.timestamp}`);
+        if (d.reasoning) {
+          // 截取前200字，避免prompt过长
+          const shortReason = d.reasoning.length > 200 ? d.reasoning.slice(0, 200) + '...' : d.reasoning;
+          lines.push(`    Reason: ${shortReason}`);
+        }
+      }
+      lines.push('  NOTE: If market conditions have NOT changed significantly, reference your prior analysis rather than re-deriving the same conclusion. Focus on what CHANGED since last cycle.');
     }
 
     // [5.5] Other Strategies Exposure（同账户其他策略的持仓概览）
