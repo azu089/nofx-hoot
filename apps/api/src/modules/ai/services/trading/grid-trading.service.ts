@@ -4550,7 +4550,7 @@ export class GridTradingService {
     // ★ 对齐 syncMemory：用 Set 去重（与 syncMemory 的 filledPriceSet 一致）
     const filledPriceSet = new Set(display.filter(d => d.st === 'filled').map(d => d.p as number));
     const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
-    const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
+    const maxMapDist = halfSpacing; // 统一精度：挂单必须在层价格±半间距内才映射
 
     const usedDisplayIdx = new Set<number>();
     const unmappedOrderIds: string[] = [];
