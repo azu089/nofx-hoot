@@ -268,14 +268,16 @@ export class AiExecutionService {
       );
     }
 
-    // 3.5 百分比 → USD 转换（对齐 nofx: position_size_usd 是名义仓位绝对值）
-    // rawPositionSize <= 100 视为百分比（占 availableBalance），> 100 视为 USD 绝对值
+    // 3.5 百分比 → USD 转换
+    // positionSizePercent = 保证金占预算的百分比，乘以杠杆得到名义仓位（对齐 nofx position_size_usd）
+    // 例: 预算$120, pct=20%, leverage=3x → 保证金=$24 → 名义=$72 → qty=$72/$89=0.81 SOL
     const maxPctThreshold = decision.maxPositionPct ?? 100;
     let positionSizeUSD = rawPositionSize;
     if (rawPositionSize <= maxPctThreshold) {
-      positionSizeUSD = availableBalance * (rawPositionSize / 100);
+      const marginUSD = availableBalance * (rawPositionSize / 100);
+      positionSizeUSD = marginUSD * leverage;
       this.logger.log(
-        `[AI执行] 仓位百分比转换: ${rawPositionSize}% × $${availableBalance.toFixed(2)} = $${positionSizeUSD.toFixed(2)}`,
+        `[AI执行] 仓位百分比转换: ${rawPositionSize}% × $${availableBalance.toFixed(2)} = $${marginUSD.toFixed(2)} 保证金 × ${leverage}x = $${positionSizeUSD.toFixed(2)} 名义仓位`,
       );
     }
     // 保底：如果计算后仓位低于最小限制，自动提升到最小限制
