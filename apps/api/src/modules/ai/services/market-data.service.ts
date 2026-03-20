@@ -1319,7 +1319,10 @@ export class MarketDataService implements OnModuleInit {
       );
       clearTimeout(timeout);
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        this.logger.warn(`[COT] NASDAQ API 返回 ${res.status}（WAF拦截或Key无效），跳过`);
+        return null;
+      }
       const json = await res.json();
       const dataset = json?.dataset;
       if (!dataset?.data || dataset.data.length === 0) return null;

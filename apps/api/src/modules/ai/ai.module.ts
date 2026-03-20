@@ -38,6 +38,7 @@ import { GridTradingService } from './services/trading/grid-trading.service';
 import { AutoSchedulerService } from './services/trading/auto-scheduler.service';
 import { DebateOrchestratorService } from './services/trading/debate-orchestrator.service';
 import { PromptBuilderService } from './services/trading/prompt-builder.service';
+import { NofxosRankingService } from './services/nofxos-ranking.service';
 
 // Processors — 从 v2-dev 复制
 import { AutoRunProcessor } from './processors/auto-run.processor';
@@ -96,6 +97,7 @@ import { DrawdownMonitorProcessor } from './processors/drawdown-monitor.processo
     GridTradingService,
     DebateOrchestratorService, // Phase 8.2: 4阶段辩论编排器
     PromptBuilderService, // Phase 9.0: 8-section 结构化 Prompt
+    NofxosRankingService, // NofxOS 排名数据（OI/资金流/涨跌幅）
 
     // === 处理器 ===
     AutoRunProcessor,

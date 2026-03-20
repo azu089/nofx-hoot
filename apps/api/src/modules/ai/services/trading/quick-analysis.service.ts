@@ -8,6 +8,7 @@ import { AiTradeDecision } from '../../types/ai.types';
 import { formatMarketDataPrompt } from '../../constants/prompts';
 import { PromptBuilderService, PromptConfig, UserPromptContext } from './prompt-builder.service';
 import { parseDecisions, extractReasoning } from '../../utils/decision-parser';
+import { NofxosRankingService } from '../nofxos-ranking.service';
 
 /**
  * 最近交易记录（替代 BM25 记忆，轻量上下文）
@@ -145,6 +146,7 @@ export class QuickAnalysisService {
     private readonly marketData: MarketDataService,
     private readonly tradeHistory: TradeHistoryService,
     private readonly promptBuilder: PromptBuilderService,
+    private readonly nofxosRanking: NofxosRankingService,
   ) {}
 
   /**
@@ -170,14 +172,43 @@ export class QuickAnalysisService {
       // 多币种模式: 市场数据已由调用方预构建
       marketDataPrompt = config.precomputedMarketData;
     } else {
-      // 1. 获取市场数据 + 市场排名 + 增强数据（并行）
-      const [marketData, marketRanking, enhancedData] = await Promise.all([
+      // 1. 获取市场数据 + 市场排名 + 增强数据 + NofxOS 排名（并行，对齐 nofx 数据获取日志规范）
+      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking] = await Promise.all([
         this.fetchMarketData(config),
-        this.marketData.fetchMarketRanking(config.symbol).catch(() => null),
-        this.marketData.fetchEnhancedMarketData(config.symbol).catch(() => null),
+        this.marketData.fetchMarketRanking(config.symbol).catch((e: any) => {
+          this.logger.warn(`[数据获取] marketRanking 失败: ${e.message}`);
+          return null;
+        }),
+        this.marketData.fetchEnhancedMarketData(config.symbol).catch((e: any) => {
+          this.logger.warn(`[数据获取] enhancedData 失败: ${e.message}`);
+          return null;
+        }),
+        // NofxOS 排名数据（对齐 nofx buildTradingContext: FetchOIRankingData/FetchNetFlowRankingData/FetchPriceRankingData）
+        this.nofxosRanking.fetchOIRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] OI排名 失败: ${e.message}`);
+          return null;
+        }),
+        this.nofxosRanking.fetchNetFlowRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] 资金流排名 失败: ${e.message}`);
+          return null;
+        }),
+        this.nofxosRanking.fetchPriceRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] 涨跌幅排名 失败: ${e.message}`);
+          return null;
+        }),
       ]);
       const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
       safetyVolume24h = volume24h;
+
+      // 数据获取摘要日志（对齐 nofx buildTradingContext 日志规范）
+      this.logger.log(
+        `📋 [${config.symbol}] 数据摘要: K线=${ohlcv.length}条@${config.timeframe} | 价格=$${currentPrice} | ` +
+        `OI=${openInterest != null ? '✅' : '❌'} | FR=${fundingRate != null ? '✅' : '❌'} | ` +
+        `排名=${marketRanking ? '✅' : '❌'} | 增强=${enhancedData ? '✅' : '❌'}\n` +
+        `  📊 OI排名=${oiRanking ? `✅(${oiRanking.topPositions.length}top/${oiRanking.lowPositions.length}low)` : '❌'} | ` +
+        `💰 资金流=${netFlowRanking ? '✅' : '❌'} | ` +
+        `📈 涨跌榜=${priceRanking ? `✅(${Object.keys(priceRanking.durations).length}时段)` : '❌'}`,
+      );
 
       // 2. 计算技术指标
       const indicatorResult = this.indicators.calculateAll(ohlcv);
@@ -214,6 +245,16 @@ export class QuickAnalysisService {
         marketRanking: marketRanking || undefined,
         enhanced: enhancedData || undefined,
       });
+
+      // 追加 NofxOS 排名数据到 Prompt（对齐 nofx FormatXXXForAI）
+      const rankingSections = [
+        this.nofxosRanking.formatOIRankingForAI(oiRanking),
+        this.nofxosRanking.formatNetFlowRankingForAI(netFlowRanking),
+        this.nofxosRanking.formatPriceRankingForAI(priceRanking),
+      ].filter(Boolean).join('\n');
+      if (rankingSections) {
+        marketDataPrompt += '\n\n' + rankingSections;
+      }
     }
 
     // 6. 构建系统提示（Phase 9.0: 8-section 结构化 Prompt，替代扁平 QUICK_MODE_SYSTEM_PROMPT）
@@ -308,8 +349,8 @@ export class QuickAnalysisService {
 
     const latencyMs = Date.now() - startTime;
 
-    // 详细日志: LLM 原始思考预览 + 决策参数 Banner
-    const thinkingPreview = (decision.reasoning || response.content || '').slice(0, 300);
+    // 详细日志: 决策参数 Banner + 完整思考（对齐 nofx 日志规范）
+    const fullReasoning = decision.reasoning || response.content || '';
     this.logger.log(
       `[快速分析] ======== 分析完成 ========\n` +
       `  ${config.symbol} @ ${config.timeframe} (模型: ${config.modelId})\n` +
@@ -317,7 +358,10 @@ export class QuickAnalysisService {
       `  leverage=${decision.leverage}x posPct=${decision.positionSizePercent}%\n` +
       `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'}\n` +
       `  tokens=${response.tokenUsage || 'N/A'} 耗时=${latencyMs}ms 成本=$${response.cost.toFixed(6)}\n` +
-      `  思考: ${thinkingPreview}${thinkingPreview.length >= 300 ? '...' : ''}\n` +
+      `  💭 AI 完整分析:\n` +
+      `  ----------------------------------------------------------------------\n` +
+      `  ${fullReasoning}\n` +
+      `  ----------------------------------------------------------------------\n` +
       `  ================================`,
     );
 
@@ -360,16 +404,51 @@ export class QuickAnalysisService {
     this.logger.log(`[多币种分析] 开始批量分析 ${symbols.length} 个币种: ${symbols.join(', ')}`);
 
     try {
+      // 0. 获取 NofxOS 全局排名数据（所有币种共享，并行获取）
+      const [mcOiRanking, mcNetFlowRanking, mcPriceRanking] = await Promise.all([
+        this.nofxosRanking.fetchOIRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] OI排名(多币种) 失败: ${e.message}`);
+          return null;
+        }),
+        this.nofxosRanking.fetchNetFlowRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] 资金流排名(多币种) 失败: ${e.message}`);
+          return null;
+        }),
+        this.nofxosRanking.fetchPriceRanking().catch((e: any) => {
+          this.logger.warn(`[数据获取] 涨跌幅排名(多币种) 失败: ${e.message}`);
+          return null;
+        }),
+      ]);
+      this.logger.log(
+        `📊 [多币种] 排名数据: OI=${mcOiRanking ? '✅' : '❌'} | 资金流=${mcNetFlowRanking ? '✅' : '❌'} | 涨跌榜=${mcPriceRanking ? '✅' : '❌'}`,
+      );
+      const mcRankingSections = [
+        this.nofxosRanking.formatOIRankingForAI(mcOiRanking),
+        this.nofxosRanking.formatNetFlowRankingForAI(mcNetFlowRanking),
+        this.nofxosRanking.formatPriceRankingForAI(mcPriceRanking),
+      ].filter(Boolean).join('\n');
+
       // 1. 并行获取所有币种的市场数据
       const marketDataResults = await Promise.all(
         configs.map(async (config) => {
           try {
             const [marketData, marketRanking, enhancedData] = await Promise.all([
               this.fetchMarketData(config),
-              this.marketData.fetchMarketRanking(config.symbol).catch(() => null),
-              this.marketData.fetchEnhancedMarketData(config.symbol).catch(() => null),
+              this.marketData.fetchMarketRanking(config.symbol).catch((e: any) => {
+                this.logger.warn(`[数据获取] ${config.symbol} marketRanking 失败: ${e.message}`);
+                return null;
+              }),
+              this.marketData.fetchEnhancedMarketData(config.symbol).catch((e: any) => {
+                this.logger.warn(`[数据获取] ${config.symbol} enhancedData 失败: ${e.message}`);
+                return null;
+              }),
             ]);
             const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
+            this.logger.log(
+              `📋 [${config.symbol}] 数据摘要: K线=${ohlcv.length}条 | 价格=$${currentPrice} | ` +
+              `OI=${openInterest != null ? '✅' : '❌'} | FR=${fundingRate != null ? '✅' : '❌'} | ` +
+              `排名=${marketRanking ? '✅' : '❌'} | 增强=${enhancedData ? '✅' : '❌'}`,
+            );
             const indicatorResult = this.indicators.calculateAll(ohlcv);
             const indicatorSeries = this.indicators.calculateSeries(ohlcv);
             const flatIndicators = {
@@ -378,17 +457,22 @@ export class QuickAnalysisService {
               macdHistSeries: indicatorSeries.macdHistSeries,
             };
 
+            let coinPrompt = formatMarketDataPrompt({
+              symbol: config.symbol,
+              currentPrice,
+              indicators: flatIndicators,
+              openInterest,
+              fundingRate,
+              marketRanking: marketRanking || undefined,
+              enhanced: enhancedData || undefined,
+            });
+            if (mcRankingSections) {
+              coinPrompt += '\n\n' + mcRankingSections;
+            }
+
             return {
               symbol: config.symbol,
-              prompt: formatMarketDataPrompt({
-                symbol: config.symbol,
-                currentPrice,
-                indicators: flatIndicators,
-                openInterest,
-                fundingRate,
-                marketRanking: marketRanking || undefined,
-                enhanced: enhancedData || undefined,
-              }),
+              prompt: coinPrompt,
               indicators: {
                 rsi: indicatorResult.rsi ?? null,
                 atr3: indicatorResult.atr3,
@@ -539,8 +623,14 @@ export class QuickAnalysisService {
     const [ohlcvRaw, currentPrice, oiData, frData] = await Promise.all([
       this.marketData.fetchOHLCV(config.symbol, config.timeframe, 100),
       this.marketData.fetchCurrentPrice(config.symbol),
-      this.marketData.fetchOpenInterest(config.symbol).catch(() => null),
-      this.marketData.fetchFundingRate(config.symbol).catch(() => null),
+      this.marketData.fetchOpenInterest(config.symbol).catch((e: any) => {
+        this.logger.warn(`[数据获取] ${config.symbol} OI 获取失败: ${e.message}`);
+        return null;
+      }),
+      this.marketData.fetchFundingRate(config.symbol).catch((e: any) => {
+        this.logger.warn(`[数据获取] ${config.symbol} FR 获取失败: ${e.message}`);
+        return null;
+      }),
     ]);
 
     const ohlcv: OHLCV[] = ohlcvRaw.map((c) => ({

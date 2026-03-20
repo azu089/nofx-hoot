@@ -649,6 +649,13 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       );
 
       const data = response.data;
+
+      // CryptoCompare v2 API: 超限时返回 Response:"Error" + Data:{}（空对象非数组）
+      if (data.Response === 'Error') {
+        this.logger.warn(`CryptoCompare 限流: ${data.Message || 'rate limit exceeded'}`);
+        return [];
+      }
+
       interface CryptoCompareItem {
         id: string | number;
         title: string;
@@ -660,7 +667,8 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         categories?: string;
         imageurl?: string;
       }
-      const news = (data.Data || []).slice(0, 25).map((item: CryptoCompareItem) => ({
+      const rawItems = Array.isArray(data.Data) ? data.Data : [];
+      const news = rawItems.slice(0, 25).map((item: CryptoCompareItem) => ({
         id: `cc_${item.id}`,
         title: item.title,
         source: item.source_info?.name || item.source || 'CryptoCompare',

@@ -735,7 +735,8 @@ export class AutoTraderService {
       const stdPct = Math.sqrt(variance);
       const sharpeRatio = stdPct > 0 ? (meanPct / stdPct) * Math.sqrt(365) : 0;
 
-      // 简化最大回撤: 基于累计 PnL 序列
+      // 最大回撤: 基于 allocatedCapital 的百分比（对齐 nofx，避免微利时 100% 回撤误导 AI）
+      const ddBase = riskControl.allocatedCapital || 1000;
       let peak = 0;
       let maxDrawdownPct = 0;
       let cumPnl = 0;
@@ -744,7 +745,8 @@ export class AutoTraderService {
         cumPnl += Number(allClosedForStats[i].realizedPnl || 0);
         if (cumPnl > peak) peak = cumPnl;
         if (peak > 0) {
-          const dd = Math.min(1, (peak - cumPnl) / peak);
+          // 回撤基于策略预算而非峰值，防止微利时 100% 虚高
+          const dd = Math.min(1, (peak - cumPnl) / ddBase);
           if (dd > maxDrawdownPct) maxDrawdownPct = dd;
         }
       }
@@ -788,6 +790,19 @@ export class AutoTraderService {
       const consecutiveWaits = this.countConsecutiveWaits(recentStrategyLogs);
       if (consecutiveWaits >= 3) {
         this.logger.log(`⚠️ 连续 ${consecutiveWaits} 个周期 wait/hold，Prompt 将鼓励降低开仓门槛`);
+      }
+
+      // nofx 风格上下文摘要（对齐 auto_trader_decision.go buildTradingContext 日志）
+      {
+        const btcEthLev = riskControl.btcEthMaxLeverage ?? riskControl.maxLeverage ?? 5;
+        const altLev = riskControl.altcoinMaxLeverage ?? riskControl.maxLeverage ?? 5;
+        this.logger.log(
+          `📋 杠杆配置: BTC/ETH=${btcEthLev}x, 山寨币=${altLev}x\n` +
+          `📋 候选币: ${activeCandidates.join(', ')} (${activeCandidates.length}个)\n` +
+          `📊 近期交易: ${recentTrades.length}笔已平仓\n` +
+          `📈 交易统计: ${tradingStats.totalTrades}笔, 胜率=${(tradingStats.winRate * 100).toFixed(1)}%, ` +
+          `PF=${tradingStats.profitFactor}, Sharpe=${tradingStats.sharpeRatio}, DD=${tradingStats.maxDrawdownPct}%`,
+        );
       }
 
       // Step 6 + 7: 对每个候选币种进行 AI 决策 + 安全检查
@@ -1158,7 +1173,7 @@ export class AutoTraderService {
             this.logger.log(
               `⏱️ [${symbol}] AI 响应耗时 ${_soloDurationSec}s → ${decision.action} (conf=${decision.confidence}%, lev=${decision.leverage}x, pos=${decision.positionSizePercent}%)\n` +
               `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'} 成本=$${cost.toFixed(6)}\n` +
-              `  分析: ${(decision.reasoning || '').slice(0, 200)}`,
+              `  分析: ${decision.reasoning || ''}`,
             );
           }
 
@@ -1226,7 +1241,7 @@ export class AutoTraderService {
             this.gateway.sendAiDecision(userId, {
               strategyId, symbol, action: decision.action,
               confidence: decision.confidence,
-              reasoning: decision.reasoning?.slice(0, 500),
+              reasoning: decision.reasoning,
               source: 'ai_strategy', status: 'skipped',
               timestamp: new Date().toISOString(),
             });
@@ -1801,7 +1816,7 @@ export class AutoTraderService {
             action: decision.action,
             confidence: decision.confidence,
             leverage: decision.leverage,
-            reasoning: decision.reasoning?.slice(0, 500),
+            reasoning: decision.reasoning,
             source: 'ai_strategy',
             status: execResult.success ? 'executed' : 'failed',
             orderId: execResult.orderId,

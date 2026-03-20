@@ -80,6 +80,7 @@ services:
       - COINGLASS_API_KEY=${COINGLASS_API_KEY:-}
       - FRED_API_KEY=${FRED_API_KEY:-}
       - NASDAQ_DATA_LINK_API_KEY=${NASDAQ_DATA_LINK_API_KEY:-}
+      - NOFXOS_AUTH_KEY=${NOFXOS_AUTH_KEY:-}
       - DEEPL_API_KEY=${DEEPL_API_KEY:-}
     depends_on:
       postgres:
