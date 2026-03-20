@@ -4628,14 +4628,11 @@ export class GridTradingService {
       const displayFilled = preExecGridLines
         ? preExecGridLines.filter((g: any) => g.st === 'filled').length
         : state?.gridLines.filter(l => l.state === 'filled').length ?? 0;
-      // 挂单数 = pending 层 + filled 层上的 po 挂单（双状态），和交易所一致
-      const pendingCount = preExecGridLines
-        ? preExecGridLines.filter((g: any) => g.st === 'pending').length
-        : state?.gridLines.filter(l => l.state === 'pending').length ?? 0;
-      const poCount = preExecGridLines
-        ? preExecGridLines.filter((g: any) => g.st === 'filled' && g.po).length
-        : 0;
-      const displayPending = pendingCount + poCount;
+      // 挂单数 = 交易所实际委托数（和交易所一致，包含未映射的多余挂单）
+      const displayPending = ((state as any)?._exchangeOrders ?? []).length
+        || (preExecGridLines
+          ? preExecGridLines.filter((g: any) => g.st === 'pending').length
+          : state?.gridLines.filter(l => l.state === 'pending').length ?? 0);
       const gridSnapshot = state ? {
         upperPrice: state.upperPrice,
         lowerPrice: state.lowerPrice,
