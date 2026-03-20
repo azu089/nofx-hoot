@@ -28,7 +28,7 @@ export interface PromptConfig {
   /** 用户可自定义的 prompt 段落（来自 strategy.promptSections） */
   promptSections?: {
     role?: string; // 自定义角色定义
-    mode?: 'aggressive' | 'conservative' | 'scalping'; // 交易模式
+    mode?: string; // [已弃用] 交易风格由 riskControl 参数控制，此字段保留兼容但不注入 prompt
     custom?: string; // 用户自定义提示词（映射为决策流程段）
     tradingFrequency?: string; // 交易频率指导
     entryStandards?: string; // 入场标准
@@ -158,29 +158,23 @@ export class PromptBuilderService {
     // Section 1: Role Definition
     sections.push(this.buildRoleSection(ps.role));
 
-    // Section 2: Trading Mode
-    sections.push(this.buildModeSection(ps.mode));
-
-    // Section 3: Hard Constraints (CODE ENFORCED)
+    // Section 2: Hard Constraints (CODE ENFORCED) — 含仓位计算指南（对齐 nofx）
     const isCN = locale.startsWith('zh');
     sections.push(this.buildHardConstraints(rc, isCN));
 
-    // Section 4: AI Guidance (recommended)
+    // Section 3: AI Guidance (recommended)
     sections.push(this.buildAIGuidance(isCN));
 
-    // Section 5: Position Sizing Guidance
-    sections.push(this.buildPositionSizing());
-
-    // Section 6: Trading Frequency Awareness
+    // Section 4: Trading Frequency Awareness
     sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, config.consecutiveWaits));
 
-    // Section 7: Output Format
+    // Section 5: Output Format
     sections.push(this.buildOutputFormat());
 
-    // Section 8: Language Instruction
+    // Section 6: Language Instruction
     sections.push(buildLanguageInstruction(locale));
 
-    // Section 9: Trading Philosophy (14 core rules)
+    // Section 7: Trading Philosophy (17 core rules, incl. OI四象限/Donchian/PVR)
     sections.push(TRADING_PHILOSOPHY);
 
     // Custom Sections: Trading Frequency / Entry Standards / Decision Process
@@ -355,39 +349,6 @@ Your job is to analyze market data, account status, and existing positions, then
 You think like a professional trader: risk-first, data-driven, no emotions.`;
   }
 
-  private buildModeSection(mode?: string): string {
-    switch (mode) {
-      case 'aggressive':
-        return `## Trading Mode: AGGRESSIVE
-- Accept setups with confidence >= 55
-- Position size can be larger (up to 50% of available balance)
-- Actively seek breakout and momentum trades
-- Shorter holding periods preferred
-- Still respect all hard constraints below`;
-
-      case 'scalping':
-        return `## Trading Mode: SCALPING
-- Very short holding periods (target < 30 minutes)
-- Tight stop losses (1-2% max)
-- High win-rate trades preferred (>60% confidence)
-- Focus on liquidity and tight spreads
-- Avoid trading during low-volume periods
-- TWO-BAR RULE: If price does not move in expected direction within 2 candlesticks after entry, close immediately
-- TIME CONSTRAINT: Maximum holding time per trade is 30 minutes — close regardless of P&L if exceeded
-- Still respect all hard constraints below`;
-
-      case 'conservative':
-      default:
-        return `## Trading Mode: CONSERVATIVE
-- Only trade with high confidence (>= 70)
-- Smaller position sizes (10-20% of available balance)
-- Prefer trend-following over counter-trend
-- Longer holding periods acceptable
-- Prioritize capital preservation
-- Still respect all hard constraints below`;
-    }
-  }
-
   private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
     const btcLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
     const altLev = rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5;
@@ -525,20 +486,6 @@ Design SL/TP to achieve R/R >= ${minRR}:1.`;
 - NEVER ignore PeakPnL when deciding whether to close a position
 - NEVER mix realized and unrealized PnL in your calculations
 - NEVER output action without reasoning — every decision must be justified`;
-  }
-
-  private buildPositionSizing(): string {
-    return `## Position Sizing Guidance
-Map your confidence level to position size:
-
-- **High confidence (80-100)**: positionSizePercent 15-20
-- **Medium confidence (60-80)**: positionSizePercent 8-15
-- **Low confidence (50-60)**: positionSizePercent 3-8
-- **Below 50**: Recommend "wait" — insufficient conviction
-
-positionSizePercent is an INTEGER between 1-20, representing % of available balance.
-Example: positionSizePercent=10 with $1000 balance → $100 position value.
-IMPORTANT: Max value is 20. Never output values above 20.`;
   }
 
   private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {

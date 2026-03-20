@@ -1216,7 +1216,7 @@ export function AIStrategyDetailPage() {
                   <div className="glass-border-glow glass-card p-4 space-y-3">
                     <h3 className="text-sm font-semibold mb-3">{t('detail.promptConfig')}</h3>
                     <div className="space-y-2.5">
-                      <ConfigRow label={t('detail.editTradingStyle')} value={strategy.promptSections.mode === 'aggressive' ? t('detail.promptAggressive') : strategy.promptSections.mode === 'scalping' ? t('detail.promptScalping') : t('detail.promptConservative')} />
+                      {/* AI 交易风格已移除，由 riskControl 参数直接控制 */}
                       {strategy.promptSections.role && (
                         <div>
                           <p className="text-xs text-[#606070] mb-1">{t('detail.roleDefinition')}</p>
@@ -2144,27 +2144,6 @@ export function AIStrategyDetailPage() {
                     <p className="text-[11px] text-[#06B6D4]/80 leading-relaxed">
                       {t('create.customInstructionsInfo')}
                     </p>
-                  </div>
-
-                  {/* AI 交易风格 */}
-                  <div>
-                    <p className="text-xs text-[#606070] mb-2">{t('detail.editTradingStyle')}</p>
-                    <div className="flex gap-2">
-                      {([
-                        { key: 'conservative', label: t('detail.editConservative') },
-                        { key: 'aggressive', label: t('detail.editAggressive') },
-                        { key: 'scalping', label: t('detail.editScalping') },
-                      ] as const).map(({ key, label }) => (
-                        <button
-                          key={key}
-                          onClick={() => setEditPromptMode(key)}
-                          className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all ${editPromptMode === key
-                            ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
-                            : 'bg-[#12121A] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
-                          title={label} aria-label={label}
-                        >{label}</button>
-                      ))}
-                    </div>
                   </div>
 
                   {/* 4 段可折叠 Prompt 编辑器（标签与创建页保持一致） */}

@@ -1402,28 +1402,6 @@ export function UnifiedAiCreate() {
                   </p>
                 </div>
 
-                {/* AI 交易风格（与详情页保持一致） */}
-                <div>
-                  <p className="text-xs text-[#606070] mb-2">{t('detail.editTradingStyle')}</p>
-                  <div className="flex gap-2">
-                    {([
-                      { key: 'conservative', label: t('detail.editConservative') },
-                      { key: 'aggressive', label: t('detail.editAggressive') },
-                      { key: 'scalping', label: t('detail.editScalping') },
-                    ] as const).map(({ key, label }) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setPromptMode(key)}
-                        className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${promptMode === key
-                          ? 'bg-[#06B6D4]/10 text-[#06B6D4] border border-[#06B6D4]'
-                          : 'bg-[#1E1E2E] text-[#9090A0] border border-[#1E1E2E] hover:border-[#06B6D4]/40'}`}
-                        title={label} aria-label={label}
-                      >{label}</button>
-                    ))}
-                  </div>
-                </div>
-
                 {[
                   { id: 'role', label: t('create.promptRole'), val: promptRole, set: setPromptRole, ph: PROMPT_PLACEHOLDERS.role, max: 300 },
                   { id: 'frequency', label: t('create.promptFrequency'), val: promptTradingFrequency, set: setPromptTradingFrequency, ph: PROMPT_PLACEHOLDERS.tradingFrequency, max: 300 },
