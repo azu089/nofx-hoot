@@ -722,9 +722,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行3: 止损 · 止盈 · 盈亏比 — 仅开仓显示 */}
               {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-                <div className="grid grid-cols-3 gap-2 text-[11px] text-center">
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
                   {d.stopLoss != null ? (
-                    <div>
+                    <div className="text-left">
                       <p className="text-[#F43F5E]">
                         <span className="text-[10px]">{t('timeline.slLabel')}:</span>{' '}
                         <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
