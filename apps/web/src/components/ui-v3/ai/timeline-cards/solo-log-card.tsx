@@ -667,27 +667,27 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行2: 开仓参数 — 等间距横排 */}
               {(action === 'open_long' || action === 'open_short') && (
-                <div className="flex items-start gap-5 text-[11px]">
+                <div className="flex items-start text-[11px]">
                   {d.leverage != null && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[10px] text-[#606070]">{t('research.leverage')}</p>
                       <p className="font-mono text-[#F8F8FC] font-semibold">{d.leverage}x</p>
                     </div>
                   )}
                   {d.positionSizePercent != null && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}</p>
                       <p className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent}%</p>
                     </div>
                   )}
                   {er?.price && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}</p>
                       <p className="font-mono text-[#F8F8FC] font-semibold">${Number(er.price).toFixed(2)}</p>
                     </div>
                   )}
                   {er?.amount && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}</p>
                       <p className="font-mono text-[#F8F8FC] font-semibold">{er.amount}</p>
                     </div>
@@ -697,17 +697,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行2b: 平仓参数 — 等间距横排 */}
               {(action === 'close_long' || action === 'close_short') && er?.price && (
-                <div className="flex items-start gap-5 text-[11px]">
-                  <div>
+                <div className="flex items-start text-[11px]">
+                  <div className="flex-1">
                     <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}</p>
                     <p className="font-mono text-[#F8F8FC] font-semibold">${entryPrice > 0 ? entryPrice.toFixed(2) : Number(er.price).toFixed(2)}</p>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.exitPrice', '出场价')}</p>
                     <p className="font-mono text-[#F8F8FC] font-semibold">${Number(er.price).toFixed(2)}</p>
                   </div>
                   {er.amount && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}</p>
                       <p className="font-mono text-[#F8F8FC] font-semibold">{er.amount}</p>
                     </div>
@@ -717,9 +717,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行3: 止损 · 止盈 · 盈亏比 — 仅开仓，等间距横排 */}
               {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-                <div className="flex items-start gap-5 text-[11px]">
+                <div className="flex items-start text-[11px]">
                   {d.stopLoss != null && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[#F43F5E]">
                         <span className="text-[10px]">{t('timeline.slLabel')}:</span>{' '}
                         <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
@@ -730,7 +730,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     </div>
                   )}
                   {d.takeProfit != null && (
-                    <div>
+                    <div className="flex-1">
                       <p className="text-[#10B981]">
                         <span className="text-[10px]">{t('timeline.tpLabel')}:</span>{' '}
                         <span className="font-mono font-semibold">${Number(d.takeProfit).toLocaleString()}</span>
@@ -741,7 +741,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     </div>
                   )}
                   {rr != null && (
-                    <div>
+                    <div className="flex-1">
                       <p>
                         <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}:</span>{' '}
                         <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
