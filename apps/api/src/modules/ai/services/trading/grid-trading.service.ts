@@ -3696,9 +3696,13 @@ export class GridTradingService {
       const newPending = state.gridLines.filter(l => l.state === 'pending').length;
       const newFilled = state.gridLines.filter(l => l.state === 'filled').length;
       const newEmpty = state.gridLines.filter(l => l.state === 'empty').length;
+      const unmappedCount = state.unmappedOrderIds.length;
       this.logger.log(
-        `[网格] syncMemory 完成: 交易所挂单=${openOrders.length}, pending=${newPending}, filled=${newFilled}, empty=${newEmpty}, 成交=${filledLines.length}`,
+        `[网格] syncMemory 完成: 交易所挂单=${openOrders.length}, pending=${newPending}, filled=${newFilled}, empty=${newEmpty}, 多余=${unmappedCount}, 成交=${filledLines.length}`,
       );
+      if (unmappedCount > 0) {
+        this.logger.warn(`[网格] ${unmappedCount} 个多余挂单: ${state.unmappedOrderIds.join(', ')}`);
+      }
 
     } catch (e: any) {
       this.logger.warn(`[网格] syncMemory 失败: ${e.message}`);
