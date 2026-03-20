@@ -813,6 +813,10 @@ export class AutoTraderService {
         }
       }
 
+      if (lastDecisions.length > 0) {
+        this.logger.log(`📋 上轮决策: ${lastDecisions.length}条 → [${lastDecisions.map(d => `${d.symbol}:${d.action}(${d.confidence}%)`).join(', ')}]`);
+      }
+
       // nofx 风格上下文摘要（对齐 auto_trader_decision.go buildTradingContext 日志）
       {
         const btcEthLev = riskControl.btcEthMaxLeverage ?? riskControl.maxLeverage ?? 5;
