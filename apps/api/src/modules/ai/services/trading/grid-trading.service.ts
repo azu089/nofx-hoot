@@ -1456,13 +1456,10 @@ export class GridTradingService {
         // 解析 AI 决策（新格式：{analysis, actions}，兼容旧格式 [...]）
         const { decisions, analysis: marketAnalysis } = this.parseGridDecisions(response.content);
 
-        // confidence 过滤：跳过低置信度 AI 决策
-        // 风险管理操作（平仓/撤单）免 confidence 限制，防止亏损持仓因置信度不够无法平仓
+        // confidence 过滤：跳过低置信度 AI 决策（对齐 3月9日稳定版）
         const CONFIDENCE_THRESHOLD = 40;
-        const CONFIDENCE_EXEMPT_ACTIONS = new Set(['close_long', 'close_short', 'cancel_order', 'cancel_all_orders', 'pause_grid', 'resume_grid', 'adjust_grid']);
         const confFiltered = decisions.filter(d => {
-          if (d.confidence === undefined) return true;
-          if (CONFIDENCE_EXEMPT_ACTIONS.has(d.action)) return true;
+          if (d.confidence === undefined) return true; // 未提供 confidence 的决策默认通过（兼容旧格式）
           if (d.confidence >= CONFIDENCE_THRESHOLD) return true;
           this.logger.warn(`[网格]${tag} 低置信决策跳过: action=${this.actionLabel(d.action, gridConfig?.locale)} confidence=${d.confidence} reasoning=${d.reasoning}`);
           return false;
@@ -1504,15 +1501,12 @@ export class GridTradingService {
             const result = await this.executeGridDecision(state, d, adapter, userId, apiKeyId, gridConfig?.useMakerOnly ?? true, currentPrice, gridConfig?.locale);
             // 对齐 nofx：adjust_grid 完成后继续执行剩余决策（同一轮内可挂单）
             if (result.executed && d.action.includes('place_')) trades++;
-            // 如果 neutral 纠正了 side，记录实际执行的 action（不是 AI 原始 action）
-            const actualAction = (result as any).actualSide
-              ? `place_${(result as any).actualSide}_limit`
-              : d.action;
             if (!result.executed && (d.action.startsWith('place_') || d.action === 'cancel_order')) {
-              execResults.push({ action: actualAction, level: d.level, success: false, error: result.skipReason });
+              // place_* / cancel_order 执行失败 → 视为错误，前端显示 ✗
+              execResults.push({ action: d.action, level: d.level, success: false, error: result.skipReason });
               errors++;
             } else {
-              execResults.push({ action: actualAction, level: d.level, success: true, skipped: !result.executed, skipReason: result.skipReason });
+              execResults.push({ action: d.action, level: d.level, success: true, skipped: !result.executed, skipReason: result.skipReason });
             }
           } catch (e: any) {
             errors++;
@@ -1622,10 +1616,9 @@ export class GridTradingService {
           const filled  = postSyncDisplay.filter((d: any) => d.st === 'filled');
           const pending = postSyncDisplay.filter((d: any) => d.st === 'pending');
           const empty   = postSyncDisplay.filter((d: any) => d.st === 'empty' || !d.st);
-          const filledStr  = filled.map((d: any) => {
-            const poStr = d.po ? `+挂${d.po.s}×${d.po.qty}` : '';
-            return `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}${poStr}`;
-          }).join(' ');
+          const filledStr  = filled.map((d: any) =>
+            `L${d.lv}(${d.s})@${(d.ep ?? d.p).toFixed(2)}×${(d.qty ?? 0).toFixed(3)}`
+          ).join(' ');
           const pendingStr = pending.map((d: any) => `L${d.lv}@${d.p.toFixed(2)}`).join(' ');
           const emptyStr   = empty.map((d: any) => `L${d.lv}`).join(',');
           this.logger.log(
@@ -2425,16 +2418,9 @@ export class GridTradingService {
       if (!pos.symbol?.includes(capBaseSymbol)) continue;
       capPositionValue += Math.abs(pos.quantity ?? 0) * (pos.markPrice ?? pos.entryPrice ?? currentPrice);
     }
-    // 挂单名义值：只计入加仓方向的 pending（平仓方向不占 cap）
-    const capPosDir = (preSyncExchangePositions ?? []).find((p: any) => p.symbol?.includes(capBaseSymbol))?.side ?? '';
-    const capIsLong = capPosDir === 'long' || capPosDir === 'net' || capPosDir === '';
+    // 对齐 nofx checkTotalPositionLimit：所有 pending 都计入（保守估计，与 nofx 一致）
     const capPendingNotional = exchangeLevels
       .filter(l => l.state === 'pending' && (l.positionSize ?? 0) === 0)
-      .filter(l => {
-        if (capPositionValue <= 0.01) return true;
-        if (capIsLong) return l.side === 'buy';
-        return l.side === 'sell';
-      })
       .reduce((sum, l) => sum + (l.quantity ?? 0) * l.price, 0);
     const capUsed = capPositionValue + capPendingNotional;
     const capUsedPct = capTotal > 0 ? Math.round(capUsed / capTotal * 100) : 0;
@@ -2991,7 +2977,7 @@ export class GridTradingService {
     side: 'buy' | 'sell',
     adapter: GridExchangeAdapter,
     useMakerOnly = false,
-  ): Promise<{ executed: boolean; skipReason?: string; actualSide?: string }> {
+  ): Promise<{ executed: boolean; skipReason?: string }> {
     // Prompt 中 level 从 1 开始（用户友好），转为 0-based 数组下标
     const rawLevel = decision.level_index ?? decision.level ?? 0;
     const levelIndex = rawLevel > 0 ? rawLevel - 1 : -1;
@@ -2999,11 +2985,27 @@ export class GridTradingService {
 
     const level = levelIndex >= 0 ? state.gridLines[levelIndex] : undefined;
 
-    // filled 层允许挂单（DCA 加仓摊薄成本），不拦截
-    // 下单成功后层保持 filled 状态，挂单信息挂载到 pendingOrder 附属字段
+    // ★ 安全拦截：禁止在 filled（持仓）层下新单
+    // 持仓层应使用 close_long/close_short 平仓，不能用 buy/sell 下新单
+    if (level && level.state === 'filled') {
+      this.logger.warn(
+        `[网格] 拦截: 禁止在持仓层 L${levelIndex + 1}(${level.side}) 下${side}单 @${(decision.price ?? 0).toFixed(2)}，应使用 close_long/close_short`,
+      );
+      return { executed: false, skipReason: `层 L${levelIndex + 1} 是持仓层，禁止下新单` };
+    }
 
-    // neutral side 纠正已删除（2026-03-20）：AI 决定的 side 即最终 side
-    // 限价卖低于市价 = 以市价成交（对平仓有利），限价买高于市价 = 以市价成交
+    // ★ neutral 模式下强制层 side：AI 的 buy/sell 方向必须和层 side 一致
+    // 防止 AI 在高价层(sell)下买单导致立即成交、在低价层(buy)下卖单
+    if (level && level.state === 'empty' && (state.currentDirection ?? 'neutral') === 'neutral') {
+      const currentPrice = state.lastPrice ?? 0;
+      const correctSide = level.price <= currentPrice ? 'buy' : 'sell';
+      if (side !== correctSide) {
+        this.logger.warn(
+          `[网格] 方向纠正: L${levelIndex + 1} 价格${level.price.toFixed(2)} ${side === 'buy' ? '>' : '<'} 市价${currentPrice.toFixed(2)}，AI要${side}→纠正为${correctSide}`,
+        );
+        side = correctSide;
+      }
+    }
 
     // 防重复下单 — 如果该层已有 pending 挂单，先取消旧单再下新单
     // 防止 orderBook 中累积孤儿 orderId，导致挂单计数虚高
@@ -3084,32 +3086,13 @@ export class GridTradingService {
         currentPositionValue += posQty * posPrice;
       }
 
-      // 挂单名义值：只计入加仓方向的 pending（平仓方向不占 cap）
-      // 持多头 → 买单 pending 算占用，卖单 pending 是平仓不算
-      // 持空头 → 卖单 pending 算占用，买单 pending 是平仓不算
-      const posDirection = currentPositionValue > 0
-        ? (exchPositions.find((p: any) => p.symbol?.includes(baseSymbol))?.side ?? 'long')
-        : '';
-      const isLong = posDirection === 'long' || posDirection === 'net' || posDirection === '';
+      // 挂单名义值（对齐 nofx：所有 pending 都计入，保守估计）
       const pendingNotional = state.gridLines
         .filter(l => l.state === 'pending' && (l.orderQuantity ?? 0) > 0)
-        .filter(l => {
-          // 无持仓时全部计入（保守）
-          if (currentPositionValue <= 0.01) return true;
-          // 持多头：只算买单（加仓方向），卖单是平仓不算
-          if (isLong) return l.side === 'buy';
-          // 持空头：只算卖单，买单是平仓不算
-          return l.side === 'sell';
-        })
         .reduce((sum, l) => sum + (l.orderQuantity ?? 0) * l.price, 0);
 
       capTotal = totalPositionCap;
       capUsed = currentPositionValue + pendingNotional;
-      this.logger.debug(
-        `[网格] cap检查: posDir=${posDirection} isLong=${isLong} side=${side} ` +
-        `持仓$${currentPositionValue.toFixed(2)} + 加仓pending$${pendingNotional.toFixed(2)} = $${capUsed.toFixed(2)} / 上限$${totalPositionCap.toFixed(2)} ` +
-        `新单$${(quantity * price).toFixed(2)} level=${levelIndex}`,
-      );
       if (capUsed + quantity * price > totalPositionCap) {
         const remaining = Math.max(0, totalPositionCap - currentPositionValue - pendingNotional);
         quantity = Math.min(quantity, remaining / price);
@@ -3269,13 +3252,8 @@ export class GridTradingService {
       }
       // nofx 对齐：层价格(grid line)保持不变，只更新订单状态
       // 教训(2026-03-14): finalLevel.price = price 导致多层塌陷到同一价格，破坏网格等距结构
-      if (finalLevel.state === 'filled') {
-        // filled 层保持 filled 状态，挂单信息挂载到附属字段（双状态：持仓+挂单）
-        (finalLevel as any).pendingOrder = { side, orderId: result.orderId, quantity: finalQty, price };
-      } else {
-        finalLevel.state = 'pending';
-        finalLevel.side = side;
-      }
+      finalLevel.state = 'pending';
+      finalLevel.side = side;
       // finalLevel.price 保持原始网格线价格，禁止覆盖
       finalLevel.orderId = result.orderId;
       finalLevel.orderQuantity = finalQty;
@@ -3283,7 +3261,7 @@ export class GridTradingService {
     }
 
     this.logger.log(`[网格] 限价单: ${side} ${finalQty} @ ${price} (level=${finalLevelIndex}, orderId=${result.orderId})`);
-    return { executed: true, actualSide: side };
+    return { executed: true };
   }
 
   // ========================= DB 持仓记录同步 =========================
@@ -3650,59 +3628,146 @@ export class GridTradingService {
         }
       }
 
-      // Step 3: 全量重置内存
+      // Step 3: 全量重置内存 — 先有交易所新数据，再重建内存
       this.resetGridLayers(state);
 
-      // Step 4+5: 复用 buildDisplayFromExchange 一次性映射持仓+挂单
-      // 确保 syncMemory 和 buildDisplay 使用完全相同的映射算法（统一数据源）
-      const display = this.buildDisplayFromExchange(state, openOrders, exchangePositions);
-      const unmappedIds: string[] = [];
-      for (let i = 0; i < display.length && i < state.gridLines.length; i++) {
-        const d = display[i];
-        state.gridLines[i].state = d.st as any;
-        state.gridLines[i].side = d.s as 'buy' | 'sell';
-        if (d.st === 'filled') {
-          state.gridLines[i].positionSize = d.qty ?? 0;
-          state.gridLines[i].positionEntry = d.ep ?? 0;
-          state.gridLines[i].orderId = undefined;
-          state.gridLines[i].orderQuantity = 0;
-        } else if (d.st === 'pending') {
-          state.gridLines[i].orderId = d.oid;
-          state.gridLines[i].orderQuantity = d.qty ?? 0;
-          state.gridLines[i].positionSize = 0;
-          state.gridLines[i].positionEntry = 0;
-          if (d.oid) state.orderBook[d.oid] = i;
-        } else {
-          state.gridLines[i].orderId = undefined;
-          state.gridLines[i].orderQuantity = 0;
-          state.gridLines[i].positionSize = 0;
-          state.gridLines[i].positionEntry = 0;
-        }
-      }
-
-      // 同步交易所杠杆
+      // Step 4: 持仓优先映射 → filled 层（方向性：空头往上，多头往下）
+      // ★ 先占位，留出对冲侧空层给 AI 挂止盈单
+      // ★ 杠杆直接从交易所持仓对象读取（交易所数据唯一事实）
       for (const pos of exchangePositions) {
         if (!pos.symbol?.includes(baseSymbol)) continue;
+        const totalQty = pos.quantity ?? 0;
+        if (totalQty <= 0.0001) continue;
+
+        const rawSide = pos.side as string;
+        const posSide: 'buy' | 'sell' = (rawSide === 'long' || rawSide === 'net' || !rawSide) ? 'buy' : 'sell';
+        const avgEntry = (pos.entryPrice ?? 0) > 0
+          ? pos.entryPrice
+          : state.gridLines[Math.floor(state.gridLines.length / 2)].price;
+
+        // 从交易所持仓读取真实杠杆（不依赖 state.leverage，避免旧值导致层数计算错误）
+        const posLeverage = Math.max(1, pos.leverage ?? state.leverage ?? 1);
+        // 同步 state.leverage 为交易所实际值
         if (pos.leverage && pos.leverage > 0 && state.leverage !== pos.leverage) {
           this.logger.log(`[网格] syncMemory: 交易所杠杆 ${pos.leverage}x (state=${state.leverage}x)，同步`);
           state.leverage = pos.leverage;
           state.effectiveLeverage = pos.leverage;
         }
+
+        // 按每层预算反推应占几层
+        const avgAllocatedUSD = state.totalInvestment / state.gridLines.length;
+        const perLayerQty = avgAllocatedUSD * posLeverage / avgEntry;
+        const estimatedLayers = perLayerQty > 0.0001
+          ? Math.max(1, Math.round(totalQty / perLayerQty))
+          : 1;
+
+        // 持仓映射（与 reinitializeGridLevels 一致：锚点+方向展开）
+        // 1. 锚点 = 距入场价纯距离最近的空层（无方向过滤）
+        // 2. 从锚点向内侧连续取 N 层（买→锚点及以下，卖→锚点及以上）
+        const allEmpty = state.gridLines
+          .map((l, idx) => ({ layer: l, idx }))
+          .filter(({ layer }) => layer.state === 'empty');
+
+        // 锚点：纯距离最近
+        const anchorSlot = [...allEmpty]
+          .sort((a, b) => Math.abs(a.layer.price - avgEntry) - Math.abs(b.layer.price - avgEntry))[0];
+        if (!anchorSlot) continue;
+
+        // 从锚点向内侧展开（买→idx<=anchor，卖→idx>=anchor）
+        const candidates = allEmpty
+          .filter(({ idx }) => posSide === 'buy' ? idx <= anchorSlot.idx : idx >= anchorSlot.idx)
+          .sort((a, b) => posSide === 'buy' ? b.idx - a.idx : a.idx - b.idx)
+          .slice(0, estimatedLayers);
+
+        const qtyPerLayer = totalQty / Math.max(1, candidates.length);
+
+        for (const { layer } of candidates) {
+          layer.state = 'filled';
+          layer.positionEntry = avgEntry;
+          layer.positionSize = qtyPerLayer;
+          layer.side = posSide;
+          layer.orderId = undefined;
+          layer.orderQuantity = 0;
+          layer.unrealizedPnl = 0;
+        }
+
+        const filledIdxs = candidates.map(e => `L${e.idx + 1}`).join(',');
+        this.logger.log(
+          `[网格] syncMemory 持仓映射: ${posSide === 'buy' ? '多' : '空'}头 ` +
+          `qty=${totalQty.toFixed(4)} entry=${avgEntry.toFixed(4)} lev=${posLeverage}x ` +
+          `perLayerQty=${perLayerQty.toFixed(4)} est=${estimatedLayers} anchor=L${anchorSlot.idx + 1} → [${filledIdxs}]`,
+        );
       }
 
-      state.unmappedOrderIds = (display as any)._unmappedOrderIds ?? [];
+      // Step 5: 映射交易所挂单 → pending（价格+买卖方向 对号入座）
+      // 规则1：挂单价格与 filled 层同价 → 多余单（持仓占位），直接跳过
+      // 规则2：按价格+side 找最近 empty 层（buy→下半区，sell→上半区）
+      // 规则3：一层一单，多余的 AI 撤
+      // 规则4：距离超过 1.5 倍间距 → 无匹配层，AI 撤
+      const filledPriceSet = new Set(
+        state.gridLines.filter(l => l.state === 'filled').map(l => +l.price.toFixed(4)),
+      );
+      const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
+      const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
+
+      const usedIdx = new Set<number>();
+      const symOrders = openOrders.filter((o: any) => {
+        const sym: string = o.symbol ?? '';
+        return sym.includes(baseSymbol);
+      });
+      const unmappedIds: string[] = [];
+
+      for (const order of symOrders) {
+        const oid = order.orderId ?? order.id;
+        if (!oid) continue;
+        const price: number = order.price ?? 0;
+        if (price <= 0) continue;
+        const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
+
+        // 规则1：挂单价格与持仓层同价 → 多余（持仓占位的残留单）
+        const matchesFilled = [...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing);
+        if (matchesFilled) {
+          unmappedIds.push(oid);
+          continue;
+        }
+
+        // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
+        // 分区过滤已删除：AI 可在任意位置挂买/卖单（DCA空头/多头均可），分区会导致有效挂单被误判为"多余单"
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < state.gridLines.length; i++) {
+          if (usedIdx.has(i)) continue;
+          if (state.gridLines[i].state !== 'empty') continue;
+          const d = Math.abs(state.gridLines[i].price - price);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        // 规则4：距离超过 1.5 倍间距 → 不映射
+        if (bestIdx >= 0 && bestDist <= maxMapDist) {
+          usedIdx.add(bestIdx);
+          const layer = state.gridLines[bestIdx];
+          layer.state = 'pending';
+          layer.orderId = oid;
+          layer.side = orderSide;
+          layer.orderQuantity = order.quantity ?? 0;
+          state.orderBook[oid] = bestIdx;
+        } else {
+          // 规则3：没有匹配层 → 多余挂单，AI 需撤销
+          unmappedIds.push(oid);
+        }
+      }
+      // 存储未映射订单 ID，供 AI prompt 展示并撤单
+      state.unmappedOrderIds = unmappedIds;
+      if (unmappedIds.length > 0) {
+        this.logger.warn(`[网格] syncMemory: ${unmappedIds.length} 个多余挂单: ${unmappedIds.join(', ')}`);
+      }
 
       // 日志汇总
       const newPending = state.gridLines.filter(l => l.state === 'pending').length;
       const newFilled = state.gridLines.filter(l => l.state === 'filled').length;
       const newEmpty = state.gridLines.filter(l => l.state === 'empty').length;
-      const unmappedCount = state.unmappedOrderIds.length;
       this.logger.log(
-        `[网格] syncMemory 完成: 交易所挂单=${openOrders.length}, pending=${newPending}, filled=${newFilled}, empty=${newEmpty}, 多余=${unmappedCount}, 成交=${filledLines.length}`,
+        `[网格] syncMemory 完成: 交易所挂单=${symOrders.length}, 已映射=${newPending}, 多余=${unmappedIds.length}, filled=${newFilled}, empty=${newEmpty}, 成交=${filledLines.length}`,
       );
-      if (unmappedCount > 0) {
-        this.logger.warn(`[网格] ${unmappedCount} 个多余挂单: ${state.unmappedOrderIds.join(', ')}`);
-      }
 
     } catch (e: any) {
       this.logger.warn(`[网格] syncMemory 失败: ${e.message}`);
@@ -4547,10 +4612,9 @@ export class GridTradingService {
     // ★ 对齐 syncMemory：用 Set 去重（与 syncMemory 的 filledPriceSet 一致）
     const filledPriceSet = new Set(display.filter(d => d.st === 'filled').map(d => d.p as number));
     const halfSpacing = state.gridSpacing > 0 ? state.gridSpacing / 2 : 0.15;
-    const maxMapDist = halfSpacing; // 统一精度：挂单必须在层价格±半间距内才映射
+    const maxMapDist = state.gridSpacing > 0 ? state.gridSpacing * 1.5 : Infinity;
 
     const usedDisplayIdx = new Set<number>();
-    const unmappedOrderIds: string[] = [];
     const symOrders = exchangeOpenOrders.filter((o: any) => {
       const sym: string = o.symbol ?? '';
       return sym.includes(baseSymbol);
@@ -4563,8 +4627,10 @@ export class GridTradingService {
       if (price <= 0) continue;
       const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
 
-      // 挂单只映射到 empty 层（持仓层不接受挂单映射，持仓层同价挂单视为多余）
-      // 每轮：先映射持仓→filled，再映射挂单→empty，无处映射→unmapped
+      // 规则1：挂单价格与持仓层同价 → 跳过（多余单）
+      if ([...filledPriceSet].some(fp => Math.abs(fp - price) < halfSpacing)) continue;
+
+      // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
       // 对齐 syncMemoryFromExchange：删除 zone filter，避免 AI 放在非标准位置的单被误过滤
       let bestIdx = -1;
       let bestDist = Infinity;
@@ -4580,13 +4646,10 @@ export class GridTradingService {
         display[bestIdx].s = orderSide;
         display[bestIdx].oid = oid.slice(-8);
         display[bestIdx].qty = +(order.quantity ?? order.amount ?? 0).toFixed(4);
-      } else {
-        // 无匹配层 → 记录为多余挂单
-        unmappedOrderIds.push(oid);
       }
+      // 无匹配层 → AI 从 exchangeOpenOrders 看到并撤
     }
 
-    (display as any)._unmappedOrderIds = unmappedOrderIds;
     return display;
   }
 
@@ -4624,13 +4687,16 @@ export class GridTradingService {
       const gridSummary = parts.join('/') || `${decisions.length}ops`;
 
       // 构建 GridState 快照
-      // 表头统计从 preExecGridLines 统计（包含双状态 po）
+      // 表头统计优先从 preExecGridLines（pre-sync 交易所数据）统计
+      // 确保持仓格/挂单层和层级显示一致（都是 AI 决策前的交易所状态）
       const displayFilled = preExecGridLines
         ? preExecGridLines.filter((g: any) => g.st === 'filled').length
         : state?.gridLines.filter(l => l.state === 'filled').length ?? 0;
-      // 挂单数 = 交易所实际委托数（和交易所一致，包含未映射的多余挂单）
-      const displayPending = ((state as any)?._exchangeOrders ?? []).length
-        || (preExecGridLines
+      // 挂单数 = 交易所实际挂单数（不是内存映射数），用户要求"交易所是几就是几"
+      const exchOrderCount = ((state as any)?._exchangeOrders ?? []).length;
+      const displayPending = exchOrderCount > 0
+        ? exchOrderCount
+        : (preExecGridLines
           ? preExecGridLines.filter((g: any) => g.st === 'pending').length
           : state?.gridLines.filter(l => l.state === 'pending').length ?? 0);
       const gridSnapshot = state ? {
@@ -4677,11 +4743,6 @@ export class GridTradingService {
           if (l.state === 'filled') {
             entry.qty = +(l.positionSize ?? 0).toFixed(4);
             entry.ep = +((l.positionEntry || l.price) || 0).toFixed(4);
-            // 双状态：filled + pendingOrder
-            const po = (l as any).pendingOrder;
-            if (po) {
-              entry.po = { s: po.side, oid: po.orderId?.slice(-8) ?? '', qty: +(po.quantity ?? 0).toFixed(4) };
-            }
           } else if (l.state === 'pending') {
             entry.oid = l.orderId?.slice(-8) ?? '';
             entry.qty = +(l.orderQuantity ?? 0).toFixed(4);
