@@ -613,6 +613,24 @@ export interface StrategyLog {
     gridSummary?: string; // Grid 操作摘要 (如 "5买/5卖")
     cost?: number;
     aiThinking?: string; // AI 思考链（DeepSeek-Reasoner / Claude 扩展思考）
+    // Solo 市场数据快照（对齐 Grid 的 gridSnapshot）
+    marketSnapshot?: {
+      price: number;
+      rsi7?: number | null;
+      rsi14?: number | null;
+      macdHist?: number | null;
+      atr14?: number | null;
+      fundingRate?: number | null;
+      longShortRatio?: number | null;
+      longPct?: number | null;
+      oiChange?: string | null;
+      oiQuadrant?: string | null;
+      institutionFlow?: number | null;
+      dataSources: {
+        oi: boolean; fr: boolean; ranking: boolean; enhanced: boolean;
+        oiRanking: boolean; netFlow: boolean; priceRanking: boolean;
+      };
+    };
     // Grid 状态快照
     gridSnapshot?: {
       upperPrice: number;

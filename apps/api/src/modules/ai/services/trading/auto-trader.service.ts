@@ -843,6 +843,7 @@ export class AutoTraderService {
         systemPrompt?: string;
         userPrompt?: string;
         aiThinking?: string;
+        marketSnapshot?: any;
       }> = [];
 
       // Phase 9.0 T4: Debate 模式 — 一次辩论覆盖所有候选币（节省 80% LLM 调用）
@@ -1088,6 +1089,7 @@ export class AutoTraderService {
           let _logSystemPrompt: string | undefined;
           let _logUserPrompt: string | undefined;
           let _logAiThinking: string | undefined;
+          let _logMarketSnapshot: any;
 
           // R4: 提前获取订单簿数据供 AI 决策参考
           let symbolLiquidityData: QuickAnalysisConfig['liquidityData'];
@@ -1196,6 +1198,7 @@ export class AutoTraderService {
             _logSystemPrompt = analysisResult.systemPrompt;
             _logUserPrompt = analysisResult.userPrompt;
             _logAiThinking = analysisResult.aiThinking;
+            _logMarketSnapshot = analysisResult.marketSnapshot;
             this.logger.log(
               `⏱️ [${symbol}] AI 响应耗时 ${_soloDurationSec}s → ${decision.action} (conf=${decision.confidence}%, lev=${decision.leverage}x, pos=${decision.positionSizePercent}%)\n` +
               `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'} 成本=$${cost.toFixed(6)}\n` +
@@ -1256,6 +1259,7 @@ export class AutoTraderService {
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(consensusVotes ? { votes: consensusVotes } : {}),
                   ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
+                  ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
                 } as unknown as Prisma.InputJsonValue,
                 executed: false,
                 executionResult: { skipped: true, reason: decision.action },
@@ -1464,6 +1468,7 @@ export class AutoTraderService {
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(consensusVotes ? { votes: consensusVotes } : {}),
                   ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
+                  ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
                 } as unknown as Prisma.InputJsonValue,
                 executed: false,
                 executionResult: {
@@ -1502,6 +1507,7 @@ export class AutoTraderService {
             systemPrompt: _logSystemPrompt,
             userPrompt: _logUserPrompt,
             aiThinking: _logAiThinking,
+            marketSnapshot: _logMarketSnapshot,
           });
         } catch (error) {
           result.errors++;
@@ -1559,7 +1565,7 @@ export class AutoTraderService {
           break;
         }
 
-        const { symbol, consensusVotes: votes, rawResponse: itemRawResponse, systemPrompt: itemSystemPrompt, userPrompt: itemUserPrompt, aiThinking: itemAiThinking } = item;
+        const { symbol, consensusVotes: votes, rawResponse: itemRawResponse, systemPrompt: itemSystemPrompt, userPrompt: itemUserPrompt, aiThinking: itemAiThinking, marketSnapshot: itemMarketSnapshot } = item;
         let decision = item.decision; // R3: let 允许执行时价格刷新重算 SL/TP
 
         // D7: 排除币种检查
@@ -1815,6 +1821,7 @@ export class AutoTraderService {
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(votes ? { votes } : {}),
                 ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
+                ...(itemMarketSnapshot ? { marketSnapshot: itemMarketSnapshot } : {}),
               } as unknown as Prisma.InputJsonValue,
               executed: execResult.success,
               executionResult: {
@@ -2095,6 +2102,7 @@ export class AutoTraderService {
       systemPrompt?: string;
       userPrompt?: string;
       aiThinking?: string;
+      marketSnapshot?: any;
     }>,
   ): typeof decisions {
     const priority = (action: AiAction): number => {

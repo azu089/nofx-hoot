@@ -782,9 +782,75 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* 推理文本 — 分段显示 */}
-          {reasoning && (
-            <SectionedReasoning text={reasoning} modelId={d.modelId} />
+          {/* Solo 市场数据快照（对齐 Grid 的 gridSnapshot） */}
+          {d.marketSnapshot && (
+            <div className="space-y-1 text-[11px]">
+              <div className="grid grid-cols-2 gap-x-4">
+                <div className="flex justify-between">
+                  <span className="text-[#606070]">价格</span>
+                  <span className="font-mono text-[#F8F8FC]">${d.marketSnapshot.price?.toFixed(2)}</span>
+                </div>
+                {d.marketSnapshot.rsi14 != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">RSI(14)</span>
+                    <span className={`font-mono ${d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}`}>
+                      {d.marketSnapshot.rsi14.toFixed(1)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-x-4">
+                {d.marketSnapshot.fundingRate != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">资金费率</span>
+                    <span className={`font-mono ${d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}`}>
+                      {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%
+                    </span>
+                  </div>
+                )}
+                {d.marketSnapshot.longPct != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">多空比</span>
+                    <span className="font-mono text-[#F8F8FC]">
+                      {d.marketSnapshot.longPct.toFixed(0)}%多/{(100 - d.marketSnapshot.longPct).toFixed(0)}%空
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-x-4">
+                {d.marketSnapshot.oiChange != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">OI变化</span>
+                    <span className="font-mono text-[#F8F8FC]">
+                      {d.marketSnapshot.oiChange} {d.marketSnapshot.oiQuadrant && <span className="text-[#9090A0]">({d.marketSnapshot.oiQuadrant})</span>}
+                    </span>
+                  </div>
+                )}
+                {d.marketSnapshot.institutionFlow != null && (
+                  <div className="flex justify-between">
+                    <span className="text-[#606070]">机构资金</span>
+                    <span className={`font-mono ${d.marketSnapshot.institutionFlow >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {d.marketSnapshot.institutionFlow >= 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(2)}M
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* 数据源状态 */}
+              <div className="flex gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] text-[#505060]">数据源:</span>
+                {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
+                  <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}
+                    {v ? '✓' : '✗'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* AI 分析推理 — 优先 aiThinking（完整思考），降级 reasoning（摘要） */}
+          {(d.aiThinking || reasoning) && (
+            <SectionedReasoning text={(d.aiThinking as string) || reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}

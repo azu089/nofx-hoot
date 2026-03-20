@@ -123,6 +123,32 @@ export interface QuickAnalysisResult {
   userPrompt?: string;
   /** DeepSeek-Reasoner reasoning_content（日志透明化用） */
   aiThinking?: string;
+  /** 市场数据快照（前端日志卡片展示，对齐 Grid 的 gridSnapshot） */
+  marketSnapshot?: MarketSnapshot;
+}
+
+/** Solo 策略市场数据快照（存入 decision JSON，前端展示） */
+export interface MarketSnapshot {
+  price: number;
+  rsi7?: number | null;
+  rsi14?: number | null;
+  macdHist?: number | null;
+  atr14?: number | null;
+  fundingRate?: number | null;
+  longShortRatio?: number | null;
+  longPct?: number | null;
+  oiChange?: string | null;
+  oiQuadrant?: string | null;
+  institutionFlow?: number | null;
+  dataSources: {
+    oi: boolean;
+    fr: boolean;
+    ranking: boolean;
+    enhanced: boolean;
+    oiRanking: boolean;
+    netFlow: boolean;
+    priceRanking: boolean;
+  };
 }
 
 /**
@@ -175,6 +201,7 @@ export class QuickAnalysisService {
     let safetyFundingRate: number | undefined;
     let safetyCurrentPrice: number | undefined;
     let safetyVolume24h: number | undefined;
+    let snapshot: MarketSnapshot | undefined;
 
     if (config.precomputedMarketData) {
       // 多币种模式: 市场数据已由调用方预构建
@@ -229,6 +256,60 @@ export class QuickAnalysisService {
       };
       safetyFundingRate = fundingRate;
       safetyCurrentPrice = currentPrice;
+
+      // 构建市场数据快照（前端日志卡片展示用，对齐 Grid 的 gridSnapshot）
+      {
+        const enh = enhancedData as Record<string, any> | null;
+        const lsr = enh?.longShortRatio;
+        const oiHist = enh?.oiHistory;
+        let oiChangeStr: string | null = null;
+        let oiQuadrant: string | null = null;
+        if (Array.isArray(oiHist) && oiHist.length >= 2) {
+          const latest = oiHist[oiHist.length - 1]?.sumOpenInterest ?? 0;
+          const prev = oiHist[0]?.sumOpenInterest ?? 0;
+          if (prev > 0) {
+            const pct = ((latest - prev) / prev) * 100;
+            oiChangeStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+            const lastClose = ohlcv[ohlcv.length - 1]?.[4] ?? 0;
+            const prevClose = ohlcv[ohlcv.length - 2]?.[4] ?? lastClose;
+            const priceUp = lastClose >= prevClose;
+            const oiUp = pct >= 0;
+            if (oiUp && priceUp) oiQuadrant = '多头主导';
+            else if (oiUp && !priceUp) oiQuadrant = '空头主导';
+            else if (!oiUp && priceUp) oiQuadrant = '空头平仓';
+            else oiQuadrant = '多头清算';
+          }
+        }
+        let instFlow: number | null = null;
+        if (netFlowRanking) {
+          const sym = config.symbol.replace(/\/USDT:USDT$/, 'USDT');
+          const found = netFlowRanking.institutionFutureTop.find(p => p.symbol === sym)
+            || netFlowRanking.institutionFutureLow.find(p => p.symbol === sym);
+          if (found) instFlow = found.amount;
+        }
+        snapshot = {
+          price: currentPrice,
+          rsi7: indicatorResult.rsi7 ?? null,
+          rsi14: indicatorResult.rsi ?? null,
+          macdHist: indicatorResult.macd?.histogram ?? null,
+          atr14: indicatorResult.atr ?? null,
+          fundingRate: fundingRate ?? null,
+          longShortRatio: lsr?.longShortRatio ?? null,
+          longPct: lsr ? (lsr.longAccount / (lsr.longAccount + lsr.shortAccount)) * 100 : null,
+          oiChange: oiChangeStr,
+          oiQuadrant,
+          institutionFlow: instFlow,
+          dataSources: {
+            oi: openInterest != null,
+            fr: fundingRate != null,
+            ranking: marketRanking != null,
+            enhanced: enhancedData != null,
+            oiRanking: oiRanking != null,
+            netFlow: netFlowRanking != null,
+            priceRanking: priceRanking != null,
+          },
+        };
+      }
 
       // 3. 最近交易上下文 + 历史（通过 userPromptCtx 传入 PromptBuilder，此处无需额外格式化）
 
@@ -396,6 +477,7 @@ export class QuickAnalysisService {
       systemPrompt,
       userPrompt: userMessage,
       aiThinking: response.thinking,
+      marketSnapshot: snapshot,
     };
   }
 

@@ -538,7 +538,14 @@ Doing nothing indefinitely is also a risk — you miss opportunities and waste a
 Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
 
 <reasoning>
-3-5 sentences covering: overall trend, key indicator readings, risk assessment, why you chose this action.
+Comprehensive analysis (8-15 sentences) covering ALL of the following:
+1. Market regime & trend direction (ranging/trending, EMA alignment)
+2. Key technical indicators (RSI, MACD histogram, ATR, Donchian channels)
+3. Fund flow analysis (institutional flow, OI change & quadrant, L/S ratio)
+4. Funding rate interpretation (bullish/bearish bias)
+5. Risk assessment (margin usage, existing positions, correlation risk)
+6. Decision rationale (why this specific action, what signals converged)
+7. Position sizing logic (why this leverage & size, how SL/TP was determined)
 </reasoning>
 <decision>
 [{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"positionSizePercent":60,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from $96,000 key support with 1.5x volume. Funding rate neutral 0.01%."}]
