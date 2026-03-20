@@ -672,27 +672,27 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行2: 参数网格（开仓专用） */}
               {(action === 'open_long' || action === 'open_short') && (
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-4 gap-2">
                   {d.leverage != null && (
-                    <div>
+                    <div className="text-left">
                       <p className="text-[10px] text-[#606070]">{t('research.leverage')}</p>
                       <p className="text-xs font-mono text-[#F8F8FC]">{d.leverage}x</p>
                     </div>
                   )}
                   {d.positionSizePercent != null && (
-                    <div>
-                      <p className="text-[10px] text-[#606070]">{t('research.position') || '仓位'}</p>
+                    <div className="text-center">
+                      <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}</p>
                       <p className="text-xs font-mono text-[#F8F8FC]">{d.positionSizePercent}%</p>
                     </div>
                   )}
                   {er?.price && (
-                    <div>
+                    <div className="text-center">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}</p>
                       <p className="text-xs font-mono text-[#F8F8FC]">${Number(er.price).toFixed(2)}</p>
                     </div>
                   )}
                   {er?.amount && (
-                    <div>
+                    <div className="text-center">
                       <p className="text-[10px] text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}</p>
                       <p className="text-xs font-mono text-[#F8F8FC]">{er.amount}</p>
                     </div>
