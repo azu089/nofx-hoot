@@ -722,7 +722,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
               {/* 行3: 止损 · 止盈 · 盈亏比 — 仅开仓显示 */}
               {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="grid grid-cols-3 gap-2 text-[11px] text-center">
                   {d.stopLoss != null ? (
                     <div>
                       <p className="text-[#F43F5E]">
@@ -751,7 +751,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}:</span>{' '}
                         <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
                       </p>
-                      <div className="w-full h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden mt-1">
+                      <div className="w-2/3 mx-auto h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden mt-1">
                         <div className="h-full rounded-full" style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }} />
                       </div>
                     </div>
