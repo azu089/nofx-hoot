@@ -209,17 +209,14 @@ export class PositionsService {
       },
     });
 
-    // 计算时间范围
-    const now = new Date();
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(weekStart.getDate() - 7);
-    const monthStart = new Date(todayStart);
-    monthStart.setDate(monthStart.getDate() - 30);
+    // 计算时间范围（统一 UTC+8 北京时间，与交易所和 pnl-stats 对齐）
+    const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const nowInUtc8 = nowMs + UTC8_OFFSET;
+    const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+    const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
+    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     let todayPnl = new Decimal(0);
     let weekPnl = new Decimal(0);
@@ -937,17 +934,14 @@ export class PositionsService {
       },
     });
 
-    // 计算时间范围
-    const now = new Date();
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(weekStart.getDate() - 7);
-    const monthStart = new Date(todayStart);
-    monthStart.setDate(monthStart.getDate() - 30);
+    // 计算时间范围（统一 UTC+8 北京时间，与交易所和 pnl-stats 对齐）
+    const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const nowInUtc8 = nowMs + UTC8_OFFSET;
+    const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+    const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
+    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     let todayPnl = new Decimal(0);
     let weekPnl = new Decimal(0);

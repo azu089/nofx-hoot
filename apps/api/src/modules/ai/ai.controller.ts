@@ -1202,8 +1202,11 @@ export class AiController {
 
     // 附加每个策略的 todayPnl / totalPnl（仅已平仓的 realizedPnl，不含浮盈浮亏）
     // 所有策略类型（Solo/Debate/Grid）统一从 Position 表聚合，按 aiStrategyId 精确隔离到策略级
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
+    // 统一用 UTC+8 北京时间的"今日"起点（与持仓页 pnl-stats 对齐，与 Binance/OKX 显示一致）
+    const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+    const nowInUtc8 = Date.now() + UTC8_OFFSET;
+    const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+    const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET); // 转回 UTC Date
     const strategyIds = result.data.map((s: Record<string, unknown> & { id: string }) => s.id);
 
     const todayPnlMap = new Map<string, number>();
@@ -1436,14 +1439,17 @@ export class AiController {
     }
 
     // 今日统计 — 统一从 Position 表取今日已平仓记录（只用交易所聚合记录）
+    // 统一用 UTC+8 北京时间的"今日"起点（与持仓页 pnl-stats 对齐）
     let todayPnl = 0;
     let todayTrades = 0;
     let todayWins = 0;
     let gridState: object | null = null;
 
     {
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
+      const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+      const nowInUtc8 = Date.now() + UTC8_OFFSET;
+      const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+      const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
       const todayPositions = await this.prisma.position.findMany({
         where: {
           aiStrategyId: id,
@@ -2103,9 +2109,11 @@ export class AiController {
       }
     }
 
-    // 今日 PnL（策略 + 研究的已平仓持仓）
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
+    // 今日 PnL（策略 + 研究的已平仓持仓）— UTC+8 对齐
+    const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+    const nowInUtc8 = Date.now() + UTC8_OFFSET;
+    const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
+    const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
 
     const todayPositions = await db.position.findMany({
       where: {
