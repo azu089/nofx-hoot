@@ -665,64 +665,52 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 )}
               </div>
 
-              {/* 行2: 开仓参数 — 标签: 值 同行 */}
+              {/* 行2: 开仓参数 — 2列×2行网格 */}
               {(action === 'open_long' || action === 'open_short') && (
-                <div className="grid grid-cols-4 text-[11px] gap-y-1">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                   <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent ?? '-'}%</span></p>
                   <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
+                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent ?? '-'}%</span></p>
                   <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
                 </div>
               )}
 
-              {/* 行2b: 平仓参数 — 含杠杆 */}
+              {/* 行2b: 平仓参数 — 含杠杆，2列×2行 */}
               {(action === 'close_long' || action === 'close_short') && (
-                <div className="grid grid-cols-4 text-[11px] gap-y-1">
-                  {d.leverage != null && (
-                    <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage}x</span></p>
-                  )}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                  <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</span></p>
                   <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span></p>
                   <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.exitPrice', '出场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
                   <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
                 </div>
               )}
 
-              {/* 行3: 止损 · 止盈 · 盈亏比 — 仅开仓，等间距横排 */}
+              {/* 行3: 止损/止盈/盈亏比 — 仅开仓，2列网格 */}
               {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-                <div className="grid grid-cols-3 text-[11px]">
-                  {d.stopLoss != null ? (
-                    <div>
-                      <p className="text-[#F43F5E]">
-                        <span className="text-[10px]">{t('timeline.slLabel')}:</span>{' '}
-                        <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
-                      </p>
-                      <p className="text-[#F43F5E]/50 text-[10px]">
-                        {d.stopLossPct ? `(-${(d.stopLossPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.stopLoss)})` : ''}
-                      </p>
-                    </div>
-                  ) : <div />}
-                  {d.takeProfit != null ? (
-                    <div>
-                      <p className="text-[#10B981]">
-                        <span className="text-[10px]">{t('timeline.tpLabel')}:</span>{' '}
-                        <span className="font-mono font-semibold">${Number(d.takeProfit).toLocaleString()}</span>
-                      </p>
-                      <p className="text-[#10B981]/50 text-[10px]">
-                        {d.takeProfitPct ? `(+${(d.takeProfitPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.takeProfit)})` : ''}
-                      </p>
-                    </div>
-                  ) : <div />}
-                  {rr != null ? (
-                    <div>
-                      <p>
-                        <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}:</span>{' '}
-                        <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
-                      </p>
-                      <div className="w-full h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden mt-1">
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }} />
-                      </div>
-                    </div>
-                  ) : <div />}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                  {d.stopLoss != null && (
+                    <p className="text-[#F43F5E]">
+                      <span className="text-[10px]">{t('timeline.slLabel')}: </span>
+                      <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
+                      <span className="opacity-50 ml-1 text-[10px]">{d.stopLossPct ? `(-${(d.stopLossPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.stopLoss)})` : ''}</span>
+                    </p>
+                  )}
+                  {d.takeProfit != null && (
+                    <p className="text-[#10B981]">
+                      <span className="text-[10px]">{t('timeline.tpLabel')}: </span>
+                      <span className="font-mono font-semibold">${Number(d.takeProfit).toLocaleString()}</span>
+                      <span className="opacity-50 ml-1 text-[10px]">{d.takeProfitPct ? `(+${(d.takeProfitPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.takeProfit)})` : ''}</span>
+                    </p>
+                  )}
+                  {rr != null && (
+                    <p className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}: </span>
+                      <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
+                      <span className="flex-1 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
+                        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }} />
+                      </span>
+                    </p>
+                  )}
                 </div>
               )}
             </div>
