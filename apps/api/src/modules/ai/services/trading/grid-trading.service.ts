@@ -3666,13 +3666,6 @@ export class GridTradingService {
           state.gridLines[i].positionEntry = d.ep ?? 0;
           state.gridLines[i].orderId = undefined;
           state.gridLines[i].orderQuantity = 0;
-          // 双状态：filled + pendingOrder
-          if (d.po) {
-            (state.gridLines[i] as any).pendingOrder = { side: d.po.s, orderId: d.po.oid, quantity: d.po.qty, price: state.gridLines[i].price };
-            state.gridLines[i].orderId = d.po.oid;
-            state.gridLines[i].orderQuantity = d.po.qty ?? 0;
-            if (d.po.oid) state.orderBook[d.po.oid] = i;
-          }
         } else if (d.st === 'pending') {
           state.gridLines[i].orderId = d.oid;
           state.gridLines[i].orderQuantity = d.qty ?? 0;
@@ -4566,20 +4559,8 @@ export class GridTradingService {
       if (price <= 0) continue;
       const orderSide: 'buy' | 'sell' = (order.side === 'sell') ? 'sell' : 'buy';
 
-      // 规则1：挂单价格与持仓层同价 → 标记为双状态（filled + pendingOrder）
-      const matchedFilledDisplayIdx = display.findIndex(
-        (d: any) => d.st === 'filled' && Math.abs(state.gridLines[display.indexOf(d)]?.price - price) < halfSpacing,
-      );
-      if (matchedFilledDisplayIdx >= 0) {
-        display[matchedFilledDisplayIdx].po = {
-          s: orderSide,
-          oid: oid.slice(-8),
-          qty: +(order.quantity ?? order.amount ?? 0).toFixed(4),
-        };
-        continue;
-      }
-
-      // 规则2：找价格最近的 empty 层（纯价格接近度，无买卖分区过滤）
+      // 挂单只映射到 empty 层（持仓层不接受挂单映射，持仓层同价挂单视为多余）
+      // 每轮：先映射持仓→filled，再映射挂单→empty，无处映射→unmapped
       // 对齐 syncMemoryFromExchange：删除 zone filter，避免 AI 放在非标准位置的单被误过滤
       let bestIdx = -1;
       let bestDist = Infinity;
