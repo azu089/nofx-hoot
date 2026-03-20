@@ -268,10 +268,9 @@ export class AiExecutionService {
       );
     }
 
-    // 3.5 百分比 → USD 转换
-    // 上游输出 positionSizePercent（1-N 范围），<= maxPctThreshold 视为百分比并基于 availableBalance 转换
-    // R4: 阈值可配置，默认 20
-    const maxPctThreshold = decision.maxPositionPct ?? 20;
+    // 3.5 百分比 → USD 转换（对齐 nofx: position_size_usd 是名义仓位绝对值）
+    // rawPositionSize <= 100 视为百分比（占 availableBalance），> 100 视为 USD 绝对值
+    const maxPctThreshold = decision.maxPositionPct ?? 100;
     let positionSizeUSD = rawPositionSize;
     if (rawPositionSize <= maxPctThreshold) {
       positionSizeUSD = availableBalance * (rawPositionSize / 100);

@@ -392,6 +392,9 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
     const btcLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
     const altLev = rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5;
     const maxPos = rc.maxPositions ?? 3;
+    const equity = rc.allocatedCapital ?? 1000;
+    const btcEthPVR = 5.0;   // BTC/ETH position value ratio
+    const altPVR = 1.0;      // Altcoin position value ratio
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
     const minConf = rc.minConfidence ?? 60;
     const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
@@ -411,6 +414,7 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 
 - **最大杠杆**: BTC/ETH <= ${btcLev}x，山寨币 <= ${altLev}x
 - **最小仓位**: ${minPosSize} USDT（BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor}）
+- **仓位价值上限**: BTC/ETH 最大 $${(equity * btcEthPVR).toFixed(0)}（权益$${equity.toFixed(0)} × ${btcEthPVR}x），山寨币最大 $${(equity * altPVR).toFixed(0)}（权益 × ${altPVR}x）
 - **风险回报比**: 必须 >= ${minRR}:1
 - **ATR极端波动**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} 时暂停所有交易
 - **最大持仓数**: ${maxPos}
@@ -418,9 +422,18 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 - **同币种冲突**: 不能同时持有同一币种的多空仓位
 ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
 
+## 仓位计算指南（对齐 nofx）
+根据置信度和仓位价值上限计算 positionSizePercent：
+- **高置信度 (≥85)**: 使用仓位上限的 80-100%
+- **中置信度 (70-84)**: 使用仓位上限的 50-80%
+- **低置信度 (60-69)**: 使用仓位上限的 30-50%
+- 示例: 策略预算$${equity.toFixed(0)}，山寨币仓位上限=$${(equity * altPVR).toFixed(0)}，置信度70% → 仓位=$${(equity * altPVR * 0.5).toFixed(0)}-${(equity * altPVR * 0.8).toFixed(0)} → positionSizePercent=${(altPVR * 0.5 * 100).toFixed(0)}-${(altPVR * 0.8 * 100).toFixed(0)}
+- **禁止**直接用 available_balance 作为仓位，必须基于仓位价值上限计算
+- 杠杆由你根据市场状态自主选择（不超过上限），杠杆越高止损越紧
+
 ## AI 建议（推荐遵循，非硬性强制）
 - **最低置信度**: 置信度 >= ${minConf}% 才开仓
-- **仓位与置信度挂钩**: 60%→5%，70%→10%，80%→15%
+- **杠杆选择**: 用户配置的杠杆是上限，你应根据波动率和趋势强度自主选择合适倍数
 
 ## 软性警告（系统会提醒但不会拦截）
 - **RSI极端**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} 或 < ${AI_SAFETY_DEFAULTS.rsiOversold}，是否操作由你决定
@@ -442,6 +455,7 @@ ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损
 
 - **Max Leverage**: BTC/ETH <= ${btcLev}x, Altcoins <= ${altLev}x
 - **Min Position Size**: ${minPosSize} USDT (BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor})
+- **Position Value Limit**: BTC/ETH max $${(equity * btcEthPVR).toFixed(0)} (equity $${equity.toFixed(0)} × ${btcEthPVR}x), Altcoins max $${(equity * altPVR).toFixed(0)} (equity × ${altPVR}x)
 - **Risk/Reward Ratio**: Must be >= ${minRR}:1
 - **ATR Extreme**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} = ALL trading paused
 - **Max Open Positions**: ${maxPos}
@@ -449,9 +463,18 @@ ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损
 - **Same-Symbol Conflict**: Cannot open opposite direction on same symbol
 ${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss and take_profit
 
+## Position Sizing Guide (aligned with nofx)
+Calculate positionSizePercent based on your confidence and Position Value Limits:
+- **High confidence (≥85)**: Use 80-100% of position value limit
+- **Medium confidence (70-84)**: Use 50-80% of position value limit
+- **Low confidence (60-69)**: Use 30-50% of position value limit
+- Example: budget=$${equity.toFixed(0)}, altcoin limit=$${(equity * altPVR).toFixed(0)}, confidence=70% → position=$${(equity * altPVR * 0.5).toFixed(0)}-${(equity * altPVR * 0.8).toFixed(0)} → positionSizePercent=${(altPVR * 0.5 * 100).toFixed(0)}-${(altPVR * 0.8 * 100).toFixed(0)}
+- **DO NOT** just use available_balance as position size. Use the Position Value Limits!
+- Leverage is YOUR choice (up to the max), higher leverage = tighter stop-loss
+
 ## AI Guidance (recommended, not hard-enforced)
 - **Min Confidence**: Only trade when confidence >= ${minConf}%
-- **Position Sizing**: Scale with confidence (60%→5%, 70%→10%, 80%→15%)
+- **Leverage**: User-configured leverage is the max cap; choose based on volatility and trend strength
 
 ## Soft Warnings (system warns but does NOT block)
 - **RSI Extreme**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} or < ${AI_SAFETY_DEFAULTS.rsiOversold}

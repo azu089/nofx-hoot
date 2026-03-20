@@ -120,4 +120,33 @@ Explicit NEVER-DO list:
 - NEVER revenge-trade after a loss
 - NEVER ignore PeakPnL when deciding to close
 - NEVER mix realized and unrealized PnL in calculations
+
+### Rule 15: 虚实之辨 (Distinguish Real from Feint — Art of War)
+OI (Open Interest) Change × Price Change = Four Quadrants:
+- **OI↑ + Price↑ = Strong Bullish** — New longs entering, genuine buying pressure
+- **OI↑ + Price↓ = Strong Bearish** — New shorts entering, genuine selling pressure
+- **OI↓ + Price↑ = Short Covering** — Shorts closing, rally may be unsustainable (potential reversal)
+- **OI↓ + Price↓ = Long Liquidation** — Longs closing, sell-off may be near exhaustion (potential reversal)
+Use OI Trend (24h) + Price Change together. Never interpret OI change in isolation.
+
+### Rule 16: 箱体思维 (Box Theory — Donchian Channel Application)
+Donchian Channel (唐奇安通道) defines the price range:
+- **Upper Band** = Highest high over N periods (resistance)
+- **Lower Band** = Lowest low over N periods (support)
+- **Mid Band** = (Upper + Lower) / 2 (equilibrium)
+Trading rules:
+- Price near Lower Band + RSI oversold → potential long entry (mean-reversion in ranging)
+- Price near Upper Band + RSI overbought → potential short entry or take-profit
+- Price breaks above Upper Band with OI↑ → trend breakout (trend-following entry)
+- Price breaks below Lower Band with OI↑ → breakdown (short entry)
+- **False Breakout Detection**: Price breaks band but reverses within 2-3 bars → trap, do NOT chase
+- Channel width indicates volatility: narrow = consolidation (expect breakout), wide = trending
+
+### Rule 17: 量体裁衣 (Tailor to Fit — Position Value Ratio)
+Position sizing must respect equity-based limits:
+- BTC/ETH: max position value = equity × 5.0 (higher liquidity allows larger exposure)
+- Altcoins: max position value = equity × 1.0 (lower liquidity requires smaller exposure)
+- position_value = position_size_usd × leverage
+- If calculated position exceeds limit, reduce position_size_usd proportionally
+- Example: equity=$120, SOL altcoin ratio=1.0 → max position value=$120 → at 5x leverage, max size=$24
 `;

@@ -655,6 +655,7 @@ export class AutoTraderService {
           userId,
           source: { in: ['ai_research', 'ai_strategy'] },
           status: 'closed',
+          aiStrategyId: strategy.id,
         },
         orderBy: { closedAt: 'desc' },
         take: 10,
@@ -705,6 +706,7 @@ export class AutoTraderService {
           source: { in: ['ai_research', 'ai_strategy'] },
           status: 'closed',
           closedAt: { gte: statsLookback },
+          aiStrategyId: strategy.id,
         },
         select: { realizedPnl: true, margin: true },
       });
@@ -1278,10 +1280,14 @@ export class AutoTraderService {
                     minConfFilter: true,
                     actual: decision.confidence,
                     required: minConf,
-                    reasoning: `minConfidence 过滤: ${decision.confidence}% < ${minConf}%`,
+                    originalAction: decision.action,
+                    reasoning: `[置信度不足 ${decision.confidence}%<${minConf}%，未执行] ${decision.reasoning || ''}`,
                   } as unknown as Prisma.InputJsonValue,
                   executed: false,
                   executionResult: { skipped: true, reason: 'min_confidence' },
+                  rawResponse: _logRawResponse,
+                  systemPrompt: _logSystemPrompt,
+                  userPrompt: _logUserPrompt,
                 },
               });
               continue;
