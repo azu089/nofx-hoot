@@ -1228,19 +1228,6 @@ export class AutoTraderService {
             }
           }
 
-          // E3: 仓位比例 auto-clamp（对齐 nofx 仓位指南，开仓时最低 30%）
-          if (decision.positionSizePercent != null
-            && (decision.action === 'open_long' || decision.action === 'open_short')
-            && decision.positionSizePercent < 30) {
-            const minPct = decision.confidence >= 85 ? 80
-              : decision.confidence >= 70 ? 50
-              : 30;
-            this.logger.warn(
-              `[风控-E3] ${symbol}: positionSizePercent ${decision.positionSizePercent}% < 最低 ${minPct}% (conf=${decision.confidence}%)，auto-clamp`,
-            );
-            decision = { ...decision, positionSizePercent: minPct };
-          }
-
           result.analyzed++;
           result.totalCost += cost;
 
