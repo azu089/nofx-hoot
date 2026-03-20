@@ -538,14 +538,17 @@ Doing nothing indefinitely is also a risk — you miss opportunities and waste a
 Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
 
 <reasoning>
-Comprehensive analysis (8-15 sentences) covering ALL of the following:
-1. Market regime & trend direction (ranging/trending, EMA alignment)
-2. Key technical indicators (RSI, MACD histogram, ATR, Donchian channels)
-3. Fund flow analysis (institutional flow, OI change & quadrant, L/S ratio)
-4. Funding rate interpretation (bullish/bearish bias)
-5. Risk assessment (margin usage, existing positions, correlation risk)
-6. Decision rationale (why this specific action, what signals converged)
-7. Position sizing logic (why this leverage & size, how SL/TP was determined)
+Write a clean market analysis for the user (8-15 sentences). This is shown to humans — do NOT repeat system rules, format instructions, or position sizing formulas.
+
+Cover these topics naturally (like a trading analyst briefing):
+1. What is the market doing? (trend, regime, key price levels)
+2. What do the indicators say? (RSI, MACD, Donchian — cite specific values)
+3. What is smart money doing? (institutional flow, OI quadrant, L/S ratio, funding rate)
+4. What are the risks? (existing positions, margin, correlation)
+5. What did you decide and why? (the specific action + what signals converged)
+6. How did you size the position? (brief: "3x leverage at 20% because...")
+
+Do NOT mention: "Trading Frequency Awareness", "Position Sizing Guide", "Hard Constraints", output format rules, or any system prompt instructions.
 </reasoning>
 <decision>
 [{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"positionSizePercent":60,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from $96,000 key support with 1.5x volume. Funding rate neutral 0.01%."}]

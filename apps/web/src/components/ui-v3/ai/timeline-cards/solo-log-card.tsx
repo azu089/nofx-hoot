@@ -838,9 +838,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* AI 分析推理 — 优先 aiThinking（完整思考），降级 reasoning（摘要） */}
-          {(d.aiThinking || reasoning) && (
-            <SectionedReasoning text={(d.aiThinking as string) || reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 分析 — 一段统一的市场分析+决策理由（对齐 Grid 设计） */}
+          {reasoning && (
+            <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
