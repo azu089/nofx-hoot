@@ -117,6 +117,8 @@ export function AIStrategyDetailPage() {
   const [editMinConfidence, setEditMinConfidence] = useState(0);
   const [editMinRR, setEditMinRR] = useState(0);
   const [editMinPositionSize, setEditMinPositionSize] = useState(0);
+  const [editBtcEthPVR, setEditBtcEthPVR] = useState(5);
+  const [editAltcoinPVR, setEditAltcoinPVR] = useState(1);
   const [editMaxCycles, setEditMaxCycles] = useState(0);
   const [editProfitTarget, setEditProfitTarget] = useState(0);
   const [editMaxLoss, setEditMaxLoss] = useState(0);
@@ -393,6 +395,8 @@ export function AIStrategyDetailPage() {
       setEditMinConfidence(rc.minConfidence ?? 0);
       setEditMinRR(rc.minRiskRewardRatio ?? 0);
       setEditMinPositionSize(rc.minPositionSize ?? 0);
+      setEditBtcEthPVR(rc.btcEthMaxPositionValueRatio ?? 5);
+      setEditAltcoinPVR(rc.altcoinMaxPositionValueRatio ?? 1);
       setEditMaxCycles(strategy.stopConditions?.maxCycles ?? 0);
       setEditProfitTarget(strategy.stopConditions?.profitTargetPercent ?? 0);
       setEditMaxLoss(strategy.stopConditions?.maxLossPercent ?? 0);
@@ -486,8 +490,8 @@ export function AIStrategyDetailPage() {
           cooldownMinutes: editCooldownMinutes,
           allocatedCapital: editAllocatedCapital,
           circuitBreaker: strategy?.riskControlConfig?.circuitBreaker,
-          btcEthMaxPositionValueRatio: strategy?.riskControlConfig?.btcEthMaxPositionValueRatio,
-          altcoinMaxPositionValueRatio: strategy?.riskControlConfig?.altcoinMaxPositionValueRatio,
+          btcEthMaxPositionValueRatio: editBtcEthPVR,
+          altcoinMaxPositionValueRatio: editAltcoinPVR,
           btcEthMaxLeverage: strategy?.riskControlConfig?.btcEthMaxLeverage,
           altcoinMaxLeverage: strategy?.riskControlConfig?.altcoinMaxLeverage,
           minRiskRewardRatio: editMinRR || undefined,
@@ -1187,6 +1191,9 @@ export function AIStrategyDetailPage() {
                     )}
                     {riskControlConfig?.minPositionSize && (
                       <ConfigRow label={t('detail.minPositionSize')} value={`$${riskControlConfig.minPositionSize}`} />
+                    )}
+                    {(riskControlConfig?.btcEthMaxPositionValueRatio || riskControlConfig?.altcoinMaxPositionValueRatio) && (
+                      <ConfigRow label={t('create.positionValueRatio') || '仓位价值比例'} value={`BTC/ETH ${riskControlConfig?.btcEthMaxPositionValueRatio ?? 5}x / ${t('create.altcoin') || '山寨币'} ${riskControlConfig?.altcoinMaxPositionValueRatio ?? 1}x`} />
                     )}
                       <ConfigRow label={t('detail.executionCycle')} value={`${strategy.intervalMinutes} ${t('common.min')}`} />
                       {/* 止停条件（有值时显示） */}
@@ -2128,6 +2135,35 @@ export function AIStrategyDetailPage() {
                           onChange={(e) => setEditMinPositionSize(parseFloat(e.target.value) || 0)}
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                         />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 仓位价值比例 */}
+                  <div className="mt-3 pt-3 border-t border-[#1E1E2E]/50">
+                    <p className="text-[10px] text-[#06B6D4] mb-2">{t('create.positionValueRatio') || '仓位价值比例（名义仓位上限 = 预算 × 此值）'}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] text-[#606070] mb-1">BTC/ETH</p>
+                        <div className="flex items-center gap-2">
+                          <input type="range" min={0.5} max={10} step={0.5}
+                            value={editBtcEthPVR}
+                            onChange={(e) => setEditBtcEthPVR(parseFloat(e.target.value))}
+                            className="flex-1 accent-cyan-500 h-1.5"
+                          />
+                          <span className="text-xs font-mono text-[#06B6D4] w-8 text-right">{editBtcEthPVR}x</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-[#606070] mb-1">{t('create.altcoin') || '山寨币'}</p>
+                        <div className="flex items-center gap-2">
+                          <input type="range" min={0.5} max={10} step={0.5}
+                            value={editAltcoinPVR}
+                            onChange={(e) => setEditAltcoinPVR(parseFloat(e.target.value))}
+                            className="flex-1 accent-cyan-500 h-1.5"
+                          />
+                          <span className="text-xs font-mono text-[#06B6D4] w-8 text-right">{editAltcoinPVR}x</span>
+                        </div>
                       </div>
                     </div>
                   </div>
