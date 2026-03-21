@@ -639,54 +639,42 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* === 普通 Solo: 极简决策卡片 === */}
       {!isGridLog && !isAutoDisabled && !(isGridEntry && !isGridLog) && (
         <div className="space-y-1.5">
-          {/* 行1: 动作 + 参数流 + 置信度 */}
+          {/* 行1: 动作 + 参数流 + 置信度（内联） */}
           {(action === 'open_long' || action === 'open_short') && (
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
-                  {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
-                </span>
-                <span className="text-[#9090A0] font-mono">
-                  {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
-                  {d.positionSizePercent && <>{d.positionSizePercent}%<span className="text-[#3A3A4A] mx-0.5">·</span></>}
-                  {er?.price && <><span className="text-[#F8F8FC]">${Number(er.price).toFixed(2)}</span></>}
-                  {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
-                </span>
-              </div>
-              {d.confidence != null && (
-                <span className="font-mono font-semibold flex-shrink-0 ml-2" style={{
-                  color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                }}>{d.confidence}%</span>
-              )}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
+                {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
+              </span>
+              <span className="text-[#9090A0] font-mono">
+                {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                {d.positionSizePercent && <>{d.positionSizePercent}%<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                {er?.price && <><span className="text-[#F8F8FC]">${Number(er.price).toFixed(2)}</span></>}
+                {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
+                {d.confidence != null && <><span className="text-[#3A3A4A] mx-0.5">·</span><span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span></>}
+              </span>
             </div>
           )}
 
-          {/* 平仓: 动作 + 杠杆 · 入场→出场 × 数量 + 置信度 */}
+          {/* 平仓: 动作 + 杠杆 · 入场→出场 × 数量 · 置信度 */}
           {(action === 'close_long' || action === 'close_short') && (
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
-                  {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
-                </span>
-                <span className="text-[#9090A0] font-mono">
-                  {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
-                  <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span>
-                  <span className="text-[#606070] mx-1">→</span>
-                  <span className="text-[#F8F8FC]">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span>
-                  {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
-                </span>
-              </div>
-              {d.confidence != null && (
-                <span className="font-mono font-semibold flex-shrink-0 ml-2" style={{
-                  color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                }}>{d.confidence}%</span>
-              )}
+            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
+                {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
+              </span>
+              <span className="text-[#9090A0] font-mono">
+                {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span>
+                <span className="text-[#606070] mx-0.5">→</span>
+                <span className="text-[#F8F8FC]">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span>
+                {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
+                {d.confidence != null && <><span className="text-[#3A3A4A] mx-0.5">·</span><span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span></>}
+              </span>
             </div>
           )}
 
           {/* 观望/持仓 */}
           {(action === 'wait' || action === 'hold') && (
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 text-xs">
               <span className="px-2 py-0.5 rounded-md font-semibold bg-[#64748B]/10 text-[#94A3B8]">
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : (action === 'hold' ? '持仓' : '观望')}
               </span>
