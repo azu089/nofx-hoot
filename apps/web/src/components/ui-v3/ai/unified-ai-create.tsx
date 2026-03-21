@@ -1263,31 +1263,30 @@ export function UnifiedAiCreate() {
                   </div>
                 </div>
 
-                {/* 仓位价值比例（CODE ENFORCED） */}
-                <div className="mt-3 pt-3 border-t border-[#1E1E2E]/50">
-                  <p className="text-[10px] text-[#06B6D4] mb-2">{t('create.positionValueRatio') || '仓位价值比例（名义仓位上限 = 预算 × 此值）'}</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] text-[#606070] mb-1">BTC/ETH</p>
-                      <div className="flex items-center gap-2">
-                        <input type="range" min={0.5} max={10} step={0.5}
-                          value={customParams.btcEthMaxPositionValueRatio || 5}
-                          onChange={(e) => setCustomParams((p) => ({ ...p, btcEthMaxPositionValueRatio: parseFloat(e.target.value) }))}
-                          className="flex-1 accent-cyan-500 h-1.5"
-                        />
-                        <span className="text-xs font-mono text-[#06B6D4] w-8 text-right">{customParams.btcEthMaxPositionValueRatio || 5}x</span>
-                      </div>
+                {/* 仓位价值比例 */}
+                <p className="text-[10px] text-[#606070] mt-3 mb-1">{t('detail.positionValueRatio')}</p>
+                <p className="text-[9px] text-[#404050] mb-2">{t('detail.positionValueRatioDesc')}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">BTC/ETH</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0.5} max={10} step={0.5}
+                        value={customParams.btcEthMaxPositionValueRatio || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, btcEthMaxPositionValueRatio: parseFloat(e.target.value) || 5 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">x</span>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-[#606070] mb-1">{t('create.altcoin') || '山寨币'}</p>
-                      <div className="flex items-center gap-2">
-                        <input type="range" min={0.5} max={10} step={0.5}
-                          value={customParams.altcoinMaxPositionValueRatio || 1}
-                          onChange={(e) => setCustomParams((p) => ({ ...p, altcoinMaxPositionValueRatio: parseFloat(e.target.value) }))}
-                          className="flex-1 accent-cyan-500 h-1.5"
-                        />
-                        <span className="text-xs font-mono text-[#06B6D4] w-8 text-right">{customParams.altcoinMaxPositionValueRatio || 1}x</span>
-                      </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[#606070] mb-1">{t('detail.altcoin')}</p>
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                      <input type="number" min={0.5} max={10} step={0.5}
+                        value={customParams.altcoinMaxPositionValueRatio || ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, altcoinMaxPositionValueRatio: parseFloat(e.target.value) || 1 }))}
+                        className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                      />
+                      <span className="text-[#606070] text-xs">x</span>
                     </div>
                   </div>
                 </div>
