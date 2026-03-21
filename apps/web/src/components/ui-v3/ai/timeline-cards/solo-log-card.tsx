@@ -641,7 +641,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         <div className="space-y-1.5">
           {/* 行1: 动作 + 参数流 + 置信度（内联） */}
           {(action === 'open_long' || action === 'open_short') && (
-            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+            <div className="flex items-center justify-between text-xs">
               <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
@@ -657,7 +657,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
           {/* 平仓: 动作 + 杠杆 · 入场→出场 × 数量 · 置信度 */}
           {(action === 'close_long' || action === 'close_short') && (
-            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+            <div className="flex items-center justify-between text-xs">
               <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
@@ -695,7 +695,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               <span className="text-[#10B981]">
                 {d.takeProfit != null && <>↑${Number(d.takeProfit).toLocaleString()} <span className="opacity-50 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span></>}
               </span>
-              <span className="font-semibold" style={{ color: rr != null ? rrColor(rr) : '#606070' }}>
+              <span className="font-semibold text-right" style={{ color: rr != null ? rrColor(rr) : '#606070' }}>
                 {rr != null && <>1:{rr.toFixed(1)}</>}
               </span>
             </div>
@@ -707,14 +707,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               <div className="grid grid-cols-3">
                 <span className="text-[#F8F8FC]">{d.marketSnapshot.price != null && `$${d.marketSnapshot.price.toFixed(2)}`}</span>
                 <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI <span className={d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}>{d.marketSnapshot.rsi14.toFixed(1)}</span></>}</span>
-                <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></>}</span>
+                <span className="text-[#9090A0] text-right">{d.marketSnapshot.fundingRate != null && <>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></>}</span>
               </div>
               <div className="grid grid-cols-3 text-[#9090A0]">
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
                 <span className="col-span-2">{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070] ml-1">({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
               </div>
               {d.marketSnapshot.dataSources && (
-                <div className="flex gap-1 flex-wrap">
+                <div className="flex justify-between flex-wrap">
                   {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
                     <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                       {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
