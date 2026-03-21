@@ -414,13 +414,17 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
 
 ## 仓位计算指南（对齐 nofx）
-根据置信度和仓位价值上限计算 positionSizePercent：
-- **高置信度 (≥85)**: 使用仓位上限的 80-100%
-- **中置信度 (70-84)**: 使用仓位上限的 50-80%
-- **低置信度 (60-69)**: 使用仓位上限的 30-50%
-- 示例: 策略预算$${equity.toFixed(0)}，山寨币仓位上限=$${(equity * altPVR).toFixed(0)}，置信度70% → 仓位=$${(equity * altPVR * 0.5).toFixed(0)}-${(equity * altPVR * 0.8).toFixed(0)} → positionSizePercent=${(altPVR * 0.5 * 100).toFixed(0)}-${(altPVR * 0.8 * 100).toFixed(0)}
-- **禁止**直接用 available_balance 作为仓位，必须基于仓位价值上限计算
-- 杠杆由你根据市场状态自主选择（不超过上限），杠杆越高止损越紧
+positionSizePercent = 名义仓位占预算的百分比（不是保证金百分比）
+- 名义仓位 = 预算 × positionSizePercent%
+- 保证金 = 名义仓位 / 杠杆（交易所自动计算）
+- 仓位上限: BTC/ETH 最大 $${(equity * btcEthPVR).toFixed(0)}，山寨币最大 $${(equity * altPVR).toFixed(0)}
+
+根据置信度选择 positionSizePercent：
+- **高置信度 (≥85)**: 80-100%
+- **中置信度 (70-84)**: 50-80%
+- **低置信度 (60-69)**: 30-50%
+- 示例: 预算$${equity.toFixed(0)}，positionSizePercent=60 → 名义=$${(equity * 0.6).toFixed(0)} → 3x杠杆时保证金=$${(equity * 0.6 / 3).toFixed(0)}
+- 杠杆由你自主选择（不超过上限），杠杆越高保证金越小但爆仓距离越近
 
 ## AI 建议（推荐遵循，非硬性强制）
 - **最低置信度**: 置信度 >= ${minConf}% 才开仓
@@ -457,11 +461,12 @@ ${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss
 ## Position Sizing Guide (aligned with nofx)
 Calculate positionSizePercent based on your confidence and Position Value Limits:
 - **High confidence (≥85)**: Use 80-100% of position value limit
-- **Medium confidence (70-84)**: Use 50-80% of position value limit
-- **Low confidence (60-69)**: Use 30-50% of position value limit
-- Example: budget=$${equity.toFixed(0)}, altcoin limit=$${(equity * altPVR).toFixed(0)}, confidence=70% → position=$${(equity * altPVR * 0.5).toFixed(0)}-${(equity * altPVR * 0.8).toFixed(0)} → positionSizePercent=${(altPVR * 0.5 * 100).toFixed(0)}-${(altPVR * 0.8 * 100).toFixed(0)}
-- **DO NOT** just use available_balance as position size. Use the Position Value Limits!
-- Leverage is YOUR choice (up to the max), higher leverage = tighter stop-loss
+- **Medium confidence (70-84)**: positionSizePercent = 50-80
+- **Low confidence (60-69)**: positionSizePercent = 30-50
+- positionSizePercent = notional position as % of budget (NOT margin %)
+- Notional = budget × positionSizePercent%. Margin = notional / leverage (exchange auto-calculates)
+- Example: budget=$${equity.toFixed(0)}, positionSizePercent=60 → notional=$${(equity * 0.6).toFixed(0)} → at 3x leverage, margin=$${(equity * 0.6 / 3).toFixed(0)}
+- Leverage is YOUR choice (up to the max), higher leverage = less margin but closer liquidation
 
 ## AI Guidance (recommended, not hard-enforced)
 - **Min Confidence**: Only trade when confidence >= ${minConf}%
