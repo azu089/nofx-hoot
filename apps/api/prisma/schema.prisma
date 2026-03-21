@@ -434,6 +434,11 @@ model Position {
   pnl         Decimal?  @db.Decimal(18, 8)
   realizedPnl Decimal?  @db.Decimal(18, 8) @map("realized_pnl")
 
+  // 真实交易成本（极速策略增强 Task 5: 对齐 mscn.cc 成本核算）
+  grossPnl    Decimal?  @db.Decimal(18, 8) @map("gross_pnl")     // 手续费前原始 PnL（入场价差）
+  tradingFees Decimal?  @db.Decimal(18, 8) @map("trading_fees")  // 交易所开+平手续费合计
+  fundingFees Decimal?  @db.Decimal(18, 8) @map("funding_fees")  // 持仓期间累计 Funding Fee
+
   // AI 交易来源
   source         String?  // 来源标识: ai_analysis, strategy, manual
   aiStrategyId   String?  @map("ai_strategy_id")                    // 关联 AI 策略 ID

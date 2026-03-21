@@ -864,6 +864,52 @@ export class MarketDataService implements OnModuleInit {
     return 'neutral';
   }
 
+  // ========================= Fear & Greed Index =========================
+
+  private fearGreedCache: { data: { value: number; classification: string }; timestamp: number } | null = null;
+  private readonly FEAR_GREED_TTL = 10 * 60 * 1000; // 10min
+
+  /**
+   * 获取 Crypto Fear & Greed Index（极速策略增强 Task 2）
+   * 数据源: alternative.me（免费，无需 Key）
+   * 缓存: 10min（指数变化频率低）
+   */
+  async fetchFearGreedIndex(): Promise<{ value: number; classification: string } | null> {
+    if (this.fearGreedCache && Date.now() - this.fearGreedCache.timestamp < this.FEAR_GREED_TTL) {
+      return this.fearGreedCache.data;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('https://api.alternative.me/fng/?limit=1', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        this.logger.warn(`[F&G] API 返回 ${res.status}`);
+        return null;
+      }
+
+      const json = await res.json();
+      const item = json?.data?.[0];
+      if (!item) return null;
+
+      const result = {
+        value: Number(item.value),
+        classification: item.value_classification || 'Unknown',
+      };
+
+      this.fearGreedCache = { data: result, timestamp: Date.now() };
+      this.logger.log(`[F&G] Fear & Greed Index: ${result.value}/100 (${result.classification})`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`[F&G] API 失败: ${error.message}`);
+      return null;
+    }
+  }
+
   /** 将 CCXT 格式 symbol 转换为 Binance API 格式: 'BTC/USDT:USDT' → 'BTCUSDT' */
   private toBinanceSymbol(symbol: string): string {
     return symbol.replace('/', '').replace(':USDT', '').replace(':BUSD', '').toUpperCase();

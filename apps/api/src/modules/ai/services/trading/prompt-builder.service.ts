@@ -125,6 +125,14 @@ export interface UserPromptContext {
   }>;
   /** 增强市场数据（Phase 11: 多空比/清算/期权/稳定币/ETF/宏观/COT） */
   enhancedDataPrompt?: string;
+  /** Task 1: CryptoPanic 新闻事件（极速策略增强） */
+  newsPrompt?: string;
+  /** Task 2: Fear & Greed 指数（极速策略增强） */
+  fearGreedPrompt?: string;
+  /** Task 3: BM25 历史教训（极速策略增强） */
+  memoryPrompt?: string;
+  /** Task 4: LunarCrush 社媒情绪（极速策略增强） */
+  socialSentimentPrompt?: string;
   /** 辩论上下文 */
   debateContext?: string;
   /** AI 输出语言 locale */
@@ -354,6 +362,30 @@ export class PromptBuilderService {
     if (ctx.enhancedDataPrompt) {
       lines.push('');
       lines.push(ctx.enhancedDataPrompt);
+    }
+
+    // [7.6] News Events (Task 1: CryptoPanic)
+    if (ctx.newsPrompt) {
+      lines.push('');
+      lines.push(ctx.newsPrompt);
+    }
+
+    // [7.7] Social Sentiment (Task 4: LunarCrush)
+    if (ctx.socialSentimentPrompt) {
+      lines.push('');
+      lines.push(ctx.socialSentimentPrompt);
+    }
+
+    // [7.8] Fear & Greed Index (Task 2)
+    if (ctx.fearGreedPrompt) {
+      lines.push('');
+      lines.push(ctx.fearGreedPrompt);
+    }
+
+    // [7.9] Past Trading Experiences (Task 3: BM25 Memory)
+    if (ctx.memoryPrompt) {
+      lines.push('');
+      lines.push(ctx.memoryPrompt);
     }
 
     // [8] Liquidity & Order Book

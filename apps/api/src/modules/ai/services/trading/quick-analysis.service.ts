@@ -9,6 +9,8 @@ import { formatMarketDataPrompt } from '../../constants/prompts';
 import { PromptBuilderService, PromptConfig, UserPromptContext } from './prompt-builder.service';
 import { parseDecisions, extractReasoning } from '../../utils/decision-parser';
 import { NofxosRankingService } from '../nofxos-ranking.service';
+import { AiMemoryService } from '../memory.service';
+import { LunarCrushService } from '../lunarcrush.service';
 
 /**
  * 最近交易记录（替代 BM25 记忆，轻量上下文）
@@ -185,6 +187,8 @@ export class QuickAnalysisService {
     private readonly tradeHistory: TradeHistoryService,
     private readonly promptBuilder: PromptBuilderService,
     private readonly nofxosRanking: NofxosRankingService,
+    private readonly memoryService: AiMemoryService,
+    private readonly lunarCrush: LunarCrushService,
   ) {}
 
   /**
@@ -206,13 +210,17 @@ export class QuickAnalysisService {
     let safetyCurrentPrice: number | undefined;
     let safetyVolume24h: number | undefined;
     let snapshot: MarketSnapshot | undefined;
+    // 极速策略增强数据（提升到外层，供后续格式化使用）
+    let newsItems: any[] = [];
+    let fearGreed: { value: number; classification: string } | null = null;
+    let lunarCrushData: any = null;
 
     if (config.precomputedMarketData) {
       // 多币种模式: 市场数据已由调用方预构建
       marketDataPrompt = config.precomputedMarketData;
     } else {
       // 1. 获取市场数据 + 市场排名 + 增强数据 + NofxOS 排名（并行，对齐 nofx 数据获取日志规范）
-      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking] = await Promise.all([
+      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, _newsItems, _fearGreed, _lunarCrushData] = await Promise.all([
         this.fetchMarketData(config),
         this.marketData.fetchMarketRanking(config.symbol).catch((e: any) => {
           this.logger.warn(`[数据获取] marketRanking 失败: ${e.message}`);
@@ -235,9 +243,22 @@ export class QuickAnalysisService {
           this.logger.warn(`[数据获取] 涨跌幅排名 失败: ${e.message}`);
           return null;
         }),
+        // Task 1: CryptoPanic 新闻
+        this.marketData.fetchCryptoNews(config.symbol, 5).catch((e: any) => {
+          this.logger.warn(`[数据获取] 新闻 失败: ${e.message}`);
+          return [] as any[];
+        }),
+        // Task 2: Fear & Greed Index
+        this.marketData.fetchFearGreedIndex().catch(() => null),
+        // Task 4: LunarCrush 社媒情绪
+        this.lunarCrush.fetchSocialMetrics(config.symbol).catch(() => null),
       ]);
       const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
       safetyVolume24h = volume24h;
+      // 赋值到外层作用域（供后续格式化使用）
+      newsItems = _newsItems as any[] || [];
+      fearGreed = _fearGreed as any;
+      lunarCrushData = _lunarCrushData;
 
       // 数据获取摘要日志（对齐 nofx buildTradingContext 日志规范）
       this.logger.log(
@@ -350,6 +371,57 @@ export class QuickAnalysisService {
       }
     }
 
+    // === 极速策略增强: 格式化 4 个新数据源 ===
+
+    // Task 1: CryptoPanic 新闻格式化
+    let newsPrompt = '';
+    if (Array.isArray(newsItems) && newsItems.length > 0) {
+      const newsLines = newsItems.slice(0, 5).map((n: any) => {
+        const tag = n.sentiment === 'positive' ? '[+]' : n.sentiment === 'negative' ? '[-]' : '[·]';
+        return `  ${tag} ${n.title} (${n.source})`;
+      });
+      newsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
+    }
+
+    // Task 2: Fear & Greed Index 格式化
+    let fearGreedPrompt = '';
+    if (fearGreed) {
+      fearGreedPrompt = `=== Market Sentiment ===\nFear & Greed Index: ${fearGreed.value}/100 (${fearGreed.classification})\nNOTE: Extreme Fear often = buying opportunity; Extreme Greed often = caution.`;
+    }
+
+    // Task 4: LunarCrush 社媒情绪格式化
+    let socialSentimentPrompt = '';
+    if (lunarCrushData) {
+      socialSentimentPrompt = this.lunarCrush.formatForAI(lunarCrushData);
+    }
+
+    // Task 3: BM25 记忆检索 — 当前市场场景匹配历史教训
+    let memoryPrompt = '';
+    try {
+      // 只有非预构建模式才能拿到指标，预构建模式跳过记忆
+      if (!config.precomputedMarketData && safetyIndicators) {
+        const sceneText = this.memoryService.buildSceneText({
+          symbol: config.symbol,
+          timeframe: config.timeframe,
+          rsi: safetyIndicators.rsi ?? undefined,
+          macdTrend: snapshot?.macdHist != null ? (snapshot.macdHist > 0 ? 'bullish' : 'bearish') : undefined,
+          atr: safetyIndicators.atr14 ?? undefined,
+          fundingRate: safetyFundingRate ?? undefined,
+        });
+        const memories = await this.memoryService.retrieveSimilar(sceneText, config.userId, 3);
+        if (memories.length > 0) {
+          const memLines = memories.map((m, i) => {
+            const result = m.isWin ? `Win +${m.pnlPercent?.toFixed(1)}%` : `Loss ${m.pnlPercent?.toFixed(1)}%`;
+            const lesson = m.lesson ? ` | Lesson: ${m.lesson}` : '';
+            return `  ${i + 1}. [${m.symbol}] ${m.action} → ${result}${lesson}`;
+          });
+          memoryPrompt = `=== Past Trading Experiences ===\nSimilar market conditions in the past:\n${memLines.join('\n')}`;
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`[记忆检索] 失败: ${(e as Error).message}`);
+    }
+
     // 6. 构建系统提示（Phase 9.0: 8-section 结构化 Prompt，替代扁平 QUICK_MODE_SYSTEM_PROMPT）
     const systemPrompt = this.promptBuilder.buildSystemPrompt(config.promptConfig);
 
@@ -405,6 +477,11 @@ export class QuickAnalysisService {
         peakPnlPercent: p.peakPnlPercent,
       })),
       marketDataPrompt,
+      // 极速策略增强 Task 1-4: 新闻/情绪/记忆/社媒
+      newsPrompt: newsPrompt || undefined,
+      fearGreedPrompt: fearGreedPrompt || undefined,
+      memoryPrompt: memoryPrompt || undefined,
+      socialSentimentPrompt: socialSentimentPrompt || undefined,
       liquidityData: config.liquidityData,
       debateContext: config.debateContext,
       locale: config.promptConfig?.locale,
@@ -604,6 +681,29 @@ export class QuickAnalysisService {
       // 2. 合并所有币种数据为单一 prompt
       const combinedMarketData = validResults.map(r => r.prompt).join('\n\n');
 
+      // 2.5 极速策略增强: 获取全局增强数据（News/F&G/Social，多币种共享）
+      const [mcNews, mcFearGreed, mcSocial] = await Promise.all([
+        this.marketData.fetchCryptoNews(configs[0].symbol, 5).catch(() => [] as any[]),
+        this.marketData.fetchFearGreedIndex().catch(() => null),
+        this.lunarCrush.fetchSocialMetrics(configs[0].symbol).catch(() => null),
+      ]);
+      let mcNewsPrompt = '';
+      if (Array.isArray(mcNews) && mcNews.length > 0) {
+        const newsLines = mcNews.slice(0, 5).map((n: any) => {
+          const tag = n.sentiment === 'positive' ? '[+]' : n.sentiment === 'negative' ? '[-]' : '[·]';
+          return `  ${tag} ${n.title} (${n.source})`;
+        });
+        mcNewsPrompt = `=== Recent News Events ===\n${newsLines.join('\n')}`;
+      }
+      let mcFearGreedPrompt = '';
+      if (mcFearGreed) {
+        mcFearGreedPrompt = `=== Market Sentiment ===\nFear & Greed Index: ${mcFearGreed.value}/100 (${mcFearGreed.classification})\nNOTE: Extreme Fear often = buying opportunity; Extreme Greed often = caution.`;
+      }
+      let mcSocialPrompt = '';
+      if (mcSocial) {
+        mcSocialPrompt = this.lunarCrush.formatForAI(mcSocial);
+      }
+
       // 3. 使用第一个 config 的共享参数构建 prompt
       const refConfig = configs[0];
       const systemPrompt = this.promptBuilder.buildSystemPrompt(refConfig.promptConfig);
@@ -639,6 +739,11 @@ export class QuickAnalysisService {
           peakPnlPercent: p.peakPnlPercent, margin: p.margin,
         })) : [],
         marketDataPrompt: combinedMarketData,
+        // 极速策略增强 Task 1-4（多币种模式）
+        newsPrompt: mcNewsPrompt || undefined,
+        fearGreedPrompt: mcFearGreedPrompt || undefined,
+        socialSentimentPrompt: mcSocialPrompt || undefined,
+        // 多币种模式跳过 BM25 记忆（无单币指标上下文）
         liquidityData: configs.flatMap(c => c.liquidityData || []),
         locale: refConfig.promptConfig?.locale,
       };

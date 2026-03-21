@@ -671,13 +671,41 @@ export class AiExecutionService {
       this.logger.warn(`清理 SL/TP 订单失败(非致命): ${e.message}`);
     }
 
-    // 计算 PnL
+    // 计算 PnL（含真实交易成本 — 极速策略增强 Task 5）
     const entryPrice = Number(position.entryPrice);
-    let pnl: number;
+    let grossPnl: number;
     if (side === 'long') {
-      pnl = (exitPrice - entryPrice) * amount;
+      grossPnl = (exitPrice - entryPrice) * amount;
     } else {
-      pnl = (entryPrice - exitPrice) * amount;
+      grossPnl = (entryPrice - exitPrice) * amount;
+    }
+
+    // 交易所手续费: 平仓手续费从 CCXT order 获取，开仓手续费从 TradeExecutionLog 查询
+    const closeFee = result.fee ?? 0;
+    let openFee = 0;
+    try {
+      const openLog = await this.prisma.tradeExecutionLog.findFirst({
+        where: { positionId: position.id, status: 'filled' },
+        select: { feeAmount: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (openLog?.feeAmount) openFee = Number(openLog.feeAmount);
+    } catch { /* 非致命: 旧 position 可能无 TradeExecutionLog */ }
+    const tradingFees = openFee + closeFee;
+
+    // Funding Fee: 从交易所查询持仓期间累计（降级: 失败返回 0）
+    let fundingFees = 0;
+    try {
+      fundingFees = await this.fetchFundingFeeTotal(adapter, futuresSymbol, position.createdAt);
+    } catch { /* 非致命: funding history 不可用时跳过 */ }
+
+    // 净 PnL = 毛利 - 交易所手续费 - Funding Fee
+    const pnl = grossPnl - tradingFees - Math.abs(fundingFees);
+
+    if (tradingFees > 0 || fundingFees !== 0) {
+      this.logger.log(
+        `[成本核算] ${futuresSymbol}: grossPnl=$${grossPnl.toFixed(4)} - fees=$${tradingFees.toFixed(4)} - funding=$${Math.abs(fundingFees).toFixed(4)} = netPnl=$${pnl.toFixed(4)}`,
+      );
     }
 
     // 更新 Position 记录
@@ -690,6 +718,9 @@ export class AiExecutionService {
         closeReason: 'ai_decision',
         pnl: new Decimal(pnl).toFixed(8),
         realizedPnl: new Decimal(pnl).toFixed(8),
+        grossPnl: new Decimal(grossPnl).toFixed(8),
+        tradingFees: new Decimal(tradingFees).toFixed(8),
+        fundingFees: new Decimal(fundingFees).toFixed(8),
         ...(result.txHash ? { txHash: result.txHash } : {}),
       },
     });
@@ -713,25 +744,22 @@ export class AiExecutionService {
       });
     } catch { /* 非致命 */ }
 
-    // 仅产品 A (ai_research) 存储 BM25 记忆
-    // 产品 B (ai_strategy) 不使用 BM25（快速模式无状态设计）
-    if (source === 'ai_research') {
-      try {
-        const marginVal = Number(position.margin);
-        const pnlPercent = marginVal > 0 ? (pnl / marginVal) * 100 : 0;
+    // 存储 BM25 记忆（产品 A + 产品 B 均存储，极速策略增强 Task 3）
+    try {
+      const marginVal = Number(position.margin);
+      const pnlPercent = marginVal > 0 ? (pnl / marginVal) * 100 : 0;
 
-        await this.memoryService.storeMemory({
-          userId,
-          analysisId: position.id,
-          symbol: futuresSymbol,
-          sceneText: `${futuresSymbol} ${side} entry=${entryPrice} exit=${exitPrice}`,
-          action: `close_${side}`,
-          pnl,
-          pnlPercent,
-        });
-      } catch (e: any) {
-        this.logger.warn(`存储 BM25 记忆失败(非致命): ${e.message}`);
-      }
+      await this.memoryService.storeMemory({
+        userId,
+        analysisId: position.id,
+        symbol: futuresSymbol,
+        sceneText: `${futuresSymbol} ${side} entry=${entryPrice} exit=${exitPrice}`,
+        action: `close_${side}`,
+        pnl,
+        pnlPercent,
+      });
+    } catch (e: any) {
+      this.logger.warn(`存储 BM25 记忆失败(非致命): ${e.message}`);
     }
 
     this.logger.log(
@@ -954,6 +982,49 @@ export class AiExecutionService {
       });
     } catch (e) {
       this.logger.debug(`TG AI 通知发送失败(非致命): ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 获取持仓期间累计 Funding Fee（极速策略增强 Task 5）
+   *
+   * 通过 CcxtAdapter.getExchange() 调用 Binance fapiPrivateGetIncome
+   * 降级: 非 CCXT adapter 或 API 失败时返回 0
+   */
+  private async fetchFundingFeeTotal(
+    adapter: ExchangeAdapter,
+    symbol: string,
+    since: Date,
+  ): Promise<number> {
+    try {
+      // 只有 CcxtAdapter 支持 getExchange()
+      const getExchange = (adapter as any).getExchange;
+      if (typeof getExchange !== 'function') return 0;
+
+      const ex = getExchange.call(adapter);
+      if (!ex || typeof ex.fapiPrivateGetIncome !== 'function') return 0;
+
+      const binanceSymbol = symbol.replace('/', '').replace(':USDT', '').toUpperCase();
+      const startTime = since.getTime();
+
+      const response: any[] = await ex.fapiPrivateGetIncome({
+        incomeType: 'FUNDING_FEE',
+        symbol: binanceSymbol,
+        startTime,
+        limit: 1000,
+      });
+
+      if (!Array.isArray(response)) return 0;
+
+      const total = response.reduce((sum: number, item: any) => sum + Number(item.income || 0), 0);
+
+      if (response.length > 0) {
+        this.logger.log(`[FundingFee] ${symbol}: 累计=$${total.toFixed(4)} (${response.length}笔)`);
+      }
+      return total;
+    } catch (error) {
+      this.logger.warn(`[FundingFee] ${symbol} 查询失败(非致命): ${(error as Error).message}`);
+      return 0;
     }
   }
 }
