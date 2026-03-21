@@ -1212,13 +1212,15 @@ export class AiController {
     const todayPnlMap = new Map<string, number>();
     const totalRealizedMap = new Map<string, number>();
     if (strategyIds.length > 0) {
+      // 去掉 exchangeRef: { not: null } — 所有已平仓持仓都应计入盈亏统计
+      // （之前的过滤导致 44/57 笔无 exchangeRef 的亏损被排除，卡片显示虚假盈利）
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart }, exchangeRef: { not: null } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', exchangeRef: { not: null } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed' },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
       ]);
@@ -1455,7 +1457,6 @@ export class AiController {
           aiStrategyId: id,
           status: 'closed',
           closedAt: { gte: todayStart },
-          exchangeRef: { not: null },
         },
         select: { realizedPnl: true },
       });
@@ -1763,7 +1764,6 @@ export class AiController {
         aiStrategyId: id,
         status: 'closed',
         closedAt: { gte: since },
-        exchangeRef: { not: null },
       },
       orderBy: { closedAt: 'asc' },
       select: {
@@ -2120,7 +2120,6 @@ export class AiController {
         userId,
         status: 'closed',
         closedAt: { gte: todayStart },
-        exchangeRef: { not: null },
         OR: [
           { aiStrategyId: { not: null } },
           { source: 'ai_research' },
