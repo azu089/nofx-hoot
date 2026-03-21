@@ -707,22 +707,41 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
   async cancelStopOrders(symbol: string): Promise<void> {
     const ex = this.getExchange();
-    const openOrders = await ex.fetchOpenOrders(symbol);
-    const stopOrders = openOrders.filter(
-      (o: any) =>
-        o.type?.includes('stop') || o.type?.includes('take_profit'),
-    );
-    for (const order of stopOrders) {
+
+    // 对齐 nofx CancelAllOrders：Binance/Bybit 的 STOP_MARKET/TAKE_PROFIT_MARKET
+    // 条件单不在 fetchOpenOrders() 中返回，必须用 cancelAllOrders API 才能清掉。
+    // cancelAllOrders 映射到 DELETE /fapi/v1/allOpenOrders，会清除所有挂单包括条件单。
+    // 注意：此函数仅在极速策略平仓后调用，不影响网格策略的限价挂单。
+    if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm' || this.exchangeType === 'bybit') {
       try {
-        await ex.cancelOrder(order.id, symbol);
-      } catch {
-        // 订单可能已被取消
+        await ex.cancelAllOrders(symbol);
+        this.logger.log(`[CcxtAdapter] cancelStopOrders: ${symbol} 已清除所有挂单和条件单`);
+      } catch (e: any) {
+        // Binance 无挂单时可能返回错误码，忽略
+        if (!e.message?.includes('-2011')) {
+          this.logger.warn(`[CcxtAdapter] cancelStopOrders(${symbol}) 失败: ${e.message}`);
+        }
       }
+      return;
     }
 
-    // OKX 算法单同样需要单独清理
+    // OKX: fetchOpenOrders + 算法单双路径清理
     if (this.exchangeType === 'okx') {
+      const openOrders = await ex.fetchOpenOrders(symbol);
+      for (const order of openOrders) {
+        try { await ex.cancelOrder(order.id, symbol); } catch { /* 已取消 */ }
+      }
       await this.cancelOkxAlgoOrders(symbol);
+      return;
+    }
+
+    // 其他交易所：降级到 fetchOpenOrders 过滤
+    const openOrders = await ex.fetchOpenOrders(symbol);
+    const stopOrders = openOrders.filter(
+      (o: any) => o.type?.includes('stop') || o.type?.includes('take_profit'),
+    );
+    for (const order of stopOrders) {
+      try { await ex.cancelOrder(order.id, symbol); } catch { /* 已取消 */ }
     }
   }
 

@@ -627,6 +627,13 @@ export class AiExecutionService {
 
     if (!position) {
       this.logger.warn(`[AI执行] 未找到可平仓持仓: ${futuresSymbol} ${side}`);
+      // 即使 DB 中找不到持仓，也要清理交易所残留条件单（TP/SL 触发后对边残留）
+      try {
+        await adapter.cancelStopOrders(futuresSymbol);
+        this.logger.log(`[AI执行] 已清理 ${futuresSymbol} 孤儿条件单(持仓不存在于DB)`);
+      } catch (e: any) {
+        this.logger.warn(`[AI执行] 清理孤儿条件单失败(非致命): ${e.message}`);
+      }
       return {
         success: false,
         symbol: futuresSymbol,
