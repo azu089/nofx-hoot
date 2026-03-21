@@ -688,7 +688,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
           {/* 行2: ↓止损 ↑止盈 盈亏比 — 仅开仓，纯数字一行 */}
           {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-            <div className="flex items-center gap-3 text-[11px] flex-wrap">
+            <div className="flex items-center justify-between text-[11px]">
               {d.stopLoss != null && (
                 <span className="text-[#F43F5E] font-mono">
                   ↓${Number(d.stopLoss).toLocaleString()}
@@ -712,7 +712,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {/* 行3: 市场数据一行流 */}
           {d.marketSnapshot && (
             <div className="space-y-0.5 text-[11px]">
-              <div className="flex items-center gap-3 flex-wrap text-[#9090A0] font-mono">
+              <div className="flex items-center justify-between text-[#9090A0] font-mono">
                 {d.marketSnapshot.price != null && (
                   <span className="text-[#F8F8FC]">${d.marketSnapshot.price.toFixed(2)}</span>
                 )}
