@@ -707,6 +707,8 @@ export class AutoTraderService {
           status: 'closed',
           closedAt: { gte: statsLookback },
           aiStrategyId: strategy.id,
+          // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
+          closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
         },
         select: { realizedPnl: true, margin: true },
       });
