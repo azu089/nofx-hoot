@@ -94,6 +94,10 @@ export interface QuickAnalysisConfig {
     reasoning: string;
     timestamp: string;
   }>;
+  /** 币种来源模式 */
+  coinSourceMode?: string;
+  /** 所有候选币列表 */
+  candidateSymbols?: string[];
 }
 
 /**
@@ -405,6 +409,9 @@ export class QuickAnalysisService {
       debateContext: config.debateContext,
       locale: config.promptConfig?.locale,
       lastDecisions: config.lastDecisions,
+      coinSourceMode: config.coinSourceMode as any,
+      candidateSymbols: config.candidateSymbols,
+      currentSymbol: config.symbol,
     };
 
     const userMessage = this.promptBuilder.buildUserPrompt(userPromptCtx);

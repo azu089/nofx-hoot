@@ -1157,6 +1157,8 @@ export class AutoTraderService {
               liquidityData: symbolLiquidityData,
               accountInfo,
               lastDecisions,
+              coinSourceMode: coinSourceConfig.mode,
+              candidateSymbols: activeCandidates,
               promptConfig: {
                 promptSections: promptSections ? {
                   role: promptSections.role,

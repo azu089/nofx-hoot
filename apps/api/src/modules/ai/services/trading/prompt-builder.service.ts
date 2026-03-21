@@ -141,6 +141,11 @@ export interface UserPromptContext {
     reasoning: string;
     timestamp: string;
   }>;
+  /** 币种来源模式 + 配置的候选币列表 */
+  coinSourceMode?: 'static' | 'manual' | 'ai' | 'oi_top' | 'oi_low' | 'mixed';
+  candidateSymbols?: string[];
+  /** 当前正在分析的币种 */
+  currentSymbol?: string;
 }
 
 // ========================= Service =========================
@@ -235,6 +240,29 @@ export class PromptBuilderService {
       }
       if (ctx.marginUsage !== undefined) lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
+    }
+
+    // [2.5] Coin Source Configuration
+    if (ctx.coinSourceMode || ctx.candidateSymbols) {
+      lines.push('');
+      lines.push('=== Strategy Coin Configuration ===');
+      const modeLabels: Record<string, string> = {
+        static: 'User-selected coins (fixed)',
+        manual: 'User-selected coins (fixed)',
+        ai: 'AI auto-select from market',
+        oi_top: 'Auto-select by OI ranking (top)',
+        oi_low: 'Auto-select by OI ranking (low)',
+        mixed: 'Mixed (user + auto)',
+      };
+      const modeLabel = modeLabels[ctx.coinSourceMode || ''] || ctx.coinSourceMode || 'unknown';
+      lines.push(`Coin Source: ${modeLabel}`);
+      if (ctx.candidateSymbols && ctx.candidateSymbols.length > 0) {
+        lines.push(`Candidate Coins: ${ctx.candidateSymbols.join(', ')}`);
+        lines.push(`Currently Analyzing: ${ctx.currentSymbol || 'N/A'}`);
+      }
+      if (ctx.coinSourceMode === 'static' || ctx.coinSourceMode === 'manual') {
+        lines.push(`NOTE: User has specifically selected these coins. Your <decision> symbol MUST be one of the candidate coins above. You may reference other coins in <reasoning> for market context, but do NOT output trading actions for coins outside the candidate list.`);
+      }
     }
 
     // [3] Recent Trades
