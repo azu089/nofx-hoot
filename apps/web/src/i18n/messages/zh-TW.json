@@ -1856,7 +1856,10 @@
       "promptDefaultDecision": "1. 判斷市場結構和趨勢方向 2. 尋找入場信號共振 3. 評估風險回報比 4. 確定倉位大小和止損",
       "gridMode": "网格模式",
       "researchMode": "深研模式",
-      "soloResumeDrawdownNote": "日內回撤計數將在次日零點自動重置"
+      "soloResumeDrawdownNote": "日內回撤計數將在次日零點自動重置",
+      "positionValueRatio": "倉位價值比例",
+      "positionValueRatioDesc": "名義倉位上限 = 預算 × 此值",
+      "altcoin": "山寨幣"
     },
     "research": {
       "title": "AI 研究團隊",

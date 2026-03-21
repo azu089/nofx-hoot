@@ -1854,7 +1854,10 @@
       "promptDefaultDecision": "1. Piyasa yapısını değerlendir 2. Sinyal uyumunu ara 3. Risk/getiri oranını hesapla 4. Pozisyon boyutu ve zarar durdur belirle",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "Günlük düşüş sayacı gece yarısı otomatik sıfırlanır"
+      "soloResumeDrawdownNote": "Günlük düşüş sayacı gece yarısı otomatik sıfırlanır",
+      "positionValueRatio": "Pozisyon Değer Oranı",
+      "positionValueRatioDesc": "Maks nominal = bütçe × değer",
+      "altcoin": "Altcoin"
     },
     "research": {
       "title": "AI Research Team",

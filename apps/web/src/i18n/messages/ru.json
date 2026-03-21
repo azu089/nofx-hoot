@@ -1854,7 +1854,10 @@
       "promptDefaultDecision": "1. Определить структуру рынка 2. Найти совпадение сигналов 3. Оценить соотношение риск/доходность 4. Определить размер позиции и стоп-лосс",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "Дневной счётчик просадки автоматически сбрасывается в полночь"
+      "soloResumeDrawdownNote": "Дневной счётчик просадки автоматически сбрасывается в полночь",
+      "positionValueRatio": "Коэфф. стоимости",
+      "positionValueRatioDesc": "Макс. номинал = бюджет × значение",
+      "altcoin": "Альткоин"
     },
     "research": {
       "title": "AI Research Team",

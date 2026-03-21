@@ -1839,7 +1839,10 @@
       "promptDefaultRole": "You are a professional crypto perpetual futures trader, aiming for consistent profits through precise analysis.",
       "promptDefaultFrequency": "Strictly control trading frequency. Only open positions when high-probability opportunities arise.",
       "promptDefaultEntry": "Opening requires at least 2 independent signal confirmations. Trend + momentum + key price support.",
-      "promptDefaultDecision": "1. Judge market structure and trend 2. Find entry signal confluence 3. Evaluate risk-reward 4. Determine position size and stop loss"
+      "promptDefaultDecision": "1. Judge market structure and trend 2. Find entry signal confluence 3. Evaluate risk-reward 4. Determine position size and stop loss",
+      "positionValueRatio": "Position Value Ratio",
+      "positionValueRatioDesc": "Max notional = budget × this value",
+      "altcoin": "Altcoin"
     },
     "research": {
       "title": "AI Research Team",

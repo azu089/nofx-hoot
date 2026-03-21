@@ -1863,7 +1863,10 @@
       "gridResumeRiskRemain": "风控规则保持不变，如再次触发仍会暂停",
       "gridResuming": "恢复中...",
       "gridConfirmResume": "确认恢复",
-      "soloResumeDrawdownNote": "日内回撤计数将在次日零点自动重置"
+      "soloResumeDrawdownNote": "日内回撤计数将在次日零点自动重置",
+      "positionValueRatio": "仓位价值比例",
+      "positionValueRatioDesc": "名义仓位上限 = 预算 × 此值",
+      "altcoin": "山寨币"
     },
     "research": {
       "title": "AI 研究团队",

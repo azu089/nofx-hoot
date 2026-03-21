@@ -1271,8 +1271,9 @@ export function UnifiedAiCreate() {
                     <p className="text-[10px] text-[#606070] mb-1">BTC/ETH</p>
                     <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <input type="number" min={0.5} max={10} step={0.5}
-                        value={customParams.btcEthMaxPositionValueRatio || ''}
-                        onChange={(e) => setCustomParams((p) => ({ ...p, btcEthMaxPositionValueRatio: parseFloat(e.target.value) || 5 }))}
+                        value={customParams.btcEthMaxPositionValueRatio ?? ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, btcEthMaxPositionValueRatio: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
+                        onBlur={(e) => { if (!e.target.value) setCustomParams((p) => ({ ...p, btcEthMaxPositionValueRatio: 5 })); }}
                         className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                       />
                       <span className="text-[#606070] text-xs">x</span>
@@ -1282,8 +1283,9 @@ export function UnifiedAiCreate() {
                     <p className="text-[10px] text-[#606070] mb-1">{t('detail.altcoin')}</p>
                     <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                       <input type="number" min={0.5} max={10} step={0.5}
-                        value={customParams.altcoinMaxPositionValueRatio || ''}
-                        onChange={(e) => setCustomParams((p) => ({ ...p, altcoinMaxPositionValueRatio: parseFloat(e.target.value) || 1 }))}
+                        value={customParams.altcoinMaxPositionValueRatio ?? ''}
+                        onChange={(e) => setCustomParams((p) => ({ ...p, altcoinMaxPositionValueRatio: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
+                        onBlur={(e) => { if (!e.target.value) setCustomParams((p) => ({ ...p, altcoinMaxPositionValueRatio: 1 })); }}
                         className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                       />
                       <span className="text-[#606070] text-xs">x</span>

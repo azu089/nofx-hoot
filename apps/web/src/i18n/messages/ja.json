@@ -1854,7 +1854,10 @@
       "promptDefaultDecision": "1. 市場構造とトレンドを判断 2. エントリーシグナルの共鳴を探す 3. リスク/リワード比を評価 4. ポジションサイズとストップロスを決定",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "日次ドローダウンカウンターは翌日深夜0時に自動リセットされます"
+      "soloResumeDrawdownNote": "日次ドローダウンカウンターは翌日深夜0時に自動リセットされます",
+      "positionValueRatio": "ポジション価値比率",
+      "positionValueRatioDesc": "最大名目額 = 予算 × この値",
+      "altcoin": "アルトコイン"
     },
     "research": {
       "title": "AIリサーチチーム",

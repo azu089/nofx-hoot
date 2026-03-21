@@ -1854,7 +1854,10 @@
       "promptDefaultDecision": "1. 시장 구조와 추세 판단 2. 진입 신호 공명 탐색 3. 위험/보상 비율 평가 4. 포지션 규모와 손절 설정",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "일일 드로우다운 카운터는 다음 날 자정에 자동 재설정됩니다"
+      "soloResumeDrawdownNote": "일일 드로우다운 카운터는 다음 날 자정에 자동 재설정됩니다",
+      "positionValueRatio": "포지션 가치 비율",
+      "positionValueRatioDesc": "최대 명목 = 예산 × 이 값",
+      "altcoin": "알트코인"
     },
     "research": {
       "title": "AI 리서치 팀",

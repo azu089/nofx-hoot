@@ -1854,7 +1854,10 @@
       "promptDefaultDecision": "1. Evaluasi struktur pasar 2. Cari konfluensi sinyal 3. Evaluasi rasio risiko/reward 4. Tentukan ukuran posisi dan stop loss",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "Penghitung drawdown harian akan otomatis direset pada tengah malam"
+      "soloResumeDrawdownNote": "Penghitung drawdown harian akan otomatis direset pada tengah malam",
+      "positionValueRatio": "Rasio Nilai Posisi",
+      "positionValueRatioDesc": "Maks nominal = anggaran × nilai",
+      "altcoin": "Altcoin"
     },
     "research": {
       "title": "AI Research Team",

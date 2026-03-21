@@ -1855,7 +1855,10 @@
       "promptDefaultDecision": "1. Đánh giá cấu trúc thị trường 2. Tìm điểm hội tụ tín hiệu 3. Đánh giá tỷ lệ rủi ro/lợi nhuận 4. Xác định kích thước vị thế và cắt lỗ",
       "gridMode": "Grid Mode",
       "researchMode": "Research Mode",
-      "soloResumeDrawdownNote": "Bộ đếm drawdown hằng ngày sẽ tự động đặt lại vào nửa đêm"
+      "soloResumeDrawdownNote": "Bộ đếm drawdown hằng ngày sẽ tự động đặt lại vào nửa đêm",
+      "positionValueRatio": "Tỷ lệ giá trị vị thế",
+      "positionValueRatioDesc": "Danh nghĩa tối đa = ngân sách × giá trị",
+      "altcoin": "Altcoin"
     },
     "research": {
       "title": "AI Research Team",

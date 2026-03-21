@@ -1767,7 +1767,9 @@ export class AutoTraderService {
               reasoning: decision.reasoning,
               maxTradeAmountUSD: riskControl.maxTradeAmountUSD,
               allocatedCapital: riskControl.allocatedCapital,
-              currentPrice: freshPrice,  // R3 已刷新的价格，避免执行层重复 getMarketPrice
+              currentPrice: freshPrice,
+              btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
+              altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
             },
             'ai_strategy',
             strategyId,

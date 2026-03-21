@@ -29,6 +29,8 @@ export interface AiDecision {
   allocatedCapital?: number; // AI 资金池上限（USDT），百分比计算基于此值而非交易所全部余额
   maxPositionPct?: number;   // R4: 百分比判定阈值（默认 20），来自策略 riskControlConfig.maxPositionPct
   currentPrice?: number;     // 可选：R3 已获取的最新价格，避免 executeDecision 内重复 getMarketPrice 调用
+  btcEthMaxPositionValueRatio?: number;   // 策略级 BTC/ETH 仓位价值比例（默认 5.0）
+  altcoinMaxPositionValueRatio?: number;  // 策略级山寨币仓位价值比例（默认 1.0）
 }
 
 /**
@@ -300,9 +302,11 @@ export class AiExecutionService {
       positionSizeUSD = maxTradeAmountUSD;
     }
 
-    // 4. 仓位价值比约束
+    // 4. 仓位价值比约束（使用策略配置的 ratio，回退到全局默认值）
     const cappedSize = this.enforcePositionValueRatio(
       positionSizeUSD, availableBalance, symbol,
+      decision.btcEthMaxPositionValueRatio,
+      decision.altcoinMaxPositionValueRatio,
     );
 
     // 5. 余额适配（防止下单超出可用资金）
@@ -883,10 +887,12 @@ export class AiExecutionService {
     positionSizeUSD: number,
     equity: number,
     symbol: string,
+    btcEthRatio?: number,
+    altcoinRatio?: number,
   ): number {
     const ratio = this.isBTCETH(symbol)
-      ? AI_SAFETY_DEFAULTS.btcEthMaxRatio
-      : AI_SAFETY_DEFAULTS.altMaxRatio;
+      ? (btcEthRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
+      : (altcoinRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
     const maxValue = equity * ratio;
 
     if (positionSizeUSD > maxValue) {
