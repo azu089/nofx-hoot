@@ -42,6 +42,8 @@ export interface PromptConfig {
     minRiskRewardRatio?: number;     // 最低风险收益比（AI GUIDED）
     minConfidence?: number;          // 最低信心度（AI GUIDED）
     minPositionSize?: number;        // 最小仓位（CODE ENFORCED）
+    btcEthMaxPositionValueRatio?: number;   // BTC/ETH 仓位价值比例（CODE ENFORCED）
+    altcoinMaxPositionValueRatio?: number;  // 山寨币仓位价值比例（CODE ENFORCED）
     maxDailyDrawdown?: number;
     allocatedCapital?: number;
     maxDailyTrades?: number;   // 每日最大交易次数（L5 强制）
@@ -412,8 +414,8 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
     const altLev = rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5;
     const maxPos = rc.maxPositions ?? 3;
     const equity = rc.allocatedCapital ?? 1000;
-    const btcEthPVR = 5.0;   // BTC/ETH position value ratio
-    const altPVR = 1.0;      // Altcoin position value ratio
+    const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
+    const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
     const minConf = rc.minConfidence ?? 60;
     const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
@@ -442,16 +444,18 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
 
 ## 仓位计算指南（对齐 nofx）
-positionSizePercent = 名义仓位占预算的百分比（不是保证金百分比）
-- 名义仓位 = 预算 × positionSizePercent%
+positionSizePercent = 仓位上限的百分比
+- BTC/ETH 仓位上限 = $${(equity * btcEthPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${btcEthPVR}x）
+- 山寨币仓位上限 = $${(equity * altPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${altPVR}x）
+- 名义仓位 = 仓位上限 × positionSizePercent%
 - 保证金 = 名义仓位 / 杠杆（交易所自动计算）
-- 仓位上限: BTC/ETH 最大 $${(equity * btcEthPVR).toFixed(0)}，山寨币最大 $${(equity * altPVR).toFixed(0)}
 
 根据置信度选择 positionSizePercent：
 - **高置信度 (≥85)**: 80-100%
 - **中置信度 (70-84)**: 50-80%
 - **低置信度 (60-69)**: 30-50%
-- 示例: 预算$${equity.toFixed(0)}，positionSizePercent=60 → 名义=$${(equity * 0.6).toFixed(0)} → 3x杠杆时保证金=$${(equity * 0.6 / 3).toFixed(0)}
+- 示例(山寨币): 上限$${(equity * altPVR).toFixed(0)}，pct=60 → 名义=$${(equity * altPVR * 0.6).toFixed(0)} → 3x杠杆保证金=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
+- 示例(BTC): 上限$${(equity * btcEthPVR).toFixed(0)}，pct=80 → 名义=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x杠杆保证金=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
 - 杠杆由你自主选择（不超过上限），杠杆越高保证金越小但爆仓距离越近
 
 ## AI 建议（推荐遵循，非硬性强制）
@@ -487,13 +491,17 @@ positionSizePercent = 名义仓位占预算的百分比（不是保证金百分�
 ${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss and take_profit
 
 ## Position Sizing Guide (aligned with nofx)
-Calculate positionSizePercent based on your confidence and Position Value Limits:
-- **High confidence (≥85)**: Use 80-100% of position value limit
-- **Medium confidence (70-84)**: positionSizePercent = 50-80
-- **Low confidence (60-69)**: positionSizePercent = 30-50
-- positionSizePercent = notional position as % of budget (NOT margin %)
-- Notional = budget × positionSizePercent%. Margin = notional / leverage (exchange auto-calculates)
-- Example: budget=$${equity.toFixed(0)}, positionSizePercent=60 → notional=$${(equity * 0.6).toFixed(0)} → at 3x leverage, margin=$${(equity * 0.6 / 3).toFixed(0)}
+positionSizePercent = percentage of Position Value Limit
+- BTC/ETH limit = $${(equity * btcEthPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${btcEthPVR}x)
+- Altcoin limit = $${(equity * altPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${altPVR}x)
+- Notional = limit × positionSizePercent%. Margin = notional / leverage (exchange auto-calculates)
+
+Confidence → positionSizePercent:
+- **High (≥85)**: 80-100%
+- **Medium (70-84)**: 50-80%
+- **Low (60-69)**: 30-50%
+- Example (altcoin): limit=$${(equity * altPVR).toFixed(0)}, pct=60 → notional=$${(equity * altPVR * 0.6).toFixed(0)} → 3x margin=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
+- Example (BTC): limit=$${(equity * btcEthPVR).toFixed(0)}, pct=80 → notional=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x margin=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
 - Leverage is YOUR choice (up to the max), higher leverage = less margin but closer liquidation
 
 ## AI Guidance (recommended, not hard-enforced)
