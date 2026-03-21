@@ -1145,6 +1145,15 @@ export class StrategyEngineService implements OnModuleInit {
             },
           });
           closed++;
+
+          // 持仓消失（TP/SL 触发或交易所手动平仓）→ 清理残留条件单（对齐 nofx CancelAllOrders）
+          try {
+            await adapter.cancelStopOrders(dp.symbol);
+            this.logger.log(`[持仓同步] 已清理 ${dp.symbol} 残留 SL/TP 条件单`);
+          } catch (e: any) {
+            this.logger.warn(`[持仓同步] 清理条件单失败(非致命): ${e.message}`);
+          }
+
           this.logger.log(
             `[持仓同步] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
             (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),

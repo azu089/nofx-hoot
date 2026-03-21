@@ -1593,6 +1593,13 @@ export class GridTradingService {
           }
         }
 
+        // 硬止损平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
+        try {
+          await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+        } catch (e: any) {
+          this.logger.warn(`[网格] 硬止损后清理条件单失败(非致命): ${e.message}`);
+        }
+
         // 构建 postSyncDisplay（从交易所数据，不读内存）
         // 用于 autoAdjustGrid 倾斜检测 + 层级摘要日志
         const postSyncDisplay = this.buildDisplayFromExchange(state, postSyncExchangeOrders, postSyncExchangePositions);
@@ -2836,6 +2843,12 @@ export class GridTradingService {
               this.logger.warn(`[网格] 取消孤儿卖单失败: level=${orphanSell.index}, ${e.message}`);
             }
           }
+          // 平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
+          try {
+            await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+          } catch (e: any) {
+            this.logger.warn(`[网格] close_long 后清理条件单失败: ${e.message}`);
+          }
         }
         return { executed: true };
       }
@@ -2891,6 +2904,12 @@ export class GridTradingService {
           targetLevel.orderId = undefined;
           this.logger.log(`[网格] close_short 平仓: level=${targetLevel.index}, ccxtPrice=${_cp2.toFixed(4)}, profit=${netProfit >= 0 ? '+' : ''}${netProfitD2.toFixed(8)} USDT${exchangePnl2 != null ? ' (exchange)' : ' (calc)'}`);
           // 历史持仓记录由 ClosedPnlSyncService 从交易所聚合记录统一写入，不再逐笔写入
+          // 平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
+          try {
+            await (adapter as GridExchangeAdapter).cancelStopOrders(state.symbol);
+          } catch (e: any) {
+            this.logger.warn(`[网格] close_short 后清理条件单失败: ${e.message}`);
+          }
         } else {
           this.logger.warn(`[网格] close_short 孤儿空头平仓: qty=${qty}, 无对应 grid level`);
         }
@@ -3352,6 +3371,12 @@ export class GridTradingService {
           this.logger.warn(`[网格] 方向性平仓失败: ${e.message}`);
         }
       }
+      // 方向性平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
+      try {
+        await adapter.cancelStopOrders(state.symbol);
+      } catch (e: any) {
+        this.logger.warn(`[网格] 方向性平仓后清理条件单失败: ${e.message}`);
+      }
     } catch (e: any) {
       this.logger.error(`[网格] 方向性平仓执行失败: ${e.message}`);
     } finally {
@@ -3405,6 +3430,13 @@ export class GridTradingService {
         } catch (e: any) {
           this.logger.warn(`[网格] 平仓失败: ${pos.symbol} ${pos.side} - ${e.message}`);
         }
+      }
+
+      // 紧急平仓后二次清理（防止 cancel→close 窗口期产生新条件单）
+      try {
+        await adapter.cancelAllOrders(state.symbol);
+      } catch (e: any) {
+        this.logger.warn(`[网格] 紧急平仓后二次清理失败: ${e.message}`);
       }
 
       this.logger.log(
