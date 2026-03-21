@@ -1592,7 +1592,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Kepercayaan",
-      "minPositionSize": "Min Ukuran Posisi"
+      "minPositionSize": "Min Ukuran Posisi",
+      "positionValueRatio": "Rasio Nilai Posisi",
+      "positionValueRatioDesc": "Maks nominal = anggaran × nilai ini",
+      "altcoin": "Altcoin"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",

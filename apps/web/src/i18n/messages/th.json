@@ -1592,7 +1592,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "ความเชื่อมั่นขั้นต่ำ",
-      "minPositionSize": "ขนาดตำแหน่งขั้นต่ำ"
+      "minPositionSize": "ขนาดตำแหน่งขั้นต่ำ",
+      "positionValueRatio": "อัตราส่วนมูลค่าตำแหน่ง",
+      "positionValueRatioDesc": "มูลค่าสูงสุด = งบ × ค่านี้",
+      "altcoin": "อัลท์คอยน์"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",

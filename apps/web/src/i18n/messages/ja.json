@@ -1592,7 +1592,10 @@
       "nameConsensus": "コンセンサス",
       "nameSolo": "ソロ",
       "minConfidence": "最低信頼度",
-      "minPositionSize": "最小ポジションサイズ"
+      "minPositionSize": "最小ポジションサイズ",
+      "positionValueRatio": "ポジション価値比率",
+      "positionValueRatioDesc": "最大名目 = 予算 × この値",
+      "altcoin": "アルトコイン"
     },
     "detail": {
       "strategyNotFound": "戦略が見つかりません",

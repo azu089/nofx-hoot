@@ -1593,7 +1593,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Độ tin cậy tối thiểu",
-      "minPositionSize": "Kích thước vị thế tối thiểu"
+      "minPositionSize": "Kích thước vị thế tối thiểu",
+      "positionValueRatio": "Tỷ lệ giá trị vị thế",
+      "positionValueRatioDesc": "Danh nghĩa tối đa = ngân sách × giá trị này",
+      "altcoin": "Altcoin"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",

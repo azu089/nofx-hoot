@@ -1592,7 +1592,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Güven",
-      "minPositionSize": "Min Pozisyon Boyutu"
+      "minPositionSize": "Min Pozisyon Boyutu",
+      "positionValueRatio": "Pozisyon Değer Oranı",
+      "positionValueRatioDesc": "Maks nominal = bütçe × bu değer",
+      "altcoin": "Altcoin"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",

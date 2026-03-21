@@ -1592,7 +1592,10 @@
       "nameConsensus": "컨센서스",
       "nameSolo": "솔로",
       "minConfidence": "최소 신뢰도",
-      "minPositionSize": "최소 포지션 크기"
+      "minPositionSize": "최소 포지션 크기",
+      "positionValueRatio": "포지션 가치 비율",
+      "positionValueRatioDesc": "최대 명목 = 예산 × 이 값",
+      "altcoin": "알트코인"
     },
     "detail": {
       "strategyNotFound": "전략을 찾을 수 없습니다",

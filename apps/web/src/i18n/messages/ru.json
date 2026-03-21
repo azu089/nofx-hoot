@@ -1592,7 +1592,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Мин. уверенность",
-      "minPositionSize": "Мин. размер позиции"
+      "minPositionSize": "Мин. размер позиции",
+      "positionValueRatio": "Коэфф. стоимости позиции",
+      "positionValueRatioDesc": "Макс. номинал = бюджет × значение",
+      "altcoin": "Альткоин"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",

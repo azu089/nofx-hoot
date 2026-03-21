@@ -1594,7 +1594,10 @@
       "nameConsensus": "共識",
       "nameSolo": "極速",
       "minConfidence": "最低置信度",
-      "minPositionSize": "最小持倉"
+      "minPositionSize": "最小持倉",
+      "positionValueRatio": "倉位價值比例",
+      "positionValueRatioDesc": "名義倉位上限 = 預算 × 此值",
+      "altcoin": "山寨幣"
     },
     "detail": {
       "strategyNotFound": "策略不存在",

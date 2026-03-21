@@ -1573,7 +1573,10 @@
       "nameConsensus": "إجماع",
       "nameSolo": "فردي",
       "minConfidence": "الحد الأدنى للثقة",
-      "minPositionSize": "الحد الأدنى لحجم المركز"
+      "minPositionSize": "الحد الأدنى لحجم المركز",
+      "positionValueRatio": "نسبة قيمة المركز",
+      "positionValueRatioDesc": "الحد الأقصى = الميزانية × هذه القيمة",
+      "altcoin": "عملة بديلة"
     },
     "detail": {
       "strategyNotFound": "الاستراتيجية غير موجودة",

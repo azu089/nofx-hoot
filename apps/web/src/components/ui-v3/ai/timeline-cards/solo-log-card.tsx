@@ -636,179 +636,127 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         );
       })()}
 
-      {/* === 普通 Solo: 决策卡片（统一展示所有参数） === */}
+      {/* === 普通 Solo: 极简决策卡片 === */}
       {!isGridLog && !isAutoDisabled && !(isGridEntry && !isGridLog) && (
-        <div className="space-y-2">
-          {/* === 开仓/平仓决策 === */}
-          {(action === 'open_long' || action === 'open_short'
-            || action === 'close_long' || action === 'close_short') && (
-            <div className="space-y-3">
-              {/* 行1: 动作标签 + 置信度 */}
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-1 rounded-md text-xs font-semibold"
-                  style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
+        <div className="space-y-1.5">
+          {/* 行1: 动作 + 参数流 + 置信度 */}
+          {(action === 'open_long' || action === 'open_short') && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                   {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
                 </span>
-                {d.confidence != null && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#606070]">{t('research.confidence')}</span>
-                    <div className="w-16 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{
-                        width: `${Math.min(100, d.confidence)}%`,
-                        backgroundColor: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                      }} />
-                    </div>
-                    <span className="text-xs font-mono font-semibold" style={{
-                      color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                    }}>{d.confidence}%</span>
-                  </div>
-                )}
-              </div>
-
-              {/* 行2: 开仓参数 — 2列×2行网格 */}
-              {(action === 'open_long' || action === 'open_short') && (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'research.position', '仓位')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.positionSizePercent ?? '-'}%</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
-                </div>
-              )}
-
-              {/* 行2b: 平仓参数 — 含杠杆，2列×2行 */}
-              {(action === 'close_long' || action === 'close_short') && (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  <p><span className="text-[#606070]">{t('research.leverage')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{d.leverage ?? '-'}x</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.entryPrice', '入场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.exitPrice', '出场价')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span></p>
-                  <p><span className="text-[#606070]">{tSafe(t as TFunc, 'timeline.quantity', '数量')}: </span><span className="font-mono text-[#F8F8FC] font-semibold">{er?.amount ?? '-'}</span></p>
-                </div>
-              )}
-
-              {/* 行3: 止损/止盈/盈亏比 — 仅开仓，2列网格 */}
-              {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  {d.stopLoss != null && (
-                    <p className="text-[#F43F5E]">
-                      <span className="text-[10px]">{t('timeline.slLabel')}: </span>
-                      <span className="font-mono font-semibold">${Number(d.stopLoss).toLocaleString()}</span>
-                      <span className="opacity-50 ml-1 text-[10px]">{d.stopLossPct ? `(-${(d.stopLossPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.stopLoss)})` : ''}</span>
-                    </p>
-                  )}
-                  {d.takeProfit != null && (
-                    <p className="text-[#10B981]">
-                      <span className="text-[10px]">{t('timeline.tpLabel')}: </span>
-                      <span className="font-mono font-semibold">${Number(d.takeProfit).toLocaleString()}</span>
-                      <span className="opacity-50 ml-1 text-[10px]">{d.takeProfitPct ? `(+${(d.takeProfitPct * 100).toFixed(1)}%)` : entryPrice > 0 ? `(${calcPct(entryPrice, d.takeProfit)})` : ''}</span>
-                    </p>
-                  )}
-                  {rr != null && (
-                    <p className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-[#606070]">{t('timeline.rrLabel')}: </span>
-                      <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
-                      <span className="flex-1 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
-                        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (rr / 3) * 100)}%`, backgroundColor: rrColor(rr) }} />
-                      </span>
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* wait/hold 决策区块 — 简化 */}
-          {(action === 'wait' || action === 'hold') && d.confidence != null && (
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#64748B]/10 text-[#94A3B8]">
-                  {ACTION_I18N[action] ? t(ACTION_I18N[action]) : (action === 'hold' ? '持仓' : '观望')}
+                <span className="text-[#9090A0] font-mono">
+                  {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                  {d.positionSizePercent && <>{d.positionSizePercent}%<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                  {er?.price && <><span className="text-[#F8F8FC]">${Number(er.price).toFixed(2)}</span></>}
+                  {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#606070]">{t('research.confidence')}</span>
-                  <div className="w-16 h-1.5 bg-[#1E1E2E] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, d.confidence)}%`,
-                        backgroundColor: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono" style={{
-                    color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
-                  }}>{d.confidence}%</span>
-                </div>
               </div>
+              {d.confidence != null && (
+                <span className="font-mono font-semibold flex-shrink-0 ml-2" style={{
+                  color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                }}>{d.confidence}%</span>
+              )}
             </div>
           )}
 
-          {/* Solo 市场数据快照（对齐 Grid 的 gridSnapshot） */}
-          {d.marketSnapshot && (
-            <div className="space-y-1 text-[11px]">
-              <div className="grid grid-cols-2 gap-x-4">
-                <div className="flex justify-between">
-                  <span className="text-[#606070]">价格</span>
-                  <span className="font-mono text-[#F8F8FC]">${d.marketSnapshot.price?.toFixed(2)}</span>
-                </div>
-                {d.marketSnapshot.rsi14 != null && (
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">RSI(14)</span>
-                    <span className={`font-mono ${d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}`}>
-                      {d.marketSnapshot.rsi14.toFixed(1)}
-                    </span>
-                  </div>
-                )}
+          {/* 平仓: 动作 + 杠杆 · 入场→出场 × 数量 + 置信度 */}
+          {(action === 'close_long' || action === 'close_short') && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2 py-0.5 rounded-md font-semibold" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
+                  {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
+                </span>
+                <span className="text-[#9090A0] font-mono">
+                  {d.leverage && <>{d.leverage}x<span className="text-[#3A3A4A] mx-0.5">·</span></>}
+                  <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span>
+                  <span className="text-[#606070] mx-1">→</span>
+                  <span className="text-[#F8F8FC]">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span>
+                  {er?.amount && <><span className="text-[#3A3A4A] mx-0.5">×</span><span className="text-[#F8F8FC]">{er.amount}</span></>}
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4">
+              {d.confidence != null && (
+                <span className="font-mono font-semibold flex-shrink-0 ml-2" style={{
+                  color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                }}>{d.confidence}%</span>
+              )}
+            </div>
+          )}
+
+          {/* 观望/持仓 */}
+          {(action === 'wait' || action === 'hold') && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="px-2 py-0.5 rounded-md font-semibold bg-[#64748B]/10 text-[#94A3B8]">
+                {ACTION_I18N[action] ? t(ACTION_I18N[action]) : (action === 'hold' ? '持仓' : '观望')}
+              </span>
+              {d.confidence != null && (
+                <span className="font-mono font-semibold" style={{
+                  color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
+                }}>{d.confidence}%</span>
+              )}
+            </div>
+          )}
+
+          {/* 行2: ↓止损 ↑止盈 盈亏比 — 仅开仓，纯数字一行 */}
+          {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
+            <div className="flex items-center gap-3 text-[11px] flex-wrap">
+              {d.stopLoss != null && (
+                <span className="text-[#F43F5E] font-mono">
+                  ↓${Number(d.stopLoss).toLocaleString()}
+                  <span className="opacity-50 ml-0.5 text-[10px]">({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})</span>
+                </span>
+              )}
+              {d.takeProfit != null && (
+                <span className="text-[#10B981] font-mono">
+                  ↑${Number(d.takeProfit).toLocaleString()}
+                  <span className="opacity-50 ml-0.5 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span>
+                </span>
+              )}
+              {rr != null && (
+                <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>
+                  1:{rr.toFixed(1)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* 行3: 市场数据一行流 */}
+          {d.marketSnapshot && (
+            <div className="space-y-0.5 text-[11px]">
+              <div className="flex items-center gap-3 flex-wrap text-[#9090A0] font-mono">
+                {d.marketSnapshot.price != null && (
+                  <span className="text-[#F8F8FC]">${d.marketSnapshot.price.toFixed(2)}</span>
+                )}
+                {d.marketSnapshot.rsi14 != null && (
+                  <span>RSI <span className={d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}>{d.marketSnapshot.rsi14.toFixed(1)}</span></span>
+                )}
                 {d.marketSnapshot.fundingRate != null && (
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">资金费率</span>
-                    <span className={`font-mono ${d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}`}>
-                      {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%
-                    </span>
-                  </div>
+                  <span>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></span>
                 )}
                 {d.marketSnapshot.longPct != null && (
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">多空比</span>
-                    <span className="font-mono text-[#F8F8FC]">
-                      {d.marketSnapshot.longPct.toFixed(0)}%多/{(100 - d.marketSnapshot.longPct).toFixed(0)}%空
-                    </span>
-                  </div>
+                  <span>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</span>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-x-4">
-                {d.marketSnapshot.oiChange != null && (
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">OI变化</span>
-                    <span className="font-mono text-[#F8F8FC]">
-                      {d.marketSnapshot.oiChange} {d.marketSnapshot.oiQuadrant && <span className="text-[#9090A0]">({d.marketSnapshot.oiQuadrant})</span>}
+              {d.marketSnapshot.oiChange != null && (
+                <p className="text-[#9090A0] font-mono">
+                  OI {d.marketSnapshot.oiChange}
+                  {d.marketSnapshot.oiQuadrant && <span className="text-[#606070] ml-1">({d.marketSnapshot.oiQuadrant})</span>}
+                </p>
+              )}
+              {d.marketSnapshot.dataSources && (
+                <div className="flex gap-1 flex-wrap">
+                  {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
+                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
                     </span>
-                  </div>
-                )}
-                {d.marketSnapshot.institutionFlow != null && (
-                  <div className="flex justify-between">
-                    <span className="text-[#606070]">机构资金</span>
-                    <span className={`font-mono ${d.marketSnapshot.institutionFlow >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                      {d.marketSnapshot.institutionFlow >= 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(2)}M
-                    </span>
-                  </div>
-                )}
-              </div>
-              {/* 数据源状态 */}
-              <div className="flex gap-1.5 flex-wrap pt-0.5">
-                <span className="text-[10px] text-[#505060]">数据源:</span>
-                {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
-                  <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}
-                    {v ? '✓' : '✗'}
-                  </span>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* AI 分析 — 一段统一的市场分析+决策理由（对齐 Grid 设计） */}
+          {/* AI 分析 */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}

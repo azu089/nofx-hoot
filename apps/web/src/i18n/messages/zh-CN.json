@@ -1590,7 +1590,10 @@
       "nameConsensus": "共识",
       "nameSolo": "极速",
       "minConfidence": "最低置信度",
-      "minPositionSize": "最小持仓"
+      "minPositionSize": "最小持仓",
+      "positionValueRatio": "仓位价值比例",
+      "positionValueRatioDesc": "名义仓位上限 = 预算 × 此值",
+      "altcoin": "山寨币"
     },
     "detail": {
       "strategyNotFound": "策略不存在",

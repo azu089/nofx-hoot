@@ -1577,7 +1577,10 @@
       "nameConsensus": "Consensus",
       "nameSolo": "Solo",
       "minConfidence": "Min Confidence",
-      "minPositionSize": "Min Position Size"
+      "minPositionSize": "Min Position Size",
+      "positionValueRatio": "Position Value Ratio",
+      "positionValueRatioDesc": "Max notional = budget × this value",
+      "altcoin": "Altcoin"
     },
     "detail": {
       "strategyNotFound": "Strategy not found",
