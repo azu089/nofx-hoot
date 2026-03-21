@@ -686,52 +686,33 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* 行2: ↓止损 ↑止盈 盈亏比 — 仅开仓，纯数字一行 */}
+          {/* 行2: 止损/止盈/盈亏比 — 3列网格 */}
           {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-            <div className="flex items-center justify-between text-[11px]">
-              {d.stopLoss != null && (
-                <span className="text-[#F43F5E] font-mono">
-                  ↓${Number(d.stopLoss).toLocaleString()}
-                  <span className="opacity-50 ml-0.5 text-[10px]">({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})</span>
-                </span>
-              )}
-              {d.takeProfit != null && (
-                <span className="text-[#10B981] font-mono">
-                  ↑${Number(d.takeProfit).toLocaleString()}
-                  <span className="opacity-50 ml-0.5 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span>
-                </span>
-              )}
-              {rr != null && (
-                <span className="font-mono font-semibold" style={{ color: rrColor(rr) }}>
-                  1:{rr.toFixed(1)}
-                </span>
-              )}
+            <div className="grid grid-cols-3 text-[11px] font-mono">
+              <span className="text-[#F43F5E]">
+                {d.stopLoss != null && <>↓${Number(d.stopLoss).toLocaleString()} <span className="opacity-50 text-[10px]">({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})</span></>}
+              </span>
+              <span className="text-[#10B981]">
+                {d.takeProfit != null && <>↑${Number(d.takeProfit).toLocaleString()} <span className="opacity-50 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span></>}
+              </span>
+              <span className="font-semibold" style={{ color: rr != null ? rrColor(rr) : '#606070' }}>
+                {rr != null && <>1:{rr.toFixed(1)}</>}
+              </span>
             </div>
           )}
 
-          {/* 行3: 市场数据一行流 */}
+          {/* 行3: 市场数据 — 3列网格 */}
           {d.marketSnapshot && (
-            <div className="space-y-0.5 text-[11px]">
-              <div className="flex items-center justify-between text-[#9090A0] font-mono">
-                {d.marketSnapshot.price != null && (
-                  <span className="text-[#F8F8FC]">${d.marketSnapshot.price.toFixed(2)}</span>
-                )}
-                {d.marketSnapshot.rsi14 != null && (
-                  <span>RSI <span className={d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}>{d.marketSnapshot.rsi14.toFixed(1)}</span></span>
-                )}
-                {d.marketSnapshot.fundingRate != null && (
-                  <span>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></span>
-                )}
-                {d.marketSnapshot.longPct != null && (
-                  <span>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</span>
-                )}
+            <div className="text-[11px] font-mono space-y-0.5">
+              <div className="grid grid-cols-3">
+                <span className="text-[#F8F8FC]">{d.marketSnapshot.price != null && `$${d.marketSnapshot.price.toFixed(2)}`}</span>
+                <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI <span className={d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}>{d.marketSnapshot.rsi14.toFixed(1)}</span></>}</span>
+                <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></>}</span>
               </div>
-              {d.marketSnapshot.oiChange != null && (
-                <p className="text-[#9090A0] font-mono">
-                  OI {d.marketSnapshot.oiChange}
-                  {d.marketSnapshot.oiQuadrant && <span className="text-[#606070] ml-1">({d.marketSnapshot.oiQuadrant})</span>}
-                </p>
-              )}
+              <div className="grid grid-cols-3 text-[#9090A0]">
+                <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
+                <span className="col-span-2">{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070] ml-1">({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
+              </div>
               {d.marketSnapshot.dataSources && (
                 <div className="flex gap-1 flex-wrap">
                   {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
