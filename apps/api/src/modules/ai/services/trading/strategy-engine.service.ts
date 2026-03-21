@@ -208,6 +208,18 @@ export class StrategyEngineService implements OnModuleInit {
       data: updateData,
     });
 
+    // 如果间隔变更且策略正在运行，重新注册定时任务（防止旧间隔的 BullMQ job 残留）
+    if (updateData.intervalMinutes !== undefined && updated.isActive) {
+      const newIntervalMs = (updateData.intervalMinutes as number) * 60 * 1000;
+      try {
+        await this.removeStrategyJob(strategyId);
+        await this.addStrategyJob(strategyId, userId, newIntervalMs, false);
+        this.logger.log(`[策略] 间隔变更: ${strategyId} → ${updateData.intervalMinutes}分钟，已重新注册定时任务`);
+      } catch (e: any) {
+        this.logger.warn(`[策略] 重新注册定时任务失败: ${e.message}`);
+      }
+    }
+
     this.logger.log(`[策略] 更新: ${strategyId}`);
     return this.sanitizeStrategyResponse(updated);
   }
@@ -829,10 +841,10 @@ export class StrategyEngineService implements OnModuleInit {
         }
       }
 
-      // 方案 2: 验证清理结果（只清理当前策略的残留 job，不影响其他策略）
+      // 方案 2: 遍历所有 repeatable jobs，按 name + id 精确匹配清理（不依赖白名单）
       const remaining = await this.autoQueue.getRepeatableJobs();
       const leftover = remaining.filter(
-        (j) => j.name === 'strategy-cycle' && j.key.includes(jobId),
+        (j) => j.name === 'strategy-cycle' && (j.id === jobId || j.key.includes(jobId)),
       );
       if (leftover.length > 0) {
         this.logger.warn(`[策略] 清理后仍有 ${leftover.length} 个残留 job (${jobId})，尝试 removeRepeatableByKey`);
