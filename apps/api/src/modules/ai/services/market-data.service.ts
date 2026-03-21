@@ -1178,14 +1178,28 @@ export class MarketDataService implements OnModuleInit {
       );
       clearTimeout(timeout);
 
-      const getValue = (id: string) => results.find(r => r?.id === id)?.value || 0;
+      const getValue = (id: string): number => {
+        const v = results.find(r => r?.id === id)?.value;
+        return (v != null && !isNaN(v)) ? v : 0;
+      };
       const getDate = (id: string) => results.find(r => r?.id === id)?.date || '';
 
+      const fedRate = getValue('DFF');
+      const cpiRaw = getValue('CPIAUCSL'); // CPIAUCSL 是绝对指数（~320），非 YoY%
+      const spread = getValue('T10Y2Y');
+      const vix = getValue('VIXCLS');
+
+      // 至少有一个有效值才缓存（全部为 0 说明 API 全失败，不存）
+      if (fedRate === 0 && cpiRaw === 0 && spread === 0 && vix === 0) {
+        this.logger.warn('[宏观] FRED 所有系列返回空值，跳过');
+        return null;
+      }
+
       const result: MacroData = {
-        fedFundsRate: getValue('DFF'),
-        cpiYoY: getValue('CPIAUCSL'),
-        yieldCurveSpread: getValue('T10Y2Y'),
-        vix: getValue('VIXCLS'),
+        fedFundsRate: fedRate,
+        cpiYoY: cpiRaw > 100 ? 0 : cpiRaw, // CPIAUCSL 绝对值(>100) 不是百分比，设 0 让 prompt 跳过
+        yieldCurveSpread: spread,
+        vix,
         lastUpdated: getDate('DFF') || getDate('VIXCLS'),
         timestamp: Date.now(),
       };

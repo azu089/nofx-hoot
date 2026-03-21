@@ -240,8 +240,8 @@ export class PromptBuilderService {
     // [3] Recent Trades
     if (ctx.recentTrades && ctx.recentTrades.length > 0) {
       lines.push('');
-      lines.push('=== Recent Closed Trades (last 5) ===');
-      for (const t of ctx.recentTrades.slice(0, 5)) {
+      lines.push('=== Recent Closed Trades (last 10) ===');
+      for (const t of ctx.recentTrades.slice(0, 10)) {
         const emoji = t.pnl >= 0 ? 'WIN' : 'LOSS';
         const hold = t.holdDuration ? ` | Hold: ${t.holdDuration}` : '';
         const prices = t.entryPrice && t.exitPrice
@@ -257,9 +257,12 @@ export class PromptBuilderService {
       lines.push('');
       lines.push('=== Trading Statistics ===');
       lines.push(`Total Trades: ${s.totalTrades} | Win Rate: ${(s.winRate * 100).toFixed(1)}% | Total PnL: $${s.totalPnl.toFixed(2)}`);
-      if (s.profitFactor !== undefined) lines.push(`Profit Factor: ${s.profitFactor} | Avg Win: $${s.avgWin?.toFixed(2) ?? 'N/A'} | Avg Loss: $${s.avgLoss?.toFixed(2) ?? 'N/A'}`);
+      if (s.profitFactor !== undefined) {
+        const wlRatio = (s.avgWin && s.avgLoss && s.avgLoss !== 0) ? (Math.abs(s.avgWin) / Math.abs(s.avgLoss)).toFixed(2) : 'N/A';
+        lines.push(`Profit Factor: ${s.profitFactor} | Avg Win: $${s.avgWin?.toFixed(2) ?? 'N/A'} | Avg Loss: $${s.avgLoss?.toFixed(2) ?? 'N/A'} | Win/Loss Ratio: ${wlRatio}`);
+      }
       if (s.sharpeRatio !== undefined) lines.push(`Sharpe Ratio: ${s.sharpeRatio}`);
-      if (s.maxDrawdownPct !== undefined) lines.push(`历史最大回撤(峰值统计,非当前): ${s.maxDrawdownPct.toFixed(1)}%`);
+      if (s.maxDrawdownPct !== undefined) lines.push(`Max Drawdown: ${s.maxDrawdownPct.toFixed(1)}%`);
     }
 
     // [5] Current Positions
@@ -267,10 +270,13 @@ export class PromptBuilderService {
       lines.push('');
       lines.push('=== Current Positions ===');
       for (const p of ctx.positions) {
+        const qty = p.size ? ` | Qty: ${p.size}` : '';
+        const value = (p.size && p.entryPrice) ? ` | Value: $${(p.size * p.entryPrice).toFixed(2)}` : '';
+        const marginStr = p.margin ? ` | Margin: $${p.margin.toFixed(2)}` : '';
         const peak = p.peakPnlPercent !== undefined ? ` | PeakPnL: ${p.peakPnlPercent > 0 ? '+' : ''}${p.peakPnlPercent.toFixed(2)}%` : '';
         const hold = p.holdMinutes ? ` | Hold: ${p.holdMinutes}min` : '';
         const liq = p.liqPrice ? ` | LiqPrice: $${p.liqPrice.toFixed(2)}` : '';
-        lines.push(`  ${p.symbol} ${p.side.toUpperCase()} @ $${p.entryPrice.toFixed(4)} | ${p.leverage}x | PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${peak}${hold}${liq}`);
+        lines.push(`  ${p.symbol} ${p.side.toUpperCase()} @ $${p.entryPrice.toFixed(4)} | ${p.leverage}x${qty}${value}${marginStr} | PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${peak}${hold}${liq}`);
       }
     } else {
       lines.push('');

@@ -186,11 +186,18 @@ export function formatMarketDataPrompt(data: {
       }
     }
 
-    // 宏观经济
+    // 宏观经济（仅显示有效值，0 表示获取失败）
     if (enh.macroData) {
       const m = enh.macroData;
-      lines.push('', '--- Macro Context ---');
-      lines.push(`Fed Rate: ${m.fedFundsRate.toFixed(2)}% | CPI: ${m.cpiYoY.toFixed(1)}% | 10Y-2Y: ${m.yieldCurveSpread > 0 ? '+' : ''}${m.yieldCurveSpread.toFixed(2)}% | VIX: ${m.vix.toFixed(1)}`);
+      const parts: string[] = [];
+      if (m.fedFundsRate > 0) parts.push(`Fed Rate: ${m.fedFundsRate.toFixed(2)}%`);
+      if (m.cpiYoY > 0) parts.push(`CPI: ${m.cpiYoY.toFixed(1)}%`);
+      if (m.yieldCurveSpread !== 0) parts.push(`10Y-2Y: ${m.yieldCurveSpread > 0 ? '+' : ''}${m.yieldCurveSpread.toFixed(2)}%`);
+      if (m.vix > 0) parts.push(`VIX: ${m.vix.toFixed(1)}`);
+      if (parts.length > 0) {
+        lines.push('', '--- Macro Context ---');
+        lines.push(parts.join(' | '));
+      }
     }
 
     // CFTC COT
@@ -201,17 +208,8 @@ export function formatMarketDataPrompt(data: {
     }
   }
 
-  // 现有持仓
-  if (data.existingPositions && data.existingPositions.length > 0) {
-    lines.push('', '--- Existing Positions ---');
-    for (const pos of data.existingPositions) {
-      const peakPart = pos.peakPnlPercent !== undefined ? ` | PeakPnL: +${pos.peakPnlPercent.toFixed(2)}%` : '';
-      lines.push(`  ${pos.side.toUpperCase()} @ ${pos.entryPrice} | Size: ${pos.size} | PnL: ${pos.pnlPercent > 0 ? '+' : ''}${pos.pnlPercent.toFixed(2)}%${peakPart}`);
-    }
-  } else {
-    lines.push('', '--- Existing Positions ---');
-    lines.push('  No open positions');
-  }
+  // 现有持仓已在 prompt-builder.service.ts [5] Current Positions 段统一展示
+  // 此处不再重复，避免 "No open positions" 与 Current Positions 矛盾误导 AI
 
   return lines.join('\n');
 }
