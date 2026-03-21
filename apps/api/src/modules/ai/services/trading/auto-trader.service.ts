@@ -462,7 +462,7 @@ export class AutoTraderService {
           status: 'open',
           source: { in: ['ai_research', 'ai_strategy'] },
         },
-        select: { id: true, symbol: true, side: true, aiStrategyId: true },
+        select: { id: true, symbol: true, side: true, aiStrategyId: true, peakPnlPercent: true },
       });
       // 合并：以交易所实时数据为准，从 DB 补充策略归属
       const existingPositions = liveExchangePositions.map((ep: any) => {
@@ -477,7 +477,7 @@ export class AutoTraderService {
           margin: ep.margin ?? 0,
           leverage: ep.leverage ?? 1,
           unrealizedPnl: ep.unrealizedPnl ?? 0,
-          highWaterMark: null,
+          highWaterMark: dbMatch?.peakPnlPercent ? Number(dbMatch.peakPnlPercent) : null,
           aiStrategyId: dbMatch?.aiStrategyId ?? null,
           id: dbMatch?.id ?? null,
         };
@@ -865,6 +865,8 @@ export class AutoTraderService {
         priceChange1h?: number;
         indicators: { rsi: number | null; atr3: number | null; atr14: number | null };
       }> = {};
+      // 极速全局分析的完整结果（日志透明化用，保存 rawResponse/systemPrompt/userPrompt/aiThinking/marketSnapshot）
+      const quickGlobalResults = new Map<string, { rawResponse?: string; systemPrompt?: string; userPrompt?: string; aiThinking?: string; marketSnapshot?: any }>();
 
       // ═══════════════════════════════════════════════════════════════════════
       // 【共识策略 — debate 模式】
@@ -1068,9 +1070,94 @@ export class AutoTraderService {
       // ═══════════════════════════════════════════════════════════════════════
       if (strategy.tradingMode !== 'debate' && strategy.tradingMode !== 'research') {
         this.logger.log(
-          `🤖 极速策略(Solo): ${activeCandidates.length} 个候选币, 模型=${quickModel}, ` +
+          `🤖 极速策略(全局分析): ${activeCandidates.length} 个候选币, 模型=${quickModel}, ` +
           `时间框架=${timeframe}/${secondaryTimeframe}`,
         );
+
+        // 对齐 nofx: 一次 AI 调用分析所有候选币（全局优化，替代逐币循环）
+        // analyzeMultiCoin 已有完整实现：合并所有币 prompt + 单次 LLM + 解析多决策数组 + 降级兜底
+        const promptSections = strategy.promptSections as PromptSections | null;
+        const multiConfigs: QuickAnalysisConfig[] = activeCandidates.map(sym => ({
+          userId,
+          symbol: sym,
+          timeframe,
+          secondaryTimeframe,
+          modelId: quickModel,
+          apiKeys,
+          recentTrades,
+          tradingStats,
+          accountInfo,
+          lastDecisions,
+          coinSourceMode: coinSourceConfig.mode,
+          candidateSymbols: activeCandidates,
+          promptConfig: {
+            promptSections: promptSections ? {
+              role: promptSections.role,
+              mode: promptSections.mode,
+              custom: promptSections.custom,
+            } : undefined,
+            riskControl: {
+              maxPositions: riskControl.maxPositions,
+              maxLeverage: riskControl.maxLeverage,
+              btcEthMaxLeverage: riskControl.btcEthMaxLeverage,
+              altcoinMaxLeverage: riskControl.altcoinMaxLeverage,
+              minRiskRewardRatio: riskControl.minRiskRewardRatio,
+              minConfidence: riskControl.minConfidence,
+              minPositionSize: riskControl.minPositionSize,
+              maxDailyDrawdown: riskControl.maxDailyDrawdown || maxDailyDrawdown,
+              allocatedCapital: riskControl.allocatedCapital,
+              maxDailyTrades: riskControl.maxDailyTrades,
+              cooldownMinutes: riskControl.cooldownMinutes,
+              circuitBreaker: riskControl.circuitBreaker,
+            },
+            intervalMinutes: strategy.intervalMinutes || 60,
+            todayTrades: closedToday.length,
+            consecutiveWaits,
+            locale,
+          },
+        }));
+
+        try {
+          const multiResults = await this.quickAnalysis.analyzeMultiCoin(multiConfigs);
+          let multiTotalCost = 0;
+
+          // 将结果存入 debateResults Map，后续 for 循环统一处理
+          for (const [sym, analysisResult] of multiResults) {
+            multiTotalCost += analysisResult.cost;
+            debateResults.set(sym, {
+              decision: analysisResult.decision,
+              cost: analysisResult.cost,
+              consensusScore: models.length, // Solo 满分
+              consensusVotes: [],
+            });
+            // 保存市场快照供安全检查
+            debateMarketSnapshots[sym] = {
+              currentPrice: analysisResult.currentPrice ?? 0,
+              fundingRate: analysisResult.fundingRate,
+              volume24h: analysisResult.volume24h,
+              indicators: {
+                rsi: analysisResult.indicators?.rsi ?? null,
+                atr3: analysisResult.indicators?.atr3 ?? null,
+                atr14: analysisResult.indicators?.atr14 ?? null,
+              },
+            };
+            // 保存完整结果供日志透明化
+            quickGlobalResults.set(sym, {
+              rawResponse: analysisResult.rawResponse,
+              systemPrompt: analysisResult.systemPrompt,
+              userPrompt: analysisResult.userPrompt,
+              aiThinking: analysisResult.aiThinking,
+              marketSnapshot: analysisResult.marketSnapshot,
+            });
+          }
+          result.totalCost += multiTotalCost;
+          this.logger.log(
+            `🤖 全局分析完成: ${multiResults.size}/${activeCandidates.length} 个币种, 成本=$${multiTotalCost.toFixed(6)}`,
+          );
+        } catch (e: any) {
+          this.logger.error(`[极速] 全局分析失败，降级到逐币模式: ${e.message}`);
+          // 降级：不设 debateResults，后续 for 循环走 else 分支（逐币分析）
+        }
       }
 
       for (const symbol of activeCandidates) {
@@ -1125,7 +1212,8 @@ export class AutoTraderService {
           // debateResults 在上方的 if(debate) / if(research) 块中填入
           // 极速策略从未进入那两个块，所以 debateResults.has(symbol) === false
           if (debateResults.has(symbol)) {
-            // 【共识策略 or 深研策略】— 决策已在上方预处理阶段完成，此处仅取结果
+            // 【极速全局分析 or 共识策略 or 深研策略】— 决策已在上方预处理完成，此处仅取结果
+            // solo:     结果由 QuickAnalysisService.analyzeMultiCoin() 产出（全局一次 LLM）
             // debate:   结果由 ConsensusService.runMultiCoinConsensus() 产出（N模型投票）
             // research: 结果由 DebateOrchestratorService.runFullDebate() 产出（多轮辩论）
             const debateData = debateResults.get(symbol)!;
@@ -1141,6 +1229,15 @@ export class AutoTraderService {
               safetyCurrentPrice = snapshot.currentPrice;
               safetyVolume24h = snapshot.volume24h;
               safetyPriceChange1h = snapshot.priceChange1h;
+            }
+            // 极速全局分析模式：从 quickGlobalResults 取日志透明化数据
+            const qgr = quickGlobalResults.get(symbol);
+            if (qgr) {
+              _logRawResponse = qgr.rawResponse;
+              _logSystemPrompt = qgr.systemPrompt;
+              _logUserPrompt = qgr.userPrompt;
+              _logAiThinking = qgr.aiThinking;
+              _logMarketSnapshot = qgr.marketSnapshot;
             }
           } else {
             // 【极速策略】or 【共识/深研降级兜底】— 单模型实时分析
@@ -1175,6 +1272,8 @@ export class AutoTraderService {
                   minRiskRewardRatio: riskControl.minRiskRewardRatio,
                   minConfidence: riskControl.minConfidence,
                   minPositionSize: riskControl.minPositionSize,
+                  btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
+                  altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
                   maxDailyDrawdown: riskControl.maxDailyDrawdown || maxDailyDrawdown,
                   allocatedCapital: riskControl.allocatedCapital,
                   maxDailyTrades: riskControl.maxDailyTrades,
@@ -1740,6 +1839,29 @@ export class AutoTraderService {
               }
             } catch (e: any) {
               this.logger.warn(`[R4] ${symbol}: 订单簿获取失败(非致命): ${e.message}`);
+            }
+          }
+
+          // 同币种冷却期检查（对齐 nofx：防止震荡市频繁开平同一币种）
+          if (decision.action === 'open_long' || decision.action === 'open_short') {
+            const cooldownMin = riskControl.cooldownMinutes ?? 5; // 默认 5 分钟冷却
+            const recentClose = await this.prisma.position.findFirst({
+              where: {
+                userId,
+                symbol,
+                status: 'closed',
+                aiStrategyId: strategy.id,
+                closedAt: { gte: new Date(Date.now() - cooldownMin * 60 * 1000) },
+                closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
+              },
+              orderBy: { closedAt: 'desc' },
+              select: { closedAt: true },
+            });
+            if (recentClose) {
+              const ago = Math.round((Date.now() - recentClose.closedAt!.getTime()) / 60000);
+              this.logger.warn(`[冷却期] ${symbol} ${ago}分钟前刚平仓，冷却${cooldownMin}分钟内禁止重新开仓`);
+              result.decisions.push({ symbol, action: decision.action, confidence: decision.confidence, executed: false, error: `冷却期: ${ago}min < ${cooldownMin}min` });
+              continue;
             }
           }
 
