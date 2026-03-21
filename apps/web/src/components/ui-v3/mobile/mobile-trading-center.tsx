@@ -614,11 +614,10 @@ export function MobileTradingCenter({
             ) : (
               filteredPositions.map((position) => (
                 <div key={position.id} className="bg-[#0A0A0F]/50 border border-[#1E1E2E]/50 rounded-lg p-3">
-                  {/* 头部 - 交易对 + 方向/保证金模式/杠杆 标签组 */}
+                  {/* 头部 - 交易对 + 标签 | 右上角策略名 */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-semibold text-sm text-white">{position.symbol.replace(/:USDT$/, '')}</span>
-                      {/* 方向：做多/做空 */}
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                         position.direction === 'long'
                           ? 'bg-green-400/10 text-green-400'
@@ -626,28 +625,25 @@ export function MobileTradingCenter({
                       }`}>
                         {position.direction === 'long' ? t('long') : t('short')}
                       </span>
-                      {/* 保证金模式 */}
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#1E1E2E] text-[#9090A0]">
                         {position.marginMode === 'isolated' ? t('isolated') : t('cross')}
                       </span>
-                      {/* 杠杆 */}
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-400/10 text-yellow-400">
                         {position.leverage || 1}X
                       </span>
                     </div>
+                    {/* 策略名 — 右上角 */}
+                    {(position.strategy || position.source?.startsWith('ai_')) && (
+                      <div className="flex items-center gap-1 text-[10px] text-[#606070] flex-shrink-0">
+                        {position.source?.startsWith('ai_') || position.source === 'snapshot' ? (
+                          <Zap className="w-2.5 h-2.5 text-cyan-400" />
+                        ) : (
+                          <Zap className="w-2.5 h-2.5 text-amber-400" />
+                        )}
+                        <span>{position.strategy || (position.source === 'ai_research' ? 'AI Research' : 'AI Strategy')}</span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* 策略来源 */}
-                  {(position.strategy || position.source?.startsWith('ai_')) && (
-                    <div className="flex items-center gap-1 text-[10px] text-[#606070] mb-3">
-                      {position.source?.startsWith('ai_') || position.source === 'snapshot' ? (
-                        <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">AI</span>
-                      ) : (
-                        <Zap className="w-2.5 h-2.5 text-amber-400" />
-                      )}
-                      <span>{position.strategy || (position.source === 'ai_research' ? 'AI Research' : 'AI Strategy')}</span>
-                    </div>
-                  )}
 
                   {/* 盈亏区域 - 突出显示 */}
                   <div className="grid grid-cols-2 gap-4 mb-3">
