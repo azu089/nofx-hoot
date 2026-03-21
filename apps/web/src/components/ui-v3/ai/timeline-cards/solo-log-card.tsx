@@ -647,8 +647,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </span>
               {d.leverage != null && <span className="text-[#9090A0]">{d.leverage}x</span>}
               {d.positionSizePercent != null && <span className="text-[#9090A0]">{d.positionSizePercent}%</span>}
-              {er?.price && <span className="text-[#F8F8FC]">${Number(er.price).toFixed(2)}</span>}
-              {er?.amount && <span className="text-[#F8F8FC]">×{er.amount}</span>}
+              {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
+              {(er?.amount || (d as any).quantity) && <span className="text-[#F8F8FC]">×{er?.amount ?? (d as any).quantity}</span>}
               {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
             </div>
           )}
@@ -660,10 +660,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
               {d.leverage != null && <span className="text-[#9090A0]">{d.leverage}x</span>}
-              <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : (er?.price ? Number(er.price).toFixed(2) : '-')}</span>
+              <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : '-'}</span>
               <span className="text-[#606070]">→</span>
               <span className="text-[#F8F8FC]">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span>
-              {er?.amount && <span className="text-[#F8F8FC]">×{er.amount}</span>}
+              {(er?.amount || (d as any).quantity) && <span className="text-[#F8F8FC]">×{er?.amount ?? (d as any).quantity}</span>}
               {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
             </div>
           )}
