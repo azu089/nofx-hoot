@@ -1264,8 +1264,7 @@ export function UnifiedAiCreate() {
                 </div>
 
                 {/* 仓位价值比例 */}
-                <p className="text-[10px] text-[#606070] mt-3 mb-1">{t('detail.positionValueRatio')}</p>
-                <p className="text-[9px] text-[#404050] mb-2">{t('detail.positionValueRatioDesc')}</p>
+                <p className="text-[10px] text-[#606070] mt-3 mb-2">{t('detail.positionValueRatio')}（{t('detail.positionValueRatioDesc')}）</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] text-[#606070] mb-1">BTC/ETH</p>

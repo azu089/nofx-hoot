@@ -416,10 +416,6 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
     const equity = rc.allocatedCapital ?? 1000;
     const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
     const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
-    // DEBUG: 确认 ratio 来源
-    if (rc.btcEthMaxPositionValueRatio || rc.altcoinMaxPositionValueRatio) {
-      console.log(`[PromptBuilder] PVR from config: BTC/ETH=${rc.btcEthMaxPositionValueRatio}, ALT=${rc.altcoinMaxPositionValueRatio}`);
-    }
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
     const minConf = rc.minConfidence ?? 60;
     const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
