@@ -1104,6 +1104,8 @@ export class AutoTraderService {
               minRiskRewardRatio: riskControl.minRiskRewardRatio,
               minConfidence: riskControl.minConfidence,
               minPositionSize: riskControl.minPositionSize,
+              btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
+              altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
               maxDailyDrawdown: riskControl.maxDailyDrawdown || maxDailyDrawdown,
               allocatedCapital: riskControl.allocatedCapital,
               maxDailyTrades: riskControl.maxDailyTrades,
