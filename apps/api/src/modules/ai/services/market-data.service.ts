@@ -800,53 +800,27 @@ export class MarketDataService implements OnModuleInit {
       // 从 symbol 提取币种代码: 'BTC/USDT' → 'BTC', 'SOL/USDT:USDT' → 'SOL'
       const currency = symbol.split('/')[0].toUpperCase();
 
-      // 构建 URL
+      // 数据源 1: CoinGecko Trending（免费无需 Key，反映市场热点和情绪）
+      const trendingNews = await this.fetchCoinGeckoTrending(currency, limit);
+      if (trendingNews.length > 0) {
+        this.newsCache.set(cacheKey, { data: trendingNews, timestamp: Date.now() });
+        this.logger.log(`[新闻] ${currency}: CoinGecko trending ${trendingNews.length} 条`);
+        return trendingNews;
+      }
+
+      // 数据源 2: CryptoPanic（备用，API 可能已下线）
       const apiKey = process.env.CRYPTOPANIC_API_KEY;
-      const baseUrl = 'https://cryptopanic.com/api/free/v1/posts/';
-      const params = new URLSearchParams({
-        currencies: currency,
-        filter: 'hot',
-        public: 'true',
-      });
       if (apiKey) {
-        params.set('auth_token', apiKey);
+        const cpNews = await this.fetchCryptoPanicNews(currency, apiKey, limit);
+        if (cpNews.length > 0) {
+          this.newsCache.set(cacheKey, { data: cpNews, timestamp: Date.now() });
+          return cpNews;
+        }
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(`${baseUrl}?${params.toString()}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        this.logger.warn(`[新闻] CryptoPanic API 返回 ${res.status}`);
-        return [];
-      }
-
-      const data = await res.json();
-      const results: CryptoNewsItem[] = (data?.results || [])
-        .slice(0, limit)
-        .map((item: any) => ({
-          title: item.title || '',
-          publishedAt: item.published_at || '',
-          source: item.domain || item.source?.domain || 'unknown',
-          kind: item.kind || 'news', // news | media
-          sentiment: this.extractNewsSentiment(item),
-          votes: {
-            positive: item.votes?.positive || 0,
-            negative: item.votes?.negative || 0,
-            important: item.votes?.important || 0,
-          },
-        }));
-
-      // 缓存
-      this.newsCache.set(cacheKey, { data: results, timestamp: Date.now() });
-
-      this.logger.log(`[新闻] ${currency}: 获取 ${results.length} 条新闻`);
-      return results;
-    } catch (error) {
-      this.logger.warn(`[新闻] CryptoPanic API 失败: ${error.message}`);
+      return [];
+    } catch (error: any) {
+      this.logger.warn(`[新闻] 获取失败: ${error.message}`);
       return [];
     }
   }
@@ -862,6 +836,108 @@ export class MarketDataService implements OnModuleInit {
     if (positive > negative * 2) return 'positive';
     if (negative > positive * 2) return 'negative';
     return 'neutral';
+  }
+
+  /**
+   * CoinGecko Trending → 转换为 CryptoNewsItem 格式
+   * 免费无需 Key，反映市场关注热点
+   */
+  private async fetchCoinGeckoTrending(currency: string, limit: number): Promise<CryptoNewsItem[]> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('https://api.coingecko.com/api/v3/search/trending', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) return [];
+
+      const data = await res.json();
+      const coins = data?.coins || [];
+
+      // 当前币是否在 trending 列表中
+      const targetInTrending = coins.find((c: any) => c?.item?.symbol?.toUpperCase() === currency);
+      const results: CryptoNewsItem[] = [];
+
+      if (targetInTrending) {
+        const item = targetInTrending.item;
+        results.push({
+          title: `${item.name} (${item.symbol}) is trending #${(item.score ?? 0) + 1} on CoinGecko`,
+          publishedAt: new Date().toISOString(),
+          source: 'CoinGecko Trending',
+          kind: 'news',
+          sentiment: 'positive' as const,
+          votes: { positive: 1, negative: 0, important: 1 },
+        });
+      }
+
+      // Top trending 作为市场热点背景
+      const topTrending = coins.slice(0, Math.min(limit, 5));
+      for (const c of topTrending) {
+        const item = c?.item;
+        if (!item || item.symbol?.toUpperCase() === currency) continue;
+        const priceChange = item.data?.price_change_percentage_24h;
+        let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
+        if (priceChange != null) {
+          sentiment = priceChange > 5 ? 'positive' : priceChange < -5 ? 'negative' : 'neutral';
+        }
+        results.push({
+          title: `Market trending: ${item.name} (${item.symbol}) #${(item.score ?? 0) + 1}${priceChange != null ? ` (24h: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(1)}%)` : ''}`,
+          publishedAt: new Date().toISOString(),
+          source: 'CoinGecko Trending',
+          kind: 'news',
+          sentiment,
+          votes: { positive: sentiment === 'positive' ? 1 : 0, negative: sentiment === 'negative' ? 1 : 0, important: 0 },
+        });
+      }
+
+      return results.slice(0, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * CryptoPanic 新闻获取（备用，API 可能已下线）
+   */
+  private async fetchCryptoPanicNews(currency: string, apiKey: string, limit: number): Promise<CryptoNewsItem[]> {
+    try {
+      const baseUrl = 'https://cryptopanic.com/api/free/v1/posts/';
+      const params = new URLSearchParams({
+        currencies: currency,
+        filter: 'hot',
+        public: 'true',
+        auth_token: apiKey,
+      });
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${baseUrl}?${params.toString()}`, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        this.logger.warn(`[新闻] CryptoPanic API 返回 ${res.status}`);
+        return [];
+      }
+
+      const data = await res.json();
+      return (data?.results || []).slice(0, limit).map((item: any) => ({
+        title: item.title || '',
+        publishedAt: item.published_at || '',
+        source: item.domain || item.source?.domain || 'unknown',
+        kind: item.kind || 'news',
+        sentiment: this.extractNewsSentiment(item),
+        votes: {
+          positive: item.votes?.positive || 0,
+          negative: item.votes?.negative || 0,
+          important: item.votes?.important || 0,
+        },
+      }));
+    } catch (e: any) {
+      this.logger.warn(`[新闻] CryptoPanic 失败: ${e.message}`);
+      return [];
+    }
   }
 
   // ========================= Fear & Greed Index =========================
