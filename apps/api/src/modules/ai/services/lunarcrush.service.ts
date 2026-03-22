@@ -180,14 +180,14 @@ export class LunarCrushService {
     const ticker = symbol.split('/')[0].toUpperCase();
     const mapping: Record<string, string> = {
       BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana',
-      BNB: 'binance-coin', XRP: 'ripple', ADA: 'cardano',
-      DOGE: 'dogecoin', AVAX: 'avalanche', DOT: 'polkadot',
-      MATIC: 'polygon', LINK: 'chainlink', UNI: 'uniswap',
+      BNB: 'binancecoin', XRP: 'ripple', ADA: 'cardano',
+      DOGE: 'dogecoin', AVAX: 'avalanche-2', DOT: 'polkadot',
+      MATIC: 'matic-network', LINK: 'chainlink', UNI: 'uniswap',
       ATOM: 'cosmos', ARB: 'arbitrum', OP: 'optimism',
-      SUI: 'sui', APT: 'aptos', NEAR: 'near-protocol',
+      SUI: 'sui', APT: 'aptos', NEAR: 'near',
       FIL: 'filecoin', LTC: 'litecoin', PEPE: 'pepe',
       WIF: 'dogwifhat', RENDER: 'render-token', FET: 'fetch-ai',
-      INJ: 'injective', TIA: 'celestia', SEI: 'sei',
+      INJ: 'injective-protocol', TIA: 'celestia', SEI: 'sei-network',
       JUP: 'jupiter', AAVE: 'aave', MKR: 'maker',
     };
     return mapping[ticker] || ticker.toLowerCase();
