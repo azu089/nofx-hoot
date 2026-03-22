@@ -361,29 +361,38 @@ function convertRawDecision(
   let stopLoss = r.stop_loss ?? r.stop_loss_pct ?? null;
   let takeProfit = r.take_profit ?? r.take_profit_pct ?? null;
 
-  // positionSizePercent: 兼容多种字段名
-  let positionSizePercent =
-    r.positionSizePercent ??
-    (r.position_pct !== undefined && r.position_pct !== null
-      ? r.position_pct * 100 // 0.2 → 20
-      : null) ??
-    (r.position_size_usd !== undefined ? 0 : null) ?? // 有绝对值时暂不设百分比
-    10; // 默认 10%
+  // 对齐 nofx：优先使用 position_size_usd（美元绝对值）
+  let positionSizeUSD: number | undefined;
+  let positionSizePercent: number;
 
-  // 如果 position_pct 是 0.1-1.0 范围的百分比，转换为 1-100
-  if (positionSizePercent > 0 && positionSizePercent <= 1) {
-    positionSizePercent = positionSizePercent * 100;
+  if (r.position_size_usd && r.position_size_usd > 0) {
+    // nofx 模式：AI 直接输出美元值
+    positionSizeUSD = r.position_size_usd;
+    positionSizePercent = 0;
+  } else {
+    // 回退到百分比模式（兼容 debate 等场景）
+    positionSizePercent =
+      r.positionSizePercent ??
+      (r.position_pct !== undefined && r.position_pct !== null
+        ? r.position_pct * 100
+        : null) ??
+      10;
+    if (positionSizePercent > 0 && positionSizePercent <= 1) {
+      positionSizePercent = positionSizePercent * 100;
+    }
+    positionSizePercent = clamp(positionSizePercent, 1, 100);
   }
 
   return {
     action,
     confidence: clamp(r.confidence ?? 50, 0, 100),
     leverage: r.leverage && r.leverage > 0 ? r.leverage : 5,
-    positionSizePercent: clamp(positionSizePercent, 1, 20), // max 20% 与执行层 maxPctThreshold 对齐
+    positionSizePercent,
+    positionSizeUSD,
     stopLoss: stopLoss && stopLoss > 0 ? stopLoss : null,
     takeProfit: takeProfit && takeProfit > 0 ? takeProfit : null,
     reasoning: r.reasoning ?? '',
-    ...(r.symbol ? { symbol: r.symbol } : {}), // 多币种模式: 保留 LLM 输出的 symbol
+    ...(r.symbol ? { symbol: r.symbol } : {}),
   };
 }
 

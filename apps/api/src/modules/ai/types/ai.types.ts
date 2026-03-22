@@ -29,7 +29,8 @@ export interface AiTradeDecision {
   action: AiAction;
   confidence: number; // 0-100
   leverage: number;
-  positionSizePercent: number; // 仓位百分比
+  positionSizePercent: number; // 仓位百分比（旧，兼容）
+  positionSizeUSD?: number;   // 仓位美元绝对值（对齐 nofx，优先使用）
   stopLoss: number | null;
   takeProfit: number | null;
   reasoning: string;

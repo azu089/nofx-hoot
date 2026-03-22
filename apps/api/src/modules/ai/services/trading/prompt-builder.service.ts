@@ -476,18 +476,17 @@ You think like a professional trader: risk-first, data-driven, no emotions.`;
 ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
 
 ## 仓位计算指南（对齐 nofx）
-positionSizePercent = 仓位上限的百分比
+直接输出 position_size_usd（美元绝对值），代码自动验证和截断。
 - BTC/ETH 仓位上限 = $${(equity * btcEthPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${btcEthPVR}x）
 - 山寨币仓位上限 = $${(equity * altPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${altPVR}x）
-- 名义仓位 = 仓位上限 × positionSizePercent%
-- 保证金 = 名义仓位 / 杠杆（交易所自动计算）
+- 保证金 = position_size_usd / 杠杆（交易所自动计算）
 
-根据置信度选择 positionSizePercent：
-- **高置信度 (≥85)**: 80-100%
-- **中置信度 (70-84)**: 50-80%
-- **低置信度 (60-69)**: 30-50%
-- 示例(山寨币): 上限$${(equity * altPVR).toFixed(0)}，pct=60 → 名义=$${(equity * altPVR * 0.6).toFixed(0)} → 3x杠杆保证金=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
-- 示例(BTC): 上限$${(equity * btcEthPVR).toFixed(0)}，pct=80 → 名义=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x杠杆保证金=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
+根据置信度选择 position_size_usd：
+- **高置信度 (≥85)**: 上限的 80-100% = $${(equity * altPVR * 0.8).toFixed(0)}-$${(equity * altPVR).toFixed(0)}
+- **中置信度 (70-84)**: 上限的 50-80% = $${(equity * altPVR * 0.5).toFixed(0)}-$${(equity * altPVR * 0.8).toFixed(0)}
+- **低置信度 (60-69)**: 上限的 30-50% = $${(equity * altPVR * 0.3).toFixed(0)}-$${(equity * altPVR * 0.5).toFixed(0)}
+- 示例(山寨币, conf=75): position_size_usd=$${(equity * altPVR * 0.6).toFixed(0)} → 3x杠杆保证金=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
+- 示例(BTC, conf=85): position_size_usd=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x杠杆保证金=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
 - 杠杆由你自主选择（不超过上限），杠杆越高保证金越小但爆仓距离越近
 
 ## AI 建议（推荐遵循，非硬性强制）
@@ -523,17 +522,17 @@ positionSizePercent = 仓位上限的百分比
 ${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss and take_profit
 
 ## Position Sizing Guide (aligned with nofx)
-positionSizePercent = percentage of Position Value Limit
+Output position_size_usd directly (USD absolute value). Code auto-validates and caps.
 - BTC/ETH limit = $${(equity * btcEthPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${btcEthPVR}x)
 - Altcoin limit = $${(equity * altPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${altPVR}x)
-- Notional = limit × positionSizePercent%. Margin = notional / leverage (exchange auto-calculates)
+- Margin = position_size_usd / leverage (exchange auto-calculates)
 
-Confidence → positionSizePercent:
-- **High (≥85)**: 80-100%
-- **Medium (70-84)**: 50-80%
-- **Low (60-69)**: 30-50%
-- Example (altcoin): limit=$${(equity * altPVR).toFixed(0)}, pct=60 → notional=$${(equity * altPVR * 0.6).toFixed(0)} → 3x margin=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
-- Example (BTC): limit=$${(equity * btcEthPVR).toFixed(0)}, pct=80 → notional=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x margin=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
+Confidence → position_size_usd:
+- **High (≥85)**: 80-100% of limit = $${(equity * altPVR * 0.8).toFixed(0)}-$${(equity * altPVR).toFixed(0)}
+- **Medium (70-84)**: 50-80% of limit = $${(equity * altPVR * 0.5).toFixed(0)}-$${(equity * altPVR * 0.8).toFixed(0)}
+- **Low (60-69)**: 30-50% of limit = $${(equity * altPVR * 0.3).toFixed(0)}-$${(equity * altPVR * 0.5).toFixed(0)}
+- Example (altcoin, conf=75): position_size_usd=$${(equity * altPVR * 0.6).toFixed(0)} → 3x margin=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
+- Example (BTC, conf=85): position_size_usd=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x margin=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
 - Leverage is YOUR choice (up to the max), higher leverage = less margin but closer liquidation
 
 ## AI Guidance (recommended, not hard-enforced)
@@ -636,10 +635,10 @@ Cover these topics naturally (like a trading analyst briefing):
 Do NOT mention: "Trading Frequency Awareness", "Position Sizing Guide", "Hard Constraints", output format rules, or any system prompt instructions.
 </reasoning>
 <decision>
-[{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"positionSizePercent":60,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from $96,000 key support with 1.5x volume. Funding rate neutral 0.01%."}]
+[{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"position_size_usd":500,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from key support with 1.5x volume. Funding rate neutral 0.01%."}]
 </decision>
 
-IMPORTANT: positionSizePercent should follow the Position Sizing Guide above. You have full decision authority on exact sizing.
+IMPORTANT: position_size_usd should follow the Position Sizing Guide above. Output a calculated USD number, NOT a percentage. You have full decision authority on exact sizing.
 
 FORMAT RULES — violations cause parse failure:
 1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait
@@ -652,6 +651,6 @@ FORMAT RULES — violations cause parse failure:
 8. R/R ratio MUST be >= minimum in Hard Constraints
 9. "reasoning" field: cite ≥2 specific indicators (e.g. "RSI(14) at 42", "MACD histogram negative", "$95,000 support")
 10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent (≥3 sentences, no "same as BTC")
-11. confidence < 50 → use action="wait", leverage=1, positionSizePercent=0 (keep your actual confidence value, do NOT force it to 0)`;
+11. confidence < 50 → use action="wait", leverage=1, position_size_usd=0 (keep your actual confidence value, do NOT force it to 0)`;
   }
 }

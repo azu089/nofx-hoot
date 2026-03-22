@@ -271,21 +271,22 @@ export class AiExecutionService {
       );
     }
 
-    // 3.5 百分比 → USD 转换（对齐 nofx: positionSizePercent = 仓位上限的百分比）
-    // nofx: position_size_usd = equity × ratio × confidence_pct
-    // HOOT: 名义 = availableBalance × ratio × positionSizePercent%
-    // 例: 预算$120, 山寨币ratio=1.0, pct=60% → 名义=$120×1×60%=$72
-    // 例: 预算$120, BTC ratio=5.0, pct=80% → 名义=$120×5×80%=$480
+    // 3.5 仓位计算（对齐 nofx: AI 直接输出 position_size_usd 美元绝对值）
     const maxPctThreshold = decision.maxPositionPct ?? 100;
     let positionSizeUSD = rawPositionSize;
-    if (rawPositionSize <= maxPctThreshold) {
+
+    if (rawPositionSize > maxPctThreshold) {
+      // USD 绝对值模式（对齐 nofx）：AI 直接给了美元值，代码只做验证和截断
+      this.logger.log(`[AI执行] 仓位 USD 模式: $${positionSizeUSD.toFixed(2)}`);
+    } else if (rawPositionSize > 0) {
+      // 百分比回退模式（兼容 debate 等旧场景）
       const ratio = this.isBTCETH(symbol)
         ? (decision.btcEthMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
         : (decision.altcoinMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
       const positionValueLimit = availableBalance * ratio;
       positionSizeUSD = positionValueLimit * (rawPositionSize / 100);
       this.logger.log(
-        `[AI执行] 仓位百分比转换: ${rawPositionSize}% × $${positionValueLimit.toFixed(2)} (预算$${availableBalance.toFixed(2)} × ${ratio}x) = $${positionSizeUSD.toFixed(2)} 名义仓位`,
+        `[AI执行] 仓位百分比转换: ${rawPositionSize}% × $${positionValueLimit.toFixed(2)} = $${positionSizeUSD.toFixed(2)}`,
       );
     }
     // 保底：如果计算后仓位低于最小限制，自动提升到最小限制

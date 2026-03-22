@@ -1879,9 +1879,7 @@ export class AutoTraderService {
             this.logger.log(`  🔄 平空: ${symbol}`);
           }
 
-          // 直接传 positionSizePercent 给执行层（值 1-20）
-          // 执行层内部统一做 百分比→USD 转换（基于交易所实际余额）
-          // 不在此处预乘 amountPerTrade，避免双重转换
+          // 对齐 nofx：优先传 positionSizeUSD（美元绝对值），回退到 positionSizePercent
           const execResult = await this.aiExecution.executeDecision(
             userId,
             effectiveExchangeApiKeyId,
@@ -1890,7 +1888,7 @@ export class AutoTraderService {
               action: decision.action,
               confidence: decision.confidence,
               leverage: decision.leverage,
-              positionSizeUSD: decision.positionSizePercent,
+              positionSizeUSD: decision.positionSizeUSD ?? decision.positionSizePercent,
               stopLoss: decision.stopLoss || undefined,
               takeProfit: decision.takeProfit || undefined,
               reasoning: decision.reasoning,
