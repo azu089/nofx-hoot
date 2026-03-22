@@ -743,14 +743,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {atrPct != null && <span className="text-[#9090A0]">ATR {atrPct.toFixed(2)}%</span>}
                   <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
                 </div>
-                {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 + 数据源 */}
-                <div className="flex items-center gap-2 text-[11px] font-mono text-[#9090A0] flex-wrap">
+                {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
+                <div className="flex items-center gap-3 text-[11px] font-mono text-[#9090A0]">
                   {ms.longPct != null && <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>}
                   {ms.oiChange != null && <span>OI {ms.oiChange}{oiQText}</span>}
                   {ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}
                   {ms.stablecoinNet != null && ms.stablecoinNet !== 0 && (
                     <span className={ms.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
-                      {ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
+                      稳定币 {ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
                     </span>
                   )}
                   {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
@@ -758,12 +758,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
                     </span>
                   )}
-                  {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
-                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
-                    </span>
-                  ))}
                 </div>
+                {/* 行3: 数据源标记 */}
+                {ms.dataSources && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {Object.entries(ms.dataSources).map(([k, v]) => (
+                      <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -870,14 +875,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {d.marketSnapshot.atr14 != null && d.marketSnapshot.price > 0 && <span className="text-[#9090A0]">ATR {(d.marketSnapshot.atr14 / d.marketSnapshot.price * 100).toFixed(2)}%</span>}
                 <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</>}</span>
               </div>
-              {/* 行2: 多空比 OI+四象限 机构流 + 数据源（合并一行） */}
-              <div className="flex items-center gap-2 text-[#9090A0] flex-wrap">
+              {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
+              <div className="flex items-center gap-3 text-[#9090A0]">
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
                 <span>{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070]"> ({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
                 {d.marketSnapshot.emaTrend && <span className={d.marketSnapshot.emaTrend.includes('多') ? 'text-[#10B981]' : d.marketSnapshot.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {d.marketSnapshot.emaTrend}</span>}
                 {d.marketSnapshot.stablecoinNet != null && d.marketSnapshot.stablecoinNet !== 0 && (
                   <span className={d.marketSnapshot.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
-                    {d.marketSnapshot.stablecoinNet > 0 ? '+' : ''}${(d.marketSnapshot.stablecoinNet / 1e6).toFixed(0)}M
+                    稳定币 {d.marketSnapshot.stablecoinNet > 0 ? '+' : ''}${(d.marketSnapshot.stablecoinNet / 1e6).toFixed(0)}M
                   </span>
                 )}
                 {d.marketSnapshot.institutionFlow != null && d.marketSnapshot.institutionFlow !== 0 && (
@@ -885,12 +890,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     {d.marketSnapshot.institutionFlow > 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(1)}M
                   </span>
                 )}
-                {d.marketSnapshot.dataSources && Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
-                  <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
-                  </span>
-                ))}
               </div>
+              {/* 行3: 数据源标记 */}
+              {d.marketSnapshot.dataSources && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
+                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
