@@ -771,20 +771,21 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       return;
     }
 
-    // OKX: fetchOpenOrders + 算法单双路径清理
+    // OKX: 只清理算法单（条件委托/止盈止损），保留限价基础单
     if (this.exchangeType === 'okx') {
-      const openOrders = await ex.fetchOpenOrders(symbol);
-      for (const order of openOrders) {
-        try { await ex.cancelOrder(order.id, symbol); } catch { /* 已取消 */ }
-      }
+      // OKX 的条件单走算法单 API，普通 fetchOpenOrders 不返回条件单
+      // 所以只需要清算法单，不碰普通限价单
       await this.cancelOkxAlgoOrders(symbol);
       return;
     }
 
-    // 其他交易所：降级到 fetchOpenOrders 过滤
+    // 其他交易所：只清条件单类型，保留限价单
     const openOrders = await ex.fetchOpenOrders(symbol);
     const stopOrders = openOrders.filter(
-      (o: any) => o.type?.includes('stop') || o.type?.includes('take_profit'),
+      (o: any) => {
+        const t = (o.type || '').toLowerCase();
+        return t.includes('stop') || t.includes('take_profit') || t.includes('trailing');
+      },
     );
     for (const order of stopOrders) {
       try { await ex.cancelOrder(order.id, symbol); } catch { /* 已取消 */ }
