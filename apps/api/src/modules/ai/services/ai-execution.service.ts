@@ -627,13 +627,7 @@ export class AiExecutionService {
 
     if (!position) {
       this.logger.warn(`[AI执行] 未找到可平仓持仓: ${futuresSymbol} ${side}`);
-      // 即使 DB 中找不到持仓，也要清理交易所残留条件单（TP/SL 触发后对边残留）
-      try {
-        await adapter.cancelStopOrders(futuresSymbol);
-        this.logger.log(`[AI执行] 已清理 ${futuresSymbol} 孤儿条件单(持仓不存在于DB)`);
-      } catch (e: any) {
-        this.logger.warn(`[AI执行] 清理孤儿条件单失败(非致命): ${e.message}`);
-      }
+      // 对齐 nofx：不主动清理条件单。Algo Order 的 closePosition=true 在持仓为0时自动失效。
       return {
         success: false,
         symbol: futuresSymbol,
@@ -664,12 +658,9 @@ export class AiExecutionService {
       `[AI执行] 平仓订单结果: orderId=${result.orderId} exitPrice=$${exitPrice}`,
     );
 
-    // 平仓后清理残留的 SL/TP 订单（防止被二次触发）
-    try {
-      await adapter.cancelStopOrders(futuresSymbol);
-    } catch (e: any) {
-      this.logger.warn(`清理 SL/TP 订单失败(非致命): ${e.message}`);
-    }
+    // 对齐 nofx：不调用 cancelStopOrders。
+    // Algo Order 使用 closePosition=true，持仓平掉后条件单自动失效，无需手动清理。
+    // 避免 cancelAllOrders 误删网格策略的限价基础单。
 
     // 计算 PnL（含真实交易成本 — 极速策略增强 Task 5）
     const entryPrice = Number(position.entryPrice);

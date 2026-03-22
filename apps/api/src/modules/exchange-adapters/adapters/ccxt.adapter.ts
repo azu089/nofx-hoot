@@ -579,12 +579,31 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
 
     } else {
-      // Binance USDM / Gate / Bitget 通用参数
-      const params: Record<string, any> = {
-        stopPrice,
-        reduceOnly: true,
-      };
-      await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, params);
+      // Binance USDM: 对齐 nofx，使用 Algo Order API + closePosition=true
+      // closePosition=true 表示触发时平掉整个持仓，AI主动平仓后持仓=0，条件单自动失效
+      // 不需要手动清理条件单，避免 cancelAllOrders 误删网格限价单
+      const marketId = ex.marketId(symbol);
+      // 单向持仓模式用 BOTH，双向用 LONG/SHORT
+      const posSide = 'BOTH';
+      try {
+        await (ex as any).fapiPrivatePostAlgoOrder({
+          symbol: marketId,
+          side: side.toUpperCase(),
+          positionSide: posSide,
+          type: 'STOP_MARKET',
+          triggerPrice: String(stopPrice),
+          workingType: 'CONTRACT_PRICE',
+          closePosition: 'true',
+          newClientOrderId: `sl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        });
+      } catch (e: any) {
+        // 降级：Algo Order 不可用时，用普通 STOP_MARKET
+        this.logger.warn(`[CcxtAdapter] Algo SL 失败(${e.message})，降级普通 STOP_MARKET`);
+        await ex.createOrder(symbol, 'stop_market', side, quantity, undefined, {
+          stopPrice,
+          reduceOnly: true,
+        });
+      }
     }
   }
 
@@ -627,11 +646,28 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
 
     } else {
-      const params: Record<string, any> = {
-        stopPrice: takeProfitPrice,
-        reduceOnly: true,
-      };
-      await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, params);
+      // Binance USDM: 对齐 nofx，使用 Algo Order API + closePosition=true
+      const marketId = ex.marketId(symbol);
+      const posSide = 'BOTH'; // 单向持仓模式
+      try {
+        await (ex as any).fapiPrivatePostAlgoOrder({
+          symbol: marketId,
+          side: side.toUpperCase(),
+          positionSide: posSide,
+          type: 'TAKE_PROFIT_MARKET',
+          triggerPrice: String(takeProfitPrice),
+          workingType: 'CONTRACT_PRICE',
+          closePosition: 'true',
+          newClientOrderId: `tp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        });
+      } catch (e: any) {
+        // 降级：普通 TAKE_PROFIT_MARKET
+        this.logger.warn(`[CcxtAdapter] Algo TP 失败(${e.message})，降级普通 TAKE_PROFIT_MARKET`);
+        await ex.createOrder(symbol, 'take_profit_market', side, quantity, undefined, {
+          stopPrice: takeProfitPrice,
+          reduceOnly: true,
+        });
+      }
     }
   }
 

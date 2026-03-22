@@ -490,13 +490,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         });
       } catch { /* 非致命 */ }
 
-      // 平仓后清理残留 SL/TP 条件单（对齐 nofx CancelAllOrders）
-      try {
-        await adapter.cancelStopOrders(pos.symbol);
-        this.logger.log(`[AI监控] 已清理 ${pos.symbol} 残留条件单`);
-      } catch (e: any) {
-        this.logger.warn(`[AI监控] 清理条件单失败(非致命): ${e.message}`);
-      }
+      // 对齐 nofx：不清理条件单。Algo Order closePosition=true 在持仓为0时自动失效。
 
       this.logger.log(
         `[AI监控] 自动平仓成功: ${pos.id} ${pos.symbol} ${pos.side} PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(4)} USDT，原因: ${reason}`,
