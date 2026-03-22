@@ -621,38 +621,30 @@ Only open positions when **multiple signals resonate**. Avoid these low-quality 
   }
 
   private buildOutputFormat(): string {
-    return `## Output Format (MANDATORY — follow EXACTLY as shown)
+    // 对齐 nofx engine.go L1133-1155: 极简输出格式
+    return `## Output Format (Strictly Follow)
 
-Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
+**Must use XML tags <reasoning> and <decision> to separate analysis and decision JSON.**
 
 <reasoning>
-Write a market analysis covering: account/position status, market signals (cite specific values with bullish/bearish tags), decision rationale (explain every number), and exit conditions. Do not repeat system rules.
-
-Example (open):
-"账户预算$120，无持仓，保证金使用率0%。SOL当前价$88.5贴近唐奇安下轨$86.2支撑位，RSI(14)=35从超卖区回升[看多]，MACD柱状图收缩至-0.03[看多]。聪明钱信号：OI 1h增加+2.3%且价格上涨0.5%构成强多头趋势[看多]，机构净流入$8.5M[看多]，但稳定币净流出$31M[看空]。4/5信号看多→置信度72%。3倍杠杆：ATR/价格=1.8%中等波动，爆仓距离33%。止损$85.8=唐奇安下轨下方，止盈$92.0=唐奇安上轨，R:R=1.3:1。仓位$360（上限50%），保证金$120。失效条件：跌破$85.8或OI减少>3%。"
-
-Example (hold):
-"当前持有BNB多头，入场$633.28，浮盈+0.58%，峰值+0.58%。OI增加+0.11%+价格涨+0.17%=多头趋势[看多]，Taker买卖比1.14[看多]，但散户多头占比70.1%偏高[看空]。浮盈未达2%止盈条件，继续持有。退出：跌破$629止损，涨至$646部分止盈。"
-
-Example (wait):
-"当前持有BNB多头，保证金23%。SOL信号冲突：资金费率-0.015%[看多]、RSI回升至42[看多]，但机构流出$3.18M[看空]、Taker卖压0.76[看空]。2多2空→60%未达70%门槛，等待。触发条件：RSI跌破30且守住$86.18将开多。"
+Your analysis and reasoning — explain why you made this decision.
 </reasoning>
+
 <decision>
-[{"symbol":"SOL/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"position_size_usd":360,"stop_loss":85.8,"take_profit":92.0,"invalidation":"价格跌破唐奇安下轨$86.18或OI 1h减少>3%","risk_usd":9.7,"reasoning":"RSI(14)=35回升+OI↑Price↑+机构流入$8.5M，3/4看多→72%。3x杠杆ATR/价=1.8%爆仓33%。SL唐奇安下轨下方，TP上轨，R:R=1.3:1"}]
+[
+  {"symbol": "SOL/USDT:USDT", "action": "open_long", "leverage": 3, "position_size_usd": 360, "stop_loss": 85.8, "take_profit": 92.0, "confidence": 72, "risk_usd": 10, "reasoning": "RSI(14)=35 recovering from oversold, OI↑+Price↑ strong bullish, institutional inflow $8.5M. 3/4 signals bullish → 72%. SL below Donchian low, TP at upper, R:R=1.3:1."},
+  {"symbol": "BNB/USDT:USDT", "action": "wait", "confidence": 55, "reasoning": "Signals conflicting, below threshold."}
+]
 </decision>
 
-IMPORTANT: position_size_usd = calculated USD number (NOT percentage). invalidation = what would prove you wrong.
-
-FORMAT RULES — violations cause parse failure:
-1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait
-2. <decision> MUST contain a raw JSON ARRAY — starts with [{ ends with }]
-3. DO NOT use markdown code blocks (\`\`\`json\`\`\`) inside or outside the tags
-4. DO NOT output any text AFTER </decision> — it corrupts the parser
-5. stop_loss / take_profit = ABSOLUTE PRICE values (not percentages)
-6. For long: stop_loss < current_price < take_profit; For short: take_profit < current_price < stop_loss
-7. R/R ratio MUST be >= minimum in Hard Constraints
-8. "reasoning" field in JSON: brief 1-3 sentence summary citing ≥2 indicators
-9. MULTI-COIN: ONE object per coin; each coin's reasoning MUST be independent
-10. confidence < 50 → action="wait", leverage=1, position_size_usd=0`;
+## Field Description
+- action: open_long | open_short | close_long | close_short | hold | wait
+- Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
+- position_size_usd = calculated USD number (NOT percentage)
+- stop_loss / take_profit = absolute price values
+- For long: stop_loss < current_price < take_profit
+- MULTI-COIN: ONE object per coin, each with independent reasoning
+- confidence < 50 → action="wait"
+- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
 }
