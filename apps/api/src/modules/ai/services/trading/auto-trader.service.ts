@@ -312,7 +312,7 @@ export class AutoTraderService {
       // 架构原则：syncPositionsForUser 返回交易所实时持仓，后续所有决策基于此数据，DB 仅用于历史记录
       let liveExchangePositions: any[] = [];
       try {
-        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId);
+        const syncResult = await this.strategyEngine.syncPositionsForUser(userId, effectiveExchangeApiKeyId, strategy.id);
         liveExchangePositions = syncResult.exchangePositions;
         if (syncResult.created > 0 || syncResult.closed > 0) {
           this.logger.log(

@@ -195,11 +195,11 @@ export class AiExecutionService {
           );
         case 'close_long':
           return await this.closePosition(
-            adapter, userId, symbol, 'long', source,
+            adapter, userId, symbol, 'long', source, aiStrategyId,
           );
         case 'close_short':
           return await this.closePosition(
-            adapter, userId, symbol, 'short', source,
+            adapter, userId, symbol, 'short', source, aiStrategyId,
           );
         default:
           return { success: false, symbol, action, error: `不支持的动作: ${action}` };
@@ -236,12 +236,13 @@ export class AiExecutionService {
     const leverage = decision.leverage || (aiConfig?.maxLeverage ?? AI_SAFETY_DEFAULTS.defaultLeverage);
     const rawPositionSize = decision.positionSizeUSD || Number(aiConfig?.amountPerTrade ?? AI_SAFETY_DEFAULTS.defaultPositionSizeUSD);
 
-    // 1. 获取当前 AI 持仓数
+    // 1. 获取当前 AI 持仓数（隔离：只计当前策略，不混入其他策略）
     const currentPositions = await this.prisma.position.count({
       where: {
         userId,
         source: { in: ['ai_research', 'ai_strategy', 'ai_analysis'] },
         status: 'open',
+        ...(aiStrategyId ? { aiStrategyId } : {}),
       },
     });
 
@@ -610,10 +611,11 @@ export class AiExecutionService {
     symbol: string,
     side: 'long' | 'short',
     source: AiSource,
+    aiStrategyId?: string,
   ): Promise<ExecutionResult> {
     const futuresSymbol = toFuturesSymbol(symbol);
 
-    // FIFO: 查找最早的同方向持仓
+    // FIFO: 查找最早的同方向持仓（隔离：只平当前策略的仓，不误平其他策略）
     const position = await this.prisma.position.findFirst({
       where: {
         userId,
@@ -621,6 +623,7 @@ export class AiExecutionService {
         side,
         source: { in: ['ai_research', 'ai_strategy', 'ai_analysis'] },
         status: 'open',
+        ...(aiStrategyId ? { aiStrategyId } : {}),
       },
       orderBy: { createdAt: 'asc' }, // FIFO
     });

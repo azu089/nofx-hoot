@@ -1056,6 +1056,7 @@ export class StrategyEngineService implements OnModuleInit {
   async syncPositionsForUser(
     userId: string,
     apiKeyId: string,
+    strategyId?: string,
   ): Promise<{ created: number; closed: number; exchangePositions: any[] }> {
     if (!this.adapterFactory) {
       return { created: 0, closed: 0, exchangePositions: [] };
@@ -1074,6 +1075,8 @@ export class StrategyEngineService implements OnModuleInit {
           userId,
           status: 'open',
           source: { in: ['ai_research', 'ai_strategy'] },
+          // 隔离：按策略过滤，防止跨策略持仓污染
+          ...(strategyId ? { aiStrategyId: strategyId } : {}),
         },
       });
 
