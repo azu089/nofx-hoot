@@ -726,26 +726,36 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* 多币种合并日志的共享 AI 分析 + 市场数据 */}
       {isMultiCoin && (
         <div className="mt-1.5">
-          {/* 市场数据快照（取第一个有 marketSnapshot 的决策） */}
+          {/* 市场数据快照（2行紧凑展示全部核心指标） */}
           {(() => {
-            const snapshotDecision = allDecisions.find(ad => ad.marketSnapshot);
+            const snapshotDecision = allDecisions?.find(ad => ad.marketSnapshot);
             const ms = snapshotDecision?.marketSnapshot || d.marketSnapshot;
             if (!ms) return null;
+            const atrPct = ms.atr14 && ms.price ? (ms.atr14 / ms.price * 100) : null;
+            const oiQText = ms.oiQuadrant ? ` (${ms.oiQuadrant})` : '';
             return (
               <div className="space-y-0.5 mb-2">
+                {/* 行1: 价格 RSI MACD ATR FR */}
                 <div className="flex items-center justify-between text-[11px] font-mono">
                   <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
                   <span className="text-[#9090A0]">RSI {ms.rsi14?.toFixed(1) || '—'}</span>
+                  <span className="text-[#9090A0]">MACD {ms.macdHist?.toFixed(4) ?? '—'}</span>
+                  {atrPct != null && <span className="text-[#9090A0]">ATR {atrPct.toFixed(2)}%</span>}
                   <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
                 </div>
-                {ms.longPct != null && ms.oiChange != null && (
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9090A0]">
-                    <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>
-                    <span>OI {ms.oiChange}</span>
-                  </div>
-                )}
+                {/* 行2: 多空比 OI变化+四象限 机构流 数据源 */}
+                <div className="flex items-center justify-between text-[11px] font-mono text-[#9090A0]">
+                  {ms.longPct != null && <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>}
+                  {ms.oiChange != null && <span>OI {ms.oiChange}{oiQText}</span>}
+                  {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
+                    <span className={ms.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
+                      {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
+                    </span>
+                  )}
+                </div>
+                {/* 行3: 数据源标记 */}
                 {ms.dataSources && (
-                  <div className="flex justify-between flex-wrap">
+                  <div className="flex gap-2 flex-wrap">
                     {Object.entries(ms.dataSources).map(([k, v]) => (
                       <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                         {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
@@ -851,14 +861,23 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {/* 行3: 市场数据 — 3列网格 */}
           {d.marketSnapshot && (
             <div className="text-[11px] font-mono space-y-0.5">
-              <div className="grid grid-cols-3">
+              {/* 行1: 价格 RSI MACD ATR FR */}
+              <div className="flex items-center justify-between">
                 <span className="text-[#F8F8FC]">{d.marketSnapshot.price != null && `$${d.marketSnapshot.price.toFixed(2)}`}</span>
-                <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI <span className={d.marketSnapshot.rsi14 > 70 ? 'text-[#EF4444]' : d.marketSnapshot.rsi14 < 30 ? 'text-[#10B981]' : 'text-[#F8F8FC]'}>{d.marketSnapshot.rsi14.toFixed(1)}</span></>}</span>
-                <span className="text-[#9090A0] text-right">{d.marketSnapshot.fundingRate != null && <>FR <span className={d.marketSnapshot.fundingRate < 0 ? 'text-[#10B981]' : d.marketSnapshot.fundingRate > 0.0003 ? 'text-[#EF4444]' : 'text-[#F8F8FC]'}>{(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</span></>}</span>
+                <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI {d.marketSnapshot.rsi14.toFixed(1)}</>}</span>
+                {d.marketSnapshot.macdHist != null && <span className="text-[#9090A0]">MACD {d.marketSnapshot.macdHist.toFixed(4)}</span>}
+                {d.marketSnapshot.atr14 != null && d.marketSnapshot.price > 0 && <span className="text-[#9090A0]">ATR {(d.marketSnapshot.atr14 / d.marketSnapshot.price * 100).toFixed(2)}%</span>}
+                <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</>}</span>
               </div>
-              <div className="grid grid-cols-3 text-[#9090A0]">
+              {/* 行2: 多空比 OI+四象限 机构流 */}
+              <div className="flex items-center justify-between text-[#9090A0]">
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
-                <span className="col-span-2">{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070] ml-1">({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
+                <span>{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070]"> ({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
+                {d.marketSnapshot.institutionFlow != null && d.marketSnapshot.institutionFlow !== 0 && (
+                  <span className={d.marketSnapshot.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
+                    {d.marketSnapshot.institutionFlow > 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(1)}M
+                  </span>
+                )}
               </div>
               {d.marketSnapshot.dataSources && (
                 <div className="flex justify-between flex-wrap">
