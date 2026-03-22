@@ -250,12 +250,8 @@ export class PromptBuilderService {
       }
       if (ctx.marginUsage !== undefined) {
         lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
-        // 对齐 nofx formatter.go: 风险提示（参考，不强制平仓）
-        if (ctx.marginUsage > 70) {
-          lines.push(`⚠️ Risk Alert: Margin usage > 70%, high risk. Be cautious with NEW positions, but do NOT close existing positions solely for margin reasons.`);
-        } else if (ctx.marginUsage > 50) {
-          lines.push(`⚠️ Risk Notice: Margin usage > 50%, be cautious with new positions.`);
-        }
+        // 对齐 nofx: 保证金使用率仅信息展示，位置价值比才是硬约束
+        // 不设分级警告，避免 AI 误解为硬约束而错误平仓
       }
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }

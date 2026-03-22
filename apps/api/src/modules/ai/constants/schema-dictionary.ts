@@ -272,13 +272,7 @@ export interface BilingualRuleDef {
 
 export const TradingRules = {
   RiskManagement: {
-    MaxMarginUsage: {
-      value: 0.3,
-      descZH: '保证金使用率不得超过30%',
-      descEN: 'Margin usage must not exceed 30%',
-      reasonZH: '保留70%的资金应对极端行情和追加保证金',
-      reasonEN: 'Reserve 70% capital for extreme market conditions and margin calls',
-    },
+    // MaxMarginUsage 已删除（对齐 nofx：保证金使用率仅信息展示，位置价值比才是硬约束）
     MaxPositionLoss: {
       value: -0.05,
       descZH: '单仓止损距离 = max(1.5×ATR14/Price, baseRisk/leverage)，杠杆自适应',

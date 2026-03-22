@@ -42,7 +42,7 @@ export interface ConsensusVote {
  * 策略风控配置（对应 riskControlConfig JSON 字段）
  *
  * 字段分类:
- * - CODE ENFORCED: MaxPositions, PositionValueRatio, MinPositionSize, MaxMarginUsage
+ * - CODE ENFORCED: MaxPositions, PositionValueRatio, MinPositionSize, AdaptPositionToBalance
  * - AI GUIDED: MaxLeverage (分BTC/ETH和山寨), MinRiskRewardRatio, MinConfidence
  * - 多用户额外: maxDailyDrawdown, maxDailyTrades, cooldownMinutes, circuitBreaker
  */

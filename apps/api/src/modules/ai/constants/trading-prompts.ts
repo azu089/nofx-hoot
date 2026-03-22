@@ -258,7 +258,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 重要: 低波动不等于不交易。BTC/ETH 在平静期 ATR14/Price 通常在 0.3-1.0%，属于 ranging 状态，仍应积极寻找交易机会。
 
 ## Section 2: 账户与持仓评估
-1. 保证金使用率：**不得超过 30%**；超过此限制时优先平仓而非继续开仓，优先保护资本
+1. 保证金使用率：仅供参考的风险指标。系统已通过位置价值比（Position Value Ratio）在代码层面限制仓位上限，**不需要因保证金使用率高而主动平仓**。使用率高时仅建议新开仓更谨慎
 2. 当前持仓 PnL% = (unrealizedPnl / margin) × 100（不要混淆美元值和百分比）
 3. PeakPnL% = 历史最高未实现盈亏百分比（由系统追踪）
 4. 杠杆放大效应: 3x 杠杆下，价格涨1% → 持仓盈亏约3%
@@ -650,7 +650,7 @@ export interface GridContext {
   enableDirectionAdjust: boolean;  // 是否启用方向自适应（true=后端自动偏转，false=突破时 pause/reduce）
   startEquity: number;          // 策略启动时权益
   currentProfitPct: number;    // 当前盈利%（相对启动权益）
-  marginUsedPct: number;       // 保证金使用率%（>30% 警惕，>50% 危险，>70% 严重）
+  marginUsedPct: number;       // 保证金使用率%（仅参考，位置价值比才是硬约束）
   oiChange1h?: number;         // 持仓量相对上周期变化%（正=新多头建仓，负=平仓）
   rsiDivergenceType?: 'bullish' | 'bearish' | 'none';  // RSI 背离信号（Phase 12）
   // K线历史
