@@ -518,18 +518,24 @@ export class QuickAnalysisService {
         maxDrawdownPct: config.tradingStats.maxDrawdownPct,
       } : undefined,
       // 持仓: 有 accountInfo 时用全策略持仓（全币种），否则降级到单币种查询
-      positions: ai ? ai.strategyPositions.map(p => ({
-        symbol: p.symbol,
-        side: p.side,
-        entryPrice: p.entryPrice,
-        size: p.size,
-        leverage: p.leverage,
-        pnlPercent: p.pnlPercent,
-        peakPnlPercent: p.peakPnlPercent,
-        margin: p.margin,
-        holdMinutes: (p as any).holdMinutes,
-        liqPrice: (p as any).liqPrice,
-      })) : existingPositions.map(p => ({
+      positions: ai ? ai.strategyPositions.map(p => {
+        const mp = (p as any).markPrice ?? p.entryPrice;
+        const unrealPnl = p.margin > 0 ? (p.pnlPercent / 100) * p.margin : 0;
+        return {
+          symbol: p.symbol,
+          side: p.side,
+          entryPrice: p.entryPrice,
+          size: p.size,
+          leverage: p.leverage,
+          pnlPercent: p.pnlPercent,
+          peakPnlPercent: p.peakPnlPercent,
+          margin: p.margin,
+          holdMinutes: (p as any).holdMinutes,
+          liqPrice: (p as any).liqPrice,
+          markPrice: mp || undefined,
+          pnlAmount: unrealPnl,
+        };
+      }) : existingPositions.map(p => ({
         symbol: config.symbol,
         side: p.side,
         entryPrice: p.entryPrice,

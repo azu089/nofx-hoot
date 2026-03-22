@@ -113,9 +113,13 @@ export interface UserPromptContext {
     holdMinutes?: number;
     margin?: number;
     liqPrice?: number;
+    markPrice?: number;      // 对齐 nofx: 当前标记价格
+    pnlAmount?: number;      // 对齐 nofx: 绝对盈亏金额 (USDT)
   }>;
   /** 候选币数据（市场数据由 formatMarketDataPrompt 已有的逻辑注入） */
   marketDataPrompt?: string;
+  /** 每个持仓币的独立市场数据（对齐 nofx: 紧跟持仓后展示） */
+  positionMarketDataMap?: Record<string, string>;
   /** 市场排名 */
   marketRankingPrompt?: string;
   /** 流动性数据（订单簿深度 + 滑点预估） */
@@ -329,18 +333,34 @@ export class PromptBuilderService {
       }
     }
 
-    // [5] Current Positions
+    // [5] Current Positions（对齐 nofx engine.go:1415-1452 formatPositionInfo）
+    // 关键设计: 持仓信息 + 该币市场数据紧跟在一起，AI 一目了然
     if (ctx.positions && ctx.positions.length > 0) {
       lines.push('');
       lines.push('=== Current Positions ===');
-      for (const p of ctx.positions) {
-        const qty = p.size ? ` | Qty: ${p.size}` : '';
-        const value = (p.size && p.entryPrice) ? ` | Value: $${(p.size * p.entryPrice).toFixed(2)}` : '';
-        const marginStr = p.margin ? ` | Margin: $${p.margin.toFixed(2)}` : '';
-        const peak = p.peakPnlPercent !== undefined ? ` | PeakPnL: ${p.peakPnlPercent > 0 ? '+' : ''}${p.peakPnlPercent.toFixed(2)}%` : '';
-        const hold = p.holdMinutes ? ` | Hold: ${p.holdMinutes}min` : '';
-        const liq = p.liqPrice ? ` | LiqPrice: $${p.liqPrice.toFixed(2)}` : '';
-        lines.push(`  ${p.symbol} ${p.side.toUpperCase()} @ $${p.entryPrice.toFixed(4)} | ${p.leverage}x${qty}${value}${marginStr} | PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${peak}${hold}${liq}`);
+      for (let i = 0; i < ctx.positions.length; i++) {
+        const p = ctx.positions[i];
+        const currentPrice = p.markPrice ? `Current $${p.markPrice.toFixed(4)} | ` : '';
+        const qty = p.size ? `Qty: ${p.size} | ` : '';
+        const posValue = (p.size && (p.markPrice || p.entryPrice)) ? `Value: $${(p.size * (p.markPrice || p.entryPrice)).toFixed(2)} | ` : '';
+        const marginStr = p.margin ? `Margin: $${p.margin.toFixed(2)} | ` : '';
+        const pnlAmt = p.pnlAmount !== undefined ? ` | PnL Amount: ${p.pnlAmount >= 0 ? '+' : ''}${p.pnlAmount.toFixed(2)} USDT` : '';
+        const peak = p.peakPnlPercent !== undefined ? ` | Peak PnL: ${p.peakPnlPercent > 0 ? '+' : ''}${p.peakPnlPercent.toFixed(2)}%` : '';
+        const liq = p.liqPrice ? ` | Liq Price: $${p.liqPrice.toFixed(4)}` : '';
+        // 持仓时长格式化（对齐 nofx: "Holding Duration 2h 30m"）
+        let holdStr = '';
+        if (p.holdMinutes) {
+          if (p.holdMinutes >= 60) {
+            const h = Math.floor(p.holdMinutes / 60);
+            const m = p.holdMinutes % 60;
+            holdStr = ` | Holding Duration: ${h}h ${m}m`;
+          } else {
+            holdStr = ` | Holding Duration: ${p.holdMinutes}min`;
+          }
+        }
+
+        lines.push(`  ${i + 1}. ${p.symbol} ${p.side.toUpperCase()} | Entry $${p.entryPrice.toFixed(4)} ${currentPrice}${qty}${posValue}${marginStr}PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${pnlAmt}${peak} | ${p.leverage}x${liq}${holdStr}`);
+
         // 对齐 nofx formatter.go L246-253: 持仓动态提示
         if (p.peakPnlPercent !== undefined && p.peakPnlPercent >= 2) {
           const drawback = p.pnlPercent - p.peakPnlPercent;
@@ -351,6 +371,13 @@ export class PromptBuilderService {
         }
         if (p.pnlPercent < -4.0) {
           lines.push(`    ⚠️ Stop-loss alert: Loss approaching -5% hard stop. Evaluate exit.`);
+        }
+
+        // 对齐 nofx: 持仓币的市场数据紧跟持仓后（AI 不需要跳跃式阅读）
+        if (ctx.positionMarketDataMap && ctx.positionMarketDataMap[p.symbol]) {
+          lines.push('');
+          lines.push(`  --- ${p.symbol} Market Data (for position management) ---`);
+          lines.push(ctx.positionMarketDataMap[p.symbol]);
         }
       }
     } else {
