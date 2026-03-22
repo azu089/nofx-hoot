@@ -745,7 +745,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 <div className="grid grid-cols-4 text-[#9090A0]">
                   <span>{ms.fundingRate != null ? `FR ${(ms.fundingRate * 100).toFixed(4)}%` : ''}</span>
                   <span>{ms.longPct != null ? `${Math.round(ms.longPct)}/${Math.round(100 - ms.longPct)}` : ''}</span>
-                  <span>{ms.oiChange != null ? <>OI {ms.oiChange}{ms.oiQuadrant && <span className="text-[#606070]"> ({ms.oiQuadrant})</span>}</> : ''}</span>
+                  <span>{ms.oiChange != null ? `OI ${ms.oiChange}` : ''}</span>
                   <span className="text-right">{ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}</span>
                 </div>
                 {/* 行3: 机构流+数据源标记 — flex justify-between */}
@@ -878,7 +878,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 <div className="grid grid-cols-4 text-[#9090A0]">
                   <span>{ms.fundingRate != null ? `FR ${(ms.fundingRate * 100).toFixed(4)}%` : ''}</span>
                   <span>{ms.longPct != null ? `${Math.round(ms.longPct)}/${Math.round(100 - ms.longPct)}` : ''}</span>
-                  <span>{ms.oiChange != null ? <>OI {ms.oiChange}{ms.oiQuadrant && <span className="text-[#606070]"> ({ms.oiQuadrant})</span>}</> : ''}</span>
+                  <span>{ms.oiChange != null ? `OI ${ms.oiChange}` : ''}</span>
                   <span className="text-right">{ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}</span>
                 </div>
                 {/* 行3: 机构流+数据源标记 — flex justify-between */}
