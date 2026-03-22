@@ -79,8 +79,8 @@ export const DataDictionary: Record<string, Record<string, BilingualFieldDef>> =
       unit: '%',
       formulaZH: '已用保证金合计 / 总权益 × 100',
       formulaEN: 'Total Used Margin / Total Equity × 100',
-      descZH: '该值越高，账户风险越大。安全值<30%，危险值>70%',
-      descEN: 'Higher value = higher risk. Safe <30%, Dangerous >70%',
+      descZH: '该值越高，账户风险越大。系统在开仓时自动控制保证金上限，不需要因保证金使用率高而主动平仓',
+      descEN: 'Higher = riskier. System auto-controls margin at entry — do NOT close positions due to high margin usage',
     },
   },
 
