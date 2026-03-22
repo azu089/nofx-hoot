@@ -220,6 +220,7 @@ export class QuickAnalysisService {
     let newsItems: any[] = [];
     let fearGreed: { value: number; classification: string } | null = null;
     let lunarCrushData: any = null;
+    let _btcRef: { price: number; change1h: number; change4h: number; rsi?: number } | null = null;
 
     if (config.precomputedMarketData) {
       // 多币种模式: 市场数据已由调用方预构建
@@ -263,7 +264,7 @@ export class QuickAnalysisService {
       }
     } else {
       // 1. 获取市场数据 + 市场排名 + 增强数据 + NofxOS 排名（并行，对齐 nofx 数据获取日志规范）
-      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, _newsItems, _fearGreed, _lunarCrushData] = await Promise.all([
+      const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, _newsItems, _fearGreed, _lunarCrushData, __btcRef] = await Promise.all([
         this.fetchMarketData(config),
         this.marketData.fetchMarketRanking(config.symbol).catch((e: any) => {
           this.logger.warn(`[数据获取] marketRanking 失败: ${e.message}`);
@@ -295,6 +296,25 @@ export class QuickAnalysisService {
         this.marketData.fetchFearGreedIndex().catch(() => null),
         // Task 4: LunarCrush 社媒情绪
         this.lunarCrush.fetchSocialMetrics(config.symbol).catch(() => null),
+        // BTC 参考数据（对齐 nofx BuildUserPrompt: BTC price + 1h/4h change + RSI）
+        (async () => {
+          try {
+            const btcSymbol = 'BTC/USDT:USDT';
+            if (config.symbol === btcSymbol) return null; // 当前币就是 BTC 则跳过
+            const btcOhlcv = await this.marketData.fetchOHLCV(btcSymbol, '1h', 20);
+            if (!btcOhlcv || btcOhlcv.length < 14) return null;
+            const btcInd = this.indicators.calculateAll(btcOhlcv as any);
+            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.[4] ?? 0;
+            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.[4] ?? btcPrice;
+            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.[4] ?? btcPrice;
+            return {
+              price: btcPrice,
+              change1h: btcPrice1hAgo > 0 ? ((btcPrice - btcPrice1hAgo) / btcPrice1hAgo) * 100 : 0,
+              change4h: btcPrice4hAgo > 0 ? ((btcPrice - btcPrice4hAgo) / btcPrice4hAgo) * 100 : 0,
+              rsi: btcInd.rsi ?? undefined,
+            };
+          } catch { return null; }
+        })(),
       ]);
       const { ohlcv, currentPrice, openInterest, fundingRate, volume24h } = marketData;
       safetyVolume24h = volume24h;
@@ -302,6 +322,7 @@ export class QuickAnalysisService {
       newsItems = _newsItems as any[] || [];
       fearGreed = _fearGreed as any;
       lunarCrushData = _lunarCrushData;
+      _btcRef = __btcRef as any;
 
       // 数据获取摘要日志（对齐 nofx buildTradingContext 日志规范）
       this.logger.log(
@@ -485,10 +506,17 @@ export class QuickAnalysisService {
 
     // 7. 构建用户消息（Phase 9.0: 结构化 User Prompt，注入账户/交易/持仓上下文）
     const ai = config.accountInfo;
+    // BTC 参考数据注入（对齐 nofx BuildUserPrompt: BTC market snapshot）
+
     const userPromptCtx: UserPromptContext = {
       now: new Date(),
       cycleCount: config.cycleCount,
       runtimeMinutes: config.runtimeMinutes,
+      // BTC 参考（对齐 nofx: BTC price + 1h/4h change + RSI）
+      btcPrice: _btcRef?.price,
+      btcChange1h: _btcRef?.change1h,
+      btcChange4h: _btcRef?.change4h,
+      btcRsi: _btcRef?.rsi,
       // 账户信息: 有 accountInfo 时用真实数据，否则不传（prompt-builder 跳过该段）
       equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
       balance: ai?.allocatedCapital,
