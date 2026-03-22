@@ -135,7 +135,7 @@ export class FeeService {
    * 扣除手续费（幂等性）
    * @param feeRecord 手续费记录
    */
-  async chargeFee(feeRecord: FeeRecord): Promise<{ ok: boolean; balanceDepleted: boolean }> {
+  async chargeFee(feeRecord: FeeRecord): Promise<{ ok: boolean; balanceDepleted: boolean; actualDeduction: string }> {
     const { userId, positionId, profit, feeRate, feeAmount, uniqueOrderId } =
       feeRecord;
 
@@ -146,17 +146,18 @@ export class FeeService {
 
     if (existingLog) {
       this.logger.warn(`手续费已处理: ${uniqueOrderId}`);
-      return { ok: false, balanceDepleted: false };
+      return { ok: false, balanceDepleted: false, actualDeduction: '0' };
     }
 
     const feeAmountDecimal = new Decimal(feeAmount);
 
     // 如果手续费为 0，不扣费
     if (feeAmountDecimal.lte(0)) {
-      return { ok: true, balanceDepleted: false };
+      return { ok: true, balanceDepleted: false, actualDeduction: '0' };
     }
 
     let balanceDepleted = false;
+    let txActualDeduction = new Decimal(0);
 
     // 使用事务扣费
     await this.prisma.$transaction(async (tx) => {
@@ -174,6 +175,7 @@ export class FeeService {
 
       // 计算实际扣除金额（不能超过当前余额）
       const actualDeduction = Decimal.min(currentPointBalance, feeAmountDecimal);
+      txActualDeduction = actualDeduction;
 
       // 余额不足标记
       if (currentPointBalance.lt(feeAmountDecimal)) {
@@ -223,7 +225,7 @@ export class FeeService {
       );
     });
 
-    return { ok: true, balanceDepleted };
+    return { ok: true, balanceDepleted, actualDeduction: txActualDeduction.toFixed(8) };
   }
 
   /**

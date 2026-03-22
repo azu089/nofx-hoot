@@ -119,7 +119,9 @@ export class ClosedPnlSyncService {
             const feeCalc = await this.feeService.calculateFee(userId, record.realizedPnl.toFixed(8));
             if (parseFloat(feeCalc.feeAmount) > 0) {
               // 用仓位本质属性生成稳定的幂等 key，不受 exchangeId 格式变更影响
-              const stablePosKey = `${record.symbol}_${record.side}_${record.exitTime?.getTime() ?? 0}_${(record.quantity ?? 0).toFixed(4)}`;
+              // exitTime 为空时用 exchangeId 兜底，避免多条记录共享 timestamp=0 导致碰撞
+              const timeKey = record.exitTime?.getTime() ?? record.exchangeId ?? Date.now();
+              const stablePosKey = `${record.symbol}_${record.side}_${timeKey}_${(record.quantity ?? 0).toFixed(4)}`;
               const uniqueOrderId = `EXSYNC_FEE_${userId}_${stablePosKey}`;
               const feeResult = await this.feeService.chargeFee({
                 userId,
@@ -133,9 +135,9 @@ export class ClosedPnlSyncService {
               charged++;
               if (feeResult.balanceDepleted) balanceDepleted = true;
 
-              // GAS 扣费成功 → 触发上级返佣（非致命，失败不影响主流程）
-              if (feeResult.ok) {
-                await this.processReferralCommission(userId, position.id, feeCalc.feeAmount);
+              // GAS 扣费成功 → 触发上级返佣（基于实际扣除金额，非应扣金额）
+              if (feeResult.ok && parseFloat(feeResult.actualDeduction) > 0) {
+                await this.processReferralCommission(userId, position.id, feeResult.actualDeduction);
               }
             }
           } catch (feeErr: any) {

@@ -196,12 +196,13 @@ export class PositionsService {
       };
     }
 
-    // 获取所有已平仓的持仓
+    // 获取所有已平仓的持仓（只用交易所同步的聚合记录，与网页端对齐）
     const closedPositions = await this.prisma.position.findMany({
       where: {
         userId: user.id,
         status: 'closed',
         pnl: { not: null },
+        exchangeRef: { not: null },
       },
       select: {
         pnl: true,
