@@ -637,52 +637,9 @@ Confidence → position_size_usd:
 - **Risk/Reward**: Design SL/TP to achieve R:R >= ${minRR}:1`;
   }
 
-  private buildAIGuidance(isCN = false): string {
-    // 对齐 nofx prompt_builder.go L56-76 的决策原则（简洁自然）
-    if (isCN) {
-      return `## 决策原则
-
-### 风险优先
-- 优先保护资本，再考虑盈利
-- 只在盈利仓位上加仓，永远不要追亏损
-
-### 跟踪止盈
-- 当持仓盈亏从峰值回撤30%时，考虑止盈（仅当Peak PnL >= 2%时）
-- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤30%，应该止盈
-
-### 顺势交易
-- OI增加+价格上涨 = 强多头趋势
-- OI减少+价格上涨 = 空头平仓（可能反转）
-- OI增加+价格下跌 = 空头主导
-- OI减少+价格下跌 = 多头清算
-
-### 分批操作
-- 加仓: 只在盈利仓位上加仓，最多加2次，价格需比平均成本高1%
-- 分批止盈: 盈利3%平33%，5%平50%，8%全平
-- 保证金使用率由系统自动控制，不需要因此主动平仓`;
-    }
-
-    return `## Decision Principles
-
-### Risk First
-- Capital protection first, profit second
-- Only add to winning positions, never average down losers
-
-### Trailing Take-Profit
-- Consider take-profit when PnL pulls back 30% from peak (only when Peak PnL >= 2%)
-- Example: Peak PnL +5%, Current PnL +3.5% → 30% drawdown, should take profit
-
-### Trend Following
-- OI up + Price up = Strong bullish trend
-- OI down + Price up = Shorts covering (potential reversal)
-- OI up + Price down = Shorts dominant
-- OI down + Price down = Long liquidation
-
-### Scale In/Out
-- Scale-in: Only add to winning positions, max 2 additions, price must be 1% above avg cost
-- Scale-out: Close 33% at +3%, 50% at +5%, 100% at +8%
-- Margin usage is auto-controlled by system, do NOT close positions solely for margin reasons`;
-  }
+  // buildAIGuidance 已删除（对齐 nofx engine.go 主路径：不注入"决策原则"段）
+  // 跟踪止盈/分批止盈由持仓格式 ⚠️ 提示 + drawdown-monitor 代码层负责
+  // OI 四象限已在 Schema 数据字典中定义
 
   private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
     // 对齐 nofx engine.go L1102-1119
