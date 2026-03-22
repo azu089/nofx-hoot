@@ -344,6 +344,7 @@ export class AutoTraderService {
           source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
           status: 'closed',
           closedAt: { gte: todayStart },
+          aiStrategyId: strategy.id, // 封印：只统计当前策略的PnL，不混入网格
         },
         select: { realizedPnl: true },
       });

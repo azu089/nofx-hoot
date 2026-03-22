@@ -40,11 +40,19 @@ export class DrawdownMonitorProcessor extends WorkerHost {
   async process(job: Job): Promise<{ checked: number; closed: number }> {
     this.logger.debug('[AI监控] 开始检查 AI 持仓回撤...');
 
-    // 查询所有 AI 来源的开放持仓
+    // 查询所有 AI 来源的开放持仓（排除网格策略 — 网格有自己的 hardStopLoss 机制）
+    // 先获取所有网格策略ID，避免回撤监控干预网格持仓
+    const gridStrategyIds = await this.prisma.aiStrategy.findMany({
+      where: { strategyType: 'grid' },
+      select: { id: true },
+    }).then(rows => rows.map(r => r.id));
+
     const positions = await this.prisma.position.findMany({
       where: {
         status: 'open',
         source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
+        // 封印：排除网格策略的持仓，网格有独立的止损/风控机制
+        ...(gridStrategyIds.length > 0 ? { aiStrategyId: { notIn: gridStrategyIds } } : {}),
       },
       select: {
         id: true,

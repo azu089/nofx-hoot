@@ -1,3 +1,21 @@
+/**
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║  网格策略服务 — 封印区域（SEALED）                           ║
+ * ║                                                              ║
+ * ║  本文件独立于极速策略，禁止以下操作：                        ║
+ * ║  1. 从极速策略路径调用本服务的任何方法                       ║
+ * ║  2. 在 drawdown-monitor 中监控网格持仓（网格有自己的风控）   ║
+ * ║  3. 在 ai-execution.service 中查询/操作网格持仓              ║
+ * ║  4. 修改共享 adapter 函数时必须同时测试网格和极速            ║
+ * ║                                                              ║
+ * ║  网格的止损/平仓/委托管理完全自包含，见：                    ║
+ * ║  - hardStopLoss: L1598                                       ║
+ * ║  - cancelAllOrders: 仅在网格重建/方向性平仓时使用            ║
+ * ║  - cancelStopOrders: 按类型过滤，不清限价基础单              ║
+ * ║                                                              ║
+ * ║  参考: .claude/rules/网格数据架构原则.md                     ║
+ * ╚══════════════════════════════════════════════════════════════╝
+ */
 import { Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../../../prisma/prisma.service';
