@@ -484,7 +484,41 @@ export class PromptBuilderService {
       lines.push('4. Missing any coin or giving lazy cross-references = INVALID output.');
       lines.push(`5. Return the array in the EXACT same order as listed above: ${coinList}. Index 0 = first coin, do NOT reorder.`);
     }
-    lines.push('Analyze the above data and output your trading decision.');
+    // 对齐 nofx getDecisionRequirementsZH L125-176: user prompt 末尾的决策步骤 + 高质量示例
+    lines.push(`
+---
+
+## 📝 现在请做出决策
+
+### 决策步骤
+
+1. **分析账户风险**: 当前保证金使用率是否在安全范围？是否有足够资金开新仓？
+2. **分析现有持仓**（如果有）: 是否触发止损条件？是否触发跟踪止盈条件？
+3. **分析候选币种**（如果有）: 技术形态是否符合进场条件？持仓量变化是否支持趋势？多个时间框架是否共振？
+4. **输出决策**: 使用规定的JSON格式，提供详细的推理过程，给出明确的行动指令
+
+### 输出示例
+
+[
+  {
+    "symbol": "SOL/USDT:USDT",
+    "action": "PARTIAL_CLOSE",
+    "confidence": 85,
+    "reasoning": "当前PnL +2.96%，接近历史峰值+2.99%（回撤仅0.03%）。建议部分平仓锁定利润，因为：1) 持仓时间仅11分钟，已获得3%收益；2) 价格接近唐奇安上轨阻力位；3) 成交量开始萎缩，上涨动能减弱。建议平仓50%，剩余仓位设置跟踪止盈在峰值回撤20%处。"
+  },
+  {
+    "symbol": "BNB/USDT:USDT",
+    "action": "open_long",
+    "leverage": 3,
+    "position_size_usd": 150,
+    "stop_loss": 622.0,
+    "take_profit": 646.0,
+    "confidence": 75,
+    "reasoning": "BNB在唐奇安下轨$622支撑位获得支撑，持仓量1小时内增加+1.57M (+0.89%)，配合价格上涨+0.5%，符合OI增加+价格上涨的强多头模式。RSI(14)=30从超卖区回升，机构资金净流入$2.7M确认买盘。止损设在唐奇安下轨下方，止盈目标上轨$646，R:R=3:1。"
+  }
+]
+
+**请立即输出你的决策：**`);
 
     // [10] 语言提醒（防止英文上下文淹没 system prompt 的语言指令）
     const langReminder = buildUserMessageLanguageReminder(ctx.locale);
