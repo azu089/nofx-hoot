@@ -194,8 +194,10 @@ export class PromptBuilderService {
     const isCN = locale.startsWith('zh');
     sections.push(this.buildHardConstraints(rc, isCN));
 
-    // Section 3: AI Guidance (recommended)
-    sections.push(this.buildAIGuidance(isCN));
+    // Section 3: 删除。对齐 nofx engine.go BuildSystemPrompt 主路径：
+    // nofx 主路径没有"决策原则"段（风险优先/保护资本/跟踪止盈/分批操作）
+    // 这些规则来自 prompt_builder.go 备用路径，导致 AI 用"保护资本"滥用平仓
+    // 跟踪止盈和分批止盈由持仓格式中的 ⚠️ 提示 + drawdown-monitor 代码层负责
 
     // Section 4: Trading Frequency Awareness
     sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, config.consecutiveWaits));
@@ -262,8 +264,12 @@ export class PromptBuilderService {
       }
       if (ctx.marginUsage !== undefined) {
         lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
-        // 对齐 nofx: 保证金使用率仅信息展示，位置价值比才是硬约束
-        // 不设分级警告，避免 AI 误解为硬约束而错误平仓
+        // 对齐 nofx formatter.go L124-128: 风险提示（仅提示，不强制平仓）
+        if (ctx.marginUsage > 70) {
+          lines.push(`⚠️ Margin usage > 70%, high risk. Be cautious with NEW positions.`);
+        } else if (ctx.marginUsage > 50) {
+          lines.push(`⚠️ Margin usage > 50%, be cautious with new positions.`);
+        }
       }
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }
