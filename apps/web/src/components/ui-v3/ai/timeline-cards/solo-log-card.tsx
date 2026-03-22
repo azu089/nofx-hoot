@@ -735,16 +735,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const oiQText = ms.oiQuadrant ? ` (${ms.oiQuadrant})` : '';
             return (
               <div className="space-y-0.5 mb-2">
-                {/* 行1: 价格 RSI MACD ATR FR */}
-                <div className="flex items-center gap-2 text-[11px] font-mono flex-wrap">
+                {/* 行1: 价格 RSI MACD ATR */}
+                <div className="grid grid-cols-3 text-[11px] font-mono">
                   <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
                   <span className="text-[#9090A0]">RSI {ms.rsi14?.toFixed(1) || '—'}</span>
-                  {ms.macdHist != null && <span className="text-[#9090A0]">MACD {ms.macdHist.toFixed(4)}</span>}
-                  {atrPct != null && <span className="text-[#9090A0]">ATR {atrPct.toFixed(2)}%</span>}
-                  <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
+                  <span className="text-[#9090A0] text-right">{ms.macdHist != null ? `MACD ${ms.macdHist.toFixed(3)}` : atrPct != null ? `ATR ${atrPct.toFixed(2)}%` : ''}</span>
                 </div>
-                {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
+                {/* 行2: FR 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
                 <div className="flex items-center gap-3 text-[11px] font-mono text-[#9090A0]">
+                  <span>FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
                   {ms.longPct != null && <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>}
                   {ms.oiChange != null && <span>OI {ms.oiChange}{oiQText}</span>}
                   {ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}
@@ -867,16 +866,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {/* 行3: 市场数据 — 3列网格 */}
           {d.marketSnapshot && (
             <div className="text-[11px] font-mono space-y-0.5">
-              {/* 行1: 价格 RSI MACD ATR FR */}
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* 行1: 价格 RSI MACD/ATR — 3列网格 */}
+              <div className="grid grid-cols-3 text-[#9090A0]">
                 <span className="text-[#F8F8FC]">{d.marketSnapshot.price != null && `$${d.marketSnapshot.price.toFixed(2)}`}</span>
-                <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI {d.marketSnapshot.rsi14.toFixed(1)}</>}</span>
-                {d.marketSnapshot.macdHist != null && <span className="text-[#9090A0]">MACD {d.marketSnapshot.macdHist.toFixed(4)}</span>}
-                {d.marketSnapshot.atr14 != null && d.marketSnapshot.price > 0 && <span className="text-[#9090A0]">ATR {(d.marketSnapshot.atr14 / d.marketSnapshot.price * 100).toFixed(2)}%</span>}
-                <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</>}</span>
+                <span>{d.marketSnapshot.rsi14 != null && <>RSI {d.marketSnapshot.rsi14.toFixed(1)}</>}</span>
+                <span className="text-right">{d.marketSnapshot.macdHist != null ? `MACD ${d.marketSnapshot.macdHist.toFixed(3)}` : d.marketSnapshot.atr14 != null && d.marketSnapshot.price > 0 ? `ATR ${(d.marketSnapshot.atr14 / d.marketSnapshot.price * 100).toFixed(2)}%` : ''}</span>
               </div>
-              {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
+              {/* 行2: FR 多空比 OI+四象限 EMA趋势 稳定币 机构流 */}
               <div className="flex items-center gap-3 text-[#9090A0]">
+                <span>{d.marketSnapshot.fundingRate != null && <>FR {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</>}</span>
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
                 <span>{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070]"> ({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
                 {d.marketSnapshot.emaTrend && <span className={d.marketSnapshot.emaTrend.includes('多') ? 'text-[#10B981]' : d.marketSnapshot.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {d.marketSnapshot.emaTrend}</span>}
