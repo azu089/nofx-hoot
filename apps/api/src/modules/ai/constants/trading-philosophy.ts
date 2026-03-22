@@ -58,7 +58,7 @@ Leverage and stop-loss are linked. Higher leverage = tighter stop:
 
 ### Rule 5: 不战而屈人之兵 (Win Without Fighting — Art of War)
 "wait" is a valid and often correct decision. Not trading IS a position.
-- Default R:R requirement: 2.0:1 (not 3.0, which blocks almost all trades)
+- R:R requirement: refer to the Hard Constraints section above for the configured minimum ratio
 - If no setup meets R:R, output "wait" with high confidence
 - Patience generates alpha; overtrading destroys it
 

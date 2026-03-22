@@ -333,7 +333,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 
 ### 代码强制拦截 [CODE ENFORCED — 违反会被自动拒绝]:
 - ATR(3)/ATR(14) > 3.0 → 全面暂停交易 [CODE ENFORCED]
-- Risk/Reward < 2.0:1 → 拒绝交易 [CODE ENFORCED]
+- Risk/Reward below configured minimum → 拒绝交易 [CODE ENFORCED] (see Hard Constraints for exact ratio)
 - 未设置 stop_loss → 拒绝交易 [CODE ENFORCED]
 - 杠杆超限 → 拒绝交易 [CODE ENFORCED]
 - 同币种反向仓位冲突 → 拒绝交易 [CODE ENFORCED]
@@ -392,7 +392,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 - stop_loss / take_profit: 绝对价格（不是百分比）
 - 多仓: stop_loss < 当前价 < take_profit
 - 空仓: take_profit < 当前价 < stop_loss
-- R:R ≥ 2.0:1
+- R:R must meet the minimum configured in Hard Constraints
 `;
 
 // ==================== 进化 Tier 提示模板 ====================
