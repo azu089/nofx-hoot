@@ -613,6 +613,36 @@ export interface StrategyLog {
     gridSummary?: string; // Grid 操作摘要 (如 "5买/5卖")
     cost?: number;
     aiThinking?: string; // AI 思考链（DeepSeek-Reasoner / Claude 扩展思考）
+    // 多币种合并日志（对齐 nofx: 一轮一条记录）
+    allDecisions?: Array<{
+      symbol: string;
+      action?: string;
+      confidence?: number;
+      leverage?: number;
+      positionSizePercent?: number;
+      positionSizeUSD?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      reasoning?: string;
+      executed?: boolean;
+      executionResult?: {
+        orderId?: string;
+        positionId?: string;
+        price?: number;
+        amount?: number;
+        error?: string;
+        positionValueLimit?: number;
+        aiRequestedUSD?: number;
+        actualNotional?: number;
+        actualMargin?: number;
+        wasTruncated?: boolean;
+        blocked?: boolean;
+        blockedBy?: string;
+        reason?: string;
+        skipped?: boolean;
+      };
+      marketSnapshot?: any;
+    }>;
     // Solo 市场数据快照（对齐 Grid 的 gridSnapshot）
     marketSnapshot?: {
       price: number;

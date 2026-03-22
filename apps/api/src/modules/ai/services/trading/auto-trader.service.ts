@@ -1168,6 +1168,23 @@ export class AutoTraderService {
         }
       }
 
+      // 收集所有币种的决策和执行结果（循环外统一写一条合并日志，对齐 nofx saveDecision 模式）
+      const cycleDecisions: Array<{
+        symbol: string;
+        decision: any;
+        executed: boolean;
+        executionResult: any;
+        marketSnapshot?: any;
+        aiThinking?: string;
+        rawResponse?: string;
+        systemPrompt?: string;
+        userPrompt?: string;
+      }> = [];
+      // 共享的 prompt 数据（多币种模式下取第一个币种的）
+      let sharedRawResponse: string | undefined;
+      let sharedSystemPrompt: string | undefined;
+      let sharedUserPrompt: string | undefined;
+
       for (const symbol of activeCandidates) {
         try {
           // 检查是否已有该币种的持仓（已有则跳过开仓，允许平仓决策）
@@ -1357,29 +1374,33 @@ export class AutoTraderService {
               confidence: decision.confidence,
               executed: false,
             });
-            await db.aiStrategyLog.create({
-              data: {
-                strategyId,
-                symbol,
-                decision: {
-                  action: decision.action,
-                  confidence: decision.confidence,
-                  leverage: decision.leverage,
-                  positionSizePercent: decision.positionSizePercent,
-                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                  reasoning: decision.reasoning,
-                  ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
-                  ...(consensusVotes ? { votes: consensusVotes } : {}),
-                  ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
-                  ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
-                } as unknown as Prisma.InputJsonValue,
-                executed: false,
-                executionResult: { skipped: true, reason: decision.action },
-                rawResponse: _logRawResponse,
-                systemPrompt: _logSystemPrompt,
-                userPrompt: _logUserPrompt,
+            cycleDecisions.push({
+              symbol,
+              decision: {
+                action: decision.action,
+                confidence: decision.confidence,
+                leverage: decision.leverage,
+                positionSizePercent: decision.positionSizePercent,
+                ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
+                reasoning: decision.reasoning,
+                ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
+                ...(consensusVotes ? { votes: consensusVotes } : {}),
+                ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
+                ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
               },
+              executed: false,
+              executionResult: { skipped: true, reason: decision.action },
+              marketSnapshot: _logMarketSnapshot,
+              aiThinking: _logAiThinking,
+              rawResponse: _logRawResponse,
+              systemPrompt: _logSystemPrompt,
+              userPrompt: _logUserPrompt,
             });
+            if (!sharedRawResponse) {
+              sharedRawResponse = _logRawResponse;
+              sharedSystemPrompt = _logSystemPrompt;
+              sharedUserPrompt = _logUserPrompt;
+            }
             this.gateway.sendAiDecision(userId, {
               strategyId, symbol, action: decision.action,
               confidence: decision.confidence,
@@ -1427,26 +1448,28 @@ export class AutoTraderService {
               decision = { ...decision, action: 'wait' as AiAction };
               // 转为 wait 后进入跳过流程
               result.decisions.push({ symbol, action: 'wait', confidence: decision.confidence, executed: false });
-              await db.aiStrategyLog.create({
-                data: {
-                  strategyId,
-                  symbol,
-                  decision: {
-                    action: 'wait',
-                    confidence: decision.confidence,
-                    minConfFilter: true,
-                    actual: decision.confidence,
-                    required: minConf,
-                    originalAction: decision.action,
-                    reasoning: `[置信度不足 ${decision.confidence}%<${minConf}%，未执行] ${decision.reasoning || ''}`,
-                  } as unknown as Prisma.InputJsonValue,
-                  executed: false,
-                  executionResult: { skipped: true, reason: 'min_confidence' },
-                  rawResponse: _logRawResponse,
-                  systemPrompt: _logSystemPrompt,
-                  userPrompt: _logUserPrompt,
+              cycleDecisions.push({
+                symbol,
+                decision: {
+                  action: 'wait',
+                  confidence: decision.confidence,
+                  minConfFilter: true,
+                  actual: decision.confidence,
+                  required: minConf,
+                  originalAction: decision.action,
+                  reasoning: `[置信度不足 ${decision.confidence}%<${minConf}%，未执行] ${decision.reasoning || ''}`,
                 },
+                executed: false,
+                executionResult: { skipped: true, reason: 'min_confidence' },
+                rawResponse: _logRawResponse,
+                systemPrompt: _logSystemPrompt,
+                userPrompt: _logUserPrompt,
               });
+              if (!sharedRawResponse) {
+                sharedRawResponse = _logRawResponse;
+                sharedSystemPrompt = _logSystemPrompt;
+                sharedUserPrompt = _logUserPrompt;
+              }
               continue;
             }
           }
@@ -1563,39 +1586,43 @@ export class AutoTraderService {
               error: `Safety: ${safetyResult.blockedReason}`,
             });
 
-            // 记录安全检查失败到策略日志
+            // 收集安全检查失败到合并日志
             const safetyCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
               ? Math.round(decision.positionSizeUSD ?? (allocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
-            await db.aiStrategyLog.create({
-              data: {
-                strategyId,
-                symbol,
-                decision: {
-                  action: decision.action,
-                  confidence: decision.confidence,
-                  leverage: decision.leverage,
-                  positionSizePercent: decision.positionSizePercent,
-                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                  ...(safetyCapitalUSD != null ? { capitalUSD: safetyCapitalUSD } : {}),
-                  stopLoss: decision.stopLoss,
-                  takeProfit: decision.takeProfit,
-                  reasoning: decision.reasoning,
-                  ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
-                  ...(consensusVotes ? { votes: consensusVotes } : {}),
-                  ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
-                  ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
-                } as unknown as Prisma.InputJsonValue,
-                executed: false,
-                executionResult: {
-                  blocked: true,
-                  blockedBy: safetyResult.blockedBy,
-                  reason: safetyResult.blockedReason,
-                },
-                rawResponse: _logRawResponse,
-                systemPrompt: _logSystemPrompt,
-                userPrompt: _logUserPrompt,
+            cycleDecisions.push({
+              symbol,
+              decision: {
+                action: decision.action,
+                confidence: decision.confidence,
+                leverage: decision.leverage,
+                positionSizePercent: decision.positionSizePercent,
+                ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
+                ...(safetyCapitalUSD != null ? { capitalUSD: safetyCapitalUSD } : {}),
+                stopLoss: decision.stopLoss,
+                takeProfit: decision.takeProfit,
+                reasoning: decision.reasoning,
+                ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
+                ...(consensusVotes ? { votes: consensusVotes } : {}),
+                ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
+                ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
               },
+              executed: false,
+              executionResult: {
+                blocked: true,
+                blockedBy: safetyResult.blockedBy,
+                reason: safetyResult.blockedReason,
+              },
+              marketSnapshot: _logMarketSnapshot,
+              aiThinking: _logAiThinking,
+              rawResponse: _logRawResponse,
+              systemPrompt: _logSystemPrompt,
+              userPrompt: _logUserPrompt,
             });
+            if (!sharedRawResponse) {
+              sharedRawResponse = _logRawResponse;
+              sharedSystemPrompt = _logSystemPrompt;
+              sharedUserPrompt = _logUserPrompt;
+            }
 
             // WebSocket: 推送安全检查拦截的决策
             this.gateway.sendAiDecision(userId, {
@@ -1750,28 +1777,30 @@ export class AutoTraderService {
                 symbol, action: decision.action, confidence: decision.confidence, executed: false, error: `E4: ${e4Reason}`,
               });
 
-              // 写入策略日志（修复: E4 拦截之前不写日志）
-              await db.aiStrategyLog.create({
-                data: {
-                  strategyId,
-                  symbol,
-                  decision: {
-                    action: decision.action,
-                    confidence: decision.confidence,
-                    leverage: decision.leverage,
-                    positionSizePercent: decision.positionSizePercent,
+              // 收集 E4 拦截到合并日志
+              cycleDecisions.push({
+                symbol,
+                decision: {
+                  action: decision.action,
+                  confidence: decision.confidence,
+                  leverage: decision.leverage,
+                  positionSizePercent: decision.positionSizePercent,
                   ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                    capitalUSD: Math.round(marginEst),
-                    stopLoss: decision.stopLoss,
-                    takeProfit: decision.takeProfit,
-                    reasoning: decision.reasoning,
-                    ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
-                    ...(votes ? { votes } : {}),
-                  } as unknown as Prisma.InputJsonValue,
-                  executed: false,
-                  executionResult: { blocked: true, blockedBy: 'E4', reason: e4Reason },
+                  capitalUSD: Math.round(marginEst),
+                  stopLoss: decision.stopLoss,
+                  takeProfit: decision.takeProfit,
+                  reasoning: decision.reasoning,
+                  ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
+                  ...(votes ? { votes } : {}),
                 },
+                executed: false,
+                executionResult: { blocked: true, blockedBy: 'E4', reason: e4Reason },
               });
+              if (!sharedRawResponse) {
+                sharedRawResponse = itemRawResponse;
+                sharedSystemPrompt = itemSystemPrompt;
+                sharedUserPrompt = itemUserPrompt;
+              }
 
               // WS 通知
               this.gateway.sendAiDecision(userId, {
@@ -1845,20 +1874,23 @@ export class AutoTraderService {
                   executed: false,
                   error: reason,
                 });
-                await db.aiStrategyLog.create({
-                  data: {
-                    strategyId, symbol,
-                    decision: {
-                      action: decision.action, confidence: decision.confidence,
-                      leverage: decision.leverage, positionSizePercent: decision.positionSizePercent,
-                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                      stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
-                      reasoning: decision.reasoning,
-                    } as unknown as Prisma.InputJsonValue,
-                    executed: false,
-                    executionResult: { blocked: true, blockedBy: 'R4', reason },
+                cycleDecisions.push({
+                  symbol,
+                  decision: {
+                    action: decision.action, confidence: decision.confidence,
+                    leverage: decision.leverage, positionSizePercent: decision.positionSizePercent,
+                    ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
+                    stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
+                    reasoning: decision.reasoning,
                   },
+                  executed: false,
+                  executionResult: { blocked: true, blockedBy: 'R4', reason },
                 });
+                if (!sharedRawResponse) {
+                  sharedRawResponse = itemRawResponse;
+                  sharedSystemPrompt = itemSystemPrompt;
+                  sharedUserPrompt = itemUserPrompt;
+                }
                 continue;
               }
 
@@ -1957,48 +1989,51 @@ export class AutoTraderService {
             error: execResult.error,
           });
 
-          // 记录到策略日志
+          // 收集执行结果到合并日志
           const logAllocCap = riskControl.allocatedCapital || 1000;
           const execCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
             ? Math.round(decision.positionSizeUSD ?? (logAllocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
-          await db.aiStrategyLog.create({
-            data: {
-              strategyId,
-              symbol,
-              decision: {
-                action: decision.action,
-                confidence: decision.confidence,
-                leverage: decision.leverage,
-                positionSizePercent: decision.positionSizePercent,
-                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                ...(execCapitalUSD != null ? { capitalUSD: execCapitalUSD } : {}),
-                stopLoss: decision.stopLoss,
-                takeProfit: decision.takeProfit,
-                reasoning: decision.reasoning,
-                ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
-                ...(votes ? { votes } : {}),
-                ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
-                ...(itemMarketSnapshot ? { marketSnapshot: itemMarketSnapshot } : {}),
-              } as unknown as Prisma.InputJsonValue,
-              executed: execResult.success,
-              executionResult: {
-                orderId: execResult.orderId,
-                positionId: execResult.positionId,
-                price: execResult.price,
-                amount: execResult.amount,
-                error: execResult.error,
-                // 仓位计算链（供前端日志展示）
-                positionValueLimit: execResult.positionValueLimit,
-                aiRequestedUSD: execResult.aiRequestedUSD,
-                actualNotional: execResult.actualNotional,
-                actualMargin: execResult.actualMargin,
-                wasTruncated: execResult.wasTruncated,
-              },
-              rawResponse: itemRawResponse,
-              systemPrompt: itemSystemPrompt,
-              userPrompt: itemUserPrompt,
+          cycleDecisions.push({
+            symbol,
+            decision: {
+              action: decision.action,
+              confidence: decision.confidence,
+              leverage: decision.leverage,
+              positionSizePercent: decision.positionSizePercent,
+              ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
+              ...(execCapitalUSD != null ? { capitalUSD: execCapitalUSD } : {}),
+              stopLoss: decision.stopLoss,
+              takeProfit: decision.takeProfit,
+              reasoning: decision.reasoning,
+              ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
+              ...(votes ? { votes } : {}),
+              ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
+              ...(itemMarketSnapshot ? { marketSnapshot: itemMarketSnapshot } : {}),
             },
+            executed: execResult.success,
+            executionResult: {
+              orderId: execResult.orderId,
+              positionId: execResult.positionId,
+              price: execResult.price,
+              amount: execResult.amount,
+              error: execResult.error,
+              positionValueLimit: execResult.positionValueLimit,
+              aiRequestedUSD: execResult.aiRequestedUSD,
+              actualNotional: execResult.actualNotional,
+              actualMargin: execResult.actualMargin,
+              wasTruncated: execResult.wasTruncated,
+            },
+            marketSnapshot: itemMarketSnapshot,
+            aiThinking: itemAiThinking,
+            rawResponse: itemRawResponse,
+            systemPrompt: itemSystemPrompt,
+            userPrompt: itemUserPrompt,
           });
+          if (!sharedRawResponse) {
+            sharedRawResponse = itemRawResponse;
+            sharedSystemPrompt = itemSystemPrompt;
+            sharedUserPrompt = itemUserPrompt;
+          }
 
           // LOG-7: 决策记录保存确认
           this.logger.debug(
@@ -2053,31 +2088,33 @@ export class AutoTraderService {
             error: error.message,
           });
 
-          // 记录失败日志
+          // 收集执行异常到合并日志
           const failAllocCap = riskControl.allocatedCapital || 1000;
           const failCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
             ? Math.round(decision.positionSizeUSD ?? (failAllocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
-          await db.aiStrategyLog.create({
-            data: {
-              strategyId,
-              symbol,
-              decision: {
-                action: decision.action,
-                confidence: decision.confidence,
-                leverage: decision.leverage,
-                positionSizePercent: decision.positionSizePercent,
-                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                ...(failCapitalUSD != null ? { capitalUSD: failCapitalUSD } : {}),
-                stopLoss: decision.stopLoss,
-                takeProfit: decision.takeProfit,
-                reasoning: decision.reasoning,
-                ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
-                ...(votes ? { votes } : {}),
-              } as unknown as Prisma.InputJsonValue,
-              executed: false,
-              executionResult: { error: error.message },
+          cycleDecisions.push({
+            symbol,
+            decision: {
+              action: decision.action,
+              confidence: decision.confidence,
+              leverage: decision.leverage,
+              positionSizePercent: decision.positionSizePercent,
+              ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
+              ...(failCapitalUSD != null ? { capitalUSD: failCapitalUSD } : {}),
+              stopLoss: decision.stopLoss,
+              takeProfit: decision.takeProfit,
+              reasoning: decision.reasoning,
+              ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
+              ...(votes ? { votes } : {}),
             },
+            executed: false,
+            executionResult: { error: error.message },
           });
+          if (!sharedRawResponse) {
+            sharedRawResponse = itemRawResponse;
+            sharedSystemPrompt = itemSystemPrompt;
+            sharedUserPrompt = itemUserPrompt;
+          }
 
           // WebSocket: 推送执行失败决策
           this.gateway.sendAiDecision(userId, {
@@ -2092,6 +2129,40 @@ export class AutoTraderService {
             timestamp: new Date().toISOString(),
           });
         }
+      }
+
+      // 对齐 nofx saveDecision(record) 模式：一轮一条合并日志（包含所有币种的决策）
+      if (cycleDecisions.length > 0) {
+        // 主决策：优先选已执行的，其次选第一个
+        const primaryDecision = cycleDecisions.find(d => d.executed) || cycleDecisions[0];
+        const primarySymbol = primaryDecision.symbol;
+
+        await db.aiStrategyLog.create({
+          data: {
+            strategyId,
+            symbol: primarySymbol,
+            decision: {
+              ...primaryDecision.decision,
+              allDecisions: cycleDecisions.map(d => ({
+                symbol: d.symbol,
+                ...d.decision,
+                executed: d.executed,
+                executionResult: d.executionResult,
+              })),
+            } as unknown as Prisma.InputJsonValue,
+            executed: cycleDecisions.some(d => d.executed),
+            executionResult: {
+              allExecutions: cycleDecisions.map(d => ({
+                symbol: d.symbol,
+                executed: d.executed,
+                ...d.executionResult,
+              })),
+            },
+            rawResponse: sharedRawResponse,
+            systemPrompt: sharedSystemPrompt,
+            userPrompt: sharedUserPrompt,
+          },
+        });
       }
 
       // 更新策略统计 + lastCycleAt + cycleCount + 重置连续失败计数
