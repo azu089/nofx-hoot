@@ -938,7 +938,7 @@ export function CreateStrategyWizard() {
                   <input
                     type="number"
                     title="冷却时间"
-                    value={riskParams.cooldownMinutes}
+                    value={riskParams.cooldownMinutes || ''}
                     onChange={(e) => updateRisk('cooldownMinutes', Number(e.target.value) || 0)}
                     min={0}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
@@ -1054,7 +1054,7 @@ export function CreateStrategyWizard() {
                   <input
                     type="number"
                     title="冷却时间（分钟）"
-                    value={riskParams.cooldownMinutes}
+                    value={riskParams.cooldownMinutes || ''}
                     onChange={(e) => updateRisk('cooldownMinutes', Number(e.target.value) || 0)}
                     min={0}
                     className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
