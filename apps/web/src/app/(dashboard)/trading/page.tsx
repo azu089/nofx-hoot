@@ -403,21 +403,38 @@ export default function TradingPage() {
     staleTime: 30000,
   });
 
-  // 当 API Keys 加载完成后，优先选择有运行中策略的 API Key
+  // 当 API Keys 加载完成后，选择默认账号
+  // 优先级：localStorage 记住的 > 有运行中策略的 > 有最大余额的 > 第一个
   useEffect(() => {
     if (apiKeys && apiKeys.length > 0 && !selectedApiKeyId) {
-      // 找出有运行中策略的 API Key IDs
+      // 1. 记住用户上次选择
+      const savedKeyId = typeof window !== 'undefined' ? localStorage.getItem('hoot_selected_api_key') : null;
+      if (savedKeyId && apiKeys.find(k => k.id === savedKeyId)) {
+        setSelectedApiKeyId(savedKeyId);
+        return;
+      }
+      // 2. 有运行中策略的 API Key
       const activeStrategyKeyIds = new Set(
         (aiStrategiesData?.data ?? [])
           .filter(s => s.isActive && s.exchangeApiKeyId)
           .map(s => s.exchangeApiKeyId!),
       );
-      // 优先选有运行中策略的，否则选第一个活跃的
       const keyWithStrategy = apiKeys.find(k => activeStrategyKeyIds.has(k.id));
-      const activeKey = keyWithStrategy || apiKeys.find(k => k.isActive) || apiKeys[0];
-      setSelectedApiKeyId(activeKey.id);
+      if (keyWithStrategy) {
+        setSelectedApiKeyId(keyWithStrategy.id);
+        return;
+      }
+      // 3. 有最大余额的账号
+      const keyByBalance = apiKeys.reduce((best, k) => {
+        const bestIdx = apiKeys.indexOf(best);
+        const kIdx = apiKeys.indexOf(k);
+        const bestBal = apiKeyBalanceQueries[bestIdx]?.data?.totalUsdValue ?? 0;
+        const kBal = apiKeyBalanceQueries[kIdx]?.data?.totalUsdValue ?? 0;
+        return kBal > bestBal ? k : best;
+      }, apiKeys[0]);
+      setSelectedApiKeyId(keyByBalance.id);
     }
-  }, [apiKeys, selectedApiKeyId, aiStrategiesData]);
+  }, [apiKeys, selectedApiKeyId, aiStrategiesData, apiKeyBalanceQueries]);
 
   // 处理账户切换：同步 selectedApiKeyId 和 selectedAccountIndex
   const handleAccountChange = useCallback((accountId: string | number) => {
@@ -426,6 +443,10 @@ export default function TradingPage() {
     if (idx !== -1) {
       setSelectedApiKeyId(String(accountId));
       setSelectedAccountIndex(idx);
+      // 记住用户选择
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('hoot_selected_api_key', String(accountId));
+      }
     }
   }, [apiKeys]);
 
