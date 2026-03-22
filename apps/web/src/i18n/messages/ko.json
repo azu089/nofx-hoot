@@ -2237,7 +2237,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "증거금",
       "notionalLabel": "명목",
-      "truncated": "절삭"
+      "truncated": "절삭",
+      "limitLabel": "상한"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",

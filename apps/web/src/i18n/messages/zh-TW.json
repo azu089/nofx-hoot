@@ -2239,7 +2239,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "保證金",
       "notionalLabel": "名義",
-      "truncated": "截斷"
+      "truncated": "截斷",
+      "limitLabel": "上限"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

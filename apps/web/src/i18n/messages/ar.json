@@ -2218,7 +2218,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "هامش",
       "notionalLabel": "اسمي",
-      "truncated": "مقطوع"
+      "truncated": "مقطوع",
+      "limitLabel": "حد "
     },
     "modeInfo": {
       "soloTitle": "الوضع الفردي",

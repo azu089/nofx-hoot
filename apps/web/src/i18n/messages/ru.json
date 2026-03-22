@@ -2237,7 +2237,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "Маржа",
       "notionalLabel": "Номинал",
-      "truncated": "усечено"
+      "truncated": "усечено",
+      "limitLabel": "Лимит "
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

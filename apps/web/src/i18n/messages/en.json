@@ -2222,7 +2222,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "Margin",
       "notionalLabel": "Notional",
-      "truncated": "truncated"
+      "truncated": "truncated",
+      "limitLabel": "Limit "
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -2237,7 +2237,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "Margin",
       "notionalLabel": "Nominal",
-      "truncated": "terpotong"
+      "truncated": "terpotong",
+      "limitLabel": "Batas "
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

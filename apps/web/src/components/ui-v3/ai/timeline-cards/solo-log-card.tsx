@@ -652,28 +652,28 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const aiPct = pvl > 0 && aiReq > 0 ? Math.round(aiReq / pvl * 100) : (d.positionSizePercent || 0);
             return (
               <>
-                {/* 行1: [开多] 3x  60%  $88.52  ×1.07  72% */}
+                {/* 行1: [开多] 3x  $113保证金  $633.14  ×0.54  75% */}
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="px-2 py-0.5 rounded-md font-semibold font-sans" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                     {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
                   </span>
                   {d.leverage != null && d.leverage > 1 && <span className="text-[#9090A0]">{d.leverage}x</span>}
-                  {aiPct > 0 && <span className="text-[#9090A0]">{aiPct}%</span>}
+                  {margin > 0 && <span className="text-[#10B981]">${margin.toFixed(2)}</span>}
                   {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
                   {amt && <span className="text-[#F8F8FC]">×{amt}</span>}
                   {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
                 </div>
-                {/* 行2: 名义 $432→$95 · 保证金 $32 (截断) */}
-                {(notional > 0 || aiReq > 0) && (
-                  <div className="text-[10px] text-[#606070] font-mono pl-1">
-                    {aiReq > 0 && truncated
-                      ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span></>
-                      : <>{t('timeline.notionalLabel')} ${notional > 0 ? notional.toFixed(0) : Number(aiReq).toFixed(0)}</>
-                    }
-                    {margin > 0 && <> · {t('timeline.marginLabel')} ${margin.toFixed(2)}</>}
-                    {truncated && <span className="text-[#F59E0B]"> ({t('timeline.truncated') || '截断'})</span>}
-                  </div>
-                )}
+                {/* 行2: 上限$720  60%  名义 $342 */}
+                <div className="text-[10px] text-[#606070] font-mono pl-1">
+                  {pvl > 0 && <>{t('timeline.limitLabel') || '上限'}${pvl.toFixed(0)} </>}
+                  {aiPct > 0 && <span className="text-[#06B6D4]">{aiPct}%</span>}
+                  {aiPct > 0 && <> </>}
+                  {notional > 0 && (
+                    truncated
+                      ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span> ({t('timeline.truncated')})</>
+                      : <>{t('timeline.notionalLabel')} ${notional.toFixed(0)}</>
+                  )}
+                </div>
               </>
             );
           })()}

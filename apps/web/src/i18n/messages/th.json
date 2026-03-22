@@ -2237,7 +2237,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "มาร์จิน",
       "notionalLabel": "มูลค่า",
-      "truncated": "ตัดทอน"
+      "truncated": "ตัดทอน",
+      "limitLabel": "จำกัด"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

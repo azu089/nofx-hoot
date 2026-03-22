@@ -281,15 +281,17 @@ export class AiExecutionService {
     const maxPctThreshold = decision.maxPositionPct ?? 100;
     let positionSizeUSD = rawPositionSize;
 
+    // 仓位上限 = 策略预算 × ratio（用 allocatedCapital 而非 availableBalance）
+    const pvlRatio = this.isBTCETH(symbol)
+      ? (decision.btcEthMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
+      : (decision.altcoinMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
+    const positionValueLimit = (allocatedCapital || availableBalance) * pvlRatio;
+
     if (rawPositionSize > maxPctThreshold) {
       // USD 绝对值模式（对齐 nofx）：AI 直接给了美元值，代码只做验证和截断
-      this.logger.log(`[AI执行] 仓位 USD 模式: $${positionSizeUSD.toFixed(2)}`);
+      this.logger.log(`[AI执行] 仓位 USD 模式: $${positionSizeUSD.toFixed(2)} (上限=$${positionValueLimit.toFixed(2)})`);
     } else if (rawPositionSize > 0) {
       // 百分比回退模式（兼容 debate 等旧场景）
-      const ratio = this.isBTCETH(symbol)
-        ? (decision.btcEthMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
-        : (decision.altcoinMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
-      const positionValueLimit = availableBalance * ratio;
       positionSizeUSD = positionValueLimit * (rawPositionSize / 100);
       this.logger.log(
         `[AI执行] 仓位百分比转换: ${rawPositionSize}% × $${positionValueLimit.toFixed(2)} = $${positionSizeUSD.toFixed(2)}`,
@@ -327,11 +329,7 @@ export class AiExecutionService {
       availableBalance, cappedSize, leverage,
     );
 
-    // 计算仓位上限和截断状态（供前端日志展示）
-    const pvlRatio = this.isBTCETH(symbol)
-      ? (decision.btcEthMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
-      : (decision.altcoinMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
-    const positionValueLimit = availableBalance * pvlRatio;
+    // 截断状态（供前端日志展示）
     const aiRequestedUSD = rawPositionSize > maxPctThreshold ? rawPositionSize : positionSizeUSD;
     const wasTruncated = adaptedSize < aiRequestedUSD * 0.95; // 5%以上差异视为截断
 

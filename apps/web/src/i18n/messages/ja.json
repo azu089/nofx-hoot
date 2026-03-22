@@ -2237,7 +2237,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "証拠金",
       "notionalLabel": "想定元本",
-      "truncated": "切捨"
+      "truncated": "切捨",
+      "limitLabel": "上限"
     },
     "modeInfo": {
       "soloTitle": "ソロモード",

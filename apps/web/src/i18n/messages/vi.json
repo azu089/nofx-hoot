@@ -2238,7 +2238,8 @@
       "breakoutDirDown": "↓",
       "marginLabel": "Ký quỹ",
       "notionalLabel": "Danh nghĩa",
-      "truncated": "cắt giảm"
+      "truncated": "cắt giảm",
+      "limitLabel": "Giới hạn "
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",
