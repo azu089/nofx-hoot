@@ -301,7 +301,7 @@ export class QuickAnalysisService {
           try {
             const btcSymbol = 'BTC/USDT:USDT';
             if (config.symbol === btcSymbol) return null; // 当前币就是 BTC 则跳过
-            const btcOhlcv = await this.marketData.fetchOHLCV(btcSymbol, '1h', 20);
+            const btcOhlcv = await this.marketData.fetchOHLCV(btcSymbol, '1h', 50);
             if (!btcOhlcv || btcOhlcv.length < 14) return null;
             const btcInd = this.indicators.calculateAll(btcOhlcv as any);
             const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.[4] ?? 0;
