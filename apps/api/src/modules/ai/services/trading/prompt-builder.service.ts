@@ -248,7 +248,15 @@ export class PromptBuilderService {
           : 0;
         lines.push(`Unrealized PnL: ${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
       }
-      if (ctx.marginUsage !== undefined) lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
+      if (ctx.marginUsage !== undefined) {
+        lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
+        // 对齐 nofx formatter.go: 风险提示（参考，不强制平仓）
+        if (ctx.marginUsage > 70) {
+          lines.push(`⚠️ Risk Alert: Margin usage > 70%, high risk. Be cautious with NEW positions, but do NOT close existing positions solely for margin reasons.`);
+        } else if (ctx.marginUsage > 50) {
+          lines.push(`⚠️ Risk Notice: Margin usage > 50%, be cautious with new positions.`);
+        }
+      }
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }
 
