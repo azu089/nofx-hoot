@@ -410,9 +410,14 @@ export class PromptBuilderService {
       lines.push('  NOTE: Factor total account exposure when sizing your positions.');
     }
 
-    // [6] Market Data (已格式化)
+    // [6] Market Data — 候选币数据（持仓币数据已在持仓后展示，此处为非持仓候选币）
     if (ctx.marketDataPrompt) {
       lines.push('');
+      // 对齐 nofx: 标注持仓币数据已展示，避免 AI 重复分析
+      if (ctx.positionMarketDataMap && Object.keys(ctx.positionMarketDataMap).length > 0) {
+        const posSymbols = Object.keys(ctx.positionMarketDataMap).join(', ');
+        lines.push(`NOTE: Market data for ${posSymbols} is already shown above under Current Positions.`);
+      }
       lines.push(ctx.marketDataPrompt);
     }
 

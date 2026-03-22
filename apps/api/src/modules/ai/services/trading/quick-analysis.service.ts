@@ -573,6 +573,18 @@ export class QuickAnalysisService {
         peakPnlPercent: p.peakPnlPercent,
       })),
       marketDataPrompt,
+      // 对齐 nofx: 持仓币市场数据紧跟持仓后（从 marketDataPrompt 复用，不额外调 API）
+      positionMarketDataMap: (() => {
+        const positions = ai?.strategyPositions || [];
+        if (positions.length === 0) return undefined;
+        const map: Record<string, string> = {};
+        // 当前币如果在持仓中，把它的 marketDataPrompt 放入 map
+        const currentSymbolInPos = positions.some(p => p.symbol === config.symbol);
+        if (currentSymbolInPos && marketDataPrompt) {
+          map[config.symbol] = marketDataPrompt;
+        }
+        return Object.keys(map).length > 0 ? map : undefined;
+      })(),
       // 极速策略增强 Task 1-4: 新闻/情绪/记忆/社媒
       newsPrompt: newsPrompt || undefined,
       fearGreedPrompt: fearGreedPrompt || undefined,
