@@ -689,6 +689,29 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     )}
                   </div>
                 )}
+                {/* 开仓第三行：止损/止盈 + 盈亏比 */}
+                {isOpen && (ad.stopLoss != null || ad.takeProfit != null) && (
+                  <div className="flex items-center justify-between text-[10px] font-mono pl-10">
+                    {ad.stopLoss != null && (
+                      <span className="text-[#F43F5E]">
+                        ↓${Number(ad.stopLoss).toLocaleString()}
+                        {adEntryPrice > 0 && <span className="opacity-50"> ({((ad.stopLoss - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                      </span>
+                    )}
+                    {ad.takeProfit != null && (
+                      <span className="text-[#10B981]">
+                        ↑${Number(ad.takeProfit).toLocaleString()}
+                        {adEntryPrice > 0 && <span className="opacity-50"> (+{((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                      </span>
+                    )}
+                    {ad.stopLoss != null && ad.takeProfit != null && adEntryPrice > 0 && (() => {
+                      const slDist = Math.abs(adEntryPrice - ad.stopLoss);
+                      const tpDist = Math.abs(ad.takeProfit - adEntryPrice);
+                      const rrVal = slDist > 0 ? (tpDist / slDist) : 0;
+                      return rrVal > 0 ? <span className={`font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                    })()}
+                  </div>
+                )}
                 {/* 拦截/跳过原因 */}
                 {adEr?.blocked && (
                   <div className="text-[10px] text-[#F59E0B] pl-10">{adEr.reason || adEr.blockedBy}</div>
