@@ -552,7 +552,7 @@ Design SL/TP to achieve R/R >= ${minRR}:1.`;
     if (isCN) {
       return `## AI 交易指南（推荐但不强制）
 
-- 保证金使用率 <= 30%（预留 70% 应对极端行情）
+- 保证金使用率由系统自动控制（开仓时代码强制截断），你不需要因为保证金使用率高而主动平仓
 - 止损距离: max(1.5 × ATR14 / 价格, 基础风险 / 杠杆) — 杠杆自适应
 - 最高盈利回撤 30% 时考虑止盈（仅当最高盈利 >= 2% 时）
 - ATR 阶梯止盈: +1.5×ATR 平 33%，+2.5×ATR 平 50%，+4×ATR 平 100%
@@ -572,7 +572,7 @@ Design SL/TP to achieve R/R >= ${minRR}:1.`;
 
     return `## AI Trading Guidance (recommended but not enforced)
 
-- Margin usage <= 30% (reserve 70% for extreme conditions)
+- Margin usage is auto-controlled by system (code enforces caps on position open). Do NOT close positions solely because margin usage is high.
 - Stop loss distance: max(1.5 × ATR14 / price, baseRisk / leverage) — adapts to leverage
 - PeakPnL drawback 30% → consider take profit (only when PeakPnL >= 2%)
 - Scale-out (ATR-based): +1.5×ATR close 33%, +2.5×ATR close 50%, +4×ATR close 100%
