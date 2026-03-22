@@ -699,6 +699,46 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         </div>
       )}
 
+      {/* 多币种合并日志的共享 AI 分析 + 市场数据 */}
+      {isMultiCoin && (
+        <div className="mt-1.5">
+          {/* 市场数据快照（取第一个有 marketSnapshot 的决策） */}
+          {(() => {
+            const snapshotDecision = allDecisions.find(ad => ad.marketSnapshot);
+            const ms = snapshotDecision?.marketSnapshot || d.marketSnapshot;
+            if (!ms) return null;
+            return (
+              <div className="space-y-0.5 mb-2">
+                <div className="flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
+                  <span className="text-[#9090A0]">RSI {ms.rsi14?.toFixed(1) || '—'}</span>
+                  <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
+                </div>
+                {ms.longPct != null && ms.oiChange != null && (
+                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9090A0]">
+                    <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>
+                    <span>OI {ms.oiChange}</span>
+                  </div>
+                )}
+                {ms.dataSources && (
+                  <div className="flex justify-between flex-wrap">
+                    {Object.entries(ms.dataSources).map(([k, v]) => (
+                      <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                        {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {/* AI 分析文本 */}
+          {reasoning && (
+            <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          )}
+        </div>
+      )}
+
       {/* === 普通 Solo: 极简决策卡片 === */}
       {!isGridLog && !isAutoDisabled && !isMultiCoin && !(isGridEntry && !isGridLog) && (
         <div className="space-y-1.5">
