@@ -616,15 +616,22 @@ Confidence → position_size_usd:
     // 对齐 nofx engine.go L1102-1119
     const interval = intervalMinutes || 60;
     const trades = todayTrades ?? 0;
-    // 对齐 nofx engine.go L1102-1120
+    // 对齐 nofx engine.go L1102-1131
     let section = `## Trading Frequency
 - Cycle: ${interval}min | Today: ${trades} trades
-- Excellent traders: 2-4 trades/day. >2 trades/hour = Overtrading.
-- Hold ≥ 30-60 minutes.
+- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
+- >2 trades/hour = Overtrading — you are destroying profits with fees
+- Single position hold time ≥ 30-60 minutes
+If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
 
 ## Entry Standards
 Only open when multiple signals resonate. Confidence ≥ 70 required.
-Use any analysis method, but avoid: single-indicator entries, contradictory signals, reopening immediately after stop-out.`;
+Avoid: single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
+
+## Decision Process
+1. Check existing positions → take profit / stop-loss / hold?
+2. Scan candidate coins → are there strong multi-signal setups?
+3. Write analysis first, then output structured JSON decision.`;
 
     if (consecutiveWaits && consecutiveWaits >= 10) {
       section += `\n\n⚠️ ${consecutiveWaits} consecutive wait cycles. If a reasonable setup exists, consider a smaller position with tight SL.`;
