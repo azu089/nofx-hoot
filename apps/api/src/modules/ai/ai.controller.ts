@@ -1214,13 +1214,15 @@ export class AiController {
     if (strategyIds.length > 0) {
       // 去掉 exchangeRef: { not: null } — 所有已平仓持仓都应计入盈亏统计
       // （之前的过滤导致 44/57 笔无 exchangeRef 的亏损被排除，卡片显示虚假盈利）
+      // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange），防止盈亏双倍计算
+      const excludeReasons = ['manual', 'not_found_on_exchange'];
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart }, closeReason: { notIn: excludeReasons } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed' },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closeReason: { notIn: excludeReasons } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
       ]);

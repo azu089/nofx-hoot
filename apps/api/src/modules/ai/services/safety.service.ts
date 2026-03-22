@@ -588,12 +588,14 @@ export class SafetyService {
       (aiConfig.maxDailyDrawdown ? Number(aiConfig.maxDailyDrawdown) : 100);
 
     // 3a. 查询今日已平仓 AI 交易的实现盈亏（按策略独立计算）
+    // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
     const closedPositions = await this.prisma.position.findMany({
       where: {
         userId: input.userId,
         source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
         status: 'closed',
         closedAt: { gte: todayStart },
+        closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
         ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
       },
       select: { realizedPnl: true },
@@ -629,6 +631,7 @@ export class SafetyService {
     }
 
     // 4. 连续亏损检查（基于已实现 PnL，按策略隔离，防止跨策略误触发熔断）
+    // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange）
     const maxConsecLoss = input.strategyRiskConfig?.circuitBreaker?.maxConsecutiveLosses;
     if (maxConsecLoss && maxConsecLoss > 0) {
       const recentClosed = await this.prisma.position.findMany({
@@ -637,6 +640,7 @@ export class SafetyService {
           source: { in: ['ai_analysis', 'ai_research', 'ai_strategy'] },
           status: 'closed',
           closedAt: { gte: last24h },
+          closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
           ...(input.strategyId ? { aiStrategyId: input.strategyId } : {}),
         },
         orderBy: { closedAt: 'desc' },
