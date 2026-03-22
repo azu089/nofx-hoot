@@ -218,6 +218,37 @@ export class QuickAnalysisService {
     if (config.precomputedMarketData) {
       // 多币种模式: 市场数据已由调用方预构建
       marketDataPrompt = config.precomputedMarketData;
+      // 构建 marketSnapshot 供前端日志卡片展示（轻量获取，不影响 AI prompt）
+      try {
+        const [md, lsr] = await Promise.all([
+          this.fetchMarketData(config),
+          this.marketData.fetchLongShortRatio(config.symbol).catch(() => null),
+        ]);
+        if (md) {
+          safetyCurrentPrice = md.currentPrice;
+          safetyFundingRate = md.fundingRate ?? undefined;
+          // 计算指标
+          const ohlcv = md.ohlcv;
+          const ind = ohlcv.length >= 14 ? this.indicators.calculateAll(ohlcv) : null;
+          safetyIndicators = ind ?? undefined;
+          snapshot = {
+            price: md.currentPrice,
+            rsi7: ind?.rsi7 ?? null,
+            rsi14: ind?.rsi ?? null,
+            macdHist: ind?.macd?.histogram ?? null,
+            atr14: ind?.atr ?? null,
+            fundingRate: md.fundingRate ?? null,
+            longShortRatio: lsr?.longShortRatio ?? null,
+            longPct: lsr ? (lsr.longAccount / (lsr.longAccount + lsr.shortAccount)) * 100 : null,
+            oiChange: null,
+            oiQuadrant: null,
+            institutionFlow: null,
+            dataSources: { oi: md.openInterest != null, fr: md.fundingRate != null, ranking: false, enhanced: false, oiRanking: false, netFlow: false, priceRanking: false },
+          };
+        }
+      } catch (e) {
+        this.logger.debug(`[多币种] marketSnapshot 构建失败（不影响决策）: ${(e as Error).message}`);
+      }
     } else {
       // 1. 获取市场数据 + 市场排名 + 增强数据 + NofxOS 排名（并行，对齐 nofx 数据获取日志规范）
       const [marketData, marketRanking, enhancedData, oiRanking, netFlowRanking, priceRanking, _newsItems, _fearGreed, _lunarCrushData] = await Promise.all([
