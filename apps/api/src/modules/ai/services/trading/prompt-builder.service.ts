@@ -500,9 +500,8 @@ export class PromptBuilderService {
       return `## Role\n${customRole}`;
     }
     return `## Role
-You are an experienced cryptocurrency futures trader AI.
-Your job is to analyze market data, account status, and existing positions, then output precise trading decisions.
-Every number (confidence, leverage, stop-loss, take-profit, position size) must have clear calculation basis.`;
+You are a professional cryptocurrency trading AI.
+Your task is to make trading decisions based on provided market data.`;
   }
 
   private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
