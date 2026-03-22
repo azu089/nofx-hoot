@@ -494,16 +494,9 @@ ${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损
 - 杠杆由你自主选择（不超过上限），杠杆越高保证金越小但爆仓距离越近
 
 ## AI 建议（推荐遵循，非硬性强制）
-- **最低置信度**: 置信度 >= ${minConf}% 才开仓
-- **杠杆选择**: 用户配置的杠杆是上限，你应根据波动率和趋势强度自主选择合适倍数
-
-## 软性警告（系统会提醒但不会拦截）
-- **RSI极端**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} 或 < ${AI_SAFETY_DEFAULTS.rsiOversold}，是否操作由你决定
-- **ATR偏高**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrAnomalyRatio}，波动率较大，谨慎考虑
-- **持仓回撤**: 已有仓位亏损 > ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}%，评估总风险敞口
-- **资金费率偏高**: |资金费率| > 0.05%/8h，持仓成本较高
-
-设计止损/止盈使风险回报比 >= ${minRR}:1。`;
+- **最低置信度**: >= ${minConf}% 才开仓
+- **杠杆**: 用户配置的杠杆是上限，根据波动率自主选择
+- **风险回报比**: 设计 SL/TP 使 R:R >= ${minRR}:1`;
     }
 
     // English (default for non-Chinese locales)
@@ -539,82 +532,71 @@ Confidence → position_size_usd:
 - Example (BTC, conf=85): position_size_usd=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x margin=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
 - Leverage is YOUR choice (up to the max), higher leverage = less margin but closer liquidation
 
-## AI Guidance (recommended, not hard-enforced)
-- **Min Confidence**: Only trade when confidence >= ${minConf}%
-- **Leverage**: User-configured leverage is the max cap; choose based on volatility and trend strength
-
-## Soft Warnings (system warns but does NOT block)
-- **RSI Extreme**: RSI > ${AI_SAFETY_DEFAULTS.rsiOverbought} or < ${AI_SAFETY_DEFAULTS.rsiOversold}
-- **ATR Elevated**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrAnomalyRatio} — high volatility
-- **Position Drawdown**: Loss > ${Math.abs(AI_SAFETY_DEFAULTS.drawdownBlockThreshold)}% — evaluate risk
-- **Funding Rate High**: |FR| > 0.05%/8h — significant holding cost
-
-Design SL/TP to achieve R/R >= ${minRR}:1.`;
+## AI Guided (recommended, you should follow)
+- **Min Confidence**: >= ${minConf}% to open position
+- **Leverage**: User-configured is max cap; choose based on volatility
+- **Risk/Reward**: Design SL/TP to achieve R:R >= ${minRR}:1`;
   }
 
   private buildAIGuidance(isCN = false): string {
+    // 对齐 nofx prompt_builder.go L56-76 的决策原则（简洁，不过度约束）
     if (isCN) {
-      return `## AI 交易指南（推荐但不强制）
+      return `## 决策原则
 
-- 保证金使用率由系统自动控制（开仓时代码强制截断），你不需要因为保证金使用率高而主动平仓
-- 止损距离: max(1.5 × ATR14 / 价格, 基础风险 / 杠杆) — 杠杆自适应
-- 最高盈利回撤 30% 时考虑止盈（仅当最高盈利 >= 2% 时）
-- ATR 阶梯止盈: +1.5×ATR 平 33%，+2.5×ATR 平 50%，+4×ATR 平 100%
-- 只对盈利仓位加仓，禁止对亏损仓位补仓
-- 成交量突增 2 倍均值 → 潜在入场信号
-- 持仓量 1 小时变化 >2% → 大额资金流动
-- 资金费率: 正=多头付费给空头(偏空), 负=空头付费给多头(偏多)
+### 风险优先
+- 优先保护资本，再考虑盈利
+- 只在盈利仓位上加仓，永远不要追亏损
 
-## 禁止行为
-- 禁止对亏损仓位补仓（禁止摊薄成本）
-- 禁止同一币种同时持有多空仓位
-- 禁止亏损后立即报复性交易（等待明确信号）
-- 禁止忽略最高盈利来决定是否平仓
-- 禁止混淆已实现盈亏和未实现盈亏
-- 禁止不写理由就输出操作`;
+### 跟踪止盈
+- 当持仓盈亏从峰值回撤30%时，考虑止盈（仅当Peak PnL >= 2%时）
+- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤30%，应该止盈
+
+### 顺势交易
+- OI增加+价格上涨 = 强多头趋势
+- OI减少+价格上涨 = 空头平仓（可能反转）
+- OI增加+价格下跌 = 空头主导
+- OI减少+价格下跌 = 多头清算
+
+### 重要提醒
+- 永远不要混淆已实现盈亏和未实现盈亏
+- 永远关注Peak PnL，这是判断止盈的关键指标
+- 保证金使用率由系统自动控制，不需要因此主动平仓`;
     }
 
-    return `## AI Trading Guidance (recommended but not enforced)
+    return `## Decision Principles
 
-- Margin usage is auto-controlled by system (code enforces caps on position open). Do NOT close positions solely because margin usage is high.
-- Stop loss distance: max(1.5 × ATR14 / price, baseRisk / leverage) — adapts to leverage
-- PeakPnL drawback 30% → consider take profit (only when PeakPnL >= 2%)
-- Scale-out (ATR-based): +1.5×ATR close 33%, +2.5×ATR close 50%, +4×ATR close 100%
+### Risk First
+- Capital protection first, profit second
 - Only add to winning positions, never average down losers
-- Volume spike 2x average → potential entry signal
-- OI change >2% in 1h → significant fund flow
-- Funding Rate: positive = longs pay shorts (bearish), negative = shorts pay longs (bullish)
 
-## NEVER-DO List
-- NEVER add to a losing position (no averaging down)
-- NEVER hold simultaneous long AND short on the same asset
-- NEVER revenge-trade immediately after a loss (wait for clear setup)
-- NEVER ignore PeakPnL when deciding whether to close a position
-- NEVER mix realized and unrealized PnL in your calculations
-- NEVER output action without reasoning — every decision must be justified
+### Trailing Take-Profit
+- Consider take-profit when PnL pulls back 30% from peak (only when Peak PnL >= 2%)
+- Example: Peak PnL +5%, Current PnL +3.5% → 30% drawdown, should take profit
 
-## Position Action Rules (CRITICAL)
-- If you already have a LONG position on a coin → use "hold" (keep) or "close_long" (exit). Do NOT output "open_long" again.
-- If you already have a SHORT position on a coin → use "hold" or "close_short". Do NOT output "open_short" again.
-- "open_long"/"open_short" = create a NEW position. You cannot open what is already open.
-- Adding to existing positions (加仓) is NOT supported. If you want to keep the position, use "hold".`;
+### Trend Following
+- OI up + Price up = Strong bullish trend
+- OI down + Price up = Shorts covering (potential reversal)
+- OI up + Price down = Shorts dominant
+- OI down + Price down = Long liquidation
+
+### Critical Reminders
+- Never confuse realized and unrealized P&L
+- Always watch Peak PnL — key for take-profit decisions
+- Margin usage is auto-controlled by system, do NOT close positions solely for margin reasons`;
   }
 
   private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
+    // 对齐 nofx engine.go L1102-1106
     const interval = intervalMinutes || 60;
     const trades = todayTrades ?? 0;
 
-    let section = `## Trading Frequency Awareness
-- Strategy cycle interval: ${interval} minutes
-- Trades executed today: ${trades}
-- Overtrading increases fees and slippage — be selective
-- If you already traded recently, prefer "hold" or "wait" unless a strong signal appears
-- Quality over quantity: fewer trades with higher conviction`;
+    let section = `## Trading Frequency
+- Cycle interval: ${interval} min | Today: ${trades} trades
+- Quality over quantity: fewer trades with higher conviction
+- Hold time ≥ 30-60 minutes recommended`;
 
-    if (consecutiveWaits && consecutiveWaits >= 3) {
-      section += `\n\n⚠️ You have output "wait" for ${consecutiveWaits} consecutive cycles.
-If ANY reasonable setup exists (confidence >= 55), consider entering with a smaller position (3-8%).
-Doing nothing indefinitely is also a risk — you miss opportunities and waste analysis budget.`;
+    if (consecutiveWaits && consecutiveWaits >= 10) {
+      section += `\n⚠️ ${consecutiveWaits} consecutive wait cycles. If a reasonable setup exists, consider a smaller position.`;
     }
 
     return section;
