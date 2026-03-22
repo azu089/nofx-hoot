@@ -1842,7 +1842,8 @@
       "promptDefaultDecision": "1. Judge market structure and trend 2. Find entry signal confluence 3. Evaluate risk-reward 4. Determine position size and stop loss",
       "positionValueRatio": "Position Value Ratio",
       "positionValueRatioDesc": "Max notional = budget × this value",
-      "altcoin": "Altcoin"
+      "altcoin": "Altcoin",
+      "circuitBreaker": "Circuit Breaker"
     },
     "research": {
       "title": "AI Research Team",

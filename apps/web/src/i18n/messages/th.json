@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "ตัวนับ drawdown รายวันจะรีเซ็ตอัตโนมัติเที่ยงคืน",
       "positionValueRatio": "อัตราส่วนมูลค่า",
       "positionValueRatioDesc": "มูลค่าสูงสุด = งบ × ค่านี้",
-      "altcoin": "อัลท์คอยน์"
+      "altcoin": "อัลท์คอยน์",
+      "circuitBreaker": "วงจรตัดขาดทุน"
     },
     "research": {
       "title": "AI Research Team",

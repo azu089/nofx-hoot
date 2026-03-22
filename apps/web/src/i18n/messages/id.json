@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "Penghitung drawdown harian akan otomatis direset pada tengah malam",
       "positionValueRatio": "Rasio Nilai Posisi",
       "positionValueRatioDesc": "Maks nominal = anggaran × nilai",
-      "altcoin": "Altcoin"
+      "altcoin": "Altcoin",
+      "circuitBreaker": "Pemutus Kerugian"
     },
     "research": {
       "title": "AI Research Team",

@@ -1866,7 +1866,8 @@
       "soloResumeDrawdownNote": "日内回撤计数将在次日零点自动重置",
       "positionValueRatio": "仓位价值比例",
       "positionValueRatioDesc": "名义仓位上限 = 预算 × 此值",
-      "altcoin": "山寨币"
+      "altcoin": "山寨币",
+      "circuitBreaker": "连续亏损熔断"
     },
     "research": {
       "title": "AI 研究团队",

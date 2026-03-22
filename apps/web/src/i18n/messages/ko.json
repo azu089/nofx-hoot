@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "일일 드로우다운 카운터는 다음 날 자정에 자동 재설정됩니다",
       "positionValueRatio": "포지션 가치 비율",
       "positionValueRatioDesc": "최대 명목 = 예산 × 이 값",
-      "altcoin": "알트코인"
+      "altcoin": "알트코인",
+      "circuitBreaker": "연속 손실 차단"
     },
     "research": {
       "title": "AI 리서치 팀",

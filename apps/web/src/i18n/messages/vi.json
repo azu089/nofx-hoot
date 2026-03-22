@@ -1858,7 +1858,8 @@
       "soloResumeDrawdownNote": "Bộ đếm drawdown hằng ngày sẽ tự động đặt lại vào nửa đêm",
       "positionValueRatio": "Tỷ lệ giá trị vị thế",
       "positionValueRatioDesc": "Danh nghĩa tối đa = ngân sách × giá trị",
-      "altcoin": "Altcoin"
+      "altcoin": "Altcoin",
+      "circuitBreaker": "Ngắt mạch thua lỗ"
     },
     "research": {
       "title": "AI Research Team",

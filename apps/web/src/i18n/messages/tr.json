@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "Günlük düşüş sayacı gece yarısı otomatik sıfırlanır",
       "positionValueRatio": "Pozisyon Değer Oranı",
       "positionValueRatioDesc": "Maks nominal = bütçe × değer",
-      "altcoin": "Altcoin"
+      "altcoin": "Altcoin",
+      "circuitBreaker": "Zarar Kesici"
     },
     "research": {
       "title": "AI Research Team",

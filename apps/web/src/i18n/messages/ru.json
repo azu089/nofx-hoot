@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "Дневной счётчик просадки автоматически сбрасывается в полночь",
       "positionValueRatio": "Коэфф. стоимости",
       "positionValueRatioDesc": "Макс. номинал = бюджет × значение",
-      "altcoin": "Альткоин"
+      "altcoin": "Альткоин",
+      "circuitBreaker": "Авт. остановка"
     },
     "research": {
       "title": "AI Research Team",

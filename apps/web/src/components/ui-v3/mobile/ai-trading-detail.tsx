@@ -78,6 +78,7 @@ export function AIStrategyDetailPage() {
   const [editMaxDailyDrawdown, setEditMaxDailyDrawdown] = useState(100);
   const [editMaxDailyTrades, setEditMaxDailyTrades] = useState(10);
   const [editCooldownMinutes, setEditCooldownMinutes] = useState(15);
+  const [editCircuitBreaker, setEditCircuitBreaker] = useState(5);
   const [editAllocatedCapital, setEditAllocatedCapital] = useState(10000);
   const [editPromptRole, setEditPromptRole] = useState('');
   const [editPromptMode, setEditPromptMode] = useState<'aggressive' | 'conservative' | 'scalping'>('conservative');
@@ -384,6 +385,7 @@ export function AIStrategyDetailPage() {
       setEditMaxDailyDrawdown(rc.maxDailyDrawdown || 100);
       setEditMaxDailyTrades(rc.maxDailyTrades || 10);
       setEditCooldownMinutes(rc.cooldownMinutes || 15);
+      setEditCircuitBreaker(rc.circuitBreaker ?? 5);
       setEditAllocatedCapital(rc.allocatedCapital || 10000);
       setEditPromptRole(ps.role || '');
       setEditPromptMode(ps.mode || 'conservative');
@@ -489,7 +491,7 @@ export function AIStrategyDetailPage() {
           maxDailyTrades: editMaxDailyTrades,
           cooldownMinutes: editCooldownMinutes,
           allocatedCapital: editAllocatedCapital,
-          circuitBreaker: strategy?.riskControlConfig?.circuitBreaker,
+          circuitBreaker: editCircuitBreaker,
           btcEthMaxPositionValueRatio: editBtcEthPVR,
           altcoinMaxPositionValueRatio: editAltcoinPVR,
           btcEthMaxLeverage: strategy?.riskControlConfig?.btcEthMaxLeverage,
@@ -1176,6 +1178,7 @@ export function AIStrategyDetailPage() {
                     <ConfigRow label={t('detail.editDailyDrawdown')} value={maxDrawdown} />
                     <ConfigRow label={t('detail.maxDailyTrades')} value={riskControlConfig?.maxDailyTrades || '—'} />
                     <ConfigRow label={t('detail.cooldownTime')} value={riskControlConfig?.cooldownMinutes ? `${riskControlConfig.cooldownMinutes}min` : '—'} />
+                    <ConfigRow label={t('detail.circuitBreaker')} value={riskControlConfig?.circuitBreaker ? `${riskControlConfig.circuitBreaker}${t('detail.timesUnit')}` : '—'} />
                     {/* 高级风控字段（有值时显示） */}
                     {riskControlConfig?.btcEthMaxLeverage && (
                       <ConfigRow label={t('detail.btcEthMaxLeverage')} value={`${riskControlConfig.btcEthMaxLeverage}x`} />
@@ -2102,6 +2105,17 @@ export function AIStrategyDetailPage() {
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                         />
                         <span className="text-[#606070] text-xs">min</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#606070] mb-1">{t('detail.circuitBreaker')}</p>
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
+                        <input type="number" min={0} max={20}
+                          value={editCircuitBreaker || ''}
+                          onChange={(e) => setEditCircuitBreaker(parseInt(e.target.value) || 0)}
+                          className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
+                        />
+                        <span className="text-[#606070] text-xs">{t('detail.timesUnit')}</span>
                       </div>
                     </div>
                     <div>

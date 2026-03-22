@@ -1857,7 +1857,8 @@
       "soloResumeDrawdownNote": "日次ドローダウンカウンターは翌日深夜0時に自動リセットされます",
       "positionValueRatio": "ポジション価値比率",
       "positionValueRatioDesc": "最大名目額 = 予算 × この値",
-      "altcoin": "アルトコイン"
+      "altcoin": "アルトコイン",
+      "circuitBreaker": "連続損失ブレーカー"
     },
     "research": {
       "title": "AIリサーチチーム",
