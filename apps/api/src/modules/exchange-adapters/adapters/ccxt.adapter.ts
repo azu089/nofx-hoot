@@ -708,19 +708,29 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   async cancelStopOrders(symbol: string): Promise<void> {
     const ex = this.getExchange();
 
-    // 对齐 nofx CancelAllOrders：Binance/Bybit 的 STOP_MARKET/TAKE_PROFIT_MARKET
-    // 条件单不在 fetchOpenOrders() 中返回，必须用 cancelAllOrders API 才能清掉。
-    // cancelAllOrders 映射到 DELETE /fapi/v1/allOpenOrders，会清除所有挂单包括条件单。
-    // 注意：此函数仅在极速策略平仓后调用，不影响网格策略的限价挂单。
+    // Binance/Bybit: 只取消条件单(STOP_MARKET/TAKE_PROFIT_MARKET)，保留限价基础单
+    // 重要：不能用 cancelAllOrders，它会把网格的限价挂单也清掉
     if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm' || this.exchangeType === 'bybit') {
       try {
-        await ex.cancelAllOrders(symbol);
-        this.logger.log(`[CcxtAdapter] cancelStopOrders: ${symbol} 已清除所有挂单和条件单`);
-      } catch (e: any) {
-        // Binance 无挂单时可能返回错误码，忽略
-        if (!e.message?.includes('-2011')) {
-          this.logger.warn(`[CcxtAdapter] cancelStopOrders(${symbol}) 失败: ${e.message}`);
+        // Binance fetchOpenOrders 默认不返回条件单，需要用 privateGetOpenOrders
+        const rawOrders = await ex.fapiPrivateGetOpenOrders({ symbol: ex.marketId(symbol) });
+        const stopOrders = (Array.isArray(rawOrders) ? rawOrders : []).filter(
+          (o: any) => ['STOP_MARKET', 'TAKE_PROFIT_MARKET', 'STOP', 'TAKE_PROFIT', 'TRAILING_STOP_MARKET'].includes(o.type),
+        );
+        if (stopOrders.length > 0) {
+          for (const o of stopOrders) {
+            try {
+              await ex.cancelOrder(o.orderId, symbol);
+            } catch (e: any) {
+              if (!e.message?.includes('-2011')) {
+                this.logger.warn(`[CcxtAdapter] cancelStopOrder(${o.orderId}) 失败: ${e.message}`);
+              }
+            }
+          }
+          this.logger.log(`[CcxtAdapter] cancelStopOrders: ${symbol} 已清除 ${stopOrders.length} 个条件单（保留限价单）`);
         }
+      } catch (e: any) {
+        this.logger.warn(`[CcxtAdapter] cancelStopOrders(${symbol}) 失败: ${e.message}`);
       }
       return;
     }
