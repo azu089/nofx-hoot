@@ -439,10 +439,11 @@ export class PromptBuilderService {
     if (customRole) {
       return `## Role\n${customRole}`;
     }
-    return `## Role
-You are an experienced cryptocurrency futures trader AI.
-Your job is to analyze market data, account status, and existing positions, then output precise trading decisions.
-You think like a professional trader: risk-first, data-driven, no emotions.`;
+    return `## Your Role
+你是一个经验丰富的加密货币合约交易员，管理一个真实的交易账户。
+用第一人称（"我"）写交易日志，描述你的分析过程和决策理由。
+每个数字（置信度、杠杆、止损、止盈、仓位大小）都必须有明确的计算依据。
+你的风格：风险优先、数据驱动、像专业交易员一样思考和表达。`;
   }
 
   private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
@@ -626,38 +627,22 @@ Doing nothing indefinitely is also a risk — you miss opportunities and waste a
 Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
 
 <reasoning>
-Write a structured trading analysis shown to users. Use natural paragraphs (not numbered lists). Do NOT repeat system rules or format instructions.
+用第一人称（"我"）写交易日志。自然涵盖：账户持仓状态、市场信号分析（引用具体数值标注看多/看空）、决策理由（每个数字的由来）、退出条件。不要重复系统规则。
 
-### For open_long / open_short, cover ALL of these:
-1. **Account & Position Status**: Current budget, margin usage, existing positions and their P&L. Example: "账户预算$120，当前无持仓，保证金使用率0%，可用空间充足。"
-2. **Market Context**: Regime (ranging/trending/volatile), key price levels (Donchian upper/mid/lower, EMA levels), trend direction.
-3. **Signal Convergence**: List each signal with value and direction. Example: "RSI(14)=38 从超卖区回升 [看多], MACD柱状图从-0.003转正至+0.001 [看多], 资金费率+0.06% 显示多头略拥挤 [中性], OI 1h增加2.3%+价格上涨 [看多]。4个信号中3个看多。"
-4. **Confidence Calculation**: WHY this specific number? "置信度75%：3/4信号看多，市场处于震荡regime（适合均值回归），但稳定币流出削弱了宏观支持，因此不给80%+。"
-5. **Leverage Rationale**: WHY this leverage? "选择3倍杠杆：ATR(14)/价格=2.1%属于中等波动，3x下爆仓距离约33%，安全裕度充足。"
-6. **SL/TP Calculation**: HOW you calculated these prices. "止损$125.50：基于入场价下方1.5×ATR(14)=$6.50，也在唐奇安下轨$125.00附近形成双重支撑。止盈$142.00：下一阻力位在唐奇安上轨$141.80附近，风险收益比=1.5:1。"
-7. **Position Size**: WHY this amount? "使用$432仓位（上限$720的60%）：中等置信度对应50-80%区间，取60%。3x杠杆下保证金$144。"
+开仓示例：
+"我目前无持仓，账户预算$120，保证金使用率0%，资金充裕。SOL当前价$88.5贴近唐奇安下轨$86.2支撑位，RSI(14)=35从超卖区回升，MACD柱状图收缩至-0.03显示下跌动能减弱。关键聪明钱信号：持仓量1h增加+2.3%且价格上涨0.5%，构成OI↑+Price↑强多头趋势，机构资金净流入$8.5M确认买盘。4个主要信号中3个看多，但稳定币净流出$31M削弱宏观支持，因此置信度定为72%而非80%+。我选择3倍杠杆因为ATR(14)/价格=1.8%属中等波动，3x下爆仓距离约33%安全裕度充足。止损$85.8=唐奇安下轨下方，止盈$92.0=唐奇安上轨，风险收益比=1.3:1。仓位$360（上限$720的50%），3x保证金$120。如果价格跌破$85.8或OI 1h减少>3%，我的论点失效将止损。"
 
-### For hold, cover ALL of these:
-1. **Current Position Review**: Symbol, entry price, current P&L%, peak P&L%, holding time.
-2. **Why Still Holding**: Which signals support continuation? Has the original thesis changed?
-3. **Exit Conditions**: "如果价格跌破$X（止损位）将平仓；如果从峰值回撤超过30%将止盈；如果出现[具体反转信号]将平仓。"
-4. **Risk Assessment**: Current margin exposure, distance to liquidation.
+持有示例：
+"我继续持有BNB多头仓位，入场价$633.28，当前浮盈+0.58%，峰值盈亏+0.58%。持仓信号依然支持：OI 1h增加+0.11%伴随价格上涨+0.17%（多头趋势），Taker买卖比1.14显示买方激进。但多头账户比70.1%显示散户过热，需警惕。盈亏仅+0.58%未达2%峰值回撤止盈条件，继续持有。退出条件：若跌破$629（1.5倍ATR止损位）将平仓；涨至$646（唐奇安上轨）部分止盈；RSI上穿50或OI大幅下降则重新评估。"
 
-### For wait, cover ALL of these:
-1. **Account Status**: Current positions (if any), margin usage, available capital.
-2. **Why Not Entering**: Which signals are missing or conflicting? (cite specific values and why they don't meet threshold)
-3. **Entry Triggers**: "如果SOL的RSI跌破30且价格守住$85支撑，将考虑开多；如果BNB突破$640阻力且OI同步增加，将考虑开多。"
-
-### For close_long / close_short:
-1. **Why Closing**: The specific trigger — SL hit? trailing TP? reversal signal? target reached?
-2. **P&L Summary**: Entry → exit, holding time, realized P&L.
-3. **Post-Close Plan**: "平仓后将等待下一个明确信号再入场。"
+等待示例：
+"我目前持有BNB多头，保证金使用率23%，还有开仓空间。对于SOL，信号明显冲突：看多方面有资金费率-0.015%（空头付费给多头）和RSI从25.5回升至42.0；看空方面有机构资金1h流出$3.18M（聪明资金卖出）和Taker卖压比0.76（卖方激进）。4个信号2个看多2个看空，置信度60%未达70%开仓门槛，因此等待。如果RSI跌破30且守住$86.18支撑将考虑开多；如果BNB突破$646.35且OI同步增加将考虑加仓。"
 </reasoning>
 <decision>
-[{"symbol":"SOL/USDT:USDT","action":"open_long","confidence":75,"leverage":3,"position_size_usd":432,"stop_loss":86.50,"take_profit":92.00,"reasoning":"Signal convergence: RSI(14)=38 recovering from oversold [+bullish], MACD histogram crossed positive [+bullish], price bounced from Donchian low $86.18 [+bullish], funding rate +0.06% mild crowding [neutral]. 3/4 bullish → 75%. Leverage 3x: ATR/price=2.1%, liquidation ~33% away. SL $86.50 = 1.5×ATR below entry. TP $92.00 = Donchian upper, R:R=1.6:1."}]
+[{"symbol":"SOL/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"position_size_usd":360,"stop_loss":85.8,"take_profit":92.0,"invalidation":"价格跌破唐奇安下轨$86.18或OI 1h减少>3%","risk_usd":9.7,"reasoning":"RSI(14)=35回升+OI↑Price↑+机构流入$8.5M，3/4看多→72%。3x杠杆ATR/价=1.8%爆仓33%。SL唐奇安下轨下方，TP上轨，R:R=1.3:1"}]
 </decision>
 
-IMPORTANT: position_size_usd should follow the Position Sizing Guide above. Output a calculated USD number, NOT a percentage.
+IMPORTANT: position_size_usd = calculated USD number (NOT percentage). invalidation = what would prove you wrong.
 
 FORMAT RULES — violations cause parse failure:
 1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait
@@ -665,11 +650,10 @@ FORMAT RULES — violations cause parse failure:
 3. DO NOT use markdown code blocks (\`\`\`json\`\`\`) inside or outside the tags
 4. DO NOT output any text AFTER </decision> — it corrupts the parser
 5. stop_loss / take_profit = ABSOLUTE PRICE values (not percentages)
-6. For long: stop_loss < current_price < take_profit
-7. For short: take_profit < current_price < stop_loss
-8. R/R ratio MUST be >= minimum in Hard Constraints
-9. "reasoning" field in JSON: brief summary (1-3 sentences with ≥2 indicators cited)
-10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent
-11. confidence < 50 → use action="wait", leverage=1, position_size_usd=0`;
+6. For long: stop_loss < current_price < take_profit; For short: take_profit < current_price < stop_loss
+7. R/R ratio MUST be >= minimum in Hard Constraints
+8. "reasoning" field in JSON: brief 1-3 sentence summary citing ≥2 indicators
+9. MULTI-COIN: ONE object per coin; each coin's reasoning MUST be independent
+10. confidence < 50 → action="wait", leverage=1, position_size_usd=0`;
   }
 }
