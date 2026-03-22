@@ -646,9 +646,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
               {d.leverage != null && d.leverage > 1 && <span className="text-[#9090A0]">{d.leverage}x</span>}
-              {(d as any).positionSizeUSD ? (
-                <span className="text-[#9090A0]">${(d as any).positionSizeUSD}</span>
-              ) : d.positionSizePercent ? (
+              {d.positionSizePercent ? (
                 <span className="text-[#9090A0]">{d.positionSizePercent}%</span>
               ) : null}
               {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
