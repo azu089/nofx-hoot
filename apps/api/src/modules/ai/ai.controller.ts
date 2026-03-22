@@ -1214,15 +1214,15 @@ export class AiController {
     const totalTradesMap = new Map<string, number>();
     const totalWinsMap = new Map<string, number>();
     if (strategyIds.length > 0) {
-      // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange），防止盈亏双倍计算
-      const excludeReasons = ['manual', 'not_found_on_exchange'];
+      // 只用交易所同步的聚合记录（exchangeRef 非空）计算盈亏统计
+      // 排除 grid_tp/ai_close 等内部逐笔记录（会导致交易数虚高、盈亏重复）
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart }, closeReason: { notIn: excludeReasons } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closedAt: { gte: todayStart }, exchangeRef: { not: null } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
         this.prisma.position.findMany({
-          where: { aiStrategyId: { in: strategyIds }, status: 'closed', closeReason: { notIn: excludeReasons } },
+          where: { aiStrategyId: { in: strategyIds }, status: 'closed', exchangeRef: { not: null } },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
       ]);
@@ -1468,6 +1468,7 @@ export class AiController {
           aiStrategyId: id,
           status: 'closed',
           closedAt: { gte: todayStart },
+          exchangeRef: { not: null },
         },
         select: { realizedPnl: true },
       });
@@ -2131,6 +2132,7 @@ export class AiController {
         userId,
         status: 'closed',
         closedAt: { gte: todayStart },
+        exchangeRef: { not: null },
         OR: [
           { aiStrategyId: { not: null } },
           { source: 'ai_research' },
