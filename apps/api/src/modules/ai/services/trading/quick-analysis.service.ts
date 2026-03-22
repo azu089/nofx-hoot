@@ -100,6 +100,10 @@ export interface QuickAnalysisConfig {
   coinSourceMode?: string;
   /** 所有候选币列表 */
   candidateSymbols?: string[];
+  /** 策略周期计数（对齐 nofx: Period #N） */
+  cycleCount?: number;
+  /** 策略运行时长（分钟，对齐 nofx: Runtime Nmin） */
+  runtimeMinutes?: number;
 }
 
 /**
@@ -483,6 +487,8 @@ export class QuickAnalysisService {
     const ai = config.accountInfo;
     const userPromptCtx: UserPromptContext = {
       now: new Date(),
+      cycleCount: config.cycleCount,
+      runtimeMinutes: config.runtimeMinutes,
       // 账户信息: 有 accountInfo 时用真实数据，否则不传（prompt-builder 跳过该段）
       equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
       balance: ai?.allocatedCapital,
@@ -770,6 +776,8 @@ export class QuickAnalysisService {
       const ai = refConfig.accountInfo;
       const userPromptCtx: UserPromptContext = {
         now: new Date(),
+        cycleCount: refConfig.cycleCount,
+        runtimeMinutes: refConfig.runtimeMinutes,
         equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
         balance: ai?.allocatedCapital,
         marginUsage: ai && ai.allocatedCapital > 0 ? (ai.strategyMarginUsed / ai.allocatedCapital * 100) : undefined,

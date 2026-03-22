@@ -797,6 +797,11 @@ export class AutoTraderService {
         this.logger.log(`⚠️ 连续 ${consecutiveWaits} 个周期 wait/hold，Prompt 将鼓励降低开仓门槛`);
       }
 
+      // 策略运行时长（分钟，对齐 nofx RuntimeMinutes）
+      const strategyRuntimeMin = strategy.createdAt
+        ? Math.round((Date.now() - new Date(strategy.createdAt).getTime()) / 60000)
+        : undefined;
+
       // 提取上轮 AI 决策摘要（最近 1 轮的所有币种决策，注入 prompt 提供决策连续性）
       const lastDecisions: Array<{ symbol: string; action: string; confidence: number; reasoning: string; timestamp: string }> = [];
       if (recentStrategyLogs.length > 0) {
@@ -1096,6 +1101,8 @@ export class AutoTraderService {
           lastDecisions,
           coinSourceMode: coinSourceConfig.mode,
           candidateSymbols: activeCandidates,
+          cycleCount: strategy.cycleCount || undefined,
+          runtimeMinutes: strategyRuntimeMin,
           promptConfig: {
             promptSections: promptSections ? {
               role: promptSections.role,
@@ -1283,6 +1290,8 @@ export class AutoTraderService {
               lastDecisions,
               coinSourceMode: coinSourceConfig.mode,
               candidateSymbols: activeCandidates,
+              cycleCount: strategy.cycleCount || undefined,
+              runtimeMinutes: strategyRuntimeMin,
               promptConfig: {
                 promptSections: promptSections ? {
                   role: promptSections.role,

@@ -65,6 +65,10 @@ export interface PromptConfig {
 export interface UserPromptContext {
   /** 当前时间 */
   now?: Date;
+  /** 策略周期计数（对齐 nofx: Period #N） */
+  cycleCount?: number;
+  /** 策略运行时长（分钟，对齐 nofx: Runtime Nmin） */
+  runtimeMinutes?: number;
   /** BTC 参考数据 */
   btcPrice?: number;
   btcChange1h?: number;
@@ -192,8 +196,8 @@ export class PromptBuilderService {
     // Section 4: Trading Frequency Awareness
     sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, config.consecutiveWaits));
 
-    // Section 5: Output Format
-    sections.push(this.buildOutputFormat());
+    // Section 5: Output Format (动态示例，对齐 nofx engine.go L1143-1155)
+    sections.push(this.buildOutputFormat(rc));
 
     // Section 6: Language Instruction
     sections.push(buildLanguageInstruction(locale));
@@ -224,10 +228,12 @@ export class PromptBuilderService {
   buildUserPrompt(ctx: UserPromptContext): string {
     const lines: string[] = [];
 
-    // [1] System Status
+    // [1] System Status（对齐 nofx: Time + Period + Runtime）
     const now = ctx.now || new Date();
     lines.push(`=== System Status ===`);
-    lines.push(`Time: ${now.toISOString()}`);
+    const periodStr = ctx.cycleCount ? ` | Period: #${ctx.cycleCount}` : '';
+    const runtimeStr = ctx.runtimeMinutes ? ` | Runtime: ${ctx.runtimeMinutes}min` : '';
+    lines.push(`Time: ${now.toISOString()}${periodStr}${runtimeStr}`);
     if (ctx.btcPrice) {
       lines.push('');
       lines.push('=== BTC Reference ===');
@@ -625,8 +631,17 @@ Confidence → position_size_usd:
 If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
 
 ## Entry Standards
-Only open when multiple signals resonate. Confidence ≥ 70 required.
-Avoid: single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
+Only open when multiple signals resonate. You have:
+- Primary + secondary timeframe K-line series
+- EMA indicators (7, 25, 99)
+- MACD + RSI (7, 14)
+- ATR (3, 14) for volatility
+- Bollinger Bands + Donchian Channel
+- Open Interest (OI) + Funding Rate
+- Long/Short Ratio + Taker Buy/Sell
+- Institutional / Retail fund flow (if available)
+
+Confidence ≥ 70 required. Avoid: single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
 
 ## Decision Process
 1. Check existing positions → take profit / stop-loss / hold?
@@ -640,31 +655,38 @@ Avoid: single-indicator entries, contradictory signals, sideways consolidation, 
     return section;
   }
 
-  private buildOutputFormat(): string {
-    // 对齐 nofx engine.go L1133-1155: 极简输出格式
+  private buildOutputFormat(rc: PromptConfig['riskControl'] = {}): string {
+    // 对齐 nofx engine.go L1133-1155: 动态示例 + open_short 示例
+    const equity = rc.allocatedCapital ?? 1000;
+    const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
+    const maxLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
+    const exampleSize = Math.round(equity * btcEthPVR);
+    const minConf = rc.minConfidence ?? 60;
+
     return `## Output Format (Strictly Follow)
 
 **Must use XML tags <reasoning> and <decision> to separate analysis and decision JSON.**
 
 <reasoning>
-Your analysis and reasoning — explain why you made this decision.
+Your chain of thought analysis — briefly explain your thinking process.
 </reasoning>
 
 <decision>
 [
-  {"symbol": "SOL/USDT:USDT", "action": "open_long", "leverage": 3, "position_size_usd": 360, "stop_loss": 85.8, "take_profit": 92.0, "confidence": 72, "risk_usd": 10, "reasoning": "RSI(14)=35 recovering from oversold, OI↑+Price↑ strong bullish, institutional inflow $8.5M. 3/4 signals bullish → 72%. SL below Donchian low, TP at upper, R:R=1.3:1."},
-  {"symbol": "BNB/USDT:USDT", "action": "wait", "confidence": 55, "reasoning": "Signals conflicting, below threshold."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${maxLev}, "position_size_usd": ${exampleSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA bearish crossover + OI↑Price↓ = strong bearish. R:R=3.2:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "Thesis invalidated, cut loss."}
 ]
 </decision>
 
 ## Field Description
 - action: open_long | open_short | close_long | close_short | hold | wait
+- confidence: 0-100 (opening recommended ≥ ${minConf})
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
 - position_size_usd = calculated USD number (NOT percentage)
 - stop_loss / take_profit = absolute price values
 - For long: stop_loss < current_price < take_profit
+- For short: take_profit < current_price < stop_loss
 - MULTI-COIN: ONE object per coin, each with independent reasoning
-- confidence < 50 → action="wait"
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
 }
