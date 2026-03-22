@@ -1987,6 +1987,12 @@ export class AutoTraderService {
                 price: execResult.price,
                 amount: execResult.amount,
                 error: execResult.error,
+                // 仓位计算链（供前端日志展示）
+                positionValueLimit: execResult.positionValueLimit,
+                aiRequestedUSD: execResult.aiRequestedUSD,
+                actualNotional: execResult.actualNotional,
+                actualMargin: execResult.actualMargin,
+                wasTruncated: execResult.wasTruncated,
               },
               rawResponse: itemRawResponse,
               systemPrompt: itemSystemPrompt,

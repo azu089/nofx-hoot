@@ -46,6 +46,12 @@ export interface ExecutionResult {
   positionId?: string;
   pnl?: number;
   error?: string;
+  // 仓位计算链（供前端日志展示）
+  positionValueLimit?: number;  // 仓位上限 = 预算 × ratio
+  aiRequestedUSD?: number;      // AI 请求的名义仓位
+  actualNotional?: number;      // 实际成交名义 = price × amount
+  actualMargin?: number;        // 实际保证金 = 名义 / 杠杆
+  wasTruncated?: boolean;       // 是否被截断（余额不足）
 }
 
 /**
@@ -321,8 +327,16 @@ export class AiExecutionService {
       availableBalance, cappedSize, leverage,
     );
 
+    // 计算仓位上限和截断状态（供前端日志展示）
+    const pvlRatio = this.isBTCETH(symbol)
+      ? (decision.btcEthMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.btcEthMaxRatio)
+      : (decision.altcoinMaxPositionValueRatio ?? AI_SAFETY_DEFAULTS.altMaxRatio);
+    const positionValueLimit = availableBalance * pvlRatio;
+    const aiRequestedUSD = rawPositionSize > maxPctThreshold ? rawPositionSize : positionSizeUSD;
+    const wasTruncated = adaptedSize < aiRequestedUSD * 0.95; // 5%以上差异视为截断
+
     this.logger.log(
-      `[AI执行] 仓位计算链: raw=$${rawPositionSize} → pct转换=$${positionSizeUSD.toFixed(2)} → 价值比约束=$${cappedSize.toFixed(2)} → 余额适配=$${adaptedSize.toFixed(2)}`,
+      `[AI执行] 仓位计算链: AI请求=$${aiRequestedUSD.toFixed(2)} → 价值比约束=$${cappedSize.toFixed(2)} → 余额适配=$${adaptedSize.toFixed(2)}${wasTruncated ? ' [截断]' : ''} | 仓位上限=$${positionValueLimit.toFixed(2)}`,
     );
 
     // 6. 最小仓位检查（使用用户配置）
@@ -592,6 +606,9 @@ export class AiExecutionService {
       });
     })().catch(() => {});
 
+    const actualNotional = filledPrice * filledAmount;
+    const actualMargin = leverage > 0 ? actualNotional / leverage : actualNotional;
+
     return {
       success: true,
       orderId: result.orderId,
@@ -600,6 +617,11 @@ export class AiExecutionService {
       price: filledPrice,
       amount: filledAmount,
       positionId: position.id,
+      positionValueLimit,
+      aiRequestedUSD,
+      actualNotional,
+      actualMargin,
+      wasTruncated,
     };
   }
 
