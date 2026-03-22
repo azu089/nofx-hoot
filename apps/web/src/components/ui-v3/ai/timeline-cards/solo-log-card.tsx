@@ -736,15 +736,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             return (
               <div className="space-y-0.5 mb-2">
                 {/* 行1: 价格 RSI MACD ATR FR */}
-                <div className="flex items-center justify-between text-[11px] font-mono">
+                <div className="flex items-center gap-2 text-[11px] font-mono flex-wrap">
                   <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
                   <span className="text-[#9090A0]">RSI {ms.rsi14?.toFixed(1) || '—'}</span>
-                  <span className="text-[#9090A0]">MACD {ms.macdHist?.toFixed(4) ?? '—'}</span>
+                  {ms.macdHist != null && <span className="text-[#9090A0]">MACD {ms.macdHist.toFixed(4)}</span>}
                   {atrPct != null && <span className="text-[#9090A0]">ATR {atrPct.toFixed(2)}%</span>}
                   <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
                 </div>
-                {/* 行2: 多空比 OI变化+四象限 机构流 数据源 */}
-                <div className="flex items-center justify-between text-[11px] font-mono text-[#9090A0]">
+                {/* 行2: 多空比 OI+四象限 机构流 + 数据源标记（合并一行） */}
+                <div className="flex items-center gap-2 text-[11px] font-mono text-[#9090A0] flex-wrap">
                   {ms.longPct != null && <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>}
                   {ms.oiChange != null && <span>OI {ms.oiChange}{oiQText}</span>}
                   {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
@@ -752,17 +752,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                       {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
                     </span>
                   )}
+                  {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
+                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                    </span>
+                  ))}
                 </div>
-                {/* 行3: 数据源标记 */}
-                {ms.dataSources && (
-                  <div className="flex gap-2 flex-wrap">
-                    {Object.entries(ms.dataSources).map(([k, v]) => (
-                      <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                        {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })()}
@@ -862,15 +857,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           {d.marketSnapshot && (
             <div className="text-[11px] font-mono space-y-0.5">
               {/* 行1: 价格 RSI MACD ATR FR */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[#F8F8FC]">{d.marketSnapshot.price != null && `$${d.marketSnapshot.price.toFixed(2)}`}</span>
                 <span className="text-[#9090A0]">{d.marketSnapshot.rsi14 != null && <>RSI {d.marketSnapshot.rsi14.toFixed(1)}</>}</span>
                 {d.marketSnapshot.macdHist != null && <span className="text-[#9090A0]">MACD {d.marketSnapshot.macdHist.toFixed(4)}</span>}
                 {d.marketSnapshot.atr14 != null && d.marketSnapshot.price > 0 && <span className="text-[#9090A0]">ATR {(d.marketSnapshot.atr14 / d.marketSnapshot.price * 100).toFixed(2)}%</span>}
                 <span className="text-[#9090A0]">{d.marketSnapshot.fundingRate != null && <>FR {(d.marketSnapshot.fundingRate * 100).toFixed(4)}%</>}</span>
               </div>
-              {/* 行2: 多空比 OI+四象限 机构流 */}
-              <div className="flex items-center justify-between text-[#9090A0]">
+              {/* 行2: 多空比 OI+四象限 机构流 + 数据源（合并一行） */}
+              <div className="flex items-center gap-2 text-[#9090A0] flex-wrap">
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
                 <span>{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070]"> ({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
                 {d.marketSnapshot.institutionFlow != null && d.marketSnapshot.institutionFlow !== 0 && (
@@ -878,16 +873,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     {d.marketSnapshot.institutionFlow > 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(1)}M
                   </span>
                 )}
+                {d.marketSnapshot.dataSources && Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
+                  <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                  </span>
+                ))}
               </div>
-              {d.marketSnapshot.dataSources && (
-                <div className="flex justify-between flex-wrap">
-                  {Object.entries(d.marketSnapshot.dataSources).map(([k, v]) => (
-                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
           )}
 
