@@ -1211,9 +1211,9 @@ export class AiController {
 
     const todayPnlMap = new Map<string, number>();
     const totalRealizedMap = new Map<string, number>();
+    const totalTradesMap = new Map<string, number>();
+    const totalWinsMap = new Map<string, number>();
     if (strategyIds.length > 0) {
-      // 去掉 exchangeRef: { not: null } — 所有已平仓持仓都应计入盈亏统计
-      // （之前的过滤导致 44/57 笔无 exchangeRef 的亏损被排除，卡片显示虚假盈利）
       // 排除 syncPositionsForUser 产生的重复 close 记录（manual/not_found_on_exchange），防止盈亏双倍计算
       const excludeReasons = ['manual', 'not_found_on_exchange'];
       const [todayPositions, allPositions] = await Promise.all([
@@ -1234,6 +1234,10 @@ export class AiController {
       for (const p of allPositions) {
         if (p.aiStrategyId) {
           totalRealizedMap.set(p.aiStrategyId, (totalRealizedMap.get(p.aiStrategyId) || 0) + Number(p.realizedPnl || 0));
+          totalTradesMap.set(p.aiStrategyId, (totalTradesMap.get(p.aiStrategyId) || 0) + 1);
+          if (Number(p.realizedPnl || 0) > 0) {
+            totalWinsMap.set(p.aiStrategyId, (totalWinsMap.get(p.aiStrategyId) || 0) + 1);
+          }
         }
       }
     }
@@ -1257,14 +1261,19 @@ export class AiController {
       data: result.data.map((s: Record<string, unknown> & { id: string; exchangeApiKeyId?: string; strategyType?: string; gridRuntimeState?: any; totalPnl?: any; winRate?: any; totalTrades?: any }) => {
         const akInfo = s.exchangeApiKeyId ? apiKeyMap.get(s.exchangeApiKeyId) : undefined;
 
-        // 所有策略类型统一从 Position 表（交易所聚合记录）计算盈亏
+        // 所有策略类型统一从 Position 表实时计算（盈亏/交易数/胜率）
         const todayPnl = Number((todayPnlMap.get(s.id) || 0).toFixed(2));
         const totalPnl = Number((totalRealizedMap.get(s.id) || 0).toFixed(2));
+        const totalTrades = totalTradesMap.get(s.id) || 0;
+        const wins = totalWinsMap.get(s.id) || 0;
+        const winRate = totalTrades > 0 ? Number((wins / totalTrades * 100).toFixed(1)) : 0;
 
         return {
           ...s,
           totalPnl,
           todayPnl,
+          totalTrades,
+          winRate,
           exchangeName: akInfo?.exchange ?? null,
           exchangeLabel: akInfo?.label ?? null,
         };
