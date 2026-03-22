@@ -599,70 +599,50 @@ Confidence → position_size_usd:
   }
 
   private buildAIGuidance(isCN = false): string {
-    // 对齐 nofx schema.go + formatter.go 的精确持仓管理规则
+    // 对齐 nofx prompt_builder.go L56-76 的决策原则（简洁自然）
     if (isCN) {
-      return `## 持仓管理规则（精确数字，不可模糊解读）
+      return `## 决策原则
 
-### 什么时候可以平仓（仅以下 4 种情况）
-1. **止损触发**: PnL% 跌破你设定的 stop_loss 价格 → 必须平仓
-2. **跟踪止盈**: Peak PnL **≥ 2%** 且从峰值回撤 **≥ 30%** → 建议平仓（Peak < 2% 时忽略任何回撤）
-3. **分批止盈**: PnL ≥ +3% 平 33%，≥ +5% 平 50%，≥ +8% 全平
-4. **入场论点失效**: 开仓时的核心理由被新数据明确否定（必须说明具体哪个数据变了）
+### 风险优先
+- 优先保护资本，再考虑盈利
+- 只在盈利仓位上加仓，永远不要追亏损
 
-### 什么时候禁止平仓
-❌ "保护资本"不是平仓理由 — 保护资本 = 不开新仓，不是平掉在手的仓
-❌ "历史表现差"不是平仓理由 — 当前仓位和历史胜率无关
-❌ "减少交易频率"不是平仓理由 — 减少频率 = 不开新仓
-❌ Peak PnL < 2% 时不要因为"微盈回撤"而平仓
-❌ PnL 在 -1% 到 +1% 之间且 SL 未触发 → 必须 hold
-❌ 持仓不到 30 分钟且无止损触发 → 必须 hold
+### 跟踪止盈
+- 当持仓盈亏从峰值回撤30%时，考虑止盈（仅当Peak PnL >= 2%时）
+- 例如：Peak PnL +5%，Current PnL +3.5% → 回撤30%，应该止盈
 
-### 加仓规则
-- 只在盈利仓位上加仓（当前 PnL > 0 且价格高于平均成本 1%）
-- 最多加仓 2 次
-- "不追亏损"的意思是"不给亏损仓加仓"，不是"亏损就平仓"
-
-### OI 四象限
+### 顺势交易
 - OI增加+价格上涨 = 强多头趋势
 - OI减少+价格上涨 = 空头平仓（可能反转）
 - OI增加+价格下跌 = 空头主导
 - OI减少+价格下跌 = 多头清算
 
-### 系统自动处理（你不需要操心）
-- 保证金使用率由系统自动控制
-- PnL > 5% 且从峰值回撤 ≥ 40% → 系统自动紧急平仓`;
+### 重要提醒
+- 永远不要混淆已实现盈亏和未实现盈亏
+- 永远关注Peak PnL，这是判断止盈的关键指标
+- 保证金使用率由系统自动控制，不需要因此主动平仓`;
     }
 
-    return `## Position Management Rules (exact numbers, no ambiguity)
+    return `## Decision Principles
 
-### When you CAN close a position (only these 4 cases)
-1. **Stop-loss hit**: PnL% breaches your set stop_loss price → must close
-2. **Trailing take-profit**: Peak PnL **≥ 2%** AND pullback from peak **≥ 30%** → close recommended (ignore any pullback when Peak < 2%)
-3. **Scale-out**: PnL ≥ +3% close 33%, ≥ +5% close 50%, ≥ +8% close 100%
-4. **Thesis invalidated**: Your original entry reason is contradicted by NEW data (must state exactly which data changed)
+### Risk First
+- Capital protection first, profit second
+- Only add to winning positions, never average down losers
 
-### When you MUST NOT close
-❌ "Capital protection" is NOT a close reason — protecting capital = don't open new positions
-❌ "Bad historical performance" is NOT a close reason — current position is unrelated to past win rate
-❌ "Reduce trading frequency" is NOT a close reason — reduce frequency = don't open new positions
-❌ Do NOT close when Peak PnL < 2% just because of a small pullback
-❌ PnL between -1% and +1% with SL not hit → MUST hold
-❌ Held less than 30 minutes with no SL triggered → MUST hold
+### Trailing Take-Profit
+- Consider take-profit when PnL pulls back 30% from peak (only when Peak PnL >= 2%)
+- Example: Peak PnL +5%, Current PnL +3.5% → 30% drawdown, should take profit
 
-### Position adding rules
-- Only add to winning positions (PnL > 0 AND price > avg cost × 1.01)
-- Max 2 additions
-- "Never average down" means "don't add to losing positions", NOT "close losing positions"
-
-### OI Quadrants
+### Trend Following
 - OI up + Price up = Strong bullish trend
 - OI down + Price up = Shorts covering (potential reversal)
 - OI up + Price down = Shorts dominant
 - OI down + Price down = Long liquidation
 
-### System auto-handles (you don't need to worry)
-- Margin usage is auto-controlled by system
-- PnL > 5% AND drawdown from peak ≥ 40% → system auto-closes`;
+### Critical Reminders
+- Never confuse realized and unrealized P&L
+- Always watch Peak PnL — key for take-profit decisions
+- Margin usage is auto-controlled by system, do NOT close positions solely for margin reasons`;
   }
 
   private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
@@ -703,25 +683,24 @@ Confidence ≥ 70 required. Avoid: single-indicator entries, contradictory signa
   }
 
   private buildOutputFormat(rc: PromptConfig['riskControl'] = {}): string {
-    // 对齐 nofx engine.go L1133-1155: 动态示例 + open_short 示例
+    // 对齐 nofx engine.go L1133-1155 + prompt_builder.go L153-174
     const equity = rc.allocatedCapital ?? 1000;
-    const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
-    const maxLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
-    const exampleSize = Math.round(equity * btcEthPVR);
+    const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
     const minConf = rc.minConfidence ?? 60;
 
     return `## Output Format (Strictly Follow)
 
-**Must use XML tags <reasoning> and <decision> to separate analysis and decision JSON.**
+**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors.**
 
 <reasoning>
-Your chain of thought analysis — briefly explain your thinking process.
+Your chain of thought analysis...
+- Briefly analyze your thinking process
 </reasoning>
 
 <decision>
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${maxLev}, "position_size_usd": ${exampleSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA bearish crossover + OI↑Price↓ = strong bearish. R:R=3.2:1."},
-  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "Thesis invalidated, cut loss."}
+  {"symbol": "SOL/USDT:USDT", "action": "open_long", "leverage": 3, "position_size_usd": ${Math.round(equity * altPVR * 0.6)}, "stop_loss": 85.8, "take_profit": 92.0, "confidence": 75, "risk_usd": 10, "reasoning": "当前PnL接近唐奇安下轨支撑，RSI(14)=35从超卖回升，OI 1h增加+2.3%配合价格上涨，符合OI↑+Price↑强多头模式。机构资金净流入$8.5M确认买盘。止损设在支撑下方，止盈目标上轨，R:R=1.3:1。"},
+  {"symbol": "BNB/USDT:USDT", "action": "wait", "confidence": 55, "reasoning": "信号矛盾，机构流出但技术超卖，置信度不足。"}
 ]
 </decision>
 
@@ -732,7 +711,6 @@ Your chain of thought analysis — briefly explain your thinking process.
 - position_size_usd = calculated USD number (NOT percentage)
 - stop_loss / take_profit = absolute price values
 - For long: stop_loss < current_price < take_profit
-- For short: take_profit < current_price < stop_loss
 - MULTI-COIN: ONE object per coin, each with independent reasoning
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
