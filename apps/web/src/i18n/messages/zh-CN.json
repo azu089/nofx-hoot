@@ -2233,7 +2233,10 @@
       "sysGridInitialized": "网格初始化: {gridCount} 格 [{lower}–{upper}]",
       "sysMinConfFiltered": "信心度 {actual}% < 最低 {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "保证金",
+      "notionalLabel": "名义",
+      "truncated": "截断"
     },
     "modeInfo": {
       "soloTitle": "极速模式",

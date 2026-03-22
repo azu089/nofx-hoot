@@ -2235,7 +2235,10 @@
       "sysGridInitialized": "Khởi tạo grid: {gridCount} mức [{lower}–{upper}]",
       "sysMinConfFiltered": "Độ tin cậy {actual}% < tối thiểu {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "Ký quỹ",
+      "notionalLabel": "Danh nghĩa",
+      "truncated": "cắt giảm"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

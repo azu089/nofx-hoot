@@ -639,21 +639,44 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* === 普通 Solo: 极简决策卡片 === */}
       {!isGridLog && !isAutoDisabled && !(isGridEntry && !isGridLog) && (
         <div className="space-y-1.5">
-          {/* 行1: 开仓 — 各参数独立元素 justify-between */}
-          {(action === 'open_long' || action === 'open_short') && (
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="px-2 py-0.5 rounded-md font-semibold font-sans" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
-                {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
-              </span>
-              {d.leverage != null && d.leverage > 1 && <span className="text-[#9090A0]">{d.leverage}x</span>}
-              {d.positionSizePercent ? (
-                <span className="text-[#9090A0]">{d.positionSizePercent}%</span>
-              ) : null}
-              {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
-              {(er?.amount || (d as any).quantity) && <span className="text-[#F8F8FC]">×{er?.amount ?? (d as any).quantity}</span>}
-              {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
-            </div>
-          )}
+          {/* 行1-2: 开仓 — 决策参数 + 仓位计算链 */}
+          {(action === 'open_long' || action === 'open_short') && (() => {
+            const amt = er?.amount ?? (d as any).quantity;
+            // 优先用后端存的计算链数据，回退到前端计算
+            const pvl = er?.positionValueLimit || 0;
+            const aiReq = er?.aiRequestedUSD || (d as any).positionSizeUSD || 0;
+            const notional = er?.actualNotional || (entryPrice > 0 && amt ? entryPrice * Number(amt) : 0);
+            const margin = er?.actualMargin || (notional && d.leverage ? notional / d.leverage : 0);
+            const truncated = er?.wasTruncated || false;
+            // 反算 AI 选择的仓位百分比
+            const aiPct = pvl > 0 && aiReq > 0 ? Math.round(aiReq / pvl * 100) : (d.positionSizePercent || 0);
+            return (
+              <>
+                {/* 行1: [开多] 3x  60%  $88.52  ×1.07  72% */}
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="px-2 py-0.5 rounded-md font-semibold font-sans" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
+                    {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
+                  </span>
+                  {d.leverage != null && d.leverage > 1 && <span className="text-[#9090A0]">{d.leverage}x</span>}
+                  {aiPct > 0 && <span className="text-[#9090A0]">{aiPct}%</span>}
+                  {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
+                  {amt && <span className="text-[#F8F8FC]">×{amt}</span>}
+                  {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
+                </div>
+                {/* 行2: 名义 $432→$95 · 保证金 $32 (截断) */}
+                {(notional > 0 || aiReq > 0) && (
+                  <div className="text-[10px] text-[#606070] font-mono pl-1">
+                    {aiReq > 0 && truncated
+                      ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span></>
+                      : <>{t('timeline.notionalLabel')} ${notional > 0 ? notional.toFixed(0) : Number(aiReq).toFixed(0)}</>
+                    }
+                    {margin > 0 && <> · {t('timeline.marginLabel')} ${margin.toFixed(2)}</>}
+                    {truncated && <span className="text-[#F59E0B]"> ({t('timeline.truncated') || '截断'})</span>}
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* 平仓 — 各参数独立元素 justify-between */}
           {(action === 'close_long' || action === 'close_short') && (

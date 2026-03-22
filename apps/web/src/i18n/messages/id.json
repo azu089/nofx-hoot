@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "Grid diinisialisasi: {gridCount} level [{lower}–{upper}]",
       "sysMinConfFiltered": "Kepercayaan {actual}% < min {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "Margin",
+      "notionalLabel": "Nominal",
+      "truncated": "terpotong"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

@@ -2236,7 +2236,10 @@
       "sysGridInitialized": "網格初始化: {gridCount} 格 [{lower}–{upper}]",
       "sysMinConfFiltered": "信心度 {actual}% < 最低 {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "保證金",
+      "notionalLabel": "名義",
+      "truncated": "截斷"
     },
     "modeInfo": {
       "soloTitle": "極速模式",

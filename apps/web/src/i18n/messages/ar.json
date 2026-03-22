@@ -2215,7 +2215,10 @@
       "sysGridInitialized": "تهيئة الشبكة: {gridCount} مستوى [{lower}–{upper}]",
       "sysMinConfFiltered": "الثقة {actual}% < الحد الأدنى {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "هامش",
+      "notionalLabel": "اسمي",
+      "truncated": "مقطوع"
     },
     "modeInfo": {
       "soloTitle": "الوضع الفردي",

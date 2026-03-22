@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "그리드 초기화: {gridCount}단 [{lower}–{upper}]",
       "sysMinConfFiltered": "신뢰도 {actual}% < 최소 {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "증거금",
+      "notionalLabel": "명목",
+      "truncated": "절삭"
     },
     "modeInfo": {
       "soloTitle": "솔로 모드",

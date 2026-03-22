@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "Grid başlatıldı: {gridCount} seviye [{lower}–{upper}]",
       "sysMinConfFiltered": "Güven {actual}% < min {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "Teminat",
+      "notionalLabel": "Nominal",
+      "truncated": "kesildi"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

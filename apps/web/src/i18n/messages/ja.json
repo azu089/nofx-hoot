@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "グリッド初期化: {gridCount}段 [{lower}–{upper}]",
       "sysMinConfFiltered": "信頼度 {actual}% < 最低 {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "証拠金",
+      "notionalLabel": "想定元本",
+      "truncated": "切捨"
     },
     "modeInfo": {
       "soloTitle": "ソロモード",

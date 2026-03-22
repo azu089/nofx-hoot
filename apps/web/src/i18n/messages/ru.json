@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "Сетка инициализирована: {gridCount} уровней [{lower}–{upper}]",
       "sysMinConfFiltered": "Уверенность {actual}% < мин. {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "Маржа",
+      "notionalLabel": "Номинал",
+      "truncated": "усечено"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

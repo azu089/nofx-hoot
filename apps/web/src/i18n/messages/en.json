@@ -2219,7 +2219,10 @@
       "sysGridInitialized": "Grid init: {gridCount} levels [{lower}–{upper}]",
       "sysMinConfFiltered": "Confidence {actual}% < min {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "Margin",
+      "notionalLabel": "Notional",
+      "truncated": "truncated"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

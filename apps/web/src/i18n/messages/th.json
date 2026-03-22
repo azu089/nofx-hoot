@@ -2234,7 +2234,10 @@
       "sysGridInitialized": "เริ่มต้นกริด: {gridCount} ระดับ [{lower}–{upper}]",
       "sysMinConfFiltered": "ความมั่นใจ {actual}% < ขั้นต่ำ {required}%",
       "breakoutDirUp": "↑",
-      "breakoutDirDown": "↓"
+      "breakoutDirDown": "↓",
+      "marginLabel": "มาร์จิน",
+      "notionalLabel": "มูลค่า",
+      "truncated": "ตัดทอน"
     },
     "modeInfo": {
       "soloTitle": "Solo Mode",

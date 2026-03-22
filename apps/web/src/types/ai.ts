@@ -702,6 +702,12 @@ export interface StrategyLog {
     price?: number;
     amount?: number;
     error?: string;
+    // 仓位计算链（供日志展示）
+    positionValueLimit?: number;
+    aiRequestedUSD?: number;
+    actualNotional?: number;
+    actualMargin?: number;
+    wasTruncated?: boolean;
   } | null;
   createdAt: string;
   // 日志透明化字段（Solo 模式）
