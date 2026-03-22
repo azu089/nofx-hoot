@@ -20,7 +20,7 @@ import { Injectable } from '@nestjs/common';
 import { getSchemaPrompt, SCHEMA_VERSION, SchemaLang } from '../../constants/schema-dictionary';
 import { AI_SAFETY_DEFAULTS } from '../../constants/safety-defaults';
 import { buildLanguageInstruction, buildUserMessageLanguageReminder } from '../../constants/locale-instructions';
-import { TRADING_PHILOSOPHY, calculateRegime, MarketRegime } from '../../constants/trading-philosophy';
+// TRADING_PHILOSOPHY 已从极速策略 prompt 移除（对齐 nofx），文件保留供其他策略使用
 
 // ========================= 配置接口 =========================
 
@@ -197,8 +197,9 @@ export class PromptBuilderService {
     // Section 6: Language Instruction
     sections.push(buildLanguageInstruction(locale));
 
-    // Section 7: Trading Philosophy (17 core rules, incl. OI四象限/Donchian/PVR)
-    sections.push(TRADING_PHILOSOPHY);
+    // Section 7: Trading Philosophy — 已移除（对齐 nofx：不注入独立哲学规则文档）
+    // 核心原则已在 Section 3 (AI Guidance) 中覆盖：风险优先/跟踪止盈/顺势交易/OI四象限
+    // TRADING_PHILOSOPHY 文件保留但不注入极速策略 prompt，避免 ~120 行重复约束稀释核心信息
 
     // Custom Sections: Trading Frequency / Entry Standards / Decision Process
     if (ps.tradingFrequency) {
