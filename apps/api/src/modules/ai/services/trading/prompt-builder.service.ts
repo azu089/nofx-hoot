@@ -176,7 +176,8 @@ export class PromptBuilderService {
 
     // Section 0: Data Dictionary (use locale for bilingual schema)
     const schemaLang: SchemaLang = locale.startsWith('zh') ? 'zh-CN' : 'en-US';
-    sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: true, includeOI: true, includeMistakes: true }));
+    // 对齐 nofx: 只注入字段说明和OI解读，不注入交易规则和常见错误（避免过度约束）
+    sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: false, includeOI: true, includeMistakes: false }));
 
     // Section 1: Role Definition
     sections.push(this.buildRoleSection(ps.role));
@@ -590,28 +591,10 @@ Confidence → position_size_usd:
     // 对齐 nofx engine.go L1102-1119
     const interval = intervalMinutes || 60;
     const trades = todayTrades ?? 0;
-    let section = `## ⏱️ Trading Frequency Awareness
-- Cycle interval: ${interval} min | Today: ${trades} trades
-- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
-- >2 trades/hour = OVERTRADING — you are destroying profits with fees
-- Single position hold time ≥ 30-60 minutes
-
-**Self-check**: If you are trading every cycle → your entry standards are too low.
-If you are closing positions in < 30 minutes → you are too impatient. Let winners run.
-
-## 🎯 Entry Standards (Strict)
-Only open positions when **multiple signals resonate**. Avoid these low-quality behaviors:
-❌ Opening based on a single indicator (e.g., RSI alone)
-❌ Opening when signals contradict each other (e.g., RSI bullish but OI bearish + institution outflow)
-❌ Opening during sideways/ranging market with no clear direction
-❌ Reopening the same direction immediately after being stopped out
-❌ Closing a position just because it's slightly negative — if SL is not hit, HOLD
-
-## 🔒 Position Patience Rules
-- If a position is losing < 1% AND stop-loss has NOT been hit → you MUST output "hold", do NOT close
-- Only close when: (1) SL is hit, (2) your original thesis is invalidated by NEW data, or (3) trailing stop triggered
-- "I feel uncomfortable" is NOT a valid reason to close — use your SL
-- Closing early and reopening = 2x fees for no reason`;
+    // 对齐 nofx engine.go L1102-1106: 简洁
+    let section = `## Trading Frequency
+- Cycle: ${interval}min | Today: ${trades} trades
+- Quality > quantity, hold ≥ 30-60min`;
 
     if (consecutiveWaits && consecutiveWaits >= 10) {
       section += `\n\n⚠️ ${consecutiveWaits} consecutive wait cycles. If a reasonable setup exists, consider a smaller position with tight SL.`;
