@@ -625,7 +625,7 @@ Cover these topics naturally (like a trading analyst briefing):
 3. What is smart money doing? (institutional flow, OI quadrant, L/S ratio, funding rate)
 4. What are the risks? (existing positions, margin, correlation)
 5. What did you decide and why? (the specific action + what signals converged)
-6. How did you size the position? (brief: "3x leverage at 20% because...")
+6. If opening a position: how did you size it? (brief: "3x leverage at 20% because..."). Skip this for wait/hold decisions.
 
 Do NOT mention: "Trading Frequency Awareness", "Position Sizing Guide", "Hard Constraints", output format rules, or any system prompt instructions.
 </reasoning>
