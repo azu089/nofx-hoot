@@ -617,9 +617,9 @@ Confidence → position_size_usd:
 - OI增加+价格下跌 = 空头主导
 - OI减少+价格下跌 = 多头清算
 
-### 重要提醒
-- 永远不要混淆已实现盈亏和未实现盈亏
-- 永远关注Peak PnL，这是判断止盈的关键指标
+### 分批操作
+- 加仓: 只在盈利仓位上加仓，最多加2次，价格需比平均成本高1%
+- 分批止盈: 盈利3%平33%，5%平50%，8%全平
 - 保证金使用率由系统自动控制，不需要因此主动平仓`;
     }
 
@@ -639,9 +639,9 @@ Confidence → position_size_usd:
 - OI up + Price down = Shorts dominant
 - OI down + Price down = Long liquidation
 
-### Critical Reminders
-- Never confuse realized and unrealized P&L
-- Always watch Peak PnL — key for take-profit decisions
+### Scale In/Out
+- Scale-in: Only add to winning positions, max 2 additions, price must be 1% above avg cost
+- Scale-out: Close 33% at +3%, 50% at +5%, 100% at +8%
 - Margin usage is auto-controlled by system, do NOT close positions solely for margin reasons`;
   }
 
@@ -685,7 +685,6 @@ Confidence ≥ 70 required. Avoid: single-indicator entries, contradictory signa
   private buildOutputFormat(rc: PromptConfig['riskControl'] = {}): string {
     // 对齐 nofx engine.go L1133-1155 + prompt_builder.go L153-174
     const equity = rc.allocatedCapital ?? 1000;
-    const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
     const minConf = rc.minConfidence ?? 60;
 
     return `## Output Format (Strictly Follow)
@@ -699,8 +698,8 @@ Your chain of thought analysis...
 
 <decision>
 [
-  {"symbol": "SOL/USDT:USDT", "action": "open_long", "leverage": 3, "position_size_usd": ${Math.round(equity * altPVR * 0.6)}, "stop_loss": 85.8, "take_profit": 92.0, "confidence": 75, "risk_usd": 10, "reasoning": "当前PnL接近唐奇安下轨支撑，RSI(14)=35从超卖回升，OI 1h增加+2.3%配合价格上涨，符合OI↑+Price↑强多头模式。机构资金净流入$8.5M确认买盘。止损设在支撑下方，止盈目标上轨，R:R=1.3:1。"},
-  {"symbol": "BNB/USDT:USDT", "action": "wait", "confidence": 55, "reasoning": "信号矛盾，机构流出但技术超卖，置信度不足。"}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5}, "position_size_usd": ${Math.round(equity * (rc.btcEthMaxPositionValueRatio ?? 5))}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M，3/4看空→85%"},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "论点失效，止损。"}
 ]
 </decision>
 
@@ -711,6 +710,7 @@ Your chain of thought analysis...
 - position_size_usd = calculated USD number (NOT percentage)
 - stop_loss / take_profit = absolute price values
 - For long: stop_loss < current_price < take_profit
+- For short: take_profit < current_price < stop_loss
 - MULTI-COIN: ONE object per coin, each with independent reasoning
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
