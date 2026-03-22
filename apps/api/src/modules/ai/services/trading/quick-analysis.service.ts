@@ -809,12 +809,32 @@ export class QuickAnalysisService {
         const mrNorm = normalizeSymbol(mr.symbol);
         const decision = allDecisions.find(d => normalizeSymbol(d.symbol) === mrNorm);
         if (decision) {
+          // 构建市场快照（多币种模式：用已有的基础指标，前端日志卡片展示用）
+          const mcSnapshot = {
+            price: mr.currentPrice,
+            rsi7: null as number | null,
+            rsi14: mr.indicators?.rsi ?? null,
+            macdHist: null as number | null,
+            atr14: mr.indicators?.atr14 ?? null,
+            fundingRate: mr.fundingRate ?? null,
+            longShortRatio: null as number | null,
+            longPct: null as number | null,
+            oiChange: null as string | null,
+            oiQuadrant: null as string | null,
+            institutionFlow: null as number | null,
+            dataSources: {
+              oi: false, fr: mr.fundingRate != null,
+              ranking: !!mcRankingSections, enhanced: false,
+              oiRanking: false, netFlow: false, priceRanking: false,
+            },
+          };
           resultMap.set(mr.symbol, {
             decision, allDecisions, rawResponse: response.content,
             cost: costPerCoin, latencyMs,
             indicators: mr.indicators, fundingRate: mr.fundingRate,
             currentPrice: mr.currentPrice, volume24h: mr.volume24h,
             systemPrompt, userPrompt: userMessage, aiThinking: response.thinking,
+            marketSnapshot: mcSnapshot,
           });
         } else {
           this.logger.warn(`[多币种分析] ${mr.symbol} 未在 AI 响应中找到决策，降级逐币分析`);
