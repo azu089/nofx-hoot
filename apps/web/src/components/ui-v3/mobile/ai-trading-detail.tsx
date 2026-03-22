@@ -384,7 +384,7 @@ export function AIStrategyDetailPage() {
       setEditMaxPositions(rc.maxPositions || 3);
       setEditMaxDailyDrawdown(rc.maxDailyDrawdown || 100);
       setEditMaxDailyTrades(rc.maxDailyTrades || 10);
-      setEditCooldownMinutes(rc.cooldownMinutes || 15);
+      setEditCooldownMinutes(rc.cooldownMinutes ?? 0);
       setEditCircuitBreaker(rc.circuitBreaker ?? 5);
       setEditAllocatedCapital(rc.allocatedCapital || 10000);
       setEditPromptRole(ps.role || '');
@@ -2100,7 +2100,7 @@ export function AIStrategyDetailPage() {
                       <p className="text-[10px] text-[#606070] mb-1">{t('create.cooldownMinutes')}</p>
                       <div className="flex items-center gap-1.5 px-3 py-2 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl">
                         <input type="number" min={0} max={1440}
-                          value={editCooldownMinutes || ''}
+                          value={editCooldownMinutes}
                           onChange={(e) => setEditCooldownMinutes(parseInt(e.target.value) || 0)}
                           className="flex-1 bg-transparent text-sm text-[#F8F8FC] outline-none min-w-0"
                         />
