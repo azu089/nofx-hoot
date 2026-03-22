@@ -657,6 +657,8 @@ export class AutoTraderService {
           source: { in: ['ai_research', 'ai_strategy'] },
           status: 'closed',
           aiStrategyId: strategy.id,
+          // 排除 syncPositionsForUser 产生的重复 close 记录
+          closeReason: { notIn: ['manual', 'not_found_on_exchange'] },
         },
         orderBy: { closedAt: 'desc' },
         take: 10,
