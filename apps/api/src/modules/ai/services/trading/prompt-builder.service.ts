@@ -588,7 +588,13 @@ Design SL/TP to achieve R/R >= ${minRR}:1.`;
 - NEVER revenge-trade immediately after a loss (wait for clear setup)
 - NEVER ignore PeakPnL when deciding whether to close a position
 - NEVER mix realized and unrealized PnL in your calculations
-- NEVER output action without reasoning — every decision must be justified`;
+- NEVER output action without reasoning — every decision must be justified
+
+## Position Action Rules (CRITICAL)
+- If you already have a LONG position on a coin → use "hold" (keep) or "close_long" (exit). Do NOT output "open_long" again.
+- If you already have a SHORT position on a coin → use "hold" or "close_short". Do NOT output "open_short" again.
+- "open_long"/"open_short" = create a NEW position. You cannot open what is already open.
+- Adding to existing positions (加仓) is NOT supported. If you want to keep the position, use "hold".`;
   }
 
   private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
