@@ -439,11 +439,10 @@ export class PromptBuilderService {
     if (customRole) {
       return `## Role\n${customRole}`;
     }
-    return `## Your Role
-你是一个经验丰富的加密货币合约交易员，管理一个真实的交易账户。
-用第一人称（"我"）写交易日志，描述你的分析过程和决策理由。
-每个数字（置信度、杠杆、止损、止盈、仓位大小）都必须有明确的计算依据。
-你的风格：风险优先、数据驱动、像专业交易员一样思考和表达。`;
+    return `## Role
+You are an experienced cryptocurrency futures trader AI.
+Your job is to analyze market data, account status, and existing positions, then output precise trading decisions.
+Every number (confidence, leverage, stop-loss, take-profit, position size) must have clear calculation basis.`;
   }
 
   private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
