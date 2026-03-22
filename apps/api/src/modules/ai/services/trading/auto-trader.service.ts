@@ -1480,7 +1480,9 @@ export class AutoTraderService {
 
           // 计算实际仓位金额（USD），供 L10 流动性检查比较
           const allocCap = riskControl.allocatedCapital || 1000;
-          const positionSizeUSD = allocCap * (decision.positionSizePercent / 100) * (decision.leverage || 1);
+          const positionSizeUSD = decision.positionSizeUSD
+            ? decision.positionSizeUSD  // USD 模式：直接用
+            : allocCap * (decision.positionSizePercent / 100) * (decision.leverage || 1);
 
           const safetyInput: SafetyCheckInput = {
             userId,
@@ -1562,7 +1564,7 @@ export class AutoTraderService {
 
             // 记录安全检查失败到策略日志
             const safetyCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
-              ? Math.round(allocCap * (decision.positionSizePercent || 0) / 100) : undefined;
+              ? Math.round(decision.positionSizeUSD ?? (allocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
             await db.aiStrategyLog.create({
               data: {
                 strategyId,
@@ -1703,14 +1705,23 @@ export class AutoTraderService {
               ? (riskControl.btcEthMaxPositionValueRatio ?? 5.0)
               : (riskControl.altcoinMaxPositionValueRatio ?? 1.0);
             const allocCap = realAvailableBalance ?? (riskControl.allocatedCapital || 1000);
-            const posValueEst = (decision.positionSizePercent / 100) * allocCap * decision.leverage;
+            const posValueEst = decision.positionSizeUSD
+              ? decision.positionSizeUSD
+              : (decision.positionSizePercent / 100) * allocCap * decision.leverage;
             const maxPosValue = allocCap * maxRatio;
             if (posValueEst > maxPosValue) {
-              const cappedPercent = (maxPosValue / (allocCap * decision.leverage)) * 100;
-              this.logger.warn(
-                `[风控-D6] ${symbol}: 仓位价值 $${posValueEst.toFixed(0)} 超限 $${maxPosValue.toFixed(0)} (${isMajor ? 'BTC/ETH' : 'altcoin'} ${maxRatio}x), auto-cap ${decision.positionSizePercent}% → ${cappedPercent.toFixed(1)}%`,
-              );
+              if (decision.positionSizeUSD) {
+                this.logger.warn(
+                  `[风控-D6] ${symbol}: 仓位 $${posValueEst.toFixed(0)} 超限 $${maxPosValue.toFixed(0)}, auto-cap → $${maxPosValue.toFixed(0)}`,
+                );
+                decision = { ...decision, positionSizeUSD: maxPosValue };
+              } else {
+                const cappedPercent = (maxPosValue / (allocCap * decision.leverage)) * 100;
+                this.logger.warn(
+                  `[风控-D6] ${symbol}: 仓位 $${posValueEst.toFixed(0)} 超限 $${maxPosValue.toFixed(0)}, auto-cap ${decision.positionSizePercent}% → ${cappedPercent.toFixed(1)}%`,
+                );
               decision = { ...decision, positionSizePercent: Math.max(cappedPercent, 1) };
+              }
             }
           }
 
@@ -1720,7 +1731,10 @@ export class AutoTraderService {
             const bs = symbol.split('/')[0]?.toUpperCase();
             const isMaj = bs === 'BTC' || bs === 'ETH';
             const allocCap = realAvailableBalance ?? (riskControl.allocatedCapital || 1000);
-            const marginEst = (decision.positionSizePercent / 100) * allocCap;
+            // 对齐 nofx：优先用 positionSizeUSD（美元绝对值），回退到百分比
+            const marginEst = decision.positionSizeUSD
+              ? decision.positionSizeUSD / (decision.leverage || 1) // USD 模式：名义值/杠杆=保证金
+              : (decision.positionSizePercent / 100) * allocCap;
             const userMinSize = riskControl.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
             const minMargin = isMaj
               ? Math.max(userMinSize, AI_SAFETY_DEFAULTS.minPositionSizeMajor) // BTC/ETH 系统硬底 $60
@@ -1802,7 +1816,9 @@ export class AutoTraderService {
           if (decision.action === 'open_long' || decision.action === 'open_short') {
             try {
               const book = await this.marketData.fetchOrderBook(symbol);
-              const posUSD = (decision.positionSizePercent / 100) * (riskControl.allocatedCapital || 1000) * decision.leverage;
+              const posUSD = decision.positionSizeUSD
+                ? decision.positionSizeUSD
+                : (decision.positionSizePercent / 100) * (riskControl.allocatedCapital || 1000) * decision.leverage;
               const slippageEst = this.marketData.estimateSlippage(
                 book,
                 decision.action === 'open_long' ? 'buy' : 'sell',
@@ -1938,7 +1954,7 @@ export class AutoTraderService {
           // 记录到策略日志
           const logAllocCap = riskControl.allocatedCapital || 1000;
           const execCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
-            ? Math.round(logAllocCap * (decision.positionSizePercent || 0) / 100) : undefined;
+            ? Math.round(decision.positionSizeUSD ?? (logAllocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
           await db.aiStrategyLog.create({
             data: {
               strategyId,
@@ -2026,7 +2042,7 @@ export class AutoTraderService {
           // 记录失败日志
           const failAllocCap = riskControl.allocatedCapital || 1000;
           const failCapitalUSD = (decision.action === 'open_long' || decision.action === 'open_short')
-            ? Math.round(failAllocCap * (decision.positionSizePercent || 0) / 100) : undefined;
+            ? Math.round(decision.positionSizeUSD ?? (failAllocCap * (decision.positionSizePercent || 0) / 100)) : undefined;
           await db.aiStrategyLog.create({
             data: {
               strategyId,
