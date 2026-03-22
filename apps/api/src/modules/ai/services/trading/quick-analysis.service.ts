@@ -527,6 +527,8 @@ export class QuickAnalysisService {
         pnlPercent: p.pnlPercent,
         peakPnlPercent: p.peakPnlPercent,
         margin: p.margin,
+        holdMinutes: (p as any).holdMinutes,
+        liqPrice: (p as any).liqPrice,
       })) : existingPositions.map(p => ({
         symbol: config.symbol,
         side: p.side,
@@ -804,6 +806,7 @@ export class QuickAnalysisService {
           symbol: p.symbol, side: p.side, entryPrice: p.entryPrice,
           size: p.size, leverage: p.leverage, pnlPercent: p.pnlPercent,
           peakPnlPercent: p.peakPnlPercent, margin: p.margin,
+          holdMinutes: (p as any).holdMinutes, liqPrice: (p as any).liqPrice,
         })) : [],
         marketDataPrompt: combinedMarketData,
         // 极速策略增强 Task 1-4（多币种模式）

@@ -463,7 +463,7 @@ export class AutoTraderService {
           status: 'open',
           source: { in: ['ai_research', 'ai_strategy'] },
         },
-        select: { id: true, symbol: true, side: true, aiStrategyId: true, peakPnlPercent: true },
+        select: { id: true, symbol: true, side: true, aiStrategyId: true, peakPnlPercent: true, createdAt: true },
       });
       // 合并：以交易所实时数据为准，从 DB 补充策略归属
       const existingPositions = liveExchangePositions.map((ep: any) => {
@@ -481,6 +481,10 @@ export class AutoTraderService {
           highWaterMark: dbMatch?.peakPnlPercent ? Number(dbMatch.peakPnlPercent) : null,
           aiStrategyId: dbMatch?.aiStrategyId ?? null,
           id: dbMatch?.id ?? null,
+          // 对齐 nofx formatPositionInfo: 补充持仓时长、当前价、强平价
+          createdAt: dbMatch?.createdAt ?? null,
+          markPrice: ep.markPrice ?? ep.entryPrice ?? 0,
+          liquidationPrice: ep.liquidationPrice ?? 0,
         };
       });
 
@@ -628,6 +632,10 @@ export class AutoTraderService {
           pnlPercent: Number(p.margin) > 0 ? (Number(p.unrealizedPnl || 0) / Number(p.margin)) * 100 : 0,
           peakPnlPercent: p.highWaterMark ? Number(p.highWaterMark) : undefined,
           margin: Number(p.margin || 0),
+          // 对齐 nofx formatPositionInfo: 传入持仓时长、当前价、强平价
+          holdMinutes: p.createdAt ? Math.round((Date.now() - new Date(p.createdAt).getTime()) / 60000) : undefined,
+          markPrice: Number(p.markPrice || 0) || undefined,
+          liqPrice: Number((p as any).liquidationPrice || 0) || undefined,
         })),
         otherStrategiesCount: otherPositions.length,
         otherStrategiesMargin: otherMargin,
