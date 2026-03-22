@@ -684,7 +684,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               <span className="px-2 py-0.5 rounded-md font-semibold font-sans" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
-              {d.leverage != null && <span className="text-[#9090A0]">{d.leverage}x</span>}
               <span className="text-[#F8F8FC]">${entryPrice > 0 ? entryPrice.toFixed(2) : '-'}</span>
               <span className="text-[#606070]">→</span>
               <span className="text-[#F8F8FC]">{er?.price ? `$${Number(er.price).toFixed(2)}` : '-'}</span>
