@@ -647,7 +647,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
       {/* === 多币种合并日志（对齐 nofx: 一轮一条） === */}
       {isMultiCoin && !isGridLog && (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {allDecisions.map((ad, idx) => {
             const adAction = ad.action || 'wait';
             const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
@@ -664,21 +664,22 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const isOpen = adAction === 'open_long' || adAction === 'open_short';
             const isClose = adAction === 'close_long' || adAction === 'close_short';
             return (
-              <div key={idx} className="border-b border-[#1E1E2E] last:border-0 pb-1.5 last:pb-0">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-[#06B6D4] font-sans font-medium w-10">{adSymbol}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold font-sans" style={{ color: adCfg.color, backgroundColor: adCfg.bg }}>
+              <div key={idx} className={`${idx > 0 ? 'pt-1.5 border-t border-[#1E1E2E]/50' : ''}`}>
+                {/* 行1: 币种 + 动作 + 参数 */}
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  <span className="text-[#06B6D4] font-sans font-medium min-w-[32px]">{adSymbol}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold font-sans shrink-0" style={{ color: adCfg.color, backgroundColor: adCfg.bg }}>
                     {ACTION_I18N[adAction] ? t(ACTION_I18N[adAction]) : adCfg.label}
                   </span>
                   {isOpen && ad.leverage != null && ad.leverage > 1 && <span className="text-[#9090A0]">{ad.leverage}x</span>}
                   {isOpen && adMargin > 0 && <span className="text-[#10B981]">${adMargin.toFixed(2)}</span>}
                   {(isOpen || isClose) && adEntryPrice > 0 && <span className="text-[#F8F8FC]">${adEntryPrice.toFixed(2)}</span>}
                   {(isOpen || isClose) && adAmt && <span className="text-[#F8F8FC]">×{adAmt}</span>}
-                  {ad.confidence != null && <span className="font-semibold" style={{ color: ad.confidence >= 80 ? '#22C55E' : ad.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence}%</span>}
+                  <span className="ml-auto font-semibold shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
                 </div>
-                {/* 开仓第二行：上限+百分比+名义 */}
+                {/* 行2: 上限 + 百分比 + 名义（仅开仓） */}
                 {isOpen && (adPvl > 0 || adNotional > 0) && (
-                  <div className="text-[10px] text-[#606070] font-mono pl-10">
+                  <div className="text-[10px] text-[#606070] font-mono ml-[40px] mt-0.5">
                     {adPvl > 0 && <>{t('timeline.limitLabel')}${adPvl.toFixed(0)} </>}
                     {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
                     {adPct > 0 && <> </>}
@@ -689,32 +690,32 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     )}
                   </div>
                 )}
-                {/* 开仓第三行：止损/止盈 + 盈亏比 */}
+                {/* 行3: SL/TP + R:R（仅开仓） */}
                 {isOpen && (ad.stopLoss != null || ad.takeProfit != null) && (
-                  <div className="flex items-center justify-between text-[10px] font-mono pl-10">
+                  <div className="flex items-center gap-3 text-[10px] font-mono ml-[40px] mt-0.5">
                     {ad.stopLoss != null && (
                       <span className="text-[#F43F5E]">
                         ↓${Number(ad.stopLoss).toLocaleString()}
-                        {adEntryPrice > 0 && <span className="opacity-50"> ({((ad.stopLoss - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                        {adEntryPrice > 0 && <span className="opacity-60"> ({((ad.stopLoss - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
                       </span>
                     )}
                     {ad.takeProfit != null && (
                       <span className="text-[#10B981]">
                         ↑${Number(ad.takeProfit).toLocaleString()}
-                        {adEntryPrice > 0 && <span className="opacity-50"> (+{((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                        {adEntryPrice > 0 && <span className="opacity-60"> (+{((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
                       </span>
                     )}
                     {ad.stopLoss != null && ad.takeProfit != null && adEntryPrice > 0 && (() => {
                       const slDist = Math.abs(adEntryPrice - ad.stopLoss);
                       const tpDist = Math.abs(ad.takeProfit - adEntryPrice);
                       const rrVal = slDist > 0 ? (tpDist / slDist) : 0;
-                      return rrVal > 0 ? <span className={`font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                      return rrVal > 0 ? <span className={`ml-auto font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
                     })()}
                   </div>
                 )}
-                {/* 拦截/跳过原因 */}
+                {/* 拦截原因 */}
                 {adEr?.blocked && (
-                  <div className="text-[10px] text-[#F59E0B] pl-10">{adEr.reason || adEr.blockedBy}</div>
+                  <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
               </div>
             );
