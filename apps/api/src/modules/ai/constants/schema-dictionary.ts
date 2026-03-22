@@ -287,13 +287,7 @@ export const TradingRules = {
       reasonZH: '防止情绪化交易导致连续亏损',
       reasonEN: 'Prevent emotional trading leading to consecutive losses',
     },
-    PositionSizeLimit: {
-      value: 0.15,
-      descZH: '单个仓位不得超过总权益的15%',
-      descEN: 'Single position must not exceed 15% of total equity',
-      reasonZH: '避免过度集中风险',
-      reasonEN: 'Avoid excessive risk concentration',
-    },
+    // PositionSizeLimit 已删除（对齐 nofx：由位置价值比 Position Value Ratio 在代码层控制，非 prompt 硬约束）
   } as Record<string, BilingualRuleDef>,
 
   EntrySignals: {

@@ -816,11 +816,12 @@ export class SafetyService {
       (direction === 'buy' && input.fundingRate > 0) ||
       (direction === 'sell' && input.fundingRate < 0);
 
-    // 级别 1：极端资金费率 → 硬拦截
+    // 级别 1：极端资金费率 → 改为软警告（对齐 nofx：费率是成本信号，AI 应自主决策）
     if (absFundingRate > AI_SAFETY_DEFAULTS.fundingRateExtreme && isPayingFunding) {
       return {
-        passed: false,
-        detail: `极端资金费率: ${frPercent.toFixed(4)}%/8h，${direction === 'buy' ? '多方' : '空方'}费用过高，已暂停`,
+        passed: true,
+        detail: `极端资金费率: ${frPercent.toFixed(4)}%/8h，${direction === 'buy' ? '多方' : '空方'}费用极高`,
+        warning: `极端资金费率 (${frPercent.toFixed(4)}%/8h)，持仓成本极高，AI 应自行评估`,
       };
     }
 

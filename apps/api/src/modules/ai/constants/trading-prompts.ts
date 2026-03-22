@@ -292,12 +292,9 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 
 ### 4.1 开仓规则 (无持仓时)
 可选: open_long / open_short / wait
-- **最低信心度**: confidence < 75 → 必须输出 wait（不确定时不开新仓，patience generates alpha）
-- 开仓条件: ≥ 3 个维度信号一致 + confidence ≥ 75
-- 仓位大小 (positionSizePercent: 1-20 整数):
-  - confidence 85-100 → 15-20%
-  - confidence 75-85 → 8-15%
-  - confidence < 75 → wait
+- **信心度由你自主决定**，系统会根据用户配置的最低信心度过滤（不满足时自动跳过，无需你强制 wait）
+- 开仓条件: 多维度信号综合判断，你全权决策
+- 仓位大小参考仓位计算指南（基于仓位上限 × 百分比）
 - 止损: SL distance = max(1.5 × ATR14 / price, 0.5%) / leverage
   - 多仓: stop_loss = entryPrice × (1 - SL_distance)
   - 空仓: stop_loss = entryPrice × (1 + SL_distance)
@@ -375,7 +372,7 @@ export const QUICK_MODE_SYSTEM_PROMPT = `你是一个专业的量化交易AI助�
 3. 风险评估（止损位依据、R:R 比例计算）
 4. 决策依据（必填）:
    - confidence X% 原因: 支持信号 vs 反对信号
-   - 若 confidence < 75 → 输出 wait，说明哪些信号不足
+   - 信心度由你自主决定，系统会按用户配置的最低信心度自动过滤
 </reasoning>
 <decision>
 [{

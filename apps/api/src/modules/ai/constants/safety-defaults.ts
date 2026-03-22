@@ -29,8 +29,8 @@ export const AI_SAFETY_DEFAULTS = {
   priceChange1hHigh: 5.0, // |1h涨跌| > 5% → 软警告（不拦截）
 
   // ── R:R 系统默认下限（用户可在策略 riskControlConfig.minRiskRewardRatio 覆盖） ──
-  // 默认 3.0 偏保守 → 加密短周期折中为 2.0（策略可通过 strategyRiskConfig.minRiskRewardRatio 单独降低）
-  minRiskRewardRatio: 2.0,
+  // 对齐 nofx: nofx 无 R:R 硬约束。默认 1.0 作为兜底，用户可通过策略配置自行调整
+  minRiskRewardRatio: 1.0,
 
   // ── L2: 共识（仅 Research 模式使用，Solo/Debate 跳过 L2） ──
   minConsensusModels: 2,
