@@ -307,6 +307,20 @@ export class PromptBuilderService {
       }
       if (s.sharpeRatio !== undefined) lines.push(`Sharpe Ratio: ${s.sharpeRatio}`);
       if (s.maxDrawdownPct !== undefined) lines.push(`Max Drawdown: ${s.maxDrawdownPct.toFixed(1)}%`);
+      // 对齐 nofx formatter.go L162-188: 交易统计决策建议
+      if (s.totalTrades < 10) {
+        lines.push('Note: Sample size < 10, statistics have limited reference value.');
+      }
+      const wlr = (s.avgWin && s.avgLoss && s.avgLoss !== 0) ? Math.abs(s.avgWin) / Math.abs(s.avgLoss) : 0;
+      if (s.profitFactor !== undefined && s.profitFactor < 1.0) {
+        lines.push('⚠️ Profit Factor < 1: losses exceed profits. Improve win/loss ratio, optimize TP/SL.');
+      }
+      if (wlr > 0 && wlr < 1.5) {
+        lines.push('⚠️ Win/Loss ratio low: let profits run, raise take-profit targets.');
+      }
+      if (s.maxDrawdownPct !== undefined && s.maxDrawdownPct > 30) {
+        lines.push('⚠️ Max drawdown high: reduce position size to control risk.');
+      }
     }
 
     // [5] Current Positions
@@ -321,6 +335,17 @@ export class PromptBuilderService {
         const hold = p.holdMinutes ? ` | Hold: ${p.holdMinutes}min` : '';
         const liq = p.liqPrice ? ` | LiqPrice: $${p.liqPrice.toFixed(2)}` : '';
         lines.push(`  ${p.symbol} ${p.side.toUpperCase()} @ $${p.entryPrice.toFixed(4)} | ${p.leverage}x${qty}${value}${marginStr} | PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${peak}${hold}${liq}`);
+        // 对齐 nofx formatter.go L246-253: 持仓动态提示
+        if (p.peakPnlPercent !== undefined && p.peakPnlPercent >= 2) {
+          const drawback = p.pnlPercent - p.peakPnlPercent;
+          const drawbackPct = p.peakPnlPercent > 0 ? (drawback / p.peakPnlPercent) * 100 : 0;
+          if (drawbackPct <= -30) {
+            lines.push(`    ⚠️ Take-profit alert: PnL pulled back ${Math.abs(drawbackPct).toFixed(0)}% from peak ${p.peakPnlPercent.toFixed(2)}% → current ${p.pnlPercent.toFixed(2)}%. Consider taking profit.`);
+          }
+        }
+        if (p.pnlPercent < -4.0) {
+          lines.push(`    ⚠️ Stop-loss alert: Loss approaching -5% hard stop. Evaluate exit.`);
+        }
       }
     } else {
       lines.push('');
@@ -591,10 +616,15 @@ Confidence → position_size_usd:
     // 对齐 nofx engine.go L1102-1119
     const interval = intervalMinutes || 60;
     const trades = todayTrades ?? 0;
-    // 对齐 nofx engine.go L1102-1106: 简洁
+    // 对齐 nofx engine.go L1102-1120
     let section = `## Trading Frequency
 - Cycle: ${interval}min | Today: ${trades} trades
-- Quality > quantity, hold ≥ 30-60min`;
+- Excellent traders: 2-4 trades/day. >2 trades/hour = Overtrading.
+- Hold ≥ 30-60 minutes.
+
+## Entry Standards
+Only open when multiple signals resonate. Confidence ≥ 70 required.
+Use any analysis method, but avoid: single-indicator entries, contradictory signals, reopening immediately after stop-out.`;
 
     if (consecutiveWaits && consecutiveWaits >= 10) {
       section += `\n\n⚠️ ${consecutiveWaits} consecutive wait cycles. If a reasonable setup exists, consider a smaller position with tight SL.`;
