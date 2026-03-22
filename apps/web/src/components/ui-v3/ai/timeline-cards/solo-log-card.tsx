@@ -645,8 +645,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               <span className="px-2 py-0.5 rounded-md font-semibold font-sans" style={{ color: actionCfg.color, backgroundColor: actionCfg.bg }}>
                 {ACTION_I18N[action] ? t(ACTION_I18N[action]) : actionCfg.label}
               </span>
-              {d.leverage != null && <span className="text-[#9090A0]">{d.leverage}x</span>}
-              {d.positionSizePercent != null && <span className="text-[#9090A0]">{d.positionSizePercent}%</span>}
+              {d.leverage != null && d.leverage > 1 && <span className="text-[#9090A0]">{d.leverage}x</span>}
+              {(d as any).positionSizeUSD ? (
+                <span className="text-[#9090A0]">${(d as any).positionSizeUSD}</span>
+              ) : d.positionSizePercent ? (
+                <span className="text-[#9090A0]">{d.positionSizePercent}%</span>
+              ) : null}
               {entryPrice > 0 && <span className="text-[#F8F8FC]">${entryPrice.toFixed(2)}</span>}
               {(er?.amount || (d as any).quantity) && <span className="text-[#F8F8FC]">×{er?.amount ?? (d as any).quantity}</span>}
               {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}

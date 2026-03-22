@@ -1366,6 +1366,7 @@ export class AutoTraderService {
                   confidence: decision.confidence,
                   leverage: decision.leverage,
                   positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                   reasoning: decision.reasoning,
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(consensusVotes ? { votes: consensusVotes } : {}),
@@ -1574,6 +1575,7 @@ export class AutoTraderService {
                   confidence: decision.confidence,
                   leverage: decision.leverage,
                   positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                   ...(safetyCapitalUSD != null ? { capitalUSD: safetyCapitalUSD } : {}),
                   stopLoss: decision.stopLoss,
                   takeProfit: decision.takeProfit,
@@ -1608,6 +1610,7 @@ export class AutoTraderService {
               blockedBy: safetyResult.blockedBy || 'safety',
               stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
               positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
               timestamp: new Date().toISOString(),
             });
             continue;
@@ -1757,6 +1760,7 @@ export class AutoTraderService {
                     confidence: decision.confidence,
                     leverage: decision.leverage,
                     positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                     capitalUSD: Math.round(marginEst),
                     stopLoss: decision.stopLoss,
                     takeProfit: decision.takeProfit,
@@ -1776,6 +1780,7 @@ export class AutoTraderService {
                 reasoning: `风控拦截(E4): ${e4Reason}`, source: 'ai_strategy',
                 status: 'blocked', blockedBy: 'E4',
                 positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                 timestamp: new Date().toISOString(),
               });
               continue;
@@ -1846,6 +1851,7 @@ export class AutoTraderService {
                     decision: {
                       action: decision.action, confidence: decision.confidence,
                       leverage: decision.leverage, positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                       stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
                       reasoning: decision.reasoning,
                     } as unknown as Prisma.InputJsonValue,
@@ -1964,6 +1970,7 @@ export class AutoTraderService {
                 confidence: decision.confidence,
                 leverage: decision.leverage,
                 positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                 ...(execCapitalUSD != null ? { capitalUSD: execCapitalUSD } : {}),
                 stopLoss: decision.stopLoss,
                 takeProfit: decision.takeProfit,
@@ -2009,6 +2016,7 @@ export class AutoTraderService {
             error: execResult.error,
             stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
             positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
             timestamp: new Date().toISOString(),
           });
 
@@ -2052,6 +2060,7 @@ export class AutoTraderService {
                 confidence: decision.confidence,
                 leverage: decision.leverage,
                 positionSizePercent: decision.positionSizePercent,
+                  ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
                 ...(failCapitalUSD != null ? { capitalUSD: failCapitalUSD } : {}),
                 stopLoss: decision.stopLoss,
                 takeProfit: decision.takeProfit,
