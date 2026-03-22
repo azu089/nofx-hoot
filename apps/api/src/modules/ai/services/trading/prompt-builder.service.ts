@@ -630,23 +630,38 @@ Doing nothing indefinitely is also a risk — you miss opportunities and waste a
 Your response MUST contain BOTH tags below, in this order, with NO extra text before or after:
 
 <reasoning>
-Write a clean market analysis for the user (8-15 sentences). This is shown to humans — do NOT repeat system rules, format instructions, or position sizing formulas.
+Write a structured trading analysis shown to users. Use natural paragraphs (not numbered lists). Do NOT repeat system rules or format instructions.
 
-Cover these topics naturally (like a trading analyst briefing):
-1. What is the market doing? (trend, regime, key price levels)
-2. What do the indicators say? (RSI, MACD, Donchian — cite specific values)
-3. What is smart money doing? (institutional flow, OI quadrant, L/S ratio, funding rate)
-4. What are the risks? (existing positions, margin, correlation)
-5. What did you decide and why? (the specific action + what signals converged)
-6. If opening a position: how did you size it? (brief: "3x leverage at 20% because..."). Skip this for wait/hold decisions.
+### For open_long / open_short, cover ALL of these:
+1. **Account & Position Status**: Current budget, margin usage, existing positions and their P&L. Example: "账户预算$120，当前无持仓，保证金使用率0%，可用空间充足。"
+2. **Market Context**: Regime (ranging/trending/volatile), key price levels (Donchian upper/mid/lower, EMA levels), trend direction.
+3. **Signal Convergence**: List each signal with value and direction. Example: "RSI(14)=38 从超卖区回升 [看多], MACD柱状图从-0.003转正至+0.001 [看多], 资金费率+0.06% 显示多头略拥挤 [中性], OI 1h增加2.3%+价格上涨 [看多]。4个信号中3个看多。"
+4. **Confidence Calculation**: WHY this specific number? "置信度75%：3/4信号看多，市场处于震荡regime（适合均值回归），但稳定币流出削弱了宏观支持，因此不给80%+。"
+5. **Leverage Rationale**: WHY this leverage? "选择3倍杠杆：ATR(14)/价格=2.1%属于中等波动，3x下爆仓距离约33%，安全裕度充足。"
+6. **SL/TP Calculation**: HOW you calculated these prices. "止损$125.50：基于入场价下方1.5×ATR(14)=$6.50，也在唐奇安下轨$125.00附近形成双重支撑。止盈$142.00：下一阻力位在唐奇安上轨$141.80附近，风险收益比=1.5:1。"
+7. **Position Size**: WHY this amount? "使用$432仓位（上限$720的60%）：中等置信度对应50-80%区间，取60%。3x杠杆下保证金$144。"
 
-Do NOT mention: "Trading Frequency Awareness", "Position Sizing Guide", "Hard Constraints", output format rules, or any system prompt instructions.
+### For hold, cover ALL of these:
+1. **Current Position Review**: Symbol, entry price, current P&L%, peak P&L%, holding time.
+2. **Why Still Holding**: Which signals support continuation? Has the original thesis changed?
+3. **Exit Conditions**: "如果价格跌破$X（止损位）将平仓；如果从峰值回撤超过30%将止盈；如果出现[具体反转信号]将平仓。"
+4. **Risk Assessment**: Current margin exposure, distance to liquidation.
+
+### For wait, cover ALL of these:
+1. **Account Status**: Current positions (if any), margin usage, available capital.
+2. **Why Not Entering**: Which signals are missing or conflicting? (cite specific values and why they don't meet threshold)
+3. **Entry Triggers**: "如果SOL的RSI跌破30且价格守住$85支撑，将考虑开多；如果BNB突破$640阻力且OI同步增加，将考虑开多。"
+
+### For close_long / close_short:
+1. **Why Closing**: The specific trigger — SL hit? trailing TP? reversal signal? target reached?
+2. **P&L Summary**: Entry → exit, holding time, realized P&L.
+3. **Post-Close Plan**: "平仓后将等待下一个明确信号再入场。"
 </reasoning>
 <decision>
-[{"symbol":"COIN/USDT:USDT","action":"open_long","confidence":72,"leverage":3,"position_size_usd":500,"stop_loss":95000,"take_profit":102000,"reasoning":"RSI(14) at 42 recovering from oversold, MACD histogram turning positive. Price bouncing from key support with 1.5x volume. Funding rate neutral 0.01%."}]
+[{"symbol":"SOL/USDT:USDT","action":"open_long","confidence":75,"leverage":3,"position_size_usd":432,"stop_loss":86.50,"take_profit":92.00,"reasoning":"Signal convergence: RSI(14)=38 recovering from oversold [+bullish], MACD histogram crossed positive [+bullish], price bounced from Donchian low $86.18 [+bullish], funding rate +0.06% mild crowding [neutral]. 3/4 bullish → 75%. Leverage 3x: ATR/price=2.1%, liquidation ~33% away. SL $86.50 = 1.5×ATR below entry. TP $92.00 = Donchian upper, R:R=1.6:1."}]
 </decision>
 
-IMPORTANT: position_size_usd should follow the Position Sizing Guide above. Output a calculated USD number, NOT a percentage. You have full decision authority on exact sizing.
+IMPORTANT: position_size_usd should follow the Position Sizing Guide above. Output a calculated USD number, NOT a percentage.
 
 FORMAT RULES — violations cause parse failure:
 1. BOTH <reasoning> and <decision> tags REQUIRED — even for hold/wait
@@ -657,8 +672,8 @@ FORMAT RULES — violations cause parse failure:
 6. For long: stop_loss < current_price < take_profit
 7. For short: take_profit < current_price < stop_loss
 8. R/R ratio MUST be >= minimum in Hard Constraints
-9. "reasoning" field: cite ≥2 specific indicators (e.g. "RSI(14) at 42", "MACD histogram negative", "$95,000 support")
-10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent (≥3 sentences, no "same as BTC")
-11. confidence < 50 → use action="wait", leverage=1, position_size_usd=0 (keep your actual confidence value, do NOT force it to 0)`;
+9. "reasoning" field in JSON: brief summary (1-3 sentences with ≥2 indicators cited)
+10. MULTI-COIN: return ONE object per coin; each coin's reasoning MUST be independent
+11. confidence < 50 → use action="wait", leverage=1, position_size_usd=0`;
   }
 }
