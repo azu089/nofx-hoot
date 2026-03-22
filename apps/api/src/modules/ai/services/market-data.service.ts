@@ -877,13 +877,15 @@ export class MarketDataService implements OnModuleInit {
       for (const c of topTrending) {
         const item = c?.item;
         if (!item || item.symbol?.toUpperCase() === currency) continue;
-        const priceChange = item.data?.price_change_percentage_24h;
+        const rawPriceChange = item.data?.price_change_percentage_24h;
+        // CoinGecko 返回多币种对象 {usd: 5.5, btc: 7.8, ...}，取 usd 值
+        const priceChange = typeof rawPriceChange === 'object' ? rawPriceChange?.usd ?? null : rawPriceChange;
         let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
-        if (priceChange != null) {
+        if (typeof priceChange === 'number') {
           sentiment = priceChange > 5 ? 'positive' : priceChange < -5 ? 'negative' : 'neutral';
         }
         results.push({
-          title: `Market trending: ${item.name} (${item.symbol}) #${(item.score ?? 0) + 1}${priceChange != null ? ` (24h: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(1)}%)` : ''}`,
+          title: `Market trending: ${item.name} (${item.symbol}) #${(item.score ?? 0) + 1}${typeof priceChange === 'number' ? ` (24h: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(1)}%)` : ''}`,
           publishedAt: new Date().toISOString(),
           source: 'CoinGecko Trending',
           kind: 'news',
