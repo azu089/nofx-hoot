@@ -790,7 +790,7 @@ export class AutoTraderService {
         where: { strategyId },
         orderBy: { createdAt: 'desc' },
         take: 10,
-        select: { decision: true, symbol: true, createdAt: true },
+        select: { decision: true, symbol: true, createdAt: true, executed: true },
       });
       const consecutiveWaits = this.countConsecutiveWaits(recentStrategyLogs);
       if (consecutiveWaits >= 3) {
@@ -807,6 +807,9 @@ export class AutoTraderService {
           if (log.createdAt < lastTimeCutoff) break; // 超过1分钟的不是同一轮
           const d = log.decision as any;
           if (d?.action) {
+            // 过滤已执行的 close 决策 — 平仓完成后不注入下轮，避免 AI 重复平仓
+            const isExecutedClose = (d.action === 'close_long' || d.action === 'close_short') && (log as any).executed;
+            if (isExecutedClose) continue;
             lastDecisions.push({
               symbol: log.symbol || d.symbol || 'unknown',
               action: d.action,
