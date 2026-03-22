@@ -690,12 +690,17 @@ export class QuickAnalysisService {
               prompt: coinPrompt,
               indicators: {
                 rsi: indicatorResult.rsi ?? null,
+                rsi7: indicatorResult.rsi7 ?? null,
                 atr3: indicatorResult.atr3,
                 atr14: indicatorResult.atr,
+                macdHist: indicatorResult.macd?.histogram ?? null,
               },
               fundingRate,
               currentPrice,
               volume24h,
+              openInterest,
+              enhancedData,
+              ohlcv,
             };
           } catch (e: any) {
             this.logger.warn(`[多币种分析] ${config.symbol} 数据获取失败: ${e.message}`);
@@ -809,22 +814,44 @@ export class QuickAnalysisService {
         const mrNorm = normalizeSymbol(mr.symbol);
         const decision = allDecisions.find(d => normalizeSymbol(d.symbol) === mrNorm);
         if (decision) {
-          // 构建市场快照（多币种模式：用已有的基础指标，前端日志卡片展示用）
+          // 构建市场快照（多币种模式，前端日志卡片展示用）
+          const enh = mr.enhancedData as Record<string, any> | null;
+          const lsr = enh?.longShortRatio;
+          const oiHist = enh?.oiHistory;
+          let oiChangeStr: string | null = null;
+          let oiQuadrant: string | null = null;
+          if (Array.isArray(oiHist) && oiHist.length >= 2) {
+            const latest = oiHist[oiHist.length - 1]?.sumOpenInterest ?? 0;
+            const prev = oiHist[0]?.sumOpenInterest ?? 0;
+            if (prev > 0) {
+              const pct = ((latest - prev) / prev) * 100;
+              oiChangeStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+              const ohlcvArr = mr.ohlcv;
+              const lastClose = ohlcvArr?.[ohlcvArr.length - 1]?.[4] ?? 0;
+              const prevClose = ohlcvArr?.[ohlcvArr.length - 2]?.[4] ?? lastClose;
+              const priceUp = lastClose >= prevClose;
+              const oiUp = pct >= 0;
+              if (oiUp && priceUp) oiQuadrant = '多头主导';
+              else if (oiUp && !priceUp) oiQuadrant = '空头主导';
+              else if (!oiUp && priceUp) oiQuadrant = '空头平仓';
+              else oiQuadrant = '多头清算';
+            }
+          }
           const mcSnapshot = {
             price: mr.currentPrice,
-            rsi7: null as number | null,
+            rsi7: mr.indicators?.rsi7 ?? null,
             rsi14: mr.indicators?.rsi ?? null,
-            macdHist: null as number | null,
+            macdHist: mr.indicators?.macdHist ?? null,
             atr14: mr.indicators?.atr14 ?? null,
             fundingRate: mr.fundingRate ?? null,
-            longShortRatio: null as number | null,
-            longPct: null as number | null,
-            oiChange: null as string | null,
-            oiQuadrant: null as string | null,
+            longShortRatio: lsr?.longShortRatio ?? null,
+            longPct: lsr ? (lsr.longAccount / (lsr.longAccount + lsr.shortAccount)) * 100 : null,
+            oiChange: oiChangeStr,
+            oiQuadrant,
             institutionFlow: null as number | null,
             dataSources: {
-              oi: false, fr: mr.fundingRate != null,
-              ranking: !!mcRankingSections, enhanced: false,
+              oi: mr.openInterest != null, fr: mr.fundingRate != null,
+              ranking: !!mcRankingSections, enhanced: enh != null,
               oiRanking: false, netFlow: false, priceRanking: false,
             },
           };
