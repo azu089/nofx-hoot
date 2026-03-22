@@ -743,10 +743,16 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {atrPct != null && <span className="text-[#9090A0]">ATR {atrPct.toFixed(2)}%</span>}
                   <span className="text-[#9090A0]">FR {ms.fundingRate != null ? `${(ms.fundingRate * 100).toFixed(4)}%` : '—'}</span>
                 </div>
-                {/* 行2: 多空比 OI+四象限 机构流 + 数据源标记（合并一行） */}
+                {/* 行2: 多空比 OI+四象限 EMA趋势 稳定币 机构流 + 数据源 */}
                 <div className="flex items-center gap-2 text-[11px] font-mono text-[#9090A0] flex-wrap">
                   {ms.longPct != null && <span>{Math.round(ms.longPct)}/{Math.round(100 - ms.longPct)}</span>}
                   {ms.oiChange != null && <span>OI {ms.oiChange}{oiQText}</span>}
+                  {ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}
+                  {ms.stablecoinNet != null && ms.stablecoinNet !== 0 && (
+                    <span className={ms.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
+                      {ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
+                    </span>
+                  )}
                   {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
                     <span className={ms.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
                       {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
@@ -868,6 +874,12 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               <div className="flex items-center gap-2 text-[#9090A0] flex-wrap">
                 <span>{d.marketSnapshot.longPct != null && <>{d.marketSnapshot.longPct.toFixed(0)}/{(100 - d.marketSnapshot.longPct).toFixed(0)}</>}</span>
                 <span>{d.marketSnapshot.oiChange != null && <>OI {d.marketSnapshot.oiChange}{d.marketSnapshot.oiQuadrant && <span className="text-[#606070]"> ({d.marketSnapshot.oiQuadrant})</span>}</>}</span>
+                {d.marketSnapshot.emaTrend && <span className={d.marketSnapshot.emaTrend.includes('多') ? 'text-[#10B981]' : d.marketSnapshot.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {d.marketSnapshot.emaTrend}</span>}
+                {d.marketSnapshot.stablecoinNet != null && d.marketSnapshot.stablecoinNet !== 0 && (
+                  <span className={d.marketSnapshot.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
+                    {d.marketSnapshot.stablecoinNet > 0 ? '+' : ''}${(d.marketSnapshot.stablecoinNet / 1e6).toFixed(0)}M
+                  </span>
+                )}
                 {d.marketSnapshot.institutionFlow != null && d.marketSnapshot.institutionFlow !== 0 && (
                   <span className={d.marketSnapshot.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
                     {d.marketSnapshot.institutionFlow > 0 ? '+' : ''}{(d.marketSnapshot.institutionFlow / 1e6).toFixed(1)}M

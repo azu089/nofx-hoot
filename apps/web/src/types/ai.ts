@@ -656,6 +656,8 @@ export interface StrategyLog {
       oiChange?: string | null;
       oiQuadrant?: string | null;
       institutionFlow?: number | null;
+      emaTrend?: string | null;
+      stablecoinNet?: number | null;
       dataSources: {
         oi: boolean; fr: boolean; ranking: boolean; enhanced: boolean;
         oiRanking: boolean; netFlow: boolean; priceRanking: boolean;

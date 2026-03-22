@@ -146,6 +146,8 @@ export interface MarketSnapshot {
   oiChange?: string | null;
   oiQuadrant?: string | null;
   institutionFlow?: number | null;
+  emaTrend?: string | null;         // EMA 趋势：↑多头 / ↓空头 / →震荡
+  stablecoinNet?: number | null;    // 稳定币24h净流入（百万美元）
   dataSources: {
     oi: boolean;
     fr: boolean;
@@ -243,6 +245,12 @@ export class QuickAnalysisService {
             oiChange: null,
             oiQuadrant: null,
             institutionFlow: null,
+            emaTrend: (() => {
+              const e7 = ind?.ema?.ema12 ?? 0, e25 = ind?.ema?.ema26 ?? 0, e99 = ind?.ema?.ema50 ?? 0;
+              if (e7 && e25 && e99) return e7 > e25 && e25 > e99 ? '↑多头' : (e7 < e25 && e25 < e99 ? '↓空头' : '→震荡');
+              return null;
+            })(),
+            stablecoinNet: null,
             dataSources: { oi: md.openInterest != null, fr: md.fundingRate != null, ranking: false, enhanced: false, oiRanking: false, netFlow: false, priceRanking: false },
           };
         }
@@ -343,6 +351,19 @@ export class QuickAnalysisService {
             || netFlowRanking.institutionFutureLow.find(p => p.symbol === sym);
           if (found) instFlow = found.amount;
         }
+        // EMA 趋势判断
+        const ema7 = indicatorResult.ema?.ema12 ?? 0;
+        const ema25 = indicatorResult.ema?.ema26 ?? 0;
+        const ema99 = indicatorResult.ema?.ema50 ?? 0;
+        let emaTrend: string | null = null;
+        if (ema7 && ema25 && ema99) {
+          if (ema7 > ema25 && ema25 > ema99) emaTrend = '↑多头';
+          else if (ema7 < ema25 && ema25 < ema99) emaTrend = '↓空头';
+          else emaTrend = '→震荡';
+        }
+        // 稳定币净流
+        const stableFlows = enh?.stablecoinFlows as Record<string, any> | undefined;
+        const stablecoinNet = stableFlows?.net24h ?? stableFlows?.totalMcapChange7d ?? null;
         snapshot = {
           price: currentPrice,
           rsi7: indicatorResult.rsi7 ?? null,
@@ -355,6 +376,8 @@ export class QuickAnalysisService {
           oiChange: oiChangeStr,
           oiQuadrant,
           institutionFlow: instFlow,
+          emaTrend,
+          stablecoinNet: typeof stablecoinNet === 'number' ? stablecoinNet : null,
           dataSources: {
             oi: openInterest != null,
             fr: fundingRate != null,
