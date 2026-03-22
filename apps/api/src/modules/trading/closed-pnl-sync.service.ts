@@ -229,12 +229,18 @@ export class ClosedPnlSyncService {
   /**
    * 匹配策略：userId + apiKeyId + symbol
    * 优先匹配活跃策略，其次匹配最近的非活跃策略
+   *
+   * symbol 标准化：OKX 返回 "SOL/USDT"，gridConfig 存 "SOL/USDT:USDT"
+   * 统一去掉 ":USDT"/":USDC" 后缀再比较
    */
   private async matchStrategy(
     userId: string,
     apiKeyId: string,
     symbol: string,
   ): Promise<{ id: string; name: string } | null> {
+    const norm = (s: string) => s?.replace(/:[\w]+$/, '') || s;
+    const normSymbol = norm(symbol);
+
     const strategies = await this.prisma.aiStrategy.findMany({
       where: { userId, exchangeApiKeyId: apiKeyId },
       select: { id: true, name: true, isActive: true, gridConfig: true, coinSourceConfig: true },
@@ -243,10 +249,11 @@ export class ClosedPnlSyncService {
 
     for (const s of strategies) {
       const gc = s.gridConfig as any;
-      if (gc?.symbol === symbol) return { id: s.id, name: s.name };
+      if (gc?.symbol && norm(gc.symbol) === normSymbol) return { id: s.id, name: s.name };
 
       const cc = s.coinSourceConfig as any;
-      if (cc?.coins?.includes(symbol)) return { id: s.id, name: s.name };
+      const coins: string[] = cc?.coins || [];
+      if (coins.some(c => norm(c) === normSymbol)) return { id: s.id, name: s.name };
     }
 
     return null;
