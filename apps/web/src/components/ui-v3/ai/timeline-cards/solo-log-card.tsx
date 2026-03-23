@@ -537,7 +537,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   const systemText = SYSTEM_ACTIONS.has(d.action ?? '') ? getSystemLogText(d, t as TFunc) : null;
   const reasoning = systemText ?? (isGridLog
     ? gridAnalysisText
-    : (d.reasoning || d.reason || ''));
+    : (d.aiThinking || d.reasoning || d.reason || ''));
 
   const action = isAutoDisabled ? 'hold' : (d.action || (isGridLog ? gridDecisions[0]?.action : 'hold') || 'hold');
   const actionCfg = ACTION_CONFIG[action] || ACTION_CONFIG['wait'];
