@@ -15,8 +15,10 @@ import { ResearchCycleService } from '../services/research/research-cycle.servic
  * 2. 'research-cycle' — 产品 A 研究自动循环（由 ResearchCycleService 注册）
  * 3. 'auto-run' — 全局自动运行（AiConfig 级别，遍历所有交易对）
  */
-// concurrency: 2 — 允许 2 个不同策略并行，但同一策略通过 runningStrategies 锁防止并行
-@Processor('ai-auto', { concurrency: 2 })
+// 对齐 nofx: 单线程串行执行，同一时间只处理一个策略周期
+// nofx 用 for-select-ticker 单 goroutine 模式，不可能并行
+// HOOT 用 BullMQ，concurrency=1 确保串行（积压的 job 排队等待）
+@Processor('ai-auto', { concurrency: 1 })
 export class AutoRunProcessor extends WorkerHost {
   private readonly logger = new Logger(AutoRunProcessor.name);
   private consecutiveFailures = new Map<string, number>();
