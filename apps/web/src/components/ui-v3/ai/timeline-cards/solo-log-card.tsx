@@ -791,7 +791,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {/* 多币种合并日志的共享 AI 分析 + 市场数据 */}
       {isMultiCoin && (
         <div className="mt-1.5">
-          {/* 市场数据快照（3行均衡布局） */}
+          {/* 市场数据快照 — 多币种模式隐藏（指标已包含在每币reasoning中）
+              恢复方法：取消下方注释即可
           {(() => {
             const snapshotDecision = allDecisions?.find(ad => ad.marketSnapshot);
             const ms = snapshotDecision?.marketSnapshot || d.marketSnapshot;
@@ -799,32 +800,19 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const atrPct = ms.atr14 && ms.price ? (ms.atr14 / ms.price * 100) : null;
             return (
               <div className="text-[11px] font-mono space-y-0.5 mb-2">
-                {/* 行1: 价格 RSI MACD ATR — grid-cols-4 */}
                 <div className="grid grid-cols-4 text-[#9090A0]">
                   <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
                   <span>RSI {ms.rsi14?.toFixed(1) ?? '—'}</span>
                   <span>{ms.macdHist != null ? `MACD ${ms.macdHist.toFixed(3)}` : ''}</span>
                   <span className="text-right">{atrPct != null ? `ATR ${atrPct.toFixed(2)}%` : ''}</span>
                 </div>
-                {/* 行2: FR 多空比 OI+四象限 EMA趋势 — grid-cols-4 */}
                 <div className="grid grid-cols-4 text-[#9090A0]">
                   <span>{ms.fundingRate != null ? `FR ${(ms.fundingRate * 100).toFixed(4)}%` : ''}</span>
                   <span>{ms.longPct != null ? `${Math.round(ms.longPct)}/${Math.round(100 - ms.longPct)}` : ''}</span>
                   <span>{ms.oiChange != null ? `OI ${ms.oiChange}` : ''}</span>
                   <span className="text-right">{ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}</span>
                 </div>
-                {/* 行3: 机构流+数据源标记 — flex justify-between */}
                 <div className="flex items-center justify-between">
-                  {ms.institutionFlow != null && ms.institutionFlow !== 0 && (
-                    <span className={ms.institutionFlow > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
-                      {ms.institutionFlow > 0 ? '+' : ''}{(ms.institutionFlow / 1e6).toFixed(1)}M
-                    </span>
-                  )}
-                  {ms.stablecoinNet != null && ms.stablecoinNet !== 0 && (
-                    <span className={ms.stablecoinNet > 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}>
-                      {ms.stablecoinNet > 0 ? '+' : ''}${(ms.stablecoinNet / 1e6).toFixed(0)}M
-                    </span>
-                  )}
                   {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
                     <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                       {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
@@ -834,7 +822,8 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()}
-          {/* AI 思考过程（对齐 nofx: 默认折叠，展开纯文本） */}
+          */}
+          {/* AI 思考过程（对齐 nofx: 默认2行 + ∨展开） */}
           {d.aiThinking && (
             <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
