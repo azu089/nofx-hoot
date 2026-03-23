@@ -626,15 +626,12 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(parseInput, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // 提取 <reasoning> CoT trace（如有）— 分发给所有 decisions
+    // 提取 <reasoning> 标签内容 → 存入 decision.reasoning（完整市场分析，前端展示用）
+    // aiThinking 独立存 response.thinking（DeepSeek 内部思维链）
     const reasoningTrace = extractReasoning(response.content);
     if (reasoningTrace) {
-      // 对所有 decision: 只要 <reasoning> 内容比 JSON reasoning 更长就替换
-      // 这样每个币种都能获得完整的 AI 思考过程（含账户分析+多币种市场分析）
       for (const d of allDecisions) {
-        if (reasoningTrace.length > (d.reasoning?.length || 0)) {
-          d.reasoning = reasoningTrace;
-        }
+        d.reasoning = reasoningTrace;
       }
     }
 
@@ -877,10 +874,11 @@ export class QuickAnalysisService {
 
       // 5. 解析所有决策
       const allDecisions = parseDecisions(response.content);
+      // <reasoning> 标签内容 → 完整市场分析（前端展示用），覆写 JSON 短摘要
       const reasoningTrace = extractReasoning(response.content);
       if (reasoningTrace) {
         for (const d of allDecisions) {
-          if (reasoningTrace.length > (d.reasoning?.length || 0)) d.reasoning = reasoningTrace;
+          d.reasoning = reasoningTrace;
         }
       }
 

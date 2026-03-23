@@ -780,13 +780,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()}
-          {/* AI 分析文本（短摘要） */}
+          {/* AI 市场分析（<reasoning> 标签内容，2段预览 + 展开） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
-          {/* 完整思维链（仅 reasoning 不含时展开显示） */}
-          {!reasoning && d.aiThinking && (
-            <SectionedReasoning text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 思维链（response.thinking，折叠可展开，对齐网格策略） */}
+          {d.aiThinking && reasoning && (
+            <GridThinkingChain text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}
@@ -918,13 +918,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })()}
 
-          {/* AI 分析（短摘要） */}
+          {/* AI 市场分析（<reasoning> 标签内容，2段预览 + 展开） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
-          {/* 完整思维链降级 */}
-          {!reasoning && d.aiThinking && (
-            <SectionedReasoning text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 思维链（response.thinking，折叠可展开，对齐网格策略） */}
+          {d.aiThinking && reasoning && (
+            <GridThinkingChain text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}
