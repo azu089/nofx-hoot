@@ -535,10 +535,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
     : '';
   // 系统日志优先用 i18n 渲染；AI 生成的 reasoning 保留原文
   const systemText = SYSTEM_ACTIONS.has(d.action ?? '') ? getSystemLogText(d, t as TFunc) : null;
-  // reasoning（短摘要）优先展示；aiThinking（完整思维链）仅在用户展开时使用
+  // reasoning（短摘要）优先展示；aiThinking 不作为 fallback（完整思维链只在展开区显示）
   const reasoning = systemText ?? (isGridLog
     ? gridAnalysisText
-    : (d.reasoning || d.reason || d.aiThinking || ''));
+    : (d.reasoning || d.reason || ''));
 
   const action = isAutoDisabled ? 'hold' : (d.action || (isGridLog ? gridDecisions[0]?.action : 'hold') || 'hold');
   const actionCfg = ACTION_CONFIG[action] || ACTION_CONFIG['wait'];
@@ -780,9 +780,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()}
-          {/* AI 分析文本 */}
+          {/* AI 分析文本（短摘要） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          )}
+          {/* 完整思维链（仅 reasoning 不含时展开显示） */}
+          {!reasoning && d.aiThinking && (
+            <SectionedReasoning text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
@@ -914,9 +918,13 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })()}
 
-          {/* AI 分析 */}
+          {/* AI 分析（短摘要） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          )}
+          {/* 完整思维链降级 */}
+          {!reasoning && d.aiThinking && (
+            <SectionedReasoning text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
