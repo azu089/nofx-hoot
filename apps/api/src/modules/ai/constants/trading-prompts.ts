@@ -34,9 +34,16 @@ export function formatMarketDataPrompt(data: {
   };
   enhanced?: EnhancedMarketData;
 }): string {
+  // 动态精度：低价币（如 1000PEPE $0.003）需要更多小数位
+  const price = data.currentPrice;
+  const priceDp = price >= 1 ? 2 : price >= 0.01 ? 4 : price >= 0.0001 ? 6 : 8; // 价格小数位
+  const indDp = price >= 1 ? 2 : price >= 0.01 ? 4 : price >= 0.0001 ? 6 : 8;   // 指标小数位（EMA/Donchian 与价格同量级）
+  const atrDp = price >= 1 ? 4 : price >= 0.01 ? 6 : 8;                          // ATR 通常更小
+  const fp = (v: number, dp: number) => v.toFixed(dp);                            // format helper
+
   const lines: string[] = [
     `=== MARKET DATA: ${data.symbol} ===`,
-    `Current Price: ${data.currentPrice}`,
+    `Current Price: ${fp(price, priceDp)}`,
   ];
 
   if (data.change24h !== undefined) {
@@ -53,23 +60,23 @@ export function formatMarketDataPrompt(data: {
     if (ind.rsi7 !== undefined) lines.push(`RSI(7): ${ind.rsi7.toFixed(1)}`);
     if (ind.rsi14 !== undefined) lines.push(`RSI(14): ${ind.rsi14.toFixed(1)}`);
     if (ind.macd !== undefined) {
-      lines.push(`MACD Line: ${ind.macd.toFixed(4)}`);
-      if (ind.macdSignal !== undefined) lines.push(`MACD Signal: ${ind.macdSignal.toFixed(4)}`);
-      if (ind.macdHistogram !== undefined) lines.push(`MACD Histogram: ${ind.macdHistogram.toFixed(4)}`);
+      lines.push(`MACD Line: ${fp(ind.macd, atrDp)}`);
+      if (ind.macdSignal !== undefined) lines.push(`MACD Signal: ${fp(ind.macdSignal, atrDp)}`);
+      if (ind.macdHistogram !== undefined) lines.push(`MACD Histogram: ${fp(ind.macdHistogram, atrDp)}`);
     }
-    if (ind.ema7 !== undefined) lines.push(`EMA(7): ${ind.ema7.toFixed(2)}`);
-    if (ind.ema25 !== undefined) lines.push(`EMA(25): ${ind.ema25.toFixed(2)}`);
-    if (ind.ema99 !== undefined) lines.push(`EMA(99): ${ind.ema99.toFixed(2)}`);
-    if (ind.atr3 !== undefined) lines.push(`ATR(3): ${ind.atr3.toFixed(4)}`);
-    if (ind.atr14 !== undefined) lines.push(`ATR(14): ${ind.atr14.toFixed(4)}`);
+    if (ind.ema7 !== undefined) lines.push(`EMA(7): ${fp(ind.ema7, indDp)}`);
+    if (ind.ema25 !== undefined) lines.push(`EMA(25): ${fp(ind.ema25, indDp)}`);
+    if (ind.ema99 !== undefined) lines.push(`EMA(99): ${fp(ind.ema99, indDp)}`);
+    if (ind.atr3 !== undefined) lines.push(`ATR(3): ${fp(ind.atr3, atrDp)}`);
+    if (ind.atr14 !== undefined) lines.push(`ATR(14): ${fp(ind.atr14, atrDp)}`);
     if (ind.atr3 !== undefined && ind.atr14 !== undefined && ind.atr14 > 0) {
       const ratio = ind.atr3 / ind.atr14;
       lines.push(`ATR Ratio (3/14): ${ratio.toFixed(2)} ${ratio > 2.0 ? '⚠ HIGH VOLATILITY' : ratio > 1.5 ? '⚡ ELEVATED' : '✓ NORMAL'}`);
     }
     if (ind.donchianUpper !== undefined) {
-      lines.push(`唐奇安上轨(Donchian Upper): ${ind.donchianUpper.toFixed(2)}`);
-      lines.push(`唐奇安中轨(Donchian Mid): ${ind.donchianMid?.toFixed(2) || 'N/A'}`);
-      lines.push(`唐奇安下轨(Donchian Lower): ${ind.donchianLower?.toFixed(2) || 'N/A'}`);
+      lines.push(`唐奇安上轨(Donchian Upper): ${fp(ind.donchianUpper, indDp)}`);
+      lines.push(`唐奇安中轨(Donchian Mid): ${ind.donchianMid != null ? fp(ind.donchianMid, indDp) : 'N/A'}`);
+      lines.push(`唐奇安下轨(Donchian Lower): ${ind.donchianLower != null ? fp(ind.donchianLower, indDp) : 'N/A'}`);
     }
     // 指标趋势序列（时间序列数组，让 AI 感知动量方向）
     if (ind.rsiSeries && ind.rsiSeries.length > 0) {
