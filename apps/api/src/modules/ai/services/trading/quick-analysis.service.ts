@@ -774,11 +774,28 @@ export class QuickAnalysisService {
       // 2. 合并所有币种数据为单一 prompt
       const combinedMarketData = validResults.map(r => r.prompt).join('\n\n');
 
-      // 2.5 极速策略增强: 获取全局增强数据（News/F&G/Social，多币种共享）
-      const [mcNews, mcFearGreed, mcSocial] = await Promise.all([
+      // 2.5 极速策略增强: 获取全局增强数据（BTC/News/F&G/Social，多币种共享）
+      const [mcNews, mcFearGreed, mcSocial, mcBtcRef] = await Promise.all([
         this.marketData.fetchCryptoNews(configs[0].symbol, 5).catch(() => [] as any[]),
         this.marketData.fetchFearGreedIndex().catch(() => null),
         this.lunarCrush.fetchSocialMetrics(configs[0].symbol).catch(() => null),
+        // BTC 参考（对齐 nofx: BTC 市场快照）
+        (async () => {
+          try {
+            const btcOhlcv = await this.marketData.fetchOHLCV('BTC/USDT:USDT', '1h', 50);
+            if (!btcOhlcv || btcOhlcv.length < 14) return null;
+            const btcInd = this.indicators.calculateAll(btcOhlcv as any);
+            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.[4] ?? 0;
+            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.[4] ?? btcPrice;
+            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.[4] ?? btcPrice;
+            return {
+              price: btcPrice,
+              change1h: btcPrice1hAgo > 0 ? ((btcPrice - btcPrice1hAgo) / btcPrice1hAgo) * 100 : 0,
+              change4h: btcPrice4hAgo > 0 ? ((btcPrice - btcPrice4hAgo) / btcPrice4hAgo) * 100 : 0,
+              rsi: btcInd.rsi ?? undefined,
+            };
+          } catch { return null; }
+        })(),
       ]);
       let mcNewsPrompt = '';
       if (Array.isArray(mcNews) && mcNews.length > 0) {
@@ -802,10 +819,15 @@ export class QuickAnalysisService {
       const systemPrompt = this.promptBuilder.buildSystemPrompt(refConfig.promptConfig);
 
       const ai = refConfig.accountInfo;
+      const mcBtc = mcBtcRef as { price: number; change1h: number; change4h: number; rsi?: number } | null;
       const userPromptCtx: UserPromptContext = {
         now: new Date(),
         cycleCount: refConfig.cycleCount,
         runtimeMinutes: refConfig.runtimeMinutes,
+        btcPrice: mcBtc?.price,
+        btcChange1h: mcBtc?.change1h,
+        btcChange4h: mcBtc?.change4h,
+        btcRsi: mcBtc?.rsi,
         equity: ai ? (ai.allocatedCapital + ai.strategyUnrealizedPnl) : undefined,
         balance: ai?.allocatedCapital,
         marginUsage: ai && ai.allocatedCapital > 0 ? (ai.strategyMarginUsed / ai.allocatedCapital * 100) : undefined,
