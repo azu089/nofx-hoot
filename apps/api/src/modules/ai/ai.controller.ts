@@ -548,7 +548,8 @@ export class AiController {
       locale: aiConfig.locale || 'zh-CN',
     };
 
-    // 获取交易所实时持仓（传入 pipeline，避免 Trader 阶段查 DB 快照）
+    // 获取交易所实时持仓（只读，不触发 DB 同步写入）
+    // 对齐 nofx: 持仓创建/关闭只在 ai-execution 中发生
     if (config.apiKeyId) {
       try {
         const syncResult = await this.strategyEngine.syncPositionsForUser(userId, config.apiKeyId);

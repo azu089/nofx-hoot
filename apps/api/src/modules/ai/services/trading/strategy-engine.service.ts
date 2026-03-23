@@ -1080,96 +1080,31 @@ export class StrategyEngineService implements OnModuleInit {
         },
       });
 
-      // 交易所有但 DB 无 → 创建；DB 有且交易所有 → 更新 amount（防止网格累积后 DB 量过时）
+      // 对齐 nofx: 只更新已有记录，不创建新记录
+      // 持仓创建的唯一入口是 ai-execution.openPosition()
       for (const ep of exchangePositions) {
         const matched = dbPositions.find(
           (dp) => dp.symbol === ep.symbol && dp.side === ep.side,
         );
-        if (!matched) {
-          await this.prisma.position.create({
-            data: {
-              userId,
-              exchange: adapter.exchangeType,
-              symbol: ep.symbol,
-              side: ep.side,
-              entryPrice: ep.entryPrice,
-              amount: ep.quantity,
-              margin: ep.margin,
-              leverage: ep.leverage,
-              unrealizedPnl: ep.unrealizedPnl,
-              status: 'open',
-              source: 'ai_strategy',
-              apiKeyId,
-            },
-          });
-          created++;
-        } else {
-          // DB 有且交易所有 → 同步最新 amount/entryPrice，避免网格累积后 DB 量过时
+        if (matched) {
+          // DB 有且交易所有 → 同步最新 amount/entryPrice/unrealizedPnl
           await this.prisma.position.update({
             where: { id: matched.id },
             data: {
               amount: ep.quantity,
               entryPrice: ep.entryPrice,
               unrealizedPnl: ep.unrealizedPnl,
+              markPrice: ep.markPrice,
               lastSyncAt: new Date(),
             },
           });
         }
+        // 交易所有 DB 无 → 不创建（由 ai-execution 负责创建）
       }
 
-      // DB 有但交易所无 → 标记关闭（仅从交易所 fills 取实际 PnL，不估算）
-      for (const dp of dbPositions) {
-        const matched = exchangePositions.find(
-          (ep) => ep.symbol === dp.symbol && ep.side === dp.side,
-        );
-        if (!matched) {
-          let exchangePnl: number | undefined;
-          let closePrice: number | undefined;
-
-          // 从交易所 fills 获取实际 PnL（Binance: info.realizedPnl，OKX: info.pnl）
-          try {
-            const since = dp.createdAt ? new Date(dp.createdAt).getTime() : Date.now() - 24 * 60 * 60 * 1000;
-            const fills = await adapter.fetchMyTrades(dp.symbol, since, 200);
-            const closingSide = dp.side === 'long' ? 'sell' : 'buy';
-            const closingFills = fills.filter((f: any) => f.side === closingSide);
-            if (closingFills.length > 0) {
-              const totalPnl = closingFills.reduce((sum: number, f: any) => {
-                return sum + Number(f.info?.realizedPnl ?? f.info?.pnl ?? 0);
-              }, 0);
-              if (totalPnl !== 0) exchangePnl = totalPnl;
-              closePrice = Number(closingFills[closingFills.length - 1].price);
-            }
-          } catch {
-            this.logger.warn(`[持仓同步] 无法获取 ${dp.symbol} fills，PnL 未写入`);
-          }
-
-          await this.prisma.position.update({
-            where: { id: dp.id },
-            data: {
-              status: 'closed',
-              closeReason: 'not_found_on_exchange',
-              closedAt: new Date(),
-              ...(closePrice != null ? {
-                closePrice: closePrice.toFixed(8),
-                exitPrice: closePrice.toFixed(8),
-              } : {}),
-              ...(exchangePnl != null ? {
-                pnl: exchangePnl.toFixed(8),
-                realizedPnl: exchangePnl.toFixed(8),
-              } : {}),
-            },
-          });
-          closed++;
-
-          // 对齐 nofx：不清理条件单。Algo Order closePosition=true 在持仓为0时自动失效。
-
-          this.logger.log(
-            `[持仓同步] 关闭遗失持仓: ${dp.symbol} ${dp.side} id=${dp.id}` +
-            (exchangePnl != null ? ` PnL=$${exchangePnl.toFixed(4)}(交易所)` : ' (PnL未获取)'),
-          );
-
-        }
-      }
+      // 对齐 nofx: DB 有但交易所无 → 不自动关闭
+      // 持仓关闭的唯一入口是 ai-execution.closePosition()
+      // 交易所 SL/TP 条件单触发后，下一轮 ai-execution 会检测到持仓消失并处理
 
       if (created > 0 || closed > 0) {
         this.logger.log(`[持仓同步] user=${userId}: 新建${created}, 关闭${closed}`);
