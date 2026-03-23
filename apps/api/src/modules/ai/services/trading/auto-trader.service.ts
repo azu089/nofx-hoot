@@ -489,21 +489,34 @@ export class AutoTraderService {
       });
 
       // E1: 仓位已满预筛选（Pre-AI 拦截，避免浪费 Token）
-      // 仓位已满时，只处理有持仓的币种（允许平仓）
       // 修复: maxPositions 仅计入本策略的持仓，避免其他策略持仓误触发本策略的仓位限制
       const effectiveMaxPositions = riskControl.maxPositions ?? 3;
       const thisStrategyOpenPositions = existingPositions.filter(p => p.aiStrategyId === strategy.id);
       const positionsFull = thisStrategyOpenPositions.length >= effectiveMaxPositions;
+
+      // 持仓币种必须始终在候选列表中（允许 AI 管理/平仓已有持仓）
+      // 否则 coinScanner 轮换扫描时，未选中的持仓币种无法被 AI 平仓
+      const positionSymbols = thisStrategyOpenPositions.map(p => p.symbol);
+      const candidatesWithPositions = [
+        ...candidates,
+        ...positionSymbols.filter(s => !candidates.includes(s)),
+      ];
+
       const activeCandidates = positionsFull
-        ? candidates.filter(sym =>
+        ? candidatesWithPositions.filter(sym =>
             thisStrategyOpenPositions.some(p => p.symbol === sym),
           )
-        : candidates;
+        : candidatesWithPositions;
 
-      if (positionsFull && activeCandidates.length < candidates.length) {
+      if (positionSymbols.some(s => !candidates.includes(s))) {
+        this.logger.log(
+          `[E1] 持仓币种补入候选池: ${positionSymbols.filter(s => !candidates.includes(s)).join(', ')}`,
+        );
+      }
+      if (positionsFull && activeCandidates.length < candidatesWithPositions.length) {
         this.logger.log(
           `[风控-E1] 仓位已满 ${thisStrategyOpenPositions.length}/${effectiveMaxPositions}（本策略），` +
-          `候选池从 ${candidates.length} 缩减至 ${activeCandidates.length} 个（仅处理有持仓币种）`,
+          `候选池从 ${candidatesWithPositions.length} 缩减至 ${activeCandidates.length} 个（仅处理有持仓币种）`,
         );
       }
 
@@ -1181,6 +1194,27 @@ export class AutoTraderService {
           this.logger.error(`[极速] 全局分析失败，降级到逐币模式: ${e.message}`);
           // 降级：不设 debateResults，后续 for 循环走 else 分支（逐币分析）
         }
+      }
+
+      // 对齐 nofx sortDecisionsByPriority: close 优先执行，释放保证金后再 open
+      // 极速/共识/深研模式下 debateResults 已有所有决策，据此排序 activeCandidates
+      if (debateResults.size > 0) {
+        const getActionPriority = (action: string): number => {
+          if (action === 'close_long' || action === 'close_short') return 1;
+          if (action === 'open_long' || action === 'open_short') return 2;
+          return 3; // hold, wait
+        };
+        activeCandidates.sort((a, b) => {
+          const actA = debateResults.get(a)?.decision?.action || 'wait';
+          const actB = debateResults.get(b)?.decision?.action || 'wait';
+          return getActionPriority(actA) - getActionPriority(actB);
+        });
+        this.logger.log(
+          `🔄 执行顺序(对齐nofx): 平仓优先 → [${activeCandidates.map(s => {
+            const act = debateResults.get(s)?.decision?.action || '?';
+            return `${s.replace(/\/USDT.*$/, '')}:${act}`;
+          }).join(', ')}]`,
+        );
       }
 
       // 收集所有币种的决策和执行结果（循环外统一写一条合并日志，对齐 nofx saveDecision 模式）
