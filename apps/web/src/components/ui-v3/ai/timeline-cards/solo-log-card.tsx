@@ -519,10 +519,8 @@ function AiThinkingSection({ text, modelId }: { text: string; modelId?: string }
       )}
       {/* 文本内容 */}
       {expanded ? (
-        <div className="max-h-96 overflow-y-auto">
-          {cleaned.split('\n').filter(l => l.trim()).map((line, i) => (
-            <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
-          ))}
+        <div className="text-xs text-[#9090A0] leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+          {cleaned}
         </div>
       ) : (
         <p className="text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
