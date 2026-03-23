@@ -427,7 +427,7 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
             </div>
           );
         })}
-        {(hasMore || expanded) && (
+        {(hasMore || expanded || needsExpand) && (
           <div className="flex justify-center"><ToggleBtn /></div>
         )}
       </div>
