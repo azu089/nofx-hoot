@@ -323,19 +323,20 @@ export class PromptBuilderService {
       }
       if (s.sharpeRatio !== undefined) lines.push(`Sharpe Ratio: ${s.sharpeRatio}`);
       if (s.maxDrawdownPct !== undefined) lines.push(`Max Drawdown: ${s.maxDrawdownPct.toFixed(1)}%`);
-      // 对齐 nofx formatter.go L162-188: 交易统计决策建议
+      // 对齐 nofx engine.go L1306-1337: 简单状态描述，不给行动建议
       if (s.totalTrades < 10) {
-        lines.push('Note: Sample size < 10, statistics have limited reference value.');
+        lines.push('Note: Sample size < 10, limited reference value.');
       }
-      const wlr = (s.avgWin && s.avgLoss && s.avgLoss !== 0) ? Math.abs(s.avgWin) / Math.abs(s.avgLoss) : 0;
-      if (s.profitFactor !== undefined && s.profitFactor < 1.0) {
-        lines.push('⚠️ Profit Factor < 1: losses exceed profits. Improve win/loss ratio, optimize TP/SL.');
-      }
-      if (wlr > 0 && wlr < 1.5) {
-        lines.push('⚠️ Win/Loss ratio low: let profits run, raise take-profit targets.');
-      }
-      if (s.maxDrawdownPct !== undefined && s.maxDrawdownPct > 30) {
-        lines.push('⚠️ Max drawdown high: reduce position size to control risk.');
+      if (s.profitFactor !== undefined && s.sharpeRatio !== undefined) {
+        if (s.profitFactor >= 1.5 && s.sharpeRatio >= 1) {
+          lines.push('Performance: GOOD');
+        } else if (s.profitFactor < 1) {
+          lines.push('Performance: NEEDS IMPROVEMENT');
+        } else if (s.maxDrawdownPct !== undefined && s.maxDrawdownPct > 30) {
+          lines.push('Performance: HIGH RISK');
+        } else {
+          lines.push('Performance: NORMAL');
+        }
       }
     }
 
