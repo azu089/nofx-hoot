@@ -512,11 +512,38 @@ export function validateDecision(
 // ========================= 辅助函数 =========================
 
 /**
- * 提取 <reasoning> 标签内容
+ * 提取 AI 推理链（对齐 nofx extractCoTTrace，4层降级）
+ * 1. <reasoning>标签内容
+ * 2. <decision>标签前的所有文本
+ * 3. JSON数组 [ 前的所有文本
+ * 4. 全文（兜底）
  */
 export function extractReasoning(raw: string): string | null {
+  if (!raw || !raw.trim()) return null;
+
+  // 1. <reasoning> 标签
   const match = RE_REASONING_TAG.exec(raw);
-  return match?.[1]?.trim() ?? null;
+  if (match?.[1]?.trim()) return match[1].trim();
+
+  // 2. <decision> 标签前的文本
+  const decisionIdx = raw.indexOf('<decision>');
+  if (decisionIdx > 0) {
+    const before = raw.slice(0, decisionIdx).trim();
+    if (before.length > 10) return before;
+  }
+
+  // 3. JSON 数组 [ 前的文本
+  const jsonStart = raw.indexOf('[');
+  if (jsonStart > 0) {
+    const before = raw.slice(0, jsonStart).trim();
+    if (before.length > 10) return before;
+  }
+
+  // 4. 全文兜底（仅当有足够内容时）
+  const trimmed = raw.trim();
+  if (trimmed.length > 20) return trimmed;
+
+  return null;
 }
 
 /**

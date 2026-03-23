@@ -472,33 +472,67 @@ function GridThinkingChain({ text, t }: { text: string; t: TFunc }) {
   );
 }
 
-/** AI 思考过程（对齐 nofx DecisionCard L417-448: 默认折叠，展开纯文本） */
-function AiThinkingSection({ text, t }: { text: string; t: TFunc }) {
+/** 每币 reasoning（默认2行截断 + ∨ 展开全文） */
+function CoinReasoning({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
-  if (!text) return null;
+  const cleaned = cleanReasoning(text);
+  if (!cleaned || cleaned.length < 5) return null;
+  const needsExpand = cleaned.length > 80;
   return (
-    <div className="border-t border-[#1E1E2E]/60 pt-2 mt-1">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
-        className="w-full flex items-center justify-between p-1.5 rounded text-[11px] hover:bg-white/5 transition-colors"
-      >
-        <div className="flex items-center gap-1.5">
-          <span>🧠</span>
-          <span className="text-[#4A5568] font-medium">{t('timeline.gridThinking')}</span>
-        </div>
-        <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }}>
-          {expanded ? '收起' : '展开'}
-        </span>
-      </button>
-      {expanded && (
-        <div
-          className="mt-2 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
-          style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#9090A0' }}
-        >
-          {text}
+    <div className="mt-0.5">
+      <p className={`text-[10px] text-[#606070] leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>💡 {cleaned}</p>
+      {needsExpand && (
+        <div className="flex justify-center mt-0.5">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }} className="text-[#4A4A6A] hover:text-[#9090A0] transition-colors">
+            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** AI 思考链（默认2行 + ∨ 展开，展开后左边线纯文本 + ∧ 收起） */
+function AiThinkingSection({ text, modelId }: { text: string; modelId?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  const cleaned = cleanReasoning(text);
+  if (!cleaned || cleaned.length < 10) return null;
+
+  const info = modelId ? MODEL_DISPLAY[modelId] : null;
+  const modelName = info?.name || modelId || '';
+
+  return (
+    <div className="border-t border-[#1E1E2E]/60 pt-2 mt-1">
+      {/* 模型标识 */}
+      {modelName && (
+        <div className="flex items-center gap-1.5 mb-1">
+          {info?.logo ? (
+            <img src={info.logo} alt={modelName} className="w-4 h-4 rounded-full flex-shrink-0" />
+          ) : (
+            <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0" style={{ color: info?.color || '#9090A0' }}>
+              {modelName.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className="text-[10px]" style={{ color: info?.color || '#9090A0' }}>{modelName}</span>
+        </div>
+      )}
+      {/* 文本内容 */}
+      {expanded ? (
+        <div className="pl-2.5 border-l-2 border-[#2E2E4E] max-h-96 overflow-y-auto">
+          {cleaned.split('\n').filter(l => l.trim()).map((line, i) => (
+            <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
+      )}
+      {/* ∨/∧ 居中 */}
+      <div className="flex justify-center mt-1">
+        <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }} className="text-[#4A4A6A] hover:text-[#9090A0] transition-colors">
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
+      </div>
     </div>
   );
 }
@@ -744,9 +778,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {adEr?.blocked && (
                   <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
-                {/* 每币短reasoning（对齐 nofx ActionCard L195-199） */}
+                {/* 每币reasoning（默认2行 + ∨ 展开） */}
                 {ad.reasoning && !adEr?.blocked && (
-                  <p className="text-[10px] text-[#606070] mt-0.5 line-clamp-2">💡 {ad.reasoning}</p>
+                  <CoinReasoning text={ad.reasoning as string} />
                 )}
               </div>
             );
@@ -802,7 +836,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
           })()}
           {/* AI 思考过程（对齐 nofx: 默认折叠，展开纯文本） */}
           {d.aiThinking && (
-            <AiThinkingSection text={d.aiThinking as string} t={t as TFunc} />
+            <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
@@ -936,7 +970,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
 
           {/* AI 思考过程（对齐 nofx: 默认折叠，展开纯文本） */}
           {d.aiThinking && (
-            <AiThinkingSection text={d.aiThinking as string} t={t as TFunc} />
+            <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
