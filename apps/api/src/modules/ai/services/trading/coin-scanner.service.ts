@@ -20,14 +20,14 @@ const MIN_OI_VALUE_USD = 15_000_000;
 export class CoinScannerService {
   private readonly logger = new Logger(CoinScannerService.name);
 
-  // 主流合约交易对候选池
+  // 主流永续合约交易对候选池（Binance USDT-M Futures 标准格式）
   private readonly CANDIDATE_POOL = [
-    'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT',
-    'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'LINK/USDT',
-    'MATIC/USDT', 'UNI/USDT', 'ATOM/USDT', 'LTC/USDT', 'FIL/USDT',
-    'APT/USDT', 'ARB/USDT', 'OP/USDT', 'SUI/USDT', 'NEAR/USDT',
-    'PEPE/USDT', 'WIF/USDT', 'FET/USDT', 'INJ/USDT', 'TIA/USDT',
-    'SEI/USDT', 'JUP/USDT', 'RENDER/USDT', 'STX/USDT', 'IMX/USDT',
+    'BTC/USDT:USDT', 'ETH/USDT:USDT', 'BNB/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT',
+    'DOGE/USDT:USDT', 'ADA/USDT:USDT', 'AVAX/USDT:USDT', 'DOT/USDT:USDT', 'LINK/USDT:USDT',
+    'UNI/USDT:USDT', 'ATOM/USDT:USDT', 'LTC/USDT:USDT', 'FIL/USDT:USDT',
+    'APT/USDT:USDT', 'ARB/USDT:USDT', 'OP/USDT:USDT', 'SUI/USDT:USDT', 'NEAR/USDT:USDT',
+    '1000PEPE/USDT:USDT', 'WIF/USDT:USDT', 'FET/USDT:USDT', 'INJ/USDT:USDT', 'TIA/USDT:USDT',
+    'SEI/USDT:USDT', 'JUP/USDT:USDT', 'RENDER/USDT:USDT', 'STX/USDT:USDT', 'IMX/USDT:USDT',
   ];
 
   constructor(
@@ -56,7 +56,7 @@ export class CoinScannerService {
       case 'ai':
         if (!apiKeys || !modelId) {
           this.logger.warn('[扫描] AI 模式需要 apiKeys 和 modelId，降级为 static');
-          result = config.coins || this.CANDIDATE_POOL.slice(0, 5);
+          result = config.coins || this.CANDIDATE_POOL.slice(0, 3);
         } else {
           result = await this.scanAi(config, apiKeys, modelId);
         }
@@ -76,7 +76,7 @@ export class CoinScannerService {
 
       default:
         this.logger.warn(`[扫描] 未知模式: ${config.mode}, 使用默认`);
-        result = ['BTC/USDT', 'ETH/USDT'];
+        result = ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
     }
 
     // 过滤排除币种
@@ -86,7 +86,7 @@ export class CoinScannerService {
   // ========================= Static 模式 =========================
 
   private scanStatic(config: CoinSourceConfig): string[] {
-    const coins = config.coins || ['BTC/USDT', 'ETH/USDT'];
+    const coins = config.coins || ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
     this.logger.log(`[扫描] Static: ${coins.length} 个币种`);
     return coins;
   }
@@ -104,7 +104,7 @@ export class CoinScannerService {
     const systemPrompt = `You are a crypto futures trading coin selector.
 Your job is to select the best trading candidates from a pool of cryptocurrencies.
 
-Respond with ONLY a JSON array of symbol strings, e.g.: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+Respond with ONLY a JSON array of symbol strings, e.g.: ["BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT"]
 Do NOT include any other text.`;
 
     const userMessage = `Select up to ${maxCoins} coins from the following pool based on these criteria:
@@ -157,7 +157,7 @@ Respond with ONLY a JSON array.`;
       `[扫描] OI Top: 总${oiResults.length}个, 流动性达标${liquidResults.length}个, 选出${selected.length}个 (min $${(MIN_OI_VALUE_USD / 1e6).toFixed(0)}M)`,
     );
 
-    return selected.length > 0 ? selected : ['BTC/USDT', 'ETH/USDT'];
+    return selected.length > 0 ? selected : ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
   }
 
   // ========================= OI Low 模式 =========================
@@ -179,7 +179,7 @@ Respond with ONLY a JSON array.`;
       `[扫描] OI Low: 总${oiResults.length}个, 流动性达标${liquidResults.length}个, 选出${selected.length}个 (min $${(MIN_OI_VALUE_USD / 1e6).toFixed(0)}M)`,
     );
 
-    return selected.length > 0 ? selected : ['BTC/USDT', 'ETH/USDT'];
+    return selected.length > 0 ? selected : ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
   }
 
   // ========================= Mixed 模式 =========================
@@ -251,7 +251,7 @@ Respond with ONLY a JSON array.`;
       `[扫描] Mixed: 合并去重后 ${combined.length} 个, 最终 ${result.length} 个`,
     );
 
-    return result.length > 0 ? result : ['BTC/USDT', 'ETH/USDT'];
+    return result.length > 0 ? result : ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
   }
 
   // ========================= 辅助方法 =========================
@@ -326,10 +326,18 @@ Respond with ONLY a JSON array.`;
 
       const parsed = JSON.parse(jsonStr);
       if (Array.isArray(parsed)) {
+        const poolSet = new Set(this.CANDIDATE_POOL.map(p => p.toUpperCase()));
         return parsed
           .filter((s) => typeof s === 'string')
-          .map((s) => s.toUpperCase())
-          .filter((s) => this.CANDIDATE_POOL.includes(s));
+          .map((s) => {
+            let sym = s.toUpperCase().trim();
+            // AI 可能返回不带 :USDT 的格式，自动补全
+            if (!sym.includes(':') && sym.endsWith('/USDT')) {
+              sym = sym + ':USDT';
+            }
+            return sym;
+          })
+          .filter((s) => poolSet.has(s));
       }
 
       return [];
