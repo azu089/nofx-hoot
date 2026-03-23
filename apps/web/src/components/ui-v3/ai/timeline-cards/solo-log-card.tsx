@@ -535,7 +535,7 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
     : '';
   // 系统日志优先用 i18n 渲染；AI 生成的 reasoning 保留原文
   const systemText = SYSTEM_ACTIONS.has(d.action ?? '') ? getSystemLogText(d, t as TFunc) : null;
-  // reasoning（短摘要）优先展示；aiThinking 不作为 fallback（完整思维链只在展开区显示）
+  // reasoning = AI 分析全文（后端已统一：<reasoning>标签 > thinking > JSON摘要）
   const reasoning = systemText ?? (isGridLog
     ? gridAnalysisText
     : (d.reasoning || d.reason || ''));
@@ -780,13 +780,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()}
-          {/* AI 市场分析（<reasoning> 标签内容，2段预览 + 展开） */}
+          {/* AI 分析 — 统一一段（默认2段预览 + 展开全文） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
-          )}
-          {/* AI 思维链（response.thinking，折叠可展开，对齐网格策略） */}
-          {d.aiThinking && reasoning && (
-            <GridThinkingChain text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}
@@ -918,13 +914,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })()}
 
-          {/* AI 市场分析（<reasoning> 标签内容，2段预览 + 展开） */}
+          {/* AI 分析 — 统一一段（默认2段预览 + 展开全文） */}
           {reasoning && (
             <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
-          )}
-          {/* AI 思维链（response.thinking，折叠可展开，对齐网格策略） */}
-          {d.aiThinking && reasoning && (
-            <GridThinkingChain text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}

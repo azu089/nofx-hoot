@@ -626,12 +626,12 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(parseInput, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // 提取 <reasoning> 标签内容 → 存入 decision.reasoning（完整市场分析，前端展示用）
-    // aiThinking 独立存 response.thinking（DeepSeek 内部思维链）
+    // reasoning 统一存用户可读的 AI 分析，优先级：<reasoning>标签 > response.thinking > JSON短摘要
     const reasoningTrace = extractReasoning(response.content);
-    if (reasoningTrace) {
+    const userReasoning = reasoningTrace || response.thinking || null;
+    if (userReasoning) {
       for (const d of allDecisions) {
-        d.reasoning = reasoningTrace;
+        d.reasoning = userReasoning;
       }
     }
 
@@ -874,11 +874,12 @@ export class QuickAnalysisService {
 
       // 5. 解析所有决策
       const allDecisions = parseDecisions(response.content);
-      // <reasoning> 标签内容 → 完整市场分析（前端展示用），覆写 JSON 短摘要
+      // reasoning 统一存用户可读的 AI 分析，优先级：<reasoning>标签 > response.thinking > JSON短摘要
       const reasoningTrace = extractReasoning(response.content);
-      if (reasoningTrace) {
+      const userReasoning = reasoningTrace || response.thinking || null;
+      if (userReasoning) {
         for (const d of allDecisions) {
-          d.reasoning = reasoningTrace;
+          d.reasoning = userReasoning;
         }
       }
 
