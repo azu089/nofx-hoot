@@ -496,7 +496,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
   const te = useTranslations('errors');
   const { log, strategy } = entry;
   const d = log.decision;
-  const er = log.executionResult;
+  const erRaw = log.executionResult;
+  // 全局分析模式: executionResult={allExecutions:[{blocked,reason,blockedBy},...]}
+  // 需要提取 blocked 项到顶层，让后续渲染逻辑正常工作
+  const allExecs = (erRaw as any)?.allExecutions as Array<{blocked?: boolean; skipped?: boolean; reason?: string; blockedBy?: string; symbol?: string}> | undefined;
+  const blockedExec = allExecs?.find(e => e.blocked);
+  const skippedExec = allExecs?.find(e => e.skipped);
+  const er = blockedExec
+    ? { ...erRaw, blocked: true, blockedBy: blockedExec.blockedBy, reason: blockedExec.reason }
+    : skippedExec && !erRaw?.blocked
+      ? { ...erRaw, skipped: true, reason: skippedExec.reason }
+      : erRaw;
 
   // 检测 Grid 网格日志格式: decision.decisions 数组 或 entryType
   const gridDecisions: any[] = Array.isArray(d.decisions) ? d.decisions : [];
