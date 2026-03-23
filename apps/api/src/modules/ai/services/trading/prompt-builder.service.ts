@@ -701,6 +701,9 @@ Your chain of thought analysis...
 
 ## Field Description
 - action: open_long | open_short | close_long | close_short | hold | wait
+  - hold = keep existing position, do NOT use for coins you have NO position in
+  - wait = no action, use for coins you have NO position in and no signal
+  - close_long/close_short = only for coins you currently HOLD
 - confidence: 0-100 (opening recommended ≥ ${minConf})
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
 - position_size_usd = calculated USD number (NOT percentage)

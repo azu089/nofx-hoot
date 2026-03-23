@@ -1491,6 +1491,16 @@ export class AutoTraderService {
             }
           }
 
+          // === 持仓一致性检查：无持仓的币不能输出 hold/close ===
+          {
+            const hasPosition = thisStrategyOpenPositions.some(p => p.symbol === symbol);
+            const act = decision.action as string;
+            if (!hasPosition && (act === 'hold' || act === 'close_long' || act === 'close_short')) {
+              this.logger.warn(`[修正] ${symbol}: AI 输出 ${decision.action} 但无持仓，修正为 wait`);
+              decision = { ...decision, action: 'wait' as AiAction };
+            }
+          }
+
           // Step 7: 安全检查
           // Solo 模式: consensusScore = 5（满分），跳过 L2 共识检查
           // Debate 模式: 使用辩论的实际共识得分（0-5）
