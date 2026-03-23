@@ -626,12 +626,12 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(parseInput, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // reasoning 统一存用户可读的 AI 分析，优先级：<reasoning>标签 > response.thinking > JSON短摘要
+    // reasoning = <reasoning>标签内容（对齐 nofx extractCoTTrace）
+    // response.thinking 是模型内部思考，不面向用户，不存入 reasoning
     const reasoningTrace = extractReasoning(response.content);
-    const userReasoning = reasoningTrace || response.thinking || null;
-    if (userReasoning) {
+    if (reasoningTrace) {
       for (const d of allDecisions) {
-        d.reasoning = userReasoning;
+        d.reasoning = reasoningTrace;
       }
     }
 
@@ -874,12 +874,11 @@ export class QuickAnalysisService {
 
       // 5. 解析所有决策
       const allDecisions = parseDecisions(response.content);
-      // reasoning 统一存用户可读的 AI 分析，优先级：<reasoning>标签 > response.thinking > JSON短摘要
+      // reasoning = <reasoning>标签内容（对齐 nofx extractCoTTrace）
       const reasoningTrace = extractReasoning(response.content);
-      const userReasoning = reasoningTrace || response.thinking || null;
-      if (userReasoning) {
+      if (reasoningTrace) {
         for (const d of allDecisions) {
-          d.reasoning = userReasoning;
+          d.reasoning = reasoningTrace;
         }
       }
 
