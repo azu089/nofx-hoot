@@ -25,8 +25,10 @@ export interface SafetyCheckInput {
   };
   // P5 新增
   fundingRate?: number; // 资金费率
-  takeProfitPercent?: number; // 止盈百分比
-  stopLossPercent?: number; // 止损百分比
+  takeProfitPercent?: number; // 止盈百分比（距离当前价）
+  stopLossPercent?: number; // 止损百分比（距离当前价）
+  stopLossPrice?: number;   // SL 绝对价格（对齐 nofx R:R 计算）
+  takeProfitPrice?: number; // TP 绝对价格（对齐 nofx R:R 计算）
   stopLossValid?: boolean;   // SL 方向是否正确（open_long: SL<price; open_short: SL>price）
   takeProfitValid?: boolean; // TP 方向是否正确（open_long: TP>price; open_short: TP<price）
   // v6: 分析模式
@@ -1002,14 +1004,34 @@ export class SafetyService {
             detail: `止盈方向错误: ${input.action} 时 TP 应在当前价格的${input.action === 'open_long' ? '上方' : '下方'}`,
           };
         }
-        // 4d. 风险收益比（riskRewardRatio < minRiskRewardRatio → 硬拒绝）
-        const riskRewardRatio = input.takeProfitPercent / input.stopLossPercent;
+        // 4d. 风险收益比（对齐 nofx engine.go L2055-2079: 用 SL/TP 绝对价格估算入场价计算 R:R）
         const requiredRR = input.strategyRiskConfig?.minRiskRewardRatio
           ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
+        let riskRewardRatio = input.takeProfitPercent / input.stopLossPercent; // fallback: 百分比直除
+        if (input.stopLossPrice && input.takeProfitPrice && input.stopLossPrice > 0 && input.takeProfitPrice > 0) {
+          // nofx 公式: 假设入场点在 SL→TP 的 20% 处
+          const isLong = input.action === 'open_long';
+          const sl = input.stopLossPrice;
+          const tp = input.takeProfitPrice;
+          const entryPrice = isLong
+            ? sl + (tp - sl) * 0.2
+            : sl - (sl - tp) * 0.2;
+          if (entryPrice > 0) {
+            const riskPct = isLong
+              ? (entryPrice - sl) / entryPrice * 100
+              : (sl - entryPrice) / entryPrice * 100;
+            const rewardPct = isLong
+              ? (tp - entryPrice) / entryPrice * 100
+              : (entryPrice - tp) / entryPrice * 100;
+            if (riskPct > 0) {
+              riskRewardRatio = rewardPct / riskPct;
+            }
+          }
+        }
         if (riskRewardRatio < requiredRR) {
           return {
             passed: false,
-            detail: `风险收益比不足: 止盈 ${input.takeProfitPercent.toFixed(2)}%/止损 ${input.stopLossPercent.toFixed(2)}%=${riskRewardRatio.toFixed(2)}，需 ≥ ${requiredRR}`,
+            detail: `风险收益比不足: R:R=${riskRewardRatio.toFixed(2)}:1，需 ≥ ${requiredRR}:1 [SL=${input.stopLossPrice ?? 'N/A'} TP=${input.takeProfitPrice ?? 'N/A'}]`,
           };
         }
       }

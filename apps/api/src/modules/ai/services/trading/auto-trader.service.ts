@@ -1554,6 +1554,8 @@ export class AutoTraderService {
             positionSizeUSD,
             takeProfitPercent,
             stopLossPercent,
+            stopLossPrice: decision.stopLoss ?? undefined,    // 对齐 nofx: SL 绝对价格
+            takeProfitPrice: decision.takeProfit ?? undefined, // 对齐 nofx: TP 绝对价格
             stopLossValid,    // SL 方向验证结果
             takeProfitValid,  // TP 方向验证结果
             currentPrice: safetyCurrentPrice,
