@@ -519,7 +519,7 @@ function AiThinkingSection({ text, modelId }: { text: string; modelId?: string }
       )}
       {/* 文本内容 */}
       {expanded ? (
-        <div className="pl-2.5 border-l-2 border-[#2E2E4E] max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto">
           {cleaned.split('\n').filter(l => l.trim()).map((line, i) => (
             <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
           ))}
