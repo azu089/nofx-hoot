@@ -689,8 +689,11 @@ Confidence ≥ 70 required. Avoid: single-indicator entries, contradictory signa
 **Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors.**
 
 <reasoning>
-Your chain of thought analysis...
-- Briefly analyze your thinking process
+Your chain of thought analysis:
+1. Account risk check (margin usage, available funds)
+2. Existing positions analysis (hold/close/take-profit?)
+3. Candidate coins analysis (signals, indicators, confluence)
+4. **Final decision summary**: clearly state your action for each coin and why
 </reasoning>
 
 <decision>
