@@ -626,36 +626,19 @@ export class QuickAnalysisService {
     const allDecisions = parseDecisions(parseInput, config.symbol);
     const decision = allDecisions[0]; // Solo 模式取第一个决策
 
-    // reasoning = <reasoning>标签内容（对齐 nofx extractCoTTrace）
-    // response.thinking 是模型内部思考，不面向用户，不存入 reasoning
+    // 对齐 nofx: decision.reasoning 保持 JSON 短摘要（不覆写）
+    // aiThinking = <reasoning> 标签内容（CoT trace）|| response.thinking（降级）
     const reasoningTrace = extractReasoning(response.content);
-    if (reasoningTrace) {
-      for (const d of allDecisions) {
-        d.reasoning = reasoningTrace;
-      }
-    }
 
     const latencyMs = Date.now() - startTime;
-
-    // 详细日志: 决策参数 Banner + 完整思考（对齐 nofx 日志规范）
-    const fullReasoning = decision.reasoning || response.content || '';
     this.logger.log(
-      `[快速分析] ======== 分析完成 ========\n` +
-      `  ${config.symbol} @ ${config.timeframe} (模型: ${config.modelId})\n` +
-      `  决策: ${decision.action} (confidence=${decision.confidence}%)\n` +
-      `  leverage=${decision.leverage}x posPct=${decision.positionSizePercent}%\n` +
-      `  SL=${decision.stopLoss ?? 'none'} TP=${decision.takeProfit ?? 'none'}\n` +
-      `  tokens=${response.tokenUsage || 'N/A'} 耗时=${latencyMs}ms 成本=$${response.cost.toFixed(6)}\n` +
-      `  💭 AI 完整分析:\n` +
-      `  ----------------------------------------------------------------------\n` +
-      `  ${fullReasoning}\n` +
-      `  ----------------------------------------------------------------------\n` +
-      `  ================================`,
+      `[快速分析] ${config.symbol} → ${decision.action} (${decision.confidence}%) ` +
+      `lev=${decision.leverage}x 耗时=${latencyMs}ms`,
     );
 
     return {
       decision,
-      allDecisions, // Phase 9.0 T4: 返回所有解析出的决策（多币种模式使用）
+      allDecisions,
       rawResponse: response.content,
       cost: response.cost,
       latencyMs,
@@ -665,7 +648,7 @@ export class QuickAnalysisService {
       volume24h: safetyVolume24h,
       systemPrompt,
       userPrompt: userMessage,
-      aiThinking: response.thinking,
+      aiThinking: reasoningTrace || response.thinking,
       marketSnapshot: snapshot,
     };
   }
@@ -872,15 +855,9 @@ export class QuickAnalysisService {
         },
       );
 
-      // 5. 解析所有决策
+      // 5. 解析所有决策（对齐 nofx: decision.reasoning 保持 JSON 短摘要，不覆写）
       const allDecisions = parseDecisions(response.content);
-      // reasoning = <reasoning>标签内容（对齐 nofx extractCoTTrace）
       const reasoningTrace = extractReasoning(response.content);
-      if (reasoningTrace) {
-        for (const d of allDecisions) {
-          d.reasoning = reasoningTrace;
-        }
-      }
 
       const latencyMs = Date.now() - startTime;
       const costPerCoin = response.cost / validResults.length;
@@ -938,7 +915,7 @@ export class QuickAnalysisService {
             cost: costPerCoin, latencyMs,
             indicators: mr.indicators, fundingRate: mr.fundingRate,
             currentPrice: mr.currentPrice, volume24h: mr.volume24h,
-            systemPrompt, userPrompt: userMessage, aiThinking: response.thinking,
+            systemPrompt, userPrompt: userMessage, aiThinking: reasoningTrace || response.thinking,
             marketSnapshot: mcSnapshot,
           });
         } else {

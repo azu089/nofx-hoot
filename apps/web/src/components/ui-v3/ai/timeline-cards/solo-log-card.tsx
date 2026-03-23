@@ -472,6 +472,37 @@ function GridThinkingChain({ text, t }: { text: string; t: TFunc }) {
   );
 }
 
+/** AI 思考过程（对齐 nofx DecisionCard L417-448: 默认折叠，展开纯文本） */
+function AiThinkingSection({ text, t }: { text: string; t: TFunc }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  return (
+    <div className="border-t border-[#1E1E2E]/60 pt-2 mt-1">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+        className="w-full flex items-center justify-between p-1.5 rounded text-[11px] hover:bg-white/5 transition-colors"
+      >
+        <div className="flex items-center gap-1.5">
+          <span>🧠</span>
+          <span className="text-[#4A5568] font-medium">{t('timeline.gridThinking')}</span>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(240, 185, 11, 0.15)', color: '#F0B90B' }}>
+          {expanded ? '收起' : '展开'}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          className="mt-2 rounded-lg p-3 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto"
+          style={{ background: '#0A0A0F', border: '1px solid #1E1E2E', color: '#9090A0' }}
+        >
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface SoloLogCardProps {
   entry: TimelineSoloLog;
 }
@@ -713,6 +744,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {adEr?.blocked && (
                   <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
+                {/* 每币短reasoning（对齐 nofx ActionCard L195-199） */}
+                {ad.reasoning && !adEr?.blocked && (
+                  <p className="text-[10px] text-[#606070] mt-0.5 line-clamp-2">💡 {ad.reasoning}</p>
+                )}
               </div>
             );
           })}
@@ -765,9 +800,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
               </div>
             );
           })()}
-          {/* AI 分析 — 统一一段（默认2段预览 + 展开全文） */}
-          {reasoning && (
-            <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 思考过程（对齐 nofx: 默认折叠，展开纯文本） */}
+          {d.aiThinking && (
+            <AiThinkingSection text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}
@@ -899,9 +934,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })()}
 
-          {/* AI 分析 — 统一一段（默认2段预览 + 展开全文） */}
-          {reasoning && (
-            <SectionedReasoning text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 思考过程（对齐 nofx: 默认折叠，展开纯文本） */}
+          {d.aiThinking && (
+            <AiThinkingSection text={d.aiThinking as string} t={t as TFunc} />
           )}
         </div>
       )}
