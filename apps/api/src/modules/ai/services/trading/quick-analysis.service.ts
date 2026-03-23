@@ -301,17 +301,18 @@ export class QuickAnalysisService {
           try {
             const btcSymbol = 'BTC/USDT:USDT';
             if (config.symbol === btcSymbol) return null; // 当前币就是 BTC 则跳过
-            const btcOhlcv = await this.marketData.fetchOHLCV(btcSymbol, '1h', 50);
-            if (!btcOhlcv || btcOhlcv.length < 14) return null;
-            const btcInd = this.indicators.calculateAll(btcOhlcv as any);
-            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.[4] ?? 0;
-            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.[4] ?? btcPrice;
-            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.[4] ?? btcPrice;
+            const btcRaw = await this.marketData.fetchOHLCV(btcSymbol, '1h', 50);
+            if (!btcRaw || btcRaw.length < 14) return null;
+            const btcOhlcv = btcRaw.map((c: any) => ({ timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }));
+            const btcInd = this.indicators.calculateAll(btcOhlcv);
+            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.close ?? 0;
+            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.close ?? btcPrice;
+            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.close ?? btcPrice;
             return {
               price: btcPrice,
               change1h: btcPrice1hAgo > 0 ? ((btcPrice - btcPrice1hAgo) / btcPrice1hAgo) * 100 : 0,
               change4h: btcPrice4hAgo > 0 ? ((btcPrice - btcPrice4hAgo) / btcPrice4hAgo) * 100 : 0,
-              rsi: btcInd.rsi ?? undefined,
+              rsi: btcInd.rsi7 ?? btcInd.rsi ?? undefined,
             };
           } catch { return null; }
         })(),
@@ -782,17 +783,18 @@ export class QuickAnalysisService {
         // BTC 参考（对齐 nofx: BTC 市场快照）
         (async () => {
           try {
-            const btcOhlcv = await this.marketData.fetchOHLCV('BTC/USDT:USDT', '1h', 50);
-            if (!btcOhlcv || btcOhlcv.length < 14) return null;
-            const btcInd = this.indicators.calculateAll(btcOhlcv as any);
-            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.[4] ?? 0;
-            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.[4] ?? btcPrice;
-            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.[4] ?? btcPrice;
+            const btcRaw = await this.marketData.fetchOHLCV('BTC/USDT:USDT', '1h', 50);
+            if (!btcRaw || btcRaw.length < 14) return null;
+            const btcOhlcv = btcRaw.map((c: any) => ({ timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }));
+            const btcInd = this.indicators.calculateAll(btcOhlcv);
+            const btcPrice = btcOhlcv[btcOhlcv.length - 1]?.close ?? 0;
+            const btcPrice1hAgo = btcOhlcv[btcOhlcv.length - 2]?.close ?? btcPrice;
+            const btcPrice4hAgo = btcOhlcv[btcOhlcv.length - 5]?.close ?? btcPrice;
             return {
               price: btcPrice,
               change1h: btcPrice1hAgo > 0 ? ((btcPrice - btcPrice1hAgo) / btcPrice1hAgo) * 100 : 0,
               change4h: btcPrice4hAgo > 0 ? ((btcPrice - btcPrice4hAgo) / btcPrice4hAgo) * 100 : 0,
-              rsi: btcInd.rsi ?? undefined,
+              rsi: btcInd.rsi7 ?? btcInd.rsi ?? undefined,
             };
           } catch { return null; }
         })(),
