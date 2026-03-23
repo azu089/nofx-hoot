@@ -394,49 +394,8 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
   const sections = parseReasoningSections(cleaned);
   const hasHeaders = sections.some(s => s.title);
 
-  // ── 有标题结构：彩色左边框分段 ──
-  if (hasHeaders) {
-    const PREVIEW = 2;
-    const visible = expanded ? sections : sections.slice(0, PREVIEW);
-    const hasMore = sections.length > PREVIEW;
-    return (
-      <div className="space-y-1.5">
-        {modelHeader}
-        {visible.map((sec, i) => {
-          const color = sec.title ? getSectionColor(sec.title) : '#6B7280';
-          return (
-            <div key={i} className="pl-2 border-l-2" style={{ borderColor: `${color}50` }}>
-              {sec.title && (
-                <span className="text-[10px] font-semibold" style={{ color }}>{sec.title}</span>
-              )}
-              {sec.content && (
-                expanded ? (
-                  // 展开：按 \n 分行渲染，避免所有内容挤在一起
-                  <div className="space-y-1 mt-0.5">
-                    {sec.content.split('\n').filter(l => l.trim()).map((line, li) => (
-                      <p key={li} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
-                    ))}
-                  </div>
-                ) : (
-                  // 收起：单行截断
-                  <p className={`text-xs text-[#9090A0] leading-relaxed mt-0.5${i === visible.length - 1 ? ' line-clamp-2' : ''}`}>
-                    {sec.content}
-                  </p>
-                )
-              )}
-            </div>
-          );
-        })}
-        {(hasMore || expanded || needsExpand) && (
-          <div className="flex justify-center"><ToggleBtn /></div>
-        )}
-      </div>
-    );
-  }
-
-  // ── 无标题结构 ──
+  // ── 收起：统一 2 行截断（不分有无标题） ──
   if (!expanded) {
-    // 收起：2 行截断 + 下方居中展开按钮
     return (
       <div>
         {modelHeader}
@@ -446,7 +405,33 @@ function SectionedReasoning({ text, modelId }: { text: string; modelId?: string 
     );
   }
 
-  // 展开：按句号分段显示
+  // ── 展开：有标题 → 彩色分段；无标题 → 按段落 ──
+  if (hasHeaders) {
+    return (
+      <div className="space-y-1.5">
+        {modelHeader}
+        {sections.map((sec, i) => {
+          const color = sec.title ? getSectionColor(sec.title) : '#6B7280';
+          return (
+            <div key={i} className="pl-2 border-l-2" style={{ borderColor: `${color}50` }}>
+              {sec.title && (
+                <span className="text-[10px] font-semibold" style={{ color }}>{sec.title}</span>
+              )}
+              {sec.content && (
+                <div className="space-y-1 mt-0.5">
+                  {sec.content.split('\n').filter(l => l.trim()).map((line, li) => (
+                    <p key={li} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="flex justify-center"><ToggleBtn /></div>
+      </div>
+    );
+  }
+
   const paras = toParas(cleaned);
   return (
     <div className="space-y-2">
