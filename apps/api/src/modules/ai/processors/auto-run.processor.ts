@@ -22,8 +22,6 @@ import { ResearchCycleService } from '../services/research/research-cycle.servic
 export class AutoRunProcessor extends WorkerHost {
   private readonly logger = new Logger(AutoRunProcessor.name);
   private consecutiveFailures = new Map<string, number>();
-  // 策略级并发锁：防止同一策略的多个 BullMQ job 同时执行
-  private runningStrategies = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -71,25 +69,6 @@ export class AutoRunProcessor extends WorkerHost {
    * 处理产品 B 策略周期任务
    */
   private async processStrategyCycle(
-    job: Job<{ strategyId: string; userId: string }>,
-  ): Promise<{ analyzed: number; executed: number; errors: number }> {
-    const { strategyId, userId } = job.data;
-
-    // 对齐 nofx: 策略级并发锁 — 同一策略同一时间只能运行一个周期
-    if (this.runningStrategies.has(strategyId)) {
-      this.logger.warn(`[策略周期] 跳过: 策略=${strategyId} 上一轮仍在运行（防并行）`);
-      return { analyzed: 0, executed: 0, errors: 0 };
-    }
-    this.runningStrategies.add(strategyId);
-
-    try {
-      return await this._processStrategyCycleInner(job);
-    } finally {
-      this.runningStrategies.delete(strategyId);
-    }
-  }
-
-  private async _processStrategyCycleInner(
     job: Job<{ strategyId: string; userId: string }>,
   ): Promise<{ analyzed: number; executed: number; errors: number }> {
     const { strategyId, userId } = job.data;
