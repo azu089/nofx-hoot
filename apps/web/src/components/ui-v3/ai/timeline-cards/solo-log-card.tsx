@@ -535,9 +535,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
     : '';
   // 系统日志优先用 i18n 渲染；AI 生成的 reasoning 保留原文
   const systemText = SYSTEM_ACTIONS.has(d.action ?? '') ? getSystemLogText(d, t as TFunc) : null;
+  // reasoning（短摘要）优先展示；aiThinking（完整思维链）仅在用户展开时使用
   const reasoning = systemText ?? (isGridLog
     ? gridAnalysisText
-    : (d.aiThinking || d.reasoning || d.reason || ''));
+    : (d.reasoning || d.reason || d.aiThinking || ''));
 
   const action = isAutoDisabled ? 'hold' : (d.action || (isGridLog ? gridDecisions[0]?.action : 'hold') || 'hold');
   const actionCfg = ACTION_CONFIG[action] || ACTION_CONFIG['wait'];

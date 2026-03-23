@@ -1433,9 +1433,8 @@ export class AutoTraderService {
                 leverage: decision.leverage,
                 positionSizePercent: decision.positionSizePercent,
                 ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                // 统一设计：reasoning 存完整 AI 思考，reasoningSummary 存 JSON 短摘要
-                reasoning: _logAiThinking || decision.reasoning,
-                reasoningSummary: decision.reasoning,
+                // reasoning 存短摘要（前端默认2行预览），aiThinking 存完整思维链（点击展开）
+                reasoning: decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(consensusVotes ? { votes: consensusVotes } : {}),
                 ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
@@ -2070,8 +2069,7 @@ export class AutoTraderService {
               ...(execCapitalUSD != null ? { capitalUSD: execCapitalUSD } : {}),
               stopLoss: decision.stopLoss,
               takeProfit: decision.takeProfit,
-              reasoning: itemAiThinking || decision.reasoning,
-              reasoningSummary: decision.reasoning,
+              reasoning: decision.reasoning,
               ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
               ...(votes ? { votes } : {}),
               ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
