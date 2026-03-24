@@ -1177,6 +1177,7 @@ export class AutoTraderService {
               rawResponse: analysisResult.rawResponse,
               systemPrompt: analysisResult.systemPrompt,
               userPrompt: analysisResult.userPrompt,
+              analysis: analysisResult.analysis,
               aiThinking: analysisResult.aiThinking,
               marketSnapshot: analysisResult.marketSnapshot,
             });
