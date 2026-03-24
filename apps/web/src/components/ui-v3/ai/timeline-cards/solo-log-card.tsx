@@ -78,11 +78,19 @@ function getSystemLogText(d: any, t: TFunc): string | null {
       return null;
     default:
       // minConfidence 过滤（action=wait + minConfFilter=true）
-      if (d.action === 'wait' && d.minConfFilter)
+      if (d.action === 'wait' && d.minConfFilter) {
+        // 平仓拦截（originalAction 是 close_long/close_short）
+        if (d.originalAction === 'close_long' || d.originalAction === 'close_short')
+          return t('timeline.sysCloseConfFiltered', {
+            actual: d.actual ?? d.confidence ?? 0,
+            required: d.required ?? 0,
+          });
+        // 开仓拦截
         return t('timeline.sysMinConfFiltered', {
           actual: d.actual ?? d.confidence ?? 0,
           required: d.required ?? 0,
         });
+      }
       return null;
   }
 }
@@ -238,19 +246,24 @@ function calcPct(entry: number, target: number): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
-/** 计算 R:R 比 */
-function calcRiskReward(entry: number, sl: number, tp: number): number | null {
-  if (!entry || !sl || !tp) return null;
-  const risk = Math.abs(entry - sl);
-  const reward = Math.abs(tp - entry);
-  if (risk === 0) return null;
-  return reward / risk;
-}
-
-/** 优先用百分比算 R:R（与后端 safety.service L9 一致） */
-function calcRiskRewardFromPct(slPct?: number, tpPct?: number): number | null {
-  if (!slPct || !tpPct || slPct <= 0) return null;
-  return tpPct / slPct;
+/**
+ * 计算 R:R 比（对齐 nofx engine.go L2055-2075 唯一公式）
+ * 入场价估算: SL + (TP-SL) × 0.2（开多），SL - (SL-TP) × 0.2（开空）
+ */
+function calcRiskReward(sl: number, tp: number, isLong: boolean): number | null {
+  if (!sl || !tp || sl <= 0 || tp <= 0) return null;
+  const entry = isLong
+    ? sl + (tp - sl) * 0.2
+    : sl - (sl - tp) * 0.2;
+  if (entry <= 0) return null;
+  const riskPct = isLong
+    ? (entry - sl) / entry * 100
+    : (sl - entry) / entry * 100;
+  const rewardPct = isLong
+    ? (tp - entry) / entry * 100
+    : (entry - tp) / entry * 100;
+  if (riskPct <= 0) return null;
+  return rewardPct / riskPct;
 }
 
 /** R:R 评级颜色 */
@@ -599,11 +612,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
     ? ((d.stopLoss || 0) + (d.takeProfit || 0)) / 2
     : 0);
 
-  // R:R — 优先用百分比（与后端 L9 safety check 一致），fallback 用价格
-  const rr = calcRiskRewardFromPct(d.stopLossPct, d.takeProfitPct)
-    ?? (d.stopLoss && d.takeProfit && entryPrice
-      ? calcRiskReward(entryPrice, d.stopLoss, d.takeProfit)
-      : null);
+  // R:R — 对齐 nofx 唯一公式（估算入场价 = SL + (TP-SL) × 0.2）
+  const isLongAction = action === 'open_long';
+  const rr = (d.stopLoss && d.takeProfit)
+    ? calcRiskReward(d.stopLoss, d.takeProfit, isLongAction)
+    : null;
 
   // Grid: 折叠状态
   const [showGridOps, setShowGridOps] = useState(false);
@@ -764,11 +777,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                         {adEntryPrice > 0 && <span className="opacity-60"> (+{((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
                       </span>
                     )}
-                    {ad.stopLoss != null && ad.takeProfit != null && adEntryPrice > 0 && (() => {
-                      const slDist = Math.abs(adEntryPrice - ad.stopLoss);
-                      const tpDist = Math.abs(ad.takeProfit - adEntryPrice);
-                      const rrVal = slDist > 0 ? (tpDist / slDist) : 0;
-                      return rrVal > 0 ? <span className={`ml-auto font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                    {ad.stopLoss != null && ad.takeProfit != null && (() => {
+                      const adIsLong = adAction === 'open_long';
+                      const rrVal = calcRiskReward(ad.stopLoss, ad.takeProfit, adIsLong);
+                      return rrVal && rrVal > 0 ? <span className={`ml-auto font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
                     })()}
                   </div>
                 )}
