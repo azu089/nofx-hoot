@@ -813,11 +813,6 @@ export class AutoTraderService {
         take: 10,
         select: { decision: true, symbol: true, createdAt: true, executed: true },
       });
-      const consecutiveWaits = this.countConsecutiveWaits(recentStrategyLogs);
-      if (consecutiveWaits >= 3) {
-        this.logger.log(`⚠️ 连续 ${consecutiveWaits} 个周期 wait/hold，Prompt 将鼓励降低开仓门槛`);
-      }
-
       // 策略运行时长（分钟，对齐 nofx RuntimeMinutes）
       const strategyRuntimeMin = strategy.createdAt
         ? Math.round((Date.now() - new Date(strategy.createdAt).getTime()) / 60000)
@@ -876,6 +871,7 @@ export class AutoTraderService {
         rawResponse?: string;
         systemPrompt?: string;
         userPrompt?: string;
+        analysis?: string;
         aiThinking?: string;
         marketSnapshot?: any;
       }> = [];
@@ -898,7 +894,7 @@ export class AutoTraderService {
         indicators: { rsi: number | null; atr3: number | null; atr14: number | null };
       }> = {};
       // 极速全局分析的完整结果（日志透明化用，保存 rawResponse/systemPrompt/userPrompt/aiThinking/marketSnapshot）
-      const quickGlobalResults = new Map<string, { rawResponse?: string; systemPrompt?: string; userPrompt?: string; aiThinking?: string; marketSnapshot?: any }>();
+      const quickGlobalResults = new Map<string, { rawResponse?: string; systemPrompt?: string; userPrompt?: string; analysis?: string; aiThinking?: string; marketSnapshot?: any }>();
 
       // ═══════════════════════════════════════════════════════════════════════
       // 【共识策略 — debate 模式】
@@ -956,7 +952,7 @@ export class AutoTraderService {
               },
               intervalMinutes: strategy.intervalMinutes || 60,
               todayTrades: closedToday.length,
-              consecutiveWaits,
+
               locale,
             },
           };
@@ -1148,7 +1144,6 @@ export class AutoTraderService {
             },
             intervalMinutes: strategy.intervalMinutes || 60,
             todayTrades: closedToday.length,
-            consecutiveWaits,
             locale,
           },
         }));
@@ -1251,7 +1246,8 @@ export class AutoTraderService {
           let _logRawResponse: string | undefined;
           let _logSystemPrompt: string | undefined;
           let _logUserPrompt: string | undefined;
-          let _logAiThinking: string | undefined;
+          let _logAnalysis: string | undefined;   // AI 整体市场分析（对齐网格 analysis）
+          let _logAiThinking: string | undefined;  // DeepSeek 思考链（response.thinking）
           let _logMarketSnapshot: any;
 
           // R4: 提前获取订单簿数据供 AI 决策参考
@@ -1310,6 +1306,7 @@ export class AutoTraderService {
               _logRawResponse = qgr.rawResponse;
               _logSystemPrompt = qgr.systemPrompt;
               _logUserPrompt = qgr.userPrompt;
+              _logAnalysis = qgr.analysis;
               _logAiThinking = qgr.aiThinking;
               _logMarketSnapshot = qgr.marketSnapshot;
             }
@@ -1358,7 +1355,7 @@ export class AutoTraderService {
                 },
                 intervalMinutes: strategy.intervalMinutes || 60,
                 todayTrades: closedToday.length,
-                consecutiveWaits,
+  
                 locale,
               },
             };
@@ -1376,6 +1373,7 @@ export class AutoTraderService {
             _logRawResponse = analysisResult.rawResponse;
             _logSystemPrompt = analysisResult.systemPrompt;
             _logUserPrompt = analysisResult.userPrompt;
+            _logAnalysis = analysisResult.analysis;
             _logAiThinking = analysisResult.aiThinking;
             _logMarketSnapshot = analysisResult.marketSnapshot;
             this.logger.log(
@@ -1433,8 +1431,8 @@ export class AutoTraderService {
                 leverage: decision.leverage,
                 positionSizePercent: decision.positionSizePercent,
                 ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                // reasoning 存短摘要（前端默认2行预览），aiThinking 存完整思维链（点击展开）
-                reasoning: decision.reasoning,
+                // reasoning=整体市场分析（给用户看），aiThinking=DeepSeek思考链
+                reasoning: _logAnalysis || decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(consensusVotes ? { votes: consensusVotes } : {}),
                 ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
@@ -1664,7 +1662,7 @@ export class AutoTraderService {
                 ...(safetyCapitalUSD != null ? { capitalUSD: safetyCapitalUSD } : {}),
                 stopLoss: decision.stopLoss,
                 takeProfit: decision.takeProfit,
-                reasoning: decision.reasoning,
+                reasoning: _logAnalysis || decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(consensusVotes ? { votes: consensusVotes } : {}),
                 ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
@@ -1713,6 +1711,7 @@ export class AutoTraderService {
             rawResponse: _logRawResponse,
             systemPrompt: _logSystemPrompt,
             userPrompt: _logUserPrompt,
+            analysis: _logAnalysis,
             aiThinking: _logAiThinking,
             marketSnapshot: _logMarketSnapshot,
           });
@@ -2445,22 +2444,6 @@ export class AutoTraderService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  /**
-   * 计算最近连续 wait/hold 周期数（用于 Prompt 注入促进开仓）
-   */
-  private countConsecutiveWaits(logs: Array<{ decision: unknown }>): number {
-    let count = 0;
-    for (const log of logs) {
-      const action = (log.decision as Record<string, unknown>)?.action;
-      if (action === 'wait' || action === 'hold') {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return count;
   }
 
   /**

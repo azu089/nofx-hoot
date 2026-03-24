@@ -7,7 +7,7 @@ import { TradeHistoryService } from '../trade-history.service';
 import { AiTradeDecision } from '../../types/ai.types';
 import { formatMarketDataPrompt } from '../../constants/prompts';
 import { PromptBuilderService, PromptConfig, UserPromptContext } from './prompt-builder.service';
-import { parseDecisions, extractReasoning } from '../../utils/decision-parser';
+import { parseDecisions, parseDecisionsWithAnalysis } from '../../utils/decision-parser';
 import { NofxosRankingService } from '../nofxos-ranking.service';
 import { AiMemoryService } from '../memory.service';
 import { LunarCrushService } from '../lunarcrush.service';
@@ -131,7 +131,9 @@ export interface QuickAnalysisResult {
   systemPrompt?: string;
   /** 发给 AI 的用户消息（含账户状态 + 市场数据 + K线，日志透明化用） */
   userPrompt?: string;
-  /** DeepSeek-Reasoner reasoning_content（日志透明化用） */
+  /** AI 整体市场分析（对齐网格 analysis 字段，给用户看） */
+  analysis?: string;
+  /** DeepSeek-Reasoner 思考链（仅 DeepSeek 有，可展开查看） */
   aiThinking?: string;
   /** 市场数据快照（前端日志卡片展示，对齐 Grid 的 gridSnapshot） */
   marketSnapshot?: MarketSnapshot;
@@ -614,27 +616,21 @@ export class QuickAnalysisService {
       },
     );
 
-    // 9. 解析 JSON 结果（Phase 9.0: 6 层鲁棒解析器，替代简单 JSON.parse）
-    // P0 修复：deepseek-reasoner thinking tokens 占比过大时，content 中 <decision> JSON 可能被截断
-    // 检测 content 是否包含完整 <decision>，若不完整但 thinking 有内容，合并后重新解析
+    // 9. 解析 JSON 结果（对齐网格: 优先 {analysis, decisions} 格式，降级到 XML 标签）
     let parseInput = response.content;
-    if (response.thinking && !response.content.includes('</decision>')) {
+    if (response.thinking && !response.content.includes('}') && !response.content.includes('</decision>')) {
       this.logger.warn(
-        `[解析修复] content 缺少完整 <decision> 标签 (${response.content.length}字符)，合并 thinking (${response.thinking.length}字符) 重试`,
+        `[解析修复] content 不完整 (${response.content.length}字符)，合并 thinking (${response.thinking.length}字符) 重试`,
       );
       parseInput = response.thinking + '\n' + response.content;
     }
-    const allDecisions = parseDecisions(parseInput, config.symbol);
-    const decision = allDecisions[0]; // Solo 模式取第一个决策
-
-    // 对齐 nofx: decision.reasoning 保持 JSON 短摘要（不覆写）
-    // aiThinking = <reasoning> 标签内容（CoT trace）|| response.thinking（降级）
-    const reasoningTrace = extractReasoning(response.content);
+    const { decisions: allDecisions, analysis: marketAnalysis } = parseDecisionsWithAnalysis(parseInput, config.symbol);
+    const decision = allDecisions[0];
 
     const latencyMs = Date.now() - startTime;
     this.logger.log(
       `[快速分析] ${config.symbol} → ${decision.action} (${decision.confidence}%) ` +
-      `lev=${decision.leverage}x 耗时=${latencyMs}ms`,
+      `lev=${decision.leverage}x 耗时=${latencyMs}ms analysis=${marketAnalysis ? marketAnalysis.length + '字' : 'none'}`,
     );
 
     return {
@@ -649,7 +645,9 @@ export class QuickAnalysisService {
       volume24h: safetyVolume24h,
       systemPrompt,
       userPrompt: userMessage,
-      aiThinking: reasoningTrace || response.thinking,
+      // 字段职责唯一：analysis=整体市场分析（给用户看），aiThinking=DeepSeek思考链
+      analysis: marketAnalysis,
+      aiThinking: response.thinking,
       marketSnapshot: snapshot,
     };
   }
@@ -879,9 +877,8 @@ export class QuickAnalysisService {
         },
       );
 
-      // 5. 解析所有决策（对齐 nofx: decision.reasoning 保持 JSON 短摘要，不覆写）
-      const allDecisions = parseDecisions(response.content);
-      const reasoningTrace = extractReasoning(response.content);
+      // 5. 解析所有决策（对齐网格: 优先 {analysis, decisions} 格式）
+      const { decisions: allDecisions, analysis: marketAnalysis } = parseDecisionsWithAnalysis(response.content);
 
       const latencyMs = Date.now() - startTime;
       const costPerCoin = response.cost / validResults.length;
@@ -939,7 +936,9 @@ export class QuickAnalysisService {
             cost: costPerCoin, latencyMs,
             indicators: mr.indicators, fundingRate: mr.fundingRate,
             currentPrice: mr.currentPrice, volume24h: mr.volume24h,
-            systemPrompt, userPrompt: userMessage, aiThinking: reasoningTrace || response.thinking,
+            systemPrompt, userPrompt: userMessage,
+            analysis: marketAnalysis,
+            aiThinking: response.thinking,
             marketSnapshot: mcSnapshot,
           });
         } else {

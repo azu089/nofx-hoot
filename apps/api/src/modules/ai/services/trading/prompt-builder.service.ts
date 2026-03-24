@@ -28,7 +28,7 @@ export interface PromptConfig {
   /** 用户可自定义的 prompt 段落（来自 strategy.promptSections） */
   promptSections?: {
     role?: string; // 自定义角色定义
-    mode?: string; // [已弃用] 交易风格由 riskControl 参数控制，此字段保留兼容但不注入 prompt
+    mode?: string; // 交易风格：aggressive / conservative / scalping（对齐 nofx variant）
     custom?: string; // 用户自定义提示词（映射为决策流程段）
     tradingFrequency?: string; // 交易频率指导
     entryStandards?: string; // 入场标准
@@ -58,6 +58,20 @@ export interface PromptConfig {
   runningHours?: number;
   /** AI 输出语言 locale (e.g. "zh-CN", "en", "ko") */
   locale?: string;
+  /** 指标配置（对齐 nofx writeAvailableIndicators 动态生成） */
+  indicators?: {
+    primaryTimeframe?: string;   // e.g. '1h'
+    longerTimeframe?: string;    // e.g. '4h'
+    enableEMA?: boolean;
+    emaPeriods?: number[];
+    enableMACD?: boolean;
+    enableRSI?: boolean;
+    rsiPeriods?: number[];
+    enableATR?: boolean;
+    atrPeriods?: number[];
+    enableBOLL?: boolean;
+    enableOI?: boolean;
+  };
 }
 
 export interface UserPromptContext {
@@ -182,11 +196,23 @@ export class PromptBuilderService {
 
     // Section 0: Data Dictionary (use locale for bilingual schema)
     const schemaLang: SchemaLang = locale.startsWith('zh') ? 'zh-CN' : 'en-US';
-    // 对齐 nofx: 只注入字段说明和OI解读，不注入交易规则和常见错误（避免过度约束）
-    sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: false, includeOI: true, includeMistakes: false }));
+    // 对齐 nofx: 注入字段说明 + OI解读 + 常见错误警示，不注入交易规则（给AI完全自由度）
+    sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: false, includeOI: true, includeMistakes: true }));
 
     // Section 1: Role Definition
     sections.push(this.buildRoleSection(ps.role));
+
+    // Section 1.5: Trading Mode Variant（对齐 nofx engine.go L1051-1059）
+    if (ps.mode) {
+      const variant = ps.mode.toLowerCase().trim();
+      if (variant === 'aggressive') {
+        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ 70\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
+      } else if (variant === 'conservative') {
+        sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
+      } else if (variant === 'scalping') {
+        sections.push(`## Mode: Scalping\n- Focus on short-term momentum, smaller profit targets but require quick action\n- If price doesn't move as expected within two bars, immediately reduce position or stop-loss`);
+      }
+    }
 
     // Section 2: Hard Constraints (CODE ENFORCED) — 含仓位计算指南（对齐 nofx）
     const isCN = locale.startsWith('zh');
@@ -198,7 +224,7 @@ export class PromptBuilderService {
     // 跟踪止盈和分批止盈由持仓格式中的 ⚠️ 提示 + drawdown-monitor 代码层负责
 
     // Section 4: Trading Frequency Awareness
-    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, rc.minConfidence));
+    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, rc.minConfidence, config.indicators));
 
     // Section 5: Output Format (动态示例，对齐 nofx engine.go L1143-1155)
     sections.push(this.buildOutputFormat(rc));
@@ -548,33 +574,37 @@ Calculate position_size_usd based on your confidence and the Position Value Limi
    * 对齐 nofx engine.go L1097-1131
    * 简洁告知频率+可用指标+决策流程，不限制 AI 的分析方法
    */
-  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, minConf?: number): string {
+  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, minConf?: number, indicators?: PromptConfig['indicators']): string {
     const conf = minConf ?? 60;
+    const ind = indicators || {};
 
-    return `# ⏱️ Trading Frequency Awareness
+    // 对齐 nofx writeAvailableIndicators: 从 config 动态生成指标列表
+    const indicatorLines: string[] = [];
+    indicatorLines.push(`- ${ind.primaryTimeframe || '1h'} price series${ind.longerTimeframe ? ` + ${ind.longerTimeframe} K-line series` : ''}`);
+    if (ind.enableEMA !== false) indicatorLines.push(`- EMA indicators${ind.emaPeriods?.length ? ` (periods: ${ind.emaPeriods.join(', ')})` : ''}`);
+    if (ind.enableMACD !== false) indicatorLines.push(`- MACD indicators`);
+    if (ind.enableRSI !== false) indicatorLines.push(`- RSI indicators${ind.rsiPeriods?.length ? ` (periods: ${ind.rsiPeriods.join(', ')})` : ''}`);
+    if (ind.enableATR !== false) indicatorLines.push(`- ATR indicators${ind.atrPeriods?.length ? ` (periods: ${ind.atrPeriods.join(', ')})` : ''}`);
+    if (ind.enableBOLL !== false) indicatorLines.push(`- Bollinger Bands + Donchian Channel`);
+    if (ind.enableOI !== false) indicatorLines.push(`- Open Interest (OI) + Funding Rate`);
+    indicatorLines.push(`- Long/Short Ratio + Taker Buy/Sell`);
+    indicatorLines.push(`- Institutional / Retail fund flow (if available)`);
 
+    return `## Trading Frequency
 - Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
-- >2 trades/hour = Overtrading
-- Single position hold time >= 30-60 minutes
-If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.
+- >2 trades/hour = Overtrading — you are destroying profits with fees
+- Single position hold time ≥ 30-60 minutes
+If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
 
-# 🎯 Entry Standards
+## Entry Standards
+Only open when multiple signals resonate. You have:
+${indicatorLines.join('\n')}
 
-Only open positions when multiple signals resonate. You have:
-- Primary + secondary timeframe K-line series
-- EMA (7, 25, 99) + MACD + RSI (7, 14)
-- ATR (3, 14) for volatility
-- Bollinger Bands + Donchian Channel
-- Open Interest (OI) + Funding Rate
-- Long/Short Ratio + Taker Buy/Sell
-- Institutional / Retail fund flow (if available)
+Feel free to use any effective analysis method, but **confidence ≥ ${conf}** required to open positions; avoid single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
 
-Feel free to use any effective analysis method, but **confidence >= ${conf}** required to open positions.
-
-# 📋 Decision Process
-
-1. Check positions → Should we take profit/stop-loss
-2. Scan candidate coins + multi-timeframe → Are there strong signals
+## Decision Process
+1. Check existing positions → take profit / stop-loss / hold?
+2. Scan candidate coins + multi-timeframe → whether strong signals exist
 3. Write chain of thought first, then output structured JSON`;
   }
 
@@ -589,27 +619,26 @@ Feel free to use any effective analysis method, but **confidence >= ${conf}** re
 
     return `# Output Format (Strictly Follow)
 
-**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**
+Output a single JSON object with two fields: "analysis" (your market analysis) and "decisions" (action array).
 
-<reasoning>
-Your chain of thought analysis:
-1. Account risk check (margin usage, available funds)
-2. Existing positions analysis (hold/close/take-profit?)
-3. Candidate coins analysis (signals, indicators, confluence)
-4. **Final decision summary**: clearly state your action for each coin and why
-</reasoning>
-
-<decision>
-[
-  {"symbol": "BTCUSDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头+OI↑Price↓空头主导"},
-  {"symbol": "ETHUSDT", "action": "close_long", "reasoning": "论点失效，止损"}
-]
-</decision>
+\`\`\`json
+{
+  "analysis": "Your complete market analysis (200-500 words). Must include: 1) Account risk check 2) Existing positions analysis 3) Each candidate coin analysis with specific indicator values 4) Final decision summary for each coin",
+  "decisions": [
+    {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M"},
+    {"symbol": "ETH/USDT:USDT", "action": "close_long", "confidence": 80, "reasoning": "论点失效，止损"}
+  ]
+}
+\`\`\`
 
 ## Field Description
+- analysis: Your complete chain-of-thought market analysis (this is shown to users)
 - action: open_long | open_short | close_long | close_short | hold | wait
-- confidence: 0-100 (opening recommended >= ${minConf})
+  - hold = keep existing position, do NOT use for coins you have NO position in
+  - wait = no action, use for coins you have NO position in and no signal
+- confidence: 0-100 (opening recommended ≥ ${minConf})
+- reasoning: per-coin short summary with ≥2 specific indicator values
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use 27.76 not 3000 * 0.01)`;
+- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
 }

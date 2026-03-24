@@ -283,6 +283,62 @@ export function parseDecisions(
 }
 
 /**
+ * 解析带 analysis 的决策（对齐网格 {analysis, decisions} 格式）
+ *
+ * 优先解析 {analysis, decisions} 对象格式；
+ * 降级到 <reasoning>+<decision> XML 格式；
+ * 最终降级到 parseDecisions() 兜底。
+ */
+export function parseDecisionsWithAnalysis(
+  raw: string,
+  defaultSymbol?: string,
+): { decisions: AiTradeDecision[]; analysis?: string } {
+  if (!raw || !raw.trim()) {
+    return { decisions: [buildWaitDecision('AI 模型输出为空', defaultSymbol)] };
+  }
+
+  let s = removeInvisible(raw).trim();
+  s = fixChinesePunctuation(s);
+
+  // === 优先：尝试提取 JSON 对象 {analysis, decisions} ===
+
+  // 1. 从 ```json 代码围栏中提取
+  const fenceMatch = RE_JSON_FENCE.exec(s);
+  const jsonCandidate = fenceMatch?.[1]?.trim() || s;
+
+  // 2. 从 <decision> 标签中提取
+  const decisionTagMatch = RE_DECISION_TAG.exec(s);
+  const candidates = [jsonCandidate, decisionTagMatch?.[1]?.trim()].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      // {analysis, decisions} 对象格式
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const analysis: string | undefined = typeof parsed.analysis === 'string' ? parsed.analysis.trim() : undefined;
+        const rawDecisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+        if (rawDecisions.length > 0) {
+          const decisions = rawDecisions
+            .map((r: any) => convertRawDecision(r, defaultSymbol))
+            .filter((d: any) => d !== null) as AiTradeDecision[];
+          if (decisions.length > 0) {
+            logger.log(`Parsed {analysis, decisions} format: ${decisions.length} decisions, analysis=${analysis ? analysis.length + 'chars' : 'none'}`);
+            return { decisions, analysis };
+          }
+        }
+      }
+    } catch {
+      // 不是有效 JSON 对象，继续
+    }
+  }
+
+  // === 降级：<reasoning> + <decision> XML 格式 ===
+  const reasoningTrace = extractReasoning(s);
+  const decisions = parseDecisions(s, defaultSymbol);
+  return { decisions, analysis: reasoningTrace || undefined };
+}
+
+/**
  * 尝试 JSON 解析（L4-L5: 格式校验 + JSON.parse）
  */
 function tryParseJSON(
