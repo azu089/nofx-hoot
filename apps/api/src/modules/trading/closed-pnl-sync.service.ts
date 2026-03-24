@@ -162,7 +162,11 @@ export class ClosedPnlSyncService {
 
   /**
    * 匹配策略：userId + apiKeyId + symbol
-   * symbol 标准化：OKX 返回 "SOL/USDT"，gridConfig 存 "SOL/USDT:USDT"
+   *
+   * 匹配优先级：
+   * 1. Grid 策略：gridConfig.symbol 精确匹配
+   * 2. 固定币种策略：coinSourceConfig.coins 包含该 symbol
+   * 3. AI 自动选币策略（mode=ai, coins 为空）：兜底匹配（该 apiKey 下唯一活跃策略）
    */
   private async matchStrategy(
     userId: string,
@@ -178,16 +182,26 @@ export class ClosedPnlSyncService {
       orderBy: { isActive: 'desc' },
     });
 
+    let aiModeStrategy: { id: string; name: string } | null = null;
+
     for (const s of strategies) {
+      // Grid 策略：symbol 精确匹配
       const gc = s.gridConfig as any;
       if (gc?.symbol && norm(gc.symbol) === normSymbol) return { id: s.id, name: s.name };
 
+      // 固定币种策略：coins 列表匹配
       const cc = s.coinSourceConfig as any;
       const coins: string[] = cc?.coins || [];
-      if (coins.some(c => norm(c) === normSymbol)) return { id: s.id, name: s.name };
+      if (coins.length > 0 && coins.some(c => norm(c) === normSymbol)) return { id: s.id, name: s.name };
+
+      // AI 自动选币策略（mode=ai, coins 为空）：记录为兜底
+      if (cc?.mode === 'ai' && coins.length === 0 && !aiModeStrategy) {
+        aiModeStrategy = { id: s.id, name: s.name };
+      }
     }
 
-    return null;
+    // 没有精确匹配时，返回 AI 自动选币策略作为兜底
+    return aiModeStrategy;
   }
 
   /**

@@ -1215,33 +1215,23 @@ export class AiController {
     const totalTradesMap = new Map<string, number>();
     const totalWinsMap = new Map<string, number>();
     if (strategyIds.length > 0) {
-      // Grid 策略：只用交易所同步的聚合记录（exchangeRef 非空），排除 grid_tp 逐笔重复
-      // 非 Grid 策略（Solo/Debate）：策略自己创建的 position 就是唯一记录，全部计入
-      const gridStrategyIds = result.data
-        .filter((s: any) => s.strategyType === 'grid')
-        .map((s: any) => s.id) as string[];
-      const nonGridStrategyIds = strategyIds.filter(id => !gridStrategyIds.includes(id));
-
+      // 统一只用交易所同步记录（exchangeRef 非空）计算盈亏
+      // 策略内部的 scale_out/grid_tp 是分批碎片，与交易所 1:1 不对应
       const [todayPositions, allPositions] = await Promise.all([
         this.prisma.position.findMany({
           where: {
-            status: 'closed', closedAt: { gte: todayStart },
-            OR: [
-              // Grid: 只看交易所同步记录
-              ...(gridStrategyIds.length > 0 ? [{ aiStrategyId: { in: gridStrategyIds }, exchangeRef: { not: null } }] : []),
-              // 非 Grid: 全部记录
-              ...(nonGridStrategyIds.length > 0 ? [{ aiStrategyId: { in: nonGridStrategyIds } }] : []),
-            ],
+            aiStrategyId: { in: strategyIds },
+            status: 'closed',
+            closedAt: { gte: todayStart },
+            exchangeRef: { not: null },
           },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
         this.prisma.position.findMany({
           where: {
+            aiStrategyId: { in: strategyIds },
             status: 'closed',
-            OR: [
-              ...(gridStrategyIds.length > 0 ? [{ aiStrategyId: { in: gridStrategyIds }, exchangeRef: { not: null } }] : []),
-              ...(nonGridStrategyIds.length > 0 ? [{ aiStrategyId: { in: nonGridStrategyIds } }] : []),
-            ],
+            exchangeRef: { not: null },
           },
           select: { aiStrategyId: true, realizedPnl: true },
         }),
@@ -1483,13 +1473,12 @@ export class AiController {
       const nowInUtc8 = Date.now() + UTC8_OFFSET;
       const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
       const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
-      const isGrid = strategy.strategyType === 'grid';
       const todayPositions = await this.prisma.position.findMany({
         where: {
           aiStrategyId: id,
           status: 'closed',
           closedAt: { gte: todayStart },
-          ...(isGrid ? { exchangeRef: { not: null } } : {}),
+          exchangeRef: { not: null },
         },
         select: { realizedPnl: true },
       });
@@ -2148,18 +2137,13 @@ export class AiController {
     const todayStartUtc8 = nowInUtc8 - (nowInUtc8 % (24 * 60 * 60 * 1000));
     const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
 
-    // Grid 策略的 grid_tp/ai_close 记录排除（有交易所同步的聚合记录替代）
-    // Solo/Research 策略的记录全部计入
+    // 统一只用交易所同步记录（exchangeRef 非空），与交易所 1:1 对应
     const todayPositions = await db.position.findMany({
       where: {
         userId,
         status: 'closed',
         closedAt: { gte: todayStart },
-        closeReason: { notIn: ['grid_tp', 'duplicate_cleanup'] },
-        OR: [
-          { aiStrategyId: { not: null } },
-          { source: 'ai_research' },
-        ],
+        exchangeRef: { not: null },
       },
       select: { realizedPnl: true },
     });
