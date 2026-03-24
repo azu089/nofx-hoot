@@ -629,7 +629,7 @@ Feel free to use any effective analysis method, but **confidence ≥ ${conf}** r
 <reasoning>
 Your chain of thought analysis...
 - Briefly analyze your thinking process
-- End with "Decision:" line stating your action for each coin (e.g. "Decision: SOL open_long 5x, DOGE wait, FET hold")
+- End with your final decision in first person (e.g. "我决定对SOL开多5x杠杆，DOGE和FET继续观望")
 </reasoning>
 
 <decision>
