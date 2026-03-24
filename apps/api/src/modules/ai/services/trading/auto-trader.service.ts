@@ -1514,6 +1514,7 @@ export class AutoTraderService {
                   originalAction: decision.action,
                   reasoning: `[置信度不足 ${decision.confidence}%<${minConf}%，未执行] ${decision.reasoning || ''}`,
                 },
+                analysis: _logAnalysis,
                 executed: false,
                 executionResult: { skipped: true, reason: 'min_confidence' },
                 rawResponse: _logRawResponse,
@@ -1862,6 +1863,7 @@ export class AutoTraderService {
                   ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                   ...(votes ? { votes } : {}),
                 },
+                analysis: undefined,
                 executed: false,
                 executionResult: { blocked: true, blockedBy: 'E4', reason: e4Reason },
               });
@@ -1952,6 +1954,7 @@ export class AutoTraderService {
                     stopLoss: decision.stopLoss, takeProfit: decision.takeProfit,
                     reasoning: decision.reasoning,
                   },
+                  analysis: undefined,
                   executed: false,
                   executionResult: { blocked: true, blockedBy: 'R4', reason },
                 });
@@ -2079,6 +2082,7 @@ export class AutoTraderService {
               ...(itemAiThinking ? { aiThinking: itemAiThinking } : {}),
               ...(itemMarketSnapshot ? { marketSnapshot: itemMarketSnapshot } : {}),
             },
+            analysis: undefined,
             executed: execResult.success,
             executionResult: {
               orderId: execResult.orderId,
@@ -2176,6 +2180,7 @@ export class AutoTraderService {
               ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
               ...(votes ? { votes } : {}),
             },
+            analysis: undefined,
             executed: false,
             executionResult: { error: error.message },
           });
