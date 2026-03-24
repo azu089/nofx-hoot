@@ -776,10 +776,14 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                 {adEr?.blocked && (
                   <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
-                {/* 每币reasoning（默认2行 + ∨ 展开） */}
-                {ad.reasoning && !adEr?.blocked && (
-                  <CoinReasoning text={ad.reasoning as string} />
-                )}
+                {/* 每币reasoning（对齐nofx: 短信号摘要，不重复整体分析） */}
+                {ad.reasoning && !adEr?.blocked && (() => {
+                  const r = String(ad.reasoning);
+                  // 跳过：与整体分析相同 或 包含全局账户信息（非该币独立分析）
+                  if (r === reasoning) return null;
+                  if (r.length > 200 && (r.includes('账户') || r.includes('保证金使用率') || r.includes('策略权益'))) return null;
+                  return <CoinReasoning text={r} />;
+                })()}
               </div>
             );
           })}
