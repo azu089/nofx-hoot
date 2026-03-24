@@ -859,7 +859,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
           : Array.isArray(response) ? response : [];
       } catch (e: any) {
         // API 可能不存在（旧版本 Binance），静默降级
-        this.logger.debug(`[CcxtAdapter] Binance Algo openOrders 查询失败(降级): ${e.message}`);
+        this.logger.warn(`[CcxtAdapter] Binance Algo openOrders 查询失败: ${e.message}`);
         return;
       }
 
@@ -1369,6 +1369,18 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
             shortQty += qty;
           }
         }
+      }
+
+      // ── 循环结束：处理未完全平仓但有已实现 PnL 的持仓 ──
+      // SOL 部分平仓场景：有 4 笔 closing trade 但仓位未归零
+      // 这些 PnL 在 Binance income 中已记录，我们也需要 emit
+      if (longClosedQty > 0.00001) {
+        emitLong();
+        resetLong();
+      }
+      if (shortClosedQty > 0.00001) {
+        emitShort();
+        resetShort();
       }
     }
 
