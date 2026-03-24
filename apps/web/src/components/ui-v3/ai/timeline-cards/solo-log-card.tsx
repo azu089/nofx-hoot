@@ -534,7 +534,7 @@ function AiThinkingSection({ text, modelId }: { text: string; modelId?: string }
       {expanded ? (
         <div className="text-xs text-[#9090A0] leading-relaxed max-h-96 overflow-y-auto space-y-2">
           {cleaned
-            .replace(/\n(?=最终决策|综上|因此[，,]|其他候选|决策[：:])/g, '\n\n')
+            .replace(/\n(?=最终决策|我决定|综上|因此[，,]|其他候选|决策[：:])/g, '\n\n')
             .split(/\n{2,}/)
             .filter(p => p.trim())
             .map((para, i) => (
