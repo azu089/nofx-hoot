@@ -300,79 +300,20 @@ export function parseDecisionsWithAnalysis(
   let s = removeInvisible(raw).trim();
   s = fixChinesePunctuation(s);
 
-  // === 优先：尝试提取 JSON 对象 {analysis, decisions} ===
+  // 1. 提取 <reasoning> 标签内容作为 analysis（给用户看的市场分析）
+  //    XML 格式天然分离分析和决策，DeepSeek 不会混入格式废话
+  const analysis = extractReasoning(s) || undefined;
 
-  // 1. 从 ```json 代码围栏中提取
-  const fenceMatch = RE_JSON_FENCE.exec(s);
-  const jsonCandidate = fenceMatch?.[1]?.trim() || s;
+  // 2. 解析决策 JSON（支持 <decision> 标签 / {analysis,decisions} 对象 / 裸数组）
+  const decisions = parseDecisions(s, defaultSymbol);
 
-  // 2. 从 <decision> 标签中提取
-  const decisionTagMatch = RE_DECISION_TAG.exec(s);
-  const candidates = [jsonCandidate, decisionTagMatch?.[1]?.trim()].filter(Boolean) as string[];
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
-      // {analysis, decisions} 对象格式
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const analysis: string | undefined = typeof parsed.analysis === 'string' ? parsed.analysis.trim() : undefined;
-        const rawDecisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
-        if (rawDecisions.length > 0) {
-          const decisions = rawDecisions
-            .map((r: any) => convertRawDecision(r, defaultSymbol))
-            .filter((d: any) => d !== null) as AiTradeDecision[];
-          if (decisions.length > 0) {
-            const cleanedAnalysis = cleanAnalysis(analysis);
-            logger.log(`Parsed {analysis, decisions} format: ${decisions.length} decisions, analysis=${cleanedAnalysis ? cleanedAnalysis.length + 'chars' : 'none'}`);
-            return { decisions, analysis: cleanedAnalysis };
-          }
-        }
-      }
-    } catch {
-      // 不是有效 JSON 对象，继续
-    }
+  if (analysis) {
+    logger.log(`Parsed <reasoning> analysis: ${analysis.length}chars, ${decisions.length} decisions`);
   }
 
-  // === 降级：<reasoning> + <decision> XML 格式 ===
-  const reasoningTrace = extractReasoning(s);
-  const decisions = parseDecisions(s, defaultSymbol);
-  return { decisions, analysis: cleanAnalysis(reasoningTrace || undefined) };
+  return { decisions, analysis };
 }
 
-/**
- * 清理 analysis 文本：移除 AI 构建 JSON 过程中的格式废话
- * DeepSeek 经常在 analysis 里混入 "输出JSON"、"计算具体数值"、"确保风险回报比" 等
- */
-function cleanAnalysis(text: string | undefined): string | undefined {
-  if (!text) return undefined;
-  const NOISE_PATTERNS = [
-    /^输出\s*JSON.*$/im,
-    /^现在[，,]?\s*写完整分析.*$/im,
-    /^决策数组[：:].*$/im,
-    /^计算\S+的具体数值[：:].*$/im,
-    /^确保\S*风险回报比.*$/im,
-    /^在\s*JSON\s*中直接.*$/im,
-    /^需指定.*$/im,
-    /^写入\s*JSON.*$/im,
-    /^确保分析用中文.*$/im,
-    /^- 入场价[：:]\s*当前.*$/im,
-    /^- 杠杆[：:]\s*\d+$/im,
-    /^- 仓位大小[：:]\s*\d+.*USDT.*$/im,
-    /^- 止损[：:]\s*\d+.*ATR.*$/im,
-    /^- 止盈[：:]\s*\d+.*ATR.*$/im,
-    /^- 信心[：:]\s*\d+$/im,
-    /^- 风险美元[：:]\s*计算.*$/im,
-    /^- 推理[：:]\s*".*"$/im,
-  ];
-  const lines = text.split('\n');
-  const cleaned = lines.filter(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return true; // 保留空行
-    return !NOISE_PATTERNS.some(p => p.test(trimmed));
-  });
-  const result = cleaned.join('\n').trim();
-  return result.length > 10 ? result : undefined;
-}
 
 /**
  * 尝试 JSON 解析（L4-L5: 格式校验 + JSON.parse）

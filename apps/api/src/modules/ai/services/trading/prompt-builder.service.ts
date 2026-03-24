@@ -206,7 +206,7 @@ export class PromptBuilderService {
     if (ps.mode) {
       const variant = ps.mode.toLowerCase().trim();
       if (variant === 'aggressive') {
-        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ 70\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
+        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ ${rc.minConfidence ?? 75}\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
       } else if (variant === 'conservative') {
         sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
       } else if (variant === 'scalping') {
@@ -617,27 +617,30 @@ Feel free to use any effective analysis method, but **confidence ≥ ${conf}** r
 
     return `# Output Format (Strictly Follow)
 
-Output a single JSON object with two fields: "analysis" (your market analysis) and "decisions" (action array).
+**Must use XML tags <reasoning> and <decision> to separate your analysis and decision JSON.**
 
-\`\`\`json
-{
-  "analysis": "Your complete market analysis (200-500 words). Must include: 1) Account risk check 2) Existing positions analysis 3) Each candidate coin analysis with specific indicator values 4) Final decision summary for each coin",
-  "decisions": [
-    {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M"},
-    {"symbol": "ETH/USDT:USDT", "action": "close_long", "confidence": 80, "reasoning": "论点失效，止损"}
-  ]
-}
-\`\`\`
+<reasoning>
+Your complete market analysis (shown to users). Must include:
+1. Account risk check (margin usage, available funds)
+2. Existing positions analysis (hold/close/take-profit?)
+3. Each candidate coin analysis (specific indicator values, signals)
+4. Final decision summary: clearly state your action for each coin and why
+</reasoning>
+
+<decision>
+[
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M"},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long", "confidence": 80, "reasoning": "论点失效，止损"}
+]
+</decision>
 
 ## Field Description
-- analysis: Your market analysis shown directly to users. Write clean readable text ONLY. Do NOT include: JSON construction notes, calculation steps, format instructions, "输出JSON", "计算具体数值", parameter explanations. Just write the analysis as if explaining to a trader.
 - action: open_long | open_short | close_long | close_short | hold | wait
   - hold = keep existing position, do NOT use for coins you have NO position in
   - wait = no action, use for coins you have NO position in and no signal
 - confidence: 0-100 (opening recommended ≥ ${minConf})
 - reasoning: per-coin short summary with ≥2 specific indicator values
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- **stop_loss / take_profit**: System will automatically place exchange conditional orders (STOP_MARKET / TAKE_PROFIT_MARKET) at your specified prices. These execute on the exchange — you do NOT need to manually close positions when SL/TP levels are reached.
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
 }
