@@ -185,17 +185,17 @@ export class ClosedPnlSyncService {
     let aiModeStrategy: { id: string; name: string } | null = null;
 
     for (const s of strategies) {
-      // Grid 策略：symbol 精确匹配
+      // Grid 策略：活跃的才精确匹配（已停用的 grid 不抢占新交易）
       const gc = s.gridConfig as any;
-      if (gc?.symbol && norm(gc.symbol) === normSymbol) return { id: s.id, name: s.name };
+      if (s.isActive && gc?.symbol && norm(gc.symbol) === normSymbol) return { id: s.id, name: s.name };
 
-      // 固定币种策略：coins 列表匹配
+      // 固定币种策略：活跃的才匹配
       const cc = s.coinSourceConfig as any;
       const coins: string[] = cc?.coins || [];
-      if (coins.length > 0 && coins.some(c => norm(c) === normSymbol)) return { id: s.id, name: s.name };
+      if (s.isActive && coins.length > 0 && coins.some(c => norm(c) === normSymbol)) return { id: s.id, name: s.name };
 
-      // AI 自动选币策略（mode=ai, coins 为空）：记录为兜底
-      if (cc?.mode === 'ai' && coins.length === 0 && !aiModeStrategy) {
+      // AI 自动选币策略（mode=ai, coins 为空）：活跃的作为兜底
+      if (s.isActive && cc?.mode === 'ai' && coins.length === 0 && !aiModeStrategy) {
         aiModeStrategy = { id: s.id, name: s.name };
       }
     }
