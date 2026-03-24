@@ -260,35 +260,29 @@ function rrColor(rr: number): string {
   return '#F43F5E';
 }
 
-/** 格式化价格显示 */
-function formatPrice(price: number | undefined): string {
-  if (!price || price === 0) return '-';
-  if (price >= 1000) return '$' + price.toFixed(2);
-  if (price >= 1) return '$' + price.toFixed(4);
-  return '$' + price.toFixed(6);
+/** AI 推理分段数据 */
+interface ReasoningSection {
+  title?: string;
+  content: string;
 }
 
-/** 置信度颜色 */
-function getConfidenceColor(confidence: number): string {
-  if (confidence >= 80) return '#22C55E';
-  if (confidence >= 60) return '#F59E0B';
-  return '#F6465D';
-}
-
-/** 解析 AI 推理文本为结构化分段（内部占位，保留供将来使用） */
-function _parseReasoningSectionsUnused(text: string): Array<{ title?: string; content: string }> {
+/** 解析 AI 推理文本为结构化分段 */
+function parseReasoningSections(text: string): ReasoningSection[] {
   if (!text) return [];
   const lines = text.split('\n');
-  const sections: Array<{ title?: string; content: string }> = [];
+  const sections: ReasoningSection[] = [];
   let currentTitle: string | undefined;
   let currentLines: string[] = [];
 
   const extractHeader = (line: string): string | null => {
     const t = line.trim();
+    // **Header：** 或 **Header:**
     const m1 = t.match(/^\*\*([^*]{2,12})[：:]\*\*/);
     if (m1) return m1[1];
+    // ### Header / ## Header
     const m2 = t.match(/^#{1,3}\s+([\u4e00-\u9fffA-Za-z0-9 ]{2,15})[\s：:]*$/);
     if (m2) return m2[1].trim();
+    // 中文短标题行：2-8汉字 + 冒号，行尾无内容
     const m3 = t.match(/^([\u4e00-\u9fff]{2,8})[：:]\s*$/);
     if (m3) return m3[1];
     return null;
@@ -311,6 +305,171 @@ function _parseReasoningSectionsUnused(text: string): Array<{ title?: string; co
   // 没有找到任何标题 → 返回纯文本块
   if (!sections.some(s => s.title)) return [{ content: text.trim() }];
   return sections.filter(s => s.content.length > 0 || s.title);
+}
+
+/** 根据标题关键词返回主题色 */
+const SECTION_COLOR_MAP: Array<{ keywords: string[]; color: string }> = [
+  { keywords: ['技术', '指标', 'RSI', 'MACD', 'KDJ', '均线', '价格', '支撑', '压力'], color: '#06B6D4' },
+  { keywords: ['趋势', '行情', '走势', '方向'], color: '#3B82F6' },
+  { keywords: ['基本', '消息', '新闻', '事件', '宏观'], color: '#8B5CF6' },
+  { keywords: ['情绪', '市场', '资金', '多空', '仓位'], color: '#F59E0B' },
+  { keywords: ['风险', '止损', '止盈', '安全', '危险'], color: '#F43F5E' },
+  { keywords: ['结论', '建议', '总结', '综合', '判断', '决策', '操作'], color: '#10B981' },
+  { keywords: ['量能', '成交量', '换手', '流动'], color: '#A78BFA' },
+];
+
+function getSectionColor(title: string): string {
+  for (const { keywords, color } of SECTION_COLOR_MAP) {
+    if (keywords.some(k => title.includes(k))) return color;
+  }
+  return '#6B7280';
+}
+
+/** 按中文/英文句号将长段落拆成视觉小段（每2句一组，语义关键词额外断段） */
+function toParas(raw: string): string[] {
+  // 只在中文句末标点后断句；英文 !? 要求前面非数字，避免拆分小数（如 576.61）
+  const sentences = raw.split(/(?<=[。！？])\s*|(?<=(?<!\d)[!?])\s+/).map(s => s.trim()).filter(s => s.length > 1);
+  if (sentences.length <= 1) return [raw.trim()];
+
+  // 结论/转折类关键词出现在句首时，无论当前组是否满 2 句都先断段
+  const TOPIC_BREAK = /^(因此|综上|总结|结论|建议|操作建议|风险提示|注意|综合来看|总的来说|仓位管理|网格方向|Therefore|In summary|Overall|Risk)/;
+
+  const paras: string[] = [];
+  let group: string[] = [];
+
+  for (const s of sentences) {
+    if (group.length > 0 && TOPIC_BREAK.test(s)) {
+      paras.push(group.join(''));
+      group = [s];
+    } else {
+      group.push(s);
+      if (group.length >= 2) {
+        paras.push(group.join(''));
+        group = [];
+      }
+    }
+  }
+  if (group.length > 0) paras.push(group.join(''));
+  return paras;
+}
+
+/** 推理展示组件：收起=2行，展开=分段；可传 modelId 在文字上方显示模型 Logo */
+function SectionedReasoning({ text, modelId }: { text: string; modelId?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const cleaned = cleanReasoning(text);
+  if (!cleaned) return null;
+
+  const needsExpand = cleaned.length > 60;
+
+  // 模型标识头（在对话框内部顶部）
+  const modelHeader = modelId ? (() => {
+    const info = MODEL_DISPLAY[modelId];
+    const name = info?.name || modelId;
+    const color = info?.color || '#9090A0';
+    return (
+      <div className="flex items-center gap-1.5 mb-1.5">
+        {info?.logo ? (
+          <img src={info.logo} alt={name} title={name} className="w-4 h-4 rounded-full flex-shrink-0" />
+        ) : (
+          <span className="w-4 h-4 rounded-full bg-[#1E1E2E] flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+            style={{ color }}>
+            {name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="text-[10px]" style={{ color }}>{name}</span>
+      </div>
+    );
+  })() : null;
+
+  const ToggleBtn = ({ cls }: { cls?: string }) => (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+      className={`text-[#4A4A6A] hover:text-[#9090A0] transition-colors flex-shrink-0 ${cls ?? ''}`}
+    >
+      {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+    </button>
+  );
+
+  const sections = parseReasoningSections(cleaned);
+  const hasHeaders = sections.some(s => s.title);
+
+  // ── 收起：统一 2 行截断（不分有无标题） ──
+  if (!expanded) {
+    return (
+      <div>
+        {modelHeader}
+        <p className="text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
+        {needsExpand && <div className="flex justify-center mt-1"><ToggleBtn /></div>}
+      </div>
+    );
+  }
+
+  // ── 展开：有标题 → 彩色分段；无标题 → 按段落 ──
+  if (hasHeaders) {
+    return (
+      <div className="space-y-1.5">
+        {modelHeader}
+        {sections.map((sec, i) => {
+          const color = sec.title ? getSectionColor(sec.title) : '#6B7280';
+          return (
+            <div key={i} className="pl-2 border-l-2" style={{ borderColor: `${color}50` }}>
+              {sec.title && (
+                <span className="text-[10px] font-semibold" style={{ color }}>{sec.title}</span>
+              )}
+              {sec.content && (
+                <div className="space-y-1 mt-0.5">
+                  {sec.content.split('\n').filter(l => l.trim()).map((line, li) => (
+                    <p key={li} className="text-xs text-[#9090A0] leading-relaxed">{line.trim()}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="flex justify-center"><ToggleBtn /></div>
+      </div>
+    );
+  }
+
+  const paras = toParas(cleaned);
+  return (
+    <div className="space-y-2">
+      {modelHeader}
+      {paras.map((para, i) => (
+        <p key={i} className="text-xs text-[#9090A0] leading-relaxed">{para}</p>
+      ))}
+      <div className="flex justify-center"><ToggleBtn /></div>
+    </div>
+  );
+}
+
+/** AI 推理链展开区块（DeepSeek 扩展思考 / 链式推理） */
+function GridThinkingChain({ text, t }: { text: string; t: TFunc }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  const preview = text.slice(0, 60).replace(/\n/g, ' ');
+  return (
+    <div className="border-t border-[#1E1E2E]/60 pt-2 mt-1">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+        className="w-full flex items-center gap-1.5 text-[10px] text-[#606070] hover:text-[#9090A0] transition-colors"
+      >
+        <span className="w-3 h-3 rounded-sm bg-[#1E1E2E] flex items-center justify-center text-[7px] font-bold text-[#8B5CF6] flex-shrink-0">λ</span>
+        <span className="text-[#4A5568] font-medium">{t('timeline.gridThinking')}</span>
+        <span className="flex-1 text-left truncate text-[#3A3A5A]">{!expanded ? preview + '…' : ''}</span>
+        {expanded ? <ChevronUp className="w-3 h-3 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 flex-shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 pl-3 border-l-2 border-[#2E2E4E] space-y-1.5 max-h-[200px] overflow-y-auto">
+          {text.split('\n').filter(l => l.trim()).map((line, i) => (
+            <p key={i} className="text-xs text-[#7070A0] leading-relaxed">{line.trim()}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** 每币 reasoning（默认2行截断 + ∨ 展开全文） */
@@ -545,121 +704,81 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         );
       })()}
 
-      {/* === 多币种合并日志 — nofx ActionCards 结构 === */}
+      {/* === 多币种合并日志（对齐 nofx: 一轮一条） === */}
       {isMultiCoin && !isGridLog && (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {allDecisions.map((ad, idx) => {
             const adAction = ad.action || 'wait';
             const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
             const adEr = ad.executionResult;
             const adEntryPrice = adEr?.price || 0;
+            const adAmt = adEr?.amount;
+            const adPvl = adEr?.positionValueLimit || 0;
+            const adAiReq = adEr?.aiRequestedUSD || (ad as any).positionSizeUSD || 0;
+            const adNotional = adEr?.actualNotional || (adEntryPrice > 0 && adAmt ? adEntryPrice * Number(adAmt) : 0);
+            const adMargin = adEr?.actualMargin || (adNotional && ad.leverage ? adNotional / ad.leverage : 0);
+            const adTruncated = adEr?.wasTruncated || false;
+            const adPct = adPvl > 0 && adAiReq > 0 ? Math.round(adAiReq / adPvl * 100) : (ad.positionSizePercent || 0);
             const adSymbol = (ad.symbol || '').replace(/\/USDT.*$/, '');
             const isOpen = adAction === 'open_long' || adAction === 'open_short';
-            const adConfidence = ad.confidence ?? 0;
-            const adBlocked = adEr?.blocked;
-            const adBlockedReason = adEr?.reason || adEr?.blockedBy || '';
-
-            // SL/TP 百分比
-            const slPct = adEntryPrice > 0 && ad.stopLoss != null
-              ? ((ad.stopLoss - adEntryPrice) / adEntryPrice * 100).toFixed(1)
-              : null;
-            const tpPct = adEntryPrice > 0 && ad.takeProfit != null
-              ? ((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)
-              : null;
-
-            // R:R
-            const adRr = ad.stopLoss != null && ad.takeProfit != null && adEntryPrice > 0
-              ? calcRiskReward(adEntryPrice, ad.stopLoss, ad.takeProfit)
-              : null;
-
+            const isClose = adAction === 'close_long' || adAction === 'close_short';
             return (
-              <div
-                key={idx}
-                className="rounded-lg p-3"
-                style={{
-                  border: `1px solid ${adCfg.color}33`,
-                  background: 'linear-gradient(135deg, #1E2329 0%, #181C21 100%)',
-                }}
-              >
-                {/* 标题行: 币种 + 动作 badge + 置信度 */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-sm" style={{ color: '#EAECEF' }}>{adSymbol}</span>
-                    <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-                      style={{ background: adCfg.bg, color: adCfg.color }}
-                    >
-                      {ACTION_I18N[adAction] ? t(ACTION_I18N[adAction]) : adCfg.label}
-                    </span>
-                  </div>
-                  <span className="text-xs font-semibold" style={{ color: getConfidenceColor(adConfidence) }}>
-                    {adConfidence}%
+              <div key={idx} className={`${idx > 0 ? 'pt-1.5 border-t border-[#1E1E2E]/50' : ''}`}>
+                {/* 行1: 币种 + 动作 + 参数 */}
+                <div className="flex items-center gap-2 text-xs font-mono">
+                  <span className="text-[#06B6D4] font-sans font-medium min-w-[32px]">{adSymbol}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold font-sans shrink-0" style={{ color: adCfg.color, backgroundColor: adCfg.bg }}>
+                    {ACTION_I18N[adAction] ? t(ACTION_I18N[adAction]) : adCfg.label}
                   </span>
+                  {isOpen && ad.leverage != null && ad.leverage > 1 && <span className="text-[#9090A0]">{ad.leverage}x</span>}
+                  {isOpen && adMargin > 0 && <span className="text-[#10B981]">${adMargin.toFixed(2)}</span>}
+                  {(isOpen || isClose) && adEntryPrice > 0 && <span className="text-[#F8F8FC]">${adEntryPrice.toFixed(2)}</span>}
+                  {(isOpen || isClose) && adAmt && <span className="text-[#F8F8FC]">×{adAmt}</span>}
+                  <span className="ml-auto font-semibold shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
                 </div>
-
-                {/* 交易参数 — 仅开仓 */}
-                {isOpen && (
-                  <div className="grid grid-cols-4 gap-2 mt-2 pt-2" style={{ borderTop: '1px solid #2B3139' }}>
-                    <div className="text-center">
-                      <div className="text-[10px]" style={{ color: '#848E9C' }}>入场</div>
-                      <div className="font-mono text-xs font-semibold" style={{ color: '#EAECEF' }}>
-                        {adEntryPrice > 0 ? formatPrice(adEntryPrice) : '-'}
-                      </div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px]" style={{ color: '#F6465D' }}>止损</div>
-                      <div className="font-mono text-xs font-semibold" style={{ color: '#F6465D' }}>
-                        {ad.stopLoss != null ? formatPrice(Number(ad.stopLoss)) : '-'}
-                      </div>
-                      {slPct != null && (
-                        <div className="text-[10px]" style={{ color: '#F6465D' }}>{slPct}%</div>
-                      )}
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px]" style={{ color: '#0ECB81' }}>止盈</div>
-                      <div className="font-mono text-xs font-semibold" style={{ color: '#0ECB81' }}>
-                        {ad.takeProfit != null ? formatPrice(Number(ad.takeProfit)) : '-'}
-                      </div>
-                      {tpPct != null && (
-                        <div className="text-[10px]" style={{ color: '#0ECB81' }}>+{tpPct}%</div>
-                      )}
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[10px]" style={{ color: '#848E9C' }}>杠杆</div>
-                      <div className="font-mono text-xs font-semibold" style={{ color: '#F0B90B' }}>
-                        {ad.leverage != null ? `${ad.leverage}x` : '-'}
-                      </div>
-                    </div>
+                {/* 行2: 上限 + 百分比 + 名义（仅开仓） */}
+                {isOpen && (adPvl > 0 || adNotional > 0) && (
+                  <div className="text-[10px] text-[#606070] font-mono ml-[40px] mt-0.5">
+                    {adPvl > 0 && <>{t('timeline.limitLabel')}${adPvl.toFixed(0)} </>}
+                    {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
+                    {adPct > 0 && <> </>}
+                    {adNotional > 0 && (
+                      adTruncated
+                        ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span></>
+                        : <>{t('timeline.notionalLabel')} ${adNotional.toFixed(0)}</>
+                    )}
                   </div>
                 )}
-
-                {/* R:R — 仅开仓且有 SL+TP */}
-                {isOpen && adRr != null && (
-                  <div className="flex items-center justify-between mt-2 pt-2 text-xs" style={{ borderTop: '1px solid #2B3139' }}>
-                    <span style={{ color: '#848E9C' }}>风险回报</span>
-                    <span style={{ color: rrColor(adRr) }}>1:{adRr.toFixed(1)}</span>
+                {/* 行3: SL/TP + R:R（仅开仓） */}
+                {isOpen && (ad.stopLoss != null || ad.takeProfit != null) && (
+                  <div className="flex items-center gap-3 text-[10px] font-mono ml-[40px] mt-0.5">
+                    {ad.stopLoss != null && (
+                      <span className="text-[#F43F5E]">
+                        ↓${Number(ad.stopLoss).toLocaleString()}
+                        {adEntryPrice > 0 && <span className="opacity-60"> ({((ad.stopLoss - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                      </span>
+                    )}
+                    {ad.takeProfit != null && (
+                      <span className="text-[#10B981]">
+                        ↑${Number(ad.takeProfit).toLocaleString()}
+                        {adEntryPrice > 0 && <span className="opacity-60"> (+{((ad.takeProfit - adEntryPrice) / adEntryPrice * 100).toFixed(1)}%)</span>}
+                      </span>
+                    )}
+                    {ad.stopLoss != null && ad.takeProfit != null && adEntryPrice > 0 && (() => {
+                      const slDist = Math.abs(adEntryPrice - ad.stopLoss);
+                      const tpDist = Math.abs(ad.takeProfit - adEntryPrice);
+                      const rrVal = slDist > 0 ? (tpDist / slDist) : 0;
+                      return rrVal > 0 ? <span className={`ml-auto font-semibold ${rrVal >= 2 ? 'text-[#10B981]' : rrVal >= 1.5 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>1:{rrVal.toFixed(1)}</span> : null;
+                    })()}
                   </div>
                 )}
-
-                {/* 每币 reasoning — 2行截断 + 展开 */}
-                {ad.reasoning && !adBlocked && (
-                  <div className="mt-2 pt-2" style={{ borderTop: '1px solid #2B3139' }}>
-                    <CoinReasoning text={ad.reasoning as string} />
-                  </div>
+                {/* 拦截原因 */}
+                {adEr?.blocked && (
+                  <div className="text-[10px] text-[#F59E0B] ml-[40px] mt-0.5">{adEr.reason || adEr.blockedBy}</div>
                 )}
-
-                {/* 拦截/错误 */}
-                {adBlocked && (
-                  <div
-                    className="mt-2 rounded p-2 text-[10px]"
-                    style={{
-                      background: 'rgba(246, 70, 93, 0.1)',
-                      border: '1px solid rgba(246, 70, 93, 0.3)',
-                      color: '#F6465D',
-                    }}
-                  >
-                    {adBlockedReason}
-                  </div>
+                {/* 每币reasoning（默认2行 + ∨ 展开） */}
+                {ad.reasoning && !adEr?.blocked && (
+                  <CoinReasoning text={ad.reasoning as string} />
                 )}
               </div>
             );
@@ -667,9 +786,46 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
         </div>
       )}
 
-      {/* 多币种合并日志 — AI 整体市场分析 */}
-      {isMultiCoin && reasoning && (
-        <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+      {/* 多币种合并日志的共享 AI 分析 + 市场数据 */}
+      {isMultiCoin && (
+        <div className="mt-1.5">
+          {/* 市场数据快照 — 多币种模式隐藏（指标已包含在每币reasoning中）
+              恢复方法：取消下方注释即可
+          {(() => {
+            const snapshotDecision = allDecisions?.find(ad => ad.marketSnapshot);
+            const ms = snapshotDecision?.marketSnapshot || d.marketSnapshot;
+            if (!ms) return null;
+            const atrPct = ms.atr14 && ms.price ? (ms.atr14 / ms.price * 100) : null;
+            return (
+              <div className="text-[11px] font-mono space-y-0.5 mb-2">
+                <div className="grid grid-cols-4 text-[#9090A0]">
+                  <span className="text-[#F8F8FC]">${ms.price?.toFixed(2) || '—'}</span>
+                  <span>RSI {ms.rsi14?.toFixed(1) ?? '—'}</span>
+                  <span>{ms.macdHist != null ? `MACD ${ms.macdHist.toFixed(3)}` : ''}</span>
+                  <span className="text-right">{atrPct != null ? `ATR ${atrPct.toFixed(2)}%` : ''}</span>
+                </div>
+                <div className="grid grid-cols-4 text-[#9090A0]">
+                  <span>{ms.fundingRate != null ? `FR ${(ms.fundingRate * 100).toFixed(4)}%` : ''}</span>
+                  <span>{ms.longPct != null ? `${Math.round(ms.longPct)}/${Math.round(100 - ms.longPct)}` : ''}</span>
+                  <span>{ms.oiChange != null ? `OI ${ms.oiChange}` : ''}</span>
+                  <span className="text-right">{ms.emaTrend && <span className={ms.emaTrend.includes('多') ? 'text-[#10B981]' : ms.emaTrend.includes('空') ? 'text-[#F43F5E]' : ''}>EMA {ms.emaTrend}</span>}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  {ms.dataSources && Object.entries(ms.dataSources).map(([k, v]) => (
+                    <span key={k} className={`text-[10px] ${v ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      {k === 'oi' ? 'OI' : k === 'fr' ? 'FR' : k === 'ranking' ? '排名' : k === 'enhanced' ? '增强' : k === 'oiRanking' ? 'OI榜' : k === 'netFlow' ? '资金流' : '涨跌'}{v ? '✓' : '✗'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          */}
+          {/* AI 整体市场分析（来自 analysis 字段，存入 d.reasoning） */}
+          {reasoning && (
+            <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          )}
+        </div>
       )}
 
       {/* === 普通 Solo: 极简决策卡片 === */}
@@ -925,17 +1081,17 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             </div>
           )}
 
-          {/* AI 市场分析（带模型 logo） */}
+          {/* AI 市场分析 — 复用 SectionedReasoning 自动分段（带 AI logo） */}
           {(gridAnalysisText || (!gridAnalysisText && d.aiThinking)) && (
-            <AiThinkingSection
+            <SectionedReasoning
               text={gridAnalysisText || (d.aiThinking as string)}
               modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)}
             />
           )}
 
-          {/* AI 推理链（DeepSeek-Reasoner 扩展思考）— 纯文本，无 logo */}
+          {/* AI 推理链（DeepSeek-Reasoner 扩展思考）— 在分析下方可展开 */}
           {d.aiThinking && gridAnalysisText && (
-            <AiThinkingSection text={d.aiThinking as string} />
+            <GridThinkingChain text={d.aiThinking as string} t={t} />
           )}
 
         </div>
