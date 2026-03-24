@@ -871,10 +871,11 @@ export class AutoTraderService {
         rawResponse?: string;
         systemPrompt?: string;
         userPrompt?: string;
-        analysis?: string;
+        analysis?: string;   // 整体市场分析（<reasoning>标签内容）
         aiThinking?: string;
         marketSnapshot?: any;
       }> = [];
+
 
       // Phase 9.0 T4: Debate 模式 — 一次辩论覆盖所有候选币（节省 80% LLM 调用）
       // 旧: 5 币 × 28 LLM 调用 = 140 次
@@ -1219,6 +1220,7 @@ export class AutoTraderService {
         decision: any;
         executed: boolean;
         executionResult: any;
+        analysis?: string;    // 整体市场分析（<reasoning>标签，合并时写入顶层）
         marketSnapshot?: any;
         aiThinking?: string;
         rawResponse?: string;
@@ -1432,13 +1434,15 @@ export class AutoTraderService {
                 leverage: decision.leverage,
                 positionSizePercent: decision.positionSizePercent,
                 ...(decision.positionSizeUSD ? { positionSizeUSD: decision.positionSizeUSD } : {}),
-                // reasoning=整体市场分析（给用户看），aiThinking=DeepSeek思考链
-                reasoning: _logAnalysis || decision.reasoning,
+                // reasoning = 该币 JSON 短摘要（不被整体分析覆盖）
+                reasoning: decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(consensusVotes ? { votes: consensusVotes } : {}),
                 ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
                 ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
               },
+              // 整体分析单独存，合并日志时写入顶层 reasoning
+              analysis: _logAnalysis,
               executed: false,
               executionResult: { skipped: true, reason: decision.action },
               marketSnapshot: _logMarketSnapshot,
@@ -1663,12 +1667,13 @@ export class AutoTraderService {
                 ...(safetyCapitalUSD != null ? { capitalUSD: safetyCapitalUSD } : {}),
                 stopLoss: decision.stopLoss,
                 takeProfit: decision.takeProfit,
-                reasoning: _logAnalysis || decision.reasoning,
+                reasoning: decision.reasoning,
                 ...(strategy.tradingMode !== 'debate' ? { modelId: quickModel } : {}),
                 ...(consensusVotes ? { votes: consensusVotes } : {}),
                 ...(_logAiThinking ? { aiThinking: _logAiThinking } : {}),
                 ...(_logMarketSnapshot ? { marketSnapshot: _logMarketSnapshot } : {}),
               },
+              analysis: _logAnalysis,
               executed: false,
               executionResult: {
                 blocked: true,
@@ -2201,15 +2206,22 @@ export class AutoTraderService {
         const primaryDecision = cycleDecisions.find(d => d.executed) || cycleDecisions[0];
         const primarySymbol = primaryDecision.symbol;
 
+        // 提取共享的整体分析（来自 <reasoning> 标签），用于顶层 reasoning
+        const sharedAnalysis = primaryDecision.analysis || cycleDecisions.find(d => d.analysis)?.analysis;
+
         await db.aiStrategyLog.create({
           data: {
             strategyId,
             symbol: primarySymbol,
             decision: {
               ...primaryDecision.decision,
+              // 顶层 reasoning = 整体市场分析（<reasoning>标签），给用户看
+              ...(sharedAnalysis ? { reasoning: sharedAnalysis } : {}),
               allDecisions: cycleDecisions.map(d => ({
                 symbol: d.symbol,
                 ...d.decision,
+                // 每币 reasoning = JSON 短摘要（不被整体分析覆盖）
+                reasoning: d.decision.reasoning !== sharedAnalysis ? d.decision.reasoning : '',
                 executed: d.executed,
                 executionResult: d.executionResult,
               })),
