@@ -206,7 +206,7 @@ export class PromptBuilderService {
     if (ps.mode) {
       const variant = ps.mode.toLowerCase().trim();
       if (variant === 'aggressive') {
-        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ ${rc.minConfidence ?? 75}\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
+        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ ${rc.minConfidence ?? 60}\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
       } else if (variant === 'conservative') {
         sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
       } else if (variant === 'scalping') {
@@ -590,7 +590,7 @@ Calculate position_size_usd based on your confidence and the Position Value Limi
 
     return `## Trading Frequency
 - Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
-- >2 trades/hour = Overtrading — you are destroying profits with fees
+- >2 trades/hour = Overtrading
 - Single position hold time ≥ 30-60 minutes
 If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
 
