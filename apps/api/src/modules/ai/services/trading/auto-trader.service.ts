@@ -2403,8 +2403,9 @@ export class AutoTraderService {
             if (syncResult.incomePnl24h !== undefined) {
               await this.prisma.aiStrategy.update({
                 where: { id: strategyId },
-                data: { totalPnl: syncResult.incomePnl24h },
+                data: { totalPnl: syncResult.incomePnlToday },
               });
+              this.logger.debug(`[自动交易] income PnL: 今日=${syncResult.incomePnlToday.toFixed(4)}, 24h=${syncResult.incomePnl24h.toFixed(4)}`);
             }
           } finally {
             try { await syncAdapter.dispose(); } catch { /* 忽略 */ }

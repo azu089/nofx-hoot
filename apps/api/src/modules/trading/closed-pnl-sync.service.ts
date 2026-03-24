@@ -38,12 +38,21 @@ export class ClosedPnlSyncService {
     apiKeyId: string,
     exchange: string,
     adapter: ExchangeAdapter,
-  ): Promise<{ synced: number; deleted: number; charged: number; balanceDepleted: boolean; incomePnl24h: number }> {
+  ): Promise<{ synced: number; deleted: number; charged: number; balanceDepleted: boolean; incomePnl24h: number; incomePnlToday: number }> {
     // ─── Step 0: 从 income API 拿准确 PnL（不依赖仓位重建）───
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // 北京时间今天零点
+    const UTC8_OFFSET = 8 * 60 * 60 * 1000;
+    const nowUtc8 = Date.now() + UTC8_OFFSET;
+    const todayStartUtc8 = nowUtc8 - (nowUtc8 % (24 * 60 * 60 * 1000));
+    const todayStart = new Date(todayStartUtc8 - UTC8_OFFSET);
+
     let incomePnl24h = 0;
+    let incomePnlToday = 0;
     try {
       incomePnl24h = await adapter.getIncomePnl(since);
+      incomePnlToday = await adapter.getIncomePnl(todayStart);
     } catch (e: any) {
       this.logger.debug(`[历史持仓同步] getIncomePnl 失败(非致命): ${e.message}`);
     }
@@ -54,11 +63,11 @@ export class ClosedPnlSyncService {
       exchangeRecords = await adapter.getClosedPnl(since, 100);
     } catch (e: any) {
       this.logger.warn(`[历史持仓同步] 拉取失败(非致命): ${e.message}`);
-      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h };
+      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h, incomePnlToday };
     }
 
     if (!exchangeRecords || exchangeRecords.length === 0) {
-      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h };
+      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h, incomePnlToday };
     }
 
     // 去重（同一 exchangeId 只取最新）
@@ -199,7 +208,7 @@ export class ClosedPnlSyncService {
       });
     }
 
-    return { synced, deleted: 0, charged, balanceDepleted, incomePnl24h };
+    return { synced, deleted: 0, charged, balanceDepleted, incomePnl24h, incomePnlToday };
   }
 
   /**
