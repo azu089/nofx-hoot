@@ -532,8 +532,14 @@ function AiThinkingSection({ text, modelId }: { text: string; modelId?: string }
       )}
       {/* 文本内容 */}
       {expanded ? (
-        <div className="text-xs text-[#9090A0] leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
-          {cleaned}
+        <div className="text-xs text-[#9090A0] leading-relaxed max-h-96 overflow-y-auto space-y-2">
+          {cleaned
+            .replace(/\n(?=最终决策|综上|因此[，,]|其他候选|决策[：:])/g, '\n\n')
+            .split(/\n{2,}/)
+            .filter(p => p.trim())
+            .map((para, i) => (
+              <div key={i} className="whitespace-pre-wrap">{para.trim()}</div>
+            ))}
         </div>
       ) : (
         <p className="text-xs text-[#9090A0] leading-relaxed line-clamp-2">{cleaned}</p>
