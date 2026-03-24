@@ -639,7 +639,7 @@ Your complete market analysis (shown to users). Must include:
   - hold = keep existing position, do NOT use for coins you have NO position in
   - wait = no action, use for coins you have NO position in and no signal
 - confidence: 0-100 (opening recommended ≥ ${minConf})
-- reasoning: per-coin short summary with ≥2 specific indicator values
+- reasoning: THIS COIN's signal summary ONLY (1-2 sentences, ≥2 indicator values). Do NOT repeat account info or other coins' analysis here. Example: "EMA空头排列+OI↑$6M+Price↓空头主导+机构流出$11M"
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
