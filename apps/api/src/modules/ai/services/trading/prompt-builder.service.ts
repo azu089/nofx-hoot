@@ -631,8 +631,8 @@ Step 2: JSON decision array
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300},
-  {"symbol": "ETH/USDT:USDT", "action": "close_long"}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头+OI↑Price↓空头主导"},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "论点失效，止损"}
 ]
 \`\`\`
 </decision>
