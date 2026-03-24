@@ -56,8 +56,6 @@ export interface PromptConfig {
   todayTrades?: number;
   /** 策略运行时长（小时） */
   runningHours?: number;
-  /** 连续 wait/hold 周期数（≥3 时注入降低门槛提示） */
-  consecutiveWaits?: number;
   /** AI 输出语言 locale (e.g. "zh-CN", "en", "ko") */
   locale?: string;
 }
@@ -200,7 +198,7 @@ export class PromptBuilderService {
     // 跟踪止盈和分批止盈由持仓格式中的 ⚠️ 提示 + drawdown-monitor 代码层负责
 
     // Section 4: Trading Frequency Awareness
-    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, config.consecutiveWaits));
+    sections.push(this.buildFrequencyAwareness(config.intervalMinutes, config.todayTrades, rc.minConfidence));
 
     // Section 5: Output Format (动态示例，对齐 nofx engine.go L1143-1155)
     sections.push(this.buildOutputFormat(rc));
@@ -368,17 +366,8 @@ export class PromptBuilderService {
 
         lines.push(`  ${i + 1}. ${p.symbol} ${p.side.toUpperCase()} | Entry $${p.entryPrice.toFixed(4)} ${currentPrice}${qty}${posValue}${marginStr}PnL: ${p.pnlPercent > 0 ? '+' : ''}${p.pnlPercent.toFixed(2)}%${pnlAmt}${peak} | ${p.leverage}x${liq}${holdStr}`);
 
-        // 对齐 nofx formatter.go L246-253: 持仓动态提示
-        if (p.peakPnlPercent !== undefined && p.peakPnlPercent >= 2) {
-          const drawback = p.pnlPercent - p.peakPnlPercent;
-          const drawbackPct = p.peakPnlPercent > 0 ? (drawback / p.peakPnlPercent) * 100 : 0;
-          if (drawbackPct <= -30) {
-            lines.push(`    ⚠️ Take-profit alert: PnL pulled back ${Math.abs(drawbackPct).toFixed(0)}% from peak ${p.peakPnlPercent.toFixed(2)}% → current ${p.pnlPercent.toFixed(2)}%. Consider taking profit.`);
-          }
-        }
-        if (p.pnlPercent < -4.0) {
-          lines.push(`    ⚠️ Stop-loss alert: Loss approaching -5% hard stop. Evaluate exit.`);
-        }
+        // 对齐 nofx formatPositionInfo: 只展示纯数据，不注入提示性文字
+        // nofx 的 SL/TP 由交易所条件单执行，AI 不需要提示
 
         // 对齐 nofx: 持仓币的市场数据紧跟持仓后（AI 不需要跳跃式阅读）
         if (ctx.positionMarketDataMap && ctx.positionMarketDataMap[p.symbol]) {
@@ -491,41 +480,8 @@ export class PromptBuilderService {
       lines.push('4. Missing any coin or giving lazy cross-references = INVALID output.');
       lines.push(`5. Return the array in the EXACT same order as listed above: ${coinList}. Index 0 = first coin, do NOT reorder.`);
     }
-    // 对齐 nofx getDecisionRequirementsZH L125-176: user prompt 末尾的决策步骤 + 高质量示例
-    lines.push(`
----
-
-## 📝 现在请做出决策
-
-### 决策步骤
-
-1. **分析账户风险**: 当前保证金使用率是否在安全范围？是否有足够资金开新仓？
-2. **分析现有持仓**（如果有）: 是否触发止损条件？是否触发跟踪止盈条件？
-3. **分析候选币种**（如果有）: 技术形态是否符合进场条件？持仓量变化是否支持趋势？多个时间框架是否共振？
-4. **输出决策**: 使用规定的JSON格式，提供详细的推理过程，给出明确的行动指令
-
-### 输出示例
-
-[
-  {
-    "symbol": "SOL/USDT:USDT",
-    "action": "PARTIAL_CLOSE",
-    "confidence": 85,
-    "reasoning": "当前PnL +2.96%，接近历史峰值+2.99%（回撤仅0.03%）。建议部分平仓锁定利润，因为：1) 持仓时间仅11分钟，已获得3%收益；2) 价格接近唐奇安上轨阻力位；3) 成交量开始萎缩，上涨动能减弱。建议平仓50%，剩余仓位设置跟踪止盈在峰值回撤20%处。"
-  },
-  {
-    "symbol": "BNB/USDT:USDT",
-    "action": "open_long",
-    "leverage": 3,
-    "position_size_usd": 150,
-    "stop_loss": 622.0,
-    "take_profit": 646.0,
-    "confidence": 75,
-    "reasoning": "BNB在唐奇安下轨$622支撑位获得支撑，持仓量1小时内增加+1.57M (+0.89%)，配合价格上涨+0.5%，符合OI增加+价格上涨的强多头模式。RSI(14)=30从超卖区回升，机构资金净流入$2.7M确认买盘。止损设在唐奇安下轨下方，止盈目标上轨$646，R:R=3:1。"
-  }
-]
-
-**请立即输出你的决策：**`);
+    // 对齐 nofx engine.go L1410: 简洁收尾
+    lines.push(`\n---\n\nNow please analyze and output your decision (Chain of Thought + JSON)`);
 
     // [10] 语言提醒（防止英文上下文淹没 system prompt 的语言指令）
     const langReminder = buildUserMessageLanguageReminder(ctx.locale);
@@ -545,7 +501,12 @@ You are a professional cryptocurrency trading AI.
 Your task is to make trading decisions based on provided market data.`;
   }
 
-  private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, isCN = false): string {
+  /**
+   * 对齐 nofx engine.go L1061-1095
+   * 只告诉 AI 代码无法自动执行的约束 + AI 需要自主决定的参数
+   * 代码已强制的规则（ATR/回撤/冷却/熔断/同币种）不写入 prompt，避免过度约束
+   */
+  private buildHardConstraints(rc: PromptConfig['riskControl'] = {}, _isCN = false): string {
     const btcLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
     const altLev = rc.altcoinMaxLeverage ?? rc.maxLeverage ?? 5;
     const maxPos = rc.maxPositions ?? 3;
@@ -555,138 +516,80 @@ Your task is to make trading decisions based on provided market data.`;
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
     const minConf = rc.minConfidence ?? 60;
     const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
-    const maxDD = rc.maxDailyDrawdown || 100;
-    const maxDailyTrades = rc.maxDailyTrades;
-    const cooldown = rc.cooldownMinutes;
-    const cbThreshold = rc.circuitBreaker;
 
-    if (isCN) {
-      const dyn = [
-        maxDailyTrades ? `- **每日最大交易次数**: ${maxDailyTrades}，达到上限时输出 action=wait` : '',
-        cooldown ? `- **冷却期**: 每笔交易间隔 ${cooldown} 分钟，冷却中输出 action=wait` : '',
-        cbThreshold ? `- **熔断器**: 连续亏损 ${cbThreshold} 次触发暂停，输出 action=wait` : '',
-      ].filter(Boolean).join('\n');
+    // 对齐 nofx: CODE ENFORCED（代码验证，AI 需要知道边界）+ AI GUIDED（推荐，AI 自主决定）
+    return `# Hard Constraints (Risk Control)
 
-      return `## 硬性约束（代码强制执行，违规自动拒绝）
+## CODE ENFORCED (Backend validation, cannot be bypassed):
+- Max Positions: ${maxPos} coins simultaneously
+- Position Value Limit (Altcoins): max ${(equity * altPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${altPVR}x)
+- Position Value Limit (BTC/ETH): max ${(equity * btcEthPVR).toFixed(0)} USDT (= equity ${equity.toFixed(0)} × ${btcEthPVR}x)
+- Min Position Size: >= ${minPosSize} USDT
 
-- **最大杠杆**: BTC/ETH <= ${btcLev}x，山寨币 <= ${altLev}x
-- **最小仓位**: ${minPosSize} USDT（BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor}）
-- **仓位价值上限**: BTC/ETH 最大 $${(equity * btcEthPVR).toFixed(0)}（权益$${equity.toFixed(0)} × ${btcEthPVR}x），山寨币最大 $${(equity * altPVR).toFixed(0)}（权益 × ${altPVR}x）
-- **风险回报比**: 必须 >= ${minRR}:1
-- **ATR极端波动**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} 时暂停所有交易
-- **最大持仓数**: ${maxPos}
-- **每日最大回撤**: $${maxDD}
-- **同币种冲突**: 不能同时持有同一币种的多空仓位
-${dyn ? dyn + '\n' : ''}- **止损止盈必填**: 每笔开仓必须设置止损价和止盈价
+## AI GUIDED (Recommended, you should follow):
+- Trading Leverage: Altcoins max ${altLev}x | BTC/ETH max ${btcLev}x
+- Risk-Reward Ratio: >= 1:${minRR} (take_profit / stop_loss)
+- Min Confidence: >= ${minConf} to open position
 
-## 仓位计算指南（对齐 nofx）
-直接输出 position_size_usd（美元绝对值），代码自动验证和截断。
-- BTC/ETH 仓位上限 = $${(equity * btcEthPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${btcEthPVR}x）
-- 山寨币仓位上限 = $${(equity * altPVR).toFixed(0)}（预算$${equity.toFixed(0)} × ${altPVR}x）
-- 保证金 = position_size_usd / 杠杆（交易所自动计算）
-
-根据置信度选择 position_size_usd：
-- **高置信度 (≥85)**: 上限的 80-100% = $${(equity * altPVR * 0.8).toFixed(0)}-$${(equity * altPVR).toFixed(0)}
-- **中置信度 (70-84)**: 上限的 50-80% = $${(equity * altPVR * 0.5).toFixed(0)}-$${(equity * altPVR * 0.8).toFixed(0)}
-- **低置信度 (60-69)**: 上限的 30-50% = $${(equity * altPVR * 0.3).toFixed(0)}-$${(equity * altPVR * 0.5).toFixed(0)}
-- 示例(山寨币, conf=75): position_size_usd=$${(equity * altPVR * 0.6).toFixed(0)} → 3x杠杆保证金=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
-- 示例(BTC, conf=85): position_size_usd=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x杠杆保证金=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
-- 杠杆由你自主选择（不超过上限），杠杆越高保证金越小但爆仓距离越近
-
-## AI 建议（推荐遵循，非硬性强制）
-- **最低置信度**: >= ${minConf}% 才开仓
-- **杠杆**: 用户配置的杠杆是上限，根据波动率自主选择
-- **风险回报比**: 设计 SL/TP 使 R:R >= ${minRR}:1`;
-    }
-
-    // English (default for non-Chinese locales)
-    const dyn = [
-      maxDailyTrades ? `- **Max Daily Trades**: ${maxDailyTrades} — if reached, output action=wait` : '',
-      cooldown ? `- **Cooldown Period**: ${cooldown} min between trades — if in cooldown, output action=wait` : '',
-      cbThreshold ? `- **Circuit Breaker**: ${cbThreshold} consecutive losses triggers pause — output action=wait` : '',
-    ].filter(Boolean).join('\n');
-
-    return `## Hard Constraints (CODE ENFORCED — violations auto-rejected)
-
-- **Max Leverage**: BTC/ETH <= ${btcLev}x, Altcoins <= ${altLev}x
-- **Min Position Size**: ${minPosSize} USDT (BTC/ETH >= $${AI_SAFETY_DEFAULTS.minPositionSizeMajor})
-- **Position Value Limit**: BTC/ETH max $${(equity * btcEthPVR).toFixed(0)} (equity $${equity.toFixed(0)} × ${btcEthPVR}x), Altcoins max $${(equity * altPVR).toFixed(0)} (equity × ${altPVR}x)
-- **Risk/Reward Ratio**: Must be >= ${minRR}:1
-- **ATR Extreme**: ATR(3)/ATR(14) > ${AI_SAFETY_DEFAULTS.atrExtremeRatio} = ALL trading paused
-- **Max Open Positions**: ${maxPos}
-- **Max Daily Drawdown**: $${maxDD}
-- **Same-Symbol Conflict**: Cannot open opposite direction on same symbol
-${dyn ? dyn + '\n' : ''}- **Stop Loss Required**: Every open MUST have stop_loss and take_profit
-
-## Position Sizing Guide (aligned with nofx)
-Output position_size_usd directly (USD absolute value). Code auto-validates and caps.
-- BTC/ETH limit = $${(equity * btcEthPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${btcEthPVR}x)
-- Altcoin limit = $${(equity * altPVR).toFixed(0)} (budget $${equity.toFixed(0)} × ${altPVR}x)
-- Margin = position_size_usd / leverage (exchange auto-calculates)
-
-Confidence → position_size_usd:
-- **High (≥85)**: 80-100% of limit = $${(equity * altPVR * 0.8).toFixed(0)}-$${(equity * altPVR).toFixed(0)}
-- **Medium (70-84)**: 50-80% of limit = $${(equity * altPVR * 0.5).toFixed(0)}-$${(equity * altPVR * 0.8).toFixed(0)}
-- **Low (60-69)**: 30-50% of limit = $${(equity * altPVR * 0.3).toFixed(0)}-$${(equity * altPVR * 0.5).toFixed(0)}
-- Example (altcoin, conf=75): position_size_usd=$${(equity * altPVR * 0.6).toFixed(0)} → 3x margin=$${(equity * altPVR * 0.6 / 3).toFixed(0)}
-- Example (BTC, conf=85): position_size_usd=$${(equity * btcEthPVR * 0.8).toFixed(0)} → 5x margin=$${(equity * btcEthPVR * 0.8 / 5).toFixed(0)}
-- Leverage is YOUR choice (up to the max), higher leverage = less margin but closer liquidation
-
-## AI Guided (recommended, you should follow)
-- **Min Confidence**: >= ${minConf}% to open position
-- **Leverage**: User-configured is max cap; choose based on volatility
-- **Risk/Reward**: Design SL/TP to achieve R:R >= ${minRR}:1`;
+## Position Sizing Guidance
+Calculate position_size_usd based on your confidence and the Position Value Limits above:
+- High confidence (>=85): Use 80-100% of max position value limit
+- Medium confidence (70-84): Use 50-80% of max position value limit
+- Low confidence (60-69): Use 30-50% of max position value limit
+- Example: With equity ${equity.toFixed(0)} and BTC/ETH ratio ${btcEthPVR}x, max is ${(equity * btcEthPVR).toFixed(0)} USDT
+- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!`;
   }
 
   // buildAIGuidance 已删除（对齐 nofx engine.go 主路径：不注入"决策原则"段）
   // 跟踪止盈/分批止盈由持仓格式 ⚠️ 提示 + drawdown-monitor 代码层负责
   // OI 四象限已在 Schema 数据字典中定义
 
-  private buildFrequencyAwareness(intervalMinutes?: number, todayTrades?: number, consecutiveWaits?: number): string {
-    // 对齐 nofx engine.go L1102-1119
-    const interval = intervalMinutes || 60;
-    const trades = todayTrades ?? 0;
-    // 对齐 nofx engine.go L1102-1131
-    let section = `## Trading Frequency
-- Cycle: ${interval}min | Today: ${trades} trades
-- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
-- >2 trades/hour = Overtrading — you are destroying profits with fees
-- Single position hold time ≥ 30-60 minutes
-If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
+  /**
+   * 对齐 nofx engine.go L1097-1131
+   * 简洁告知频率+可用指标+决策流程，不限制 AI 的分析方法
+   */
+  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, minConf?: number): string {
+    const conf = minConf ?? 60;
 
-## Entry Standards
-Only open when multiple signals resonate. You have:
+    return `# ⏱️ Trading Frequency Awareness
+
+- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
+- >2 trades/hour = Overtrading
+- Single position hold time >= 30-60 minutes
+If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.
+
+# 🎯 Entry Standards
+
+Only open positions when multiple signals resonate. You have:
 - Primary + secondary timeframe K-line series
-- EMA indicators (7, 25, 99)
-- MACD + RSI (7, 14)
+- EMA (7, 25, 99) + MACD + RSI (7, 14)
 - ATR (3, 14) for volatility
 - Bollinger Bands + Donchian Channel
 - Open Interest (OI) + Funding Rate
 - Long/Short Ratio + Taker Buy/Sell
 - Institutional / Retail fund flow (if available)
 
-Confidence ≥ 70 required. Avoid: single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
+Feel free to use any effective analysis method, but **confidence >= ${conf}** required to open positions.
 
-## Decision Process
-1. Check existing positions → take profit / stop-loss / hold?
-2. Scan candidate coins → are there strong multi-signal setups?
-3. Write analysis first, then output structured JSON decision.`;
+# 📋 Decision Process
 
-    if (consecutiveWaits && consecutiveWaits >= 10) {
-      section += `\n\n⚠️ ${consecutiveWaits} consecutive wait cycles. If a reasonable setup exists, consider a smaller position with tight SL.`;
-    }
-
-    return section;
+1. Check positions → Should we take profit/stop-loss
+2. Scan candidate coins + multi-timeframe → Are there strong signals
+3. Write chain of thought first, then output structured JSON`;
   }
 
+  /**
+   * 对齐 nofx engine.go L1133-1155
+   */
   private buildOutputFormat(rc: PromptConfig['riskControl'] = {}): string {
-    // 对齐 nofx engine.go L1133-1155 + prompt_builder.go L153-174
     const equity = rc.allocatedCapital ?? 1000;
     const minConf = rc.minConfidence ?? 60;
+    const examplePosSize = Math.round(equity * (rc.btcEthMaxPositionValueRatio ?? 5));
+    const exampleLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
 
-    return `## Output Format (Strictly Follow)
+    return `# Output Format (Strictly Follow)
 
-**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors.**
+**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**
 
 <reasoning>
 Your chain of thought analysis:
@@ -698,23 +601,15 @@ Your chain of thought analysis:
 
 <decision>
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5}, "position_size_usd": ${Math.round(equity * (rc.btcEthMaxPositionValueRatio ?? 5))}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M，3/4看空→85%"},
-  {"symbol": "ETH/USDT:USDT", "action": "close_long", "reasoning": "论点失效，止损。"}
+  {"symbol": "BTCUSDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头+OI↑Price↓空头主导"},
+  {"symbol": "ETHUSDT", "action": "close_long", "reasoning": "论点失效，止损"}
 ]
 </decision>
 
 ## Field Description
 - action: open_long | open_short | close_long | close_short | hold | wait
-  - hold = keep existing position, do NOT use for coins you have NO position in
-  - wait = no action, use for coins you have NO position in and no signal
-  - close_long/close_short = only for coins you currently HOLD
-- confidence: 0-100 (opening recommended ≥ ${minConf})
+- confidence: 0-100 (opening recommended >= ${minConf})
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- position_size_usd = calculated USD number (NOT percentage)
-- stop_loss / take_profit = absolute price values
-- For long: stop_loss < current_price < take_profit
-- For short: take_profit < current_price < stop_loss
-- MULTI-COIN: ONE object per coin, each with independent reasoning
-- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
+- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use 27.76 not 3000 * 0.01)`;
   }
 }
