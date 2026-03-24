@@ -6,17 +6,18 @@ import { Decimal } from '@prisma/client/runtime/library';
 import type { ExchangeAdapter } from '../exchange-adapters/types/adapter.interface';
 
 /**
- * 交易所历史持仓同步服务（全量对齐模式）
+ * 交易所历史持仓同步服务 v2（upsert 模式）
  *
- * 核心原则：交易所是唯一真相源
+ * 核心原则：
+ *   1. exchangeRef = 交易所原生 ID → 永不变 → 1:1 对应交易所仓位历史
+ *   2. Position 用 upsert（不再 delete+insert）→ 不丢数据
+ *   3. GAS uniqueOrderId = "GAS_{exchangeRef}" → 和 position 1:1 → 永不重复
  *
- * 对齐逻辑（每次调用）：
- *   1. 从交易所拉取已平仓记录 → exchangeSet
- *   2. 从 DB 查询同一 user+apiKey 的 exchangeRef 记录 → dbSet
- *   3. 交易所有、DB 没有 → INSERT（新增）
- *   4. DB 有、交易所没有 → DELETE（清理）
- *   5. 两边都有 → 不动（交易所历史不变）
- *   6. 盈利仓位 → GAS 扣费 → 上级返佣（自动入账）
+ * exchangeRef 来源：
+ *   - OKX:     okx_{posId}                        ← 原生 API
+ *   - Bybit:   bybit_{orderId}                    ← 原生 API
+ *   - Binance: binance_{SYMBOL}_{side}_{tradeId}  ← 首笔平仓 tradeId（确定性）
+ *   - Gate:    gate_{SYMBOL}_{side}_{tradeId}     ← 同 Binance 算法
  */
 @Injectable()
 export class ClosedPnlSyncService {
@@ -29,7 +30,7 @@ export class ClosedPnlSyncService {
   ) {}
 
   /**
-   * 全量对齐某用户某 apiKey 的已平仓记录
+   * 同步某用户某 apiKey 的已平仓记录
    * 在策略主循环周期末尾调用，失败不影响策略运行
    */
   async syncClosedPositions(
@@ -39,7 +40,7 @@ export class ClosedPnlSyncService {
     adapter: ExchangeAdapter,
   ): Promise<{ synced: number; deleted: number; charged: number; balanceDepleted: boolean }> {
     // ─── Step 1: 从交易所拉取已平仓记录 ───
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000); // 最近 24h
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     let exchangeRecords;
     try {
       exchangeRecords = await adapter.getClosedPnl(since, 100);
@@ -49,11 +50,10 @@ export class ClosedPnlSyncService {
     }
 
     if (!exchangeRecords || exchangeRecords.length === 0) {
-      this.logger.log(`[历史持仓同步] 交易所返回空记录 (exchange=${exchange})`);
       return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false };
     }
 
-    // 交易所记录集合（exchangeId → record）
+    // 去重（同一 exchangeId 只取最新）
     const exchangeMap = new Map<string, typeof exchangeRecords[0]>();
     for (const r of exchangeRecords) {
       if (r.exchangeId) exchangeMap.set(r.exchangeId, r);
@@ -61,68 +61,59 @@ export class ClosedPnlSyncService {
 
     this.logger.debug(`[历史持仓同步] 交易所返回 ${exchangeMap.size} 条有效记录 (exchange=${exchange})`);
 
-    // ─── Step 2: 从 DB 查询同 user+apiKey 的 exchangeRef 记录 ───
-    const dbRecords = await this.prisma.position.findMany({
-      where: {
-        userId,
-        apiKeyId,
-        status: 'closed',
-        exchangeRef: { not: null },
-        closedAt: { gte: since },
-      },
-      select: { id: true, exchangeRef: true },
-    });
-
-    const dbMap = new Map<string, string>(); // exchangeRef → positionId
-    for (const p of dbRecords) {
-      if (p.exchangeRef) dbMap.set(p.exchangeRef, p.id);
-    }
-
-    // ─── Step 3: 对齐 — 交易所有、DB 没有 → INSERT ───
-    const toInsert = [...exchangeMap.entries()].filter(([ref]) => !dbMap.has(ref));
-
+    // ─── Step 2: Upsert 每条记录 ───
     let synced = 0;
     let charged = 0;
     let balanceDepleted = false;
 
-    for (const [, record] of toInsert) {
+    for (const [exchangeRef, record] of exchangeMap) {
       try {
         const strategy = await this.matchStrategy(userId, apiKeyId, record.symbol);
 
-        const position = await this.prisma.position.create({
-          data: {
-            userId,
-            exchange,
-            symbol: record.symbol,
-            side: record.side || 'long',
-            entryPrice: record.entryPrice || 0,
-            amount: record.quantity || 0,
-            tradingType: 'futures',
-            leverage: record.leverage || 1,
-            status: 'closed',
-            closedAt: (record.exitTime && !isNaN(record.exitTime.getTime())) ? record.exitTime : new Date(),
-            closePrice: record.exitPrice || 0,
-            pnl: record.realizedPnl || 0,
-            realizedPnl: record.realizedPnl || 0,
-            closeReason: record.closeType || 'unknown',
-            source: strategy ? 'ai_strategy' : 'exchange_sync',
-            aiStrategyId: strategy?.id || null,
-            apiKeyId,
-            exchangeRef: record.exchangeId!,
+        const posData = {
+          userId,
+          exchange,
+          symbol: record.symbol,
+          side: record.side || 'long',
+          entryPrice: record.entryPrice || 0,
+          amount: record.quantity || 0,
+          tradingType: 'futures' as const,
+          leverage: record.leverage || 1,
+          status: 'closed' as const,
+          closedAt: (record.exitTime && !isNaN(record.exitTime.getTime())) ? record.exitTime : new Date(),
+          closePrice: record.exitPrice || 0,
+          pnl: record.realizedPnl || 0,
+          realizedPnl: record.realizedPnl || 0,
+          closeReason: record.closeType || 'unknown',
+          source: strategy ? 'ai_strategy' : 'exchange_sync',
+          aiStrategyId: strategy?.id || null,
+          apiKeyId,
+          exchangeRef,
+        };
+
+        // upsert: 存在则更新价格/PnL（交易所可能修正），不存在则创建
+        const position = await this.prisma.position.upsert({
+          where: { exchangeRef },
+          create: posData,
+          update: {
+            entryPrice: posData.entryPrice,
+            closePrice: posData.closePrice,
+            amount: posData.amount,
+            pnl: posData.pnl,
+            realizedPnl: posData.realizedPnl,
+            closedAt: posData.closedAt,
+            // 如果之前没匹配到策略但现在匹配到了，更新
+            ...(strategy ? { aiStrategyId: strategy.id, source: 'ai_strategy' } : {}),
           },
         });
         synced++;
 
-        // 盈利 > 0 → GAS 扣费
+        // ─── Step 3: 盈利 → GAS 扣费（幂等，uniqueOrderId = GAS_{exchangeRef}）───
         if (record.realizedPnl > 0 && strategy) {
           try {
             const feeCalc = await this.feeService.calculateFee(userId, record.realizedPnl.toFixed(8));
             if (parseFloat(feeCalc.feeAmount) > 0) {
-              // 用仓位本质属性生成稳定的幂等 key，不受 exchangeId 格式变更影响
-              // exitTime 为空时用 exchangeId 兜底，避免多条记录共享 timestamp=0 导致碰撞
-              const timeKey = record.exitTime?.getTime() ?? record.exchangeId ?? Date.now();
-              const stablePosKey = `${record.symbol}_${record.side}_${timeKey}_${(record.quantity ?? 0).toFixed(4)}`;
-              const uniqueOrderId = `EXSYNC_FEE_${userId}_${stablePosKey}`;
+              const uniqueOrderId = `GAS_${exchangeRef}`;
               const feeResult = await this.feeService.chargeFee({
                 userId,
                 positionId: position.id,
@@ -135,28 +126,26 @@ export class ClosedPnlSyncService {
               charged++;
               if (feeResult.balanceDepleted) balanceDepleted = true;
 
-              // GAS 扣费成功 → 触发上级返佣（基于实际扣除金额，非应扣金额）
+              // GAS 扣费成功 → 触发上级返佣
               if (feeResult.ok && parseFloat(feeResult.actualDeduction) > 0) {
                 await this.processReferralCommission(userId, position.id, feeResult.actualDeduction);
               }
             }
           } catch (feeErr: any) {
+            // 幂等保护：P2002 = 已扣过，静默跳过
+            if (feeErr?.code === 'P2002') continue;
             this.logger.warn(`[历史持仓同步] 扣费失败(非致命): ${record.symbol} pnl=${record.realizedPnl} err=${feeErr.message}`);
           }
         }
       } catch (e: any) {
-        if (e?.code === 'P2002') continue; // 唯一约束冲突，静默跳过
-        this.logger.warn(`[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${record.exchangeId} err=${e.message}`);
+        if (e?.code === 'P2002') continue; // upsert 并发冲突，静默跳过
+        this.logger.warn(`[历史持仓同步] 写入失败(非致命): ${record.symbol} ref=${exchangeRef} err=${e.message}`);
       }
     }
 
-    // ─── Step 4: 对齐 — DB 有、交易所没有 → DELETE ───
-    const exchangeRefSet = new Set(exchangeMap.keys());
-    const deleted = await this.cleanupStaleRecords(userId, apiKeyId, since, exchangeRefSet);
-
-    // ─── 汇总 ───
-    if (synced > 0 || deleted > 0) {
-      this.logger.log(`[历史持仓同步] 完成: 新增=${synced}, 删除=${deleted}, 扣费=${charged}, 交易所=${exchangeMap.size}`);
+    // ─── 汇总（不再有 cleanup 删除逻辑）───
+    if (synced > 0) {
+      this.logger.log(`[历史持仓同步] 完成: upsert=${synced}, 扣费=${charged}, 交易所=${exchangeMap.size}`);
     }
 
     // GAS 余额不足 → 停止所有策略
@@ -168,72 +157,12 @@ export class ClosedPnlSyncService {
       });
     }
 
-    return { synced, deleted, charged, balanceDepleted };
-  }
-
-  /**
-   * 清理 DB 中交易所已不存在的记录
-   * 只清理最近 24h 窗口内的记录（更早的记录交易所 API 可能不再返回，保留不动）
-   */
-  private async cleanupStaleRecords(
-    userId: string,
-    apiKeyId: string,
-    since: Date,
-    validExchangeRefs: Set<string>,
-  ): Promise<number> {
-    // 查出时间窗口内的 DB 记录
-    const dbRecords = await this.prisma.position.findMany({
-      where: {
-        userId,
-        apiKeyId,
-        status: 'closed',
-        exchangeRef: { not: null },
-        closedAt: { gte: since },
-      },
-      select: { id: true, exchangeRef: true, symbol: true },
-    });
-
-    // DB 有、交易所没有 → 删除
-    // 安全守卫：只删除与当前交易所同源的记录
-    // 防止 exchangeId 格式变更时误删旧格式记录导致重复扣费
-    // 旧格式记录会在 24h 窗口后自然过期
-    //
-    // 所有交易所 exchangeId 格式统一为 "{exchange}_..." 开头：
-    //   binance_pos_SOLUSDT_long_... | gate_pos_SOLUSDT_long_...
-    //   okx_123456789 | bybit_12345678
-    //   lighter_abc123 | aster_12345
-    // 提取交易所级前缀（第一个 _ 前 + _）用于同源匹配
-    const prefixSet = new Set<string>();
-    for (const ref of validExchangeRefs) {
-      const idx = ref.indexOf('_');
-      if (idx > 0) {
-        prefixSet.add(ref.substring(0, idx + 1)); // e.g. "binance_", "okx_", "lighter_"
-      }
-    }
-
-    const toDelete = dbRecords.filter(p => {
-      if (!p.exchangeRef || validExchangeRefs.has(p.exchangeRef)) return false;
-      // 只删除同交易所的记录，跳过不同交易所或旧格式无前缀的记录
-      return [...prefixSet].some(prefix => p.exchangeRef!.startsWith(prefix));
-    });
-
-    if (toDelete.length === 0) return 0;
-
-    const deleteIds = toDelete.map(p => p.id);
-    await this.prisma.position.deleteMany({
-      where: { id: { in: deleteIds } },
-    });
-
-    this.logger.log(`[历史持仓同步] 清理 ${toDelete.length} 条过期记录: ${toDelete.map(p => `${p.symbol}(${p.exchangeRef})`).join(', ')}`);
-    return toDelete.length;
+    return { synced, deleted: 0, charged, balanceDepleted };
   }
 
   /**
    * 匹配策略：userId + apiKeyId + symbol
-   * 优先匹配活跃策略，其次匹配最近的非活跃策略
-   *
    * symbol 标准化：OKX 返回 "SOL/USDT"，gridConfig 存 "SOL/USDT:USDT"
-   * 统一去掉 ":USDT"/":USDC" 后缀再比较
    */
   private async matchStrategy(
     userId: string,
@@ -263,10 +192,7 @@ export class ClosedPnlSyncService {
 
   /**
    * GAS 扣费后触发上级返佣
-   * 返佣基数 = 实际扣除的 GAS 费用
-   * 一级返佣 = GAS × level1Rate%（默认 10%）
-   * 二级返佣 = GAS × level2Rate%（默认 5%）
-   * 返佣立即入账（创建 reward + 更新余额 + 写 Transaction，原子事务）
+   * 返佣基数 = 实际扣除的 GAS 费用（非应扣金额）
    */
   private async processReferralCommission(
     userId: string,
@@ -279,7 +205,6 @@ export class ClosedPnlSyncService {
       const fee = new Decimal(feeAmount);
       if (fee.lte(0)) return;
 
-      // 获取返佣配置
       const config = await this.prisma.referralConfig.findUnique({
         where: { id: 'default' },
       });
@@ -288,7 +213,6 @@ export class ClosedPnlSyncService {
       const enabledTypes = config.enabledTypes as string[];
       if (!enabledTypes.includes('trading')) return;
 
-      // 查找邀请链：用户 → 一级邀请人 → 二级邀请人
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { invitedBy: true },
@@ -299,7 +223,6 @@ export class ClosedPnlSyncService {
         { inviterId: user.invitedBy, rate: new Decimal(config.level1Rate.toString()).div(100), level: 1 },
       ];
 
-      // 二级邀请人
       const level1User = await this.prisma.user.findUnique({
         where: { id: user.invitedBy },
         select: { invitedBy: true },
@@ -312,22 +235,18 @@ export class ClosedPnlSyncService {
         });
       }
 
-      // 为每一级创建返佣并立即入账
       for (const { inviterId, rate, level } of levels) {
         const commission = fee.times(rate);
         if (commission.lte(0)) continue;
 
         const uniqueOrderId = `ref_${inviterId}_gas_${positionId}_L${level}`;
 
-        // 幂等检查
         const existing = await this.prisma.referralReward.findUnique({
           where: { uniqueOrderId },
         });
         if (existing) continue;
 
-        // 原子事务：创建 reward（paid） + 更新余额 + 写 Transaction
         await this.prisma.$transaction(async (tx) => {
-          // 1. 创建返佣记录（直接标记 paid）
           await tx.referralReward.create({
             data: {
               userId: inviterId,
@@ -340,13 +259,11 @@ export class ClosedPnlSyncService {
             },
           });
 
-          // 2. 上级余额立即增加
           await tx.user.update({
             where: { id: inviterId },
             data: { usdtBalance: { increment: commission } },
           });
 
-          // 3. 写入交易记录
           await tx.transaction.create({
             data: {
               userId: inviterId,
@@ -365,7 +282,6 @@ export class ClosedPnlSyncService {
         );
       }
     } catch (error: any) {
-      // 返佣失败不影响主流程
       this.logger.warn(`[返佣] 处理失败(非致命): ${error.message}`);
     }
   }

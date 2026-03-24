@@ -739,16 +739,22 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     if (this.exchangeType === 'okx') {
       await this.cancelOkxAlgoOrders(symbol);
     }
+
+    // 对齐 nofx CancelAllOrders: Binance Algo Order 也要清理
+    // nofx binance/futures.go L704: t.client.NewCancelAllAlgoOpenOrdersService()
+    if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm') {
+      await this.cancelBinanceAlgoOrders(symbol);
+    }
   }
 
   async cancelStopOrders(symbol: string): Promise<void> {
     const ex = this.getExchange();
 
-    // Binance/Bybit: 只取消条件单(STOP_MARKET/TAKE_PROFIT_MARKET)，保留限价基础单
-    // 重要：不能用 cancelAllOrders，它会把网格的限价挂单也清掉
+    // Binance/Bybit: 清理条件单（普通 STOP/TP + Algo Order），保留限价基础单
+    // 对齐 nofx binance/futures.go CancelStopLossOrders + CancelTakeProfitOrders
     if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm' || this.exchangeType === 'bybit') {
+      // 1. 清理普通条件单（legacy API）
       try {
-        // Binance fetchOpenOrders 默认不返回条件单，需要用 privateGetOpenOrders
         const rawOrders = await ex.fapiPrivateGetOpenOrders({ symbol: ex.marketId(symbol) });
         const stopOrders = (Array.isArray(rawOrders) ? rawOrders : []).filter(
           (o: any) => ['STOP_MARKET', 'TAKE_PROFIT_MARKET', 'STOP', 'TAKE_PROFIT', 'TRAILING_STOP_MARKET'].includes(o.type),
@@ -763,10 +769,16 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
               }
             }
           }
-          this.logger.log(`[CcxtAdapter] cancelStopOrders: ${symbol} 已清除 ${stopOrders.length} 个条件单（保留限价单）`);
+          this.logger.log(`[CcxtAdapter] cancelStopOrders: ${symbol} 已清除 ${stopOrders.length} 个普通条件单（保留限价单）`);
         }
       } catch (e: any) {
-        this.logger.warn(`[CcxtAdapter] cancelStopOrders(${symbol}) 失败: ${e.message}`);
+        this.logger.warn(`[CcxtAdapter] cancelStopOrders(${symbol}) 普通条件单清理失败: ${e.message}`);
+      }
+
+      // 2. 清理 Algo Order（Binance 已迁移 SL/TP 到 Algo 系统）
+      // 对齐 nofx binance/futures.go L573-594: Cancel Algo stop-loss/take-profit orders
+      if (this.exchangeType === 'binance' || this.exchangeType === 'binanceusdm') {
+        await this.cancelBinanceAlgoOrders(symbol);
       }
       return;
     }
@@ -825,6 +837,56 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       this.logger.log(`[OKX] 已取消 ${algoOrders.length} 个算法单`);
     } catch (e: any) {
       this.logger.warn(`[OKX] 取消算法单失败(非致命): ${e.message}`);
+    }
+  }
+
+  /**
+   * Binance Algo Order 清理（对齐 nofx binance/futures.go L573-594, L649-670, L700-714）
+   * Binance 已将 SL/TP 迁移到 Algo Order 系统（error -4120 STOP_ORDER_SWITCH_ALGO）
+   * 普通 cancelAllOrders (DELETE /fapi/v1/allOpenOrders) 不会清理 Algo Orders
+   * 必须用 Algo API: GET /fapi/v1/algo/openOrders + DELETE /fapi/v1/algo/order
+   */
+  private async cancelBinanceAlgoOrders(symbol: string): Promise<void> {
+    try {
+      const ex = this.getExchange();
+      const marketId = ex.marketId(symbol);
+
+      // 1. 查询该 symbol 的活跃 Algo Orders
+      let algoOrders: any[];
+      try {
+        const response = await (ex as any).fapiPrivateGetOpenAlgoOrders({ symbol: marketId });
+        algoOrders = Array.isArray(response?.orders) ? response.orders
+          : Array.isArray(response) ? response : [];
+      } catch (e: any) {
+        // API 可能不存在（旧版本 Binance），静默降级
+        this.logger.debug(`[CcxtAdapter] Binance Algo openOrders 查询失败(降级): ${e.message}`);
+        return;
+      }
+
+      if (algoOrders.length === 0) return;
+
+      // 2. 逐个取消 SL/TP 类型的 Algo Orders
+      let canceled = 0;
+      for (const order of algoOrders) {
+        const orderType = (order.type || order.orderType || '').toUpperCase();
+        if (['STOP_MARKET', 'TAKE_PROFIT_MARKET', 'STOP', 'TAKE_PROFIT'].includes(orderType)) {
+          try {
+            await (ex as any).fapiPrivateDeleteAlgoOrder({ algoId: order.algoId });
+            canceled++;
+          } catch (e: any) {
+            // 可能已触发或已取消
+            if (!e.message?.includes('NOT_FOUND') && !e.message?.includes('already')) {
+              this.logger.warn(`[CcxtAdapter] 取消 Algo Order ${order.algoId} 失败: ${e.message}`);
+            }
+          }
+        }
+      }
+
+      if (canceled > 0) {
+        this.logger.log(`[CcxtAdapter] cancelBinanceAlgoOrders: ${symbol} 已清除 ${canceled} 个 Algo SL/TP 条件单`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[CcxtAdapter] cancelBinanceAlgoOrders(${symbol}) 失败(非致命): ${e.message}`);
     }
   }
 
@@ -1176,43 +1238,44 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       let longQty = 0, longOpenTime = 0;
       let longClosedQty = 0, longExitNotional = 0, longTotalPnl = 0, longTotalFee = 0;
       let longLastCloseTime = 0, longLastOrderId = '';
+      let longFirstCloseTradeId = ''; // 首笔平仓 tradeId → 构造稳定 exchangeRef
 
       // ── 空头追踪 ──
       let shortQty = 0, shortOpenTime = 0;
       let shortClosedQty = 0, shortExitNotional = 0, shortTotalPnl = 0, shortTotalFee = 0;
       let shortLastCloseTime = 0, shortLastOrderId = '';
+      let shortFirstCloseTradeId = ''; // 首笔平仓 tradeId → 构造稳定 exchangeRef
 
       const emitLong = () => {
         if (longClosedQty <= 0) return;
         const avgExit = longExitNotional / longClosedQty;
-        // 核心：从 Binance realizedPnl 反算 entry（保证与 Binance 数学一致）
-        // 做多: pnl = (exit - entry) * qty → entry = exit - pnl/qty
         const avgEntry = avgExit - longTotalPnl / longClosedQty;
         results.push(this.buildBinancePositionRecord(
           rawSymbol, 'long', avgEntry, avgExit, longClosedQty,
-          longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime, longLastOrderId,
+          longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime,
+          longLastOrderId, longFirstCloseTradeId,
         ));
       };
       const resetLong = () => {
         longQty = 0; longOpenTime = 0;
         longClosedQty = 0; longExitNotional = 0; longTotalPnl = 0; longTotalFee = 0;
-        longLastCloseTime = 0; longLastOrderId = '';
+        longLastCloseTime = 0; longLastOrderId = ''; longFirstCloseTradeId = '';
       };
 
       const emitShort = () => {
         if (shortClosedQty <= 0) return;
         const avgExit = shortExitNotional / shortClosedQty;
-        // 做空: pnl = (entry - exit) * qty → entry = exit + pnl/qty
         const avgEntry = avgExit + shortTotalPnl / shortClosedQty;
         results.push(this.buildBinancePositionRecord(
           rawSymbol, 'short', avgEntry, avgExit, shortClosedQty,
-          shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime, shortLastOrderId,
+          shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime,
+          shortLastOrderId, shortFirstCloseTradeId,
         ));
       };
       const resetShort = () => {
         shortQty = 0; shortOpenTime = 0;
         shortClosedQty = 0; shortExitNotional = 0; shortTotalPnl = 0; shortTotalFee = 0;
-        shortLastCloseTime = 0; shortLastOrderId = '';
+        shortLastCloseTime = 0; shortLastOrderId = ''; shortFirstCloseTradeId = '';
       };
 
       for (const t of trades) {
@@ -1247,17 +1310,16 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         if (isClosing && closingSide === 'long') {
           // ── 平多 ──
           if (longQty <= 0) {
-            // 没有追踪到开仓（lookback 不够深）—— 仍然记录平仓数据
-            // 后续 emitLong 会用 pnl 反算 entry，所以不影响准确性
             if (!longOpenTime) longOpenTime = tradeTime;
           }
-          const closedQty = Math.min(qty, Math.max(longQty, qty)); // 没有开仓记录时取 trade qty
+          const closedQty = Math.min(qty, Math.max(longQty, qty));
           longClosedQty += closedQty;
           longExitNotional += closedQty * price;
           longTotalPnl += pnl;
           longTotalFee += fee;
           longLastCloseTime = tradeTime;
           longLastOrderId = t.orderId || longLastOrderId;
+          if (!longFirstCloseTradeId) longFirstCloseTradeId = t.id || t.tradeId || t.orderId || String(tradeTime);
           longQty = Math.max(longQty - closedQty, 0);
 
           // qty 归零 → 仓位完全平仓 → 生成记录
@@ -1284,6 +1346,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
           shortTotalFee += fee;
           shortLastCloseTime = tradeTime;
           shortLastOrderId = t.orderId || shortLastOrderId;
+          if (!shortFirstCloseTradeId) shortFirstCloseTradeId = t.id || t.tradeId || t.orderId || String(tradeTime);
           shortQty = Math.max(shortQty - closedQty, 0);
 
           if (shortQty <= 0.00001) {
@@ -1325,11 +1388,13 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     entryPrice: number, exitPrice: number, quantity: number,
     realizedPnl: number, fee: number,
     openTime: number, closeTime: number, orderId: string,
+    firstCloseTradeId: string,
   ): ClosedPnlRecord {
     const unifiedSymbol = this.binanceRawSymbolToUnified(rawSymbol);
-    // exchangeId = 交易所 + symbol + side + 平仓时间戳 + 数量 确保唯一
+    // 稳定 exchangeRef：用首笔平仓 tradeId 做锚点
+    // tradeId 是交易所分配的全局唯一值，无论重跑多少次算法都不变
     const exchangePrefix = this.exchangeType || 'binance';
-    const exchangeId = `${exchangePrefix}_pos_${rawSymbol}_${side}_${closeTime}_${quantity.toFixed(4)}`;
+    const exchangeId = `${exchangePrefix}_${rawSymbol}_${side}_${firstCloseTradeId}`;
     return {
       symbol: unifiedSymbol,
       side,
