@@ -101,7 +101,9 @@ export class ClosedPnlSyncService {
           closePrice: record.exitPrice || 0,
           pnl: record.realizedPnl || 0,
           realizedPnl: record.realizedPnl || 0,
-          closeReason: record.closeType || 'unknown',
+          // Binance getClosedPnl 不返回平仓原因，hardcode 'manual' 不准确
+          // 如果匹配到 AI 策略，用 'exchange_close'；否则用 adapter 返回的 closeType
+          closeReason: strategy ? 'exchange_close' : (record.closeType || 'unknown'),
           source: strategy ? 'ai_strategy' : 'exchange_sync',
           aiStrategyId: strategy?.id || null,
           apiKeyId,
