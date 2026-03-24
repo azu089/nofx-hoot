@@ -287,13 +287,10 @@ export class PromptBuilderService {
         lines.push(`Unrealized PnL: ${pnlPct > 0 ? '+' : ''}${pnlPct.toFixed(2)}%`);
       }
       if (ctx.marginUsage !== undefined) {
+        // 对齐 nofx engine.go L1256: 只展示数字，不加 ⚠️ 提示
+        // nofx: "Account: Equity X | Balance X | Margin X% | Positions N"
+        // 误导提示会导致 AI 用"margin usage 高"作为平仓理由
         lines.push(`Strategy Margin Usage: ${ctx.marginUsage.toFixed(1)}%`);
-        // 对齐 nofx formatter.go L124-128: 风险提示（仅提示，不强制平仓）
-        if (ctx.marginUsage > 70) {
-          lines.push(`⚠️ Margin usage > 70%, high risk. Be cautious with NEW positions.`);
-        } else if (ctx.marginUsage > 50) {
-          lines.push(`⚠️ Margin usage > 50%, be cautious with new positions.`);
-        }
       }
       if (ctx.positionCount !== undefined) lines.push(`Open Positions (this strategy): ${ctx.positionCount}`);
     }
@@ -351,15 +348,16 @@ export class PromptBuilderService {
       if (s.totalTrades < 10) {
         lines.push('Note: Sample size < 10, limited reference value.');
       }
+      // 对齐 nofx engine.go L1329-1337: Performance hints（完整措辞，不缩写）
       if (s.profitFactor !== undefined && s.sharpeRatio !== undefined) {
         if (s.profitFactor >= 1.5 && s.sharpeRatio >= 1) {
-          lines.push('Performance: GOOD');
+          lines.push('Performance: GOOD - maintain current strategy');
         } else if (s.profitFactor < 1) {
-          lines.push('Performance: NEEDS IMPROVEMENT');
+          lines.push('Performance: NEEDS IMPROVEMENT - improve win/loss ratio, optimize TP/SL');
         } else if (s.maxDrawdownPct !== undefined && s.maxDrawdownPct > 30) {
-          lines.push('Performance: HIGH RISK');
+          lines.push('Performance: HIGH RISK - reduce position size, control drawdown');
         } else {
-          lines.push('Performance: NORMAL');
+          lines.push('Performance: NORMAL - room for optimization');
         }
       }
     }
@@ -632,13 +630,14 @@ Output a single JSON object with two fields: "analysis" (your market analysis) a
 \`\`\`
 
 ## Field Description
-- analysis: Your complete chain-of-thought market analysis (this is shown to users)
+- analysis: Your market analysis shown directly to users. Write clean readable text ONLY. Do NOT include: JSON construction notes, calculation steps, format instructions, "输出JSON", "计算具体数值", parameter explanations. Just write the analysis as if explaining to a trader.
 - action: open_long | open_short | close_long | close_short | hold | wait
   - hold = keep existing position, do NOT use for coins you have NO position in
   - wait = no action, use for coins you have NO position in and no signal
 - confidence: 0-100 (opening recommended ≥ ${minConf})
 - reasoning: per-coin short summary with ≥2 specific indicator values
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
+- **stop_loss / take_profit**: System will automatically place exchange conditional orders (STOP_MARKET / TAKE_PROFIT_MARKET) at your specified prices. These execute on the exchange — you do NOT need to manually close positions when SL/TP levels are reached.
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
   }
 }

@@ -322,8 +322,9 @@ export function parseDecisionsWithAnalysis(
             .map((r: any) => convertRawDecision(r, defaultSymbol))
             .filter((d: any) => d !== null) as AiTradeDecision[];
           if (decisions.length > 0) {
-            logger.log(`Parsed {analysis, decisions} format: ${decisions.length} decisions, analysis=${analysis ? analysis.length + 'chars' : 'none'}`);
-            return { decisions, analysis };
+            const cleanedAnalysis = cleanAnalysis(analysis);
+            logger.log(`Parsed {analysis, decisions} format: ${decisions.length} decisions, analysis=${cleanedAnalysis ? cleanedAnalysis.length + 'chars' : 'none'}`);
+            return { decisions, analysis: cleanedAnalysis };
           }
         }
       }
@@ -335,7 +336,42 @@ export function parseDecisionsWithAnalysis(
   // === 降级：<reasoning> + <decision> XML 格式 ===
   const reasoningTrace = extractReasoning(s);
   const decisions = parseDecisions(s, defaultSymbol);
-  return { decisions, analysis: reasoningTrace || undefined };
+  return { decisions, analysis: cleanAnalysis(reasoningTrace || undefined) };
+}
+
+/**
+ * 清理 analysis 文本：移除 AI 构建 JSON 过程中的格式废话
+ * DeepSeek 经常在 analysis 里混入 "输出JSON"、"计算具体数值"、"确保风险回报比" 等
+ */
+function cleanAnalysis(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const NOISE_PATTERNS = [
+    /^输出\s*JSON.*$/im,
+    /^现在[，,]?\s*写完整分析.*$/im,
+    /^决策数组[：:].*$/im,
+    /^计算\S+的具体数值[：:].*$/im,
+    /^确保\S*风险回报比.*$/im,
+    /^在\s*JSON\s*中直接.*$/im,
+    /^需指定.*$/im,
+    /^写入\s*JSON.*$/im,
+    /^确保分析用中文.*$/im,
+    /^- 入场价[：:]\s*当前.*$/im,
+    /^- 杠杆[：:]\s*\d+$/im,
+    /^- 仓位大小[：:]\s*\d+.*USDT.*$/im,
+    /^- 止损[：:]\s*\d+.*ATR.*$/im,
+    /^- 止盈[：:]\s*\d+.*ATR.*$/im,
+    /^- 信心[：:]\s*\d+$/im,
+    /^- 风险美元[：:]\s*计算.*$/im,
+    /^- 推理[：:]\s*".*"$/im,
+  ];
+  const lines = text.split('\n');
+  const cleaned = lines.filter(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return true; // 保留空行
+    return !NOISE_PATTERNS.some(p => p.test(trimmed));
+  });
+  const result = cleaned.join('\n').trim();
+  return result.length > 10 ? result : undefined;
 }
 
 /**
