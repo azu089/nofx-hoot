@@ -821,9 +821,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })()}
           */}
-          {/* AI 思考过程（对齐 nofx: 默认2行 + ∨展开） */}
-          {d.aiThinking && (
-            <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
+          {/* AI 整体市场分析（来自 analysis 字段，存入 d.reasoning） */}
+          {reasoning && (
+            <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
