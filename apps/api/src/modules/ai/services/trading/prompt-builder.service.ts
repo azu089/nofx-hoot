@@ -200,8 +200,8 @@ export class PromptBuilderService {
     // 对齐 nofx: 注入字段说明 + OI解读 + 常见错误警示，不注入交易规则（给AI完全自由度）
     sections.push(getSchemaPrompt({ lang: schemaLang, includeRules: false, includeOI: true, includeMistakes: true }));
 
-    // Section 1: Role Definition
-    sections.push(this.buildRoleSection(ps.role));
+    // Section 1: Role Definition（对齐 nofx: 中英文双版本）
+    sections.push(this.buildRoleSection(ps.role, locale));
 
     // Section 1.5: Trading Mode Variant（对齐 nofx engine.go L1051-1059）
     if (ps.mode) {
@@ -517,9 +517,14 @@ export class PromptBuilderService {
 
   // ── Section Builders ──
 
-  private buildRoleSection(customRole?: string): string {
+  private buildRoleSection(customRole?: string, locale?: string): string {
     if (customRole) {
       return `## Role\n${customRole}`;
+    }
+    // 对齐 nofx prompt_builder.go: 中文版 L47 / 英文版 L182
+    if (locale && locale.startsWith('zh')) {
+      return `## Role
+你是一个专业的加密货币交易AI。基于提供的市场数据做出交易决策。`;
     }
     return `## Role
 You are a professional cryptocurrency trading AI.
