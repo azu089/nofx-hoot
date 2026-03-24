@@ -38,19 +38,27 @@ export class ClosedPnlSyncService {
     apiKeyId: string,
     exchange: string,
     adapter: ExchangeAdapter,
-  ): Promise<{ synced: number; deleted: number; charged: number; balanceDepleted: boolean }> {
-    // ─── Step 1: 从交易所拉取已平仓记录 ───
+  ): Promise<{ synced: number; deleted: number; charged: number; balanceDepleted: boolean; incomePnl24h: number }> {
+    // ─── Step 0: 从 income API 拿准确 PnL（不依赖仓位重建）───
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    let incomePnl24h = 0;
+    try {
+      incomePnl24h = await adapter.getIncomePnl(since);
+    } catch (e: any) {
+      this.logger.debug(`[历史持仓同步] getIncomePnl 失败(非致命): ${e.message}`);
+    }
+
+    // ─── Step 1: 从交易所拉取已平仓记录 ───
     let exchangeRecords;
     try {
       exchangeRecords = await adapter.getClosedPnl(since, 100);
     } catch (e: any) {
       this.logger.warn(`[历史持仓同步] 拉取失败(非致命): ${e.message}`);
-      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false };
+      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h };
     }
 
     if (!exchangeRecords || exchangeRecords.length === 0) {
-      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false };
+      return { synced: 0, deleted: 0, charged: 0, balanceDepleted: false, incomePnl24h };
     }
 
     // 去重（同一 exchangeId 只取最新）
@@ -91,22 +99,55 @@ export class ClosedPnlSyncService {
           exchangeRef,
         };
 
-        // upsert: 存在则更新价格/PnL（交易所可能修正），不存在则创建
-        const position = await this.prisma.position.upsert({
-          where: { exchangeRef },
-          create: posData,
-          update: {
-            entryPrice: posData.entryPrice,
-            closePrice: posData.closePrice,
-            amount: posData.amount,
-            pnl: posData.pnl,
-            realizedPnl: posData.realizedPnl,
-            closedAt: posData.closedAt,
-            // 总是更新策略归属（策略停用/启用后匹配结果可能变化）
-            aiStrategyId: strategy?.id || null,
-            source: strategy ? 'ai_strategy' : 'exchange_sync',
+        // 防重复：先检查是否已有 AI 平仓的记录（exchangeRef=null 但 symbol+side+closedAt 匹配）
+        // AI 平仓时不知道交易所 exchangeRef，ClosedPnlSync 拉到时需要关联而非创建新记录
+        const closedAtTime = posData.closedAt instanceof Date ? posData.closedAt : new Date(posData.closedAt);
+        const existingAiPos = await this.prisma.position.findFirst({
+          where: {
+            userId,
+            symbol: record.symbol,
+            side: posData.side,
+            status: 'closed',
+            exchangeRef: null,
+            closeReason: { in: ['ai_decision', 'scale_out_complete', 'peak_drawdown', 'not_found_on_exchange'] },
+            closedAt: {
+              gte: new Date(closedAtTime.getTime() - 5 * 60 * 1000), // ±5 分钟窗口
+              lte: new Date(closedAtTime.getTime() + 5 * 60 * 1000),
+            },
           },
+          orderBy: { closedAt: 'desc' },
         });
+
+        let position;
+        if (existingAiPos) {
+          // 关联 exchangeRef 到已有的 AI 平仓记录，补充交易所数据
+          position = await this.prisma.position.update({
+            where: { id: existingAiPos.id },
+            data: {
+              exchangeRef,
+              closePrice: posData.closePrice || existingAiPos.closePrice,
+              // 如果 AI 记录缺少 exitPrice，从交易所补充
+              ...(!existingAiPos.exitPrice && record.exitPrice ? { exitPrice: record.exitPrice } : {}),
+            },
+          });
+          this.logger.debug(`[历史持仓同步] 关联 exchangeRef 到已有 AI 记录: ${record.symbol} ${posData.side} → ${existingAiPos.id}`);
+        } else {
+          // upsert: 存在则更新价格/PnL（交易所可能修正），不存在则创建
+          position = await this.prisma.position.upsert({
+            where: { exchangeRef },
+            create: posData,
+            update: {
+              entryPrice: posData.entryPrice,
+              closePrice: posData.closePrice,
+              amount: posData.amount,
+              pnl: posData.pnl,
+              realizedPnl: posData.realizedPnl,
+              closedAt: posData.closedAt,
+              aiStrategyId: strategy?.id || null,
+              source: strategy ? 'ai_strategy' : 'exchange_sync',
+            },
+          });
+        }
         synced++;
 
         // ─── Step 3: 盈利 → GAS 扣费（幂等，uniqueOrderId = GAS_{exchangeRef}）───
@@ -158,7 +199,7 @@ export class ClosedPnlSyncService {
       });
     }
 
-    return { synced, deleted: 0, charged, balanceDepleted };
+    return { synced, deleted: 0, charged, balanceDepleted, incomePnl24h };
   }
 
   /**

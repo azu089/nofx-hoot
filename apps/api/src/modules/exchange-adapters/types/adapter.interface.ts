@@ -174,6 +174,12 @@ export interface ExchangeAdapter {
    */
   getClosedPnl(startTime: Date, limit: number, symbol?: string): Promise<ClosedPnlRecord[]>;
 
+  /**
+   * 获取已实现盈亏总额（直接从交易所 income/PnL API 拉取，不经过仓位重建）
+   * 返回 100% 准确的 PnL 数字，用于策略卡片展示
+   */
+  getIncomePnl(startTime: Date): Promise<number>;
+
   // ========================= 生命周期 =========================
 
   /**

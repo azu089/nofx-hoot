@@ -1138,6 +1138,35 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
   }
 
   /**
+   * 直接从交易所 income API 拉取已实现盈亏总额
+   * Binance: fapiPrivateGetIncome(REALIZED_PNL)
+   * OKX/Bybit: 从 closedPnl 记录汇总
+   */
+  async getIncomePnl(startTime: Date): Promise<number> {
+    try {
+      const ex = this.getExchange();
+      const startMs = startTime.getTime();
+
+      if (this.exchangeType === 'binance' || this.exchangeType === 'gate') {
+        const income: any[] = await (ex as any).fapiPrivateGetIncome({
+          incomeType: 'REALIZED_PNL',
+          startTime: startMs,
+          limit: 1000,
+        });
+        if (!income?.length) return 0;
+        return income.reduce((sum, i) => sum + parseFloat(i.income || '0'), 0);
+      }
+
+      // OKX/Bybit: 从 closedPnl 汇总
+      const records = await this.getClosedPnl(startTime, 200);
+      return records.reduce((sum, r) => sum + (r.realizedPnl || 0), 0);
+    } catch (e: any) {
+      this.logger.debug(`getIncomePnl (${this.exchangeType}) 非致命: ${e.message}`);
+      return 0;
+    }
+  }
+
+  /**
    * Binance/Gate: 聚合持仓级别的平仓记录
    * Step 1: fapiPrivateGetIncome(REALIZED_PNL) 获取有盈亏的 symbol 列表
    * Step 2: fapiPrivateGetUserTrades(symbol) 获取完整成交详情
@@ -1220,6 +1249,17 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
 
     if (allTrades.length === 0) return [];
 
+    // Step 2.5: 获取 leverageMap（从 positionRisk API，对齐 nofx: 交易所数据是唯一事实）
+    let leverageMap = new Map<string, number>();
+    try {
+      const riskData: any[] = await (ex as any).fapiPrivateV2GetPositionRisk();
+      for (const r of riskData) {
+        if (r.symbol && r.leverage) {
+          leverageMap.set(r.symbol, parseInt(String(r.leverage), 10) || 1);
+        }
+      }
+    } catch { /* 降级: leverage 默认 1 */ }
+
     // Step 3: 按 symbol 分组，时间排序
     const bySymbol = new Map<string, any[]>();
     for (const t of allTrades) {
@@ -1246,6 +1286,8 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       let shortLastCloseTime = 0, shortLastOrderId = '';
       let shortFirstCloseTradeId = ''; // 首笔平仓 tradeId → 构造稳定 exchangeRef
 
+      const symLeverage = leverageMap.get(rawSymbol) || 1;
+
       const emitLong = () => {
         if (longClosedQty <= 0) return;
         const avgExit = longExitNotional / longClosedQty;
@@ -1253,7 +1295,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         results.push(this.buildBinancePositionRecord(
           rawSymbol, 'long', avgEntry, avgExit, longClosedQty,
           longTotalPnl, longTotalFee, longOpenTime, longLastCloseTime,
-          longLastOrderId, longFirstCloseTradeId,
+          longLastOrderId, longFirstCloseTradeId, symLeverage,
         ));
       };
       const resetLong = () => {
@@ -1269,7 +1311,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
         results.push(this.buildBinancePositionRecord(
           rawSymbol, 'short', avgEntry, avgExit, shortClosedQty,
           shortTotalPnl, shortTotalFee, shortOpenTime, shortLastCloseTime,
-          shortLastOrderId, shortFirstCloseTradeId,
+          shortLastOrderId, shortFirstCloseTradeId, symLeverage,
         ));
       };
       const resetShort = () => {
@@ -1401,6 +1443,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
     realizedPnl: number, fee: number,
     openTime: number, closeTime: number, orderId: string,
     firstCloseTradeId: string,
+    leverage?: number,
   ): ClosedPnlRecord {
     const unifiedSymbol = this.binanceRawSymbolToUnified(rawSymbol);
     // 稳定 exchangeRef：用首笔平仓 tradeId 做锚点
@@ -1415,7 +1458,7 @@ export class CcxtAdapter implements ExchangeAdapter, GridExchangeAdapter {
       quantity,
       realizedPnl,
       fee,
-      leverage: 1,
+      leverage: leverage || 1,
       entryTime: new Date(openTime || closeTime),
       exitTime: new Date(closeTime),
       orderId: String(orderId || ''),

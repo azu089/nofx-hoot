@@ -650,6 +650,11 @@ export class AsterAdapter implements ExchangeAdapter, GridExchangeAdapter {
     }
   }
 
+  async getIncomePnl(startTime: Date): Promise<number> {
+    const records = await this.getClosedPnl(startTime, 200);
+    return records.reduce((sum, r) => sum + (r.realizedPnl || 0), 0);
+  }
+
   // ========================= GridExchangeAdapter =========================
 
   async placeLimitOrder(

@@ -1672,6 +1672,13 @@ export class GridTradingService {
             if (syncResult.synced > 0 || syncResult.deleted > 0) {
               this.logger.log(`[网格] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
             }
+            // 用 income API 的准确 PnL 更新策略记录
+            if (syncResult.incomePnl24h !== undefined) {
+              await this.prisma.aiStrategy.update({
+                where: { id: strategyId },
+                data: { totalPnl: syncResult.incomePnl24h },
+              });
+            }
           } catch (e: any) {
             this.logger.debug(`[网格] 历史持仓同步失败(非致命): ${e.message}`);
           }

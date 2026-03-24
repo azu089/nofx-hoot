@@ -66,6 +66,7 @@ interface RiskControlConfig {
   altcoinMaxLeverage?: number;     // AI GUIDED, 默认 5（山寨币分类杠杆）
   minRiskRewardRatio?: number;     // AI GUIDED, 默认 1.5（最小风险收益比）
   minConfidence?: number;          // AI GUIDED, 默认 60（最小置信度）
+  minCloseConfidence?: number;     // 平仓最低置信度，默认 0（不检查），建议 70
   minPositionSize?: number;        // CODE ENFORCED, 默认 12（最小仓位 USDT）
   maxMarginUsage?: number;         // CODE ENFORCED, 默认 0.9（最大保证金使用率）
 }
@@ -944,6 +945,7 @@ export class AutoTraderService {
                 altcoinMaxLeverage: riskControl.altcoinMaxLeverage,
                 minRiskRewardRatio: riskControl.minRiskRewardRatio,
                 minConfidence: riskControl.minConfidence,
+                minCloseConfidence: riskControl.minCloseConfidence,
                 minPositionSize: riskControl.minPositionSize,
                 maxDailyDrawdown: riskControl.maxDailyDrawdown || maxDailyDrawdown,
                 allocatedCapital: riskControl.allocatedCapital,
@@ -1134,6 +1136,7 @@ export class AutoTraderService {
               altcoinMaxLeverage: riskControl.altcoinMaxLeverage,
               minRiskRewardRatio: riskControl.minRiskRewardRatio,
               minConfidence: riskControl.minConfidence,
+                minCloseConfidence: riskControl.minCloseConfidence,
               minPositionSize: riskControl.minPositionSize,
               btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
               altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
@@ -1347,6 +1350,7 @@ export class AutoTraderService {
                   altcoinMaxLeverage: riskControl.altcoinMaxLeverage,
                   minRiskRewardRatio: riskControl.minRiskRewardRatio,
                   minConfidence: riskControl.minConfidence,
+                minCloseConfidence: riskControl.minCloseConfidence,
                   minPositionSize: riskControl.minPositionSize,
                   btcEthMaxPositionValueRatio: riskControl.btcEthMaxPositionValueRatio,
                   altcoinMaxPositionValueRatio: riskControl.altcoinMaxPositionValueRatio,
@@ -1491,17 +1495,18 @@ export class AutoTraderService {
             continue;
           }
 
-          // === minConfidence 代码级预过滤（默认 60，用户可配置）===
-          // RiskControlConfig.minConfidence 默认 60，用户可在策略 riskControlConfig 中调整
+          // === 置信度代码级预过滤 ===
           {
             const isOpenDecision = decision.action === 'open_long' || decision.action === 'open_short';
+            const isCloseDecision = decision.action === 'close_long' || decision.action === 'close_short';
+
+            // 开仓置信度检查（默认 60，用户可配置）
             const minConf = riskControl.minConfidence ?? 60;
             if (isOpenDecision && decision.confidence < minConf) {
               this.logger.log(
                 `[风控] ${symbol}: confidence ${decision.confidence}% < minConfidence ${minConf}%，强制转为 wait`,
               );
               decision = { ...decision, action: 'wait' as AiAction };
-              // 转为 wait 后进入跳过流程
               result.decisions.push({ symbol, action: 'wait', confidence: decision.confidence, executed: false });
               cycleDecisions.push({
                 symbol,
@@ -1517,6 +1522,42 @@ export class AutoTraderService {
                 analysis: _logAnalysis,
                 executed: false,
                 executionResult: { skipped: true, reason: 'min_confidence' },
+                rawResponse: _logRawResponse,
+                systemPrompt: _logSystemPrompt,
+                userPrompt: _logUserPrompt,
+              });
+              if (!sharedRawResponse) {
+                sharedRawResponse = _logRawResponse;
+                sharedSystemPrompt = _logSystemPrompt;
+                sharedUserPrompt = _logUserPrompt;
+              }
+              continue;
+            }
+
+            // 平仓置信度检查（默认 0=不检查，向后兼容。用户可配置如 70）
+            // 低置信度 close 被拦截为 hold，让交易所 SL/TP 条件单处理
+            const minCloseConf = riskControl.minCloseConfidence ?? 0;
+            if (isCloseDecision && minCloseConf > 0 && decision.confidence < minCloseConf) {
+              this.logger.log(
+                `[风控] ${symbol}: ${decision.action} confidence ${decision.confidence}% < minCloseConfidence ${minCloseConf}%，强制转为 hold`,
+              );
+              const originalAction = decision.action;
+              decision = { ...decision, action: 'hold' as AiAction };
+              result.decisions.push({ symbol, action: 'hold', confidence: decision.confidence, executed: false });
+              cycleDecisions.push({
+                symbol,
+                decision: {
+                  action: 'hold',
+                  confidence: decision.confidence,
+                  minConfFilter: true,
+                  actual: decision.confidence,
+                  required: minCloseConf,
+                  originalAction,
+                  reasoning: `[平仓置信度不足 ${decision.confidence}%<${minCloseConf}%，维持持有] ${decision.reasoning || ''}`,
+                },
+                analysis: _logAnalysis,
+                executed: false,
+                executionResult: { skipped: true, reason: 'min_close_confidence' },
                 rawResponse: _logRawResponse,
                 systemPrompt: _logSystemPrompt,
                 userPrompt: _logUserPrompt,
@@ -2357,6 +2398,13 @@ export class AutoTraderService {
             );
             if (syncResult.synced > 0 || syncResult.deleted > 0) {
               this.logger.log(`[自动交易] 历史持仓同步: 新增=${syncResult.synced}, 删除=${syncResult.deleted}, 扣费=${syncResult.charged}`);
+            }
+            // 用 income API 的准确 PnL 更新策略记录（不依赖 position 表聚合）
+            if (syncResult.incomePnl24h !== undefined) {
+              await this.prisma.aiStrategy.update({
+                where: { id: strategyId },
+                data: { totalPnl: syncResult.incomePnl24h },
+              });
             }
           } finally {
             try { await syncAdapter.dispose(); } catch { /* 忽略 */ }
