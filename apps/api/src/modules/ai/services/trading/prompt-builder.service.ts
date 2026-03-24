@@ -49,6 +49,7 @@ export interface PromptConfig {
     maxDailyTrades?: number;   // 每日最大交易次数（L5 强制）
     cooldownMinutes?: number;  // 冷却期分钟数（L6 强制）
     circuitBreaker?: number;   // 连续亏损熔断阈值（L5 强制）
+    minCloseConfidence?: number; // 平仓最低置信度（低于此值的 close 被拦截为 hold）
   };
   /** 策略运行间隔（分钟） */
   intervalMinutes?: number;
@@ -553,7 +554,8 @@ Your task is to make trading decisions based on provided market data.`;
 ## AI GUIDED (Recommended, you should follow):
 - Trading Leverage: Altcoins max ${altLev}x | BTC/ETH max ${btcLev}x
 - Risk-Reward Ratio: >= 1:${minRR} (take_profit / stop_loss)
-- Min Confidence: >= ${minConf} to open position
+- Min Confidence to OPEN: >= ${minConf}
+${(rc.minCloseConfidence && rc.minCloseConfidence > 0) ? `- Min Confidence to CLOSE: >= ${rc.minCloseConfidence} (low confidence closes will be held, let SL/TP execute)` : ''}
 
 ## Position Sizing Guidance
 Calculate position_size_usd based on your confidence and the Position Value Limits above:
@@ -588,21 +590,24 @@ Calculate position_size_usd based on your confidence and the Position Value Limi
     indicatorLines.push(`- Long/Short Ratio + Taker Buy/Sell`);
     indicatorLines.push(`- Institutional / Retail fund flow (if available)`);
 
-    return `## Trading Frequency
-- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
-- >2 trades/hour = Overtrading — you are destroying profits with fees
-- Single position hold time ≥ 30-60 minutes
-If you find yourself trading every period → your entry standards are too low; if closing positions < 30 minutes → too impatient.
+    return `# ⏱️ Trading Frequency Awareness
 
-## Entry Standards
-Only open when multiple signals resonate. You have:
+- Excellent traders: 2-4 trades/day ≈ 0.1-0.2 trades/hour
+- >2 trades/hour = Overtrading
+- Single position hold time ≥ 30-60 minutes
+If you find yourself trading every period → standards too low; if closing positions < 30 minutes → too impatient.
+
+# 🎯 Entry Standards (Strict)
+
+Only open positions when multiple signals resonate. You have:
 ${indicatorLines.join('\n')}
 
-Feel free to use any effective analysis method, but **confidence ≥ ${conf}** required to open positions; avoid single-indicator entries, contradictory signals, sideways consolidation, reopening immediately after closing.
+Feel free to use any effective analysis method, but **confidence ≥ ${conf}** required to open positions; avoid low-quality behaviors such as single indicators, contradictory signals, sideways consolidation, reopening immediately after closing, etc.
 
-## Decision Process
-1. Check existing positions → take profit / stop-loss / hold?
-2. Scan candidate coins + multi-timeframe → whether strong signals exist
+# 📋 Decision Process
+
+1. Check positions → Should we take profit/stop-loss
+2. Scan candidate coins + multi-timeframe → Are there strong signals
 3. Write chain of thought first, then output structured JSON`;
   }
 
@@ -640,7 +645,7 @@ Step 2: JSON decision array
 ## Field Description
 
 - \`action\`: open_long | open_short | close_long | close_short | hold | wait
-- \`confidence\`: 0-100 (opening recommended ≥ ${minConf})
+- \`confidence\`: 0-100 (opening ≥ ${minConf}${(rc.minCloseConfidence && rc.minCloseConfidence > 0) ? `, closing ≥ ${rc.minCloseConfidence}` : ''} required)
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
