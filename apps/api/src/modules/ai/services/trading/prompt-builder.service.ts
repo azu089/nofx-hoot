@@ -627,9 +627,7 @@ Feel free to use any effective analysis method, but **confidence ≥ ${conf}** r
 ## Format Requirements
 
 <reasoning>
-Your chain of thought analysis...
-- Briefly analyze your thinking process
-- End with your final decision in first person (e.g. "我决定对SOL开多5x杠杆，DOGE和FET继续观望")
+Write your analysis and end with your final decision in first person.
 </reasoning>
 
 <decision>
