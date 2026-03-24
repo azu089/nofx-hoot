@@ -102,8 +102,9 @@ export class ClosedPnlSyncService {
             pnl: posData.pnl,
             realizedPnl: posData.realizedPnl,
             closedAt: posData.closedAt,
-            // 如果之前没匹配到策略但现在匹配到了，更新
-            ...(strategy ? { aiStrategyId: strategy.id, source: 'ai_strategy' } : {}),
+            // 总是更新策略归属（策略停用/启用后匹配结果可能变化）
+            aiStrategyId: strategy?.id || null,
+            source: strategy ? 'ai_strategy' : 'exchange_sync',
           },
         });
         synced++;
