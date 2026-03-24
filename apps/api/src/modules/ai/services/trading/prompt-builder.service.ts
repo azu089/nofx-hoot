@@ -617,30 +617,31 @@ Feel free to use any effective analysis method, but **confidence ≥ ${conf}** r
 
     return `# Output Format (Strictly Follow)
 
-**Must use XML tags <reasoning> and <decision> to separate your analysis and decision JSON.**
+**Must use XML tags <reasoning> and <decision> to separate chain of thought and decision JSON, avoiding parsing errors**
+
+## Format Requirements
 
 <reasoning>
-Your complete market analysis (shown to users). Must include:
-1. Account risk check (margin usage, available funds)
-2. Existing positions analysis (hold/close/take-profit?)
-3. Each candidate coin analysis (specific indicator values, signals)
-4. Final decision summary: clearly state your action for each coin and why
+Your chain of thought analysis...
+- Briefly analyze your thinking process
 </reasoning>
 
 <decision>
+Step 2: JSON decision array
+
+\`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA空头排列+OI↑Price↓空头主导+机构流出$33M"},
-  {"symbol": "ETH/USDT:USDT", "action": "close_long", "confidence": 80, "reasoning": "论点失效，止损"}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300},
+  {"symbol": "ETH/USDT:USDT", "action": "close_long"}
 ]
+\`\`\`
 </decision>
 
 ## Field Description
-- action: open_long | open_short | close_long | close_short | hold | wait
-  - hold = keep existing position, do NOT use for coins you have NO position in
-  - wait = no action, use for coins you have NO position in and no signal
-- confidence: 0-100 (opening recommended ≥ ${minConf})
-- reasoning: THIS COIN's signal summary ONLY (1-2 sentences, ≥2 indicator values). Do NOT repeat account info or other coins' analysis here. Example: "EMA空头排列+OI↑$6M+Price↓空头主导+机构流出$11M"
+
+- \`action\`: open_long | open_short | close_long | close_short | hold | wait
+- \`confidence\`: 0-100 (opening recommended ≥ ${minConf})
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas`;
+- **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
 }
