@@ -916,7 +916,7 @@ export class AiExecutionService {
     } catch (e: any) {
       this.logger.error(`[AI执行] 批量平仓 adapter 创建失败: ${e.message}`);
     } finally {
-      if (ownsAdapter && adapter) { try { await adapter.dispose(); } catch { /* 忽略 */ } }
+      // adapter 生命周期由 factory 统一管理，consumer 不 dispose
     }
   }
 

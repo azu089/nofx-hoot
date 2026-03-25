@@ -2460,8 +2460,8 @@ export class AutoTraderService {
       return result;
 
       } finally {
-        // ══ 周期级 Adapter 销毁（对齐 nofx：整个周期结束后统一释放）══
-        if (cycleAdapter) { try { await cycleAdapter.dispose(); } catch { /* 忽略 */ } }
+        // adapter 生命周期由 adapter-factory 统一管理（evictStale 10min TTL）
+        // consumer 不应 dispose factory 缓存的 adapter，否则导致下次调用"缓存失效重建"
       }
 
     } catch (error) {

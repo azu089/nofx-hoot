@@ -100,7 +100,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     }
 
     // 按用户+APIKey 分组获取交易所持仓（批量，减少 API 调用次数）
-    // adapter 缓存：复用给后续 checkScaleOut / autoClosePosition，最后统一 dispose
+    // adapter 缓存：复用给后续 autoClosePosition（生命周期由 factory 管理，不 dispose）
     const exchangePosCache = new Map<string, any[]>();
     const adapterCache = new Map<string, ExchangeAdapter>();
     if (this.adapterFactory) {
@@ -117,8 +117,6 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         }
       }
     }
-
-    try { // ← finally 中统一 dispose 所有 adapter
 
     let closedCount = 0;
 
@@ -256,13 +254,6 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     }
 
     return { checked: positions.length, closed: closedCount };
-
-    } finally {
-      // 统一 dispose 所有 adapter（对齐 nofx：单个 trader 实例贯穿整个周期）
-      for (const adapter of adapterCache.values()) {
-        try { await adapter.dispose(); } catch { /* 忽略 */ }
-      }
-    }
   }
 
   // [已删除] checkScaleOut 分批止盈 — 与交易所 TP 条件单冲突 + AI 不知情会补仓循环
@@ -427,7 +418,7 @@ export class DrawdownMonitorProcessor extends WorkerHost {
         `[AI监控] 自动平仓失败: ${pos.id} ${pos.symbol} - ${error.message}`,
       );
     } finally {
-      if (ownsAdapter) await adapter?.dispose?.();
+      // adapter 生命周期由 factory 管理，不 dispose
     }
   }
 

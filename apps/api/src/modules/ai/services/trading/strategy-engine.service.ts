@@ -1133,7 +1133,7 @@ export class StrategyEngineService implements OnModuleInit {
         this.logger.log(`[持仓同步] user=${userId}: 新建${created}, 关闭${closed}`);
       }
     } finally {
-      if (ownsAdapter) await adapter.dispose();
+      // adapter 生命周期由 factory 统一管理，consumer 不 dispose
     }
 
     return { created, closed, exchangePositions: liveExchangePositions };
