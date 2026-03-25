@@ -1516,6 +1516,7 @@ export class AutoTraderService {
                 analysis: _logAnalysis,
                 executed: false,
                 executionResult: { skipped: true, reason: 'min_confidence' },
+                marketSnapshot: _logMarketSnapshot,
                 rawResponse: _logRawResponse,
                 systemPrompt: _logSystemPrompt,
                 userPrompt: _logUserPrompt,
@@ -1552,6 +1553,7 @@ export class AutoTraderService {
                 analysis: _logAnalysis,
                 executed: false,
                 executionResult: { skipped: true, reason: 'min_close_confidence' },
+                marketSnapshot: _logMarketSnapshot,
                 rawResponse: _logRawResponse,
                 systemPrompt: _logSystemPrompt,
                 userPrompt: _logUserPrompt,
@@ -1899,6 +1901,7 @@ export class AutoTraderService {
                 analysis: undefined,
                 executed: false,
                 executionResult: { blocked: true, blockedBy: 'E4', reason: e4Reason },
+                marketSnapshot: itemMarketSnapshot,
               });
               if (!sharedRawResponse) {
                 sharedRawResponse = itemRawResponse;
@@ -1990,6 +1993,7 @@ export class AutoTraderService {
                   analysis: undefined,
                   executed: false,
                   executionResult: { blocked: true, blockedBy: 'R4', reason },
+                  marketSnapshot: itemMarketSnapshot,
                 });
                 if (!sharedRawResponse) {
                   sharedRawResponse = itemRawResponse;
@@ -2220,6 +2224,7 @@ export class AutoTraderService {
             analysis: undefined,
             executed: false,
             executionResult: { error: error.message },
+            marketSnapshot: itemMarketSnapshot,
           });
           if (!sharedRawResponse) {
             sharedRawResponse = itemRawResponse;
