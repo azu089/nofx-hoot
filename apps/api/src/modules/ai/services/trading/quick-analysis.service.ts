@@ -879,9 +879,11 @@ export class QuickAnalysisService {
         this.marketData.fetchCryptoNews(configs[0].symbol, 5).catch(() => [] as any[]),
         this.marketData.fetchFearGreedIndex().catch(() => null),
         this.lunarCrush.fetchSocialMetrics(configs[0].symbol).catch(() => null),
-        // BTC 参考（对齐 nofx: BTC 市场快照）
+        // BTC 参考（对齐 nofx: 候选币包含 BTC 时跳过，避免 MARKET DATA 重复）
         (async () => {
           try {
+            const hasBtcCandidate = configs.some(c => c.symbol === 'BTC/USDT:USDT');
+            if (hasBtcCandidate) return null; // BTC 已是候选币，MARKET DATA 段已有完整数据
             const btcRaw = await this.marketData.fetchOHLCV('BTC/USDT:USDT', '1h', 50);
             if (!btcRaw || btcRaw.length < 14) return null;
             const btcOhlcv = btcRaw.map((c: any) => ({ timestamp: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5] }));
