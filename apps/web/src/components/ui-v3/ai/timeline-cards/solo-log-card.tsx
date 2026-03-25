@@ -493,7 +493,7 @@ function CoinReasoning({ text }: { text: string }) {
   const needsExpand = cleaned.length > 80;
   return (
     <div className="mt-0.5">
-      <p className={`text-[10px] text-[#606070] leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>💡 {cleaned}</p>
+      <p className={`text-[10px] text-[#606070] leading-relaxed ${expanded ? '' : 'line-clamp-2'}`}>{cleaned}</p>
       {needsExpand && (
         <div className="flex justify-center mt-0.5">
           <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }} className="text-[#4A4A6A] hover:text-[#9090A0] transition-colors">
@@ -850,15 +850,19 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {amt && <span className="text-[#F8F8FC]">×{amt}</span>}
                   {d.confidence != null && <span className="font-semibold" style={{ color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E' }}>{d.confidence}%</span>}
                 </div>
-                {/* 行2: 上限$720  60%  名义 $342 */}
-                <div className="text-[10px] text-[#606070] font-mono pl-1">
-                  {pvl > 0 && <>{t('timeline.limitLabel') || '上限'}${pvl.toFixed(0)} </>}
+                {/* 行2: 上限$720  80%  名义$96  ↓$0.245  ↑$0.275  1:4.0 */}
+                <div className="flex items-center gap-2 text-[10px] text-[#606070] font-mono pl-1">
+                  {pvl > 0 && <span>{t('timeline.limitLabel') || '上限'}${pvl.toFixed(0)}</span>}
                   {aiPct > 0 && <span className="text-[#06B6D4]">{aiPct}%</span>}
-                  {aiPct > 0 && <> </>}
                   {notional > 0 && (
                     truncated
-                      ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span> ({t('timeline.truncated')})</>
-                      : <>{t('timeline.notionalLabel')} ${notional.toFixed(0)}</>
+                      ? <span>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(aiReq).toFixed(0)}→${notional.toFixed(0)}</span></span>
+                      : <span>{t('timeline.notionalLabel')} ${notional.toFixed(0)}</span>
+                  )}
+                  {d.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(d.stopLoss).toLocaleString()}</span>}
+                  {d.takeProfit != null && <span className="text-[#10B981]">↑${Number(d.takeProfit).toLocaleString()}</span>}
+                  {d.stopLoss != null && d.takeProfit != null && rr != null && rr > 0 && (
+                    <span className="ml-auto font-semibold" style={{ color: rrColor(rr) }}>1:{rr.toFixed(1)}</span>
                   )}
                 </div>
               </>
@@ -890,21 +894,6 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   color: d.confidence >= 80 ? '#22C55E' : d.confidence >= 60 ? '#F59E0B' : '#F43F5E',
                 }}>{d.confidence}%</span>
               )}
-            </div>
-          )}
-
-          {/* 行2: 止损/止盈/盈亏比 — 3列网格 */}
-          {!isCloseAction && (d.stopLoss != null || d.takeProfit != null) && (
-            <div className="grid grid-cols-3 text-[11px] font-mono">
-              <span className="text-[#F43F5E]">
-                {d.stopLoss != null && <>↓${Number(d.stopLoss).toLocaleString()} <span className="opacity-50 text-[10px]">({d.stopLossPct ? `-${(d.stopLossPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.stopLoss) : ''})</span></>}
-              </span>
-              <span className="text-[#10B981]">
-                {d.takeProfit != null && <>↑${Number(d.takeProfit).toLocaleString()} <span className="opacity-50 text-[10px]">({d.takeProfitPct ? `+${(d.takeProfitPct * 100).toFixed(1)}%` : entryPrice > 0 ? calcPct(entryPrice, d.takeProfit) : ''})</span></>}
-              </span>
-              <span className="font-semibold text-right" style={{ color: rr != null ? rrColor(rr) : '#606070' }}>
-                {rr != null && <>1:{rr.toFixed(1)}</>}
-              </span>
             </div>
           )}
 
