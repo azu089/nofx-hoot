@@ -366,12 +366,13 @@ export class DrawdownMonitorProcessor extends WorkerHost {
     let adapter: ExchangeAdapter | undefined = existingAdapter;
     try {
       if (!adapter) adapter = await this.adapterFactory!.createAdapter(pos.userId, pos.apiKeyId);
-      // 对齐 nofx emergencyClosePosition: closeLong(symbol, 0) — 0 表示平全部
+      // CCXT adapter 不支持 0=平全部，使用 DB 数量
+      const closeAmount = parseFloat(pos.amount.toString());
       let result;
       if (pos.side === 'long') {
-        result = await adapter.closeLong(pos.symbol, 0);
+        result = await adapter.closeLong(pos.symbol, closeAmount);
       } else {
-        result = await adapter.closeShort(pos.symbol, 0);
+        result = await adapter.closeShort(pos.symbol, closeAmount);
       }
 
       const exitPrice = result.avgPrice || currentPrice;

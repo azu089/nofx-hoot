@@ -693,11 +693,12 @@ export class AiExecutionService {
       `  入场价=$${entryPriceForPnl} 来源=${position ? 'DB' : '交易所fallback'}`,
     );
 
-    // 对齐 nofx: CloseLong(symbol, 0) — 0 表示平全部，防止 DB 数量与交易所不一致
+    // 使用实际数量平仓（CCXT adapter 不支持 0=平全部语义，nofx 的 0 是 Go 端内部处理）
+    // closeAmount 已从 DB 或交易所 fallback 获取
     const result = await this.retryCall<OrderResult>('closePosition', () =>
       side === 'long'
-        ? adapter.closeLong(futuresSymbol, 0)
-        : adapter.closeShort(futuresSymbol, 0),
+        ? adapter.closeLong(futuresSymbol, closeAmount)
+        : adapter.closeShort(futuresSymbol, closeAmount),
     );
 
     const exitPrice = result.avgPrice || 0;
