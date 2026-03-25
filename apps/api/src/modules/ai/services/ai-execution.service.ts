@@ -132,7 +132,8 @@ export class AiExecutionService {
     existingAdapter?: ExchangeAdapter,
   ): Promise<number> {
     try {
-      const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+      const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
+        ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
       const balance = await this.retryCall('getBalance', () => adapter.getBalance());
       const exchangeBalance = balance.availableBalance;
       if (allocatedCapital && allocatedCapital > 0) {
@@ -154,7 +155,9 @@ export class AiExecutionService {
     apiKeyId: string,
     existingAdapter?: ExchangeAdapter,
   ): Promise<{ totalEquity: number; availableBalance: number; usedMargin: number }> {
-    const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+    // 防御：传入的 adapter 可能被 evictStale/dispose 导致 not ready，此时重新创建
+    const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
+      ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
     const balance = await this.retryCall('getBalance', () => adapter.getBalance());
     return {
       totalEquity: balance.totalEquity,

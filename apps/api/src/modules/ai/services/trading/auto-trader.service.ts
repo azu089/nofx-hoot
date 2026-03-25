@@ -603,7 +603,9 @@ export class AutoTraderService {
       let activeStopOrders: StopOrderInfo[] = [];
       if (positionSymbolsForStop.length > 0 && cycleAdapter) {
         try {
-          activeStopOrders = await (cycleAdapter as any).getStopOrders(positionSymbolsForStop);
+          if (typeof (cycleAdapter as any).getStopOrders === 'function') {
+            activeStopOrders = await (cycleAdapter as any).getStopOrders(positionSymbolsForStop);
+          }
           if (activeStopOrders.length > 0) {
             this.logger.log(
               `[条件单] 获取到 ${activeStopOrders.length} 个活跃 SL/TP 条件单: ` +
