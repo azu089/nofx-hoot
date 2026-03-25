@@ -363,8 +363,17 @@ export class AiExecutionService {
     // 6. 最小仓位检查（使用用户配置）
     this.enforceMinPositionSize(adaptedSize, minPositionSize);
 
-    // 7. [已删除] cancelAllOrders — 对齐 nofx: 开仓前不取消挂单
-    // 多策略环境下 cancelAllOrders 会误杀其他策略的 SL/TP 条件单，nofx 无此操作
+    // 7. 开仓前清理同币种旧条件单（SL/TP）
+    // 场景：上一笔 FET 仓位平仓后残留了条件单，新开 FET 前必须清理
+    // 只清理条件单（cancelStopOrders），不清理限价单（cancelAllOrders），避免误杀网格单
+    try {
+      if (typeof adapter.cancelStopOrders === 'function') {
+        await adapter.cancelStopOrders(futuresSymbol);
+        this.logger.log(`[AI执行] 开仓前清理 ${futuresSymbol} 旧条件单`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`[AI执行] 开仓前清理条件单失败(非致命): ${e.message}`);
+    }
 
     // 8. 设置杠杆（先查当前杠杆，已匹配则跳过 API 调用，减少不必要请求）
     let actualLeverage = leverage;
