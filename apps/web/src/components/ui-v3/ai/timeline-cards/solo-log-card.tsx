@@ -803,14 +803,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             );
           })}
 
-          {/* AI 整体分析（仅当与每币 reasoning 不同时显示，避免重复） */}
-          {reasoning && !allDecisions.some(ad => String(ad.reasoning || '') === reasoning) && (
+          {/* AI 完整推理过程（始终显示，这是用户看分析逻辑的核心区域） */}
+          {reasoning && (
             <AiThinkingSection text={reasoning} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
-          )}
-
-          {/* DeepSeek 思考链（仅当与 reasoning 不同时显示，避免重复） */}
-          {d.aiThinking && String(d.aiThinking) !== reasoning && (
-            <AiThinkingSection text={d.aiThinking as string} modelId={d.modelId || (Array.isArray(strategy.models) ? strategy.models[0] : undefined)} />
           )}
         </div>
       )}
