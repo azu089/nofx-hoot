@@ -667,27 +667,28 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write like a trader thinking out loud — NO headers, NO numbered lists, NO bold text. Just natural flowing paragraphs.
+Think like a real trader — don't just list numbers, ANALYZE what they mean together. NO headers, NO numbered lists, NO bold text, NO markdown.
 
-Start by quickly noting your account situation and what you're holding. Then mention the overall market vibe — where BTC is heading, what the Fear & Greed number tells you, and how that affects altcoins.
+Bad example (just listing data): "RSI is 79, EMA is bullish, OI increased 1.8%, funding rate is 0.01%..."
+Good example (actual thinking): "RSI at 79 is dangerously overbought while OI is climbing — this tells me new money is piling in at the top, which usually ends badly. The smart money outflow of -4.5M confirms institutions are taking profit here. Even though the trend is up, I'm seeing classic distribution signs."
 
-For each coin, talk through what you see: the K-line setup (support/resistance, patterns, volume), the key indicators (RSI, EMA, MACD, OI, funding rate), whether BTC's direction helps or hurts this trade, and what the market sentiment means for this specific setup. Reference any recent trades on the same coin if relevant. End each coin's analysis with "I decide to..." in first person.
+For each coin: What STORY do the indicators tell when you combine them? What scenario are you betting on? What could go wrong? Why is this setup good or bad compared to your recent trades on the same coin?
 
-Separate coins with a blank line. Do NOT use markdown formatting — no **, no ##, no numbered lists. Just talk naturally.
+End each coin with "I decide to..." explaining your reasoning, not just stating the action.
+
+Separate coins with a blank line. Keep it natural and conversational.
 </reasoning>
 
 <decision>
-Step 2: JSON decision array — each coin's "reasoning" field MUST contain:
-1. Key indicator values cited (RSI, EMA, OI, MACD, K-line patterns etc.)
-2. BTC correlation context (is BTC supporting or opposing this trade?)
-3. Market sentiment factor (Fear & Greed level and its implication)
-4. Your analysis conclusion
-5. First-person decision statement starting with "I decide to..." (or "我决定...")
+Step 2: JSON decision array — each coin's "reasoning" field MUST be analytical (not just listing numbers). Include:
+1. What the indicators MEAN together (the story, not the numbers)
+2. Key risk or opportunity you identified
+3. First-person decision with WHY: "I decide to... because..."
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. Fear & Greed at 28 (Fear) supports downside. RSI(14)=38 not yet oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
-  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. F&G=28 Fear but no oversold signal yet. I decide to hold current position, waiting for BTC direction to clarify."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "Classic distribution pattern — new money pouring in (OI +2.1%) while price keeps dropping, meaning longs are getting trapped. The K-line rejected resistance at $96500 three times with shrinking volume, sellers are in control. With F&G at 28 and EMAs all bearish-aligned, the path of least resistance is down. I decide to short here because the risk/reward is excellent at 3.2:1 with stop above the triple rejection."},
+  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH is stuck in no-man's land — all EMAs converging, RSI dead center at 50, no volume conviction either way. BTC looks weak but ETH is refusing to follow down, which is interesting but not enough to act on. I decide to hold and wait — no edge here until one side breaks."}
 ]
 \`\`\`
 </decision>
