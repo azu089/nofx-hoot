@@ -741,6 +741,16 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
             const adSymbol = (ad.symbol || '').replace(/\/USDT.*$/, '');
             const isOpen = adAction === 'open_long' || adAction === 'open_short';
             const isClose = adAction === 'close_long' || adAction === 'close_short';
+            // 平仓时从 accountSnapshot.positions 获取持仓信息（executionResult 可能为空）
+            const posSnap = isClose && (d as any).accountSnapshot?.positions
+              ? ((d as any).accountSnapshot.positions as any[]).find((p: any) => {
+                  const pSym = (p.symbol || '').replace(/\/USDT.*$/, '');
+                  return pSym === adSymbol;
+                })
+              : null;
+            const closeEntryPrice = adEntryPrice || posSnap?.entryPrice || 0;
+            const closeMarkPrice = posSnap?.markPrice || 0;
+            const closeQty = adAmt || posSnap?.quantity || 0;
             return (
               <div key={idx} className={`rounded-lg bg-[#0A0A0F]/40 border border-[#1E1E2E]/40 p-2.5 space-y-1`}>
                 {/* 行1: 币种 + 动作 + 置信度 */}
@@ -751,8 +761,11 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   </span>
                   {isOpen && ad.leverage != null && ad.leverage > 1 && <span className="text-[#9090A0] font-mono text-[10px]">{ad.leverage}x</span>}
                   {isOpen && adMargin > 0 && <span className="text-[#10B981] font-mono text-[10px]">${adMargin.toFixed(2)}</span>}
-                  {(isOpen || isClose) && adEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">${adEntryPrice.toFixed(2)}</span>}
-                  {(isOpen || isClose) && adAmt && <span className="text-[#F8F8FC] font-mono text-[10px]">×{adAmt}</span>}
+                  {isOpen && adEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">${adEntryPrice.toFixed(2)}</span>}
+                  {isOpen && adAmt && <span className="text-[#F8F8FC] font-mono text-[10px]">×{adAmt}</span>}
+                  {isClose && closeEntryPrice > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">入${closeEntryPrice.toFixed(2)}</span>}
+                  {isClose && closeMarkPrice > 0 && <><span className="text-[#606070] font-mono text-[10px]">→</span><span className="text-[#F8F8FC] font-mono text-[10px]">${closeMarkPrice.toFixed(2)}</span></>}
+                  {isClose && closeQty > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">×{closeQty}</span>}
                   <span className="ml-auto font-semibold text-xs shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
                 </div>
                 {/* 市场数据面板 */}

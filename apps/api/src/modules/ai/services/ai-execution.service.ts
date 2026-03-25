@@ -195,8 +195,9 @@ export class AiExecutionService {
         return { success: true, symbol, action, error: undefined };
       }
 
-      // 创建适配器（优先复用外部传入，避免每周期重复创建）
-      const adapter = existingAdapter ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
+      // 创建适配器（优先复用外部传入，isReady 防御 dispose 后残留引用）
+      const adapter = (existingAdapter?.isReady?.() ? existingAdapter : null)
+        ?? await this.adapterFactory.createAdapter(userId, apiKeyId);
 
       // 路由到对应执行方法
       switch (action) {
@@ -886,8 +887,9 @@ export class AiExecutionService {
 
     this.logger.log(`[AI执行] 批量平仓启动: 策略 ${strategyId} 共 ${openPositions.length} 笔持仓`);
 
-    const ownsAdapter = !existingAdapter;
-    let adapter: ExchangeAdapter | null = existingAdapter ?? null;
+    const readyAdapter = existingAdapter?.isReady?.() ? existingAdapter : null;
+    const ownsAdapter = !readyAdapter;
+    let adapter: ExchangeAdapter | null = readyAdapter;
     try {
       if (!adapter) adapter = await this.adapterFactory.createAdapter(userId, apiKeyId);
       for (const pos of openPositions) {
