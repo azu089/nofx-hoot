@@ -531,9 +531,9 @@ export class PromptBuilderService {
 
     // [9] Instruction — 多币种模式强调每币独立分析
     lines.push('');
-    const coinMatches = ctx.marketDataPrompt?.match(/===\s+(\S+\/\S+)\s/g) || [];
+    const coinMatches = ctx.marketDataPrompt?.match(/=== MARKET DATA: (\S+\/\S+:\S+) ===/g) || [];
     if (coinMatches.length > 1) {
-      const coinList = coinMatches.map(m => m.replace(/===\s+/, '').trim()).join(', ');
+      const coinList = coinMatches.map(m => m.replace(/=== MARKET DATA: /, '').replace(/ ===/, '').trim()).join(', ');
       lines.push(`⚠️ MULTI-COIN MODE (${coinMatches.length} coins: ${coinList}):`);
       lines.push(`1. You MUST return EXACTLY ${coinMatches.length} decision objects in the JSON array, one per coin. Even if you decide "wait", you MUST still output a decision object for that coin with action="wait".`);
       lines.push('2. Each coin MUST have INDEPENDENT reasoning (≥3 sentences). Do NOT say "similar to BTC" or "same as above".');
