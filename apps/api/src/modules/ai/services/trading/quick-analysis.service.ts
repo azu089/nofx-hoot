@@ -677,11 +677,15 @@ export class QuickAnalysisService {
 
       // 智能分段：在关键断句处插入换行，让前端展示更易读
       unifiedAnalysis = unifiedAnalysis
-        // 币种切换处断段（"接着分析"/"再看"/"对于"/"最后" + 币种名）
-        .replace(/(。\s*)(接着分析|再看|接下来|对于|最后分析|然后是|Now let|Next|Finally|Looking at|For )/g, '$1\n\n$2')
-        // "我决定"/"I decide" 之后断段（决策结论后另起一段分析下个币）
+        // 1. 币种切换处断段
+        .replace(/(。\s*)(接着分析|再看|接下来|对于|最后分析|然后是|其次|Now let|Next|Finally|Looking at|For )/g, '$1\n\n$2')
+        // 2. "我决定"/"I decide" 之后断段
         .replace(/(我决定[^。]*。|I decide[^.]*\.)\s*(?!\n)/g, '$1\n\n')
-        .replace(/\n{3,}/g, '\n\n');               // 再次压缩多余空行
+        // 3. 转折/对比处断段（"然而/但是/不过/However" 前面加换行）
+        .replace(/(。\s*)(然而|但是|不过|但衍生品|但技术面|但资金|However|But |On the other hand)/g, '$1\n\n$2')
+        // 4. 关键话题切换断段（K线/资金流/恐惧指数/止损止盈 开头）
+        .replace(/(。\s*)(K线|资金流|机构资金|恐惧与贪婪|止[损盈]|整体市场|Fund flow|Institution|Fear|Stop|Overall market)/g, '$1\n\n$2')
+        .replace(/\n{3,}/g, '\n\n');               // 压缩多余空行
     }
 
     // 后端补偿：如果 JSON reasoning 太短（<50字），从整体分析中提取该币段落填充
