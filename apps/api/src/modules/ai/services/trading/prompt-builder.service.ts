@@ -592,14 +592,8 @@ Your task is to make trading decisions based on provided market data.`;
   - Very High (extreme setup, all signals aligned): 90+
   The system tracks your historical accuracy. Inflated confidence → poor trades → lower trust score.
 
-## Position Sizing Guidance
-Calculate position_size_usd based on your confidence and the Position Value Limits above:
-- Very high confidence (>=90): Use 80-100% of max position value limit
-- High confidence (75-89): Use 50-80% of max position value limit
-- Medium confidence (60-74): Use 30-50% of max position value limit
-- Low confidence: Do NOT open positions, output "wait" instead
-- Example: With equity ${equity.toFixed(0)} and BTC/ETH ratio ${btcEthPVR}x, max is ${(equity * btcEthPVR).toFixed(0)} USDT
-- **DO NOT** just use available_balance as position_size_usd. Use the Position Value Limits!`;
+## Position Sizing
+Scale position_size_usd proportionally to your confidence within the Position Value Limits above. Do NOT use available_balance directly.`;
   }
 
   // buildAIGuidance 已删除（对齐 nofx engine.go 主路径：不注入"决策原则"段）
