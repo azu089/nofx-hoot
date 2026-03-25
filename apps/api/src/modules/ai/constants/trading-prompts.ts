@@ -174,7 +174,7 @@ export function formatMarketDataPrompt(data: {
       const pcLabel = opt.putCallRatio < 0.7 ? 'bullish' : opt.putCallRatio > 1.3 ? 'bearish' : 'neutral';
       lines.push('', '--- Options Market (Deribit) ---');
       lines.push(`Put/Call Ratio: ${opt.putCallRatio.toFixed(2)} (${pcLabel})`);
-      lines.push(`Max Pain: $${opt.maxPainPrice.toLocaleString()} | IV: ${(opt.impliedVolatility * 100).toFixed(1)}%`);
+      lines.push(`Max Pain: $${opt.maxPainPrice.toLocaleString()} | IV: ${opt.impliedVolatility.toFixed(1)}%`);
     }
 
     // 资金流（稳定币 + ETF）
