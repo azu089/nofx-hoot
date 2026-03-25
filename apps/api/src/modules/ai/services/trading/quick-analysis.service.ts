@@ -809,6 +809,10 @@ export class QuickAnalysisService {
                 atr3: indicatorResult.atr3,
                 atr14: indicatorResult.atr,
                 macdHist: indicatorResult.macd?.histogram ?? null,
+                // EMA 值（供 marketSnapshot emaTrend 计算）
+                ema12: indicatorResult.ema?.ema12 ?? null,
+                ema26: indicatorResult.ema?.ema26 ?? null,
+                ema50: indicatorResult.ema?.ema50 ?? null,
               },
               fundingRate,
               currentPrice,
@@ -997,6 +1001,17 @@ export class QuickAnalysisService {
               else oiQuadrant = '多头清算';
             }
           }
+          // EMA 趋势（和单币模式同逻辑，来自 indicatorResult.ema）
+          const _ema7 = mr.indicators?.ema12 ?? 0;
+          const _ema25 = mr.indicators?.ema26 ?? 0;
+          const _ema99 = mr.indicators?.ema50 ?? 0;
+          let mcEmaTrend: string | null = null;
+          if (_ema7 && _ema25 && _ema99) {
+            if (_ema7 > _ema25 && _ema25 > _ema99) mcEmaTrend = '↑多头';
+            else if (_ema7 < _ema25 && _ema25 < _ema99) mcEmaTrend = '↓空头';
+            else mcEmaTrend = '→震荡';
+          }
+
           const mcSnapshot = {
             price: mr.currentPrice,
             rsi7: mr.indicators?.rsi7 ?? null,
@@ -1008,6 +1023,7 @@ export class QuickAnalysisService {
             longPct: lsr ? (lsr.longAccount / (lsr.longAccount + lsr.shortAccount)) * 100 : null,
             oiChange: oiChangeStr,
             oiQuadrant,
+            emaTrend: mcEmaTrend,
             institutionFlow: null as number | null,
             dataSources: {
               oi: mr.openInterest != null, fr: mr.fundingRate != null,
