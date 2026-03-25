@@ -727,7 +727,9 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
       {isMultiCoin && !isGridLog && (
         <div className="space-y-2.5">
           {allDecisions.map((ad, idx) => {
-            const adAction = ad.action || 'wait';
+            // 置信度拦截时显示原始 action（如 open_long），不显示被强制转换后的 wait
+            const wasConfBlocked = (ad as any).minConfFilter === true;
+            const adAction = wasConfBlocked ? ((ad as any).originalAction || ad.action || 'wait') : (ad.action || 'wait');
             const adCfg = ACTION_CONFIG[adAction] || ACTION_CONFIG['wait'];
             const adEr = ad.executionResult;
             const adEntryPrice = adEr?.price || 0;
@@ -768,6 +770,10 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                   {isClose && closeQty > 0 && <span className="text-[#F8F8FC] font-mono text-[10px]">×{closeQty}</span>}
                   <span className="ml-auto font-semibold text-xs shrink-0" style={{ color: (ad.confidence ?? 0) >= 80 ? '#22C55E' : (ad.confidence ?? 0) >= 60 ? '#F59E0B' : '#F43F5E' }}>{ad.confidence ?? 0}%</span>
                 </div>
+                {/* 置信度拦截提示 */}
+                {wasConfBlocked && (
+                  <div className="text-[10px] text-[#F59E0B]">置信度不足 {(ad as any).actual ?? ad.confidence}%{'<'}{(ad as any).required ?? 80}%，未执行</div>
+                )}
                 {/* 市场数据面板 */}
                 {ad.marketSnapshot && (() => {
                   const ms = ad.marketSnapshot as any;
@@ -785,21 +791,15 @@ export function SoloLogCard({ entry }: SoloLogCardProps) {
                     </div>
                   );
                 })()}
-                {/* 开仓参数 */}
-                {isOpen && (adPvl > 0 || adNotional > 0) && (
-                  <div className="text-[10px] text-[#606070] font-mono">
-                    {adPvl > 0 && <>{t('timeline.limitLabel')}${adPvl.toFixed(0)} </>}
+                {/* 开仓参数 + SL/TP + R:R 合并一行 */}
+                {isOpen && (adPvl > 0 || adNotional > 0 || ad.stopLoss != null || ad.takeProfit != null) && (
+                  <div className="flex items-center gap-2 text-[10px] text-[#606070] font-mono">
+                    {adPvl > 0 && <span>{t('timeline.limitLabel')}${adPvl.toFixed(0)}</span>}
                     {adPct > 0 && <span className="text-[#06B6D4]">{adPct}%</span>}
-                    {adPct > 0 && <> </>}
                     {adNotional > 0 && (adTruncated
-                      ? <>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span></>
-                      : <>{t('timeline.notionalLabel')} ${adNotional.toFixed(0)}</>
+                      ? <span>{t('timeline.notionalLabel')} <span className="text-[#F59E0B]">${Number(adAiReq).toFixed(0)}→${adNotional.toFixed(0)}</span></span>
+                      : <span>{t('timeline.notionalLabel')} ${adNotional.toFixed(0)}</span>
                     )}
-                  </div>
-                )}
-                {/* SL/TP + R:R */}
-                {isOpen && (ad.stopLoss != null || ad.takeProfit != null) && (
-                  <div className="flex items-center gap-3 text-[10px] font-mono">
                     {ad.stopLoss != null && <span className="text-[#F43F5E]">↓${Number(ad.stopLoss).toLocaleString()}</span>}
                     {ad.takeProfit != null && <span className="text-[#10B981]">↑${Number(ad.takeProfit).toLocaleString()}</span>}
                     {ad.stopLoss != null && ad.takeProfit != null && (() => {
