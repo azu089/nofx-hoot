@@ -667,7 +667,7 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. End each coin's analysis with "I decide to..." and briefly explain your confidence level (e.g., "confidence 70% because signals are mixed" or "confidence 85% because multiple signals align").
+Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. Reference your recent trade history on the same coin when relevant — what worked, what failed, and how it informs this trade. End each coin's analysis with "I decide to..." and briefly explain your confidence level.
 
 Separate each coin's analysis with a blank line. No markdown formatting.
 </reasoning>
