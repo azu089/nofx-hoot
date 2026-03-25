@@ -667,16 +667,21 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Think like a real trader — don't just list numbers, ANALYZE what they mean together. NO headers, NO numbered lists, NO bold text, NO markdown.
+Your reasoning must follow this chain for each coin: DATA → MEANING → CORRELATION → IMPLICATION → DECISION. Do NOT just list indicator values. NO markdown formatting (no **, ##, numbered lists).
 
-Bad example (just listing data): "RSI is 79, EMA is bullish, OI increased 1.8%, funding rate is 0.01%..."
-Good example (actual thinking): "RSI at 79 is dangerously overbought while OI is climbing — this tells me new money is piling in at the top, which usually ends badly. The smart money outflow of -4.5M confirms institutions are taking profit here. Even though the trend is up, I'm seeing classic distribution signs."
+Bad output (data dump, users can't understand WHY):
+"SOL的RSI(7)为79.4超买,EMA多头排列,OI增加+1.8%,价格微跌-0.09%,机构资金流出-4.51M,BTC横盘RSI 73.1。我决定持有。"
 
-For each coin: What STORY do the indicators tell when you combine them? What scenario are you betting on? What could go wrong? Why is this setup good or bad compared to your recent trades on the same coin?
+Good output (clear reasoning chain, users understand the logic):
+"SOL的RSI已经到79超买区域,但有意思的是OI还在增加1.8%而价格却在跌——这说明有新资金在高位入场但撑不住价格,是典型的多头陷阱信号。再看机构那边,4.5M在流出,聪明钱已经在撤了。K线上连续几根缩量阳线接近92.95阻力位,上攻动能明显不足。不过另一边,恐惧指数14极度恐惧,历史上这种恐慌位置往往是反弹起点,这和技术面的看跌信号形成矛盾。综合来看,短期追多风险太大,但恐慌底部也不适合做空。我决定继续持有现有仓位——止盈止损已经挂好,让市场自己选方向,不在这个矛盾位置加仓。"
 
-End each coin with "I decide to..." explaining your reasoning, not just stating the action.
+Key rules:
+- When you see data, explain what it MEANS (e.g., "OI up + price down = trapped longs")
+- When multiple signals point the same way, say what they TOGETHER imply
+- When signals CONFLICT, explain the contradiction and how you resolve it
+- End with "I decide to..." with a clear BECAUSE explaining the logic
 
-Separate coins with a blank line. Keep it natural and conversational.
+Separate each coin with a blank line.
 </reasoning>
 
 <decision>
