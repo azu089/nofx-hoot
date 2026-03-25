@@ -670,10 +670,10 @@ Feel free to use any effective analysis method. Only open positions when your ge
 Your reasoning must follow this chain for each coin: DATA → MEANING → CORRELATION → IMPLICATION → DECISION. Do NOT just list indicator values. NO markdown formatting (no **, ##, numbered lists).
 
 Bad output (data dump, users can't understand WHY):
-"SOL的RSI(7)为79.4超买,EMA多头排列,OI增加+1.8%,价格微跌-0.09%,机构资金流出-4.51M,BTC横盘RSI 73.1。我决定持有。"
+"RSI(7)=79.4 overbought, EMA bullish, OI +1.8%, price -0.09%, institution outflow -4.51M, BTC sideways RSI 73.1. I decide to hold."
 
 Good output (clear reasoning chain, users understand the logic):
-"SOL的RSI已经到79超买区域,但有意思的是OI还在增加1.8%而价格却在跌——这说明有新资金在高位入场但撑不住价格,是典型的多头陷阱信号。再看机构那边,4.5M在流出,聪明钱已经在撤了。K线上连续几根缩量阳线接近92.95阻力位,上攻动能明显不足。不过另一边,恐惧指数14极度恐惧,历史上这种恐慌位置往往是反弹起点,这和技术面的看跌信号形成矛盾。综合来看,短期追多风险太大,但恐慌底部也不适合做空。我决定继续持有现有仓位——止盈止损已经挂好,让市场自己选方向,不在这个矛盾位置加仓。"
+"RSI hit 79 overbought territory, but here's the interesting part — OI is still climbing +1.8% while price is actually dropping. This means new money is piling in at the top but can't hold the price up, classic bull trap signal. The institution outflow of 4.5M confirms smart money is already leaving. K-line shows fading volume candles approaching the 92.95 resistance — buyers are running out of steam. However, Fear & Greed at 14 (extreme fear) historically marks bounce zones, which contradicts the bearish technicals. Bottom line: too risky to chase longs here, but panic bottoms aren't great for shorting either. I decide to hold my position — SL/TP orders are set, let the market decide. No point forcing a trade at this contradictory setup."
 
 Key rules:
 - When you see data, explain what it MEANS (e.g., "OI up + price down = trapped longs")
