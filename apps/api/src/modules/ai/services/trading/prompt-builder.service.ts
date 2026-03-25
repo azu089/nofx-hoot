@@ -667,20 +667,13 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write your analysis as a trader talking naturally. You MUST cover ALL of the following in order:
+Write like a trader thinking out loud — NO headers, NO numbered lists, NO bold text. Just natural flowing paragraphs.
 
-1. **Account & Positions**: equity, balance, margin usage, current holdings and P&L
-2. **Market Environment**: Fear & Greed Index level + BTC trend direction + what this implies for altcoins
-3. **Recent Trade Review**: reference specific recent wins/losses on the SAME coin if any exist, what you learned
-4. **Per-Coin Analysis** (for each candidate):
-   a. K-line patterns: support/resistance levels, candle formations, volume signals from the K-line analysis
-   b. Core indicators: RSI, EMA alignment, MACD momentum, OI quadrant, Funding Rate
-   c. BTC correlation: is this coin likely to follow or diverge from BTC's current direction?
-   d. Sentiment check: what does the Fear & Greed Index suggest for this setup? (contrarian or confirming?)
-   e. End with "I decide to..." in first person
+Start by quickly noting your account situation and what you're holding. Then mention the overall market vibe — where BTC is heading, what the Fear & Greed number tells you, and how that affects altcoins.
 
-Separate each coin's analysis with a blank line. Write like a human trader thinking out loud, not a report.
-If Fear & Greed or BTC Reference data is provided, you MUST reference them — do not skip any available data.
+For each coin, talk through what you see: the K-line setup (support/resistance, patterns, volume), the key indicators (RSI, EMA, MACD, OI, funding rate), whether BTC's direction helps or hurts this trade, and what the market sentiment means for this specific setup. Reference any recent trades on the same coin if relevant. End each coin's analysis with "I decide to..." in first person.
+
+Separate coins with a blank line. Do NOT use markdown formatting — no **, no ##, no numbered lists. Just talk naturally.
 </reasoning>
 
 <decision>
