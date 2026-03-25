@@ -667,33 +667,18 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Your reasoning must follow this chain for each coin: DATA → MEANING → CORRELATION → IMPLICATION → DECISION. Do NOT just list indicator values. NO markdown formatting (no **, ##, numbered lists).
+Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. End each coin's analysis with "I decide to..." in first person.
 
-Bad output (data dump, users can't understand WHY):
-"RSI(7)=79.4 overbought, EMA bullish, OI +1.8%, price -0.09%, institution outflow -4.51M, BTC sideways RSI 73.1. I decide to hold."
-
-Good output (clear reasoning chain, users understand the logic):
-"RSI hit 79 overbought territory, but here's the interesting part — OI is still climbing +1.8% while price is actually dropping. This means new money is piling in at the top but can't hold the price up, classic bull trap signal. The institution outflow of 4.5M confirms smart money is already leaving. K-line shows fading volume candles approaching the 92.95 resistance — buyers are running out of steam. However, Fear & Greed at 14 (extreme fear) historically marks bounce zones, which contradicts the bearish technicals. Bottom line: too risky to chase longs here, but panic bottoms aren't great for shorting either. I decide to hold my position — SL/TP orders are set, let the market decide. No point forcing a trade at this contradictory setup."
-
-Key rules:
-- When you see data, explain what it MEANS (e.g., "OI up + price down = trapped longs")
-- When multiple signals point the same way, say what they TOGETHER imply
-- When signals CONFLICT, explain the contradiction and how you resolve it
-- End with "I decide to..." with a clear BECAUSE explaining the logic
-
-Separate each coin with a blank line.
+Separate each coin's analysis with a blank line. No markdown formatting.
 </reasoning>
 
 <decision>
-Step 2: JSON decision array — each coin's "reasoning" field MUST be analytical (not just listing numbers). Include:
-1. What the indicators MEAN together (the story, not the numbers)
-2. Key risk or opportunity you identified
-3. First-person decision with WHY: "I decide to... because..."
+Step 2: JSON decision array — each coin's "reasoning" field must show your analysis logic (not just list numbers), ending with "I decide to... because..." (or "我决定...因为...")
 
 \`\`\`json
 [
-  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "Classic distribution pattern — new money pouring in (OI +2.1%) while price keeps dropping, meaning longs are getting trapped. The K-line rejected resistance at $96500 three times with shrinking volume, sellers are in control. With F&G at 28 and EMAs all bearish-aligned, the path of least resistance is down. I decide to short here because the risk/reward is excellent at 3.2:1 with stop above the triple rejection."},
-  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH is stuck in no-man's land — all EMAs converging, RSI dead center at 50, no volume conviction either way. BTC looks weak but ETH is refusing to follow down, which is interesting but not enough to act on. I decide to hold and wait — no edge here until one side breaks."}
+  {"symbol": "BTC/USDT:USDT", "action": "open_short", "leverage": ${exampleLev}, "position_size_usd": ${examplePosSize}, "stop_loss": 97000, "take_profit": 91000, "confidence": 85, "risk_usd": 300, "reasoning": "EMA(7)<EMA(25)<EMA(99) bearish. K-line shows 3 consecutive bearish bars with resistance at $96500. OI +2.1% price falling = bearish quadrant. Fear & Greed at 28 (Fear) supports downside. RSI(14)=38 not yet oversold. I decide to open short BTC, ${exampleLev}x leverage $${examplePosSize}, SL $97000 TP $91000, R:R=3.2:1."},
+  {"symbol": "ETH/USDT:USDT", "action": "hold", "confidence": 60, "reasoning": "ETH RSI(14)=50 neutral. EMA flat, no clear trend. OI +0.5% minimal. BTC trending bearish but ETH showing relative strength. F&G=28 Fear but no oversold signal yet. I decide to hold current position, waiting for BTC direction to clarify."}
 ]
 \`\`\`
 </decision>
@@ -703,7 +688,7 @@ Step 2: JSON decision array — each coin's "reasoning" field MUST be analytical
 - \`action\`: open_long | open_short | close_long | close_short | hold | wait
 - \`confidence\`: 0-100 (must genuinely reflect signal quality, NOT inflated to force trades)
 - Required when opening: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd
-- \`reasoning\`: **MUST be ≥4 sentences** with: indicator values + K-line patterns + BTC/sentiment context + "I decide to..." statement
+- \`reasoning\`: **MUST be ≥3 sentences** with analysis logic + "I decide to..." statement
 - **IMPORTANT**: All numeric values must be calculated numbers, NOT formulas/expressions (e.g., use \`27.76\` not \`3000 * 0.01\`)`;
   }
 }
