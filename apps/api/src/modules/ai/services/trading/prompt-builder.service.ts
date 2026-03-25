@@ -217,7 +217,7 @@ export class PromptBuilderService {
     if (ps.mode) {
       const variant = ps.mode.toLowerCase().trim();
       if (variant === 'aggressive') {
-        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when confidence ≥ ${rc.minConfidence ?? 75}\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
+        sections.push(`## Mode: Aggressive\n- Prioritize capturing trend breakouts, can build positions in batches when you have HIGH confidence\n- Allow higher positions, but must strictly set stop-loss and explain risk-reward ratio`);
       } else if (variant === 'conservative') {
         sections.push(`## Mode: Conservative\n- Only open positions when multiple signals resonate\n- Prioritize cash preservation, must pause for multiple periods after consecutive losses`);
       } else if (variant === 'scalping') {
@@ -570,7 +570,6 @@ Your task is to make trading decisions based on provided market data.`;
     const btcEthPVR = rc.btcEthMaxPositionValueRatio ?? 5.0;
     const altPVR = rc.altcoinMaxPositionValueRatio ?? 1.0;
     const minRR = rc.minRiskRewardRatio ?? AI_SAFETY_DEFAULTS.minRiskRewardRatio;
-    const minConf = rc.minConfidence ?? 60;
     const minPosSize = rc.minPositionSize ?? AI_SAFETY_DEFAULTS.minPositionSizeAlt;
 
     // 对齐 nofx: CODE ENFORCED（代码验证，AI 需要知道边界）+ AI GUIDED（推荐，AI 自主决定）
@@ -611,8 +610,7 @@ Calculate position_size_usd based on your confidence and the Position Value Limi
    * 对齐 nofx engine.go L1097-1131
    * 简洁告知频率+可用指标+决策流程，不限制 AI 的分析方法
    */
-  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, minConf?: number, indicators?: PromptConfig['indicators']): string {
-    const conf = minConf ?? 60;
+  private buildFrequencyAwareness(_intervalMinutes?: number, _todayTrades?: number, _minConf?: number, indicators?: PromptConfig['indicators']): string {
     const ind = indicators || {};
 
     // 对齐 nofx writeAvailableIndicators: 从 config 动态生成指标列表
@@ -653,7 +651,6 @@ Feel free to use any effective analysis method. Only open positions when your ge
    */
   private buildOutputFormat(rc: PromptConfig['riskControl'] = {}): string {
     const equity = rc.allocatedCapital ?? 1000;
-    const minConf = rc.minConfidence ?? 60;
     const examplePosSize = Math.round(equity * (rc.btcEthMaxPositionValueRatio ?? 5));
     const exampleLev = rc.btcEthMaxLeverage ?? rc.maxLeverage ?? 5;
 
