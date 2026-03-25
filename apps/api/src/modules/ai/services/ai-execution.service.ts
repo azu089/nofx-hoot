@@ -440,7 +440,13 @@ export class AiExecutionService {
         : adapter.openShort(futuresSymbol, quantity, actualLeverage),
     );
 
-    const filledPrice = result.avgPrice || currentPrice;
+    // 开仓价必须用实际成交价（avgPrice），不能用请求价（currentPrice）
+    // 否则 PnL 计算会基于错误的入场价
+    let filledPrice = result.avgPrice || 0;
+    if (filledPrice <= 0) {
+      filledPrice = currentPrice; // 最终降级
+      this.logger.warn(`[AI执行] avgPrice=0，降级使用请求价 $${currentPrice} 作为入场价`);
+    }
     const filledAmount = result.filledQuantity || quantity;
 
     this.logger.log(
@@ -715,7 +721,17 @@ export class AiExecutionService {
         : adapter.closeShort(futuresSymbol, closeAmount),
     );
 
-    const exitPrice = result.avgPrice || 0;
+    let exitPrice = result.avgPrice || 0;
+
+    // 防御：exitPrice=0 时从交易所重新查询（避免 PnL 计算错误）
+    if (exitPrice <= 0) {
+      try {
+        exitPrice = await this.retryCall('getMarketPrice', () => adapter.getMarketPrice(futuresSymbol));
+        this.logger.warn(`[AI执行] avgPrice=0，使用市场价 $${exitPrice} 作为退出价`);
+      } catch {
+        this.logger.error(`[AI执行] avgPrice=0 且市场价获取失败，PnL 将不准确`);
+      }
+    }
 
     this.logger.log(
       `[AI执行] 平仓订单结果: orderId=${result.orderId} exitPrice=$${exitPrice}`,

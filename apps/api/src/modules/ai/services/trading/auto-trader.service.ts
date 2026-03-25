@@ -2433,7 +2433,7 @@ export class AutoTraderService {
             this.logger.debug(`[自动交易] income PnL: 今日=${syncResult.incomePnlToday.toFixed(4)}, 24h=${syncResult.incomePnl24h.toFixed(4)}`);
           }
         } catch (e: any) {
-          this.logger.debug(`[自动交易] 历史持仓同步失败(非致命): ${e.message}`);
+          this.logger.warn(`[自动交易] 历史持仓同步失败(GAS扣费可能延迟): ${e.message}`);
         }
       }
 

@@ -1104,27 +1104,69 @@ export class StrategyEngineService implements OnModuleInit {
         // 交易所有 DB 无 → 不创建（由 ai-execution 负责创建）
       }
 
-      // 对齐 nofx OrderSync: DB open 但交易所无 → 标记 closed
-      // nofx 通过 SyncOrdersFromBinance → ProcessTrade(close_long/close_short) 自动关闭
-      // HOOT 等价：检测交易所已平仓（SL/TP 条件单触发），标记 DB closed
+      // 对齐 nofx OrderSync: DB open 但交易所无 → 查成交确认原因 + 标记 closed
       const exchangeSymbolSides = new Set(
         exchangePositions.map((ep: any) => `${ep.symbol}::${ep.side}`),
       );
       for (const dbPos of dbPositions) {
         const key = `${dbPos.symbol}::${dbPos.side}`;
         if (!exchangeSymbolSides.has(key)) {
-          // 交易所接口正常返回但找不到此仓 = 已被条件单平仓
+          // 交易所无此持仓 → 查成交明细确认平仓原因（对齐 nofx OrderSync.determineOrderAction）
+          let closeReason = 'not_found_on_exchange';
+          let exitPrice = 0;
+          let realizedPnl = 0;
+          let closeFee = 0;
+
+          try {
+            // 拉取最近成交（从开仓时间起）
+            const sinceMs = dbPos.createdAt ? new Date(dbPos.createdAt).getTime() : Date.now() - 24 * 60 * 60 * 1000;
+            const trades = await adapter.fetchMyTrades(dbPos.symbol, sinceMs, 50);
+            // 找平仓成交：卖出（多头平仓）或买入（空头平仓）
+            const closeSide = dbPos.side === 'long' ? 'sell' : 'buy';
+            const closeTrades = trades.filter(t => t.side === closeSide);
+
+            if (closeTrades.length > 0) {
+              // 取最后一笔平仓成交
+              const lastClose = closeTrades[closeTrades.length - 1];
+              exitPrice = lastClose.price;
+
+              // 判断是止损还是止盈（对比入场价）
+              const entryPrice = Number(dbPos.entryPrice);
+              if (dbPos.side === 'long') {
+                realizedPnl = (exitPrice - entryPrice) * Number(dbPos.amount);
+                closeReason = exitPrice < entryPrice ? 'stop_loss' : 'take_profit';
+              } else {
+                realizedPnl = (entryPrice - exitPrice) * Number(dbPos.amount);
+                closeReason = exitPrice > entryPrice ? 'stop_loss' : 'take_profit';
+              }
+
+              this.logger.log(
+                `[持仓同步] ${dbPos.symbol} ${dbPos.side} 成交确认: ${closeReason} @ $${exitPrice.toFixed(4)}, PnL=$${realizedPnl.toFixed(4)}`,
+              );
+            }
+          } catch (e: any) {
+            this.logger.warn(`[持仓同步] ${dbPos.symbol} 成交查询失败(降级): ${e.message}`);
+          }
+
           closed++;
           await this.prisma.position.update({
             where: { id: dbPos.id },
             data: {
               status: 'closed',
               closedAt: new Date(),
-              closeReason: 'not_found_on_exchange',
+              closeReason,
+              ...(exitPrice > 0 ? {
+                exitPrice: exitPrice.toString(),
+                closePrice: exitPrice.toString(),
+              } : {}),
+              ...(realizedPnl !== 0 ? {
+                realizedPnl: realizedPnl.toString(),
+                pnl: realizedPnl.toString(),
+              } : {}),
             },
           });
           this.logger.warn(
-            `[持仓同步] ${dbPos.symbol} ${dbPos.side} 交易所已无持仓（SL/TP 条件单触发），标记 closed`,
+            `[持仓同步] ${dbPos.symbol} ${dbPos.side} 交易所已无持仓 → ${closeReason}${exitPrice > 0 ? ` @ $${exitPrice.toFixed(4)}` : ''}${realizedPnl !== 0 ? ` PnL=$${realizedPnl.toFixed(4)}` : ''}`,
           );
         }
       }
