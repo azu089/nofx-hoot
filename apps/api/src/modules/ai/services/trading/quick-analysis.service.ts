@@ -665,7 +665,7 @@ export class QuickAnalysisService {
       );
     }
 
-    // 清理 markdown 格式（DeepSeek R1 thinking 模式顽固输出 **bold**/##/编号列表）
+    // 清理 markdown 格式 + 智能分段（DeepSeek R1 thinking 模式顽固输出密集文本）
     if (unifiedAnalysis) {
       unifiedAnalysis = unifiedAnalysis
         .replace(/\*\*/g, '')                     // 去掉 **bold**
@@ -674,6 +674,14 @@ export class QuickAnalysisService {
         .replace(/^\s*[a-e]\.\s+/gm, '')          // 去掉 "a. " 子编号
         .replace(/^[-*]\s+/gm, '')                 // 去掉 "- " 列表项
         .replace(/\n{3,}/g, '\n\n');               // 多余空行压缩
+
+      // 智能分段：在关键断句处插入换行，让前端展示更易读
+      unifiedAnalysis = unifiedAnalysis
+        // 币种切换处断段（"接着分析"/"再看"/"对于"/"最后" + 币种名）
+        .replace(/(。\s*)(接着分析|再看|接下来|对于|最后分析|然后是|Now let|Next|Finally|Looking at|For )/g, '$1\n\n$2')
+        // "我决定"/"I decide" 之后断段（决策结论后另起一段分析下个币）
+        .replace(/(我决定[^。]*。|I decide[^.]*\.)\s*(?!\n)/g, '$1\n\n')
+        .replace(/\n{3,}/g, '\n\n');               // 再次压缩多余空行
     }
 
     // 后端补偿：如果 JSON reasoning 太短（<50字），从整体分析中提取该币段落填充

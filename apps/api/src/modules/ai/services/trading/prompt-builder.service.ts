@@ -535,11 +535,11 @@ export class PromptBuilderService {
     if (coinMatches.length > 1) {
       const coinList = coinMatches.map(m => m.replace(/===\s+/, '').trim()).join(', ');
       lines.push(`⚠️ MULTI-COIN MODE (${coinMatches.length} coins: ${coinList}):`);
-      lines.push(`1. You MUST return exactly ${coinMatches.length} decision objects in the JSON array, one per coin.`);
-      lines.push('2. Each coin MUST have INDEPENDENT, DETAILED reasoning (≥3 sentences). Do NOT say "similar to BTC" or "same as above".');
-      lines.push('3. Analyze each coin\'s own indicators (RSI, MACD, EMA, volume, funding rate) separately.');
-      lines.push('4. Missing any coin or giving lazy cross-references = INVALID output.');
-      lines.push(`5. Return the array in the EXACT same order as listed above: ${coinList}. Index 0 = first coin, do NOT reorder.`);
+      lines.push(`1. You MUST return EXACTLY ${coinMatches.length} decision objects in the JSON array, one per coin. Even if you decide "wait", you MUST still output a decision object for that coin with action="wait".`);
+      lines.push('2. Each coin MUST have INDEPENDENT reasoning (≥3 sentences). Do NOT say "similar to BTC" or "same as above".');
+      lines.push('3. Analyze each coin\'s own indicators separately.');
+      lines.push(`4. Missing any coin = INVALID output. You have ${coinMatches.length} coins, you must output ${coinMatches.length} decisions.`);
+      lines.push(`5. Return the array in the EXACT same order as listed above: ${coinList}.`);
     }
     // 对齐 nofx engine.go L1410: 简洁收尾
     lines.push(`\n---\n\nNow please analyze and output your decision (Chain of Thought + JSON)`);
@@ -667,7 +667,7 @@ Feel free to use any effective analysis method. Only open positions when your ge
 ## Format Requirements
 
 <reasoning>
-Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. End each coin's analysis with "I decide to..." in first person.
+Write your analysis as a trader thinking out loud. Do NOT just list indicator values — show your reasoning process: what the data means, how signals connect to each other, and why that leads to your decision. End each coin's analysis with "I decide to..." and briefly explain your confidence level (e.g., "confidence 70% because signals are mixed" or "confidence 85% because multiple signals align").
 
 Separate each coin's analysis with a blank line. No markdown formatting.
 </reasoning>
